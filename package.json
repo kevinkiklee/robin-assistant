@@ -1,0 +1,39 @@
+{
+  "name": "arc-assistant",
+  "version": "1.0.0",
+  "description": "A self-improving personal assistant powered by Claude Code",
+  "type": "module",
+  "bin": {
+    "arc": "./bin/arc.js"
+  },
+  "files": [
+    "bin/",
+    "core/",
+    "user-data/",
+    "scripts/"
+  ],
+  "scripts": {
+    "test": "node --test tests/**/*.test.js"
+  },
+  "dependencies": {
+    "commander": "^13.0.0",
+    "handlebars": "^4.7.8"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ai",
+    "assistant",
+    "claude",
+    "personal-assistant",
+    "claude-code",
+    "self-improving"
+  ],
+  "license": "MIT",
+  "author": "Kevin K Lee",
+  "repository": {
+    "type": "git",
+    "url": ""
+  }
+}
