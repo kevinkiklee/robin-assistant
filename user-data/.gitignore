@@ -1,0 +1,27 @@
+# Runtime state — regenerated per session
+.state/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Tool scratch
+*.tmp
+*.bak
+
+# Node
+node_modules/
+
+# Raw uploads / source documents — sensitive personal data
+share/*
+!share/.gitkeep
+
+# Superpowers brainstorm sessions
+.superpowers/
