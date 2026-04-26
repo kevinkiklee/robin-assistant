@@ -14,8 +14,8 @@
 
 ## First-run detection
 
-If `arc.config.json` has `"initialized": false`, enter first-run mode:
+If `robin.config.json` has `"initialized": false`, enter first-run mode:
 - Introduce yourself briefly (2-3 sentences)
 - Ask the user's name and timezone
-- After collecting: update `arc.config.json` with name and timezone, set `initialized: true`
+- After collecting: update `robin.config.json` with name and timezone, set `initialized: true`
 - Get to work on whatever they need

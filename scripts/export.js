@@ -8,7 +8,7 @@ import { USER_DATA_FILES } from './lib/platforms.js';
 export async function exportData() {
   const configPath = findConfig();
   if (!configPath) {
-    console.error('Error: arc.config.json not found. Are you in a Robin workspace?');
+    console.error("Error: No Robin workspace found. Run 'robin init' to create one.");
     process.exit(1);
   }
 
@@ -18,7 +18,7 @@ export async function exportData() {
     console.log('Migrated arc.config.json → robin.config.json');
   }
   const timestamp = new Date().toISOString().slice(0, 10);
-  const archiveName = `arc-export-${timestamp}.tar.gz`;
+  const archiveName = `robin-export-${timestamp}.tar.gz`;
 
   const targets = [
     ...USER_DATA_FILES,

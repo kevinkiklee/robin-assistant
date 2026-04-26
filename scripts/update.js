@@ -8,7 +8,7 @@ import { migrate } from './migrate.js';
 export async function update(pkgRoot) {
   const configPath = findConfig();
   if (!configPath) {
-    console.error('Error: arc.config.json not found. Are you in a Robin workspace?');
+    console.error("Error: No Robin workspace found. Run 'robin init' to create one.");
     process.exit(1);
   }
 

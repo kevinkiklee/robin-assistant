@@ -6,7 +6,7 @@ import { PLATFORMS, generateIntegrationsMd } from './lib/platforms.js';
 export async function migrateV2(pkgRoot) {
   const configPath = findConfig();
   if (!configPath) {
-    console.error('Error: arc.config.json not found. Are you in a Robin workspace?');
+    console.error("Error: No Robin workspace found. Run 'robin init' to create one.");
     process.exit(1);
   }
   const workspaceDir = join(configPath, '..');

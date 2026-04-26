@@ -61,7 +61,7 @@ Dream can read and write any of the 8 core data files (profile.md, tasks.md, kno
 
 Dream manages its own `state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
 
-Dream NEVER edits: `AGENTS.md`, `protocols/`, `integrations.md`, `startup.md`, `capture-rules.md`, `arc.config.json`.
+Dream NEVER edits: `AGENTS.md`, `protocols/`, `integrations.md`, `startup.md`, `capture-rules.md`, `robin.config.json`.
 
 Dream NEVER runs external commands or makes network requests.
 

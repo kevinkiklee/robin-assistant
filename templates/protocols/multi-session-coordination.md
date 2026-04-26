@@ -10,7 +10,7 @@ The user may run multiple AI sessions concurrently. This protocol prevents data 
 
 ## Session ID format
 
-`<platform>-<timestamp>` — e.g., `claude-code-20260426T090000Z`. Read the platform from `integrations.md` or `arc.config.json`.
+`<platform>-<timestamp>` — e.g., `claude-code-20260426T090000Z`. Read the platform from `integrations.md` or `robin.config.json`.
 
 ## Session lifecycle
 
