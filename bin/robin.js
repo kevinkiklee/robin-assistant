@@ -15,7 +15,7 @@ program
 
 program
   .command('init [directory]')
-  .description('Scaffold a new Arc workspace')
+  .description('Scaffold a new Robin workspace')
   .option('--force', 'Allow init in non-empty directory')
   .option('--platform <platform>', 'AI tool platform (claude-code, cursor, gemini-cli, codex, windsurf, antigravity)')
   .action(async (directory, options) => {
@@ -29,7 +29,7 @@ program
   .option('--name <name>', 'User name')
   .option('--timezone <tz>', 'Timezone (IANA format)')
   .option('--email <email>', 'Email address')
-  .option('--assistant-name <name>', 'Assistant name (default: Arc)')
+  .option('--assistant-name <name>', 'Assistant name (default: Robin)')
   .option('--platform <platform>', 'Switch AI tool platform')
   .option('--add-integration <name>', 'Add an integration (email, calendar, storage, etc.)')
   .option('--remove-integration <name>', 'Remove an integration')

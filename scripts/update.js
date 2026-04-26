@@ -7,7 +7,7 @@ import { migrate } from './migrate.js';
 export async function update(pkgRoot) {
   const configPath = findConfig();
   if (!configPath) {
-    console.error('Error: arc.config.json not found. Are you in an Arc workspace?');
+    console.error('Error: arc.config.json not found. Are you in a Robin workspace?');
     process.exit(1);
   }
 

@@ -1,4 +1,4 @@
-# Arc Assistant
+# Robin Assistant
 
 A self-improving personal assistant — portable across AI coding tools.
 
@@ -14,24 +14,24 @@ A self-improving personal assistant — portable across AI coding tools.
 ## Quick Start
 
 ```bash
-npx arc-assistant init my-workspace
+npx robin-assistant init my-workspace
 cd my-workspace
-# Open in your AI coding tool — Arc will introduce itself
+# Open in your AI coding tool — Robin will introduce itself
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `arc init [dir]` | Scaffold a new workspace |
-| `arc configure` | Update config (name, timezone, platform, integrations) |
-| `arc update` | Update system files and protocols |
-| `arc rollback` | Restore from backup |
-| `arc validate` | Check workspace integrity |
-| `arc export` | Export user data as tar.gz |
-| `arc reset` | Wipe user data to fresh templates |
-| `arc migrate-v2` | One-time migration from v1 |
-| `arc check-update` | Check for updates |
+| `robin init [dir]` | Scaffold a new workspace |
+| `robin configure` | Update config (name, timezone, platform, integrations) |
+| `robin update` | Update system files and protocols |
+| `robin rollback` | Restore from backup |
+| `robin validate` | Check workspace integrity |
+| `robin export` | Export user data as tar.gz |
+| `robin reset` | Wipe user data to fresh templates |
+| `robin migrate-v2` | One-time migration from v1 |
+| `robin check-update` | Check for updates |
 
 ## Workspace Structure
 

@@ -6,7 +6,7 @@ import { PLATFORMS, generateIntegrationsMd } from './lib/platforms.js';
 export async function migrateV2(pkgRoot) {
   const configPath = findConfig();
   if (!configPath) {
-    console.error('Error: arc.config.json not found. Are you in an Arc workspace?');
+    console.error('Error: arc.config.json not found. Are you in a Robin workspace?');
     process.exit(1);
   }
   const workspaceDir = join(configPath, '..');
@@ -136,7 +136,7 @@ export async function migrateV2InDir(workspaceDir, pkgRoot) {
     initialized: config.initialized ?? true,
     platform,
     user: config.user || { name: null, timezone: null, email: null },
-    assistant: config.assistant || { name: 'Arc' },
+    assistant: config.assistant || { name: 'Robin' },
     integrations,
   };
   writeFileSync(configPath, JSON.stringify(newConfig, null, 2) + '\n');

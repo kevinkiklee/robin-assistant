@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createTempDir, cleanTempDir, writeJson, readJson, fileExists, readText } from './helpers.js';
 
-describe('arc configure', () => {
+describe('robin configure', () => {
   let tmpDir;
 
   before(() => {
@@ -12,7 +12,7 @@ describe('arc configure', () => {
     writeJson(tmpDir, 'arc.config.json', {
       version: '2.0.0', initialized: true, platform: 'claude-code',
       user: { name: 'Test', timezone: 'UTC', email: null },
-      assistant: { name: 'Arc' }, integrations: ['email'],
+      assistant: { name: 'Robin' }, integrations: ['email'],
     });
     writeFileSync(join(tmpDir, 'CLAUDE.md'), 'Read and follow AGENTS.md for all instructions.\n');
     writeFileSync(join(tmpDir, 'integrations.md'), '# Integrations\n');

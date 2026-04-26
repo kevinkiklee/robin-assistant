@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PKG_ROOT = join(__dirname, '..');
 
-describe('arc migrate-v2', () => {
+describe('robin migrate-v2', () => {
   let tmpDir;
 
   before(() => {
@@ -19,7 +19,7 @@ describe('arc migrate-v2', () => {
     writeJson(tmpDir, 'arc.config.json', {
       version: '1.0.0', initialized: true,
       user: { name: 'Kevin', timezone: 'America/New_York', email: 'k@test.com' },
-      assistant: { name: 'Arc' },
+      assistant: { name: 'Robin' },
       features: { dream: true, multiSession: true, autoUpdateCheck: true },
       integrations: [],
     });
@@ -116,7 +116,7 @@ describe('arc migrate-v2', () => {
       writeJson(tmpDir2, 'arc.config.json', {
         version: '1.0.0', initialized: true,
         user: { name: 'Test', timezone: 'UTC', email: 't@test.com' },
-        assistant: { name: 'Arc' },
+        assistant: { name: 'Robin' },
         integrations: [
           { name: 'calendar', type: 'mcp', provider: 'google-calendar' },
           { name: 'weather', type: 'mcp', provider: 'custom' },
@@ -146,7 +146,7 @@ describe('arc migrate-v2', () => {
       writeJson(tmpDir3, 'arc.config.json', {
         version: '1.0.0', initialized: true,
         user: { name: 'Test', timezone: 'UTC', email: 't@test.com' },
-        assistant: { name: 'Arc' },
+        assistant: { name: 'Robin' },
         integrations: [],
       });
       mkdirSync(join(tmpDir3, 'knowledge', 'photos'), { recursive: true });
@@ -176,7 +176,7 @@ describe('arc migrate-v2', () => {
       writeJson(tmpDir4, 'arc.config.json', {
         version: '1.0.0', initialized: true,
         user: { name: 'Test', timezone: 'UTC', email: 't@test.com' },
-        assistant: { name: 'Arc' },
+        assistant: { name: 'Robin' },
         integrations: [],
       });
       mkdirSync(join(tmpDir4, '.state', 'coordination'), { recursive: true });

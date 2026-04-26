@@ -15,7 +15,7 @@ export async function init(directory, options, pkgRoot) {
 
   await initWithOptions(targetDir, { ...options, platform }, pkgRoot);
 
-  console.log(`\nDone. Open ${targetDir} in your AI coding tool — Arc will take it from here.`);
+  console.log(`\nDone. Open ${targetDir} in your AI coding tool — Robin will take it from here.`);
 }
 
 export async function initWithOptions(targetDir, options, pkgRoot) {
@@ -80,8 +80,8 @@ async function askPlatform() {
 }
 
 const PRE_PUSH_HOOK = `#!/bin/sh
-# Arc safety hook — this workspace may contain personal data.
-echo "ERROR: This Arc workspace may contain personal data."
+# Robin safety hook — this workspace may contain personal data.
+echo "ERROR: This Robin workspace may contain personal data."
 echo "Pushing to a remote repository is blocked for safety."
 echo "If you really need to push, remove .git/hooks/pre-push"
 exit 1

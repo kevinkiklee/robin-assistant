@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PKG_ROOT = join(__dirname, '..');
 
-describe('arc init', () => {
+describe('robin init', () => {
   let tmpDir;
 
   before(() => { tmpDir = createTempDir(); });

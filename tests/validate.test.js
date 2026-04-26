@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createTempDir, cleanTempDir, writeJson } from './helpers.js';
 
-describe('arc validate', () => {
+describe('robin validate', () => {
   let tmpDir;
 
   before(() => {
@@ -12,7 +12,7 @@ describe('arc validate', () => {
     writeJson(tmpDir, 'arc.config.json', {
       version: '2.0.0', initialized: true, platform: 'claude-code',
       user: { name: 'Test', timezone: 'UTC', email: null },
-      assistant: { name: 'Arc' }, integrations: [],
+      assistant: { name: 'Robin' }, integrations: [],
     });
     for (const f of ['AGENTS.md','startup.md','capture-rules.md','integrations.md',
       'profile.md','tasks.md','knowledge.md','decisions.md','journal.md',
@@ -38,7 +38,7 @@ describe('arc validate', () => {
     const sparseDir = createTempDir();
     writeJson(sparseDir, 'arc.config.json', {
       version: '2.0.0', initialized: true, platform: 'claude-code',
-      user: { name: 'Test', timezone: 'UTC' }, assistant: { name: 'Arc' }, integrations: [],
+      user: { name: 'Test', timezone: 'UTC' }, assistant: { name: 'Robin' }, integrations: [],
     });
     const result = await validateInDir(sparseDir);
     assert.ok(result.issues > 0, 'should find missing files');
