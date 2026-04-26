@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { findConfig } from './lib/find-config.js';
+import { migrateConfigFilename } from './lib/migrate-config-filename.js';
 import { USER_DATA_FILES } from './lib/platforms.js';
 
 export async function validate() {
@@ -10,6 +11,10 @@ export async function validate() {
     process.exit(1);
   }
   const workspaceDir = join(configPath, '..');
+  const __migration = migrateConfigFilename(workspaceDir);
+  if (__migration.migrated) {
+    console.log('Migrated arc.config.json → robin.config.json');
+  }
   const result = await validateInDir(workspaceDir);
   console.log(`\n${result.issues === 0 ? 'All checks passed.' : `${result.issues} issue(s) found.`}`);
   process.exit(result.issues > 0 ? 1 : 0);
@@ -18,15 +23,15 @@ export async function validate() {
 export async function validateInDir(workspaceDir) {
   let issues = 0;
 
-  const configPath = join(workspaceDir, 'arc.config.json');
+  const configPath = join(workspaceDir, 'robin.config.json');
   try {
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-    ok('arc.config.json is valid JSON');
+    ok('robin.config.json is valid JSON');
     if (!config.user?.name) { warn('user.name not set'); }
     if (!config.user?.timezone) { warn('user.timezone not set'); }
     if (!config.platform) { warn('platform not set'); }
   } catch {
-    fail('arc.config.json is invalid or missing'); issues++;
+    fail('robin.config.json is invalid or missing'); issues++;
   }
 
   for (const file of ['AGENTS.md', 'startup.md', 'capture-rules.md', 'integrations.md']) {

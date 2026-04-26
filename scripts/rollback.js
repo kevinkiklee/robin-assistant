@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { findConfig } from './lib/find-config.js';
+import { migrateConfigFilename } from './lib/migrate-config-filename.js';
 import { SYSTEM_FILES } from './lib/platforms.js';
 
 export async function rollback(pkgRoot) {
@@ -11,6 +12,10 @@ export async function rollback(pkgRoot) {
   }
 
   const workspaceDir = join(configPath, '..');
+  const __migration = migrateConfigFilename(workspaceDir);
+  if (__migration.migrated) {
+    console.log('Migrated arc.config.json → robin.config.json');
+  }
   const archiveDir = join(workspaceDir, 'archive');
 
   if (!existsSync(archiveDir)) {

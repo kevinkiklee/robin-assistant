@@ -9,7 +9,7 @@ describe('robin validate', () => {
 
   before(() => {
     tmpDir = createTempDir();
-    writeJson(tmpDir, 'arc.config.json', {
+    writeJson(tmpDir, 'robin.config.json', {
       version: '2.0.0', initialized: true, platform: 'claude-code',
       user: { name: 'Test', timezone: 'UTC', email: null },
       assistant: { name: 'Robin' }, integrations: [],
@@ -36,7 +36,7 @@ describe('robin validate', () => {
   it('detects missing files', async () => {
     const { validateInDir } = await import('../scripts/validate.js');
     const sparseDir = createTempDir();
-    writeJson(sparseDir, 'arc.config.json', {
+    writeJson(sparseDir, 'robin.config.json', {
       version: '2.0.0', initialized: true, platform: 'claude-code',
       user: { name: 'Test', timezone: 'UTC' }, assistant: { name: 'Robin' }, integrations: [],
     });

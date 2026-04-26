@@ -30,7 +30,7 @@ export async function initWithOptions(targetDir, options, pkgRoot) {
   mkdirSync(join(targetDir, 'artifacts'), { recursive: true });
   mkdirSync(join(targetDir, 'archive'), { recursive: true });
 
-  const config = JSON.parse(readFileSync(join(targetDir, 'arc.config.json'), 'utf-8'));
+  const config = JSON.parse(readFileSync(join(targetDir, 'robin.config.json'), 'utf-8'));
   config.platform = platform;
   if (name) {
     config.user.name = name;
@@ -39,7 +39,7 @@ export async function initWithOptions(targetDir, options, pkgRoot) {
   if (timezone) config.user.timezone = timezone;
   if (email) config.user.email = email;
   if (name && timezone) config.initialized = true;
-  writeFileSync(join(targetDir, 'arc.config.json'), JSON.stringify(config, null, 2) + '\n');
+  writeFileSync(join(targetDir, 'robin.config.json'), JSON.stringify(config, null, 2) + '\n');
 
   const integrationsMd = generateIntegrationsMd(platform, []);
   writeFileSync(join(targetDir, 'integrations.md'), integrationsMd);

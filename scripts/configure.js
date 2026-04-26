@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import { join, resolve } from 'path';
 import { findConfig } from './lib/find-config.js';
+import { migrateConfigFilename } from './lib/migrate-config-filename.js';
 import { PLATFORMS, generateIntegrationsMd } from './lib/platforms.js';
 
 export async function configure(options, pkgRoot) {
@@ -10,11 +11,15 @@ export async function configure(options, pkgRoot) {
     process.exit(1);
   }
   const workspaceDir = join(configPath, '..');
+  const __migration = migrateConfigFilename(workspaceDir);
+  if (__migration.migrated) {
+    console.log('Migrated arc.config.json → robin.config.json');
+  }
   await configureInDir(workspaceDir, options);
 }
 
 export async function configureInDir(workspaceDir, options) {
-  const configPath = join(workspaceDir, 'arc.config.json');
+  const configPath = join(workspaceDir, 'robin.config.json');
   const config = JSON.parse(readFileSync(configPath, 'utf-8'));
   let changed = false;
 

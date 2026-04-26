@@ -45,7 +45,7 @@ describe('robin init', () => {
     assert.ok(fileExists(targetDir, 'protocols', 'INDEX.md'), 'protocols/INDEX.md exists');
     assert.ok(fileExists(targetDir, 'protocols', 'dream.md'), 'protocols/dream.md exists');
 
-    const config = readJson(targetDir, 'arc.config.json');
+    const config = readJson(targetDir, 'robin.config.json');
     assert.equal(config.platform, 'claude-code');
     assert.equal(config.user.name, 'Test User');
     assert.equal(config.user.timezone, 'America/New_York');

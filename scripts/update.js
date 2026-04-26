@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { findConfig } from './lib/find-config.js';
+import { migrateConfigFilename } from './lib/migrate-config-filename.js';
 import { SYSTEM_FILES } from './lib/platforms.js';
 import { migrate } from './migrate.js';
 
@@ -12,7 +13,12 @@ export async function update(pkgRoot) {
   }
 
   const workspaceDir = join(configPath, '..');
-  const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+  const __migration = migrateConfigFilename(workspaceDir);
+  if (__migration.migrated) {
+    console.log('Migrated arc.config.json → robin.config.json');
+  }
+  const newConfigPath = join(workspaceDir, 'robin.config.json');
+  const config = JSON.parse(readFileSync(newConfigPath, 'utf-8'));
   const oldVersion = config.version;
 
   const pkgJson = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf-8'));
@@ -57,7 +63,7 @@ export async function update(pkgRoot) {
   await migrate(workspaceDir, pkgRoot, oldVersion, newVersion);
 
   config.version = newVersion;
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  writeFileSync(newConfigPath, JSON.stringify(config, null, 2) + '\n');
 
   console.log(`Updated to ${newVersion}. Previous system files backed up to archive/.`);
 }

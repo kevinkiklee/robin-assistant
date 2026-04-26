@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, rmSync, cpSync } from 'fs';
 import { join } from 'path';
 import { createInterface } from 'readline';
 import { findConfig } from './lib/find-config.js';
+import { migrateConfigFilename } from './lib/migrate-config-filename.js';
 import { USER_DATA_FILES } from './lib/platforms.js';
 
 export async function reset(pkgRoot) {
@@ -12,6 +13,10 @@ export async function reset(pkgRoot) {
   }
 
   const workspaceDir = join(configPath, '..');
+  const __migration = migrateConfigFilename(workspaceDir);
+  if (__migration.migrated) {
+    console.log('Migrated arc.config.json → robin.config.json');
+  }
 
   const confirmed = await confirm(
     `This will DELETE user data (${USER_DATA_FILES.join(', ')}) and clear state/. System files, protocols, and config are preserved. Continue?`

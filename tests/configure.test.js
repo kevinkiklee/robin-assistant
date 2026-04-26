@@ -9,7 +9,7 @@ describe('robin configure', () => {
 
   before(() => {
     tmpDir = createTempDir();
-    writeJson(tmpDir, 'arc.config.json', {
+    writeJson(tmpDir, 'robin.config.json', {
       version: '2.0.0', initialized: true, platform: 'claude-code',
       user: { name: 'Test', timezone: 'UTC', email: null },
       assistant: { name: 'Robin' }, integrations: ['email'],
@@ -23,7 +23,7 @@ describe('robin configure', () => {
     const { configureInDir } = await import('../scripts/configure.js');
     await configureInDir(tmpDir, { platform: 'cursor' });
 
-    const config = readJson(tmpDir, 'arc.config.json');
+    const config = readJson(tmpDir, 'robin.config.json');
     assert.equal(config.platform, 'cursor');
     assert.ok(fileExists(tmpDir, '.cursorrules'), '.cursorrules created');
     assert.ok(!fileExists(tmpDir, 'CLAUDE.md'), 'CLAUDE.md removed');
@@ -33,7 +33,7 @@ describe('robin configure', () => {
     const { configureInDir } = await import('../scripts/configure.js');
     await configureInDir(tmpDir, { name: 'New Name' });
 
-    const config = readJson(tmpDir, 'arc.config.json');
+    const config = readJson(tmpDir, 'robin.config.json');
     assert.equal(config.user.name, 'New Name');
   });
 
@@ -41,7 +41,7 @@ describe('robin configure', () => {
     const { configureInDir } = await import('../scripts/configure.js');
     await configureInDir(tmpDir, { addIntegration: 'calendar' });
 
-    const config = readJson(tmpDir, 'arc.config.json');
+    const config = readJson(tmpDir, 'robin.config.json');
     assert.ok(config.integrations.includes('calendar'));
     const intMd = readText(tmpDir, 'integrations.md');
     assert.ok(intMd.includes('calendar'));
