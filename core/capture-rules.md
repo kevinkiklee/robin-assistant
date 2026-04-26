@@ -20,9 +20,20 @@ Would a good human assistant remember this for next time? If yes, write it down.
 | Decision made (choice + reasoning) | `decisions.md` |
 | Correction to the assistant (what you did wrong, what to do instead) | `self-improvement.md` -> `## Corrections` |
 | Reflective observation or daily note | `journal.md` |
+| Trip details (dates, flights, lodging, itinerary, packing) | `trips/<slug>.md` |
 | Everything else (unclear classification, fleeting thought) | `inbox.md` |
 
 When unsure, use `inbox.md`. Dream and System Maintenance will sort it later.
+
+## Trip auto-creation
+
+When the user mentions an upcoming trip with at least a destination AND a rough date window — even casually, even as part of another question — create `trips/<slug>.md` immediately, same turn, silently. Slug format: `<destination>-<month>-<year>` (e.g., `cali-may-2026`, `tokyo-oct-2026`).
+
+Seed the file with sections: Overview, Logistics (Flights / Lodging / Ground transport), Itinerary table covering the full date range, Photography (if relevant to the user), Open questions / TODO, Notes. Populate with whatever is known; leave the rest as `_Not yet booked_` or `_Add as trip details surface._`.
+
+Also keep the one-line trip pointer in `profile.md` under the relevant Travel section so it surfaces in briefings.
+
+Don't wait for the user to ask for a trip file. The point is silent competence — the structure should already exist when they need it.
 
 ## Privacy (immutable)
 

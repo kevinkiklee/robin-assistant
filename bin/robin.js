@@ -80,18 +80,10 @@ program
 
 program
   .command('reset')
-  .description('Wipe user data files back to empty templates')
+  .description('Wipe user data files back to defaults')
   .action(async () => {
     const { reset } = await import(join(PKG_ROOT, 'scripts', 'reset.js'));
     await reset(PKG_ROOT);
-  });
-
-program
-  .command('migrate-v2')
-  .description('One-time migration from v1 workspace layout to v2')
-  .action(async () => {
-    const { migrateV2 } = await import(join(PKG_ROOT, 'scripts', 'migrate-v2.js'));
-    await migrateV2(PKG_ROOT);
   });
 
 program

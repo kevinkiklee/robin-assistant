@@ -106,16 +106,16 @@ export async function migrateV2InDir(workspaceDir, pkgRoot) {
   mkdirSync(join(workspaceDir, 'state', 'locks'), { recursive: true });
   writeFileSync(join(workspaceDir, 'state', 'dream-state.md'), dreamStateContent);
 
-  const templatesDir = join(pkgRoot, 'templates');
-  cpSync(join(templatesDir, 'state', 'sessions.md'), join(workspaceDir, 'state', 'sessions.md'));
+  const coreDir = join(pkgRoot, 'core');
+  cpSync(join(coreDir, 'state', 'sessions.md'), join(workspaceDir, 'state', 'sessions.md'));
 
   for (const file of ['AGENTS.md', 'startup.md', 'capture-rules.md']) {
-    cpSync(join(templatesDir, file), join(workspaceDir, file));
+    cpSync(join(coreDir, file), join(workspaceDir, file));
   }
 
   const protocolsDest = join(workspaceDir, 'protocols');
   if (existsSync(protocolsDest)) rmSync(protocolsDest, { recursive: true });
-  cpSync(join(templatesDir, 'protocols'), protocolsDest, { recursive: true });
+  cpSync(join(coreDir, 'protocols'), protocolsDest, { recursive: true });
 
   const platform = config.platform || 'claude-code';
   const platformConfig = PLATFORMS[platform];

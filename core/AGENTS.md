@@ -51,6 +51,7 @@ On each session start, read and follow `startup.md`.
 | `journal.md` | Dated reflections (append-only) |
 | `self-improvement.md` | Corrections, patterns, session handoff, calibration |
 | `inbox.md` | Quick capture for unclassified items (append-only) |
+| `trips/` | One file per trip — logistics, itinerary, photography plans, packing |
 | `artifacts/` | Generated outputs (drafts, exports, images) |
 | `state/` | Runtime state (session registry, Dream state, locks) |
 | `protocols/` | On-demand operational workflows |

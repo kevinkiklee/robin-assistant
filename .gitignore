@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Superpowers
+.superpowers/
+
+# Worktrees
+.worktrees/
+
+# Dev scripts (not part of the published package)
+dev-setup.sh

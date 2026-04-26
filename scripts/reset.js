@@ -23,11 +23,11 @@ export async function reset(pkgRoot) {
   );
   if (!confirmed) { console.log('Cancelled.'); return; }
 
-  const templatesDir = join(pkgRoot, 'templates');
+  const coreDir = join(pkgRoot, 'core');
 
   for (const file of USER_DATA_FILES) {
     const dest = join(workspaceDir, file);
-    const src = join(templatesDir, file);
+    const src = join(coreDir, file);
     if (existsSync(src)) {
       cpSync(src, dest);
     }
@@ -35,7 +35,7 @@ export async function reset(pkgRoot) {
 
   const stateDir = join(workspaceDir, 'state');
   for (const file of ['sessions.md', 'dream-state.md']) {
-    const src = join(templatesDir, 'state', file);
+    const src = join(coreDir, 'state', file);
     if (existsSync(src)) {
       cpSync(src, join(stateDir, file));
     }
@@ -49,7 +49,7 @@ export async function reset(pkgRoot) {
     }
   }
 
-  console.log('Reset complete. User data wiped to fresh templates.');
+  console.log('Reset complete. User data wiped to defaults.');
 }
 
 function confirm(message) {

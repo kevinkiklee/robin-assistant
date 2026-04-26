@@ -23,8 +23,8 @@ export async function initWithOptions(targetDir, options, pkgRoot) {
 
   mkdirSync(targetDir, { recursive: true });
 
-  const templatesDir = join(pkgRoot, 'templates');
-  cpSync(templatesDir, targetDir, { recursive: true });
+  const coreDir = join(pkgRoot, 'core');
+  cpSync(coreDir, targetDir, { recursive: true });
 
   mkdirSync(join(targetDir, 'state', 'locks'), { recursive: true });
   mkdirSync(join(targetDir, 'artifacts'), { recursive: true });

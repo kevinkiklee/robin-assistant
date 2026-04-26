@@ -6,7 +6,7 @@
 
 2. **Check for sibling sessions** — if `state/sessions.md` has other active entries, note to the user: "Another session is active (platform X, started Y)." Continue normally.
 
-3. **Dream check** — read `state/dream-state.md`. If eligible (see `protocols/dream.md` eligibility rules), run Dream. Skip silently if not eligible or if 2+ other sessions are active.
+3. **Dream check** — read `state/dream-state.md`. If 24+ hours have passed since the last dream, run Dream (see `protocols/dream.md`). Skip silently if not eligible or if 2+ other sessions are active.
 
 4. **Read context** — read `profile.md` (personality and identity sections) and `self-improvement.md` (session handoff section). This gives you continuity from the prior session.
 

@@ -46,15 +46,15 @@ export async function update(pkgRoot) {
     cpSync(protocolsSrc, join(backupDir, 'protocols'), { recursive: true });
   }
 
-  const templatesDir = join(pkgRoot, 'templates');
+  const coreDir = join(pkgRoot, 'core');
   for (const file of SYSTEM_FILES) {
-    const src = join(templatesDir, file);
+    const src = join(coreDir, file);
     if (existsSync(src)) {
       cpSync(src, join(workspaceDir, file));
     }
   }
 
-  const newProtocols = join(templatesDir, 'protocols');
+  const newProtocols = join(coreDir, 'protocols');
   if (existsSync(newProtocols)) {
     rmSync(join(workspaceDir, 'protocols'), { recursive: true, force: true });
     cpSync(newProtocols, join(workspaceDir, 'protocols'), { recursive: true });
