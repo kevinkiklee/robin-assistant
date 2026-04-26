@@ -22,7 +22,7 @@ Additionally, arc-assistant is locked to Claude Code. The system should be porta
 
 ### What changes
 
-The 178-line Handlebars-generated CLAUDE.md is replaced by a static, hand-editable `AGENTS.md` (~30-40 lines).
+The 178-line Handlebars-generated CLAUDE.md is replaced by a static, hand-editable `AGENTS.md` (~60-80 lines).
 
 `AGENTS.md` contains:
 - Identity and hard rules (inline)
@@ -96,7 +96,7 @@ Name, timezone, and email live only in `arc.config.json`. `AGENTS.md` says "Read
 
 Protocols describe **what to do**, not **which tool API to call**:
 - "If email access is available (check `integrations.md`), search for recent threads" instead of "Call `ToolSearch` with `select:mcp__claude_ai_Gmail__search_threads`"
-- "Read `state/session-registry.md` to check for active sessions" instead of "Run `core/coordination/register-session.sh start`"
+- "Read `state/sessions.md` to check for active sessions" instead of "Run `core/coordination/register-session.sh start`"
 
 ### Integration-aware fallback pattern
 
@@ -142,7 +142,7 @@ Key changes:
 - Content-based timestamps instead of filesystem mtime
 - Wall-clock budget constraints dropped (unenforceable across models)
 - Dream acquires `state/locks/dream.lock` before running
-- New boundary rule: Dream can read/write any of the 8 core files. Dream NEVER edits AGENTS.md, protocols/, state/locks/, or integrations.md. Dream NEVER runs external commands or makes network requests.
+- New boundary rule: Dream can read/write any of the 8 core files. Dream manages its own `state/locks/dream.lock` (create/delete) but NEVER edits other lock files. Dream NEVER edits AGENTS.md, protocols/, integrations.md, startup.md, or capture-rules.md. Dream NEVER runs external commands or makes network requests.
 
 ### Protocol trigger discoverability
 
@@ -312,7 +312,7 @@ acquired: 2026-04-26T09:32:00Z
 | Category | Files | Rule |
 |----------|-------|------|
 | Pillar (always lock) | `AGENTS.md`, `profile.md`, `self-improvement.md` | Acquire lock before any edit |
-| Mixed-use (lock for edits, safe for appends) | `tasks.md`, `knowledge.md` | Lock when editing existing content; appending new entries is safe |
+| Mixed-use (lock for edits, safe for appends) | `tasks.md`, `knowledge.md` | Lock when modifying or removing existing content (e.g., marking a task done, updating a fact, moving an entry between sections). Appending a new entry at the end of a section is safe without a lock. When in doubt, lock. |
 | Append-only (no lock, read-before-write) | `journal.md`, `decisions.md`, `inbox.md` | Concurrent sessions append their own entries |
 
 ### Dream lock
@@ -344,7 +344,7 @@ File-based "check then create" locking has a theoretical race window vs. the ato
 | `arc validate` | Checks: all expected files exist, `arc.config.json` has required fields, no stale locks |
 | `arc check-update` | Version check without applying |
 | `arc export` | tar.gz of workspace |
-| `arc reset` | Wipes core files back to empty templates, clears `state/`. Protocols and system files untouched. |
+| `arc reset` | Wipes user data files (profile.md, tasks.md, knowledge.md, decisions.md, journal.md, self-improvement.md, inbox.md) back to empty templates and clears `state/`. Does NOT touch AGENTS.md, protocols/, startup.md, capture-rules.md, integrations.md, or arc.config.json. |
 | `arc migrate-v2` | One-time migration from v1 workspace layout (see Section 8) |
 | `arc version` | Shows version |
 
@@ -492,4 +492,4 @@ Print summary of what was migrated. Do NOT auto-commit. Tell the user:
 | Template engine | Handlebars + 7 feature flags | None |
 | Override system | Shadow .local.md files | None (edit directly) |
 | Platform support | Claude Code only | 6 platforms |
-| Instruction file | Generated CLAUDE.md (178 lines) | Static AGENTS.md (~30-40 lines) |
+| Instruction file | Generated CLAUDE.md (178 lines) | Static AGENTS.md (~60-80 lines) |
