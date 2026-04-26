@@ -10,13 +10,14 @@ const PKG_ROOT = join(__dirname, '..');
 
 program
   .name('arc')
-  .description('A self-improving personal assistant powered by Claude Code')
-  .version('1.0.0');
+  .description('A self-improving personal assistant — portable across AI coding tools')
+  .version('2.0.0');
 
 program
   .command('init [directory]')
   .description('Scaffold a new Arc workspace')
   .option('--force', 'Allow init in non-empty directory')
+  .option('--platform <platform>', 'AI tool platform (claude-code, cursor, gemini-cli, codex, windsurf, antigravity)')
   .action(async (directory, options) => {
     const { init } = await import(join(PKG_ROOT, 'scripts', 'init.js'));
     await init(directory || '.', options, PKG_ROOT);
@@ -29,6 +30,9 @@ program
   .option('--timezone <tz>', 'Timezone (IANA format)')
   .option('--email <email>', 'Email address')
   .option('--assistant-name <name>', 'Assistant name (default: Arc)')
+  .option('--platform <platform>', 'Switch AI tool platform')
+  .option('--add-integration <name>', 'Add an integration (email, calendar, storage, etc.)')
+  .option('--remove-integration <name>', 'Remove an integration')
   .action(async (options) => {
     const { configure } = await import(join(PKG_ROOT, 'scripts', 'configure.js'));
     await configure(options, PKG_ROOT);
@@ -36,7 +40,7 @@ program
 
 program
   .command('update')
-  .description('Update core/ to the latest version')
+  .description('Update system files and protocols to the latest version')
   .action(async () => {
     const { update } = await import(join(PKG_ROOT, 'scripts', 'update.js'));
     await update(PKG_ROOT);
@@ -52,7 +56,7 @@ program
 
 program
   .command('rollback')
-  .description('Restore core/ from the most recent backup')
+  .description('Restore from the most recent backup')
   .action(async () => {
     const { rollback } = await import(join(PKG_ROOT, 'scripts', 'rollback.js'));
     await rollback(PKG_ROOT);
@@ -76,10 +80,25 @@ program
 
 program
   .command('reset')
-  .description('Wipe all user data, keep core/')
+  .description('Wipe user data files back to empty templates')
   .action(async () => {
     const { reset } = await import(join(PKG_ROOT, 'scripts', 'reset.js'));
     await reset(PKG_ROOT);
+  });
+
+program
+  .command('migrate-v2')
+  .description('One-time migration from v1 workspace layout to v2')
+  .action(async () => {
+    const { migrateV2 } = await import(join(PKG_ROOT, 'scripts', 'migrate-v2.js'));
+    await migrateV2(PKG_ROOT);
+  });
+
+program
+  .command('version')
+  .description('Show current version')
+  .action(() => {
+    console.log('arc-assistant v2.0.0');
   });
 
 program.parse();

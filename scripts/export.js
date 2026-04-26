@@ -1,6 +1,8 @@
 import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { execSync } from 'child_process';
+import { findConfig } from './lib/find-config.js';
+import { USER_DATA_FILES } from './lib/platforms.js';
 
 export async function exportData() {
   const configPath = findConfig();
@@ -12,28 +14,18 @@ export async function exportData() {
   const workspaceDir = join(configPath, '..');
   const timestamp = new Date().toISOString().slice(0, 10);
   const archiveName = `arc-export-${timestamp}.tar.gz`;
-  const archivePath = join(workspaceDir, archiveName);
 
-  const dirs = [
-    'profile', 'memory', 'todos', 'knowledge', 'decisions',
-    'journal', 'inbox', 'skills', 'self-improvement', 'overrides',
-    'artifacts', 'arc.config.json'
+  const targets = [
+    ...USER_DATA_FILES,
+    'arc.config.json',
+    'artifacts',
+    'state',
   ].filter(d => existsSync(join(workspaceDir, d)));
 
   execSync(
-    `tar -czf "${archiveName}" ${dirs.join(' ')}`,
+    `tar -czf "${archiveName}" ${targets.join(' ')}`,
     { cwd: workspaceDir }
   );
 
-  console.log(`Exported to: ${archivePath}`);
-}
-
-function findConfig() {
-  let dir = resolve('.');
-  while (dir !== '/') {
-    const candidate = join(dir, 'arc.config.json');
-    if (existsSync(candidate)) return candidate;
-    dir = join(dir, '..');
-  }
-  return null;
+  console.log(`Exported to: ${join(workspaceDir, archiveName)}`);
 }

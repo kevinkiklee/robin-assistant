@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, rmSync, cpSync } from 'fs';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { createInterface } from 'readline';
-import { generateClaudeMd } from './generate-claude-md.js';
+import { findConfig } from './lib/find-config.js';
+import { USER_DATA_FILES } from './lib/platforms.js';
 
 export async function reset(pkgRoot) {
   const configPath = findConfig();
@@ -13,43 +14,37 @@ export async function reset(pkgRoot) {
   const workspaceDir = join(configPath, '..');
 
   const confirmed = await confirm(
-    'This will DELETE all user data (profile, memory, todos, knowledge, decisions, journal, inbox, skills, self-improvement, overrides, share, artifacts). core/ will be preserved. Continue?'
+    `This will DELETE user data (${USER_DATA_FILES.join(', ')}) and clear state/. System files, protocols, and config are preserved. Continue?`
   );
+  if (!confirmed) { console.log('Cancelled.'); return; }
 
-  if (!confirmed) {
-    console.log('Cancelled.');
-    return;
-  }
+  const templatesDir = join(pkgRoot, 'templates');
 
-  const userDirs = [
-    'profile', 'memory', 'todos', 'knowledge', 'decisions',
-    'journal', 'inbox', 'skills', 'self-improvement', 'overrides',
-    'share', 'artifacts', 'archive'
-  ];
-
-  for (const dir of userDirs) {
-    const fullPath = join(workspaceDir, dir);
-    if (existsSync(fullPath)) {
-      rmSync(fullPath, { recursive: true, force: true });
+  for (const file of USER_DATA_FILES) {
+    const dest = join(workspaceDir, file);
+    const src = join(templatesDir, file);
+    if (existsSync(src)) {
+      cpSync(src, dest);
     }
   }
 
-  const userDataDir = join(pkgRoot, 'user-data');
-  for (const dir of userDirs) {
-    const source = join(userDataDir, dir);
-    if (existsSync(source)) {
-      cpSync(source, join(workspaceDir, dir), { recursive: true });
+  const stateDir = join(workspaceDir, 'state');
+  for (const file of ['sessions.md', 'dream-state.md']) {
+    const src = join(templatesDir, 'state', file);
+    if (existsSync(src)) {
+      cpSync(src, join(stateDir, file));
     }
   }
 
-  const freshConfig = JSON.parse(readFileSync(join(userDataDir, 'arc.config.json'), 'utf-8'));
-  const currentConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
-  freshConfig.version = currentConfig.version;
-  writeFileSync(configPath, JSON.stringify(freshConfig, null, 2) + '\n');
+  const locksDir = join(stateDir, 'locks');
+  if (existsSync(locksDir)) {
+    const { readdirSync } = await import('fs');
+    for (const f of readdirSync(locksDir)) {
+      if (f.endsWith('.lock')) rmSync(join(locksDir, f));
+    }
+  }
 
-  generateClaudeMd(workspaceDir, pkgRoot);
-
-  console.log('Reset complete. All user data wiped. Workspace is a fresh slate.');
+  console.log('Reset complete. User data wiped to fresh templates.');
 }
 
 function confirm(message) {
@@ -60,14 +55,4 @@ function confirm(message) {
       resolve(answer.toLowerCase() === 'y');
     });
   });
-}
-
-function findConfig() {
-  let dir = resolve('.');
-  while (dir !== '/') {
-    const candidate = join(dir, 'arc.config.json');
-    if (existsSync(candidate)) return candidate;
-    dir = join(dir, '..');
-  }
-  return null;
 }

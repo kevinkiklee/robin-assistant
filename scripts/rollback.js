@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, readdirSync, chmodSync } from 'fs';
-import { join, resolve } from 'path';
-import { generateClaudeMd } from './generate-claude-md.js';
+import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, readdirSync } from 'fs';
+import { join } from 'path';
+import { findConfig } from './lib/find-config.js';
+import { SYSTEM_FILES } from './lib/platforms.js';
 
 export async function rollback(pkgRoot) {
   const configPath = findConfig();
@@ -17,54 +18,45 @@ export async function rollback(pkgRoot) {
     process.exit(1);
   }
 
-  const backups = readdirSync(archiveDir)
-    .filter(d => d.startsWith('core-'))
-    .sort()
-    .reverse();
+  const backups = readdirSync(archiveDir).sort().reverse();
 
   if (backups.length === 0) {
-    console.error('No core backups found in archive/.');
+    console.error('No backups found in archive/.');
     process.exit(1);
   }
 
   const latestBackup = backups[0];
   const backupPath = join(archiveDir, latestBackup);
 
+  if (latestBackup.startsWith('pre-v2-')) {
+    console.log(`Rolling back to pre-v2 backup: ${latestBackup}`);
+    console.log('This is a full workspace restore.');
+
+    const entries = readdirSync(backupPath);
+    for (const entry of entries) {
+      const dest = join(workspaceDir, entry);
+      if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
+      cpSync(join(backupPath, entry), dest, { recursive: true });
+    }
+
+    console.log('Full rollback complete.');
+    return;
+  }
+
   console.log(`Rolling back to: ${latestBackup}`);
 
-  const currentCore = join(workspaceDir, 'core');
-  rmSync(currentCore, { recursive: true, force: true });
-  cpSync(backupPath, currentCore, { recursive: true });
-
-  // Make coordination scripts executable after restore
-  const coordDir = join(currentCore, 'coordination');
-  for (const script of ['lock.sh', 'register-session.sh']) {
-    const scriptPath = join(coordDir, script);
-    if (existsSync(scriptPath)) {
-      chmodSync(scriptPath, 0o755);
+  for (const file of SYSTEM_FILES) {
+    const src = join(backupPath, file);
+    if (existsSync(src)) {
+      cpSync(src, join(workspaceDir, file));
     }
   }
 
-  // Read version from restored core
-  const versionJsonPath = join(currentCore, 'version.json');
-  if (existsSync(versionJsonPath)) {
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-    const versionJson = JSON.parse(readFileSync(versionJsonPath, 'utf-8'));
-    config.version = versionJson.version;
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  const backupProtocols = join(backupPath, 'protocols');
+  if (existsSync(backupProtocols)) {
+    rmSync(join(workspaceDir, 'protocols'), { recursive: true, force: true });
+    cpSync(backupProtocols, join(workspaceDir, 'protocols'), { recursive: true });
   }
 
-  generateClaudeMd(workspaceDir, pkgRoot);
-
-  console.log('Rollback complete. CLAUDE.md regenerated.');
-}
-
-function findConfig() {
-  let dir = resolve('.');
-  while (dir !== '/') {
-    const candidate = join(dir, 'arc.config.json');
-    if (existsSync(candidate)) return candidate;
-    dir = join(dir, '..');
-  }
-  return null;
+  console.log('Rollback complete.');
 }

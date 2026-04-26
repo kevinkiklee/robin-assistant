@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync, chmodSync } from 'fs';
-import { join, resolve } from 'path';
-import { generateClaudeMd } from './generate-claude-md.js';
+import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { findConfig } from './lib/find-config.js';
+import { SYSTEM_FILES } from './lib/platforms.js';
 import { migrate } from './migrate.js';
 
 export async function update(pkgRoot) {
@@ -14,62 +15,53 @@ export async function update(pkgRoot) {
   const config = JSON.parse(readFileSync(configPath, 'utf-8'));
   const oldVersion = config.version;
 
-  const newVersionJson = JSON.parse(
-    readFileSync(join(pkgRoot, 'core', 'version.json'), 'utf-8')
-  );
-  const newVersion = newVersionJson.version;
+  const pkgJson = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf-8'));
+  const newVersion = pkgJson.version;
 
   if (oldVersion === newVersion) {
     console.log(`Already on version ${newVersion}.`);
     return;
   }
 
-  console.log(`Updating ${oldVersion} → ${newVersion}...`);
+  console.log(`Updating ${oldVersion} -> ${newVersion}...`);
 
-  // Backup current core/
-  const backupDir = join(workspaceDir, 'archive', `core-${oldVersion}-${formatDate()}`);
-  const currentCore = join(workspaceDir, 'core');
-  if (existsSync(currentCore)) {
-    mkdirSync(backupDir, { recursive: true });
-    cpSync(currentCore, backupDir, { recursive: true });
-  }
+  const backupDir = join(workspaceDir, 'archive', `system-${oldVersion}-${formatDate()}`);
+  mkdirSync(backupDir, { recursive: true });
 
-  // Replace core/ atomically
-  rmSync(currentCore, { recursive: true, force: true });
-  cpSync(join(pkgRoot, 'core'), currentCore, { recursive: true });
-
-  // Make coordination scripts executable
-  const coordDir = join(currentCore, 'coordination');
-  for (const script of ['lock.sh', 'register-session.sh']) {
-    const scriptPath = join(coordDir, script);
-    if (existsSync(scriptPath)) {
-      chmodSync(scriptPath, 0o755);
+  for (const file of SYSTEM_FILES) {
+    const src = join(workspaceDir, file);
+    if (existsSync(src)) {
+      cpSync(src, join(backupDir, file));
     }
   }
 
-  // Run migrations
+  const protocolsSrc = join(workspaceDir, 'protocols');
+  if (existsSync(protocolsSrc)) {
+    cpSync(protocolsSrc, join(backupDir, 'protocols'), { recursive: true });
+  }
+
+  const templatesDir = join(pkgRoot, 'templates');
+  for (const file of SYSTEM_FILES) {
+    const src = join(templatesDir, file);
+    if (existsSync(src)) {
+      cpSync(src, join(workspaceDir, file));
+    }
+  }
+
+  const newProtocols = join(templatesDir, 'protocols');
+  if (existsSync(newProtocols)) {
+    rmSync(join(workspaceDir, 'protocols'), { recursive: true, force: true });
+    cpSync(newProtocols, join(workspaceDir, 'protocols'), { recursive: true });
+  }
+
   await migrate(workspaceDir, pkgRoot, oldVersion, newVersion);
 
-  // Regenerate CLAUDE.md
-  generateClaudeMd(workspaceDir, pkgRoot);
-
-  // Update version in config
   config.version = newVersion;
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
-  console.log(`Updated to ${newVersion}. Previous core backed up to archive/.`);
+  console.log(`Updated to ${newVersion}. Previous system files backed up to archive/.`);
 }
 
 function formatDate() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function findConfig() {
-  let dir = resolve('.');
-  while (dir !== '/') {
-    const candidate = join(dir, 'arc.config.json');
-    if (existsSync(candidate)) return candidate;
-    dir = join(dir, '..');
-  }
-  return null;
 }

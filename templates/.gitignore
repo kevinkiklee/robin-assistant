@@ -1,0 +1,23 @@
+# Runtime state
+state/locks/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Tool scratch
+*.tmp
+*.bak
+
+# Node
+node_modules/
+
+# Superpowers brainstorm sessions
+.superpowers/
