@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 const PKG_ROOT = join(__dirname, '..');
 
 program
-  .name('arc')
+  .name('robin')
   .description('A self-improving personal assistant — portable across AI coding tools')
   .version('2.0.0');
 
@@ -98,7 +98,7 @@ program
   .command('version')
   .description('Show current version')
   .action(() => {
-    console.log('arc-assistant v2.0.0');
+    console.log('robin-assistant v2.0.0');
   });
 
 program.parse();

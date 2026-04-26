@@ -1,10 +1,10 @@
 {
-  "name": "arc-assistant",
+  "name": "robin-assistant",
   "version": "2.0.0",
   "description": "A self-improving personal assistant — portable across AI coding tools",
   "type": "module",
   "bin": {
-    "arc": "./bin/arc.js"
+    "robin": "./bin/robin.js"
   },
   "files": [
     "bin/",

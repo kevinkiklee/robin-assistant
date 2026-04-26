@@ -30,13 +30,17 @@ export async function migrateV2InDir(workspaceDir, pkgRoot) {
 
   const v1Dirs = [
     'core', 'profile', 'memory', 'todos', 'knowledge', 'decisions',
-    'journal', 'inbox', 'skills', 'self-improvement', 'overrides', 'share',
+    'journal', 'inbox', 'skills', 'self-improvement', 'overrides',
   ];
   for (const dir of v1Dirs) {
     const src = join(workspaceDir, dir);
     if (existsSync(src)) {
       cpSync(src, join(backupDir, dir), { recursive: true });
     }
+  }
+  const shareDir = join(workspaceDir, 'share');
+  if (existsSync(shareDir)) {
+    cpSync(shareDir, join(backupDir, 'share'), { recursive: true });
   }
   for (const file of ['CLAUDE.md', 'arc.config.json']) {
     const src = join(workspaceDir, file);
@@ -64,6 +68,8 @@ export async function migrateV2InDir(workspaceDir, pkgRoot) {
   } else {
     writeFileSync(join(workspaceDir, 'knowledge.md'), knowledgeMd);
   }
+
+  preserveNonMdFiles(join(workspaceDir, 'knowledge'), join(workspaceDir, 'artifacts'));
 
   writeFileSync(join(workspaceDir, 'profile.md'), profileMd);
   writeFileSync(join(workspaceDir, 'tasks.md'), tasksMd);
@@ -117,8 +123,11 @@ export async function migrateV2InDir(workspaceDir, pkgRoot) {
     writeFileSync(join(workspaceDir, platformConfig.pointerFile), platformConfig.pointerContent);
   }
 
+  const oldIntegrationsMd = join(workspaceDir, 'INTEGRATIONS.md');
+  if (existsSync(oldIntegrationsMd)) rmSync(oldIntegrationsMd);
+
   const integrations = Array.isArray(config.integrations)
-    ? config.integrations.filter(i => typeof i === 'string')
+    ? config.integrations.map(i => typeof i === 'string' ? i : i?.name).filter(Boolean)
     : [];
   writeFileSync(join(workspaceDir, 'integrations.md'), generateIntegrationsMd(platform, integrations));
 
@@ -136,6 +145,9 @@ export async function migrateV2InDir(workspaceDir, pkgRoot) {
     const p = join(workspaceDir, dir);
     if (existsSync(p)) rmSync(p, { recursive: true, force: true });
   }
+
+  const oldState = join(workspaceDir, '.state');
+  if (existsSync(oldState)) rmSync(oldState, { recursive: true, force: true });
 
   mkdirSync(join(workspaceDir, 'artifacts'), { recursive: true });
   mkdirSync(join(workspaceDir, 'archive'), { recursive: true });
@@ -291,4 +303,24 @@ function collectMdFiles(dirPath) {
     }
   }
   return lines.join('\n\n');
+}
+
+function preserveNonMdFiles(srcDir, destBase) {
+  if (!existsSync(srcDir)) return;
+
+  const walk = (dir, relPath) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      const rel = join(relPath, entry.name);
+      if (entry.isDirectory()) {
+        walk(full, rel);
+      } else if (!entry.name.endsWith('.md')) {
+        const dest = join(destBase, rel);
+        mkdirSync(join(dest, '..'), { recursive: true });
+        cpSync(full, dest);
+      }
+    }
+  };
+
+  walk(srcDir, basename(srcDir));
 }
