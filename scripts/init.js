@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, mkdirSync, cpSync, writeFileSync, chmodSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, cpSync, writeFileSync, chmodSync, rmSync } from 'fs';
 import { join, resolve } from 'path';
 import { execSync } from 'child_process';
 import { generateClaudeMd } from './generate-claude-md.js';
@@ -19,6 +19,12 @@ export async function init(directory, options, pkgRoot) {
   // Copy user-data/ as the workspace scaffold
   const userDataDir = join(pkgRoot, 'user-data');
   cpSync(userDataDir, targetDir, { recursive: true });
+
+  // Remove package-only files that shouldn't be in the workspace
+  const hbsFile = join(targetDir, 'CLAUDE.md.hbs');
+  if (existsSync(hbsFile)) {
+    rmSync(hbsFile);
+  }
 
   // Copy core/ into workspace
   const coreSource = join(pkgRoot, 'core');
