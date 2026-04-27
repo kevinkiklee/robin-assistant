@@ -97,6 +97,43 @@ export async function validateInDir(workspaceDir) {
     ok('No git repository or no remotes');
   }
 
+  // Index integrity (v2.1.0+)
+  try {
+    const config = JSON.parse(readFileSync(join(workspaceDir, 'robin.config.json'), 'utf-8'));
+    if (config.version && config.version >= '2.1.0') {
+      if (existsSync(join(workspaceDir, 'index'))) {
+        ok('index/ directory exists');
+      } else {
+        fail('index/ directory MISSING (run robin migrate-index)'); issues++;
+      }
+
+      if (existsSync(join(workspaceDir, 'manifest.md'))) {
+        ok('manifest.md exists');
+      } else {
+        fail('manifest.md MISSING'); issues++;
+      }
+
+      const expectedIndexFiles = [
+        'profile.idx.md', 'knowledge.idx.md', 'tasks.idx.md',
+        'journal.idx.md', 'decisions.idx.md', 'self-improvement.idx.md',
+        'inbox.idx.md', 'trips.idx.md',
+      ];
+      for (const f of expectedIndexFiles) {
+        if (existsSync(join(workspaceDir, 'index', f))) {
+          ok(`index/${f} exists`);
+        } else {
+          fail(`index/${f} MISSING`); issues++;
+        }
+      }
+
+      if (config.indexing?.status) {
+        ok(`indexing status: ${config.indexing.status}`);
+      } else {
+        warn('indexing status not set in config');
+      }
+    }
+  } catch { /* config already validated above */ }
+
   return { issues };
 }
 
