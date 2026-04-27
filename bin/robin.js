@@ -11,7 +11,7 @@ const PKG_ROOT = join(__dirname, '..');
 program
   .name('robin')
   .description('A self-improving personal assistant — portable across AI coding tools')
-  .version('2.0.0');
+  .version('2.1.0');
 
 program
   .command('init [directory]')
@@ -87,10 +87,18 @@ program
   });
 
 program
+  .command('migrate-index')
+  .description('Add memory indexing to an existing workspace (v2.0.0 → v2.1.0)')
+  .action(async () => {
+    const { migrateIndex } = await import(join(PKG_ROOT, 'scripts', 'migrate-index.js'));
+    await migrateIndex(PKG_ROOT);
+  });
+
+program
   .command('version')
   .description('Show current version')
   .action(() => {
-    console.log('robin-assistant v2.0.0');
+    console.log('robin-assistant v2.1.0');
   });
 
 program.parse();

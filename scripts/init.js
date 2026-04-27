@@ -29,6 +29,8 @@ export async function initWithOptions(targetDir, options, pkgRoot) {
   mkdirSync(join(targetDir, 'state', 'locks'), { recursive: true });
   mkdirSync(join(targetDir, 'artifacts'), { recursive: true });
   mkdirSync(join(targetDir, 'archive'), { recursive: true });
+  mkdirSync(join(targetDir, 'index'), { recursive: true });
+  mkdirSync(join(targetDir, 'trips'), { recursive: true });
 
   const config = JSON.parse(readFileSync(join(targetDir, 'robin.config.json'), 'utf-8'));
   config.platform = platform;

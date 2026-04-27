@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "initialized": false,
   "platform": null,
   "user": {
@@ -10,5 +10,8 @@
   "assistant": {
     "name": "Robin"
   },
-  "integrations": []
+  "integrations": [],
+  "indexing": {
+    "status": null
+  }
 }

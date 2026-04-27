@@ -83,4 +83,17 @@ describe('robin init', () => {
     assert.ok(!fileExists(targetDir, 'CLAUDE.md'), 'no CLAUDE.md for codex');
     assert.ok(!fileExists(targetDir, '.cursorrules'), 'no .cursorrules for codex');
   });
+
+  it('creates index/ directory during scaffolding', async () => {
+    const { initWithOptions } = await import('../scripts/init.js');
+    const targetDir = join(tmpDir, 'idx-workspace');
+    await initWithOptions(targetDir, {
+      force: true,
+      platform: 'claude-code',
+      name: 'Test User',
+      timezone: 'UTC',
+    }, PKG_ROOT);
+
+    assert.ok(existsSync(join(targetDir, 'index')), 'index/ directory exists');
+  });
 });

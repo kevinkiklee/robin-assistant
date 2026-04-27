@@ -1,6 +1,6 @@
 {
   "name": "robin-assistant",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A self-improving personal assistant — portable across AI coding tools",
   "type": "module",
   "bin": {

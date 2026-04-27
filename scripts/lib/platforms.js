@@ -46,6 +46,12 @@ export const USER_DATA_FILES = [
   'journal.md', 'self-improvement.md', 'inbox.md',
 ];
 
+export const INDEX_FILES = [
+  'index/profile.idx.md', 'index/knowledge.idx.md', 'index/tasks.idx.md',
+  'index/journal.idx.md', 'index/decisions.idx.md', 'index/self-improvement.idx.md',
+  'index/inbox.idx.md', 'index/trips.idx.md',
+];
+
 export function generateIntegrationsMd(platform, enabledIntegrations) {
   const platformConfig = PLATFORMS[platform];
   const lines = ['# Integrations', '', `Platform: ${platform}`, '', '## Available'];

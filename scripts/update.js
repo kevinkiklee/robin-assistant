@@ -46,6 +46,11 @@ export async function update(pkgRoot) {
     cpSync(protocolsSrc, join(backupDir, 'protocols'), { recursive: true });
   }
 
+  const manifestSrc = join(workspaceDir, 'manifest.md');
+  if (existsSync(manifestSrc)) {
+    cpSync(manifestSrc, join(backupDir, 'manifest.md'));
+  }
+
   const coreDir = join(pkgRoot, 'core');
   for (const file of SYSTEM_FILES) {
     const src = join(coreDir, file);
@@ -63,6 +68,12 @@ export async function update(pkgRoot) {
   await migrate(workspaceDir, pkgRoot, oldVersion, newVersion);
 
   config.version = newVersion;
+
+  if (oldVersion < '2.1.0' && newVersion >= '2.1.0') {
+    console.log('\nNew in this version: memory indexing.');
+    console.log("Run 'robin migrate-index' to enable indexed memory for this workspace.");
+  }
+
   writeFileSync(newConfigPath, JSON.stringify(config, null, 2) + '\n');
 
   console.log(`Updated to ${newVersion}. Previous system files backed up to archive/.`);
