@@ -39,7 +39,104 @@ Capture if the fact would change Robin's behavior or knowledge in a future sessi
 - Anything already captured — dedup against files currently in context; don't read files solely to check for duplicates
 - Conversation mechanics ("yes", "go ahead", "sounds good") unless confirming a non-obvious preference or approach
 
-## Routing
+## Inbox-first pipeline
+
+Most captures go to `inbox.md` as lightweight tagged entries. Dream routes them to the right destination within 24 hours. This keeps per-capture cost low — append one tagged line + index entry instead of navigating file structure.
+
+### Format
+
+    - [tag] Content of the capture <!-- id:YYYYMMDD-HHMM-SSss -->
+
+Examples:
+
+    - [fact] Dentist is Dr. Park, office in downtown JC <!-- id:20260427-1430-cc01 -->
+    - [preference] Prefers single bundled PRs over many small ones for refactors <!-- id:20260427-1430-cc02 -->
+    - [decision] Going with Vanguard target-date fund for 401k — expense ratio was the deciding factor <!-- id:20260427-1431-cc01 -->
+    - [correction] Don't summarize at the end of responses — user reads the diff <!-- id:20260427-1431-cc02 -->
+    - [update] Cancelled Orange Theory membership (supersedes: gym routine in profile) <!-- id:20260427-1432-cc01 -->
+    - [derived] Photography leans editorial — 60% of portfolio is environmental portraits <!-- id:20260427-1432-cc02 -->
+
+### Tag vocabulary
+
+| Tag | Dream routes to |
+|-----|----------------|
+| `[fact]` | `profile.md` or `knowledge.md` (Dream decides based on content) |
+| `[preference]` | `self-improvement.md` → `## Preferences` |
+| `[decision]` | `decisions.md` |
+| `[correction]` | `self-improvement.md` → `## Corrections` |
+| `[task]` | `tasks.md` |
+| `[update]` | `profile.md` or `knowledge.md` (supersedes existing entry) |
+| `[derived]` | Depends on content (Dream classifies) |
+| `[trip]` | `trips/` |
+| `[journal]` | `journal.md` |
+| `[?]` | Unclassified — Dream treats as untagged, classifies from content |
+
+Tags are routing hints, not binding. Dream uses the tag as a first-pass signal but verifies against the routing table. A bad tag doesn't misroute permanently.
+
+### Multi-faceted moments
+
+When a single moment contains multiple distinct facts, split into separate entries. Each entry is atomic — Dream routes each independently.
+
+    - [update] Dr. Park is no longer my dentist — office moved (supersedes: dentist in profile) <!-- id:... -->
+    - [fact] New dentist is Dr. Chen, office on Main St <!-- id:... -->
+    - [decision] Switched dentists because Dr. Park's office moved too far — proximity was the factor <!-- id:... -->
+
+### `[update]` entries and supersedes hints
+
+Update entries should include an optional `(supersedes: <hint>)` describing what they replace. Dream uses this hint to locate the original entry. Not required — Dream can search — but it speeds up resolution.
+
+### Direct-write exceptions
+
+These skip inbox and go to the destination file immediately:
+
+- **Corrections** — `self-improvement.md` → `## Corrections`. The assistant needs to learn from them this session, not next Dream cycle.
+- **Trip auto-creation** — already has its own protocol below, goes direct to `trips/`.
+- **Explicit "remember this"** — user asked directly, so route to the confident destination and confirm.
+- **Updates that contradict loaded context** — if the assistant knows the old fact is in a file it already read (e.g., profile.md loaded at startup), update it in place now. Don't wait for Dream.
+- **Derived-analysis findings** — the assistant just performed the analysis and knows exactly where findings belong. Follow the derived-analysis auto-capture rules below.
+
+### Confirmation behavior
+
+| Capture type | User sees |
+|-------------|-----------|
+| Routine `[fact]`, `[preference]`, `[journal]` | Nothing (silent) |
+| `[decision]`, `[correction]`, `[update]` | Brief inline parenthetical at end of response: *(noted — updated your dentist to Dr. Chen)* |
+| High-stakes (medical, financial, legal) | Explicit verification before writing: "Just to make sure I have this right — [fact]?" |
+| Explicit "remember this" | Confirmation of what was saved and where |
+
+## Capture sweep
+
+Safety net for missed captures. The inline checkpoint degrades over long sessions as context compacts — the sweep catches what was missed.
+
+### Triggers
+
+**Primary — context compaction imminent.** When you receive a signal that context is about to compact (platform-specific — e.g., Claude Code shows a compaction warning), run a mini-sweep of the conversation window that's about to be lost. This is the most important trigger — once context compacts, the detail is gone. The mini-sweep is fast: scan for obvious signal hits, tag and append to inbox.md.
+
+**Bonus — graceful session end.** When the user says goodbye or explicitly ends the session, run a full sweep of available context.
+
+### Process
+
+1. **Scan** — review available conversation context against signal patterns
+2. **Cross-reference** — read `inbox.md` before each sweep to dedup against prior captures (prevents duplicates across multiple compaction events)
+3. **Extract** — draft tagged inbox entries for anything missed
+4. **Write** — batch-append all captures to `inbox.md`
+5. **Handoff** — write a brief note to `self-improvement.md` → `## Session Handoff`: "Captured N items to inbox (breakdown by tag)."
+
+### What the user sees
+
+A single brief line, only if captures were made:
+
+> *Captured 4 items to inbox before closing (2 facts, 1 preference, 1 update). Dream will route them next cycle.*
+
+If nothing was captured, nothing is said.
+
+### Scope limit
+
+The sweep should take 30 seconds of assistant effort, not 5 minutes. Scan for signal pattern hits, write them, move on. If something is ambiguous, inbox it with a `[?]` tag and let Dream figure it out. The sweep operates on available context only — after compaction, conversation detail is gone.
+
+## Routing table (Dream reference)
+
+Dream uses this table to route tagged inbox entries to their destination. The tag provides a first-pass signal; Dream verifies against this table.
 
 | Signal | Destination |
 |--------|------------|
@@ -52,8 +149,6 @@ Capture if the fact would change Robin's behavior or knowledge in a future sessi
 | Reflective observation or daily note | `journal.md` |
 | Trip details (dates, flights, lodging, itinerary, packing) | `trips/<slug>.md` |
 | Everything else (unclear classification, fleeting thought) | `inbox.md` |
-
-When unsure, use `inbox.md`. Dream and System Maintenance will sort it later.
 
 When Dream routes an entry from one file to another, the entry's ID stays the same — only the index entry moves between sidecar files.
 
