@@ -265,6 +265,20 @@ describe('parseReferenceEntries', () => {
     assert.ok(entries[0].text.includes('Phone: 555-1234'));
   });
 
+  it('strips non-alphanumeric chars from entity (e.g. Dr. Smith → dr-smith)', async () => {
+    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const content = `# Knowledge
+
+## Medical
+
+- **Dr. Smith**
+  - Specialty: PCP
+`;
+    const entries = parseReferenceEntries(content);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].entity, 'dr-smith');
+  });
+
   it('skips entries with existing <!-- id: markers', async () => {
     const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
     const content = `# Profile
@@ -386,6 +400,27 @@ describe('parseTaskEntries', () => {
     assert.equal(entries.length, 2);
     assert.ok(entries[1].lineIndex > entries[0].lineIndex);
   });
+
+  it('captures indented sub-task continuation lines in entry text', async () => {
+    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const content = `# Tasks
+
+## Work
+
+- [ ] Ship feature
+  - by Friday
+  - needs review
+- [ ] Write tests
+`;
+    const entries = parseTaskEntries(content);
+    assert.equal(entries.length, 2);
+    assert.ok(entries[0].text.includes('Ship feature'));
+    assert.ok(entries[0].text.includes('by Friday'));
+    assert.ok(entries[0].text.includes('needs review'));
+    assert.ok(entries[1].text.includes('Write tests'));
+    // Second task should not contain the first task's sub-items
+    assert.ok(!entries[1].text.includes('by Friday'));
+  });
 });
 
 describe('injectIdIntoLine', () => {
@@ -470,28 +505,33 @@ describe('injectIdsIntoFile', () => {
 });
 
 describe('generateSkeletonIndex', () => {
-  it('generates a markdown index with title', async () => {
+  it('generates a markdown index with "# Index: <title>" heading', async () => {
     const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', section: 'Identity', entity: 'name', text: '- **Name:** Kevin' },
     ];
-    const result = generateSkeletonIndex('Profile Index', entries, 'fact');
-    assert.ok(result.includes('Profile Index'));
+    const resultProfile = generateSkeletonIndex('Profile', entries, 'fact');
+    assert.ok(resultProfile.includes('# Index: Profile'), `expected "# Index: Profile" in: ${resultProfile}`);
+
+    const taskEntries = [{ id: 'id-001', section: 'Work', text: '- [ ] Task' }];
+    const resultTasks = generateSkeletonIndex('Tasks', taskEntries, 'entry');
+    assert.ok(resultTasks.includes('# Index: Tasks'), `expected "# Index: Tasks" in: ${resultTasks}`);
   });
 
-  it('fact level groups by section and includes entity', async () => {
+  it('fact level groups by section and uses list-item format with entity', async () => {
     const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', section: 'Identity', entity: 'name', text: '- **Name:** Kevin' },
       { id: 'id-002', section: 'Identity', entity: 'age', text: '- **Age:** 30' },
       { id: 'id-003', section: 'Goals', entity: 'learn-rust', text: '- **Learn Rust**' },
     ];
-    const result = generateSkeletonIndex('Profile Index', entries, 'fact');
-    assert.ok(result.includes('Identity'));
-    assert.ok(result.includes('Goals'));
-    assert.ok(result.includes('name'));
-    assert.ok(result.includes('age'));
-    assert.ok(result.includes('learn-rust'));
+    const result = generateSkeletonIndex('Profile', entries, 'fact');
+    assert.ok(result.includes('## Identity'));
+    assert.ok(result.includes('## Goals'));
+    assert.ok(result.includes('- id: id-001'));
+    assert.ok(result.includes('  entity: name'));
+    assert.ok(result.includes('- id: id-003'));
+    assert.ok(result.includes('  entity: learn-rust'));
   });
 
   it('fact level entries have enriched: false, domains: [], related: []', async () => {
@@ -499,24 +539,24 @@ describe('generateSkeletonIndex', () => {
     const entries = [
       { id: 'id-001', section: 'Identity', entity: 'name', text: '- **Name:** Kevin' },
     ];
-    const result = generateSkeletonIndex('Profile Index', entries, 'fact');
-    assert.ok(result.includes('enriched: false'));
-    assert.ok(result.includes('domains: []'));
-    assert.ok(result.includes('related: []'));
+    const result = generateSkeletonIndex('Profile', entries, 'fact');
+    assert.ok(result.includes('  enriched: false'));
+    assert.ok(result.includes('  domains: []'));
+    assert.ok(result.includes('  related: []'));
   });
 
-  it('entry level is a flat list with summary, tags', async () => {
+  it('entry level uses list-item format with summary, tags', async () => {
     const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', text: '**2025-01-01**\nHad a great day.' },
       { id: 'id-002', text: '**2025-01-02**\nAnother day.' },
     ];
-    const result = generateSkeletonIndex('Journal Index', entries, 'entry');
-    assert.ok(result.includes('Journal Index'));
-    assert.ok(result.includes('id-001'));
-    assert.ok(result.includes('id-002'));
-    assert.ok(result.includes('tags: []'));
-    assert.ok(result.includes('summary:'));
+    const result = generateSkeletonIndex('Journal', entries, 'entry');
+    assert.ok(result.includes('# Index: Journal'));
+    assert.ok(result.includes('- id: id-001'));
+    assert.ok(result.includes('- id: id-002'));
+    assert.ok(result.includes('  tags: []'));
+    assert.ok(result.includes('  summary: ~'));
   });
 
   it('entry level also has enriched: false, domains: [], related: []', async () => {
@@ -524,26 +564,45 @@ describe('generateSkeletonIndex', () => {
     const entries = [
       { id: 'id-001', text: '**2025-01-01**\nEntry.' },
     ];
-    const result = generateSkeletonIndex('Journal Index', entries, 'entry');
-    assert.ok(result.includes('enriched: false'));
-    assert.ok(result.includes('domains: []'));
-    assert.ok(result.includes('related: []'));
+    const result = generateSkeletonIndex('Journal', entries, 'entry');
+    assert.ok(result.includes('  enriched: false'));
+    assert.ok(result.includes('  domains: []'));
+    assert.ok(result.includes('  related: []'));
   });
 });
 
 describe('generateManifest', () => {
-  it('generates a manifest.md from file metadata', async () => {
+  it('generates a manifest with "# Memory Manifest" heading', async () => {
+    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const files = [
+      { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 5, sections: ['Identity', 'Goals'] },
+    ];
+    const result = generateManifest(files);
+    assert.ok(result.startsWith('# Memory Manifest'), `expected "# Memory Manifest" heading, got: ${result.slice(0, 50)}`);
+  });
+
+  it('includes "Generated by Dream" and "Last updated" lines', async () => {
+    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const files = [
+      { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 5 },
+    ];
+    const result = generateManifest(files);
+    assert.ok(result.includes('Generated by Dream. Do not edit manually.'));
+    assert.ok(result.includes('Last updated:'));
+  });
+
+  it('uses list-item format (- file: <name>) for file entries', async () => {
     const { generateManifest } = await import('../scripts/lib/index-utils.js');
     const files = [
       { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 5, sections: ['Identity', 'Goals'] },
       { name: 'journal.md', path: 'journal.md', indexPath: 'journal.index.md', type: 'entry', entries: 12 },
     ];
     const result = generateManifest(files);
-    assert.ok(result.includes('manifest'), 'should have manifest heading');
-    assert.ok(result.includes('profile.md'));
-    assert.ok(result.includes('journal.md'));
-    assert.ok(result.includes('profile.index.md'));
-    assert.ok(result.includes('journal.index.md'));
+    assert.ok(result.includes('- file: profile.md'));
+    assert.ok(result.includes('- file: journal.md'));
+    assert.ok(result.includes('  path: profile.md'));
+    assert.ok(result.includes('  index: profile.index.md'));
+    assert.ok(result.includes('  index: journal.index.md'));
   });
 
   it('includes entry count for each file', async () => {
@@ -552,7 +611,7 @@ describe('generateManifest', () => {
       { name: 'tasks.md', path: 'tasks.md', indexPath: 'tasks.index.md', type: 'entry', entries: 7 },
     ];
     const result = generateManifest(files);
-    assert.ok(result.includes('7'));
+    assert.ok(result.includes('  entries: 7'));
   });
 
   it('includes type for each file', async () => {
@@ -561,7 +620,7 @@ describe('generateManifest', () => {
       { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 3 },
     ];
     const result = generateManifest(files);
-    assert.ok(result.includes('fact'));
+    assert.ok(result.includes('  type: fact'));
   });
 
   it('includes domains when provided', async () => {
@@ -570,6 +629,6 @@ describe('generateManifest', () => {
       { name: 'knowledge.md', path: 'knowledge.md', indexPath: 'knowledge.index.md', type: 'fact', entries: 8, domains: ['medical', 'finance'] },
     ];
     const result = generateManifest(files);
-    assert.ok(result.includes('medical') || result.includes('finance'));
+    assert.ok(result.includes('medical') && result.includes('finance'));
   });
 });
