@@ -96,4 +96,40 @@ describe('robin init', () => {
 
     assert.ok(existsSync(join(targetDir, 'index')), 'index/ directory exists');
   });
+
+  it('scaffolds updated capture system in new workspace', async () => {
+    const { initWithOptions } = await import('../scripts/init.js');
+    const targetDir = join(tmpDir, 'capture-ws');
+    await initWithOptions(targetDir, {
+      force: true,
+      platform: 'claude-code',
+      name: 'Test User',
+      timezone: 'UTC',
+    }, PKG_ROOT);
+
+    const captureRules = readFileSync(join(targetDir, 'capture-rules.md'), 'utf-8');
+    assert.ok(captureRules.includes('## Capture checkpoint (ALWAYS READ)'), 'capture-rules.md has checkpoint section');
+    assert.ok(captureRules.includes('### Always-capture'), 'capture-rules.md has always-capture signals');
+    assert.ok(captureRules.includes('## Inbox-first pipeline'), 'capture-rules.md has inbox-first pipeline');
+    assert.ok(captureRules.includes('## Capture sweep'), 'capture-rules.md has capture sweep');
+    assert.ok(captureRules.includes('## Routing table (Dream reference)'), 'capture-rules.md has routing table for Dream');
+
+    const startup = readFileSync(join(targetDir, 'startup.md'), 'utf-8');
+    assert.ok(startup.includes('Capture checkpoint'), 'startup.md has capture checkpoint step');
+    assert.ok(startup.includes('Capture sweep'), 'startup.md has capture sweep step');
+
+    const agents = readFileSync(join(targetDir, 'AGENTS.md'), 'utf-8');
+    assert.ok(agents.includes('## Capture'), 'AGENTS.md has Capture section');
+    assert.ok(!agents.includes('## Passive Capture'), 'AGENTS.md no longer has Passive Capture');
+    assert.ok(agents.includes('capturable signals'), 'AGENTS.md capture section is self-contained');
+
+    const pointer = readFileSync(join(targetDir, 'CLAUDE.md'), 'utf-8');
+    assert.ok(pointer.includes('capturable signals'), 'pointer file includes capture anchor');
+
+    const dream = readFileSync(join(targetDir, 'protocols', 'dream.md'), 'utf-8');
+    assert.ok(dream.includes('[update]'), 'dream.md has tag-aware inbox routing');
+
+    const si = readFileSync(join(targetDir, 'self-improvement.md'), 'utf-8');
+    assert.ok(si.includes('capture sweep'), 'self-improvement.md Session Handoff mentions capture sweep');
+  });
 });
