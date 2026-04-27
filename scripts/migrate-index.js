@@ -177,6 +177,7 @@ export async function migrateIndexInDir(workspaceDir) {
 
     const assignments = [];
     const indexEntries = [];
+    const usedLines = new Set();
 
     for (const entry of entries) {
       seq += 1;
@@ -187,8 +188,8 @@ export async function migrateIndexInDir(workspaceDir) {
       let lineIndex = -1;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].trim() === entryFirstLine.trim()) {
-          // Make sure this line doesn't already have an id
-          if (!lines[i].includes('<!-- id:')) {
+          // Make sure this line doesn't already have an id and hasn't been used
+          if (!lines[i].includes('<!-- id:') && !usedLines.has(i)) {
             lineIndex = i;
             break;
           }
@@ -196,6 +197,7 @@ export async function migrateIndexInDir(workspaceDir) {
       }
 
       if (lineIndex >= 0) {
+        usedLines.add(lineIndex);
         assignments.push({ lineIndex, id, type: 'block' });
       }
       indexEntries.push({ id, text: entry.text });
@@ -292,7 +294,15 @@ export async function migrateIndexInDir(workspaceDir) {
   // ------------------------------------------------------------------
   for (const { name, idxFile, result } of indexFileMap) {
     const srcName = name === 'trips' ? 'trips/' : `${name}.md`;
-    const type = ['profile', 'knowledge', 'trips'].includes(name) ? 'fact' : 'entry';
+    let type;
+    if (['profile', 'knowledge', 'trips'].includes(name)) {
+      type = 'reference';
+    } else if (['tasks', 'self-improvement'].includes(name)) {
+      type = 'mixed';
+    } else {
+      // journal, decisions, inbox
+      type = 'append-only';
+    }
     manifestEntries.push({
       name: srcName,
       path: srcName,
@@ -306,6 +316,42 @@ export async function migrateIndexInDir(workspaceDir) {
 
   const manifestContent = generateManifest(manifestEntries);
   writeFileSync(join(workspaceDir, 'manifest.md'), manifestContent);
+
+  // ------------------------------------------------------------------
+  // 4b. Post-migration validation: verify entry counts match between
+  //     source files and their generated index files.
+  // ------------------------------------------------------------------
+  const backupDirName = readdirSync(join(workspaceDir, 'archive')).find(e =>
+    e.startsWith('pre-index-')
+  );
+  const backupPath = backupDirName
+    ? join(workspaceDir, 'archive', backupDirName)
+    : null;
+
+  const appendOnlyFiles = ['journal.md', 'decisions.md', 'inbox.md'];
+  for (const srcFile of appendOnlyFiles) {
+    const srcPath = join(workspaceDir, srcFile);
+    if (!existsSync(srcPath)) continue;
+
+    const srcContent = readFileSync(srcPath, 'utf-8');
+    const sourceCount = (srcContent.match(/<!--\s*id:/g) || []).length;
+
+    const baseName = srcFile.replace('.md', '');
+    const idxPath = join(indexDir, `${baseName}.idx.md`);
+    if (!existsSync(idxPath)) continue;
+
+    const idxContent = readFileSync(idxPath, 'utf-8');
+    const indexCount = idxContent.split('\n').filter(l => /^- id:/.test(l)).length;
+
+    if (sourceCount !== indexCount) {
+      console.warn(
+        `Warning: entry count mismatch in ${srcFile} (source: ${sourceCount}, index: ${indexCount})`
+      );
+      if (backupPath) {
+        console.warn(`  Backup available at: ${backupPath}`);
+      }
+    }
+  }
 
   // ------------------------------------------------------------------
   // 5. Update config

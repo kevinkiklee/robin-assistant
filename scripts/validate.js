@@ -4,6 +4,20 @@ import { findConfig } from './lib/find-config.js';
 import { migrateConfigFilename } from './lib/migrate-config-filename.js';
 import { USER_DATA_FILES } from './lib/platforms.js';
 
+/**
+ * Returns true if `version` is >= `target` using numeric semver comparison.
+ * Avoids the string comparison pitfall where '10.0.0' < '2.0.0' lexicographically.
+ */
+function versionAtLeast(version, target) {
+  const v = version.split('.').map(Number);
+  const t = target.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((v[i] || 0) > (t[i] || 0)) return true;
+    if ((v[i] || 0) < (t[i] || 0)) return false;
+  }
+  return true;
+}
+
 export async function validate() {
   const configPath = findConfig();
   if (!configPath) {
@@ -100,7 +114,7 @@ export async function validateInDir(workspaceDir) {
   // Index integrity (v2.1.0+)
   try {
     const config = JSON.parse(readFileSync(join(workspaceDir, 'robin.config.json'), 'utf-8'));
-    if (config.version && config.version >= '2.1.0') {
+    if (config.version && versionAtLeast(config.version, '2.1.0')) {
       if (existsSync(join(workspaceDir, 'index'))) {
         ok('index/ directory exists');
       } else {
