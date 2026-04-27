@@ -55,15 +55,23 @@ Read these files:
 
 ## Phase 3: Self-improvement
 
+All steps run every dream. Steps with nothing to do are no-ops. Priority order determines what's complete if Dream is interrupted.
+
 5. **Correction promotion** — if a mistake type appears 2+ times in `## Corrections`, promote to `## Patterns` with recognition signals and counter-action. Remove the original correction entries.
 
 6. **Pattern review** — for each existing pattern in `## Patterns`, check recent corrections and journal entries: is the counter-action working? If the same mistake keeps recurring despite the pattern, ESCALATE so the user knows the current counter-action isn't effective.
 
-7. **Calibration update** — read `## Calibration`. For any verifiable predictions that have matured (outcome now known), update accuracy. Flag drift if a confidence band is consistently over- or under-confident.
+7. **Session reflection processing** — scan `## Session Reflections` written since last dream. Extract knowledge gaps and add to `## Learning Queue`. Note domains touched and feed into `## Domain Confidence`. Prune reflections older than 30 days.
 
-8. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `journal.md` or delete if resolved.
+8. **Preference promotion** — scan `## Preferences` for dimensions with 3+ consistent signals. Promote to `## Communication Style` (base style or domain override as appropriate). Check for contradictions between recent signals and established preferences — update or narrow stale preferences. Flag unresolvable contradictions in escalation report.
 
-9. **Disagreement check** — review corrections and journal entries since last dream. If there are zero instances of Robin pushing back on the user's stated intent, note this in `## Calibration` as a sycophancy signal.
+9. **Domain confidence update** — review session reflections, effectiveness scores, and corrections since last dream. Adjust confidence levels. Decay any domain not touched in 90+ days by one level (high→medium; medium stays).
+
+10. **Learning queue maintenance** — add items from knowledge gaps in session reflections. Scan recent journal entries and session handoffs for organically answered questions — mark them answered. Drop items older than 60 days that never found a natural moment.
+
+11. **Calibration update** — update prediction accuracy for matured predictions. Update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check.
+
+12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `journal.md` or delete if resolved.
 
 ## Boundary rule
 
@@ -79,11 +87,11 @@ Dream NEVER runs external commands or makes network requests.
 
 ### Default (silent)
 
-One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, reviewed L patterns."
+One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns."
 
 ### Escalation report
 
-Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, calibration drift, sycophancy signals, or errors. Present under a `## Needs your input` heading. Neutral, factual tone.
+Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, preference contradictions, calibration drift, sycophancy signals, or errors. Present under a `## Needs your input` heading. Neutral, factual tone.
 
 ## Failure modes
 

@@ -8,7 +8,7 @@
 
 3. **Dream check** — read `state/dream-state.md`. If 24+ hours have passed since the last dream, run Dream (see `protocols/dream.md`). Skip silently if not eligible or if 2+ other sessions are active.
 
-4. **Read context** — read `profile.md` (personality and identity sections) and `self-improvement.md` (session handoff section). This gives you continuity from the prior session.
+4. **Read context** — read `profile.md` (personality and identity sections) and these sections of `self-improvement.md`: Session Handoff (continuity from prior session), Communication Style (how to interact), Domain Confidence (where to be cautious vs. autonomous), Learning Queue (one question ready if a natural moment arises).
 
 5. **Respond to user** — load everything else on demand when the current task needs it. Don't summarize what you read unless asked.
 

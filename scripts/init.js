@@ -44,6 +44,28 @@ export async function initWithOptions(targetDir, options, pkgRoot) {
   const integrationsMd = generateIntegrationsMd(platform, []);
   writeFileSync(join(targetDir, 'integrations.md'), integrationsMd);
 
+  if (config.initialized) {
+    const siPath = join(targetDir, 'self-improvement.md');
+    const siContent = readFileSync(siPath, 'utf-8');
+    const today = new Date().toISOString().slice(0, 10);
+    const seedQuestions = [
+      `- What does a typical week look like for you? | why: foundational context for scheduling and priorities | domain: general | added: ${today} | status: open`,
+      `- What are your main areas of responsibility — work, personal projects, etc.? | why: understand scope of assistance needed | domain: general | added: ${today} | status: open`,
+      `- What are your current top goals or priorities? | why: align recommendations with what matters most | domain: general | added: ${today} | status: open`,
+      `- How do you prefer to work with an assistant — hands-off until asked, or proactive? | why: calibrate ask-vs-act behavior | domain: general | added: ${today} | status: open`,
+      `- Any topics where you'd want me to be especially careful or thorough? | why: identify high-stakes domains early | domain: general | added: ${today} | status: open`,
+    ].join('\n');
+    const queueHeader = '## Learning Queue';
+    const headerIdx = siContent.indexOf(queueHeader);
+    if (headerIdx !== -1) {
+      const afterHeader = siContent.indexOf('\n', headerIdx);       // end of "## Learning Queue"
+      const afterBlank = siContent.indexOf('\n', afterHeader + 1);  // end of blank line
+      const descEnd = siContent.indexOf('\n', afterBlank + 1);      // end of description line
+      const updatedSi = siContent.slice(0, descEnd + 1) + '\n' + seedQuestions + '\n' + siContent.slice(descEnd + 1);
+      writeFileSync(siPath, updatedSi);
+    }
+  }
+
   const platformConfig = PLATFORMS[platform];
   if (platformConfig && platformConfig.pointerFile) {
     writeFileSync(join(targetDir, platformConfig.pointerFile), platformConfig.pointerContent);

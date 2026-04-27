@@ -35,9 +35,15 @@ Proactive: first session of each week (Monday) — offer it.
 - Read `state/sessions.md`. Remove stale entries (>2 hours old).
 - Check `state/locks/` for any lock files older than 24 hours. Delete them (stale from crashed sessions).
 
+### 7. Self-improvement check-in
+
+- Present current `## Communication Style` (base + domain overrides) to the user: "This is how I've been calibrating to you — anything off?"
+- Present `## Domain Confidence`: "Here's where I think I'm strong vs. where I'm less sure — does this match your experience?"
+- Revise based on feedback.
+
 ## Output
 
-Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Open Questions.
+Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Communication Style, Domain Confidence, Open Questions.
 
 ## After
 

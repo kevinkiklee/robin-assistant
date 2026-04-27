@@ -9,6 +9,7 @@ Would a good human assistant remember this for next time? If yes, write it down.
 - Don't capture what's already in context and won't matter next time
 - Wait for recurrence or significance before storing vendors/contacts
 - Never announce captures — silent competence
+- Capture positive signals too — not just mistakes. "Yes exactly", accepting a non-obvious approach without pushback, explicit style feedback ("just do it", "more detail") are preference data
 
 ## Routing
 
@@ -19,6 +20,7 @@ Would a good human assistant remember this for next time? If yes, write it down.
 | Reference knowledge (vendors, medical, locations, financial facts) | `knowledge.md` (appropriate section) |
 | Decision made (choice + reasoning) | `decisions.md` |
 | Correction to the assistant (what you did wrong, what to do instead) | `self-improvement.md` -> `## Corrections` |
+| Positive signal about Robin's approach (style, format, level of detail) | `self-improvement.md` -> `## Preferences` |
 | Reflective observation or daily note | `journal.md` |
 | Trip details (dates, flights, lodging, itinerary, packing) | `trips/<slug>.md` |
 | Everything else (unclear classification, fleeting thought) | `inbox.md` |
