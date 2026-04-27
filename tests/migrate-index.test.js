@@ -187,6 +187,51 @@ describe('robin migrate-index', () => {
     assert.ok(config.indexing?.migrated_at, 'indexing.migrated_at exists');
   });
 
+  it('full lifecycle: init creates workspace, migrate-index adds indexing, validate passes', async () => {
+    const { initWithOptions } = await import('../scripts/init.js');
+    const { migrateIndexInDir } = await import('../scripts/migrate-index.js');
+    const { validateInDir } = await import('../scripts/validate.js');
+
+    const lcDir = join(createTempDir(), 'lifecycle');
+    try {
+      // Init a fresh workspace
+      await initWithOptions(lcDir, {
+        platform: 'claude-code', name: 'Test', timezone: 'UTC',
+      }, PKG_ROOT);
+
+      // Add some user data
+      const journalPath = join(lcDir, 'journal.md');
+      const journal = readFileSync(journalPath, 'utf-8');
+      writeFileSync(journalPath, journal + '\n**2026-04-15** — Test journal entry.\n');
+
+      const profilePath = join(lcDir, 'profile.md');
+      const profile = readFileSync(profilePath, 'utf-8');
+      const peopleIdx = profile.indexOf('## People');
+      if (peopleIdx !== -1) {
+        const insertAt = profile.indexOf('\n', peopleIdx) + 1;
+        const updated = profile.slice(0, insertAt) + '\n- **Dr. Test** — Test doctor\n' + profile.slice(insertAt);
+        writeFileSync(profilePath, updated);
+      }
+
+      // Run migration
+      await migrateIndexInDir(lcDir);
+
+      // Validate — should pass with 0 issues
+      const result = await validateInDir(lcDir);
+      assert.equal(result.issues, 0, 'no issues after full lifecycle');
+
+      // Verify index content
+      const journalIdx = readFileSync(join(lcDir, 'index', 'journal.idx.md'), 'utf-8');
+      assert.ok(journalIdx.includes('id:'), 'journal index has entries');
+
+      const config = JSON.parse(readFileSync(join(lcDir, 'robin.config.json'), 'utf-8'));
+      assert.equal(config.version, '2.1.0');
+      assert.equal(config.indexing.status, 'structural');
+    } finally {
+      cleanTempDir(join(lcDir, '..'));
+    }
+  });
+
   it('is idempotent — re-running skips existing IDs and regenerates indexes', async () => {
     // Run migration again on already-migrated workspace
     const { migrateIndexInDir } = await import('../scripts/migrate-index.js');
