@@ -1,15 +1,43 @@
 # Capture Rules
 
-Capture significant facts, preferences, decisions, and learnings into the right file as they surface in conversation **or as you derive them from analysis**. Silent. Same turn as your response. No announcements.
+## Capture checkpoint (ALWAYS READ)
 
-## Capture bar
+After every response, scan the user's message and your response for capturable signals listed below. Write captures to `inbox.md` with tags (see Inbox-first pipeline). Direct-write corrections and explicit saves. This is what separates Robin from a stateless chatbot — don't skip it.
 
-Would a good human assistant remember this for next time? If yes, write it down.
-- Only persist facts useful in a future session
-- Don't capture what's already in context and won't matter next time
-- Wait for recurrence or significance before storing vendors/contacts
-- Never announce captures — silent competence
-- Capture positive signals too — not just mistakes. "Yes exactly", accepting a non-obvious approach without pushback, explicit style feedback ("just do it", "more detail") are preference data
+During multi-step tool-heavy work (implementing a feature, debugging across files), buffer captures mentally and batch-write them at the next natural break — after completing the immediate task, before moving to the next topic. The checkpoint runs as part of the same turn: compose your text response, then execute capture writes as tool calls.
+
+## Signal patterns
+
+### Always-capture
+
+Write immediately, no judgment needed:
+
+- User states a name + relationship ("my dentist is Dr. Park")
+- User states a date or deadline ("we leave for Tokyo on June 3rd")
+- User states a preference explicitly ("I prefer X over Y", "I don't like Z")
+- User makes a decision with reasoning ("I'm going with Vanguard because...")
+- User gives a correction ("no, that's wrong — it's actually...")
+- User says "remember this" or equivalent explicit save request
+- User shares a new recurring commitment ("I have PT every Tuesday")
+- User states something that contradicts or supersedes known information ("I stopped going to that gym", "my new dentist is Dr. Chen")
+- Robin produces analysis with durable insights (profile observations, pattern detection, inventories, gap analyses)
+
+### Conditional-capture
+
+Capture if the fact would change Robin's behavior or knowledge in a future session:
+
+- Facts mentioned in passing that aren't the topic ("...since I moved to Jersey City...")
+- Opinions and reactions with lasting relevance ("that restaurant was terrible")
+- Health, financial, or legal details mentioned casually
+- Work context changes ("I just got promoted", "we switched to Slack")
+- User exhibits a repeated behavioral pattern across interactions (consistently prefers short responses, always chooses the detailed option, etc.)
+
+### Never-capture
+
+- Ephemeral task context ("let's use port 3000 for this")
+- Code-specific decisions that live in the code itself
+- Anything already captured — dedup against files currently in context; don't read files solely to check for duplicates
+- Conversation mechanics ("yes", "go ahead", "sounds good") unless confirming a non-obvious preference or approach
 
 ## Routing
 
