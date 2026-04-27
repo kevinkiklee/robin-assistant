@@ -18,7 +18,7 @@ Positive signals and explicit style feedback. Each entry: what worked, domain (o
 
 ## Session Handoff
 
-Rolling notes for the next session. Newest entry at the top.
+Rolling notes for the next session. Newest entry at the top. The capture sweep writes a brief summary here at session end: "Captured N items to inbox (breakdown by tag). [Any context the next session needs]."
 
 <!-- APPEND-ONLY below -->
 
