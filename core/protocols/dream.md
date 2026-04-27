@@ -54,7 +54,10 @@ Read these files:
 ## Phase 2: Memory management
 
 1. **Inbox routing** — for each entry in `inbox.md`:
-   - Classify per `capture-rules.md` routing table
+   - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `capture-rules.md` routing table — tags are hints, not binding.
+   - `[?]` tagged entries: treat as unclassified, classify from content.
+   - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
+   - Untagged entries: classify per `capture-rules.md` routing table as before.
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
@@ -75,7 +78,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 6. **Pattern review** — for each existing pattern in `## Patterns`, check recent corrections and journal entries: is the counter-action working? If the same mistake keeps recurring despite the pattern, ESCALATE so the user knows the current counter-action isn't effective.
 
-7. **Session reflection processing** — scan `## Session Reflections` written since last dream. Extract knowledge gaps and add to `## Learning Queue`. Note domains touched and feed into `## Domain Confidence`. Prune reflections older than 30 days.
+7. **Session reflection processing** — scan `## Session Reflections` written since last dream. Also scan `## Session Handoff` for capture sweep summaries ("Captured N items to inbox...") — these are data points about session capture quality. Extract knowledge gaps and add to `## Learning Queue`. Note domains touched and feed into `## Domain Confidence`. Prune reflections older than 30 days.
 
 8. **Preference promotion** — scan `## Preferences` for dimensions with 3+ consistent signals. Promote to `## Communication Style` (base style or domain override as appropriate). Check for contradictions between recent signals and established preferences — update or narrow stale preferences. Flag unresolvable contradictions in escalation report.
 
