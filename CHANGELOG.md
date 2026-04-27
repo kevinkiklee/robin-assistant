@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.0] - unreleased
+
+### Breaking changes
+(filled in throughout the implementation)
+
+---
+
 ## 2.1.0 — Memory Indexing & Metadata Layer
 
 ### Added
