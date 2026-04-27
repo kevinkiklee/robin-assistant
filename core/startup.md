@@ -12,7 +12,11 @@
 
 5. **Read context** — read `manifest.md` for a memory overview, then `profile.md` (personality and identity sections) and these sections of `self-improvement.md`: Session Handoff (continuity from prior session), Communication Style (how to interact), Domain Confidence (where to be cautious vs. autonomous), Learning Queue (one question ready if a natural moment arises). Load everything else on demand when the current task needs it. Don't summarize what you read unless asked.
 
-6. **Respond to user**
+6. **Capture checkpoint** — after every response, run the capture signal scan from `capture-rules.md`. Scan for facts, preferences, decisions, corrections, updates, contradictions, and derived insights. Write captures to `inbox.md` with tags (or direct-write for exceptions). This is not optional — it is the primary mechanism that keeps Robin's memory current. During complex multi-step work, buffer captures and batch-write at the next natural break.
+
+7. **Capture sweep** — when context compaction is imminent, run a mini-sweep of the about-to-be-lost context for missed captures. At graceful session end, run a full sweep if the session involved meaningful conversation. See `capture-rules.md` → Capture sweep for the full process.
+
+8. **Respond to user**
 
 ## First-run detection
 
