@@ -29,6 +29,18 @@ After running (whether complete or partial), always:
 - Update `state/dream-state.md`: last_dream_at=now
 - Print one-line summary OR escalation report
 
+## Phase 0: Index integrity
+
+Runs before any other phase. Ensures indexes match source files.
+
+1. For each core data file, count entries with `<!-- id:... -->` markers
+2. Compare against entry count in the corresponding `index/<file>.idx.md`
+3. Missing from index → generate a skeleton entry (`enriched: false`, empty metadata)
+4. In index but not found in source → remove from index
+5. Log: "Index reconciled: N added, M removed"
+
+Phase 0 appends to index files (no lock needed for new entries). It does not modify source files.
+
 ## Phase 1: Scan
 
 Read these files:
@@ -46,6 +58,8 @@ Read these files:
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
+
+   When moving an entry between files (inbox routing, fact promotion), also move its index entry from the origin sidecar (`index/<origin>.idx.md`) to the destination sidecar (`index/<dest>.idx.md`). The entry's ID stays the same. If the entry was `enriched: false`, enrich it during the move. Lock the origin index (modifying existing content); destination is an append (no lock needed).
 
 2. **Fact promotion** — durable facts in `journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to `profile.md` or `knowledge.md`.
 
@@ -73,9 +87,29 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `journal.md` or delete if resolved.
 
+## Phase 4: Index maintenance
+
+Runs after all other phases. Maintains index quality.
+
+13. **Tag normalization** — scan all index files for tags. Normalize: lowercase, hyphen-separated, people as `firstname-lastname`. Deduplicate.
+
+14. **Relationship discovery** — for entries created, modified, moved, or enriched since `last_dream_at`:
+    - Entity match: two entries mention the same entity → add to `related`
+    - Temporal proximity: entries within 48 hours sharing a domain → candidate, confirm
+    - Explicit reference: entry text references another entry's content → link
+    Only process the delta, not all entries.
+
+15. **Summary updates** — for entries whose source content changed since last dream, regenerate the one-line summary in the index.
+
+16. **Enrich stragglers** — any entries still `enriched: false` (from Phase 0 or degraded captures), read source content and fill in domains, tags, summary.
+
+17. **Regenerate manifest** — rebuild `manifest.md` from current index state: entry counts, domains covered, last modified dates.
+
 ## Boundary rule
 
 Dream can read and write any of the 8 core data files (profile.md, tasks.md, knowledge.md, decisions.md, journal.md, self-improvement.md, inbox.md).
+
+Dream can read and write `index/*.idx.md` and `manifest.md`. Lock required when modifying existing index entries (Phase 4); not required for appends (Phase 0 skeleton entries).
 
 Dream manages its own `state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
 
@@ -87,7 +121,7 @@ Dream NEVER runs external commands or makes network requests.
 
 ### Default (silent)
 
-One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns."
+One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, reconciled Q index entries."
 
 ### Escalation report
 

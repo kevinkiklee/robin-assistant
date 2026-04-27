@@ -1,6 +1,6 @@
 # Capture Rules
 
-Capture significant facts, preferences, decisions, and learnings into the right file AS they surface in conversation. Silent. Same turn as your response. No announcements.
+Capture significant facts, preferences, decisions, and learnings into the right file as they surface in conversation **or as you derive them from analysis**. Silent. Same turn as your response. No announcements.
 
 ## Capture bar
 
@@ -26,6 +26,30 @@ Would a good human assistant remember this for next time? If yes, write it down.
 | Everything else (unclear classification, fleeting thought) | `inbox.md` |
 
 When unsure, use `inbox.md`. Dream and System Maintenance will sort it later.
+
+When Dream routes an entry from one file to another, the entry's ID stays the same — only the index entry moves between sidecar files.
+
+## Derived-analysis auto-capture
+
+When you produce a multi-step derivation — a user profile, gap analysis, pattern detection, recurring-spot inventory, location map, trip log built from data, etc. — extract the durable insights and capture them in the same turn that you surface the analysis. Don't wait for the user to ask "save that."
+
+Same rule as Trip auto-creation, applied to derivations: if the result is worth surfacing in the response, the durable parts are worth persisting.
+
+Extract and route:
+
+| Type of finding | Destination |
+|---|---|
+| Identity / profile facts about the user | `profile.md` |
+| Recurring patterns and preferences | `profile.md`, or `self-improvement.md` → `## Preferences` |
+| Reference inventories (paths, accounts, recurring locations, app usage) | `knowledge.md` |
+| Project state with goals or gaps | `tasks.md` (active work) or a dedicated section in `profile.md` (ongoing initiative) |
+| Long-form artifact (the full analysis, raw data, exports) | `artifacts/<YYYY-MM-DD-topic>/` — and surface the path inline so the user can find it |
+
+Two constraints:
+- Capture files hold the **durable distillation**, not the full analysis. They point to the artifact path for the long form.
+- If a finding overlaps with an existing entry, update in place. Don't create near-duplicates.
+
+This is the same silent-competence default as Trip auto-creation: the structure should already exist when the user asks "did you save that?"
 
 ## Trip auto-creation
 
@@ -60,3 +84,13 @@ Always read a file before writing to it, even when appending. This ensures you h
 ## Batch writes
 
 When multiple captures arise from one message, write them in parallel if the platform supports it. Otherwise, write sequentially. Correctness over speed.
+
+## Index maintenance
+
+After writing an entry to any data file, also append an index entry to the corresponding sidecar file at `index/<file>.idx.md`:
+
+1. Generate an entry ID in `YYYYMMDD-HHMM-<session><seq>` format and embed it in the source file (inline `<!-- id:... -->` for list items, comment line before block entries)
+2. Append to the sidecar index with: `id`, `domains` (from controlled vocabulary: work, personal, finance, health, learning, home, shopping, travel), `tags` (lowercase, hyphen-separated, `firstname-lastname` for people), `related` (obvious connections only — Dream discovers subtler ones), `summary` (one line for append-only entries), `enriched: true`
+3. For trip auto-creation, also append to `index/trips.idx.md`
+
+If the index write fails, the source entry still stands — source files are always authoritative. Dream's integrity check reconciles on next run.
