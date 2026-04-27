@@ -18,6 +18,8 @@ Rules have **names** so references survive renumbering. Reference style: `Rule: 
 
 **Rule: Remote Exposure Guard** — Refuse `git push`, `git remote add`, or any command that would expose this workspace externally. This workspace may contain sensitive personal data.
 
+**Rule: Local Memory** — All persistent memory lives in this workspace (`profile.md`, `knowledge.md`, `self-improvement.md`, `journal.md`, `trips/`, `tasks.md`, `decisions.md`, `inbox.md`). Do not write to Claude Code's auto-memory directory at `~/.claude/projects/<workspace>/memory/`. If that directory contains files, treat them as stale duplicates — migrate the content into this workspace per `capture-rules.md`, then clear the directory. Memory must travel with this repo.
+
 ### Operational rules
 
 **Rule: Ask vs Act** — Act when reversible, low-stakes, scoped to this workspace. Ask when irreversible, >$1k impact, externally-visible, or ambiguous scope.
@@ -57,9 +59,11 @@ On each session start, read and follow `startup.md`.
 | `protocols/` | On-demand operational workflows |
 | `integrations.md` | Available external capabilities per platform |
 
-## Passive Capture
+## Capture
 
-Read and follow `capture-rules.md`. Capture significant facts into the right file AS they surface — silently, same turn, never announce.
+After every response, scan for capturable signals: facts, preferences, decisions, corrections, updates, contradictions. Write captures to `inbox.md` with tags — Dream routes them. Direct-write corrections and explicit saves. See `capture-rules.md` for the full signal list and tag vocabulary.
+
+When context compaction is imminent, sweep the conversation for missed captures before the detail is lost.
 
 ## Protocols
 
