@@ -5,6 +5,7 @@ import {
   stringifyFrontmatter,
   slugify,
   disambiguateSlug,
+  countContentLines,
 } from '../scripts/lib/memory-index.js';
 
 test('parseFrontmatter extracts description', () => {
@@ -65,4 +66,22 @@ test('disambiguateSlug appends -2, -3 on collision', () => {
 
 test('disambiguateSlug returns original when no collision', () => {
   assert.equal(disambiguateSlug('x', new Set()), 'x');
+});
+
+test('countContentLines excludes blank lines', () => {
+  assert.equal(countContentLines('a\n\nb\n\n\nc\n'), 3);
+});
+
+test('countContentLines excludes frontmatter block', () => {
+  const input = '---\ndescription: x\n---\na\nb\n';
+  assert.equal(countContentLines(input), 2);
+});
+
+test('countContentLines includes comment and code-fence lines', () => {
+  const input = '<!-- comment -->\n```\ncode\n```\n';
+  assert.equal(countContentLines(input), 4);
+});
+
+test('countContentLines returns 0 for frontmatter-only input', () => {
+  assert.equal(countContentLines('---\ndescription: x\n---\n'), 0);
 });

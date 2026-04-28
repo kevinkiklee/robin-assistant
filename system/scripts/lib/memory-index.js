@@ -35,3 +35,8 @@ export function disambiguateSlug(slug, usedSet) {
   while (usedSet.has(`${slug}-${n}`)) n++;
   return `${slug}-${n}`;
 }
+
+export function countContentLines(content) {
+  const { body } = parseFrontmatter(content);
+  return body.split('\n').filter(line => line.trim().length > 0).length;
+}
