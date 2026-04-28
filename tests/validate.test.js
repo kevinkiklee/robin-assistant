@@ -1,110 +1,43 @@
-import { describe, it, before, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
-import { createTempDir, cleanTempDir, writeJson } from './helpers.js';
+import { validateInDir } from '../core/scripts/lib/validate.js';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 
-describe('robin validate', () => {
-  let tmpDir;
-
-  before(() => {
-    tmpDir = createTempDir();
-    writeJson(tmpDir, 'robin.config.json', {
-      version: '2.0.0', initialized: true, platform: 'claude-code',
-      user: { name: 'Test', timezone: 'UTC', email: null },
-      assistant: { name: 'Robin' }, integrations: [],
-    });
-    for (const f of ['AGENTS.md','startup.md','capture-rules.md','integrations.md',
-      'profile.md','tasks.md','knowledge.md','decisions.md','journal.md',
-      'self-improvement.md','inbox.md']) {
-      writeFileSync(join(tmpDir, f), '# placeholder\n');
+function makeRepo(populated = true) {
+  const root = mkdtempSync(join(tmpdir(), 'robin-validate-'));
+  // Real git repo with user-data/ gitignored, matching v3 workspace shape.
+  execSync('git init -q', { cwd: root });
+  writeFileSync(join(root, '.gitignore'), '/user-data/\n/artifacts/\n/backup/\n');
+  mkdirSync(join(root, 'core'));
+  mkdirSync(join(root, 'core/skeleton'));
+  if (populated) {
+    mkdirSync(join(root, 'user-data'));
+    mkdirSync(join(root, 'user-data/state'));
+    mkdirSync(join(root, 'user-data/state/locks'));
+    writeFileSync(join(root, 'user-data/robin.config.json'),
+      JSON.stringify({ version: '3.0.0', user: { name: 'T', timezone: 'UTC' }, platform: 'claude-code' }));
+    for (const f of ['profile.md','knowledge.md','tasks.md','decisions.md','journal.md','inbox.md','self-improvement.md','integrations.md']) {
+      writeFileSync(join(root, 'user-data', f), '# stub\n');
     }
-    mkdirSync(join(tmpDir, 'state', 'locks'), { recursive: true });
-    writeFileSync(join(tmpDir, 'state', 'sessions.md'), '# Active Sessions\n');
-    writeFileSync(join(tmpDir, 'state', 'dream-state.md'), '# Dream State\n');
-    mkdirSync(join(tmpDir, 'protocols'), { recursive: true });
-    writeFileSync(join(tmpDir, 'protocols', 'INDEX.md'), '# Protocols\n');
-  });
-  after(() => { cleanTempDir(tmpDir); });
+    writeFileSync(join(root, 'user-data/state/sessions.md'), '');
+    writeFileSync(join(root, 'user-data/state/dream-state.md'), '');
+  }
+  return root;
+}
 
-  it('passes validation on a complete workspace', async () => {
-    const { validateInDir } = await import('../scripts/validate.js');
-    const result = await validateInDir(tmpDir);
-    assert.equal(result.issues, 0);
-  });
+test('validate passes on a fully populated v3 workspace', async () => {
+  const root = makeRepo(true);
+  const result = await validateInDir(root);
+  assert.equal(result.issues, 0);
+  rmSync(root, { recursive: true, force: true });
+});
 
-  it('detects missing files', async () => {
-    const { validateInDir } = await import('../scripts/validate.js');
-    const sparseDir = createTempDir();
-    writeJson(sparseDir, 'robin.config.json', {
-      version: '2.0.0', initialized: true, platform: 'claude-code',
-      user: { name: 'Test', timezone: 'UTC' }, assistant: { name: 'Robin' }, integrations: [],
-    });
-    const result = await validateInDir(sparseDir);
-    assert.ok(result.issues > 0, 'should find missing files');
-    cleanTempDir(sparseDir);
-  });
-
-  it('validates index directory and manifest for v2.1.0 workspaces', async () => {
-    const { validateInDir } = await import('../scripts/validate.js');
-    const v21Dir = createTempDir();
-    try {
-      writeJson(v21Dir, 'robin.config.json', {
-        version: '2.1.0', initialized: true, platform: 'claude-code',
-        user: { name: 'Test', timezone: 'UTC', email: null },
-        assistant: { name: 'Robin' }, integrations: [],
-        indexing: { status: 'complete', migrated_at: '2026-04-26T00:00:00Z' },
-      });
-      for (const f of ['AGENTS.md','startup.md','capture-rules.md','integrations.md',
-        'profile.md','tasks.md','knowledge.md','decisions.md','journal.md',
-        'self-improvement.md','inbox.md']) {
-        writeFileSync(join(v21Dir, f), '# placeholder\n');
-      }
-      mkdirSync(join(v21Dir, 'state', 'locks'), { recursive: true });
-      writeFileSync(join(v21Dir, 'state', 'sessions.md'), '# Active Sessions\n');
-      writeFileSync(join(v21Dir, 'state', 'dream-state.md'), '# Dream State\n');
-      mkdirSync(join(v21Dir, 'protocols'), { recursive: true });
-      writeFileSync(join(v21Dir, 'protocols', 'INDEX.md'), '# Protocols\n');
-      writeFileSync(join(v21Dir, 'manifest.md'), '# Manifest\n');
-      mkdirSync(join(v21Dir, 'index'), { recursive: true });
-      for (const f of [
-        'profile.idx.md', 'knowledge.idx.md', 'tasks.idx.md',
-        'journal.idx.md', 'decisions.idx.md', 'self-improvement.idx.md',
-        'inbox.idx.md', 'trips.idx.md',
-      ]) {
-        writeFileSync(join(v21Dir, 'index', f), '# Index\n');
-      }
-      const result = await validateInDir(v21Dir);
-      assert.equal(result.issues, 0);
-    } finally {
-      cleanTempDir(v21Dir);
-    }
-  });
-
-  it('detects missing index files on v2.1.0 workspace', async () => {
-    const { validateInDir } = await import('../scripts/validate.js');
-    const v21Dir = createTempDir();
-    try {
-      writeJson(v21Dir, 'robin.config.json', {
-        version: '2.1.0', initialized: true, platform: 'claude-code',
-        user: { name: 'Test', timezone: 'UTC', email: null },
-        assistant: { name: 'Robin' }, integrations: [],
-      });
-      for (const f of ['AGENTS.md','startup.md','capture-rules.md','integrations.md',
-        'profile.md','tasks.md','knowledge.md','decisions.md','journal.md',
-        'self-improvement.md','inbox.md']) {
-        writeFileSync(join(v21Dir, f), '# placeholder\n');
-      }
-      mkdirSync(join(v21Dir, 'state', 'locks'), { recursive: true });
-      writeFileSync(join(v21Dir, 'state', 'sessions.md'), '# Active Sessions\n');
-      writeFileSync(join(v21Dir, 'state', 'dream-state.md'), '# Dream State\n');
-      mkdirSync(join(v21Dir, 'protocols'), { recursive: true });
-      writeFileSync(join(v21Dir, 'protocols', 'INDEX.md'), '# Protocols\n');
-      // Intentionally omit index/ directory and manifest.md
-      const result = await validateInDir(v21Dir);
-      assert.ok(result.issues > 0, 'should find missing index files');
-    } finally {
-      cleanTempDir(v21Dir);
-    }
-  });
+test('validate fails when user-data/ is missing', async () => {
+  const root = makeRepo(false);
+  const result = await validateInDir(root);
+  assert.ok(result.issues > 0);
+  rmSync(root, { recursive: true, force: true });
 });
