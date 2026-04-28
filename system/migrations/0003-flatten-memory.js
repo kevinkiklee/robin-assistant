@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync, renameSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync, renameSync, statSync } from 'node:fs';
+import { join, dirname, posix, relative } from 'node:path';
 import {
   parseFrontmatter,
   stringifyFrontmatter,
@@ -8,7 +8,9 @@ import {
   sectionSizes,
   slugify,
   disambiguateSlug,
+  rewriteLinks,
 } from '../scripts/lib/memory-index.js';
+import { writeMemoryIndex } from '../scripts/regenerate-memory-index.js';
 
 export const id = '0003-flatten-memory';
 export const description = 'Flatten memory into topic folders, drop sidecars, consolidate trips into events';
@@ -117,13 +119,45 @@ function deleteSidecarTree(memDir) {
   if (existsSync(idxDir)) rmSync(idxDir, { recursive: true, force: true });
 }
 
+function repairCrossReferences(memDir, renames) {
+  if (renames.size === 0) return;
+  function walk(dir) {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) { walk(full); continue; }
+      if (!name.endsWith('.md') || name === 'INDEX.md') continue;
+      const rel = posix.relative(memDir, full).split(/[\\/]/).join('/');
+      const content = readFileSync(full, 'utf-8');
+      const out = rewriteLinks(content, renames, rel);
+      if (out !== content) writeFileSync(full, out);
+    }
+  }
+  walk(memDir);
+}
+
 export async function up({ workspaceDir, helpers, opts = {} }) {
   const interactive = opts.interactive ?? true;
   const memDir = join(workspaceDir, 'user-data/memory');
 
-  splitMonolith(join(memDir, 'knowledge.md'), 'knowledge', { interactive });
-  splitMonolith(join(memDir, 'profile.md'), 'profile', { interactive });
+  const knowledgeEmitted = splitMonolith(join(memDir, 'knowledge.md'), 'knowledge', { interactive });
+  const profileEmitted = splitMonolith(join(memDir, 'profile.md'), 'profile', { interactive });
   relocateTrips(workspaceDir, memDir);
   deleteSidecarTree(memDir);
   ensureFlatFrontmatter(memDir);
+
+  // Build a rename map for cross-reference repair. Old paths (knowledge.md, profile.md)
+  // had section anchors we can't reverse-map without per-section metadata. Best-effort:
+  // map the old monolith path to the first emitted topic file in each area.
+  const renames = new Map();
+  if (knowledgeEmitted.length > 0) {
+    renames.set('knowledge.md', posix.relative(memDir, knowledgeEmitted[0].path).split(/[\\/]/).join('/'));
+  }
+  if (profileEmitted.length > 0) {
+    renames.set('profile.md', posix.relative(memDir, profileEmitted[0].path).split(/[\\/]/).join('/'));
+  }
+  repairCrossReferences(memDir, renames);
+
+  writeMemoryIndex(memDir);
 }
