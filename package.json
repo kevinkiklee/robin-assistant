@@ -4,16 +4,16 @@
   "description": "A self-improving personal assistant — portable across AI coding tools",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/**/*.test.js",
-    "backup": "node core/scripts/backup.js",
-    "restore": "node core/scripts/restore.js",
-    "reset": "node core/scripts/reset.js",
-    "install-hooks": "node core/scripts/install-hooks.js",
-    "migrate": "node core/scripts/migrate.js",
-    "migrate-v3": "node core/scripts/migrate-v3.js",
-    "regenerate-pointers": "node core/scripts/regenerate-pointers.js",
-    "regenerate-operations-index": "node core/scripts/regenerate-operations-index.js",
-    "postinstall": "node core/scripts/setup.js"
+    "test": "node --test system/tests/**/*.test.js",
+    "backup": "node system/scripts/backup.js",
+    "restore": "node system/scripts/restore.js",
+    "reset": "node system/scripts/reset.js",
+    "install-hooks": "node system/scripts/install-hooks.js",
+    "migrate": "node system/scripts/migrate.js",
+    "migrate-v3": "node system/scripts/migrate-v3.js",
+    "regenerate-pointers": "node system/scripts/regenerate-pointers.js",
+    "regenerate-operations-index": "node system/scripts/regenerate-operations-index.js",
+    "postinstall": "node system/scripts/setup.js"
   },
   "engines": {
     "node": ">=18.0.0"

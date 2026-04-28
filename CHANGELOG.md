@@ -4,8 +4,8 @@
 
 ### Breaking changes
 - Distribution model changed from npm package (`npx robin-assistant init`) to git-clone. The repo IS the workspace. See README for new onboarding.
-- Layout: system files now under `core/`; personal data under `user-data/` (gitignored).
-- Protocols renamed to operations: `core/protocols/` → `core/operations/`.
+- Layout: system files now under `system/`; personal data under `user-data/` (gitignored).
+- Protocols renamed to operations: `system/protocols/` → `system/operations/`.
 - `AGENTS.md` moved to repo root (per the AGENTS.md community spec).
 - `robin` CLI binary retired. Functionality exposed as `npm run <command>`: `backup`, `restore`, `reset`, `install-hooks`, `migrate`, `migrate-v3`.
 - `export` renamed to `backup`; `rollback` renamed to `restore` (now restores user-data from a backup tar.gz, not system files from an update backup).
@@ -15,12 +15,12 @@
 - `commander` runtime dependency dropped — repo has zero runtime deps.
 
 ### New
-- Migration framework at `core/migrations/`. Drop a versioned migration file; it auto-applies on session start with a pre-migration backup.
-- Customization extension points: `user-data/custom-rules.md`, `user-data/operations/` (overlays `core/operations/`).
+- Migration framework at `system/migrations/`. Drop a versioned migration file; it auto-applies on session start with a pre-migration backup.
+- Customization extension points: `user-data/custom-rules.md`, `user-data/operations/` (overlays `system/operations/`).
 - `artifacts/` directory: `artifacts/input/` for user-supplied files (not auto-read), `artifacts/output/` for AI-generated artifacts.
 - Auto-applied additive config schema migrations on session start (`lib/config-migrate.js`).
-- Generated root pointer files (`CLAUDE.md`, `.cursorrules`, `GEMINI.md`, `.windsurfrules`) from `core/scripts/lib/platforms.js`.
-- Auto-generated `core/operations/INDEX.md` from per-operation YAML frontmatter.
+- Generated root pointer files (`CLAUDE.md`, `.cursorrules`, `GEMINI.md`, `.windsurfrules`) from `system/scripts/lib/platforms.js`.
+- Auto-generated `system/operations/INDEX.md` from per-operation YAML frontmatter.
 - CHANGELOG-aware session-start notification (`lib/changelog-notify.js`).
 - Native Antigravity support (reads root `AGENTS.md`).
 

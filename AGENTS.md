@@ -16,7 +16,7 @@ Rules have **names** so references survive renumbering. Reference style: `Rule: 
 
 **Rule: Verification** — Before declaring something urgent, missing, due, or at-risk, verify the underlying data. Don't pattern-match cue words without confirming what they refer to.
 
-**Rule: Local Memory** — All persistent memory lives in `user-data/`. Do not write to Claude Code's auto-memory directory at `~/.claude/projects/<workspace>/memory/`. If that directory contains files, treat them as stale duplicates — migrate the content into this workspace per `core/capture-rules.md`, then clear the directory.
+**Rule: Local Memory** — All persistent memory lives in `user-data/`. Do not write to Claude Code's auto-memory directory at `~/.claude/projects/<workspace>/memory/`. If that directory contains files, treat them as stale duplicates — migrate the content into this workspace per `system/capture-rules.md`, then clear the directory.
 
 ### Operational rules
 
@@ -42,7 +42,7 @@ Rules have **names** so references survive renumbering. Reference style: `Rule: 
 
 ## Session Startup
 
-On each session start, read and follow `core/startup.md`.
+On each session start, read and follow `system/startup.md`.
 
 ## Workspace Layout
 
@@ -59,18 +59,18 @@ On each session start, read and follow `core/startup.md`.
 | `artifacts/input/` | User-provided inputs (read only on explicit request) |
 | `artifacts/output/` | Generated outputs (drafts, exports, images) |
 | `user-data/state/` | Runtime state (session registry, Dream state, locks) |
-| `core/operations/` | On-demand operational workflows |
+| `system/operations/` | On-demand operational workflows |
 | `user-data/integrations.md` | Available external capabilities per platform |
 
 ## Capture
 
-After every response, scan for capturable signals: facts, preferences, decisions, corrections, updates, contradictions. Write captures to `user-data/inbox.md` with tags — Dream routes them. Direct-write corrections and explicit saves. See `core/capture-rules.md` for the full signal list and tag vocabulary.
+After every response, scan for capturable signals: facts, preferences, decisions, corrections, updates, contradictions. Write captures to `user-data/inbox.md` with tags — Dream routes them. Direct-write corrections and explicit saves. See `system/capture-rules.md` for the full signal list and tag vocabulary.
 
 When context compaction is imminent, sweep the conversation for missed captures before the detail is lost.
 
 ## Protocols
 
-On-demand workflows invoked by trigger phrases. Full list in `core/operations/INDEX.md`.
+On-demand workflows invoked by trigger phrases. Full list in `system/operations/INDEX.md`.
 
 | Protocol | Triggers |
 |----------|----------|
@@ -92,10 +92,10 @@ This workspace may contain personal information. Suggest commits but don't auto-
 
 ## Concurrency
 
-Read `user-data/state/sessions.md` on startup. If other sessions are active, follow the multi-session coordination protocol in `core/operations/multi-session-coordination.md`. Always read-before-write.
+Read `user-data/state/sessions.md` on startup. If other sessions are active, follow the multi-session coordination protocol in `system/operations/multi-session-coordination.md`. Always read-before-write.
 
 ## Session start
 
-At the start of every session, run `node core/scripts/startup-check.js`. Read its output line-by-line. On any line starting with `FATAL:`, surface that message to the user and abort startup. On `INFO:` and `WARN:` lines, surface them as a brief summary at the top of your first response. Then proceed to read `core/startup.md` for the full startup protocol.
+At the start of every session, run `node system/scripts/startup-check.js`. Read its output line-by-line. On any line starting with `FATAL:`, surface that message to the user and abort startup. On `INFO:` and `WARN:` lines, surface them as a brief summary at the top of your first response. Then proceed to read `system/startup.md` for the full startup protocol.
 
-Also, on session start, scan `user-data/operations/` in addition to `core/operations/`. Where a file with the same name exists in both, prefer `user-data/`. If `user-data/custom-rules.md` exists, read and follow those rules — they extend or override the operational rules above (but cannot override Immutable Rules).
+Also, on session start, scan `user-data/operations/` in addition to `system/operations/`. Where a file with the same name exists in both, prefer `user-data/`. If `user-data/custom-rules.md` exists, read and follow those rules — they extend or override the operational rules above (but cannot override Immutable Rules).

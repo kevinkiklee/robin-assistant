@@ -4,7 +4,7 @@ Robin is a git-clone-as-workspace tool. The repo *is* the workspace, so dev work
 
 ## Setting up a dev clone
 
-Don't develop in the same clone you use for your daily Robin instance — `npm install`'s postinstall populates `user-data/` from `core/skeleton/`, and you don't want to mix dev work with your real memory. Use a separate path:
+Don't develop in the same clone you use for your daily Robin instance — `npm install`'s postinstall populates `user-data/` from `system/skeleton/`, and you don't want to mix dev work with your real memory. Use a separate path:
 
 ```bash
 git clone <repo> ~/code/robin-dev
@@ -12,7 +12,7 @@ cd ~/code/robin-dev
 npm install
 ```
 
-`npm install` runs `core/scripts/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
+`npm install` runs `system/scripts/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
 
 ## Running tests
 
@@ -24,10 +24,10 @@ Tests use `node --test` and create their own temp dirs in `os.tmpdir()`. They do
 
 ## Adding a migration
 
-Drop a versioned file into `core/migrations/` named `<NNNN>-<short-description>.js`:
+Drop a versioned file into `system/migrations/` named `<NNNN>-<short-description>.js`:
 
 ```javascript
-// core/migrations/0007-rename-knowledge-to-reference.js
+// system/migrations/0007-rename-knowledge-to-reference.js
 export const id = '0007-rename-knowledge-to-reference';
 export const description = 'Rename user-data/knowledge.md to user-data/reference.md';
 
@@ -37,7 +37,7 @@ export async function up({ workspaceDir, helpers }) {
 }
 ```
 
-`helpers` comes from `core/scripts/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromSkeleton`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
+`helpers` comes from `system/scripts/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromSkeleton`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
 
 The migration framework auto-applies pending migrations on the next session start, taking a `backup/pre-migration-<timestamp>.tar.gz` snapshot first. Users get a one-line notice; if anything fails, restore is one `npm run restore` away.
 
@@ -45,7 +45,7 @@ Add a CHANGELOG entry for any user-visible behavior change. The session-start CH
 
 ## Adding an operation
 
-Drop `<name>.md` into `core/operations/` with YAML frontmatter:
+Drop `<name>.md` into `system/operations/` with YAML frontmatter:
 
 ```markdown
 ---
@@ -63,7 +63,7 @@ Then regenerate the index and commit both:
 
 ```bash
 npm run regenerate-operations-index
-git add core/operations/
+git add system/operations/
 git commit -m "feat(operations): add investment-review"
 ```
 
@@ -73,7 +73,7 @@ Users can override your operation by dropping a same-named file in their own `us
 
 ## Adding a new AI tool platform
 
-Add an entry to `core/scripts/lib/platforms.js`:
+Add an entry to `system/scripts/lib/platforms.js`:
 
 ```javascript
 'newtool': {
@@ -87,7 +87,7 @@ Then regenerate the pointer files:
 
 ```bash
 npm run regenerate-pointers
-git add core/scripts/lib/platforms.js .newtoolrules
+git add system/scripts/lib/platforms.js .newtoolrules
 git commit -m "feat(platforms): support newtool"
 ```
 

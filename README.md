@@ -10,7 +10,7 @@ Robin is a **workspace** — a set of markdown files that your AI tool reads on 
 
 The workspace splits cleanly into two parts:
 
-- **`core/`** — the system. Tracked, owned by upstream, never user-edited. You get updates by running `git pull`.
+- **`system/`** — the system. Tracked, owned by upstream, never user-edited. You get updates by running `git pull`.
 - **`user-data/`** — your personal memory. Gitignored. Owned by you. Robin reads and writes here during conversations.
 
 Plus three sibling directories at the repo root:
@@ -34,11 +34,11 @@ Robin stores what it learns across structured files under `user-data/`:
 | **self-improvement.md** | Corrections, behavioral patterns, calibration log |
 | **integrations.md** | Available integrations (email, calendar, etc.) |
 
-Facts get captured silently during conversation — Robin writes them to the right file in the same turn as its response. See `core/capture-rules.md` for routing rules.
+Facts get captured silently during conversation — Robin writes them to the right file in the same turn as its response. See `system/capture-rules.md` for routing rules.
 
 ### Operations (renamed from "protocols")
 
-Robin ships with operational workflows triggered by natural language. The catalog is auto-generated at `core/operations/INDEX.md` from each operation's frontmatter. Examples:
+Robin ships with operational workflows triggered by natural language. The catalog is auto-generated at `system/operations/INDEX.md` from each operation's frontmatter. Examples:
 
 - Morning Briefing — "good morning", "brief me"
 - Weekly Review — "weekly review"
@@ -55,9 +55,9 @@ Robin ships with operational workflows triggered by natural language. The catalo
 Extension points live in `user-data/`, so they survive `git pull` cleanly:
 
 - **`user-data/custom-rules.md`** — your own rules, appended to AGENTS.md's rule list. Overrides operational rules where they conflict (Immutable Rules cannot be overridden).
-- **`user-data/operations/`** — overlays `core/operations/`. Same-named file overrides the system version; new files extend the catalog.
+- **`user-data/operations/`** — overlays `system/operations/`. Same-named file overrides the system version; new files extend the catalog.
 
-Don't edit files under `core/` directly — `git pull` will conflict.
+Don't edit files under `system/` directly — `git pull` will conflict.
 
 ## Quick start
 
@@ -68,7 +68,7 @@ npm install         # populates user-data/, prompts for config, installs the pre
 # open the repo in your AI coding tool — Robin will introduce itself
 ```
 
-`npm install` runs `core/scripts/setup.js` as a postinstall step. It copies `core/skeleton/*` into `user-data/`, prompts for your name / timezone / email / platform / assistant name, and installs the privacy pre-commit hook. In CI or non-TTY contexts, prompts are skipped and you edit `user-data/robin.config.json` manually.
+`npm install` runs `system/scripts/setup.js` as a postinstall step. It copies `system/skeleton/*` into `user-data/`, prompts for your name / timezone / email / platform / assistant name, and installs the privacy pre-commit hook. In CI or non-TTY contexts, prompts are skipped and you edit `user-data/robin.config.json` manually.
 
 ## Updating
 
@@ -109,7 +109,7 @@ robin/
 ├── .cursorrules                <- Pointer → AGENTS.md (Cursor)
 ├── GEMINI.md                   <- Pointer → AGENTS.md (Gemini CLI)
 ├── .windsurfrules              <- Pointer → AGENTS.md (Windsurf)
-├── core/                       <- system, tracked, never user-edited
+├── system/                       <- system, tracked, never user-edited
 │   ├── startup.md
 │   ├── capture-rules.md
 │   ├── manifest.md
@@ -143,7 +143,7 @@ Personal data never leaves your machine unless you explicitly push it to a remot
 | Gemini CLI | `GEMINI.md` | Pointer → `AGENTS.md` |
 | Windsurf | `.windsurfrules` | Pointer → `AGENTS.md` |
 
-Pointer files are generated from `core/scripts/lib/platforms.js`. Adding a new tool is one entry there + `npm run regenerate-pointers`.
+Pointer files are generated from `system/scripts/lib/platforms.js`. Adding a new tool is one entry there + `npm run regenerate-pointers`.
 
 ## Contributing
 
