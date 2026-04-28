@@ -92,6 +92,7 @@ These skip inbox and go to the destination file immediately:
 - **Explicit "remember this"** — user asked directly, so route to the confident destination and confirm.
 - **Updates that contradict loaded context** — if the assistant knows the old fact is in a file it already read (e.g., `user-data/memory/profile.md` loaded at startup), update it in place now. Don't wait for Dream.
 - **Derived-analysis findings** — the assistant just performed the analysis and knows exactly where findings belong. Follow the derived-analysis auto-capture rules below.
+- **Ingest operations** — ingest is user-supervised, multi-file, and too structural for inbox-first routing. Ingest writes directly to knowledge files, creates source pages, and updates cross-references. See `system/operations/ingest.md`.
 
 ### Confirmation behavior
 
@@ -118,7 +119,30 @@ Safety net for missed captures. The inline checkpoint degrades over long session
 2. **Cross-reference** — read `user-data/memory/inbox.md` before each sweep to dedup against prior captures (prevents duplicates across multiple compaction events)
 3. **Extract** — draft tagged inbox entries for anything missed
 4. **Write** — batch-append all captures to `user-data/memory/inbox.md`
-5. **Handoff** — write a brief note to `user-data/memory/self-improvement.md` → `## Session Handoff`: "Captured N items to inbox (breakdown by tag)."
+5. **Handoff** — write a one-line note to `user-data/memory/self-improvement.md` → `## Session Handoff`: "Captured N items to inbox (breakdown by tag)."
+6. **Hot cache** — append a session summary to `user-data/memory/hot.md` (see Hot cache section below)
+
+## Hot cache
+
+At session end (graceful) or context compaction, append a session summary to `user-data/memory/hot.md`. This provides seamless continuation across sessions.
+
+### Format
+
+```markdown
+## Session — YYYY-MM-DD HH:MM TZ
+
+**Focus:** <what the session was about>
+**Key decisions:** <decisions made, if any>
+**Open threads:** <what's still pending>
+**Files touched:** <files created or modified, if any>
+```
+
+### Rules
+
+- **Append-only** — each session appends its summary. No locking needed (append-only per multi-session coordination).
+- **Rolling window** — Dream Phase 4 trims to the last 3 entries. Between Dream cycles, hot.md may temporarily have 4-5 entries.
+- **Cap per entry** — 25 lines max. Summarize ruthlessly. hot.md is a bridge, not a transcript.
+- **Loaded at startup** — hot.md is read after INDEX.md and before identity/personality for session orientation.
 
 ### What the user sees
 
@@ -145,7 +169,7 @@ Dream uses this table to route tagged inbox entries to their destination. The ta
 | Correction to the assistant (what you did wrong, what to do instead) | `user-data/memory/self-improvement.md` -> `## Corrections` |
 | Positive signal about Robin's approach (style, format, level of detail) | `user-data/memory/self-improvement.md` -> `## Preferences` |
 | Reflective observation or daily note | `user-data/memory/journal.md` |
-| Dated event (trip, conference, attended event) | `user-data/memory/events/<slug>.md` |
+| Dated event (trip, conference, attended event) | `user-data/memory/knowledge/events/<slug>.md` |
 | Everything else (unclear classification, fleeting thought) | `user-data/memory/inbox.md` |
 
 When Dream routes an entry from inbox into a topic file, it consults `user-data/memory/INDEX.md` to find the matching topic. If no topic file fits, Dream creates one with `description:` frontmatter and the next index regen picks it up.

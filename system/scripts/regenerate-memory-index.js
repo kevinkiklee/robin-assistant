@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter } from './lib/memory-index.js';
 
-const SKIP_NAMES = new Set(['INDEX.md', '.gitkeep']);
+const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkeep']);
 
 function walk(dir, base = dir) {
   const out = [];

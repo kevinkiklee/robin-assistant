@@ -12,6 +12,8 @@
   },
   "integrations": [],
   "memory": {
-    "split_threshold_lines": 200
+    "split_threshold_lines": 200,
+    "graph_exclude": ["knowledge/finance/lunch-money/transactions"],
+    "startup_budget_lines": 500
   }
 }

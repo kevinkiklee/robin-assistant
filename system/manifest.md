@@ -16,6 +16,9 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/operations/` | On-demand operational workflows (Dream, Morning Briefing, etc.). |
 | `system/operations/INDEX.md` | Auto-generated index of operations (regenerate via `regenerate-operations-index.js`). |
 | `system/operations/dream.md` | Background processing — inbox routing, pattern promotion, integrity check. |
+| `system/operations/ingest.md` | Process a source document into the knowledge base — extract, ripple, cross-reference. |
+| `system/operations/lint.md` | Health-check the knowledge base for contradictions, stale claims, orphans, dead links. |
+| `system/operations/save-conversation.md` | File conversation outcomes as a summary page in the knowledge base. |
 | `system/operations/morning-briefing.md` | Daily briefing protocol. |
 | `system/operations/weekly-review.md` | Weekly review protocol. |
 | `system/operations/email-triage.md` | Inbox triage protocol. |
@@ -39,6 +42,7 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/scripts/regenerate-pointers.js` | Regenerate platform pointer files from `platforms.js`. |
 | `system/scripts/regenerate-operations-index.js` | Regenerate `system/operations/INDEX.md` from frontmatter. |
 | `system/scripts/regenerate-memory-index.js` | Regenerate `user-data/memory/INDEX.md` from per-file frontmatter. Supports `--check` for CI. |
+| `system/scripts/regenerate-links.js` | Regenerate `user-data/memory/LINKS.md` from cross-reference graph. |
 | `system/scripts/lib/memory-index.js` | Shared helpers — frontmatter parse, slug, threshold, link rewrite, split planner. |
 | `system/migrations/` | Numbered migration scripts applied at startup. |
 | `system/skeleton/` | Default `user-data/` layout copied during `setup.js` first run. |
@@ -51,9 +55,14 @@ User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit
 |------|---------|
 | `user-data/robin.config.json` | User name, timezone, email, assistant name, threshold settings. |
 | `user-data/memory/INDEX.md` | Generated directory of topic files. Read at startup to map the memory tree. |
+| `user-data/memory/LINKS.md` | Cross-reference graph across memory files. On-demand only, not loaded at startup. |
+| `user-data/memory/log.md` | Append-only chronological record of wiki operations (ingests, lints, filings). |
+| `user-data/memory/hot.md` | Rolling session context (last 3 sessions). Loaded at startup for seamless continuation. |
 | `user-data/memory/profile/` | Identity, personality, interests, people, goals, routines, work, etc. (one topic file per area). |
-| `user-data/memory/knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes, etc. |
-| `user-data/memory/events/` | Dated events — trips, attended events. |
+| `user-data/memory/knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes, events, etc. |
+| `user-data/memory/knowledge/events/` | Dated events — trips, attended events. |
+| `user-data/memory/knowledge/sources/` | Source summary pages created by the ingest operation. |
+| `user-data/memory/knowledge/conversations/` | Conversation summaries created by the save-conversation operation. |
 | `user-data/memory/tasks.md` | Active tasks grouped by category. |
 | `user-data/memory/decisions.md` | Decision log (append-only; exempt from threshold splits). |
 | `user-data/memory/journal.md` | Dated reflections (append-only; exempt from threshold splits). |
@@ -62,6 +71,7 @@ User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit
 | `user-data/integrations.md` | Available external capabilities per platform. |
 | `user-data/custom-rules.md` | Optional. User-defined behavioral additions; loaded at session start. |
 | `user-data/state/` | Runtime state — session registry, Dream state, locks. |
+| `user-data/secrets/` | API keys and credentials. `.env`-style file, gitignored. See `user-data/secrets/README.md`. |
 | `user-data/state/sessions.md` | Active session registry. |
 | `user-data/state/dream-state.md` | Last Dream cycle timestamp and bookkeeping. |
 | `user-data/operations/` | Optional. User-defined or overriding operations; precedence over `system/operations/`. |
@@ -72,8 +82,19 @@ Workspace-scoped scratch space for files that aren't memory.
 
 | Path | Purpose |
 |------|---------|
-| `artifacts/input/` | User-provided inputs. Read only when the user references a file by name. |
+| `artifacts/input/` | User-provided inputs (ephemeral). Read only when the user references a file by name. During ingest, files move from here to `user-data/sources/`. |
 | `artifacts/output/` | Generated outputs (PDFs, exports, scripts, summary docs, images). |
+
+## Sources (`user-data/sources/`)
+
+Raw source documents — immutable reference material ingested into the knowledge base. The ingest operation reads from here but never modifies source files. Excluded from backups (immutable originals are their own backup).
+
+| Path | Purpose |
+|------|---------|
+| `user-data/sources/articles/` | Web clips, saved articles (fetched from URLs during ingest). |
+| `user-data/sources/documents/` | PDFs, reports, lab results, financial statements. |
+| `user-data/sources/notes/` | Freeform notes, meeting notes, voice memo transcriptions. |
+| `user-data/sources/media/` | Images, screenshots (referenced by wiki pages). |
 
 ## Backup (`backup/`)
 

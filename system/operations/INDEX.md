@@ -21,6 +21,18 @@ File: `system/operations/email-triage.md`
 Triggers: "triage my inbox", "email triage", "go through my email"
 Description: Classify and process unread email; surface action items, route receipts, and queue follow-ups.
 
+### ingest
+
+File: `system/operations/ingest.md`
+Triggers: "ingest this", "ingest", "process this document", "add this to the wiki"
+Description: Process a source document into the knowledge base — extract facts, ripple updates across knowledge files, log cross-references, and commit.
+
+### lint
+
+File: `system/operations/lint.md`
+Triggers: "lint the wiki", "health check memory", "lint", "check memory health"
+Description: Health-check the knowledge base for contradictions, stale claims, orphan pages, dead links, missing pages, and data gaps.
+
 ### meeting-prep
 
 File: `system/operations/meeting-prep.md`
@@ -56,6 +68,12 @@ Description: Quarterly review of self-improvement effectiveness, calibration acc
 File: `system/operations/receipt-tracking.md`
 Triggers: "track my receipts", "receipt tracking"
 Description: Find and summarize receipts by vendor, time range, or category.
+
+### save-conversation
+
+File: `system/operations/save-conversation.md`
+Triggers: "save this conversation", "file this session", "save conversation"
+Description: File the key outcomes of the current conversation as a lightweight summary page in the knowledge base.
 
 ### subscription-audit
 

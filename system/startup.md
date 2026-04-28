@@ -12,11 +12,16 @@ Before anything else, run `node system/scripts/startup-check.js` and read its ou
 
 3. **Dream check** — read `user-data/state/dream-state.md`. If 24+ hours have passed since the last dream, run Dream (see `system/operations/dream.md`). Skip silently if not eligible or if 2+ other sessions are active.
 
-4. **Read context** — read `system/manifest.md` for a memory overview, `user-data/memory/INDEX.md` for the memory tree map, then load identity and personality:
-   - If `user-data/memory/profile/identity.md` exists, read it plus `user-data/memory/profile/personality.md`.
-   - Otherwise (monolith state — `npm run split-monoliths` has not yet been run), read the personality and identity sections of `user-data/memory/profile.md`.
+4. **Read context** — read in this order, respecting the startup budget (`memory.startup_budget_lines`, default 500):
+   1. `system/manifest.md` — memory overview
+   2. `user-data/memory/INDEX.md` — memory tree map
+   3. `user-data/memory/hot.md` — recent session context for seamless continuation
+   4. Identity and personality:
+      - If `user-data/memory/profile/identity.md` exists, read it plus `user-data/memory/profile/personality.md`.
+      - Otherwise (monolith state — `npm run split-monoliths` has not yet been run), read the personality and identity sections of `user-data/memory/profile.md`.
+   5. These sections of `user-data/memory/self-improvement.md`: Session Handoff (capture sweep status), Communication Style (how to interact), Domain Confidence (where to be cautious vs. autonomous), Learning Queue (one question ready if a natural moment arises).
 
-   Then read these sections of `user-data/memory/self-improvement.md`: Session Handoff (continuity from prior session), Communication Style (how to interact), Domain Confidence (where to be cautious vs. autonomous), Learning Queue (one question ready if a natural moment arises). Open everything else on demand by consulting INDEX.md. Don't summarize what you read unless asked.
+   Open everything else on demand by consulting INDEX.md. Don't summarize what you read unless asked. `user-data/memory/LINKS.md` and `user-data/memory/log.md` are on-demand only — do not load at startup.
 
 5. **Capture checkpoint** — after every response, run the capture signal scan from `system/capture-rules.md`. Scan for facts, preferences, decisions, corrections, updates, contradictions, and derived insights. Write captures to `user-data/memory/inbox.md` with tags (or direct-write for exceptions). This is not optional — it is the primary mechanism that keeps Robin's memory current. During complex multi-step work, buffer captures and batch-write at the next natural break.
 

@@ -49,17 +49,24 @@ On each session start, read and follow `system/startup.md`.
 | File / folder | Purpose |
 |------|---------|
 | `user-data/memory/INDEX.md` | Generated directory of topic files; load at startup to map the memory tree |
+| `user-data/memory/LINKS.md` | Cross-reference graph across memory files; on-demand only, not loaded at startup |
+| `user-data/memory/log.md` | Append-only record of wiki operations — ingests, lints, filings |
+| `user-data/memory/hot.md` | Rolling session context (last 3 sessions); loaded at startup for continuity |
 | `user-data/memory/profile/` | Who the user is — identity, personality, interests, people, goals, routines (one topic file per area) |
-| `user-data/memory/knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes |
-| `user-data/memory/events/` | Dated events — trips, attended events |
+| `user-data/memory/knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes, events |
+| `user-data/memory/knowledge/events/` | Dated events — trips, attended events |
+| `user-data/memory/knowledge/sources/` | Source summary pages created by the ingest operation |
+| `user-data/memory/knowledge/conversations/` | Conversation summaries created by the save-conversation operation |
 | `user-data/memory/tasks.md` | Active tasks grouped by category |
 | `user-data/memory/decisions.md` | Decision log (append-only) |
 | `user-data/memory/journal.md` | Dated reflections (append-only) |
 | `user-data/memory/self-improvement.md` | Corrections, patterns, session handoff, calibration |
 | `user-data/memory/inbox.md` | Quick capture for unclassified items (append-only) |
-| `artifacts/input/` | User-provided inputs (read only on explicit request) |
+| `user-data/sources/` | Raw source documents (immutable); ingested into the knowledge base |
+| `artifacts/input/` | User-provided inputs (ephemeral); during ingest, files move to `user-data/sources/` |
 | `artifacts/output/` | Generated outputs (drafts, exports, images) |
 | `user-data/state/` | Runtime state (session registry, Dream state, locks) |
+| `user-data/secrets/` | API keys and credentials (`.env`-style, gitignored) |
 | `system/operations/` | On-demand operational workflows |
 | `user-data/integrations.md` | Available external capabilities per platform |
 
@@ -83,6 +90,9 @@ On-demand workflows invoked by trigger phrases. Full list in `system/operations/
 | Receipt Tracking | "track my receipts", "find receipts" |
 | Todo Extraction | "extract todos", "what do I need to do from this" |
 | Monthly Financial | "monthly financial check-in", "month-end review" |
+| Ingest | "ingest this", "process this document", "add this to the wiki" |
+| Lint | "lint the wiki", "health check memory", "check memory health" |
+| Save Conversation | "save this conversation", "file this session" |
 | Dream | (automatic at session startup when eligible) |
 | System Maintenance | "system maintenance", "clean up the workspace" |
 | Quarterly Self-Assessment | "quarterly self-assessment", "how have you been doing" |

@@ -12,6 +12,9 @@
     "regenerate-operations-index": "node system/scripts/regenerate-operations-index.js",
     "regenerate-memory-index": "node system/scripts/regenerate-memory-index.js",
     "split-monoliths": "node system/scripts/split-monoliths.js",
+    "fetch-finances": "node system/scripts/fetch-lunch-money.js",
+    "analyze-finances": "node system/scripts/analyze-finances.js",
+    "regenerate-links": "node system/scripts/regenerate-links.js",
     "postinstall": "node system/scripts/setup.js"
   },
   "engines": {

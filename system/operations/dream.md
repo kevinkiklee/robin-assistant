@@ -58,6 +58,8 @@ Read these files:
 - `user-data/memory/tasks.md` — completed or stale items
 - `user-data/memory/self-improvement.md` — all sections (corrections, patterns, session handoff, calibration)
 - `user-data/memory/decisions.md` — decisions older than 30 days with no recorded outcome
+- `user-data/memory/hot.md` — recent session context (helps with routing accuracy)
+- `user-data/memory/log.md` — recent operations (know what was ingested/linted recently)
 
 ## Phase 2: Memory management
 
@@ -102,17 +104,27 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 Runs after all other phases. Maintains the memory tree structure.
 
-13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/lib/memory-index.js` with the threshold from `user-data/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md` (append-only logs read by date range), and top-level `knowledge.md` / `profile.md` if they still exist as monoliths (run `npm run split-monoliths` for those).
+13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/lib/memory-index.js` with the threshold from `user-data/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range), and top-level `knowledge.md` / `profile.md` if they still exist as monoliths (run `npm run split-monoliths` for those).
 
 14. **Empty-file cleanup** — any topic file that is empty (frontmatter only or no content) is deleted. Any topic folder that ends up empty is removed.
 
 15. **Index regeneration** — run `node system/scripts/regenerate-memory-index.js` to rebuild `user-data/memory/INDEX.md` from per-file frontmatter. Idempotent — exits clean if nothing changed.
+
+16. **Hot cache trim** — if `user-data/memory/hot.md` has more than 3 session entries (sections starting with `## Session —`), keep only the most recent 3 and remove older entries.
+
+17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
+
+18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
 
 ## Boundary rule
 
 Dream can read and write any topic file under `user-data/memory/` and the flat files (`tasks.md`, `decisions.md`, `journal.md`, `self-improvement.md`, `inbox.md`).
 
 Dream maintains `user-data/memory/INDEX.md` via `regenerate-memory-index.js` (Phase 4 step 15).
+
+Dream maintains `user-data/memory/LINKS.md` via `regenerate-links.js` when structural changes occurred (Phase 4 step 17).
+
+Dream trims `user-data/memory/hot.md` to a rolling window of 3 sessions (Phase 4 step 16).
 
 Dream manages its own `user-data/state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
 
@@ -124,7 +136,7 @@ Dream NEVER runs external commands or makes network requests.
 
 ### Default (silent)
 
-One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, split S topic files, regenerated INDEX."
+One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, split S topic files, trimmed hot cache, regenerated INDEX/LINKS."
 
 ### Escalation report
 
