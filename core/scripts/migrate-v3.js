@@ -56,7 +56,7 @@ export async function migrateV3(workspaceDir, { from }) {
   if (existsSync(arc)) {
     const tgt = join(workspaceDir, 'backup');
     mkdirSync(tgt, { recursive: true });
-    for (const f of readdirSync(arc)) cpSync(join(arc, f), join(tgt, f));
+    for (const f of readdirSync(arc)) cpSync(join(arc, f), join(tgt, f), { recursive: true });
     summary.copied.push('archive/ → backup/');
   }
 
