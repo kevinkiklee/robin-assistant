@@ -1,3 +1,8 @@
+---
+name: monthly-financial
+triggers: ["month-end review", "monthly financial"]
+description: Month-end financial review covering income reconciliation, recurring outflows, and budget variance.
+---
 # Protocol: Monthly Financial Check-In
 
 ## Triggers

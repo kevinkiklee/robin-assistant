@@ -1,3 +1,8 @@
+---
+name: meeting-prep
+triggers: ["prep for my meeting", "meeting prep"]
+description: Prepare for an upcoming meeting by gathering context, attendees, prior history, and likely talking points.
+---
 # Protocol: Meeting Prep
 
 ## Triggers

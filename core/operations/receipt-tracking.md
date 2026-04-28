@@ -1,3 +1,8 @@
+---
+name: receipt-tracking
+triggers: ["track my receipts", "receipt tracking"]
+description: Find and summarize receipts by vendor, time range, or category.
+---
 # Protocol: Receipt Tracking
 
 ## Triggers

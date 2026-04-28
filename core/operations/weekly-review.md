@@ -1,3 +1,8 @@
+---
+name: weekly-review
+triggers: ["weekly review"]
+description: End-of-week recap covering accomplishments, missed items, and the upcoming week's priorities.
+---
 # Protocol: Weekly Review
 
 ## Triggers

@@ -1,3 +1,8 @@
+---
+name: dream
+triggers: ["dream", "memory check", "daily maintenance"]
+description: Daily automatic maintenance that runs at session startup; routes inbox, promotes facts, prunes tasks, processes self-improvement signals, and reconciles indexes.
+---
 # Protocol: Dream
 
 Daily automatic maintenance that keeps Robin's memory organized and its behavior improving. Runs once per day at session startup.

@@ -1,3 +1,8 @@
+---
+name: subscription-audit
+triggers: ["what am I paying for", "subscription audit"]
+description: Audit recurring charges and subscriptions; surface candidates to cancel or renegotiate.
+---
 # Protocol: Subscription Audit
 
 ## Triggers

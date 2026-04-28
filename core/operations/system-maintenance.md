@@ -1,3 +1,8 @@
+---
+name: system-maintenance
+triggers: ["clean up the workspace", "system maintenance"]
+description: Weekly interactive review covering items that need user input; complements Dream's automated housekeeping.
+---
 # Protocol: System Maintenance
 
 Weekly interactive review. Covers things that need user input — Dream handles the daily automated housekeeping.

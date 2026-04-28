@@ -1,3 +1,8 @@
+---
+name: email-triage
+triggers: ["triage my inbox", "email triage", "go through my email"]
+description: Classify and process unread email; surface action items, route receipts, and queue follow-ups.
+---
 # Protocol: Email Triage
 
 ## Triggers

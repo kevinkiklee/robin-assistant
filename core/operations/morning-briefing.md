@@ -1,3 +1,8 @@
+---
+name: morning-briefing
+triggers: ["good morning", "brief me", "morning briefing"]
+description: Daily morning briefing covering calendar, weather, priorities, and any flagged items needing attention today.
+---
 # Protocol: Morning Briefing
 
 ## Triggers

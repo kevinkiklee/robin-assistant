@@ -1,3 +1,8 @@
+---
+name: quarterly-self-assessment
+triggers: ["how have you been doing", "quarterly review"]
+description: Quarterly review of self-improvement effectiveness, calibration accuracy, and pattern impact.
+---
 # Protocol: Quarterly Self-Assessment
 
 Every 3 months, assess whether self-improvement is working — not just logging activity.

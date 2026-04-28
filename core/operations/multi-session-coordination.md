@@ -1,3 +1,8 @@
+---
+name: multi-session-coordination
+triggers: []
+description: Detects concurrent sessions and coordinates handoff via file-based registration and lock acquisition.
+---
 # Protocol: Multi-Session Coordination
 
 The user may run multiple AI sessions concurrently. This protocol prevents data loss and conflicts using file-based coordination.
