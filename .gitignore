@@ -1,3 +1,11 @@
+# Personal data — never commit
+/user-data/
+/artifacts/
+/backup/
+
+# Internal design notes — local-only
+/docs/
+
 # Dependencies
 node_modules/
 
@@ -18,5 +26,5 @@ Thumbs.db
 # Worktrees
 .worktrees/
 
-# Dev scripts (not part of the published package)
+# Dev scripts (legacy)
 dev-setup.sh
