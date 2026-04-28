@@ -1,9 +1,31 @@
 # Changelog
 
-## [3.0.0] - unreleased
+## [3.0.0] - 2026-04-27
 
 ### Breaking changes
-(filled in throughout the implementation)
+- Distribution model changed from npm package (`npx robin-assistant init`) to git-clone. The repo IS the workspace. See README for new onboarding.
+- Layout: system files now under `core/`; personal data under `user-data/` (gitignored).
+- Protocols renamed to operations: `core/protocols/` → `core/operations/`.
+- `AGENTS.md` moved to repo root (per the AGENTS.md community spec).
+- `robin` CLI binary retired. Functionality exposed as `npm run <command>`: `backup`, `restore`, `reset`, `install-hooks`, `migrate`, `migrate-v3`.
+- `export` renamed to `backup`; `rollback` renamed to `restore` (now restores user-data from a backup tar.gz, not system files from an update backup).
+- `init` removed — `git clone` replaces it.
+- `update` removed — `git pull` is the update verb.
+- `Rule: Remote Exposure Guard` removed (remotes are now expected); replaced by gitignore + Node-based pre-commit hook.
+- `commander` runtime dependency dropped — repo has zero runtime deps.
+
+### New
+- Migration framework at `core/migrations/`. Drop a versioned migration file; it auto-applies on session start with a pre-migration backup.
+- Customization extension points: `user-data/custom-rules.md`, `user-data/operations/` (overlays `core/operations/`).
+- `artifacts/` directory: `artifacts/input/` for user-supplied files (not auto-read), `artifacts/output/` for AI-generated artifacts.
+- Auto-applied additive config schema migrations on session start (`lib/config-migrate.js`).
+- Generated root pointer files (`CLAUDE.md`, `.cursorrules`, `GEMINI.md`, `.windsurfrules`) from `core/scripts/lib/platforms.js`.
+- Auto-generated `core/operations/INDEX.md` from per-operation YAML frontmatter.
+- CHANGELOG-aware session-start notification (`lib/changelog-notify.js`).
+- Native Antigravity support (reads root `AGENTS.md`).
+
+### Migration from v2
+Run `npm run migrate-v3 -- --from <path-to-v2-workspace>` from a fresh v3 clone. Source workspace is left untouched. See `docs/superpowers/specs/2026-04-27-distribution-redesign-design.md` for full migration semantics.
 
 ---
 
