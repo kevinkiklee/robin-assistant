@@ -14,18 +14,21 @@ The repo *is* the workspace. You clone it, open it in your AI tool, and Robin is
 
 You don't say "remember this." You just talk. Robin watches the conversation for capturable signals — facts about you, recurring contacts, durable preferences, decisions, dated reflections — and writes them to the right file in `user-data/` in the same turn it answers you. The capture rules live in `system/capture-rules.md`; you can read and tune them.
 
-The memory is structured, not a chat log. Eight pillar files, each with a clear job:
+The memory is structured, not a chat log. Topic folders for content that grows over time, flat files for time-ordered logs, and a generated `INDEX.md` so Robin loads only what it needs.
 
-| File | Holds |
+| Path | Holds |
 |------|-------|
-| `profile.md` | Identity, preferences, goals, routines, the people in your life |
-| `knowledge.md` | Reference facts — vendors, doctors, locations, subscriptions |
+| `INDEX.md` | Generated directory of every memory file — read at session start to map what's where |
+| `profile/` | Identity, personality, interests, goals, routines, the people in your life (one file per area) |
+| `knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes |
+| `events/` | Dated events — trips, conferences, attended events |
 | `tasks.md` | Active tasks grouped by category |
 | `decisions.md` | Append-only log of significant decisions and their reasoning |
 | `journal.md` | Dated reflections and daily notes |
-| `inbox.md` | Quick-capture items waiting to be routed |
+| `inbox.md` | Quick-capture items waiting to be routed by Dream |
 | `self-improvement.md` | Corrections, patterns, calibration log |
-| `integrations.md` | Which integrations you've configured (email, calendar, etc.) |
+
+Topic files are split when they exceed `memory.split_threshold_lines` (default 200) at the next Dream cycle — the structure scales as content grows.
 
 ### It runs operations on demand
 
@@ -235,7 +238,7 @@ Pointer files are generated from `system/scripts/lib/platforms.js`. Adding a new
 
 ## Multi-session safety
 
-If you have Claude Code and Cursor open at the same time, both pointing at the same workspace, Robin uses file-based locks under `user-data/state/locks/` to coordinate writes to pillar files. Append-only files (`journal.md`, `decisions.md`, `inbox.md`) are safe to write concurrently; pillars (`profile.md`, etc.) take a lock first. Stale locks (>5 min old) are auto-cleared by Dream.
+If you have Claude Code and Cursor open at the same time, both pointing at the same workspace, Robin uses file-based locks under `user-data/state/locks/` to coordinate writes. Append-only files (`journal.md`, `decisions.md`, `inbox.md`) are safe to write concurrently; topic files under `profile/` and `knowledge/` take a lock first. Stale locks (>5 min old) are auto-cleared by Dream.
 
 ---
 

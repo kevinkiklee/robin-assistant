@@ -1,3 +1,6 @@
+---
+description: Corrections, preferences, session handoff, calibration
+---
 # Self-Improvement
 
 See `system/self-improvement-rules.md` for how to interpret each section.

@@ -138,16 +138,17 @@ Dream uses this table to route tagged inbox entries to their destination. The ta
 
 | Signal | Destination |
 |--------|------------|
-| Fact about the user (identity, preferences, goals, routines, people) | `user-data/memory/profile.md` (appropriate section) |
+| Fact about the user (identity, preferences, goals, routines, people) | `user-data/memory/profile/<topic>.md` (Dream picks topic via INDEX.md) |
 | Task or commitment (action items, deadlines, reminders) | `user-data/memory/tasks.md` |
-| Reference knowledge (vendors, medical, locations, financial facts) | `user-data/memory/knowledge.md` (appropriate section) |
+| Reference knowledge (vendors, medical, locations, financial facts) | `user-data/memory/knowledge/<topic>.md` (Dream picks topic via INDEX.md) |
 | Decision made (choice + reasoning) | `user-data/memory/decisions.md` |
 | Correction to the assistant (what you did wrong, what to do instead) | `user-data/memory/self-improvement.md` -> `## Corrections` |
 | Positive signal about Robin's approach (style, format, level of detail) | `user-data/memory/self-improvement.md` -> `## Preferences` |
 | Reflective observation or daily note | `user-data/memory/journal.md` |
+| Dated event (trip, conference, attended event) | `user-data/memory/events/<slug>.md` |
 | Everything else (unclear classification, fleeting thought) | `user-data/memory/inbox.md` |
 
-When Dream routes an entry from one file to another, the entry's ID stays the same — only the index entry moves between sidecar files.
+When Dream routes an entry from inbox into a topic file, it consults `user-data/memory/INDEX.md` to find the matching topic. If no topic file fits, Dream creates one with `description:` frontmatter and the next index regen picks it up.
 
 ## Derived-analysis auto-capture
 
@@ -197,9 +198,20 @@ When multiple captures arise from one message, write them in parallel if the pla
 
 ## Index maintenance
 
-After writing an entry to any data file, also append an index entry to the corresponding sidecar file at `user-data/memory/index/<file>.idx.md`:
+Each topic file under `user-data/memory/` carries YAML frontmatter declaring its description:
 
-1. Generate an entry ID in `YYYYMMDD-HHMM-<session><seq>` format and embed it in the source file (inline `<!-- id:... -->` for list items, comment line before block entries)
-2. Append to the sidecar index with: `id`, `domains` (from controlled vocabulary: work, personal, finance, health, learning, home, shopping), `tags` (lowercase, hyphen-separated, `firstname-lastname` for people), `related` (obvious connections only — Dream discovers subtler ones), `summary` (one line for append-only entries), `enriched: true`
+```yaml
+---
+description: Doctors, providers, medications, screenings, conditions
+---
+```
 
-If the index write fails, the source entry still stands — source files are always authoritative. Dream's integrity check reconciles on next run.
+`user-data/memory/INDEX.md` is generated from these descriptions by `system/scripts/regenerate-memory-index.js`. Dream regenerates INDEX.md at the end of every cycle.
+
+**Direct writes to existing topic files** require no INDEX update — only the file's content changes.
+
+**New invariant for inbox-routed content:** mid-session direct-writes do not create new topic files for facts and updates whose home doesn't already exist. Such observations go to `inbox.md` and Dream creates the destination file on the next cycle. This eliminates the stale-INDEX window for routing-driven file creation.
+
+**User-authored documents are exempt:** when the user (or Robin acting on the user's explicit request) authors a coherent new document — most commonly an event/trip file under `events/`, occasionally a derived analysis worth its own file — the file is created mid-session with `description:` frontmatter. The brief stale-INDEX window for these is acceptable because the user named the file explicitly.
+
+**Pointer IDs (`<!-- id:... -->`)** apply only to `inbox.md` for dedup and supersedes resolution. Other memory files do not carry inline pointer comments.

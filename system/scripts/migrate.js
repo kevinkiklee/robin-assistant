@@ -36,10 +36,11 @@ export async function runPendingMigrations(workspaceDir = process.cwd(), opts = 
   }
 
   const helpers = createHelpers(workspaceDir);
+  const migrationOpts = { interactive: opts.interactive ?? true };
   const result = { applied: [], would: [] };
   for (const m of pending) {
     try {
-      await m.up({ workspaceDir, helpers });
+      await m.up({ workspaceDir, helpers, opts: migrationOpts });
       log.push({ id: m.id, appliedAt: new Date().toISOString(), backup: backupPath });
       result.applied.push(m.id);
     } catch (err) {
@@ -54,7 +55,8 @@ export async function runPendingMigrations(workspaceDir = process.cwd(), opts = 
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dryRun = process.argv.includes('--dry-run');
-  const result = await runPendingMigrations(process.cwd(), { dryRun });
+  const ci = process.argv.includes('--ci') || process.env.CI === 'true';
+  const result = await runPendingMigrations(process.cwd(), { dryRun, interactive: !ci });
   if (dryRun) {
     console.log('Would apply:', result.would.join(', ') || '(none)');
   } else {

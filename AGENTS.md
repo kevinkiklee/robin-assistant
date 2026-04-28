@@ -46,11 +46,13 @@ On each session start, read and follow `system/startup.md`.
 
 ## Workspace Layout
 
-| File | Purpose |
+| File / folder | Purpose |
 |------|---------|
-| `user-data/memory/profile.md` | Who the user is — identity, personality, preferences, goals, people, routines |
+| `user-data/memory/INDEX.md` | Generated directory of topic files; load at startup to map the memory tree |
+| `user-data/memory/profile/` | Who the user is — identity, personality, interests, people, goals, routines (one topic file per area) |
+| `user-data/memory/knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes |
+| `user-data/memory/events/` | Dated events — trips, attended events |
 | `user-data/memory/tasks.md` | Active tasks grouped by category |
-| `user-data/memory/knowledge.md` | Reference facts — vendors, medical, locations, subscriptions |
 | `user-data/memory/decisions.md` | Decision log (append-only) |
 | `user-data/memory/journal.md` | Dated reflections (append-only) |
 | `user-data/memory/self-improvement.md` | Corrections, patterns, session handoff, calibration |

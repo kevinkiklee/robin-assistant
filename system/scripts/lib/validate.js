@@ -3,8 +3,14 @@ import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 
 const PILLAR_USER_FILES = [
-  'memory/profile.md', 'memory/knowledge.md', 'memory/tasks.md', 'memory/decisions.md',
-  'memory/journal.md', 'memory/inbox.md', 'memory/self-improvement.md', 'integrations.md',
+  'memory/INDEX.md',
+  'memory/profile/identity.md',
+  'memory/tasks.md',
+  'memory/decisions.md',
+  'memory/journal.md',
+  'memory/inbox.md',
+  'memory/self-improvement.md',
+  'integrations.md',
 ];
 
 export async function validateInDir(workspaceDir) {

@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "3.0.0",
   "initialized": false,
   "platform": null,
   "user": {
@@ -11,7 +11,7 @@
     "name": "Robin"
   },
   "integrations": [],
-  "indexing": {
-    "status": null
+  "memory": {
+    "split_threshold_lines": 200
   }
 }
