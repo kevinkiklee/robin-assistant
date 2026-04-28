@@ -69,7 +69,7 @@ Read these files:
    - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
    - Untagged entries: classify per `system/capture-rules.md` routing table.
    - Consult `user-data/memory/INDEX.md` to pick the destination topic file. Insert under the matching `## ` subsection if one exists.
-   - **Dream is the only writer that creates new topic files for inbox-routed content.** If no topic file fits, create one with `description:` frontmatter inferred from the entry; the next index regen picks it up.
+   - **Dream is the only writer that creates new topic files for inbox-routed content.** If no topic file fits, create one with `description:` and `type:` frontmatter inferred from the entry (see type vocabulary in `system/capture-rules.md`); the next index regen picks it up.
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE

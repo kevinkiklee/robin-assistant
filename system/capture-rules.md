@@ -222,15 +222,53 @@ When multiple captures arise from one message, write them in parallel if the pla
 
 ## Index maintenance
 
-Each topic file under `user-data/memory/` carries YAML frontmatter declaring its description:
+Each topic file under `user-data/memory/` carries YAML frontmatter:
 
 ```yaml
 ---
 description: Doctors, providers, medications, screenings, conditions
+type: topic
 ---
 ```
 
-`user-data/memory/INDEX.md` is generated from these descriptions by `system/scripts/regenerate-memory-index.js`. Dream regenerates INDEX.md at the end of every cycle.
+### Frontmatter fields
+
+| Field | Required | Values | Purpose |
+|-------|----------|--------|---------|
+| `description` | Yes | One-line string | INDEX.md generation, file discovery |
+| `type` | Yes | See type vocabulary below | Categorizes the file for operations |
+| `tags` | No | Inline array `[medical, labs]` | Search, lint scoping, filtering |
+| `related` | No | Inline array of relative paths | Semantic connections not captured by inline links |
+| `created` | No | YYYY-MM-DD | When the file was created |
+| `last_verified` | No | YYYY-MM-DD | Last time a human confirmed the content is current |
+| `ingested` | No | YYYY-MM-DD | When the source was ingested (source pages only) |
+| `origin` | No | Path or URL | Where the source came from (source pages only) |
+
+### Type vocabulary
+
+| Type | Meaning | Examples |
+|------|---------|---------|
+| `topic` | General knowledge or profile file (default) | identity.md, recipes.md, photography.md |
+| `entity` | A specific person, place, organization, or thing | hemonc-lee.md, home.md, parents-house.md |
+| `snapshot` | Point-in-time data that goes stale | health-snapshot.md, financial-snapshot.md |
+| `event` | A dated event | cali-may-2026.md, winter-photo-2025-12.md |
+| `source` | Source summary created by ingest | lab-report-2026-03.md |
+| `analysis` | Filed analysis from a query | q1-spending-analysis.md |
+| `conversation` | Filed conversation summary | wiki-design-session.md |
+| `reference` | Stable reference data (inventories, lists) | photo-gear-inventory.md, vendors.md |
+
+Types are set by migration 0004 (default `topic`) and refined by the user or Robin during conversation. Ingest and save-conversation set types automatically for their output files. Robin may suggest type changes during lint ("hemonc-lee.md looks like an entity, not a topic — want me to update?").
+
+### Type assignment guidance
+
+When creating new knowledge files mid-session:
+- Medical/legal/financial providers → `type: entity`
+- Specific places → `type: entity`
+- Inventories, lists, templates → `type: reference`
+- Point-in-time summaries → `type: snapshot`
+- Everything else → `type: topic`
+
+`user-data/memory/INDEX.md` is generated from `description` fields by `system/scripts/regenerate-memory-index.js`. Dream regenerates INDEX.md at the end of every cycle.
 
 **Direct writes to existing topic files** require no INDEX update — only the file's content changes.
 

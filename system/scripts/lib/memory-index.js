@@ -2,6 +2,17 @@ import { posix } from 'node:path';
 
 const FM_RE = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
 
+const INLINE_ARRAY_RE = /^\[(.+)\]$/;
+
+function parseValue(raw) {
+  const trimmed = raw.trim();
+  const arrMatch = trimmed.match(INLINE_ARRAY_RE);
+  if (arrMatch) {
+    return arrMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return trimmed;
+}
+
 export function parseFrontmatter(content) {
   const m = content.match(FM_RE);
   if (!m) return { frontmatter: {}, body: content };
@@ -9,15 +20,20 @@ export function parseFrontmatter(content) {
   for (const line of m[1].split('\n')) {
     const kv = line.match(/^([\w-]+):\s*(.*)$/);
     if (!kv) continue;
-    frontmatter[kv[1]] = kv[2].trim();
+    frontmatter[kv[1]] = parseValue(kv[2]);
   }
   return { frontmatter, body: m[2] };
+}
+
+function serializeValue(val) {
+  if (Array.isArray(val)) return `[${val.join(', ')}]`;
+  return String(val);
 }
 
 export function stringifyFrontmatter(frontmatter, body) {
   const keys = Object.keys(frontmatter);
   if (keys.length === 0) return body;
-  const lines = keys.map(k => `${k}: ${frontmatter[k]}`);
+  const lines = keys.map(k => `${k}: ${serializeValue(frontmatter[k])}`);
   return `---\n${lines.join('\n')}\n---\n${body}`;
 }
 

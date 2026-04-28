@@ -37,7 +37,7 @@ Scan forward references (markdown links) in all files within scope. Check that e
 
 ### 3. Stale claims
 
-Find facts with dates older than 6 months that haven't been re-verified by a recent source. Look for date patterns (YYYY-MM-DD, "as of", "last checked") in knowledge files.
+Find facts with dates older than 6 months that haven't been re-verified by a recent source. Look for date patterns (YYYY-MM-DD, "as of", "last checked") in knowledge files. Prioritize `type: snapshot` files — they're inherently time-sensitive and more likely to be stale than `type: topic` or `type: reference` files. Check `last_verified` frontmatter if present.
 
 ### 4. Orphan pages
 
@@ -47,7 +47,16 @@ Exclude: append-only files (inbox.md, journal.md, decisions.md, log.md), operati
 
 ### 5. Missing pages
 
-Identify entities or concepts mentioned repeatedly across files (3+ mentions) but lacking their own dedicated page. Suggest creation.
+Identify entities or concepts mentioned repeatedly across files (3+ mentions) but lacking their own dedicated page. Suggest creation with an appropriate type.
+
+### 5b. Type suggestions
+
+Check for files whose `type:` may be inaccurate based on content patterns:
+- Files named after a person or place that are `type: topic` → suggest `type: entity`
+- Files with point-in-time data that are `type: topic` → suggest `type: snapshot`
+- Files that are inventories or lists that are `type: topic` → suggest `type: reference`
+
+Present as suggestions, not issues — type refinement is optional.
 
 ### 6. Frontmatter gaps
 
