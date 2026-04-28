@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import {
   parseFrontmatter,
@@ -70,10 +70,34 @@ function splitMonolith(filePath, area, opts) {
   return emitted;
 }
 
+function relocateTrips(workspaceDir, memDir) {
+  const tripsDir = join(workspaceDir, 'user-data/trips');
+  if (!existsSync(tripsDir)) return;
+  const eventsDir = join(memDir, 'events');
+  mkdirSync(eventsDir, { recursive: true });
+  for (const name of readdirSync(tripsDir)) {
+    const src = join(tripsDir, name);
+    const dst = join(eventsDir, name);
+    renameSync(src, dst);
+    if (name.endsWith('.md')) {
+      const content = readFileSync(dst, 'utf-8');
+      const { frontmatter, body } = parseFrontmatter(content);
+      if (!frontmatter.description) {
+        const titleMatch = body.match(/^#\s+(.+)$/m);
+        const title = titleMatch ? titleMatch[1] : name.replace(/\.md$/, '');
+        const desc = inferDescription(title, body) || title;
+        writeFileSync(dst, stringifyFrontmatter({ description: desc }, body));
+      }
+    }
+  }
+  rmSync(tripsDir, { recursive: true, force: true });
+}
+
 export async function up({ workspaceDir, helpers, opts = {} }) {
   const interactive = opts.interactive ?? true;
   const memDir = join(workspaceDir, 'user-data/memory');
 
   splitMonolith(join(memDir, 'knowledge.md'), 'knowledge', { interactive });
   splitMonolith(join(memDir, 'profile.md'), 'profile', { interactive });
+  relocateTrips(workspaceDir, memDir);
 }
