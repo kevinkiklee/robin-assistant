@@ -10,6 +10,8 @@
     "reset": "node system/scripts/reset.js",
     "regenerate-pointers": "node system/scripts/regenerate-pointers.js",
     "regenerate-operations-index": "node system/scripts/regenerate-operations-index.js",
+    "regenerate-memory-index": "node system/scripts/regenerate-memory-index.js",
+    "split-monoliths": "node system/scripts/split-monoliths.js",
     "postinstall": "node system/scripts/setup.js"
   },
   "engines": {

@@ -13,26 +13,16 @@ function setupFixture() {
   mkdirSync(join(ud, 'trips'), { recursive: true });
   mkdirSync(join(ud, 'state/locks'), { recursive: true });
 
-  // Pre-existing flat memory files (mimicking real layout where domain headings
-  // are level-2 with smaller level-2 sub-sections under them)
   writeFileSync(join(ud, 'memory/knowledge.md'), [
     '# Knowledge',
     '',
     '## Locations',
     '',
-    '- 123 Main St — home address',
-    '- 456 Park Ave — parents',
+    '- 123 Main St — home <!-- id:20260427-0000-mig001 -->',
     '',
     '## Medical',
     '',
-    '- Dr. A — primary care',
-    '- Dr. B — dentist',
-    '- Dr. C — dermatology',
-    '',
-    '## Recipes',
-    '',
-    '- Recipe X — pasta carbonara',
-    '- Recipe Y — chicken tikka',
+    '- Dr. A — primary care <!-- id:20260427-0000-mig002 -->',
   ].join('\n') + '\n');
 
   writeFileSync(join(ud, 'memory/profile.md'), [
@@ -41,21 +31,13 @@ function setupFixture() {
     '## Identity',
     '',
     '- Name: Test',
-    '- Location: NYC',
-    '- Age: 30',
-    '',
-    '## Routines',
-    '',
-    '- Morning: walk',
-    '- Evening: read',
-    '- Weekly: gym Tu/Th',
   ].join('\n') + '\n');
 
   writeFileSync(join(ud, 'memory/decisions.md'), '# Decisions\n');
   writeFileSync(join(ud, 'memory/journal.md'), '# Journal\n');
   writeFileSync(join(ud, 'memory/tasks.md'), '# Tasks\n');
   writeFileSync(join(ud, 'memory/self-improvement.md'), '# Self-Improvement\n');
-  writeFileSync(join(ud, 'memory/inbox.md'), '# Inbox\n');
+  writeFileSync(join(ud, 'memory/inbox.md'), '# Inbox\n\n- [fact] x <!-- id:20260427-0000-cc01 -->\n');
 
   writeFileSync(join(ud, 'memory/index/knowledge.idx.md'), '# stale index\n');
 
@@ -72,37 +54,83 @@ function setupFixture() {
 
 test('migration scaffold exposes id and description', () => {
   assert.equal(migration.id, '0003-flatten-memory');
-  assert.match(migration.description, /Flatten memory/);
+  assert.match(migration.description, /Drop sidecar/);
 });
 
-test('migration runs with non-interactive defaults — full integration', async () => {
+test('migration preserves knowledge.md and profile.md as monoliths with frontmatter', async () => {
   const { root, ud } = setupFixture();
   const helpers = createHelpers(root);
   await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
 
-  // Sidecars deleted
+  // Monoliths preserved (Phase 1 — no auto-split)
+  assert.ok(existsSync(join(ud, 'memory/knowledge.md')));
+  assert.ok(existsSync(join(ud, 'memory/profile.md')));
+  // No topic folders auto-created
+  assert.equal(existsSync(join(ud, 'memory/knowledge')), false);
+  assert.equal(existsSync(join(ud, 'memory/profile')), false);
+  // Frontmatter added
+  const k = readFileSync(join(ud, 'memory/knowledge.md'), 'utf-8');
+  assert.match(k, /^---\ndescription:.+monolith.+split-monoliths/);
+  const p = readFileSync(join(ud, 'memory/profile.md'), 'utf-8');
+  assert.match(p, /^---\ndescription:/);
+  // Inline pointer IDs stripped from monoliths (sidecar is gone)
+  assert.equal(k.includes('mig001'), false);
+  assert.equal(k.includes('mig002'), false);
+  // Inbox pointer IDs preserved
+  const inbox = readFileSync(join(ud, 'memory/inbox.md'), 'utf-8');
+  assert.match(inbox, /id:20260427-0000-cc01/);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('migration deletes sidecar index tree', async () => {
+  const { root, ud } = setupFixture();
+  const helpers = createHelpers(root);
+  await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
   assert.equal(existsSync(join(ud, 'memory/index')), false);
-  // trips relocated
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('migration relocates trips/ to memory/events/ with frontmatter', async () => {
+  const { root, ud } = setupFixture();
+  const helpers = createHelpers(root);
+  await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
+
   assert.equal(existsSync(join(ud, 'trips')), false);
   assert.ok(existsSync(join(ud, 'memory/events/sample-2026.md')));
   assert.ok(existsSync(join(ud, 'memory/events/_template.md')));
-  // Old monoliths gone
-  assert.equal(existsSync(join(ud, 'memory/knowledge.md')), false);
-  assert.equal(existsSync(join(ud, 'memory/profile.md')), false);
-  // New topic files present
-  assert.ok(existsSync(join(ud, 'memory/knowledge/locations.md')));
-  assert.ok(existsSync(join(ud, 'memory/knowledge/medical.md')));
-  assert.ok(existsSync(join(ud, 'memory/knowledge/recipes.md')));
-  assert.ok(existsSync(join(ud, 'memory/profile/identity.md')));
-  assert.ok(existsSync(join(ud, 'memory/profile/routines.md')));
-  // INDEX.md generated and includes the new files
-  const indexContent = readFileSync(join(ud, 'memory/INDEX.md'), 'utf-8');
-  assert.match(indexContent, /knowledge\/medical\.md/);
-  assert.match(indexContent, /profile\/identity\.md/);
-  assert.match(indexContent, /events\/sample-2026\.md/);
-  // Flat files retain frontmatter
-  const inboxContent = readFileSync(join(ud, 'memory/inbox.md'), 'utf-8');
-  assert.match(inboxContent, /^---\ndescription:/);
+  const sample = readFileSync(join(ud, 'memory/events/sample-2026.md'), 'utf-8');
+  assert.match(sample, /^---\ndescription:/);
 
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('migration adds frontmatter to flat files and generates INDEX.md', async () => {
+  const { root, ud } = setupFixture();
+  const helpers = createHelpers(root);
+  await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
+
+  for (const name of ['inbox.md', 'decisions.md', 'journal.md', 'tasks.md', 'self-improvement.md']) {
+    const content = readFileSync(join(ud, 'memory', name), 'utf-8');
+    assert.match(content, /^---\ndescription:/, `${name} should have frontmatter`);
+  }
+  assert.ok(existsSync(join(ud, 'memory/INDEX.md')));
+  const indexContent = readFileSync(join(ud, 'memory/INDEX.md'), 'utf-8');
+  assert.match(indexContent, /knowledge\.md/);
+  assert.match(indexContent, /profile\.md/);
+  assert.match(indexContent, /events\/sample-2026\.md/);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('migration is idempotent on already-migrated frontmatter', async () => {
+  const { root, ud } = setupFixture();
+  const helpers = createHelpers(root);
+  await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
+  const before = readFileSync(join(ud, 'memory/knowledge.md'), 'utf-8');
+  // Re-run: no error, content unchanged
+  await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
+  const after = readFileSync(join(ud, 'memory/knowledge.md'), 'utf-8');
+  assert.equal(after, before);
   rmSync(root, { recursive: true, force: true });
 });
