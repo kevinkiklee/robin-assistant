@@ -13,7 +13,7 @@ If a file with the same name exists in both, the `user-data/` version takes prec
 
 File: `core/operations/dream.md`
 Triggers: "dream", "memory check", "daily maintenance"
-Description: Daily automatic maintenance that runs at session startup; routes inbox, promotes facts, prunes tasks, processes self-improvement signals, and reconciles indexes.
+Description: Daily automatic maintenance that runs at session startup; runs startup-check pre-flight, then routes inbox, promotes facts, prunes tasks, processes self-improvement signals, and reconciles indexes.
 
 ### email-triage
 

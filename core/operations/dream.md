@@ -1,11 +1,26 @@
 ---
 name: dream
 triggers: ["dream", "memory check", "daily maintenance"]
-description: Daily automatic maintenance that runs at session startup; routes inbox, promotes facts, prunes tasks, processes self-improvement signals, and reconciles indexes.
+description: Daily automatic maintenance that runs at session startup; runs startup-check pre-flight, then routes inbox, promotes facts, prunes tasks, processes self-improvement signals, and reconciles indexes.
 ---
 # Protocol: Dream
 
 Daily automatic maintenance that keeps Robin's memory organized and its behavior improving. Runs once per day at session startup.
+
+## Pre-flight
+
+Before any Dream phase runs, invoke `node core/scripts/startup-check.js` and read its output line-by-line.
+
+- On any line starting with `FATAL:`, surface the message to the user and abort Dream — do not proceed to the eligibility check or any phase.
+- On `INFO:` and `WARN:` lines, include them in your one-line summary or escalation report at the end of the run.
+
+The startup check performs limited auto-repair before reporting:
+- **Skeleton sync** — files present in `core/skeleton/` but missing from `user-data/` are copied automatically; the new paths are reported as `INFO: new files from upstream: ...`.
+- **Stale lock cleanup** — locks in `user-data/state/locks/` older than 5 minutes are cleared automatically; cleared locks are reported as `INFO: cleared stale lock: ...`.
+
+Anything outside that scope (corrupted config, failed migrations, validation failures, missing core files) is reported but NOT auto-repaired — it surfaces as `WARN:` or `FATAL:` for the user to address.
+
+After pre-flight succeeds, continue with the eligibility check below.
 
 Two jobs: **memory management** (route, promote, and prune stored facts) and **self-improvement** (turn corrections into patterns, update calibration, clean up handoff notes).
 
