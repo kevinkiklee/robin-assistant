@@ -67,7 +67,6 @@ Examples:
 | `[task]` | `user-data/tasks.md` |
 | `[update]` | `user-data/profile.md` or `user-data/knowledge.md` (supersedes existing entry) |
 | `[derived]` | Depends on content (Dream classifies) |
-| `[trip]` | `user-data/trips/` |
 | `[journal]` | `user-data/journal.md` |
 | `[?]` | Unclassified — Dream treats as untagged, classifies from content |
 
@@ -90,7 +89,6 @@ Update entries should include an optional `(supersedes: <hint>)` describing what
 These skip inbox and go to the destination file immediately:
 
 - **Corrections** — `user-data/self-improvement.md` → `## Corrections`. The assistant needs to learn from them this session, not next Dream cycle.
-- **Trip auto-creation** — already has its own protocol below, goes direct to `user-data/trips/`.
 - **Explicit "remember this"** — user asked directly, so route to the confident destination and confirm.
 - **Updates that contradict loaded context** — if the assistant knows the old fact is in a file it already read (e.g., `user-data/profile.md` loaded at startup), update it in place now. Don't wait for Dream.
 - **Derived-analysis findings** — the assistant just performed the analysis and knows exactly where findings belong. Follow the derived-analysis auto-capture rules below.
@@ -147,16 +145,15 @@ Dream uses this table to route tagged inbox entries to their destination. The ta
 | Correction to the assistant (what you did wrong, what to do instead) | `user-data/self-improvement.md` -> `## Corrections` |
 | Positive signal about Robin's approach (style, format, level of detail) | `user-data/self-improvement.md` -> `## Preferences` |
 | Reflective observation or daily note | `user-data/journal.md` |
-| Trip details (dates, flights, lodging, itinerary, packing) | `user-data/trips/<slug>.md` |
 | Everything else (unclear classification, fleeting thought) | `user-data/inbox.md` |
 
 When Dream routes an entry from one file to another, the entry's ID stays the same — only the index entry moves between sidecar files.
 
 ## Derived-analysis auto-capture
 
-When you produce a multi-step derivation — a user profile, gap analysis, pattern detection, recurring-spot inventory, location map, trip log built from data, etc. — extract the durable insights and capture them in the same turn that you surface the analysis. Don't wait for the user to ask "save that."
+When you produce a multi-step derivation — a user profile, gap analysis, pattern detection, recurring-spot inventory, location map, etc. — extract the durable insights and capture them in the same turn that you surface the analysis. Don't wait for the user to ask "save that."
 
-Same rule as Trip auto-creation, applied to derivations: if the result is worth surfacing in the response, the durable parts are worth persisting.
+If the result is worth surfacing in the response, the durable parts are worth persisting.
 
 Extract and route:
 
@@ -172,17 +169,7 @@ Two constraints:
 - Capture files hold the **durable distillation**, not the full analysis. They point to the artifact path for the long form.
 - If a finding overlaps with an existing entry, update in place. Don't create near-duplicates.
 
-This is the same silent-competence default as Trip auto-creation: the structure should already exist when the user asks "did you save that?"
-
-## Trip auto-creation
-
-When the user mentions an upcoming trip with at least a destination AND a rough date window — even casually, even as part of another question — create `user-data/trips/<slug>.md` immediately, same turn, silently. Slug format: `<destination>-<month>-<year>` (e.g., `cali-may-2026`, `tokyo-oct-2026`).
-
-Seed the file with sections: Overview, Logistics (Flights / Lodging / Ground transport), Itinerary table covering the full date range, Photography (if relevant to the user), Open questions / TODO, Notes. Populate with whatever is known; leave the rest as `_Not yet booked_` or `_Add as trip details surface._`.
-
-Also keep the one-line trip pointer in `user-data/profile.md` under the relevant Travel section so it surfaces in briefings.
-
-Don't wait for the user to ask for a trip file. The point is silent competence — the structure should already exist when they need it.
+The point is silent competence — the structure should already exist when the user asks "did you save that?"
 
 ## Privacy (immutable)
 
@@ -213,7 +200,6 @@ When multiple captures arise from one message, write them in parallel if the pla
 After writing an entry to any data file, also append an index entry to the corresponding sidecar file at `user-data/index/<file>.idx.md`:
 
 1. Generate an entry ID in `YYYYMMDD-HHMM-<session><seq>` format and embed it in the source file (inline `<!-- id:... -->` for list items, comment line before block entries)
-2. Append to the sidecar index with: `id`, `domains` (from controlled vocabulary: work, personal, finance, health, learning, home, shopping, travel), `tags` (lowercase, hyphen-separated, `firstname-lastname` for people), `related` (obvious connections only — Dream discovers subtler ones), `summary` (one line for append-only entries), `enriched: true`
-3. For trip auto-creation, also append to `user-data/index/trips.idx.md`
+2. Append to the sidecar index with: `id`, `domains` (from controlled vocabulary: work, personal, finance, health, learning, home, shopping), `tags` (lowercase, hyphen-separated, `firstname-lastname` for people), `related` (obvious connections only — Dream discovers subtler ones), `summary` (one line for append-only entries), `enriched: true`
 
 If the index write fails, the source entry still stands — source files are always authoritative. Dream's integrity check reconciles on next run.

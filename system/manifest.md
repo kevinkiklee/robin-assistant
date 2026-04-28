@@ -33,10 +33,9 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/scripts/backup.js` | Snapshot `user-data/` into `backup/`. |
 | `system/scripts/restore.js` | Restore `user-data/` from a `backup/` snapshot. |
 | `system/scripts/reset.js` | Wipe `user-data/` (destructive — backup first). |
-| `system/scripts/migrate.js` | Apply pending migrations from `system/migrations/`. |
-| `system/scripts/migrate-v3.js` | One-shot migration from v2 layout to v3 layout. |
+| `system/scripts/migrate.js` | Apply pending migrations from `system/migrations/` (auto-runs on session start). |
 | `system/scripts/migrate-index.js` | Index migration helper. |
-| `system/scripts/install-hooks.js` | Install the `pre-commit` hook into `.git/hooks/`. |
+| `system/scripts/install-hooks.js` | Install the `pre-commit` hook into `.git/hooks/` (auto-runs on `npm install`). |
 | `system/scripts/pre-commit-hook.js` | Pre-commit hook source — refuses to commit `user-data/` files. |
 | `system/scripts/regenerate-pointers.js` | Regenerate platform pointer files from `platforms.js`. |
 | `system/scripts/regenerate-operations-index.js` | Regenerate `system/operations/INDEX.md` from frontmatter. |
@@ -59,7 +58,6 @@ User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit
 | `user-data/inbox.md` | Quick capture for unclassified items (append-only). |
 | `user-data/integrations.md` | Available external capabilities per platform. |
 | `user-data/custom-rules.md` | Optional. User-defined behavioral additions; loaded at session start. |
-| `user-data/trips/` | One file per trip (`<destination>-<month>-<year>.md`). |
 | `user-data/state/` | Runtime state — session registry, Dream state, locks. |
 | `user-data/state/sessions.md` | Active session registry. |
 | `user-data/state/dream-state.md` | Last Dream cycle timestamp and bookkeeping. |

@@ -55,7 +55,6 @@ On each session start, read and follow `system/startup.md`.
 | `user-data/journal.md` | Dated reflections (append-only) |
 | `user-data/self-improvement.md` | Corrections, patterns, session handoff, calibration |
 | `user-data/inbox.md` | Quick capture for unclassified items (append-only) |
-| `user-data/trips/` | One file per trip — logistics, itinerary, photography plans, packing |
 | `artifacts/input/` | User-provided inputs (read only on explicit request) |
 | `artifacts/output/` | Generated outputs (drafts, exports, images) |
 | `user-data/state/` | Runtime state (session registry, Dream state, locks) |
