@@ -29,7 +29,7 @@ Drop a versioned file into `system/migrations/` named `<NNNN>-<short-description
 ```javascript
 // system/migrations/0007-rename-knowledge-to-reference.js
 export const id = '0007-rename-knowledge-to-reference';
-export const description = 'Rename user-data/knowledge.md to user-data/reference.md';
+export const description = 'Rename user-data/memory/knowledge.md to user-data/reference.md';
 
 export async function up({ workspaceDir, helpers }) {
   await helpers.renameFile('knowledge.md', 'reference.md');
@@ -78,7 +78,7 @@ Add an entry to `system/scripts/lib/platforms.js`:
 ```javascript
 'newtool': {
   pointerFile: '.newtoolrules',  // or null if it reads AGENTS.md natively
-  pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/inbox.md with tags.\n',
+  pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/inbox.md with tags.\n',
   nativeIntegrations: {},
 },
 ```

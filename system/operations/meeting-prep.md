@@ -29,8 +29,8 @@ Read `user-data/integrations.md` for storage status.
 
 ### 3. Check workspace
 
-Read `user-data/knowledge.md` for any vendor/contact/topic matching the meeting subject.
-Read `user-data/journal.md` and `user-data/profile.md` for prior context.
+Read `user-data/memory/knowledge.md` for any vendor/contact/topic matching the meeting subject.
+Read `user-data/memory/journal.md` and `user-data/memory/profile.md` for prior context.
 
 ## Output
 

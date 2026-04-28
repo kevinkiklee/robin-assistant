@@ -16,15 +16,15 @@ description: Extract action items from a forwarded email, message, or document a
 2. Identify explicit asks ("can you", "please", "we need", "by [date]").
 3. Identify implicit obligations (commitments user made, follow-ups owed).
 4. For each, classify:
-   - **Action item** -> add to appropriate section in `user-data/tasks.md`
-   - **FYI / context** -> note in `user-data/journal.md` if useful for future sessions
-   - **Decision needed** -> create entry in `user-data/decisions.md`
+   - **Action item** -> add to appropriate section in `user-data/memory/tasks.md`
+   - **FYI / context** -> note in `user-data/memory/journal.md` if useful for future sessions
+   - **Decision needed** -> create entry in `user-data/memory/decisions.md`
 5. Extract: task description, due date if mentioned, priority based on tone/sender.
 
 ## Output
 
 List of extracted items with:
-- What section of `user-data/tasks.md` it goes into
+- What section of `user-data/memory/tasks.md` it goes into
 - Proposed task wording
 - Due date if any
 - Priority

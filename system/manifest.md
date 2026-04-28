@@ -48,19 +48,19 @@ User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit
 | Path | Purpose |
 |------|---------|
 | `user-data/robin.config.json` | User name, timezone, email, assistant name, indexing status. |
-| `user-data/profile.md` | Identity, personality, preferences, goals, people, routines. |
-| `user-data/tasks.md` | Active tasks grouped by category. |
-| `user-data/knowledge.md` | Reference facts — vendors, medical, locations, subscriptions. |
-| `user-data/decisions.md` | Decision log (append-only). |
-| `user-data/journal.md` | Dated reflections (append-only). |
-| `user-data/self-improvement.md` | Corrections, patterns, session handoff, calibration log. |
-| `user-data/inbox.md` | Quick capture for unclassified items (append-only). |
+| `user-data/memory/profile.md` | Identity, personality, preferences, goals, people, routines. |
+| `user-data/memory/tasks.md` | Active tasks grouped by category. |
+| `user-data/memory/knowledge.md` | Reference facts — vendors, medical, locations, subscriptions. |
+| `user-data/memory/decisions.md` | Decision log (append-only). |
+| `user-data/memory/journal.md` | Dated reflections (append-only). |
+| `user-data/memory/self-improvement.md` | Corrections, patterns, session handoff, calibration log. |
+| `user-data/memory/inbox.md` | Quick capture for unclassified items (append-only). |
 | `user-data/integrations.md` | Available external capabilities per platform. |
 | `user-data/custom-rules.md` | Optional. User-defined behavioral additions; loaded at session start. |
 | `user-data/state/` | Runtime state — session registry, Dream state, locks. |
 | `user-data/state/sessions.md` | Active session registry. |
 | `user-data/state/dream-state.md` | Last Dream cycle timestamp and bookkeeping. |
-| `user-data/index/` | Sidecar index files (`<file>.idx.md`). |
+| `user-data/memory/index/` | Sidecar index files (`<file>.idx.md`). |
 | `user-data/operations/` | Optional. User-defined or overriding operations; precedence over `system/operations/`. |
 
 ## Artifacts (`artifacts/`)

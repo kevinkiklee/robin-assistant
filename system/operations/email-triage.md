@@ -20,7 +20,7 @@ Read `user-data/integrations.md` for email status.
 2. For each thread, classify:
    - **Action required** — needs response or task. Suggest a todo + draft response if quick.
    - **FYI / read later** — informational. Note key point.
-   - **Receipt / billing** — extract amount, vendor, date. Log to `user-data/knowledge.md` -> `## Subscriptions` if recurring.
+   - **Receipt / billing** — extract amount, vendor, date. Log to `user-data/memory/knowledge.md` -> `## Subscriptions` if recurring.
    - **Newsletter / promo** — note if anything actionable, suggest unsubscribe if low value.
    - **Spam / junk** — flag for cleanup.
 3. Group output by category. Within "Action required," sort by urgency.

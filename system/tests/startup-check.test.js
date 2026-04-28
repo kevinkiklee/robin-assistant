@@ -7,14 +7,14 @@ import { join } from 'node:path';
 
 function repo(populated = true) {
   const root = mkdtempSync(join(tmpdir(), 'robin-su-'));
-  mkdirSync(join(root, 'system/skeleton'), { recursive: true });
+  mkdirSync(join(root, 'system/skeleton/memory'), { recursive: true });
   mkdirSync(join(root, 'system/migrations'));
-  writeFileSync(join(root, 'system/skeleton/profile.md'), '# Profile\n');
+  writeFileSync(join(root, 'system/skeleton/memory/profile.md'), '# Profile\n');
   writeFileSync(join(root, 'system/skeleton/robin.config.json'), '{"version":"3.0.0"}');
   writeFileSync(join(root, 'system/CHANGELOG.md'), '## [3.0.0]\n');
   if (populated) {
-    mkdirSync(join(root, 'user-data'));
-    writeFileSync(join(root, 'user-data/profile.md'), '# Profile\n');
+    mkdirSync(join(root, 'user-data/memory'), { recursive: true });
+    writeFileSync(join(root, 'user-data/memory/profile.md'), '# Profile\n');
     writeFileSync(join(root, 'user-data/robin.config.json'), '{"version":"3.0.0"}');
   }
   return root;

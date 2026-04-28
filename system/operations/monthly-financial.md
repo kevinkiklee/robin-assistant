@@ -12,10 +12,10 @@ description: Month-end financial review covering income reconciliation, recurrin
 ## Steps
 
 1. **Income reconciliation** — paychecks landed as expected? Any vesting events this month?
-2. **Recurring outflows** — verify against `user-data/knowledge.md` -> `## Subscriptions`.
+2. **Recurring outflows** — verify against `user-data/memory/knowledge.md` -> `## Subscriptions`.
 3. **Variable spending** — use receipt-tracking and subscription-audit protocols if email is available. Otherwise ask the user for a spending summary.
 4. **Account balances** — ask the user for current balances across accounts (checking, savings, investment, retirement, HSA).
-5. **Debt progress** — review any outstanding balances tracked in `user-data/knowledge.md`.
+5. **Debt progress** — review any outstanding balances tracked in `user-data/memory/knowledge.md`.
 6. **Tax check** — any estimated tax due this quarter? Withholding on track?
 7. **Net worth delta** — month-over-month change.
 
@@ -28,4 +28,4 @@ description: Month-end financial review covering income reconciliation, recurrin
 
 ## After
 
-Update `user-data/knowledge.md` with any new financial facts. Log the review in `user-data/journal.md`.
+Update `user-data/memory/knowledge.md` with any new financial facts. Log the review in `user-data/memory/journal.md`.

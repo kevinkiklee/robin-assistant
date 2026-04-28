@@ -26,11 +26,11 @@ Read `user-data/integrations.md` for email status.
 
 ### 3. Cross-reference
 
-Read `user-data/knowledge.md` -> `## Subscriptions` for previously tracked charges.
+Read `user-data/memory/knowledge.md` -> `## Subscriptions` for previously tracked charges.
 
 ### 4. Flag
 
-- Charges not in `user-data/knowledge.md`
+- Charges not in `user-data/memory/knowledge.md`
 - Mystery charges (unknown or unexpected)
 - Duplicates
 - Forgotten subscriptions (not used recently)
@@ -41,4 +41,4 @@ Read `user-data/knowledge.md` -> `## Subscriptions` for previously tracked charg
 
 ## After audit
 
-Suggest cancellations. Update `user-data/knowledge.md` -> `## Subscriptions` with confirmed recurring charges.
+Suggest cancellations. Update `user-data/memory/knowledge.md` -> `## Subscriptions` with confirmed recurring charges.

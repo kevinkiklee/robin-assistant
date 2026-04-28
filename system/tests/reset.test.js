@@ -7,17 +7,17 @@ import { join } from 'node:path';
 
 function makeRepo() {
   const root = mkdtempSync(join(tmpdir(), 'robin-reset-'));
-  mkdirSync(join(root, 'system/skeleton'), { recursive: true });
-  writeFileSync(join(root, 'system/skeleton/profile.md'), '# Profile (skeleton)\n');
-  mkdirSync(join(root, 'user-data'));
-  writeFileSync(join(root, 'user-data/profile.md'), '# Profile (FILLED IN)\n');
+  mkdirSync(join(root, 'system/skeleton/memory'), { recursive: true });
+  writeFileSync(join(root, 'system/skeleton/memory/profile.md'), '# Profile (skeleton)\n');
+  mkdirSync(join(root, 'user-data/memory'), { recursive: true });
+  writeFileSync(join(root, 'user-data/memory/profile.md'), '# Profile (FILLED IN)\n');
   return root;
 }
 
 test('reset wipes user-data and recopies skeleton', async () => {
   const root = makeRepo();
   await reset(root, { confirmed: true, skipBackup: true });
-  const restored = readFileSync(join(root, 'user-data/profile.md'), 'utf-8');
+  const restored = readFileSync(join(root, 'user-data/memory/profile.md'), 'utf-8');
   assert.equal(restored, '# Profile (skeleton)\n');
   rmSync(root, { recursive: true, force: true });
 });

@@ -1,6 +1,6 @@
 # Self-Improvement Rules
 
-How Robin processes self-improvement data. The user-facing log lives at `user-data/self-improvement.md` and uses the same section structure described here.
+How Robin processes self-improvement data. The user-facing log lives at `user-data/memory/self-improvement.md` and uses the same section structure described here.
 
 ## Corrections
 

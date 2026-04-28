@@ -25,14 +25,14 @@ Read `user-data/integrations.md` for email status.
 
 ### 3. Tasks
 
-Read `user-data/tasks.md`. Collect:
+Read `user-data/memory/tasks.md`. Collect:
 - Items due today
 - Overdue items
 - Top high-priority pending items
 
 ### 4. Context
 
-Read `user-data/self-improvement.md` (session handoff section) for active context from prior sessions.
+Read `user-data/memory/self-improvement.md` (session handoff section) for active context from prior sessions.
 
 ### 5. Compose briefing
 

@@ -48,13 +48,13 @@ On each session start, read and follow `system/startup.md`.
 
 | File | Purpose |
 |------|---------|
-| `user-data/profile.md` | Who the user is — identity, personality, preferences, goals, people, routines |
-| `user-data/tasks.md` | Active tasks grouped by category |
-| `user-data/knowledge.md` | Reference facts — vendors, medical, locations, subscriptions |
-| `user-data/decisions.md` | Decision log (append-only) |
-| `user-data/journal.md` | Dated reflections (append-only) |
-| `user-data/self-improvement.md` | Corrections, patterns, session handoff, calibration |
-| `user-data/inbox.md` | Quick capture for unclassified items (append-only) |
+| `user-data/memory/profile.md` | Who the user is — identity, personality, preferences, goals, people, routines |
+| `user-data/memory/tasks.md` | Active tasks grouped by category |
+| `user-data/memory/knowledge.md` | Reference facts — vendors, medical, locations, subscriptions |
+| `user-data/memory/decisions.md` | Decision log (append-only) |
+| `user-data/memory/journal.md` | Dated reflections (append-only) |
+| `user-data/memory/self-improvement.md` | Corrections, patterns, session handoff, calibration |
+| `user-data/memory/inbox.md` | Quick capture for unclassified items (append-only) |
 | `artifacts/input/` | User-provided inputs (read only on explicit request) |
 | `artifacts/output/` | Generated outputs (drafts, exports, images) |
 | `user-data/state/` | Runtime state (session registry, Dream state, locks) |
@@ -63,7 +63,7 @@ On each session start, read and follow `system/startup.md`.
 
 ## Capture
 
-After every response, scan for capturable signals: facts, preferences, decisions, corrections, updates, contradictions. Write captures to `user-data/inbox.md` with tags — Dream routes them. Direct-write corrections and explicit saves. See `system/capture-rules.md` for the full signal list and tag vocabulary.
+After every response, scan for capturable signals: facts, preferences, decisions, corrections, updates, contradictions. Write captures to `user-data/memory/inbox.md` with tags — Dream routes them. Direct-write corrections and explicit saves. See `system/capture-rules.md` for the full signal list and tag vocabulary.
 
 When context compaction is imminent, sweep the conversation for missed captures before the detail is lost.
 

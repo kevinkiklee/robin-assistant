@@ -14,14 +14,14 @@ function makeRepo(populated = true) {
   mkdirSync(join(root, 'system'));
   mkdirSync(join(root, 'system/skeleton'));
   if (populated) {
-    mkdirSync(join(root, 'user-data'));
-    mkdirSync(join(root, 'user-data/state'));
-    mkdirSync(join(root, 'user-data/state/locks'));
+    mkdirSync(join(root, 'user-data/memory'), { recursive: true });
+    mkdirSync(join(root, 'user-data/state/locks'), { recursive: true });
     writeFileSync(join(root, 'user-data/robin.config.json'),
       JSON.stringify({ version: '3.0.0', user: { name: 'T', timezone: 'UTC' }, platform: 'claude-code' }));
-    for (const f of ['profile.md','knowledge.md','tasks.md','decisions.md','journal.md','inbox.md','self-improvement.md','integrations.md']) {
-      writeFileSync(join(root, 'user-data', f), '# stub\n');
+    for (const f of ['profile.md','knowledge.md','tasks.md','decisions.md','journal.md','inbox.md','self-improvement.md']) {
+      writeFileSync(join(root, 'user-data/memory', f), '# stub\n');
     }
+    writeFileSync(join(root, 'user-data/integrations.md'), '# stub\n');
     writeFileSync(join(root, 'user-data/state/sessions.md'), '');
     writeFileSync(join(root, 'user-data/state/dream-state.md'), '');
   }

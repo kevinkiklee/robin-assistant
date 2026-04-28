@@ -2,7 +2,7 @@
 
 ## Capture checkpoint (ALWAYS READ)
 
-After every response, scan the user's message and your response for capturable signals listed below. Write captures to `user-data/inbox.md` with tags (see Inbox-first pipeline). Direct-write corrections and explicit saves. This is what separates Robin from a stateless chatbot — don't skip it.
+After every response, scan the user's message and your response for capturable signals listed below. Write captures to `user-data/memory/inbox.md` with tags (see Inbox-first pipeline). Direct-write corrections and explicit saves. This is what separates Robin from a stateless chatbot — don't skip it.
 
 During multi-step tool-heavy work (implementing a feature, debugging across files), buffer captures mentally and batch-write them at the next natural break — after completing the immediate task, before moving to the next topic. The checkpoint runs as part of the same turn: compose your text response, then execute capture writes as tool calls.
 
@@ -41,7 +41,7 @@ Capture if the fact would change Robin's behavior or knowledge in a future sessi
 
 ## Inbox-first pipeline
 
-Most captures go to `user-data/inbox.md` as lightweight tagged entries. Dream routes them to the right destination within 24 hours. This keeps per-capture cost low — append one tagged line + index entry instead of navigating file structure.
+Most captures go to `user-data/memory/inbox.md` as lightweight tagged entries. Dream routes them to the right destination within 24 hours. This keeps per-capture cost low — append one tagged line + index entry instead of navigating file structure.
 
 ### Format
 
@@ -60,14 +60,14 @@ Examples:
 
 | Tag | Dream routes to |
 |-----|----------------|
-| `[fact]` | `user-data/profile.md` or `user-data/knowledge.md` (Dream decides based on content) |
-| `[preference]` | `user-data/self-improvement.md` → `## Preferences` |
-| `[decision]` | `user-data/decisions.md` |
-| `[correction]` | `user-data/self-improvement.md` → `## Corrections` |
-| `[task]` | `user-data/tasks.md` |
-| `[update]` | `user-data/profile.md` or `user-data/knowledge.md` (supersedes existing entry) |
+| `[fact]` | `user-data/memory/profile.md` or `user-data/memory/knowledge.md` (Dream decides based on content) |
+| `[preference]` | `user-data/memory/self-improvement.md` → `## Preferences` |
+| `[decision]` | `user-data/memory/decisions.md` |
+| `[correction]` | `user-data/memory/self-improvement.md` → `## Corrections` |
+| `[task]` | `user-data/memory/tasks.md` |
+| `[update]` | `user-data/memory/profile.md` or `user-data/memory/knowledge.md` (supersedes existing entry) |
 | `[derived]` | Depends on content (Dream classifies) |
-| `[journal]` | `user-data/journal.md` |
+| `[journal]` | `user-data/memory/journal.md` |
 | `[?]` | Unclassified — Dream treats as untagged, classifies from content |
 
 Tags are routing hints, not binding. Dream uses the tag as a first-pass signal but verifies against the routing table. A bad tag doesn't misroute permanently.
@@ -76,7 +76,7 @@ Tags are routing hints, not binding. Dream uses the tag as a first-pass signal b
 
 When a single moment contains multiple distinct facts, split into separate entries. Each entry is atomic — Dream routes each independently.
 
-    - [update] Dr. Park is no longer my dentist — office moved (supersedes: dentist in user-data/profile.md) <!-- id:... -->
+    - [update] Dr. Park is no longer my dentist — office moved (supersedes: dentist in user-data/memory/profile.md) <!-- id:... -->
     - [fact] New dentist is Dr. Chen, office on Main St <!-- id:... -->
     - [decision] Switched dentists because Dr. Park's office moved too far — proximity was the factor <!-- id:... -->
 
@@ -88,9 +88,9 @@ Update entries should include an optional `(supersedes: <hint>)` describing what
 
 These skip inbox and go to the destination file immediately:
 
-- **Corrections** — `user-data/self-improvement.md` → `## Corrections`. The assistant needs to learn from them this session, not next Dream cycle.
+- **Corrections** — `user-data/memory/self-improvement.md` → `## Corrections`. The assistant needs to learn from them this session, not next Dream cycle.
 - **Explicit "remember this"** — user asked directly, so route to the confident destination and confirm.
-- **Updates that contradict loaded context** — if the assistant knows the old fact is in a file it already read (e.g., `user-data/profile.md` loaded at startup), update it in place now. Don't wait for Dream.
+- **Updates that contradict loaded context** — if the assistant knows the old fact is in a file it already read (e.g., `user-data/memory/profile.md` loaded at startup), update it in place now. Don't wait for Dream.
 - **Derived-analysis findings** — the assistant just performed the analysis and knows exactly where findings belong. Follow the derived-analysis auto-capture rules below.
 
 ### Confirmation behavior
@@ -108,17 +108,17 @@ Safety net for missed captures. The inline checkpoint degrades over long session
 
 ### Triggers
 
-**Primary — context compaction imminent.** When you receive a signal that context is about to compact (platform-specific — e.g., Claude Code shows a compaction warning), run a mini-sweep of the conversation window that's about to be lost. This is the most important trigger — once context compacts, the detail is gone. The mini-sweep is fast: scan for obvious signal hits, tag and append to `user-data/inbox.md`.
+**Primary — context compaction imminent.** When you receive a signal that context is about to compact (platform-specific — e.g., Claude Code shows a compaction warning), run a mini-sweep of the conversation window that's about to be lost. This is the most important trigger — once context compacts, the detail is gone. The mini-sweep is fast: scan for obvious signal hits, tag and append to `user-data/memory/inbox.md`.
 
 **Bonus — graceful session end.** When the user says goodbye or explicitly ends the session, run a full sweep of available context.
 
 ### Process
 
 1. **Scan** — review available conversation context against signal patterns
-2. **Cross-reference** — read `user-data/inbox.md` before each sweep to dedup against prior captures (prevents duplicates across multiple compaction events)
+2. **Cross-reference** — read `user-data/memory/inbox.md` before each sweep to dedup against prior captures (prevents duplicates across multiple compaction events)
 3. **Extract** — draft tagged inbox entries for anything missed
-4. **Write** — batch-append all captures to `user-data/inbox.md`
-5. **Handoff** — write a brief note to `user-data/self-improvement.md` → `## Session Handoff`: "Captured N items to inbox (breakdown by tag)."
+4. **Write** — batch-append all captures to `user-data/memory/inbox.md`
+5. **Handoff** — write a brief note to `user-data/memory/self-improvement.md` → `## Session Handoff`: "Captured N items to inbox (breakdown by tag)."
 
 ### What the user sees
 
@@ -138,14 +138,14 @@ Dream uses this table to route tagged inbox entries to their destination. The ta
 
 | Signal | Destination |
 |--------|------------|
-| Fact about the user (identity, preferences, goals, routines, people) | `user-data/profile.md` (appropriate section) |
-| Task or commitment (action items, deadlines, reminders) | `user-data/tasks.md` |
-| Reference knowledge (vendors, medical, locations, financial facts) | `user-data/knowledge.md` (appropriate section) |
-| Decision made (choice + reasoning) | `user-data/decisions.md` |
-| Correction to the assistant (what you did wrong, what to do instead) | `user-data/self-improvement.md` -> `## Corrections` |
-| Positive signal about Robin's approach (style, format, level of detail) | `user-data/self-improvement.md` -> `## Preferences` |
-| Reflective observation or daily note | `user-data/journal.md` |
-| Everything else (unclear classification, fleeting thought) | `user-data/inbox.md` |
+| Fact about the user (identity, preferences, goals, routines, people) | `user-data/memory/profile.md` (appropriate section) |
+| Task or commitment (action items, deadlines, reminders) | `user-data/memory/tasks.md` |
+| Reference knowledge (vendors, medical, locations, financial facts) | `user-data/memory/knowledge.md` (appropriate section) |
+| Decision made (choice + reasoning) | `user-data/memory/decisions.md` |
+| Correction to the assistant (what you did wrong, what to do instead) | `user-data/memory/self-improvement.md` -> `## Corrections` |
+| Positive signal about Robin's approach (style, format, level of detail) | `user-data/memory/self-improvement.md` -> `## Preferences` |
+| Reflective observation or daily note | `user-data/memory/journal.md` |
+| Everything else (unclear classification, fleeting thought) | `user-data/memory/inbox.md` |
 
 When Dream routes an entry from one file to another, the entry's ID stays the same — only the index entry moves between sidecar files.
 
@@ -159,10 +159,10 @@ Extract and route:
 
 | Type of finding | Destination |
 |---|---|
-| Identity / profile facts about the user | `user-data/profile.md` |
-| Recurring patterns and preferences | `user-data/profile.md`, or `user-data/self-improvement.md` → `## Preferences` |
-| Reference inventories (paths, accounts, recurring locations, app usage) | `user-data/knowledge.md` |
-| Project state with goals or gaps | `user-data/tasks.md` (active work) or a dedicated section in `user-data/profile.md` (ongoing initiative) |
+| Identity / profile facts about the user | `user-data/memory/profile.md` |
+| Recurring patterns and preferences | `user-data/memory/profile.md`, or `user-data/memory/self-improvement.md` → `## Preferences` |
+| Reference inventories (paths, accounts, recurring locations, app usage) | `user-data/memory/knowledge.md` |
+| Project state with goals or gaps | `user-data/memory/tasks.md` (active work) or a dedicated section in `user-data/memory/profile.md` (ongoing initiative) |
 | Long-form artifact (the full analysis, raw data, exports) | `artifacts/output/<YYYY-MM-DD-topic>/` — and surface the path inline so the user can find it |
 
 Two constraints:
@@ -197,7 +197,7 @@ When multiple captures arise from one message, write them in parallel if the pla
 
 ## Index maintenance
 
-After writing an entry to any data file, also append an index entry to the corresponding sidecar file at `user-data/index/<file>.idx.md`:
+After writing an entry to any data file, also append an index entry to the corresponding sidecar file at `user-data/memory/index/<file>.idx.md`:
 
 1. Generate an entry ID in `YYYYMMDD-HHMM-<session><seq>` format and embed it in the source file (inline `<!-- id:... -->` for list items, comment line before block entries)
 2. Append to the sidecar index with: `id`, `domains` (from controlled vocabulary: work, personal, finance, health, learning, home, shopping), `tags` (lowercase, hyphen-separated, `firstname-lastname` for people), `related` (obvious connections only — Dream discovers subtler ones), `summary` (one line for append-only entries), `enriched: true`

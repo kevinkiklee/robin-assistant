@@ -1,4 +1,4 @@
-const POINTER = 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/inbox.md with tags.\n';
+const POINTER = 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/inbox.md with tags.\n';
 
 export const PLATFORMS = {
   'claude-code': { pointerFile: 'CLAUDE.md', pointerContent: POINTER },

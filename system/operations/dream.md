@@ -30,7 +30,7 @@ Automatic only — invoked from `system/startup.md`. Never invoked manually.
 
 ## Eligibility check
 
-Run after session registration, before reading `user-data/profile.md`.
+Run after session registration, before reading `user-data/memory/profile.md`.
 
 1. Read `user-data/state/dream-state.md`.
    - File missing or `status: fresh-install` -> create baseline (status: baseline-only, last_dream_at=now), write file, SKIP.
@@ -54,7 +54,7 @@ After running (whether complete or partial), always:
 Runs before any other phase. Ensures indexes match source files.
 
 1. For each core data file, count entries with `<!-- id:... -->` markers
-2. Compare against entry count in the corresponding `user-data/index/<file>.idx.md`
+2. Compare against entry count in the corresponding `user-data/memory/index/<file>.idx.md`
 3. Missing from index → generate a skeleton entry (`enriched: false`, empty metadata)
 4. In index but not found in source → remove from index
 5. Log: "Index reconciled: N added, M removed"
@@ -65,15 +65,15 @@ Phase 0 appends to index files (no lock needed for new entries). It does not mod
 
 Read these files:
 - `user-data/state/dream-state.md` (for `last_dream_at` timestamp)
-- `user-data/journal.md` — entries dated after `last_dream_at`
-- `user-data/inbox.md` — all unprocessed entries
-- `user-data/tasks.md` — completed or stale items
-- `user-data/self-improvement.md` — all sections (corrections, patterns, session handoff, calibration)
-- `user-data/decisions.md` — decisions older than 30 days with no recorded outcome
+- `user-data/memory/journal.md` — entries dated after `last_dream_at`
+- `user-data/memory/inbox.md` — all unprocessed entries
+- `user-data/memory/tasks.md` — completed or stale items
+- `user-data/memory/self-improvement.md` — all sections (corrections, patterns, session handoff, calibration)
+- `user-data/memory/decisions.md` — decisions older than 30 days with no recorded outcome
 
 ## Phase 2: Memory management
 
-1. **Inbox routing** — for each entry in `user-data/inbox.md`:
+1. **Inbox routing** — for each entry in `user-data/memory/inbox.md`:
    - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `system/capture-rules.md` routing table — tags are hints, not binding.
    - `[?]` tagged entries: treat as unclassified, classify from content.
    - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
@@ -82,13 +82,13 @@ Read these files:
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
 
-   When moving an entry between files (inbox routing, fact promotion), also move its index entry from the origin sidecar (`user-data/index/<origin>.idx.md`) to the destination sidecar (`user-data/index/<dest>.idx.md`). The entry's ID stays the same. If the entry was `enriched: false`, enrich it during the move. Lock the origin index (modifying existing content); destination is an append (no lock needed).
+   When moving an entry between files (inbox routing, fact promotion), also move its index entry from the origin sidecar (`user-data/memory/index/<origin>.idx.md`) to the destination sidecar (`user-data/memory/index/<dest>.idx.md`). The entry's ID stays the same. If the entry was `enriched: false`, enrich it during the move. Lock the origin index (modifying existing content); destination is an append (no lock needed).
 
-2. **Fact promotion** — durable facts in `user-data/journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to `user-data/profile.md` or `user-data/knowledge.md`.
+2. **Fact promotion** — durable facts in `user-data/memory/journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to `user-data/memory/profile.md` or `user-data/memory/knowledge.md`.
 
 3. **Task pruning** — completed tasks older than 60 days -> remove. Stale tasks (no activity >30 days) -> flag for user review at next interaction.
 
-4. **Profile and knowledge freshness** — skim `user-data/profile.md` and `user-data/knowledge.md` for information that contradicts recent journal entries or conversation context. Flag stale facts for user review.
+4. **Profile and knowledge freshness** — skim `user-data/memory/profile.md` and `user-data/memory/knowledge.md` for information that contradicts recent journal entries or conversation context. Flag stale facts for user review.
 
 ## Phase 3: Self-improvement
 
@@ -108,7 +108,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 11. **Calibration update** — update prediction accuracy for matured predictions. Update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check.
 
-12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/journal.md` or delete if resolved.
+12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/journal.md` or delete if resolved.
 
 ## Phase 4: Index maintenance
 
@@ -130,9 +130,9 @@ Runs after all other phases. Maintains index quality.
 
 ## Boundary rule
 
-Dream can read and write any of the user-data data files (`user-data/profile.md`, `user-data/tasks.md`, `user-data/knowledge.md`, `user-data/decisions.md`, `user-data/journal.md`, `user-data/self-improvement.md`, `user-data/inbox.md`).
+Dream can read and write any of the user-data data files (`user-data/memory/profile.md`, `user-data/memory/tasks.md`, `user-data/memory/knowledge.md`, `user-data/memory/decisions.md`, `user-data/memory/journal.md`, `user-data/memory/self-improvement.md`, `user-data/memory/inbox.md`).
 
-Dream can read and write `user-data/index/*.idx.md` and `system/manifest.md`. Lock required when modifying existing index entries (Phase 4); not required for appends (Phase 0 skeleton entries).
+Dream can read and write `user-data/memory/index/*.idx.md` and `system/manifest.md`. Lock required when modifying existing index entries (Phase 4); not required for appends (Phase 0 skeleton entries).
 
 Dream manages its own `user-data/state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
 

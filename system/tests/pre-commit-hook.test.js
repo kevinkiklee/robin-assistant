@@ -19,9 +19,9 @@ function gitInit() {
 test('pre-commit-hook fails when user-data/ is staged', () => {
   const root = gitInit();
   writeFileSync(join(root, '.gitignore'), '/user-data/\n');
-  mkdirSync(join(root, 'user-data'));
-  writeFileSync(join(root, 'user-data/profile.md'), 'x');
-  execSync('git add -f user-data/profile.md', { cwd: root });
+  mkdirSync(join(root, 'user-data/memory'), { recursive: true });
+  writeFileSync(join(root, 'user-data/memory/profile.md'), 'x');
+  execSync('git add -f user-data/memory/profile.md', { cwd: root });
   const res = spawnSync('node', [HOOK], { cwd: root });
   assert.notEqual(res.status, 0);
   assert.match(res.stderr.toString(), /personal data/i);

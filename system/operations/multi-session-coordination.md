@@ -38,9 +38,9 @@ Best effort: remove your row from `user-data/state/sessions.md`.
 
 | Category | Files | Rule |
 |----------|-------|------|
-| Pillar (always lock) | `AGENTS.md`, `user-data/profile.md`, `user-data/self-improvement.md` | Acquire lock before any edit |
-| Mixed-use | `user-data/tasks.md`, `user-data/knowledge.md` | Lock when modifying or removing existing content. Appending a new entry is safe without a lock. When in doubt, lock. |
-| Append-only | `user-data/journal.md`, `user-data/decisions.md`, `user-data/inbox.md` | No lock needed. Read-before-write still applies. |
+| Pillar (always lock) | `AGENTS.md`, `user-data/memory/profile.md`, `user-data/memory/self-improvement.md` | Acquire lock before any edit |
+| Mixed-use | `user-data/memory/tasks.md`, `user-data/memory/knowledge.md` | Lock when modifying or removing existing content. Appending a new entry is safe without a lock. When in doubt, lock. |
+| Append-only | `user-data/memory/journal.md`, `user-data/memory/decisions.md`, `user-data/memory/inbox.md` | No lock needed. Read-before-write still applies. |
 
 ## Lock protocol
 
