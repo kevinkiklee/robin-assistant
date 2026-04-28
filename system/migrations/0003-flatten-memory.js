@@ -4,7 +4,7 @@ import { parseFrontmatter, stringifyFrontmatter } from '../scripts/lib/memory-in
 import { writeMemoryIndex } from '../scripts/regenerate-memory-index.js';
 
 export const id = '0003-flatten-memory';
-export const description = 'Drop sidecar index, relocate trips into events, add frontmatter — preserves knowledge.md and profile.md for interactive splitting';
+export const description = 'Drop sidecar index, relocate trips into knowledge/events, add frontmatter — preserves knowledge.md and profile.md for interactive splitting';
 
 const POINTER_RE = /[ \t]*<!--\s*id:[^>]+-->/g;
 
@@ -42,7 +42,7 @@ function ensureMonolithFrontmatter(memDir) {
 function relocateTrips(workspaceDir, memDir) {
   const tripsDir = join(workspaceDir, 'user-data/trips');
   if (!existsSync(tripsDir)) return;
-  const eventsDir = join(memDir, 'events');
+  const eventsDir = join(memDir, 'knowledge/events');
   mkdirSync(eventsDir, { recursive: true });
   for (const name of readdirSync(tripsDir)) {
     const src = join(tripsDir, name);
@@ -92,7 +92,7 @@ export async function up({ workspaceDir, helpers, opts = {} }) {
 
   // Phase 1 (this migration) — safe operations only:
   // - Drop the .idx.md sidecar tree
-  // - Relocate user-data/trips/ → memory/events/ with frontmatter
+  // - Relocate user-data/trips/ → memory/knowledge/events/ with frontmatter
   // - Add description frontmatter to flat files (inbox, decisions, journal, tasks, self-improvement)
   // - Add description frontmatter to knowledge.md and profile.md (preserved as monoliths)
   // - Generate INDEX.md

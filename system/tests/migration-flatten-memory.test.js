@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as migration from '../migrations/0003-flatten-memory.js';
@@ -65,9 +65,13 @@ test('migration preserves knowledge.md and profile.md as monoliths with frontmat
   // Monoliths preserved (Phase 1 — no auto-split)
   assert.ok(existsSync(join(ud, 'memory/knowledge.md')));
   assert.ok(existsSync(join(ud, 'memory/profile.md')));
-  // No topic folders auto-created
-  assert.equal(existsSync(join(ud, 'memory/knowledge')), false);
+  // No profile topic folder auto-created
   assert.equal(existsSync(join(ud, 'memory/profile')), false);
+  // knowledge/ exists only to hold events/ — no topic files split out from knowledge.md
+  const knowledgeEntries = existsSync(join(ud, 'memory/knowledge'))
+    ? readdirSync(join(ud, 'memory/knowledge'))
+    : [];
+  assert.deepEqual(knowledgeEntries.filter((n) => n !== 'events'), []);
   // Frontmatter added
   const k = readFileSync(join(ud, 'memory/knowledge.md'), 'utf-8');
   assert.match(k, /^---\ndescription:.+monolith.+split-monoliths/);
@@ -91,15 +95,15 @@ test('migration deletes sidecar index tree', async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('migration relocates trips/ to memory/events/ with frontmatter', async () => {
+test('migration relocates trips/ to memory/knowledge/events/ with frontmatter', async () => {
   const { root, ud } = setupFixture();
   const helpers = createHelpers(root);
   await migration.up({ workspaceDir: root, helpers, opts: { interactive: false } });
 
   assert.equal(existsSync(join(ud, 'trips')), false);
-  assert.ok(existsSync(join(ud, 'memory/events/sample-2026.md')));
-  assert.ok(existsSync(join(ud, 'memory/events/_template.md')));
-  const sample = readFileSync(join(ud, 'memory/events/sample-2026.md'), 'utf-8');
+  assert.ok(existsSync(join(ud, 'memory/knowledge/events/sample-2026.md')));
+  assert.ok(existsSync(join(ud, 'memory/knowledge/events/_template.md')));
+  const sample = readFileSync(join(ud, 'memory/knowledge/events/sample-2026.md'), 'utf-8');
   assert.match(sample, /^---\ndescription:/);
 
   rmSync(root, { recursive: true, force: true });

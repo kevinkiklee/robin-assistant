@@ -3,7 +3,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 export function createTempDir() {
-  return mkdtempSync(join(tmpdir(), 'arc-test-'));
+  return mkdtempSync(join(tmpdir(), 'robin-test-'));
 }
 
 export function cleanTempDir(dir) {
