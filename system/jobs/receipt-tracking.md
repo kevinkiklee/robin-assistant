@@ -2,6 +2,9 @@
 name: receipt-tracking
 triggers: ["track my receipts", "receipt tracking"]
 description: Find and summarize receipts by vendor, time range, or category.
+runtime: "agent"
+enabled: false
+timeout_minutes: 15
 ---
 # Protocol: Receipt Tracking
 

@@ -2,6 +2,9 @@
 name: multi-session-coordination
 triggers: []
 description: Detects concurrent sessions and coordinates handoff via file-based registration and lock acquisition.
+runtime: "agent"
+enabled: false
+timeout_minutes: 5
 ---
 # Protocol: Multi-Session Coordination
 

@@ -13,23 +13,28 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/capture-rules.md` | Capture signal patterns, inbox-first pipeline, routing table, sweep protocol. |
 | `system/manifest.md` | This file — canonical catalog of every well-known path. |
 | `system/self-improvement-rules.md` | How Robin processes corrections, patterns, preferences, calibration. |
-| `system/operations/` | On-demand operational workflows (Dream, Morning Briefing, etc.). |
-| `system/operations/INDEX.md` | Auto-generated index of operations (regenerate via `regenerate-operations-index.js`). |
-| `system/operations/dream.md` | Background processing — inbox routing, pattern promotion, integrity check. |
-| `system/operations/ingest.md` | Process a source document into the knowledge base — extract, ripple, cross-reference. |
-| `system/operations/lint.md` | Health-check the knowledge base for contradictions, stale claims, orphans, dead links. |
-| `system/operations/save-conversation.md` | File conversation outcomes as a summary page in the knowledge base. |
-| `system/operations/morning-briefing.md` | Daily briefing protocol. |
-| `system/operations/weekly-review.md` | Weekly review protocol. |
-| `system/operations/email-triage.md` | Inbox triage protocol. |
-| `system/operations/meeting-prep.md` | Meeting preparation protocol. |
-| `system/operations/multi-session-coordination.md` | Coordination rules when multiple Robin sessions are active. |
-| `system/operations/monthly-financial.md` | Monthly financial check-in protocol. |
-| `system/operations/quarterly-self-assessment.md` | Quarterly self-assessment protocol. |
-| `system/operations/receipt-tracking.md` | Receipt tracking protocol. |
-| `system/operations/subscription-audit.md` | Subscription audit protocol. |
-| `system/operations/system-maintenance.md` | Workspace maintenance protocol. |
-| `system/operations/todo-extraction.md` | Todo extraction protocol. |
+| `system/jobs/` | Job definitions — agent-runtime protocols (Dream, Morning Briefing, etc.) and node-runtime scripts (backup, _robin-sync). Both schedulable and trigger-invocable. |
+| `bin/robin.js` | CLI entry point: `robin run <name>`, `robin jobs ...`, `robin job acquire/release`. |
+| `system/scripts/jobs/runner.js` | The runner — invoked by every OS scheduler entry. Handles parsing, gating, locking, execution, telemetry, failure surfacing. |
+| `system/scripts/jobs/reconciler.js` | Reconciler — keeps OS scheduler entries (launchd / cron / Task Scheduler) in sync with `system/jobs/` + `user-data/jobs/`. Runs every 6h via the `_robin-sync` job. |
+| `system/scripts/jobs/cli.js` | Subcommand implementations for `robin jobs ...`. |
+| `system/scripts/jobs/installer/` | Per-platform scheduler adapters: launchd (macOS), cron (Linux), taskscheduler (Windows). |
+| `system/scripts/lib/jobs/` | Shared libraries — frontmatter parser, cron expression parser, atomic locks, state file writers, OS notifications. |
+| `system/jobs/dream.md` | Background processing — inbox routing, pattern promotion, integrity check. |
+| `system/jobs/ingest.md` | Process a source document into the knowledge base — extract, ripple, cross-reference. |
+| `system/jobs/lint.md` | Health-check the knowledge base for contradictions, stale claims, orphans, dead links. |
+| `system/jobs/save-conversation.md` | File conversation outcomes as a summary page in the knowledge base. |
+| `system/jobs/morning-briefing.md` | Daily briefing protocol. |
+| `system/jobs/weekly-review.md` | Weekly review protocol. |
+| `system/jobs/email-triage.md` | Inbox triage protocol. |
+| `system/jobs/meeting-prep.md` | Meeting preparation protocol. |
+| `system/jobs/multi-session-coordination.md` | Coordination rules when multiple Robin sessions are active. |
+| `system/jobs/monthly-financial.md` | Monthly financial check-in protocol. |
+| `system/jobs/quarterly-self-assessment.md` | Quarterly self-assessment protocol. |
+| `system/jobs/receipt-tracking.md` | Receipt tracking protocol. |
+| `system/jobs/subscription-audit.md` | Subscription audit protocol. |
+| `system/jobs/system-maintenance.md` | Workspace maintenance protocol. |
+| `system/jobs/todo-extraction.md` | Todo extraction protocol. |
 | `system/scripts/` | CLI helpers — setup, backup, restore, migrate, regenerate, startup-check, install-hooks. |
 | `system/scripts/setup.js` | First-run installer (postinstall). Scaffolds `user-data/` from skeleton. |
 | `system/scripts/startup-check.js` | Session pre-flight: validates env, surfaces FATAL/INFO/WARN findings. |
@@ -40,7 +45,11 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/scripts/install-hooks.js` | Install the `pre-commit` hook into `.git/hooks/` (auto-runs on `npm install`). |
 | `system/scripts/pre-commit-hook.js` | Pre-commit hook source — refuses to commit `user-data/` files. |
 | `system/scripts/regenerate-pointers.js` | Regenerate platform pointer files from `platforms.js`. |
-| `system/scripts/regenerate-operations-index.js` | Regenerate `system/operations/INDEX.md` from frontmatter. |
+| `user-data/state/jobs/INDEX.md` | Auto-generated jobs dashboard — written by the runner after each run. Read by the agent for at-a-glance status. |
+| `user-data/state/jobs/upcoming.md` | 7-day forward calendar of scheduled runs. Regenerated by the reconciler. |
+| `user-data/state/jobs/failures.md` | Per-job failure register. Active vs resolved sections. |
+| `user-data/state/jobs/<name>.json` | Per-job state — last_run_at, exit_code, status, next_run_at, consecutive_failures. |
+| `user-data/jobs/` | User-defined job overrides and additions. Same format as `system/jobs/`. Gitignored. |
 | `system/scripts/regenerate-memory-index.js` | Regenerate `user-data/memory/INDEX.md` from per-file frontmatter. Supports `--check` for CI. |
 | `system/scripts/regenerate-links.js` | Regenerate `user-data/memory/LINKS.md` from cross-reference graph. |
 | `system/scripts/lib/memory-index.js` | Shared helpers — frontmatter parse, slug, threshold, link rewrite, split planner. |
@@ -74,7 +83,7 @@ User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit
 | `user-data/secrets/` | API keys and credentials. `.env`-style file, gitignored. See `user-data/secrets/README.md`. |
 | `user-data/state/sessions.md` | Active session registry. |
 | `user-data/state/dream-state.md` | Last Dream cycle timestamp and bookkeeping. |
-| `user-data/operations/` | Optional. User-defined or overriding operations; precedence over `system/operations/`. |
+| `user-data/operations/` | Optional. User-defined or overriding operations; precedence over `system/jobs/`. |
 
 ## Artifacts (`artifacts/`)
 

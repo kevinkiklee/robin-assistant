@@ -2,6 +2,12 @@
 name: subscription-audit
 triggers: ["what am I paying for", "subscription audit"]
 description: Audit recurring charges and subscriptions; surface candidates to cancel or renegotiate.
+runtime: "agent"
+schedule: "0 9 15 * *"
+enabled: false
+catch_up: true
+timeout_minutes: 15
+notify_on_failure: true
 ---
 # Protocol: Subscription Audit
 

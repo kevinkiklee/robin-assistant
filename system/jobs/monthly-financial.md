@@ -2,6 +2,12 @@
 name: monthly-financial
 triggers: ["month-end review", "monthly financial"]
 description: Month-end financial review covering income reconciliation, recurring outflows, and budget variance.
+runtime: "agent"
+schedule: "0 9 1 * *"
+enabled: false
+catch_up: true
+timeout_minutes: 30
+notify_on_failure: true
 ---
 # Protocol: Monthly Financial Check-In
 

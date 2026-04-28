@@ -43,33 +43,66 @@ The migration framework auto-applies pending migrations on the next session star
 
 Add a CHANGELOG entry for any user-visible behavior change. The session-start CHANGELOG notification surfaces it on the user's next session after `git pull`.
 
-## Adding an operation
+## Adding a job
 
-Drop `<name>.md` into `system/operations/` with YAML frontmatter:
+Jobs are markdown files with frontmatter under `system/jobs/` (ships with the package) or `user-data/jobs/` (workspace-specific). Each job has a `runtime` (`agent` for LLM protocols, `node` for scripts), an optional `schedule` (cron expression, OS-local timezone), optional `triggers` (phrases for in-session invocation), and an optional `active` window for season-bounded jobs.
 
+**Trigger-only protocol** (no schedule):
 ```markdown
 ---
 name: investment-review
 triggers: ["investment review", "review my portfolio"]
 description: Walk through portfolio holdings, recent moves, and rebalancing prompts.
+runtime: agent
+enabled: true
+timeout_minutes: 15
 ---
 
 # Investment Review
 
+…protocol body — this is the prompt sent to the agent…
+```
+
+**Scheduled job** (cron):
+```markdown
+---
+name: weekly-review
+description: Sunday 10am — review the week, identify themes, plan next week.
+runtime: agent
+enabled: true
+schedule: "0 10 * * 0"
+catch_up: true
+timeout_minutes: 30
+---
+
 …body…
 ```
 
-Then regenerate the index and commit both:
+**Node-runtime job** (deterministic script):
+```markdown
+---
+name: backup
+description: Daily snapshot of user-data/ to backup/.
+runtime: node
+enabled: true
+schedule: "0 3 * * *"
+command: node system/scripts/backup.js
+timeout_minutes: 5
+---
 
-```bash
-npm run regenerate-operations-index
-git add system/operations/
-git commit -m "feat(operations): add investment-review"
+…description body — not used as a prompt for node runtime…
 ```
 
-The `tests/operations-index-consistency.test.js` test verifies the committed INDEX matches what would be regenerated. CI catches drift.
+Validate before committing:
+```bash
+node bin/robin.js jobs validate <name>
+git add system/jobs/<name>.md
+git commit -m "feat(jobs): add <name>"
+```
 
-Users can override your operation by dropping a same-named file in their own `user-data/operations/`. Don't break that contract — your operation is replaceable.
+The reconciler picks up the new job within 6 hours (or run `robin jobs sync` for immediate effect). Users can override your system job by dropping a `user-data/jobs/<name>.md` — either a full replacement or a shallow override (`override: <name>` + only the fields they want to change). Don't break that contract.
+
+For scheduled jobs, see also `docs/superpowers/specs/2026-04-29-job-system-design.md` for the full job-system design (runtime semantics, cross-platform install, telemetry, failure handling).
 
 ## Adding a new AI tool platform
 

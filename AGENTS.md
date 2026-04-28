@@ -67,7 +67,7 @@ On each session start, read and follow `system/startup.md`.
 | `artifacts/output/` | Generated outputs (drafts, exports, images) |
 | `user-data/state/` | Runtime state (session registry, Dream state, locks) |
 | `user-data/secrets/` | API keys and credentials (`.env`-style, gitignored) |
-| `system/operations/` | On-demand operational workflows |
+| `system/jobs/` | On-demand operational workflows |
 | `user-data/integrations.md` | Available external capabilities per platform |
 
 ## Capture
@@ -78,7 +78,7 @@ When context compaction is imminent, sweep the conversation for missed captures 
 
 ## Protocols
 
-On-demand workflows invoked by trigger phrases. Full list in `system/operations/INDEX.md`.
+On-demand workflows invoked by trigger phrases. Full list in `system/jobs/` and `user-data/state/jobs/INDEX.md`.
 
 | Protocol | Triggers |
 |----------|----------|
@@ -93,7 +93,7 @@ On-demand workflows invoked by trigger phrases. Full list in `system/operations/
 | Ingest | "ingest this", "process this document", "add this to the wiki" |
 | Lint | "lint the wiki", "health check memory", "check memory health" |
 | Save Conversation | "save this conversation", "file this session" |
-| Dream | (automatic at session startup when eligible) |
+| Dream | (scheduled daily 04:00 via the job system; trigger-phrase still works) |
 | System Maintenance | "system maintenance", "clean up the workspace" |
 | Quarterly Self-Assessment | "quarterly self-assessment", "how have you been doing" |
 
@@ -103,10 +103,18 @@ This workspace may contain personal information. Suggest commits but don't auto-
 
 ## Concurrency
 
-Read `user-data/state/sessions.md` on startup. If other sessions are active, follow the multi-session coordination protocol in `system/operations/multi-session-coordination.md`. Always read-before-write.
+Read `user-data/state/sessions.md` on startup. If other sessions are active, follow the multi-session coordination protocol in `system/jobs/multi-session-coordination.md`. Always read-before-write.
 
 ## Session start
 
 At the start of every session, run `node system/scripts/startup-check.js`. Read its output line-by-line. On any line starting with `FATAL:`, surface that message to the user and abort startup. On `INFO:` and `WARN:` lines, surface them as a brief summary at the top of your first response. Then proceed to read `system/startup.md` for the full startup protocol.
 
-Also, on session start, scan `user-data/operations/` in addition to `system/operations/`. Where a file with the same name exists in both, prefer `user-data/`. If `user-data/custom-rules.md` exists, read and follow those rules — they extend or override the operational rules above (but cannot override Immutable Rules).
+Also, on session start, scan `user-data/jobs/` in addition to `system/jobs/`. Where a file with the same name exists in both, the user-data version wins (full replace) or merges (when its frontmatter has `override: <name>`). If `user-data/custom-rules.md` exists, read and follow those rules — they extend or override the operational rules above (but cannot override Immutable Rules).
+
+## Jobs system
+
+Scheduled and trigger-invocable work is unified in `system/jobs/` (ships with the package) and `user-data/jobs/` (workspace-specific). Each job is a markdown file with frontmatter: `runtime` (`agent` | `node`), optional `schedule` (cron), optional `triggers` (list), optional `active` window. The runner (`robin run <name>`) is the single OS-scheduler entry point. State lives under `user-data/state/jobs/`.
+
+**Rule: Agent reads files, not CLI for job state.** Inspect `user-data/state/jobs/INDEX.md` for the overview, `user-data/state/jobs/failures.md` when investigating problems, `user-data/state/jobs/<name>.json` for per-job detail. Do NOT spawn `robin jobs ...` to inspect state — that's a performance bug (subprocess spawn + cold start for data already on disk). The `robin` CLI is for human users.
+
+**Session-start failure surfacing:** read `user-data/state/jobs/failures.md`. If the "Active failures" section is non-empty, mention it concisely in your first response so the user knows what's broken without checking themselves.

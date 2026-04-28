@@ -2,6 +2,9 @@
 name: lint
 triggers: ["lint the wiki", "health check memory", "lint", "check memory health"]
 description: Health-check the knowledge base for contradictions, stale claims, orphan pages, dead links, missing pages, and data gaps.
+runtime: "agent"
+enabled: false
+timeout_minutes: 15
 ---
 # Protocol: Lint
 

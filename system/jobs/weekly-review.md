@@ -2,6 +2,12 @@
 name: weekly-review
 triggers: ["weekly review"]
 description: End-of-week recap covering accomplishments, missed items, and the upcoming week's priorities.
+runtime: "agent"
+schedule: "0 10 * * 0"
+enabled: false
+catch_up: true
+timeout_minutes: 30
+notify_on_failure: true
 ---
 # Protocol: Weekly Review
 

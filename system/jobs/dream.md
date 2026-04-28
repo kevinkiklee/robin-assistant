@@ -1,53 +1,38 @@
 ---
 name: dream
 triggers: ["dream", "memory check", "daily maintenance"]
-description: Daily automatic maintenance that runs at session startup; runs startup-check pre-flight, then routes inbox, promotes facts, prunes tasks, processes self-improvement signals, and reconciles indexes.
+description: Daily memory routing, fact promotion, pattern review, and index maintenance.
+runtime: agent
+schedule: "0 4 * * *"
+enabled: true
+catch_up: true
+timeout_minutes: 30
+notify_on_failure: true
 ---
 # Protocol: Dream
 
-Daily automatic maintenance that keeps Robin's memory organized and its behavior improving. Runs once per day at session startup.
+Daily maintenance that keeps Robin's memory organized and its behavior improving.
+
+Two jobs: **memory management** (route, promote, and prune stored facts) and **self-improvement** (turn corrections into patterns, update calibration, clean up handoff notes).
+
+## Invocation
+
+Dream runs in two ways:
+- **Scheduled** (the common case) — daily at 04:00 local via the job system. The runner handles locking, catch-up after missed runs, telemetry, and failure surfacing. You never check eligibility or manage `dream.lock` yourself.
+- **Trigger phrase** ("dream", "memory check", "daily maintenance") — runs in-session. Acquire `user-data/state/jobs/locks/dream.lock` via `robin job acquire dream` before starting; release with `robin job release dream` when done. If acquire returns non-zero, a scheduled run is in progress — skip cleanly.
 
 ## Pre-flight
 
-Before any Dream phase runs, invoke `node system/scripts/startup-check.js` and read its output line-by-line.
+Before any phase, invoke `node system/scripts/startup-check.js` and read its output line-by-line.
 
-- On any line starting with `FATAL:`, surface the message to the user and abort Dream — do not proceed to the eligibility check or any phase.
-- On `INFO:` and `WARN:` lines, include them in your one-line summary or escalation report at the end of the run.
+- On any line starting with `FATAL:`, write the message to `user-data/state/jobs/failures.md` and exit non-zero — do not proceed.
+- On `INFO:` and `WARN:` lines, include them in your one-line summary or escalation report at the end.
 
 The startup check performs limited auto-repair before reporting:
 - **Skeleton sync** — files present in `system/skeleton/` but missing from `user-data/` are copied automatically; the new paths are reported as `INFO: new files from upstream: ...`.
 - **Stale lock cleanup** — locks in `user-data/state/locks/` older than 5 minutes are cleared automatically; cleared locks are reported as `INFO: cleared stale lock: ...`.
 
-Anything outside that scope (corrupted config, failed migrations, validation failures, missing core files) is reported but NOT auto-repaired — it surfaces as `WARN:` or `FATAL:` for the user to address.
-
-After pre-flight succeeds, continue with the eligibility check below.
-
-Two jobs: **memory management** (route, promote, and prune stored facts) and **self-improvement** (turn corrections into patterns, update calibration, clean up handoff notes).
-
-## Triggers
-
-Automatic only — invoked from `system/startup.md`. Never invoked manually.
-
-## Eligibility check
-
-Run after session registration, before reading the memory tree.
-
-1. Read `user-data/state/dream-state.md`.
-   - File missing or `status: fresh-install` -> create baseline (status: baseline-only, last_dream_at=now), write file, SKIP.
-2. Skip checks (any -> SKIP):
-   - 2+ other sessions listed as active in `user-data/state/sessions.md`
-3. Eligibility:
-   - elapsed = now - last_dream_at
-   - eligible = elapsed >= 24h
-   - Not eligible -> SKIP
-4. Eligible -> acquire `user-data/state/locks/dream.lock` (follow lock protocol in `system/operations/multi-session-coordination.md`).
-   - Lock held -> SKIP
-   - Lock acquired -> proceed to phases
-
-After running (whether complete or partial), always:
-- Delete `user-data/state/locks/dream.lock`
-- Update `user-data/state/dream-state.md`: last_dream_at=now
-- Print one-line summary OR escalation report
+Anything outside that scope (corrupted config, failed migrations, validation failures, missing core files) is reported but NOT auto-repaired — it surfaces as `WARN:` or `FATAL:`.
 
 ## Phase 1: Scan
 
@@ -126,24 +111,24 @@ Dream maintains `user-data/memory/LINKS.md` via `regenerate-links.js` when struc
 
 Dream trims `user-data/memory/hot.md` to a rolling window of 3 sessions (Phase 4 step 16).
 
-Dream manages its own `user-data/state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
+Lock management is handled by the runner (scheduled invocation) or the `robin job acquire/release dream` wrappers (trigger-phrase invocation). Dream NEVER edits other lock files.
 
-Dream NEVER edits: `AGENTS.md`, `system/operations/`, `user-data/integrations.md`, `system/startup.md`, `system/capture-rules.md`, `user-data/robin.config.json`.
+Dream NEVER edits: `AGENTS.md`, `system/jobs/`, `user-data/integrations.md`, `system/startup.md`, `system/capture-rules.md`, `user-data/robin.config.json`.
 
 Dream NEVER runs external commands or makes network requests.
 
 ## Output
 
-### Default (silent)
+### Default
 
-One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, split S topic files, trimmed hot cache, regenerated INDEX/LINKS."
+One-line summary written to stdout: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, split S topic files, trimmed hot cache, regenerated INDEX/LINKS."
 
 ### Escalation report
 
-Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, preference contradictions, calibration drift, sycophancy signals, or errors. Present under a `## Needs your input` heading. Neutral, factual tone.
+Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, preference contradictions, calibration drift, sycophancy signals, or errors. Append to `user-data/state/jobs/failures.md` under the active failures section, OR for in-session invocation, present under a `## Needs your input` heading. Neutral, factual tone.
 
 ## Failure modes
 
-- Lock held -> skip cleanly
-- Error mid-phase -> mark status: partial, release lock, escalate
-- If `user-data/state/dream-state.md` is corrupted -> recreate baseline, skip this run
+- Lock held by another runner → exit 0 cleanly (the runner already records "skipped:locked" telemetry).
+- Error mid-phase → exit non-zero with the error line as the last stderr line; the runner categorizes and surfaces.
+- If `user-data/state/dream-state.md` is corrupted → recreate baseline, log to runner.log, exit 0.

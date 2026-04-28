@@ -1,17 +1,23 @@
+// After 3.3.0, operations are unified into system/jobs/. Comprehensive
+// validation lives in system/tests/jobs/. This file keeps a thin smoke check
+// ensuring every shipped job def parses + validates.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseOperation } from '../scripts/lib/operations.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { parseJobFrontmatter, validateJobDef } from '../scripts/lib/jobs/frontmatter.js';
 
-const OPS = fileURLToPath(new URL('../operations', import.meta.url));
+const JOBS = fileURLToPath(new URL('../jobs', import.meta.url));
 
-test('every operation has parseable frontmatter with name + description', () => {
-  for (const f of readdirSync(OPS)) {
-    if (f === 'INDEX.md' || !f.endsWith('.md')) continue;
-    const parsed = parseOperation(readFileSync(join(OPS, f), 'utf-8'));
-    assert.ok(parsed.name, `${f} missing frontmatter.name`);
-    assert.ok(parsed.description, `${f} missing frontmatter.description`);
+test('every system job parses + validates', () => {
+  for (const f of readdirSync(JOBS)) {
+    if (!f.endsWith('.md')) continue;
+    const content = readFileSync(join(JOBS, f), 'utf-8');
+    const parsed = parseJobFrontmatter(content);
+    assert.ok(parsed.frontmatter.name, `${f}: missing name`);
+    assert.ok(parsed.frontmatter.description, `${f}: missing description`);
+    const r = validateJobDef(parsed);
+    assert.ok(r.valid, `${f}: ${(r.errors || []).join('; ')}`);
   }
 });

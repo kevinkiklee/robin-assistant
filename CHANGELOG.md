@@ -1,5 +1,60 @@
 # Changelog
 
+## [3.3.0] - 2026-04-29
+
+### Job system — unified scheduler for everything that runs
+
+Replaces the ad-hoc mix of `system/operations/` (LLM protocols invoked at session-startup) and one-off launchd templates with a single, cross-platform job system. Jobs run on the OS scheduler, no longer dependent on the user opening a session.
+
+### Concept unification
+- `system/operations/` collapsed into `system/jobs/`. Operations become "agent-runtime jobs" that may also have schedules; a job that fits a node-runtime script just sets `runtime: node` + `command:`. Same parser, same runner, same telemetry. Eliminates the operations/jobs split.
+
+### New CLI
+- `bin/robin.js` — first-class CLI. `robin run <name>`, `robin jobs list/status/logs/upcoming/sync/enable/disable/validate`, `robin job acquire/release` (the lock wrapper used by in-session trigger-phrase invocations). Sub-100ms cold start; no chalk/cli-table deps; printf + ANSI inline.
+
+### Cross-platform from day one
+- macOS launchd, Linux cron (managed-block markers preserve user's other entries), Windows Task Scheduler (built-in WinRT toast notifications, no module dependencies).
+- Cron expressions translate per-platform with cap rejection at validate time for unrepresentable patterns.
+
+### Runner contract (single OS-scheduler entry point)
+- Atomic O_EXCL lock acquisition with PID-liveness staleness detection.
+- Active-window gating (recurring MM-DD or absolute YYYY-MM-DD; supports wraparound like Oct 1 → Apr 30).
+- Catch-up logic for missed runs (laptop closed at scheduled time), respecting the active window.
+- Subprocess hygiene: `stdin: ignore`, `shell: false`, FD-piped stdout/stderr to log files, SIGTERM at timeout + SIGKILL +30s.
+- Failure categorization (auth_expired, command_not_found, timeout, runtime_error, etc.) from rolling 4 KB stderr buffer.
+- Native OS notifications, debounced on (job, category) status transitions; global 6h debounce for `auth_expired` since one expired token affects every agent-runtime job.
+
+### Telemetry (token-optimized for agent consumption)
+- `user-data/state/jobs/INDEX.md` — auto-regenerated jobs dashboard, ~500 tokens.
+- `user-data/state/jobs/upcoming.md` — 7-day forward calendar.
+- `user-data/state/jobs/failures.md` — per-job grouped (O(jobs) not O(events)), active + resolved sections.
+- `user-data/state/jobs/<name>.json` — per-job structured state.
+- All writes content-addressed (skip if unchanged), atomic via tmp + rename.
+- Logs split: full subprocess log, runner.log (~10 lines of decisions), summary.log (last 50 non-empty lines + exit code) — agent reads the small ones by default.
+
+### Reconciler
+- `_robin-sync` heartbeat job runs every 6h, picks up new/removed/changed job defs, re-installs scheduler entries.
+- SHA-256 hash early-exit when nothing has changed (sub-10 ms in the common case).
+- Workspace move detection: re-installs all entries with new path automatically.
+- Orphaned state JSON cleanup when a job def is deleted.
+
+### No user intervention after init
+- Postinstall hook installs scheduler entries for all enabled jobs.
+- Adding a job: drop a markdown file in `user-data/jobs/`. Live within 6h, no install command.
+- Removing a job: delete the file. Entry pruned within 6h.
+- Failure: native OS notification fires; agent surfaces failures.md at next session start.
+
+### Migrations
+- `0005-job-system.js` — moves `system/operations/*.md` to `system/jobs/*.md` with added frontmatter (runtime, schedule, enabled defaults), removes legacy `system/launchd/` template, updates AGENTS.md and manifest.md references.
+- `0006-fetch-finances-job.js` — converts the legacy fetch-finances launchd setup into a `user-data/jobs/fetch-finances.md` job def.
+
+### Out of scope (v2 candidates)
+- Programmable `shouldRun(now)` gates per job (e.g., NHL game-day-only).
+- Circuit breaker after N consecutive failures.
+- Quiet hours.
+- Failure runbooks.
+- systemd user timers on Linux (cron only in v1).
+
 ## [3.2.0] - 2026-04-28
 
 ### Wiki evolution — operations layer + entity typing

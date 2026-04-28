@@ -60,6 +60,18 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   } catch (err) {
     console.warn(`Hook install skipped: ${err.message}`);
   }
+
+  // Install scheduler entries for enabled jobs (cross-platform). Idempotent.
+  try {
+    const { reconcile } = await import('./jobs/reconciler.js');
+    const robinPath = `${process.execPath} ${join(workspaceDir, 'bin/robin.js')}`;
+    const r = reconcile({ workspaceDir, robinPath });
+    if (r && r.added && r.added.length > 0) {
+      console.log(`Job scheduler entries installed: ${r.added.join(', ')}`);
+    }
+  } catch (err) {
+    console.warn(`Job scheduler install skipped: ${err.message}`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

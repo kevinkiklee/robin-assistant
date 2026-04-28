@@ -2,6 +2,9 @@
 name: todo-extraction
 triggers: ["extract todos from this", "todo extraction"]
 description: Extract action items from a forwarded email, message, or document and add them to tasks.
+runtime: "agent"
+enabled: false
+timeout_minutes: 15
 ---
 # Protocol: Todo Extraction
 

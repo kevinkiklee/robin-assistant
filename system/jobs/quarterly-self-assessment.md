@@ -2,6 +2,12 @@
 name: quarterly-self-assessment
 triggers: ["how have you been doing", "quarterly review"]
 description: Quarterly review of self-improvement effectiveness, calibration accuracy, and pattern impact.
+runtime: "agent"
+schedule: "0 9 1 1,4,7,10 *"
+enabled: false
+catch_up: true
+timeout_minutes: 30
+notify_on_failure: true
 ---
 # Protocol: Quarterly Self-Assessment
 

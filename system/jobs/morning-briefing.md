@@ -2,6 +2,12 @@
 name: morning-briefing
 triggers: ["good morning", "brief me", "morning briefing"]
 description: Daily morning briefing covering calendar, weather, priorities, and any flagged items needing attention today.
+runtime: "agent"
+schedule: "0 7 * * *"
+enabled: false
+catch_up: true
+timeout_minutes: 15
+notify_on_failure: true
 ---
 # Protocol: Morning Briefing
 

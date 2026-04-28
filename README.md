@@ -30,9 +30,9 @@ The memory is structured, not a chat log. Topic folders for content that grows o
 
 Topic files are split when they exceed `memory.split_threshold_lines` (default 200) at the next Dream cycle — the structure scales as content grows.
 
-### It runs operations on demand
+### It runs jobs on demand and on a schedule
 
-Say "good morning" and Robin runs the Morning Briefing — calendar, weather, today's tasks, inbox highlights, anything urgent. Say "weekly review" and it pulls the week into focus. The full catalog is in `system/operations/INDEX.md`, generated automatically. A few of them:
+Say "good morning" and Robin runs the Morning Briefing — calendar, weather, today's tasks, inbox highlights, anything urgent. Say "weekly review" and it pulls the week into focus. The full catalog of shipped jobs lives in `system/jobs/`. Dashboard at `user-data/state/jobs/INDEX.md` shows what's enabled, when each last ran, and what's next. A few of them:
 
 | Trigger | What runs |
 |---------|-----------|
@@ -159,10 +159,10 @@ Three extension points let you customize Robin without ever editing files under 
 - **`user-data/custom-rules.md`** — your own rules, appended to AGENTS.md's rule list. They override operational rules when they conflict, but cannot override Immutable Rules (Privacy, Verification, etc.).
   Examples: language preference, persona overrides, custom Ask-vs-Act thresholds, additional capture rules.
 
-- **`user-data/operations/`** — overlays `system/operations/`. A file with the same name overrides the system version; new files extend the catalog.
-  Examples: customize `morning-briefing.md` to include your crypto portfolio, add an `investment-review.md` operation.
+- **`user-data/jobs/`** — overlays `system/jobs/`. A file with the same name does a full override; or write a shallow override (`override: <name>` + only the fields you want to change) to inherit the rest from the system def. New files extend the catalog.
+  Examples: customize `morning-briefing.md` to include your crypto portfolio, add a daily `rangers-news.md` job that only fires during NHL season.
 
-- **`user-data/integrations.md`** — declare which platform integrations you've configured (email, calendar, etc.). Operations check this before assuming a capability is available.
+- **`user-data/integrations.md`** — declare which platform integrations you've configured (email, calendar, etc.). Jobs check this before assuming a capability is available.
 
 **Don't edit files under `system/` directly.** They're upstream-owned; the next `git pull` will conflict.
 

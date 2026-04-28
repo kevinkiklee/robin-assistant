@@ -2,6 +2,9 @@
 name: meeting-prep
 triggers: ["prep for my meeting", "meeting prep"]
 description: Prepare for an upcoming meeting by gathering context, attendees, prior history, and likely talking points.
+runtime: "agent"
+enabled: false
+timeout_minutes: 15
 ---
 # Protocol: Meeting Prep
 

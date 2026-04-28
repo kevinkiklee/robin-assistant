@@ -92,7 +92,7 @@ These skip inbox and go to the destination file immediately:
 - **Explicit "remember this"** — user asked directly, so route to the confident destination and confirm.
 - **Updates that contradict loaded context** — if the assistant knows the old fact is in a file it already read (e.g., `user-data/memory/profile.md` loaded at startup), update it in place now. Don't wait for Dream.
 - **Derived-analysis findings** — the assistant just performed the analysis and knows exactly where findings belong. Follow the derived-analysis auto-capture rules below.
-- **Ingest operations** — ingest is user-supervised, multi-file, and too structural for inbox-first routing. Ingest writes directly to knowledge files, creates source pages, and updates cross-references. See `system/operations/ingest.md`.
+- **Ingest operations** — ingest is user-supervised, multi-file, and too structural for inbox-first routing. Ingest writes directly to knowledge files, creates source pages, and updates cross-references. See `system/jobs/ingest.md`.
 
 ### Confirmation behavior
 

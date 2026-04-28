@@ -2,6 +2,9 @@
 name: system-maintenance
 triggers: ["clean up the workspace", "system maintenance"]
 description: Weekly interactive review covering items that need user input; complements Dream's automated housekeeping.
+runtime: "agent"
+enabled: false
+timeout_minutes: 30
 ---
 # Protocol: System Maintenance
 

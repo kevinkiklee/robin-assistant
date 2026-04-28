@@ -1,20 +1,25 @@
 {
   "name": "robin-assistant",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "A self-improving personal assistant — portable across AI coding tools",
   "type": "module",
+  "bin": {
+    "robin": "bin/robin.js"
+  },
   "scripts": {
     "test": "node --test system/tests/**/*.test.js",
     "backup": "node system/scripts/backup.js",
     "restore": "node system/scripts/restore.js",
     "reset": "node system/scripts/reset.js",
     "regenerate-pointers": "node system/scripts/regenerate-pointers.js",
-    "regenerate-operations-index": "node system/scripts/regenerate-operations-index.js",
     "regenerate-memory-index": "node system/scripts/regenerate-memory-index.js",
     "split-monoliths": "node system/scripts/split-monoliths.js",
     "fetch-finances": "node system/scripts/fetch-lunch-money.js",
     "analyze-finances": "node system/scripts/analyze-finances.js",
     "regenerate-links": "node system/scripts/regenerate-links.js",
+    "jobs": "node bin/robin.js jobs",
+    "jobs:sync": "node bin/robin.js jobs sync",
+    "jobs:list": "node bin/robin.js jobs list",
     "postinstall": "node system/scripts/setup.js"
   },
   "engines": {

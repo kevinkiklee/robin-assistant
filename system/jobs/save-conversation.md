@@ -2,6 +2,9 @@
 name: save-conversation
 triggers: ["save this conversation", "file this session", "save conversation"]
 description: File the key outcomes of the current conversation as a lightweight summary page in the knowledge base.
+runtime: "agent"
+enabled: false
+timeout_minutes: 10
 ---
 # Protocol: Save Conversation
 
