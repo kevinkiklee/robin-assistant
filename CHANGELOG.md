@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.1.0] - 2026-04-28
+
+### Breaking changes
+- Memory restructured into topic folders. `memory/profile.md` and `memory/knowledge.md` are gone — replaced by `memory/profile/` and `memory/knowledge/` with one topic file per area. Migration `0003-flatten-memory` performs the conversion automatically.
+- `memory/index/` (sidecar `.idx.md` tree) removed. Replaced by a single generated `memory/INDEX.md` driven by per-file `description:` frontmatter.
+- `user-data/trips/` consolidated into `user-data/memory/events/`.
+- Inline `<!-- id:... -->` pointer comments removed from all memory files except `inbox.md`.
+- `indexing.status` config field removed (no longer used).
+
+### New
+- `memory/INDEX.md` — generated directory of every memory file, loaded at startup so Robin only opens what's relevant.
+- Threshold-based topic splitting. When a topic file crosses `memory.split_threshold_lines` (default 200), Dream splits it at `## ` boundaries on the next cycle. `decisions.md` and `journal.md` are exempt.
+- New scripts: `system/scripts/regenerate-memory-index.js` (with `--check` mode for CI) and `system/scripts/lib/memory-index.js` (frontmatter, slug, threshold, split, link-rewrite helpers).
+- Migration `0003-flatten-memory.js` — supports `--dry-run`, idempotent, rolls back via existing backup framework.
+- `memory.split_threshold_lines` config option.
+
+### Behavior
+- Dream now consults `INDEX.md` to route inbox entries into topic files. New topic files are Dream-only for inbox-routed content (avoids stale-INDEX windows). User-authored documents (events, derived analyses) can still be created mid-session with frontmatter.
+- Startup loads `memory/INDEX.md`, `profile/identity.md`, `profile/personality.md` instead of the old `profile.md` sections.
+
 ## [3.0.0] - 2026-04-27
 
 ### Breaking changes
