@@ -1,3 +1,6 @@
+---
+description: Active tasks grouped by category
+---
 # Tasks
 
 ## Work
