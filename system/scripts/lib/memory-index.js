@@ -18,3 +18,20 @@ export function stringifyFrontmatter(frontmatter, body) {
   const lines = keys.map(k => `${k}: ${frontmatter[k]}`);
   return `---\n${lines.join('\n')}\n---\n${body}`;
 }
+
+export function slugify(input) {
+  return input
+    .toLowerCase()
+    .replace(/[^\x00-\x7f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export function disambiguateSlug(slug, usedSet) {
+  if (!usedSet.has(slug)) return slug;
+  let n = 2;
+  while (usedSet.has(`${slug}-${n}`)) n++;
+  return `${slug}-${n}`;
+}
