@@ -13,24 +13,24 @@ description: Prepare for an upcoming meeting by gathering context, attendees, pr
 
 ### 1. Get the event
 
-Read `integrations.md` for calendar status.
+Read `user-data/integrations.md` for calendar status.
 - If available: get the calendar event (subject, time, attendees, location, description).
 - If not available: ask "What's the meeting? Give me the subject, time, attendees, and any context."
 
 ### 2. Search for related context
 
-Read `integrations.md` for email status.
+Read `user-data/integrations.md` for email status.
 - If email available: search for threads by subject keywords and attendee names (past 30 days).
 - If not available: ask "Any recent email threads related to this meeting?"
 
-Read `integrations.md` for storage status.
+Read `user-data/integrations.md` for storage status.
 - If storage available: search for documents by subject keywords and attendee names.
 - If not available: skip this section.
 
 ### 3. Check workspace
 
-Read `knowledge.md` for any vendor/contact/topic matching the meeting subject.
-Read `journal.md` and `profile.md` for prior context.
+Read `user-data/knowledge.md` for any vendor/contact/topic matching the meeting subject.
+Read `user-data/journal.md` and `user-data/profile.md` for prior context.
 
 ## Output
 

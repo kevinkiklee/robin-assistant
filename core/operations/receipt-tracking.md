@@ -13,7 +13,7 @@ description: Find and summarize receipts by vendor, time range, or category.
 
 ### 1. Gather receipts
 
-Read `integrations.md` for email status.
+Read `user-data/integrations.md` for email status.
 - If email available: search for receipt/order keywords + optional vendor/date filter — "receipt", "order confirmation", "your order", "shipped".
 - If not available: ask "Can you paste or forward the receipts you want tracked?"
 
@@ -38,4 +38,4 @@ Per-receipt or aggregated summary depending on the question.
 
 ## After
 
-If a recurring category audit, log results to `knowledge.md`. If a one-time lookup, no need to persist.
+If a recurring category audit, log results to `user-data/knowledge.md`. If a one-time lookup, no need to persist.

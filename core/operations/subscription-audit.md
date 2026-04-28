@@ -13,7 +13,7 @@ description: Audit recurring charges and subscriptions; surface candidates to ca
 
 ### 1. Gather charges
 
-Read `integrations.md` for email status.
+Read `user-data/integrations.md` for email status.
 - If email available: search for recurring-charge signals — "subscription", "renewal", "auto-renew", "monthly payment", "annual subscription", "your receipt", "invoice", "billing". Search common providers: streaming, music, cloud storage, SaaS, gym, insurance.
 - If not available: ask "Can you paste a recent bank statement or list your known recurring charges?"
 
@@ -26,11 +26,11 @@ Read `integrations.md` for email status.
 
 ### 3. Cross-reference
 
-Read `knowledge.md` -> `## Subscriptions` for previously tracked charges.
+Read `user-data/knowledge.md` -> `## Subscriptions` for previously tracked charges.
 
 ### 4. Flag
 
-- Charges not in `knowledge.md`
+- Charges not in `user-data/knowledge.md`
 - Mystery charges (unknown or unexpected)
 - Duplicates
 - Forgotten subscriptions (not used recently)
@@ -41,4 +41,4 @@ Read `knowledge.md` -> `## Subscriptions` for previously tracked charges.
 
 ## After audit
 
-Suggest cancellations. Update `knowledge.md` -> `## Subscriptions` with confirmed recurring charges.
+Suggest cancellations. Update `user-data/knowledge.md` -> `## Subscriptions` with confirmed recurring charges.

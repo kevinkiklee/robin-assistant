@@ -26,27 +26,27 @@ Two jobs: **memory management** (route, promote, and prune stored facts) and **s
 
 ## Triggers
 
-Automatic only — invoked from `startup.md`. Never invoked manually.
+Automatic only — invoked from `core/startup.md`. Never invoked manually.
 
 ## Eligibility check
 
-Run after session registration, before reading `profile.md`.
+Run after session registration, before reading `user-data/profile.md`.
 
-1. Read `state/dream-state.md`.
+1. Read `user-data/state/dream-state.md`.
    - File missing or `status: fresh-install` -> create baseline (status: baseline-only, last_dream_at=now), write file, SKIP.
 2. Skip checks (any -> SKIP):
-   - 2+ other sessions listed as active in `state/sessions.md`
+   - 2+ other sessions listed as active in `user-data/state/sessions.md`
 3. Eligibility:
    - elapsed = now - last_dream_at
    - eligible = elapsed >= 24h
    - Not eligible -> SKIP
-4. Eligible -> acquire `state/locks/dream.lock` (follow lock protocol in `protocols/multi-session-coordination.md`).
+4. Eligible -> acquire `user-data/state/locks/dream.lock` (follow lock protocol in `core/operations/multi-session-coordination.md`).
    - Lock held -> SKIP
    - Lock acquired -> proceed to phases
 
 After running (whether complete or partial), always:
-- Delete `state/locks/dream.lock`
-- Update `state/dream-state.md`: last_dream_at=now
+- Delete `user-data/state/locks/dream.lock`
+- Update `user-data/state/dream-state.md`: last_dream_at=now
 - Print one-line summary OR escalation report
 
 ## Phase 0: Index integrity
@@ -54,7 +54,7 @@ After running (whether complete or partial), always:
 Runs before any other phase. Ensures indexes match source files.
 
 1. For each core data file, count entries with `<!-- id:... -->` markers
-2. Compare against entry count in the corresponding `index/<file>.idx.md`
+2. Compare against entry count in the corresponding `user-data/index/<file>.idx.md`
 3. Missing from index → generate a skeleton entry (`enriched: false`, empty metadata)
 4. In index but not found in source → remove from index
 5. Log: "Index reconciled: N added, M removed"
@@ -64,31 +64,31 @@ Phase 0 appends to index files (no lock needed for new entries). It does not mod
 ## Phase 1: Scan
 
 Read these files:
-- `state/dream-state.md` (for `last_dream_at` timestamp)
-- `journal.md` — entries dated after `last_dream_at`
-- `inbox.md` — all unprocessed entries
-- `tasks.md` — completed or stale items
-- `self-improvement.md` — all sections (corrections, patterns, session handoff, calibration)
-- `decisions.md` — decisions older than 30 days with no recorded outcome
+- `user-data/state/dream-state.md` (for `last_dream_at` timestamp)
+- `user-data/journal.md` — entries dated after `last_dream_at`
+- `user-data/inbox.md` — all unprocessed entries
+- `user-data/tasks.md` — completed or stale items
+- `user-data/self-improvement.md` — all sections (corrections, patterns, session handoff, calibration)
+- `user-data/decisions.md` — decisions older than 30 days with no recorded outcome
 
 ## Phase 2: Memory management
 
-1. **Inbox routing** — for each entry in `inbox.md`:
-   - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `capture-rules.md` routing table — tags are hints, not binding.
+1. **Inbox routing** — for each entry in `user-data/inbox.md`:
+   - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `core/capture-rules.md` routing table — tags are hints, not binding.
    - `[?]` tagged entries: treat as unclassified, classify from content.
    - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
-   - Untagged entries: classify per `capture-rules.md` routing table as before.
+   - Untagged entries: classify per `core/capture-rules.md` routing table as before.
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
 
-   When moving an entry between files (inbox routing, fact promotion), also move its index entry from the origin sidecar (`index/<origin>.idx.md`) to the destination sidecar (`index/<dest>.idx.md`). The entry's ID stays the same. If the entry was `enriched: false`, enrich it during the move. Lock the origin index (modifying existing content); destination is an append (no lock needed).
+   When moving an entry between files (inbox routing, fact promotion), also move its index entry from the origin sidecar (`user-data/index/<origin>.idx.md`) to the destination sidecar (`user-data/index/<dest>.idx.md`). The entry's ID stays the same. If the entry was `enriched: false`, enrich it during the move. Lock the origin index (modifying existing content); destination is an append (no lock needed).
 
-2. **Fact promotion** — durable facts in `journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to `profile.md` or `knowledge.md`.
+2. **Fact promotion** — durable facts in `user-data/journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to `user-data/profile.md` or `user-data/knowledge.md`.
 
 3. **Task pruning** — completed tasks older than 60 days -> remove. Stale tasks (no activity >30 days) -> flag for user review at next interaction.
 
-4. **Profile and knowledge freshness** — skim `profile.md` and `knowledge.md` for information that contradicts recent journal entries or conversation context. Flag stale facts for user review.
+4. **Profile and knowledge freshness** — skim `user-data/profile.md` and `user-data/knowledge.md` for information that contradicts recent journal entries or conversation context. Flag stale facts for user review.
 
 ## Phase 3: Self-improvement
 
@@ -108,7 +108,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 11. **Calibration update** — update prediction accuracy for matured predictions. Update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check.
 
-12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `journal.md` or delete if resolved.
+12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/journal.md` or delete if resolved.
 
 ## Phase 4: Index maintenance
 
@@ -126,17 +126,17 @@ Runs after all other phases. Maintains index quality.
 
 16. **Enrich stragglers** — any entries still `enriched: false` (from Phase 0 or degraded captures), read source content and fill in domains, tags, summary.
 
-17. **Regenerate manifest** — rebuild `manifest.md` from current index state: entry counts, domains covered, last modified dates.
+17. **Regenerate manifest** — rebuild `core/manifest.md` from current index state: entry counts, domains covered, last modified dates.
 
 ## Boundary rule
 
-Dream can read and write any of the 8 core data files (profile.md, tasks.md, knowledge.md, decisions.md, journal.md, self-improvement.md, inbox.md).
+Dream can read and write any of the user-data data files (`user-data/profile.md`, `user-data/tasks.md`, `user-data/knowledge.md`, `user-data/decisions.md`, `user-data/journal.md`, `user-data/self-improvement.md`, `user-data/inbox.md`).
 
-Dream can read and write `index/*.idx.md` and `manifest.md`. Lock required when modifying existing index entries (Phase 4); not required for appends (Phase 0 skeleton entries).
+Dream can read and write `user-data/index/*.idx.md` and `core/manifest.md`. Lock required when modifying existing index entries (Phase 4); not required for appends (Phase 0 skeleton entries).
 
-Dream manages its own `state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
+Dream manages its own `user-data/state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
 
-Dream NEVER edits: `AGENTS.md`, `protocols/`, `integrations.md`, `startup.md`, `capture-rules.md`, `robin.config.json`.
+Dream NEVER edits: `AGENTS.md`, `core/operations/`, `user-data/integrations.md`, `core/startup.md`, `core/capture-rules.md`, `user-data/robin.config.json`.
 
 Dream NEVER runs external commands or makes network requests.
 
@@ -154,4 +154,4 @@ Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive
 
 - Lock held -> skip cleanly
 - Error mid-phase -> mark status: partial, release lock, escalate
-- If `state/dream-state.md` is corrupted -> recreate baseline, skip this run
+- If `user-data/state/dream-state.md` is corrupted -> recreate baseline, skip this run

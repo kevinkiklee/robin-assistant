@@ -13,26 +13,26 @@ description: Daily morning briefing covering calendar, weather, priorities, and 
 
 ### 1. Calendar
 
-Read `integrations.md` for calendar status.
+Read `user-data/integrations.md` for calendar status.
 - If available: get today's events from the user's primary calendar.
 - If not available: ask "What's on your calendar today? Paste or summarize."
 
 ### 2. Email
 
-Read `integrations.md` for email status.
+Read `user-data/integrations.md` for email status.
 - If available: search inbox for unread/important threads since yesterday morning.
 - If not available: ask "Any important emails I should know about?"
 
 ### 3. Tasks
 
-Read `tasks.md`. Collect:
+Read `user-data/tasks.md`. Collect:
 - Items due today
 - Overdue items
 - Top high-priority pending items
 
 ### 4. Context
 
-Read `self-improvement.md` (session handoff section) for active context from prior sessions.
+Read `user-data/self-improvement.md` (session handoff section) for active context from prior sessions.
 
 ### 5. Compose briefing
 

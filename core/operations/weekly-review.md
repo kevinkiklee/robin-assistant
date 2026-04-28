@@ -13,41 +13,41 @@ description: End-of-week recap covering accomplishments, missed items, and the u
 
 ### 1. Last week recap
 
-- Read `tasks.md` for completed items in the past 7 days.
-- Read `integrations.md` for calendar status.
+- Read `user-data/tasks.md` for completed items in the past 7 days.
+- Read `user-data/integrations.md` for calendar status.
   - If available: list events that happened this week.
   - If not available: ask "What were the key events this week?"
 
 ### 2. Backlog health
 
-- Todos in `tasks.md` older than 14 days untouched -> flag as stale, ask to keep/drop/defer.
+- Todos in `user-data/tasks.md` older than 14 days untouched -> flag as stale, ask to keep/drop/defer.
 - Overdue items -> re-prioritize.
 
 ### 3. Financial check (mini)
 
-- Read `integrations.md` for email status.
+- Read `user-data/integrations.md` for email status.
   - If available: pull recent receipts/orders.
   - If not available: skip or ask "Any notable spending this week?"
-- Check `knowledge.md` -> `## Subscriptions` for anything anomalous.
+- Check `user-data/knowledge.md` -> `## Subscriptions` for anything anomalous.
 
 ### 4. Goal check-ins
 
-Read `profile.md` -> `## Goals`. Prompt the user for progress on active goals.
+Read `user-data/profile.md` -> `## Goals`. Prompt the user for progress on active goals.
 
 ### 5. Look ahead
 
-- Read `integrations.md` for calendar status.
+- Read `user-data/integrations.md` for calendar status.
   - If available: next 7 days of calendar.
   - If not available: ask "What's coming up next week?"
 - Prep needed for any meetings/events?
 
 ### 6. Decisions waiting
 
-Read `decisions.md` for entries marked pending input.
+Read `user-data/decisions.md` for entries marked pending input.
 
 ### 7. Inbox sweep
 
-Read `inbox.md`. For each entry, classify per `capture-rules.md` routing and move to the right file.
+Read `user-data/inbox.md`. For each entry, classify per `core/capture-rules.md` routing and move to the right file.
 
 ## Output
 
