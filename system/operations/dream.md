@@ -30,7 +30,7 @@ Automatic only — invoked from `system/startup.md`. Never invoked manually.
 
 ## Eligibility check
 
-Run after session registration, before reading `user-data/memory/profile.md`.
+Run after session registration, before reading the memory tree.
 
 1. Read `user-data/state/dream-state.md`.
    - File missing or `status: fresh-install` -> create baseline (status: baseline-only, last_dream_at=now), write file, SKIP.
@@ -49,18 +49,6 @@ After running (whether complete or partial), always:
 - Update `user-data/state/dream-state.md`: last_dream_at=now
 - Print one-line summary OR escalation report
 
-## Phase 0: Index integrity
-
-Runs before any other phase. Ensures indexes match source files.
-
-1. For each core data file, count entries with `<!-- id:... -->` markers
-2. Compare against entry count in the corresponding `user-data/memory/index/<file>.idx.md`
-3. Missing from index → generate a skeleton entry (`enriched: false`, empty metadata)
-4. In index but not found in source → remove from index
-5. Log: "Index reconciled: N added, M removed"
-
-Phase 0 appends to index files (no lock needed for new entries). It does not modify source files.
-
 ## Phase 1: Scan
 
 Read these files:
@@ -77,18 +65,18 @@ Read these files:
    - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `system/capture-rules.md` routing table — tags are hints, not binding.
    - `[?]` tagged entries: treat as unclassified, classify from content.
    - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
-   - Untagged entries: classify per `system/capture-rules.md` routing table as before.
+   - Untagged entries: classify per `system/capture-rules.md` routing table.
+   - Consult `user-data/memory/INDEX.md` to pick the destination topic file. Insert under the matching `## ` subsection if one exists.
+   - **Dream is the only writer that creates new topic files for inbox-routed content.** If no topic file fits, create one with `description:` frontmatter inferred from the entry; the next index regen picks it up.
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
 
-   When moving an entry between files (inbox routing, fact promotion), also move its index entry from the origin sidecar (`user-data/memory/index/<origin>.idx.md`) to the destination sidecar (`user-data/memory/index/<dest>.idx.md`). The entry's ID stays the same. If the entry was `enriched: false`, enrich it during the move. Lock the origin index (modifying existing content); destination is an append (no lock needed).
-
-2. **Fact promotion** — durable facts in `user-data/memory/journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to `user-data/memory/profile.md` or `user-data/memory/knowledge.md`.
+2. **Fact promotion** — durable facts in `user-data/memory/journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to the matching topic file under `user-data/memory/profile/` or `user-data/memory/knowledge/`.
 
 3. **Task pruning** — completed tasks older than 60 days -> remove. Stale tasks (no activity >30 days) -> flag for user review at next interaction.
 
-4. **Profile and knowledge freshness** — skim `user-data/memory/profile.md` and `user-data/memory/knowledge.md` for information that contradicts recent journal entries or conversation context. Flag stale facts for user review.
+4. **Profile and knowledge freshness** — skim topic files under `user-data/memory/profile/` and `user-data/memory/knowledge/` for information that contradicts recent journal entries or conversation context. Flag stale facts for user review.
 
 ## Phase 3: Self-improvement
 
@@ -110,29 +98,21 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/journal.md` or delete if resolved.
 
-## Phase 4: Index maintenance
+## Phase 4: Memory tree maintenance
 
-Runs after all other phases. Maintains index quality.
+Runs after all other phases. Maintains the memory tree structure.
 
-13. **Tag normalization** — scan all index files for tags. Normalize: lowercase, hyphen-separated, people as `firstname-lastname`. Deduplicate.
+13. **Threshold splitting** — walk the memory tree. For each topic file, run `planSplit` from `system/scripts/lib/memory-index.js` with the threshold from `user-data/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. Exempt `decisions.md` and `journal.md` (append-only logs read by date range).
 
-14. **Relationship discovery** — for entries created, modified, moved, or enriched since `last_dream_at`:
-    - Entity match: two entries mention the same entity → add to `related`
-    - Temporal proximity: entries within 48 hours sharing a domain → candidate, confirm
-    - Explicit reference: entry text references another entry's content → link
-    Only process the delta, not all entries.
+14. **Empty-file cleanup** — any topic file that is empty (frontmatter only or no content) is deleted. Any topic folder that ends up empty is removed.
 
-15. **Summary updates** — for entries whose source content changed since last dream, regenerate the one-line summary in the index.
-
-16. **Enrich stragglers** — any entries still `enriched: false` (from Phase 0 or degraded captures), read source content and fill in domains, tags, summary.
-
-17. **Regenerate manifest** — rebuild `system/manifest.md` from current index state: entry counts, domains covered, last modified dates.
+15. **Index regeneration** — run `node system/scripts/regenerate-memory-index.js` to rebuild `user-data/memory/INDEX.md` from per-file frontmatter. Idempotent — exits clean if nothing changed.
 
 ## Boundary rule
 
-Dream can read and write any of the user-data data files (`user-data/memory/profile.md`, `user-data/memory/tasks.md`, `user-data/memory/knowledge.md`, `user-data/memory/decisions.md`, `user-data/memory/journal.md`, `user-data/memory/self-improvement.md`, `user-data/memory/inbox.md`).
+Dream can read and write any topic file under `user-data/memory/` and the flat files (`tasks.md`, `decisions.md`, `journal.md`, `self-improvement.md`, `inbox.md`).
 
-Dream can read and write `user-data/memory/index/*.idx.md` and `system/manifest.md`. Lock required when modifying existing index entries (Phase 4); not required for appends (Phase 0 skeleton entries).
+Dream maintains `user-data/memory/INDEX.md` via `regenerate-memory-index.js` (Phase 4 step 15).
 
 Dream manages its own `user-data/state/locks/dream.lock` (create/delete) but NEVER edits other lock files.
 
@@ -144,7 +124,7 @@ Dream NEVER runs external commands or makes network requests.
 
 ### Default (silent)
 
-One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, reconciled Q index entries."
+One-line summary: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, split S topic files, regenerated INDEX."
 
 ### Escalation report
 
