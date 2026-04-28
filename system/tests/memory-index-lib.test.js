@@ -6,6 +6,7 @@ import {
   slugify,
   disambiguateSlug,
   countContentLines,
+  rewriteLinks,
 } from '../scripts/lib/memory-index.js';
 
 test('parseFrontmatter extracts description', () => {
@@ -84,4 +85,35 @@ test('countContentLines includes comment and code-fence lines', () => {
 
 test('countContentLines returns 0 for frontmatter-only input', () => {
   assert.equal(countContentLines('---\ndescription: x\n---\n'), 0);
+});
+
+test('rewriteLinks rewrites a relative markdown link', () => {
+  const input = 'See [people](../profile/people.md) for context.';
+  const renames = new Map([['profile/people.md', 'profile/people/family.md']]);
+  const out = rewriteLinks(input, renames, 'knowledge/medical.md');
+  assert.equal(out, 'See [people](../profile/people/family.md) for context.');
+});
+
+test('rewriteLinks leaves absolute and anchor links alone', () => {
+  const input = 'See [external](https://example.com) and [anchor](#section).';
+  const renames = new Map([['profile/people.md', 'profile/people/family.md']]);
+  const out = rewriteLinks(input, renames, 'knowledge/medical.md');
+  assert.equal(out, input);
+});
+
+test('rewriteLinks handles multiple renames in one document', () => {
+  const input = '[a](../a.md) and [b](../b.md)';
+  const renames = new Map([
+    ['a.md', 'a/x.md'],
+    ['b.md', 'b/y.md'],
+  ]);
+  const out = rewriteLinks(input, renames, 'sub/file.md');
+  assert.equal(out, '[a](../a/x.md) and [b](../b/y.md)');
+});
+
+test('rewriteLinks leaves unrelated links alone', () => {
+  const input = '[other](../other.md)';
+  const renames = new Map([['a.md', 'a/x.md']]);
+  const out = rewriteLinks(input, renames, 'sub/file.md');
+  assert.equal(out, input);
 });
