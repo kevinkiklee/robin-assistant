@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { generateMemoryIndex, writeMemoryIndex } from '../scripts/regenerate-memory-index.js';
+import { generateMemoryIndex, writeMemoryIndex, checkMemoryIndex } from '../scripts/regenerate-memory-index.js';
 
 function makeTree() {
   const root = mkdtempSync(join(tmpdir(), 'robin-mem-'));
@@ -53,5 +53,19 @@ test('generateMemoryIndex skips INDEX.md and .gitkeep', () => {
   const out = generateMemoryIndex(mem);
   assert.ok(!out.includes('.gitkeep'));
   assert.ok(!out.includes('| INDEX.md |'));
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('checkMemoryIndex returns true when INDEX is up to date', () => {
+  const { root, mem } = makeTree();
+  writeMemoryIndex(mem);
+  assert.equal(checkMemoryIndex(mem), true);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('checkMemoryIndex returns false when INDEX differs', () => {
+  const { root, mem } = makeTree();
+  writeFileSync(join(mem, 'INDEX.md'), '# stale\n');
+  assert.equal(checkMemoryIndex(mem), false);
   rmSync(root, { recursive: true, force: true });
 });

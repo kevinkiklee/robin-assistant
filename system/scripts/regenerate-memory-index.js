@@ -55,7 +55,23 @@ export function writeMemoryIndex(memoryDir) {
   writeFileSync(join(memoryDir, 'INDEX.md'), out);
 }
 
+export function checkMemoryIndex(memoryDir) {
+  const expected = generateMemoryIndex(memoryDir);
+  const actualPath = join(memoryDir, 'INDEX.md');
+  if (!existsSync(actualPath)) return false;
+  const actual = readFileSync(actualPath, 'utf-8');
+  return actual === expected;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const memoryDir = fileURLToPath(new URL('../../user-data/memory', import.meta.url));
-  writeMemoryIndex(memoryDir);
+  if (process.argv.includes('--check')) {
+    if (!checkMemoryIndex(memoryDir)) {
+      console.error('memory/INDEX.md is out of date. Run regenerate-memory-index.js to fix.');
+      process.exit(1);
+    }
+    console.log('memory/INDEX.md is up to date.');
+  } else {
+    writeMemoryIndex(memoryDir);
+  }
 }
