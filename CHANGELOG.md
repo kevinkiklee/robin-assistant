@@ -3,22 +3,37 @@
 ## [3.1.0] - 2026-04-28
 
 ### Breaking changes
-- Memory restructured into topic folders. `memory/profile.md` and `memory/knowledge.md` are gone — replaced by `memory/profile/` and `memory/knowledge/` with one topic file per area. Migration `0003-flatten-memory` performs the conversion automatically.
 - `memory/index/` (sidecar `.idx.md` tree) removed. Replaced by a single generated `memory/INDEX.md` driven by per-file `description:` frontmatter.
 - `user-data/trips/` consolidated into `user-data/memory/events/`.
-- Inline `<!-- id:... -->` pointer comments removed from all memory files except `inbox.md`.
+- Inline `<!-- id:... -->` pointer comments removed from `knowledge.md` and `profile.md` (kept in `inbox.md`).
 - `indexing.status` config field removed (no longer used).
 
+### Memory restructure (two phases)
+
+The new architecture organizes memory into topic folders (`profile/`, `knowledge/`, `events/`) with a generated `INDEX.md`. Because the existing `knowledge.md` and `profile.md` use level-2 headings for both top-level domains AND sub-sections, mechanical splitting would mis-place content. The migration is therefore split into two phases:
+
+**Phase 1 (automatic, runs at session startup via `0003-flatten-memory`):**
+- Drops the sidecar index tree.
+- Relocates `user-data/trips/` to `user-data/memory/events/`.
+- Adds `description:` frontmatter to flat files and to `knowledge.md` / `profile.md` (which are preserved as monoliths).
+- Generates `memory/INDEX.md`.
+
+**Phase 2 (interactive, run when you're ready):**
+- Run `npm run split-monoliths` from a terminal to split `knowledge.md` and `profile.md` into topic folders.
+- For each `## ` heading, the splitter prompts whether it's a domain root (becomes its own file) or a child (kept as a `## ` subsection inside the preceding root's file).
+- Smart defaults: first heading defaults to root; small sections default to child.
+- After confirmation, topic files are written, cross-references are repaired, and INDEX.md is regenerated.
+
 ### New
-- `memory/INDEX.md` — generated directory of every memory file, loaded at startup so Robin only opens what's relevant.
-- Threshold-based topic splitting. When a topic file crosses `memory.split_threshold_lines` (default 200), Dream splits it at `## ` boundaries on the next cycle. `decisions.md` and `journal.md` are exempt.
-- New scripts: `system/scripts/regenerate-memory-index.js` (with `--check` mode for CI) and `system/scripts/lib/memory-index.js` (frontmatter, slug, threshold, split, link-rewrite helpers).
-- Migration `0003-flatten-memory.js` — supports `--dry-run`, idempotent, rolls back via existing backup framework.
+- `memory/INDEX.md` — generated directory of every memory file.
+- Threshold-based topic splitting in Dream. When a topic file crosses `memory.split_threshold_lines` (default 200), Dream splits it at `## ` boundaries. Applies to topic files only — exempts `knowledge.md`, `profile.md`, `decisions.md`, `journal.md`.
+- New scripts: `system/scripts/regenerate-memory-index.js` (with `--check`), `system/scripts/split-monoliths.js`, `system/scripts/lib/memory-index.js`.
+- New npm scripts: `regenerate-memory-index`, `split-monoliths`.
 - `memory.split_threshold_lines` config option.
 
 ### Behavior
-- Dream now consults `INDEX.md` to route inbox entries into topic files. New topic files are Dream-only for inbox-routed content (avoids stale-INDEX windows). User-authored documents (events, derived analyses) can still be created mid-session with frontmatter.
-- Startup loads `memory/INDEX.md`, `profile/identity.md`, `profile/personality.md` instead of the old `profile.md` sections.
+- Dream consults `INDEX.md` to route inbox entries into topic files. New topic files for inbox-routed content are Dream-only (avoids stale-INDEX windows). User-authored documents (events, derived analyses) can still be created mid-session with frontmatter.
+- Startup loads `memory/INDEX.md` plus `profile/identity.md` and `profile/personality.md`. If those topic files don't exist yet (Phase 2 not run), startup falls back to loading `profile.md` directly.
 
 ## [3.0.0] - 2026-04-27
 
