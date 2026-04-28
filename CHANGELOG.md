@@ -1,20 +1,66 @@
 # Changelog
 
+## [3.2.0] - 2026-04-28
+
+### Wiki evolution — operations layer + entity typing
+
+Turns Robin's memory from a filing cabinet into a compounding wiki. Knowledge is compiled once and kept current — not re-derived each session. Inspired by Karpathy's LLM Wiki pattern and Obsidian's graph-based knowledge management.
+
+### New operations
+- **Ingest** (`system/operations/ingest.md`) — process source documents (files, URLs, inline text), create source pages under `knowledge/sources/`, ripple updates across 5-8 knowledge files, maintain cross-references, git commit for rollback.
+- **Lint** (`system/operations/lint.md`) — 8-check health audit: contradictions (scoped to LINKS.md edges), dead links, stale claims, orphans, missing pages, type suggestions, frontmatter gaps, size warnings. Issue cap default 10, scoped by subdirectory.
+- **Save conversation** (`system/operations/save-conversation.md`) — file conversation outcomes as lightweight summary pages to `knowledge/conversations/`. 90-day pruning by Dream for orphaned conversations.
+
+### New infrastructure
+- `memory/LINKS.md` — centralized cross-reference graph. O(1) appends during operations, full rebuild only on structural changes in Dream. Replaces in-file backlinks.
+- `memory/log.md` — chronological record of wiki operations (ingests, lints, query filings).
+- `memory/hot.md` — rolling window of last 3 session summaries for seamless continuation. Append-only (lockless), Dream trims.
+- `user-data/sources/` — immutable source document archive (`articles/`, `documents/`, `notes/`, `media/`).
+- `knowledge/sources/` and `knowledge/conversations/` directories for ingest and conversation output.
+
+### Entity/concept typing (migration 0004)
+- `type:` field added to all memory file frontmatter. Vocabulary: `topic`, `entity`, `snapshot`, `event`, `source`, `analysis`, `conversation`, `reference`.
+- Types are set by migration 0004 (conservative heuristics) and refined by lint suggestions or manual updates.
+- Frontmatter parser extended to handle inline arrays (`tags: [medical, labs]`).
+- Type assignment guidance added to capture rules.
+
+### New scripts
+- `system/scripts/regenerate-links.js` (`npm run regenerate-links`) — walks memory files, extracts markdown links, builds edge table, respects `graph_exclude` config.
+- `system/migrations/0004-add-frontmatter-types.js` — adds `type:` to all memory files via path heuristics.
+
+### Config additions
+- `memory.graph_exclude` — array of path prefixes excluded from link scanning (default: transaction files).
+- `memory.startup_budget_lines` — hard cap on lines loaded at session start (default: 500).
+
+### Dream enhancements
+- Phase 1 now reads `hot.md` and `log.md`.
+- Phase 4 gains 3 steps: hot cache trim (step 16), LINKS.md rebuild on structural changes (step 17), conversation pruning after 90 days (step 18).
+- Dream creates new topic files with `type:` inferred from content.
+
+### Capture rules additions
+- Ingest added as direct-write exception (user-supervised, structural).
+- Hot cache section added to capture sweep (step 6).
+- Full frontmatter field documentation (type, tags, related, created, last_verified, ingested, origin).
+
+### Behavior
+- Startup loads `hot.md` after INDEX.md, before identity/personality. LINKS.md and log.md are on-demand only.
+- Lint is interactive — surfaces issues that need user judgment, does not auto-fix.
+
 ## [3.1.0] - 2026-04-28
 
 ### Breaking changes
 - `memory/index/` (sidecar `.idx.md` tree) removed. Replaced by a single generated `memory/INDEX.md` driven by per-file `description:` frontmatter.
-- `user-data/trips/` consolidated into `user-data/memory/events/`.
+- `user-data/trips/` consolidated into `user-data/memory/knowledge/events/`.
 - Inline `<!-- id:... -->` pointer comments removed from `knowledge.md` and `profile.md` (kept in `inbox.md`).
 - `indexing.status` config field removed (no longer used).
 
 ### Memory restructure (two phases)
 
-The new architecture organizes memory into topic folders (`profile/`, `knowledge/`, `events/`) with a generated `INDEX.md`. Because the existing `knowledge.md` and `profile.md` use level-2 headings for both top-level domains AND sub-sections, mechanical splitting would mis-place content. The migration is therefore split into two phases:
+The new architecture organizes memory into topic folders (`profile/`, `knowledge/` with `knowledge/events/` for dated entries) with a generated `INDEX.md`. Because the existing `knowledge.md` and `profile.md` use level-2 headings for both top-level domains AND sub-sections, mechanical splitting would mis-place content. The migration is therefore split into two phases:
 
 **Phase 1 (automatic, runs at session startup via `0003-flatten-memory`):**
 - Drops the sidecar index tree.
-- Relocates `user-data/trips/` to `user-data/memory/events/`.
+- Relocates `user-data/trips/` to `user-data/memory/knowledge/events/`.
 - Adds `description:` frontmatter to flat files and to `knowledge.md` / `profile.md` (which are preserved as monoliths).
 - Generates `memory/INDEX.md`.
 
