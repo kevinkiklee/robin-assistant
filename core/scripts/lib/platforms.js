@@ -1,7 +1,7 @@
 export const PLATFORMS = {
   'claude-code': {
     pointerFile: 'CLAUDE.md',
-    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to inbox.md with tags.\n',
+    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/inbox.md with tags.\n',
     nativeIntegrations: {
       email: 'gmail (native via mcp__claude_ai_Gmail__)',
       calendar: 'google-calendar (native via mcp__claude_ai_Google_Calendar__)',
@@ -10,12 +10,12 @@ export const PLATFORMS = {
   },
   'cursor': {
     pointerFile: '.cursorrules',
-    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to inbox.md with tags.\n',
+    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/inbox.md with tags.\n',
     nativeIntegrations: {},
   },
   'gemini-cli': {
     pointerFile: 'GEMINI.md',
-    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to inbox.md with tags.\n',
+    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/inbox.md with tags.\n',
     nativeIntegrations: {},
   },
   'codex': {
@@ -25,7 +25,7 @@ export const PLATFORMS = {
   },
   'windsurf': {
     pointerFile: '.windsurfrules',
-    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to inbox.md with tags.\n',
+    pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/inbox.md with tags.\n',
     nativeIntegrations: {},
   },
   'antigravity': {
