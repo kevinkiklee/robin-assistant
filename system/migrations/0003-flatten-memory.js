@@ -93,6 +93,30 @@ function relocateTrips(workspaceDir, memDir) {
   rmSync(tripsDir, { recursive: true, force: true });
 }
 
+const FLAT_DESCRIPTIONS = {
+  'inbox.md': 'Quick-capture buffer; Dream routes from here',
+  'journal.md': 'Append-only daily reflections',
+  'tasks.md': 'Active tasks grouped by category',
+  'decisions.md': 'Append-only decision log',
+  'self-improvement.md': 'Corrections, preferences, session handoff, calibration',
+};
+
+function ensureFlatFrontmatter(memDir) {
+  for (const [name, desc] of Object.entries(FLAT_DESCRIPTIONS)) {
+    const p = join(memDir, name);
+    if (!existsSync(p)) continue;
+    const content = readFileSync(p, 'utf-8');
+    const { frontmatter, body } = parseFrontmatter(content);
+    if (frontmatter.description) continue;
+    writeFileSync(p, stringifyFrontmatter({ description: desc }, body));
+  }
+}
+
+function deleteSidecarTree(memDir) {
+  const idxDir = join(memDir, 'index');
+  if (existsSync(idxDir)) rmSync(idxDir, { recursive: true, force: true });
+}
+
 export async function up({ workspaceDir, helpers, opts = {} }) {
   const interactive = opts.interactive ?? true;
   const memDir = join(workspaceDir, 'user-data/memory');
@@ -100,4 +124,6 @@ export async function up({ workspaceDir, helpers, opts = {} }) {
   splitMonolith(join(memDir, 'knowledge.md'), 'knowledge', { interactive });
   splitMonolith(join(memDir, 'profile.md'), 'profile', { interactive });
   relocateTrips(workspaceDir, memDir);
+  deleteSidecarTree(memDir);
+  ensureFlatFrontmatter(memDir);
 }
