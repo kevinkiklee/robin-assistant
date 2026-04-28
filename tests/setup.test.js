@@ -33,3 +33,14 @@ test('setup populates user-data/ from skeleton in CI mode', async () => {
   assert.ok(existsSync(join(root, 'backup')));
   rmSync(root, { recursive: true, force: true });
 });
+
+test('setup records baseline migration as applied', async () => {
+  const root = repo();
+  mkdirSync(join(root, 'core/migrations'), { recursive: true });
+  writeFileSync(join(root, 'core/migrations/0001-baseline.js'),
+    'export const id = "0001-baseline"; export async function up() {}');
+  await setup(root, { ci: true });
+  const log = JSON.parse(readFileSync(join(root, 'user-data/.migrations-applied.json'), 'utf-8'));
+  assert.ok(log.find(e => e.id === '0001-baseline'));
+  rmSync(root, { recursive: true, force: true });
+});

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
+import { runPendingMigrations } from './migrate.js';
 
 export async function setup(workspaceDir = process.cwd(), opts = {}) {
   const ud = join(workspaceDir, 'user-data');
@@ -44,6 +45,13 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     console.log('\nConfig saved to user-data/robin.config.json.');
   } else {
     console.log('Non-interactive mode. Edit user-data/robin.config.json before first session.');
+  }
+
+  // Apply baseline migrations
+  try {
+    await runPendingMigrations(workspaceDir);
+  } catch (err) {
+    console.warn(`Initial migration apply skipped: ${err.message}`);
   }
 
   // Install pre-commit hook
