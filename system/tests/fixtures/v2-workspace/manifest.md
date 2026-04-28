@@ -1,3 +1,0 @@
-# Manifest
-
-files: 8

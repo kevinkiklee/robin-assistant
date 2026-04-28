@@ -34,7 +34,6 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/scripts/restore.js` | Restore `user-data/` from a `backup/` snapshot. |
 | `system/scripts/reset.js` | Wipe `user-data/` (destructive — backup first). |
 | `system/scripts/migrate.js` | Apply pending migrations from `system/migrations/` (auto-runs on session start). |
-| `system/scripts/migrate-index.js` | Index migration helper. |
 | `system/scripts/install-hooks.js` | Install the `pre-commit` hook into `.git/hooks/` (auto-runs on `npm install`). |
 | `system/scripts/pre-commit-hook.js` | Pre-commit hook source — refuses to commit `user-data/` files. |
 | `system/scripts/regenerate-pointers.js` | Regenerate platform pointer files from `platforms.js`. |

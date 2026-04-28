@@ -8,9 +8,6 @@
     "backup": "node system/scripts/backup.js",
     "restore": "node system/scripts/restore.js",
     "reset": "node system/scripts/reset.js",
-    "install-hooks": "node system/scripts/install-hooks.js",
-    "migrate": "node system/scripts/migrate.js",
-    "migrate-v3": "node system/scripts/migrate-v3.js",
     "regenerate-pointers": "node system/scripts/regenerate-pointers.js",
     "regenerate-operations-index": "node system/scripts/regenerate-operations-index.js",
     "postinstall": "node system/scripts/setup.js"

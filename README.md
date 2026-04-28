@@ -102,18 +102,6 @@ That's it. There is no global CLI to install. The repo is self-contained.
 
 If you ran `npm install` in a non-interactive shell (CI, no TTY), the prompts are skipped and `user-data/robin.config.json` ships with placeholder values — open it and fill in your name/timezone/etc. before your first session.
 
-### Migrating from a v2 workspace
-
-If you have an existing v2 robin-assistant workspace, migrate it instead of starting fresh:
-
-```bash
-# from inside the new clone:
-rm -rf user-data backup    # clear the skeleton stubs that npm install created
-npm run migrate-v3 -- --from /path/to/your/v2-workspace
-```
-
-This copies your real data into `user-data/`, splits the v2 `self-improvement.md` correctly, brings `archive/` over as `backup/`, and leaves the source workspace untouched. Confirm with `node system/scripts/startup-check.js`. Once you've used the new instance for a session or two, you can delete the old workspace.
-
 ---
 
 ## Updating
@@ -149,6 +137,8 @@ If anything goes wrong with a migration, the pre-migration backup is one command
 
 ### What to do if `git pull` reports a conflict
 
+
+
 Conflicts only happen when you've modified a tracked file (anything outside the gitignored directories). If that happens:
 
 ```bash
@@ -156,15 +146,6 @@ git checkout -- <conflicting-path>     # discard local edits, accept upstream
 ```
 
 Then move whatever customization you wanted into the right extension point (see [Customization](#customization) below). Tracked files are upstream-owned by design — you should never need to edit them directly.
-
-### Previewing or manually running migrations
-
-Pending migrations apply automatically on session start, but you can preview or run them explicitly:
-
-```bash
-npm run migrate -- --dry-run    # show what would run without applying
-npm run migrate                  # apply pending now
-```
 
 ---
 
@@ -206,10 +187,6 @@ All operate on the cloned repo from inside it. There is no global `robin` binary
 | `npm run backup` | tar.gz `user-data/` into `backup/user-data-<ISO-timestamp>.tar.gz` |
 | `npm run restore` | Restore `user-data/` from a `backup/*.tar.gz` (interactive) |
 | `npm run reset` | Wipe `user-data/`, recopy skeleton, re-prompt config (auto-backups first) |
-| `npm run migrate -- --dry-run` | Preview pending migrations |
-| `npm run migrate` | Apply pending migrations now (normally automatic on session start) |
-| `npm run migrate-v3 -- --from <path>` | One-time migration from a v2.x workspace |
-| `npm run install-hooks` | (Re)install the pre-commit privacy hook |
 | `npm test` | Run the test suite |
 
 ---
