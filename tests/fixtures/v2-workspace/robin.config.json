@@ -1,0 +1,8 @@
+{
+  "version": "2.1.0",
+  "user": {
+    "name": "Test",
+    "timezone": "UTC"
+  },
+  "platform": "claude-code"
+}
