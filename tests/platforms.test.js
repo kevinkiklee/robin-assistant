@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PLATFORMS } from '../scripts/lib/platforms.js';
+import { PLATFORMS } from '../core/scripts/lib/platforms.js';
 
 describe('platform pointer content', () => {
   it('includes capture anchor in all pointer files', () => {

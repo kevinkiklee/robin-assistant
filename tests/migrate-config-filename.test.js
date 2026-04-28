@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { migrateConfigFilename } from '../scripts/lib/migrate-config-filename.js';
+import { migrateConfigFilename } from '../core/scripts/lib/migrate-config-filename.js';
 
 function makeTempWorkspace() {
   return mkdtempSync(path.join(tmpdir(), 'robin-test-'));

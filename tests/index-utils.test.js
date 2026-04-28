@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 
 describe('generateEntryId', () => {
   it('returns an ID in YYYYMMDD-HHMM-<session><seq> format', async () => {
-    const { generateEntryId } = await import('../scripts/lib/index-utils.js');
+    const { generateEntryId } = await import('../core/scripts/lib/index-utils.js');
     const id = generateEntryId('ab');
     assert.match(id, /^\d{8}-\d{4}-[a-z0-9]{2}[a-z]$/);
   });
 
   it('uses UTC date and time', async () => {
-    const { generateEntryId } = await import('../scripts/lib/index-utils.js');
+    const { generateEntryId } = await import('../core/scripts/lib/index-utils.js');
     const before = new Date();
     const id = generateEntryId('zz');
     const after = new Date();
@@ -32,7 +32,7 @@ describe('generateEntryId', () => {
 
   it('starts sequence at a for first call in a given minute', async () => {
     // Import fresh module to get clean state — use dynamic import trick
-    const { generateEntryId, _resetSequenceForTest } = await import('../scripts/lib/index-utils.js');
+    const { generateEntryId, _resetSequenceForTest } = await import('../core/scripts/lib/index-utils.js');
     _resetSequenceForTest();
     const id = generateEntryId('xy');
     // Sequence character should be 'a' (first in minute)
@@ -40,7 +40,7 @@ describe('generateEntryId', () => {
   });
 
   it('increments sequence for subsequent calls in the same minute', async () => {
-    const { generateEntryId, _resetSequenceForTest } = await import('../scripts/lib/index-utils.js');
+    const { generateEntryId, _resetSequenceForTest } = await import('../core/scripts/lib/index-utils.js');
     _resetSequenceForTest();
     const id1 = generateEntryId('xy');
     const id2 = generateEntryId('xy');
@@ -53,7 +53,7 @@ describe('generateEntryId', () => {
   });
 
   it('embeds the sessionShort in the ID', async () => {
-    const { generateEntryId, _resetSequenceForTest } = await import('../scripts/lib/index-utils.js');
+    const { generateEntryId, _resetSequenceForTest } = await import('../core/scripts/lib/index-utils.js');
     _resetSequenceForTest();
     const id = generateEntryId('ab');
     // session part is the 2 chars after the second dash
@@ -64,25 +64,25 @@ describe('generateEntryId', () => {
 
 describe('generateMigrationId', () => {
   it('generates <YYYYMMDD>-0000-mig<NN> format', async () => {
-    const { generateMigrationId } = await import('../scripts/lib/index-utils.js');
+    const { generateMigrationId } = await import('../core/scripts/lib/index-utils.js');
     const id = generateMigrationId(null, 1, '2026-01-15');
     assert.match(id, /^\d{8}-0000-mig\d{2}$/);
   });
 
   it('uses entryDate when provided', async () => {
-    const { generateMigrationId } = await import('../scripts/lib/index-utils.js');
+    const { generateMigrationId } = await import('../core/scripts/lib/index-utils.js');
     const id = generateMigrationId('2025-03-07', 1, '2026-01-01');
     assert.ok(id.startsWith('20250307-'), `expected date prefix 20250307, got ${id}`);
   });
 
   it('falls back to fallbackDate when entryDate is null', async () => {
-    const { generateMigrationId } = await import('../scripts/lib/index-utils.js');
+    const { generateMigrationId } = await import('../core/scripts/lib/index-utils.js');
     const id = generateMigrationId(null, 3, '2024-06-15');
     assert.ok(id.startsWith('20240615-'), `expected 20240615 prefix, got ${id}`);
   });
 
   it('falls back to today when both dates are null', async () => {
-    const { generateMigrationId } = await import('../scripts/lib/index-utils.js');
+    const { generateMigrationId } = await import('../core/scripts/lib/index-utils.js');
     const id = generateMigrationId(null, 1, null);
     const today = new Date();
     const yyyy = today.getUTCFullYear().toString();
@@ -92,7 +92,7 @@ describe('generateMigrationId', () => {
   });
 
   it('zero-pads seq to 2 digits', async () => {
-    const { generateMigrationId } = await import('../scripts/lib/index-utils.js');
+    const { generateMigrationId } = await import('../core/scripts/lib/index-utils.js');
     const id1 = generateMigrationId('2025-01-01', 1, null);
     const id9 = generateMigrationId('2025-01-01', 9, null);
     const id10 = generateMigrationId('2025-01-01', 10, null);
@@ -104,13 +104,13 @@ describe('generateMigrationId', () => {
 
 describe('parseAppendOnlyEntries', () => {
   it('returns empty array for content with no APPEND-ONLY marker', async () => {
-    const { parseAppendOnlyEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseAppendOnlyEntries } = await import('../core/scripts/lib/index-utils.js');
     const result = parseAppendOnlyEntries('# Journal\n\nSome content\n');
     assert.deepEqual(result, []);
   });
 
   it('parses blocks after the APPEND-ONLY marker', async () => {
-    const { parseAppendOnlyEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseAppendOnlyEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Journal
 
 <!-- APPEND-ONLY below — do not edit above this line -->
@@ -128,7 +128,7 @@ Another entry here.
   });
 
   it('extracts date from **YYYY-MM-DD** pattern', async () => {
-    const { parseAppendOnlyEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseAppendOnlyEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Decisions
 
 <!-- APPEND-ONLY below — do not edit above this line -->
@@ -142,7 +142,7 @@ Decided to use PostgreSQL.
   });
 
   it('skips blocks that already have <!-- id: markers', async () => {
-    const { parseAppendOnlyEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseAppendOnlyEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Journal
 
 <!-- APPEND-ONLY below — do not edit above this line -->
@@ -160,7 +160,7 @@ New unindexed entry.
   });
 
   it('returns null date when no date pattern found in block', async () => {
-    const { parseAppendOnlyEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseAppendOnlyEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Inbox
 
 <!-- APPEND-ONLY below — do not edit above this line -->
@@ -173,7 +173,7 @@ Random thought with no date.
   });
 
   it('handles multiple blank-line-separated blocks', async () => {
-    const { parseAppendOnlyEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseAppendOnlyEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Journal
 
 <!-- APPEND-ONLY below -->
@@ -194,13 +194,13 @@ Entry three.
 
 describe('parseReferenceEntries', () => {
   it('returns empty array for content with no sections', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const result = parseReferenceEntries('No sections here\n');
     assert.deepEqual(result, []);
   });
 
   it('parses top-level bullets within ## sections', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Profile
 
 ## Identity
@@ -218,7 +218,7 @@ describe('parseReferenceEntries', () => {
   });
 
   it('extracts section name', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Profile
 
 ## Identity
@@ -237,7 +237,7 @@ describe('parseReferenceEntries', () => {
   });
 
   it('extracts entity from **bold text**, normalized to lowercase-hyphenated', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Profile
 
 ## Identity
@@ -250,7 +250,7 @@ describe('parseReferenceEntries', () => {
   });
 
   it('includes indented child lines in the entry text', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Knowledge
 
 ## Medical
@@ -266,7 +266,7 @@ describe('parseReferenceEntries', () => {
   });
 
   it('strips non-alphanumeric chars from entity (e.g. Dr. Smith → dr-smith)', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Knowledge
 
 ## Medical
@@ -280,7 +280,7 @@ describe('parseReferenceEntries', () => {
   });
 
   it('skips entries with existing <!-- id: markers', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Profile
 
 ## Identity
@@ -294,7 +294,7 @@ describe('parseReferenceEntries', () => {
   });
 
   it('returns lineIndex for each entry', async () => {
-    const { parseReferenceEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseReferenceEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Profile
 
 ## Identity
@@ -316,13 +316,13 @@ describe('parseReferenceEntries', () => {
 
 describe('parseTaskEntries', () => {
   it('returns empty array for content with no sections', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const result = parseTaskEntries('No sections here\n');
     assert.deepEqual(result, []);
   });
 
   it('parses checkbox lines within ## sections', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Tasks
 
 ## Work
@@ -340,7 +340,7 @@ describe('parseTaskEntries', () => {
   });
 
   it('extracts section name', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Tasks
 
 ## Work
@@ -359,7 +359,7 @@ describe('parseTaskEntries', () => {
   });
 
   it('parses both unchecked and checked boxes', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Tasks
 
 ## Work
@@ -374,7 +374,7 @@ describe('parseTaskEntries', () => {
   });
 
   it('skips entries with existing IDs', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Tasks
 
 ## Work
@@ -388,7 +388,7 @@ describe('parseTaskEntries', () => {
   });
 
   it('returns lineIndex for each entry', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Tasks
 
 ## Work
@@ -402,7 +402,7 @@ describe('parseTaskEntries', () => {
   });
 
   it('captures indented sub-task continuation lines in entry text', async () => {
-    const { parseTaskEntries } = await import('../scripts/lib/index-utils.js');
+    const { parseTaskEntries } = await import('../core/scripts/lib/index-utils.js');
     const content = `# Tasks
 
 ## Work
@@ -425,13 +425,13 @@ describe('parseTaskEntries', () => {
 
 describe('injectIdIntoLine', () => {
   it('appends <!-- id:<id> --> to a line', async () => {
-    const { injectIdIntoLine } = await import('../scripts/lib/index-utils.js');
+    const { injectIdIntoLine } = await import('../core/scripts/lib/index-utils.js');
     const result = injectIdIntoLine('- [ ] Ship the feature', '20250101-0000-mig01');
     assert.equal(result, '- [ ] Ship the feature <!-- id:20250101-0000-mig01 -->');
   });
 
   it('preserves the original line content', async () => {
-    const { injectIdIntoLine } = await import('../scripts/lib/index-utils.js');
+    const { injectIdIntoLine } = await import('../core/scripts/lib/index-utils.js');
     const original = '- **Name:** Kevin Lee';
     const result = injectIdIntoLine(original, 'some-id');
     assert.ok(result.startsWith(original));
@@ -440,7 +440,7 @@ describe('injectIdIntoLine', () => {
 
 describe('injectIdBeforeBlock', () => {
   it('prepends <!-- id:<id> --> line before block', async () => {
-    const { injectIdBeforeBlock } = await import('../scripts/lib/index-utils.js');
+    const { injectIdBeforeBlock } = await import('../core/scripts/lib/index-utils.js');
     const result = injectIdBeforeBlock('**2025-01-01**\nEntry text.', '20250101-0000-mig01');
     assert.equal(result, '<!-- id:20250101-0000-mig01 -->\n**2025-01-01**\nEntry text.');
   });
@@ -448,13 +448,13 @@ describe('injectIdBeforeBlock', () => {
 
 describe('injectIdsIntoFile', () => {
   it('returns same content when assignments is empty', async () => {
-    const { injectIdsIntoFile } = await import('../scripts/lib/index-utils.js');
+    const { injectIdsIntoFile } = await import('../core/scripts/lib/index-utils.js');
     const content = 'Line 0\nLine 1\nLine 2\n';
     assert.equal(injectIdsIntoFile(content, []), content);
   });
 
   it('injects inline ID onto the correct line', async () => {
-    const { injectIdsIntoFile } = await import('../scripts/lib/index-utils.js');
+    const { injectIdsIntoFile } = await import('../core/scripts/lib/index-utils.js');
     const content = '- [ ] Task one\n- [ ] Task two\n- [ ] Task three\n';
     const result = injectIdsIntoFile(content, [
       { lineIndex: 1, id: 'id-002', type: 'inline' },
@@ -466,7 +466,7 @@ describe('injectIdsIntoFile', () => {
   });
 
   it('injects block ID before the correct line', async () => {
-    const { injectIdsIntoFile } = await import('../scripts/lib/index-utils.js');
+    const { injectIdsIntoFile } = await import('../core/scripts/lib/index-utils.js');
     const content = '**2025-01-01**\nEntry.\n\n**2025-01-02**\nAnother.\n';
     const result = injectIdsIntoFile(content, [
       { lineIndex: 0, id: 'id-001', type: 'block' },
@@ -477,7 +477,7 @@ describe('injectIdsIntoFile', () => {
   });
 
   it('processes multiple assignments correctly in reverse order', async () => {
-    const { injectIdsIntoFile } = await import('../scripts/lib/index-utils.js');
+    const { injectIdsIntoFile } = await import('../core/scripts/lib/index-utils.js');
     const content = '- [ ] Task one\n- [ ] Task two\n- [ ] Task three\n';
     const result = injectIdsIntoFile(content, [
       { lineIndex: 0, id: 'id-001', type: 'inline' },
@@ -490,7 +490,7 @@ describe('injectIdsIntoFile', () => {
   });
 
   it('correctly handles multiple block insertions', async () => {
-    const { injectIdsIntoFile } = await import('../scripts/lib/index-utils.js');
+    const { injectIdsIntoFile } = await import('../core/scripts/lib/index-utils.js');
     const content = '**2025-01-01**\nEntry one.\n\n**2025-01-02**\nEntry two.\n';
     const result = injectIdsIntoFile(content, [
       { lineIndex: 0, id: 'id-001', type: 'block' },
@@ -506,7 +506,7 @@ describe('injectIdsIntoFile', () => {
 
 describe('generateSkeletonIndex', () => {
   it('generates a markdown index with "# Index: <title>" heading', async () => {
-    const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
+    const { generateSkeletonIndex } = await import('../core/scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', section: 'Identity', entity: 'name', text: '- **Name:** Kevin' },
     ];
@@ -519,7 +519,7 @@ describe('generateSkeletonIndex', () => {
   });
 
   it('fact level groups by section and uses list-item format with entity', async () => {
-    const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
+    const { generateSkeletonIndex } = await import('../core/scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', section: 'Identity', entity: 'name', text: '- **Name:** Kevin' },
       { id: 'id-002', section: 'Identity', entity: 'age', text: '- **Age:** 30' },
@@ -535,7 +535,7 @@ describe('generateSkeletonIndex', () => {
   });
 
   it('fact level entries have enriched: false, domains: [], related: []', async () => {
-    const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
+    const { generateSkeletonIndex } = await import('../core/scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', section: 'Identity', entity: 'name', text: '- **Name:** Kevin' },
     ];
@@ -546,7 +546,7 @@ describe('generateSkeletonIndex', () => {
   });
 
   it('entry level uses list-item format with summary, tags', async () => {
-    const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
+    const { generateSkeletonIndex } = await import('../core/scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', text: '**2025-01-01**\nHad a great day.' },
       { id: 'id-002', text: '**2025-01-02**\nAnother day.' },
@@ -560,7 +560,7 @@ describe('generateSkeletonIndex', () => {
   });
 
   it('entry level also has enriched: false, domains: [], related: []', async () => {
-    const { generateSkeletonIndex } = await import('../scripts/lib/index-utils.js');
+    const { generateSkeletonIndex } = await import('../core/scripts/lib/index-utils.js');
     const entries = [
       { id: 'id-001', text: '**2025-01-01**\nEntry.' },
     ];
@@ -573,7 +573,7 @@ describe('generateSkeletonIndex', () => {
 
 describe('generateManifest', () => {
   it('generates a manifest with "# Memory Manifest" heading', async () => {
-    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const { generateManifest } = await import('../core/scripts/lib/index-utils.js');
     const files = [
       { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 5, sections: ['Identity', 'Goals'] },
     ];
@@ -582,7 +582,7 @@ describe('generateManifest', () => {
   });
 
   it('includes "Generated by Dream" and "Last updated" lines', async () => {
-    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const { generateManifest } = await import('../core/scripts/lib/index-utils.js');
     const files = [
       { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 5 },
     ];
@@ -592,7 +592,7 @@ describe('generateManifest', () => {
   });
 
   it('uses list-item format (- file: <name>) for file entries', async () => {
-    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const { generateManifest } = await import('../core/scripts/lib/index-utils.js');
     const files = [
       { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 5, sections: ['Identity', 'Goals'] },
       { name: 'journal.md', path: 'journal.md', indexPath: 'journal.index.md', type: 'entry', entries: 12 },
@@ -606,7 +606,7 @@ describe('generateManifest', () => {
   });
 
   it('includes entry count for each file', async () => {
-    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const { generateManifest } = await import('../core/scripts/lib/index-utils.js');
     const files = [
       { name: 'tasks.md', path: 'tasks.md', indexPath: 'tasks.index.md', type: 'entry', entries: 7 },
     ];
@@ -615,7 +615,7 @@ describe('generateManifest', () => {
   });
 
   it('includes type for each file', async () => {
-    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const { generateManifest } = await import('../core/scripts/lib/index-utils.js');
     const files = [
       { name: 'profile.md', path: 'profile.md', indexPath: 'profile.index.md', type: 'fact', entries: 3 },
     ];
@@ -624,7 +624,7 @@ describe('generateManifest', () => {
   });
 
   it('includes domains when provided', async () => {
-    const { generateManifest } = await import('../scripts/lib/index-utils.js');
+    const { generateManifest } = await import('../core/scripts/lib/index-utils.js');
     const files = [
       { name: 'knowledge.md', path: 'knowledge.md', indexPath: 'knowledge.index.md', type: 'fact', entries: 8, domains: ['medical', 'finance'] },
     ];

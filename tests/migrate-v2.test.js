@@ -63,7 +63,7 @@ describe('robin migrate-v2', () => {
   after(() => { cleanTempDir(tmpDir); });
 
   it('migrates a v1 workspace to v2 structure', async () => {
-    const { migrateV2InDir } = await import('../scripts/migrate-v2.js');
+    const { migrateV2InDir } = await import('../core/scripts/migrate-v2.js');
     await migrateV2InDir(tmpDir, PKG_ROOT);
 
     assert.ok(fileExists(tmpDir, 'AGENTS.md'), 'AGENTS.md exists');
@@ -125,7 +125,7 @@ describe('robin migrate-v2', () => {
       });
       mkdirSync(join(tmpDir2, 'core'), { recursive: true });
 
-      const { migrateV2InDir } = await import('../scripts/migrate-v2.js');
+      const { migrateV2InDir } = await import('../core/scripts/migrate-v2.js');
       await migrateV2InDir(tmpDir2, PKG_ROOT);
 
       const config = readJson(tmpDir2, 'arc.config.json');
@@ -154,7 +154,7 @@ describe('robin migrate-v2', () => {
       writeFileSync(join(tmpDir3, 'knowledge', 'photos', 'notes.md'), '# Notes\n\nSome notes\n');
       mkdirSync(join(tmpDir3, 'core'), { recursive: true });
 
-      const { migrateV2InDir } = await import('../scripts/migrate-v2.js');
+      const { migrateV2InDir } = await import('../core/scripts/migrate-v2.js');
       await migrateV2InDir(tmpDir3, PKG_ROOT);
 
       assert.ok(
@@ -182,7 +182,7 @@ describe('robin migrate-v2', () => {
       mkdirSync(join(tmpDir4, '.state', 'coordination'), { recursive: true });
       mkdirSync(join(tmpDir4, 'core'), { recursive: true });
 
-      const { migrateV2InDir } = await import('../scripts/migrate-v2.js');
+      const { migrateV2InDir } = await import('../core/scripts/migrate-v2.js');
       await migrateV2InDir(tmpDir4, PKG_ROOT);
 
       assert.ok(!existsSync(join(tmpDir4, '.state')), '.state/ removed');
