@@ -83,6 +83,46 @@ export function proposeDomainRoots(headings, sizes, opts = {}) {
   });
 }
 
+function groupByLevel(lines, headings, level) {
+  const heads = headings.filter(h => h.level === level);
+  if (heads.length === 0) return [];
+  const groups = [];
+  for (let i = 0; i < heads.length; i++) {
+    const start = heads[i].line - 1;
+    const end = (i + 1 < heads.length) ? heads[i + 1].line - 1 : lines.length;
+    groups.push({ title: heads[i].title, lines: lines.slice(start, end) });
+  }
+  return groups;
+}
+
+export function planSplit(content, opts = {}) {
+  const threshold = opts.threshold ?? 200;
+  if (countContentLines(content) < threshold) return null;
+  const { frontmatter, body } = parseFrontmatter(content);
+  const lines = body.split('\n');
+  const headings = parseHeadings(body);
+
+  let level = 2;
+  let groups = groupByLevel(lines, headings, level);
+  while (groups.length <= 1 && level < 6) {
+    level++;
+    groups = groupByLevel(lines, headings, level);
+  }
+  if (groups.length <= 1) return null;
+
+  const used = new Set();
+  const children = groups.map(g => {
+    const slug = disambiguateSlug(slugify(g.title), used);
+    used.add(slug);
+    return {
+      slug,
+      title: g.title,
+      body: g.lines.join('\n'),
+    };
+  });
+  return { parentFrontmatter: frontmatter, level, children };
+}
+
 export function rewriteLinks(content, renames, fromPath) {
   // renames: Map of memory-relative-old-path → memory-relative-new-path
   // fromPath: memory-relative path of the file being processed
