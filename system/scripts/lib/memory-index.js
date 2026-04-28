@@ -43,6 +43,46 @@ export function countContentLines(content) {
   return body.split('\n').filter(line => line.trim().length > 0).length;
 }
 
+export function parseHeadings(content) {
+  const lines = content.split('\n');
+  const headings = [];
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('```')) inFence = !inFence;
+    if (inFence) continue;
+    const m = line.match(/^(#{2,6})\s+(.+?)\s*$/);
+    if (m) {
+      headings.push({ level: m[1].length, title: m[2], line: i + 1 });
+    }
+  }
+  return headings;
+}
+
+export function sectionSizes(content, level = 2) {
+  const lines = content.split('\n');
+  const headings = parseHeadings(content).filter(h => h.level === level);
+  const sizes = new Map();
+  for (let i = 0; i < headings.length; i++) {
+    const start = headings[i].line - 1;
+    const end = (i + 1 < headings.length) ? headings[i + 1].line - 1 : lines.length;
+    const slice = lines.slice(start, end).join('\n');
+    sizes.set(headings[i].line, countContentLines(slice));
+  }
+  return sizes;
+}
+
+export function proposeDomainRoots(headings, sizes, opts = {}) {
+  const childThreshold = opts.childThreshold ?? 50;
+  // Only level-2 headings are candidates. Level-3+ are inherently children.
+  const candidates = headings.filter(h => h.level === 2);
+  return candidates.filter((h, i) => {
+    if (i === 0) return true; // first level-2 is always a root
+    const ownSize = sizes.get(h.line) ?? 0;
+    return ownSize >= childThreshold;
+  });
+}
+
 export function rewriteLinks(content, renames, fromPath) {
   // renames: Map of memory-relative-old-path → memory-relative-new-path
   // fromPath: memory-relative path of the file being processed
