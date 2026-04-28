@@ -1,63 +1,26 @@
-import { readFileSync, writeFileSync, existsSync, rmSync, cpSync } from 'fs';
-import { join } from 'path';
-import { createInterface } from 'readline';
-import { findConfig } from './lib/find-config.js';
-import { migrateConfigFilename } from './lib/migrate-config-filename.js';
-import { USER_DATA_FILES } from './lib/platforms.js';
+import { existsSync, rmSync, cpSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline/promises';
+import { backup } from './backup.js';
 
-export async function reset(pkgRoot) {
-  const configPath = findConfig();
-  if (!configPath) {
-    console.error("Error: No Robin workspace found. Run 'robin init' to create one.");
-    process.exit(1);
+export async function reset(workspaceDir = process.cwd(), opts = {}) {
+  if (!opts.confirmed) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const confirm = await rl.question('Wipe user-data/ back to skeleton? [y/N] ');
+    rl.close();
+    if (confirm.trim().toLowerCase() !== 'y') return;
   }
+  if (!opts.skipBackup) await backup(workspaceDir);
 
-  const workspaceDir = join(configPath, '..');
-  const __migration = migrateConfigFilename(workspaceDir);
-  if (__migration.migrated) {
-    console.log('Migrated arc.config.json → robin.config.json');
-  }
+  const ud = join(workspaceDir, 'user-data');
+  rmSync(ud, { recursive: true, force: true });
+  mkdirSync(ud, { recursive: true });
 
-  const confirmed = await confirm(
-    `This will DELETE user data (${USER_DATA_FILES.join(', ')}) and clear state/. System files, protocols, and config are preserved. Continue?`
-  );
-  if (!confirmed) { console.log('Cancelled.'); return; }
-
-  const coreDir = join(pkgRoot, 'core');
-
-  for (const file of USER_DATA_FILES) {
-    const dest = join(workspaceDir, file);
-    const src = join(coreDir, file);
-    if (existsSync(src)) {
-      cpSync(src, dest);
-    }
-  }
-
-  const stateDir = join(workspaceDir, 'state');
-  for (const file of ['sessions.md', 'dream-state.md']) {
-    const src = join(coreDir, 'state', file);
-    if (existsSync(src)) {
-      cpSync(src, join(stateDir, file));
-    }
-  }
-
-  const locksDir = join(stateDir, 'locks');
-  if (existsSync(locksDir)) {
-    const { readdirSync } = await import('fs');
-    for (const f of readdirSync(locksDir)) {
-      if (f.endsWith('.lock')) rmSync(join(locksDir, f));
-    }
-  }
-
-  console.log('Reset complete. User data wiped to defaults.');
+  const skel = join(workspaceDir, 'core/skeleton');
+  if (existsSync(skel)) cpSync(skel, ud, { recursive: true });
+  console.log('user-data/ reset to skeleton.');
 }
 
-function confirm(message) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise(resolve => {
-    rl.question(`${message} (y/N) `, answer => {
-      rl.close();
-      resolve(answer.toLowerCase() === 'y');
-    });
-  });
+if (import.meta.url === `file://${process.argv[1]}`) {
+  await reset();
 }
