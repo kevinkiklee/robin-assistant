@@ -22,6 +22,7 @@
     "golden-session": "node system/scripts/golden-session.js",
     "prune-preview": "node system/scripts/prune-preview.js",
     "prune-execute": "node system/scripts/prune-execute.js",
+    "migrate-auto-memory": "node system/scripts/migrate-auto-memory.js",
     "jobs": "node bin/robin.js jobs",
     "jobs:sync": "node bin/robin.js jobs sync",
     "jobs:list": "node bin/robin.js jobs list",

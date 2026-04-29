@@ -23,16 +23,19 @@ Dream runs in two ways:
 
 ## Pre-flight
 
-Before any phase, invoke `node system/scripts/startup-check.js` and read its output line-by-line.
+Run `node system/scripts/startup-check.js` and read line-by-line. `FATAL:` lines: write to `user-data/state/jobs/failures.md` and exit non-zero. `INFO:` / `WARN:` lines: include in your one-line summary at the end.
 
-- On any line starting with `FATAL:`, write the message to `user-data/state/jobs/failures.md` and exit non-zero — do not proceed.
-- On `INFO:` and `WARN:` lines, include them in your one-line summary or escalation report at the end.
+The check auto-repairs **skeleton sync** (copies missing skeleton files; reports `INFO: new files from upstream: ...`) and **stale-lock cleanup** (locks in `user-data/state/locks/` older than 5 min; reports `INFO: cleared stale lock: ...`). Everything else is reported but not auto-repaired.
 
-The startup check performs limited auto-repair before reporting:
-- **Skeleton sync** — files present in `system/skeleton/` but missing from `user-data/` are copied automatically; the new paths are reported as `INFO: new files from upstream: ...`.
-- **Stale lock cleanup** — locks in `user-data/state/locks/` older than 5 minutes are cleared automatically; cleared locks are reported as `INFO: cleared stale lock: ...`.
+## Phase 0: Auto-memory migration
 
-Anything outside that scope (corrupted config, failed migrations, validation failures, missing core files) is reported but NOT auto-repaired — it surfaces as `WARN:` or `FATAL:`.
+Per the **Local Memory** rule, persistent memory lives in `user-data/`. Some hosts (notably Claude Code) write to `~/.claude/projects/<slug>/memory/` regardless. Drain it at every cycle:
+
+```sh
+node system/scripts/migrate-auto-memory.js --apply
+```
+
+Translates each host entry to a tagged `inbox.md` line (with `(migrated from <host> auto-memory: <file>)` provenance) and removes the source. Phase 2 routes the new entries like any other inbox content. Report: `INFO: migrated N auto-memory entries from <host>` (or nothing if empty).
 
 ## Phase 1: Scan
 
