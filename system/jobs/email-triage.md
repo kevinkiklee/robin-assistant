@@ -10,7 +10,7 @@ timeout_minutes: 15
 
 ## Triggers
 
-"triage my inbox", "email triage", "go through my email", "what's in my inbox"
+"triage my inbox", "email triage", "go through my email", "what's in my inbox", "check my email"
 
 ## Prerequisites
 

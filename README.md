@@ -30,24 +30,6 @@ The memory is structured, not a chat log. Topic folders for content that grows o
 
 Topic files are split when they exceed `memory.split_threshold_lines` (default 200) at the next Dream cycle — the structure scales as content grows.
 
-### It runs jobs on demand and on a schedule
-
-Say "good morning" and Robin runs the Morning Briefing — calendar, weather, today's tasks, inbox highlights, anything urgent. Say "weekly review" and it pulls the week into focus. The full catalog of shipped jobs lives in `system/jobs/`. Dashboard at `user-data/state/jobs/INDEX.md` shows what's enabled, when each last ran, and what's next. A few of them:
-
-| Trigger | What runs |
-|---------|-----------|
-| "good morning", "brief me" | Morning Briefing |
-| "weekly review" | Weekly Review |
-| "triage my inbox" | Email Triage |
-| "prep for my meeting with…" | Meeting Prep |
-| "what am I paying for" | Subscription Audit |
-| "track my receipts" | Receipt Tracking |
-| "month-end review" | Monthly Financial |
-| "extract todos from this" | Todo Extraction |
-| "how have you been doing" | Quarterly Self-Assessment |
-
-Jobs are just markdown files. You can override any of them or add your own under `user-data/jobs/` — full replacement, or a shallow override (`override: <name>` plus only the fields you want to change). See `bin/robin.js --help` for the CLI surface; the dashboard at `user-data/state/jobs/INDEX.md` shows what's enabled, when each last ran, and what's next.
-
 ### It learns from corrections
 
 When you correct Robin — "no, I don't want X, I want Y" — it logs what went wrong and the right response. Three similar corrections promote to a named *pattern* with a recognition signal and a counter-action, so the failure mode stops happening. Over time, the corrections-to-wins ratio falls and Robin stops needing the same nudge twice.
