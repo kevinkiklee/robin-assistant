@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+### Personal-data integrations — Phases 2–4 (Calendar, Gmail, GitHub, Spotify)
+
+Adds the four read+write integrations the Phase 1 lib was built to support. All four ship as user-data templates (auto-scaffolded from `system/skeleton/scripts/` on first run); job markdowns ship at `enabled: false` so they don't fire until the user has completed per-provider auth setup.
+
+#### New shared lib module: oauth.js
+
+`system/scripts/lib/sync/oauth.js` adds the OAuth2 flow that all OAuth-based integrations share:
+- **`getAccessToken(workspaceDir, provider)`** — runtime helper. Reads the long-lived refresh token from `.env`, returns a cached access token from state if still valid (60s clock skew), or calls the provider's token endpoint to refresh and caches the new access token. Writes back rotated refresh tokens (Spotify rotates them; Google does not).
+- **`runAuthCodeFlow(opts)`** — one-shot setup helper. Spins up a localhost callback server on a random (or fixed) port, opens the user's browser to the consent URL, captures the auth code, exchanges it for tokens. CSRF-safe via random `state`. Cross-platform browser opener.
+- Provider registry currently has Google and Spotify wired up.
+
+#### Phase 2 — Calendar + Gmail (read-only sync)
+
+- **`auth-google.js`** — one-shot OAuth setup. Uses read-only scopes (`calendar.readonly`, `gmail.readonly`); writes are still routed through the native MCPs in-session. Sets `access_type=offline` + `prompt=consent` to guarantee a refresh token.
+- **`sync-calendar.js`** — pulls events from all subscribed calendars in a ±90-day window every 30 min. Writes scannable `upcoming.md` / `recent.md` tables and lazy per-event detail files for events with attendees, descriptions, or meeting URLs.
+- **`sync-gmail.js`** — pulls last-30-days inbox metadata every 15 min (sender, subject, snippet, labels — no bodies). Writes `inbox-snapshot.md` and a derived `senders.md` (top 50 senders by frequency with last-seen + unread counts).
+
+#### Phase 3 — GitHub + Spotify (read-only sync)
+
+- **`auth-github.js`** — PAT validator (no OAuth flow needed for GitHub). Confirms the token authenticates, reports the user, scopes, and rate-limit status.
+- **`sync-github.js`** — pulls last-30-days authored events, current notifications, and recent releases from up to 50 starred repos every hour. Writes `activity.md` / `notifications.md` / `releases.md`.
+- **`auth-spotify.js`** — OAuth setup. Uses fixed port 8765 (configurable via `SPOTIFY_AUTH_PORT`) so users can pre-register the redirect URI in the Spotify developer dashboard.
+- **`sync-spotify.js`** — pulls last-50 recently-played (append-only ledger; dedup by `played_at`), top tracks/artists for 4w / 6m / all-time windows, and on `--bootstrap` also dumps owned playlists with track lists. Lazy-caches Spotify audio-features per track. Detects gaps when more than 50 plays happened since the last cursor.
+
+#### Phase 4 — Write CLIs
+
+Single-entry-point scripts dispatched on `--action`:
+
+- **`github-write.js`** — `create-issue`, `comment`, `label`, `mark-read`.
+- **`spotify-write.js`** — `queue`, `skip`, `playlist-add`.
+
+Both support `--dry-run` that prints the intended call without invoking the API or even loading credentials. Per AGENTS.md `Rule: Ask vs Act`, the agent must confirm with the user before invoking these.
+
+Calendar and Gmail writes use Claude Code's native MCPs in-session per the spec — no parallel write CLI is built for those.
+
+#### Setup flow per integration
+
+```sh
+# Calendar + Gmail (one auth covers both)
+node user-data/scripts/auth-google.js
+node user-data/scripts/sync-calendar.js --bootstrap
+node bin/robin.js jobs enable sync-calendar
+node user-data/scripts/sync-gmail.js --bootstrap
+node bin/robin.js jobs enable sync-gmail
+
+# GitHub
+# (paste GITHUB_PAT into user-data/secrets/.env)
+node user-data/scripts/auth-github.js
+node user-data/scripts/sync-github.js --bootstrap
+node bin/robin.js jobs enable sync-github
+
+# Spotify
+node user-data/scripts/auth-spotify.js
+node user-data/scripts/sync-spotify.js --bootstrap
+node bin/robin.js jobs enable sync-spotify
+```
+
 ### Personal-data integrations — Phase 1 (shared sync lib + Lunch Money migration)
 
 First step toward a hybrid sync/MCP integration system. Establishes the shared infrastructure all per-user integrations import from, and migrates the existing Lunch Money sync onto it.
