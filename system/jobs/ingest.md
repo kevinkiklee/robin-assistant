@@ -130,4 +130,4 @@ When user says "ingest all of these" or provides multiple sources:
 
 ## Boundary rule
 
-Ingest can read and write any file under `user-data/memory/` and `user-data/sources/`. It can move files from `artifacts/input/` to `user-data/sources/`. It follows all lock protocols from `system/operations/multi-session-coordination.md` for pillar and mixed-use files.
+Ingest can read and write any file under `user-data/memory/` and `user-data/sources/`. It can move files from `artifacts/input/` to `user-data/sources/`. It follows all lock protocols from `system/jobs/multi-session-coordination.md` for pillar and mixed-use files.

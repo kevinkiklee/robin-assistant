@@ -83,7 +83,7 @@ User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit
 | `user-data/secrets/` | API keys and credentials. `.env`-style file, gitignored. See `user-data/secrets/README.md`. |
 | `user-data/state/sessions.md` | Active session registry. |
 | `user-data/state/dream-state.md` | Last Dream cycle timestamp and bookkeeping. |
-| `user-data/operations/` | Optional. User-defined or overriding operations; precedence over `system/jobs/`. |
+| `user-data/jobs/` | User-defined job overrides and additions. Same format as `system/jobs/`. Shallow override (`override: <name>`) inherits from system; full def replaces. |
 
 ## Artifacts (`artifacts/`)
 

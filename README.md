@@ -46,7 +46,7 @@ Say "good morning" and Robin runs the Morning Briefing — calendar, weather, to
 | "extract todos from this" | Todo Extraction |
 | "how have you been doing" | Quarterly Self-Assessment |
 
-Operations are just markdown files. You can override any of them or add your own under `user-data/operations/`.
+Jobs are just markdown files. You can override any of them or add your own under `user-data/jobs/` — full replacement, or a shallow override (`override: <name>` plus only the fields you want to change). See `bin/robin.js --help` for the CLI surface; the dashboard at `user-data/state/jobs/INDEX.md` shows what's enabled, when each last ran, and what's next.
 
 ### It learns from corrections
 
@@ -56,7 +56,7 @@ It also tracks how confident it should be. When it makes a high-stakes recommend
 
 ### It maintains itself daily
 
-The first session each day kicks off **Dream** automatically — a maintenance pass that routes your inbox, promotes durable facts from the journal, prunes finished tasks, retires stale knowledge, promotes recurring corrections to patterns, retires patterns that stopped firing, and updates calibration. You don't run it. You don't see most of it. You just notice that the workspace stays tidy without effort.
+**Dream** runs every night at 04:00 — a maintenance pass that routes your inbox, promotes durable facts from the journal, prunes finished tasks, retires stale knowledge, promotes recurring corrections to patterns, retires patterns that stopped firing, and updates calibration. It runs from your OS scheduler (launchd / cron / Task Scheduler), not from your AI session, so you don't have to open a session for it to fire. You don't run it manually, you don't see most of it — you just notice that the workspace stays tidy without effort.
 
 ### It enforces hard rules
 
@@ -182,7 +182,7 @@ If you forked the repo: you can `git push` system-side contributions back to you
 
 ## Commands
 
-All operate on the cloned repo from inside it. There is no global `robin` binary.
+All operate on the cloned repo from inside it. The `robin` binary is wired up via `bin/robin.js`; running `npm install` adds it to your `PATH` (or invoke directly with `node bin/robin.js`).
 
 | Command | Purpose |
 |---------|---------|
@@ -191,6 +191,15 @@ All operate on the cloned repo from inside it. There is no global `robin` binary
 | `npm run restore` | Restore `user-data/` from a `backup/*.tar.gz` (interactive) |
 | `npm run reset` | Wipe `user-data/`, recopy skeleton, re-prompt config (auto-backups first) |
 | `npm test` | Run the test suite |
+| `robin run <name>` | Manually invoke a job — bypasses scheduler. `--force` skips gating, `--dry-run` prints the plan |
+| `robin jobs list` | Show all jobs: enabled state, schedule, last run, status, next run |
+| `robin jobs status <name>` | Detail on one job — when it last ran, where its log lives, when it next fires |
+| `robin jobs logs <name>` | Tail the most recent run's summary (`--full` for the full log, `--list` to enumerate) |
+| `robin jobs upcoming` | 7-day forward calendar of scheduled runs |
+| `robin jobs enable <name>` | Turn on a disabled job (writes a shallow override under `user-data/jobs/`) |
+| `robin jobs disable <name>` | Turn off an enabled job |
+| `robin jobs sync` | Manually reconcile OS scheduler with `system/jobs/` + `user-data/jobs/`. Runs every 6h automatically; this just makes it instant |
+| `robin jobs validate` | Parse + cron-validate every job def — useful before committing a new one |
 
 ---
 
@@ -203,17 +212,23 @@ robin/
 ├── .cursorrules             <- Pointer → AGENTS.md (Cursor)
 ├── GEMINI.md                <- Pointer → AGENTS.md (Gemini CLI)
 ├── .windsurfrules           <- Pointer → AGENTS.md (Windsurf)
+├── bin/
+│   └── robin.js             <- CLI entry point (`robin run`, `robin jobs ...`)
 ├── system/                  <- upstream-owned, tracked, never user-edited
 │   ├── startup.md
 │   ├── capture-rules.md
 │   ├── manifest.md
 │   ├── self-improvement-rules.md
-│   ├── operations/          <- 13 operational workflows + auto-generated INDEX.md
+│   ├── jobs/                <- shipped jobs (agent protocols + node scripts)
 │   ├── migrations/          <- versioned schema migrations applied on session start
-│   ├── scripts/             <- npm-run targets + lib/
+│   ├── scripts/
+│   │   ├── jobs/            <- runner, reconciler, CLI dispatcher, installer adapters
+│   │   └── lib/jobs/        <- frontmatter, cron, atomic locks, state, notify
 │   ├── skeleton/            <- pristine first-run stubs for user-data/
-│   └── tests/               <- 98 tests
+│   └── tests/               <- ~200 tests including the jobs/ suite
 ├── user-data/               <- your data, gitignored
+│   ├── jobs/                <- your custom jobs + overrides of system jobs
+│   └── state/jobs/          <- runtime state: INDEX.md, upcoming.md, failures.md, logs/
 ├── artifacts/{input,output} <- file pipe, gitignored
 ├── backup/                  <- tar.gz archives, gitignored
 └── docs/                    <- design notes, gitignored
