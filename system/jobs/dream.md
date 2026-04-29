@@ -27,15 +27,13 @@ Run `node system/scripts/startup-check.js` and read line-by-line. `FATAL:` lines
 
 The check auto-repairs **skeleton sync** (copies missing skeleton files; reports `INFO: new files from upstream: ...`) and **stale-lock cleanup** (locks in `user-data/state/locks/` older than 5 min; reports `INFO: cleared stale lock: ...`). Everything else is reported but not auto-repaired.
 
-## Phase 0: Auto-memory migration
+## Phase 0: Auto-memory migration (auto-run)
 
-Per the **Local Memory** rule, persistent memory lives in `user-data/`. Some hosts (notably Claude Code) write to `~/.claude/projects/<slug>/memory/` regardless. Drain it at every cycle:
+Per the **Local Memory** rule, persistent memory lives in `user-data/`. Some hosts (notably Claude Code) write to `~/.claude/projects/<slug>/memory/` regardless.
 
-```sh
-node system/scripts/migrate-auto-memory.js --apply
-```
+The `migrate-auto-memory` node-runtime job (`system/jobs/migrate-auto-memory.md`) drains these directories every hour. By the time Dream runs, anything that needs migrating is already in `user-data/memory/inbox.md` with a `(migrated from <host> auto-memory: <file>)` provenance suffix. Phase 2 routes those entries like any other inbox content.
 
-Translates each host entry to a tagged `inbox.md` line (with `(migrated from <host> auto-memory: <file>)` provenance) and removes the source. Phase 2 routes the new entries like any other inbox content. Report: `INFO: migrated N auto-memory entries from <host>` (or nothing if empty).
+You don't need to invoke the migration script. If `user-data/state/jobs/migrate-auto-memory.json` shows the job hasn't run recently or its status is `error`, mention it in your one-line summary.
 
 ## Phase 1: Scan
 
