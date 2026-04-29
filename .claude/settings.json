@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "$comment": "Project-level Claude Code settings. Tracked in git. Per-machine settings go in .claude/settings.local.json (gitignored).",
+
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(npm run measure-tokens:*)",
+      "Bash(npm run lint-memory:*)",
+      "Bash(npm run golden-session:*)",
+      "Bash(npm run prune-preview:*)",
+      "Bash(npm run migrate-auto-memory:*)",
+      "Bash(node system/scripts/measure-tokens.js:*)",
+      "Bash(node system/scripts/lint-memory.js:*)",
+      "Bash(node system/scripts/golden-session.js:*)",
+      "Bash(node system/scripts/migrate-auto-memory.js:*)",
+      "Bash(node system/scripts/prune-preview.js:*)",
+      "Bash(node bin/robin.js:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ]
+  },
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node system/scripts/claude-code-hook.js --on-pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node system/scripts/claude-code-hook.js --on-stop"
+          }
+        ]
+      }
+    ]
+  }
+}
