@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadCursor, saveCursor, cursorPath } from '../../scripts/lib/sync/cursor.js';
@@ -60,5 +60,48 @@ test('saveCursor formats JSON with 2-space indent + trailing newline', () => {
   saveCursor(ws, 'foo', { a: 1 });
   const content = readFileSync(join(ws, 'user-data/state/sync/foo.json'), 'utf-8');
   assert.equal(content, '{\n  "a": 1\n}\n');
+  rmSync(ws, { recursive: true });
+});
+
+test('loadCursor quarantines a corrupt state file and returns empty object', () => {
+  const ws = setup();
+  const dir = join(ws, 'user-data/state/sync');
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, 'foo.json');
+  writeFileSync(path, '{ this is not valid JSON');
+  // suppress expected warning during test
+  const origWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const loaded = loadCursor(ws, 'foo');
+    assert.deepEqual(loaded, {});
+  } finally {
+    console.warn = origWarn;
+  }
+  // Original file is gone (renamed)
+  assert.ok(!existsSync(path));
+  // A quarantine file exists alongside it
+  const siblings = readdirSync(dir);
+  assert.ok(
+    siblings.some((n) => n.startsWith('foo.json.corrupt-')),
+    `expected a foo.json.corrupt-* file, got: ${siblings.join(', ')}`
+  );
+  rmSync(ws, { recursive: true });
+});
+
+test('saveCursor recovers from a corrupt prior state by quarantining and starting fresh', () => {
+  const ws = setup();
+  const dir = join(ws, 'user-data/state/sync');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'foo.json'), '{ corrupt');
+  const origWarn = console.warn;
+  console.warn = () => {};
+  try {
+    saveCursor(ws, 'foo', { fresh: true });
+  } finally {
+    console.warn = origWarn;
+  }
+  const loaded = loadCursor(ws, 'foo');
+  assert.deepEqual(loaded, { fresh: true });
   rmSync(ws, { recursive: true });
 });
