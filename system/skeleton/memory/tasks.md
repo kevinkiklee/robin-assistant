@@ -7,7 +7,7 @@ description: Active tasks grouped by category
 
 <!-- APPEND-ONLY below — add new tasks at the end of each section -->
 
-## Personal
+## Assistant maintenance
 
 ## Finance
 
