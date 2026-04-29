@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { join } from 'node:path';
+import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
+import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
 import { LunchMoneyClient } from './lib/lunch-money/client.js';
 import {
   writeAccountsSnapshot,
@@ -82,7 +84,34 @@ export async function syncLunchMoney({ workspaceDir, dryRun = false }) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
   const dryRun = process.argv.includes('--dry-run');
-  syncLunchMoney({ workspaceDir, dryRun }).catch((err) => {
+
+  // When invoked via the unified job runner (`robin run sync-lunch-money`),
+  // the runner already holds the per-job lock at
+  // user-data/state/jobs/locks/sync-lunch-money.lock and sets ROBIN_WORKSPACE.
+  // When invoked directly from a terminal we hold the lock ourselves so two
+  // concurrent invocations (manual + cron) don't double-fetch the API and
+  // race on cursor writes.
+  const underRunner = !!process.env.ROBIN_WORKSPACE;
+  const lockPath = join(workspaceDir, 'user-data/state/jobs/locks/sync-lunch-money.lock');
+  let acquired = false;
+
+  async function run() {
+    if (!underRunner) {
+      const r = acquireLock(lockPath, { host: hostname() });
+      if (r === 'held') {
+        console.log('[sync-lunch-money] another instance is running (lock held); exiting.');
+        return;
+      }
+      acquired = true;
+    }
+    try {
+      await syncLunchMoney({ workspaceDir, dryRun });
+    } finally {
+      if (acquired) releaseLock(lockPath);
+    }
+  }
+
+  run().catch((err) => {
     try {
       saveCursor(workspaceDir, SOURCE, {
         last_attempt_at: todayISO(),
@@ -91,6 +120,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         auth_status: err.name === 'AuthError' ? 'needs_reauth' : 'unknown',
       });
     } catch { /* ignore */ }
+    if (acquired) {
+      try { releaseLock(lockPath); } catch { /* ignore */ }
+    }
     console.error(`[sync-lunch-money] failed: ${err.message}`);
     process.exit(1);
   });
