@@ -1,4 +1,8 @@
+import { fetchJson, AuthError } from '../../../../system/scripts/lib/sync/http.js';
+
 const BASE = 'https://dev.lunchmoney.app/v1';
+
+export { AuthError };
 
 export class LunchMoneyClient {
   constructor(apiKey) {
@@ -11,14 +15,9 @@ export class LunchMoneyClient {
     for (const [k, v] of Object.entries(params)) {
       if (v != null) url.searchParams.set(k, String(v));
     }
-    const res = await fetch(url, {
+    return fetchJson(url.toString(), {
       headers: { Authorization: `Bearer ${this.apiKey}` },
     });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Lunch Money API ${res.status} on ${path}: ${body}`);
-    }
-    return res.json();
   }
 
   async getPlaidAccounts() {
