@@ -1,3 +1,5 @@
+// Template — auto-copied to user-data/scripts/lib/lunch-money/ by skeleton-sync.
+// Imports resolve only after copy; not runnable in place.
 import { fetchJson, AuthError } from '../../../../system/scripts/lib/sync/http.js';
 
 const BASE = 'https://dev.lunchmoney.app/v1';

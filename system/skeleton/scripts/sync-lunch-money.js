@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Template — auto-copied to user-data/scripts/ by system/scripts/startup-check.js
+// on first run (skeleton-sync). Imports use paths relative to user-data/scripts/,
+// so this file is NOT runnable in place — only after it's been copied.
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
