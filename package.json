@@ -14,7 +14,7 @@
     "regenerate-pointers": "node system/scripts/regenerate-pointers.js",
     "regenerate-memory-index": "node system/scripts/regenerate-memory-index.js",
     "split-monoliths": "node system/scripts/split-monoliths.js",
-    "fetch-finances": "node system/scripts/fetch-lunch-money.js",
+    "sync-lunch-money": "node user-data/scripts/sync-lunch-money.js",
     "analyze-finances": "node system/scripts/analyze-finances.js",
     "regenerate-links": "node system/scripts/regenerate-links.js",
     "jobs": "node bin/robin.js jobs",
