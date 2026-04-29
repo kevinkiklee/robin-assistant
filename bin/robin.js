@@ -16,6 +16,7 @@ usage:
   robin jobs disable <name>
   robin jobs sync                     [--force | --json]
   robin jobs validate [<name>]
+  robin update                        # post-pull check: config migrate + pending migrations + skeleton sync + validate
 
 env:
   ROBIN_WORKSPACE  override the workspace directory
@@ -44,6 +45,14 @@ async function main() {
   if (cmd === 'jobs') {
     const cli = await import('../system/scripts/jobs/cli.js');
     return cli.dispatchJobs(rest);
+  }
+  if (cmd === 'update') {
+    const { runStartupCheck } = await import('../system/scripts/startup-check.js');
+    const r = await runStartupCheck();
+    for (const f of r.findings) console.log(`${f.level}: ${f.message}`);
+    if (r.findings.some((f) => f.level === 'FATAL')) process.exit(1);
+    if (r.findings.length === 0) console.log('Nothing to do.');
+    process.exit(0);
   }
 
   process.stderr.write(`unknown command: ${cmd}\n${HELP}`);

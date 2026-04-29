@@ -36,12 +36,13 @@ Always read a file before writing. **Exception:** if you read it earlier this tu
 
 ## Session Startup
 
-1. `node system/scripts/startup-check.js` — `FATAL:` aborts; surface `INFO:`/`WARN:` briefly.
-2. Append session row to `state/sessions.md` (`<platform>-<timestamp>`); drop rows with last-active >2h old.
-3. Read `state/jobs/failures.md`; mention any "Active failures" in your first response.
-4. Read in order: `INDEX.md` → `hot.md` → `profile/identity.md` + `personality.md` → `self-improvement/{session-handoff,communication-style,domain-confidence,learning-queue}.md`. Open everything else on demand.
-5. Scan `user-data/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
-6. First-run (`robin.config.json.initialized==false`): introduce briefly, ask name + timezone, set `initialized:true`.
+1. Append session row to `state/sessions.md` (`<platform>-<timestamp>`); drop rows with last-active >2h old.
+2. Read `state/jobs/failures.md`; mention any "Active failures" in your first response.
+3. Read in order: `INDEX.md` → `hot.md` → `profile/identity.md` + `personality.md` → `self-improvement/{session-handoff,communication-style,domain-confidence,learning-queue}.md`. Open everything else on demand.
+4. Scan `user-data/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
+5. First-run (`robin.config.json.initialized==false`): introduce briefly, ask name + timezone, set `initialized:true`.
+
+Config migration, pending migrations, skeleton sync, and validation run at install (`npm install` postinstall) and after `git pull` via `robin update`. Session startup does NOT spawn a subprocess for these checks.
 
 Edge cases (Dream in-session, sibling sessions): `system/startup.md`.
 

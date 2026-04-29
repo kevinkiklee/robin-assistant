@@ -8,8 +8,18 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   const ud = join(workspaceDir, 'user-data');
   const skel = join(workspaceDir, 'system/skeleton');
 
-  // Idempotent: skip if user-data populated
+  // Existing install: apply pending migrations and exit. This is the path
+  // existing users hit after `npm install` post-`git pull`. Without this,
+  // migrations would only run via `robin update`.
   if (existsSync(ud) && readdirSync(ud).length > 0) {
+    try {
+      const r = await runPendingMigrations(workspaceDir);
+      if (r.applied.length > 0) {
+        console.log(`postinstall: applied migrations ${r.applied.join(', ')}`);
+      }
+    } catch (err) {
+      console.warn(`postinstall: migration apply skipped (${err.message})`);
+    }
     return;
   }
 
@@ -37,7 +47,7 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     cfg.user.name = (await rl.question('Your name: ')).trim() || cfg.user.name || '';
     cfg.user.timezone = (await rl.question('Timezone (e.g., America/New_York): ')).trim() || cfg.user.timezone || 'UTC';
     cfg.user.email = (await rl.question('Email (optional): ')).trim() || cfg.user.email || '';
-    cfg.platform = (await rl.question('Platform [claude-code/cursor/gemini-cli/codex/windsurf/antigravity]: ')).trim() || 'claude-code';
+    cfg.platform = (await rl.question('Platform [claude-code/cursor/gemini-cli/codex/antigravity]: ')).trim() || 'claude-code';
     cfg.assistant = cfg.assistant || {};
     cfg.assistant.name = (await rl.question('Assistant name (default Robin): ')).trim() || 'Robin';
     rl.close();

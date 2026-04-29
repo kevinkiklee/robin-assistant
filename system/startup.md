@@ -4,9 +4,28 @@ The full startup sequence is inlined in `AGENTS.md`. This file holds edge cases.
 
 ## Pre-flight check
 
-`node system/scripts/startup-check.js` outputs lines beginning `FATAL:` /
-`WARN:` / `INFO:`. `FATAL:` halts; surface `INFO:`/`WARN:` briefly in the
-first response.
+Pre-flight runs at **install / update time**, not on every session:
+
+- `npm install` (postinstall) runs `setup.js` which scaffolds `user-data/`
+  and triggers the same checks as `robin update`.
+- After `git pull`, run `robin update` to apply pending migrations,
+  config additions, and new skeleton files.
+
+Findings written to `state/jobs/failures.md` (active failures) and
+`state/jobs/INDEX.md` (job dashboard). The agent reads those at session
+start and surfaces relevant items in its first response — no subprocess
+needed.
+
+## When to invoke startup-check directly
+
+The legacy `node system/scripts/startup-check.js` still works and is
+called by `robin update`. Only invoke it directly when:
+
+- Investigating a bootstrap issue and you want to see all findings inline.
+- Running in CI to catch broken state.
+
+Don't call it from agent-runtime code paths — that's what `robin update`
++ `state/jobs/failures.md` are for.
 
 ## First-run detection
 
