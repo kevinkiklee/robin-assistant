@@ -27,7 +27,7 @@ run_scenario() {
   local tx="${TX_DIR}/0${n}-scenario.txt"
 
   echo ">>> scenario $n"
-  "$GEMINI_BIN" -p "$prompt" > "$tx" 2>&1 || true
+  "$GEMINI_BIN" -p "$prompt" --output-format=stream-json --yolo > "$tx" 2> "${tx}.stderr" || true
 
   node system/scripts/validate-host.js \
     --host="$HOST" \

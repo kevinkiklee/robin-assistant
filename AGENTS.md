@@ -37,8 +37,8 @@ Always read a file before writing. **Exception:** if you read it earlier this tu
 ## Session Startup
 
 1. Append session row to `user-data/state/sessions.md` (`<platform>-<timestamp>`); drop rows with last-active >2h old.
-2. Read `user-data/state/jobs/failures.md`; mention any "Active failures" in your first response.
-3. Read in order (all paths under `user-data/memory/`): `INDEX.md` → `hot.md` → `profile/identity.md` + `profile/personality.md` → `self-improvement/{session-handoff,communication-style,domain-confidence,learning-queue}.md`. Open everything else on demand.
+2. Read `user-data/state/jobs/failures.md`; mention any "Active failures" in your first response. Read `user-data/state/sessions.md`; if it has other active rows (last-active <2h), note "Another session is active (platform X, started Y)" in your first response.
+3. Read `user-data/integrations.md` for available external capabilities. Then read in order (under `user-data/memory/`): `INDEX.md` → `hot.md` → `profile/identity.md` + `profile/personality.md` → `self-improvement/{session-handoff,communication-style,domain-confidence,learning-queue}.md`. Open everything else on demand.
 4. Scan `user-data/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
 5. First-run (`robin.config.json.initialized==false`): introduce briefly, ask name + timezone, set `initialized:true`.
 

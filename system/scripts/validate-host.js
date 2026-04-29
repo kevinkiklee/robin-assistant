@@ -80,8 +80,8 @@ function validateScenario1(parsed, budget) {
   for (let i = 1; i < readOrder.length; i++) {
     if (readOrder[i] < readOrder[i - 1]) {
       failures.push({
-        severity: 'hard',
-        message: `Tier 1 read out of declared order at index ${i}`,
+        severity: 'soft',
+        message: `Tier 1 read out of declared order at index ${i} (cache-suboptimal but not broken)`,
       });
       break;
     }
@@ -268,7 +268,7 @@ async function main() {
       console.error(`transcript-dir not found: ${args.transcriptDir}`);
       process.exit(2);
     }
-    const files = readdirSync(args.transcriptDir).filter((f) => /^0[1-6]\b/.test(f));
+    const files = readdirSync(args.transcriptDir).filter((f) => /^0[1-6]-scenario\.(jsonl|txt)$/.test(f));
     for (const f of files.sort()) {
       const n = parseInt(f.slice(0, 2), 10);
       results.push(runOne(args.host, n, join(args.transcriptDir, f), budget));

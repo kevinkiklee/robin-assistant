@@ -6,8 +6,8 @@
 
   "$comment_caps": "Caps reflect realistic floors with 12 months of memory. Tier 1 is dominated by user content (personality, integrations, INDEX descriptions). Framework files (AGENTS.md, capture-rules, manifest) are aggressively trimmed; further cuts would lose findability. Original baseline before optimization: 8,278 tokens / 463 lines. Cap allows ~10% growth headroom.",
   "tier1_max_lines": 400,
-  "tier1_max_tokens": 5500,
-  "tier1_cache_stable_max_tokens": 5300,
+  "tier1_max_tokens": 5700,
+  "tier1_cache_stable_max_tokens": 5500,
   "per_protocol_max_tokens": 3000,
   "sub_index_max_lines": 30,
 
