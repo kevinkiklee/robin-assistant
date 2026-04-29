@@ -100,11 +100,28 @@ function validateScenario1(parsed, budget) {
   return failures;
 }
 
+// Paths that auto-recover within an hour via system/jobs/migrate-auto-memory.md
+// (or are valid alternative destinations for a [preference] tag).
+const PREFERENCE_FALLBACK_DESTINATIONS = [
+  'user-data/memory/inbox.md',
+  'user-data/memory/profile/preferences.md',
+  'user-data/memory/self-improvement/preferences.md',
+];
+function isAutoMemoryPath(p) {
+  return /\.claude\/projects\/[^/]+\/memory\//.test(p);
+}
+
 function validateScenario2(parsed) {
   const failures = [];
-  const wroteInbox = parsed.writes.some((w) => w === 'user-data/memory/inbox.md');
-  if (!wroteInbox) {
-    failures.push({ severity: 'hard', message: 'Did not write to inbox.md' });
+  const wroteAccepted = parsed.writes.some((w) => PREFERENCE_FALLBACK_DESTINATIONS.includes(w));
+  const wroteAutoMemory = parsed.writes.some((w) => isAutoMemoryPath(w));
+  if (!wroteAccepted && !wroteAutoMemory) {
+    failures.push({ severity: 'hard', message: 'Did not write to inbox.md or any accepted preference destination' });
+  } else if (!wroteAccepted && wroteAutoMemory) {
+    failures.push({
+      severity: 'soft',
+      message: 'Wrote to host auto-memory (~/.claude/...). Recovered hourly by migrate-auto-memory job.',
+    });
   }
   const loadedRules = parsed.reads.includes('system/capture-rules.md');
   if (loadedRules) {
@@ -166,10 +183,16 @@ function validateScenario6(parsed) {
       w === 'user-data/memory/self-improvement/corrections.md' ||
       w === 'user-data/memory/self-improvement.md',
   );
-  if (!wroteCorrection) {
+  const wroteAutoMemory = parsed.writes.some((w) => isAutoMemoryPath(w));
+  if (!wroteCorrection && !wroteAutoMemory) {
     failures.push({
       severity: 'hard',
       message: 'Did not write correction to self-improvement file',
+    });
+  } else if (!wroteCorrection && wroteAutoMemory) {
+    failures.push({
+      severity: 'soft',
+      message: 'Correction landed in host auto-memory (~/.claude/...). Recovered hourly by migrate-auto-memory job.',
     });
   }
   const inboxedCorrection = parsed.writes.includes('user-data/memory/inbox.md');

@@ -1,81 +1,175 @@
 # Robin Assistant
 
-A personal AI assistant with persistent memory and a daily self-improvement loop, portable across AI coding tools.
+A personal AI assistant that builds a persistent wiki about your life, learns from its mistakes, and works across multiple AI tools at the same time.
 
-Most AI assistants forget you the moment a session ends. Robin doesn't. Tell it your home is in Seattle on Monday; on Friday when you ask "what's a good coffee shop near home?" it just knows. Correct it twice on the same thing and it adds a permanent rule. Once a day it cleans up its own memory while you sleep. Switch from Claude Code to Cursor mid-week — same Robin, same memory.
+Most AI assistants forget you when the session ends. Robin doesn't. It silently captures facts, preferences, and decisions as you talk, organizes them into a structured knowledge base, and uses them in every future conversation. Correct it twice and it writes a permanent rule so the mistake stops happening. Open it in Claude Code and Cursor at the same time — same memory, coordinated writes, no conflicts.
 
 The repo *is* the workspace. You clone it, open it in your AI tool, and Robin is alive.
 
 ---
 
-## What Robin does
+## Why Robin
 
-### It remembers, silently
+### Wiki memory
 
-You don't say "remember this." You just talk. Robin watches the conversation for capturable signals — facts about you, recurring contacts, durable preferences, decisions, dated reflections — and writes them to the right file in `user-data/` in the same turn it answers you. The capture rules live in `system/capture-rules.md`; you can read and tune them.
+Robin's memory isn't a chat log. It's a structured wiki — topic files organized into directories, cross-referenced with a link graph, and indexed so Robin loads only what it needs. You don't tell it to remember things. You just talk. Robin watches for capturable signals — facts, preferences, decisions, corrections, dated reflections — and writes them to the right file in the same turn it answers you.
 
-The memory is structured, not a chat log. Topic folders for content that grows over time, flat files for time-ordered logs, and a generated `INDEX.md` so Robin loads only what it needs.
+Feed it a document with the **Ingest** command and it extracts facts, creates source pages, ripples updates across related files, and maintains cross-references automatically. Run **Lint** to audit the knowledge base for contradictions, dead links, stale claims, and orphans. Over time, the wiki compounds — each session leaves Robin knowing more than the last.
+
+### Self-improvement
+
+Robin tracks what it gets wrong and what it gets right. When you correct it, it logs the mistake and the right answer. Three similar corrections automatically promote to a named *pattern* with recognition signals and counter-actions, so the failure mode stops recurring. Patterns that stop firing get retired.
+
+It also builds a model of how to communicate with you. Positive feedback accumulates into a communication style profile with domain-specific overrides. It tracks its own confidence calibration — when it makes a high-stakes recommendation, it records the outcome and adjusts future confidence statements based on actual accuracy. Every quarter it runs a self-assessment: grading its own responses, checking for sycophancy, and asking you to rate it directly.
+
+### Multi-agent coordination
+
+Robin works across AI coding tools — Claude Code, Cursor, Gemini CLI, Antigravity, Codex. Same workspace, same memory, same rules. Switch tools mid-week and Robin picks up where it left off.
+
+Open two tools at the same time and Robin coordinates. A session registry tracks which tools are active. File-based locks prevent conflicting writes to shared files. Append-only files like the journal and decision log are safe to write concurrently. When you start a session, Robin tells you if another session is already running.
+
+---
+
+## Features
+
+### Passive capture
+
+Robin silently captures information from your conversations without you saying "remember this." It recognizes names and relationships, dates and deadlines, preferences, decisions with reasoning, corrections, commitments, and facts mentioned in passing. Each capture is tagged (`[fact]`, `[preference]`, `[decision]`, `[correction]`, `[task]`, `[journal]`) and written to an inbox. The nightly Dream cycle routes inbox entries to the right file. High-stakes captures (medical, financial, legal) are confirmed before storing.
+
+### Structured memory
+
+Memory is organized into topic directories with per-file frontmatter (description, type, tags, cross-references). The layout:
 
 | Path | Holds |
 |------|-------|
-| `INDEX.md` | Generated directory of every memory file — read at session start to map what's where |
+| `INDEX.md` | Generated directory of every memory file — read at session start |
 | `hot.md` | Rolling window of last 3 session summaries for seamless continuation |
 | `LINKS.md` | Cross-reference graph between memory files |
-| `profile/` | Identity, personality, interests, goals, routines, the people in your life (one file per area) |
+| `profile/` | Identity, personality, interests, goals, routines, people in your life |
 | `knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes |
-| `knowledge/sources/` | Source pages created by the Ingest operation |
-| `knowledge/conversations/` | Filed conversation outcomes |
+| `knowledge/sources/` | Source pages created by the Ingest command |
+| `knowledge/conversations/` | Summaries of substantive conversations |
+| `self-improvement/` | Corrections, preferences, calibration, communication style, domain confidence, learning queue |
 | `tasks.md` | Active tasks grouped by category |
-| `decisions.md` | Append-only log of significant decisions and their reasoning |
+| `decisions.md` | Append-only log of decisions and their reasoning |
 | `journal.md` | Dated reflections and daily notes |
 | `inbox.md` | Quick-capture items waiting to be routed by Dream |
-| `self-improvement/` | Corrections, preferences, calibration, communication style, domain confidence, learning queue, session handoff |
 | `archive/` | Content older than 12 months, pruned automatically |
 
-Topic files are split when they exceed `memory.split_threshold_lines` (default 200) at the next Dream cycle — the structure scales as content grows.
+Topic files split automatically when they exceed 200 lines. The structure scales as content grows.
 
-You can feed Robin documents, URLs, or inline text with the **Ingest** command. It creates source pages under `knowledge/sources/`, ripples updates across related knowledge files, and maintains a cross-reference graph in `LINKS.md`. A **Lint** command audits memory health: contradictions, dead links, stale claims, orphans, and oversized files.
+### Wiki operations
 
-### It learns from corrections
+**Ingest** processes source documents (files, URLs, inline text) into the knowledge base — extracts entities and facts, creates source pages, updates related knowledge files, adds cross-references to the link graph, and commits the result for rollback.
 
-When you correct Robin — "no, I don't want X, I want Y" — it logs what went wrong and the right response. Three similar corrections promote to a named *pattern* with a recognition signal and a counter-action, so the failure mode stops happening. Over time, the corrections-to-wins ratio falls and Robin stops needing the same nudge twice.
+**Lint** audits memory health with 8 checks: contradictions across linked files, dead links, stale claims (>6 months unverified), orphan pages, missing pages (concepts mentioned 3+ times without a dedicated file), frontmatter gaps, data gaps, and size warnings.
 
-It also tracks how confident it should be. When it makes a high-stakes recommendation it records the outcome later, and uses the running accuracy to calibrate future confidence statements.
+**Save conversation** files the key outcomes of the current conversation as a lightweight summary page. Conversations older than 90 days with no inbound links are flagged for archival.
 
-### It maintains itself daily
+### Self-improvement framework
 
-**Dream** runs every night at 04:00 — a maintenance pass that routes your inbox, promotes durable facts from the journal, prunes finished tasks, retires stale knowledge, promotes recurring corrections to patterns, retires patterns that stopped firing, and updates calibration. It runs from your OS scheduler (launchd / cron / Task Scheduler), not from your AI session, so you don't have to open a session for it to fire. You don't run it manually, you don't see most of it — you just notice that the workspace stays tidy without effort.
+Seven dimensions of self-improvement, each stored in its own file:
 
-### It syncs with your services
+- **Corrections** — what Robin got wrong and what to do instead. Append-only log.
+- **Patterns** — recurring mistakes promoted automatically from 3+ similar corrections. Each has recognition signals and counter-actions. Retired when they stop firing.
+- **Preferences** — positive signals and explicit style feedback. 3+ similar signals promote to communication style rules.
+- **Communication style** — Robin's learned interaction model. Base style plus domain-specific overrides, built from preferences over time.
+- **Domain confidence** — self-assessed competence per area of your life. New domains start at medium. Decays after 90 days of inactivity.
+- **Calibration** — prediction accuracy by confidence band, effectiveness scores for high-stakes recommendations, sycophancy tracking.
+- **Learning queue** — questions Robin wants to ask you when a natural moment arises. One question max per session.
 
-Robin can pull data from external services on a schedule so it has context about your life without you having to paste things in. Shipped integrations:
+### Dream cycle
 
-- **Calendar** — upcoming and recent events from Google Calendar (every 30 min)
+Runs every night at 4 AM via the OS scheduler — no session needed. Five phases:
+
+1. **Auto-memory migration** — drains host-managed memory (e.g., Claude Code's auto-memory) into Robin's inbox
+2. **Scan** — reads inbox, tasks, journal, self-improvement files, hot cache, operation log
+3. **Memory management** — routes inbox entries, promotes durable facts from journal, prunes finished tasks, checks freshness of profile and knowledge files
+4. **Self-improvement processing** — promotes corrections to patterns, reviews pattern effectiveness, processes session reflections, promotes preferences to communication style, updates domain confidence, maintains learning queue, updates calibration
+5. **Memory tree maintenance** — splits oversized files, cleans empty files, regenerates indexes, trims hot cache, rebuilds link graph, flags old conversations for archival
+
+Unresolvable issues are escalated in a report: contradictions, ambiguous inbox items, time-sensitive items, ineffective patterns, calibration drift.
+
+### Job system
+
+A cross-platform scheduler that runs jobs on your OS (launchd on macOS, cron on Linux, Task Scheduler on Windows), independent of AI sessions. Jobs are defined as markdown files with YAML frontmatter specifying runtime (agent or node), schedule, triggers, and timeout.
+
+20 shipped jobs spanning daily maintenance, financial review, productivity, and system health:
+
+| Job | Schedule | What it does |
+|-----|----------|--------------|
+| Dream | Daily 4 AM | Memory maintenance and self-improvement processing |
+| Morning briefing | Daily 7 AM | Calendar, priorities, flagged items, suggested focus |
+| Weekly review | Sunday 10 AM | Accomplishments, backlog health, goal check-ins, look-ahead |
+| Monthly financial | 1st of month | Income, recurring outflows, budget variance, anomalies |
+| Quarterly self-assessment | Quarterly | Effectiveness audit, calibration check, sycophancy detection, user grading |
+| Subscription audit | 15th of month | Recurring charges review, cancel/renegotiate candidates |
+| System maintenance | Weekly (first session) | Interactive review of stale tasks, pending decisions, pattern effectiveness |
+| Backup | Daily 3 AM | Snapshot of user-data to timestamped backup |
+| Prune | Monthly (disabled) | Archive content older than 12 months |
+| Auto-memory migration | Hourly | Drain host auto-memory into Robin's inbox |
+| Email triage | On demand (disabled) | Classify unread email, surface action items, route receipts |
+| Meeting prep | On demand (disabled) | Gather context, attendees, prior history, talking points |
+| Todo extraction | On demand (disabled) | Extract action items from forwarded email/documents |
+| Receipt tracking | On demand (disabled) | Find and summarize receipts by vendor, time range, or category |
+| Ingest | On demand | Process source documents into the knowledge base |
+| Lint | On demand (disabled) | Audit memory health |
+| Save conversation | On demand (disabled) | File conversation outcomes as summary pages |
+| Host validation | Quarterly (disabled) | Verify all supported AI tools still honor loading rules |
+
+A reconciler heartbeat runs every 6 hours, picking up new or changed job definitions and updating scheduler entries automatically. Add a job by dropping a markdown file in `user-data/jobs/` — it's live within 6 hours.
+
+The runner handles atomic locks, active-window gating, catch-up for missed runs (laptop was closed), failure categorization, and native OS notifications on status transitions.
+
+### Service integrations
+
+Robin can pull data from external services on a schedule so it has context about your life without you pasting things in:
+
+- **Google Calendar** — upcoming and recent events (every 30 min)
 - **Gmail** — inbox metadata: senders, subjects, labels (every 15 min, no message bodies)
 - **GitHub** — authored events, notifications, releases from starred repos (hourly)
 - **Spotify** — recently played, top tracks/artists, playlists (hourly)
 - **Lunch Money** — financial transactions and category breakdowns
 
-Each integration is a standalone script in `user-data/scripts/` with a corresponding job def in `user-data/jobs/`. Enable one by running its auth script, bootstrapping the initial sync, and enabling the job:
+Each integration is a standalone script with OAuth setup, bootstrap sync, and a job definition. All ship disabled — they only run after you complete auth setup. Write CLIs are available for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`) with `--dry-run` support. Calendar and Gmail writes use your AI tool's native capabilities.
 
-```bash
-node user-data/scripts/auth-google.js        # one-time OAuth
-node user-data/scripts/sync-calendar.js --bootstrap
-robin jobs enable sync-calendar
-```
+The integration system is built on a shared library (`system/scripts/lib/sync/`) providing OAuth2 token refresh, secrets management, sync cursors, HTTP retry with exponential backoff, privacy redaction, and atomic markdown writes.
 
-Integrations ship disabled by default and only run after you complete per-provider auth setup. Sync data stays local in `user-data/` — credentials live in `user-data/secrets/.env`.
+### Privacy
 
-### It enforces hard rules
+Personal data never leaves your machine unless you explicitly push it to a remote you control. Four layers enforce this:
 
-A small set of immutable rules can never be overridden — even by your own custom rules:
+1. **`.gitignore`** excludes `user-data/`, `artifacts/`, `backup/`, `docs/`
+2. **Pre-commit hook** refuses any commit that stages files in those directories or removes `user-data/` from `.gitignore`
+3. **Capture rules** block writes containing full government IDs, payment card numbers, passwords, API keys, or credentials. Cannot be overridden, even by your own custom rules.
+4. **Redaction module** automatically strips sensitive patterns (SSNs, SINs with Luhn validation, credit card numbers, API keys, URL credentials) from sync data before storage
 
-- **Privacy.** Robin refuses to store full government IDs, payment card numbers, passwords, API keys, or credentials.
-- **Verification.** Before declaring anything urgent, missing, or at-risk, it verifies the underlying data instead of pattern-matching cue words.
-- **Stress test.** High-stakes recommendations (finance > $1k, health, legal) get a silent pre-mortem before delivery.
-- **Sycophancy guard.** Suspicious agreement streaks get flagged.
+### Token optimization
 
-The full rule list is in `AGENTS.md` at the repo root.
+Robin's instruction layer is organized into tiers to minimize token usage at session start:
+
+- **Tier 1** (always loaded) — core rules, capture checkpoint, manifest pointers. Capped at 5,500 tokens.
+- **Tier 2** (on demand) — job protocols, detailed rules. Loaded only when triggered.
+- **Tier 3** (cold storage) — archived memory, historical data.
+
+CI enforces token budgets on every PR. A measurement harness tracks per-file token counts, a golden-session snapshot detects load-order drift, and a memory linter catches structural issues.
+
+### Customization
+
+Four extension points, all in `user-data/` (gitignored, survives `git pull`):
+
+- **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
+- **`jobs/`** — overlays `system/jobs/`. Same-name file does a full override; shallow override (`override: <name>`) inherits the rest. New files extend the catalog. Examples: customize morning briefing, add a sports-news job.
+- **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/skeleton/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/lib/sync/`.
+- **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
+
+### Memory lifecycle
+
+Content older than 12 months is automatically archived by the prune job. Transactions, conversations, calibration entries move to `archive/<year>/`. Year-end splits break decisions and journal files by calendar year. A dry-run preview shows what would move before anything happens. Pre-prune backups are automatic.
+
+### Session handoff
+
+Robin maintains a rolling handoff note for the next session. At session end (or when context compaction is imminent), it runs a capture sweep — scanning for uncaptured signals, deduplicating against the inbox, and writing a session summary to the hot cache. The next session reads the hot cache immediately after the index, picking up where you left off.
 
 ---
 
@@ -85,135 +179,71 @@ The full rule list is in `AGENTS.md` at the repo root.
 
 - **Node.js 18 or later** — check with `node --version`
 - **git**
-- An AI coding tool that reads project-level instructions: Claude Code, Cursor, Antigravity, Codex, or Gemini CLI
+- An AI coding tool: Claude Code, Cursor, Antigravity, Codex, or Gemini CLI
 
 ### Steps
 
 ```bash
-# 1. Get the repo. Forking is recommended — you'll have a private remote
-#    you can push system-side customizations back to. Your personal data
-#    stays local regardless of fork-vs-clone (it's gitignored).
+# 1. Fork or clone. Forking gives you a private remote for system-side
+#    customizations. Personal data stays local regardless (it's gitignored).
 git clone git@github.com:kevinkiklee/robin-assistant.git robin
 cd robin
 
-# 2. Install. The postinstall step runs setup.js, which:
-#      - copies system/skeleton/* into user-data/ (your starting templates)
+# 2. Install. The postinstall step:
+#      - copies system/skeleton/* into user-data/
 #      - creates artifacts/input, artifacts/output, backup/
 #      - prompts for your name, timezone, email, platform, assistant name
-#      - installs .git/hooks/pre-commit (the privacy guard)
-#      - applies the baseline migration
+#      - installs the pre-commit privacy hook
+#      - applies migrations and installs scheduler entries
 npm install
 
-# 3. Open the repo in your AI coding tool of choice. The tool reads
-#    AGENTS.md directly (Cursor, Antigravity, Codex) or via a pointer
-#    file (CLAUDE.md, GEMINI.md). Robin will introduce itself.
+# 3. Open the repo in your AI tool. It reads AGENTS.md directly (Cursor,
+#    Antigravity, Codex) or via a pointer file (CLAUDE.md, GEMINI.md).
+#    Robin will introduce itself.
 ```
 
-That's it. There is no global CLI to install. The repo is self-contained.
+That's it. No global CLI. The repo is self-contained.
 
-If you ran `npm install` in a non-interactive shell (CI, no TTY), the prompts are skipped and `user-data/robin.config.json` ships with placeholder values — open it and fill in your name/timezone/etc. before your first session.
+If you ran `npm install` in a non-interactive shell (CI, no TTY), the prompts are skipped and `user-data/robin.config.json` ships with placeholder values — fill them in before your first session.
 
 ---
 
 ## Updating
 
-The repo *is* the workspace, so updating is just `git pull`:
-
 ```bash
 git pull                    # if you cloned upstream
-# or
 git pull upstream main      # if you forked
 ```
 
-This only touches files in `system/` and the root pointer files. **`user-data/`, `artifacts/`, `backup/`, and `docs/` are gitignored, so your personal data is never touched by an update.**
+This only touches files in `system/` and root pointer files. **`user-data/`, `artifacts/`, `backup/`, and `docs/` are gitignored — your personal data is never touched by an update.**
 
-### What happens after you pull
+Migrations, config upgrades, and skeleton sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast.
 
-Migrations, config upgrades, and skeleton sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast — no subprocess overhead on every launch.
-
-The postinstall hook:
-
-1. Adds any new fields to `user-data/robin.config.json` with safe defaults (additive — never overwrites your values)
-2. Applies any pending versioned migrations from `system/migrations/`, taking a `backup/pre-migration-<timestamp>.tar.gz` snapshot first
-3. Copies any new skeleton files from `system/skeleton/` into `user-data/` (e.g., if upstream added a new integration template)
-
-You'll see something like:
-
-```
-INFO: migrations: applied 0008-split-self-improvement
-INFO: new files from upstream: user-data/scripts/sync-calendar.js
-```
-
-If anything goes wrong with a migration, the pre-migration backup is one command away (`npm run restore`).
-
-### What to do if `git pull` reports a conflict
-
-
-
-Conflicts only happen when you've modified a tracked file (anything outside the gitignored directories). If that happens:
-
-```bash
-git checkout -- <conflicting-path>     # discard local edits, accept upstream
-```
-
-Then move whatever customization you wanted into the right extension point (see [Customization](#customization) below). Tracked files are upstream-owned by design — you should never need to edit them directly.
-
----
-
-## Customization
-
-Four extension points let you customize Robin without ever editing files under `system/`. They all live in `user-data/` (gitignored), so they survive `git pull` cleanly:
-
-- **`user-data/custom-rules.md`** — your own rules, appended to AGENTS.md's rule list. They override operational rules when they conflict, but cannot override Immutable Rules (Privacy, Verification, etc.).
-  Examples: language preference, persona overrides, custom Ask-vs-Act thresholds, additional capture rules.
-
-- **`user-data/jobs/`** — overlays `system/jobs/`. A file with the same name does a full override; or write a shallow override (`override: <name>` + only the fields you want to change) to inherit the rest from the system def. New files extend the catalog.
-  Examples: customize `morning-briefing.md` to include your crypto portfolio, add a daily `rangers-news.md` job that only fires during NHL season.
-
-- **`user-data/scripts/`** — per-user integration scripts (sync, auth, write CLIs). Templates are scaffolded from `system/skeleton/scripts/` on first install. Add a new integration by dropping a job def in `user-data/jobs/` and a script in `user-data/scripts/`, importing from `system/scripts/lib/sync/`.
-
-- **`user-data/integrations.md`** — declare which platform integrations you've configured (email, calendar, etc.). Jobs check this before assuming a capability is available.
-
-**Don't edit files under `system/` directly.** They're upstream-owned; the next `git pull` will conflict.
-
----
-
-## Privacy
-
-Personal data never leaves your machine unless you explicitly push it to a remote you control. Three layers enforce this:
-
-1. **`.gitignore`** excludes `user-data/`, `artifacts/`, `backup/`, `docs/`. Source of truth.
-2. **`.git/hooks/pre-commit`** (installed by `npm install`) refuses any commit that stages files in those directories or that removes `user-data/` from `.gitignore`.
-3. **Privacy rules in `AGENTS.md`** prevent Robin from writing full government IDs, payment card numbers, passwords, API keys, or credentials into any memory file in the first place.
-
-If you forked the repo: you can `git push` system-side contributions back to your fork and the upstream — `user-data/` is never staged.
+If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — tracked files are upstream-owned. Move customizations into the extension points above.
 
 ---
 
 ## Commands
 
-All operate on the cloned repo from inside it. The `robin` binary is wired up via `bin/robin.js`; running `npm install` adds it to your `PATH` (or invoke directly with `node bin/robin.js`).
-
 | Command | Purpose |
 |---------|---------|
-| `git pull` | Update — pulls system file changes from upstream |
-| `npm run backup` | tar.gz `user-data/` into `backup/user-data-<ISO-timestamp>.tar.gz` |
-| `npm run restore` | Restore `user-data/` from a `backup/*.tar.gz` (interactive) |
+| `npm run backup` | Snapshot `user-data/` to `backup/user-data-<timestamp>.tar.gz` |
+| `npm run restore` | Restore `user-data/` from a backup archive (interactive) |
 | `npm run reset` | Wipe `user-data/`, recopy skeleton, re-prompt config (auto-backups first) |
-| `npm test` | Run the test suite |
-| `npm run lint-memory` | Check for orphan files, stale INDEX entries, oversized sub-trees, orphan .tmp files |
-| `npm run measure-tokens` | Measure Tier 1/2/3 token counts. `--check` enforces budget caps, `--diff` shows delta vs baseline |
-| `npm run prune-preview` | Preview what the 12-month archive prune would move (dry run) |
-| `npm run prune-execute` | Run the archive prune for real (auto-backups first) |
-| `robin run <name>` | Manually invoke a job — bypasses scheduler. `--force` skips gating, `--dry-run` prints the plan |
-| `robin jobs list` | Show all jobs: enabled state, schedule, last run, status, next run |
-| `robin jobs status <name>` | Detail on one job — when it last ran, where its log lives, when it next fires |
-| `robin jobs logs <name>` | Tail the most recent run's summary (`--full` for the full log, `--list` to enumerate) |
+| `npm test` | Run the test suite (~290 tests) |
+| `npm run lint-memory` | Check for orphan files, stale INDEX entries, oversized sub-trees |
+| `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
+| `npm run prune-preview` | Preview what the 12-month archive prune would move |
+| `npm run prune-execute` | Run the archive prune (auto-backups first) |
+| `robin run <name>` | Manually invoke a job. `--force` skips gating, `--dry-run` prints the plan |
+| `robin jobs list` | Show all jobs with enabled state, schedule, last run, status |
+| `robin jobs status <name>` | Detail on one job — last run, log location, next run |
+| `robin jobs logs <name>` | Tail the most recent run's summary (`--full` for complete log) |
 | `robin jobs upcoming` | 7-day forward calendar of scheduled runs |
-| `robin jobs enable <name>` | Turn on a disabled job (writes a shallow override under `user-data/jobs/`) |
+| `robin jobs enable <name>` | Turn on a disabled job |
 | `robin jobs disable <name>` | Turn off an enabled job |
-| `robin jobs sync` | Manually reconcile OS scheduler with `system/jobs/` + `user-data/jobs/`. Runs every 6h automatically; this just makes it instant |
-| `robin jobs validate` | Parse + cron-validate every job def — useful before committing a new one |
+| `robin jobs sync` | Force-reconcile OS scheduler with job definitions |
+| `robin jobs validate` | Parse and validate every job definition |
 
 ---
 
@@ -222,29 +252,29 @@ All operate on the cloned repo from inside it. The `robin` binary is wired up vi
 ```
 robin/
 ├── AGENTS.md                <- Canonical instructions (read natively by Cursor, Antigravity, Codex)
-├── CLAUDE.md                <- Pointer → AGENTS.md (Claude Code)
-├── GEMINI.md                <- Pointer → AGENTS.md (Gemini CLI)
+├── CLAUDE.md                <- Pointer -> AGENTS.md (Claude Code)
+├── GEMINI.md                <- Pointer -> AGENTS.md (Gemini CLI)
 ├── bin/
-│   └── robin.js             <- CLI entry point (`robin run`, `robin jobs ...`)
+│   └── robin.js             <- CLI entry point
 ├── system/                  <- upstream-owned, tracked, never user-edited
 │   ├── startup.md
 │   ├── capture-rules.md
 │   ├── manifest.md
 │   ├── jobs/                <- shipped jobs (agent protocols + node scripts)
-│   ├── migrations/          <- versioned schema migrations applied at install
+│   ├── migrations/          <- versioned schema migrations
 │   ├── scripts/
-│   │   ├── jobs/            <- runner, reconciler, CLI dispatcher, installer adapters
-│   │   ├── lib/jobs/        <- frontmatter, cron, atomic locks, state, notify
-│   │   └── lib/sync/        <- shared sync infrastructure (secrets, cursor, http, redact, oauth)
-│   ├── skeleton/            <- pristine first-run stubs for user-data/
-│   └── tests/               <- ~290 tests
+│   │   ├── jobs/            <- runner, reconciler, CLI, installer adapters
+│   │   ├── lib/jobs/        <- frontmatter, cron, locks, state, notifications
+│   │   └── lib/sync/        <- shared sync infrastructure (oauth, secrets, http, redact)
+│   ├── skeleton/            <- first-run templates for user-data/
+│   └── tests/
 ├── user-data/               <- your data, gitignored
-│   ├── memory/              <- structured memory tree (INDEX, profile/, knowledge/, etc.)
-│   ├── jobs/                <- your custom jobs + overrides of system jobs
-│   ├── scripts/             <- per-user integration scripts (sync, auth, write CLIs)
-│   ├── secrets/             <- credentials (.env) — gitignored within gitignored
+│   ├── memory/              <- structured memory tree
+│   ├── jobs/                <- your custom jobs + overrides
+│   ├── scripts/             <- per-user integration scripts
+│   ├── secrets/             <- credentials (.env)
 │   ├── sources/             <- immutable source document archive
-│   ├── state/               <- runtime state: sessions, locks, sync cursors, job logs
+│   ├── state/               <- sessions, locks, sync cursors, job logs
 │   └── robin.config.json
 ├── artifacts/{input,output} <- file pipe, gitignored
 ├── backup/                  <- tar.gz archives, gitignored
@@ -255,10 +285,10 @@ robin/
 
 ## Supported platforms
 
-| Tool | Pointer file at root | How it works |
-|------|----------------------|---------------|
-| Claude Code | `CLAUDE.md` | Pointer → `AGENTS.md` |
-| Gemini CLI | `GEMINI.md` | Pointer → `AGENTS.md` |
+| Tool | Pointer file | How it works |
+|------|-------------|--------------|
+| Claude Code | `CLAUDE.md` | Pointer to `AGENTS.md` |
+| Gemini CLI | `GEMINI.md` | Pointer to `AGENTS.md` |
 | Cursor | (none) | Reads `AGENTS.md` natively |
 | Antigravity | (none) | Reads `AGENTS.md` natively |
 | Codex | (none) | Reads `AGENTS.md` natively |
@@ -267,15 +297,9 @@ Pointer files are generated from `system/scripts/lib/platforms.js`. Adding a new
 
 ---
 
-## Multi-session safety
-
-If you have Claude Code and Cursor open at the same time, both pointing at the same workspace, Robin uses file-based locks under `user-data/state/locks/` to coordinate writes. Append-only files (`journal.md`, `decisions.md`, `inbox.md`) are safe to write concurrently; topic files under `profile/` and `knowledge/` take a lock first. Stale locks (>5 min old) are auto-cleared by Dream.
-
----
-
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow — adding a migration, a new operation, or a new platform.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow.
 
 ## Changelog
 

@@ -41,10 +41,10 @@ export function parseGeminiCli(text) {
         if (p) writes.push(normalizePath(p));
       } else if (tool === 'run_shell_command' || tool === 'shell' || tool === 'bash') {
         // Heuristic: parse cat / tee / > / >> from the command string.
-        // cat / head / tail / less / bat may have MANY file args:
-        //   cat a.md b.md c.md
-        // Grab everything after the verb up to a redirect / pipe / separator.
-        const cmd = String(params.command ?? '');
+        // First normalize backslash-newline continuations and `&&`/`;` separators
+        // into single spaces. cat / head / tail / less / bat may have MANY file args.
+        let cmd = String(params.command ?? '');
+        cmd = cmd.replace(/\\\n/g, ' '); // backslash-newline → space
         const readVerb = /(?:^|;|&&|\|\|)\s*(?:cat|less|head|tail|bat)\s+([^|>;&\n]+)/g;
         let m;
         while ((m = readVerb.exec(cmd)) !== null) {
@@ -57,11 +57,13 @@ export function parseGeminiCli(text) {
             reads.push(normalizePath(arg));
           }
         }
-        // Writes: redirects (>, >>) and tee
+        // Writes: redirects (>, >>) and tee, but NOT inside heredoc literals
+        // (`<<EOF ... > foo.md ... EOF` would false-match). Strip heredocs.
+        const cmdNoHeredoc = cmd.replace(/<<\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1\s*\n/g, ' ');
         const writeRedirect = /(?:^|\s)>>?\s+(\S+)/g;
-        while ((m = writeRedirect.exec(cmd)) !== null) writes.push(normalizePath(m[1]));
+        while ((m = writeRedirect.exec(cmdNoHeredoc)) !== null) writes.push(normalizePath(m[1]));
         const writeTee = /(?:^|;|&&|\|\||\s)tee\s+(\S+)/g;
-        while ((m = writeTee.exec(cmd)) !== null) writes.push(normalizePath(m[1]));
+        while ((m = writeTee.exec(cmdNoHeredoc)) !== null) writes.push(normalizePath(m[1]));
       }
     }
 

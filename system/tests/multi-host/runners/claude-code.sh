@@ -27,7 +27,11 @@ run_scenario() {
   local tx="${TX_DIR}/0${n}-scenario.jsonl"
 
   echo ">>> scenario $n"
-  # --print: non-interactive, --output-format=stream-json: tool calls in JSONL
+  # --print: non-interactive, --output-format=stream-json: tool calls in JSONL.
+  # NOTE: Claude Code's auto-memory layer occasionally writes to ~/.claude/
+  # despite AGENTS.md's Local Memory rule. The migrate-auto-memory job
+  # (system/jobs/migrate-auto-memory.md) drains those entries hourly. The
+  # validator recognizes the auto-memory path and downgrades the failure.
   "$CLAUDE_BIN" \
     --print \
     --output-format=stream-json \

@@ -24,7 +24,7 @@ You are a personal systems co-pilot. This workspace is your persistent system. R
 
 After every response, scan for capturable signals.
 
-- **Direct-write** for: corrections, "remember this", updates that supersede a fact already in your context.
+- **Direct-write to file** (don't just acknowledge — actually save): corrections (e.g. "stop X-ing") → append to `user-data/memory/self-improvement/corrections.md`; "remember this" → append to the relevant file + confirm; updates that supersede an in-context fact → update in place.
 - **Inbox-write** with `[tag]` to `user-data/memory/inbox.md` for everything else (Dream routes within 24h).
 - **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|?]`.
 
@@ -36,9 +36,9 @@ Always read a file before writing. **Exception:** if you read it earlier this tu
 
 ## Session Startup
 
-1. Append session row to `user-data/state/sessions.md` (`<platform>-<timestamp>`); drop rows with last-active >2h old.
-2. Read `user-data/state/jobs/failures.md`; mention any "Active failures" in your first response. Read `user-data/state/sessions.md`; if it has other active rows (last-active <2h), note "Another session is active (platform X, started Y)" in your first response.
-3. Read `user-data/integrations.md` for available external capabilities. Then read in order (under `user-data/memory/`): `INDEX.md` → `hot.md` → `profile/identity.md` + `profile/personality.md` → `self-improvement/{session-handoff,communication-style,domain-confidence,learning-queue}.md`. Open everything else on demand.
+1. Read `user-data/state/sessions.md`. If it has rows with last-active <2h, note "Another session is active (platform X, started Y)" in your first response. **Append** your row to it (`<platform>-<timestamp>`) — NEVER overwrite the file (no `cat > sessions.md`, no `echo > sessions.md`; use `>>` append or read-modify-write only). Also drop rows with last-active >2h old.
+2. Read `user-data/state/jobs/failures.md`; mention any "Active failures" in your first response.
+3. Read `user-data/integrations.md`, then read these files **in this exact order** (matters for prompt-cache reuse — frozen → slow → volatile): `user-data/memory/INDEX.md`, `user-data/memory/profile/identity.md`, `user-data/memory/profile/personality.md`, `user-data/memory/self-improvement/communication-style.md`, `user-data/memory/self-improvement/domain-confidence.md`, `user-data/memory/hot.md`, `user-data/memory/self-improvement/session-handoff.md`, `user-data/memory/self-improvement/learning-queue.md`. Open everything else on demand.
 4. Scan `user-data/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
 5. First-run (`robin.config.json.initialized==false`): introduce briefly, ask name + timezone, set `initialized:true`.
 
