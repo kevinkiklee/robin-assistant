@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { up } from '../migrations/0007-rename-fetch-finances.js';
@@ -85,6 +85,31 @@ test('state migration is idempotent', async () => {
   await up({ workspaceDir: ws });
   const content = readFileSync(join(ws, 'user-data/state/sync/lunch-money.json'), 'utf-8');
   assert.equal(content, '{"already": "migrated"}\n');
+  rmSync(ws, { recursive: true });
+});
+
+test('state migration quarantines a corrupt old state file', async () => {
+  const ws = workspace();
+  mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+  const oldPath = join(ws, 'user-data/state/lunch-money-sync.json');
+  writeFileSync(oldPath, '{ this is not valid');
+  const origLog = console.log;
+  console.log = () => {};
+  try {
+    await up({ workspaceDir: ws });
+  } finally {
+    console.log = origLog;
+  }
+  // Old file gone (renamed)
+  assert.ok(!existsSync(oldPath));
+  // No new file written
+  assert.ok(!existsSync(join(ws, 'user-data/state/sync/lunch-money.json')));
+  // Quarantine sibling exists
+  const siblings = readdirSync(join(ws, 'user-data/state'));
+  assert.ok(
+    siblings.some((n) => n.startsWith('lunch-money-sync.json.corrupt-')),
+    `expected a quarantine file, got: ${siblings.join(', ')}`
+  );
   rmSync(ws, { recursive: true });
 });
 

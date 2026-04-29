@@ -6,7 +6,7 @@
 //   2. Migrate user-data/state/lunch-money-sync.json → user-data/state/sync/lunch-money.json
 //      (the new script reads from a different location with a different shape).
 
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 export const id = '0007-rename-fetch-finances';
@@ -54,7 +54,16 @@ function migrateStateFile(workspaceDir) {
   try {
     old = JSON.parse(readFileSync(oldPath, 'utf-8'));
   } catch (err) {
-    console.log(`[0007] could not parse old state file (${err.message}); leaving in place`);
+    // Quarantine the corrupt file so the migration converges on next run
+    // (instead of failing forever on the same parse error).
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const quarantine = `${oldPath}.corrupt-${stamp}`;
+    try {
+      renameSync(oldPath, quarantine);
+      console.log(`[0007] corrupt old state at ${oldPath} (${err.message}); quarantined to ${quarantine}`);
+    } catch (renameErr) {
+      console.log(`[0007] corrupt old state at ${oldPath} (${err.message}); rename failed (${renameErr.message})`);
+    }
     return;
   }
 
