@@ -36,17 +36,36 @@ function release(path) {
   }
 }
 
+function readOwnerPid(path) {
+  try {
+    const raw = readFileSync(path, 'utf-8').trim();
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function updateIndex(workspaceDir, opts = {}) {
   const path = lockPath(workspaceDir);
   if (!tryAcquire(path)) {
-    const owner = parseInt(readFileSync(path, 'utf-8').trim(), 10);
-    if (Number.isFinite(owner) && pidIsAlive(owner)) {
+    const owner = readOwnerPid(path);
+    if (owner != null && pidIsAlive(owner)) {
       if (opts.skipIfLocked) return 'skipped';
       throw new Error(`INDEX lock held by live PID ${owner}`);
     }
+    // Lock looks stale (PID dead, missing, or unparseable). Steal it.
     release(path);
     if (!tryAcquire(path)) {
-      throw new Error('INDEX lock acquisition failed after stealing stale lock');
+      // Lost the race — another process acquired between our release and
+      // re-acquire. Report whoever holds it now (not "stale-lock" — that
+      // misleads operators).
+      const newOwner = readOwnerPid(path);
+      if (newOwner != null && pidIsAlive(newOwner)) {
+        if (opts.skipIfLocked) return 'skipped';
+        throw new Error(`INDEX lock newly acquired by PID ${newOwner} after stale-lock reclaim`);
+      }
+      throw new Error('INDEX lock acquisition failed after stale-lock reclaim');
     }
   }
   try {
