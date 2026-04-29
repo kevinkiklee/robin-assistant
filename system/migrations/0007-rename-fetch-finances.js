@@ -1,14 +1,18 @@
-// Migration 0007: rename user-data/jobs/fetch-finances.md to sync-lunch-money.md.
-// Update the inline `name:` and `command:` fields to match the new convention.
-// Idempotent.
+// Migration 0007: rename fetch-finances → sync-lunch-money.
+//
+// Two effects, both idempotent:
+//   1. Rename user-data/jobs/fetch-finances.md → sync-lunch-money.md
+//      (and update inline `name:` and `command:` fields).
+//   2. Migrate user-data/state/lunch-money-sync.json → user-data/state/sync/lunch-money.json
+//      (the new script reads from a different location with a different shape).
 
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 
 export const id = '0007-rename-fetch-finances';
-export const description = 'Rename fetch-finances job to sync-lunch-money and point command at user-data/scripts/.';
+export const description = 'Rename fetch-finances job to sync-lunch-money; migrate state file shape and location.';
 
-export async function up({ workspaceDir }) {
+function migrateJobDef(workspaceDir) {
   const oldPath = join(workspaceDir, 'user-data/jobs/fetch-finances.md');
   const newPath = join(workspaceDir, 'user-data/jobs/sync-lunch-money.md');
 
@@ -19,7 +23,6 @@ export async function up({ workspaceDir }) {
     }
     return;
   }
-
   if (!existsSync(oldPath)) return;
 
   let content = readFileSync(oldPath, 'utf-8');
@@ -32,4 +35,46 @@ export async function up({ workspaceDir }) {
   writeFileSync(newPath, content);
   unlinkSync(oldPath);
   console.log('[0007] renamed fetch-finances.md → sync-lunch-money.md');
+}
+
+function migrateStateFile(workspaceDir) {
+  const oldPath = join(workspaceDir, 'user-data/state/lunch-money-sync.json');
+  const newPath = join(workspaceDir, 'user-data/state/sync/lunch-money.json');
+
+  if (existsSync(newPath)) {
+    if (existsSync(oldPath)) {
+      unlinkSync(oldPath);
+      console.log('[0007] removed leftover user-data/state/lunch-money-sync.json');
+    }
+    return;
+  }
+  if (!existsSync(oldPath)) return;
+
+  let old;
+  try {
+    old = JSON.parse(readFileSync(oldPath, 'utf-8'));
+  } catch (err) {
+    console.log(`[0007] could not parse old state file (${err.message}); leaving in place`);
+    return;
+  }
+
+  const next = {
+    last_attempt_at: old.last_run_at ?? null,
+    last_success_at: old.last_run_at ?? null,
+    last_sync_date: old.last_sync ?? null,
+    error_count: 0,
+    last_error: null,
+    auth_status: 'ok',
+    cursor: { transactions_pulled: old.transactions_pulled ?? 0 },
+  };
+
+  mkdirSync(dirname(newPath), { recursive: true });
+  writeFileSync(newPath, JSON.stringify(next, null, 2) + '\n');
+  unlinkSync(oldPath);
+  console.log('[0007] migrated state file → user-data/state/sync/lunch-money.json');
+}
+
+export async function up({ workspaceDir }) {
+  migrateJobDef(workspaceDir);
+  migrateStateFile(workspaceDir);
 }

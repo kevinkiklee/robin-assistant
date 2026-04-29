@@ -46,3 +46,60 @@ test('skips silently when neither file exists (fresh workspace)', async () => {
   assert.ok(!existsSync(join(ws, 'user-data/jobs/sync-lunch-money.md')));
   rmSync(ws, { recursive: true });
 });
+
+test('migrates state file from user-data/state/lunch-money-sync.json to user-data/state/sync/lunch-money.json', async () => {
+  const ws = workspace();
+  mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+  writeFileSync(
+    join(ws, 'user-data/state/lunch-money-sync.json'),
+    JSON.stringify({
+      last_sync: '2026-04-28',
+      last_run_at: '2026-04-28T19:20:59.518Z',
+      transactions_pulled: 5032,
+    }) + '\n'
+  );
+  await up({ workspaceDir: ws });
+
+  assert.ok(!existsSync(join(ws, 'user-data/state/lunch-money-sync.json')));
+  const newPath = join(ws, 'user-data/state/sync/lunch-money.json');
+  assert.ok(existsSync(newPath));
+  const next = JSON.parse(readFileSync(newPath, 'utf-8'));
+  assert.equal(next.last_sync_date, '2026-04-28');
+  assert.equal(next.last_success_at, '2026-04-28T19:20:59.518Z');
+  assert.equal(next.last_attempt_at, '2026-04-28T19:20:59.518Z');
+  assert.equal(next.error_count, 0);
+  assert.equal(next.last_error, null);
+  assert.equal(next.auth_status, 'ok');
+  assert.deepEqual(next.cursor, { transactions_pulled: 5032 });
+  rmSync(ws, { recursive: true });
+});
+
+test('state migration is idempotent', async () => {
+  const ws = workspace();
+  mkdirSync(join(ws, 'user-data/state/sync'), { recursive: true });
+  writeFileSync(
+    join(ws, 'user-data/state/sync/lunch-money.json'),
+    '{"already": "migrated"}\n'
+  );
+  await up({ workspaceDir: ws });
+  await up({ workspaceDir: ws });
+  const content = readFileSync(join(ws, 'user-data/state/sync/lunch-money.json'), 'utf-8');
+  assert.equal(content, '{"already": "migrated"}\n');
+  rmSync(ws, { recursive: true });
+});
+
+test('state migration removes leftover old file when new file already exists', async () => {
+  const ws = workspace();
+  mkdirSync(join(ws, 'user-data/state/sync'), { recursive: true });
+  writeFileSync(
+    join(ws, 'user-data/state/sync/lunch-money.json'),
+    '{"already": "migrated"}\n'
+  );
+  writeFileSync(
+    join(ws, 'user-data/state/lunch-money-sync.json'),
+    '{"old": "leftover"}\n'
+  );
+  await up({ workspaceDir: ws });
+  assert.ok(!existsSync(join(ws, 'user-data/state/lunch-money-sync.json')));
+  rmSync(ws, { recursive: true });
+});
