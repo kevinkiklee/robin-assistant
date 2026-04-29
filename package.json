@@ -17,6 +17,7 @@
     "sync-lunch-money": "node user-data/scripts/sync-lunch-money.js",
     "analyze-finances": "node system/scripts/analyze-finances.js",
     "regenerate-links": "node system/scripts/regenerate-links.js",
+    "measure-tokens": "node system/scripts/measure-tokens.js",
     "jobs": "node bin/robin.js jobs",
     "jobs:sync": "node bin/robin.js jobs sync",
     "jobs:list": "node bin/robin.js jobs list",

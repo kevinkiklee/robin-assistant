@@ -1,0 +1,47 @@
+{
+  "$comment": "Single source of truth for tier classification, file caps, and budgets. Read by measure-tokens.js and validate-host.js. Phase 0 ships in observe-only mode (enforce_caps: false). Phase 2f flips enforce to true.",
+
+  "version": 1,
+  "enforce_caps": false,
+
+  "tier1_max_lines": 250,
+  "tier1_max_tokens": 5000,
+  "per_protocol_max_tokens": 3000,
+  "sub_index_max_lines": 30,
+
+  "tier1_files": [
+    { "path": "AGENTS.md", "stability": "frozen", "max_lines": 60, "required": true },
+    { "path": "user-data/robin.config.json", "stability": "frozen", "required": true },
+    { "path": "user-data/memory/profile/identity.md", "stability": "slow", "max_lines": 100, "required": false },
+    { "path": "user-data/memory/profile/personality.md", "stability": "slow", "max_lines": 100, "required": false },
+    { "path": "user-data/memory/INDEX.md", "stability": "slow", "max_lines": 40, "required": true },
+    { "path": "user-data/integrations.md", "stability": "slow", "required": false },
+    { "path": "user-data/custom-rules.md", "stability": "slow", "required": false, "optional_existence": true },
+    { "path": "user-data/memory/self-improvement/communication-style.md", "stability": "slow", "max_lines": 25, "required": false, "optional_existence": true },
+    { "path": "user-data/memory/self-improvement/domain-confidence.md", "stability": "slow", "max_lines": 25, "required": false, "optional_existence": true },
+    { "path": "user-data/memory/hot.md", "stability": "volatile", "max_lines": 60, "required": false },
+    { "path": "user-data/memory/self-improvement/session-handoff.md", "stability": "volatile", "max_lines": 20, "required": false, "optional_existence": true },
+    { "path": "user-data/memory/self-improvement/learning-queue.md", "stability": "volatile", "max_lines": 10, "required": false, "optional_existence": true },
+    { "path": "user-data/memory/self-improvement.md", "stability": "slow", "required": false, "optional_existence": true, "$comment": "monolith — present pre-migration-0008. Required if the split files are not present." },
+    { "path": "user-data/state/sessions.md", "stability": "volatile", "required": false, "optional_existence": true },
+    { "path": "user-data/state/jobs/failures.md", "stability": "volatile", "required": false, "optional_existence": true }
+  ],
+
+  "tier2_globs": [
+    "system/manifest.md",
+    "system/startup.md",
+    "system/capture-rules.md",
+    "system/self-improvement-rules.md",
+    "system/jobs/*.md"
+  ],
+
+  "host_pointers": {
+    "claude-code": ["CLAUDE.md"],
+    "cursor": [],
+    "gemini-cli": ["GEMINI.md"],
+    "codex": [],
+    "antigravity": []
+  },
+
+  "stability_order": ["frozen", "slow", "volatile"]
+}
