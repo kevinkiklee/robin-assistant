@@ -1,0 +1,24 @@
+name: Token Budget
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Token budget check
+        run: node system/scripts/measure-tokens.js --check
+      - name: Memory tree lint
+        run: node system/scripts/lint-memory.js
+      - name: Golden-session snapshot check
+        run: node system/scripts/golden-session.js --check
+      - name: Tests
+        run: npm test

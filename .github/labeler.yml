@@ -1,0 +1,27 @@
+# Auto-applied PR labels.
+#
+# 'tier1-changes' routes attention to a token-budget reviewer per
+# docs/governance/token-budget.md.
+
+tier1-changes:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'AGENTS.md'
+          - 'CLAUDE.md'
+          - 'GEMINI.md'
+          - 'system/manifest.md'
+          - 'system/startup.md'
+          - 'system/capture-rules.md'
+          - 'system/self-improvement-rules.md'
+          - 'system/scripts/lib/token-budget.json'
+          - 'system/scripts/lib/token-baselines.json'
+          - 'system/scripts/lib/platforms.js'
+          - 'system/tests/golden-session.snapshot.json'
+
+migrations:
+  - changed-files:
+      - any-glob-to-any-file: 'system/migrations/**'
+
+protocols:
+  - changed-files:
+      - any-glob-to-any-file: 'system/jobs/**'
