@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, readdirSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { up } from '../migrations/0007-rename-fetch-finances.js';
@@ -113,18 +113,62 @@ test('state migration quarantines a corrupt old state file', async () => {
   rmSync(ws, { recursive: true });
 });
 
-test('state migration removes leftover old file when new file already exists', async () => {
+test('state migration removes leftover old file when new file is at least as recent', async () => {
   const ws = workspace();
   mkdirSync(join(ws, 'user-data/state/sync'), { recursive: true });
-  writeFileSync(
-    join(ws, 'user-data/state/sync/lunch-money.json'),
-    '{"already": "migrated"}\n'
-  );
+  // Write old first, then new — newer mtime on new
   writeFileSync(
     join(ws, 'user-data/state/lunch-money-sync.json'),
     '{"old": "leftover"}\n'
   );
+  // Force old's mtime to the past so new (just-written) is strictly newer
+  const past = new Date(Date.now() - 60_000);
+  utimesSync(join(ws, 'user-data/state/lunch-money-sync.json'), past, past);
+  writeFileSync(
+    join(ws, 'user-data/state/sync/lunch-money.json'),
+    '{"already": "migrated"}\n'
+  );
   await up({ workspaceDir: ws });
   assert.ok(!existsSync(join(ws, 'user-data/state/lunch-money-sync.json')));
+  rmSync(ws, { recursive: true });
+});
+
+test('state migration quarantines old file when it is NEWER than the migrated file (partial rollback)', async () => {
+  const ws = workspace();
+  mkdirSync(join(ws, 'user-data/state/sync'), { recursive: true });
+  // Write new first, then old — old gets the newer mtime
+  writeFileSync(
+    join(ws, 'user-data/state/sync/lunch-money.json'),
+    '{"already": "migrated"}\n'
+  );
+  // Backdate the migrated file so old is strictly newer
+  const past = new Date(Date.now() - 60_000);
+  utimesSync(join(ws, 'user-data/state/sync/lunch-money.json'), past, past);
+  writeFileSync(
+    join(ws, 'user-data/state/lunch-money-sync.json'),
+    '{"recent": "from legacy script"}\n'
+  );
+  const origLog = console.log;
+  console.log = () => {};
+  try {
+    await up({ workspaceDir: ws });
+  } finally {
+    console.log = origLog;
+  }
+  // Old file is gone (renamed)
+  assert.ok(!existsSync(join(ws, 'user-data/state/lunch-money-sync.json')));
+  // Migrated file is untouched
+  assert.equal(
+    readFileSync(join(ws, 'user-data/state/sync/lunch-money.json'), 'utf-8'),
+    '{"already": "migrated"}\n'
+  );
+  // A quarantine sibling exists with the legacy data
+  const siblings = readdirSync(join(ws, 'user-data/state'));
+  const quarantine = siblings.find((n) => n.startsWith('lunch-money-sync.json.partial-rollback-'));
+  assert.ok(quarantine, `expected a partial-rollback file, got: ${siblings.join(', ')}`);
+  assert.equal(
+    readFileSync(join(ws, 'user-data/state', quarantine), 'utf-8'),
+    '{"recent": "from legacy script"}\n'
+  );
   rmSync(ws, { recursive: true });
 });

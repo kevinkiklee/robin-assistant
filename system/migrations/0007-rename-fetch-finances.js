@@ -6,7 +6,7 @@
 //   2. Migrate user-data/state/lunch-money-sync.json → user-data/state/sync/lunch-money.json
 //      (the new script reads from a different location with a different shape).
 
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 export const id = '0007-rename-fetch-finances';
@@ -43,8 +43,33 @@ function migrateStateFile(workspaceDir) {
 
   if (existsSync(newPath)) {
     if (existsSync(oldPath)) {
-      unlinkSync(oldPath);
-      console.log('[0007] removed leftover user-data/state/lunch-money-sync.json');
+      // Both files exist. Normally newPath was migrated and oldPath is a
+      // stray leftover (e.g., from a partial-rollback or a user who ran
+      // the legacy script after the migration). Compare mtimes:
+      //   - if newPath is at least as recent as oldPath: the leftover is
+      //     stale, safe to delete.
+      //   - if oldPath is strictly newer: the user ran the legacy script
+      //     more recently than the migrated state was written. Quarantine
+      //     oldPath instead of deleting so they can recover the data.
+      const oldMtime = statSync(oldPath).mtimeMs;
+      const newMtime = statSync(newPath).mtimeMs;
+      if (oldMtime > newMtime) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const quarantine = `${oldPath}.partial-rollback-${stamp}`;
+        try {
+          renameSync(oldPath, quarantine);
+          console.log(
+            `[0007] WARN: oldPath is newer than newPath ` +
+            `(oldMtime=${new Date(oldMtime).toISOString()}, newMtime=${new Date(newMtime).toISOString()}) ` +
+            `— quarantined to ${quarantine} so its data is recoverable`
+          );
+        } catch (err) {
+          console.log(`[0007] WARN: oldPath is newer than newPath; quarantine rename failed (${err.message})`);
+        }
+      } else {
+        unlinkSync(oldPath);
+        console.log('[0007] removed leftover user-data/state/lunch-money-sync.json');
+      }
     }
     return;
   }
