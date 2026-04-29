@@ -40,6 +40,12 @@ test('loadSecrets is a no-op when .env is missing', () => {
   rmSync(ws, { recursive: true });
 });
 
+test('loadSecrets requires workspaceDir (no implicit default)', () => {
+  assert.throws(() => loadSecrets(), /workspaceDir is required/);
+  assert.throws(() => loadSecrets(undefined), /workspaceDir is required/);
+  assert.throws(() => loadSecrets(''), /workspaceDir is required/);
+});
+
 test('requireSecret throws when key missing', () => {
   delete process.env.MISSING_KEY;
   assert.throws(() => requireSecret('MISSING_KEY'), /Missing secret: MISSING_KEY/);

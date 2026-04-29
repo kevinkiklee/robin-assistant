@@ -5,7 +5,10 @@ function envPath(workspaceDir) {
   return join(workspaceDir, 'user-data/secrets/.env');
 }
 
-export function loadSecrets(workspaceDir = process.cwd()) {
+export function loadSecrets(workspaceDir) {
+  if (!workspaceDir) {
+    throw new TypeError('loadSecrets: workspaceDir is required');
+  }
   const path = envPath(workspaceDir);
   if (!existsSync(path)) return;
   const content = readFileSync(path, 'utf-8');
