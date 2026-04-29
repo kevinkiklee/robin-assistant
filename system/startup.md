@@ -10,7 +10,7 @@ Before anything else, run `node system/scripts/startup-check.js` and read its ou
 
 2. **Check for sibling sessions** — if `user-data/state/sessions.md` has other active entries, note to the user: "Another session is active (platform X, started Y)." Continue normally.
 
-3. **Job failures check** — read `user-data/state/jobs/failures.md`. If the "Active failures" section is non-empty, mention it concisely in your first response (e.g., "Heads up: fetch-finances has been failing since 04-25 — auth_expired"). One line. The user can investigate further; you don't need to dwell.
+3. **Job failures check** — read `user-data/state/jobs/failures.md`. If the "Active failures" section is non-empty, mention it concisely in your first response (e.g., "Heads up: sync-lunch-money has been failing since 04-25 — auth_expired"). One line. The user can investigate further; you don't need to dwell.
 
 4. **Dream** — Dream runs on a schedule (daily 04:00 via the job system) and does NOT depend on session startup. Only invoke Dream in-session when the user uses a trigger phrase ("dream", "memory check", "daily maintenance"). When triggered, follow the in-session invocation path in `system/jobs/dream.md`: acquire the lock via `robin job acquire dream`, run the protocol, release with `robin job release dream`.
 

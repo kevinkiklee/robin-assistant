@@ -7,7 +7,7 @@
     "robin": "bin/robin.js"
   },
   "scripts": {
-    "test": "node --test system/tests/**/*.test.js",
+    "test": "find system/tests -type f -name '*.test.js' -print0 | xargs -0 node --test",
     "backup": "node system/scripts/backup.js",
     "restore": "node system/scripts/restore.js",
     "reset": "node system/scripts/reset.js",

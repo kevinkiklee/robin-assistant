@@ -33,7 +33,7 @@ export function analyze({ workspaceDir, month }) {
   const txDir = join(workspaceDir, 'user-data/memory/knowledge/finance/lunch-money/transactions');
 
   if (!existsSync(txDir)) {
-    throw new Error(`No transactions found at ${txDir}. Run \`npm run fetch-finances\` first.`);
+    throw new Error(`No transactions found at ${txDir}. Run \`npm run sync-lunch-money\` first.`);
   }
 
   const files = readdirSync(txDir).filter(f => f.endsWith('.md')).sort();
