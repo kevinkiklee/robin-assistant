@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "tier1_load_order": [
+    {
+      "path": "AGENTS.md",
+      "stability": "frozen",
+      "required": true,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/robin.config.json",
+      "stability": "frozen",
+      "required": true,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/memory/profile/identity.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/memory/profile/personality.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/memory/INDEX.md",
+      "stability": "slow",
+      "required": true,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/integrations.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/custom-rules.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": true
+    },
+    {
+      "path": "user-data/memory/self-improvement/communication-style.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": true
+    },
+    {
+      "path": "user-data/memory/self-improvement/domain-confidence.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": true
+    },
+    {
+      "path": "user-data/memory/hot.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": false
+    },
+    {
+      "path": "user-data/memory/self-improvement/session-handoff.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": true
+    },
+    {
+      "path": "user-data/memory/self-improvement/learning-queue.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": true
+    },
+    {
+      "path": "user-data/state/sessions.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": true
+    },
+    {
+      "path": "user-data/state/jobs/failures.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": true
+    }
+  ],
+  "stability_order": [
+    "frozen",
+    "slow",
+    "volatile"
+  ],
+  "invariants": {
+    "capture_checkpoint_in_agents_md": true,
+    "hard_rules_in_agents_md": true,
+    "tier2_pointer_table_in_agents_md": true,
+    "archive_index_referenced": true
+  }
+}
