@@ -20,7 +20,9 @@ Framework files. Tracked in git, updated via `git pull`. Do not edit by hand —
 | `system/scripts/jobs/cli.js` | Subcommand implementations for `robin jobs ...`. |
 | `system/scripts/jobs/installer/` | Per-platform scheduler adapters: launchd (macOS), cron (Linux), taskscheduler (Windows). |
 | `system/scripts/lib/jobs/` | Shared libraries — frontmatter parser, cron expression parser, atomic locks, state file writers, OS notifications. |
-| `system/scripts/lib/sync/` | Shared infrastructure for personal-data sync integrations — secrets (load/require/save), cursor state, redaction, HTTP retry, atomic markdown writes, INDEX regen with file locking. User integration scripts live in `user-data/scripts/` and import from this lib. |
+| `system/scripts/lib/sync/` | Shared infrastructure for personal-data sync integrations — secrets (load/require/save), cursor state, redaction, HTTP retry, atomic markdown writes, INDEX regen with file locking, OAuth2 (refresh + auth-code flow). User integration scripts live in `user-data/scripts/` and import from this lib. |
+| `system/skeleton/scripts/` | Templates for per-user integration scripts. Auto-copied to `user-data/scripts/` on first run by skeleton-sync. Currently ships: Lunch Money sync, Google Calendar/Gmail sync (with auth-google), GitHub sync + writes (with auth-github PAT validator), Spotify sync + writes (with auth-spotify OAuth). |
+| `system/skeleton/jobs/` | Templates for the corresponding job definitions. Sync jobs ship at `enabled: false` so they don't fire before the user has completed per-provider auth setup. |
 | `system/jobs/dream.md` | Background processing — inbox routing, pattern promotion, integrity check. |
 | `system/jobs/ingest.md` | Process a source document into the knowledge base — extract, ripple, cross-reference. |
 | `system/jobs/lint.md` | Health-check the knowledge base for contradictions, stale claims, orphans, dead links. |
