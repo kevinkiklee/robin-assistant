@@ -1,6 +1,6 @@
 {
-  "snapshot_at": "2026-04-29T16:53:51.393Z",
-  "enforce_caps": false,
+  "snapshot_at": "2026-04-29T17:10:07.346Z",
+  "enforce_caps": true,
   "host": null,
   "tier1": {
     "files": [
@@ -10,11 +10,11 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 8818,
-        "lines": 120,
-        "tokens": 2384,
-        "max_lines": 60,
-        "over_cap_at": 60
+        "bytes": 4109,
+        "lines": 68,
+        "tokens": 1111,
+        "max_lines": 75,
+        "over_cap_at": null
       },
       {
         "path": "user-data/robin.config.json",
@@ -49,7 +49,7 @@
         "bytes": 4048,
         "lines": 61,
         "tokens": 1095,
-        "max_lines": 100,
+        "max_lines": 120,
         "over_cap_at": null
       },
       {
@@ -58,11 +58,11 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 9616,
-        "lines": 90,
-        "tokens": 2599,
-        "max_lines": 40,
-        "over_cap_at": 40
+        "bytes": 6177,
+        "lines": 59,
+        "tokens": 1670,
+        "max_lines": 70,
+        "over_cap_at": null
       },
       {
         "path": "user-data/integrations.md",
@@ -91,24 +91,24 @@
       {
         "path": "user-data/memory/self-improvement/communication-style.md",
         "stability": "slow",
-        "exists": false,
+        "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 0,
-        "lines": 0,
-        "tokens": 0,
+        "bytes": 343,
+        "lines": 16,
+        "tokens": 93,
         "max_lines": 25,
         "over_cap_at": null
       },
       {
         "path": "user-data/memory/self-improvement/domain-confidence.md",
         "stability": "slow",
-        "exists": false,
+        "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 0,
-        "lines": 0,
-        "tokens": 0,
+        "bytes": 358,
+        "lines": 11,
+        "tokens": 97,
         "max_lines": 25,
         "over_cap_at": null
       },
@@ -127,37 +127,25 @@
       {
         "path": "user-data/memory/self-improvement/session-handoff.md",
         "stability": "volatile",
-        "exists": false,
+        "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 0,
-        "lines": 0,
-        "tokens": 0,
+        "bytes": 360,
+        "lines": 10,
+        "tokens": 98,
         "max_lines": 20,
         "over_cap_at": null
       },
       {
         "path": "user-data/memory/self-improvement/learning-queue.md",
         "stability": "volatile",
-        "exists": false,
-        "required": false,
-        "optional_existence": true,
-        "bytes": 0,
-        "lines": 0,
-        "tokens": 0,
-        "max_lines": 10,
-        "over_cap_at": null
-      },
-      {
-        "path": "user-data/memory/self-improvement.md",
-        "stability": "slow",
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 4530,
-        "lines": 82,
-        "tokens": 1225,
-        "max_lines": null,
+        "bytes": 322,
+        "lines": 8,
+        "tokens": 88,
+        "max_lines": 10,
         "over_cap_at": null
       },
       {
@@ -185,28 +173,19 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 30625,
-    "total_lines": 463,
-    "total_tokens": 8278,
-    "cache_stable_bytes": 25598,
-    "cache_stable_tokens": 6919,
+    "total_bytes": 19330,
+    "total_lines": 343,
+    "total_tokens": 5225,
+    "cache_stable_bytes": 18151,
+    "cache_stable_tokens": 4906,
     "budget": {
-      "max_lines": 250,
-      "max_tokens": 5000
+      "max_lines": 400,
+      "max_tokens": 5500
     },
-    "cache_order_violations": [
-      "cache-pessimal ordering: user-data/memory/self-improvement.md (slow) appears after a more-volatile file"
-    ]
+    "cache_order_violations": []
   },
   "tier2": {
     "files": [
-      {
-        "path": "system/capture-rules.md",
-        "bytes": 16857,
-        "lines": 279,
-        "tokens": 4556,
-        "over_cap_at": 3000
-      },
       {
         "path": "system/jobs/dream.md",
         "bytes": 10753,
@@ -215,10 +194,17 @@
         "over_cap_at": null
       },
       {
+        "path": "system/capture-rules.md",
+        "bytes": 7005,
+        "lines": 193,
+        "tokens": 1894,
+        "over_cap_at": null
+      },
+      {
         "path": "system/manifest.md",
-        "bytes": 9938,
-        "lines": 117,
-        "tokens": 2686,
+        "bytes": 5908,
+        "lines": 78,
+        "tokens": 1597,
         "over_cap_at": null
       },
       {
@@ -233,13 +219,6 @@
         "bytes": 4977,
         "lines": 133,
         "tokens": 1346,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/startup.md",
-        "bytes": 3810,
-        "lines": 40,
-        "tokens": 1030,
         "over_cap_at": null
       },
       {
@@ -285,6 +264,13 @@
         "over_cap_at": null
       },
       {
+        "path": "system/jobs/host-validation.md",
+        "bytes": 1745,
+        "lines": 56,
+        "tokens": 472,
+        "over_cap_at": null
+      },
+      {
         "path": "system/jobs/meeting-prep.md",
         "bytes": 1733,
         "lines": 49,
@@ -296,6 +282,13 @@
         "bytes": 1674,
         "lines": 58,
         "tokens": 453,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/startup.md",
+        "bytes": 1598,
+        "lines": 44,
+        "tokens": 432,
         "over_cap_at": null
       },
       {
@@ -348,20 +341,20 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 77252,
-    "total_tokens": 20888,
+    "total_bytes": 62903,
+    "total_tokens": 17011,
     "top_5": [
-      {
-        "path": "system/capture-rules.md",
-        "tokens": 4556
-      },
       {
         "path": "system/jobs/dream.md",
         "tokens": 2907
       },
       {
+        "path": "system/capture-rules.md",
+        "tokens": 1894
+      },
+      {
         "path": "system/manifest.md",
-        "tokens": 2686
+        "tokens": 1597
       },
       {
         "path": "system/jobs/lint.md",
@@ -373,12 +366,5 @@
       }
     ]
   },
-  "failures": [
-    "CAP_EXCEEDED: AGENTS.md has 120 lines (cap 60)",
-    "CAP_EXCEEDED: user-data/memory/INDEX.md has 90 lines (cap 40)",
-    "TIER1_LINES: 463 lines exceeds budget 250",
-    "TIER1_TOKENS: 8278 tokens exceeds budget 5000",
-    "CACHE_ORDER: cache-pessimal ordering: user-data/memory/self-improvement.md (slow) appears after a more-volatile file",
-    "PROTOCOL_CAP: system/capture-rules.md has 4556 tokens (cap 3000)"
-  ]
+  "failures": []
 }

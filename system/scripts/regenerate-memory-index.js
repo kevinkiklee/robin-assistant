@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { parseFrontmatter } from './lib/memory-index.js';
 
 const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkeep']);
+// Directories with their own INDEX.md become a single row in the parent INDEX
+// rather than expanding to per-file rows. Keeps the main INDEX bounded as
+// sub-trees grow.
+const SUB_INDEXED_BARRIERS = ['archive'];
 
 function walk(dir, base = dir) {
   const out = [];
@@ -12,6 +16,15 @@ function walk(dir, base = dir) {
     const full = join(dir, name);
     const st = statSync(full);
     if (st.isDirectory()) {
+      const subIndex = join(full, 'INDEX.md');
+      const isBarrier = SUB_INDEXED_BARRIERS.includes(name);
+      if (existsSync(subIndex) || isBarrier) {
+        // Emit just the sub-index path; do not descend.
+        if (existsSync(subIndex)) {
+          out.push(relative(base, subIndex).split(/[\\/]/).join('/'));
+        }
+        continue;
+      }
       out.push(...walk(full, base));
     } else if (name.endsWith('.md')) {
       out.push(relative(base, full).split(/[\\/]/).join('/'));

@@ -1,117 +1,78 @@
 # File Catalog
 
-The v3 layout separates immutable framework code from user data. This manifest lists every well-known path and its purpose. Use it as the canonical map.
+The v3 layout separates immutable framework code from user data. Use this manifest as the canonical map of well-known paths.
 
-## System (`system/`)
-
-Framework files. Tracked in git, updated via `git pull`. Do not edit by hand — local edits collide with upstream updates.
+## System (`system/`) — framework, tracked in git, do not edit by hand
 
 | Path | Purpose |
 |------|---------|
-| `system/AGENTS.md` (root pointer) | Agent rules and session instructions (the actual file lives at repo root as `AGENTS.md`). |
-| `system/startup.md` | Session startup protocol — pre-flight check, sequence, first-run detection. |
-| `system/capture-rules.md` | Capture signal patterns, inbox-first pipeline, routing table, sweep protocol. |
-| `system/manifest.md` | This file — canonical catalog of every well-known path. |
-| `system/self-improvement-rules.md` | How Robin processes corrections, patterns, preferences, calibration. |
-| `system/jobs/` | Job definitions — agent-runtime protocols (Dream, Morning Briefing, etc.) and node-runtime scripts (backup, _robin-sync). Both schedulable and trigger-invocable. |
-| `bin/robin.js` | CLI entry point: `robin run <name>`, `robin jobs ...`, `robin job acquire/release`. |
-| `system/scripts/jobs/runner.js` | The runner — invoked by every OS scheduler entry. Handles parsing, gating, locking, execution, telemetry, failure surfacing. |
-| `system/scripts/jobs/reconciler.js` | Reconciler — keeps OS scheduler entries (launchd / cron / Task Scheduler) in sync with `system/jobs/` + `user-data/jobs/`. Runs every 6h via the `_robin-sync` job. |
-| `system/scripts/jobs/cli.js` | Subcommand implementations for `robin jobs ...`. |
-| `system/scripts/jobs/installer/` | Per-platform scheduler adapters: launchd (macOS), cron (Linux), taskscheduler (Windows). |
-| `system/scripts/lib/jobs/` | Shared libraries — frontmatter parser, cron expression parser, atomic locks, state file writers, OS notifications. |
-| `system/scripts/lib/sync/` | Shared infrastructure for personal-data sync integrations — secrets (load/require/save), cursor state, redaction, HTTP retry, atomic markdown writes, INDEX regen with file locking, OAuth2 (refresh + auth-code flow). User integration scripts live in `user-data/scripts/` and import from this lib. |
-| `system/skeleton/scripts/` | Templates for per-user integration scripts. Auto-copied to `user-data/scripts/` on first run by skeleton-sync. Currently ships: Lunch Money sync, Google Calendar/Gmail sync (with auth-google), GitHub sync + writes (with auth-github PAT validator), Spotify sync + writes (with auth-spotify OAuth). |
-| `system/skeleton/jobs/` | Templates for the corresponding job definitions. Sync jobs ship at `enabled: false` so they don't fire before the user has completed per-provider auth setup. |
-| `system/jobs/dream.md` | Background processing — inbox routing, pattern promotion, integrity check. |
-| `system/jobs/ingest.md` | Process a source document into the knowledge base — extract, ripple, cross-reference. |
-| `system/jobs/lint.md` | Health-check the knowledge base for contradictions, stale claims, orphans, dead links. |
-| `system/jobs/save-conversation.md` | File conversation outcomes as a summary page in the knowledge base. |
-| `system/jobs/morning-briefing.md` | Daily briefing protocol. |
-| `system/jobs/weekly-review.md` | Weekly review protocol. |
-| `system/jobs/email-triage.md` | Inbox triage protocol. |
-| `system/jobs/meeting-prep.md` | Meeting preparation protocol. |
-| `system/jobs/multi-session-coordination.md` | Coordination rules when multiple Robin sessions are active. |
-| `system/jobs/monthly-financial.md` | Monthly financial check-in protocol. |
-| `system/jobs/quarterly-self-assessment.md` | Quarterly self-assessment protocol. |
-| `system/jobs/receipt-tracking.md` | Receipt tracking protocol. |
-| `system/jobs/subscription-audit.md` | Subscription audit protocol. |
-| `system/jobs/system-maintenance.md` | Workspace maintenance protocol. |
-| `system/jobs/todo-extraction.md` | Todo extraction protocol. |
-| `system/scripts/` | CLI helpers — setup, backup, restore, migrate, regenerate, startup-check, install-hooks. |
-| `system/scripts/setup.js` | First-run installer (postinstall). Scaffolds `user-data/` from skeleton. |
-| `system/scripts/startup-check.js` | Session pre-flight: validates env, surfaces FATAL/INFO/WARN findings. |
-| `system/scripts/backup.js` | Snapshot `user-data/` into `backup/`. |
-| `system/scripts/restore.js` | Restore `user-data/` from a `backup/` snapshot. |
-| `system/scripts/reset.js` | Wipe `user-data/` (destructive — backup first). |
-| `system/scripts/migrate.js` | Apply pending migrations from `system/migrations/` (auto-runs on session start). |
-| `system/scripts/install-hooks.js` | Install the `pre-commit` hook into `.git/hooks/` (auto-runs on `npm install`). |
-| `system/scripts/pre-commit-hook.js` | Pre-commit hook source — refuses to commit `user-data/` files. |
-| `system/scripts/regenerate-pointers.js` | Regenerate platform pointer files from `platforms.js`. |
-| `user-data/state/jobs/INDEX.md` | Auto-generated jobs dashboard — written by the runner after each run. Read by the agent for at-a-glance status. |
-| `user-data/state/jobs/upcoming.md` | 7-day forward calendar of scheduled runs. Regenerated by the reconciler. |
-| `user-data/state/jobs/failures.md` | Per-job failure register. Active vs resolved sections. |
-| `user-data/state/jobs/<name>.json` | Per-job state — last_run_at, exit_code, status, next_run_at, consecutive_failures. |
-| `user-data/jobs/` | User-defined job overrides and additions. Same format as `system/jobs/`. Gitignored. |
-| `system/scripts/regenerate-memory-index.js` | Regenerate `user-data/memory/INDEX.md` from per-file frontmatter. Supports `--check` for CI. |
-| `system/scripts/regenerate-links.js` | Regenerate `user-data/memory/LINKS.md` from cross-reference graph. |
-| `system/scripts/lib/memory-index.js` | Shared helpers — frontmatter parse, slug, threshold, link rewrite, split planner. |
-| `system/migrations/` | Numbered migration scripts applied at startup. |
-| `system/skeleton/` | Default `user-data/` layout copied during `setup.js` first run. |
+| `AGENTS.md` (root) | Agent rules + Tier 2 pointer table. Source of truth for all hosts. |
+| `system/startup.md` | Edge cases — first-run, sibling-session detection. (Sequence inlined in AGENTS.md.) |
+| `system/capture-rules.md` | Full capture vocabulary, routing table, sweep protocol. (5-line checkpoint inlined in AGENTS.md.) |
+| `system/manifest.md` | This file. |
+| `system/self-improvement-rules.md` | How Robin processes corrections, patterns, preferences. |
+| `system/jobs/` | Agent + node job definitions. Schedulable and trigger-invocable. |
+| `system/migrations/` | Numbered migrations. Auto-applied at startup via `migrate.js`. |
+| `system/skeleton/` | Default `user-data/` layout copied on first run. |
+| `bin/robin.js` | CLI entry: `robin run <name>`, `robin jobs ...`, `robin job acquire/release`. |
+| `system/scripts/jobs/runner.js` | OS-scheduler entry. Parses, gates, locks, executes, surfaces failures. |
+| `system/scripts/jobs/reconciler.js` | Syncs OS scheduler entries with `system/jobs/` + `user-data/jobs/`. Runs every 6h. |
+| `system/scripts/jobs/cli.js` | `robin jobs ...` subcommand impls. |
+| `system/scripts/jobs/installer/` | launchd / cron / Task Scheduler adapters. |
+| `system/scripts/lib/jobs/` | Frontmatter parser, cron parser, atomic locks, state writers, OS notifications. |
+| `system/scripts/lib/sync/` | Personal-data integration infra — secrets, cursor state, redaction, HTTP retry, atomic writes, INDEX regen, OAuth2. |
+| `system/scripts/lib/parsers/` | Per-host transcript parsers for `validate-host.js`. |
+| `system/scripts/measure-tokens.js` | Token-budget harness (Phase 0). |
+| `system/scripts/validate-host.js` | Multi-host scenario validator (Phase 1). |
+| `system/scripts/setup.js` | First-run installer (postinstall). |
+| `system/scripts/startup-check.js` | Session pre-flight (FATAL/INFO/WARN). |
+| `system/scripts/migrate.js` | Apply pending migrations (auto-runs on session start). |
+| `system/scripts/backup.js` / `restore.js` / `reset.js` | Snapshot, restore, wipe `user-data/`. |
+| `system/scripts/regenerate-pointers.js` | Regenerate per-host pointer files from `platforms.js`. |
+| `system/scripts/regenerate-memory-index.js` | Regenerate `user-data/memory/INDEX.md`. Sub-tree barriers stop at `INDEX.md`. |
+| `system/scripts/regenerate-links.js` | Regenerate `user-data/memory/LINKS.md`. |
+| `system/scripts/install-hooks.js` | Install `pre-commit` hook. |
+| `system/scripts/pre-commit-hook.js` | Refuses to commit `user-data/`. |
+| `system/scripts/lib/memory-index.js` | Frontmatter parse, slug, threshold, link rewrite, split planner. |
 
-## User-data (`user-data/`)
-
-User-specific persistent memory. Local-only by gitignore + pre-commit hook. Edit freely.
+## User-data (`user-data/`) — local-only, gitignored
 
 | Path | Purpose |
 |------|---------|
 | `user-data/robin.config.json` | User name, timezone, email, assistant name, threshold settings. |
-| `user-data/memory/INDEX.md` | Generated directory of topic files. Read at startup to map the memory tree. |
-| `user-data/memory/LINKS.md` | Cross-reference graph across memory files. On-demand only, not loaded at startup. |
-| `user-data/memory/log.md` | Append-only chronological record of wiki operations (ingests, lints, filings). |
-| `user-data/memory/hot.md` | Rolling session context (last 3 sessions). Loaded at startup for seamless continuation. |
-| `user-data/memory/profile/` | Identity, personality, interests, people, goals, routines, work, etc. (one topic file per area). |
-| `user-data/memory/knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes, events, etc. |
-| `user-data/memory/knowledge/events/` | Dated events — trips, attended events. |
-| `user-data/memory/knowledge/sources/` | Source summary pages created by the ingest operation. |
-| `user-data/memory/knowledge/conversations/` | Conversation summaries created by the save-conversation operation. |
+| `user-data/memory/INDEX.md` | Memory tree map — opens at session start. Sub-trees with their own `INDEX.md` are linked, not enumerated. |
+| `user-data/memory/LINKS.md` | Cross-reference graph. On-demand only. |
+| `user-data/memory/log.md` | Append-only ops log (ingests, lints, filings). |
+| `user-data/memory/hot.md` | Rolling 2-3 session context. Loaded at startup. |
+| `user-data/memory/profile/` | Identity, personality, interests, people, goals, routines, work, photography, preferences. |
+| `user-data/memory/knowledge/` | Reference facts. Sub-indexed: `lunch-money/`, `photography-collection/`, `events/`. |
+| `user-data/memory/knowledge/sources/` | Ingested source summaries. |
+| `user-data/memory/knowledge/conversations/` | Conversation summaries from save-conversation. |
+| `user-data/memory/self-improvement/` | Per-section: corrections, preferences, calibration, session-handoff, communication-style, domain-confidence, learning-queue. |
+| `user-data/memory/decisions.md` | Append-only decision log. |
+| `user-data/memory/journal.md` | Append-only daily reflections. |
+| `user-data/memory/inbox.md` | Quick capture (append-only); Dream routes. |
 | `user-data/memory/tasks.md` | Active tasks grouped by category. |
-| `user-data/memory/decisions.md` | Decision log (append-only; exempt from threshold splits). |
-| `user-data/memory/journal.md` | Dated reflections (append-only; exempt from threshold splits). |
-| `user-data/memory/self-improvement.md` | Corrections, patterns, session handoff, calibration log. |
-| `user-data/memory/inbox.md` | Quick capture for unclassified items (append-only). |
+| `user-data/memory/archive/` | Pruned content. `archive/INDEX.md` is the cold-storage catalog. |
 | `user-data/integrations.md` | Available external capabilities per platform. |
-| `user-data/custom-rules.md` | Optional. User-defined behavioral additions; loaded at session start. |
-| `user-data/state/` | Runtime state — session registry, Dream state, locks. |
-| `user-data/secrets/` | API keys and credentials. `.env`-style file, gitignored. See `user-data/secrets/README.md`. |
+| `user-data/custom-rules.md` | Optional. User-defined rules; loaded at startup. Cannot override Immutable Rules. |
 | `user-data/state/sessions.md` | Active session registry. |
-| `user-data/state/dream-state.md` | Last Dream cycle timestamp and bookkeeping. |
-| `user-data/jobs/` | User-defined job overrides and additions. Same format as `system/jobs/`. Shallow override (`override: <name>`) inherits from system; full def replaces. |
+| `user-data/state/dream-state.md` | Last Dream cycle bookkeeping. |
+| `user-data/state/jobs/INDEX.md` | Auto-generated jobs dashboard. |
+| `user-data/state/jobs/upcoming.md` | 7-day forward calendar of scheduled runs. |
+| `user-data/state/jobs/failures.md` | Per-job failure register. |
+| `user-data/state/jobs/<name>.json` | Per-job state — last_run_at, exit_code, status, next_run_at, consecutive_failures. |
+| `user-data/jobs/` | User-defined job overrides + additions. Same format as `system/jobs/`. |
+| `user-data/secrets/` | API keys; `.env`-style, gitignored. |
 
-## Artifacts (`artifacts/`)
-
-Workspace-scoped scratch space for files that aren't memory.
-
-| Path | Purpose |
-|------|---------|
-| `artifacts/input/` | User-provided inputs (ephemeral). Read only when the user references a file by name. During ingest, files move from here to `user-data/sources/`. |
-| `artifacts/output/` | Generated outputs (PDFs, exports, scripts, summary docs, images). |
-
-## Sources (`user-data/sources/`)
-
-Raw source documents — immutable reference material ingested into the knowledge base. The ingest operation reads from here but never modifies source files. Excluded from backups (immutable originals are their own backup).
+## Artifacts + Sources + Backup
 
 | Path | Purpose |
 |------|---------|
-| `user-data/sources/articles/` | Web clips, saved articles (fetched from URLs during ingest). |
-| `user-data/sources/documents/` | PDFs, reports, lab results, financial statements. |
-| `user-data/sources/notes/` | Freeform notes, meeting notes, voice memo transcriptions. |
-| `user-data/sources/media/` | Images, screenshots (referenced by wiki pages). |
-
-## Backup (`backup/`)
-
-Local-only snapshots of `user-data/`. Created by `npm run backup`, restored by `npm run restore`. Migrations may also write pre-migration snapshots here.
-
-| Path | Purpose |
-|------|---------|
-| `backup/<YYYYMMDD-HHMMSS>/` | Timestamped snapshot of `user-data/` at backup time. |
+| `artifacts/input/` | User-provided inputs (ephemeral). On ingest, files move to `user-data/sources/`. |
+| `artifacts/output/` | Generated outputs (PDFs, exports, scripts, summaries, images). |
+| `user-data/sources/articles/` | Web clips, saved articles. |
+| `user-data/sources/documents/` | PDFs, reports, statements. |
+| `user-data/sources/notes/` | Freeform notes, meeting notes, transcriptions. |
+| `user-data/sources/media/` | Images, screenshots referenced by wiki pages. |
+| `backup/<YYYYMMDD-HHMMSS>/` | Local-only `user-data/` snapshots. Created by `npm run backup`. Migrations also write pre-migration snapshots. |

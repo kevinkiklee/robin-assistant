@@ -200,6 +200,14 @@ function findFailures(snap, budget) {
       `TIER1_TOKENS: ${snap.tier1.total_tokens} tokens exceeds budget ${budget.tier1_max_tokens}`,
     );
   }
+  if (
+    budget.tier1_cache_stable_max_tokens !== undefined &&
+    snap.tier1.cache_stable_tokens > budget.tier1_cache_stable_max_tokens
+  ) {
+    failures.push(
+      `TIER1_CACHE_STABLE: ${snap.tier1.cache_stable_tokens} tokens exceeds cache-stable budget ${budget.tier1_cache_stable_max_tokens}`,
+    );
+  }
   // Cache ordering
   for (const v of snap.tier1.cache_order_violations) {
     failures.push(`CACHE_ORDER: ${v}`);

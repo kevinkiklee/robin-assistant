@@ -71,14 +71,15 @@ describe('measure-tokens harness', () => {
     assert.deepEqual(tokens, sorted);
   });
 
-  it('--check exits 0 in observe-only mode regardless of overages', () => {
-    // observe-only: enforce_caps:false in token-budget.json. Should be 0.
+  it('--check exits 0 when current state is within all caps', () => {
+    // After Phase 2 ships, enforce_caps:true and current state must satisfy
+    // budgets. If this test starts failing, either the budget config changed
+    // or someone bloated a Tier 1 file.
     const out = execFileSync('node', [SCRIPT, '--check'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    // No throw means exit 0
     assert.ok(typeof out === 'string');
   });
 
