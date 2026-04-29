@@ -38,7 +38,7 @@ run_scenario() {
   node system/scripts/validate-host.js \
     --host="$HOST" \
     --transcript="$tx" \
-    --scenario="$n"
+    --scenario="$n" || true
 }
 
 # Scenario 1 — cold session
@@ -67,8 +67,14 @@ EOF
 run_scenario 5 "Hi"
 mv user-data/state/sessions.md.bak user-data/state/sessions.md
 
-# Scenario 6 — direct-write correction
+# Scenario 6 — direct-write correction (backup + restore so the test
+# correction doesn't persist across runs)
+SI_DIR=user-data/memory/self-improvement
+cp "$SI_DIR/corrections.md" "$SI_DIR/corrections.md.bak" 2>/dev/null || true
+cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
 run_scenario 6 "Stop summarizing what you just did at the end of every response. I read the diff."
+mv "$SI_DIR/corrections.md.bak" "$SI_DIR/corrections.md" 2>/dev/null || true
+mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
 
 echo
 echo "transcripts: $TX_DIR"

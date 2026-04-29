@@ -31,17 +31,27 @@ export function parseClaudeCode(text) {
       continue;
     }
 
-    // Tool calls
-    const toolName = evt.name ?? evt.tool ?? evt.tool_name;
-    const path = evt.input?.file_path ?? evt.path ?? evt.arguments?.file_path;
-    if (toolName === 'Read' && path) reads.push(normalizePath(path));
-    else if ((toolName === 'Write' || toolName === 'Edit' || toolName === 'NotebookEdit') && path)
-      writes.push(normalizePath(path));
+    // Tool calls (top-level shape: {name, input, ...})
+    const topLevelToolName = evt.name ?? evt.tool ?? evt.tool_name;
+    const topLevelPath = evt.input?.file_path ?? evt.path ?? evt.arguments?.file_path;
+    if (topLevelToolName === 'Read' && topLevelPath) reads.push(normalizePath(topLevelPath));
+    else if (
+      (topLevelToolName === 'Write' || topLevelToolName === 'Edit' || topLevelToolName === 'NotebookEdit') &&
+      topLevelPath
+    )
+      writes.push(normalizePath(topLevelPath));
 
-    // Assistant text content (Claude Code shape: type=assistant, message.content=[{type:text,text:...}])
+    // Claude Code shape: type=assistant, message.content=[{type:tool_use, name, input}, {type:text,text}]
     if (evt.type === 'assistant' && evt.message?.content) {
       for (const block of evt.message.content) {
         if (block.type === 'text' && typeof block.text === 'string') assistant.push(block.text);
+        if (block.type === 'tool_use') {
+          const tn = block.name;
+          const tp = block.input?.file_path;
+          if (tn === 'Read' && tp) reads.push(normalizePath(tp));
+          else if ((tn === 'Write' || tn === 'Edit' || tn === 'NotebookEdit') && tp)
+            writes.push(normalizePath(tp));
+        }
       }
     }
     if (evt.role === 'assistant' && typeof evt.content === 'string') assistant.push(evt.content);
