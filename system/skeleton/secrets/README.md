@@ -12,7 +12,15 @@ API keys, tokens, and other credentials for Robin's integrations.
 
 ## Loading
 
-Scripts that need a secret read it via `process.env.KEY` after loading the env file. Use the helper at `system/scripts/lib/load-secrets.js` (loads `user-data/secrets/.env` into `process.env`).
+Scripts that need a secret read it via `process.env.KEY` after loading the env file. Use the helper at `system/scripts/lib/sync/secrets.js`:
+
+```js
+import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+loadSecrets(workspaceDir);
+const apiKey = requireSecret('MY_API_KEY');
+```
+
+For OAuth integrations whose refresh tokens may rotate, use `saveSecret(workspaceDir, key, value)` from the same module — it does an atomic write that preserves comments and existing keys.
 
 ## Safety
 
