@@ -71,6 +71,50 @@ test('openItem returns existing content without calling fetcher when file exists
   rmSync(ws, { recursive: true });
 });
 
+test('openItem with maxAgeMs re-fetches when cached file is older than the threshold', async () => {
+  const ws = setup();
+  const path = 'user-data/memory/knowledge/foo/item-3.md';
+  await atomicWrite(ws, path, 'old body');
+  // Make the file appear old by backdating its mtime.
+  const { utimesSync } = await import('node:fs');
+  const oldTime = new Date(Date.now() - 60_000); // 60s ago
+  utimesSync(join(ws, path), oldTime, oldTime);
+
+  let calls = 0;
+  const result = await openItem(
+    ws,
+    path,
+    async () => {
+      calls += 1;
+      return 'fresh body';
+    },
+    { maxAgeMs: 30_000 } // 30s — file is 60s old → stale
+  );
+  assert.equal(calls, 1);
+  assert.equal(result, 'fresh body');
+  rmSync(ws, { recursive: true });
+});
+
+test('openItem with maxAgeMs uses cache when file is newer than the threshold', async () => {
+  const ws = setup();
+  const path = 'user-data/memory/knowledge/foo/item-4.md';
+  await atomicWrite(ws, path, 'fresh-cached body');
+
+  let calls = 0;
+  const result = await openItem(
+    ws,
+    path,
+    async () => {
+      calls += 1;
+      return 'should not run';
+    },
+    { maxAgeMs: 60_000 } // 60s — file just written → not stale
+  );
+  assert.equal(calls, 0);
+  assert.equal(result, 'fresh-cached body');
+  rmSync(ws, { recursive: true });
+});
+
 test('writeTable formats columns and rows with pipe escapes', () => {
   const md = writeTable({
     columns: ['date', 'amount', 'note'],
