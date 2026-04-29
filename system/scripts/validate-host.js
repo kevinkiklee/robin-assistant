@@ -54,12 +54,20 @@ function validateScenario1(parsed, budget) {
   const expected = expectedTier1Files(budget);
   const reads = parsed.reads;
 
+  // Claude Code (and similar hosts) load Tier 1 files into the SYSTEM
+  // PROMPT, not as Read tool calls. If the transcript shows substantial
+  // cache_creation_input_tokens, downgrade absence to SOFT NOTE.
+  // Threshold: 10,000 bytes (~2,500 tokens) — anything below this is
+  // suspicious for a fully-loaded Tier 1.
+  const systemLoaded = (parsed.system_context_bytes ?? 0) >= 10000;
+  const absenceSeverity = systemLoaded ? 'note' : 'hard';
+  const absenceMessage = systemLoaded
+    ? (e) => `Tier 1 file ${e} not read explicitly (loaded via system prompt — system_context_bytes=${parsed.system_context_bytes})`
+    : (e) => `Tier 1 file not read: ${e}`;
+
   for (const e of expected) {
     if (!reads.includes(e)) {
-      failures.push({
-        severity: 'hard',
-        message: `Tier 1 file not read: ${e}`,
-      });
+      failures.push({ severity: absenceSeverity, message: absenceMessage(e) });
     }
   }
 

@@ -20,6 +20,7 @@
     "measure-tokens": "node system/scripts/measure-tokens.js",
     "lint-memory": "node system/scripts/lint-memory.js",
     "golden-session": "node system/scripts/golden-session.js",
+    "prune-preview": "node system/scripts/prune-preview.js",
     "jobs": "node bin/robin.js jobs",
     "jobs:sync": "node bin/robin.js jobs sync",
     "jobs:list": "node bin/robin.js jobs list",

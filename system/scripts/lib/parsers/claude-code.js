@@ -1,14 +1,20 @@
 // Claude Code transcript parser.
 //
-// Claude Code's transcript format includes tool calls in JSON-ish blocks. This
-// parser extracts Read/Write/Edit tool calls with their target paths.
+// Claude Code loads CLAUDE.md/AGENTS.md and other Tier 1 files into the
+// SYSTEM PROMPT (cache_creation_input_tokens) at session start, not as
+// Read tool calls. So an absence of `Read("AGENTS.md")` in the transcript
+// doesn't mean the file wasn't loaded — it means it was loaded by the
+// framework, not requested by the agent. The parser exposes a signal
+// `system_context_bytes` so validators can downgrade absence-checks to
+// SOFT NOTE for Claude Code.
 //
-// Input: raw transcript text. Output: { reads: [paths], writes: [paths], assistant: [text] }.
+// Input: raw transcript text. Output: { reads, writes, assistant, system_context_bytes }.
 
 export function parseClaudeCode(text) {
   const reads = [];
   const writes = [];
   const assistant = [];
+  let systemContextBytes = 0;
 
   // Match JSONL events (one event per line):
   //   {"type":"tool_use","name":"Read","input":{"file_path":"..."}}
@@ -32,9 +38,21 @@ export function parseClaudeCode(text) {
     else if ((toolName === 'Write' || toolName === 'Edit' || toolName === 'NotebookEdit') && path)
       writes.push(normalizePath(path));
 
-    // Assistant text content
+    // Assistant text content (Claude Code shape: type=assistant, message.content=[{type:text,text:...}])
+    if (evt.type === 'assistant' && evt.message?.content) {
+      for (const block of evt.message.content) {
+        if (block.type === 'text' && typeof block.text === 'string') assistant.push(block.text);
+      }
+    }
     if (evt.role === 'assistant' && typeof evt.content === 'string') assistant.push(evt.content);
     if (evt.type === 'text' && typeof evt.text === 'string') assistant.push(evt.text);
+
+    // System context: cache_creation_input_tokens is a proxy for "AGENTS.md
+    // and friends were loaded into the prompt, even without explicit Reads."
+    const usage = evt.message?.usage ?? evt.usage;
+    if (usage?.cache_creation_input_tokens) {
+      systemContextBytes += usage.cache_creation_input_tokens * 4; // approx tokens→bytes
+    }
   }
 
   // Fallback: scan free-text transcripts for Read("...") / Edit("...") patterns.
@@ -46,7 +64,7 @@ export function parseClaudeCode(text) {
     while ((m = writeRe.exec(text)) !== null) writes.push(normalizePath(m[1]));
   }
 
-  return { reads, writes, assistant: assistant.join('\n') };
+  return { reads, writes, assistant: assistant.join('\n'), system_context_bytes: systemContextBytes };
 }
 
 function normalizePath(p) {
