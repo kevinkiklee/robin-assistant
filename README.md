@@ -19,16 +19,22 @@ The memory is structured, not a chat log. Topic folders for content that grows o
 | Path | Holds |
 |------|-------|
 | `INDEX.md` | Generated directory of every memory file — read at session start to map what's where |
+| `hot.md` | Rolling window of last 3 session summaries for seamless continuation |
+| `LINKS.md` | Cross-reference graph between memory files |
 | `profile/` | Identity, personality, interests, goals, routines, the people in your life (one file per area) |
 | `knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes |
-| `events/` | Dated events — trips, conferences, attended events |
+| `knowledge/sources/` | Source pages created by the Ingest operation |
+| `knowledge/conversations/` | Filed conversation outcomes |
 | `tasks.md` | Active tasks grouped by category |
 | `decisions.md` | Append-only log of significant decisions and their reasoning |
 | `journal.md` | Dated reflections and daily notes |
 | `inbox.md` | Quick-capture items waiting to be routed by Dream |
-| `self-improvement.md` | Corrections, patterns, calibration log |
+| `self-improvement/` | Corrections, preferences, calibration, communication style, domain confidence, learning queue, session handoff |
+| `archive/` | Content older than 12 months, pruned automatically |
 
 Topic files are split when they exceed `memory.split_threshold_lines` (default 200) at the next Dream cycle — the structure scales as content grows.
+
+You can feed Robin documents, URLs, or inline text with the **Ingest** command. It creates source pages under `knowledge/sources/`, ripples updates across related knowledge files, and maintains a cross-reference graph in `LINKS.md`. A **Lint** command audits memory health: contradictions, dead links, stale claims, orphans, and oversized files.
 
 ### It learns from corrections
 
@@ -39,6 +45,26 @@ It also tracks how confident it should be. When it makes a high-stakes recommend
 ### It maintains itself daily
 
 **Dream** runs every night at 04:00 — a maintenance pass that routes your inbox, promotes durable facts from the journal, prunes finished tasks, retires stale knowledge, promotes recurring corrections to patterns, retires patterns that stopped firing, and updates calibration. It runs from your OS scheduler (launchd / cron / Task Scheduler), not from your AI session, so you don't have to open a session for it to fire. You don't run it manually, you don't see most of it — you just notice that the workspace stays tidy without effort.
+
+### It syncs with your services
+
+Robin can pull data from external services on a schedule so it has context about your life without you having to paste things in. Shipped integrations:
+
+- **Calendar** — upcoming and recent events from Google Calendar (every 30 min)
+- **Gmail** — inbox metadata: senders, subjects, labels (every 15 min, no message bodies)
+- **GitHub** — authored events, notifications, releases from starred repos (hourly)
+- **Spotify** — recently played, top tracks/artists, playlists (hourly)
+- **Lunch Money** — financial transactions and category breakdowns
+
+Each integration is a standalone script in `user-data/scripts/` with a corresponding job def in `user-data/jobs/`. Enable one by running its auth script, bootstrapping the initial sync, and enabling the job:
+
+```bash
+node user-data/scripts/auth-google.js        # one-time OAuth
+node user-data/scripts/sync-calendar.js --bootstrap
+robin jobs enable sync-calendar
+```
+
+Integrations ship disabled by default and only run after you complete per-provider auth setup. Sync data stays local in `user-data/` — credentials live in `user-data/secrets/.env`.
 
 ### It enforces hard rules
 
@@ -59,7 +85,7 @@ The full rule list is in `AGENTS.md` at the repo root.
 
 - **Node.js 18 or later** — check with `node --version`
 - **git**
-- An AI coding tool that reads project-level instructions: Claude Code, Cursor, Antigravity, Codex, Windsurf, or Gemini CLI
+- An AI coding tool that reads project-level instructions: Claude Code, Cursor, Antigravity, Codex, or Gemini CLI
 
 ### Steps
 
@@ -78,9 +104,9 @@ cd robin
 #      - applies the baseline migration
 npm install
 
-# 3. Open the repo in your AI coding tool of choice. The tool reads the
-#    appropriate pointer file at the root (CLAUDE.md, .cursorrules, etc.)
-#    which redirects to AGENTS.md. Robin will introduce itself.
+# 3. Open the repo in your AI coding tool of choice. The tool reads
+#    AGENTS.md directly (Cursor, Antigravity, Codex) or via a pointer
+#    file (CLAUDE.md, GEMINI.md). Robin will introduce itself.
 ```
 
 That's it. There is no global CLI to install. The repo is self-contained.
@@ -101,21 +127,21 @@ git pull upstream main      # if you forked
 
 This only touches files in `system/` and the root pointer files. **`user-data/`, `artifacts/`, `backup/`, and `docs/` are gitignored, so your personal data is never touched by an update.**
 
-### What you'll see on the next session start
+### What happens after you pull
 
-When you open the repo in your AI tool after pulling, Robin runs `system/scripts/startup-check.js` automatically. It:
+Migrations, config upgrades, and skeleton sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast — no subprocess overhead on every launch.
 
-1. Adds any new fields to `user-data/robin.config.json` with safe defaults (additive config migration — never overwrites your values)
+The postinstall hook:
+
+1. Adds any new fields to `user-data/robin.config.json` with safe defaults (additive — never overwrites your values)
 2. Applies any pending versioned migrations from `system/migrations/`, taking a `backup/pre-migration-<timestamp>.tar.gz` snapshot first
-3. Copies any new skeleton files from `system/skeleton/` into `user-data/` (e.g., if upstream added a new pillar file)
-4. Surfaces the latest `CHANGELOG.md` entry as a one-line notice — once, not every session
+3. Copies any new skeleton files from `system/skeleton/` into `user-data/` (e.g., if upstream added a new integration template)
 
 You'll see something like:
 
 ```
-INFO: migrations: applied 0007-rename-knowledge-to-reference
-INFO: new files from upstream: user-data/health.md
-INFO: CHANGELOG: ## [3.1.0] - 2026-05-15
+INFO: migrations: applied 0008-split-self-improvement
+INFO: new files from upstream: user-data/scripts/sync-calendar.js
 ```
 
 If anything goes wrong with a migration, the pre-migration backup is one command away (`npm run restore`).
@@ -136,13 +162,15 @@ Then move whatever customization you wanted into the right extension point (see 
 
 ## Customization
 
-Three extension points let you customize Robin without ever editing files under `system/`. They all live in `user-data/` (gitignored), so they survive `git pull` cleanly:
+Four extension points let you customize Robin without ever editing files under `system/`. They all live in `user-data/` (gitignored), so they survive `git pull` cleanly:
 
 - **`user-data/custom-rules.md`** — your own rules, appended to AGENTS.md's rule list. They override operational rules when they conflict, but cannot override Immutable Rules (Privacy, Verification, etc.).
   Examples: language preference, persona overrides, custom Ask-vs-Act thresholds, additional capture rules.
 
 - **`user-data/jobs/`** — overlays `system/jobs/`. A file with the same name does a full override; or write a shallow override (`override: <name>` + only the fields you want to change) to inherit the rest from the system def. New files extend the catalog.
   Examples: customize `morning-briefing.md` to include your crypto portfolio, add a daily `rangers-news.md` job that only fires during NHL season.
+
+- **`user-data/scripts/`** — per-user integration scripts (sync, auth, write CLIs). Templates are scaffolded from `system/skeleton/scripts/` on first install. Add a new integration by dropping a job def in `user-data/jobs/` and a script in `user-data/scripts/`, importing from `system/scripts/lib/sync/`.
 
 - **`user-data/integrations.md`** — declare which platform integrations you've configured (email, calendar, etc.). Jobs check this before assuming a capability is available.
 
@@ -173,6 +201,10 @@ All operate on the cloned repo from inside it. The `robin` binary is wired up vi
 | `npm run restore` | Restore `user-data/` from a `backup/*.tar.gz` (interactive) |
 | `npm run reset` | Wipe `user-data/`, recopy skeleton, re-prompt config (auto-backups first) |
 | `npm test` | Run the test suite |
+| `npm run lint-memory` | Check for orphan files, stale INDEX entries, oversized sub-trees, orphan .tmp files |
+| `npm run measure-tokens` | Measure Tier 1/2/3 token counts. `--check` enforces budget caps, `--diff` shows delta vs baseline |
+| `npm run prune-preview` | Preview what the 12-month archive prune would move (dry run) |
+| `npm run prune-execute` | Run the archive prune for real (auto-backups first) |
 | `robin run <name>` | Manually invoke a job — bypasses scheduler. `--force` skips gating, `--dry-run` prints the plan |
 | `robin jobs list` | Show all jobs: enabled state, schedule, last run, status, next run |
 | `robin jobs status <name>` | Detail on one job — when it last ran, where its log lives, when it next fires |
@@ -189,28 +221,31 @@ All operate on the cloned repo from inside it. The `robin` binary is wired up vi
 
 ```
 robin/
-├── AGENTS.md                <- Canonical instructions (read natively by Antigravity & Codex)
+├── AGENTS.md                <- Canonical instructions (read natively by Cursor, Antigravity, Codex)
 ├── CLAUDE.md                <- Pointer → AGENTS.md (Claude Code)
-├── .cursorrules             <- Pointer → AGENTS.md (Cursor)
 ├── GEMINI.md                <- Pointer → AGENTS.md (Gemini CLI)
-├── .windsurfrules           <- Pointer → AGENTS.md (Windsurf)
 ├── bin/
 │   └── robin.js             <- CLI entry point (`robin run`, `robin jobs ...`)
 ├── system/                  <- upstream-owned, tracked, never user-edited
 │   ├── startup.md
 │   ├── capture-rules.md
 │   ├── manifest.md
-│   ├── self-improvement-rules.md
 │   ├── jobs/                <- shipped jobs (agent protocols + node scripts)
-│   ├── migrations/          <- versioned schema migrations applied on session start
+│   ├── migrations/          <- versioned schema migrations applied at install
 │   ├── scripts/
 │   │   ├── jobs/            <- runner, reconciler, CLI dispatcher, installer adapters
-│   │   └── lib/jobs/        <- frontmatter, cron, atomic locks, state, notify
+│   │   ├── lib/jobs/        <- frontmatter, cron, atomic locks, state, notify
+│   │   └── lib/sync/        <- shared sync infrastructure (secrets, cursor, http, redact, oauth)
 │   ├── skeleton/            <- pristine first-run stubs for user-data/
-│   └── tests/               <- ~200 tests including the jobs/ suite
+│   └── tests/               <- ~290 tests
 ├── user-data/               <- your data, gitignored
+│   ├── memory/              <- structured memory tree (INDEX, profile/, knowledge/, etc.)
 │   ├── jobs/                <- your custom jobs + overrides of system jobs
-│   └── state/jobs/          <- runtime state: INDEX.md, upcoming.md, failures.md, logs/
+│   ├── scripts/             <- per-user integration scripts (sync, auth, write CLIs)
+│   ├── secrets/             <- credentials (.env) — gitignored within gitignored
+│   ├── sources/             <- immutable source document archive
+│   ├── state/               <- runtime state: sessions, locks, sync cursors, job logs
+│   └── robin.config.json
 ├── artifacts/{input,output} <- file pipe, gitignored
 ├── backup/                  <- tar.gz archives, gitignored
 └── docs/                    <- design notes, gitignored
@@ -222,12 +257,11 @@ robin/
 
 | Tool | Pointer file at root | How it works |
 |------|----------------------|---------------|
+| Claude Code | `CLAUDE.md` | Pointer → `AGENTS.md` |
+| Gemini CLI | `GEMINI.md` | Pointer → `AGENTS.md` |
+| Cursor | (none) | Reads `AGENTS.md` natively |
 | Antigravity | (none) | Reads `AGENTS.md` natively |
 | Codex | (none) | Reads `AGENTS.md` natively |
-| Claude Code | `CLAUDE.md` | Pointer → `AGENTS.md` |
-| Cursor | `.cursorrules` | Pointer → `AGENTS.md` |
-| Gemini CLI | `GEMINI.md` | Pointer → `AGENTS.md` |
-| Windsurf | `.windsurfrules` | Pointer → `AGENTS.md` |
 
 Pointer files are generated from `system/scripts/lib/platforms.js`. Adding a new tool is one entry there + `npm run regenerate-pointers`.
 
