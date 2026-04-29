@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js';
