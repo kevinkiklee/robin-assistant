@@ -1,5 +1,44 @@
 # Changelog
 
+## [Unreleased]
+
+### Personal-data integrations — Phase 1 (shared sync lib + Lunch Money migration)
+
+First step toward a hybrid sync/MCP integration system. Establishes the shared infrastructure all per-user integrations import from, and migrates the existing Lunch Money sync onto it.
+
+#### Shared sync lib (`system/scripts/lib/sync/`)
+
+Six small, focused modules — each independently tested:
+- `secrets.js` — `loadSecrets`, `requireSecret`, atomic `saveSecret` (preserves comments, supports rotating refresh tokens).
+- `cursor.js` — per-source state files at `user-data/state/sync/<name>.json` with shallow-merge `saveCursor`.
+- `redact.js` — privacy patterns (US SSN, Canadian SIN, Luhn-checked credit cards, OpenAI/GitHub/Slack/AWS API keys, URL credentials).
+- `http.js` — `fetchJson` with exponential backoff on 429/5xx and a typed `AuthError` that bails on 401/403.
+- `markdown.js` — `atomicWrite` (redaction-aware via tmp+rename), `openItem` (lazy fetch), `writeTable`.
+- `index-updater.js` — file-locked INDEX regen with stale-PID detection.
+
+#### Per-user integration convention
+
+Integration code now lives in `user-data/scripts/`, not `system/`. Each user can add an integration by dropping `user-data/jobs/<name>.md` + `user-data/scripts/<name>.js` and importing from `system/scripts/lib/sync/`. No `system/` changes required. Canonical templates ship from `system/skeleton/scripts/` and auto-copy into `user-data/` on first run via the existing skeleton-sync.
+
+#### Lunch Money migration
+
+- Code relocated: `system/scripts/fetch-lunch-money.js` → `user-data/scripts/sync-lunch-money.js`.
+- Lib relocated: `lunch-money-client.js` and `finance-writer.js` → `user-data/scripts/lib/lunch-money/`.
+- Job renamed: `fetch-finances` → `sync-lunch-money`. New `command: node user-data/scripts/sync-lunch-money.js`.
+- Migration `0007-rename-fetch-finances.js` handles the rename and converts the old state file shape (`user-data/state/lunch-money-sync.json` → `user-data/state/sync/lunch-money.json`) idempotently.
+- Legacy launchd wrapper `system/scripts/run-fetch-finances.sh` deleted (the unified job runner replaces it).
+- npm script renamed: `npm run fetch-finances` → `npm run sync-lunch-money`.
+
+#### Bug fixes
+
+- `npm test` glob `system/tests/**/*.test.js` was only expanding one directory deep under sh, silently skipping ~85% of tests. Switched to `find -print0 | xargs -0` so all 250 tests run.
+- Three stale references to the old `fetch-finances` setup updated (startup.md example, analyze-finances.js error message, runner-logic.test.js fixture).
+
+#### Spec & plan
+
+- `docs/superpowers/specs/2026-04-28-personal-data-integrations-design.md` — full design covering Calendar, Gmail, GitHub, Spotify integrations and the shared lib. Phased delivery (Phase 1 lands here; Phases 2–4 add Calendar/Gmail/GitHub/Spotify/writes).
+- `docs/superpowers/plans/2026-04-28-phase-1-shared-sync-lib-and-lunch-money-migration.md` — TDD task plan for this phase.
+
 ## [3.3.0] - 2026-04-29
 
 ### Job system — unified scheduler for everything that runs
