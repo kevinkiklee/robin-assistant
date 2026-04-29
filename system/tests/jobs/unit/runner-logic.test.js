@@ -86,7 +86,7 @@ describe('shouldNotify (dedup)', () => {
       last_notified: { '*:auth_expired': new Date(now - 1000).toISOString() },
     };
     assert.equal(shouldNotify({ jobName: 'dream', category: 'auth_expired', state, now }), false);
-    assert.equal(shouldNotify({ jobName: 'fetch-finances', category: 'auth_expired', state, now }), false);
+    assert.equal(shouldNotify({ jobName: 'sync-lunch-money', category: 'auth_expired', state, now }), false);
   });
 
   test('global auth_expired debounce expires after 6h', () => {

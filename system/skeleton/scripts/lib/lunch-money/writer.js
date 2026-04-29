@@ -1,6 +1,8 @@
+// Template — auto-copied to user-data/scripts/lib/lunch-money/ by skeleton-sync.
+// Imports resolve only after copy; not runnable in place.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseFrontmatter, stringifyFrontmatter } from './memory-index.js';
+import { parseFrontmatter, stringifyFrontmatter } from '../../../../system/scripts/lib/memory-index.js';
 
 const TX_HEADER = '| date | payee | amount | account | category (LM) | notes | id |';
 const TX_DIVIDER = '|------|-------|--------|---------|---------------|-------|-----|';

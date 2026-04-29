@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, statSync, existsSync, renameSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter } from './lib/memory-index.js';
@@ -52,7 +52,10 @@ export function generateMemoryIndex(memoryDir) {
 
 export function writeMemoryIndex(memoryDir) {
   const out = generateMemoryIndex(memoryDir);
-  writeFileSync(join(memoryDir, 'INDEX.md'), out);
+  const path = join(memoryDir, 'INDEX.md');
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, out);
+  renameSync(tmp, path);
 }
 
 export function checkMemoryIndex(memoryDir) {
