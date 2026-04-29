@@ -318,28 +318,21 @@ function writeBaseline(snap) {
 
 function snapshotAtRef(ref) {
   // Run *this script* at the given git ref by piping its stdout. Self-contained:
-  // no external snapshot file required for a PR diff.
+  // no external snapshot file required for a PR diff. The temp file lives next
+  // to the original (system/scripts/) so its relative `./lib/tokenizer.js`
+  // import resolves correctly.
   const cwd = REPO_ROOT;
   const out = execFileSync(
     'git',
-    [
-      '-c',
-      'advice.detachedHead=false',
-      'show',
-      `${ref}:system/scripts/measure-tokens.js`,
-    ],
+    ['-c', 'advice.detachedHead=false', 'show', `${ref}:system/scripts/measure-tokens.js`],
     { cwd, encoding: 'utf8' },
   );
-  // Write to a temp file and run it. Simpler than evaluating in-process.
-  const tmp = join(REPO_ROOT, `.measure-tokens.${ref.replace(/[^a-z0-9]/gi, '_')}.tmp.js`);
+  const tmp = join(REPO_ROOT, 'system', 'scripts', `.measure-tokens.${ref.replace(/[^a-z0-9]/gi, '_')}.tmp.js`);
   writeFileSync(tmp, out);
   try {
     const json = execFileSync('node', [tmp, '--json'], { cwd, encoding: 'utf8' });
     return JSON.parse(json);
   } finally {
-    try {
-      writeFileSync(tmp, ''); // best effort wipe
-    } catch {}
     try {
       execFileSync('rm', ['-f', tmp]);
     } catch {}
