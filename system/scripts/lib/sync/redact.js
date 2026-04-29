@@ -30,9 +30,12 @@ const PATTERNS = [
     replace: () => '[REDACTED:ssn]',
   },
   {
+    // Canadian SIN: 3-3-3 digits separated by space or dash. Without context
+    // the pattern is noisy (matches phone numbers, transaction IDs, serials),
+    // so require Luhn validation on the 9 digits to filter accidental matches.
     type: 'sin',
-    re: /\b\d{3}[ -]\d{3}[ -]\d{3}\b/g,
-    replace: () => '[REDACTED:sin]',
+    re: /(?<!\d)\d{3}[ -]\d{3}[ -]\d{3}(?!\d)/g,
+    replace: (m) => (luhnValid(m.replace(/[ -]/g, '')) ? '[REDACTED:sin]' : m),
   },
   {
     type: 'credit-card',
@@ -42,6 +45,9 @@ const PATTERNS = [
 ];
 
 export function applyRedaction(text) {
+  if (typeof text !== 'string') {
+    throw new TypeError(`applyRedaction expected a string, got ${typeof text}`);
+  }
   let out = text;
   let count = 0;
   for (const { re, replace } of PATTERNS) {
