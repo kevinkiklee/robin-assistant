@@ -2,6 +2,69 @@
 
 ## [Unreleased]
 
+### Token optimization & frontier-model reliability (2026-04-29)
+
+Reorganizes the always-on instruction layer into Tier 1 (always-loaded
+cache-stable prefix) / Tier 2 (on-demand) / Tier 3 (cold storage). Adds
+measurement, validation, governance, and a memory-pruning lifecycle.
+Frontier-only host targets (Windsurf removed; Cursor + Antigravity now
+read AGENTS.md natively).
+
+**Reduction:** Tier 1 went from 8,278 tokens / 463 lines (baseline) to
+5,225 tokens / 343 lines (-37% / -26%). Framework files (AGENTS.md,
+manifest, capture-rules, startup) reduced 45% in tokens. User content
+(personality, INDEX descriptions, integrations) unchanged. Cache-stable
+prefix at 5,072 tokens (vs 5,300 cap).
+
+**Phase 0 — Harness.** `system/scripts/measure-tokens.js`,
+`token-budget.json` (single source of truth for tier classification +
+caps), deterministic tokenizer (bytes/3.7), committed baseline. `--diff`
+/ `--diff-against=<ref>` / `--check` / `--update-baseline` /
+`--host=<name>` modes. CI step.
+
+**Phase 1 — Validation.** `system/scripts/validate-host.js` + per-host
+parsers (claude-code/codex/gemini-cli; manual JSON for cursor/antigravity).
+Six scenarios: cold session, routine capture, triggered protocol,
+reference fetch, multi-session detection, direct-write correction.
+Headless runners for the three CLI hosts; manual checklists for the two
+IDEs. `system/jobs/host-validation.md` quarterly drift-detection job
+(default disabled).
+
+**Phase 2 — Tier reorganization.** Migrations 0008 (split
+self-improvement.md), 0009 (build sub-indexes for lunch-money,
+photography-collection, events), 0010 (archive scaffolding), 0011
+(year-split marker), 0012 (drop Windsurf). AGENTS.md slimmed 120 → 68
+lines. manifest.md 117 → 78 lines. capture-rules.md 279 → 193 lines
+(4,556 → 1,894 tokens). startup.md 40 → 22 lines (sequence inlined in
+AGENTS.md). regenerate-memory-index.js stops at sub-indexes.
+platforms.js drops Windsurf; Cursor/Codex/Antigravity use AGENTS.md
+natively.
+
+**Phase 3 — Performance + reliability.** `lint-memory.js` checks
+orphans, sub-tree size, stale INDEX entries, orphan .tmp files.
+`golden-session.js` snapshot of host-agnostic Tier 1 expected loads.
+`migrate.js` fast-path (~50ms cold start when no migrations pending).
+`system/migrations/CONTRIBUTING.md` codifies the migration safety
+contract. Read-before-write conditional inlined in AGENTS.md.
+
+**Phase 4 — Memory pruning.** `system/jobs/prune.md` (default disabled).
+12-month cutoff archives transactions, conversations, calibration
+entries to `user-data/memory/archive/<year>/`. Year-end splits
+decisions.md and journal.md. Skips run when sibling sessions active.
+Pre-prune backup. Atomic moves. Migration 0013 reserves the slot for
+backfill prune.
+
+**Phase 5 — Governance.** `docs/governance/token-budget.md`,
+`CODEOWNERS`, `.github/workflows/token-budget.yml` (runs measure-tokens
+--check, lint-memory, golden-session --check, npm test on every PR),
+`.github/labeler.yml` auto-applies tier1-changes / migrations /
+protocols labels.
+
+**Deferred:** Phase 3h (`startup-check.js` retirement) ships separately
+— biggest blast radius of the design; needs its own PR.
+
+Tests: 279 → 293.
+
 ### Personal-data integrations — Phases 2–4 (Calendar, Gmail, GitHub, Spotify)
 
 Adds the four read+write integrations the Phase 1 lib was built to support. All four ship as user-data templates (auto-scaffolded from `system/skeleton/scripts/` on first run); job markdowns ship at `enabled: false` so they don't fire until the user has completed per-provider auth setup.
