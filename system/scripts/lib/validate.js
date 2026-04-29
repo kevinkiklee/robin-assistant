@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 
+// Pillar files: every supported workspace must have these.
 const PILLAR_USER_FILES = [
   'memory/INDEX.md',
   'memory/profile/identity.md',
@@ -9,9 +10,12 @@ const PILLAR_USER_FILES = [
   'memory/decisions.md',
   'memory/journal.md',
   'memory/inbox.md',
-  'memory/self-improvement.md',
   'integrations.md',
 ];
+
+// Either-or: at least one of these self-improvement representations must be
+// present (post-migration-0008 = split files, pre-migration = monolith).
+const SELF_IMPROVEMENT_FILES = ['memory/self-improvement.md', 'memory/self-improvement/corrections.md'];
 
 export async function validateInDir(workspaceDir) {
   let issues = 0;
@@ -34,6 +38,11 @@ export async function validateInDir(workspaceDir) {
     if (existsSync(join(ud, f))) ok(`user-data/${f} exists`);
     else { fail(`user-data/${f} MISSING`); issues++; }
   }
+
+  // self-improvement: either monolith (pre-migration-0008) or split files
+  const siPresent = SELF_IMPROVEMENT_FILES.some((f) => existsSync(join(ud, f)));
+  if (siPresent) ok('user-data/memory/self-improvement (monolith or split) exists');
+  else { fail('user-data/memory/self-improvement.md MISSING'); issues++; }
 
   // state
   for (const f of ['state/sessions.md', 'state/dream-state.md']) {
