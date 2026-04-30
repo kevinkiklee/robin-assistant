@@ -14,6 +14,7 @@ import {
   releaseLock,
   writeJSONIfChanged,
 } from '../lib/jobs/atomic.js';
+import { cleanupStaleLocks } from '../lib/jobs/lock-cleanup.js';
 import {
   parseCron,
   cronPrev,
@@ -447,6 +448,9 @@ export async function run({
 
   // Step 3: lock
   if (!flags.noLock) {
+    // Sweep stale locks before attempting to acquire — prevents phantom contention
+    // from previous runs that crashed without releasing their lock.
+    cleanupStaleLocks(workspaceDir);
     const lockResult = acquireLock(lockPath, { host: hostname() });
     if (lockResult === 'held') {
       if (flags.force) {
