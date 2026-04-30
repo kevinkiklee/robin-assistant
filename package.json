@@ -26,6 +26,11 @@
     "jobs": "node bin/robin.js jobs",
     "jobs:sync": "node bin/robin.js jobs sync",
     "jobs:list": "node bin/robin.js jobs list",
+    "discord:auth": "node user-data/scripts/auth-discord.js",
+    "discord:install": "node user-data/scripts/discord-bot-install.js",
+    "discord:uninstall": "node user-data/scripts/discord-bot-install.js --uninstall",
+    "discord:status": "node user-data/scripts/discord-bot-status.js",
+    "discord:health": "node user-data/scripts/discord-bot-health.js",
     "postinstall": "node system/scripts/setup.js"
   },
   "engines": {
@@ -39,14 +44,26 @@
     "cursor",
     "gemini-cli",
     "codex",
-    "antigravity"
+    "antigravity",
+    "discord"
   ],
   "license": "MIT",
   "author": "Kevin K Lee",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/kevinkiklee/robin-assistant.git"
   },
+  "bugs": {
+    "url": "https://github.com/kevinkiklee/robin-assistant/issues"
+  },
+  "homepage": "https://github.com/kevinkiklee/robin-assistant#readme",
+  "files": [
+    "bin",
+    "system",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md"
+  ],
   "dependencies": {
     "discord.js": "^14.26.3",
     "dotenv": "^16.6.1"

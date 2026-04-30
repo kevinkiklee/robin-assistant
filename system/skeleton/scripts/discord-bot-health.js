@@ -40,12 +40,10 @@ async function readJson(path) {
 
 function fmtTs(ts) { return ts ? ts.replace('T', ' ').slice(0, 19) + 'Z' : '—'; }
 
-async function check() {
-  const cutoff = Date.now() - PERIOD_MS;
-  const events = await readJsonl(EVENTS_PATH);
-  const recent = events.filter(e => new Date(e.ts).getTime() >= cutoff);
-
-  const totals = { runs: 0, ok: 0, error: 0, timeout: 0, channelGone: 0, cancelled: 0, helpNewCancel: 0 };
+export function analyzeEvents(events, { now = Date.now(), periodMs = PERIOD_MS } = {}) {
+  const cutoff = now - periodMs;
+  const recent = events.filter(e => e?.ts && new Date(e.ts).getTime() >= cutoff);
+  const totals = { runs: 0, ok: 0, error: 0, channelGone: 0, helpNewCancel: 0 };
   const errorTypeCounts = {};
   const errorSamples = [];
   let cost = 0;
@@ -65,10 +63,6 @@ async function check() {
     if (typeof e.totalCostUsd === 'number' && Number.isFinite(e.totalCostUsd)) cost += e.totalCostUsd;
   }
 
-  const sessions = (await readJson(SESSIONS_PATH)) || {};
-  const sessionCount = Object.keys(sessions).length;
-  const status = await readJson(STATUS_PATH);
-
   const errorRate = totals.runs ? totals.error / totals.runs : 0;
   let verdict;
   if (totals.runs === 0) verdict = 'IDLE — no runs in the last week';
@@ -76,10 +70,15 @@ async function check() {
   else if (errorRate < 0.1) verdict = 'YELLOW — occasional errors';
   else verdict = 'RED — frequent errors, investigate';
 
+  return { totals, errorTypeCounts, errorSamples, cost, errorRate, verdict, lastError };
+}
+
+export function formatReport(analysis, { sessionCount = 0, status = null, now = new Date() } = {}) {
+  const { totals, errorTypeCounts, errorSamples, cost, errorRate, verdict, lastError } = analysis;
   const lines = [];
   lines.push(`# Discord Bot Health — last ${PERIOD_DAYS} days`);
   lines.push('');
-  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push(`Generated: ${now.toISOString()}`);
   lines.push(`Verdict:   **${verdict}**`);
   lines.push('');
   lines.push(`## Summary`);
@@ -116,7 +115,17 @@ async function check() {
     }
   }
 
-  await writeFile(REPORT_PATH, lines.join('\n'));
+  return lines.join('\n');
+}
+
+async function check() {
+  const events = await readJsonl(EVENTS_PATH);
+  const sessions = (await readJson(SESSIONS_PATH)) || {};
+  const status = await readJson(STATUS_PATH);
+  const analysis = analyzeEvents(events);
+  const body = formatReport(analysis, { sessionCount: Object.keys(sessions).length, status });
+  await writeFile(REPORT_PATH, body);
+  const { verdict, totals, cost } = analysis;
   console.log(`[health] verdict=${verdict.split(' ')[0]} runs=${totals.runs} errors=${totals.error} cost=$${cost.toFixed(4)}`);
   console.log(`[health] wrote ${REPORT_PATH}`);
 }

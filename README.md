@@ -131,9 +131,13 @@ Robin can pull data from external services on a schedule so it has context about
 - **Spotify** — recently played, top tracks/artists, playlists (hourly)
 - **Lunch Money** — financial transactions and category breakdowns
 
-Each integration is a standalone script with OAuth setup, bootstrap sync, and a job definition. All ship disabled — they only run after you complete auth setup. Write CLIs are available for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`) with `--dry-run` support. Calendar and Gmail writes use your AI tool's native capabilities.
+Each integration is a standalone script with OAuth setup, bootstrap sync, and a job definition. All ship disabled — they only run after you complete auth setup. Per-provider walkthroughs (creating OAuth clients, choosing scopes, known gotchas like Spotify's `127.0.0.1` redirect requirement and GitHub fine-grained PAT limits on `/notifications`) live in [`system/integrations/`](system/integrations/README.md). Write CLIs are available for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`) with `--dry-run` support. Calendar and Gmail writes use your AI tool's native capabilities.
 
 The integration system is built on a shared library (`system/scripts/lib/sync/`) providing OAuth2 token refresh, secrets management, sync cursors, HTTP retry with exponential backoff, privacy redaction, and atomic markdown writes.
+
+### Chat front-ends
+
+Talk to Robin from outside your terminal. The first front-end is a personal **Discord bot** (macOS, launchd-supervised) — `@`-mention or DM the bot in your private server and it spawns a Claude Code subprocess against your Robin workspace, replying inline with full session continuity per Discord thread / DM channel. Allowlisted to a single user + a single guild; the events log records metadata only (no prompt or reply text). Setup walkthrough: [`system/integrations/discord-setup.md`](system/integrations/discord-setup.md).
 
 ### Privacy
 
