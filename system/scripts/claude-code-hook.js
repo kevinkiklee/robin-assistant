@@ -104,11 +104,17 @@ async function onStop(args) {
 
   // Drain auto-memory in the background so the user's next response isn't
   // blocked. Discard output unless --debug.
+  //
+  // The migrate-auto-memory.js script always lives in the package (REPO_ROOT)
+  // — that's where the code is. But the WORKSPACE it targets is `ws`, which
+  // may differ from REPO_ROOT when --workspace is passed. Set cwd + the
+  // ROBIN_WORKSPACE env var so the drain operates on the right user-data tree.
   const drainArgs = [join(REPO_ROOT, 'system', 'scripts', 'migrate-auto-memory.js'), '--apply'];
   if (args.debug) drainArgs.push('--json');
 
   const child = spawn('node', drainArgs, {
-    cwd: REPO_ROOT,
+    cwd: ws,
+    env: { ...process.env, ROBIN_WORKSPACE: ws },
     detached: true,
     stdio: args.debug ? 'inherit' : 'ignore',
   });
