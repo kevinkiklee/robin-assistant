@@ -16,10 +16,13 @@ Findings written to `state/jobs/failures.md` (active failures) and
 start and surfaces relevant items in its first response — no subprocess
 needed.
 
-## When to invoke startup-check directly
+## When to invoke preflight directly
 
-The legacy `node system/scripts/startup-check.js` still works and is
-called by `robin update`. Only invoke it directly when:
+`robin update` runs the pre-flight pipeline via `system/scripts/lib/preflight.js`.
+The old `node system/scripts/startup-check.js` still works as a deprecation shim
+but will be removed in a future minor version.
+
+Only invoke the pipeline directly when:
 
 - Investigating a bootstrap issue and you want to see all findings inline.
 - Running in CI to catch broken state.

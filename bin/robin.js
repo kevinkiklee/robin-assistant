@@ -47,8 +47,8 @@ async function main() {
     return cli.dispatchJobs(rest);
   }
   if (cmd === 'update') {
-    const { runStartupCheck } = await import('../system/scripts/startup-check.js');
-    const r = await runStartupCheck();
+    const { runPreflight } = await import('../system/scripts/lib/preflight.js');
+    const r = await runPreflight();
     for (const f of r.findings) console.log(`${f.level}: ${f.message}`);
     if (r.findings.some((f) => f.level === 'FATAL')) process.exit(1);
     if (r.findings.length === 0) console.log('Nothing to do.');

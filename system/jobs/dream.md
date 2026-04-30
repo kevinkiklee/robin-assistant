@@ -23,9 +23,7 @@ Dream runs in two ways:
 
 ## Pre-flight
 
-Run `node system/scripts/startup-check.js` and read line-by-line. `FATAL:` lines: write to `user-data/state/jobs/failures.md` and exit non-zero. `INFO:` / `WARN:` lines: include in your one-line summary at the end.
-
-The check auto-repairs **skeleton sync** (copies missing skeleton files; reports `INFO: new files from upstream: ...`) and **stale-lock cleanup** (locks in `user-data/state/locks/` older than 5 min; reports `INFO: cleared stale lock: ...`). Everything else is reported but not auto-repaired.
+Read `user-data/state/jobs/failures.md`. If any active FATAL entry is present, skip this Dream run and append a one-line note to `user-data/state/dream-state.md` explaining why it was skipped. INFO/WARN entries get included in your one-line summary at the end of the run.
 
 ## Phase 0: Auto-memory migration (auto-run)
 

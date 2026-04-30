@@ -26,7 +26,8 @@ The v3 layout separates immutable framework code from user data. Use this manife
 | `system/scripts/measure-tokens.js` | Token-budget harness (Phase 0). |
 | `system/scripts/validate-host.js` | Multi-host scenario validator (Phase 1). |
 | `system/scripts/setup.js` | First-run installer (postinstall). |
-| `system/scripts/startup-check.js` | Session pre-flight (FATAL/INFO/WARN). |
+| `system/scripts/lib/preflight.js` | Session pre-flight pipeline — 5 steps: config-migrate, pending-migrations, validate, skeleton-sync, changelog-notify. Returns `{ findings }`. |
+| `system/scripts/startup-check.js` | Deprecation shim. Re-exports `runStartupCheck` wrapping `runPreflight`. Will be deleted in a future minor version. |
 | `system/scripts/migrate.js` | Apply pending migrations (auto-runs on session start). |
 | `system/scripts/backup.js` / `restore.js` / `reset.js` | Snapshot, restore, wipe `user-data/`. |
 | `system/scripts/regenerate-pointers.js` | Regenerate per-host pointer files from `platforms.js`. |
