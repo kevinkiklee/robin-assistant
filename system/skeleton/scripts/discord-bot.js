@@ -135,6 +135,9 @@ async function main() {
 
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
+    // DIAG (DM debug, 2026-04-30): log every received human message pre-auth.
+    // Revert by deleting this line once DM delivery is confirmed working.
+    console.log(`[discord-bot] msg type=${message.channel.type} guild=${message.guildId ?? 'DM'} user=${message.author.id} content_len=${message.content?.length ?? 0} allowed=${isAllowedContext(message, allow)}`);
     if (!isAllowedContext(message, allow)) return;
 
     const expiredKeys = await sessionStore.expireIdle(TTL);
@@ -236,6 +239,20 @@ async function main() {
     }
 
     let body = runResult.result;
+    const emptyResult = !body || !body.trim();
+    if (emptyResult) {
+      // Claude exited cleanly but produced no final text. Almost always means
+      // the --max-turns ceiling was hit while Claude was still in tool-use mode.
+      const note = runResult.isError
+        ? `Robin couldn't finish (${runResult.subtype || 'is_error'}). Try a simpler question or raise DISCORD_BOT_MAX_TURNS.`
+        : `Robin returned no text — likely hit the turn limit (currently ${maxTurns}) mid-tool-use. Try a simpler question, or bump DISCORD_BOT_MAX_TURNS in .env and restart.`;
+      await safeReply(message, note, key);
+      await eventLog.append({
+        event: 'run', status: 'empty_result', userId: message.author.id, conversationKey: key,
+        latencyMs: Date.now() - start, claudeSessionId: runResult.sessionId, totalCostUsd: runResult.costUsd,
+      });
+      return;
+    }
     if (wasIdleExpired) body = `(new session) ${body}`;
     const chunks = splitMessage(body);
     if (chunks.length === 0) {

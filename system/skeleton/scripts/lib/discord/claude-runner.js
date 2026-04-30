@@ -109,6 +109,7 @@ export function createRunner({
           sessionId: parsed.session_id ?? null,
           costUsd: parsed.total_cost_usd ?? 0,
           isError: parsed.is_error === true,
+          subtype: parsed.subtype ?? null,
         });
       });
 
