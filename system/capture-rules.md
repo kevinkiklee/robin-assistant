@@ -106,17 +106,21 @@ These skip inbox:
 
 ## Capture sweep (safety net)
 
-**Trigger 1 — context compaction imminent.** Mini-sweep of the about-to-be-lost
-window. Most important trigger.
+**Trigger 1 — long session.** Mid-session sweep. Fires when:
+- You've crossed ~20 turns since session start, OR
+- A "context compaction is imminent" system reminder appears.
 
-**Trigger 2 — graceful session end.** Full sweep.
+Run the same sweep as Trigger 2.
 
-**Process:** Scan available context → cross-reference inbox.md (dedup) → draft
-tagged entries → batch-append to inbox → write one-line note to
-`self-improvement/session-handoff.md` ("Captured N items: X facts, Y prefs...")
-→ append session summary to `hot.md`.
+**Trigger 2 — graceful session end.** Full sweep at wrap-up.
+
+**Process:** Scan available context → cross-reference inbox.md (dedup) → draft tagged entries → batch-append to inbox → write a `## Session — <session-id>` block to `self-improvement/session-handoff.md` ("ended: <ISO>; inbox additions: N ([breakdown]); context: <one-line>") via `writeSessionBlock` → write the same block to `hot.md` with maxBlocks=3.
 
 **Scope:** 30 seconds of effort, not 5 minutes. Ambiguous items get `[?]`.
+
+**Trigger 3 — Stop-hook auto-line (Claude Code only).** The Stop hook (`system/scripts/claude-code-hook.js --on-stop`) writes an auto-line to `session-handoff.md` and `hot.md` on every assistant turn end. It uses the same session-id as the agent's T1/T2 sweep, so Trigger 1 or 2 cleanly replaces it when they fire.
+
+Coverage: T3 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antigravity there is no equivalent host hook — file freshness on those hosts depends entirely on T1/T2 agent compliance. Quarterly `host-validation` (`system/jobs/host-validation.md`) checks each host produced a session-handoff entry within the last 30 days.
 
 ## Hot cache
 
