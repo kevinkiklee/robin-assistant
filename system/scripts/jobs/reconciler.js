@@ -56,10 +56,13 @@ export function computeSyncHash(workspaceDir) {
 
 export function reconcile({
   workspaceDir,
-  robinPath,
+  argv,
   force = false,
   adapter = getAdapter(),
 } = {}) {
+  if (!Array.isArray(argv) || argv.length === 0) {
+    throw new Error('reconcile: argv must be a non-empty array of strings (e.g. [process.execPath, "/path/to/bin/robin.js"])');
+  }
   const paths = jobsPaths(workspaceDir);
   ensureDir(paths.stateDir);
   ensureDir(paths.locksDir);
@@ -72,13 +75,13 @@ export function reconcile({
     return { ok: true, skipped: 'reconciler-already-running' };
   }
   try {
-    return reconcileInner({ workspaceDir, robinPath, force, adapter, tz, paths });
+    return reconcileInner({ workspaceDir, argv, force, adapter, tz, paths });
   } finally {
     releaseLock(paths.syncLock);
   }
 }
 
-function reconcileInner({ workspaceDir, robinPath, force, adapter, tz, paths }) {
+function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
   const result = {
     added: [],
     removed: [],
@@ -124,7 +127,7 @@ function reconcileInner({ workspaceDir, robinPath, force, adapter, tz, paths }) 
 
     if (adapter.batched && adapter.syncAll) {
       try {
-        const r = adapter.syncAll({ jobs: desired, robinPath, workspaceDir });
+        const r = adapter.syncAll({ jobs: desired, argv, workspaceDir });
         if (r.changed) result.updated.push('cron');
         if (!r.ok) result.warnings.push(`syncAll: ${r.stderr}`);
       } catch (err) {
@@ -135,7 +138,7 @@ function reconcileInner({ workspaceDir, robinPath, force, adapter, tz, paths }) 
       for (const [name, def] of desired) {
         const r = adapter.installEntry({
           name,
-          robinPath,
+          argv,
           workspaceDir,
           schedule: def.frontmatter.schedule,
         });
@@ -196,19 +199,17 @@ async function cliMain(argv) {
     if (a === '--force') flags.force = true;
   }
   const workspaceDir = process.env.ROBIN_WORKSPACE || process.cwd();
-  const robinPath = resolveRobinPath();
-  const r = reconcile({ workspaceDir, robinPath, force: flags.force });
+  const r = reconcile({ workspaceDir, argv: resolveRobinArgv(workspaceDir), force: flags.force });
   process.stdout.write(JSON.stringify(r, null, 2) + '\n');
   process.exit(r.ok ? 0 : 1);
 }
 
-function resolveRobinPath() {
-  if (process.env.ROBIN_BIN) return process.env.ROBIN_BIN;
-  // Default: assume the workspace's bin/robin.js, run with the same node binary.
-  // The installer bakes both paths into scheduler entries, so resolution at
-  // reconcile time uses argv[1] as a fallback hint.
-  const candidate = join(process.env.ROBIN_WORKSPACE || process.cwd(), 'bin/robin.js');
-  return process.execPath + ' ' + candidate;
+export function resolveRobinArgv(workspaceDir = process.env.ROBIN_WORKSPACE || process.cwd()) {
+  // Each element becomes one argv token in the OS scheduler entry. Keep the
+  // node binary and script as separate tokens — joining them with a space
+  // makes launchd treat the whole string as a single argv[0] and exec fails.
+  if (process.env.ROBIN_BIN) return [process.env.ROBIN_BIN];
+  return [process.execPath, join(workspaceDir, 'bin/robin.js')];
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

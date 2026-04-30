@@ -35,7 +35,7 @@ describe('launchd: generatePlist', () => {
   test('produces well-formed plist with key fields', () => {
     const xml = generatePlist({
       name: 'dream',
-      robinPath: '/usr/local/bin/robin',
+      argv: ['/usr/local/bin/robin'],
       workspaceDir: '/Users/x/ws',
       schedule: '0 4 * * *',
     });
@@ -49,11 +49,42 @@ describe('launchd: generatePlist', () => {
   test('adds ROBIN_WORKSPACE env', () => {
     const xml = generatePlist({
       name: 'x',
-      robinPath: '/r',
+      argv: ['/r'],
       workspaceDir: '/ws',
       schedule: '0 4 * * *',
     });
     assert.match(xml, /<key>ROBIN_WORKSPACE<\/key>\s*<string>\/ws<\/string>/);
+  });
+
+  // Regression: launchd treats each <string> in ProgramArguments as one argv
+  // element. Joining node-binary + script with a space produces a single
+  // unfindable path; the job silently fails to exec. See dream not running
+  // 2026-04-26 → 2026-04-30.
+  test('regression: argv with two elements produces separate ProgramArguments entries', () => {
+    const xml = generatePlist({
+      name: 'dream',
+      argv: ['/Users/x/.nvm/versions/node/v24.14.1/bin/node', '/Users/x/ws/bin/robin.js'],
+      workspaceDir: '/Users/x/ws',
+      schedule: '0 4 * * *',
+    });
+    assert.match(
+      xml,
+      /<key>ProgramArguments<\/key>\s*<array>\s*<string>\/Users\/x\/\.nvm\/versions\/node\/v24\.14\.1\/bin\/node<\/string>\s*<string>\/Users\/x\/ws\/bin\/robin\.js<\/string>\s*<string>run<\/string>\s*<string>dream<\/string>\s*<\/array>/
+    );
+    // No <string> element should contain a literal space (each token must be its own element).
+    const programArgsBlock = xml.match(/<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/)[1];
+    const stringTokens = [...programArgsBlock.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]);
+    assert.equal(stringTokens.length, 4);
+    for (const t of stringTokens) assert.equal(t.includes(' '), false, `argv element "${t}" must not contain a space`);
+  });
+
+  test('rejects missing or empty argv', () => {
+    assert.throws(() => generatePlist({ name: 'x', workspaceDir: '/ws', schedule: '0 4 * * *' }), /argv/);
+    assert.throws(() => generatePlist({ name: 'x', argv: [], workspaceDir: '/ws', schedule: '0 4 * * *' }), /argv/);
+    assert.throws(
+      () => generatePlist({ name: 'x', argv: [''], workspaceDir: '/ws', schedule: '0 4 * * *' }),
+      /argv/
+    );
   });
 });
 
@@ -65,7 +96,7 @@ describe('cron-linux: managed block', () => {
     ]);
     const block = buildManagedBlock({
       jobs,
-      robinPath: '/usr/local/bin/robin',
+      argv: ['/usr/local/bin/robin'],
       workspaceDir: '/home/x',
       generatedAt: new Date('2026-04-29T00:00:00Z'),
     });
@@ -143,10 +174,10 @@ describe('taskscheduler: cronToTaskTrigger', () => {
 });
 
 describe('taskscheduler: buildRegisterCommand', () => {
-  test('produces expected PowerShell shape', () => {
+  test('produces expected PowerShell shape with single-binary argv', () => {
     const cmd = buildRegisterCommand({
       name: 'dream',
-      robinPath: 'C:\\Program Files\\nodejs\\node.exe',
+      argv: ['C:\\Program Files\\nodejs\\node.exe'],
       workspaceDir: 'C:\\workspace',
       schedule: '0 4 * * *',
     });
@@ -156,12 +187,33 @@ describe('taskscheduler: buildRegisterCommand', () => {
     assert.match(cmd, /-Argument 'run dream'/);
   });
 
+  test('two-element argv: script path goes into -Argument as a quoted token, not into -Execute', () => {
+    const cmd = buildRegisterCommand({
+      name: 'dream',
+      argv: ['C:\\Program Files\\nodejs\\node.exe', 'C:\\workspace\\bin\\robin.js'],
+      workspaceDir: 'C:\\workspace',
+      schedule: '0 4 * * *',
+    });
+    assert.ok(cmd);
+    assert.match(cmd, /-Execute 'C:\\Program Files\\nodejs\\node\.exe'/);
+    assert.match(cmd, /-Argument '"C:\\workspace\\bin\\robin\.js" run dream'/);
+  });
+
   test('returns null for unrepresentable cron', () => {
     const cmd = buildRegisterCommand({
       name: 'x',
-      robinPath: 'r',
+      argv: ['r'],
       workspaceDir: 'w',
       schedule: '0 9 1 * *',
+    });
+    assert.equal(cmd, null);
+  });
+
+  test('returns null for missing argv', () => {
+    const cmd = buildRegisterCommand({
+      name: 'x',
+      workspaceDir: 'w',
+      schedule: '0 4 * * *',
     });
     assert.equal(cmd, null);
   });

@@ -7,14 +7,24 @@ import { parseCron } from '../../lib/jobs/cron.js';
 
 export const TASK_FOLDER = '\\Robin\\';
 
+function psSingleQuote(s) {
+  return s.replace(/'/g, "''");
+}
+
 // Build a PowerShell command string for Register-ScheduledTask. Returns null
 // if the cron is not losslessly representable in Task Scheduler primitives.
-export function buildRegisterCommand({ name, robinPath, workspaceDir, schedule }) {
+export function buildRegisterCommand({ name, argv, workspaceDir, schedule }) {
+  if (!Array.isArray(argv) || argv.length === 0) return null;
   const trigger = cronToTaskTrigger(schedule);
   if (!trigger) return null;
-  const escapedRobin = robinPath.replace(/'/g, "''");
-  const escapedWs = workspaceDir.replace(/'/g, "''");
-  const escapedName = name.replace(/'/g, "''");
+  const escapedExec = psSingleQuote(argv[0]);
+  // For Task Scheduler -Argument, embed each prefix-token as a double-quoted
+  // string so paths with spaces survive Windows command-line splitting.
+  const prefixArgs = argv.slice(1).map((a) => `"${a.replace(/"/g, '""')}"`);
+  const argParts = [...prefixArgs, 'run', psSingleQuote(name)];
+  const argument = argParts.join(' ');
+  const escapedWs = psSingleQuote(workspaceDir);
+  const escapedName = psSingleQuote(name);
   // We use an array of triggers when the cron requires multiple. PowerShell
   // accepts an array via `,`-separation in the splat.
   const triggerExpr = Array.isArray(trigger)
@@ -22,7 +32,7 @@ export function buildRegisterCommand({ name, robinPath, workspaceDir, schedule }
     : trigger.expr;
 
   return [
-    `$action = New-ScheduledTaskAction -Execute '${escapedRobin}' -Argument 'run ${escapedName}' -WorkingDirectory '${escapedWs}'`,
+    `$action = New-ScheduledTaskAction -Execute '${escapedExec}' -Argument '${argument}' -WorkingDirectory '${escapedWs}'`,
     `$trigger = ${triggerExpr}`,
     `$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries`,
     `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U`,
@@ -82,8 +92,8 @@ function powershell(cmd) {
   return spawnSync('powershell', ['-NoLogo', '-NoProfile', '-Command', cmd], { stdio: 'pipe' });
 }
 
-export function installEntry({ name, robinPath, workspaceDir, schedule }) {
-  const cmd = buildRegisterCommand({ name, robinPath, workspaceDir, schedule });
+export function installEntry({ name, argv, workspaceDir, schedule }) {
+  const cmd = buildRegisterCommand({ name, argv, workspaceDir, schedule });
   if (!cmd) return { ok: false, stderr: `cron not representable: ${schedule}` };
   const r = powershell(cmd);
   return { ok: r.status === 0, stderr: r.stderr?.toString() || '' };

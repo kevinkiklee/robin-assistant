@@ -94,17 +94,17 @@ Unresolvable issues are escalated in a report: contradictions, ambiguous inbox i
 
 A cross-platform scheduler that runs jobs on your OS (launchd on macOS, cron on Linux, Task Scheduler on Windows), independent of AI sessions. Jobs are defined as markdown files with YAML frontmatter specifying runtime (agent or node), schedule, triggers, and timeout.
 
-20 shipped jobs spanning daily maintenance, financial review, productivity, and system health:
+Shipped jobs span daily maintenance, financial review, productivity, and system health:
 
 | Job | Schedule | What it does |
 |-----|----------|--------------|
 | Dream | Daily 4 AM | Memory maintenance and self-improvement processing |
-| Morning briefing | Daily 7 AM | Calendar, priorities, flagged items, suggested focus |
-| Weekly review | Sunday 10 AM | Accomplishments, backlog health, goal check-ins, look-ahead |
-| Monthly financial | 1st of month | Income, recurring outflows, budget variance, anomalies |
-| Quarterly self-assessment | Quarterly | Effectiveness audit, calibration check, sycophancy detection, user grading |
-| Subscription audit | 15th of month | Recurring charges review, cancel/renegotiate candidates |
-| System maintenance | Weekly (first session) | Interactive review of stale tasks, pending decisions, pattern effectiveness |
+| Morning briefing | Daily 7 AM (disabled) | Calendar, priorities, flagged items, suggested focus |
+| Weekly review | Sunday 10 AM (disabled) | Accomplishments, backlog health, goal check-ins, look-ahead |
+| Monthly financial | 1st of month (disabled) | Income, recurring outflows, budget variance, anomalies |
+| Quarterly self-assessment | Quarterly (disabled) | Effectiveness audit, calibration check, sycophancy detection, user grading |
+| Subscription audit | 15th of month (disabled) | Recurring charges review, cancel/renegotiate candidates |
+| System maintenance | On demand (disabled) | Interactive review of stale tasks, pending decisions, pattern effectiveness |
 | Backup | Daily 3 AM | Snapshot of user-data to timestamped backup |
 | Prune | Monthly (disabled) | Archive content older than 12 months |
 | Auto-memory migration | Hourly | Drain host auto-memory into Robin's inbox |
@@ -112,12 +112,14 @@ A cross-platform scheduler that runs jobs on your OS (launchd on macOS, cron on 
 | Meeting prep | On demand (disabled) | Gather context, attendees, prior history, talking points |
 | Todo extraction | On demand (disabled) | Extract action items from forwarded email/documents |
 | Receipt tracking | On demand (disabled) | Find and summarize receipts by vendor, time range, or category |
-| Ingest | On demand | Process source documents into the knowledge base |
+| Ingest | On demand (disabled) | Process source documents into the knowledge base |
 | Lint | On demand (disabled) | Audit memory health |
 | Save conversation | On demand (disabled) | File conversation outcomes as summary pages |
 | Host validation | Quarterly (disabled) | Verify all supported AI tools still honor loading rules |
+| Multi-session coordination | On demand (disabled) | In-session protocol that registers active sessions and acquires file locks |
+| Reconciler heartbeat | Every 6 hours | Pick up new/changed job definitions and update scheduler entries |
 
-A reconciler heartbeat runs every 6 hours, picking up new or changed job definitions and updating scheduler entries automatically. Add a job by dropping a markdown file in `user-data/jobs/` — it's live within 6 hours.
+Add a job by dropping a markdown file in `user-data/jobs/` — the reconciler picks it up within 6 hours.
 
 The runner handles atomic locks, active-window gating, catch-up for missed runs (laptop was closed), failure categorization, and native OS notifications on status transitions.
 
@@ -128,8 +130,8 @@ Robin can pull data from external services on a schedule so it has context about
 - **Google Calendar** — upcoming and recent events (every 30 min)
 - **Gmail** — inbox metadata: senders, subjects, labels (every 15 min, no message bodies)
 - **GitHub** — authored events, notifications, releases from starred repos (hourly)
-- **Spotify** — recently played, top tracks/artists, playlists (hourly)
-- **Lunch Money** — financial transactions and category breakdowns
+- **Spotify** — recently played, top tracks/artists, playlists (every 4 hours)
+- **Lunch Money** — financial transactions and category breakdowns (daily 1 AM)
 
 Each integration is a standalone script with OAuth setup, bootstrap sync, and a job definition. All ship disabled — they only run after you complete auth setup. Per-provider walkthroughs (creating OAuth clients, choosing scopes, known gotchas like Spotify's `127.0.0.1` redirect requirement and GitHub fine-grained PAT limits on `/notifications`) live in [`system/integrations/`](system/integrations/README.md). Write CLIs are available for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`) with `--dry-run` support. Calendar and Gmail writes use your AI tool's native capabilities.
 
@@ -152,7 +154,7 @@ Personal data never leaves your machine unless you explicitly push it to a remot
 
 Robin's instruction layer is organized into tiers to minimize token usage at session start:
 
-- **Tier 1** (always loaded) — core rules, capture checkpoint, manifest pointers. Capped at 5,500 tokens.
+- **Tier 1** (always loaded) — core rules, capture checkpoint, manifest pointers. Capped at 5,800 tokens (5,600 for the cache-stable prefix).
 - **Tier 2** (on demand) — job protocols, detailed rules. Loaded only when triggered.
 - **Tier 3** (cold storage) — archived memory, historical data.
 
@@ -257,7 +259,7 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `npm run backup` | Snapshot `user-data/` to `backup/user-data-<timestamp>.tar.gz` |
 | `npm run restore` | Restore `user-data/` from a backup archive (interactive) |
 | `npm run reset` | Wipe `user-data/`, recopy skeleton, re-prompt config (auto-backups first) |
-| `npm test` | Run the test suite (~290 tests) |
+| `npm test` | Run the test suite (~390 tests) |
 | `npm run lint-memory` | Check for orphan files, stale INDEX entries, oversized sub-trees |
 | `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
 | `npm run prune-preview` | Preview what the 12-month archive prune would move |
@@ -271,6 +273,10 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `robin jobs disable <name>` | Turn off an enabled job |
 | `robin jobs sync` | Force-reconcile OS scheduler with job definitions |
 | `robin jobs validate` | Parse and validate every job definition |
+| `robin update` | Post-`git pull` check: config migrate, pending migrations, skeleton sync, validate |
+| `npm run discord:auth` | Walk through Discord bot OAuth + token storage |
+| `npm run discord:install` | Install the Discord bot launchd agent (macOS) |
+| `npm run discord:status` / `discord:health` | Inspect bot daemon status / liveness |
 
 ---
 

@@ -73,7 +73,10 @@ function plistDict(obj) {
   return lines.join('\n');
 }
 
-export function generatePlist({ name, robinPath, workspaceDir, schedule, envPath = '/usr/local/bin:/usr/bin:/bin' }) {
+export function generatePlist({ name, argv, workspaceDir, schedule, envPath = '/usr/local/bin:/usr/bin:/bin' }) {
+  if (!Array.isArray(argv) || argv.length === 0 || argv.some((t) => typeof t !== 'string' || t.length === 0)) {
+    throw new Error('generatePlist: argv must be a non-empty array of non-empty strings');
+  }
   const intervals = cronToCalendarIntervals(schedule);
   if (intervals === null) {
     throw new Error(`cron expression too complex for launchd: ${schedule}`);
@@ -81,7 +84,7 @@ export function generatePlist({ name, robinPath, workspaceDir, schedule, envPath
   const calendar = intervals.length === 1 ? intervals[0] : intervals;
   const dict = {
     Label: `${LABEL_PREFIX}${name}`,
-    ProgramArguments: [robinPath, 'run', name],
+    ProgramArguments: [...argv, 'run', name],
     WorkingDirectory: workspaceDir,
     StartCalendarInterval: calendar,
     StandardOutPath: '/dev/null',
@@ -129,11 +132,11 @@ function launchctl(args) {
   return spawnSync('launchctl', args, { stdio: 'pipe' });
 }
 
-export function installEntry({ name, robinPath, workspaceDir, schedule }) {
+export function installEntry({ name, argv, workspaceDir, schedule }) {
   const dir = agentsDir();
   mkdirSync(dir, { recursive: true });
   const path = plistPath(name);
-  const xml = generatePlist({ name, robinPath, workspaceDir, schedule });
+  const xml = generatePlist({ name, argv, workspaceDir, schedule });
   // bootout if exists; ignore failure
   if (existsSync(path)) {
     launchctl(['bootout', `${bootstrapDomain()}/${LABEL_PREFIX}${name}`]);

@@ -13,7 +13,7 @@ import {
 import { hostname } from 'node:os';
 import { computeNextRun, formatLocal, listJobStates } from '../lib/jobs/state.js';
 import { run as runJob } from './runner.js';
-import { reconcile } from './reconciler.js';
+import { reconcile, resolveRobinArgv } from './reconciler.js';
 import { inActiveWindow, validateCron } from '../lib/jobs/cron.js';
 import { validateJobDef } from '../lib/jobs/frontmatter.js';
 
@@ -67,10 +67,6 @@ function workspaceDir() {
   return process.env.ROBIN_WORKSPACE || process.cwd();
 }
 
-function robinPathBaked() {
-  if (process.env.ROBIN_BIN) return process.env.ROBIN_BIN;
-  return `${process.execPath} ${join(workspaceDir(), 'bin/robin.js')}`;
-}
 
 function tzFromConfig(ws) {
   return readWorkspaceConfig(ws)?.user?.timezone || null;
@@ -267,7 +263,7 @@ export function cmdJobsLogs(args) {
 export function cmdJobsSync(args) {
   const force = args.includes('--force');
   const ws = workspaceDir();
-  const r = reconcile({ workspaceDir: ws, robinPath: robinPathBaked(), force });
+  const r = reconcile({ workspaceDir: ws, argv: resolveRobinArgv(ws), force });
   if (args.includes('--json')) {
     process.stdout.write(JSON.stringify(r, null, 2) + '\n');
     return;

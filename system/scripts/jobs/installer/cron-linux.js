@@ -18,7 +18,16 @@ function setCrontab(content) {
   return { ok: r.status === 0, stderr: r.stderr?.toString() || '' };
 }
 
-export function buildManagedBlock({ jobs, robinPath, workspaceDir, generatedAt = new Date() }) {
+function shellQuote(s) {
+  if (!/[\s'"\\$`]/.test(s)) return s;
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildManagedBlock({ jobs, argv, workspaceDir, generatedAt = new Date() }) {
+  if (!Array.isArray(argv) || argv.length === 0) {
+    throw new Error('buildManagedBlock: argv must be a non-empty array of strings');
+  }
+  const prefix = argv.map(shellQuote).join(' ');
   const lines = [BEGIN_MARKER];
   lines.push(`# Generated ${generatedAt.toISOString()}`);
   lines.push(`ROBIN_WORKSPACE=${workspaceDir}`);
@@ -26,7 +35,7 @@ export function buildManagedBlock({ jobs, robinPath, workspaceDir, generatedAt =
   for (const [name, def] of jobs) {
     if (def.frontmatter.enabled === false) continue;
     if (!def.frontmatter.schedule) continue;
-    const command = `${robinPath} run ${name}`;
+    const command = `${prefix} run ${name}`;
     lines.push(`${def.frontmatter.schedule} ${command}`);
   }
   lines.push(END_MARKER);
@@ -56,9 +65,9 @@ export function removeManagedBlock(existing) {
   return (before ? before + '\n' : '') + (after ? after : '');
 }
 
-export function syncAll({ jobs, robinPath, workspaceDir }) {
+export function syncAll({ jobs, argv, workspaceDir }) {
   const existing = getCrontab();
-  const block = buildManagedBlock({ jobs, robinPath, workspaceDir });
+  const block = buildManagedBlock({ jobs, argv, workspaceDir });
   const updated = replaceManagedBlock(existing, block);
   if (updated === existing) return { ok: true, changed: false };
   const r = setCrontab(updated);

@@ -65,7 +65,7 @@ describe('reconcile sync cycle', () => {
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
     writeJob('b', { name: 'b', description: 'd', runtime: 'node', schedule: '0 3 * * *', command: 'echo' });
     const adapter = fakeAdapter();
-    const r = reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    const r = reconcile({ workspaceDir, argv: ['/robin'], adapter });
     assert.equal(r.ok, true);
     assert.deepEqual([...r.added].sort(), ['a', 'b']);
     assert.equal(adapter._state.size, 2);
@@ -75,7 +75,7 @@ describe('reconcile sync cycle', () => {
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
     const adapter = fakeAdapter();
     adapter._state.set('legacy', { schedule: '0 5 * * *', workspaceDir });
-    const r = reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    const r = reconcile({ workspaceDir, argv: ['/robin'], adapter });
     assert.deepEqual(r.removed, ['legacy']);
     assert.equal(adapter._state.has('legacy'), false);
   });
@@ -90,7 +90,7 @@ describe('reconcile sync cycle', () => {
       enabled: false,
     });
     const adapter = fakeAdapter();
-    const r = reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    const r = reconcile({ workspaceDir, argv: ['/robin'], adapter });
     assert.equal(adapter._state.has('off'), false);
     assert.equal(r.added.includes('off'), false);
   });
@@ -98,7 +98,7 @@ describe('reconcile sync cycle', () => {
   test('regenerates INDEX/upcoming/failures and writes hash', () => {
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
     const adapter = fakeAdapter();
-    reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    reconcile({ workspaceDir, argv: ['/robin'], adapter });
     const paths = jobsPaths(workspaceDir);
     assert.match(readFileSync(paths.indexMd, 'utf-8'), /\| a \|/);
     assert.ok(readFileSync(paths.upcomingMd, 'utf-8').length > 0);
@@ -110,8 +110,8 @@ describe('reconcile sync cycle', () => {
   test('hash early-exit on second invocation when nothing changed', () => {
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
     const adapter = fakeAdapter();
-    reconcile({ workspaceDir, robinPath: '/robin', adapter });
-    const r2 = reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    reconcile({ workspaceDir, argv: ['/robin'], adapter });
+    const r2 = reconcile({ workspaceDir, argv: ['/robin'], adapter });
     assert.equal(r2.skipped, 'no-change');
   });
 
@@ -120,7 +120,7 @@ describe('reconcile sync cycle', () => {
     const paths = jobsPaths(workspaceDir);
     writeFileSync(paths.stateJSON('orphan'), JSON.stringify({ name: 'orphan' }));
     const adapter = fakeAdapter();
-    const r = reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    const r = reconcile({ workspaceDir, argv: ['/robin'], adapter });
     assert.deepEqual(r.orphansRemoved, ['orphan']);
   });
 
@@ -133,7 +133,7 @@ describe('reconcile sync cycle', () => {
     );
     writeJob('x', { override: 'x', enabled: false }, '');
     const adapter = fakeAdapter();
-    reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    reconcile({ workspaceDir, argv: ['/robin'], adapter });
     // Should NOT install (overridden enabled: false)
     assert.equal(adapter._state.has('x'), false);
   });
@@ -147,7 +147,7 @@ describe('reconcile sync cycle', () => {
     );
     writeJob('x', { name: 'x', description: 'usr', runtime: 'node', schedule: '0 6 * * *', command: 'echo' });
     const adapter = fakeAdapter();
-    reconcile({ workspaceDir, robinPath: '/robin', adapter });
+    reconcile({ workspaceDir, argv: ['/robin'], adapter });
     assert.equal(adapter._state.get('x').schedule, '0 6 * * *');
   });
 });

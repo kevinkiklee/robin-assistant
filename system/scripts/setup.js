@@ -127,9 +127,8 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
 
   // Install scheduler entries for enabled jobs (cross-platform). Idempotent.
   try {
-    const { reconcile } = await import('./jobs/reconciler.js');
-    const robinPath = `${process.execPath} ${join(workspaceDir, 'bin/robin.js')}`;
-    const r = reconcile({ workspaceDir, robinPath });
+    const { reconcile, resolveRobinArgv } = await import('./jobs/reconciler.js');
+    const r = reconcile({ workspaceDir, argv: resolveRobinArgv(workspaceDir) });
     if (r && r.added && r.added.length > 0) {
       console.log(`Job scheduler entries installed: ${r.added.join(', ')}`);
     }
