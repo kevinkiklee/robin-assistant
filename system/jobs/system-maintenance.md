@@ -43,7 +43,18 @@ Proactive: first session of each week (Monday) — offer it.
 - Read `user-data/state/sessions.md`. Remove stale entries (>2 hours old).
 - Check `user-data/state/locks/` for any lock files older than 24 hours. Delete them (stale from crashed sessions).
 
-### 7. Self-improvement check-in
+### 7. Prediction resolutions
+
+- Check `user-data/state/` for any `outcome-check-<date>.md` summary files produced by recent `outcome-check` runs.
+- For each pending summary, walk the user through the proposed resolutions one at a time:
+  - Read the prediction and the proposed outcome (`resolved-accurate` / `resolved-miss` / `inconclusive`).
+  - Ask the user: "Does this match what happened? [y / change outcome / skip]"
+  - On confirmation (or changed outcome), move the entry from `## Open` to `## Resolved` in `predictions.md` with fields: `outcome:`, `resolved-at: <today>`, `resolution-source: system-maintenance`.
+  - On skip, leave the entry in `## Open` and note it in the summary report.
+- After all summaries are processed, delete the reviewed `outcome-check-<date>.md` files.
+- If no summary files exist and `outcome-check` job is enabled, note how many open predictions are past their check-by date (a prompt to run `outcome-check` manually if needed).
+
+### 8. Self-improvement check-in
 
 - Present current `## Communication Style` (base + domain overrides) to the user: "This is how I've been calibrating to you — anything off?"
 - Present `## Domain Confidence`: "Here's where I think I'm strong vs. where I'm less sure — does this match your experience?"
@@ -51,7 +62,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ## Output
 
-Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Communication Style, Domain Confidence, Open Questions.
+Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Prediction Resolutions, Communication Style, Domain Confidence, Open Questions.
 
 ## After
 
