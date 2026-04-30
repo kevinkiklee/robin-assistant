@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 function envPath(workspaceDir) {
@@ -57,7 +57,8 @@ export function saveSecret(workspaceDir, key, value) {
   if (!replaced) lines.push(`${key}=${value}`);
   const content = lines.join('\n') + '\n';
   const tmp = `${path}.tmp`;
-  writeFileSync(tmp, content);
+  writeFileSync(tmp, content, { mode: 0o600 });
   renameSync(tmp, path);
+  chmodSync(path, 0o600);
   process.env[key] = value;
 }
