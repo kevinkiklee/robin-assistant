@@ -11,12 +11,20 @@
 //   - INDEX.md that lists a path which no longer exists
 //   - Sub-tree with >15 .md siblings at one level (suggests sub-index needed)
 //
+// Warn (printed but no exit 1):
+//   - File whose last_verified is older than its decay threshold (STALE)
+//   - Exact paragraph blocks (3+ consecutive non-empty lines) that appear in
+//     two or more files (REDUNDANT)
+//
 // The token harness handles the "INDEX too long" check. This file handles
 // the structural integrity checks.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseFrontmatter } from './lib/memory-index.js';
+import { defaultDecayFor, isStale } from './lib/decay.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -162,6 +170,142 @@ function findOrphanTmpFiles(memRoot) {
   return issues;
 }
 
+// ---------------------------------------------------------------------------
+// Staleness check
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk all memory .md files and flag those whose last_verified date is older
+ * than their decay threshold. Immortal files are always skipped.
+ * @returns {Array<{severity:'warn', message:string}>}
+ */
+function findStaleFiles(memRoot) {
+  const now = new Date();
+  const issues = [];
+
+  function walk(dir) {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      if (name.startsWith('.')) continue;
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) {
+        walk(full);
+      } else if (name.endsWith('.md') && !name.endsWith('.tmp')) {
+        const relPath = relative(memRoot, full).replace(/\\/g, '/');
+        let content;
+        try {
+          content = readFileSync(full, 'utf-8');
+        } catch {
+          return;
+        }
+        const { frontmatter } = parseFrontmatter(content);
+        // Resolve decay: frontmatter override takes precedence over sub-tree default.
+        const decay = frontmatter.decay || defaultDecayFor(relPath);
+        if (decay === 'immortal') continue;
+        const lastVerified = frontmatter.last_verified || null;
+        if (isStale(lastVerified, decay, now)) {
+          issues.push({
+            severity: 'warn',
+            message: `STALE: ${relPath} (last_verified=${lastVerified ?? 'none'}, decay=${decay})`,
+          });
+        }
+      }
+    }
+  }
+
+  walk(memRoot);
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
+// Redundancy check — exact paragraph duplicates across files
+// ---------------------------------------------------------------------------
+
+const PARAGRAPH_MIN_LINES = 3; // minimum consecutive non-empty lines to form a paragraph block
+
+/**
+ * Extract paragraph blocks from file body content.
+ * A paragraph is PARAGRAPH_MIN_LINES or more consecutive non-empty lines.
+ * Returns an array of paragraph strings (trimmed, newline-joined).
+ */
+function extractParagraphs(body) {
+  const lines = body.split('\n');
+  const paragraphs = [];
+  let block = [];
+
+  for (const line of lines) {
+    if (line.trim() === '') {
+      if (block.length >= PARAGRAPH_MIN_LINES) {
+        paragraphs.push(block.join('\n'));
+      }
+      block = [];
+    } else {
+      block.push(line);
+    }
+  }
+  if (block.length >= PARAGRAPH_MIN_LINES) {
+    paragraphs.push(block.join('\n'));
+  }
+  return paragraphs;
+}
+
+/**
+ * Walk all memory .md files and flag exact paragraph blocks that appear in
+ * two or more distinct files.
+ * @returns {Array<{severity:'warn', message:string}>}
+ */
+function findRedundantParagraphs(memRoot) {
+  // hash → [relPath, ...]
+  const seen = new Map();
+
+  function walk(dir) {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      if (name.startsWith('.')) continue;
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) {
+        walk(full);
+      } else if (name.endsWith('.md') && !name.endsWith('.tmp')) {
+        const relPath = relative(memRoot, full).replace(/\\/g, '/');
+        let content;
+        try {
+          content = readFileSync(full, 'utf-8');
+        } catch {
+          return;
+        }
+        const { body } = parseFrontmatter(content);
+        for (const para of extractParagraphs(body)) {
+          const hash = createHash('sha1').update(para).digest('hex').slice(0, 12);
+          if (!seen.has(hash)) {
+            seen.set(hash, { files: [], preview: para.slice(0, 60).replace(/\n/g, ' ') });
+          }
+          const entry = seen.get(hash);
+          if (!entry.files.includes(relPath)) {
+            entry.files.push(relPath);
+          }
+        }
+      }
+    }
+  }
+
+  walk(memRoot);
+
+  const issues = [];
+  for (const [hash, { files, preview }] of seen) {
+    if (files.length >= 2) {
+      issues.push({
+        severity: 'warn',
+        message: `REDUNDANT: paragraph ${hash} in ${files.join(', ')} — "${preview}…"`,
+      });
+    }
+  }
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
+
 function main() {
   const json = process.argv.includes('--json');
   const issues = [
@@ -169,6 +313,8 @@ function main() {
     ...findSubTreesNeedingIndex(MEM_ROOT),
     ...findStaleIndexEntries(MEM_ROOT),
     ...findOrphanTmpFiles(MEM_ROOT),
+    ...findStaleFiles(MEM_ROOT),
+    ...findRedundantParagraphs(MEM_ROOT),
   ];
   if (json) {
     process.stdout.write(JSON.stringify({ issues }, null, 2) + '\n');
@@ -188,4 +334,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-export { findOrphans, findSubTreesNeedingIndex, findStaleIndexEntries };
+export {
+  findOrphans,
+  findSubTreesNeedingIndex,
+  findStaleIndexEntries,
+  findStaleFiles,
+  findRedundantParagraphs,
+  extractParagraphs,
+};
