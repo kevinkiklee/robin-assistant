@@ -45,7 +45,7 @@ Edge cases (Dream in-session, sibling sessions): `system/startup.md`.
 
 ## Session End
 
-On session wrap, run 30-second sweep. **T1** (~20 turns), **T2** (user wrap signal), **T3** (Stop-hook fallback). Sweep: scan context for unwritten signals → dedupe vs `inbox.md` → batch-append tagged items → `writeSessionBlock` to `session-handoff.md` + `hot.md` via `system/scripts/lib/handoff.js`.
+On session wrap, run 30-second sweep. **T1** (~20 turns), **T2** (user wrap signal), **T3** (Stop-hook fallback; Claude Code only). Sweep: scan context for unwritten signals → dedupe vs `inbox.md` → batch-append tagged items → `writeSessionBlock` to `session-handoff.md` + `hot.md` via `system/scripts/lib/handoff.js`.
 
 ## Protocols
 When the user invokes a protocol by name (or close paraphrase), FETCH `system/jobs/<name>.md` and follow it. Don't compose from Tier 1 alone.
