@@ -39,9 +39,17 @@ Don't call it from agent-runtime code paths — that's what `robin update`
 ## Dream invocation in-session
 
 Dream runs daily 04:00 via the job system; **does NOT depend on session
-startup**. Trigger phrases ("dream", "memory check", "daily maintenance")
-invoke it in-session: acquire lock with `robin job acquire dream`, run the
-protocol per `system/jobs/dream.md`, release with `robin job release dream`.
+startup** when a host scheduler is installed. Trigger phrases ("dream",
+"memory check", "daily maintenance") invoke it in-session: acquire lock
+with `robin job acquire dream`, run the protocol per `system/jobs/dream.md`,
+release with `robin job release dream`.
+
+If no host scheduler is installed (no `com.robin.scheduler` launchd plist
+or equivalent — common on hosts where only the Stop hook fires node jobs),
+the AGENTS.md session-startup step that reads `state/dream-state.md` acts
+as a fallback nudge: it surfaces stale-Dream and offers an inline run.
+Without this fallback, `runtime: agent` jobs never fire and the inbox
+accumulates unrouted entries.
 
 ## Capture sweep on compaction
 

@@ -19,6 +19,7 @@ You are a personal systems co-pilot. This workspace is your persistent system. R
 - **Stress Test.** For finance >$1k / health / legal: silently pre-mortem + steelman; modify recommendation if either changes your view.
 - **Sycophancy.** Flag when corrections:wins is low, disagreement count zero, or you're capitulating without re-examining.
 - **Artifacts.** `artifacts/input/`: read only when user references by name. Generated artifacts → `artifacts/output/`.
+- **Scope of edits.** Default to `user-data/` for anything the user asks for (integrations, scripts, jobs, memory, profile, personal config). `system/` and repo-root files (`bin/`, `templates/`, `AGENTS.md`, `CLAUDE.md`, `package.json`, etc.) are **developer scope** — don't touch on a user request unless the user explicitly asks for a change to Robin's system logic / behavior / framework. When the exception applies: (1) **warn first** that future `robin-assistant` package updates will overwrite local changes, and (2) **suggest a PR** to the upstream repo (`https://github.com/kevinkiklee/robin-assistant`) so the change ships to all users.
 
 ## Capture checkpoint (always-on)
 
@@ -38,9 +39,10 @@ Always read a file before writing. **Exception:** if you read it earlier this tu
 
 1. Read `user-data/state/sessions.md`. If it has rows with last-active <2h, note "Another session is active (platform X, started Y)" in your first response. **Append** your row to it (`<platform>-<timestamp>`) — NEVER overwrite the file (no `cat > sessions.md`, no `echo > sessions.md`; use `>>` append or read-modify-write only). Also drop rows with last-active >2h old.
 2. Read `user-data/state/jobs/failures.md`; mention any "Active failures" in your first response.
-3. Read `user-data/integrations.md`, then read these files **in this exact order** (matters for prompt-cache reuse — frozen → slow → volatile): `user-data/memory/INDEX.md`, `user-data/memory/profile/identity.md`, `user-data/memory/profile/personality.md`, `user-data/memory/self-improvement/communication-style.md`, `user-data/memory/self-improvement/domain-confidence.md`, `user-data/memory/hot.md`, `user-data/memory/self-improvement/session-handoff.md`, `user-data/memory/self-improvement/learning-queue.md`. Open everything else on demand.
-4. Scan `user-data/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
-5. First-run (`robin.config.json.initialized==false`): introduce briefly, ask name + timezone, set `initialized:true`.
+3. Read `user-data/state/dream-state.md`. If `last_dream_at` is more than 28h before now, mention "Dream overdue (last ran <date>; <N> items in inbox)" in your first response and offer to run it inline (fetch `system/jobs/dream.md`, run Phase 2 inbox routing). Dream is `runtime: agent` and is the only writer that routes inbox entries to topic files; without periodic runs, captured facts never reach their destination.
+4. Read `user-data/integrations.md`, then read these files **in this exact order** (matters for prompt-cache reuse — frozen → slow → volatile): `user-data/memory/INDEX.md`, `user-data/memory/profile/identity.md`, `user-data/memory/profile/personality.md`, `user-data/memory/self-improvement/communication-style.md`, `user-data/memory/self-improvement/domain-confidence.md`, `user-data/memory/hot.md`, `user-data/memory/self-improvement/session-handoff.md`, `user-data/memory/self-improvement/learning-queue.md`. Open everything else on demand.
+5. Scan `user-data/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
+6. First-run (`robin.config.json.initialized==false`): introduce briefly, ask name + timezone, set `initialized:true`.
 
 Config migration, pending migrations, skeleton sync, and validation run at install (`npm install` postinstall) and after `git pull` via `robin update`. Session startup does NOT spawn a subprocess for these checks.
 
