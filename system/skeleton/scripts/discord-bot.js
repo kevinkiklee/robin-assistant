@@ -22,7 +22,6 @@ const SECRETS_ENV = resolve(ROBIN_ROOT, 'user-data/secrets/.env');
 dotenv.config({ path: SECRETS_ENV });
 const ENV_WHITELIST = ['HOME', 'PATH', 'LANG', 'USER', 'SHELL'];
 const TTL = { dm: 4 * 3600 * 1000, thread: 24 * 3600 * 1000 };
-const RECONNECT_NOTICE_INTERVAL_MS = 30 * 60 * 1000;
 
 const REQUIRED_KEYS = [
   'DISCORD_BOT_TOKEN',
@@ -91,25 +90,11 @@ async function main() {
   });
 
   let hasConnected = false;
-  const lastReconnectNotice = new Map(); // userId → ts
 
   async function writeStatus(state) {
     try {
       await writeFile(STATUS_PATH, JSON.stringify({ state, ts: new Date().toISOString() }, null, 2));
     } catch { /* best-effort */ }
-  }
-
-  async function notifyBackOnline() {
-    const now = Date.now();
-    for (const userId of allow.allowedUserIds) {
-      const last = lastReconnectNotice.get(userId) || 0;
-      if (now - last < RECONNECT_NOTICE_INTERVAL_MS) continue;
-      try {
-        const u = await client.users.fetch(userId);
-        await u.send({ content: "Robin's back online.", allowedMentions: { parse: [], repliedUser: false } });
-        lastReconnectNotice.set(userId, now);
-      } catch { /* ignore */ }
-    }
   }
 
   client.on(Events.ClientReady, async () => {
@@ -120,7 +105,6 @@ async function main() {
       await eventLog.append({ event: 'startup', status: 'ok' });
     } else {
       await eventLog.append({ event: 'reconnect', status: 'ok' });
-      await notifyBackOnline();
     }
   });
 
@@ -128,7 +112,25 @@ async function main() {
   client.on(Events.ShardResume, async () => {
     await writeStatus('ready');
     await eventLog.append({ event: 'resume', status: 'ok' });
-    await notifyBackOnline();
+  });
+  client.on(Events.ShardDisconnect, async (closeEvent, shardId) => {
+    await writeStatus('disconnected');
+    await eventLog.append({
+      event: 'disconnect',
+      status: 'ok',
+      shardId,
+      code: closeEvent?.code ?? null,
+      reason: closeEvent?.reason ? String(closeEvent.reason) : null,
+      wasClean: closeEvent?.wasClean ?? null,
+    });
+  });
+  client.on(Events.ShardError, async (error, shardId) => {
+    await eventLog.append({
+      event: 'shard_error',
+      status: 'error',
+      shardId,
+      message: error?.message ?? String(error),
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {

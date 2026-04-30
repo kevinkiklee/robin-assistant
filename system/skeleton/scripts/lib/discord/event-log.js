@@ -4,6 +4,8 @@ import { dirname } from 'node:path';
 const METADATA_KEYS = new Set([
   'ts', 'status', 'userId', 'conversationKey', 'latencyMs',
   'claudeSessionId', 'totalCostUsd', 'error', 'event',
+  // Gateway diagnostics (shard-level, no user content)
+  'shardId', 'code', 'reason', 'wasClean', 'message',
 ]);
 
 export function createEventLog({ path }) {
