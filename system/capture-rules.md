@@ -70,6 +70,7 @@ Examples:
 | `[derived]` | Dream classifies from content |
 | `[journal]` | `journal.md` |
 | `[predict]` | `self-improvement/predictions.md` `## Open` (direct-write; see format below) |
+| `[watch:<id>]` | `memory/watches/log.md` (append-only; Dream routes these) |
 | `[?]` | Unclassified — Dream classifies from content |
 
 Tags are routing hints; Dream verifies against the table.
