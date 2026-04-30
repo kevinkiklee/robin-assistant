@@ -63,7 +63,7 @@ Protocols: `morning-briefing` · `weekly-review` · `email-triage` · `meeting-p
 | Job state / failures | `user-data/state/jobs/INDEX.md` / `user-data/state/jobs/failures.md` |
 | Cross-reference graph | `user-data/memory/LINKS.md` |
 | Historical content >12mo | `user-data/memory/archive/INDEX.md` |
-| Sub-trees: lunch-money / photo-collection / events | their `INDEX.md` |
+| Sub-trees: lunch-money / photo-collection / events / watches | their `INDEX.md` |
 | Corrections / preferences / calibration | `user-data/memory/self-improvement/<topic>.md` |
 
 ## Jobs (read files, not CLI)

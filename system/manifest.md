@@ -36,6 +36,9 @@ The v3 layout separates immutable framework code from user data. Use this manife
 | `system/scripts/install-hooks.js` | Install `pre-commit` hook. |
 | `system/scripts/pre-commit-hook.js` | Refuses to commit `user-data/`. |
 | `system/scripts/lib/memory-index.js` | Frontmatter parse, slug, threshold, link rewrite, split planner. |
+| `system/scripts/lib/watches.js` | Watch lib: slugify, path helpers, frontmatter parse/serialize, listWatches, state I/O. |
+| `system/scripts/watches/cli.js` | `robin watch ...` subcommand impls (add/list/enable/disable/tail/run). |
+| `system/jobs/watch-topics.md` | Hourly agent job: iterates active watches, fetches via WebSearch, dedupes, writes `[watch:<id>]` inbox items. |
 
 ## User-data (`user-data/`) — local-only, gitignored
 
@@ -64,6 +67,8 @@ The v3 layout separates immutable framework code from user data. Use this manife
 | `user-data/state/jobs/upcoming.md` | 7-day forward calendar of scheduled runs. |
 | `user-data/state/jobs/failures.md` | Per-job failure register. |
 | `user-data/state/jobs/<name>.json` | Per-job state — last_run_at, exit_code, status, next_run_at, consecutive_failures. |
+| `user-data/memory/watches/` | One `.md` file per watch. Frontmatter drives the watch-topics job. `INDEX.md` is the sub-index; `log.md` is the append-only hits feed. |
+| `user-data/state/watches/` | Per-watch dedup state JSON — fingerprints ring buffer, last_run_at, consecutive_failures. |
 | `user-data/jobs/` | User-defined job overrides + additions. Default convention is a shallow override (`override: <name>` frontmatter — only the fields you change, body inherits from system if empty). Full replacement (no `override:`) and brand-new jobs both supported. Same file format as `system/jobs/`. |
 | `user-data/secrets/` | API keys; `.env`-style, gitignored. |
 
