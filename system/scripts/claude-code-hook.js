@@ -7,10 +7,9 @@
 //                      host auto-memory back to user-data/memory/inbox.md so
 //                      the Local Memory rule holds within seconds, not hours.
 //   --on-pre-tool-use  fires before every tool call. Reads the JSON event
-//                      from stdin and rewrites Write/Edit calls targeting
-//                      ~/.claude/projects/<workspace>/memory/* to
-//                      user-data/memory/inbox.md so the bypass never
-//                      reaches disk.
+//                      from stdin and BLOCKS Write/Edit/NotebookEdit calls
+//                      targeting ~/.claude/projects/<workspace>/memory/* by
+//                      exiting with code 2, so the bypass never reaches disk.
 //
 // Exit code 0 = allow the tool call to proceed (after any rewrite).
 // Exit code 2 = block the tool call (with a stderr message Claude Code
@@ -71,7 +70,7 @@ function countInboxBullets(ws) {
   return text.split('\n').filter((l) => /^- \[/.test(l)).length;
 }
 
-async function writeAutoLine(ws) {
+function writeAutoLine(ws) {
   const sid = mostRecentSessionId(ws, 'claude-code');
   if (!sid) return;
   const now = new Date().toISOString();
@@ -94,7 +93,7 @@ async function onStop(args) {
 
   // Write session-handoff auto-line synchronously. Failure must not block drain.
   try {
-    await writeAutoLine(ws);
+    writeAutoLine(ws);
   } catch (err) {
     process.stderr.write(`[claude-code-hook] writeAutoLine failed: ${err.message}\n`);
   }
