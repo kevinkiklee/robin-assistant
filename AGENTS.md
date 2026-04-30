@@ -28,7 +28,7 @@ After every response, scan for capturable signals.
 
 - **Direct-write to file** (don't just acknowledge — actually save): corrections (e.g. "stop X-ing") → append to `user-data/memory/self-improvement/corrections.md`; "remember this" → append to the relevant file + confirm; updates that supersede an in-context fact → update in place.
 - **Inbox-write** with `[tag]` to `user-data/memory/inbox.md` for everything else (Dream routes within 24h).
-- **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|?]`.
+- **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|predict|?]`.
 
 Routing details: `system/capture-rules.md`.
 

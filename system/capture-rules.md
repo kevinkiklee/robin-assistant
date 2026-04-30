@@ -11,7 +11,7 @@ After every response, scan for capturable signals.
 - **Direct-write to file** for: corrections to assistant behavior, user-stated
   "remember this", updates that supersede a fact already in your context.
 - **Inbox-write** with `[tag]` for everything else. Dream routes within 24h.
-- **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|?]`.
+- **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|predict|?]`.
 
 If AGENTS.md and this file disagree, AGENTS.md wins.
 
@@ -69,9 +69,32 @@ Examples:
 | `[update]` | `profile/<topic>.md` or `knowledge/<topic>.md` (supersedes existing) |
 | `[derived]` | Dream classifies from content |
 | `[journal]` | `journal.md` |
+| `[predict]` | `self-improvement/predictions.md` `## Open` (direct-write; see format below) |
 | `[?]` | Unclassified — Dream classifies from content |
 
 Tags are routing hints; Dream verifies against the table.
+
+### `[predict]` tag
+
+**Format (inline tag):**
+
+    [predict|<YYYY-MM-DD>|<confidence>] <claim> because <reasoning>
+
+Fields: `check-by date` | `confidence` (one of `verified|likely|inferred|guess`) | `claim because reasoning`.
+
+**Capture trigger (high-stakes only):** only tag as `[predict]` when the claim has:
+- A clear future check-by date, AND
+- Non-trivial stake: finance >$1k, health, legal, gear purchase, career change, or an explicit user decision currently in flight.
+
+Do NOT tag low-stakes claims ("you'll like this restaurant").
+
+**Direct-write entry shape** — append under `## Open` in `predictions.md`:
+
+    ### <YYYY-MM-DD> — <claim>
+    - check-by: <YYYY-MM-DD>
+    - confidence: <likely|inferred|guess>
+    - reasoning: <one-line basis>
+    - session: <session-id>
 
 ### Multi-faceted moments
 
@@ -93,6 +116,7 @@ These skip inbox:
 - **Explicit "remember this"** → confident destination + confirm
 - **Updates contradicting loaded context** → in-place update now
 - **Derived analysis** → see Derived-analysis section below
+- **Predictions** → `self-improvement/predictions.md` `## Open` (high-stakes future claims only; see `[predict]` tag above)
 - **Ingest** → multi-file structural; see `system/jobs/ingest.md`
 
 ## Confirmation behavior
