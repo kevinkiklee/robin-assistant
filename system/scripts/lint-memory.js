@@ -187,6 +187,7 @@ function findStaleFiles(memRoot) {
     if (!existsSync(dir)) return;
     for (const name of readdirSync(dir)) {
       if (name.startsWith('.')) continue;
+      if (SKIP_NAMES.has(name)) continue;
       const full = join(dir, name);
       const st = statSync(full);
       if (st.isDirectory()) {
@@ -263,6 +264,7 @@ function findRedundantParagraphs(memRoot) {
     if (!existsSync(dir)) return;
     for (const name of readdirSync(dir)) {
       if (name.startsWith('.')) continue;
+      if (SKIP_NAMES.has(name)) continue;
       const full = join(dir, name);
       const st = statSync(full);
       if (st.isDirectory()) {
