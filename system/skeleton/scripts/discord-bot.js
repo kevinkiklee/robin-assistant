@@ -1,0 +1,307 @@
+#!/usr/bin/env node
+import { Client, GatewayIntentBits, Events, ChannelType, Partials } from 'discord.js';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { access, constants, stat, writeFile, mkdir } from 'node:fs/promises';
+import dotenv from 'dotenv';
+import { createSessionStore } from './lib/discord/session-store.js';
+import { createEventLog } from './lib/discord/event-log.js';
+import { createRunner } from './lib/discord/claude-runner.js';
+import { isAllowedContext } from './lib/discord/auth.js';
+import { stripMention, splitMessage } from './lib/discord/formatter.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const ROBIN_ROOT = resolve(__dirname, '../../');
+const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/state');
+const LOG_DIR = resolve(STATE_DIR, 'logs');
+const SESSIONS_PATH = resolve(STATE_DIR, 'discord-sessions.json');
+const EVENTS_PATH = resolve(LOG_DIR, 'discord-bot.events.jsonl');
+const STATUS_PATH = resolve(STATE_DIR, 'discord-bot.status.json');
+const SECRETS_ENV = resolve(ROBIN_ROOT, 'user-data/secrets/.env');
+dotenv.config({ path: SECRETS_ENV });
+const ENV_WHITELIST = ['HOME', 'PATH', 'LANG', 'USER', 'SHELL'];
+const TTL = { dm: 4 * 3600 * 1000, thread: 24 * 3600 * 1000 };
+const RECONNECT_NOTICE_INTERVAL_MS = 30 * 60 * 1000;
+
+const REQUIRED_KEYS = [
+  'DISCORD_BOT_TOKEN',
+  'DISCORD_APP_ID',
+  'DISCORD_ALLOWED_USER_IDS',
+  'DISCORD_ALLOWED_GUILD_ID',
+  'DISCORD_BOT_CLAUDE_PATH',
+];
+
+async function main() {
+  // 1. Validate env
+  for (const k of REQUIRED_KEYS) {
+    if (!process.env[k] || !process.env[k].trim()) {
+      console.error(`[discord-bot] missing required env: ${k}`);
+      process.exit(1);
+    }
+  }
+
+  const allow = {
+    allowedUserIds: process.env.DISCORD_ALLOWED_USER_IDS.split(',').map(s => s.trim()).filter(Boolean),
+    allowedGuildId: process.env.DISCORD_ALLOWED_GUILD_ID.trim(),
+  };
+  const binPath = process.env.DISCORD_BOT_CLAUDE_PATH.trim();
+  const timeoutMs = Number(process.env.DISCORD_BOT_TIMEOUT_MS || 600_000);
+  const maxTurns = Number(process.env.DISCORD_BOT_MAX_TURNS || 30);
+  const maxConcurrent = Number(process.env.DISCORD_BOT_MAX_CONCURRENT_RUNS || 4);
+
+  // 2. Verify binary exists at startup
+  try {
+    await access(binPath, constants.X_OK);
+  } catch {
+    console.error(`[discord-bot] DISCORD_BOT_CLAUDE_PATH is not executable: ${binPath}`);
+    process.exit(1);
+  }
+
+  // 3. .env perms warning
+  try {
+    const s = await stat(SECRETS_ENV);
+    if ((s.mode & 0o077) !== 0) {
+      console.warn(`[discord-bot] WARNING: ${SECRETS_ENV} is mode ${(s.mode & 0o777).toString(8)}, expected 0600`);
+    }
+  } catch { /* ignore */ }
+
+  // 4. Init state
+  await mkdir(LOG_DIR, { recursive: true });
+  const sessionStore = await createSessionStore({ path: SESSIONS_PATH });
+  const eventLog = createEventLog({ path: EVENTS_PATH });
+  const runner = createRunner({
+    binPath,
+    cwd: ROBIN_ROOT,
+    envWhitelist: ENV_WHITELIST,
+    maxTurns,
+    timeoutMs,
+    maxConcurrent,
+  });
+
+  // 5. Discord client
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.DirectMessages,
+    ],
+    partials: [Partials.Channel, Partials.Message], // needed for DM delivery to uncached channels
+  });
+
+  let hasConnected = false;
+  const lastReconnectNotice = new Map(); // userId → ts
+
+  async function writeStatus(state) {
+    try {
+      await writeFile(STATUS_PATH, JSON.stringify({ state, ts: new Date().toISOString() }, null, 2));
+    } catch { /* best-effort */ }
+  }
+
+  async function notifyBackOnline() {
+    const now = Date.now();
+    for (const userId of allow.allowedUserIds) {
+      const last = lastReconnectNotice.get(userId) || 0;
+      if (now - last < RECONNECT_NOTICE_INTERVAL_MS) continue;
+      try {
+        const u = await client.users.fetch(userId);
+        await u.send({ content: "Robin's back online.", allowedMentions: { parse: [], repliedUser: false } });
+        lastReconnectNotice.set(userId, now);
+      } catch { /* ignore */ }
+    }
+  }
+
+  client.on(Events.ClientReady, async () => {
+    console.log(`[discord-bot] logged in as ${client.user.tag}`);
+    await writeStatus('ready');
+    if (!hasConnected) {
+      hasConnected = true;
+      await eventLog.append({ event: 'startup', status: 'ok' });
+    } else {
+      await eventLog.append({ event: 'reconnect', status: 'ok' });
+      await notifyBackOnline();
+    }
+  });
+
+  client.on(Events.ShardReconnecting, () => writeStatus('reconnecting'));
+  client.on(Events.ShardResume, async () => {
+    await writeStatus('ready');
+    await eventLog.append({ event: 'resume', status: 'ok' });
+    await notifyBackOnline();
+  });
+
+  client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
+    if (!isAllowedContext(message, allow)) return;
+
+    const expiredKeys = await sessionStore.expireIdle(TTL);
+
+    const isDm = message.channel.type === ChannelType.DM;
+    const isThread = message.channel.isThread?.() === true;
+    const botUserId = client.user.id;
+    const mentioned = message.mentions.users.has(botUserId);
+
+    // Trigger check.
+    let key;
+    if (isDm) {
+      key = `dm-${message.author.id}`;
+    } else if (isThread) {
+      const existing = sessionStore.getSession(`thread-${message.channel.id}`);
+      if (!existing && !mentioned) return; // thread but no session and no @ → ignore
+      key = `thread-${message.channel.id}`;
+    } else if (mentioned) {
+      // Channel @-mention: open a thread
+      const cleanedFirst = stripMention(message.content, botUserId).trim() || 'Robin';
+      const threadName = cleanedFirst.slice(0, 50);
+      try {
+        const thread = await message.startThread({ name: threadName, autoArchiveDuration: 1440 });
+        key = `thread-${thread.id}`;
+        message._discordBotThread = thread; // pass-through for reply target
+      } catch (err) {
+        console.error('[discord-bot] startThread failed:', err.message);
+        return;
+      }
+    } else {
+      return; // no trigger
+    }
+
+    let cleanText = stripMention(message.content, botUserId).trim();
+
+    // Text triggers
+    if (cleanText === '/help') {
+      await safeReply(message, helpText(), key);
+      await eventLog.append({ event: 'help', status: 'ok', userId: message.author.id, conversationKey: key });
+      return;
+    }
+    if (cleanText === '/new') {
+      await sessionStore.drop(key);
+      await safeReply(message, 'Started fresh.', key);
+      await eventLog.append({ event: 'new', status: 'ok', userId: message.author.id, conversationKey: key });
+      return;
+    }
+    if (cleanText === '/cancel') {
+      const cancelled = runner.cancel(key);
+      await safeReply(message, cancelled ? 'Stopped.' : 'Nothing to stop.', key);
+      await eventLog.append({ event: 'cancel', status: cancelled ? 'ok' : 'noop', userId: message.author.id, conversationKey: key });
+      return;
+    }
+
+    if (!cleanText) cleanText = 'Hi';
+
+    const ctxHeader = isDm
+      ? `[Discord — DM | user: ${message.author.username}]`
+      : `[Discord — channel: #${(message.channel.parent?.name ?? message.channel.name) ?? '?'} | user: ${message.author.username}]`;
+    const prompt = `${ctxHeader}\n${cleanText}`;
+
+    // "Fresh after idle" means we just dropped this key in expireIdle above.
+    // A genuinely-new conversation gets no prefix.
+    const wasIdleExpired = expiredKeys.has(key);
+    const priorSessionId = sessionStore.getSession(key)?.claudeSessionId ?? null;
+
+    // Typing indicator
+    const typingTarget = message._discordBotThread ?? message.channel;
+    let typingTimer;
+    try {
+      await typingTarget.sendTyping();
+      typingTimer = setInterval(() => typingTarget.sendTyping().catch(() => {}), 8000);
+    } catch { /* ignore */ }
+
+    const start = Date.now();
+    let runResult;
+    try {
+      runResult = await runner.run({ key, prompt, priorSessionId });
+    } catch (err) {
+      clearInterval(typingTimer);
+      const userMsg = err.code === 'TIMEOUT'
+        ? 'Robin took too long and was stopped.'
+        : err.code === 'CANCELLED'
+        ? null
+        : err.code === 'PARSE_FAILED' || err.code === 'NONZERO_EXIT'
+        ? 'Robin had an error. (logged)'
+        : `Robin: unexpected error (${err.code || 'UNKNOWN'}).`;
+      if (userMsg) await safeReply(message, userMsg, key);
+      await eventLog.append({
+        event: 'run', status: 'error', userId: message.author.id, conversationKey: key,
+        latencyMs: Date.now() - start, error: (err.stderrTail || err.message || '').slice(-2048),
+      });
+      return;
+    }
+    clearInterval(typingTimer);
+
+    if (runResult.sessionId) {
+      await sessionStore.setSession(key, runResult.sessionId);
+    }
+
+    let body = runResult.result;
+    if (wasIdleExpired) body = `(new session) ${body}`;
+    const chunks = splitMessage(body);
+    if (chunks.length === 0) {
+      await safeReply(message, '(no response)', key);
+    } else {
+      await safeReply(message, chunks[0], key);
+      for (let i = 1; i < chunks.length; i++) {
+        await safeChannelSend(typingTarget, chunks[i], key);
+      }
+    }
+
+    await eventLog.append({
+      event: 'run', status: 'ok', userId: message.author.id, conversationKey: key,
+      latencyMs: Date.now() - start, claudeSessionId: runResult.sessionId, totalCostUsd: runResult.costUsd,
+    });
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('[discord-bot] shutdown');
+    await writeStatus('shutdown');
+    client.destroy();
+    process.exit(0);
+  });
+
+  await client.login(process.env.DISCORD_BOT_TOKEN);
+
+  async function safeReply(msg, content, key) {
+    try {
+      const target = msg._discordBotThread;
+      if (target) {
+        await target.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+      } else {
+        await msg.reply({ content, allowedMentions: { parse: [], repliedUser: false } });
+      }
+    } catch (err) {
+      if (err.code === 10003 /* Unknown Channel */ || err.code === 50001 /* Missing Access */) {
+        await sessionStore.drop(key);
+        await eventLog.append({ event: 'reply', status: 'channel_gone', conversationKey: key });
+      } else {
+        console.error('[discord-bot] reply failed:', err.message);
+      }
+    }
+  }
+
+  async function safeChannelSend(channel, content, key) {
+    try {
+      await channel.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+    } catch (err) {
+      if (err.code === 10003 || err.code === 50001) {
+        await sessionStore.drop(key);
+      }
+    }
+  }
+
+  function helpText() {
+    return [
+      '**Robin**',
+      '- DM me, or `@`-mention me in an allowed channel.',
+      '- I auto-create a thread on `@`-mention; reply in that thread to continue.',
+      '- `/new` — drop session, start fresh.',
+      '- `/cancel` — stop the current in-flight reply.',
+      '- `/help` — this message.',
+      '_Idle: 24h thread, 4h DM. After idle, the next reply is prefixed `(new session)`._',
+    ].join('\n');
+  }
+}
+
+main().catch(err => {
+  console.error('[discord-bot] fatal:', err);
+  process.exit(1);
+});

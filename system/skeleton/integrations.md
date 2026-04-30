@@ -22,6 +22,11 @@ Platform: claude-code
   - write: user-data/scripts/spotify-write.js (--action queue|skip|playlist-add)
 - weather: user-provided (paste or summarize)
 - browser: user-provided (paste or summarize)
+- discord: discord
+  - bot: user-data/scripts/discord-bot.js (launchd-supervised on macOS)
+  - control: user-data/scripts/discord-bot-{install,status,health}.js
+  - triggers: @mention, DM, /new /cancel /help
+  - allowlisted: DISCORD_ALLOWED_USER_IDS + DISCORD_ALLOWED_GUILD_ID
 
 ## Setup status
 
