@@ -9,7 +9,7 @@
 //
 // Prerequisite: Create a Spotify app at
 //   https://developer.spotify.com/dashboard
-// Add http://localhost:<any-port>/oauth-callback to its redirect URIs (you
+// Add http://127.0.0.1:<any-port>/oauth-callback to its redirect URIs (you
 // can use any port like 8765 — the script picks one and prints it). Then in
 // user-data/secrets/.env, set:
 //   SPOTIFY_CLIENT_ID=...
@@ -50,7 +50,7 @@ async function main() {
     console.error(
       'Create a Spotify app at\n' +
       '  https://developer.spotify.com/dashboard\n' +
-      `Add this redirect URI to it:\n  http://localhost:${REDIRECT_PORT}/oauth-callback\n` +
+      `Add this redirect URI to it:\n  http://127.0.0.1:${REDIRECT_PORT}/oauth-callback\n` +
       'Then add these lines to user-data/secrets/.env:\n' +
       '  SPOTIFY_CLIENT_ID=<your-client-id>\n' +
       '  SPOTIFY_CLIENT_SECRET=<your-client-secret>\n'

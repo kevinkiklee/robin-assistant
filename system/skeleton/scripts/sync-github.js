@@ -58,8 +58,19 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
   const events = await client.listUserEvents(me.login, { cap: 300 });
   const recent = events.filter((e) => new Date(e.created_at) >= since);
 
-  // 2. Notifications
-  const notifs = await client.listNotifications({ all: true });
+  // 2. Notifications (fine-grained PATs cannot access /notifications — fall through on 403)
+  let notifs = [];
+  let notifsSkipped = false;
+  try {
+    notifs = await client.listNotifications({ all: true });
+  } catch (err) {
+    if (err?.status === 403) {
+      console.warn('[sync-github] /notifications returned 403 — skipping (fine-grained PATs do not support this endpoint).');
+      notifsSkipped = true;
+    } else {
+      throw err;
+    }
+  }
 
   // 3. Releases from starred repos (capped — full sweep can be slow)
   let releases = [];
@@ -114,9 +125,12 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
     title: n.subject?.title ?? '',
     unread: n.unread ? 'yes' : '',
   }));
+  const notifsHeader = notifsSkipped
+    ? `Skipped — fine-grained PAT cannot access \`/notifications\`. Add classic PAT with \`notifications\` scope, or check via the GitHub UI.\n\n`
+    : `Pulled ${nowISO()}. ${notifs.length} threads.\n\n`;
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/github/notifications.md',
     `---\ndescription: GitHub notifications — current unread + recent (auto-pulled)\n---\n\n` +
-    `# GitHub Notifications — ${me.login}\n\nPulled ${nowISO()}. ${notifs.length} threads.\n\n` +
+    `# GitHub Notifications — ${me.login}\n\n${notifsHeader}` +
     writeTable({ columns: ['updated', 'repo', 'reason', 'type', 'title', 'unread'], rows: notifRows })
   );
 

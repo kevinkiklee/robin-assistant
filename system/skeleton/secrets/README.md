@@ -2,6 +2,9 @@
 
 API keys, tokens, and other credentials for Robin's integrations.
 
+For provider-side setup walkthroughs (creating OAuth clients, choosing
+scopes, known gotchas), see `system/integrations/`.
+
 ## Convention
 
 - One `.env` file per workspace at `user-data/secrets/.env`.

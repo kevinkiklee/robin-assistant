@@ -246,9 +246,10 @@ function captureAuthCode({ port, state, timeoutMs, onListening }) {
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end('<h1>OK</h1><p>Authorization received. You can close this tab.</p>');
+        const redirectUri = `http://127.0.0.1:${server.address().port}/oauth-callback`;
         clearTimeout(timer);
         server.close();
-        resolve({ code, redirectUri: `http://localhost:${server.address().port}/oauth-callback` });
+        resolve({ code, redirectUri });
       } catch (err) {
         clearTimeout(timer);
         try { server.close(); } catch { /* ignore */ }
@@ -261,7 +262,7 @@ function captureAuthCode({ port, state, timeoutMs, onListening }) {
     });
     server.listen(port, '127.0.0.1', () => {
       const actualPort = server.address().port;
-      const redirectUri = `http://localhost:${actualPort}/oauth-callback`;
+      const redirectUri = `http://127.0.0.1:${actualPort}/oauth-callback`;
       onListening(redirectUri);
     });
   });

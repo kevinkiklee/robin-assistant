@@ -178,7 +178,16 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
     if (!existsSync(join(workspaceDir, path))) toFetch.push(id);
   }
   if (toFetch.length > 0) {
-    const features = await client.audioFeatures(toFetch);
+    let features = [];
+    try {
+      features = await client.audioFeatures(toFetch);
+    } catch (err) {
+      if (err?.status === 403) {
+        console.warn('[sync-spotify] /audio-features returned 403 — skipping (Spotify deprecated this endpoint for apps created Nov 2024+).');
+      } else {
+        throw err;
+      }
+    }
     for (const f of features) {
       if (!f) continue;
       const path = `user-data/memory/knowledge/spotify/audio-features/${f.id}.md`;
@@ -202,14 +211,27 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
       ].join('\n');
       await openItem(workspaceDir, path, async () => fm);
     }
-    console.log(`[sync-spotify] cached ${features.length} audio-features files`);
+    if (features.length > 0) {
+      console.log(`[sync-spotify] cached ${features.length} audio-features files`);
+    }
   }
 
   // Playlists (bootstrap mode only — full sweep is API-heavy)
   if (bootstrap && playlists.length > 0) {
+    let skipped = 0;
     for (const p of playlists.slice(0, 50)) {
       const path = `user-data/memory/knowledge/spotify/playlists/${p.id}.md`;
-      const tracks = await client.playlistTracks(p.id, { cap: 200 });
+      let tracks;
+      try {
+        tracks = await client.playlistTracks(p.id, { cap: 200 });
+      } catch (err) {
+        if (err?.status === 403 || err?.status === 404) {
+          // Spotify-owned editorial/algorithmic playlists (Discover Weekly, Daily Mix, etc.) are restricted for apps created after Nov 2024.
+          skipped++;
+          continue;
+        }
+        throw err;
+      }
       const lines = [
         '---',
         `description: Spotify playlist — ${p.name} (${p.tracks?.total ?? 0} tracks, owner: ${p.owner?.display_name ?? p.owner?.id})`,
@@ -234,7 +256,8 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
       ];
       await atomicWrite(workspaceDir, path, lines.join('\n'));
     }
-    console.log(`[sync-spotify] wrote ${Math.min(playlists.length, 50)} playlist snapshots`);
+    const wrote = Math.min(playlists.length, 50) - skipped;
+    console.log(`[sync-spotify] wrote ${wrote} playlist snapshots${skipped > 0 ? ` (${skipped} skipped — Spotify-restricted endpoints)` : ''}`);
   }
 
   // Update cursor
