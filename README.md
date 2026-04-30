@@ -163,9 +163,32 @@ CI enforces token budgets on every PR. A measurement harness tracks per-file tok
 Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 
 - **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
-- **`jobs/`** — overlays `system/jobs/`. Same-name file does a full override; shallow override (`override: <name>`) inherits the rest. New files extend the catalog. Examples: customize morning briefing, add a sports-news job.
+- **`jobs/`** — overlays `system/jobs/`. **The default convention is a shallow override** (`override: <name>` frontmatter): you change only what you need, the rest inherits from the system definition and keeps tracking upstream upgrades. Use a full override (no `override:` key) only when you intend to fully replace a system job. Drop a brand-new file to extend the catalog.
 - **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/skeleton/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/lib/sync/`.
 - **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
+
+#### Customizing a job (the default pattern)
+
+Tweak any shipped job — schedule, body, prompt, enabled flag — without forking the package:
+
+```markdown
+<!-- user-data/jobs/morning-briefing.md -->
+---
+override: morning-briefing
+schedule: "0 6 * * *"   # only the fields you want to change
+---
+# Protocol: Morning Briefing (user override)
+
+…your custom protocol body, or omit the body to keep the system default…
+```
+
+The merge rules (system def + user override → effective def):
+
+- Frontmatter: user override wins on field collisions, system fields are preserved otherwise.
+- Body: replaced wholesale if the override has a non-empty body; system body is used if the override body is empty.
+- To revert: delete the override file. To fully replace: omit the `override:` key (the file then stands alone).
+
+`robin jobs enable <name>` and `robin jobs disable <name>` write a shallow override automatically — that's how the CLI itself flips state. Authoring your own override is the same pattern, just by hand.
 
 ### Memory lifecycle
 

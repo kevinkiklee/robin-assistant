@@ -14,6 +14,7 @@ The v3 layout separates immutable framework code from user data. Use this manife
 | `system/jobs/` | Agent + node job definitions. Schedulable and trigger-invocable. |
 | `system/migrations/` | Numbered migrations. Auto-applied at startup via `migrate.js`. |
 | `system/skeleton/` | Default `user-data/` layout copied on first run. |
+| `system/integrations/` | Per-provider setup playbooks (Google, GitHub, Spotify, Lunch Money, Discord). Reference docs distributed with the package. |
 | `bin/robin.js` | CLI entry: `robin run <name>`, `robin jobs ...`, `robin job acquire/release`. |
 | `system/scripts/jobs/runner.js` | OS-scheduler entry. Parses, gates, locks, executes, surfaces failures. |
 | `system/scripts/jobs/reconciler.js` | Syncs OS scheduler entries with `system/jobs/` + `user-data/jobs/`. Runs every 6h. |
@@ -62,7 +63,7 @@ The v3 layout separates immutable framework code from user data. Use this manife
 | `user-data/state/jobs/upcoming.md` | 7-day forward calendar of scheduled runs. |
 | `user-data/state/jobs/failures.md` | Per-job failure register. |
 | `user-data/state/jobs/<name>.json` | Per-job state — last_run_at, exit_code, status, next_run_at, consecutive_failures. |
-| `user-data/jobs/` | User-defined job overrides + additions. Same format as `system/jobs/`. |
+| `user-data/jobs/` | User-defined job overrides + additions. Default convention is a shallow override (`override: <name>` frontmatter — only the fields you change, body inherits from system if empty). Full replacement (no `override:`) and brand-new jobs both supported. Same file format as `system/jobs/`. |
 | `user-data/secrets/` | API keys; `.env`-style, gitignored. |
 
 ## Artifacts + Sources + Backup

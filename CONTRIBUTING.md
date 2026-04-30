@@ -100,7 +100,16 @@ git add system/jobs/<name>.md
 git commit -m "feat(jobs): add <name>"
 ```
 
-The reconciler picks up the new job within 6 hours (or run `robin jobs sync` for immediate effect). Users can override your system job by dropping a `user-data/jobs/<name>.md` — either a full replacement or a shallow override (`override: <name>` + only the fields they want to change). Don't break that contract.
+The reconciler picks up the new job within 6 hours (or run `robin jobs sync` for immediate effect).
+
+**Override-friendliness is part of the contract.** The default user-customization path is a shallow override at `user-data/jobs/<name>.md` with `override: <name>` frontmatter — users change only the fields they need and inherit the rest from your system job. Design accordingly:
+
+- Keep the protocol body self-contained — users may replace the whole body but won't cherry-pick steps.
+- Avoid hard-coding user-specific details in the body. Put those in profile/preferences/integrations files that the body reads at runtime.
+- Don't rename existing jobs without a migration; the override key (`override: <name>`) binds users' overrides to the name.
+- New frontmatter fields should default to safe values when absent so existing user overrides don't have to be updated.
+
+Full replacement (omitting `override:`) is supported as an escape hatch but is not the recommended path — it stops tracking upstream changes. Don't break that contract.
 
 For scheduled jobs, see also `docs/superpowers/specs/2026-04-29-job-system-design.md` for the full job-system design (runtime semantics, cross-platform install, telemetry, failure handling).
 
