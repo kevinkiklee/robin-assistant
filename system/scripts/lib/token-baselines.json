@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-04-30T22:54:01.629Z",
+  "snapshot_at": "2026-04-30T22:56:24.317Z",
   "enforce_caps": true,
   "host": null,
   "tier1": {
@@ -10,9 +10,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 6969,
+        "bytes": 6919,
         "lines": 75,
-        "tokens": 1884,
+        "tokens": 1870,
         "max_lines": 75,
         "over_cap_at": null
       },
@@ -173,11 +173,11 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 44613,
+    "total_bytes": 44563,
     "total_lines": 553,
-    "total_tokens": 12058,
-    "cache_stable_bytes": 42068,
-    "cache_stable_tokens": 11370,
+    "total_tokens": 12045,
+    "cache_stable_bytes": 42018,
+    "cache_stable_tokens": 11357,
     "budget": {
       "max_lines": 400,
       "max_tokens": 5800
@@ -384,7 +384,7 @@
     "CAP_EXCEEDED: user-data/memory/INDEX.md has 220 lines (cap 70)",
     "CAP_EXCEEDED: user-data/memory/self-improvement/learning-queue.md has 43 lines (cap 10)",
     "TIER1_LINES: 553 lines exceeds budget 400",
-    "TIER1_TOKENS: 12058 tokens exceeds budget 5800",
-    "TIER1_CACHE_STABLE: 11370 tokens exceeds cache-stable budget 5600"
+    "TIER1_TOKENS: 12045 tokens exceeds budget 5800",
+    "TIER1_CACHE_STABLE: 11357 tokens exceeds cache-stable budget 5600"
   ]
 }
