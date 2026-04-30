@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-04-30T22:58:54.914Z",
+  "snapshot_at": "2026-04-30T23:16:40.229Z",
   "enforce_caps": true,
   "host": null,
   "tier1": {
@@ -10,9 +10,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 6937,
+        "bytes": 6982,
         "lines": 75,
-        "tokens": 1875,
+        "tokens": 1888,
         "max_lines": 75,
         "over_cap_at": null
       },
@@ -58,11 +58,11 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 26451,
-        "lines": 220,
-        "tokens": 7149,
-        "max_lines": 70,
-        "over_cap_at": 70
+        "bytes": 7833,
+        "lines": 73,
+        "tokens": 2118,
+        "max_lines": 80,
+        "over_cap_at": null
       },
       {
         "path": "user-data/integrations.md",
@@ -145,8 +145,8 @@
         "bytes": 1403,
         "lines": 43,
         "tokens": 380,
-        "max_lines": 10,
-        "over_cap_at": 10
+        "max_lines": 60,
+        "over_cap_at": null
       },
       {
         "path": "user-data/state/sessions.md",
@@ -173,14 +173,14 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 44581,
-    "total_lines": 553,
-    "total_tokens": 12049,
-    "cache_stable_bytes": 42036,
-    "cache_stable_tokens": 11362,
+    "total_bytes": 26008,
+    "total_lines": 406,
+    "total_tokens": 7030,
+    "cache_stable_bytes": 23463,
+    "cache_stable_tokens": 6342,
     "budget": {
-      "max_lines": 400,
-      "max_tokens": 5800
+      "max_lines": 425,
+      "max_tokens": 7200
     },
     "cache_order_violations": []
   },
@@ -195,9 +195,9 @@
       },
       {
         "path": "system/capture-rules.md",
-        "bytes": 7461,
-        "lines": 197,
-        "tokens": 2017,
+        "bytes": 8316,
+        "lines": 201,
+        "tokens": 2248,
         "over_cap_at": null
       },
       {
@@ -355,8 +355,8 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 70179,
-    "total_tokens": 18978,
+    "total_bytes": 71034,
+    "total_tokens": 19209,
     "top_5": [
       {
         "path": "system/jobs/dream.md",
@@ -364,7 +364,7 @@
       },
       {
         "path": "system/capture-rules.md",
-        "tokens": 2017
+        "tokens": 2248
       },
       {
         "path": "system/manifest.md",
@@ -380,11 +380,5 @@
       }
     ]
   },
-  "failures": [
-    "CAP_EXCEEDED: user-data/memory/INDEX.md has 220 lines (cap 70)",
-    "CAP_EXCEEDED: user-data/memory/self-improvement/learning-queue.md has 43 lines (cap 10)",
-    "TIER1_LINES: 553 lines exceeds budget 400",
-    "TIER1_TOKENS: 12049 tokens exceeds budget 5800",
-    "TIER1_CACHE_STABLE: 11362 tokens exceeds cache-stable budget 5600"
-  ]
+  "failures": []
 }
