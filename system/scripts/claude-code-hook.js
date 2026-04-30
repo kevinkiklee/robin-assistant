@@ -2,10 +2,10 @@
 // Claude Code lifecycle hook handler.
 //
 // Modes:
-//   --on-stop          fires after every assistant turn. Drains host
-//                      auto-memory back to user-data/memory/inbox.md so
-//                      the Local Memory rule holds within seconds, not
-//                      hours.
+//   --on-stop          fires after every assistant turn. Writes a session-handoff
+//                      auto-line to session-handoff.md and hot.md, then drains
+//                      host auto-memory back to user-data/memory/inbox.md so
+//                      the Local Memory rule holds within seconds, not hours.
 //   --on-pre-tool-use  fires before every tool call. Reads the JSON event
 //                      from stdin and rewrites Write/Edit calls targeting
 //                      ~/.claude/projects/<workspace>/memory/* to
@@ -25,8 +25,26 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
+import { writeSessionBlock } from './lib/handoff.js';
+import { mostRecentSessionId } from './lib/sessions.js';
+// applyRedaction(text) -> { redacted: string, count: number }
+import { applyRedaction } from './lib/sync/redact.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
+
+function parseArgs(argv) {
+  const args = { mode: null, workspace: null, drain: true, debug: false };
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--on-stop') args.mode = 'on-stop';
+    else if (a === '--on-pre-tool-use') args.mode = 'on-pre-tool-use';
+    else if (a === '--no-drain') args.drain = false;
+    else if (a === '--debug') args.debug = true;
+    else if (a === '--workspace') args.workspace = argv[++i];
+  }
+  return args;
+}
 
 function autoMemoryDir() {
   const slug = REPO_ROOT.replace(/\//g, '-');
@@ -37,17 +55,63 @@ function isAutoMemoryPath(p) {
   return /\.claude\/projects\/[^/]+\/memory\//.test(p);
 }
 
-async function onStop() {
+function readInboxTail(ws, n) {
+  const file = join(ws, 'user-data/memory/inbox.md');
+  if (!existsSync(file)) return [];
+  const text = readFileSync(file, 'utf8');
+  const bullets = text.split('\n').filter((l) => /^- \[[a-z?|]+\] /.test(l));
+  const tail = bullets.slice(-n);
+  return tail.map((l) => applyRedaction(l).redacted);
+}
+
+function countInboxBullets(ws) {
+  const file = join(ws, 'user-data/memory/inbox.md');
+  if (!existsSync(file)) return 0;
+  const text = readFileSync(file, 'utf8');
+  return text.split('\n').filter((l) => /^- \[/.test(l)).length;
+}
+
+async function writeAutoLine(ws) {
+  const sid = mostRecentSessionId(ws, 'claude-code');
+  if (!sid) return;
+  const now = new Date().toISOString();
+  const inboxTail = readInboxTail(ws, 3);
+  const inboxCount = countInboxBullets(ws);
+  const body = [
+    `ended: ${now} (auto)`,
+    `inbox bullets: ${inboxCount}`,
+    `last items:`,
+    ...inboxTail.map((line) => `  - ${line}`),
+  ].join('\n');
+  const handoffFile = join(ws, 'user-data/memory/self-improvement/session-handoff.md');
+  const hotFile = join(ws, 'user-data/memory/hot.md');
+  writeSessionBlock(handoffFile, sid, body);
+  writeSessionBlock(hotFile, sid, body, { maxBlocks: 3, position: 'top' });
+}
+
+async function onStop(args) {
+  const ws = args.workspace ?? REPO_ROOT;
+
+  // Write session-handoff auto-line synchronously. Failure must not block drain.
+  try {
+    await writeAutoLine(ws);
+  } catch (err) {
+    process.stderr.write(`[claude-code-hook] writeAutoLine failed: ${err.message}\n`);
+  }
+
+  if (!args.drain) {
+    process.exit(0);
+  }
+
   // Drain auto-memory in the background so the user's next response isn't
   // blocked. Discard output unless --debug.
-  const debug = process.argv.includes('--debug');
-  const args = [join(REPO_ROOT, 'system', 'scripts', 'migrate-auto-memory.js'), '--apply'];
-  if (debug) args.push('--json');
+  const drainArgs = [join(REPO_ROOT, 'system', 'scripts', 'migrate-auto-memory.js'), '--apply'];
+  if (args.debug) drainArgs.push('--json');
 
-  const child = spawn('node', args, {
+  const child = spawn('node', drainArgs, {
     cwd: REPO_ROOT,
     detached: true,
-    stdio: debug ? 'inherit' : 'ignore',
+    stdio: args.debug ? 'inherit' : 'ignore',
   });
   child.unref();
   process.exit(0);
@@ -93,9 +157,9 @@ function readStdin() {
 }
 
 async function main() {
-  const mode = process.argv[2];
-  if (mode === '--on-stop') return onStop();
-  if (mode === '--on-pre-tool-use') return onPreToolUse();
+  const args = parseArgs(process.argv);
+  if (args.mode === 'on-stop') return onStop(args);
+  if (args.mode === 'on-pre-tool-use') return onPreToolUse(args);
   console.error('Usage: claude-code-hook.js --on-stop | --on-pre-tool-use');
   process.exit(2);
 }

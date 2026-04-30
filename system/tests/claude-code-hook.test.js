@@ -4,9 +4,11 @@
 //   --on-pre-tool-use: blocks Write/Edit targeting ~/.claude/projects/.../memory/
 //   --on-stop: drains auto-memory in the background
 
-import { describe, it } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -101,4 +103,55 @@ describe('claude-code-hook usage errors', () => {
     const r = runHook([]);
     assert.equal(r.exit, 2);
   });
+});
+
+test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {
+  const ws = mkdtempSync(join(tmpdir(), 'hook-'));
+  mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/memory/self-improvement'), { recursive: true });
+  const now = new Date();
+  writeFileSync(join(ws, 'user-data/state/sessions.md'),
+    `# Active sessions
+
+| Session | Last active |
+|---------|-------------|
+| claude-code-20260430-2055 | ${now.toISOString()} |
+`);
+  writeFileSync(join(ws, 'user-data/memory/inbox.md'),
+    `# Inbox
+
+## Items
+
+- [fact] entry one
+- [task] entry two
+`);
+  writeFileSync(join(ws, 'user-data/memory/hot.md'),
+    `---
+description: Hot
+---
+
+# Hot
+`);
+  writeFileSync(join(ws, 'user-data/memory/self-improvement/session-handoff.md'),
+    `---
+description: Session Handoff
+---
+
+# Session Handoff
+`);
+
+  const r = spawnSync('node', [
+    join(REPO_ROOT, 'system/scripts/claude-code-hook.js'),
+    '--on-stop',
+    '--workspace', ws,
+    '--no-drain',
+  ], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+
+  const handoff = readFileSync(join(ws, 'user-data/memory/self-improvement/session-handoff.md'), 'utf8');
+  assert.match(handoff, /## Session — claude-code-20260430-2055/);
+  assert.match(handoff, /\(auto\)/);
+
+  const hot = readFileSync(join(ws, 'user-data/memory/hot.md'), 'utf8');
+  assert.match(hot, /## Session — claude-code-20260430-2055/);
 });
