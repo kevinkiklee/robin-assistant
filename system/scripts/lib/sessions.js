@@ -24,7 +24,7 @@ export function mostRecentSessionId(workspaceDir, platform, opts = {}) {
     if (!sid.startsWith(`${platform}-`)) continue;
     const t = new Date(ts);
     if (Number.isNaN(t.getTime())) continue;
-    if (now.getTime() - t.getTime() > TWO_HOURS_MS) continue;
+    if (Math.abs(now.getTime() - t.getTime()) > TWO_HOURS_MS) continue;
     if (!best || t > best.t) best = { sid, t };
   }
   return best?.sid ?? null;

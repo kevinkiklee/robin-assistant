@@ -42,3 +42,27 @@ test('mostRecentSessionId: returns null when sessions.md missing', () => {
   const id = mostRecentSessionId(dir, 'claude-code', { now: new Date() });
   assert.equal(id, null);
 });
+
+test('mostRecentSessionId: excludes future timestamps beyond 2h', () => {
+  const now = new Date('2026-04-30T21:00:00Z');
+  const ws = workspace(`# Active sessions
+
+| Session | Last active |
+|---------|-------------|
+| claude-code-20260501-0000 | 2026-05-01T00:00:00Z |
+`);
+  const id = mostRecentSessionId(ws, 'claude-code', { now });
+  assert.equal(id, null);
+});
+
+test('mostRecentSessionId: includes timestamps within 2h future (clock skew)', () => {
+  const now = new Date('2026-04-30T21:00:00Z');
+  const ws = workspace(`# Active sessions
+
+| Session | Last active |
+|---------|-------------|
+| claude-code-20260430-2130 | 2026-04-30T22:30:00Z |
+`);
+  const id = mostRecentSessionId(ws, 'claude-code', { now });
+  assert.equal(id, 'claude-code-20260430-2130');
+});
