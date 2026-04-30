@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-04-30T23:16:40.229Z",
+  "snapshot_at": "2026-04-30T23:31:40.111Z",
   "enforce_caps": true,
   "host": null,
   "tier1": {
@@ -10,9 +10,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 6982,
+        "bytes": 6990,
         "lines": 75,
-        "tokens": 1888,
+        "tokens": 1890,
         "max_lines": 75,
         "over_cap_at": null
       },
@@ -58,9 +58,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 7833,
-        "lines": 73,
-        "tokens": 2118,
+        "bytes": 7948,
+        "lines": 74,
+        "tokens": 2149,
         "max_lines": 80,
         "over_cap_at": null
       },
@@ -173,11 +173,11 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 26008,
-    "total_lines": 406,
-    "total_tokens": 7030,
-    "cache_stable_bytes": 23463,
-    "cache_stable_tokens": 6342,
+    "total_bytes": 26131,
+    "total_lines": 407,
+    "total_tokens": 7063,
+    "cache_stable_bytes": 23586,
+    "cache_stable_tokens": 6375,
     "budget": {
       "max_lines": 425,
       "max_tokens": 7200
@@ -188,23 +188,23 @@
     "files": [
       {
         "path": "system/jobs/dream.md",
-        "bytes": 11072,
-        "lines": 135,
-        "tokens": 2993,
+        "bytes": 11027,
+        "lines": 133,
+        "tokens": 2981,
         "over_cap_at": null
       },
       {
         "path": "system/capture-rules.md",
-        "bytes": 8316,
-        "lines": 201,
-        "tokens": 2248,
+        "bytes": 9331,
+        "lines": 225,
+        "tokens": 2522,
         "over_cap_at": null
       },
       {
         "path": "system/manifest.md",
-        "bytes": 6276,
-        "lines": 79,
-        "tokens": 1697,
+        "bytes": 6537,
+        "lines": 80,
+        "tokens": 1767,
         "over_cap_at": null
       },
       {
@@ -236,6 +236,13 @@
         "over_cap_at": null
       },
       {
+        "path": "system/jobs/system-maintenance.md",
+        "bytes": 3173,
+        "lines": 69,
+        "tokens": 858,
+        "over_cap_at": null
+      },
+      {
         "path": "system/jobs/multi-session-coordination.md",
         "bytes": 3010,
         "lines": 73,
@@ -244,9 +251,9 @@
       },
       {
         "path": "system/startup.md",
-        "bytes": 2789,
-        "lines": 71,
-        "tokens": 754,
+        "bytes": 2912,
+        "lines": 74,
+        "tokens": 788,
         "over_cap_at": null
       },
       {
@@ -257,17 +264,17 @@
         "over_cap_at": null
       },
       {
-        "path": "system/jobs/system-maintenance.md",
-        "bytes": 2181,
-        "lines": 58,
-        "tokens": 590,
-        "over_cap_at": null
-      },
-      {
         "path": "system/self-improvement-rules.md",
         "bytes": 2099,
         "lines": 39,
         "tokens": 568,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/outcome-check.md",
+        "bytes": 1984,
+        "lines": 50,
+        "tokens": 537,
         "over_cap_at": null
       },
       {
@@ -355,20 +362,20 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 71034,
-    "total_tokens": 19209,
+    "total_bytes": 75364,
+    "total_tokens": 20380,
     "top_5": [
       {
         "path": "system/jobs/dream.md",
-        "tokens": 2993
+        "tokens": 2981
       },
       {
         "path": "system/capture-rules.md",
-        "tokens": 2248
+        "tokens": 2522
       },
       {
         "path": "system/manifest.md",
-        "tokens": 1697
+        "tokens": 1767
       },
       {
         "path": "system/jobs/lint.md",

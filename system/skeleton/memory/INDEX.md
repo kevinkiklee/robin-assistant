@@ -13,7 +13,8 @@ Robin's memory tree. Read this to decide which file to open. Generated — do no
 | self-improvement/communication-style.md | How the user prefers Robin to communicate — base style and domain overrides. |
 | self-improvement/corrections.md | Corrections to assistant behavior — captured directly when the user says "no, do X instead". Append-only. |
 | self-improvement/domain-confidence.md | Per-domain confidence — where Robin can act autonomously vs needs to verify or ask. |
-| self-improvement/learning-queue.md | Open questions Robin would like to ask the user when a natural moment arises. One question max ready. |
+| self-improvement/learning-queue.md | Learning Queue — questions Robin wants to understand better about the user |
+| self-improvement/predictions.md | Predictions Robin made + outcomes — source of truth for calibration rollup |
 | self-improvement/preferences.md | Working-style preferences — what the user has confirmed works, captured from positive signals. |
 | self-improvement/session-handoff.md | Per-session handoff notes — capture sweep summaries, "next session" hooks. Volatile; rolling. |
 | tasks.md | Active tasks grouped by category |

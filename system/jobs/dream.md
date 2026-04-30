@@ -80,7 +80,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 10. **Learning queue maintenance** — add items from knowledge gaps in session reflections. Scan recent journal entries and session handoffs for organically answered questions — mark them answered. Drop items older than 60 days that never found a natural moment.
 
-11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. **Prediction accuracy is not recomputed here** — `predictions.md` is the source of truth and the calibration rollup is owned by the `outcome-check` job (when enabled). Dream's role is limited to: if `predictions.md` exists and has resolved entries that post-date the last `outcome-check` run, note "N resolved predictions awaiting calibration rollup" in the one-line summary as a prompt for the user to run `outcome-check`.
+11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. Prediction accuracy is owned by `outcome-check` (when enabled) — Dream does not recompute it. If `predictions.md` has resolved entries newer than the last `outcome-check` run, include "N resolved predictions awaiting rollup" in the summary.
 
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/journal.md` or delete if resolved.
 
