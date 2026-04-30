@@ -81,6 +81,10 @@ Split into separate atomic entries. Each routes independently.
 
 `[update]` entries can include `(supersedes: <hint>)` to speed Dream's resolution.
 
+### Status changes propagate everywhere the entity is referenced
+
+When an entity changes state (paused, closed, cancelled, ended, moved), don't just update its primary file — grep for the entity name across `profile/`, `knowledge/`, and `tasks.md`, and update every reference in the same turn. A status assertion in a snapshot file (e.g. "weekly Wed 6pm") that contradicts the new state is a duplicate-of-the-old-truth, even if it's not a verbatim dup.
+
 ## Direct-write exceptions
 
 These skip inbox:
