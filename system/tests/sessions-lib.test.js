@@ -66,3 +66,15 @@ test('mostRecentSessionId: includes timestamps within 2h future (clock skew)', (
   const id = mostRecentSessionId(ws, 'claude-code', { now });
   assert.equal(id, 'claude-code-20260430-2130');
 });
+
+test('mostRecentSessionId: ignores separator rows in the table', () => {
+  const now = new Date('2026-04-30T21:00:00Z');
+  const ws = workspace(`# Active sessions
+
+| Session | Last active |
+|---------|-------------|
+| claude-code-20260430-2030 | 2026-04-30T20:30:00Z |
+`);
+  const id = mostRecentSessionId(ws, 'claude-code', { now });
+  assert.equal(id, 'claude-code-20260430-2030');
+});

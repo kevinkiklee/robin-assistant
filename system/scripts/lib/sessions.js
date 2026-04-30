@@ -15,7 +15,7 @@ export function mostRecentSessionId(workspaceDir, platform, opts = {}) {
   const text = readFileSync(file, 'utf8');
 
   // Match table rows: "| <session> | <iso-timestamp> |"
-  const rowRe = /^\|\s*([^\s|][^|]*?)\s*\|\s*([0-9T:.\-Z]+)\s*\|/gm;
+  const rowRe = /^\|\s*([a-zA-Z0-9][^|]*?)\s*\|\s*([0-9T:.\-Z]+)\s*\|/gm;
   let best = null;
   let m;
   while ((m = rowRe.exec(text)) !== null) {
