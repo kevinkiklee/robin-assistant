@@ -251,12 +251,17 @@ async function main() {
     });
   });
 
-  process.on('SIGTERM', async () => {
-    console.log('[discord-bot] shutdown');
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[discord-bot] shutdown (${signal})`);
     await writeStatus('shutdown');
-    client.destroy();
+    try { client.destroy(); } catch {}
     process.exit(0);
-  });
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   await client.login(process.env.DISCORD_BOT_TOKEN);
 
