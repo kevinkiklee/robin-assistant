@@ -44,9 +44,10 @@ Routing details: `system/capture-rules.md`.
 Config migration, pending migrations, skeleton sync, and validation run at install (`npm install` postinstall) and after `git pull` via `robin update`. Session startup does NOT spawn a subprocess for these checks.
 
 Edge cases (Dream in-session, sibling sessions): `system/startup.md`.
+## Session End
 
+On session wrap (T1: ~20 turns, T2: user signals wrap-up, T3: Stop hook), sweep: scan context for unwritten signals, dedupe vs `inbox.md`, batch-append tagged items, write block to `session-handoff.md` + `hot.md` via `system/scripts/lib/handoff.js`. See `system/capture-rules.md`.
 ## Protocols
-
 When the user invokes a protocol by name (or close paraphrase), FETCH `system/jobs/<name>.md` and follow it. Don't compose from Tier 1 alone.
 
 Protocols: `morning-briefing` · `weekly-review` · `email-triage` · `meeting-prep` · `ingest` · `lint` · `save-conversation` · `dream` · `subscription-audit` · `receipt-tracking` · `todo-extraction` · `monthly-financial` · `quarterly-self-assessment` · `system-maintenance` · `prune` · `host-validation`.
