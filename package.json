@@ -46,5 +46,9 @@
   "repository": {
     "type": "git",
     "url": ""
+  },
+  "dependencies": {
+    "discord.js": "^14.26.3",
+    "dotenv": "^16.6.1"
   }
 }
