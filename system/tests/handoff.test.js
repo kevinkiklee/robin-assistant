@@ -91,3 +91,47 @@ body line
   assert.equal(r2.changed, false);
   assert.equal(r2.action, 'noop');
 });
+
+test("writeSessionBlock: position='bottom' appends and trims oldest from front", () => {
+  const { file } = setup(`---
+description: Bottom Append
+---
+
+# Bottom
+
+## Session — old1
+old block 1
+
+## Session — old2
+old block 2
+
+## Session — old3
+old block 3
+`);
+  const result = writeSessionBlock(file, 'newest', 'fresh data', { maxBlocks: 3, position: 'bottom' });
+  const out = readFileSync(file, 'utf8');
+  assert.equal(result.action, 'created');
+  // newest goes at the end; oldest (old1) is dropped
+  assert.match(out, /## Session — newest/);
+  assert.match(out, /## Session — old2/);
+  assert.match(out, /## Session — old3/);
+  assert.doesNotMatch(out, /## Session — old1/);
+  // newest is at the bottom — appears AFTER old3 in the file
+  assert.ok(out.indexOf('## Session — newest') > out.indexOf('## Session — old3'));
+});
+
+test('writeSessionBlock: throws when sessionId contains a newline', () => {
+  const { file } = setup(`# F\n`);
+  assert.throws(
+    () => writeSessionBlock(file, 'bad\nid', 'body'),
+    /sessionId must be a non-empty string with no newlines/,
+  );
+});
+
+test('writeSessionBlock: throws when blockBody contains a session header line', () => {
+  const { file } = setup(`# F\n`);
+  assert.throws(
+    () => writeSessionBlock(file, 'sid', 'ok line\n## Session — sneaky\nmore'),
+    /blockBody must not contain/,
+  );
+});

@@ -16,6 +16,23 @@ const HEADER_RE = /^## Session — (.+)$/;
 
 export function writeSessionBlock(filePath, sessionId, blockBody, opts = {}) {
   const { maxBlocks = Infinity, position = 'top' } = opts;
+
+  // Validate sessionId: must be non-empty string with no newlines
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || sessionId.includes('\n')) {
+    const repr = typeof sessionId === 'string'
+      ? JSON.stringify(sessionId.slice(0, 50))
+      : typeof sessionId;
+    throw new Error(`writeSessionBlock: sessionId must be a non-empty string with no newlines; got: ${repr}`);
+  }
+
+  // Validate blockBody: must not contain a line matching the session header pattern
+  const bodyLines = blockBody.split('\n');
+  for (const line of bodyLines) {
+    if (/^## Session — /.test(line)) {
+      throw new Error(`writeSessionBlock: blockBody must not contain '## Session —' on its own line; got: ${JSON.stringify(line)}`);
+    }
+  }
+
   if (!existsSync(filePath)) {
     throw new Error(`writeSessionBlock: file does not exist: ${filePath}`);
   }
