@@ -17,6 +17,12 @@ usage:
   robin jobs sync                     [--force | --json]
   robin jobs validate [<name>]
   robin update                        # post-pull check: config migrate + pending migrations + skeleton sync + validate
+  robin watch add "<topic>"           [--cadence daily|weekly|hourly] [--query <q>] [--notify]
+  robin watch list
+  robin watch enable <id>
+  robin watch disable <id>
+  robin watch tail [<id>]             [--n=10]
+  robin watch run <id>                [--dry-run | --bootstrap]
 
 env:
   ROBIN_WORKSPACE  override the workspace directory
@@ -53,6 +59,10 @@ async function main() {
     if (r.findings.some((f) => f.level === 'FATAL')) process.exit(1);
     if (r.findings.length === 0) console.log('Nothing to do.');
     process.exit(0);
+  }
+  if (cmd === 'watch') {
+    const { dispatchWatch } = await import('../system/scripts/watches/cli.js');
+    return dispatchWatch(rest);
   }
 
   process.stderr.write(`unknown command: ${cmd}\n${HELP}`);
