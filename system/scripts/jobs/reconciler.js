@@ -15,6 +15,7 @@ import {
   writeIfChanged,
   writeJSONIfChanged,
 } from '../lib/jobs/atomic.js';
+import { cleanupStaleLocks } from '../lib/jobs/lock-cleanup.js';
 import {
   deleteJobState,
   listJobStates,
@@ -82,6 +83,10 @@ export function reconcile({
 }
 
 function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
+  // Sweep stale locks once per reconcile tick — keeps the locks dir tidy
+  // independent of whether the hash early-exit fires.
+  cleanupStaleLocks(workspaceDir);
+
   const result = {
     added: [],
     removed: [],
