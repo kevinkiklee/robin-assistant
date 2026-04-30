@@ -54,7 +54,19 @@ Proactive: first session of each week (Monday) — offer it.
 - After all summaries are processed, delete the reviewed `outcome-check-<date>.md` files.
 - If no summary files exist and `outcome-check` job is enabled, note how many open predictions are past their check-by date (a prompt to run `outcome-check` manually if needed).
 
-### 8. Self-improvement check-in
+### 8. Audit findings review
+
+- Check `user-data/state/audit/` for any pending `<date>.md` files produced by recent `audit` runs.
+- For each audit file, walk the user through findings one at a time:
+  - Present the finding: type (`contradiction` or `redundancy`), the two files, the conflicting/duplicate claims, and the suggested action.
+  - Ask the user: "How do you want to handle this? [fix now / skip / dismiss]"
+  - On **fix now**: apply the edit the user describes (merge, supersede, delete duplicate, add context). Do not auto-decide — confirm the exact change with the user first.
+  - On **skip**: leave the finding in the audit file for the next maintenance run.
+  - On **dismiss**: mark the finding as reviewed with no action needed.
+- After all findings in a file are resolved or skipped, delete the audit `<date>.md` file.
+- If no audit files exist and the `audit` job is enabled, note how many days since the last run (check `user-data/state/jobs/INDEX.md`).
+
+### 9. Self-improvement check-in
 
 - Present current `## Communication Style` (base + domain overrides) to the user: "This is how I've been calibrating to you — anything off?"
 - Present `## Domain Confidence`: "Here's where I think I'm strong vs. where I'm less sure — does this match your experience?"
@@ -62,7 +74,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ## Output
 
-Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Prediction Resolutions, Communication Style, Domain Confidence, Open Questions.
+Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Prediction Resolutions, Audit Findings, Communication Style, Domain Confidence, Open Questions.
 
 ## After
 
