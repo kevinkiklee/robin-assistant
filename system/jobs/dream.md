@@ -13,7 +13,7 @@ notify_on_failure: true
 
 Daily maintenance that keeps Robin's memory organized and its behavior improving.
 
-Two jobs: **memory management** (route, promote, and prune stored facts) and **self-improvement** (turn corrections into patterns, update calibration, clean up handoff notes).
+Two passes: **memory management** (route, promote, prune facts) and **self-improvement** (corrections → patterns, calibration, handoff cleanup).
 
 ## Invocation
 
@@ -49,7 +49,7 @@ Read these files:
 
 1. **Inbox routing** — for each entry in `user-data/memory/inbox.md`:
    - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `system/capture-rules.md` routing table — tags are hints, not binding.
-   - `[watch:<id>]` tagged entries: append the full line to `user-data/memory/watches/log.md` (append-only, chronological). Delete from inbox. Do NOT route to the individual watch's `<id>.md` file (that's user-curated). If `watches/log.md` is missing, create it from `system/skeleton/memory/watches/log.md`.
+   - `[watch:<id>]` tagged entries: append to `watches/log.md` (append-only). Delete from inbox.
    - `[?]` tagged entries: treat as unclassified, classify from content.
    - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
    - Untagged entries: classify per `system/capture-rules.md` routing table.

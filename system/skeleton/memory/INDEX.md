@@ -18,3 +18,4 @@ Robin's memory tree. Read this to decide which file to open. Generated — do no
 | self-improvement/preferences.md | Working-style preferences — what the user has confirmed works, captured from positive signals. |
 | self-improvement/session-handoff.md | Per-session handoff notes — capture sweep summaries, "next session" hooks. Volatile; rolling. |
 | tasks.md | Active tasks grouped by category |
+| watches/INDEX.md | Watches — topics Robin actively follows on user's behalf |
