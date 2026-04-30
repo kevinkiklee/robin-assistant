@@ -60,3 +60,23 @@ test('splitMessage: empty input returns empty array', () => {
   assert.deepEqual(splitMessage(''), []);
   assert.deepEqual(splitMessage('   '), []);
 });
+
+test('splitMessage: mid-fence forced cut keeps every chunk balanced', () => {
+  const text = 'a'.repeat(1000) + '\n```js\n' + 'b'.repeat(2500) + '\n```';
+  const out = splitMessage(text);
+  for (const chunk of out) {
+    const opens = (chunk.match(/```/g) || []).length;
+    assert.equal(opens % 2, 0, `chunk has odd fences: ${JSON.stringify(chunk.slice(0, 50))}…`);
+    assert.ok(chunk.length <= 2000, `chunk over limit: ${chunk.length}`);
+  }
+});
+
+test('splitMessage: pathological all-backticks input still produces balanced chunks', () => {
+  const text = '```'.repeat(700);
+  const out = splitMessage(text);
+  for (const chunk of out) {
+    const opens = (chunk.match(/```/g) || []).length;
+    assert.equal(opens % 2, 0, `chunk has odd fences (length ${chunk.length})`);
+    assert.ok(chunk.length <= 2000, `chunk over limit: ${chunk.length}`);
+  }
+});
