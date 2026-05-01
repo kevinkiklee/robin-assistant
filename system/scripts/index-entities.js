@@ -11,7 +11,7 @@
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
-import { collectEntities, writeEntitiesAtomic, detectUserEdit, readEntities } from './lib/entity-index.js';
+import { collectEntities, writeEntitiesAtomic, detectUserEdit } from './lib/entity-index.js';
 
 const ENTITIES_FILE = 'user-data/memory/ENTITIES.md';
 
