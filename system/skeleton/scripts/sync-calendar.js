@@ -23,11 +23,25 @@ import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js'
 import { atomicWrite, writeTable, openItem } from '../../system/scripts/lib/sync/markdown.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
+import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
+import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
 import { CalendarClient } from './lib/google/calendar-client.js';
 
 const SOURCE = 'sync-calendar';
 const PROVIDER = 'google';
 const WINDOW_DAYS = 90;
+
+// Insert wiki-graph entity links into a memory file we just wrote.
+// Best-effort; never throw to the caller.
+async function linkAfterWrite(workspaceDir, registry, wsRelPath) {
+  if (!registry || !wsRelPath.startsWith('user-data/memory/')) return;
+  const memRelPath = wsRelPath.slice('user-data/memory/'.length);
+  try {
+    await applyEntityLinks(workspaceDir, memRelPath, registry);
+  } catch (err) {
+    console.warn(`sync-calendar: applyEntityLinks(${memRelPath}) failed: ${err.message}`);
+  }
+}
 
 function nowISO() { return new Date().toISOString(); }
 function daysFromNow(days) {
@@ -105,6 +119,13 @@ function eventDetailMarkdown(ev) {
 }
 
 export async function syncCalendar({ workspaceDir, dryRun = false, bootstrap = false }) {
+  let registry = null;
+  try {
+    registry = await buildEntityRegistry(workspaceDir);
+  } catch (err) {
+    console.warn(`sync-calendar: registry unavailable, skipping link insertion (${err.message})`);
+  }
+
   const accessToken = await getAccessToken(workspaceDir, PROVIDER);
   const client = new CalendarClient(accessToken);
 
@@ -144,12 +165,14 @@ export async function syncCalendar({ workspaceDir, dryRun = false, bootstrap = f
     writeTable({ columns: cols, rows: upcoming.map(eventRow) }),
     { trust: 'untrusted', trustSource: 'sync-calendar' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/calendar/upcoming.md');
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/calendar/recent.md',
     `---\ndescription: Calendar — last ${WINDOW_DAYS} days (auto-pulled)\n---\n\n# Recent Events\n\n` +
     `Pulled ${nowISO()}. ${recent.length} events.\n\n` +
     writeTable({ columns: cols, rows: recent.map(eventRow) }),
     { trust: 'untrusted', trustSource: 'sync-calendar' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/calendar/recent.md');
 
   // Lazy per-event files for "interesting" events (have attendees / description / meeting URL).
   let interestingCount = 0;
@@ -158,6 +181,7 @@ export async function syncCalendar({ workspaceDir, dryRun = false, bootstrap = f
     interestingCount += 1;
     const path = `user-data/memory/knowledge/calendar/events/${ev.id}.md`;
     await openItem(workspaceDir, path, async () => eventDetailMarkdown(ev));
+    await linkAfterWrite(workspaceDir, registry, path);
   }
 
   saveCursor(workspaceDir, SOURCE, {
