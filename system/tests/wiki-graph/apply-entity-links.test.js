@@ -120,3 +120,15 @@ test('applyEntityLinks: preserves trust frontmatter and UNTRUSTED markers', asyn
   assert.match(after, /<!-- UNTRUSTED-END -->/);
   assert.match(after, /\[Dr\. Lee\]\(\.\.\/medical\/hemonc-lee\.md\)/);
 });
+
+test('applyEntityLinks: fail-soft when registry build throws (alias collision)', async () => {
+  const ws = await copyFixtureToTmp('linker-failsoft');
+  const result = await applyEntityLinks(ws, 'profile/note.md');
+  assert.equal(result.written, false);
+  assert.equal(result.inserted, 0);
+  assert.ok(result.registryError);
+  assert.match(result.registryError, /alias collision/);
+  const after = await readFile(join(ws, 'user-data/memory/profile/note.md'), 'utf-8');
+  assert.match(after, /Some content with Lee mentioned\./);
+  assert.doesNotMatch(after, /\[Lee\]\(/);
+});
