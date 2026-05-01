@@ -50,7 +50,7 @@ Exclude: append-only files (inbox.md, journal.md, decisions.md, log.md), operati
 
 ### 5. Missing pages
 
-Identify entities or concepts mentioned repeatedly across files (3+ mentions) but lacking their own dedicated page. Suggest creation with an appropriate type.
+Identify entities or concepts mentioned repeatedly across files (3+ mentions) but lacking their own dedicated page. Suggest creation with an appropriate type. Backed by `findCandidateEntities` which uses the entity registry to filter out already-promoted entities.
 
 ### 5b. Type suggestions
 

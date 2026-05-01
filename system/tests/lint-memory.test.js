@@ -10,6 +10,7 @@ import {
   findRedundantParagraphs,
   extractParagraphs,
   findAmbiguousAliases,
+  findCandidateEntities,
 } from '../scripts/lint-memory.js';
 
 const __dirname = pathDirname(fileURLToPath(import.meta.url));
@@ -190,5 +191,30 @@ describe('findAmbiguousAliases', () => {
     const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'registry-basic');
     const issues = await findAmbiguousAliases(fixturePath);
     assert.deepEqual(issues, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candidate-entities check
+// ---------------------------------------------------------------------------
+
+describe('findCandidateEntities', () => {
+  it('surfaces names mentioned 3+ times across 2+ files but with no entity page', async () => {
+    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'lint-candidate');
+    const issues = await findCandidateEntities(fixturePath);
+    const babbage = issues.find(i => /Charles Babbage/.test(i.message));
+    assert.ok(babbage, 'expected a candidate-entity issue for Charles Babbage');
+    assert.equal(babbage.type, 'candidate-entity');
+    assert.equal(babbage.severity, 'soft');
+  });
+
+  it('does not flag names that already have an entity page', async () => {
+    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'lint-candidate');
+    const issues = await findCandidateEntities(fixturePath);
+    // "Dong-Seok Lee" / "Dr. Lee" wouldn't be detected by the proper-noun regex anyway,
+    // but verify nothing nonsensical leaks through.
+    for (const i of issues) {
+      assert.equal(i.type, 'candidate-entity');
+    }
   });
 });

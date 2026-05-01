@@ -372,6 +372,89 @@ async function findAmbiguousAliases(workspaceDir) {
 }
 
 // ---------------------------------------------------------------------------
+// Candidate-entities check — flag proper-noun bigrams mentioned 3+ times
+// across 2+ files but with no corresponding entity page in the registry.
+// ---------------------------------------------------------------------------
+
+const STOP_PHRASES = new Set([
+  'January 1', 'January 2', 'February 1', 'March 1', 'April 1', 'May 1', 'June 1',
+  'July 1', 'August 1', 'September 1', 'October 1', 'November 1', 'December 1',
+  'United States', 'New York', 'Los Angeles', 'San Francisco',
+  'Last Updated', 'See Also', 'For Example', 'In Progress', 'No Longer',
+  'Open Source', 'Web App', 'App Store', 'Google Play',
+]);
+
+const PROPER_NOUN_RE = /\b([A-Z][a-zA-Z]+ [A-Z][a-zA-Z]+)\b/g;
+
+async function findCandidateEntities(workspaceDir) {
+  const { readFile } = await import('node:fs/promises');
+  const { buildEntityRegistry } = await import('./lib/wiki-graph/build-entity-registry.js');
+  const { isExcludedPath } = await import('./lib/wiki-graph/exclusions.js');
+  const { join, relative } = await import('node:path');
+
+  let registry;
+  try {
+    registry = await buildEntityRegistry(workspaceDir);
+  } catch {
+    return []; // Ambiguous-alias check will report registry errors.
+  }
+
+  const memoryRoot = join(workspaceDir, 'user-data', 'memory');
+  const counts = new Map(); // canonical token → { files: Set<string>, count: number }
+
+  if (!existsSync(memoryRoot)) return [];
+
+  // Collect all .md files under memoryRoot (deep, no sub-index pruning here).
+  const files = [];
+  function walk(dir) {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      if (name.startsWith('.')) continue;
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) walk(full);
+      else if (name.endsWith('.md')) files.push(full);
+    }
+  }
+  walk(memoryRoot);
+
+  for (const fullPath of files) {
+    const relPath = relative(memoryRoot, fullPath).split(/[\\/]/).join('/');
+    if (isExcludedPath(relPath)) continue;
+    if (relPath.startsWith('knowledge/sources/') || relPath.startsWith('knowledge/conversations/')) continue;
+    let content;
+    try {
+      content = await readFile(fullPath, 'utf-8');
+    } catch {
+      continue;
+    }
+    PROPER_NOUN_RE.lastIndex = 0;
+    let m;
+    while ((m = PROPER_NOUN_RE.exec(content)) !== null) {
+      const name = m[1];
+      if (STOP_PHRASES.has(name)) continue;
+      if (registry.byAlias.has(name.toLowerCase())) continue;
+      const c = counts.get(name) || { files: new Set(), count: 0 };
+      c.files.add(relPath);
+      c.count += 1;
+      counts.set(name, c);
+    }
+  }
+
+  const issues = [];
+  for (const [name, { files: fileSet, count }] of counts) {
+    if (count >= 3 && fileSet.size >= 2) {
+      issues.push({
+        type: 'candidate-entity',
+        severity: 'soft',
+        message: `"${name}" mentioned ${count}× across ${fileSet.size} files but has no entity page`,
+      });
+    }
+  }
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const json = process.argv.includes('--json');
@@ -385,6 +468,7 @@ async function main() {
     ...findRedundantParagraphs(MEM_ROOT),
     ...findTicViolations(MEM_ROOT),
     ...await findAmbiguousAliases(workspaceDir),
+    ...await findCandidateEntities(workspaceDir),
   ];
   if (json) {
     process.stdout.write(JSON.stringify({ issues }, null, 2) + '\n');
@@ -416,4 +500,5 @@ export {
   findTicViolations,
   extractParagraphs,
   findAmbiguousAliases,
+  findCandidateEntities,
 };
