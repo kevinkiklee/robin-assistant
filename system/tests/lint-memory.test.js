@@ -9,6 +9,7 @@ import {
   findStaleFiles,
   findRedundantParagraphs,
   extractParagraphs,
+  findAmbiguousAliases,
 } from '../scripts/lint-memory.js';
 
 const __dirname = pathDirname(fileURLToPath(import.meta.url));
@@ -167,5 +168,27 @@ describe('findRedundantParagraphs — redundancy', () => {
     assert.ok(redund[0].message.includes('x.md'), 'should list all files');
     assert.ok(redund[0].message.includes('y.md'), 'should list all files');
     assert.ok(redund[0].message.includes('z.md'), 'should list all files');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ambiguous-alias check
+// ---------------------------------------------------------------------------
+
+describe('findAmbiguousAliases', () => {
+  it('emits an issue when registry build throws on alias collision', async () => {
+    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'registry-collision');
+    const issues = await findAmbiguousAliases(fixturePath);
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0].type, 'ambiguous-alias');
+    assert.match(issues[0].message, /Lee/);
+    assert.match(issues[0].message, /lee-john\.md/);
+    assert.match(issues[0].message, /lee-jane\.md/);
+  });
+
+  it('returns no issues when registry builds successfully', async () => {
+    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'registry-basic');
+    const issues = await findAmbiguousAliases(fixturePath);
+    assert.deepEqual(issues, []);
   });
 });

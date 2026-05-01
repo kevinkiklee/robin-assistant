@@ -349,9 +349,33 @@ function findTicViolations(memRoot) {
 }
 
 // ---------------------------------------------------------------------------
+// Ambiguous-alias check — fails when the entity registry detects an alias
+// collision. The mechanical linker can't disambiguate so the user must rename
+// or further qualify one of the colliding aliases.
+// ---------------------------------------------------------------------------
 
-function main() {
+async function findAmbiguousAliases(workspaceDir) {
+  const { buildEntityRegistry } = await import('./lib/wiki-graph/build-entity-registry.js');
+  try {
+    await buildEntityRegistry(workspaceDir);
+    return [];
+  } catch (err) {
+    if (/alias collision/.test(err.message)) {
+      return [{
+        type: 'ambiguous-alias',
+        severity: 'hard',
+        message: err.message,
+      }];
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+async function main() {
   const json = process.argv.includes('--json');
+  const workspaceDir = REPO_ROOT;
   const issues = [
     ...findOrphans(MEM_ROOT),
     ...findSubTreesNeedingIndex(MEM_ROOT),
@@ -360,6 +384,7 @@ function main() {
     ...findStaleFiles(MEM_ROOT),
     ...findRedundantParagraphs(MEM_ROOT),
     ...findTicViolations(MEM_ROOT),
+    ...await findAmbiguousAliases(workspaceDir),
   ];
   if (json) {
     process.stdout.write(JSON.stringify({ issues }, null, 2) + '\n');
@@ -376,7 +401,10 @@ function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }
 
 export {
@@ -387,4 +415,5 @@ export {
   findRedundantParagraphs,
   findTicViolations,
   extractParagraphs,
+  findAmbiguousAliases,
 };
