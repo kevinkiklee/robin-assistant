@@ -14,6 +14,8 @@ const KEYWORDS = [
 const DATE_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?)\b/i;
 const MONEY_RE = /\$[\d,]+(?:\.\d+)?/;
 const PROPER_ATTR_RE = /\b[A-Z][a-z]+\s+(?:is|was|are|were|has|have|said|told)\b/;
+// GREETING_RE is a backstop in case t2 is configured below ~3 via thresholds — at the default t2=5,
+// every greeting-matching string already short-circuits to tier 1 via wc < t2.
 const GREETING_RE = /^(?:hi|hey|hello|thanks|thank you|ok|okay|cool|nice|got it|sure|yes|no|sounds good)\b[\s.!?]*$/i;
 
 export function scanKeywords(text) {
