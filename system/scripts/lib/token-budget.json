@@ -4,10 +4,10 @@
   "version": 1,
   "enforce_caps": true,
 
-  "$comment_caps": "Caps reflect realistic floors with 12 months of memory. Tier 1 is dominated by user content (personality, integrations, INDEX descriptions). Framework files (AGENTS.md, capture-rules, manifest) are aggressively trimmed; further cuts would lose findability. Original baseline before optimization: 8,278 tokens / 463 lines. Tier 1 was tightened to 5,800 in the 2026-04-29 token-optimization PR; raised to 7,500 on 2026-04-30 (organic memory growth + A3 session-block overhead); raised to 7,800 on 2026-04-30 (autonomy roadmap Ship 1) to absorb AGENTS.md Action-states + Conversational-tics rules. Revisit when Tier 1 baseline drifts past 7,000.",
-  "tier1_max_lines": 480,
-  "tier1_max_tokens": 9000,
-  "tier1_cache_stable_max_tokens": 8200,
+  "$comment_caps": "Caps reflect realistic floors with 12 months of memory. Tier 1 is dominated by user content (personality, integrations, INDEX descriptions). Framework files (AGENTS.md, capture-rules, manifest) are aggressively trimmed; further cuts would lose findability. Original baseline before optimization: 8,278 tokens / 463 lines. Tier 1 was tightened to 5,800 in the 2026-04-29 token-optimization PR; raised to 7,500 on 2026-04-30 (organic memory growth + A3 session-block overhead); raised to 7,800 on 2026-04-30 (autonomy roadmap Ship 1) to absorb AGENTS.md Action-states + Conversational-tics rules. Raised again 2026-05-01 (wiki-graph: split profile/people.md and service-providers.md into per-entity pages, expanding INDEX rows). Revisit when Tier 1 baseline drifts past 7,000.",
+  "tier1_max_lines": 510,
+  "tier1_max_tokens": 10200,
+  "tier1_cache_stable_max_tokens": 9300,
   "per_protocol_max_tokens": 4600,
   "sub_index_max_lines": 30,
 
