@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-05-01T00:07:02.282Z",
+  "snapshot_at": "2026-05-01T15:42:44.917Z",
   "enforce_caps": true,
   "host": null,
   "tier1": {
@@ -10,10 +10,10 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 7000,
-        "lines": 75,
-        "tokens": 1892,
-        "max_lines": 75,
+        "bytes": 10522,
+        "lines": 83,
+        "tokens": 2844,
+        "max_lines": 90,
         "over_cap_at": null
       },
       {
@@ -22,9 +22,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 484,
-        "lines": 25,
-        "tokens": 131,
+        "bytes": 646,
+        "lines": 33,
+        "tokens": 175,
         "max_lines": null,
         "over_cap_at": null
       },
@@ -34,9 +34,9 @@
         "exists": true,
         "required": false,
         "optional_existence": false,
-        "bytes": 728,
+        "bytes": 1154,
         "lines": 17,
-        "tokens": 197,
+        "tokens": 312,
         "max_lines": 100,
         "over_cap_at": null
       },
@@ -58,10 +58,22 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 8030,
-        "lines": 75,
-        "tokens": 2171,
-        "max_lines": 80,
+        "bytes": 8847,
+        "lines": 79,
+        "tokens": 2392,
+        "max_lines": 90,
+        "over_cap_at": null
+      },
+      {
+        "path": "user-data/memory/ENTITIES.md",
+        "stability": "slow",
+        "exists": false,
+        "required": false,
+        "optional_existence": true,
+        "bytes": 0,
+        "lines": 0,
+        "tokens": 0,
+        "max_lines": 160,
         "over_cap_at": null
       },
       {
@@ -70,9 +82,9 @@
         "exists": true,
         "required": false,
         "optional_existence": false,
-        "bytes": 2348,
-        "lines": 57,
-        "tokens": 635,
+        "bytes": 2538,
+        "lines": 58,
+        "tokens": 686,
         "max_lines": null,
         "over_cap_at": null
       },
@@ -173,14 +185,14 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 27185,
-    "total_lines": 430,
-    "total_tokens": 7348,
-    "cache_stable_bytes": 23834,
-    "cache_stable_tokens": 6442,
+    "total_bytes": 32302,
+    "total_lines": 451,
+    "total_tokens": 8731,
+    "cache_stable_bytes": 28951,
+    "cache_stable_tokens": 7825,
     "budget": {
-      "max_lines": 440,
-      "max_tokens": 7500
+      "max_lines": 480,
+      "max_tokens": 9000
     },
     "cache_order_violations": []
   },
@@ -188,16 +200,16 @@
     "files": [
       {
         "path": "system/jobs/dream.md",
-        "bytes": 11095,
-        "lines": 134,
-        "tokens": 2999,
+        "bytes": 16522,
+        "lines": 196,
+        "tokens": 4466,
         "over_cap_at": null
       },
       {
         "path": "system/capture-rules.md",
-        "bytes": 9410,
-        "lines": 226,
-        "tokens": 2544,
+        "bytes": 12603,
+        "lines": 263,
+        "tokens": 3407,
         "over_cap_at": null
       },
       {
@@ -208,17 +220,17 @@
         "over_cap_at": null
       },
       {
+        "path": "system/jobs/ingest.md",
+        "bytes": 6457,
+        "lines": 153,
+        "tokens": 1746,
+        "over_cap_at": null
+      },
+      {
         "path": "system/jobs/lint.md",
         "bytes": 5034,
         "lines": 132,
         "tokens": 1361,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/ingest.md",
-        "bytes": 4977,
-        "lines": 133,
-        "tokens": 1346,
         "over_cap_at": null
       },
       {
@@ -300,7 +312,7 @@
       },
       {
         "path": "system/jobs/host-validation.md",
-        "bytes": 1745,
+        "bytes": 1744,
         "lines": 56,
         "tokens": 472,
         "over_cap_at": null
@@ -376,28 +388,28 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 82462,
-    "total_tokens": 22299,
+    "total_bytes": 92561,
+    "total_tokens": 25029,
     "top_5": [
       {
         "path": "system/jobs/dream.md",
-        "tokens": 2999
+        "tokens": 4466
       },
       {
         "path": "system/capture-rules.md",
-        "tokens": 2544
+        "tokens": 3407
       },
       {
         "path": "system/manifest.md",
         "tokens": 1949
       },
       {
-        "path": "system/jobs/lint.md",
-        "tokens": 1361
+        "path": "system/jobs/ingest.md",
+        "tokens": 1746
       },
       {
-        "path": "system/jobs/ingest.md",
-        "tokens": 1346
+        "path": "system/jobs/lint.md",
+        "tokens": 1361
       }
     ]
   },
