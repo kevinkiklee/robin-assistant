@@ -9,6 +9,8 @@ import { createEventLog } from './lib/discord/event-log.js';
 import { createRunner } from './lib/discord/claude-runner.js';
 import { isAllowedContext } from './lib/discord/auth.js';
 import { stripMention, splitMessage } from './lib/discord/formatter.js';
+import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
+import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -284,13 +286,48 @@ async function main() {
 
   await client.login(process.env.DISCORD_BOT_TOKEN);
 
+  // Outbound policy gate: applied to every reply or channel send. Wraps the
+  // proposed content; on OutboundPolicyError replaces with a refusal note and
+  // logs to policy-refusals.log. The bot must not exit on a policy error
+  // (long-lived process) — we substitute the content and continue.
+  function gateContent({ content, targetStr, inboundOriginStr }) {
+    try {
+      assertOutboundContentAllowed({
+        content,
+        target: targetStr,
+        workspaceDir: ROBIN_ROOT,
+        ctx: { inboundOrigin: inboundOriginStr },
+      });
+      return content;
+    } catch (e) {
+      if (e instanceof OutboundPolicyError) {
+        appendPolicyRefusal(ROBIN_ROOT, buildRefusalEntry({ target: targetStr, error: e, content }));
+        return `(declined to send full reply: outbound policy layer ${e.layer} — ${e.reason})`;
+      }
+      throw e;
+    }
+  }
+
+  function inboundOriginFromMessage(msg) {
+    if (msg.channel?.isDMBased?.()) return `discord:dm:${msg.author.id}`;
+    if (msg._discordBotThread) {
+      const t = msg._discordBotThread;
+      return `discord:guild:${t.guildId}:channel:${t.parentId}:thread:${t.id}`;
+    }
+    if (msg.channel?.guildId) return `discord:guild:${msg.channel.guildId}:channel:${msg.channel.id}`;
+    return 'discord:unknown';
+  }
+
   async function safeReply(msg, content, key) {
+    const inboundOrigin = inboundOriginFromMessage(msg);
+    const targetStr = inboundOrigin;  // by construction reply goes back to inbound
+    const safe = gateContent({ content, targetStr, inboundOriginStr: inboundOrigin });
     try {
       const target = msg._discordBotThread;
       if (target) {
-        await target.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+        await target.send({ content: safe, allowedMentions: { parse: [], repliedUser: false } });
       } else {
-        await msg.reply({ content, allowedMentions: { parse: [], repliedUser: false } });
+        await msg.reply({ content: safe, allowedMentions: { parse: [], repliedUser: false } });
       }
     } catch (err) {
       if (err.code === 10003 /* Unknown Channel */ || err.code === 50001 /* Missing Access */) {
@@ -303,8 +340,16 @@ async function main() {
   }
 
   async function safeChannelSend(channel, content, key) {
+    // For channel sends we don't have the original message; use the channel-
+    // derived target. For DMs we don't track the recipient here, so fall back
+    // to the channel id only.
+    let targetStr;
+    if (channel.isDMBased?.()) targetStr = `discord:dm:${channel.recipient?.id ?? 'unknown'}`;
+    else if (channel.guildId) targetStr = `discord:guild:${channel.guildId}:channel:${channel.id}`;
+    else targetStr = `discord:channel:${channel.id}`;
+    const safe = gateContent({ content, targetStr, inboundOriginStr: targetStr });
     try {
-      await channel.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+      await channel.send({ content: safe, allowedMentions: { parse: [], repliedUser: false } });
     } catch (err) {
       if (err.code === 10003 || err.code === 50001) {
         await sessionStore.drop(key);

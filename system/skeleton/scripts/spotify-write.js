@@ -19,6 +19,8 @@
 import { fileURLToPath } from 'node:url';
 import { getAccessToken } from '../../system/scripts/lib/sync/oauth.js';
 import { SpotifyClient } from './lib/spotify/client.js';
+import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
+import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
 
 function parseArgs(argv) {
   const out = {};
@@ -80,6 +82,25 @@ async function main() {
   const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
   const accessToken = await getAccessToken(workspaceDir, 'spotify');
   const client = new SpotifyClient(accessToken);
+
+  // Outbound policy gate (cycle-1b). Spotify writes are user-bound by OAuth;
+  // taint + sensitive-shape checks still run on payload content.
+  const checkContent = JSON.stringify(payload);
+  const target = 'spotify:user:' + (args.action || 'unknown');
+  try {
+    assertOutboundContentAllowed({
+      content: checkContent,
+      target,
+      workspaceDir,
+    });
+  } catch (e) {
+    if (e instanceof OutboundPolicyError) {
+      appendPolicyRefusal(workspaceDir, buildRefusalEntry({ target, error: e, content: checkContent }));
+      process.stderr.write(`OUTBOUND_REFUSED [${e.layer}]: ${e.reason}\n`);
+      process.exit(11);
+    }
+    throw e;
+  }
 
   const result = await HANDLERS[args.action](client, payload);
   console.log(JSON.stringify(result, null, 2));

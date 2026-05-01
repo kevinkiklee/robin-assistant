@@ -23,6 +23,8 @@
 import { fileURLToPath } from 'node:url';
 import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { GitHubClient } from './lib/github/client.js';
+import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
+import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
 
 function parseArgs(argv) {
   const out = {};
@@ -102,6 +104,26 @@ async function main() {
   loadSecrets(workspaceDir);
   const pat = requireSecret('GITHUB_PAT');
   const client = new GitHubClient(pat);
+
+  // Outbound policy gate (cycle-1b). Compose payload content for content-based
+  // checks (taint + sensitive shapes); compose target string for the
+  // credential-derived allowlist check.
+  const checkContent = JSON.stringify(payload);
+  const repoTarget = payload.repo ? `github:${payload.repo}` : 'github:unknown';
+  try {
+    assertOutboundContentAllowed({
+      content: checkContent,
+      target: repoTarget,
+      workspaceDir,
+    });
+  } catch (e) {
+    if (e instanceof OutboundPolicyError) {
+      appendPolicyRefusal(workspaceDir, buildRefusalEntry({ target: repoTarget, error: e, content: checkContent }));
+      process.stderr.write(`OUTBOUND_REFUSED [${e.layer}]: ${e.reason}\n`);
+      process.exit(11);
+    }
+    throw e;
+  }
 
   const result = await HANDLERS[args.action](client, payload);
   console.log(JSON.stringify(result, null, 2));

@@ -2,6 +2,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, statSyn
 import { join, dirname } from 'node:path';
 import { applyRedaction } from './redact.js';
 import { sanitizeUntrustedString } from './sanitize-tags.js';
+import { updateIndexForFile } from './untrusted-index.js';
 
 const MEMORY_PREFIX = 'user-data/memory/';
 
@@ -95,6 +96,17 @@ export async function atomicWrite(workspaceDir, relPath, content, opts = {}) {
   const tmp = `${full}.tmp`;
   writeFileSync(tmp, body);
   renameSync(tmp, full);
+
+  // Step 3 — Update the untrusted-content index for cycle-1b's outbound
+  // taint check. Only files written with opts.trust contribute to the
+  // haystack. Trusted writes (no opts.trust) are not indexed.
+  if (opts.trust === 'untrusted' || opts.trust === 'untrusted-mixed') {
+    try {
+      updateIndexForFile(workspaceDir, relPath, body);
+    } catch {
+      // Index update is best-effort; never block the write on a stale index.
+    }
+  }
 }
 
 // Lazy fetch + write-once cache.
