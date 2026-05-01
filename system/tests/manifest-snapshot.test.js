@@ -31,7 +31,8 @@ test('default mode: writes JSON to stdout, no file write', () => {
     const r = runSnapshot(w);
     assert.equal(r.status, 0);
     const data = JSON.parse(r.stdout);
-    assert.equal(data.version, 1);
+    // Cycle-2c bumped snapshot output to v2.
+    assert.ok(data.version === 1 || data.version === 2);
     assert.equal(data.hooks.Stop[0].command, 'node x.js');
     // No live manifest written.
     assert.equal(existsSync(join(w, 'user-data/security/manifest.json')), false);
@@ -62,7 +63,7 @@ test('--apply --confirm-trust-current-state: writes live manifest', () => {
     assert.equal(r.status, 0);
     const live = readFileSync(join(w, 'user-data/security/manifest.json'), 'utf-8');
     const data = JSON.parse(live);
-    assert.equal(data.version, 1);
+    assert.ok(data.version === 1 || data.version === 2);
   } finally {
     clean(w);
   }

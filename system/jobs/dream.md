@@ -43,6 +43,30 @@ node system/scripts/dream-pre-filter.js
 
 Confirm exit code 0. The script moves quarantined lines to `user-data/memory/quarantine/captures.md` (paraphrased + redacted) and removes them from inbox.md. Phase 1 then reads the cleaned inbox. Lines without any `origin=` field (post-migration) are also quarantined as policy violations.
 
+## Phase X: Pattern TTL maintenance (cycle-2c)
+
+After memory routing and self-improvement passes, run the pattern lifecycle pass. This processes the per-pattern firings recorded by the model in `user-data/state/pattern-firings.log` and archives stale patterns:
+
+```sh
+node -e "import('./system/scripts/lib/pattern-ttl.js').then(m => console.log(m.processPatternTTL(process.cwd())))"
+```
+
+The pass:
+- Reads pattern-firings.log (one TSV line per fire: `<timestamp>\t<pattern-name>`).
+- Updates each pattern's `last_fired` and `fired_count` frontmatter fields in `user-data/memory/self-improvement/patterns.md`.
+- Truncates the firings log on success.
+- Moves any pattern whose `last_fired` exceeds its `ttl_days` (default 180) into `user-data/memory/self-improvement/patterns-archive.md`.
+
+Append a summary line to journal: `Dream: archived N patterns, updated M last_fired, fired_count incremented by total K firings.`
+
+**Pattern firing convention (model-instruction)**: when applying a learned pattern (recognizing its signal, executing its counter-action), append one line to `pattern-firings.log` via Bash:
+
+```sh
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/state/pattern-firings.log
+```
+
+This idiom is a single Bash call, not blocked by cycle-2a's sensitive-pattern hook. Skipping the append is not a security violation but causes the pattern to drift toward TTL archive.
+
 ## Phase 1: Scan
 
 Read these files:

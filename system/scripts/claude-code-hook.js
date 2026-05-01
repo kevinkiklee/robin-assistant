@@ -149,15 +149,71 @@ async function onPreToolUse() {
   }
 
   const target = event.tool_input?.file_path ?? event.input?.file_path;
-  if (!target || !isAutoMemoryPath(target)) {
+  if (!target) {
     process.exit(0);
   }
 
-  // Block the write with a clear message to the model.
-  process.stderr.write(
-    `Local Memory rule (immutable): writes to ${target} are forbidden. Append to user-data/memory/inbox.md with a [tag] line instead.\n`,
-  );
-  process.exit(2);
+  // Logs go to the active workspace, which differs from REPO_ROOT under the
+  // multi-host test harness and any out-of-tree install. Prefer ROBIN_WORKSPACE.
+  const ws = process.env.ROBIN_WORKSPACE || REPO_ROOT;
+
+  // 1. Existing: block writes to host auto-memory paths.
+  if (isAutoMemoryPath(target)) {
+    process.stderr.write(
+      `Local Memory rule (immutable): writes to ${target} are forbidden. Append to user-data/memory/inbox.md with a [tag] line instead.\n`,
+    );
+    process.exit(2);
+  }
+
+  // 2. Cycle-2c: PII backstop for writes to user-data/memory/.
+  //    Lazy-import redact.js + log helpers to keep non-memory-path hooks fast.
+  const memoryPrefix = '/user-data/memory/';
+  const isMemoryWrite = target.includes(memoryPrefix);
+  if (isMemoryWrite) {
+    const content =
+      event.tool_input?.content ??
+      event.tool_input?.new_string ??
+      '';
+    if (typeof content === 'string' && content.length > 0) {
+      const { applyRedaction } = await import('./lib/sync/redact.js');
+      const { count } = applyRedaction(content);
+      if (count > 0) {
+        try {
+          const { appendPolicyRefusal } = await import('./lib/policy-refusals-log.js');
+          const { fnv1a64 } = await import('./lib/sync/untrusted-index.js');
+          appendPolicyRefusal(ws, {
+            kind: 'pii-bypass',
+            target,
+            layer: 'write-hook',
+            reason: `${count} PII pattern(s) detected in proposed write`,
+            contentHash: fnv1a64(content),
+          });
+        } catch { /* logging best-effort */ }
+        process.stderr.write(
+          `WRITE_REFUSED [pii]: ${count} PII pattern(s) detected in write to ${target}. ` +
+          `Redact (e.g., replace SSN with [REDACTED:ssn]) before retrying.\n`
+        );
+        process.exit(2);
+      }
+    }
+
+    // 3. Cycle-2c: high-stakes destination audit (allow + log).
+    try {
+      const { isHighStakesDestination, appendHighStakesWrite } = await import('./lib/high-stakes-log.js');
+      const { fnv1a64 } = await import('./lib/sync/untrusted-index.js');
+      if (isHighStakesDestination(target)) {
+        const relPath = target.split('user-data/memory/')[1]
+          ? 'user-data/memory/' + target.split('user-data/memory/')[1]
+          : target;
+        appendHighStakesWrite(ws, {
+          target: relPath,
+          contentHash: fnv1a64(content || ''),
+        });
+      }
+    } catch { /* audit best-effort */ }
+  }
+
+  process.exit(0);
 }
 
 function readStdin() {

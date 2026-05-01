@@ -11,9 +11,11 @@
 //   → writes the snapshot to user-data/security/manifest.json.
 //   Two-flag pattern; `--apply` alone exits 1 with explanation.
 
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { writeManifest, loadCurrentSettings, enumerateMCPServers } from './lib/manifest.js';
+import { hashHardRules } from './lib/agentsmd-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -41,12 +43,36 @@ function buildSnapshot(workspaceDir) {
 
   const mcpExpected = enumerateMCPServers(workspaceDir);
 
+  // Cycle-2c: snapshot the AGENTS.md Hard Rules hash + user-data/jobs files.
+  let hardRulesHash = '';
+  const agentsmdPath = join(workspaceDir, 'AGENTS.md');
+  if (existsSync(agentsmdPath)) {
+    try {
+      const md = readFileSync(agentsmdPath, 'utf-8');
+      hardRulesHash = hashHardRules(md) ?? '';
+    } catch { /* leave empty */ }
+  }
+  let userDataJobs = [];
+  const jobsDir = join(workspaceDir, 'user-data/jobs');
+  if (existsSync(jobsDir)) {
+    try {
+      userDataJobs = readdirSync(jobsDir).filter((f) => f.endsWith('.md')).sort();
+    } catch { /* leave empty */ }
+  }
+
   return {
-    version: 1,
+    version: 2,
     hooks,
     mcpServers: {
       expected: mcpExpected,
       writeCapable: [],
+    },
+    agentsmd: {
+      hardRulesHash,
+      lastSnapshot: new Date().toISOString().slice(0, 10),
+    },
+    userDataJobs: {
+      knownFiles: userDataJobs,
     },
   };
 }

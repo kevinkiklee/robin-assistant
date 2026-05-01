@@ -245,3 +245,67 @@ The two-flag `--apply --confirm-trust-current-state` pattern requires explicit a
 - Manifest is plain JSON. An attacker with filesystem write access can edit it. Detection layer is **git-diff review on pull** for forks; on Kevin's machine, T3 access defeats both.
 - MCP discovery path varies across Claude Code versions; the helper tries known locations and fails soft on missing/malformed.
 - New MCPs that genuinely should be write-capable but aren't yet annotated default to mild drift; Kevin promotes them to `writeCapable` after first observation.
+
+---
+
+## 6. Mechanical backstops (cycle-2c)
+
+### PII write hook (G-02)
+
+`system/scripts/claude-code-hook.js --on-pre-tool-use` extends to scan content of any Write/Edit/NotebookEdit targeting `user-data/memory/`. Reuses `applyRedaction` patterns. Match → exit 2 with `WRITE_REFUSED [pii]: <count> PII pattern(s) detected ...`. Refusal logged to `policy-refusals.log` with `kind=pii-bypass`.
+
+Cooperative model retries with `[REDACTED:ssn]` substitution; jailbroken model that refuses to retry gets permanently blocked.
+
+### High-stakes destination audit (G-05)
+
+Same hook, additional check: writes to one of these paths log a row to `user-data/state/high-stakes-writes.log` (TSV: `timestamp \t target \t content-hash`):
+
+- `user-data/memory/tasks.md`
+- `user-data/memory/decisions.md`
+- `user-data/memory/self-improvement/{corrections,patterns,preferences,communication-style,calibration}.md`
+- `user-data/memory/profile/identity.md`
+
+Log is audit-only — write proceeds. Dedup window 1h on `target+contentHash`. Surfaced in morning briefing aggregated by destination.
+
+### AGENTS.md Hard Rules integrity (G-01)
+
+Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `## Hard Rules` section) and `agentsmd.lastSnapshot` (date string). `check-manifest.js` extracts the section from current AGENTS.md, normalizes (strips trailing whitespace per line; collapses 3+ blank lines; trims), hashes, and compares.
+
+- Match → no drift.
+- Mismatch → severe drift (`agentsmd-hard-rules-drift`).
+- Section missing → severe drift (`agentsmd-hard-rules-missing`).
+- Empty `hardRulesHash` (first-deploy baseline missing) → info entry; morning briefing prompts `manifest-snapshot.js` run.
+
+When Kevin intentionally edits Hard Rules, run `node system/scripts/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
+
+### user-data/jobs override drift (G-03)
+
+Manifest v2 `userDataJobs.knownFiles` is an allowlist of override filenames Kevin has accepted. Drift detection lists `*.md` in `user-data/jobs/`; any not in the allowlist surface as **mild** drift. Mass-drift on first deploy is handled by the bootstrap snapshot.
+
+### Pattern lifecycle TTL (G-27)
+
+Each promoted pattern gains `last_fired: YYYY-MM-DD` + `fired_count: N` frontmatter, optionally `ttl_days: N` per-pattern override.
+
+Model writes one line per pattern application to `user-data/state/pattern-firings.log` via Bash echo:
+
+```sh
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/state/pattern-firings.log
+```
+
+Dream's TTL phase (`processPatternTTL`):
+1. Reads firings log.
+2. Updates pattern frontmatter (`last_fired`, `fired_count`).
+3. Truncates the firings log on success.
+4. Archives any pattern whose `last_fired` exceeds its `ttl_days` (default 180) to `user-data/memory/self-improvement/patterns-archive.md` with `archived_at` and `archived_reason` fields. Restoration is a manual move-back.
+
+### Migration
+
+`system/scripts/migrate-cycle-2c.js` (one-shot, idempotent):
+1. Stamps existing patterns with `last_fired: <today>` + `fired_count: 0` to prevent immediate auto-archive.
+2. Bumps `user-data/security/manifest.json` from v1 to v2 (adds empty `agentsmd` + `userDataJobs` fields).
+
+### Known limitations
+
+- The PII backstop uses the same patterns as `applyRedaction`. Email/phone aren't currently in scope (the privacy hard rule names SSN/SIN/passport/payment/credentials only).
+- AGENTS.md hash is per-section. Kevin's edits to OTHER sections of AGENTS.md (Operational Rules, etc.) do not trip drift.
+- Pattern TTL relies on the model honestly logging firings. A model that refuses to log will see its patterns drift toward archive — acceptable: better to lose a pattern than to keep a stale one.

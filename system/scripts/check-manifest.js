@@ -9,11 +9,13 @@
 // Fail-soft: missing manifest → warning + exit 0. Uncaught error → log
 // + warning + exit 0 (we don't block sessions on a hook bug).
 
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadManifest, loadCurrentSettings, enumerateMCPServers } from './lib/manifest.js';
 import { appendPolicyRefusal, readRecentRefusalHashes } from './lib/policy-refusals-log.js';
 import { fnv1a64 } from './lib/sync/untrusted-index.js';
+import { hashHardRules } from './lib/agentsmd-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -21,7 +23,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 const STDERR_BOUND = 5;  // collapse beyond this many entries.
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export function computeDrift(expected, currentSettings, currentMCP) {
+export function computeDrift(expected, currentSettings, currentMCP, opts = {}) {
   const drift = [];
   const settings = currentSettings ?? { hooks: {} };
 
@@ -63,7 +65,70 @@ export function computeDrift(expected, currentSettings, currentMCP) {
     }
   }
 
+  // Cycle-2c: AGENTS.md Hard Rules hash check.
+  if (opts.agentsmdContent !== undefined) {
+    const currentHash = hashHardRules(opts.agentsmdContent);
+    if (currentHash === null) {
+      drift.push({
+        severity: 'severe',
+        kind: 'agentsmd-hard-rules-missing',
+        detail: 'Hard Rules section not found in AGENTS.md',
+        hash: 'agentsmd-missing',
+      });
+    } else if (!expected.agentsmd?.hardRulesHash) {
+      // First-run baseline missing — info only.
+      drift.push({
+        severity: 'info',
+        kind: 'agentsmd-hard-rules-baseline-missing',
+        detail: `Run manifest-snapshot.js to populate hardRulesHash (current=${currentHash.slice(0, 8)}…)`,
+        hash: `baseline:${currentHash}`,
+      });
+    } else if (expected.agentsmd.hardRulesHash !== currentHash) {
+      drift.push({
+        severity: 'severe',
+        kind: 'agentsmd-hard-rules-drift',
+        detail: `Hard Rules hash mismatch (expected ${expected.agentsmd.hardRulesHash.slice(0, 8)}…, got ${currentHash.slice(0, 8)}…)`,
+        hash: `agentsmd-drift:${currentHash}`,
+      });
+    }
+  }
+
+  // Cycle-2c: user-data/jobs/ override drift.
+  if (opts.userDataJobsFiles !== undefined) {
+    const known = new Set(expected.userDataJobs?.knownFiles ?? []);
+    for (const f of opts.userDataJobsFiles) {
+      if (!known.has(f)) {
+        drift.push({
+          severity: 'mild',
+          kind: 'unexpected-job-override',
+          detail: `user-data/jobs/${f}`,
+          hash: fnv1a64(`job:${f}`),
+        });
+      }
+    }
+  }
+
   return drift;
+}
+
+function readAgentsMD(workspaceDir) {
+  const p = join(workspaceDir, 'AGENTS.md');
+  if (!existsSync(p)) return undefined;
+  try {
+    return readFileSync(p, 'utf-8');
+  } catch {
+    return undefined;
+  }
+}
+
+function listUserDataJobs(workspaceDir) {
+  const dir = join(workspaceDir, 'user-data/jobs');
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith('.md')).sort();
+  } catch {
+    return [];
+  }
 }
 
 export function emitDrift(workspaceDir, drift) {
@@ -111,7 +176,9 @@ async function main() {
     }
     const currentSettings = loadCurrentSettings(workspaceDir);
     const currentMCP = enumerateMCPServers(workspaceDir);
-    const drift = computeDrift(manifest, currentSettings, currentMCP);
+    const agentsmdContent = readAgentsMD(workspaceDir);
+    const userDataJobsFiles = listUserDataJobs(workspaceDir);
+    const drift = computeDrift(manifest, currentSettings, currentMCP, { agentsmdContent, userDataJobsFiles });
     emitDrift(workspaceDir, drift);
     process.exit(0);
   } catch (err) {
