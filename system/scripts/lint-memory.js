@@ -30,7 +30,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 const MEM_ROOT = join(REPO_ROOT, 'user-data', 'memory');
 
-const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkeep', 'inbox.md']);
+const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkeep', 'inbox.md', 'ENTITIES.md', 'ENTITIES-extended.md']);
 const SUB_TREE_THRESHOLD = 15;
 
 function listMd(dir, base = dir, out = [], stopAtSubIndex = false) {

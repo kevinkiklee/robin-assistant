@@ -32,6 +32,12 @@
       "optional_existence": false
     },
     {
+      "path": "user-data/memory/ENTITIES.md",
+      "stability": "slow",
+      "required": false,
+      "optional_existence": true
+    },
+    {
       "path": "user-data/integrations.md",
       "stability": "slow",
       "required": false,
