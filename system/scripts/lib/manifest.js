@@ -96,6 +96,7 @@ export function enumerateMCPServers(workspaceDir) {
   const servers = new Set();
   const candidates = [
     join(workspaceDir, '.mcp.json'),
+    join(homedir(), '.claude', 'mcp.json'),
     join(homedir(), '.claude', 'mcp_settings.json'),
     join(homedir(), '.claude', 'settings.json'),
     join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
