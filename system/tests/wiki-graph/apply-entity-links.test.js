@@ -108,3 +108,15 @@ test('applyEntityLinks: case-insensitive match, case-preserving replacement', as
   const after = await readFile(join(ws, 'user-data/memory/profile/case.md'), 'utf-8');
   assert.match(after, /\[DR\. LEE\]\(\.\.\/knowledge\/medical\/hemonc-lee\.md\)/);
 });
+
+test('applyEntityLinks: preserves trust frontmatter and UNTRUSTED markers', async () => {
+  const ws = await copyFixtureToTmp('linker-trust');
+  const reg = await buildEntityRegistry(ws);
+  const result = await applyEntityLinks(ws, 'knowledge/sources/article.md', reg);
+  assert.equal(result.inserted, 1);
+  const after = await readFile(join(ws, 'user-data/memory/knowledge/sources/article.md'), 'utf-8');
+  assert.match(after, /^---\n[\s\S]*?trust: untrusted[\s\S]*?trust-source: ingest:article[\s\S]*?\n---/);
+  assert.match(after, /<!-- UNTRUSTED-START src=ingest:article -->/);
+  assert.match(after, /<!-- UNTRUSTED-END -->/);
+  assert.match(after, /\[Dr\. Lee\]\(\.\.\/medical\/hemonc-lee\.md\)/);
+});
