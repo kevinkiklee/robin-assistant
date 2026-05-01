@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-04-30T23:31:40.111Z",
+  "snapshot_at": "2026-05-01T00:07:02.282Z",
   "enforce_caps": true,
   "host": null,
   "tier1": {
@@ -10,9 +10,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 6990,
+        "bytes": 7000,
         "lines": 75,
-        "tokens": 1890,
+        "tokens": 1892,
         "max_lines": 75,
         "over_cap_at": null
       },
@@ -34,9 +34,9 @@
         "exists": true,
         "required": false,
         "optional_existence": false,
-        "bytes": 690,
-        "lines": 15,
-        "tokens": 187,
+        "bytes": 728,
+        "lines": 17,
+        "tokens": 197,
         "max_lines": 100,
         "over_cap_at": null
       },
@@ -46,9 +46,9 @@
         "exists": true,
         "required": false,
         "optional_existence": false,
-        "bytes": 4048,
-        "lines": 61,
-        "tokens": 1095,
+        "bytes": 4086,
+        "lines": 63,
+        "tokens": 1105,
         "max_lines": 120,
         "over_cap_at": null
       },
@@ -58,9 +58,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 7948,
-        "lines": 74,
-        "tokens": 2149,
+        "bytes": 8030,
+        "lines": 75,
+        "tokens": 2171,
         "max_lines": 80,
         "over_cap_at": null
       },
@@ -94,9 +94,9 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 720,
-        "lines": 17,
-        "tokens": 195,
+        "bytes": 760,
+        "lines": 19,
+        "tokens": 206,
         "max_lines": 25,
         "over_cap_at": null
       },
@@ -106,9 +106,9 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 358,
-        "lines": 11,
-        "tokens": 97,
+        "bytes": 398,
+        "lines": 13,
+        "tokens": 108,
         "max_lines": 25,
         "over_cap_at": null
       },
@@ -118,9 +118,9 @@
         "exists": true,
         "required": false,
         "optional_existence": false,
-        "bytes": 121,
-        "lines": 3,
-        "tokens": 33,
+        "bytes": 504,
+        "lines": 9,
+        "tokens": 137,
         "max_lines": 60,
         "over_cap_at": null
       },
@@ -130,9 +130,9 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 360,
-        "lines": 10,
-        "tokens": 98,
+        "bytes": 743,
+        "lines": 16,
+        "tokens": 201,
         "max_lines": 20,
         "over_cap_at": null
       },
@@ -142,9 +142,9 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 1403,
-        "lines": 43,
-        "tokens": 380,
+        "bytes": 1443,
+        "lines": 45,
+        "tokens": 390,
         "max_lines": 60,
         "over_cap_at": null
       },
@@ -173,14 +173,14 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 26131,
-    "total_lines": 407,
-    "total_tokens": 7063,
-    "cache_stable_bytes": 23586,
-    "cache_stable_tokens": 6375,
+    "total_bytes": 27185,
+    "total_lines": 430,
+    "total_tokens": 7348,
+    "cache_stable_bytes": 23834,
+    "cache_stable_tokens": 6442,
     "budget": {
-      "max_lines": 425,
-      "max_tokens": 7200
+      "max_lines": 440,
+      "max_tokens": 7500
     },
     "cache_order_violations": []
   },
@@ -188,23 +188,23 @@
     "files": [
       {
         "path": "system/jobs/dream.md",
-        "bytes": 11027,
-        "lines": 133,
-        "tokens": 2981,
+        "bytes": 11095,
+        "lines": 134,
+        "tokens": 2999,
         "over_cap_at": null
       },
       {
         "path": "system/capture-rules.md",
-        "bytes": 9331,
-        "lines": 225,
-        "tokens": 2522,
+        "bytes": 9410,
+        "lines": 226,
+        "tokens": 2544,
         "over_cap_at": null
       },
       {
         "path": "system/manifest.md",
-        "bytes": 6537,
-        "lines": 80,
-        "tokens": 1767,
+        "bytes": 7211,
+        "lines": 85,
+        "tokens": 1949,
         "over_cap_at": null
       },
       {
@@ -222,6 +222,13 @@
         "over_cap_at": null
       },
       {
+        "path": "system/jobs/system-maintenance.md",
+        "bytes": 4165,
+        "lines": 81,
+        "tokens": 1126,
+        "over_cap_at": null
+      },
+      {
         "path": "system/jobs/prune.md",
         "bytes": 4092,
         "lines": 118,
@@ -236,13 +243,6 @@
         "over_cap_at": null
       },
       {
-        "path": "system/jobs/system-maintenance.md",
-        "bytes": 3173,
-        "lines": 69,
-        "tokens": 858,
-        "over_cap_at": null
-      },
-      {
         "path": "system/jobs/multi-session-coordination.md",
         "bytes": 3010,
         "lines": 73,
@@ -250,10 +250,24 @@
         "over_cap_at": null
       },
       {
+        "path": "system/jobs/audit.md",
+        "bytes": 2997,
+        "lines": 91,
+        "tokens": 810,
+        "over_cap_at": null
+      },
+      {
         "path": "system/startup.md",
         "bytes": 2912,
         "lines": 74,
         "tokens": 788,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/watch-topics.md",
+        "bytes": 2288,
+        "lines": 56,
+        "tokens": 619,
         "over_cap_at": null
       },
       {
@@ -362,20 +376,20 @@
         "over_cap_at": null
       }
     ],
-    "total_bytes": 75364,
-    "total_tokens": 20380,
+    "total_bytes": 82462,
+    "total_tokens": 22299,
     "top_5": [
       {
         "path": "system/jobs/dream.md",
-        "tokens": 2981
+        "tokens": 2999
       },
       {
         "path": "system/capture-rules.md",
-        "tokens": 2522
+        "tokens": 2544
       },
       {
         "path": "system/manifest.md",
-        "tokens": 1767
+        "tokens": 1949
       },
       {
         "path": "system/jobs/lint.md",
