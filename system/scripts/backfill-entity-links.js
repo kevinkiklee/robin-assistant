@@ -6,6 +6,7 @@ import { applyEntityLinks } from './lib/wiki-graph/apply-entity-links.js';
 import { buildEntityRegistry } from './lib/wiki-graph/build-entity-registry.js';
 import { isExcludedPath } from './lib/wiki-graph/exclusions.js';
 import { acquireLock, releaseLock } from './lib/jobs/atomic.js';
+import { writeLinksIndex } from './regenerate-links.js';
 
 async function* walkMd(root, base = root) {
   const entries = await readdir(root, { withFileTypes: true });
@@ -66,6 +67,10 @@ export async function runBackfill({ workspaceDir, scope = 'all', apply = false, 
         }
         reportLines.push('');
       }
+    }
+
+    if (apply) {
+      writeLinksIndex(memoryRoot, workspaceDir);
     }
 
     await writeFile(

@@ -57,3 +57,11 @@ test('runBackfill: scope filtering limits to a domain', async () => {
   const financeAfter = await readFile(join(ws, 'user-data/memory/knowledge/finance/snapshot.md'), 'utf-8');
   assert.match(financeAfter, /\[Dr\. Lee\]\(/);
 });
+
+test('runBackfill: --apply regenerates LINKS.md with new edges', async () => {
+  const ws = await copyFixtureToTmp('backfill-multi');
+  await runBackfill({ workspaceDir: ws, scope: 'all', apply: true });
+  const links = await readFile(join(ws, 'user-data/memory/LINKS.md'), 'utf-8');
+  assert.match(links, /knowledge\/medical\/hemonc-lee\.md/);
+  assert.match(links, /profile\/identity\.md/);
+});
