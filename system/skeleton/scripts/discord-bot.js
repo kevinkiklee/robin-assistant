@@ -3,6 +3,9 @@ import { Client, GatewayIntentBits, Events, ChannelType, Partials } from 'discor
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { access, constants, stat, writeFile, mkdir } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { homedir, userInfo } from 'node:os';
+import { existsSync } from 'node:fs';
 import dotenv from 'dotenv';
 import { createSessionStore } from './lib/discord/session-store.js';
 import { createEventLog } from './lib/discord/event-log.js';
@@ -101,7 +104,25 @@ async function main() {
     }
   } catch { /* ignore */ }
 
-  // 4. Init state
+  // 4. Cross-recovery: ensure the watchdog launchd job is installed and loaded.
+  // If the bot is starting up but the watchdog isn't watching, install it.
+  // Failure here is non-fatal — bot keeps running; watchdog can be installed
+  // manually later.
+  try {
+    const watchdogLabel = 'com.robin.discord-bot-watchdog';
+    const watchdogPlist = resolve(homedir(), 'Library/LaunchAgents', `${watchdogLabel}.plist`);
+    const watchdogScript = resolve(__dirname, 'discord-bot-watchdog.js');
+    const printR = spawnSync('launchctl', ['print', `gui/${userInfo().uid}/${watchdogLabel}`]);
+    if (!existsSync(watchdogPlist) || printR.status !== 0) {
+      const r = spawnSync(process.execPath, [watchdogScript, '--install'], { encoding: 'utf-8' });
+      if (r.status === 0) console.log('[discord-bot] re-installed watchdog (was missing)');
+      else console.error(`[discord-bot] watchdog re-install failed: ${(r.stderr || r.stdout).trim()}`);
+    }
+  } catch (err) {
+    console.error(`[discord-bot] watchdog ensure error (non-fatal): ${err.message}`);
+  }
+
+  // 5. Init state
   await mkdir(LOG_DIR, { recursive: true });
   const sessionStore = await createSessionStore({ path: SESSIONS_PATH });
   const eventLog = createEventLog({ path: EVENTS_PATH });
@@ -114,7 +135,7 @@ async function main() {
     maxConcurrent,
   });
 
-  // 5. Discord client
+  // 6. Discord client
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,

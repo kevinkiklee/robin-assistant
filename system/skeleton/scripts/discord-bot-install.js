@@ -13,9 +13,9 @@ const SCRIPT_PATH = resolve(__dirname, 'discord-bot.js');
 const LOG_DIR = resolve(ROBIN_ROOT, 'user-data/state/logs');
 
 async function findNode() {
-  const which = spawnSync('which', ['node'], { encoding: 'utf-8' });
-  if (which.status !== 0) throw new Error('node not on PATH');
-  return which.stdout.trim();
+  // Use the running node binary's path so this works under launchd's
+  // restricted PATH (where `which node` returns nothing for nvm-installed Node).
+  return process.execPath;
 }
 
 function plist({ nodePath, scriptPath, robinRoot, logPath, errPath }) {
@@ -58,10 +58,16 @@ async function install() {
   const uid = userInfo().uid;
   const domain = `gui/${uid}`;
 
+  // Idempotent: if already loaded, bootout first so plist changes are picked up.
+  const printR = spawnSync('launchctl', ['print', `${domain}/${LABEL}`]);
+  if (printR.status === 0) {
+    spawnSync('launchctl', ['bootout', `${domain}/${LABEL}`], { stdio: 'ignore' });
+    console.log(`[install] booted out existing service before re-bootstrap`);
+  }
+
   const boot = spawnSync('launchctl', ['bootstrap', domain, PLIST_PATH], { encoding: 'utf-8' });
   if (boot.status !== 0) {
     console.error(`[install] launchctl bootstrap failed: ${boot.stderr.trim() || boot.stdout.trim()}`);
-    console.error(`[install] is the bot already loaded? try: launchctl bootout ${domain}/${LABEL}`);
     process.exit(1);
   }
   console.log(`[install] bootstrapped under ${domain}`);

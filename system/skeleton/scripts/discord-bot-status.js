@@ -15,15 +15,19 @@ const SESSIONS_PATH = resolve(STATE_DIR, 'discord-sessions.json');
 const EVENTS_PATH = resolve(LOG_DIR, 'discord-bot.events.jsonl');
 const STATUS_PATH = resolve(STATE_DIR, 'discord-bot.status.json');
 const LABEL = 'com.robin.discord-bot';
+const WATCHDOG_LABEL = 'com.robin.discord-bot-watchdog';
 
 function pad(s, n) { return (s + ' '.repeat(n)).slice(0, n); }
 
 async function main() {
-  // 1) launchd state
+  // 1) launchd state — bot + watchdog
   const uid = userInfo().uid;
   const list = spawnSync('launchctl', ['print', `gui/${uid}/${LABEL}`], { encoding: 'utf-8' });
   const loaded = list.status === 0;
   console.log(`launchd:    ${loaded ? 'loaded' : 'NOT loaded'}`);
+  const wList = spawnSync('launchctl', ['print', `gui/${uid}/${WATCHDOG_LABEL}`], { encoding: 'utf-8' });
+  const wLoaded = wList.status === 0;
+  console.log(`watchdog:   ${wLoaded ? 'loaded' : 'NOT loaded'}`);
 
   // 2) Last self-reported state
   try {

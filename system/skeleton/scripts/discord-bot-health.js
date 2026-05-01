@@ -157,10 +157,8 @@ function plist({ nodePath, scriptPath, robinRoot, logPath }) {
 }
 
 async function install() {
-  const which = spawnSync('which', ['node'], { encoding: 'utf-8' });
-  if (which.status !== 0) throw new Error('node not on PATH');
   const body = plist({
-    nodePath: which.stdout.trim(),
+    nodePath: process.execPath,
     scriptPath: SCRIPT_PATH,
     robinRoot: ROBIN_ROOT,
     logPath: resolve(LOG_DIR, 'discord-bot-health.log'),
