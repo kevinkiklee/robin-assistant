@@ -81,3 +81,66 @@ describe('PreToolUse write-intent logging', () => {
     assert.equal(r.status, 2);
   });
 });
+
+describe('UserPromptSubmit handler', () => {
+  it('writes turn.json with computed tier on substantive message', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-ups-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/state/sessions.md'),
+      `| claude-code-abc | ${new Date().toISOString()} |\n`);
+
+    const event = JSON.stringify({
+      session_id: 'claude-code-abc',
+      user_message: 'Remember that my new dentist is Dr. Park in Hoboken',
+    });
+    const r = runHook(ws, ['--on-user-prompt-submit'], event);
+    assert.equal(r.status, 0, r.stderr);
+    const turn = JSON.parse(readFileSync(join(ws, 'user-data/state/turn.json'), 'utf8'));
+    assert.equal(turn.tier, 3);
+    assert.ok(turn.turn_id.startsWith('claude-code-abc:'));
+  });
+
+  it('writes turn.json with tier 1 on trivial message', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-ups-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/state/sessions.md'),
+      `| claude-code-x | ${new Date().toISOString()} |\n`);
+    const event = JSON.stringify({ session_id: 'claude-code-x', user_message: 'thanks' });
+    const r = runHook(ws, ['--on-user-prompt-submit'], event);
+    assert.equal(r.status, 0);
+    const turn = JSON.parse(readFileSync(join(ws, 'user-data/state/turn.json'), 'utf8'));
+    assert.equal(turn.tier, 1);
+  });
+
+  it('emits relevant-memory block when entity in ENTITIES.md matches', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-ups-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory/profile'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/state/sessions.md'),
+      `| claude-code-x | ${new Date().toISOString()} |\n`);
+    writeFileSync(join(ws, 'user-data/memory/ENTITIES.md'),
+      '---\ntype: reference\n---\n# Entities\n\n- Dr. Park (Park) — profile/dentist.md\n');
+    writeFileSync(join(ws, 'user-data/memory/profile/dentist.md'),
+      '---\nlast_verified: 2026-01\n---\n# Dr. Park\nDentist, JC.\n');
+    const event = JSON.stringify({
+      session_id: 'claude-code-x',
+      user_message: 'I have a meeting with Dr. Park tomorrow at 3pm please remind me',
+    });
+    const r = runHook(ws, ['--on-user-prompt-submit'], event);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /<!-- relevant memory/);
+    assert.match(r.stdout, /Dr\. Park/);
+    assert.match(r.stdout, /profile\/dentist\.md/);
+  });
+
+  it('fails open when no session and no entities (no crash)', { timeout: 2000 }, () => {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-ups-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
+    const event = JSON.stringify({ session_id: 'claude-code-zzz', user_message: 'hello world test' });
+    const r = runHook(ws, ['--on-user-prompt-submit'], event);
+    assert.equal(r.status, 0);
+  });
+});

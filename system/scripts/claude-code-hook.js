@@ -34,7 +34,11 @@ import { writeSessionBlock } from './lib/handoff.js';
 import { mostRecentSessionId } from './lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
 import { applyRedaction } from './lib/sync/redact.js';
-import { readTurnJson, appendWriteIntent } from './lib/turn-state.js';
+import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson } from './lib/turn-state.js';
+import { appendPerfLog } from './lib/perf-log.js';
+import { classifyTier } from './lib/capture-keyword-scan.js';
+import { readEntities } from './lib/entity-index.js';
+import { recall, formatRecallHits } from './lib/recall.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -46,6 +50,7 @@ function parseArgs(argv) {
     if (a === '--on-stop') args.mode = 'on-stop';
     else if (a === '--on-pre-tool-use') args.mode = 'on-pre-tool-use';
     else if (a === '--on-pre-bash') args.mode = 'on-pre-bash';
+    else if (a === '--on-user-prompt-submit') args.mode = 'on-user-prompt-submit';
     else if (a === '--no-drain') args.drain = false;
     else if (a === '--debug') args.debug = true;
     else if (a === '--workspace') args.workspace = argv[++i];
@@ -315,12 +320,64 @@ async function onPreBash(args) {
   }
 }
 
+async function onUserPromptSubmit(args) {
+  const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
+  const start = Date.now();
+  try {
+    const stdin = await readStdin();
+    let event = {};
+    try { event = JSON.parse(stdin); } catch { /* fail-open */ }
+
+    const sessionId = event.session_id ?? mostRecentSessionId(ws, 'claude-code') ?? 'unknown';
+    const userMessage = event.user_message ?? event.prompt ?? '';
+
+    const { entities: entityList } = readEntities(ws);
+    const aliasIndex = [];
+    for (const e of entityList) {
+      aliasIndex.push(e.name);
+      for (const a of e.aliases) aliasIndex.push(a);
+    }
+
+    const tierResult = classifyTier({ userMessage, entityAliases: aliasIndex });
+
+    const turnId = mintTurnId(sessionId);
+    writeTurnJson(ws, {
+      turn_id: turnId,
+      user_words: tierResult.wc,
+      tier: tierResult.tier,
+      entities_matched: tierResult.entitiesMatched,
+    });
+
+    if (tierResult.entitiesMatched.length > 0) {
+      const matchedEntities = entityList
+        .filter((e) => tierResult.entitiesMatched.includes(e.name) || e.aliases.some((a) => tierResult.entitiesMatched.includes(a)))
+        .slice(0, 5);
+      const patterns = matchedEntities.flatMap((e) => [e.name, ...e.aliases]);
+      const r = recall(ws, patterns, { topN: matchedEntities.length * 3 });
+      const formatted = formatRecallHits(r);
+      if (formatted) {
+        process.stdout.write(`<!-- relevant memory (auto-loaded based on entities in your message) -->\n${formatted}\n<!-- /relevant memory -->\n`);
+      }
+    }
+
+    const elapsed = Date.now() - start;
+    if (elapsed > 80) {
+      appendPerfLog(ws, { hook: 'UserPromptSubmit', duration_ms: elapsed, reason: 'slow' });
+    }
+    process.exit(0);
+  } catch (err) {
+    try { appendPerfLog(ws, { hook: 'UserPromptSubmit', duration_ms: Date.now() - start, reason: `error:${err.message}` }); } catch { /* */ }
+    process.exit(0); // fail-open
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.mode === 'on-stop') return onStop(args);
   if (args.mode === 'on-pre-tool-use') return onPreToolUse(args);
   if (args.mode === 'on-pre-bash') return onPreBash(args);
-  console.error('Usage: claude-code-hook.js --on-stop | --on-pre-tool-use | --on-pre-bash');
+  if (args.mode === 'on-user-prompt-submit') return onUserPromptSubmit(args);
+  console.error('Usage: claude-code-hook.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit');
   process.exit(2);
 }
 
