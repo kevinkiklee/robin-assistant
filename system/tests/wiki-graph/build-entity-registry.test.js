@@ -36,3 +36,11 @@ test('buildEntityRegistry: throws on alias collision with both paths in message'
     (err) => /lee-john\.md/.test(err.message) && /lee-jane\.md/.test(err.message) && /Lee/.test(err.message)
   );
 });
+
+const FIXTURE_UNTRUSTED = join(__dirname, '..', 'fixtures', 'wiki-graph', 'registry-untrusted');
+
+test('buildEntityRegistry: skips knowledge/sources, knowledge/conversations, archive', async () => {
+  const reg = await buildEntityRegistry(FIXTURE_UNTRUSTED);
+  assert.equal(reg.byPath.size, 0);
+  assert.equal(reg.byAlias.size, 0);
+});
