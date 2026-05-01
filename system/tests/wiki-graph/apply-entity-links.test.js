@@ -90,3 +90,21 @@ test('applyEntityLinks: only first mention per file is linked (W1)', async () =>
   assert.match(after, /Later, Dr\. Lee did Y/);
   assert.match(after, /And then Dr\. Lee did Z/);
 });
+
+test('applyEntityLinks: idempotent — second run is a no-op', async () => {
+  const ws = await copyFixtureToTmp('linker-idempotence');
+  const reg = await buildEntityRegistry(ws);
+  const r1 = await applyEntityLinks(ws, 'profile/case.md', reg);
+  assert.equal(r1.inserted, 1);
+  const r2 = await applyEntityLinks(ws, 'profile/case.md', reg);
+  assert.equal(r2.inserted, 0);
+  assert.equal(r2.written, false);
+});
+
+test('applyEntityLinks: case-insensitive match, case-preserving replacement', async () => {
+  const ws = await copyFixtureToTmp('linker-idempotence');
+  const reg = await buildEntityRegistry(ws);
+  await applyEntityLinks(ws, 'profile/case.md', reg);
+  const after = await readFile(join(ws, 'user-data/memory/profile/case.md'), 'utf-8');
+  assert.match(after, /\[DR\. LEE\]\(\.\.\/knowledge\/medical\/hemonc-lee\.md\)/);
+});
