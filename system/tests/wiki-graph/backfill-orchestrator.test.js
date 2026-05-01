@@ -28,3 +28,32 @@ test('runBackfill: dry-run produces a report and modifies no files', async () =>
   const entries = await readdir(result.reportDir);
   assert.ok(entries.length > 0);
 });
+
+test('runBackfill: apply mode writes files', async () => {
+  const ws = await copyFixtureToTmp('backfill-multi');
+  const result = await runBackfill({ workspaceDir: ws, scope: 'all', apply: true });
+  assert.ok(result.totalInserted >= 2);
+  const after = await readFile(join(ws, 'user-data/memory/profile/identity.md'), 'utf-8');
+  assert.match(after, /\[Dr\. Lee\]\(/);
+});
+
+test('runBackfill: apply mode acquires wiki-backfill lock', async () => {
+  const { readLock } = await import('../../scripts/lib/jobs/atomic.js');
+  const ws = await copyFixtureToTmp('backfill-multi');
+  const lockPath = join(ws, '.locks', 'wiki-backfill.lock');
+  const result = await runBackfill({ workspaceDir: ws, scope: 'all', apply: true });
+  assert.ok(result.totalInserted > 0);
+  // After completion the lock file should be released (readLock returns null when not held)
+  const lock = readLock(lockPath);
+  assert.equal(lock, null);
+});
+
+test('runBackfill: scope filtering limits to a domain', async () => {
+  const ws = await copyFixtureToTmp('backfill-multi');
+  const result = await runBackfill({ workspaceDir: ws, scope: 'finance', apply: true });
+  // Only finance/snapshot.md is touched; identity.md (profile) is not
+  const identityAfter = await readFile(join(ws, 'user-data/memory/profile/identity.md'), 'utf-8');
+  assert.doesNotMatch(identityAfter, /\[Dr\. Lee\]\(/);
+  const financeAfter = await readFile(join(ws, 'user-data/memory/knowledge/finance/snapshot.md'), 'utf-8');
+  assert.match(financeAfter, /\[Dr\. Lee\]\(/);
+});

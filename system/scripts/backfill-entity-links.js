@@ -1,9 +1,11 @@
 import { readdir, mkdir, writeFile } from 'node:fs/promises';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync } from 'node:fs';
 import { applyEntityLinks } from './lib/wiki-graph/apply-entity-links.js';
 import { buildEntityRegistry } from './lib/wiki-graph/build-entity-registry.js';
 import { isExcludedPath } from './lib/wiki-graph/exclusions.js';
+import { acquireLock, releaseLock } from './lib/jobs/atomic.js';
 
 async function* walkMd(root, base = root) {
   const entries = await readdir(root, { withFileTypes: true });
@@ -30,40 +32,53 @@ export async function runBackfill({ workspaceDir, scope = 'all', apply = false, 
   const outDir = reportDir || join(workspaceDir, 'artifacts', `wiki-graph-${ts}`);
   await mkdir(outDir, { recursive: true });
 
-  const registry = await buildEntityRegistry(workspaceDir);
-
-  let totalInserted = 0;
-  let filesTouched = 0;
-  const reportLines = [];
-
-  for await (const relPath of walkMd(memoryRoot)) {
-    if (isExcludedPath(relPath)) continue;
-    if (!inScope(relPath, scope)) continue;
-
-    const result = await applyEntityLinks(workspaceDir, relPath, registry, { dryRun: !apply });
-    const hasErrors = result.errors && result.errors.length > 0;
-    if (result.inserted > 0 || hasErrors) {
-      if (result.inserted > 0) {
-        totalInserted += result.inserted;
-        filesTouched += 1;
-      }
-      reportLines.push(`## ${relPath}`);
-      reportLines.push(`- inserted: ${result.inserted}`);
-      if (hasErrors) {
-        reportLines.push(`- errors: [${result.errors.join(', ')}]`);
-      }
-      reportLines.push('');
-    }
+  let lockPath = null;
+  if (apply) {
+    const locksDir = join(workspaceDir, '.locks');
+    if (!existsSync(locksDir)) mkdirSync(locksDir, { recursive: true });
+    lockPath = join(locksDir, 'wiki-backfill.lock');
+    const reason = acquireLock(lockPath);
+    if (reason) throw new Error(`wiki-graph: another backfill is in progress (lock ${reason})`);
   }
 
-  await writeFile(
-    join(outDir, 'report.md'),
-    `# Wiki-graph backfill ${apply ? '(applied)' : '(dry-run)'}\n\n` +
-    `- scope: ${scope}\n- files touched: ${filesTouched}\n- total insertions: ${totalInserted}\n\n` +
-    reportLines.join('\n')
-  );
+  try {
+    const registry = await buildEntityRegistry(workspaceDir);
 
-  return { reportDir: outDir, totalInserted, filesTouched };
+    let totalInserted = 0;
+    let filesTouched = 0;
+    const reportLines = [];
+
+    for await (const relPath of walkMd(memoryRoot)) {
+      if (isExcludedPath(relPath)) continue;
+      if (!inScope(relPath, scope)) continue;
+
+      const result = await applyEntityLinks(workspaceDir, relPath, registry, { dryRun: !apply });
+      const hasErrors = result.errors && result.errors.length > 0;
+      if (result.inserted > 0 || hasErrors) {
+        if (result.inserted > 0) {
+          totalInserted += result.inserted;
+          filesTouched += 1;
+        }
+        reportLines.push(`## ${relPath}`);
+        reportLines.push(`- inserted: ${result.inserted}`);
+        if (hasErrors) {
+          reportLines.push(`- errors: [${result.errors.join(', ')}]`);
+        }
+        reportLines.push('');
+      }
+    }
+
+    await writeFile(
+      join(outDir, 'report.md'),
+      `# Wiki-graph backfill ${apply ? '(applied)' : '(dry-run)'}\n\n` +
+      `- scope: ${scope}\n- files touched: ${filesTouched}\n- total insertions: ${totalInserted}\n\n` +
+      reportLines.join('\n')
+    );
+
+    return { reportDir: outDir, totalInserted, filesTouched };
+  } finally {
+    if (lockPath) releaseLock(lockPath);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
