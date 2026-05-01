@@ -88,7 +88,7 @@ export async function runBackfill({ workspaceDir, scope = 'all', apply = false, 
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const __filename = fileURLToPath(import.meta.url);
-  const workspaceDir = process.env.ROBIN_WORKSPACE || join(dirname(__filename), '..');
+  const workspaceDir = process.env.ROBIN_WORKSPACE || join(dirname(__filename), '..', '..');
   const argv = process.argv.slice(2);
   const apply = argv.includes('--apply');
   const scopeIdx = argv.indexOf('--scope');
