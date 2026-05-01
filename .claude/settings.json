@@ -63,6 +63,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node system/scripts/claude-code-hook.js --on-user-prompt-submit"
+          }
+        ]
+      }
     ]
   }
 }
