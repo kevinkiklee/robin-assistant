@@ -90,6 +90,7 @@ For each extracted item, update existing knowledge files:
 3. Update confirmed matches inline with new information
 4. Add cross-reference links to the source page
 5. Append new edges to `user-data/memory/LINKS.md`
+6. After updating each rippled file, run `node bin/robin.js link <memRelPath>` to insert any newly-applicable entity links. Linker failures are best-effort — log to ingest output but do not abort the ripple.
 
 **New entity/concept check:** If an extracted entity or concept has no matching knowledge file, ask the user before creating one: "This mentions 'Dr. Chen' — should I create a new provider page?"
 
