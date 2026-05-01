@@ -3,7 +3,7 @@
 // Read/write/incremental update of user-data/memory/ENTITIES.md.
 // Edit-detection via content hash stored in user-data/state/entities-hash.txt.
 
-import { readFileSync, readdirSync, statSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, readdirSync, lstatSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -29,7 +29,9 @@ function* walkMarkdown(dir) {
     if (name.startsWith('.') || name === 'ENTITIES.md' || name === 'ENTITIES-extended.md') continue;
     const full = join(dir, name);
     let st;
-    try { st = statSync(full); } catch { continue; }
+    try { st = lstatSync(full); } catch { continue; }
+    // Skip symlinks: prevents memDir escape and cycle infinite-recursion.
+    if (st.isSymbolicLink()) continue;
     if (st.isDirectory()) yield* walkMarkdown(full);
     else if (name.endsWith('.md')) yield full;
   }
@@ -56,8 +58,6 @@ function deriveName(file, fm) {
   if (fm?.description) {
     const dash = fm.description.indexOf(' — ');
     if (dash > 0) return fm.description.slice(0, dash).trim();
-    // Use description as-is when it's a simple string (not an em-dash phrase)
-    // Only fall through if description looks like a bare label (no useful name info)
   }
   // fallback: filename stem prettified
   const stem = file.split('/').pop().replace(/\.md$/, '');

@@ -89,4 +89,35 @@ describe('entity-index', () => {
     assert.equal(hotRows, 150);
     assert.equal(extRows, 50);
   });
+
+  it('collectEntities prefers H1 heading when description has no em-dash', () => {
+    const { ws, mem } = setup();
+    // description has no em-dash; H1 is the canonical name
+    writeFileSync(join(mem, 'profile/x.md'),
+      '---\ntype: entity\ndescription: bare label without em-dash\n---\n# Canonical Name\n');
+    const entities = collectEntities(ws);
+    assert.equal(entities.length, 1);
+    assert.equal(entities[0].name, 'Canonical Name');
+  });
+
+  it('collectEntities falls back to deriveName when no H1 heading', () => {
+    const { ws, mem } = setup();
+    // No H1 at all; description has em-dash → derive from prefix
+    writeFileSync(join(mem, 'profile/x.md'),
+      '---\ntype: entity\ndescription: From Description — extra context\n---\nbody without h1\n');
+    const entities = collectEntities(ws);
+    assert.equal(entities.length, 1);
+    assert.equal(entities[0].name, 'From Description');
+  });
+
+  it('collectEntities skips symlinks under user-data/memory/', async () => {
+    const { ws, mem } = setup();
+    const { symlinkSync } = await import('node:fs');
+    const target = join(ws, 'outside.md');
+    writeFileSync(target,
+      '---\ntype: entity\naliases: [Outside]\n---\n# Should Not Be Indexed\n');
+    symlinkSync(target, join(mem, 'profile/leak.md'));
+    const entities = collectEntities(ws);
+    assert.ok(!entities.some((e) => e.name === 'Should Not Be Indexed'));
+  });
 });
