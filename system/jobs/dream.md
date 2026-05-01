@@ -118,6 +118,12 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. Prediction accuracy is owned by `outcome-check` (when enabled) — Dream does not recompute it. If `predictions.md` has resolved entries newer than the last `outcome-check` run, include "N resolved predictions awaiting rollup" in the summary.
 
+11.5. **Capture + recall telemetry review.** Read entries from `user-data/state/capture-enforcement.log` and `user-data/state/recall.log` since `last_dream_at`. Surface in escalation report:
+   - Capture enforcement misfires this period: count by outcome (retried-passed, retried-failed, marker-malformed). If retried-failed > 5 OR marker-malformed > 3, flag for prompt-tuning review.
+   - Auto-recall avg injection bytes; flag if trend is rising >2× compared to prior period.
+   - Frequently-matched entities that route to nothing → suggest creating a topic file.
+   - Aliases skipped due to missing disambiguator → list for backfill.
+
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/journal.md` or delete if resolved.
 
 12.5. **Action-trust calibration** — read `user-data/memory/self-improvement/action-trust.md`. For each class in `## Open`:
@@ -143,6 +149,15 @@ Runs after all other phases. Maintains the memory tree structure.
 17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
 
 17.5. **Compact-summary regeneration** — run the helper from `system/scripts/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
+
+17.6. **ENTITIES.md regeneration.** Run `node system/scripts/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
+
+17.7. **Telemetry log rotation.** Cap each file to its limit:
+   - `user-data/state/capture-enforcement.log` → 5000 lines
+   - `user-data/state/recall.log` → 5000 lines
+   - `user-data/state/hook-perf.log` → 1000 lines
+
+   Use `node -e "import('./system/scripts/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for the other two, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
 
 18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
 
