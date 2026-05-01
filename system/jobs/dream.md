@@ -40,7 +40,8 @@ Read these files:
 - `user-data/memory/journal.md` — entries dated after `last_dream_at`
 - `user-data/memory/inbox.md` — all unprocessed entries
 - `user-data/memory/tasks.md` — completed or stale items
-- `user-data/memory/self-improvement.md` — all sections (corrections, patterns, session handoff, calibration)
+- `user-data/memory/self-improvement/` — corrections.md, predictions.md, action-trust.md, learning-queue.md, session-handoff.md, communication-style.md, domain-confidence.md, calibration.md, preferences.md (each maintained in its own file)
+- `user-data/policies.md` — explicit per-action-class policy (read for cross-reference with action-trust outcomes)
 - `user-data/memory/decisions.md` — decisions older than 30 days with no recorded outcome
 - `user-data/memory/hot.md` — recent session context (helps with routing accuracy)
 - `user-data/memory/log.md` — recent operations (know what was ingested/linted recently)
@@ -85,6 +86,14 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/journal.md` or delete if resolved.
 
+12.5. **Action-trust calibration** — read `user-data/memory/self-improvement/action-trust.md`. For each class in `## Open`:
+   - Tally `[action]` outcomes captured since last dream from `inbox.md` and direct-writes already integrated.
+   - On any `corrected` outcome: demote class to ASK in `policies.md` (move from AUTO list to ASK list). Append a `## Closed` entry noting the demotion.
+   - Promotion candidates (≥5 successes, 0 corrections in 30d, no privacy/dollar/legal hard-rule overlap, not currently in probation): emit a promotion proposal to the escalation report with `<!-- promotion-id:YYYYMMDD-NN -->`. Include the proposal in `## Needs your input` for in-session invocations.
+   - For prior promotion proposals: if the proposal's `surfaced-at:` timestamp is more than 24h old AND no objection has appeared in `corrections.md` referencing the class or proposal-id, finalize the promotion (move class to AUTO list in `policies.md`, append `## Closed` entry, set 7-day probation flag on the class block).
+   - Probation expiry: any AUTO class whose `probation-until:` has passed and has zero corrections during probation → clear the probation flag.
+   - 90-day decay: any AUTO class with no entries in 90 days → demote to ASK with `## Closed` entry "decay (idle 90d)".
+
 ## Phase 4: Memory tree maintenance
 
 Runs after all other phases. Maintains the memory tree structure.
@@ -99,6 +108,8 @@ Runs after all other phases. Maintains the memory tree structure.
 
 17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
 
+17.5. **Compact-summary regeneration** — run the helper from `system/scripts/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
+
 18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
 
 ## Boundary rule
@@ -108,6 +119,8 @@ Dream can read and write any topic file under `user-data/memory/` and the flat f
 Dream maintains `user-data/memory/INDEX.md` via `regenerate-memory-index.js` (Phase 4 step 15).
 
 Dream maintains `user-data/memory/LINKS.md` via `regenerate-links.js` when structural changes occurred (Phase 4 step 17).
+
+Dream maintains the compact-summary block inside `user-data/policies.md` via `regenerateCompactSummary` (Phase 4 step 17.5). The bullet body is user-edited; Dream only rewrites the delimited block.
 
 Dream trims `user-data/memory/hot.md` to a rolling window of 3 sessions (Phase 4 step 16).
 
