@@ -19,12 +19,26 @@ import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js'
 import { atomicWrite, writeTable, openItem } from '../../system/scripts/lib/sync/markdown.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
+import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
+import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
 import { SpotifyClient } from './lib/spotify/client.js';
 
 const SOURCE = 'sync-spotify';
 const PROVIDER = 'spotify';
 
 function nowISO() { return new Date().toISOString(); }
+
+// Insert wiki-graph entity links into a memory file we just wrote.
+// Best-effort; never throw to the caller.
+async function linkAfterWrite(workspaceDir, registry, wsRelPath) {
+  if (!registry || !wsRelPath.startsWith('user-data/memory/')) return;
+  const memRelPath = wsRelPath.slice('user-data/memory/'.length);
+  try {
+    await applyEntityLinks(workspaceDir, memRelPath, registry);
+  } catch (err) {
+    console.warn(`sync-spotify: applyEntityLinks(${memRelPath}) failed: ${err.message}`);
+  }
+}
 
 function trackToRow(item) {
   const t = item.track;
@@ -73,6 +87,13 @@ function mergeRecentlyPlayed(existingMd, newRows) {
 }
 
 export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = false }) {
+  let registry = null;
+  try {
+    registry = await buildEntityRegistry(workspaceDir);
+  } catch (err) {
+    console.warn(`sync-spotify: registry unavailable, skipping link insertion (${err.message})`);
+  }
+
   const accessToken = await getAccessToken(workspaceDir, PROVIDER);
   const client = new SpotifyClient(accessToken);
 
@@ -148,6 +169,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
     combinedTable,
     { trust: 'untrusted', trustSource: 'sync-spotify' }
   );
+  await linkAfterWrite(workspaceDir, registry, rpPath);
 
   // Top tracks
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/spotify/top-tracks.md',
@@ -158,6 +180,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
     `## All time\n\n${writeTable({ columns: ['track', 'artist', 'album', 'popularity', 'duration_ms', 'track_id'], rows: (tAll.items ?? []).map(topTrackRow) })}`,
     { trust: 'untrusted', trustSource: 'sync-spotify' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/spotify/top-tracks.md');
 
   // Top artists
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/spotify/top-artists.md',
@@ -168,6 +191,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
     `## All time\n\n${writeTable({ columns: ['artist', 'genres', 'followers', 'popularity', 'artist_id'], rows: (aAll.items ?? []).map(topArtistRow) })}`,
     { trust: 'untrusted', trustSource: 'sync-spotify' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/spotify/top-artists.md');
 
   // Lazy audio-features for all tracks we just saw
   const trackIds = [...new Set([
@@ -213,6 +237,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
         '',
       ].join('\n');
       await openItem(workspaceDir, path, async () => fm);
+      await linkAfterWrite(workspaceDir, registry, path);
     }
     if (features.length > 0) {
       console.log(`[sync-spotify] cached ${features.length} audio-features files`);
@@ -258,6 +283,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
         }),
       ];
       await atomicWrite(workspaceDir, path, lines.join('\n'), { trust: 'untrusted', trustSource: 'sync-spotify' });
+      await linkAfterWrite(workspaceDir, registry, path);
     }
     const wrote = Math.min(playlists.length, 50) - skipped;
     console.log(`[sync-spotify] wrote ${wrote} playlist snapshots${skipped > 0 ? ` (${skipped} skipped — Spotify-restricted endpoints)` : ''}`);
