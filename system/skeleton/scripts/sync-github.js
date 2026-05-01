@@ -113,7 +113,8 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/github/activity.md',
     `---\ndescription: GitHub activity — last ${ACTIVITY_DAYS} days for ${me.login} (auto-pulled)\n---\n\n` +
     `# GitHub Activity — ${me.login}\n\nPulled ${nowISO()}. ${recent.length} events.\n\n` +
-    writeTable({ columns: ['date', 'repo', 'type', 'summary'], rows: activityRows })
+    writeTable({ columns: ['date', 'repo', 'type', 'summary'], rows: activityRows }),
+    { trust: 'untrusted', trustSource: 'sync-github' }
   );
 
   // Notifications
@@ -131,14 +132,16 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/github/notifications.md',
     `---\ndescription: GitHub notifications — current unread + recent (auto-pulled)\n---\n\n` +
     `# GitHub Notifications — ${me.login}\n\n${notifsHeader}` +
-    writeTable({ columns: ['updated', 'repo', 'reason', 'type', 'title', 'unread'], rows: notifRows })
+    writeTable({ columns: ['updated', 'repo', 'reason', 'type', 'title', 'unread'], rows: notifRows }),
+    { trust: 'untrusted', trustSource: 'sync-github' }
   );
 
   // Releases
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/github/releases.md',
     `---\ndescription: GitHub releases — last ${ACTIVITY_DAYS} days from starred repos (auto-pulled)\n---\n\n` +
     `# GitHub Releases — last ${ACTIVITY_DAYS} days\n\nPulled ${nowISO()}.\n\n` +
-    writeTable({ columns: ['published', 'repo', 'tag', 'name'], rows: releases })
+    writeTable({ columns: ['published', 'repo', 'tag', 'name'], rows: releases }),
+    { trust: 'untrusted', trustSource: 'sync-github' }
   );
 
   saveCursor(workspaceDir, SOURCE, {

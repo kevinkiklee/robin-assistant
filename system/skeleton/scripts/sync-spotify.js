@@ -145,7 +145,8 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
   await atomicWrite(workspaceDir, rpPath,
     `---\ndescription: Spotify — recently played, append-only ledger (auto-pulled)\n---\n\n` +
     `# Recently Played — ${me.display_name ?? me.id}\n\nLast pulled ${nowISO()}.${gapDetected ? ' **Gap detected: >50 plays since last sync.**' : ''}\n\n` +
-    combinedTable
+    combinedTable,
+    { trust: 'untrusted', trustSource: 'sync-spotify' }
   );
 
   // Top tracks
@@ -154,7 +155,8 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
     `# Top Tracks — ${me.display_name ?? me.id}\n\nPulled ${nowISO()}.\n\n` +
     `## Last 4 weeks\n\n${writeTable({ columns: ['track', 'artist', 'album', 'popularity', 'duration_ms', 'track_id'], rows: (t4w.items ?? []).map(topTrackRow) })}\n` +
     `## Last 6 months\n\n${writeTable({ columns: ['track', 'artist', 'album', 'popularity', 'duration_ms', 'track_id'], rows: (t6m.items ?? []).map(topTrackRow) })}\n` +
-    `## All time\n\n${writeTable({ columns: ['track', 'artist', 'album', 'popularity', 'duration_ms', 'track_id'], rows: (tAll.items ?? []).map(topTrackRow) })}`
+    `## All time\n\n${writeTable({ columns: ['track', 'artist', 'album', 'popularity', 'duration_ms', 'track_id'], rows: (tAll.items ?? []).map(topTrackRow) })}`,
+    { trust: 'untrusted', trustSource: 'sync-spotify' }
   );
 
   // Top artists
@@ -163,7 +165,8 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
     `# Top Artists — ${me.display_name ?? me.id}\n\nPulled ${nowISO()}.\n\n` +
     `## Last 4 weeks\n\n${writeTable({ columns: ['artist', 'genres', 'followers', 'popularity', 'artist_id'], rows: (a4w.items ?? []).map(topArtistRow) })}\n` +
     `## Last 6 months\n\n${writeTable({ columns: ['artist', 'genres', 'followers', 'popularity', 'artist_id'], rows: (a6m.items ?? []).map(topArtistRow) })}\n` +
-    `## All time\n\n${writeTable({ columns: ['artist', 'genres', 'followers', 'popularity', 'artist_id'], rows: (aAll.items ?? []).map(topArtistRow) })}`
+    `## All time\n\n${writeTable({ columns: ['artist', 'genres', 'followers', 'popularity', 'artist_id'], rows: (aAll.items ?? []).map(topArtistRow) })}`,
+    { trust: 'untrusted', trustSource: 'sync-spotify' }
   );
 
   // Lazy audio-features for all tracks we just saw
@@ -254,7 +257,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
           })),
         }),
       ];
-      await atomicWrite(workspaceDir, path, lines.join('\n'));
+      await atomicWrite(workspaceDir, path, lines.join('\n'), { trust: 'untrusted', trustSource: 'sync-spotify' });
     }
     const wrote = Math.min(playlists.length, 50) - skipped;
     console.log(`[sync-spotify] wrote ${wrote} playlist snapshots${skipped > 0 ? ` (${skipped} skipped — Spotify-restricted endpoints)` : ''}`);

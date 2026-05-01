@@ -141,12 +141,14 @@ export async function syncCalendar({ workspaceDir, dryRun = false, bootstrap = f
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/calendar/upcoming.md',
     `---\ndescription: Calendar — next ${WINDOW_DAYS} days (auto-pulled)\n---\n\n# Upcoming Events\n\n` +
     `Pulled ${nowISO()}. ${upcoming.length} events in window [${timeMin.slice(0, 10)} → ${timeMax.slice(0, 10)}].\n\n` +
-    writeTable({ columns: cols, rows: upcoming.map(eventRow) })
+    writeTable({ columns: cols, rows: upcoming.map(eventRow) }),
+    { trust: 'untrusted', trustSource: 'sync-calendar' }
   );
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/calendar/recent.md',
     `---\ndescription: Calendar — last ${WINDOW_DAYS} days (auto-pulled)\n---\n\n# Recent Events\n\n` +
     `Pulled ${nowISO()}. ${recent.length} events.\n\n` +
-    writeTable({ columns: cols, rows: recent.map(eventRow) })
+    writeTable({ columns: cols, rows: recent.map(eventRow) }),
+    { trust: 'untrusted', trustSource: 'sync-calendar' }
   );
 
   // Lazy per-event files for "interesting" events (have attendees / description / meeting URL).

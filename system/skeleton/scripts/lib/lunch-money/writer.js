@@ -82,7 +82,7 @@ export function writeAccountsSnapshot(financeDir, { plaidAccounts, assets, synce
 
   const body = lines.join('\n');
   const out = stringifyFrontmatter(
-    { description: 'Current balances — all accounts from Lunch Money (auto-pulled)' },
+    { description: 'Current balances — all accounts from Lunch Money (auto-pulled)', trust: 'untrusted', 'trust-source': 'sync-lunch-money' },
     body
   );
   writeFileSync(join(financeDir, 'accounts-snapshot.md'), out);
@@ -157,7 +157,7 @@ export function writeTransactions(financeDir, transactions) {
     }
 
     const out = stringifyFrontmatter(
-      { description: `Lunch Money transactions for ${month} (auto-pulled)` },
+      { description: `Lunch Money transactions for ${month} (auto-pulled)`, trust: 'untrusted', 'trust-source': 'sync-lunch-money' },
       nextBody
     );
     writeFileSync(path, out);
@@ -213,7 +213,7 @@ export function writeInvestmentLedger(financeDir, plaidAccounts, dateISO) {
       '',
     ];
     const desc = `${a.institution_name || a.name || 'Investment'} — daily balance ledger (auto-pulled)`;
-    const out = stringifyFrontmatter({ description: desc }, lines.join('\n'));
+    const out = stringifyFrontmatter({ description: desc, trust: 'untrusted', 'trust-source': 'sync-lunch-money' }, lines.join('\n'));
     writeFileSync(path, out);
   }
 }

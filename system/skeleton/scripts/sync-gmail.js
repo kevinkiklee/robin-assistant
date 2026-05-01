@@ -119,7 +119,8 @@ export async function syncGmail({ workspaceDir, dryRun = false, bootstrap = fals
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/email/inbox-snapshot.md',
     `---\ndescription: Gmail inbox — last ${WINDOW_DAYS} days metadata snapshot (auto-pulled)\n---\n\n` +
     `# Inbox Snapshot — ${profile.emailAddress}\n\nPulled ${nowISO()}. ${rows.length} messages.\n\n` +
-    writeTable({ columns: inboxCols, rows })
+    writeTable({ columns: inboxCols, rows }),
+    { trust: 'untrusted', trustSource: 'sync-gmail' }
   );
 
   // Derive top senders.
@@ -137,7 +138,8 @@ export async function syncGmail({ workspaceDir, dryRun = false, bootstrap = fals
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/email/senders.md',
     `---\ndescription: Gmail — top 50 senders last ${WINDOW_DAYS} days (auto-pulled)\n---\n\n` +
     `# Top Senders — ${profile.emailAddress}\n\nPulled ${nowISO()}.\n\n` +
-    writeTable({ columns: ['email', 'name', 'count', 'unread', 'last_seen'], rows: senders })
+    writeTable({ columns: ['email', 'name', 'count', 'unread', 'last_seen'], rows: senders }),
+    { trust: 'untrusted', trustSource: 'sync-gmail' }
   );
 
   saveCursor(workspaceDir, SOURCE, {
