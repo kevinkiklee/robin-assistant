@@ -20,6 +20,8 @@ import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js'
 import { atomicWrite, writeTable } from '../../system/scripts/lib/sync/markdown.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
+import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
+import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
 import { GmailClient, header } from './lib/google/gmail-client.js';
 
 const SOURCE = 'sync-gmail';
@@ -28,6 +30,18 @@ const WINDOW_DAYS = 30;
 const MAX_MESSAGES = 2000;
 
 function nowISO() { return new Date().toISOString(); }
+
+// Insert wiki-graph entity links into a memory file we just wrote.
+// Best-effort; never throw to the caller.
+async function linkAfterWrite(workspaceDir, registry, wsRelPath) {
+  if (!registry || !wsRelPath.startsWith('user-data/memory/')) return;
+  const memRelPath = wsRelPath.slice('user-data/memory/'.length);
+  try {
+    await applyEntityLinks(workspaceDir, memRelPath, registry);
+  } catch (err) {
+    console.warn(`sync-gmail: applyEntityLinks(${memRelPath}) failed: ${err.message}`);
+  }
+}
 
 function parseSender(from) {
   if (!from) return { name: '', email: '' };
@@ -56,6 +70,13 @@ function topLabels(msg) {
 }
 
 export async function syncGmail({ workspaceDir, dryRun = false, bootstrap = false }) {
+  let registry = null;
+  try {
+    registry = await buildEntityRegistry(workspaceDir);
+  } catch (err) {
+    console.warn(`sync-gmail: registry unavailable, skipping link insertion (${err.message})`);
+  }
+
   const accessToken = await getAccessToken(workspaceDir, PROVIDER);
   const client = new GmailClient(accessToken);
 
@@ -122,6 +143,7 @@ export async function syncGmail({ workspaceDir, dryRun = false, bootstrap = fals
     writeTable({ columns: inboxCols, rows }),
     { trust: 'untrusted', trustSource: 'sync-gmail' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/email/inbox-snapshot.md');
 
   // Derive top senders.
   const senders = [...senderCounts.entries()]
@@ -141,6 +163,7 @@ export async function syncGmail({ workspaceDir, dryRun = false, bootstrap = fals
     writeTable({ columns: ['email', 'name', 'count', 'unread', 'last_seen'], rows: senders }),
     { trust: 'untrusted', trustSource: 'sync-gmail' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/email/senders.md');
 
   saveCursor(workspaceDir, SOURCE, {
     last_attempt_at: nowISO(),
