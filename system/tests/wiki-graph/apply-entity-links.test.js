@@ -27,3 +27,44 @@ test('applyEntityLinks: inserts first-mention markdown link to entity', async ()
   const after = await readFile(join(ws, 'user-data/memory/profile/identity.md'), 'utf-8');
   assert.match(after, /\[Dr\. Lee\]\(\.\.\/knowledge\/medical\/hemonc-lee\.md\)/);
 });
+
+test('applyEntityLinks: does not link inside frontmatter', async () => {
+  const ws = await copyFixtureToTmp('linker-skip-rules');
+  const reg = await buildEntityRegistry(ws);
+  await applyEntityLinks(ws, 'profile/test.md', reg);
+  const after = await readFile(join(ws, 'user-data/memory/profile/test.md'), 'utf-8');
+  assert.match(after, /^---\n[\s\S]*?notes: Dr\. Lee mentioned in frontmatter must NOT be linked[\s\S]*?\n---/);
+});
+
+test('applyEntityLinks: does not link inside inline code', async () => {
+  const ws = await copyFixtureToTmp('linker-skip-rules');
+  const reg = await buildEntityRegistry(ws);
+  await applyEntityLinks(ws, 'profile/test.md', reg);
+  const after = await readFile(join(ws, 'user-data/memory/profile/test.md'), 'utf-8');
+  assert.match(after, /Inline code: `Dr\. Lee` here\./);
+});
+
+test('applyEntityLinks: does not link inside fenced code blocks', async () => {
+  const ws = await copyFixtureToTmp('linker-skip-rules');
+  const reg = await buildEntityRegistry(ws);
+  await applyEntityLinks(ws, 'profile/test.md', reg);
+  const after = await readFile(join(ws, 'user-data/memory/profile/test.md'), 'utf-8');
+  assert.match(after, /```\nFenced: Dr\. Lee here\n```/);
+});
+
+test('applyEntityLinks: skips entire file when target already linked anywhere in body', async () => {
+  const ws = await copyFixtureToTmp('linker-skip-rules');
+  const reg = await buildEntityRegistry(ws);
+  const result = await applyEntityLinks(ws, 'profile/test.md', reg);
+  assert.equal(result.inserted, 0);
+  const after = await readFile(join(ws, 'user-data/memory/profile/test.md'), 'utf-8');
+  assert.match(after, /Plain mention: I see Dr\. Lee\./);
+});
+
+test('applyEntityLinks: does not link inside bare URL', async () => {
+  const ws = await copyFixtureToTmp('linker-skip-rules');
+  const reg = await buildEntityRegistry(ws);
+  await applyEntityLinks(ws, 'profile/test.md', reg);
+  const after = await readFile(join(ws, 'user-data/memory/profile/test.md'), 'utf-8');
+  assert.match(after, /URL: https:\/\/example\.com\/Dr\.-Lee mentions\./);
+});
