@@ -188,3 +188,60 @@ First-match-wins; rule order in the source is the priority.
 - **Pattern updates lag attacks.** Refusal-log review surfaces unblocked commands so Kevin can add patterns.
 
 The hook is defense-in-depth, not a sandbox.
+
+---
+
+## 5. Tamper detection (cycle-2b)
+
+### Manifest
+
+Trusted baseline at `user-data/security/manifest.json`. Schema:
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [{ "matcher": "Bash", "command": "node system/scripts/claude-code-hook.js --on-pre-bash" }, ...],
+    "Stop":       [{ "command": "node system/scripts/claude-code-hook.js --on-stop" }],
+    "SessionStart": [{ "command": "node system/scripts/check-manifest.js" }]
+  },
+  "mcpServers": {
+    "expected": ["claude-in-chrome", "context7", ...],
+    "writeCapable": ["Sanity", "plugin_vercel_vercel"]
+  }
+}
+```
+
+Skeleton at `system/skeleton/security/manifest.json` ships with Robin's owned hooks; empty MCP arrays. `setup.js` postinstall copies the skeleton to `user-data/security/manifest.json` if the live manifest is absent.
+
+### SessionStart hook
+
+`.claude/settings.json` registers `system/scripts/check-manifest.js` as the SessionStart hook. Each new Claude Code session triggers the check:
+
+1. Load manifest. Missing → warning + exit 0 (fail-soft).
+2. Read current `.claude/settings.json` hooks. Enumerate MCP servers from `.mcp.json` + `~/.claude/mcp_settings.json` + `~/.claude/settings.json` + `~/Library/Application Support/Claude/claude_desktop_config.json`.
+3. `computeDrift()` produces a list of `{severity, kind, detail, hash}`:
+   - Hook in current settings not in manifest → **severe** (`unexpected-hook`).
+   - MCP in current state not in manifest's `expected` → **mild** (`unexpected-mcp`); **severe** if also in `writeCapable`.
+   - Manifest entries missing from current state → no action (treated as Kevin's intentional removal).
+4. `emitDrift()` bounds stderr to 5 entries; collapses past that. All non-info entries log to `policy-refusals.log` with `kind=tamper`. Dedup window 24h.
+
+### Manifest update workflow
+
+```sh
+# Read-only snapshot (safe to run any time):
+node system/scripts/manifest-snapshot.js > /tmp/snap.json
+diff user-data/security/manifest.json /tmp/snap.json
+$EDITOR user-data/security/manifest.json   # paste in additions
+
+# First-deploy bootstrap (overwrites live manifest with current state):
+node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+```
+
+The two-flag `--apply --confirm-trust-current-state` pattern requires explicit acknowledgment — `--apply` alone exits 1 with an explanation. Use only on first deploy or after manually reviewing every entry.
+
+### Known limitations
+
+- Manifest is plain JSON. An attacker with filesystem write access can edit it. Detection layer is **git-diff review on pull** for forks; on Kevin's machine, T3 access defeats both.
+- MCP discovery path varies across Claude Code versions; the helper tries known locations and fails soft on missing/malformed.
+- New MCPs that genuinely should be write-capable but aren't yet annotated default to mild drift; Kevin promotes them to `writeCapable` after first observation.

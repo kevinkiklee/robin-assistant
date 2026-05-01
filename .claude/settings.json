@@ -53,6 +53,16 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node system/scripts/check-manifest.js"
+          }
+        ]
+      }
     ]
   }
 }

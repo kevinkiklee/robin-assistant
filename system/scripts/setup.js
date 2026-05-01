@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
 import { runPendingMigrations } from './migrate.js';
+import { ensureManifestFromSkeleton } from './lib/manifest.js';
 
 const PLATFORMS = ['claude-code', 'cursor', 'gemini-cli', 'codex', 'antigravity'];
 
@@ -73,6 +74,16 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
       }
     } catch (err) {
       console.warn(`postinstall: migration apply skipped (${err.message})`);
+    }
+    // Cycle-2b: ensure the security manifest exists for existing installs
+    // (won't be added by skeleton-copy since user-data is non-empty).
+    try {
+      const m = ensureManifestFromSkeleton(workspaceDir);
+      if (m.copied) {
+        console.log('postinstall: copied skeleton security manifest → user-data/security/manifest.json');
+      }
+    } catch (err) {
+      console.warn(`postinstall: manifest skeleton copy skipped (${err.message})`);
     }
     return;
   }
