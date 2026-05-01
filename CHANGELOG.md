@@ -2,6 +2,52 @@
 
 ## [Unreleased]
 
+### 2026-05-01 — Autonomous memory: capture enforcement + recall (cycles 3a / 3b)
+
+Two subsystems shipped together, both closing the same architectural gap:
+*the model is supposed to capture and recall, but doesn't always.* Both
+move the work from "model discipline" to "system enforces via Claude Code
+lifecycle hooks." No external API key required; all retrieval is
+in-process Node-native (no ripgrep dependency).
+
+**Capture enforcement (cycle-3a).** Stop hook now hard-walls turn-end
+when a substantive turn finished without writing to `user-data/memory/`.
+Model must either write a tagged line to `inbox.md` (or direct-write a
+file) OR emit a `<!-- no-capture-needed: <reason> -->` marker. Bounded
+retry (default 1). Per-turn write-intent recorded by PreToolUse to
+`user-data/state/turn-writes.log`. Tier classifier
+(`lib/capture-keyword-scan.js`) decides enforcement strictness from
+user-message word count, capture keywords, and entity matches. Disable via
+`ROBIN_CAPTURE_ENFORCEMENT=off` or `memory.capture_enforcement.enabled =
+false`. Removes the prior T1 (~20-turn) sweep instruction from
+`capture-rules.md` (now redundant).
+
+**Recall (cycle-3b).** New `UserPromptSubmit` hook auto-injects relevant
+memory into the model's input as `<!-- relevant memory -->` blocks based
+on entity matches in the user message AND in the previous assistant
+message (so follow-ups like "schedule it" inherit the entity). Entities
+sourced from `user-data/memory/ENTITIES.md`, generated from any topic
+file with `aliases:` frontmatter or `type: entity`. Hot cap 150 rows;
+overflow → `ENTITIES-extended.md`. New `bin/robin.js recall <term>`
+subcommand for ad-hoc lookup. Incremental ENTITIES.md refresh runs
+inline if any entity-bearing file is newer than the index.
+
+**Telemetry.** Three new logs surface in Dream Phase 3.11.5:
+- `user-data/state/capture-enforcement.log` — outcomes per turn
+  (skipped-trivial, captured, marker-pass, retried, retried-failed)
+- `user-data/state/recall.log` — entities matched, hits injected, bytes
+- `user-data/state/hook-perf.log` — slow-path warnings (UserPromptSubmit
+  >80ms target)
+
+Dream Phase 4.17.6 regenerates ENTITIES.md daily; 4.17.7 caps log files.
+
+**Rollout.** Migration `0020-capture-enforcement-config.js` adds the
+config block to existing installs. Run `node system/scripts/index-entities.js
+--bootstrap` after upgrade to seed `ENTITIES.md`. `.claude/settings.json`
+gains a `UserPromptSubmit` hook entry; manifest must be re-snapshotted
+once via `node system/scripts/manifest-snapshot.js --apply
+--confirm-trust-current-state`.
+
 ### Security cycles 1a / 1b / 2a / 2b / 2c — driven by 2026-04-30 audit
 
 Five sequenced security cycles closing 28 of 42 audit gaps directly,
