@@ -143,4 +143,48 @@ describe('UserPromptSubmit handler', () => {
     const r = runHook(ws, ['--on-user-prompt-submit'], event);
     assert.equal(r.status, 0);
   });
+
+  it('inherits entity from previous assistant message in transcript', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-ups-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory/profile'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/state/sessions.md'),
+      `| claude-code-x | ${new Date().toISOString()} |\n`);
+    writeFileSync(join(ws, 'user-data/memory/ENTITIES.md'),
+      '---\ntype: reference\n---\n# Entities\n\n- Dr. Park (Park) — profile/dentist.md\n');
+    writeFileSync(join(ws, 'user-data/memory/profile/dentist.md'),
+      '---\n---\n# Dr. Park\nDentist, JC.\n');
+    const tx = join(ws, 'transcript.jsonl');
+    writeFileSync(tx,
+      JSON.stringify({ role: 'user', content: 'who is my dentist' }) + '\n' +
+      JSON.stringify({ role: 'assistant', content: 'Your dentist is Dr. Park.' }) + '\n');
+    const event = JSON.stringify({
+      session_id: 'claude-code-x',
+      user_message: 'schedule it for next week',  // no entity here
+      transcript_path: tx,
+    });
+    const r = runHook(ws, ['--on-user-prompt-submit'], event);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /Dr\. Park/);
+  });
+
+  it('appends recall.log when injecting', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-ups-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory/profile'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/state/sessions.md'),
+      `| claude-code-x | ${new Date().toISOString()} |\n`);
+    writeFileSync(join(ws, 'user-data/memory/ENTITIES.md'),
+      '---\ntype: reference\n---\n# Entities\n\n- Dr. Park — profile/dentist.md\n');
+    writeFileSync(join(ws, 'user-data/memory/profile/dentist.md'),
+      '---\n---\n# Dr. Park\nDentist.\n');
+    const event = JSON.stringify({
+      session_id: 'claude-code-x',
+      user_message: 'meeting with Dr. Park tomorrow at noon',
+    });
+    const r = runHook(ws, ['--on-user-prompt-submit'], event);
+    assert.equal(r.status, 0);
+    const log = readFileSync(join(ws, 'user-data/state/recall.log'), 'utf8');
+    assert.match(log, /Dr\. Park/);
+  });
 });

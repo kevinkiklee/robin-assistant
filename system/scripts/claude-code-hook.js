@@ -24,7 +24,7 @@
 // Hooks are registered in .claude/settings.json. They run in this
 // workspace's working directory.
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync, appendFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,8 +36,8 @@ import { mostRecentSessionId } from './lib/sessions.js';
 import { applyRedaction } from './lib/sync/redact.js';
 import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson } from './lib/turn-state.js';
 import { appendPerfLog } from './lib/perf-log.js';
-import { classifyTier } from './lib/capture-keyword-scan.js';
-import { readEntities } from './lib/entity-index.js';
+import { classifyTier, scanEntityAliases } from './lib/capture-keyword-scan.js';
+import { readEntities, collectEntities, writeEntitiesAtomic } from './lib/entity-index.js';
 import { recall, formatRecallHits } from './lib/recall.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -320,6 +320,74 @@ async function onPreBash(args) {
   }
 }
 
+// Scan the most recent COMPLETE assistant message in a Claude Code transcript (.jsonl)
+// for entity-alias hits. Tail-bounded read; fail-open on any I/O issue.
+function scanLastAssistantMessage(transcriptPath, aliasIndex) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return [];
+  try {
+    const buf = readFileSync(transcriptPath);
+    const tail = buf.length > 32 * 1024 ? buf.subarray(buf.length - 32 * 1024) : buf;
+    const lines = tail.toString('utf8').split('\n').filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const obj = JSON.parse(lines[i]);
+        const role = obj.role ?? obj.message?.role;
+        if (role !== 'assistant') continue;
+        const content = typeof obj.content === 'string'
+          ? obj.content
+          : (Array.isArray(obj.content) ? obj.content.map((c) => c.text ?? '').join(' ') : (obj.message?.content ?? ''));
+        if (!content) continue;
+        return scanEntityAliases(String(content), aliasIndex);
+      } catch { /* skip malformed jsonl line */ }
+    }
+  } catch { /* fail-open */ }
+  return [];
+}
+
+// If any entity-bearing topic file is newer than ENTITIES.md, regenerate it inline.
+// Cheap when nothing changed; bounded by entity-tree size.
+function maybeRefreshEntitiesIndex(ws) {
+  const entitiesFile = join(ws, 'user-data/memory/ENTITIES.md');
+  if (!existsSync(entitiesFile)) return false;
+  let entitiesMtime;
+  try { entitiesMtime = statSync(entitiesFile).mtimeMs; } catch { return false; }
+  // Cheap check: walk the memory tree and see if any md is newer than ENTITIES.md.
+  const memDir = join(ws, 'user-data/memory');
+  let staleFound = false;
+  function walk(dir) {
+    if (staleFound || !existsSync(dir)) return;
+    let names;
+    try { names = readdirSync(dir); } catch { return; }
+    for (const name of names) {
+      if (staleFound) return;
+      if (name.startsWith('.') || name === 'ENTITIES.md' || name === 'ENTITIES-extended.md') continue;
+      const full = join(dir, name);
+      let st;
+      try { st = statSync(full); } catch { continue; }
+      if (st.isDirectory()) walk(full);
+      else if (name.endsWith('.md') && st.mtimeMs > entitiesMtime) staleFound = true;
+    }
+  }
+  walk(memDir);
+  if (!staleFound) return false;
+  try {
+    const entities = collectEntities(ws);
+    // Don't clobber a populated ENTITIES.md with an empty regen — that's a sign the
+    // entity tree has no `type: entity` frontmatter (test fixtures, partial setups, etc.).
+    if (entities.length === 0) return false;
+    writeEntitiesAtomic(ws, entities);
+    return true;
+  } catch { return false; }
+}
+
+function appendRecallLog(ws, { turnId, entitiesMatched, hitsInjected, bytesInjected }) {
+  try {
+    const file = join(ws, 'user-data/state/recall.log');
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, `${new Date().toISOString()}\t${turnId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\n`);
+  } catch { /* best-effort */ }
+}
+
 async function onUserPromptSubmit(args) {
   const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
   const start = Date.now();
@@ -331,6 +399,9 @@ async function onUserPromptSubmit(args) {
     const sessionId = event.session_id ?? mostRecentSessionId(ws, 'claude-code') ?? 'unknown';
     const userMessage = event.user_message ?? event.prompt ?? '';
 
+    // Refresh ENTITIES.md if any entity file has been touched since last regen.
+    maybeRefreshEntitiesIndex(ws);
+
     const { entities: entityList } = readEntities(ws);
     const aliasIndex = [];
     for (const e of entityList) {
@@ -340,23 +411,34 @@ async function onUserPromptSubmit(args) {
 
     const tierResult = classifyTier({ userMessage, entityAliases: aliasIndex });
 
+    // Inherit entities from the previous assistant message ("schedule it" pattern).
+    const fromAssistant = scanLastAssistantMessage(event.transcript_path, aliasIndex);
+    const allEntitiesMatched = [...new Set([...tierResult.entitiesMatched, ...fromAssistant])];
+
     const turnId = mintTurnId(sessionId);
     writeTurnJson(ws, {
       turn_id: turnId,
       user_words: tierResult.wc,
       tier: tierResult.tier,
-      entities_matched: tierResult.entitiesMatched,
+      entities_matched: allEntitiesMatched,
     });
 
-    if (tierResult.entitiesMatched.length > 0) {
+    if (allEntitiesMatched.length > 0) {
       const matchedEntities = entityList
-        .filter((e) => tierResult.entitiesMatched.includes(e.name) || e.aliases.some((a) => tierResult.entitiesMatched.includes(a)))
+        .filter((e) => allEntitiesMatched.includes(e.name) || e.aliases.some((a) => allEntitiesMatched.includes(a)))
         .slice(0, 5);
       const patterns = matchedEntities.flatMap((e) => [e.name, ...e.aliases]);
       const r = recall(ws, patterns, { topN: matchedEntities.length * 3 });
       const formatted = formatRecallHits(r);
       if (formatted) {
-        process.stdout.write(`<!-- relevant memory (auto-loaded based on entities in your message) -->\n${formatted}\n<!-- /relevant memory -->\n`);
+        const block = `<!-- relevant memory (auto-loaded based on entities in your message) -->\n${formatted}\n<!-- /relevant memory -->\n`;
+        process.stdout.write(block);
+        appendRecallLog(ws, {
+          turnId,
+          entitiesMatched: allEntitiesMatched,
+          hitsInjected: r.hits.length,
+          bytesInjected: block.length,
+        });
       }
     }
 
