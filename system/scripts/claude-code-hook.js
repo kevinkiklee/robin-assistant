@@ -34,6 +34,7 @@ import { writeSessionBlock } from './lib/handoff.js';
 import { mostRecentSessionId } from './lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
 import { applyRedaction } from './lib/sync/redact.js';
+import { readTurnJson, appendWriteIntent } from './lib/turn-state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -213,6 +214,20 @@ async function onPreToolUse() {
     } catch { /* audit best-effort */ }
   }
 
+  // Cycle-3: write-intent log for capture enforcement.
+  if (isMemoryWrite) {
+    try {
+      const turn = readTurnJson(ws);
+      if (turn?.turn_id) {
+        appendWriteIntent(ws, {
+          turn_id: turn.turn_id,
+          target: target.replace(/^.*user-data\/memory\//, 'user-data/memory/'),
+          tool: toolName,
+        });
+      }
+    } catch { /* fail-open */ }
+  }
+
   process.exit(0);
 }
 
@@ -228,7 +243,7 @@ function readStdin() {
 }
 
 async function onPreBash(args) {
-  const ws = args.workspace ?? REPO_ROOT;
+  const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
   // Top-level try/catch fail-closed: any uncaught error in the hook
   // blocks rather than silently letting the command through.
   try {
@@ -265,6 +280,22 @@ async function onPreBash(args) {
       process.stderr.write(`POLICY_REFUSED [bash:${result.name}]: ${result.why}\n`);
       process.exit(2);
     }
+
+    // Cycle-3: write-intent log for Bash redirections to user-data/memory/.
+    try {
+      const memWriteRe = />>?\s*[^\s]*user-data\/memory\//;
+      if (memWriteRe.test(cmd)) {
+        const turn = readTurnJson(ws);
+        if (turn?.turn_id) {
+          const m = cmd.match(/(user-data\/memory\/[^\s;|&)]+)/);
+          appendWriteIntent(ws, {
+            turn_id: turn.turn_id,
+            target: m?.[1] ?? 'user-data/memory/',
+            tool: 'bash',
+          });
+        }
+      }
+    } catch { /* fail-open */ }
 
     process.exit(0);
   } catch (err) {
