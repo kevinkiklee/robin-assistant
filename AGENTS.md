@@ -36,6 +36,7 @@ After every response, scan for capturable signals.
 - **Inbox-write** with `[tag|origin=...]` to `user-data/memory/inbox.md` for everything else (Dream routes within 24h).
 - **Capture is enforced at turn-end.** Either (a) write to `inbox.md` / direct-write a memory file, or (b) emit `<!-- no-capture-needed: <one-line reason> -->` in your response. Failing both blocks turn-end with one retry. Disable: `ROBIN_CAPTURE_ENFORCEMENT=off` or `memory.capture_enforcement.enabled = false` in `robin.config.json`.
 - **Tags:** `[fact|origin=...|preference|decision|correction|task|update|derived|journal|predict|?]`. Every captured line MUST include `origin=<user|sync:X|ingest:X|tool:X|derived>`. Set `origin=user` ONLY when the line text comes from the user's own message in the current turn (verbatim or paraphrased from the user's own statements). Captures from `trust:untrusted` files or UNTRUSTED-START blocks get the matching `origin=sync|ingest|tool` value. Dishonest origin attribution is a hard-rule violation. Direct-write exceptions also gate on `origin=user`.
+- **After direct-writes to in-scope memory files** (`knowledge/**`, `profile/**` excluding append-only files like `inbox.md`, `journal.md`, `log.md`, `decisions.md`, `tasks.md`, `hot.md`): invoke `node bin/robin.js link <memRelPath>` to insert any newly-applicable entity links. Best-effort; if it errors, continue normally.
 
 Routing details: `system/capture-rules.md`.
 
