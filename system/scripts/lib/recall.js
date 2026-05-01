@@ -3,7 +3,7 @@
 // Node-native in-process retrieval over user-data/memory/.
 // No ripgrep dependency; uses fs.readdir walk + compiled regex.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, lstatSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const DEFAULT_TOP_N = 5;
@@ -18,7 +18,9 @@ function* walkMarkdown(dir) {
     if (name.startsWith('.')) continue;
     const full = join(dir, name);
     let st;
-    try { st = statSync(full); } catch { continue; }
+    try { st = lstatSync(full); } catch { continue; }
+    // Skip symlinks: prevents memDir escape and cycle infinite-recursion.
+    if (st.isSymbolicLink()) continue;
     if (st.isDirectory()) {
       yield* walkMarkdown(full);
     } else if (name.endsWith('.md')) {
@@ -40,6 +42,8 @@ function parseFrontmatter(text) {
 
 export function recall(workspaceDir, patterns, opts = {}) {
   const topN = opts.topN ?? DEFAULT_TOP_N;
+  // Empty patterns would compile to a zero-width "match every line" regex.
+  if (!patterns?.length) return { hits: [], truncated: false };
   const memDir = join(workspaceDir, 'user-data/memory');
   const re = new RegExp(`\\b(${patterns.map(escapeRegex).join('|')})\\b`, 'i');
   const hits = [];

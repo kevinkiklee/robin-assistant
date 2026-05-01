@@ -64,4 +64,21 @@ describe('recall', () => {
     const r = recall(ws, ['Dr. Park']);
     assert.ok(!r.hits.some((h) => h.file.includes('system/')));
   });
+
+  it('returns empty hits on empty patterns array (does not match everything)', () => {
+    const ws = setup();
+    const r = recall(ws, []);
+    assert.deepEqual(r.hits, []);
+    assert.equal(r.truncated, false);
+  });
+
+  it('skips symlinks to prevent memDir escape and cycles', async () => {
+    const ws = setup();
+    const { symlinkSync } = await import('node:fs');
+    const target = join(ws, 'outside.md');
+    writeFileSync(target, 'Dr. Park leaked from outside.\n');
+    symlinkSync(target, join(ws, 'user-data/memory/leak.md'));
+    const r = recall(ws, ['Dr. Park']);
+    assert.ok(!r.hits.some((h) => h.file.endsWith('leak.md')));
+  });
 });
