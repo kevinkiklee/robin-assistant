@@ -44,3 +44,26 @@ test('buildEntityRegistry: skips knowledge/sources, knowledge/conversations, arc
   assert.equal(reg.byPath.size, 0);
   assert.equal(reg.byAlias.size, 0);
 });
+
+const FIXTURE_QUOTED_COMMA = join(__dirname, '..', 'fixtures', 'wiki-graph', 'registry-quoted-comma');
+
+test('buildEntityRegistry: aliases with quoted commas are preserved as a single alias', async () => {
+  const reg = await buildEntityRegistry(FIXTURE_QUOTED_COMMA);
+  const entry = reg.byPath.get('knowledge/people/smith-jr.md');
+  assert.ok(entry);
+  assert.deepEqual(
+    entry.aliases.sort(),
+    ['John Smith Jr.', 'Smith', 'Smith, Jr.'].sort()
+  );
+  assert.ok(reg.byAlias.has('smith, jr.'));
+  // The naive comma-split would have produced a stray "Jr." alias.
+  assert.equal(reg.byAlias.has('jr.'), false);
+});
+
+const FIXTURE_TRUST_FM = join(__dirname, '..', 'fixtures', 'wiki-graph', 'registry-trust-frontmatter');
+
+test('buildEntityRegistry: pages with trust:untrusted frontmatter are skipped regardless of path', async () => {
+  const reg = await buildEntityRegistry(FIXTURE_TRUST_FM);
+  assert.equal(reg.byPath.size, 0);
+  assert.equal(reg.byAlias.size, 0);
+});

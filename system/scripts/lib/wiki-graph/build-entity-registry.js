@@ -28,6 +28,38 @@ async function* walkMd(root, base = root) {
   }
 }
 
+// Quote-aware splitter for inline YAML arrays. Treats commas inside double or
+// single quotes as part of the value rather than separators. Adequate for the
+// frontmatter shapes Robin uses; not a full YAML parser.
+function splitInlineArray(inner) {
+  const out = [];
+  let buf = '';
+  let quote = null;
+  for (let i = 0; i < inner.length; i += 1) {
+    const c = inner[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else buf += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === ',') {
+      out.push(buf.trim());
+      buf = '';
+    } else {
+      buf += c;
+    }
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out.filter(Boolean);
+}
+
+// Local hand-rolled frontmatter reader. Diverges from the canonical
+// `lib/memory-index.js` parseFrontmatter in two ways the registry needs:
+//   1. Tolerates CRLF line endings.
+//   2. Strips per-element quotes from inline arrays so aliases survive
+//      round-trips through stringifyFrontmatter (which emits unquoted joins).
+// Kept local rather than extending the canonical parser to avoid a wider
+// refactor; deduplication is a deliberate-debt item.
 function parseFrontmatter(content) {
   const m = content.match(FRONTMATTER_RE);
   if (!m) return null;
@@ -38,7 +70,7 @@ function parseFrontmatter(content) {
     const key = kv[1];
     let val = kv[2].trim();
     if (val.startsWith('[') && val.endsWith(']')) {
-      val = val.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+      val = splitInlineArray(val.slice(1, -1));
     } else {
       val = val.replace(/^["']|["']$/g, '');
     }
@@ -61,6 +93,7 @@ export async function buildEntityRegistry(workspaceDir) {
     const content = await readFile(join(memoryRoot, relPath), 'utf-8');
     const fm = parseFrontmatter(content);
     if (!fm || !fm.canonical) continue;
+    if (fm.trust === 'untrusted' || fm['trust-source']) continue;
 
     const canonical = String(fm.canonical);
     const aliasesRaw = Array.isArray(fm.aliases) ? fm.aliases : [];
