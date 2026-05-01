@@ -188,3 +188,82 @@ describe('UserPromptSubmit handler', () => {
     assert.match(log, /Dr\. Park/);
   });
 });
+
+describe('Stop verifyCapture', () => {
+  function setupTier3WithoutCapture() {
+    const ws = mkdtempSync(join(tmpdir(), 'cc-hook-stop-'));
+    mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/memory/self-improvement'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/state/sessions.md'),
+      `| claude-code-x | ${new Date().toISOString()} |\n`);
+    writeFileSync(join(ws, 'user-data/memory/inbox.md'), '');
+    writeFileSync(join(ws, 'user-data/state/turn.json'),
+      JSON.stringify({ turn_id: 'claude-code-x:111', user_words: 25, tier: 3, entities_matched: [] }));
+    return ws;
+  }
+
+  it('blocks (exit 2) when tier 3, no capture, no marker, retries available', () => {
+    const ws = setupTier3WithoutCapture();
+    const event = JSON.stringify({ session_id: 'claude-code-x' });
+    const r = runHook(ws, ['--on-stop'], event);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /Capture before ending/);
+  });
+
+  it('passes (exit 0) when tier 3 + write-intent recorded', () => {
+    const ws = setupTier3WithoutCapture();
+    writeFileSync(join(ws, 'user-data/state/turn-writes.log'),
+      `${new Date().toISOString()}\tclaude-code-x:111\tuser-data/memory/inbox.md\tEdit\n`);
+    const event = JSON.stringify({ session_id: 'claude-code-x' });
+    const r = runHook(ws, ['--on-stop'], event);
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  it('passes (exit 0) when no-capture-needed marker found in transcript', () => {
+    const ws = setupTier3WithoutCapture();
+    const tx = join(ws, 'transcript.jsonl');
+    writeFileSync(tx, JSON.stringify({ role: 'assistant', content: 'all done <!-- no-capture-needed: pure refactor of internal helper --> ok' }) + '\n');
+    const event = JSON.stringify({ session_id: 'claude-code-x', transcript_path: tx });
+    const r = runHook(ws, ['--on-stop'], event);
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  it('passes (exit 0) on tier 1 trivial turn with no capture', () => {
+    const ws = setupTier3WithoutCapture();
+    writeFileSync(join(ws, 'user-data/state/turn.json'),
+      JSON.stringify({ turn_id: 'claude-code-x:222', user_words: 2, tier: 1, entities_matched: [] }));
+    const event = JSON.stringify({ session_id: 'claude-code-x' });
+    const r = runHook(ws, ['--on-stop'], event);
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  it('passes (exit 0) after retry budget exhausted', () => {
+    const ws = setupTier3WithoutCapture();
+    writeFileSync(join(ws, 'user-data/state/capture-retry.json'),
+      JSON.stringify({ 'claude-code-x:111': { attempts: 1, last_at: new Date().toISOString() } }));
+    const event = JSON.stringify({ session_id: 'claude-code-x' });
+    const r = runHook(ws, ['--on-stop'], event);
+    assert.equal(r.status, 0);
+  });
+
+  it('passes (exit 0) and skips enforcement when ROBIN_CAPTURE_ENFORCEMENT=off', () => {
+    const ws = setupTier3WithoutCapture();
+    const r = spawnSync('node', [HOOK, '--on-stop'], {
+      cwd: ws, encoding: 'utf8',
+      input: JSON.stringify({ session_id: 'claude-code-x' }),
+      env: { ...process.env, ROBIN_WORKSPACE: ws, ROBIN_CAPTURE_ENFORCEMENT: 'off' },
+    });
+    assert.equal(r.status, 0);
+  });
+
+  it('appends a telemetry line per outcome', () => {
+    const ws = setupTier3WithoutCapture();
+    writeFileSync(join(ws, 'user-data/state/turn-writes.log'),
+      `${new Date().toISOString()}\tclaude-code-x:111\tuser-data/memory/inbox.md\tEdit\n`);
+    const event = JSON.stringify({ session_id: 'claude-code-x' });
+    runHook(ws, ['--on-stop'], event);
+    const log = readFileSync(join(ws, 'user-data/state/capture-enforcement.log'), 'utf8');
+    assert.match(log, /captured/);
+    assert.match(log, /claude-code-x:111/);
+  });
+});

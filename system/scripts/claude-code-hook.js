@@ -34,7 +34,7 @@ import { writeSessionBlock } from './lib/handoff.js';
 import { mostRecentSessionId } from './lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
 import { applyRedaction } from './lib/sync/redact.js';
-import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson } from './lib/turn-state.js';
+import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson, readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from './lib/turn-state.js';
 import { appendPerfLog } from './lib/perf-log.js';
 import { classifyTier, scanEntityAliases } from './lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from './lib/entity-index.js';
@@ -101,8 +101,101 @@ function writeAutoLine(ws) {
   writeSessionBlock(hotFile, sid, body, { maxBlocks: 3, position: 'top' });
 }
 
+const CORRECTIVE_MSG =
+  'Capture before ending the turn. Either (a) write a tagged line to user-data/memory/inbox.md per AGENTS.md capture-rules, or (b) emit "<!-- no-capture-needed: <one-line reason> -->" if nothing in this turn warrants capture. This is enforced; second pass is allowed once.\n';
+
+function captureEnforcementEnabled(ws) {
+  if ((process.env.ROBIN_CAPTURE_ENFORCEMENT ?? '').toLowerCase() === 'off') return false;
+  try {
+    const cfg = JSON.parse(readFileSync(join(ws, 'user-data/robin.config.json'), 'utf8'));
+    return cfg?.memory?.capture_enforcement?.enabled !== false;
+  } catch {
+    return true;
+  }
+}
+
+function readRetryBudget(ws) {
+  try {
+    const cfg = JSON.parse(readFileSync(join(ws, 'user-data/robin.config.json'), 'utf8'));
+    return cfg?.memory?.capture_enforcement?.retry_budget ?? 1;
+  } catch { return 1; }
+}
+
+function tailScanForNoCaptureMarker(transcriptPath, maxBytes = 16 * 1024) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return null;
+  try {
+    const fd = readFileSync(transcriptPath);
+    const buf = fd.length > maxBytes ? fd.subarray(fd.length - maxBytes) : fd;
+    const text = buf.toString('utf8');
+    const m = text.match(/<!--\s*no-capture-needed:\s*([^>]+?)\s*-->/);
+    return m ? { reason: m[1].trim() } : null;
+  } catch {
+    return null;
+  }
+}
+
+function appendEnforcementLog(ws, line) {
+  try {
+    const file = join(ws, 'user-data/state/capture-enforcement.log');
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, line);
+  } catch { /* best-effort */ }
+}
+
+async function verifyCapture(ws, event) {
+  if (!captureEnforcementEnabled(ws)) return { allow: true, outcome: 'disabled' };
+
+  const turn = readTurnJson(ws);
+  if (!turn?.turn_id) return { allow: true, outcome: 'no-turn-state' };
+
+  if (turn.tier === 1) return { allow: true, outcome: 'skipped-trivial', turnId: turn.turn_id, tier: 1 };
+
+  const intents = readWriteIntents(ws, turn.turn_id);
+  if (intents.length > 0) return { allow: true, outcome: 'captured', turnId: turn.turn_id, tier: turn.tier };
+
+  const marker = tailScanForNoCaptureMarker(event?.transcript_path);
+  const tier = turn.tier;
+  if (marker) {
+    if (tier === 2 || (tier === 3 && marker.reason && marker.reason.length > 0)) {
+      return { allow: true, outcome: 'marker-pass', turnId: turn.turn_id, tier };
+    }
+  }
+
+  const budget = readRetryBudget(ws);
+  const attempts = readRetry(ws, turn.turn_id);
+  if (attempts < budget) {
+    incrementRetry(ws, turn.turn_id);
+    return { allow: false, outcome: 'retried', turnId: turn.turn_id, tier };
+  }
+  return { allow: true, outcome: 'retried-failed', turnId: turn.turn_id, tier };
+}
+
 async function onStop(args) {
-  const ws = args.workspace ?? REPO_ROOT;
+  const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
+
+  // Read event from stdin (Claude Code passes session_id, transcript_path, ...).
+  let event = {};
+  try {
+    const stdin = await readStdin();
+    if (stdin) event = JSON.parse(stdin);
+  } catch { /* keep event = {} */ }
+
+  // Capture verification — gate before any other Stop-time work.
+  let verifyResult = { allow: true, outcome: 'error' };
+  try {
+    verifyResult = await verifyCapture(ws, event);
+  } catch { /* fail-open */ }
+
+  appendEnforcementLog(ws,
+    `${new Date().toISOString()}\t${verifyResult.turnId ?? '-'}\t${verifyResult.tier ?? '-'}\t${verifyResult.outcome}\n`);
+
+  if (!verifyResult.allow) {
+    process.stderr.write(CORRECTIVE_MSG);
+    process.exit(2);
+  }
+
+  // Prune turn-writes.log to last hour.
+  try { pruneWriteIntents(ws); } catch { /* */ }
 
   // Write session-handoff auto-line synchronously. Failure must not block drain.
   try {
