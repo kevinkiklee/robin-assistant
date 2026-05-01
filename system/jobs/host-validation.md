@@ -4,7 +4,7 @@ description: Quarterly drift-detection probe — verifies the 5 frontier hosts s
 runtime: agent
 schedule: "0 9 1 */3 *"
 triggers: ["host validation", "validate hosts", "drift check"]
-enabled: false
+enabled: true
 ---
 
 # Host Validation (drift detection)
