@@ -481,7 +481,10 @@ async function main() {
     }
   }
   const anyHard = issues.some((i) => i.severity === 'hard');
-  process.exit(anyHard ? 1 : 0);
+  // Drain stdout before exit so piped consumers (e.g. execFileSync in tests)
+  // see the full payload. Without the callback, process.exit on a piped
+  // stdout can truncate large writes.
+  process.stdout.write('', () => process.exit(anyHard ? 1 : 0));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
