@@ -12,7 +12,7 @@
   "sub_index_max_lines": 30,
 
   "tier1_files": [
-    { "path": "AGENTS.md", "stability": "frozen", "max_lines": 75, "required": true, "$comment": "Original 120 lines. Slimmed to ~70. Cap 75 leaves room for one new rule." },
+    { "path": "AGENTS.md", "stability": "frozen", "max_lines": 80, "required": true, "$comment": "Original 120 lines. Slimmed to ~70. Cap 80 absorbs Action-states + Conversational-tics rules from Ship 1 of the autonomy roadmap." },
     { "path": "user-data/robin.config.json", "stability": "frozen", "required": true },
     { "path": "user-data/memory/profile/identity.md", "stability": "slow", "max_lines": 100, "required": false },
     { "path": "user-data/memory/profile/personality.md", "stability": "slow", "max_lines": 120, "required": false },
