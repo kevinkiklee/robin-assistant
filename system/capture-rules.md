@@ -11,7 +11,7 @@ After every response, scan for capturable signals.
 - **Direct-write to file** for: corrections to assistant behavior, user-stated
   "remember this", updates that supersede a fact already in your context.
 - **Inbox-write** with `[tag]` for everything else. Dream routes within 24h.
-- **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|predict|?]`.
+- **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|predict|action|?]`.
 
 If AGENTS.md and this file disagree, AGENTS.md wins.
 
@@ -70,6 +70,7 @@ Examples:
 | `[derived]` | Dream classifies from content |
 | `[journal]` | `journal.md` |
 | `[predict]` | `self-improvement/predictions.md` `## Open` (direct-write; see format below) |
+| `[action]` | `self-improvement/action-trust.md` `## Open` (direct-write; settled-class elision; see format below) |
 | `[watch:<id>]` | `memory/watches/log.md` (append-only; Dream routes these) |
 | `[?]` | Unclassified — Dream classifies from content |
 
@@ -96,6 +97,28 @@ Do NOT tag low-stakes claims ("you'll like this restaurant").
     - confidence: <likely|inferred|guess>
     - reasoning: <one-line basis>
     - session: <session-id>
+
+### `[action]` tag
+
+**Format (inline tag):**
+
+    [action] <class> • <outcome> • <ref>
+
+Fields: action class slug (from `classify.js`) | outcome (`silent|approved|corrected|pending`) | optional reference (id, hash, file path, etc.).
+
+**When to capture (settled-class elision):** emit `[action]` for unsettled classes only — those that would change the agent's understanding of trust. Look up state in the compact summary in `user-data/policies.md`:
+- ASK class invoked → emit (always)
+- AUTO class still in 7-day probation → emit
+- AUTO class with a correction in the last 30 days → emit
+- Settled AUTO (no recent corrections, past probation) and settled NEVER → silent-elide (no entry)
+
+**Direct-write entry shape** — append under `## Open` in `action-trust.md` for the matching class:
+
+    - YYYY-MM-DD HH:MM • <outcome> • <ref>  <!-- session: <session-id> -->
+
+Update the class block's counters (attempts, successes, corrections, last-action) in the same write.
+
+**Self-correction.** If Robin discovers its own AUTO action was wrong (mid-turn, next turn, or surfaced by Dream), it self-writes a `[correction]` to `corrections.md` AND demotes the class in `action-trust.md` (AUTO → ASK same turn). No threshold; one self-detected error counts the same as a user correction.
 
 ### Multi-faceted moments
 
