@@ -27,3 +27,12 @@ test('buildEntityRegistry: pages without canonical are not entities', async () =
   const reg = await buildEntityRegistry(FIXTURE_BASIC);
   assert.equal(reg.byPath.has('profile/identity.md'), false);
 });
+
+const FIXTURE_COLLISION = join(__dirname, '..', 'fixtures', 'wiki-graph', 'registry-collision');
+
+test('buildEntityRegistry: throws on alias collision with both paths in message', async () => {
+  await assert.rejects(
+    () => buildEntityRegistry(FIXTURE_COLLISION),
+    (err) => /lee-john\.md/.test(err.message) && /lee-jane\.md/.test(err.message) && /Lee/.test(err.message)
+  );
+});
