@@ -156,21 +156,33 @@ These skip inbox:
 
 ## Capture sweep (safety net)
 
-**Trigger 1 — long session.** Mid-session sweep. Fires when:
-- You've crossed ~20 turns since session start, OR
-- A "context compaction is imminent" system reminder appears.
-
-Run the same sweep as Trigger 2.
-
-**Trigger 2 — graceful session end.** Full sweep at wrap-up.
+**Trigger 1 — graceful session end.** Full sweep at wrap-up.
 
 **Process:** Scan available context → cross-reference inbox.md (dedup) → draft tagged entries → batch-append to inbox → write a `## Session — <session-id>` block to `self-improvement/session-handoff.md` ("ended: <ISO>; inbox additions: N ([breakdown]); context: <one-line>") via `writeSessionBlock` → write the same block to `hot.md` with maxBlocks=3.
 
 **Scope:** 30 seconds of effort, not 5 minutes. Ambiguous items get `[?]`.
 
-**Trigger 3 — Stop-hook auto-line (Claude Code only).** The Stop hook (`system/scripts/claude-code-hook.js --on-stop`) writes an auto-line to `session-handoff.md` and `hot.md` on every assistant turn end. It uses the same session-id as the agent's T1/T2 sweep, so Trigger 1 or 2 cleanly replaces it when they fire.
+**Trigger 2 — Stop-hook auto-line (Claude Code only).** The Stop hook (`system/scripts/claude-code-hook.js --on-stop`) writes an auto-line to `session-handoff.md` and `hot.md` on every assistant turn end. It uses the same session-id as the agent's T1 sweep, so Trigger 1 cleanly replaces it when it fires.
 
-Coverage: T3 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antigravity there is no equivalent host hook — file freshness on those hosts depends entirely on T1/T2 agent compliance. Quarterly `host-validation` (`system/jobs/host-validation.md`) checks each host produced a session-handoff entry within the last 30 days.
+Coverage: T2 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antigravity there is no equivalent host hook — file freshness on those hosts depends entirely on T1 agent compliance. Quarterly `host-validation` (`system/jobs/host-validation.md`) checks each host produced a session-handoff entry within the last 30 days.
+
+**Note:** the prior mid-session ~20-turn sweep ("T1 long session") was removed because per-turn capture enforcement (Marker protocol below) supersedes it.
+
+## Marker protocol (capture-enforcement)
+
+Capture is enforced at end-of-turn by `system/scripts/claude-code-hook.js --on-stop` via `verifyCapture`. The hook checks whether `user-data/memory/` was written during the turn (recorded by PreToolUse to `user-data/state/turn-writes.log`). If not, the model must declare a waiver inline:
+
+    <!-- no-capture-needed: <one-line reason> -->
+
+Tier semantics (from `system/scripts/lib/capture-keyword-scan.js`, set by UserPromptSubmit):
+
+- **Tier 1** (trivial — `user_words < 5` or pure greeting): no enforcement; marker not required.
+- **Tier 2** (`5 ≤ user_words < 20`, no capture keywords): marker accepted with empty reason.
+- **Tier 3** (`user_words ≥ 20`, OR capture keyword detected, OR entity match): marker requires a one-line reason.
+
+If neither a write nor a marker is present and retry budget allows, the hook exits 2 with a corrective stderr message; the model receives the message and re-emits with capture or marker. Default `retry_budget: 1` (configurable in `user-data/robin.config.json` → `memory.capture_enforcement`).
+
+Disable enforcement: `ROBIN_CAPTURE_ENFORCEMENT=off` env var, or set `enabled: false` in the config block.
 
 ## Hot cache
 
