@@ -19,12 +19,26 @@ import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js'
 import { atomicWrite, writeTable } from '../../system/scripts/lib/sync/markdown.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
+import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
+import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
 import { GitHubClient } from './lib/github/client.js';
 
 const SOURCE = 'sync-github';
 const ACTIVITY_DAYS = 30;
 
 function nowISO() { return new Date().toISOString(); }
+
+// Insert wiki-graph entity links into a memory file we just wrote.
+// Best-effort; never throw to the caller.
+async function linkAfterWrite(workspaceDir, registry, wsRelPath) {
+  if (!registry || !wsRelPath.startsWith('user-data/memory/')) return;
+  const memRelPath = wsRelPath.slice('user-data/memory/'.length);
+  try {
+    await applyEntityLinks(workspaceDir, memRelPath, registry);
+  } catch (err) {
+    console.warn(`sync-github: applyEntityLinks(${memRelPath}) failed: ${err.message}`);
+  }
+}
 
 function describeEvent(ev) {
   const t = ev.type;
@@ -45,6 +59,13 @@ function describeEvent(ev) {
 }
 
 export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = false }) {
+  let registry = null;
+  try {
+    registry = await buildEntityRegistry(workspaceDir);
+  } catch (err) {
+    console.warn(`sync-github: registry unavailable, skipping link insertion (${err.message})`);
+  }
+
   const pat = requireSecret(workspaceDir, 'GITHUB_PAT');
   const client = new GitHubClient(pat);
 
@@ -115,6 +136,7 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
     writeTable({ columns: ['date', 'repo', 'type', 'summary'], rows: activityRows }),
     { trust: 'untrusted', trustSource: 'sync-github' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/github/activity.md');
 
   // Notifications
   const notifRows = notifs.map((n) => ({
@@ -134,6 +156,7 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
     writeTable({ columns: ['updated', 'repo', 'reason', 'type', 'title', 'unread'], rows: notifRows }),
     { trust: 'untrusted', trustSource: 'sync-github' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/github/notifications.md');
 
   // Releases
   await atomicWrite(workspaceDir, 'user-data/memory/knowledge/github/releases.md',
@@ -142,6 +165,7 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
     writeTable({ columns: ['published', 'repo', 'tag', 'name'], rows: releases }),
     { trust: 'untrusted', trustSource: 'sync-github' }
   );
+  await linkAfterWrite(workspaceDir, registry, 'user-data/memory/knowledge/github/releases.md');
 
   saveCursor(workspaceDir, SOURCE, {
     last_attempt_at: nowISO(),
