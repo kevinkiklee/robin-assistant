@@ -71,13 +71,31 @@ describe('reconcile sync cycle', () => {
     assert.equal(adapter._state.size, 2);
   });
 
-  test('removes orphaned entries', () => {
+  test('removes entries when their job def becomes disabled', () => {
+    writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
+    writeJob('b', { name: 'b', description: 'd', runtime: 'node', schedule: '0 5 * * *', command: 'echo' });
+    const adapter = fakeAdapter();
+    reconcile({ workspaceDir, argv: ['/robin'], adapter });
+    assert.equal(adapter._state.has('b'), true);
+    // Disable b's def and re-reconcile (force, since hash differs anyway).
+    writeJob('b', { name: 'b', description: 'd', runtime: 'node', schedule: '0 5 * * *', command: 'echo', enabled: false });
+    const r = reconcile({ workspaceDir, argv: ['/robin'], adapter, force: true });
+    assert.deepEqual(r.removed, ['b']);
+    assert.equal(adapter._state.has('b'), false);
+  });
+
+  test('leaves unrelated com.robin.* entries alone (discord-bot regression)', () => {
+    // Simulates a non-job plist in the launchd namespace (e.g. com.robin.discord-bot
+    // installed by user-data/scripts/discord-bot-install.js). The reconciler
+    // must not reap it just because it shares the LABEL_PREFIX.
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
     const adapter = fakeAdapter();
-    adapter._state.set('legacy', { schedule: '0 5 * * *', workspaceDir });
+    adapter._state.set('discord-bot', { schedule: '* * * * *', workspaceDir });
+    adapter._state.set('discord-bot-watchdog', { schedule: '*/5 * * * *', workspaceDir });
     const r = reconcile({ workspaceDir, argv: ['/robin'], adapter });
-    assert.deepEqual(r.removed, ['legacy']);
-    assert.equal(adapter._state.has('legacy'), false);
+    assert.deepEqual(r.removed, []);
+    assert.equal(adapter._state.has('discord-bot'), true);
+    assert.equal(adapter._state.has('discord-bot-watchdog'), true);
   });
 
   test('skips disabled jobs', () => {

@@ -119,6 +119,13 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
     desired.set(name, def);
   }
 
+  // Names this reconciler is allowed to touch: any job def discoverable in
+  // system/jobs or user-data/jobs (regardless of enabled state). Plists with
+  // names outside this set share the LABEL_PREFIX namespace but are managed
+  // by something else (e.g. user-data/scripts/discord-bot-install.js) — never
+  // remove them.
+  const managedNames = new Set(jobs.keys());
+
   // Adapter delta
   if (adapter) {
     let installed = [];
@@ -127,7 +134,7 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
     } catch (err) {
       result.warnings.push(`listEntries failed: ${err.message}`);
     }
-    const installedSet = new Set(installed);
+    const installedSet = new Set(installed.filter((n) => managedNames.has(n)));
     const desiredNames = new Set(desired.keys());
 
     if (adapter.batched && adapter.syncAll) {
