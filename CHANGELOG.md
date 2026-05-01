@@ -2,6 +2,54 @@
 
 ## [Unreleased]
 
+### Autonomy roadmap — Ship 1: P1 Independence + P4 Invisibility (2026-04-30)
+
+Replaces the single global "Ask vs Act" rule with a three-tier action
+state machine (AUTO/ASK/NEVER). New deterministic libs:
+`system/scripts/lib/actions/classify.js` (tool-call → class slug),
+`precheck.js` (privacy/dollar/legal/explicit-NEVER hard-rule check),
+`compact-summary.js` (regenerates Tier 1 summary block in policies.md
+from the user-edited body).
+
+New user-data files (created by migration 0019 from skeletons):
+`policies.md` (root) holds explicit AUTO/ASK/NEVER classes plus a
+Dream-maintained compact-summary block; `memory/self-improvement/action-trust.md`
+holds earned-trust calibration mirroring predictions.md shape;
+`state/pending-asks.md` queues ASK-tier actions deferred from agent-runtime
+jobs (consumed at next interactive session-start in a future ship).
+
+AGENTS.md replaces the "Ask vs Act" rule with "Action states" (4-step
+resolution: precheck → policies → action-trust → ASK default) and
+absorbs the standalone "Sycophancy" rule into a five-named-tic
+"Conversational tics" rule (P4 Invisibility). Tier 1 line cap bumped
+75 → 80 in token-budget.json. Per-protocol cap bumped 3000 → 3700 to
+absorb dream.md's new steps.
+
+capture-rules.md adds the `[action]` tag with settled-class elision
+(only emit for ASK / AUTO-in-probation / AUTO-with-recent-correction
+classes) and a self-correction path: Robin reverses its own AUTO
+action and writes the correction in the same turn, demoting AUTO →
+ASK with no threshold.
+
+dream.md gains Phase 3 step 12.5 (action-trust calibration: tally
+outcomes, demote on correction, emit promotion proposals at ≥5 successes
+/ 0 corrections / 30d, finalize after 24h surfaced-at, decay AUTO idle
+≥ 90d) and Phase 4 step 17.5 (compact-summary regeneration).
+
+skeleton/memory/self-improvement/communication-style.md seeds five
+tic rules in the base style, mirroring the AGENTS.md tic block; existing
+Dream Phase 3 step 8 (preference promotion) maintains them.
+
+lint-memory.js gains `findTicViolations` — scans session-handoff.md
+for the five tic patterns and reports as warn severity.
+
+`host-validation` job re-enabled to catch multi-host drift introduced
+by AGENTS.md / capture-rules.md / dream.md edits.
+
+Roadmap parent: `docs/superpowers/specs/2026-04-30-autonomy-roadmap-design.md`.
+Ship 2 (P2 Setup-and-go CLI) and Ship 3 (P3 Proactivity surface routing)
+follow in separate cycles.
+
 ### CLI improvements roadmap — A2 / A3 / D / W / X1 (2026-04-30)
 
 A 5-spec sweep across reliability, self-improvement, memory quality, and

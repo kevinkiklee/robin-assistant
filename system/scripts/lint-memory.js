@@ -307,6 +307,48 @@ function findRedundantParagraphs(memRoot) {
 }
 
 // ---------------------------------------------------------------------------
+// Conversational-tic detection — scans session-handoff.md for known patterns
+// that violate AGENTS.md's "Conversational tics" Operational Rule.
+// ---------------------------------------------------------------------------
+
+const TIC_PATTERNS = [
+  { name: 'trail-offer', re: /\b(?:let me know if|feel free to (?:ask|let me)|happy to)\b/i },
+  { name: 'hedge-confirm', re: /\b(?:just to (?:confirm|make sure|double[ -]?check)|wanted to (?:confirm|check))\b/i },
+  { name: 'pre-action-narration', re: /\b(?:i(?:'ll| will)\s+(?:go ahead and|now|then))\b/i },
+  { name: 'should-i-trivial', re: /\bshould i (?:read|check|look at|run|see)\b.*\?/i },
+  { name: 'sycophant', re: /\b(?:great (?:choice|question|approach)|smart (?:approach|move|choice)|excellent (?:point|question))\b/i },
+];
+
+function findTicViolations(memRoot) {
+  const issues = [];
+  const handoffPath = join(memRoot, 'self-improvement/session-handoff.md');
+  if (!existsSync(handoffPath)) return issues;
+  const text = readFileSync(handoffPath, 'utf-8');
+  // Walk lines, skip frontmatter and headings.
+  let inFrontmatter = false;
+  let lineNo = 0;
+  for (const raw of text.split('\n')) {
+    lineNo += 1;
+    if (raw === '---') {
+      inFrontmatter = !inFrontmatter;
+      continue;
+    }
+    if (inFrontmatter) continue;
+    if (raw.startsWith('#')) continue;
+    if (!raw.trim()) continue;
+    for (const { name, re } of TIC_PATTERNS) {
+      if (re.test(raw)) {
+        issues.push({
+          severity: 'warn',
+          message: `TIC ${name} at session-handoff.md:${lineNo}: "${raw.trim().slice(0, 80)}"`,
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
 
 function main() {
   const json = process.argv.includes('--json');
@@ -317,6 +359,7 @@ function main() {
     ...findOrphanTmpFiles(MEM_ROOT),
     ...findStaleFiles(MEM_ROOT),
     ...findRedundantParagraphs(MEM_ROOT),
+    ...findTicViolations(MEM_ROOT),
   ];
   if (json) {
     process.stdout.write(JSON.stringify({ issues }, null, 2) + '\n');
@@ -342,5 +385,6 @@ export {
   findStaleIndexEntries,
   findStaleFiles,
   findRedundantParagraphs,
+  findTicViolations,
   extractParagraphs,
 };
