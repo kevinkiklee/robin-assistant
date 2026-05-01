@@ -10,6 +10,12 @@
 //                      from stdin and BLOCKS Write/Edit/NotebookEdit calls
 //                      targeting ~/.claude/projects/<workspace>/memory/* by
 //                      exiting with code 2, so the bypass never reaches disk.
+//   --on-pre-bash      cycle-2a: fires before every Bash tool call. Reads the
+//                      proposed command from stdin event, scans against
+//                      bash-sensitive-patterns.js, blocks (exit 2) on match.
+//                      Refusal logged to user-data/state/policy-refusals.log
+//                      with kind=bash. Top-level try/catch fail-closed —
+//                      uncaught error in the hook also blocks (exit 2).
 //
 // Exit code 0 = allow the tool call to proceed (after any rewrite).
 // Exit code 2 = block the tool call (with a stderr message Claude Code
@@ -38,6 +44,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--on-stop') args.mode = 'on-stop';
     else if (a === '--on-pre-tool-use') args.mode = 'on-pre-tool-use';
+    else if (a === '--on-pre-bash') args.mode = 'on-pre-bash';
     else if (a === '--no-drain') args.drain = false;
     else if (a === '--debug') args.debug = true;
     else if (a === '--workspace') args.workspace = argv[++i];
@@ -112,9 +119,12 @@ async function onStop(args) {
   const drainArgs = [join(REPO_ROOT, 'system', 'scripts', 'migrate-auto-memory.js'), '--apply'];
   if (args.debug) drainArgs.push('--json');
 
+  // Cycle-2a: spawn with explicit safe env so subprocess never inherits
+  // secrets even if some future code path leaks them back into process.env.
+  const { safeEnv } = await import('./lib/safe-env.js');
   const child = spawn('node', drainArgs, {
     cwd: ws,
-    env: { ...process.env, ROBIN_WORKSPACE: ws },
+    env: safeEnv({ ROBIN_WORKSPACE: ws }),
     detached: true,
     stdio: args.debug ? 'inherit' : 'ignore',
   });
@@ -161,11 +171,69 @@ function readStdin() {
   });
 }
 
+async function onPreBash(args) {
+  const ws = args.workspace ?? REPO_ROOT;
+  // Top-level try/catch fail-closed: any uncaught error in the hook
+  // blocks rather than silently letting the command through.
+  try {
+    const stdin = await readStdin();
+    let event;
+    try {
+      event = stdin ? JSON.parse(stdin) : {};
+    } catch {
+      // Malformed input: fail-closed.
+      throw new Error('hook event JSON is malformed');
+    }
+
+    const cmd = event.tool_input?.command ?? event.input?.command ?? '';
+    if (!cmd) {
+      // No command to inspect — let it through.
+      process.exit(0);
+    }
+
+    const { checkBashCommand } = await import('./lib/bash-sensitive-patterns.js');
+    const result = checkBashCommand(cmd);
+
+    if (result.blocked) {
+      try {
+        const { appendPolicyRefusal } = await import('./lib/policy-refusals-log.js');
+        const { fnv1a64 } = await import('./lib/sync/untrusted-index.js');
+        appendPolicyRefusal(ws, {
+          kind: 'bash',
+          target: 'local-bash',
+          layer: result.name,
+          reason: result.why,
+          contentHash: fnv1a64(cmd),
+        });
+      } catch { /* logging best-effort */ }
+      process.stderr.write(`POLICY_REFUSED [bash:${result.name}]: ${result.why}\n`);
+      process.exit(2);
+    }
+
+    process.exit(0);
+  } catch (err) {
+    // Fail-closed.
+    try {
+      const { appendPolicyRefusal } = await import('./lib/policy-refusals-log.js');
+      appendPolicyRefusal(ws, {
+        kind: 'bash',
+        target: 'local-bash',
+        layer: 'hook-internal-error',
+        reason: `HOOK_INTERNAL_ERROR: ${err?.message || String(err)}`,
+        contentHash: '',
+      });
+    } catch { /* nested logging failure ignored */ }
+    process.stderr.write(`POLICY_REFUSED [bash:hook-internal-error]: ${err?.message || String(err)}\n`);
+    process.exit(2);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.mode === 'on-stop') return onStop(args);
   if (args.mode === 'on-pre-tool-use') return onPreToolUse(args);
-  console.error('Usage: claude-code-hook.js --on-stop | --on-pre-tool-use');
+  if (args.mode === 'on-pre-bash') return onPreBash(args);
+  console.error('Usage: claude-code-hook.js --on-stop | --on-pre-tool-use | --on-pre-bash');
   process.exit(2);
 }
 

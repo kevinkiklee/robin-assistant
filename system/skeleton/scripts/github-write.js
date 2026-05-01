@@ -21,7 +21,7 @@
 // the agent must confirm with the user before invoking this script.
 
 import { fileURLToPath } from 'node:url';
-import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { GitHubClient } from './lib/github/client.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
 import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
@@ -101,8 +101,7 @@ async function main() {
   }
 
   const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
-  loadSecrets(workspaceDir);
-  const pat = requireSecret('GITHUB_PAT');
+  const pat = requireSecret(workspaceDir, 'GITHUB_PAT');
   const client = new GitHubClient(pat);
 
   // Outbound policy gate (cycle-1b). Compose payload content for content-based

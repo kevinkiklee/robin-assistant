@@ -18,7 +18,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { runAuthCodeFlow } from '../../system/scripts/lib/sync/oauth.js';
-import { loadSecrets, requireSecret, saveSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret, saveSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { saveCursor } from '../../system/scripts/lib/sync/cursor.js';
 
 const SCOPES = [
@@ -28,12 +28,11 @@ const SCOPES = [
 
 async function main() {
   const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
-  loadSecrets(workspaceDir);
 
   let clientId, clientSecret;
   try {
-    clientId = requireSecret('GOOGLE_OAUTH_CLIENT_ID');
-    clientSecret = requireSecret('GOOGLE_OAUTH_CLIENT_SECRET');
+    clientId = requireSecret(workspaceDir, 'GOOGLE_OAUTH_CLIENT_ID');
+    clientSecret = requireSecret(workspaceDir, 'GOOGLE_OAUTH_CLIENT_SECRET');
   } catch (err) {
     console.error(`\n[auth-google] ${err.message}\n`);
     console.error(

@@ -3,6 +3,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { spawn as childSpawn } from 'node:child_process';
+import { safeEnv } from '../lib/safe-env.js';
 import { hostname } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { loadJob, discoverJobs } from '../lib/jobs/discovery.js';
@@ -150,9 +151,12 @@ function spawnAndCapture({ file, args, workspaceDir, fullLogPath, timeoutMs, spa
   return new Promise((resolvePromise) => {
     let proc;
     try {
+      // Cycle-2a: spawn job subprocesses with safeEnv so secrets cannot
+      // inherit via env. Job scripts that need a secret read it via
+      // requireSecret() from secrets/.env directly.
       proc = spawnFn(file, args, {
         cwd: workspaceDir,
-        env: { ...process.env, ROBIN_WORKSPACE: workspaceDir },
+        env: safeEnv({ ROBIN_WORKSPACE: workspaceDir }),
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
       });

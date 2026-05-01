@@ -11,6 +11,7 @@ import { isAllowedContext } from './lib/discord/auth.js';
 import { stripMention, splitMessage } from './lib/discord/formatter.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
 import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
+import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,30 +22,63 @@ const SESSIONS_PATH = resolve(STATE_DIR, 'discord-sessions.json');
 const EVENTS_PATH = resolve(LOG_DIR, 'discord-bot.events.jsonl');
 const STATUS_PATH = resolve(STATE_DIR, 'discord-bot.status.json');
 const SECRETS_ENV = resolve(ROBIN_ROOT, 'user-data/secrets/.env');
-dotenv.config({ path: SECRETS_ENV });
-const ENV_WHITELIST = ['HOME', 'PATH', 'LANG', 'USER', 'SHELL'];
-const TTL = { dm: 4 * 3600 * 1000, thread: 24 * 3600 * 1000 };
 
-const REQUIRED_KEYS = [
+// Cycle-2a: dotenv.config still loads non-secret config from .env (the bot
+// needs DISCORD_BOT_CLAUDE_PATH, TIMEOUT_MS, etc. as env so they show up in
+// claude-runner's whitelist semantics). After load, we explicitly delete
+// secret keys so they cannot leak via subprocess inheritance.
+dotenv.config({ path: SECRETS_ENV });
+const SECRET_KEYS = [
   'DISCORD_BOT_TOKEN',
   'DISCORD_APP_ID',
   'DISCORD_ALLOWED_USER_IDS',
   'DISCORD_ALLOWED_GUILD_ID',
+  'GITHUB_PAT',
+  'LUNCH_MONEY_API_KEY',
+  'GOOGLE_OAUTH_CLIENT_ID',
+  'GOOGLE_OAUTH_CLIENT_SECRET',
+  'GOOGLE_OAUTH_REFRESH_TOKEN',
+  'SPOTIFY_CLIENT_ID',
+  'SPOTIFY_CLIENT_SECRET',
+  'SPOTIFY_REFRESH_TOKEN',
+];
+for (const k of SECRET_KEYS) {
+  delete process.env[k];
+}
+
+const ENV_WHITELIST = ['HOME', 'PATH', 'LANG', 'USER', 'SHELL'];
+const TTL = { dm: 4 * 3600 * 1000, thread: 24 * 3600 * 1000 };
+
+// Required CONFIG keys (non-secrets). Secrets are validated below via
+// requireSecret() and throw clear errors if missing.
+const REQUIRED_CONFIG_KEYS = [
   'DISCORD_BOT_CLAUDE_PATH',
 ];
 
 async function main() {
-  // 1. Validate env
-  for (const k of REQUIRED_KEYS) {
+  // 1. Validate config + secrets
+  for (const k of REQUIRED_CONFIG_KEYS) {
     if (!process.env[k] || !process.env[k].trim()) {
-      console.error(`[discord-bot] missing required env: ${k}`);
+      console.error(`[discord-bot] missing required config: ${k}`);
       process.exit(1);
     }
   }
 
+  // Cycle-2a: read secrets via requireSecret() — they are NOT in process.env.
+  let allowedUserIdsRaw, allowedGuildIdRaw;
+  try {
+    allowedUserIdsRaw = requireSecret(ROBIN_ROOT, 'DISCORD_ALLOWED_USER_IDS');
+    allowedGuildIdRaw = requireSecret(ROBIN_ROOT, 'DISCORD_ALLOWED_GUILD_ID');
+    requireSecret(ROBIN_ROOT, 'DISCORD_BOT_TOKEN');  // existence check; actual value read at login
+    requireSecret(ROBIN_ROOT, 'DISCORD_APP_ID');     // existence check
+  } catch (err) {
+    console.error(`[discord-bot] ${err.message}`);
+    process.exit(1);
+  }
+
   const allow = {
-    allowedUserIds: process.env.DISCORD_ALLOWED_USER_IDS.split(',').map(s => s.trim()).filter(Boolean),
-    allowedGuildId: process.env.DISCORD_ALLOWED_GUILD_ID.trim(),
+    allowedUserIds: allowedUserIdsRaw.split(',').map(s => s.trim()).filter(Boolean),
+    allowedGuildId: allowedGuildIdRaw.trim(),
   };
   const binPath = process.env.DISCORD_BOT_CLAUDE_PATH.trim();
   const timeoutMs = Number(process.env.DISCORD_BOT_TIMEOUT_MS || 600_000);
@@ -284,7 +318,7 @@ async function main() {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  await client.login(process.env.DISCORD_BOT_TOKEN);
+  await client.login(requireSecret(ROBIN_ROOT, 'DISCORD_BOT_TOKEN'));
 
   // Outbound policy gate: applied to every reply or channel send. Wraps the
   // proposed content; on OutboundPolicyError replaces with a refusal note and

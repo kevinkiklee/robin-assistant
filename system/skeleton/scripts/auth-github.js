@@ -15,15 +15,14 @@
 
 import { fileURLToPath } from 'node:url';
 import { fetchJson } from '../../system/scripts/lib/sync/http.js';
-import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 
 async function main() {
   const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
-  loadSecrets(workspaceDir);
 
   let pat;
   try {
-    pat = requireSecret('GITHUB_PAT');
+    pat = requireSecret(workspaceDir, 'GITHUB_PAT');
   } catch (err) {
     console.error(`\n[auth-github] ${err.message}\n`);
     console.error(

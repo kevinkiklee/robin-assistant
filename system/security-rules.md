@@ -121,3 +121,70 @@ Surfaced in morning briefing for retrospective review.
 - The taint check uses sentence-level hashing with normalization. Verbatim quotation of an untrusted source is reliably caught; partial quotation that crosses sentence boundaries may evade.
 - Layer 2 only catches values currently in `process.env`. Secrets read directly from `secrets/.env` and never propagated to env are not in scope (cycle-2a addresses by removing env propagation entirely).
 - An attacker who can edit the index file or refusal log directly can defeat both. T3-class attack outside cycle-1b's threat model.
+
+---
+
+## 3. Secrets containment (cycle-2a)
+
+### Lazy-read secrets
+
+`system/scripts/lib/sync/secrets.js:requireSecret(workspaceDir, key)` reads `user-data/secrets/.env` per call. **It does NOT pollute `process.env`.** Subprocesses spawned afterward (e.g., discord-bot's `claude -p` children) cannot inherit secrets via env.
+
+`loadSecrets(workspaceDir)` is now a no-op shim; older callers fail loudly if they invoke it without a workspaceDir.
+
+### `safeEnv()` for spawn sites
+
+`system/scripts/lib/safe-env.js:safeEnv(extras)` returns an explicit minimal env containing only allowlisted keys (HOME, PATH, USER, ROBIN_*, locale, display). Every `spawn`/`fork`/`exec` site uses this:
+
+```js
+const child = spawn(cmd, args, { cwd, env: safeEnv({ ROBIN_WORKSPACE: ws }), ... });
+```
+
+Belt-and-suspenders: even if env state ever drifts and a secret reappears, only the allowlisted keys reach the child.
+
+### discord-bot.js secret stripping
+
+The bot script calls `dotenv.config()` for backward-compat (the user's `.env` may contain non-secret config like `DISCORD_BOT_CLAUDE_PATH`). After load, secret keys (`DISCORD_BOT_TOKEN`, `GITHUB_PAT`, OAuth refresh tokens, etc.) are explicitly deleted from `process.env`. Secrets are then read via `requireSecret(ROBIN_ROOT, key)` at use sites.
+
+### Residual risks (documented, not fixed)
+
+- After `client.login(BOT_TOKEN)`, the discord.js library caches the token in its internal heap. Heap is not Bash-readable; out of scope.
+- Local variables holding secret values for the duration of a function call are not scrubbed; same residual.
+- A future cycle could integrate the OS keychain (macOS Keychain / Linux secret-service) for at-rest encryption.
+
+---
+
+## 4. Bash policy (cycle-2a)
+
+### Hook
+
+`.claude/settings.json` registers `system/scripts/claude-code-hook.js --on-pre-bash` as the PreToolUse hook for `Bash`. Every Bash invocation runs through it. The hook:
+
+1. Reads the JSON event from stdin.
+2. Extracts `tool_input.command`.
+3. Calls `checkBashCommand(cmd)` against `system/scripts/lib/bash-sensitive-patterns.js`.
+4. On match: appends to `policy-refusals.log` (kind=bash, layer=<rule-name>), writes `POLICY_REFUSED [bash:<name>]: <why>` to stderr, exits 2.
+5. No match: exits 0.
+6. Top-level try/catch fail-closed — any uncaught error logs as `kind=bash, layer=hook-internal-error` and exits 2.
+
+### Sensitive patterns
+
+| Name | Catches |
+|---|---|
+| `secrets-read` | cat/less/head/tail/grep/awk/sed/cp/mv/tar/zip/rsync targeting `user-data/secrets/` or `.env` files |
+| `env-dump` | `env`, `printenv` (used to dump environment) |
+| `destructive-rm` | `rm -rf`, `rm -fr`, `rm --recursive --force` |
+| `low-level-fs` | `dd`, `mkfs[.fstype]`, `format`, `shred`, `fdisk`, `wipefs` |
+| `git-expose-userdata` | `git log/show/stash show/diff` referencing `user-data/` |
+| `eval-injection` | `eval ...`, nested `$($(...))` substitution |
+
+First-match-wins; rule order in the source is the priority.
+
+### Known limitations
+
+- **Encoded payloads bypass.** `echo b64 | base64 -d | bash` evades the regex; the inner Bash is what runs. Mitigation: cycle-2a's secrets-containment removes the value from env in the first place.
+- **Aliased binaries.** `alias cat=mv` could redirect; we don't normalize aliases.
+- **Compound commands** are scanned per-clause, but only the matched clause is named in the log.
+- **Pattern updates lag attacks.** Refusal-log review surfaces unblocked commands so Kevin can add patterns.
+
+The hook is defense-in-depth, not a sandbox.

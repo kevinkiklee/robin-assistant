@@ -3,18 +3,19 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFile, writeFile, access, chmod, constants } from 'node:fs/promises';
-import dotenv from 'dotenv';
 import { PermissionsBitField } from 'discord.js';
+import { requireSecret, getSecret } from '../../system/scripts/lib/sync/secrets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROBIN_ROOT = resolve(__dirname, '../../');
 const ENV_PATH = resolve(ROBIN_ROOT, 'user-data/secrets/.env');
-dotenv.config({ path: ENV_PATH });
+// Cycle-2a: do NOT call dotenv.config — secrets stay out of process.env.
+// Read each value via requireSecret/getSecret which read .env directly.
 
 async function main() {
   const errors = [];
   for (const k of ['DISCORD_BOT_TOKEN', 'DISCORD_APP_ID', 'DISCORD_ALLOWED_USER_IDS', 'DISCORD_ALLOWED_GUILD_ID']) {
-    if (!process.env[k] || !process.env[k].trim()) errors.push(`missing ${k}`);
+    if (!getSecret(ROBIN_ROOT, k)) errors.push(`missing ${k}`);
   }
   if (errors.length) {
     console.error('Setup blockers:'); errors.forEach(e => console.error(' -', e));
@@ -23,7 +24,7 @@ async function main() {
 
   // 1) Validate token
   const res = await fetch('https://discord.com/api/v10/users/@me', {
-    headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN.trim()}` },
+    headers: { Authorization: `Bot ${requireSecret(ROBIN_ROOT, 'DISCORD_BOT_TOKEN').trim()}` },
   });
   if (!res.ok) {
     console.error(`[auth-discord] token validation failed: ${res.status} ${res.statusText}`);
@@ -58,7 +59,7 @@ async function main() {
     PermissionsBitField.Flags.CreatePublicThreads,
     PermissionsBitField.Flags.ReadMessageHistory,
   ]);
-  const url = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(process.env.DISCORD_APP_ID)}&scope=bot&permissions=${perms.bitfield}`;
+  const url = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(requireSecret(ROBIN_ROOT, 'DISCORD_APP_ID'))}&scope=bot&permissions=${perms.bitfield}`;
   console.log('\nInvite URL (open in browser, choose your server):');
   console.log(url);
 }

@@ -54,10 +54,12 @@ export function getProvider(name) {
 //   { access_token, access_token_expires_at, ...other fields }
 export async function getAccessToken(workspaceDir, providerName, opts = {}) {
   const provider = getProvider(providerName);
-  loadSecrets(workspaceDir);
-  const refreshToken = requireSecret(provider.refreshTokenEnv);
-  const clientId = requireSecret(provider.clientIdEnv);
-  const clientSecret = requireSecret(provider.clientSecretEnv);
+  // Cycle-2a: read each secret on demand from user-data/secrets/.env without
+  // polluting process.env. loadSecrets is a no-op shim retained only for
+  // unmigrated callers.
+  const refreshToken = requireSecret(workspaceDir, provider.refreshTokenEnv);
+  const clientId = requireSecret(workspaceDir, provider.clientIdEnv);
+  const clientSecret = requireSecret(workspaceDir, provider.clientSecretEnv);
 
   const state = loadCursor(workspaceDir, providerName);
   const cached = state.access_token;

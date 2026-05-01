@@ -5,7 +5,7 @@
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
@@ -31,8 +31,7 @@ function shiftDate(iso, days) {
 }
 
 export async function syncLunchMoney({ workspaceDir, dryRun = false }) {
-  loadSecrets(workspaceDir);
-  const apiKey = requireSecret('LUNCH_MONEY_API_KEY');
+  const apiKey = requireSecret(workspaceDir, 'LUNCH_MONEY_API_KEY');
 
   const financeDir = join(workspaceDir, 'user-data/memory/knowledge/finance/lunch-money');
   const cursor = loadCursor(workspaceDir, SOURCE);

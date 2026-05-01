@@ -11,31 +11,10 @@ function setup() {
   return ws;
 }
 
-test('loadSecrets parses KEY=value lines and skips comments and blanks', () => {
+// Cycle-2a: loadSecrets is now a no-op shim. Tests reflect the new API.
+test('loadSecrets is a no-op shim that requires workspaceDir', () => {
   const ws = setup();
-  writeFileSync(
-    join(ws, 'user-data/secrets/.env'),
-    '# comment\nFOO=bar\n\nBAZ=qux\n# inline-style ignored\n'
-  );
-  delete process.env.FOO;
-  delete process.env.BAZ;
-  loadSecrets(ws);
-  assert.equal(process.env.FOO, 'bar');
-  assert.equal(process.env.BAZ, 'qux');
-  rmSync(ws, { recursive: true });
-});
-
-test('loadSecrets does not override pre-existing process.env values', () => {
-  const ws = setup();
-  writeFileSync(join(ws, 'user-data/secrets/.env'), 'FOO=from-file\n');
-  process.env.FOO = 'from-env';
-  loadSecrets(ws);
-  assert.equal(process.env.FOO, 'from-env');
-  rmSync(ws, { recursive: true });
-});
-
-test('loadSecrets is a no-op when .env is missing', () => {
-  const ws = setup();
+  // Existence check: doesn't throw with a workspaceDir, doesn't pollute env.
   loadSecrets(ws);
   rmSync(ws, { recursive: true });
 });
@@ -46,14 +25,18 @@ test('loadSecrets requires workspaceDir (no implicit default)', () => {
   assert.throws(() => loadSecrets(''), /workspaceDir is required/);
 });
 
-test('requireSecret throws when key missing', () => {
-  delete process.env.MISSING_KEY;
-  assert.throws(() => requireSecret('MISSING_KEY'), /Missing secret: MISSING_KEY/);
+test('requireSecret throws when key missing in .env', () => {
+  const ws = setup();
+  writeFileSync(join(ws, 'user-data/secrets/.env'), 'OTHER=value\n');
+  assert.throws(() => requireSecret(ws, 'MISSING_KEY'), /Missing secret: MISSING_KEY/);
+  rmSync(ws, { recursive: true });
 });
 
-test('requireSecret returns the value when present', () => {
-  process.env.PRESENT_KEY = 'value';
-  assert.equal(requireSecret('PRESENT_KEY'), 'value');
+test('requireSecret returns the value when present in .env', () => {
+  const ws = setup();
+  writeFileSync(join(ws, 'user-data/secrets/.env'), 'PRESENT_KEY=value\n');
+  assert.equal(requireSecret(ws, 'PRESENT_KEY'), 'value');
+  rmSync(ws, { recursive: true });
 });
 
 test('saveSecret creates .env when missing and adds the key', () => {

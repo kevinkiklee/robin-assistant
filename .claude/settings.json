@@ -33,6 +33,15 @@
             "command": "node system/scripts/claude-code-hook.js --on-pre-tool-use"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node system/scripts/claude-code-hook.js --on-pre-bash"
+          }
+        ]
       }
     ],
     "Stop": [
