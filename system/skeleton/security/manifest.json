@@ -11,6 +11,9 @@
     ],
     "SessionStart": [
       { "command": "node system/scripts/check-manifest.js" }
+    ],
+    "UserPromptSubmit": [
+      { "command": "node system/scripts/claude-code-hook.js --on-user-prompt-submit" }
     ]
   },
   "mcpServers": {

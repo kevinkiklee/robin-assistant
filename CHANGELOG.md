@@ -44,9 +44,15 @@ Dream Phase 4.17.6 regenerates ENTITIES.md daily; 4.17.7 caps log files.
 **Rollout.** Migration `0020-capture-enforcement-config.js` adds the
 config block to existing installs. Run `node system/scripts/index-entities.js
 --bootstrap` after upgrade to seed `ENTITIES.md`. `.claude/settings.json`
-gains a `UserPromptSubmit` hook entry; manifest must be re-snapshotted
-once via `node system/scripts/manifest-snapshot.js --apply
---confirm-trust-current-state`.
+gains a `UserPromptSubmit` hook entry — users who have customized that file
+locally must merge the new entry by hand; everyone else picks it up via
+`git pull`. Manifest must be re-snapshotted once via
+`node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state`.
+
+**Known gap.** Disambiguator gating for short (≤2-token) entity aliases (spec S2.2) is
+declared in frontmatter (`disambiguator: [...]`) but the matcher does not yet enforce it.
+Tracked for a follow-up; today's entity tree is dominated by multi-token names so the
+practical impact is limited.
 
 ### Security cycles 1a / 1b / 2a / 2b / 2c — driven by 2026-04-30 audit
 

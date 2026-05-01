@@ -36,6 +36,10 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// TODO(spec S2.2): aliases ≤2 tokens should require a `disambiguator:` keyword nearby.
+// Currently every alias matches by word boundary alone — fine for multi-token names
+// (Dr. Park, Marcus HYSA), prone to false positives for short single-word aliases
+// (Marcus, Park). Tracked in CHANGELOG "Known gap".
 export function scanEntityAliases(text, aliases) {
   if (!aliases?.length) return [];
   const pattern = new RegExp(`\\b(${aliases.map(escapeRegex).join('|')})\\b`, 'gi');
