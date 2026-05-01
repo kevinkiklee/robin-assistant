@@ -142,3 +142,16 @@ test('applyEntityLinks: no-op on excluded paths (inbox.md, etc.)', async () => {
   const after = await readFile(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
   assert.doesNotMatch(after, /\[Dr\. Lee\]\(/);
 });
+
+test('applyEntityLinks: dry-run does not write but returns proposed content', async () => {
+  const ws = await copyFixtureToTmp('linker-basic');
+  const reg = await buildEntityRegistry(ws);
+  const before = await readFile(join(ws, 'user-data/memory/profile/identity.md'), 'utf-8');
+  const result = await applyEntityLinks(ws, 'profile/identity.md', reg, { dryRun: true });
+  assert.equal(result.written, false);
+  assert.equal(result.inserted, 1);
+  assert.ok(result.content);
+  assert.match(result.content, /\[Dr\. Lee\]\(\.\.\/knowledge\/medical\/hemonc-lee\.md\)/);
+  const after = await readFile(join(ws, 'user-data/memory/profile/identity.md'), 'utf-8');
+  assert.equal(after, before);
+});
