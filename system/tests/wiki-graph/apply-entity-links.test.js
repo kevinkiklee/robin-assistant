@@ -68,3 +68,25 @@ test('applyEntityLinks: does not link inside bare URL', async () => {
   const after = await readFile(join(ws, 'user-data/memory/profile/test.md'), 'utf-8');
   assert.match(after, /URL: https:\/\/example\.com\/Dr\.-Lee mentions\./);
 });
+
+test('applyEntityLinks: page never links to itself', async () => {
+  const ws = await copyFixtureToTmp('linker-self-multi');
+  const reg = await buildEntityRegistry(ws);
+  const result = await applyEntityLinks(ws, 'knowledge/medical/hemonc-lee.md', reg);
+  assert.equal(result.inserted, 0);
+  const after = await readFile(join(ws, 'user-data/memory/knowledge/medical/hemonc-lee.md'), 'utf-8');
+  assert.doesNotMatch(after, /\[Dr\. Lee\]\(/);
+});
+
+test('applyEntityLinks: only first mention per file is linked (W1)', async () => {
+  const ws = await copyFixtureToTmp('linker-self-multi');
+  const reg = await buildEntityRegistry(ws);
+  const result = await applyEntityLinks(ws, 'profile/multi.md', reg);
+  assert.equal(result.inserted, 1);
+  const after = await readFile(join(ws, 'user-data/memory/profile/multi.md'), 'utf-8');
+  const links = after.match(/\[Dr\. Lee\]\([^)]+\)/g) || [];
+  assert.equal(links.length, 1);
+  assert.match(after, /First, \[Dr\. Lee\]/);
+  assert.match(after, /Later, Dr\. Lee did Y/);
+  assert.match(after, /And then Dr\. Lee did Z/);
+});
