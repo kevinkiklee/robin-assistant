@@ -17,6 +17,7 @@ usage:
   robin jobs sync                     [--force | --json]
   robin jobs validate [<name>]
   robin update                        # post-pull check: config migrate + pending migrations + skeleton sync + validate
+  robin link <path>                   [--dry-run]
   robin watch add "<topic>"           [--cadence daily|weekly|hourly] [--query <q>] [--notify]
   robin watch list
   robin watch enable <id>
@@ -60,6 +61,10 @@ async function main() {
     if (r.findings.some((f) => f.level === 'FATAL')) process.exit(1);
     if (r.findings.length === 0) console.log('Nothing to do.');
     process.exit(0);
+  }
+  if (cmd === 'link') {
+    const { cmdLink } = await import('../system/scripts/lib/wiki-graph/cli-link.js');
+    process.exit(await cmdLink(rest));
   }
   if (cmd === 'watch') {
     const { dispatchWatch } = await import('../system/scripts/watches/cli.js');
