@@ -14,16 +14,16 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 const PREVIEW = join(REPO_ROOT, 'system', 'scripts', 'prune-preview.js');
 
 function run(cmd, args = []) {
-  try {
-    const out = execFileSync(cmd, args, {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return { exit: 0, stdout: out };
-  } catch (e) {
-    return { exit: e.status ?? 1, stdout: e.stdout?.toString?.() ?? '' };
-  }
+  const r = spawnSync(cmd, args, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return {
+    exit: r.status ?? 1,
+    stdout: r.stdout ?? '',
+    stderr: r.stderr ?? '',
+  };
 }
 
 describe('prune-preview', () => {
@@ -86,9 +86,10 @@ describe('prune-execute (idempotency check)', () => {
       );
     } else if (r.exit === 2) {
       // Skipped — sibling sessions active. Acceptable.
-      assert.match(r.stdout + r.stdout, /sibling/i);
+      // The skip message is written to stderr, so combine both streams.
+      assert.match(r.stdout + r.stderr, /sibling/i);
     } else {
-      assert.fail(`prune exited ${r.exit}: ${r.stdout}`);
+      assert.fail(`prune exited ${r.exit}: stdout=${r.stdout} stderr=${r.stderr}`);
     }
   });
 });
