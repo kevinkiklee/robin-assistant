@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+### Security cycles 1a / 1b / 2a / 2b / 2c — driven by 2026-04-30 audit
+
+Five sequenced security cycles closing 28 of 42 audit gaps directly,
+2 as cycle-1a side effects, 2 already hotfixed, 1 won't-fix, 9 deferred.
+
+- **cycle-1a** (boundary defenses): `trust:untrusted` markers + inline
+  UNTRUSTED-START/END wrapping for all sync writers; `sanitize-tags.js`
+  neutralizes capture-tag literals and role-shift markers on the way
+  in; `dream-pre-filter.js` quarantines inbox lines whose `origin=`
+  isn't `user`/`user|legacy`; `ingest-guard.js` blocks ingest writes to
+  tasks/decisions/self-improvement/profile-identity. Capture format
+  gains `origin=` in every tag; AGENTS.md adds Hard Rules for untrusted
+  ingress + origin attribution.
+- **cycle-1b** (outbound write policy): `outbound-policy.js` with
+  three layers — sentence-hash taint check against
+  `user-data/state/untrusted-index.json` haystack, sensitive-shape
+  detection (PII patterns + `process.env` value substring scan),
+  credential-derived target allowlist for github/spotify/discord. Wired
+  into github-write, spotify-write, discord-bot reply path.
+  `policy-refusals.log` (TSV append-only, 1MB rotation) is the shared
+  refusal-log substrate. New `system/security-rules.md` Tier-2 reference.
+- **cycle-2a** (secrets containment + bash policy): `secrets.js`
+  rewritten — `requireSecret(workspaceDir, key)` reads
+  `user-data/secrets/.env` per call without polluting `process.env`;
+  `loadSecrets` becomes a no-op shim. `safe-env.js:safeEnv()` builds
+  explicit minimal env for spawn sites. Discord-bot deletes secret
+  keys from `process.env` after `dotenv.config`. `bash-sensitive-patterns.js`
+  + `claude-code-hook.js --on-pre-bash` hook the Bash tool with six
+  rules (secrets-read, env-dump, destructive-rm, low-level-fs,
+  git-expose-userdata, eval-injection); fail-closed on hook errors.
+- **cycle-2b** (tamper detection): `user-data/security/manifest.json`
+  v2 baseline; `check-manifest.js` runs on SessionStart; severe drift
+  surfaces in stderr (≤5 entries; collapses beyond), all non-info
+  drift logs `kind=tamper`. `manifest-snapshot.js` for first-deploy
+  bootstrap (`--apply --confirm-trust-current-state`).
+- **cycle-2c** (rule backstops + lifecycle): PreToolUse hook gains PII
+  scan on writes to `user-data/memory/` (block-and-explain) plus
+  high-stakes destination audit to `user-data/state/high-stakes-writes.log`.
+  Manifest schema v2 adds `agentsmd.hardRulesHash` + `userDataJobs.knownFiles`.
+  `pattern-ttl.js` runs a 180-day TTL pass in Dream's Phase X, fed by
+  `pattern-firings.log` written by the model via Bash echo.
+
+Hotfixes shipped during the audit cycle:
+- **G-31**: `secrets.js:saveSecret` enforces mode 0600 via
+  `chmodSync(0o600)` after rename.
+- **G-39**: discord-bot launchd label verified correct in `integrations.md`.
+
+Net code: ~8540 line additions across 7 commits. 18 new test files;
+734/734 tests passing. Token-budget caps bumped: AGENTS.md 80→90,
+per_protocol 3700→4200, tier1 7800→8400. Skeleton scripts mirrored
+into user-data/scripts/ so the live discord-bot picks up cycle-2a's
+secrets-containment defenses on next restart.
+
+Specs at `docs/superpowers/specs/2026-04-30-cycle-{1a,1b,2a,2b,2c}-*-design.md`;
+plans at `docs/superpowers/plans/2026-04-30-cycle-*.md`. Source audit at
+`docs/security/audit-2026-04-30.md` (local-only, gitignored).
+
 ### Autonomy roadmap — Ship 1: P1 Independence + P4 Invisibility (2026-04-30)
 
 Replaces the single global "Ask vs Act" rule with a three-tier action
