@@ -23,6 +23,7 @@ usage:
   robin watch disable <id>
   robin watch tail [<id>]             [--n=10]
   robin watch run <id>                [--dry-run | --bootstrap]
+  robin recall [--json] <term> [<term> ...]
 
 env:
   ROBIN_WORKSPACE  override the workspace directory
@@ -63,6 +64,28 @@ async function main() {
   if (cmd === 'watch') {
     const { dispatchWatch } = await import('../system/scripts/watches/cli.js');
     return dispatchWatch(rest);
+  }
+
+  if (cmd === 'recall') {
+    if (rest.length === 0) {
+      process.stderr.write('Usage: robin recall [--json] <term> [<term> ...]\n');
+      process.exit(1);
+    }
+    const wantsJson = rest[0] === '--json' && rest.shift();
+    if (rest.length === 0) {
+      process.stderr.write('Usage: robin recall [--json] <term> [<term> ...]\n');
+      process.exit(1);
+    }
+    const { recall, formatRecallHits } = await import('../system/scripts/lib/recall.js');
+    const ws = process.env.ROBIN_WORKSPACE || process.cwd();
+    const result = recall(ws, rest);
+    if (wantsJson) {
+      console.log(JSON.stringify(result));
+    } else {
+      const formatted = formatRecallHits(result);
+      console.log(formatted || 'No matches.');
+    }
+    return;
   }
 
   process.stderr.write(`unknown command: ${cmd}\n${HELP}`);
