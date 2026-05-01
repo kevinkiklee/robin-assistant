@@ -2,6 +2,91 @@
 
 ## [Unreleased]
 
+### CLI improvements roadmap — A2 / A3 / D / W / X1 (2026-04-30)
+
+A 5-spec sweep across reliability, self-improvement, memory quality, and
+proactive capability. Roadmap parent: `docs/superpowers/specs/2026-04-30-cli-improvements-roadmap.md`.
+
+**A3 — Session-end sweep contract.** Fixes silently-empty `hot.md`,
+`session-handoff.md`, and `learning-queue.md`. Three coexisting triggers:
+T1 (long session ≥20 turns or compaction-imminent reminder), T2 (graceful
+end on user wrap signal), T3 (Stop-hook auto-line — Claude Code only;
+other hosts depend on T1/T2). New `system/scripts/lib/handoff.js`
+(`writeSessionBlock` — atomic append-or-replace by session-id header
+with input validation). New `system/scripts/lib/sessions.js`
+(`mostRecentSessionId` — parses `state/sessions.md`, ±2h window with
+clock-skew tolerance). Stop hook (`claude-code-hook.js --on-stop`)
+gains `--workspace` + `--no-drain` flags and writes auto-line synchronously
+before drain; drain failure-isolated and respects `--workspace` override.
+Privacy filter (`applyRedaction`) applied to inbox tail before embed.
+Migration 0014 idempotently seeds 7 starter questions in `learning-queue.md`.
+AGENTS.md adds Session End section. capture-rules.md updates Trigger 1/2/3
+semantics + multi-host coverage caveat.
+
+**A2 — Retire `startup-check.js` (Phase 3h).** Deferred from the
+2026-04-29 token-optimization PR. New `system/scripts/lib/preflight.js`
+extracts the 5-step pipeline (config-migrate → pending-migrations →
+validate → skeleton-sync → changelog-notify). `bin/robin.js update` uses
+the lib directly. Dream Phase 0 reads `state/jobs/failures.md` instead
+of running pre-flight. `startup-check.js` becomes a deprecation shim
+(removed in a future minor version). Bonus: new
+`system/scripts/lib/jobs/lock-cleanup.js` (`cleanupStaleLocks` — sweeps
+locks older than 5 min OR with non-running PIDs); runner pre-hook +
+reconciler tick both call it.
+
+**X1 — Outcome learning loop.** Closes calibration's open loop. New
+`[predict]` tag with structured fields `[predict|<check-by-date>|<confidence>]`.
+New `predictions.md` (Open + Resolved sections) — source of truth;
+`calibration.md` is the derived rollup. New `outcome-check.md` job
+(weekly Sunday 10 AM, disabled): revisits predictions past check-by,
+proposes resolved-accurate / resolved-miss / inconclusive, user
+confirms in system-maintenance; auto-resolves as inconclusive after
+90 days past check-by with no signal. Migration 0015 creates
+`predictions.md` from skeleton.
+
+**D1 — Memory quality heuristics.** New `system/scripts/lib/decay.js`
+with per-sub-tree defaults (`profile/` slow=365d, `knowledge/` and
+`self-improvement/` medium=90d, `decisions.md`/`journal.md`/`inbox.md`
+immortal). Migration 0016 backfills `last_verified` frontmatter from
+git history (267 files stamped). Migration 0017 adds `decay:` defaults
+(267 files stamped). `lint-memory.js` extended with two warn-level
+checks: staleness (`last_verified` past decay threshold) and redundancy
+(exact-paragraph duplicates across files).
+
+**D2 — Audit job (LLM-pass).** New
+`system/scripts/lib/audit-pairs.js` (`generateAuditPairs` — entity-graph
+pairing via `LINKS.md` + same-sub-tree, recency-prioritized, max 20
+pairs/run). New `audit.md` job (weekly Sunday 11 AM, disabled): LLM-pass
+surfaces contradictions and redundancies; minimal context (skip Tier 1
+personalization); output to `user-data/state/audit/<YYYY-MM-DD>.md`;
+never auto-edits. system-maintenance gains an audit-findings-review
+step. Test corpus at `system/tests/fixtures/audit/`.
+
+**W1 — Watch-a-topic (Phase 1).** Proactive capability — Robin follows
+topics on the user's behalf. `user-data/memory/watches/<id>.md` per
+watch (frontmatter-driven). Per-watch dedup state in
+`user-data/state/watches/<id>.json` (last 50 fingerprints).
+`system/scripts/lib/watches.js` (slugify, paths, list, state I/O).
+Migration 0018 scaffolds the sub-tree. Full CLI surface:
+`robin watch add/list/enable/disable/tail/run`. New `watch-topics.md`
+job (hourly, disabled): iterates ≤5 active watches per tick, fetches
+via WebSearch, dedupes, redacts via `applyRedaction`, writes deltas to
+inbox with `[watch:<id>]` tag. 3-strike failure handling auto-disables
+flapping watches. Dream Phase 2 routes `[watch:<id>]` items to
+`watches/log.md` (append-only chronological feed). W2 deferred: Discord
+`/watch` slash command, RSS/URL `sources` overrides, Discord DM channel,
+quota-aware cadence shifting.
+
+**Cross-cutting.** Token budget caps revisited to reflect organic
+memory growth: Tier 1 raised 5,800 → 7,200 tokens / 400 → 425 lines
+(cache-stable 5,600 → 6,600). Calendar events sub-index created at
+`user-data/memory/knowledge/calendar/events/INDEX.md`, dropping top-level
+INDEX.md from 220 → 73 lines. Three new agent-runtime jobs all default
+to `enabled: false` with minimal-context profile.
+
+**Tests:** 290 → 537 (+247). 1 pre-existing failure (`prune-execute
+idempotency check`) carried over from main, unrelated.
+
 ### Token optimization & frontier-model reliability (2026-04-29)
 
 Reorganizes the always-on instruction layer into Tier 1 (always-loaded

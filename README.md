@@ -117,6 +117,9 @@ Shipped jobs span daily maintenance, financial review, productivity, and system 
 | Save conversation | On demand (disabled) | File conversation outcomes as summary pages |
 | Host validation | Quarterly (disabled) | Verify all supported AI tools still honor loading rules |
 | Multi-session coordination | On demand (disabled) | In-session protocol that registers active sessions and acquires file locks |
+| Outcome check | Sunday 10 AM (disabled) | Revisit open `[predict]` claims past their check-by date; propose resolution; user confirms in system-maintenance |
+| Audit | Sunday 11 AM (disabled) | LLM-pass over candidate file pairs (via LINKS.md cross-references) to surface contradictions and redundancies for user review |
+| Watch topics | Hourly (disabled) | Iterate active watches, fetch via WebSearch, dedupe vs per-watch fingerprints, redact, write deltas to inbox with `[watch:<id>]` tag |
 | Reconciler heartbeat | Every 6 hours | Pick up new/changed job definitions and update scheduler entries |
 
 Add a job by dropping a markdown file in `user-data/jobs/` — the reconciler picks it up within 6 hours.
@@ -274,6 +277,11 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `robin jobs sync` | Force-reconcile OS scheduler with job definitions |
 | `robin jobs validate` | Parse and validate every job definition |
 | `robin update` | Post-`git pull` check: config migrate, pending migrations, skeleton sync, validate |
+| `robin watch add "<topic>"` | Add a topic to follow; runs first fetch immediately to seed fingerprints |
+| `robin watch list` | List active and disabled watches |
+| `robin watch enable <id>` / `disable <id>` | Toggle a watch on/off |
+| `robin watch tail [<id>]` | Show recent `[watch]` items from inbox (filtered by id if given) |
+| `robin watch run <id> [--dry-run \| --bootstrap]` | Manually trigger a watch (real fetch requires the watch-topics agent-runtime job) |
 | `npm run discord:auth` | Walk through Discord bot OAuth + token storage |
 | `npm run discord:install` | Install the Discord bot launchd agent (macOS) |
 | `npm run discord:status` / `discord:health` | Inspect bot daemon status / liveness |
