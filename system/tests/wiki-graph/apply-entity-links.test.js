@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtemp, cp, readFile } from 'node:fs/promises';
+import { mkdtemp, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { applyEntityLinks } from '../../scripts/lib/wiki-graph/apply-entity-links.js';
 import { buildEntityRegistry } from '../../scripts/lib/wiki-graph/build-entity-registry.js';
@@ -154,4 +154,33 @@ test('applyEntityLinks: dry-run does not write but returns proposed content', as
   assert.match(result.content, /\[Dr\. Lee\]\(\.\.\/knowledge\/medical\/hemonc-lee\.md\)/);
   const after = await readFile(join(ws, 'user-data/memory/profile/identity.md'), 'utf-8');
   assert.equal(after, before);
+});
+
+test('applyEntityLinks: NFD-decomposed input — skip ranges remain aligned after normalization', async () => {
+  const ws = await copyFixtureToTmp('linker-nfd');
+  const reg = await buildEntityRegistry(ws);
+  // Re-write the test file in NFD form so the linker sees decomposed bytes.
+  const filePath = join(ws, 'user-data/memory/profile/nfd.md');
+  const original = await readFile(filePath, 'utf-8');
+  await writeFile(filePath, original.normalize('NFD'), 'utf-8');
+
+  const result = await applyEntityLinks(ws, 'profile/nfd.md', reg);
+  assert.equal(result.inserted, 1, 'should link the body mention exactly once');
+
+  const after = await readFile(filePath, 'utf-8');
+  // Frontmatter "Dr. Lee" reference must NOT have been linked
+  assert.match(after, /^---\n[\s\S]*?notes: Mentions Dr\. Lee in frontmatter[\s\S]*?\n---/);
+  // Body mention IS linked
+  assert.match(after, /\[Dr\. Lee\]\(\.\.\/knowledge\/medical\/hemonc-lee\.md\)/);
+});
+
+test('applyEntityLinks: fail-soft on missing target file (read error)', async () => {
+  const ws = await copyFixtureToTmp('linker-basic');
+  const reg = await buildEntityRegistry(ws);
+  const result = await applyEntityLinks(ws, 'profile/does-not-exist.md', reg);
+  assert.equal(result.written, false);
+  assert.equal(result.inserted, 0);
+  assert.ok(Array.isArray(result.errors));
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /ENOENT|no such file/i);
 });
