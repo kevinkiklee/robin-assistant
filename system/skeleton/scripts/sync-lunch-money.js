@@ -9,6 +9,8 @@ import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
 import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
+import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
+import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
 import { LunchMoneyClient } from './lib/lunch-money/client.js';
 import {
   writeAccountsSnapshot,
@@ -19,9 +21,22 @@ import {
 const BACKFILL_START = '2024-01-01';
 const OVERLAP_DAYS = 7;
 const SOURCE = 'lunch-money';
+const FINANCE_REL_DIR = 'user-data/memory/knowledge/finance/lunch-money';
 
 function todayISO() {
   return new Date().toISOString();
+}
+
+// Insert wiki-graph entity links into a memory file we just wrote.
+// Best-effort; never throw to the caller.
+async function linkAfterWrite(workspaceDir, registry, wsRelPath) {
+  if (!registry || !wsRelPath.startsWith('user-data/memory/')) return;
+  const memRelPath = wsRelPath.slice('user-data/memory/'.length);
+  try {
+    await applyEntityLinks(workspaceDir, memRelPath, registry);
+  } catch (err) {
+    console.warn(`sync-lunch-money: applyEntityLinks(${memRelPath}) failed: ${err.message}`);
+  }
 }
 
 function shiftDate(iso, days) {
@@ -31,9 +46,16 @@ function shiftDate(iso, days) {
 }
 
 export async function syncLunchMoney({ workspaceDir, dryRun = false }) {
+  let registry = null;
+  try {
+    registry = await buildEntityRegistry(workspaceDir);
+  } catch (err) {
+    console.warn(`sync-lunch-money: registry unavailable, skipping link insertion (${err.message})`);
+  }
+
   const apiKey = requireSecret(workspaceDir, 'LUNCH_MONEY_API_KEY');
 
-  const financeDir = join(workspaceDir, 'user-data/memory/knowledge/finance/lunch-money');
+  const financeDir = join(workspaceDir, FINANCE_REL_DIR);
   const cursor = loadCursor(workspaceDir, SOURCE);
 
   const now = todayISO();
@@ -63,9 +85,12 @@ export async function syncLunchMoney({ workspaceDir, dryRun = false }) {
   }
 
   console.log(`[sync-lunch-money] writing files to ${financeDir}`);
-  writeAccountsSnapshot(financeDir, { plaidAccounts, assets, syncedAt: now });
-  writeTransactions(financeDir, transactions);
-  writeInvestmentLedger(financeDir, plaidAccounts, today);
+  const accountsWritten = writeAccountsSnapshot(financeDir, { plaidAccounts, assets, syncedAt: now }) ?? [];
+  const txWritten = writeTransactions(financeDir, transactions) ?? [];
+  const invWritten = writeInvestmentLedger(financeDir, plaidAccounts, today) ?? [];
+  for (const sub of [...accountsWritten, ...txWritten, ...invWritten]) {
+    await linkAfterWrite(workspaceDir, registry, `${FINANCE_REL_DIR}/${sub}`);
+  }
 
   saveCursor(workspaceDir, SOURCE, {
     last_attempt_at: now,

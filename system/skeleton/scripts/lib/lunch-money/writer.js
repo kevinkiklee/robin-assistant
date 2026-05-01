@@ -1,5 +1,10 @@
 // Template — auto-copied to user-data/scripts/lib/lunch-money/ by skeleton-sync.
 // Imports resolve only after copy; not runnable in place.
+//
+// Each `write*` function returns an array of workspace-relative paths it wrote
+// (e.g. ['user-data/memory/knowledge/finance/lunch-money/accounts-snapshot.md']).
+// The caller uses this list to apply post-write entity links via the wiki-graph
+// linker. Callers that don't need the list can ignore the return value.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseFrontmatter, stringifyFrontmatter } from '../../../../system/scripts/lib/memory-index.js';
@@ -86,6 +91,7 @@ export function writeAccountsSnapshot(financeDir, { plaidAccounts, assets, synce
     body
   );
   writeFileSync(join(financeDir, 'accounts-snapshot.md'), out);
+  return ['accounts-snapshot.md'];
 }
 
 export function writeTransactions(financeDir, transactions) {
@@ -101,6 +107,7 @@ export function writeTransactions(financeDir, transactions) {
     byMonth.get(month).push(tx);
   }
 
+  const written = [];
   for (const [month, txs] of byMonth) {
     const path = join(txDir, `${month}.md`);
     const existingIds = new Set();
@@ -161,7 +168,9 @@ export function writeTransactions(financeDir, transactions) {
       nextBody
     );
     writeFileSync(path, out);
+    written.push(`transactions/${month}.md`);
   }
+  return written;
 }
 
 export function writeInvestmentLedger(financeDir, plaidAccounts, dateISO) {
@@ -169,12 +178,13 @@ export function writeInvestmentLedger(financeDir, plaidAccounts, dateISO) {
     const type = (a.type || '').toLowerCase();
     return type === 'investment' || type === 'brokerage';
   });
-  if (invAccounts.length === 0) return;
+  if (invAccounts.length === 0) return [];
 
   const invDir = join(financeDir, 'investments');
   mkdirSync(invDir, { recursive: true });
   const today = dateISO.slice(0, 10);
 
+  const written = [];
   for (const a of invAccounts) {
     const slug = slugify(`${a.institution_name || ''}-${a.name || a.display_name || 'account'}`);
     const path = join(invDir, `${slug}.md`);
@@ -215,5 +225,7 @@ export function writeInvestmentLedger(financeDir, plaidAccounts, dateISO) {
     const desc = `${a.institution_name || a.name || 'Investment'} — daily balance ledger (auto-pulled)`;
     const out = stringifyFrontmatter({ description: desc, trust: 'untrusted', 'trust-source': 'sync-lunch-money' }, lines.join('\n'));
     writeFileSync(path, out);
+    written.push(`investments/${slug}.md`);
   }
+  return written;
 }
