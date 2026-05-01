@@ -20,8 +20,8 @@ export function isExcludedPath(relPath) {
   return EXCLUDED_PREFIXES.some(p => relPath.startsWith(p));
 }
 
-const FRONTMATTER_RE = /^---\n[\s\S]*?\n---/;
-const FENCED_CODE_RE = /^(```|~~~)[^\n]*\n[\s\S]*?\n\1/gm;
+const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---/;
+const FENCED_CODE_RE = /^(```|~~~)[^\n]*\r?\n[\s\S]*?\r?\n\1/gm;
 const INLINE_CODE_RE = /`[^`\n]+`/g;
 const MARKDOWN_LINK_RE = /\[[^\]]*\]\([^)]*\)/g;
 const BARE_URL_RE = /https?:\/\/[^\s)]+/g;
