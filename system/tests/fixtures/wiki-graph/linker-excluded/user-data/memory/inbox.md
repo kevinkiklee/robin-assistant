@@ -1,0 +1,1 @@
+- [fact|origin=user] saw Dr. Lee yesterday
