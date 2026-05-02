@@ -14,13 +14,16 @@ export const description =
 
 const SCAFFOLD_DIR = join(dirname(fileURLToPath(import.meta.url)), '../scaffold');
 
+// Scaffold sources moved to the post-0021 layout (ops/config, ops/state/turn).
+// Destinations remain at the pre-0021 paths because 0019 runs BEFORE 0021;
+// migration 0021 then reorganizes user-data/ to match scaffold.
 const TARGETS = [
-  { src: 'policies.md', dst: 'user-data/policies.md' },
+  { src: 'ops/config/policies.md', dst: 'user-data/policies.md' },
   {
     src: 'memory/self-improvement/action-trust.md',
     dst: 'user-data/memory/self-improvement/action-trust.md',
   },
-  { src: 'state/pending-asks.md', dst: 'user-data/state/pending-asks.md' },
+  { src: 'ops/state/turn/pending-asks.md', dst: 'user-data/state/pending-asks.md' },
 ];
 
 export async function up({ workspaceDir }) {

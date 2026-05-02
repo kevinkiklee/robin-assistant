@@ -5,7 +5,7 @@ These docs cover the parts that happen *outside* your shell (developer
 consoles, OAuth consent screens, scope decisions) and the gotchas worth
 knowing before you start.
 
-The corresponding **scripts** live in `system/scaffold/scripts/` and are
+The corresponding **scripts** live in `system/scaffold/ops/scripts/` and are
 copied to `user-data/ops/scripts/` on first run:
 
 - `auth-google.js`, `auth-github.js`, `auth-spotify.js` — one-shot setup
@@ -31,7 +31,7 @@ The OAuth library used by all OAuth providers lives in
 
 1. Create app/client in the provider's developer console.
 2. Add credentials to `user-data/ops/secrets/.env` (placeholders ship in
-   `system/scaffold/secrets/.env.example`).
+   `system/scaffold/ops/secrets/.env.example`).
 3. Run `node user-data/ops/scripts/auth-<provider>.js` — opens a browser, runs
    the OAuth code flow against `127.0.0.1:<port>/oauth-callback`, writes
    the refresh token back to `.env`, caches the access token in

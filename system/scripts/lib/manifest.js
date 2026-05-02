@@ -12,7 +12,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 const MANIFEST_REL = 'user-data/ops/security/manifest.json';
-const SCAFFOLD_REL = 'system/scaffold/security/manifest.json';
+const SCAFFOLD_REL = 'system/scaffold/ops/security/manifest.json';
 
 export function manifestPath(workspaceDir) {
   return join(workspaceDir, MANIFEST_REL);

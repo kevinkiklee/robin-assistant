@@ -4,9 +4,6 @@ Robin's memory tree. Read this to decide which file to open. Generated — do no
 
 | path | what's in it |
 |------|--------------|
-| decisions.md | Append-only decision log |
-| inbox.md | Quick-capture buffer; Dream routes from here |
-| journal.md | Append-only daily reflections |
 | profile/identity.md | Name, location, basic identity facts |
 | profile/personality.md | Assistant voice, communication style, current personality state |
 | self-improvement/action-trust.md | Per-action-class earned-trust calibration. Each class accumulates outcomes; Dream proposes promotion at ≥5 successes / 0 corrections / 30 days; auto-confirms 24h after surfaced unless user objects. 7-day probation on newly-promoted AUTO. First correction demotes AUTO → ASK same turn. |
@@ -18,5 +15,8 @@ Robin's memory tree. Read this to decide which file to open. Generated — do no
 | self-improvement/predictions.md | Predictions Robin made + outcomes — source of truth for calibration rollup |
 | self-improvement/preferences.md | Working-style preferences — what the user has confirmed works, captured from positive signals. |
 | self-improvement/session-handoff.md | Per-session handoff notes — capture sweep summaries, "next session" hooks. Volatile; rolling. |
+| streams/decisions.md | Append-only decision log |
+| streams/inbox.md | Quick-capture buffer; Dream routes from here |
+| streams/journal.md | Append-only daily reflections |
 | tasks.md | Active tasks grouped by category |
 | watches/INDEX.md | Watches — topics Robin actively follows on user's behalf |

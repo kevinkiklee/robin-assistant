@@ -68,9 +68,9 @@ test('writeManifest: round-trips via loadManifest', () => {
 test('ensureManifestFromScaffold: copies scaffold when live missing', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'system/scaffold/security'), { recursive: true });
+    mkdirSync(join(w, 'system/scaffold/ops/security'), { recursive: true });
     writeFileSync(
-      join(w, 'system/scaffold/security/manifest.json'),
+      join(w, 'system/scaffold/ops/security/manifest.json'),
       JSON.stringify({ version: 1, hooks: {}, mcpServers: { expected: [], writeCapable: [] } })
     );
     const r = ensureManifestFromScaffold(w);
@@ -84,8 +84,8 @@ test('ensureManifestFromScaffold: copies scaffold when live missing', () => {
 test('ensureManifestFromScaffold: does not overwrite existing live manifest', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'system/scaffold/security'), { recursive: true });
-    writeFileSync(join(w, 'system/scaffold/security/manifest.json'), '{"scaffold": true}');
+    mkdirSync(join(w, 'system/scaffold/ops/security'), { recursive: true });
+    writeFileSync(join(w, 'system/scaffold/ops/security/manifest.json'), '{"scaffold": true}');
     mkdirSync(join(w, 'user-data/ops/security'), { recursive: true });
     writeFileSync(join(w, 'user-data/ops/security/manifest.json'), '{"live": true}');
     const r = ensureManifestFromScaffold(w);

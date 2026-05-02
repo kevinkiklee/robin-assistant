@@ -12,7 +12,8 @@ function repo() {
     '---\ndescription: Identity\n---\n# Identity\n');
   writeFileSync(join(root, 'system/scaffold/memory/INDEX.md'),
     '# Memory Index\n');
-  writeFileSync(join(root, 'system/scaffold/robin.config.json'),
+  mkdirSync(join(root, 'system/scaffold/ops/config'), { recursive: true });
+  writeFileSync(join(root, 'system/scaffold/ops/config/robin.config.json'),
     JSON.stringify({ version: '3.0.0', user: { name: '', timezone: 'UTC' }, platform: 'claude-code' }));
   return root;
 }

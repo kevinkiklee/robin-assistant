@@ -37,7 +37,7 @@ export function requireSecret(workspaceDir, key) {
   const value = parseEnv(workspaceDir).get(key);
   if (!value) {
     throw new Error(
-      `Missing secret: ${key}. Add it to user-data/ops/secrets/.env (see system/scaffold/secrets/README.md).`
+      `Missing secret: ${key}. Add it to user-data/ops/secrets/.env (see system/scaffold/ops/secrets/README.md).`
     );
   }
   return value;

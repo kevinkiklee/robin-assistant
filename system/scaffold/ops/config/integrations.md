@@ -43,7 +43,7 @@ After auth succeeds, run a `--bootstrap` once and enable the job:
   node user-data/ops/scripts/sync-<name>.js --bootstrap
   node bin/robin.js jobs enable sync-<name>
 
-See system/scaffold/secrets/README.md for the .env keys each provider needs.
+See system/scaffold/ops/secrets/README.md for the .env keys each provider needs.
 
 ## Not configured
 

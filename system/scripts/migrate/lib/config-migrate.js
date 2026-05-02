@@ -12,7 +12,7 @@ function resolveConfigPath(workspaceDir) {
 
 export async function migrateConfig(workspaceDir = process.cwd()) {
   const userPath = resolveConfigPath(workspaceDir);
-  const skelPath = join(workspaceDir, 'system/scaffold/robin.config.json');
+  const skelPath = join(workspaceDir, 'system/scaffold/ops/config/robin.config.json');
   if (!existsSync(userPath) || !existsSync(skelPath)) return { added: [], removed: [] };
 
   const user = JSON.parse(readFileSync(userPath, 'utf-8'));

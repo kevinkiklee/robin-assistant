@@ -218,7 +218,7 @@ Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 
 - **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
 - **`jobs/`** — overlays `system/jobs/`. **The default convention is a shallow override** (`override: <name>` frontmatter): you change only what you need, the rest inherits from the system definition and keeps tracking upstream upgrades. Use a full override (no `override:` key) only when you intend to fully replace a system job. Drop a brand-new file to extend the catalog.
-- **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/sync/lib/`.
+- **`ops/scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/ops/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/sync/lib/`.
 - **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
 
 #### Customizing a job (the default pattern)

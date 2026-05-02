@@ -212,7 +212,7 @@ Trusted baseline at `user-data/ops/security/manifest.json`. Schema:
 }
 ```
 
-The scaffold at `system/scaffold/security/manifest.json` ships with Robin's owned hooks; empty MCP arrays. `setup.js` postinstall copies the scaffold to `user-data/ops/security/manifest.json` if the live manifest is absent.
+The scaffold at `system/scaffold/ops/security/manifest.json` ships with Robin's owned hooks; empty MCP arrays. `setup.js` postinstall copies the scaffold to `user-data/ops/security/manifest.json` if the live manifest is absent.
 
 ### SessionStart hook
 

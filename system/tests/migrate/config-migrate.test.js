@@ -7,9 +7,9 @@ import { join } from 'node:path';
 
 function setup({ user, scaffold }) {
   const root = mkdtempSync(join(tmpdir(), 'robin-cfgmig-'));
-  mkdirSync(join(root, 'system/scaffold'), { recursive: true });
+  mkdirSync(join(root, 'system/scaffold/ops/config'), { recursive: true });
   mkdirSync(join(root, 'user-data/ops/config'), { recursive: true });
-  writeFileSync(join(root, 'system/scaffold/robin.config.json'), JSON.stringify(scaffold));
+  writeFileSync(join(root, 'system/scaffold/ops/config/robin.config.json'), JSON.stringify(scaffold));
   writeFileSync(join(root, 'user-data/ops/config/robin.config.json'), JSON.stringify(user));
   return root;
 }
