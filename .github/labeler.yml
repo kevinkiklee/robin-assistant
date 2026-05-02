@@ -9,7 +9,6 @@ tier1-changes:
           - 'AGENTS.md'
           - 'CLAUDE.md'
           - 'GEMINI.md'
-          - 'system/manifest.md'
           - 'system/rules/startup.md'
           - 'system/rules/capture.md'
           - 'system/rules/self-improvement.md'

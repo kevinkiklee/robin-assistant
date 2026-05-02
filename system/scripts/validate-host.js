@@ -37,7 +37,7 @@ function expectedTier1Files(budget) {
 }
 
 function tier2Pattern() {
-  return /^system\/(manifest|capture-rules|startup|self-improvement-rules|jobs\/[^/]+)\.md$/;
+  return /^system\/(capture-rules|startup|self-improvement-rules|jobs\/[^/]+)\.md$/;
 }
 
 function classifyResult(failures) {
@@ -147,11 +147,14 @@ function validateScenario3(parsed) {
 
 function validateScenario4(parsed) {
   const failures = [];
-  const fetched = parsed.reads.includes('system/manifest.md');
+  // On-demand reference fetch — host should pull a per-folder README rather
+  // than answering from training data. system/rules/README.md is the
+  // canonical reference doc since system/manifest.md was retired.
+  const fetched = parsed.reads.includes('system/rules/README.md');
   if (!fetched) {
     failures.push({
       severity: 'hard',
-      message: 'Did not fetch system/manifest.md',
+      message: 'Did not fetch system/rules/README.md',
     });
   }
   return failures;

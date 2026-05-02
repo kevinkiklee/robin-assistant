@@ -24,7 +24,7 @@ checklists. Everything else has a headless invocation.
 | 1 | Cold-session load | Tier 1 reads in declared order; no Tier 2 leaks |
 | 2 | Routine capture | Inbox tag without loading rules/capture.md |
 | 3 | Triggered protocol | On-demand fetch of `system/jobs/<name>.md` |
-| 4 | Reference fetch | On-demand fetch of `system/manifest.md` |
+| 4 | Reference fetch | On-demand fetch of `system/rules/README.md` |
 | 5 | Multi-session detection | `state/sessions.md` is read at startup |
 | 6 | Direct-write correction | `self-improvement/corrections.md` write path |
 

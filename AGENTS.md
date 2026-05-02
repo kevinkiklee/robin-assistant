@@ -64,7 +64,6 @@ Protocols: `morning-briefing` · `weekly-review` · `email-triage` · `meeting-p
 
 | Need | Read |
 |---|---|
-| Path catalog | `system/manifest.md` |
 | Security rules (untrusted ingress, outbound policy, bash/tamper hooks) | `system/rules/security.md` |
 | Full capture rules / sweep / routing | `system/rules/capture.md` |
 | First-run + Dream details | `system/rules/startup.md` |

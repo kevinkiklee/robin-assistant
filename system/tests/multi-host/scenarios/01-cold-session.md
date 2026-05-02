@@ -39,12 +39,13 @@ EOF
   the transcript.
 - **HARD** — Read order matches the declared `tier1_files` order. Cache
   pessimism is a hard fail.
-- **SOFT** — No Tier 2 file (`system/manifest.md`, `system/rules/capture.md`,
+- **SOFT** — No Tier 2 file (`system/rules/capture.md`,
   `system/jobs/*`) appears as a Read.
 
 ## Common failure modes
 
-- Host pre-fetches the manifest as a "context discovery" step.
+- Host pre-fetches reference docs (e.g. per-folder READMEs) as a "context
+  discovery" step.
 - Host loads files in alphabetical order rather than the AGENTS.md-declared
   order.
 - Host elides startup file reads from the transcript (mark as SOFT NOTE).

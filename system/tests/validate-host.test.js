@@ -153,10 +153,10 @@ describe('validate-host scenarios', () => {
     });
   });
 
-  it('scenario 4 passes when manifest.md is read', () => {
+  it('scenario 4 passes when rules/README.md is read', () => {
     const transcript = JSON.stringify({
       name: 'Read',
-      input: { file_path: 'system/manifest.md' },
+      input: { file_path: 'system/rules/README.md' },
     });
     withTempTranscript(transcript, (p) => {
       const { exitCode, output } = runValidator([

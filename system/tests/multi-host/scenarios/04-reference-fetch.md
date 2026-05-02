@@ -8,7 +8,7 @@ priority: soft-fail
 
 ## Probes
 
-Reference content (the manifest) is fetched on demand when the user asks a
+Per-folder reference content is fetched on demand when the user asks a
 question that requires it.
 
 ## Setup
@@ -17,16 +17,16 @@ None.
 
 ## Prompt
 
-> List all the well-known paths in this workspace.
+> What rule files live under system/rules/? Summarize each.
 
 ## Pass criteria
 
-- **HARD** — Transcript shows a Read of `system/manifest.md`.
-- **SOFT** — Output enumerates paths from manifest.md content (system/, user-data/,
-  artifacts/, sources/, backup/).
+- **HARD** — Transcript shows a Read of `system/rules/README.md`.
+- **SOFT** — Output enumerates the rule files (capture, security,
+  self-improvement, startup) using the README's descriptions.
 
 ## Common failure modes
 
-- Agent answers from training data or memory — hard fail (manifest is the
-  source of truth and may have updated).
-- Agent fetches manifest plus extras (rules/capture.md, jobs/*) — soft fail.
+- Agent answers from training data or memory — hard fail (the per-folder
+  README is the source of truth and may have updated).
+- Agent fetches the README plus extras (rules/capture.md, jobs/*) — soft fail.
