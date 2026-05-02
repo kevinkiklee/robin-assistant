@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.0.0 — 2026-05-01
+
+**Breaking restructure of `system/`.** All internal paths have changed. After upgrading, run `npx robin-assistant install-hooks` once to relocate the git pre-commit hook to its new path. The Claude Code PreToolUse hook in `~/.claude/settings.json` is per-machine — if you customized it manually to point at `system/scripts/claude-code-hook.js`, update it to `system/scripts/hooks/claude-code.js`.
+
+### Highlights
+
+- `system/scripts/` reorganized into feature folders (`cli/`, `hooks/`, `memory/`, `capture/`, `jobs/`, `sync/`, `wiki-graph/`, `watches/`, `migrate/`, `diagnostics/`). Cross-cutting utilities remain in `scripts/lib/`.
+- `system/skeleton/` renamed to `system/scaffold/`.
+- Four root markdown docs collapsed into `system/rules/` (`capture.md`, `security.md`, `self-improvement.md`, `startup.md`).
+- `system/manifest.md` deleted; per-folder READMEs replace it.
+- `system/artifacts/` moved to `user-data/artifacts/`.
+- `system/tests/` mirrors `system/scripts/`. Test runner glob is now recursive.
+- `system/tests/` no longer ships in the npm package (`.npmignore`).
+- Legacy one-shot scripts deleted: `migrate-cycle-1a.js`, `migrate-cycle-2c.js`, `split-monoliths.js`.
+- New: `system/scripts/diagnostics/check-doc-paths.js` linter (run in CI) catches stale `system/...` refs in markdown.
+- `install-hooks.js` is now path-aware and idempotent — auto-rewrites stale pre-commit hook paths.
+
+### Upgrade
+
+After running `npm i robin-assistant@4`, run `npx robin-assistant install-hooks` once. This will rewrite a stale `.git/hooks/pre-commit` path if present.
+
+`user-data/` is unaffected.
+
 ## [Unreleased]
 
 ### 2026-05-01 — Autonomous memory: capture enforcement + recall (cycles 3a / 3b)
