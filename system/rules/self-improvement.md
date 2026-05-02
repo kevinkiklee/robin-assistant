@@ -1,6 +1,6 @@
 # Self-Improvement Rules
 
-How Robin processes self-improvement data. The user-facing log lives at `user-data/memory/self-improvement.md` and uses the same section structure described here.
+How Robin processes self-improvement data. The user-facing log lives under `user-data/memory/self-improvement/` as a directory of subtopic files (`corrections.md`, `preferences.md`, `session-handoff.md`, `calibration.md`, `communication-style.md`, `domain-confidence.md`, `learning-queue.md`, `predictions.md`, `action-trust.md`). Each section described below maps to its own file in that directory.
 
 ## Corrections
 

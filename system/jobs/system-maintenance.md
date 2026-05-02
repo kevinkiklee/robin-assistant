@@ -28,7 +28,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ### 3. Goals check-in
 
-- Read `user-data/memory/profile.md` -> `## Goals`. Prompt user for progress on active goals.
+- Read `user-data/memory/profile/goals.md`. Prompt user for progress on active goals.
 
 ### 4. Inbox review
 
@@ -36,7 +36,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ### 5. Pattern effectiveness
 
-- Read `user-data/memory/self-improvement.md` -> `## Patterns`. For each pattern, discuss with user: is the counter-action working? Revise or retire patterns that aren't helping.
+- Scan `user-data/memory/self-improvement/` for the appropriate patterns subtopic file (promoted patterns from Dream). For each pattern, discuss with user: is the counter-action working? Revise or retire patterns that aren't helping.
 
 ### 6. Coordination cleanup
 

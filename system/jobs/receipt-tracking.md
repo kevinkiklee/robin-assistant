@@ -41,4 +41,4 @@ Per-receipt or aggregated summary depending on the question.
 
 ## After
 
-If a recurring category audit, log results to `user-data/memory/knowledge.md`. If a one-time lookup, no need to persist.
+If a recurring category audit, log results to the appropriate `user-data/memory/knowledge/finance/` subtopic file (e.g., `spending-analysis.md`). If a one-time lookup, no need to persist.

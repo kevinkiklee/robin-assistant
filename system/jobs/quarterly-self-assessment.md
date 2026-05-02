@@ -33,22 +33,22 @@ Compare to prior quarter's grades.
 
 ### 2. Calibration audit
 
-Read `user-data/memory/self-improvement.md` -> `## Calibration`. For verified predictions: was tagged confidence calibrated to actual accuracy? Group by band (50%/70%/90%) and check.
+Read `user-data/memory/self-improvement/calibration.md`. For verified predictions: was tagged confidence calibrated to actual accuracy? Group by band (50%/70%/90%) and check.
 
 ### 3. Correction/Pattern compounding
 
 - How many corrections in 90 days vs prior quarter?
-- For each pattern in `## Patterns`: is the counter-action working?
+- For each pattern in the patterns subtopic file under `user-data/memory/self-improvement/`: is the counter-action working?
 
 ### 4. Sycophancy check
 
-- Read `user-data/memory/self-improvement.md`. Are most entries positive corrections?
+- Read entries across `user-data/memory/self-improvement/` (especially `corrections.md`). Are most entries positive corrections?
 - Is the disagreement count zero? If so, scan for moments the assistant should have pushed back.
 - High wins-to-corrections ratio + low disagreement = probably optimizing for praise.
 
 ### 5. Ask the user to grade the assistant
 
-Direct: "Honestly, how am I doing? What's working? What's not?" Log response in `user-data/memory/self-improvement.md` -> `## Corrections` or `## Calibration`.
+Direct: "Honestly, how am I doing? What's working? What's not?" Log response in `user-data/memory/self-improvement/corrections.md` or `user-data/memory/self-improvement/calibration.md`.
 
 ### 6. Identify ONE thing to change
 
@@ -69,4 +69,4 @@ Pick the single highest-leverage improvement for the next quarter.
 
 ## After
 
-Log in `user-data/memory/streams/journal.md`. Update `user-data/memory/self-improvement.md` -> `## Calibration`.
+Log in `user-data/memory/streams/journal.md`. Update `user-data/memory/self-improvement/calibration.md`.

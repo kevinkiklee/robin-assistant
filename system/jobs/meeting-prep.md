@@ -32,8 +32,8 @@ Read `user-data/ops/config/integrations.md` for storage status.
 
 ### 3. Check workspace
 
-Read `user-data/memory/knowledge.md` for any vendor/contact/topic matching the meeting subject.
-Read `user-data/memory/streams/journal.md` and `user-data/memory/profile.md` for prior context.
+Scan `user-data/memory/knowledge/` subtopic files for any vendor/contact/topic matching the meeting subject (e.g., `vendors.md`, `service-providers/`, relevant project files under `projects/`).
+Read `user-data/memory/streams/journal.md` and scan `user-data/memory/profile/` subtopic files (especially `work.md`, `people.md`, `people/`) for prior context.
 
 ## Output
 

@@ -41,8 +41,8 @@ Best effort: remove your row from `user-data/ops/state/sessions.md`.
 
 | Category | Files | Rule |
 |----------|-------|------|
-| Pillar (always lock) | `AGENTS.md`, `user-data/memory/profile.md`, `user-data/memory/self-improvement.md` | Acquire lock before any edit |
-| Mixed-use | `user-data/memory/tasks.md`, `user-data/memory/knowledge.md` | Lock when modifying or removing existing content. Appending a new entry is safe without a lock. When in doubt, lock. |
+| Pillar (always lock) | `AGENTS.md`, `user-data/memory/profile/`, `user-data/memory/self-improvement/` | Acquire lock before any edit. Locks apply to specific subtopic files within the directory (e.g., `profile/goals.md`, `self-improvement/calibration.md`); use the subtopic filename for the lock. |
+| Mixed-use | `user-data/memory/tasks.md`, `user-data/memory/knowledge/` | Lock when modifying or removing existing content. Appending a new entry is safe without a lock. When in doubt, lock. For the `knowledge/` directory, locks apply to the specific subtopic file being edited. |
 | Append-only | `user-data/memory/streams/journal.md`, `user-data/memory/streams/decisions.md`, `user-data/memory/streams/inbox.md` | No lock needed. Read-before-write still applies. |
 
 ## Lock protocol

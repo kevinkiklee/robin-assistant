@@ -34,11 +34,11 @@ notify_on_failure: true
 - Read `user-data/ops/config/integrations.md` for email status.
   - If available: pull recent receipts/orders.
   - If not available: skip or ask "Any notable spending this week?"
-- Check `user-data/memory/knowledge.md` -> `## Subscriptions` for anything anomalous.
+- Check `user-data/memory/knowledge/finance/subscriptions.md` for anything anomalous.
 
 ### 4. Goal check-ins
 
-Read `user-data/memory/profile.md` -> `## Goals`. Prompt the user for progress on active goals.
+Read `user-data/memory/profile/goals.md`. Prompt the user for progress on active goals.
 
 ### 5. Look ahead
 

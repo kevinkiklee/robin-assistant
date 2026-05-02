@@ -138,7 +138,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 Runs after all other phases. Maintains the memory tree structure.
 
-13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/memory/lib/memory-index.js` with the threshold from `user-data/ops/config/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range), and top-level `knowledge.md` / `profile.md` if they still exist as monoliths (split these manually using the `planSplit` helper).
+13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/memory/lib/memory-index.js` with the threshold from `user-data/ops/config/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range).
 
 14. **Empty-file cleanup** — any topic file that is empty (frontmatter only or no content) is deleted. Any topic folder that ends up empty is removed.
 
@@ -162,7 +162,7 @@ Runs after all other phases. Maintains the memory tree structure.
 
 ## Boundary rule
 
-Dream can read and write any topic file under `user-data/memory/` and the flat files (`tasks.md`, `decisions.md`, `journal.md`, `self-improvement.md`, `inbox.md`).
+Dream can read and write any topic file under `user-data/memory/` and the flat files (`tasks.md`, `decisions.md`, `journal.md`, `inbox.md`).
 
 Dream maintains `user-data/memory/INDEX.md` via `regenerate-memory-index.js` (Phase 4 step 15).
 

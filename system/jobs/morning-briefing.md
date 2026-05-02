@@ -38,7 +38,7 @@ Read `user-data/memory/tasks.md`. Collect:
 
 ### 4. Context
 
-Read `user-data/memory/self-improvement.md` (session handoff section) for active context from prior sessions.
+Read `user-data/memory/self-improvement/session-handoff.md` for active context from prior sessions.
 
 ### 5. Compose briefing
 
