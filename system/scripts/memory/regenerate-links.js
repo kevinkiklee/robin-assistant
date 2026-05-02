@@ -94,7 +94,7 @@ export function writeLinksIndex(memoryDir, workspaceDir) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const __filename = fileURLToPath(import.meta.url);
-  const workspaceDir = join(dirname(__filename), '..', '..');
+  const workspaceDir = join(dirname(__filename), '..', '..', '..');
   const memoryDir = join(workspaceDir, 'user-data', 'memory');
   writeLinksIndex(memoryDir, workspaceDir);
   console.log('LINKS.md regenerated.');

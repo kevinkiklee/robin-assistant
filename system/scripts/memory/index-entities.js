@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// system/scripts/index-entities.js
+// system/scripts/memory/index-entities.js
 //
 // Generates user-data/memory/ENTITIES.md from topic-file frontmatter.
 //
@@ -25,7 +25,7 @@ function readExistingGenerated(workspaceDir) {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 function parseArgs(argv) {
   const args = { mode: null, json: false };

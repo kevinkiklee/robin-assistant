@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { up, id, description } from '../migrations/0016-backfill-last-verified.js';
-import { parseFrontmatter } from '../scripts/lib/memory-index.js';
+import { parseFrontmatter } from '../scripts/memory/lib/memory-index.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures

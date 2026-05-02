@@ -10,7 +10,7 @@ import {
   parseHeadings,
   proposeDomainRoots,
   sectionSizes,
-} from '../scripts/lib/memory-index.js';
+} from '../../scripts/memory/lib/memory-index.js';
 
 test('parseFrontmatter extracts description', () => {
   const input = '---\ndescription: Doctors and meds\n---\n# Medical\n\nBody.\n';

@@ -1,4 +1,4 @@
-// system/scripts/lib/recall.js
+// system/scripts/memory/lib/recall.js
 //
 // Node-native in-process retrieval over user-data/memory/.
 // No ripgrep dependency; uses fs.readdir walk + compiled regex.

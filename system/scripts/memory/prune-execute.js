@@ -4,8 +4,8 @@
 // affected indexes. No agent involvement.
 //
 // Usage:
-//   node system/scripts/prune-execute.js              # execute (with backup)
-//   node system/scripts/prune-execute.js --dry-run    # delegate to prune-preview
+//   node system/scripts/memory/prune-execute.js              # execute (with backup)
+//   node system/scripts/memory/prune-execute.js --dry-run    # delegate to prune-preview
 //
 // Skips when sibling sessions are active (multi-session safety per spec).
 //
@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const MEM = join(REPO_ROOT, 'user-data', 'memory');
 const ARCHIVE = join(MEM, 'archive');
 const SESSIONS_PATH = join(REPO_ROOT, 'user-data', 'state', 'sessions.md');
@@ -316,7 +316,7 @@ async function main() {
 
   // Main INDEX regen via existing tool (sub-index barriers)
   try {
-    execFileSync('node', [join(REPO_ROOT, 'system/scripts/regenerate-memory-index.js')], { cwd: REPO_ROOT });
+    execFileSync('node', [join(REPO_ROOT, 'system/scripts/memory/regenerate-index.js')], { cwd: REPO_ROOT });
   } catch (err) {
     console.warn(`prune: main INDEX regen warning — ${err.message}`);
   }

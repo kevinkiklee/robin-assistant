@@ -10,7 +10,7 @@ import {
   writeEntitiesAtomic,
   readEntities,
   detectUserEdit,
-} from '../scripts/lib/entity-index.js';
+} from '../../scripts/memory/lib/entity-index.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'entity-index-'));

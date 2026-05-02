@@ -42,7 +42,7 @@ inline if any entity-bearing file is newer than the index.
 Dream Phase 4.17.6 regenerates ENTITIES.md daily; 4.17.7 caps log files.
 
 **Rollout.** Migration `0020-capture-enforcement-config.js` adds the
-config block to existing installs. Run `node system/scripts/index-entities.js
+config block to existing installs. Run `node system/scripts/memory/index-entities.js
 --bootstrap` after upgrade to seed `ENTITIES.md`. `.claude/settings.json`
 gains a `UserPromptSubmit` hook entry — users who have customized that file
 locally must merge the new entry by hand; everyone else picks it up via
@@ -201,7 +201,7 @@ confirms in system-maintenance; auto-resolves as inconclusive after
 90 days past check-by with no signal. Migration 0015 creates
 `predictions.md` from skeleton.
 
-**D1 — Memory quality heuristics.** New `system/scripts/lib/decay.js`
+**D1 — Memory quality heuristics.** New `system/scripts/memory/lib/decay.js`
 with per-sub-tree defaults (`profile/` slow=365d, `knowledge/` and
 `self-improvement/` medium=90d, `decisions.md`/`journal.md`/`inbox.md`
 immortal). Migration 0016 backfills `last_verified` frontmatter from
@@ -492,7 +492,7 @@ Turns Robin's memory from a filing cabinet into a compounding wiki. Knowledge is
 - Type assignment guidance added to capture rules.
 
 ### New scripts
-- `system/scripts/regenerate-links.js` (`npm run regenerate-links`) — walks memory files, extracts markdown links, builds edge table, respects `graph_exclude` config.
+- `system/scripts/memory/regenerate-links.js` (`npm run regenerate-links`) — walks memory files, extracts markdown links, builds edge table, respects `graph_exclude` config.
 - `system/migrations/0004-add-frontmatter-types.js` — adds `type:` to all memory files via path heuristics.
 
 ### Config additions
@@ -540,7 +540,7 @@ The new architecture organizes memory into topic folders (`profile/`, `knowledge
 ### New
 - `memory/INDEX.md` — generated directory of every memory file.
 - Threshold-based topic splitting in Dream. When a topic file crosses `memory.split_threshold_lines` (default 200), Dream splits it at `## ` boundaries. Applies to topic files only — exempts `knowledge.md`, `profile.md`, `decisions.md`, `journal.md`.
-- New scripts: `system/scripts/regenerate-memory-index.js` (with `--check`), `system/scripts/split-monoliths.js`, `system/scripts/lib/memory-index.js`.
+- New scripts: `system/scripts/memory/regenerate-index.js` (with `--check`), `system/scripts/split-monoliths.js`, `system/scripts/memory/lib/memory-index.js`.
 - New npm scripts: `regenerate-memory-index`, `split-monoliths`.
 - `memory.split_threshold_lines` config option.
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtemp, cp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { runBackfill } from '../../scripts/backfill-entity-links.js';
+import { runBackfill } from '../../scripts/memory/backfill-entity-links.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

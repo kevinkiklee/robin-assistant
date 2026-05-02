@@ -175,7 +175,7 @@ disambiguator: [hysa, savings, account, goldman]   # required for aliases ≤2 t
 - Aliases ≤2 tokens (e.g., "Marcus"): require `disambiguator:` field; matcher requires one of the disambiguator words within ±15 tokens of the alias hit. Without disambiguator, alias is skipped (logged to `recall.log`).
 - Files with `entity_root: true` (whitelist; default false): each `## Subsection` heading also contributes a row. Only enabled on a small set of explicitly-curated files (`profile/people.md`, `knowledge/medical/providers.md`, etc.).
 
-#### S2.3 — `system/scripts/index-entities.js`
+#### S2.3 — `system/scripts/memory/index-entities.js`
 
 Generation script.
 
@@ -183,7 +183,7 @@ Generation script.
 - **`--regenerate` mode:** invoked by Dream Phase 4.17.6 (after LINKS.md, before compact-summary). Idempotent — content-hash compare, no-op when unchanged. Atomic write.
 - **Cost:** <500 ms over typical memory tree.
 
-#### S2.4 — `system/scripts/lib/recall.js` (shared lib)
+#### S2.4 — `system/scripts/memory/lib/recall.js` (shared lib)
 
 Node-native retrieval:
 - `fs.readdir` walk + substring match over `user-data/memory/**/*.md`. MB-scale, no external dependencies (no `rg`).
@@ -373,7 +373,7 @@ Before merging:
 
 1. Land code + tests behind `memory.capture_enforcement.enabled = false`.
 2. Run `node system/scripts/cli/install-hooks.js` to register the new `UserPromptSubmit` handler and re-snapshot manifest.
-3. Run `node system/scripts/index-entities.js --bootstrap`. Review the "files would benefit from explicit aliases" report; backfill the most important entries.
+3. Run `node system/scripts/memory/index-entities.js --bootstrap`. Review the "files would benefit from explicit aliases" report; backfill the most important entries.
 4. Flip `enabled = true` in `robin.config.json`.
 5. Watch `capture-enforcement.log` and `recall.log` over the first week.
 6. Tune triviality thresholds if misfire rate is high.
@@ -400,8 +400,8 @@ None at design time. Resolve during implementation:
 ## Files touched (forecast)
 
 **New:**
-- `system/scripts/index-entities.js`
-- `system/scripts/lib/recall.js`
+- `system/scripts/memory/index-entities.js`
+- `system/scripts/memory/lib/recall.js`
 - `system/scripts/lib/capture-keyword-scan.js`
 - `system/tests/claude-code-hook.test.js` (extends existing tests if any)
 - `system/tests/index-entities.test.js`

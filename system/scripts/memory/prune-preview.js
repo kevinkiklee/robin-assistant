@@ -3,15 +3,15 @@
 // today, without invoking an agent (saves API tokens). Reports counts and
 // total bytes; nothing moves.
 //
-// Usage: node system/scripts/prune-preview.js
-//        node system/scripts/prune-preview.js --json
+// Usage: node system/scripts/memory/prune-preview.js
+//        node system/scripts/memory/prune-preview.js --json
 
 import { readdirSync, statSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const MEM = join(REPO_ROOT, 'user-data', 'memory');
 
 const NOW = new Date();

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
-import { parseFrontmatter, stringifyFrontmatter } from '../scripts/lib/memory-index.js';
-import { writeMemoryIndex } from '../scripts/regenerate-memory-index.js';
+import { parseFrontmatter, stringifyFrontmatter } from '../scripts/memory/lib/memory-index.js';
+import { writeMemoryIndex } from '../scripts/memory/regenerate-index.js';
 
 export const id = '0004-add-frontmatter-types';
 export const description = 'Add type field to memory file frontmatter for wiki-style entity/concept typing';

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const inboxPath = fileURLToPath(new URL('../../user-data/memory/inbox.md', import.meta.url));
+const inboxPath = fileURLToPath(new URL('../../../user-data/memory/inbox.md', import.meta.url));
 
 test('inbox IDs are well-formed and unique', () => {
   if (!existsSync(inboxPath)) return; // user-data may not be populated in CI

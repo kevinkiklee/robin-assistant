@@ -110,7 +110,7 @@ Per Rule: Precedence, the newer verified source data supersedes older data. Flag
 
 ### 7. Index rebuild
 
-Ensure proper `description:` frontmatter on every new file created. Run `node system/scripts/regenerate-memory-index.js` to rebuild INDEX.md.
+Ensure proper `description:` frontmatter on every new file created. Run `node system/scripts/memory/regenerate-index.js` to rebuild INDEX.md.
 
 Skip if no new files were created (only existing files updated).
 

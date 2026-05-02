@@ -10,8 +10,8 @@ import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const PREVIEW = join(REPO_ROOT, 'system', 'scripts', 'prune-preview.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const PREVIEW = join(REPO_ROOT, 'system', 'scripts', 'memory', 'prune-preview.js');
 
 function run(cmd, args = []) {
   const r = spawnSync(cmd, args, {
@@ -75,7 +75,7 @@ describe('prune-execute (idempotency check)', () => {
     // The repo has already been pruned in earlier sessions; transactions
     // <12mo are all that remains. This test verifies that a second prune
     // execution doesn't re-archive what's already in archive.
-    const r = run('node', [join(REPO_ROOT, 'system/scripts/prune-execute.js')]);
+    const r = run('node', [join(REPO_ROOT, 'system/scripts/memory/prune-execute.js')]);
     // Either "nothing eligible" or zero files moved.
     if (r.exit === 0) {
       assert.ok(

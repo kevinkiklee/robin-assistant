@@ -87,7 +87,7 @@ async function main() {
       process.stderr.write('Usage: robin recall [--json] <term> [<term> ...]\n');
       process.exit(1);
     }
-    const { recall, formatRecallHits } = await import('../system/scripts/lib/recall.js');
+    const { recall, formatRecallHits } = await import('../system/scripts/memory/lib/recall.js');
     const ws = process.env.ROBIN_WORKSPACE || process.cwd();
     const result = recall(ws, rest);
     if (wantsJson) {

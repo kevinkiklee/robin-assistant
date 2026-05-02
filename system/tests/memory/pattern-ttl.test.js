@@ -9,7 +9,7 @@ import {
   processPatternTTL,
   DEFAULT_TTL_DAYS,
   __test__,
-} from '../scripts/lib/pattern-ttl.js';
+} from '../../scripts/memory/lib/pattern-ttl.js';
 
 function ws() { return mkdtempSync(join(tmpdir(), 'ttl-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

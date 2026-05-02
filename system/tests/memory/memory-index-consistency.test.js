@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter } from '../scripts/lib/memory-index.js';
-import { checkMemoryIndex } from '../scripts/regenerate-memory-index.js';
+import { parseFrontmatter } from '../../scripts/memory/lib/memory-index.js';
+import { checkMemoryIndex } from '../../scripts/memory/regenerate-index.js';
 
-const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
 const scaffoldMem = join(repoRoot, 'system/scaffold/memory');
 
 function walk(dir, base = dir) {

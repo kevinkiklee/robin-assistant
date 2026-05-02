@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { recall } from '../scripts/lib/recall.js';
+import { recall } from '../../scripts/memory/lib/recall.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'recall-'));

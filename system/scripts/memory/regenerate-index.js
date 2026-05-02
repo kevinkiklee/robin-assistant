@@ -80,7 +80,7 @@ export function checkMemoryIndex(memoryDir) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const memoryDir = fileURLToPath(new URL('../../user-data/memory', import.meta.url));
+  const memoryDir = fileURLToPath(new URL('../../../user-data/memory', import.meta.url));
   if (process.argv.includes('--check')) {
     if (!checkMemoryIndex(memoryDir)) {
       console.error('memory/INDEX.md is out of date. Run regenerate-memory-index.js to fix.');

@@ -58,7 +58,7 @@ Body structure:
 ## Post-filing
 
 1. Append edges to `user-data/memory/LINKS.md` for any cross-references in the summary
-2. Run `node system/scripts/regenerate-memory-index.js` to add the page to INDEX.md
+2. Run `node system/scripts/memory/regenerate-index.js` to add the page to INDEX.md
 3. Append to `user-data/memory/log.md`: `## [YYYY-MM-DD] filed | <title> | type: conversation`
 
 ## Query-to-Wiki Filing

@@ -112,7 +112,7 @@ Test: `pattern-firings-log.test.js`.
 
 ## Step 9 — Pattern TTL daemon
 
-`system/scripts/lib/pattern-ttl.js`:
+`system/scripts/memory/lib/pattern-ttl.js`:
 - `DEFAULT_TTL_DAYS = 180`
 - `processPatternTTL(workspaceDir)` — reads firings log, reads patterns.md, batch-updates frontmatter (last_fired + fired_count), truncates firings log, archives patterns over TTL to patterns-archive.md. Returns summary `{updated, archived, fired_count_total}`.
 

@@ -37,8 +37,8 @@ import { applyRedaction } from '../sync/lib/redact.js';
 import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson, readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from '../lib/turn-state.js';
 import { appendPerfLog } from '../lib/perf-log.js';
 import { classifyTier, scanEntityAliases } from '../lib/capture-keyword-scan.js';
-import { readEntities, collectEntities, writeEntitiesAtomic } from '../lib/entity-index.js';
-import { recall, formatRecallHits } from '../lib/recall.js';
+import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
+import { recall, formatRecallHits } from '../memory/lib/recall.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');

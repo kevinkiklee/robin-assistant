@@ -38,9 +38,9 @@ Running on every PR:
 | Check | Failure mode |
 |---|---|
 | `node system/scripts/measure-tokens.js --check` | Hard fail: any cap exceeded |
-| `node system/scripts/lint-memory.js` | Hard fail: orphan files, large unindexed sub-trees, stale INDEX entries |
+| `node system/scripts/memory/lint.js` | Hard fail: orphan files, large unindexed sub-trees, stale INDEX entries |
 | `node system/scripts/golden-session.js --check` | Hard fail: Tier 1 load order or stability changed |
-| `node system/scripts/regenerate-memory-index.js --check` | Hard fail: INDEX out of date |
+| `node system/scripts/memory/regenerate-index.js --check` | Hard fail: INDEX out of date |
 | `npm test` | Hard fail: any test |
 
 A PR labeled `tier1-changes` (auto-applied when any Tier 1 file is modified)

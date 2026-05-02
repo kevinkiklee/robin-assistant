@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findTicViolations } from '../scripts/lint-memory.js';
+import { findTicViolations } from '../../scripts/memory/lint.js';
 
 function workspace(handoffContent) {
   const dir = mkdtempSync(join(tmpdir(), 'lint-tics-'));

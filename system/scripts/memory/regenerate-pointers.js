@@ -1,9 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PLATFORMS } from './lib/platforms.js';
+import { PLATFORMS } from '../lib/platforms.js';
 
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 
 export function generatePointers() {
   const out = {};

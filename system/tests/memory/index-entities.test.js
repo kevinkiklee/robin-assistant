@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const SCRIPT = join(REPO_ROOT, 'system/scripts/index-entities.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const SCRIPT = join(REPO_ROOT, 'system/scripts/memory/index-entities.js');
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'index-entities-'));

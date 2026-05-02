@@ -27,7 +27,7 @@ import {
 } from 'node:fs';
 import { join, relative } from 'node:path';
 import { execSync } from 'node:child_process';
-import { parseFrontmatter, stringifyFrontmatter } from '../scripts/lib/memory-index.js';
+import { parseFrontmatter, stringifyFrontmatter } from '../scripts/memory/lib/memory-index.js';
 
 export const id = '0016-backfill-last-verified';
 export const description =

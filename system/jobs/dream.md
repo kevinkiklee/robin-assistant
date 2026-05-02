@@ -48,7 +48,7 @@ Confirm exit code 0. The script moves quarantined lines to `user-data/memory/qua
 After memory routing and self-improvement passes, run the pattern lifecycle pass. This processes the per-pattern firings recorded by the model in `user-data/state/pattern-firings.log` and archives stale patterns:
 
 ```sh
-node -e "import('./system/scripts/lib/pattern-ttl.js').then(m => console.log(m.processPatternTTL(process.cwd())))"
+node -e "import('./system/scripts/memory/lib/pattern-ttl.js').then(m => console.log(m.processPatternTTL(process.cwd())))"
 ```
 
 The pass:
@@ -139,19 +139,19 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 Runs after all other phases. Maintains the memory tree structure.
 
-13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/lib/memory-index.js` with the threshold from `user-data/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range), and top-level `knowledge.md` / `profile.md` if they still exist as monoliths (split these manually using the `planSplit` helper).
+13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/memory/lib/memory-index.js` with the threshold from `user-data/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range), and top-level `knowledge.md` / `profile.md` if they still exist as monoliths (split these manually using the `planSplit` helper).
 
 14. **Empty-file cleanup** — any topic file that is empty (frontmatter only or no content) is deleted. Any topic folder that ends up empty is removed.
 
-15. **Index regeneration** — run `node system/scripts/regenerate-memory-index.js` to rebuild `user-data/memory/INDEX.md` from per-file frontmatter. Idempotent — exits clean if nothing changed.
+15. **Index regeneration** — run `node system/scripts/memory/regenerate-index.js` to rebuild `user-data/memory/INDEX.md` from per-file frontmatter. Idempotent — exits clean if nothing changed.
 
 16. **Hot cache trim** — if `user-data/memory/hot.md` has more than 3 session entries (sections starting with `## Session —`), keep only the most recent 3 and remove older entries.
 
-17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
+17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/memory/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
 
 17.5. **Compact-summary regeneration** — run the helper from `system/scripts/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
 
-17.6. **ENTITIES.md regeneration.** Run `node system/scripts/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
+17.6. **ENTITIES.md regeneration.** Run `node system/scripts/memory/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
 
 17.7. **Telemetry log rotation.** Cap each file to its limit:
    - `user-data/state/capture-enforcement.log` → 5000 lines

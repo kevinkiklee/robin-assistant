@@ -11,11 +11,11 @@ import {
   extractParagraphs,
   findAmbiguousAliases,
   findCandidateEntities,
-} from '../scripts/lint-memory.js';
+} from '../../scripts/memory/lint.js';
 
 const __dirname = pathDirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'lint-memory.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'memory', 'lint.js');
 
 function runLint() {
   try {
@@ -178,7 +178,7 @@ describe('findRedundantParagraphs — redundancy', () => {
 
 describe('findAmbiguousAliases', () => {
   it('emits an issue when registry build throws on alias collision', async () => {
-    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'registry-collision');
+    const fixturePath = resolve(__dirname, '..', 'fixtures', 'wiki-graph', 'registry-collision');
     const issues = await findAmbiguousAliases(fixturePath);
     assert.equal(issues.length, 1);
     assert.equal(issues[0].type, 'ambiguous-alias');
@@ -188,7 +188,7 @@ describe('findAmbiguousAliases', () => {
   });
 
   it('returns no issues when registry builds successfully', async () => {
-    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'registry-basic');
+    const fixturePath = resolve(__dirname, '..', 'fixtures', 'wiki-graph', 'registry-basic');
     const issues = await findAmbiguousAliases(fixturePath);
     assert.deepEqual(issues, []);
   });
@@ -200,7 +200,7 @@ describe('findAmbiguousAliases', () => {
 
 describe('findCandidateEntities', () => {
   it('surfaces names mentioned 3+ times across 2+ files but with no entity page', async () => {
-    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'lint-candidate');
+    const fixturePath = resolve(__dirname, '..', 'fixtures', 'wiki-graph', 'lint-candidate');
     const issues = await findCandidateEntities(fixturePath);
     const babbage = issues.find(i => /Charles Babbage/.test(i.message));
     assert.ok(babbage, 'expected a candidate-entity issue for Charles Babbage');
@@ -209,7 +209,7 @@ describe('findCandidateEntities', () => {
   });
 
   it('does not flag names that already have an entity page', async () => {
-    const fixturePath = resolve(__dirname, 'fixtures', 'wiki-graph', 'lint-candidate');
+    const fixturePath = resolve(__dirname, '..', 'fixtures', 'wiki-graph', 'lint-candidate');
     const issues = await findCandidateEntities(fixturePath);
     // "Dong-Seok Lee" / "Dr. Lee" wouldn't be detected by the proper-noun regex anyway,
     // but verify nothing nonsensical leaks through.

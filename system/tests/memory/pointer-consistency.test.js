@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generatePointers } from '../scripts/regenerate-pointers.js';
-import { PLATFORMS } from '../scripts/lib/platforms.js';
+import { generatePointers } from '../../scripts/memory/regenerate-pointers.js';
+import { PLATFORMS } from '../../scripts/lib/platforms.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 
 test('every platform with a pointerFile has a matching root file', () => {
   for (const [name, p] of Object.entries(PLATFORMS)) {

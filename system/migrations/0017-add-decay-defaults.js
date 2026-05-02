@@ -2,7 +2,7 @@
 //
 // For each *.md under user-data/memory/ that lacks a `decay` field, we
 // compute the default decay class using the same table used by lint-memory's
-// staleness check (system/scripts/lib/decay.js → defaultDecayFor).
+// staleness check (system/scripts/memory/lib/decay.js → defaultDecayFor).
 //
 // Files with no frontmatter block at all are skipped with a warning — the
 // same behaviour as migration 0016.
@@ -21,8 +21,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
-import { parseFrontmatter, stringifyFrontmatter } from '../scripts/lib/memory-index.js';
-import { defaultDecayFor } from '../scripts/lib/decay.js';
+import { parseFrontmatter, stringifyFrontmatter } from '../scripts/memory/lib/memory-index.js';
+import { defaultDecayFor } from '../scripts/memory/lib/decay.js';
 
 export const id = '0017-add-decay-defaults';
 export const description =

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DECAY_DAYS, defaultDecayFor, isStale } from '../scripts/lib/decay.js';
+import { DECAY_DAYS, defaultDecayFor, isStale } from '../../scripts/memory/lib/decay.js';
 
 // ---------------------------------------------------------------------------
 // DECAY_DAYS constant

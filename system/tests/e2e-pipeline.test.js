@@ -38,7 +38,7 @@ describe('e2e: full toolchain', () => {
   });
 
   it('lint-memory passes', () => {
-    const r = run('node', ['system/scripts/lint-memory.js']);
+    const r = run('node', ['system/scripts/memory/lint.js']);
     assert.equal(r.exit, 0, `lint-memory failed: ${r.stdout}`);
   });
 
@@ -48,7 +48,7 @@ describe('e2e: full toolchain', () => {
   });
 
   it('memory INDEX is up to date', () => {
-    const r = run('node', ['system/scripts/regenerate-memory-index.js', '--check']);
+    const r = run('node', ['system/scripts/memory/regenerate-index.js', '--check']);
     assert.equal(r.exit, 0, `INDEX out of date: ${r.stderr}`);
   });
 
@@ -58,7 +58,7 @@ describe('e2e: full toolchain', () => {
   });
 
   it('prune-preview runs cleanly', () => {
-    const r = run('node', ['system/scripts/prune-preview.js', '--json']);
+    const r = run('node', ['system/scripts/memory/prune-preview.js', '--json']);
     assert.equal(r.exit, 0, `prune-preview failed: ${r.stderr}`);
     const out = JSON.parse(r.stdout);
     assert.ok('total_files' in out);

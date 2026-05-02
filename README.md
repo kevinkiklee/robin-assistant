@@ -309,7 +309,7 @@ Migrations, config upgrades, and scaffold sync run during `npm install` (via the
 After upgrading across the autonomous-memory cycle (≥ 2026-05-01), run once:
 
 ```bash
-node system/scripts/index-entities.js --bootstrap          # seed ENTITIES.md
+node system/scripts/memory/index-entities.js --bootstrap          # seed ENTITIES.md
 node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection
 ```
 
@@ -348,8 +348,8 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `robin watch enable <id>` / `disable <id>` | Toggle a watch on/off |
 | `robin watch tail [<id>]` | Show recent `[watch]` items from inbox (filtered by id if given) |
 | `robin watch run <id> [--dry-run \| --bootstrap]` | Manually trigger a watch (real fetch requires the watch-topics agent-runtime job) |
-| `node system/scripts/index-entities.js --bootstrap` | Seed `ENTITIES.md` from frontmatter (run once after upgrade) |
-| `node system/scripts/backfill-entity-links.js [--apply]` | One-shot link the entire wiki. `--apply` acquires `wiki-backfill` lock and regenerates `LINKS.md` |
+| `node system/scripts/memory/index-entities.js --bootstrap` | Seed `ENTITIES.md` from frontmatter (run once after upgrade) |
+| `node system/scripts/memory/backfill-entity-links.js [--apply]` | One-shot link the entire wiki. `--apply` acquires `wiki-backfill` lock and regenerates `LINKS.md` |
 | `node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state` | Re-snapshot the security manifest (after major upgrades) |
 | `npm run discord:auth` | Walk through Discord bot OAuth + token storage |
 | `npm run discord:install` | Install the Discord bot launchd agent (macOS) |

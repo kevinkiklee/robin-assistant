@@ -7,7 +7,7 @@
 // linker. Callers that don't need the list can ignore the return value.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseFrontmatter, stringifyFrontmatter } from '../../../../system/scripts/lib/memory-index.js';
+import { parseFrontmatter, stringifyFrontmatter } from '../../../../system/scripts/memory/lib/memory-index.js';
 
 const TX_HEADER = '| date | payee | amount | account | category (LM) | notes | id |';
 const TX_DIVIDER = '|------|-------|--------|---------|---------------|-------|-----|';

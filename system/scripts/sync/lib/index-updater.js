@@ -1,6 +1,6 @@
 import { openSync, closeSync, writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, constants } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { writeMemoryIndex } from '../../regenerate-memory-index.js';
+import { writeMemoryIndex } from '../../memory/regenerate-index.js';
 
 function lockPath(workspaceDir) {
   return join(workspaceDir, 'user-data/state/locks/index.lock');

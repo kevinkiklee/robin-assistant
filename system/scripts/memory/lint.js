@@ -27,7 +27,7 @@ import { parseFrontmatter } from './lib/memory-index.js';
 import { defaultDecayFor, isStale } from './lib/decay.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const MEM_ROOT = join(REPO_ROOT, 'user-data', 'memory');
 
 const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkeep', 'inbox.md', 'ENTITIES.md', 'ENTITIES-extended.md']);
@@ -355,7 +355,7 @@ function findTicViolations(memRoot) {
 // ---------------------------------------------------------------------------
 
 async function findAmbiguousAliases(workspaceDir) {
-  const { buildEntityRegistry } = await import('./wiki-graph/lib/build-entity-registry.js');
+  const { buildEntityRegistry } = await import('../wiki-graph/lib/build-entity-registry.js');
   try {
     await buildEntityRegistry(workspaceDir);
     return [];
@@ -388,8 +388,8 @@ const PROPER_NOUN_RE = /\b([A-Z][a-zA-Z]+ [A-Z][a-zA-Z]+)\b/g;
 
 async function findCandidateEntities(workspaceDir) {
   const { readFile } = await import('node:fs/promises');
-  const { buildEntityRegistry } = await import('./wiki-graph/lib/build-entity-registry.js');
-  const { isExcludedPath } = await import('./wiki-graph/lib/exclusions.js');
+  const { buildEntityRegistry } = await import('../wiki-graph/lib/build-entity-registry.js');
+  const { isExcludedPath } = await import('../wiki-graph/lib/exclusions.js');
   const { join, relative } = await import('node:path');
 
   let registry;

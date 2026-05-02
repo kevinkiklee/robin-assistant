@@ -2,10 +2,10 @@ import { readdir, mkdir, writeFile } from 'node:fs/promises';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdirSync } from 'node:fs';
-import { applyEntityLinks } from './wiki-graph/lib/apply-entity-links.js';
-import { buildEntityRegistry } from './wiki-graph/lib/build-entity-registry.js';
-import { isExcludedPath } from './wiki-graph/lib/exclusions.js';
-import { acquireLock, releaseLock } from './jobs/lib/atomic.js';
+import { applyEntityLinks } from '../wiki-graph/lib/apply-entity-links.js';
+import { buildEntityRegistry } from '../wiki-graph/lib/build-entity-registry.js';
+import { isExcludedPath } from '../wiki-graph/lib/exclusions.js';
+import { acquireLock, releaseLock } from '../jobs/lib/atomic.js';
 import { writeLinksIndex } from './regenerate-links.js';
 
 async function* walkMd(root, base = root) {
@@ -88,7 +88,7 @@ export async function runBackfill({ workspaceDir, scope = 'all', apply = false, 
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const __filename = fileURLToPath(import.meta.url);
-  const workspaceDir = process.env.ROBIN_WORKSPACE || join(dirname(__filename), '..', '..');
+  const workspaceDir = process.env.ROBIN_WORKSPACE || join(dirname(__filename), '..', '..', '..');
   const argv = process.argv.slice(2);
   const apply = argv.includes('--apply');
   const scopeIdx = argv.indexOf('--scope');

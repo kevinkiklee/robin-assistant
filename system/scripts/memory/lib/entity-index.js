@@ -1,4 +1,4 @@
-// system/scripts/lib/entity-index.js
+// system/scripts/memory/lib/entity-index.js
 //
 // Read/write/incremental update of user-data/memory/ENTITIES.md.
 // Edit-detection via content hash stored in user-data/state/entities-hash.txt.

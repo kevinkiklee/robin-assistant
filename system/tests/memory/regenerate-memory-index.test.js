@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { generateMemoryIndex, writeMemoryIndex, checkMemoryIndex } from '../scripts/regenerate-memory-index.js';
+import { generateMemoryIndex, writeMemoryIndex, checkMemoryIndex } from '../../scripts/memory/regenerate-index.js';
 
 function makeTree() {
   const root = mkdtempSync(join(tmpdir(), 'robin-mem-'));

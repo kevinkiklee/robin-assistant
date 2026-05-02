@@ -18,11 +18,11 @@
 - `system/scripts/lib/turn-state.js` — read/write/atomic helpers for `turn.json`, `turn-writes.log`, `capture-retry.json`
 - `system/scripts/lib/perf-log.js` — append helper for `hook-perf.log` with size cap
 - `system/scripts/lib/capture-keyword-scan.js` — keyword regex + tier classifier
-- `system/scripts/lib/recall.js` — Node-native in-process retrieval
-- `system/scripts/lib/entity-index.js` — read/write/incremental update of `ENTITIES.md`
+- `system/scripts/memory/lib/recall.js` — Node-native in-process retrieval
+- `system/scripts/memory/lib/entity-index.js` — read/write/incremental update of `ENTITIES.md`
 
 **New files (CLI / scripts / tests):**
-- `system/scripts/index-entities.js` — bootstrap + regenerate CLI
+- `system/scripts/memory/index-entities.js` — bootstrap + regenerate CLI
 - `system/scripts/migrations/0009-capture-enforcement-config.js` — one-time config migration
 - `system/tests/turn-state.test.js`
 - `system/tests/perf-log.test.js`
@@ -550,7 +550,7 @@ git commit -m "feat(memory/capture): keyword scan and tier classifier"
 ## Task 4: `lib/recall.js` — Node-native in-process retrieval
 
 **Files:**
-- Create: `system/scripts/lib/recall.js`
+- Create: `system/scripts/memory/lib/recall.js`
 - Test: `system/tests/recall.test.js`
 
 - [ ] **Step 1: Write failing tests**
@@ -562,7 +562,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { recall } from '../scripts/lib/recall.js';
+import { recall } from '../scripts/memory/lib/recall.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'recall-'));
@@ -633,7 +633,7 @@ Expected: FAIL — module not found.
 - [ ] **Step 3: Implement `lib/recall.js`**
 
 ```javascript
-// system/scripts/lib/recall.js
+// system/scripts/memory/lib/recall.js
 //
 // Node-native in-process retrieval over user-data/memory/.
 // No ripgrep dependency; uses fs.readdir walk + compiled regex.
@@ -723,7 +723,7 @@ Expected: PASS — 6 tests green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/scripts/lib/recall.js system/tests/recall.test.js
+git add system/scripts/memory/lib/recall.js system/tests/recall.test.js
 git commit -m "feat(memory/recall): in-process node-native retrieval"
 ```
 
@@ -732,7 +732,7 @@ git commit -m "feat(memory/recall): in-process node-native retrieval"
 ## Task 5: `lib/entity-index.js` — ENTITIES.md helpers
 
 **Files:**
-- Create: `system/scripts/lib/entity-index.js`
+- Create: `system/scripts/memory/lib/entity-index.js`
 - Test: `system/tests/entity-index.test.js`
 
 - [ ] **Step 1: Write failing tests**
@@ -750,7 +750,7 @@ import {
   writeEntitiesAtomic,
   readEntities,
   detectUserEdit,
-} from '../scripts/lib/entity-index.js';
+} from '../scripts/memory/lib/entity-index.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'entity-index-'));
@@ -840,7 +840,7 @@ Expected: FAIL — module not found.
 - [ ] **Step 3: Implement `lib/entity-index.js`**
 
 ```javascript
-// system/scripts/lib/entity-index.js
+// system/scripts/memory/lib/entity-index.js
 //
 // Read/write/incremental update of user-data/memory/ENTITIES.md.
 // Edit-detection via content hash stored in user-data/state/entities-hash.txt.
@@ -1005,7 +1005,7 @@ Expected: PASS — 7 tests green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/scripts/lib/entity-index.js system/tests/entity-index.test.js
+git add system/scripts/memory/lib/entity-index.js system/tests/entity-index.test.js
 git commit -m "feat(memory/recall): ENTITIES.md generation lib (atomic + edit-detect)"
 ```
 
@@ -1014,7 +1014,7 @@ git commit -m "feat(memory/recall): ENTITIES.md generation lib (atomic + edit-de
 ## Task 6: `index-entities.js` — bootstrap + regenerate CLI
 
 **Files:**
-- Create: `system/scripts/index-entities.js`
+- Create: `system/scripts/memory/index-entities.js`
 - Test: `system/tests/index-entities.test.js`
 
 - [ ] **Step 1: Write failing tests**
@@ -1031,7 +1031,7 @@ import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
-const SCRIPT = join(REPO_ROOT, 'system/scripts/index-entities.js');
+const SCRIPT = join(REPO_ROOT, 'system/scripts/memory/index-entities.js');
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'index-entities-'));
@@ -1091,7 +1091,7 @@ Expected: FAIL — script not found.
 
 ```javascript
 #!/usr/bin/env node
-// system/scripts/index-entities.js
+// system/scripts/memory/index-entities.js
 //
 // Generates user-data/memory/ENTITIES.md from topic-file frontmatter.
 //
@@ -1164,7 +1164,7 @@ Expected: PASS — 4 tests green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/scripts/index-entities.js system/tests/index-entities.test.js
+git add system/scripts/memory/index-entities.js system/tests/index-entities.test.js
 git commit -m "feat(memory/recall): index-entities CLI (bootstrap + regenerate)"
 ```
 
@@ -1186,7 +1186,7 @@ Expected: A switch/dispatcher on `process.argv[2]`. Note the pattern (e.g., `cas
 In `bin/robin.js`, add the import near the top:
 
 ```javascript
-import { recall, formatRecallHits } from '../system/scripts/lib/recall.js';
+import { recall, formatRecallHits } from '../system/scripts/memory/lib/recall.js';
 ```
 
 Add the new case to the dispatcher (near other top-level subcommands):
@@ -2113,7 +2113,7 @@ After Phase 3 step 11 (calibration update) in `system/jobs/dream.md`, insert:
 After Phase 4 step 17 (LINKS.md maintenance) and before step 17.5 (compact-summary regeneration), insert:
 
 ```markdown
-17.6. **ENTITIES.md regeneration.** Run `node system/scripts/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
+17.6. **ENTITIES.md regeneration.** Run `node system/scripts/memory/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
 ```
 
 - [ ] **Step 3: Add Phase 4 step 17.7 (telemetry log rotation)**
@@ -2245,7 +2245,7 @@ function makeWorkspace() {
     `| claude-code-golden | ${new Date().toISOString()} |\n`);
   writeFileSync(join(ws, 'user-data/memory/inbox.md'), '');
   // Generate ENTITIES.md from sample fixtures.
-  spawnSync('node', [join(REPO_ROOT, 'system/scripts/index-entities.js'), '--regenerate'], {
+  spawnSync('node', [join(REPO_ROOT, 'system/scripts/memory/index-entities.js'), '--regenerate'], {
     cwd: ws, env: { ...process.env, ROBIN_WORKSPACE: ws }, encoding: 'utf8',
   });
   return ws;
@@ -2393,7 +2393,7 @@ subcommand for ad-hoc lookup.
 No API key required.
 
 Migration: `system/migrations/0009-capture-enforcement-config.js` adds the
-config block to existing installs. Run `node system/scripts/index-entities.js
+config block to existing installs. Run `node system/scripts/memory/index-entities.js
 --bootstrap` after upgrade to seed `ENTITIES.md`.
 ```
 
@@ -2422,7 +2422,7 @@ Expected: `{ changed: true }`. Verify `user-data/robin.config.json` now contains
 
 Run:
 ```sh
-node system/scripts/index-entities.js --bootstrap
+node system/scripts/memory/index-entities.js --bootstrap
 ```
 Expected: prints "Indexed N entities" plus a list of files needing `aliases:`. Check `user-data/memory/ENTITIES.md` exists and looks reasonable.
 

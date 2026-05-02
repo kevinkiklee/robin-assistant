@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planSplit } from '../scripts/lib/memory-index.js';
+import { planSplit } from '../../scripts/memory/lib/memory-index.js';
 
 const SAMPLE = `---
 description: Provider list
