@@ -76,7 +76,8 @@ export function validateAgainstCap(estimate, cap) {
   if (estimate > cap) {
     throw new Error(
       `too many changes: estimate ${estimate} exceeds cap ${cap}. ` +
-      `Chunk by --only-pass=N or fix the heuristic threshold (e.g., raise --related-threshold).`
+      `Run with --dry-run first to preview, then either restore from backup and tune ` +
+      `the heuristic threshold, or accept the changes by raising the cap in code.`
     );
   }
 }
