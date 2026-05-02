@@ -9,8 +9,18 @@ const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkee
 // sub-trees grow.
 const SUB_INDEXED_BARRIERS = ['archive'];
 
+// "Where to look first" routing block — a hand-curated region inside the
+// otherwise auto-regenerated INDEX.md. The regenerator preserves user edits
+// between BEGIN/END markers; checkMemoryIndex ignores the marked region via
+// stripRoutingBlock. Both functions must cooperate — touching one without
+// the other breaks the invariant that user edits inside the markers don't
+// fail consistency.
 const MARKER_BEGIN = '<!-- BEGIN where-to-look-first -->';
 const MARKER_END = '<!-- END where-to-look-first -->';
+
+function escapeRegex(s) {
+  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+}
 
 const DEFAULT_ROUTING_BLOCK = `${MARKER_BEGIN}
 ## Where to look first
@@ -26,6 +36,9 @@ const DEFAULT_ROUTING_BLOCK = `${MARKER_BEGIN}
 | Anything else with a clear topic | \`knowledge/<topic>/INDEX.md\`; otherwise the auto-table below |
 ${MARKER_END}`;
 
+// Returns the first marker-delimited block from existing INDEX.md, or null
+// if absent/malformed. If the user has accidentally duplicated the markers,
+// only the first BEGIN→first END span is preserved (user-error, fail safe).
 function extractRoutingBlock(existingText) {
   if (!existingText) return null;
   const startIdx = existingText.indexOf(MARKER_BEGIN);
@@ -35,9 +48,10 @@ function extractRoutingBlock(existingText) {
 }
 
 function stripRoutingBlock(text) {
-  const escapedBegin = MARKER_BEGIN.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-  const escapedEnd = MARKER_END.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-  return text.replace(new RegExp(`${escapedBegin}[\\s\\S]*?${escapedEnd}`), '<<ROUTING_BLOCK>>');
+  return text.replace(
+    new RegExp(`${escapeRegex(MARKER_BEGIN)}[\\s\\S]*?${escapeRegex(MARKER_END)}`),
+    '<<ROUTING_BLOCK>>',
+  );
 }
 
 function walk(dir, base = dir) {

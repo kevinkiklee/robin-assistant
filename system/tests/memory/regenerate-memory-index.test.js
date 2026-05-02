@@ -136,3 +136,46 @@ test('checkMemoryIndex still fails on auto-table drift', () => {
   assert.equal(checkMemoryIndex(mem), false);
   rmSync(root, { recursive: true, force: true });
 });
+
+test('generateMemoryIndex falls back to defaults when only BEGIN marker is present', () => {
+  const { root, mem } = makeTree();
+  // Seed an INDEX.md with only a BEGIN marker, no END
+  const broken = `# Memory Index
+
+intro
+
+<!-- BEGIN where-to-look-first -->
+## Where to look first
+| custom | foo.md |
+(no END marker — malformed)
+
+| path | what's in it |
+|------|--------------|
+`;
+  writeFileSync(join(mem, 'INDEX.md'), broken);
+  const out = generateMemoryIndex(mem);
+  // Should fall back to the default block, not preserve the malformed half
+  assert.match(out, /A specific person/, 'default rows present');
+  assert.doesNotMatch(out, /custom \| foo\.md/, 'malformed half not preserved');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('generateMemoryIndex falls back to defaults when END appears before BEGIN', () => {
+  const { root, mem } = makeTree();
+  const broken = `# Memory Index
+
+intro
+
+<!-- END where-to-look-first -->
+not actually a routing block
+<!-- BEGIN where-to-look-first -->
+
+| path | what's in it |
+|------|--------------|
+`;
+  writeFileSync(join(mem, 'INDEX.md'), broken);
+  const out = generateMemoryIndex(mem);
+  assert.match(out, /A specific person/, 'default rows present');
+  assert.doesNotMatch(out, /not actually a routing block/, 'inverted markers not preserved');
+  rmSync(root, { recursive: true, force: true });
+});
