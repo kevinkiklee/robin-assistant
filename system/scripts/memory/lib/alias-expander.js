@@ -30,3 +30,39 @@ export function deriveCandidates({ body, filename }) {
   if (fromFilename) candidates.add(fromFilename);
   return [...candidates];
 }
+
+function tokenCount(s) {
+  return s.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function applyFilters(candidates, { existingAliases, inPassRegistry, stopList }) {
+  const accepted = [];
+  const rejected = [];
+  const existingLower = new Set([...existingAliases].map(a => a.toLowerCase()));
+  for (const c of candidates) {
+    const lower = c.toLowerCase();
+    const tokens = c.trim().split(/\s+/).filter(Boolean);
+    if (tokens.some(t => t.length < 3)) {
+      rejected.push({ candidate: c, reason: 'length-lt-3' });
+      continue;
+    }
+    if (tokenCount(c) < 2) {
+      rejected.push({ candidate: c, reason: 'single-token' });
+      continue;
+    }
+    if (existingLower.has(lower)) {
+      rejected.push({ candidate: c, reason: 'duplicate-self' });
+      continue;
+    }
+    if (stopList.has(lower)) {
+      rejected.push({ candidate: c, reason: 'stop-list' });
+      continue;
+    }
+    if (inPassRegistry.has(c) || inPassRegistry.has(lower)) {
+      rejected.push({ candidate: c, reason: `collision: ${inPassRegistry.get(c) ?? inPassRegistry.get(lower)}` });
+      continue;
+    }
+    accepted.push(c);
+  }
+  return { accepted, rejected };
+}
