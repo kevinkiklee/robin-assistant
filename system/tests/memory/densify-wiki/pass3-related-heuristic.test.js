@@ -148,3 +148,44 @@ test('selectEdges respects totalCap when inbound additions arrive', () => {
   const edges = selectEdges(pairs, { threshold: 3, topK: 5, totalCap: 10, existing: new Map() });
   assert.ok(edges.get('z.md').size <= 10, `z.md has ${edges.get('z.md').size} edges, expected ≤ 10`);
 });
+
+import { runRelatedHeuristic } from '../../../scripts/memory/lib/related-heuristic.js';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+function tempWs() {
+  const dir = mkdtempSync(join(tmpdir(), 'related-test-'));
+  mkdirSync(join(dir, 'user-data', 'memory', 'profile', 'people'), { recursive: true });
+  mkdirSync(join(dir, 'user-data', 'memory', 'knowledge', 'finance'), { recursive: true });
+  return dir;
+}
+
+test('runRelatedHeuristic writes related: edges symmetrically', async () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/profile/people/jake-lee.md'),
+      `---\ntype: entity\ncanonical: Jake Lee\naliases: ["Jake"]\n---\n# Jake Lee\nMet Mom and Dad at home with Morgan Stanley advisor.`);
+    writeFileSync(join(ws, 'user-data/memory/profile/people/mom.md'),
+      `---\ntype: entity\ncanonical: Mom\naliases: ["Mom"]\n---\n# Mom\n`);
+    writeFileSync(join(ws, 'user-data/memory/profile/people/dad.md'),
+      `---\ntype: entity\ncanonical: Dad\naliases: ["Dad"]\n---\n# Dad\n`);
+    writeFileSync(join(ws, 'user-data/memory/knowledge/finance/snapshot.md'),
+      `---\ntype: snapshot\n---\n# Snapshot\nBeneficiary: Jake. Mom and Dad listed too. Account at Morgan Stanley.`);
+    writeFileSync(join(ws, 'user-data/memory/knowledge/finance/morgan-stanley.md'),
+      `---\ntype: entity\ncanonical: Morgan Stanley\naliases: ["Morgan Stanley"]\n---\n# Morgan Stanley\n`);
+
+    const result = await runRelatedHeuristic({
+      workspaceDir: ws,
+      threshold: 3, topK: 5, totalCap: 10, superhubPct: 0.05,
+    });
+
+    const jakeBody = readFileSync(join(ws, 'user-data/memory/profile/people/jake-lee.md'), 'utf-8');
+    const snapBody = readFileSync(join(ws, 'user-data/memory/knowledge/finance/snapshot.md'), 'utf-8');
+    assert.match(jakeBody, /related:.*knowledge\/finance\/snapshot\.md/);
+    assert.match(snapBody, /related:.*profile\/people\/jake-lee\.md/);
+    assert.ok(result.summary.edgesAdded >= 2);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});

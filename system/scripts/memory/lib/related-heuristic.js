@@ -2,6 +2,10 @@
 // Builds entity-mention matrix, generates cross-directory pairs with
 // sub-tree dampening + super-hub filter, writes symmetric `related:`
 // edges with hand-curated preservation.
+//
+// Threshold is evaluated on the UNFILTERED shared-entity count so that
+// removing globally-ubiquitous hub slugs (the super-hub filter) doesn't
+// inadvertently drop pairs that had sufficient real overlap.
 
 const FM_BLOCK_RE = /^---\n[\s\S]*?\n---\n?/;
 const CODE_FENCE_RE = /```[\s\S]*?```/g;
@@ -136,4 +140,107 @@ export function buildMentionMatrix(filesMap, registry) {
     matrix.set(relPath, found);
   }
   return matrix;
+}
+
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { atomicWrite } from '../../jobs/lib/atomic.js';
+import { buildEntityRegistry } from '../../wiki-graph/lib/build-entity-registry.js';
+
+const RELATED_RE = /^related:\s*\[([^\]]*)\]\s*$/m;
+const FM_BLOCK = /^(---\n[\s\S]*?\n---\n?)/;
+
+function* walkMdSync(root, base = root) {
+  if (!existsSync(root)) return;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const full = join(root, entry.name);
+    if (entry.isDirectory()) yield* walkMdSync(full, base);
+    else if (entry.isFile() && entry.name.endsWith('.md')) {
+      yield relative(base, full).split(/[\\/]/).join('/');
+    }
+  }
+}
+
+function getRelated(body) {
+  const m = body.match(RELATED_RE);
+  if (!m) return [];
+  return m[1].split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function setRelated(body, list) {
+  const line = `related: [${list.join(', ')}]`;
+  const fm = body.match(FM_BLOCK);
+  if (!fm) return `---\n${line}\n---\n${body}`;
+  let block = fm[1];
+  block = RELATED_RE.test(block)
+    ? block.replace(RELATED_RE, line)
+    : block.replace(/\n---\n?$/, `\n${line}\n---\n`);
+  return block + body.slice(fm[1].length);
+}
+
+export async function runRelatedHeuristic({
+  workspaceDir,
+  threshold = 3,
+  topK = 5,
+  totalCap = 10,
+  superhubPct = 0.05,
+  dryRun = false,
+}) {
+  const memoryRoot = join(workspaceDir, 'user-data', 'memory');
+  const { byPath } = await buildEntityRegistry(workspaceDir);
+
+  // Convert byPath into [{slug, aliases}] for buildMentionMatrix.
+  // Use relPath without .md as slug so each entity-bearing page has a unique
+  // identity in the mention matrix (avoids collisions across directories).
+  const registry = [...byPath.entries()].map(([relPath, info]) => ({
+    slug: relPath.replace(/\.md$/, ''),
+    aliases: info.aliases,
+  }));
+
+  const filesMap = new Map();
+  const existingRelated = new Map();
+  for (const relPath of walkMdSync(memoryRoot)) {
+    const body = readFileSync(join(memoryRoot, relPath), 'utf-8');
+    filesMap.set(relPath, body);
+    const r = getRelated(body);
+    if (r.length) existingRelated.set(relPath, new Set(r));
+  }
+
+  const matrix = buildMentionMatrix(filesMap, registry);
+  const hubs = computeSuperHubs(matrix, { pct: superhubPct });
+
+  // Generate pairs and apply threshold on the UNFILTERED shared count so that
+  // super-hub removal doesn't disqualify pairs with sufficient real overlap.
+  const allPairs = generatePairs(matrix, {});
+  const pairs = allPairs.filter(p => p.sharedEntities.size >= threshold);
+  const filteredPairs = applySuperHubFilter(pairs, hubs);
+
+  // Pass threshold=0 because we already pre-filtered above (threshold on original count).
+  const edges = selectEdges(filteredPairs, { threshold: 0, topK, totalCap, existing: existingRelated });
+
+  let edgesAdded = 0;
+  let filesModified = 0;
+  for (const [relPath, set] of edges) {
+    const before = existingRelated.get(relPath) ?? new Set();
+    const newOnly = [...set].filter(e => !before.has(e));
+    if (newOnly.length === 0) continue;
+    const filePath = join(memoryRoot, relPath);
+    const body = filesMap.get(relPath);
+    if (!body) continue;
+    const merged = [...new Set([...before, ...set])];
+    const newBody = setRelated(body, merged);
+    if (!dryRun) atomicWrite(filePath, newBody);
+    edgesAdded += newOnly.length;
+    filesModified += 1;
+  }
+
+  return {
+    summary: {
+      edgesAdded,
+      filesModified,
+      superHubs: [...hubs],
+      pairsConsidered: allPairs.length,
+      pairsAfterFilter: filteredPairs.length,
+    },
+  };
 }
