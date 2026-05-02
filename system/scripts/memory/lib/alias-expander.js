@@ -12,6 +12,32 @@ const ALIASES_RE = /^aliases:\s*\[([^\]]*)\]\s*$/m;
 const TYPE_RE = /^type:\s*(\S+)\s*$/m;
 const FM_BLOCK_RE = /^(---\n[\s\S]*?\n---\n?)/;
 
+// Quote-aware splitter for inline YAML arrays. Mirrors splitInlineArray
+// in wiki-graph/lib/build-entity-registry.js so aliases parse identically
+// across the system. Treats commas inside double or single quotes as part
+// of the value, and strips the surrounding quotes.
+function splitInlineArray(inner) {
+  const out = [];
+  let buf = '';
+  let quote = null;
+  for (let i = 0; i < inner.length; i += 1) {
+    const c = inner[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else buf += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === ',') {
+      out.push(buf.trim());
+      buf = '';
+    } else {
+      buf += c;
+    }
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out.filter(Boolean);
+}
+
 function stripFrontmatter(body) {
   return body.replace(FRONTMATTER_RE, '');
 }
@@ -48,8 +74,7 @@ export function applyFilters(candidates, { existingAliases, inPassRegistry, stop
   const existingLower = new Set([...existingAliases].map(a => a.toLowerCase()));
   for (const c of candidates) {
     const lower = c.toLowerCase();
-    const tokens = c.trim().split(/\s+/).filter(Boolean);
-    if (tokens.some(t => t.length < 3)) {
+    if (c.length < 3) {
       rejected.push({ candidate: c, reason: 'length-lt-3' });
       continue;
     }
@@ -94,7 +119,7 @@ export function shouldFlipType({ relPath, currentType, hasAliases }) {
 
 function parseAliasArray(line) {
   if (!line) return [];
-  return line.split(',').map(s => s.trim()).filter(Boolean);
+  return splitInlineArray(line);
 }
 
 function getFrontmatterField(body, re) {

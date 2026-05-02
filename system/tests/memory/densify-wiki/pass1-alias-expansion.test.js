@@ -55,14 +55,23 @@ test('applyFilters rejects single-token candidates', () => {
   assert.deepEqual(result.rejected, [{ candidate: 'Mom', reason: 'single-token' }]);
 });
 
-test('applyFilters rejects length < 3', () => {
-  const result = applyFilters(['AB CD', 'Jake Lee'], {
+test('applyFilters rejects whole-string length < 3', () => {
+  const result = applyFilters(['AB', 'Jake Lee'], {
     existingAliases: new Set(),
     inPassRegistry: new Map(),
     stopList: new Set(),
   });
   assert.deepEqual(result.accepted, ['Jake Lee']);
-  assert.equal(result.rejected.find(r => r.candidate === 'AB CD').reason, 'length-lt-3');
+  assert.equal(result.rejected.find(r => r.candidate === 'AB').reason, 'length-lt-3');
+});
+
+test('applyFilters accepts disambiguator suffixes (e.g., "Jake Jr")', () => {
+  const result = applyFilters(['Jake Jr'], {
+    existingAliases: new Set(),
+    inPassRegistry: new Map(),
+    stopList: new Set(),
+  });
+  assert.deepEqual(result.accepted, ['Jake Jr']);
 });
 
 test('applyFilters rejects existing aliases (case-insensitive)', () => {
@@ -163,6 +172,64 @@ test('expandAliases lists files without any aliases as missing-aliases (lint sec
     const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
     assert.equal(result.summary.aliasesAdded, 0);
     assert.deepEqual(result.lint.missingAliases, ['profile/people/no-aliases.md']);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('expandAliases handles quoted aliases array on read (real user-data format)', async () => {
+  const ws = tempWorkspace();
+  try {
+    const filePath = join(ws, 'user-data/memory/profile/people/jake-lee.md');
+    writeFileSync(filePath, `---\ntype: topic\naliases: ["Jake", "Joony", "brother"]\n---\n\n# Jake Lee\n\n`);
+    const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    // Existing aliases recognized: Jake, Joony, brother. New candidate: Jake Lee. Collision check sees clean.
+    const after = readFileSync(filePath, 'utf-8');
+    assert.match(after, /aliases: \[Jake, Joony, brother, Jake Lee\]/);
+    assert.equal(result.summary.aliasesAdded, 1);
+    assert.equal(result.summary.typeFlips, 1);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('expandAliases registry detects collision across two files with quoted aliases', async () => {
+  const ws = tempWorkspace();
+  try {
+    // File A claims "Bay Photo" first.
+    writeFileSync(join(ws, 'user-data/memory/knowledge/service-providers/bay-photo.md'),
+      `---\ntype: entity\naliases: ["Bay Photo", "Bay Photo Lab"]\n---\n# Bay Photo\n`);
+    // File B's H1 would derive "Bay Photo" — must be rejected as collision.
+    writeFileSync(join(ws, 'user-data/memory/knowledge/service-providers/another.md'),
+      `---\ntype: topic\naliases: ["Other"]\n---\n# Bay Photo\n`);
+    const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    // bay-photo.md: candidate "Bay Photo" already exists, no new aliases.
+    // another.md: candidate "Bay Photo" should be rejected as collision (claimed by bay-photo.md).
+    const otherAfter = readFileSync(join(ws, 'user-data/memory/knowledge/service-providers/another.md'), 'utf-8');
+    // Only check the aliases frontmatter field — the H1 itself legitimately contains "Bay Photo".
+    assert.doesNotMatch(otherAfter, /aliases:.*Bay Photo/, 'another.md must not gain Bay Photo alias');
+    // The collision should be in the rejections.
+    const rejection = result.summary.rejections.find(r =>
+      r.relPath === 'knowledge/service-providers/another.md' &&
+      r.candidate === 'Bay Photo'
+    );
+    assert.ok(rejection, 'expected collision rejection for Bay Photo on another.md');
+    assert.match(rejection.reason, /collision/);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('expandAliases gracefully skips files with block-style YAML aliases (treats as missing-aliases)', async () => {
+  const ws = tempWorkspace();
+  try {
+    // Block-style aliases not currently parsed by alias-expander; file should fall through to lint.missingAliases without crashing.
+    writeFileSync(join(ws, 'user-data/memory/profile/people/block-style.md'),
+      `---\ntype: entity\naliases:\n  - Jake\n  - Joony\n---\n\n# Block Style\n`);
+    const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    // Falls through because regex doesn't match block-style; no crash.
+    assert.deepEqual(result.lint.missingAliases, ['profile/people/block-style.md']);
+    assert.equal(result.filesModified.length, 0);
   } finally {
     rmSync(ws, { recursive: true });
   }
