@@ -28,3 +28,71 @@ test('install-hooks refuses to overwrite existing hook', async () => {
   assert.match(content, /existing/); // unchanged
   rmSync(root, { recursive: true, force: true });
 });
+
+test('rewrites stale pre-commit hook path to new hooks/ location', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rh-stale-'));
+  const hookDir = join(tmp, '.git', 'hooks');
+  mkdirSync(hookDir, { recursive: true });
+  const hookPath = join(hookDir, 'pre-commit');
+  writeFileSync(
+    hookPath,
+    [
+      '#!/usr/bin/env bash',
+      'exec node "$(git rev-parse --show-toplevel)/system/scripts/pre-commit-hook.js"',
+      '',
+    ].join('\n'),
+  );
+
+  await installHooks(tmp);
+
+  const updated = readFileSync(hookPath, 'utf8');
+  assert.match(updated, /system\/scripts\/hooks\/pre-commit\.js/);
+  assert.doesNotMatch(updated, /scripts\/pre-commit-hook\.js/);
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+test('installHooks is idempotent — running twice produces same content', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rh-idem-'));
+  mkdirSync(join(tmp, '.git', 'hooks'), { recursive: true });
+
+  await installHooks(tmp);
+  const after1 = readFileSync(join(tmp, '.git/hooks/pre-commit'), 'utf8');
+  await installHooks(tmp);
+  const after2 = readFileSync(join(tmp, '.git/hooks/pre-commit'), 'utf8');
+  assert.equal(after1, after2);
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+test('does not modify a hook that points at the new path', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rh-cur-'));
+  const hookDir = join(tmp, '.git', 'hooks');
+  mkdirSync(hookDir, { recursive: true });
+  const hookPath = join(hookDir, 'pre-commit');
+  const correctContent = [
+    '#!/usr/bin/env bash',
+    'exec node "$(git rev-parse --show-toplevel)/system/scripts/hooks/pre-commit.js"',
+    '',
+  ].join('\n');
+  writeFileSync(hookPath, correctContent);
+
+  await installHooks(tmp);
+
+  const after = readFileSync(hookPath, 'utf8');
+  assert.equal(after, correctContent);
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+test('does not touch a custom user hook (no Robin path references)', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rh-custom-'));
+  const hookDir = join(tmp, '.git', 'hooks');
+  mkdirSync(hookDir, { recursive: true });
+  const hookPath = join(hookDir, 'pre-commit');
+  const customContent = ['#!/usr/bin/env bash', 'echo "custom user hook"', 'exit 0', ''].join('\n');
+  writeFileSync(hookPath, customContent);
+
+  await installHooks(tmp);
+
+  const after = readFileSync(hookPath, 'utf8');
+  assert.equal(after, customContent);
+  rmSync(tmp, { recursive: true, force: true });
+});
