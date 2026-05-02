@@ -362,42 +362,24 @@ robin/
 ├── bin/
 │   └── robin.js             <- CLI entry point (run, jobs, link, recall, watch, update)
 ├── system/                  <- upstream-owned, tracked, never user-edited
-│   ├── manifest.md
-│   ├── rules/
-│   │   ├── startup.md
-│   │   ├── capture.md
-│   │   ├── security.md
-│   │   └── self-improvement.md
+│   ├── rules/               <- agent-readable rules (capture, security, self-improvement, startup)
 │   ├── jobs/                <- shipped jobs (agent protocols + node scripts)
-│   ├── migrations/          <- versioned schema migrations (0002 → 0020)
+│   ├── migrations/          <- versioned schema migrations
 │   ├── scripts/
-│   │   ├── jobs/            <- runner, reconciler, CLI, installer adapters
-│   │   ├── watches/         <- watch-topics fetch + dedup
-│   │   ├── lib/
-│   │   │   ├── jobs/        <- frontmatter, cron, locks (with stale-PID sweep), state, notifications
-│   │   │   ├── sync/        <- oauth, secrets (per-call read), http, redact, markdown, cursor, linker
-│   │   │   ├── actions/     <- classify, precheck, compact-summary
-│   │   │   ├── parsers/     <- per-host validators
-│   │   │   ├── entity-index.js  <- ENTITIES.md generator
-│   │   │   ├── recall.js        <- in-process node-native retrieval
-│   │   │   ├── handoff.js       <- session-handoff block writer
-│   │   │   ├── decay.js         <- per-sub-tree staleness defaults
-│   │   │   ├── outbound-policy.js  <- 3-layer outbound write check
-│   │   │   ├── manifest.js      <- security manifest baseline + diff
-│   │   │   ├── pattern-ttl.js   <- 180-day pattern retirement
-│   │   │   ├── audit-pairs.js   <- entity-graph candidate generation
-│   │   │   └── token-budget.json
-│   │   ├── hooks/
-│   │   │   ├── claude-code.js   <- UserPromptSubmit / PreToolUse / Stop / on-pre-bash hooks
-│   │   │   └── pre-commit.js    <- privacy guard for git pre-commit
-│   │   ├── check-manifest.js    <- SessionStart tamper detection
-│   │   ├── manifest-snapshot.js <- baseline snapshot (first deploy)
-│   │   ├── index-entities.js    <- ENTITIES.md bootstrap + regenerate
-│   │   ├── backfill-entity-links.js  <- one-shot wiki linking
-│   │   └── ...
+│   │   ├── cli/             <- user-facing CLI entry points (invoked by bin/robin.js)
+│   │   ├── hooks/           <- claude-code.js (UserPromptSubmit / PreToolUse / Stop / on-pre-bash) + pre-commit.js
+│   │   ├── jobs/            <- runner, reconciler, OS-scheduler installer adapters
+│   │   ├── memory/          <- index-entities, backfill-entity-links, lint, prune, regenerate-{index,links,pointers}
+│   │   ├── capture/         <- ingest guard, dream pre-filter, auto-memory, action classification
+│   │   ├── sync/            <- oauth, secrets, http, redact, markdown, cursor, untrusted-index
+│   │   ├── wiki-graph/      <- entity registry, link application, exclusions
+│   │   ├── watches/         <- slugify, frontmatter parse, list/state I/O
+│   │   ├── migrate/         <- migration apply harness + helpers
+│   │   ├── diagnostics/     <- check-manifest, manifest-snapshot, measure-tokens, validate-host, check-doc-paths
+│   │   └── lib/             <- cross-cutting utilities (outbound-policy, bash-sensitive-patterns, manifest, platforms…)
 │   ├── scaffold/            <- first-run templates for user-data/
 │   ├── integrations/        <- per-provider setup playbooks
-│   └── tests/
+│   └── tests/               <- mirrors system/scripts/ layout
 ├── user-data/               <- your data, gitignored
 │   ├── memory/              <- structured memory tree (incl. ENTITIES.md, watches/, predictions.md)
 │   ├── jobs/                <- your custom jobs + shallow overrides
