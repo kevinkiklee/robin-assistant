@@ -25,9 +25,11 @@ function escapeRegex(s) {
 const DEFAULT_ROUTING_BLOCK = `${MARKER_BEGIN}
 ## Where to look first
 
-| If the question is about… | Start with |
+Routing convention for memory files. Some paths below may not exist yet on a fresh install — that's expected; they're where new content of that kind goes.
+
+| If the question is about… | Where it lives (or should be created) |
 |---|---|
-| A specific person | \`profile/relationships.md\`; cross-ref \`ENTITIES.md\` for canonical file |
+| A specific person | \`profile/relationships.md\`, or per-person files under \`profile/\` |
 | A purchase or expense | \`knowledge/finance/transactions.md\` |
 | A photo, camera, or lens | \`knowledge/photography-collection/INDEX.md\` |
 | A trip or event | \`knowledge/events/INDEX.md\` |
