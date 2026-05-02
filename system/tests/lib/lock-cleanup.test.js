@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cleanupStaleLocks } from '../scripts/jobs/lib/lock-cleanup.js';
+import { cleanupStaleLocks } from '../../scripts/jobs/lib/lock-cleanup.js';
 
 function makeWorkspace() {
   const root = mkdtempSync(join(tmpdir(), 'robin-lc-'));
