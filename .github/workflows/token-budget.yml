@@ -20,5 +20,7 @@ jobs:
         run: node system/scripts/memory/lint.js
       - name: Golden-session snapshot check
         run: node system/scripts/diagnostics/golden-session.js --check
+      - name: Check doc paths
+        run: node system/scripts/diagnostics/check-doc-paths.js
       - name: Tests
         run: npm test
