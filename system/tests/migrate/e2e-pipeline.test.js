@@ -33,7 +33,7 @@ function run(cmd, args = []) {
 
 describe('e2e: full toolchain', () => {
   it('measure-tokens --check passes', () => {
-    const r = run('node', ['system/scripts/measure-tokens.js', '--check']);
+    const r = run('node', ['system/scripts/diagnostics/measure-tokens.js', '--check']);
     assert.equal(r.exit, 0, `measure-tokens failed: ${r.stderr}`);
   });
 
@@ -43,7 +43,7 @@ describe('e2e: full toolchain', () => {
   });
 
   it('golden-session --check matches', () => {
-    const r = run('node', ['system/scripts/golden-session.js', '--check']);
+    const r = run('node', ['system/scripts/diagnostics/golden-session.js', '--check']);
     assert.equal(r.exit, 0, `golden-session drift: ${r.stderr}`);
   });
 
@@ -79,7 +79,7 @@ describe('e2e: full toolchain', () => {
 
   it('all required Tier 1 files exist on disk', () => {
     const budget = JSON.parse(
-      run('cat', ['system/scripts/lib/token-budget.json']).stdout,
+      run('cat', ['system/scripts/diagnostics/lib/token-budget.json']).stdout,
     );
     for (const entry of budget.tier1_files) {
       if (entry.required) {

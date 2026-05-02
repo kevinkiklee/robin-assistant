@@ -203,7 +203,7 @@ Trusted baseline at `user-data/security/manifest.json`. Schema:
   "hooks": {
     "PreToolUse": [{ "matcher": "Bash", "command": "node system/scripts/hooks/claude-code.js --on-pre-bash" }, ...],
     "Stop":       [{ "command": "node system/scripts/hooks/claude-code.js --on-stop" }],
-    "SessionStart": [{ "command": "node system/scripts/check-manifest.js" }]
+    "SessionStart": [{ "command": "node system/scripts/diagnostics/check-manifest.js" }]
   },
   "mcpServers": {
     "expected": ["claude-in-chrome", "context7", ...],
@@ -216,7 +216,7 @@ The scaffold at `system/scaffold/security/manifest.json` ships with Robin's owne
 
 ### SessionStart hook
 
-`.claude/settings.json` registers `system/scripts/check-manifest.js` as the SessionStart hook. Each new Claude Code session triggers the check:
+`.claude/settings.json` registers `system/scripts/diagnostics/check-manifest.js` as the SessionStart hook. Each new Claude Code session triggers the check:
 
 1. Load manifest. Missing → warning + exit 0 (fail-soft).
 2. Read current `.claude/settings.json` hooks. Enumerate MCP servers from `.mcp.json` + `~/.claude/mcp_settings.json` + `~/.claude/settings.json` + `~/Library/Application Support/Claude/claude_desktop_config.json`.
@@ -230,12 +230,12 @@ The scaffold at `system/scaffold/security/manifest.json` ships with Robin's owne
 
 ```sh
 # Read-only snapshot (safe to run any time):
-node system/scripts/manifest-snapshot.js > /tmp/snap.json
+node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json
 diff user-data/security/manifest.json /tmp/snap.json
 $EDITOR user-data/security/manifest.json   # paste in additions
 
 # First-deploy bootstrap (overwrites live manifest with current state):
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 ```
 
 The two-flag `--apply --confirm-trust-current-state` pattern requires explicit acknowledgment — `--apply` alone exits 1 with an explanation. Use only on first deploy or after manually reviewing every entry.
@@ -276,7 +276,7 @@ Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `#
 - Section missing → severe drift (`agentsmd-hard-rules-missing`).
 - Empty `hardRulesHash` (first-deploy baseline missing) → info entry; morning briefing prompts `manifest-snapshot.js` run.
 
-When Kevin intentionally edits Hard Rules, run `node system/scripts/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
+When Kevin intentionally edits Hard Rules, run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
 
 ### user-data/jobs override drift (G-03)
 

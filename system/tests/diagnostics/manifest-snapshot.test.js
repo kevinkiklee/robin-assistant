@@ -9,7 +9,7 @@ import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SNAPSHOT_SCRIPT = resolve(__dirname, '..', 'scripts', 'manifest-snapshot.js');
+const SNAPSHOT_SCRIPT = resolve(__dirname, '..', '..', 'scripts', 'diagnostics', 'manifest-snapshot.js');
 
 function ws() { return mkdtempSync(join(tmpdir(), 'snap-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

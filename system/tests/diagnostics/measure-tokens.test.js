@@ -5,11 +5,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 
-import { countBytes, countLines, estimateTokens, measure } from '../scripts/lib/tokenizer.js';
+import { countBytes, countLines, estimateTokens, measure } from '../../scripts/lib/tokenizer.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'measure-tokens.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'measure-tokens.js');
 
 function runHarness(args = []) {
   return execFileSync('node', [SCRIPT, ...args], { cwd: REPO_ROOT, encoding: 'utf8' });
@@ -84,7 +84,7 @@ describe('measure-tokens harness', () => {
   });
 
   it('budget json is parseable', () => {
-    const path = join(REPO_ROOT, 'system', 'scripts', 'lib', 'token-budget.json');
+    const path = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'lib', 'token-budget.json');
     const json = JSON.parse(readFileSync(path, 'utf8'));
     assert.ok(Array.isArray(json.tier1_files));
     assert.ok(Array.isArray(json.tier2_globs));

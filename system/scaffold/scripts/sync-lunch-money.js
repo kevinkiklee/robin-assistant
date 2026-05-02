@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by system/scripts/startup-check.js
+// Template — auto-copied to user-data/scripts/ by system/scripts/diagnostics/startup-check.js
 // on first run (scaffold-sync). Imports use paths relative to user-data/scripts/,
 // so this file is NOT runnable in place — only after it's been copied.
 import { join } from 'node:path';

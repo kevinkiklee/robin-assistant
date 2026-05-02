@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runStartupCheck } from '../scripts/startup-check.js';
+import { runStartupCheck } from '../../scripts/diagnostics/startup-check.js';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -77,7 +77,7 @@ test('shim: deprecation notice fires to stderr', async () => {
       '--input-type=module',
       '--eval',
       `import { runStartupCheck } from ${JSON.stringify(
-        new URL('../scripts/startup-check.js', import.meta.url).pathname
+        new URL('../../scripts/diagnostics/startup-check.js', import.meta.url).pathname
       )}; await runStartupCheck(${JSON.stringify(root)});`
     ], { encoding: 'utf-8' });
     assert.ok(

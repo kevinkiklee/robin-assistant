@@ -3,7 +3,7 @@
 // Import runPreflight from there for all new callers.
 // This shim will be removed in a future minor version.
 
-import { runPreflight } from './lib/preflight.js';
+import { runPreflight } from '../lib/preflight.js';
 
 let _deprecationLogged = false;
 

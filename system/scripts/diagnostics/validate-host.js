@@ -2,12 +2,12 @@
 // Multi-host validation: parse a host's transcript, verify scenario invariants.
 //
 // Usage:
-//   node system/scripts/validate-host.js --host=<name> --transcript=<path> --scenario=<n>
-//   node system/scripts/validate-host.js --host=<name> --transcript-dir=<dir>   # all 6 scenarios
+//   node system/scripts/diagnostics/validate-host.js --host=<name> --transcript=<path> --scenario=<n>
+//   node system/scripts/diagnostics/validate-host.js --host=<name> --transcript-dir=<dir>   # all 6 scenarios
 //
 // Exit code: 0 if all hard fails are absent. Soft fails reported but exit 0.
 //
-// Pulls Tier 1 file list from system/scripts/lib/token-budget.json so we don't
+// Pulls Tier 1 file list from system/scripts/diagnostics/lib/token-budget.json so we don't
 // maintain two lists.
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -16,8 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { PARSERS } from './lib/parsers/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'lib', 'token-budget.json');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'lib', 'token-budget.json');
 
 function loadBudget() {
   return JSON.parse(readFileSync(BUDGET_PATH, 'utf8'));

@@ -39,7 +39,7 @@ run_scenario() {
     "$prompt" \
     > "$tx"
 
-  node system/scripts/validate-host.js \
+  node system/scripts/diagnostics/validate-host.js \
     --host="$HOST" \
     --transcript="$tx" \
     --scenario="$n" || true

@@ -9,8 +9,8 @@ import {
   ensureManifestFromScaffold,
   loadCurrentSettings,
   enumerateMCPServers,
-} from '../scripts/lib/manifest.js';
-import { computeDrift, emitDrift } from '../scripts/check-manifest.js';
+} from '../../scripts/lib/manifest.js';
+import { computeDrift, emitDrift } from '../../scripts/diagnostics/check-manifest.js';
 
 function ws() { return mkdtempSync(join(tmpdir(), 'manifest-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

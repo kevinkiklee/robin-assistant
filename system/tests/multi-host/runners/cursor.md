@@ -39,7 +39,7 @@ For each of the 6 scenarios in `../scenarios/0N-*.md`:
 6. Run the validator:
 
    ```sh
-   node system/scripts/validate-host.js \
+   node system/scripts/diagnostics/validate-host.js \
      --host=cursor \
      --transcript=system/tests/multi-host/transcripts/cursor/<date>/0N-scenario.json \
      --scenario=N

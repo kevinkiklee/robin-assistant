@@ -1,4 +1,4 @@
-// Tests for system/scripts/lib/audit-pairs.js
+// Tests for system/scripts/diagnostics/lib/audit-pairs.js
 // Uses small synthetic workspaces (mkdtempSync) — no real user-data touched.
 
 import { describe, it, before, after } from 'node:test';
@@ -9,10 +9,10 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 // Dynamic import so we can resolve after file creation
-const { generateAuditPairs } = await import(join(REPO_ROOT, 'system', 'scripts', 'lib', 'audit-pairs.js'));
+const { generateAuditPairs } = await import(join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'lib', 'audit-pairs.js'));
 
 // ---------------------------------------------------------------------------
 // Helpers

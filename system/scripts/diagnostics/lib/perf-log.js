@@ -1,4 +1,4 @@
-// system/scripts/lib/perf-log.js
+// system/scripts/diagnostics/lib/perf-log.js
 //
 // Append one line per slow-path hook event. Cap file to N lines via Dream rotation.
 

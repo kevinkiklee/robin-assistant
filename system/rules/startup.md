@@ -19,7 +19,7 @@ needed.
 ## When to invoke preflight directly
 
 `robin update` runs the pre-flight pipeline via `system/scripts/lib/preflight.js`.
-The old `node system/scripts/startup-check.js` still works as a deprecation shim
+The old `node system/scripts/diagnostics/startup-check.js` still works as a deprecation shim
 but will be removed in a future minor version.
 
 Only invoke the pipeline directly when:
@@ -63,7 +63,7 @@ context compacts, detail is gone.
 ## Read budget
 
 `memory.startup_budget_lines` (default 500) bounds the always-on Tier 1 reads.
-The token-budget harness (`system/scripts/measure-tokens.js`) caps stricter
+The token-budget harness (`system/scripts/diagnostics/measure-tokens.js`) caps stricter
 (≤5,000 tokens / ≤250 lines) when `enforce_caps: true`.
 
 ## Sibling-session detection

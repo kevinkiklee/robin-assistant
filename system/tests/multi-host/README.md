@@ -60,7 +60,7 @@ Each runner writes a transcript to `transcripts/<host>/<scenario>/<date>.txt`
 (gitignored — may contain personal data) and invokes:
 
 ```sh
-node system/scripts/validate-host.js \
+node system/scripts/diagnostics/validate-host.js \
   --host=<name> \
   --transcript=<path> \
   --scenario=<n>

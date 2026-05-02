@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { extractSection, normalizeForHash, hashHardRules } from '../scripts/lib/agentsmd-hash.js';
+import { extractSection, normalizeForHash, hashHardRules } from '../../scripts/lib/agentsmd-hash.js';
 
 const SAMPLE = `# Agents
 

@@ -34,7 +34,7 @@ import { writeSessionBlock } from '../capture/lib/handoff.js';
 import { mostRecentSessionId } from '../lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
 import { applyRedaction } from '../sync/lib/redact.js';
-import { appendPerfLog } from '../lib/perf-log.js';
+import { appendPerfLog } from '../diagnostics/lib/perf-log.js';
 import { scanEntityAliases } from '../capture/lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
 import { recall, formatRecallHits } from '../memory/lib/recall.js';

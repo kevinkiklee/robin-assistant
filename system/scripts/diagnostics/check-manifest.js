@@ -12,13 +12,13 @@
 import { dirname, resolve, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { loadManifest, loadCurrentSettings, enumerateMCPServers } from './lib/manifest.js';
-import { appendPolicyRefusal, readRecentRefusalHashes } from './lib/policy-refusals-log.js';
-import { fnv1a64 } from './sync/lib/untrusted-index.js';
-import { hashHardRules } from './lib/agentsmd-hash.js';
+import { loadManifest, loadCurrentSettings, enumerateMCPServers } from '../lib/manifest.js';
+import { appendPolicyRefusal, readRecentRefusalHashes } from '../lib/policy-refusals-log.js';
+import { fnv1a64 } from '../sync/lib/untrusted-index.js';
+import { hashHardRules } from '../lib/agentsmd-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 const STDERR_BOUND = 5;  // collapse beyond this many entries.
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -170,7 +170,7 @@ async function main() {
     if (!manifest) {
       process.stderr.write(
         'WARNING: user-data/security/manifest.json missing or malformed; tamper detection inactive. ' +
-        'Run `node system/scripts/cli/setup.js` to bootstrap, or `node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state`.\n'
+        'Run `node system/scripts/cli/setup.js` to bootstrap, or `node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state`.\n'
       );
       process.exit(0);
     }

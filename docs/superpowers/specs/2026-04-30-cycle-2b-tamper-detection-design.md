@@ -64,7 +64,7 @@
 └─────────────────────────────────────────────────────────────────┘
 
    system/skeleton/security/manifest.json  ← shipped template
-   system/scripts/manifest-snapshot.js     ← read-only diff helper
+   system/scripts/diagnostics/manifest-snapshot.js     ← read-only diff helper
                                               + --apply --confirm-trust-current-state
                                                 for first-deploy bootstrap.
 ```
@@ -93,7 +93,7 @@
       { "command": "node system/scripts/hooks/claude-code.js --on-stop" }
     ],
     "SessionStart": [
-      { "command": "node system/scripts/check-manifest.js" }
+      { "command": "node system/scripts/diagnostics/check-manifest.js" }
     ]
   },
   "mcpServers": {
@@ -322,7 +322,7 @@ Morning briefing flags `hook-internal-error` for triage — same pattern as cycl
 ### 5.1 Default mode (read-only)
 
 ```sh
-node system/scripts/manifest-snapshot.js
+node system/scripts/diagnostics/manifest-snapshot.js
 ```
 
 Reads current `.claude/settings.json` and current MCP server list. Builds a manifest-shaped JSON object. Writes to stdout. Does not modify any file. Safe to run any time.
@@ -330,7 +330,7 @@ Reads current `.claude/settings.json` and current MCP server list. Builds a mani
 Useful flow:
 
 ```sh
-node system/scripts/manifest-snapshot.js > /tmp/snapshot.json
+node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snapshot.json
 diff user-data/security/manifest.json /tmp/snapshot.json
 $EDITOR user-data/security/manifest.json   # paste in additions
 ```
@@ -338,7 +338,7 @@ $EDITOR user-data/security/manifest.json   # paste in additions
 ### 5.2 `--apply --confirm-trust-current-state` (first-deploy bootstrap)
 
 ```sh
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 ```
 
 Overwrites `user-data/security/manifest.json` with current state. The two-flag pattern (separate `--apply` + explicit `--confirm-trust-current-state`) prevents accidental "snapshot accepts whatever drift is in place." The flag name is intentionally long.
@@ -371,7 +371,7 @@ accepts whatever is currently registered as trusted. Use only after reviewing.
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "node system/scripts/check-manifest.js" }
+          { "type": "command", "command": "node system/scripts/diagnostics/check-manifest.js" }
         ]
       }
     ]
@@ -394,7 +394,7 @@ Kevin's documented post-install steps for cycle-2b. Lives in `system/rules/secur
 ls user-data/security/manifest.json     # exists; copied by setup.js (postinstall)
 
 # 2. Capture current state for review.
-node system/scripts/manifest-snapshot.js > /tmp/current-state.json
+node system/scripts/diagnostics/manifest-snapshot.js > /tmp/current-state.json
 
 # 3. Diff against the live manifest.
 diff user-data/security/manifest.json /tmp/current-state.json
@@ -403,10 +403,10 @@ diff user-data/security/manifest.json /tmp/current-state.json
 $EDITOR user-data/security/manifest.json
 
 # 4b. OR — for first-deploy convenience, accept current state in one shot:
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 
 # 5. Verify drift detection now passes.
-node system/scripts/check-manifest.js
+node system/scripts/diagnostics/check-manifest.js
 # expected: silent (exit 0), no stderr.
 ```
 
@@ -477,7 +477,7 @@ For kind=tamper specifically:
 One line under Hard Rules:
 
 ```markdown
-- **Tamper detection.** Drift in `.claude/settings.json` hooks or in the loaded MCP server list is checked at session start by `system/scripts/check-manifest.js` against `user-data/security/manifest.json`. Severe drift surfaces in the model context immediately; mild/info goes to `policy-refusals.log` (deduped 24h) for morning-briefing review. See `system/rules/security.md`.
+- **Tamper detection.** Drift in `.claude/settings.json` hooks or in the loaded MCP server list is checked at session start by `system/scripts/diagnostics/check-manifest.js` against `user-data/security/manifest.json`. Severe drift surfaces in the model context immediately; mild/info goes to `policy-refusals.log` (deduped 24h) for morning-briefing review. See `system/rules/security.md`.
 ```
 
 Cumulative AGENTS.md additions across all four security cycles: ~5 lines net (cycle-1a +5, cycle-1b -2, cycle-2a +1, cycle-2b +1).
@@ -525,8 +525,8 @@ Estimated addition: ~80 lines.
 
 1. Add a fake hook to `.claude/settings.json`. Start a new Claude Code session. Confirm stderr surfaces "TAMPER DRIFT [severe]" and the refusal log has a new tamper entry.
 2. Add a fake MCP name to a discovered config. Confirm mild drift line in refusal log.
-3. Run `node system/scripts/manifest-snapshot.js > /tmp/snap.json`. Diff vs. live manifest. Confirm shape matches.
-4. Run `node system/scripts/manifest-snapshot.js --apply` without the second flag. Confirm exit 1 + the explanatory message.
+3. Run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json`. Diff vs. live manifest. Confirm shape matches.
+4. Run `node system/scripts/diagnostics/manifest-snapshot.js --apply` without the second flag. Confirm exit 1 + the explanatory message.
 5. Confirm session start with no drift completes silently in <50ms (timing measured via shell `time`).
 
 ---

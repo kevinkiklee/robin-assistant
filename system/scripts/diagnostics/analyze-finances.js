@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadRules, categorizeAll, summarizeByCategory } from './lib/categorize.js';
+import { loadRules, categorizeAll, summarizeByCategory } from '../lib/categorize.js';
 
 function parseTransactionFile(path) {
   const content = readFileSync(path, 'utf-8');
@@ -105,7 +105,7 @@ export function analyze({ workspaceDir, month }) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = fileURLToPath(new URL('../../..', import.meta.url));
   const month = process.argv[2] || null;
   try {
     analyze({ workspaceDir, month });

@@ -19,7 +19,7 @@ Skeleton manifest (shipped with package). Lists Robin's owned hooks; empty MCP a
       { "command": "node system/scripts/hooks/claude-code.js --on-stop" }
     ],
     "SessionStart": [
-      { "command": "node system/scripts/check-manifest.js" }
+      { "command": "node system/scripts/diagnostics/check-manifest.js" }
     ]
   },
   "mcpServers": { "expected": [], "writeCapable": [] }
@@ -40,7 +40,7 @@ Shared helpers:
 
 Test: `system/tests/security/mcp-enumeration.test.js`.
 
-## Step 4 — `system/scripts/check-manifest.js`
+## Step 4 — `system/scripts/diagnostics/check-manifest.js`
 
 Main entrypoint (SessionStart hook). Algorithm:
 
@@ -56,7 +56,7 @@ Main entrypoint (SessionStart hook). Algorithm:
 
 Tests: `manifest-drift-hooks.test.js`, `manifest-drift-mcp.test.js`, `check-manifest-emit.test.js`, `check-manifest-dedup.test.js`, `check-manifest-fail-soft.test.js`.
 
-## Step 5 — `system/scripts/manifest-snapshot.js`
+## Step 5 — `system/scripts/diagnostics/manifest-snapshot.js`
 
 Default mode: build manifest-shaped JSON from current state, write to stdout.
 `--apply --confirm-trust-current-state`: overwrite `user-data/security/manifest.json`. Single-flag `--apply` exits 1 with explanation.
@@ -71,7 +71,7 @@ If not added in cycle-2a, add now. Reads tail of log (~10KB), filters by kind + 
 
 Add SessionStart hook:
 ```json
-{ "matcher": "*", "hooks": [{ "type": "command", "command": "node system/scripts/check-manifest.js" }] }
+{ "matcher": "*", "hooks": [{ "type": "command", "command": "node system/scripts/diagnostics/check-manifest.js" }] }
 ```
 
 (No `matcher` if SessionStart hooks don't filter; verify schema.)

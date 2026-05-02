@@ -285,7 +285,7 @@ Default mode (read-only): writes to stdout. `--apply --confirm-trust-current-sta
 
 When `agentsmd.hardRulesHash` is empty after migration v1→v2:
 - `check-manifest.js` returns `severity=info` (not severe). Logs to refusal log; does NOT emit stderr at session start.
-- Morning briefing surfaces: "Security: AGENTS.md baseline missing — run `node system/scripts/manifest-snapshot.js` to populate."
+- Morning briefing surfaces: "Security: AGENTS.md baseline missing — run `node system/scripts/diagnostics/manifest-snapshot.js` to populate."
 - Once Kevin populates, subsequent sessions silent (matching hash) until intentional Hard Rules edit.
 
 ---
@@ -421,7 +421,7 @@ Estimated addition: ~80 lines.
 # 3. Morning briefing surfaces the same line.
 
 # 4. Kevin baselines:
-node system/scripts/manifest-snapshot.js > /tmp/snap.json
+node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json
 
 # 5. Diff and copy:
 diff user-data/security/manifest.json /tmp/snap.json
@@ -429,7 +429,7 @@ $EDITOR user-data/security/manifest.json
 # Add agentsmd.hardRulesHash from /tmp/snap.json
 
 # 6. Verify:
-node system/scripts/check-manifest.js
+node system/scripts/diagnostics/check-manifest.js
 # Silent (no drift, baseline matches).
 ```
 
@@ -444,7 +444,7 @@ $EDITOR AGENTS.md
 #    (visible in model context; Robin's reply mentions it)
 
 # 3. Re-baseline:
-node system/scripts/manifest-snapshot.js > /tmp/snap.json
+node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json
 $EDITOR user-data/security/manifest.json
 # update agentsmd.hardRulesHash with new value
 # update agentsmd.lastSnapshot to today

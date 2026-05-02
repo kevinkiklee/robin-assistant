@@ -29,7 +29,7 @@ run_scenario() {
   echo ">>> scenario $n"
   "$GEMINI_BIN" -p "$prompt" --output-format=stream-json --yolo > "$tx" 2> "${tx}.stderr" || true
 
-  node system/scripts/validate-host.js \
+  node system/scripts/diagnostics/validate-host.js \
     --host="$HOST" \
     --transcript="$tx" \
     --scenario="$n" || true

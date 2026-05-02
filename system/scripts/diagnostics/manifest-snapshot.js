@@ -2,23 +2,23 @@
 // Cycle-2b: snapshot helper for the tamper-detection manifest.
 //
 // Default mode (read-only):
-//   node system/scripts/manifest-snapshot.js
+//   node system/scripts/diagnostics/manifest-snapshot.js
 //   → writes a manifest-shaped JSON dump of the current state to stdout.
 //   Useful for diff against the live manifest before manual edit.
 //
 // First-deploy bootstrap (overwrites live manifest):
-//   node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+//   node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 //   → writes the snapshot to user-data/security/manifest.json.
 //   Two-flag pattern; `--apply` alone exits 1 with explanation.
 
 import { dirname, resolve, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { writeManifest, loadCurrentSettings, enumerateMCPServers } from './lib/manifest.js';
-import { hashHardRules } from './lib/agentsmd-hash.js';
+import { writeManifest, loadCurrentSettings, enumerateMCPServers } from '../lib/manifest.js';
+import { hashHardRules } from '../lib/agentsmd-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 function buildSnapshot(workspaceDir) {
   const settings = loadCurrentSettings(workspaceDir);

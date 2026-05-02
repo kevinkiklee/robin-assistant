@@ -210,7 +210,7 @@ Robin's instruction layer is organized into tiers to minimize token usage at ses
 - **Tier 2** (on demand) — job protocols, capture rules, manifest, security rules, self-improvement rules. Loaded only when triggered.
 - **Tier 3** (cold storage) — archived memory, historical data, full per-event detail pages.
 
-CI enforces token budgets on every PR. A measurement harness tracks per-file token counts, a golden-session snapshot detects load-order drift, and a memory linter catches structural issues. Caps live in `system/scripts/lib/token-budget.json` — a single source of truth read by the harness and host validators.
+CI enforces token budgets on every PR. A measurement harness tracks per-file token counts, a golden-session snapshot detects load-order drift, and a memory linter catches structural issues. Caps live in `system/scripts/diagnostics/lib/token-budget.json` — a single source of truth read by the harness and host validators.
 
 ### Customization
 
@@ -305,7 +305,7 @@ After upgrading across the autonomous-memory cycle (≥ 2026-05-01), run once:
 
 ```bash
 node system/scripts/memory/index-entities.js --bootstrap          # seed ENTITIES.md
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection
 ```
 
 Users who customized `.claude/settings.json` locally must merge the new `UserPromptSubmit` hook entry by hand; everyone else picks it up via `git pull`.
@@ -345,7 +345,7 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `robin watch run <id> [--dry-run \| --bootstrap]` | Manually trigger a watch (real fetch requires the watch-topics agent-runtime job) |
 | `node system/scripts/memory/index-entities.js --bootstrap` | Seed `ENTITIES.md` from frontmatter (run once after upgrade) |
 | `node system/scripts/memory/backfill-entity-links.js [--apply]` | One-shot link the entire wiki. `--apply` acquires `wiki-backfill` lock and regenerates `LINKS.md` |
-| `node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state` | Re-snapshot the security manifest (after major upgrades) |
+| `node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state` | Re-snapshot the security manifest (after major upgrades) |
 | `npm run discord:auth` | Walk through Discord bot OAuth + token storage |
 | `npm run discord:install` | Install the Discord bot launchd agent (macOS) |
 | `npm run discord:status` / `discord:health` | Inspect bot daemon status / liveness |

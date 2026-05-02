@@ -30,7 +30,7 @@ run_scenario() {
   echo ">>> scenario $n"
   "$CODEX_BIN" exec --json --no-interactive "$prompt" > "$tx" 2>&1 || true
 
-  node system/scripts/validate-host.js \
+  node system/scripts/diagnostics/validate-host.js \
     --host="$HOST" \
     --transcript="$tx" \
     --scenario="$n" || true

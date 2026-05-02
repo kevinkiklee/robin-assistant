@@ -10,7 +10,7 @@
 //   --update-baseline     overwrite committed baseline with current snapshot (requires CHANGELOG entry, enforced by reviewer)
 //   --host=<name>         include that host's pointer files in tier 1 (validates per-host load)
 //
-// Reads tier classification from system/scripts/lib/token-budget.json.
+// Reads tier classification from system/scripts/diagnostics/lib/token-budget.json.
 // Bytes is the primary metric; tokens are derived (see lib/tokenizer.js).
 
 import { readFileSync, existsSync, writeFileSync, statSync } from 'node:fs';
@@ -19,14 +19,14 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { glob } from 'node:fs/promises';
 
-import { measure, countBytes, countLines, estimateTokens } from './lib/tokenizer.js';
+import { measure, countBytes, countLines, estimateTokens } from '../lib/tokenizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
-const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'lib', 'token-budget.json');
-const BASELINE_PATH = join(REPO_ROOT, 'system', 'scripts', 'lib', 'token-baselines.json');
+const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'lib', 'token-budget.json');
+const BASELINE_PATH = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'lib', 'token-baselines.json');
 
 function loadBudget() {
   const raw = readFileSync(BUDGET_PATH, 'utf8');
@@ -319,15 +319,15 @@ function writeBaseline(snap) {
 function snapshotAtRef(ref) {
   // Run *this script* at the given git ref by piping its stdout. Self-contained:
   // no external snapshot file required for a PR diff. The temp file lives next
-  // to the original (system/scripts/) so its relative `./lib/tokenizer.js`
-  // import resolves correctly.
+  // to the original (system/scripts/diagnostics/) so its relative
+  // `../lib/tokenizer.js` import resolves correctly.
   const cwd = REPO_ROOT;
   const out = execFileSync(
     'git',
-    ['-c', 'advice.detachedHead=false', 'show', `${ref}:system/scripts/measure-tokens.js`],
+    ['-c', 'advice.detachedHead=false', 'show', `${ref}:system/scripts/diagnostics/measure-tokens.js`],
     { cwd, encoding: 'utf8' },
   );
-  const tmp = join(REPO_ROOT, 'system', 'scripts', `.measure-tokens.${ref.replace(/[^a-z0-9]/gi, '_')}.tmp.js`);
+  const tmp = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', `.measure-tokens.${ref.replace(/[^a-z0-9]/gi, '_')}.tmp.js`);
   writeFileSync(tmp, out);
   try {
     const json = execFileSync('node', [tmp, '--json'], { cwd, encoding: 'utf8' });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkChangelog } from '../scripts/lib/changelog-notify.js';
+import { checkChangelog } from '../../scripts/lib/changelog-notify.js';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

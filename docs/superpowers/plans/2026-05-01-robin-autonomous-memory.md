@@ -16,7 +16,7 @@
 
 **New files (libs):**
 - `system/scripts/lib/turn-state.js` — read/write/atomic helpers for `turn.json`, `turn-writes.log`, `capture-retry.json`
-- `system/scripts/lib/perf-log.js` — append helper for `hook-perf.log` with size cap
+- `system/scripts/diagnostics/lib/perf-log.js` — append helper for `hook-perf.log` with size cap
 - `system/scripts/capture/lib/capture-keyword-scan.js` — keyword regex + tier classifier
 - `system/scripts/memory/lib/recall.js` — Node-native in-process retrieval
 - `system/scripts/memory/lib/entity-index.js` — read/write/incremental update of `ENTITIES.md`
@@ -291,7 +291,7 @@ git commit -m "feat(memory/capture): turn-state helpers (turn.json, turn-writes.
 ## Task 2: `lib/perf-log.js` — slow-path telemetry
 
 **Files:**
-- Create: `system/scripts/lib/perf-log.js`
+- Create: `system/scripts/diagnostics/lib/perf-log.js`
 - Test: `system/tests/perf-log.test.js`
 
 - [ ] **Step 1: Write failing tests**
@@ -303,7 +303,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendPerfLog, capPerfLog } from '../scripts/lib/perf-log.js';
+import { appendPerfLog, capPerfLog } from '../scripts/diagnostics/lib/perf-log.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'perf-log-'));
@@ -342,7 +342,7 @@ Expected: FAIL — module not found.
 - [ ] **Step 3: Implement `lib/perf-log.js`**
 
 ```javascript
-// system/scripts/lib/perf-log.js
+// system/scripts/diagnostics/lib/perf-log.js
 //
 // Append one line per slow-path hook event. Cap file to N lines via Dream rotation.
 
@@ -382,7 +382,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/scripts/lib/perf-log.js system/tests/perf-log.test.js
+git add system/scripts/diagnostics/lib/perf-log.js system/tests/perf-log.test.js
 git commit -m "feat(memory/capture): hook-perf.log helper"
 ```
 
@@ -1862,7 +1862,7 @@ Edit `.claude/settings.json`. Add to the `hooks` object (preserve existing entri
 
 Run:
 ```sh
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 ```
 Expected: writes updated `user-data/security/manifest.json` including the new `UserPromptSubmit` hook.
 
@@ -1870,7 +1870,7 @@ Expected: writes updated `user-data/security/manifest.json` including the new `U
 
 Run:
 ```sh
-node system/scripts/check-manifest.js
+node system/scripts/diagnostics/check-manifest.js
 ```
 Expected: exit 0, no drift reported.
 
@@ -2029,7 +2029,7 @@ to:
 
 Run:
 ```sh
-node system/scripts/manifest-snapshot.js | grep hardRulesHash
+node system/scripts/diagnostics/manifest-snapshot.js | grep hardRulesHash
 ```
 Compare the hash to the current `user-data/security/manifest.json` value:
 ```sh
@@ -2039,7 +2039,7 @@ If they differ AND the Hard Rules block was modified (it should NOT have been in
 
 If the hash legitimately changed (e.g., we accidentally touched Hard Rules), re-snapshot:
 ```sh
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 ```
 
 - [ ] **Step 5: Commit**
@@ -2126,7 +2126,7 @@ After step 17.6:
    - `user-data/state/recall.log` → 5000 lines
    - `user-data/state/hook-perf.log` → 1000 lines
 
-   Use `node -e "import('./system/scripts/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for the other two, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
+   Use `node -e "import('./system/scripts/diagnostics/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for the other two, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
 ```
 
 - [ ] **Step 4: Commit**
@@ -2335,16 +2335,16 @@ git commit -m "test(memory): golden-session E2E for capture enforcement + auto-r
 ## Task 18: Token baselines update
 
 **Files:**
-- Modify: `system/scripts/lib/token-baselines.json`
+- Modify: `system/scripts/diagnostics/lib/token-baselines.json`
 
 - [ ] **Step 1: Re-baseline tokens**
 
 Run: `npm run measure-tokens`
-This regenerates `system/scripts/lib/token-baselines.json` to reflect any new files (ENTITIES.md will not exist yet on the package side; the script handles missing files).
+This regenerates `system/scripts/diagnostics/lib/token-baselines.json` to reflect any new files (ENTITIES.md will not exist yet on the package side; the script handles missing files).
 
 - [ ] **Step 2: Manually verify the baseline JSON includes (or has placeholders for) the new files**
 
-Open `system/scripts/lib/token-baselines.json`. Confirm it has entries (or skipped/optional entries) for:
+Open `system/scripts/diagnostics/lib/token-baselines.json`. Confirm it has entries (or skipped/optional entries) for:
 - `user-data/memory/ENTITIES.md` (optional_existence: true)
 - `user-data/state/capture-enforcement.log` (out of scope for token measurement, skip)
 
@@ -2353,7 +2353,7 @@ If `measure-tokens.js` doesn't already enumerate ENTITIES.md, add a one-line ent
 - [ ] **Step 3: Commit**
 
 ```bash
-git add system/scripts/lib/token-baselines.json system/scripts/measure-tokens.js
+git add system/scripts/diagnostics/lib/token-baselines.json system/scripts/diagnostics/measure-tokens.js
 git commit -m "chore(memory): token baselines include ENTITIES.md slot"
 ```
 
@@ -2430,7 +2430,7 @@ Expected: prints "Indexed N entities" plus a list of files needing `aliases:`. C
 
 Run:
 ```sh
-node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 ```
 Expected: writes the updated `user-data/security/manifest.json` covering the new UserPromptSubmit hook.
 

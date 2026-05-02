@@ -38,7 +38,7 @@ For each scenario:
 
 After all 6 scenarios, run:
 
-    node system/scripts/validate-host.js --host=<HOST> --transcript-dir=system/tests/multi-host/transcripts/<HOST>/<DATE>
+    node system/scripts/diagnostics/validate-host.js --host=<HOST> --transcript-dir=system/tests/multi-host/transcripts/<HOST>/<DATE>
 
 Then append a markdown summary section to `system/tests/multi-host/results-<DATE>.md` with one row per scenario (PASS / SOFT-NOTE / SOFT-FAIL / HARD-FAIL + a one-line note).
 

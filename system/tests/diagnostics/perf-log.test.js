@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendPerfLog, capPerfLog } from '../scripts/lib/perf-log.js';
+import { appendPerfLog, capPerfLog } from '../../scripts/diagnostics/lib/perf-log.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'perf-log-'));

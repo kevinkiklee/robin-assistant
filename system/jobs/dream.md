@@ -156,7 +156,7 @@ Runs after all other phases. Maintains the memory tree structure.
    - `user-data/state/recall.log` → 5000 lines
    - `user-data/state/hook-perf.log` → 1000 lines
 
-   Use `node -e "import('./system/scripts/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for recall.log, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
+   Use `node -e "import('./system/scripts/diagnostics/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for recall.log, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
 
 18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
 

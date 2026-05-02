@@ -455,7 +455,7 @@ Mechanical tests are required for sign-off. Model-adherence tests provide regres
 
 ### 10.3 Golden-session tests (model-instruction layer)
 
-Extend `system/scripts/validate-host.js` with three scenarios:
+Extend `system/scripts/diagnostics/validate-host.js` with three scenarios:
 - Untrusted-ingress recognition (model paraphrases instead of quoting injected text).
 - Origin tagging honesty (model stamps `origin=sync:*` when synthetic untrusted file is loaded).
 - Direct-write exception gate (model refuses to direct-write a `[correction]` that originated from synced content).

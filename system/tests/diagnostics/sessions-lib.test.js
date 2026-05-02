@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mostRecentSessionId } from '../scripts/lib/sessions.js';
+import { mostRecentSessionId } from '../../scripts/lib/sessions.js';
 
 function workspace(content) {
   const dir = mkdtempSync(join(tmpdir(), 'ws-'));

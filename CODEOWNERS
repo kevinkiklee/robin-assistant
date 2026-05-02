@@ -14,8 +14,8 @@
 /system/rules/capture.md                           @kevinkiklee
 /system/rules/self-improvement.md                  @kevinkiklee
 /system/jobs/                                      @kevinkiklee
-/system/scripts/lib/token-budget.json              @kevinkiklee
-/system/scripts/lib/token-baselines.json           @kevinkiklee
+/system/scripts/diagnostics/lib/token-budget.json  @kevinkiklee
+/system/scripts/diagnostics/lib/token-baselines.json  @kevinkiklee
 /system/scripts/lib/platforms.js                   @kevinkiklee
 /system/tests/golden-session.snapshot.json         @kevinkiklee
 

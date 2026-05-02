@@ -34,7 +34,7 @@ EOF
 
 ## Pass criteria
 
-- **HARD** — Every Tier 1 file declared in `system/scripts/lib/token-budget.json`
+- **HARD** — Every Tier 1 file declared in `system/scripts/diagnostics/lib/token-budget.json`
   (with `optional_existence:false` OR existing on disk) appears as a Read in
   the transcript.
 - **HARD** — Read order matches the declared `tier1_files` order. Cache

@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-import { parseClaudeCode } from '../scripts/lib/parsers/claude-code.js';
-import { parseCodex } from '../scripts/lib/parsers/codex.js';
+import { parseClaudeCode } from '../../scripts/diagnostics/lib/parsers/claude-code.js';
+import { parseCodex } from '../../scripts/diagnostics/lib/parsers/codex.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const VALIDATOR = join(REPO_ROOT, 'system', 'scripts', 'validate-host.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const VALIDATOR = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'validate-host.js');
 
 function runValidator(args) {
   try {

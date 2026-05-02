@@ -15,8 +15,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'lib', 'token-budget.json');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'diagnostics', 'lib', 'token-budget.json');
 const SNAPSHOT_PATH = join(REPO_ROOT, 'system', 'tests', 'capture', 'golden-session.snapshot.json');
 
 function buildSnapshot() {

@@ -12,8 +12,8 @@ tier1-changes:
           - 'system/rules/startup.md'
           - 'system/rules/capture.md'
           - 'system/rules/self-improvement.md'
-          - 'system/scripts/lib/token-budget.json'
-          - 'system/scripts/lib/token-baselines.json'
+          - 'system/scripts/diagnostics/lib/token-budget.json'
+          - 'system/scripts/diagnostics/lib/token-baselines.json'
           - 'system/scripts/lib/platforms.js'
           - 'system/tests/golden-session.snapshot.json'
 

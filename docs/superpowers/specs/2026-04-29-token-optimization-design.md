@@ -174,18 +174,18 @@ Every migration writes a pre-migration backup to `backup/<timestamp>-pre-migrati
 
 ### Entry point
 
-`system/scripts/measure-tokens.js` (Node ESM, no required runtime deps; optional `tiktoken` for sharper counts).
+`system/scripts/diagnostics/measure-tokens.js` (Node ESM, no required runtime deps; optional `tiktoken` for sharper counts).
 
 ```sh
-node system/scripts/measure-tokens.js                    # snapshot
-node system/scripts/measure-tokens.js --diff             # diff vs committed baseline
-node system/scripts/measure-tokens.js --diff-against=<ref>  # diff vs git ref
-node system/scripts/measure-tokens.js --check            # exit non-zero if budget exceeded
-node system/scripts/measure-tokens.js --json             # machine-readable
-node system/scripts/measure-tokens.js --host=<name>      # include per-host pointer files
+node system/scripts/diagnostics/measure-tokens.js                    # snapshot
+node system/scripts/diagnostics/measure-tokens.js --diff             # diff vs committed baseline
+node system/scripts/diagnostics/measure-tokens.js --diff-against=<ref>  # diff vs git ref
+node system/scripts/diagnostics/measure-tokens.js --check            # exit non-zero if budget exceeded
+node system/scripts/diagnostics/measure-tokens.js --json             # machine-readable
+node system/scripts/diagnostics/measure-tokens.js --host=<name>      # include per-host pointer files
 ```
 
-npm script: `"measure-tokens": "node system/scripts/measure-tokens.js"`.
+npm script: `"measure-tokens": "node system/scripts/diagnostics/measure-tokens.js"`.
 
 ### Metrics
 
@@ -197,21 +197,21 @@ npm script: `"measure-tokens": "node system/scripts/measure-tokens.js"`.
 
 ### Validation behaviour
 
-- Reads `system/scripts/lib/token-budget.json` (single source of truth for tier classification + caps).
+- Reads `system/scripts/diagnostics/lib/token-budget.json` (single source of truth for tier classification + caps).
 - **Errors** (not warns) on a Tier-1 file that doesn't exist on disk.
 - **Validates cache layout**: warns if a slow file precedes a frozen one.
 - Reports `lines (cap: X) ✓/✗` per Tier-1 file and per sub-index.
 
 ### Baselines
 
-- Committed at `system/scripts/lib/token-baselines.json`. Updating requires `--update-baseline` and a CHANGELOG note.
+- Committed at `system/scripts/diagnostics/lib/token-baselines.json`. Updating requires `--update-baseline` and a CHANGELOG note.
 - `--diff-against=<git-ref>` reads harness output from another revision via `git show` for PR-time diffs (no external state needed).
 
 ### CI integration
 
 ```yaml
 - name: Token budget check
-  run: node system/scripts/measure-tokens.js --check
+  run: node system/scripts/diagnostics/measure-tokens.js --check
 ```
 
 Build fails when Tier 1 exceeds budget.

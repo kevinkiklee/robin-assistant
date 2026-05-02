@@ -47,7 +47,7 @@ config block to existing installs. Run `node system/scripts/memory/index-entitie
 gains a `UserPromptSubmit` hook entry — users who have customized that file
 locally must merge the new entry by hand; everyone else picks it up via
 `git pull`. Manifest must be re-snapshotted once via
-`node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state`.
+`node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state`.
 
 **Known gap.** Disambiguator gating for short (≤2-token) entity aliases (spec S2.2) is
 declared in frontmatter (`disambiguator: [...]`) but the matcher does not yet enforce it.
@@ -211,7 +211,7 @@ checks: staleness (`last_verified` past decay threshold) and redundancy
 (exact-paragraph duplicates across files).
 
 **D2 — Audit job (LLM-pass).** New
-`system/scripts/lib/audit-pairs.js` (`generateAuditPairs` — entity-graph
+`system/scripts/diagnostics/lib/audit-pairs.js` (`generateAuditPairs` — entity-graph
 pairing via `LINKS.md` + same-sub-tree, recency-prioritized, max 20
 pairs/run). New `audit.md` job (weekly Sunday 11 AM, disabled): LLM-pass
 surfaces contradictions and redundancies; minimal context (skip Tier 1
@@ -258,13 +258,13 @@ manifest, capture-rules, startup) reduced 45% in tokens. User content
 (personality, INDEX descriptions, integrations) unchanged. Cache-stable
 prefix at 5,072 tokens (vs 5,300 cap).
 
-**Phase 0 — Harness.** `system/scripts/measure-tokens.js`,
+**Phase 0 — Harness.** `system/scripts/diagnostics/measure-tokens.js`,
 `token-budget.json` (single source of truth for tier classification +
 caps), deterministic tokenizer (bytes/3.7), committed baseline. `--diff`
 / `--diff-against=<ref>` / `--check` / `--update-baseline` /
 `--host=<name>` modes. CI step.
 
-**Phase 1 — Validation.** `system/scripts/validate-host.js` + per-host
+**Phase 1 — Validation.** `system/scripts/diagnostics/validate-host.js` + per-host
 parsers (claude-code/codex/gemini-cli; manual JSON for cursor/antigravity).
 Six scenarios: cold session, routine capture, triggered protocol,
 reference fetch, multi-session detection, direct-write correction.

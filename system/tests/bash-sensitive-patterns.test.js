@@ -14,7 +14,7 @@ test('benign commands pass', () => {
     'ls -la',
     'git status',
     'git log --oneline -5',
-    'node system/scripts/measure-tokens.js',
+    'node system/scripts/diagnostics/measure-tokens.js',
     'npm test',
     'echo "hello"',
     'cat README.md',

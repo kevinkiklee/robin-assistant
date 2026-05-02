@@ -6,7 +6,7 @@ touches the always-on instruction layer goes through this gate.
 
 ## Budgets
 
-Configured in `system/scripts/lib/token-budget.json`. Currently:
+Configured in `system/scripts/diagnostics/lib/token-budget.json`. Currently:
 
 - **Tier 1 total tokens** — ≤5,500 (cache-stable prefix ≤5,300)
 - **Tier 1 total lines** — ≤400
@@ -25,7 +25,7 @@ Any change to:
 - `AGENTS.md` (Tier 1 root)
 - `system/rules/capture.md`, `system/rules/startup.md`
 - `system/jobs/*.md`
-- `system/scripts/lib/token-budget.json` (the source of truth)
+- `system/scripts/diagnostics/lib/token-budget.json` (the source of truth)
 - `system/scripts/lib/platforms.js` (host pointer files)
 - `system/tests/golden-session.snapshot.json`
 
@@ -37,9 +37,9 @@ Running on every PR:
 
 | Check | Failure mode |
 |---|---|
-| `node system/scripts/measure-tokens.js --check` | Hard fail: any cap exceeded |
+| `node system/scripts/diagnostics/measure-tokens.js --check` | Hard fail: any cap exceeded |
 | `node system/scripts/memory/lint.js` | Hard fail: orphan files, large unindexed sub-trees, stale INDEX entries |
-| `node system/scripts/golden-session.js --check` | Hard fail: Tier 1 load order or stability changed |
+| `node system/scripts/diagnostics/golden-session.js --check` | Hard fail: Tier 1 load order or stability changed |
 | `node system/scripts/memory/regenerate-index.js --check` | Hard fail: INDEX out of date |
 | `npm test` | Hard fail: any test |
 
@@ -50,11 +50,11 @@ gets routed to a budget reviewer in addition to normal review.
 
 To raise a cap:
 
-1. Run `node system/scripts/measure-tokens.js` to confirm what the new
+1. Run `node system/scripts/diagnostics/measure-tokens.js` to confirm what the new
    floor is.
 2. Edit `token-budget.json`. Add a `$comment` field on the affected entry
    explaining the deviation from the design's original cap.
-3. Run `node system/scripts/golden-session.js --update-snapshot` if Tier 1
+3. Run `node system/scripts/diagnostics/golden-session.js --update-snapshot` if Tier 1
    structure changed.
 4. Add a CHANGELOG entry. Include the old cap, the new cap, and one
    sentence explaining what changed.

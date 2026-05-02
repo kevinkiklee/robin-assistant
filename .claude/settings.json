@@ -10,9 +10,9 @@
       "Bash(npm run golden-session:*)",
       "Bash(npm run prune-preview:*)",
       "Bash(npm run migrate-auto-memory:*)",
-      "Bash(node system/scripts/measure-tokens.js:*)",
+      "Bash(node system/scripts/diagnostics/measure-tokens.js:*)",
       "Bash(node system/scripts/memory/lint.js:*)",
-      "Bash(node system/scripts/golden-session.js:*)",
+      "Bash(node system/scripts/diagnostics/golden-session.js:*)",
       "Bash(node system/scripts/capture/auto-memory.js:*)",
       "Bash(node system/scripts/memory/prune-preview.js:*)",
       "Bash(node bin/robin.js:*)",
@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/check-manifest.js\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/diagnostics/check-manifest.js\""
           }
         ]
       }

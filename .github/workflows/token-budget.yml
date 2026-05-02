@@ -15,10 +15,10 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - name: Token budget check
-        run: node system/scripts/measure-tokens.js --check
+        run: node system/scripts/diagnostics/measure-tokens.js --check
       - name: Memory tree lint
         run: node system/scripts/memory/lint.js
       - name: Golden-session snapshot check
-        run: node system/scripts/golden-session.js --check
+        run: node system/scripts/diagnostics/golden-session.js --check
       - name: Tests
         run: npm test

@@ -26,7 +26,7 @@ This saves ~3,000 tokens per pair × 20 pairs = ~60k tokens/run.
 Run:
 
 ```sh
-node -e "import('./system/scripts/lib/audit-pairs.js').then(m => console.log(JSON.stringify(m.generateAuditPairs(process.cwd()), null, 2)))"
+node -e "import('./system/scripts/diagnostics/lib/audit-pairs.js').then(m => console.log(JSON.stringify(m.generateAuditPairs(process.cwd()), null, 2)))"
 ```
 
 (Or call the helper directly if the host supports it.)

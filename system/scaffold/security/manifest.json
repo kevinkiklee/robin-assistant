@@ -1,5 +1,5 @@
 {
-  "$comment": "Cycle-2b/2c: Robin's tamper-detection manifest. This scaffold is copied to user-data/security/manifest.json on first install. Run `node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state` after first deploy to baseline mcpServers.expected, agentsmd.hardRulesHash, and userDataJobs.knownFiles.",
+  "$comment": "Cycle-2b/2c: Robin's tamper-detection manifest. This scaffold is copied to user-data/security/manifest.json on first install. Run `node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state` after first deploy to baseline mcpServers.expected, agentsmd.hardRulesHash, and userDataJobs.knownFiles.",
   "version": 2,
   "hooks": {
     "PreToolUse": [
@@ -10,7 +10,7 @@
       { "command": "node system/scripts/hooks/claude-code.js --on-stop" }
     ],
     "SessionStart": [
-      { "command": "node system/scripts/check-manifest.js" }
+      { "command": "node system/scripts/diagnostics/check-manifest.js" }
     ],
     "UserPromptSubmit": [
       { "command": "node system/scripts/hooks/claude-code.js --on-user-prompt-submit" }
