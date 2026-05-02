@@ -38,3 +38,47 @@ test('buildMentionMatrix matches whole words only (no substrings)', () => {
   const matrix = buildMentionMatrix(files, registry);
   assert.deepEqual([...matrix.get('x.md')], []);
 });
+
+import { generatePairs } from '../../../scripts/memory/lib/related-heuristic.js';
+
+test('generatePairs excludes same parent dir (sub-tree dampening)', () => {
+  const matrix = new Map([
+    ['profile/people/jake-lee.md', new Set(['mom', 'dad', 'home'])],
+    ['profile/people/mom.md', new Set(['jake-lee', 'dad', 'home'])],
+    ['knowledge/finance/snapshot.md', new Set(['jake-lee', 'mom', 'dad'])],
+  ]);
+  const pairs = generatePairs(matrix, { excludedSubtrees: [] });
+  const pairKeys = pairs.map(p => [p.a, p.b].sort().join('::'));
+  assert.ok(pairKeys.includes(
+    ['profile/people/jake-lee.md', 'knowledge/finance/snapshot.md'].sort().join('::')
+  ));
+  assert.ok(!pairKeys.includes(
+    ['profile/people/jake-lee.md', 'profile/people/mom.md'].sort().join('::')
+  ));
+});
+
+test('generatePairs excludes archive, quarantine, conversations, calendar/events, transactions paths', () => {
+  const matrix = new Map([
+    ['archive/2024/old.md', new Set(['mom', 'dad'])],
+    ['quarantine/captures.md', new Set(['mom', 'dad'])],
+    ['knowledge/conversations/x.md', new Set(['mom', 'dad'])],
+    ['knowledge/calendar/events/2026-01-01.md', new Set(['mom', 'dad'])],
+    ['knowledge/finance/lunch-money/transactions/2026-03.md', new Set(['mom', 'dad'])],
+    ['knowledge/finance/snapshot.md', new Set(['mom', 'dad'])],
+    ['profile/people/jake-lee.md', new Set(['mom', 'dad'])],
+  ]);
+  const pairs = generatePairs(matrix, {});
+  assert.equal(pairs.length, 1);
+  const sorted = [pairs[0].a, pairs[0].b].sort();
+  assert.deepEqual(sorted, ['knowledge/finance/snapshot.md', 'profile/people/jake-lee.md']);
+});
+
+test('generatePairs computes shared entity counts', () => {
+  const matrix = new Map([
+    ['profile/people/jake-lee.md', new Set(['mom', 'dad', 'home', 'morgan-stanley'])],
+    ['knowledge/finance/snapshot.md', new Set(['jake-lee', 'mom', 'dad', 'morgan-stanley'])],
+  ]);
+  const pairs = generatePairs(matrix, {});
+  assert.equal(pairs.length, 1);
+  assert.deepEqual([...pairs[0].sharedEntities].sort(), ['dad', 'mom', 'morgan-stanley'].sort());
+});

@@ -14,6 +14,45 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const DEFAULT_EXCLUDED_PREFIXES = [
+  'archive/',
+  'quarantine/',
+  'knowledge/conversations/',
+  'knowledge/calendar/events/',
+  'knowledge/finance/lunch-money/transactions/',
+];
+
+function parentDir(relPath) {
+  const parts = relPath.split('/');
+  return parts.slice(0, -1).join('/');
+}
+
+function isExcluded(relPath, excluded) {
+  return excluded.some(prefix => relPath.startsWith(prefix));
+}
+
+export function generatePairs(matrix, { excludedSubtrees } = {}) {
+  const excluded = excludedSubtrees ?? DEFAULT_EXCLUDED_PREFIXES;
+  const files = [...matrix.entries()].filter(([rel]) => !isExcluded(rel, excluded));
+  const pairs = [];
+  for (let i = 0; i < files.length; i++) {
+    for (let j = i + 1; j < files.length; j++) {
+      const [aPath, aSet] = files[i];
+      const [bPath, bSet] = files[j];
+      if (parentDir(aPath) === parentDir(bPath)) continue;
+      const shared = new Set();
+      for (const slug of aSet) {
+        if (bSet.has(slug)) shared.add(slug);
+      }
+      if (shared.size === 0) continue;
+      pairs.push({ a: aPath, b: bPath, sharedEntities: shared });
+    }
+  }
+  return pairs;
+}
+
+export { DEFAULT_EXCLUDED_PREFIXES };
+
 function isSelfReference(relPath, slug) {
   // Avoid a page counting itself as a mention.
   // Works for both simple slugs (jake-lee) and path slugs (profile/people/jake-lee).
