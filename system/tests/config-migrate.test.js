@@ -5,11 +5,11 @@ import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-function setup({ user, skeleton }) {
+function setup({ user, scaffold }) {
   const root = mkdtempSync(join(tmpdir(), 'robin-cfgmig-'));
-  mkdirSync(join(root, 'system/skeleton'), { recursive: true });
+  mkdirSync(join(root, 'system/scaffold'), { recursive: true });
   mkdirSync(join(root, 'user-data'));
-  writeFileSync(join(root, 'system/skeleton/robin.config.json'), JSON.stringify(skeleton));
+  writeFileSync(join(root, 'system/scaffold/robin.config.json'), JSON.stringify(scaffold));
   writeFileSync(join(root, 'user-data/robin.config.json'), JSON.stringify(user));
   return root;
 }
@@ -17,7 +17,7 @@ function setup({ user, skeleton }) {
 test('config-migrate adds missing top-level field with default', async () => {
   const root = setup({
     user: { version: '3.0.0', user: { name: 'T' } },
-    skeleton: { version: '3.0.0', user: { name: '' }, dream: { frequency: 'daily' } },
+    scaffold: { version: '3.0.0', user: { name: '' }, dream: { frequency: 'daily' } },
   });
   const result = await migrateConfig(root);
   assert.equal(result.added.length, 1);
@@ -29,7 +29,7 @@ test('config-migrate adds missing top-level field with default', async () => {
 
 test('config-migrate is idempotent (no changes when up-to-date)', async () => {
   const cfg = { version: '3.0.0', user: { name: 'T' }, dream: { frequency: 'daily' } };
-  const root = setup({ user: cfg, skeleton: cfg });
+  const root = setup({ user: cfg, scaffold: cfg });
   const result = await migrateConfig(root);
   assert.equal(result.added.length, 0);
   rmSync(root, { recursive: true, force: true });
@@ -38,7 +38,7 @@ test('config-migrate is idempotent (no changes when up-to-date)', async () => {
 test('config-migrate warns on removed fields', async () => {
   const root = setup({
     user: { version: '3.0.0', user: { name: 'T' }, oldField: 'gone' },
-    skeleton: { version: '3.0.0', user: { name: '' } },
+    scaffold: { version: '3.0.0', user: { name: '' } },
   });
   const result = await migrateConfig(root);
   assert.deepEqual(result.removed, ['oldField']);

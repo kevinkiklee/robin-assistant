@@ -8,7 +8,7 @@ import { join } from 'node:path';
 function repo() {
   const root = mkdtempSync(join(tmpdir(), 'robin-mh-'));
   mkdirSync(join(root, 'user-data'), { recursive: true });
-  mkdirSync(join(root, 'system/skeleton'), { recursive: true });
+  mkdirSync(join(root, 'system/scaffold'), { recursive: true });
   return root;
 }
 
@@ -29,11 +29,11 @@ test('renameFile is idempotent — no-op when source missing', async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('addFileFromSkeleton copies skeleton file when missing', async () => {
+test('addFileFromScaffold copies scaffold file when missing', async () => {
   const root = repo();
-  writeFileSync(join(root, 'system/skeleton/health.md'), '# Health\n');
+  writeFileSync(join(root, 'system/scaffold/health.md'), '# Health\n');
   const helpers = createHelpers(root);
-  await helpers.addFileFromSkeleton('health.md');
+  await helpers.addFileFromScaffold('health.md');
   assert.equal(readFileSync(join(root, 'user-data/health.md'), 'utf-8'), '# Health\n');
   rmSync(root, { recursive: true, force: true });
 });

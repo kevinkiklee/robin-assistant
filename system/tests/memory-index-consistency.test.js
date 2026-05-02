@@ -7,7 +7,7 @@ import { parseFrontmatter } from '../scripts/lib/memory-index.js';
 import { checkMemoryIndex } from '../scripts/regenerate-memory-index.js';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
-const skeletonMem = join(repoRoot, 'system/skeleton/memory');
+const scaffoldMem = join(repoRoot, 'system/scaffold/memory');
 
 function walk(dir, base = dir) {
   const out = [];
@@ -21,18 +21,18 @@ function walk(dir, base = dir) {
   return out;
 }
 
-test('every skeleton memory file has description frontmatter', () => {
-  if (!existsSync(skeletonMem)) return;
-  const files = walk(skeletonMem);
+test('every scaffold memory file has description frontmatter', () => {
+  if (!existsSync(scaffoldMem)) return;
+  const files = walk(scaffoldMem);
   const missing = [];
   for (const f of files) {
-    const { frontmatter } = parseFrontmatter(readFileSync(join(skeletonMem, f), 'utf-8'));
+    const { frontmatter } = parseFrontmatter(readFileSync(join(scaffoldMem, f), 'utf-8'));
     if (!frontmatter.description) missing.push(f);
   }
   assert.deepEqual(missing, [], `files missing description: ${missing.join(', ')}`);
 });
 
-test('skeleton INDEX.md is up to date', () => {
-  if (!existsSync(skeletonMem) || !existsSync(join(skeletonMem, 'INDEX.md'))) return;
-  assert.equal(checkMemoryIndex(skeletonMem), true);
+test('scaffold INDEX.md is up to date', () => {
+  if (!existsSync(scaffoldMem) || !existsSync(join(scaffoldMem, 'INDEX.md'))) return;
+  assert.equal(checkMemoryIndex(scaffoldMem), true);
 });

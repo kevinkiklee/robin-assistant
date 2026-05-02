@@ -4,7 +4,7 @@ Robin is a git-clone-as-workspace tool. The repo *is* the workspace, so dev work
 
 ## Setting up a dev clone
 
-Don't develop in the same clone you use for your daily Robin instance — `npm install`'s postinstall populates `user-data/` from `system/skeleton/`, and you don't want to mix dev work with your real memory. Use a separate path:
+Don't develop in the same clone you use for your daily Robin instance — `npm install`'s postinstall populates `user-data/` from `system/scaffold/`, and you don't want to mix dev work with your real memory. Use a separate path:
 
 ```bash
 git clone <repo> ~/code/robin-dev
@@ -37,7 +37,7 @@ export async function up({ workspaceDir, helpers }) {
 }
 ```
 
-`helpers` comes from `system/scripts/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromSkeleton`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
+`helpers` comes from `system/scripts/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromScaffold`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
 
 The migration framework auto-applies pending migrations on the next session start, taking a `backup/pre-migration-<timestamp>.tar.gz` snapshot first. Users get a one-line notice; if anything fails, restore is one `npm run restore` away.
 

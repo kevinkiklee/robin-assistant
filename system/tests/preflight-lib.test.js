@@ -7,14 +7,14 @@ import { join } from 'node:path';
 
 function repo(populated = true) {
   const root = mkdtempSync(join(tmpdir(), 'robin-pf-'));
-  mkdirSync(join(root, 'system/skeleton/memory/profile'), { recursive: true });
+  mkdirSync(join(root, 'system/scaffold/memory/profile'), { recursive: true });
   mkdirSync(join(root, 'system/migrations'));
   writeFileSync(
-    join(root, 'system/skeleton/memory/profile/identity.md'),
+    join(root, 'system/scaffold/memory/profile/identity.md'),
     '---\ndescription: Identity\n---\n# Identity\n'
   );
-  writeFileSync(join(root, 'system/skeleton/memory/INDEX.md'), '# Memory Index\n');
-  writeFileSync(join(root, 'system/skeleton/robin.config.json'), '{"version":"3.0.0"}');
+  writeFileSync(join(root, 'system/scaffold/memory/INDEX.md'), '# Memory Index\n');
+  writeFileSync(join(root, 'system/scaffold/robin.config.json'), '{"version":"3.0.0"}');
   writeFileSync(join(root, 'system/CHANGELOG.md'), '## [3.0.0]\n');
   if (populated) {
     mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
@@ -35,9 +35,9 @@ test('preflight returns FATAL when user-data/ missing', async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('preflight auto-copies new skeleton files to user-data', async () => {
+test('preflight auto-copies new scaffold files to user-data', async () => {
   const root = repo(true);
-  writeFileSync(join(root, 'system/skeleton/health.md'), '# Health\n');
+  writeFileSync(join(root, 'system/scaffold/health.md'), '# Health\n');
   await runPreflight(root);
   assert.ok(existsSync(join(root, 'user-data/health.md')));
   rmSync(root, { recursive: true, force: true });
@@ -62,11 +62,11 @@ test('preflight is idempotent — second run returns same findings', async () =>
   // No FATAL on either run
   assert.ok(!r1.findings.some((f) => f.level === 'FATAL'));
   assert.ok(!r2.findings.some((f) => f.level === 'FATAL'));
-  // Second run should not re-copy skeleton files (already present)
+  // Second run should not re-copy scaffold files (already present)
   const newFilesR2 = r2.findings.filter(
     (f) => f.level === 'INFO' && f.message.startsWith('new files from upstream:')
   );
-  assert.equal(newFilesR2.length, 0, 'second run should not report new skeleton files');
+  assert.equal(newFilesR2.length, 0, 'second run should not report new scaffold files');
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -76,7 +76,7 @@ test('preflight early-exits with FATAL when config migrate throws', async () => 
   // Overwrite the user config with invalid JSON to cause migrateConfig to throw
   // (migrateConfig reads user config; invalid JSON causes a parse error)
   // Actually migrateConfig handles invalid JSON gracefully — instead, corrupt
-  // the skeleton config path to trigger a read error during schema loading.
+  // the scaffold config path to trigger a read error during schema loading.
   // The simplest FATAL trigger is missing user-data.
   rmSync(join(root, 'user-data'), { recursive: true, force: true });
   const result = await runPreflight(root);

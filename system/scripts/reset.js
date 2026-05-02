@@ -6,7 +6,7 @@ import { backup } from './backup.js';
 export async function reset(workspaceDir = process.cwd(), opts = {}) {
   if (!opts.confirmed) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const confirm = await rl.question('Wipe user-data/ back to skeleton? [y/N] ');
+    const confirm = await rl.question('Wipe user-data/ back to scaffold? [y/N] ');
     rl.close();
     if (confirm.trim().toLowerCase() !== 'y') return;
   }
@@ -16,9 +16,9 @@ export async function reset(workspaceDir = process.cwd(), opts = {}) {
   rmSync(ud, { recursive: true, force: true });
   mkdirSync(ud, { recursive: true });
 
-  const skel = join(workspaceDir, 'system/skeleton');
+  const skel = join(workspaceDir, 'system/scaffold');
   if (existsSync(skel)) cpSync(skel, ud, { recursive: true });
-  console.log('user-data/ reset to skeleton.');
+  console.log('user-data/ reset to scaffold.');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

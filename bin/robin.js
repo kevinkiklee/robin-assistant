@@ -18,7 +18,7 @@ usage:
   robin jobs disable <name>
   robin jobs sync                     [--force | --json]
   robin jobs validate [<name>]
-  robin update                        # post-pull check: config migrate + pending migrations + skeleton sync + validate
+  robin update                        # post-pull check: config migrate + pending migrations + scaffold sync + validate
   robin link <path>                   [--dry-run]
   robin watch add "<topic>"           [--cadence daily|weekly|hourly] [--query <q>] [--notify]
   robin watch list

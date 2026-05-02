@@ -11,12 +11,12 @@ import { join } from 'node:path';
 
 function repo(populated = true) {
   const root = mkdtempSync(join(tmpdir(), 'robin-su-'));
-  mkdirSync(join(root, 'system/skeleton/memory/profile'), { recursive: true });
+  mkdirSync(join(root, 'system/scaffold/memory/profile'), { recursive: true });
   mkdirSync(join(root, 'system/migrations'));
-  writeFileSync(join(root, 'system/skeleton/memory/profile/identity.md'),
+  writeFileSync(join(root, 'system/scaffold/memory/profile/identity.md'),
     '---\ndescription: Identity\n---\n# Identity\n');
-  writeFileSync(join(root, 'system/skeleton/memory/INDEX.md'), '# Memory Index\n');
-  writeFileSync(join(root, 'system/skeleton/robin.config.json'), '{"version":"3.0.0"}');
+  writeFileSync(join(root, 'system/scaffold/memory/INDEX.md'), '# Memory Index\n');
+  writeFileSync(join(root, 'system/scaffold/robin.config.json'), '{"version":"3.0.0"}');
   writeFileSync(join(root, 'system/CHANGELOG.md'), '## [3.0.0]\n');
   if (populated) {
     mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
@@ -35,9 +35,9 @@ test('shim: runStartupCheck returns FATAL when user-data/ missing', async () => 
   rmSync(root, { recursive: true, force: true });
 });
 
-test('shim: runStartupCheck auto-copies new skeleton files to user-data', async () => {
+test('shim: runStartupCheck auto-copies new scaffold files to user-data', async () => {
   const root = repo(true);
-  writeFileSync(join(root, 'system/skeleton/health.md'), '# Health\n');
+  writeFileSync(join(root, 'system/scaffold/health.md'), '# Health\n');
   await runStartupCheck(root);
   assert.ok(existsSync(join(root, 'user-data/health.md')));
   rmSync(root, { recursive: true, force: true });

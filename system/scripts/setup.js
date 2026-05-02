@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
 import { runPendingMigrations } from './migrate.js';
-import { ensureManifestFromSkeleton } from './lib/manifest.js';
+import { ensureManifestFromScaffold } from './lib/manifest.js';
 
 const PLATFORMS = ['claude-code', 'cursor', 'gemini-cli', 'codex', 'antigravity'];
 
@@ -69,11 +69,11 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   }
 
   const ud = join(workspaceDir, 'user-data');
-  // Skeleton lives next to setup.js when robin-assistant is installed globally
+  // Scaffold lives next to setup.js when robin-assistant is installed globally
   // (workspaceDir is then a fresh user dir, not the package dir). Callers can
-  // override via opts.skeletonDir; default is workspaceDir/system/skeleton for
+  // override via opts.scaffoldDir; default is workspaceDir/system/scaffold for
   // backwards compatibility with cloned-repo installs.
-  const skel = opts.skeletonDir || join(workspaceDir, 'system/skeleton');
+  const scaffold = opts.scaffoldDir || join(workspaceDir, 'system/scaffold');
 
   const migrationsDir = opts.packageRoot ? join(opts.packageRoot, 'system/migrations') : undefined;
 
@@ -90,14 +90,14 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
       console.warn(`postinstall: migration apply skipped (${err.message})`);
     }
     // Cycle-2b: ensure the security manifest exists for existing installs
-    // (won't be added by skeleton-copy since user-data is non-empty).
+    // (won't be added by scaffold-copy since user-data is non-empty).
     try {
-      const m = ensureManifestFromSkeleton(workspaceDir, opts.packageRoot);
+      const m = ensureManifestFromScaffold(workspaceDir, opts.packageRoot);
       if (m.copied) {
-        console.log('postinstall: copied skeleton security manifest → user-data/security/manifest.json');
+        console.log('postinstall: copied scaffold security manifest → user-data/security/manifest.json');
       }
     } catch (err) {
-      console.warn(`postinstall: manifest skeleton copy skipped (${err.message})`);
+      console.warn(`postinstall: manifest scaffold copy skipped (${err.message})`);
     }
     return;
   }
@@ -108,10 +108,10 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   mkdirSync(join(workspaceDir, 'artifacts/output'), { recursive: true });
   mkdirSync(join(workspaceDir, 'backup'), { recursive: true });
 
-  // Copy skeleton → user-data
-  if (existsSync(skel)) {
-    for (const entry of readdirSync(skel)) {
-      cpSync(join(skel, entry), join(ud, entry), { recursive: true });
+  // Copy scaffold → user-data
+  if (existsSync(scaffold)) {
+    for (const entry of readdirSync(scaffold)) {
+      cpSync(join(scaffold, entry), join(ud, entry), { recursive: true });
     }
   }
 

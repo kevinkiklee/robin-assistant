@@ -43,8 +43,8 @@ export async function runPreflight(workspaceDir = process.cwd()) {
   const v = await validateInDir(workspaceDir);
   if (v.issues > 0) findings.push({ level: 'WARN', message: `${v.issues} validation issue(s)` });
 
-  // 4. New-skeleton detection
-  const skel = join(workspaceDir, 'system/skeleton');
+  // 4. New-scaffold detection
+  const skel = join(workspaceDir, 'system/scaffold');
   if (existsSync(skel)) {
     const newFiles = [];
     function scan(rel = '') {

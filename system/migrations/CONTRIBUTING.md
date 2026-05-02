@@ -83,7 +83,7 @@ Add `system/tests/migration-<slug>.test.js` covering:
 
 - `renameFile(old, new)` — idempotent rename inside `user-data/`.
 - `removeFile(name)` — idempotent delete.
-- `addFileFromSkeleton(name)` — copy from `system/skeleton/` if missing.
+- `addFileFromScaffold(name)` — copy from `system/scaffold/` if missing.
 - `addConfigField(jsonPath, defaultValue)` — set `robin.config.json` field if absent.
 - `renameConfigField(oldPath, newPath)` — rename without losing value.
 - `transformFileContent(name, fn)` — read, transform, write a file.

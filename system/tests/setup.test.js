@@ -7,12 +7,12 @@ import { join } from 'node:path';
 
 function repo() {
   const root = mkdtempSync(join(tmpdir(), 'robin-setup-'));
-  mkdirSync(join(root, 'system/skeleton/memory/profile'), { recursive: true });
-  writeFileSync(join(root, 'system/skeleton/memory/profile/identity.md'),
+  mkdirSync(join(root, 'system/scaffold/memory/profile'), { recursive: true });
+  writeFileSync(join(root, 'system/scaffold/memory/profile/identity.md'),
     '---\ndescription: Identity\n---\n# Identity\n');
-  writeFileSync(join(root, 'system/skeleton/memory/INDEX.md'),
+  writeFileSync(join(root, 'system/scaffold/memory/INDEX.md'),
     '# Memory Index\n');
-  writeFileSync(join(root, 'system/skeleton/robin.config.json'),
+  writeFileSync(join(root, 'system/scaffold/robin.config.json'),
     JSON.stringify({ version: '3.0.0', user: { name: '', timezone: 'UTC' }, platform: 'claude-code' }));
   return root;
 }
@@ -26,7 +26,7 @@ test('setup is idempotent — does nothing if user-data/ populated', async () =>
   rmSync(root, { recursive: true, force: true });
 });
 
-test('setup populates user-data/ from skeleton in CI mode', async () => {
+test('setup populates user-data/ from scaffold in CI mode', async () => {
   const root = repo();
   await setup(root, { ci: true });
   assert.ok(existsSync(join(root, 'user-data/memory/profile/identity.md')));

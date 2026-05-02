@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   loadManifest,
   writeManifest,
-  ensureManifestFromSkeleton,
+  ensureManifestFromScaffold,
   loadCurrentSettings,
   enumerateMCPServers,
 } from '../scripts/lib/manifest.js';
@@ -65,15 +65,15 @@ test('writeManifest: round-trips via loadManifest', () => {
   }
 });
 
-test('ensureManifestFromSkeleton: copies skeleton when live missing', () => {
+test('ensureManifestFromScaffold: copies scaffold when live missing', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'system/skeleton/security'), { recursive: true });
+    mkdirSync(join(w, 'system/scaffold/security'), { recursive: true });
     writeFileSync(
-      join(w, 'system/skeleton/security/manifest.json'),
+      join(w, 'system/scaffold/security/manifest.json'),
       JSON.stringify({ version: 1, hooks: {}, mcpServers: { expected: [], writeCapable: [] } })
     );
-    const r = ensureManifestFromSkeleton(w);
+    const r = ensureManifestFromScaffold(w);
     assert.equal(r.copied, true);
     assert.equal(existsSync(join(w, 'user-data/security/manifest.json')), true);
   } finally {
@@ -81,14 +81,14 @@ test('ensureManifestFromSkeleton: copies skeleton when live missing', () => {
   }
 });
 
-test('ensureManifestFromSkeleton: does not overwrite existing live manifest', () => {
+test('ensureManifestFromScaffold: does not overwrite existing live manifest', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'system/skeleton/security'), { recursive: true });
-    writeFileSync(join(w, 'system/skeleton/security/manifest.json'), '{"skeleton": true}');
+    mkdirSync(join(w, 'system/scaffold/security'), { recursive: true });
+    writeFileSync(join(w, 'system/scaffold/security/manifest.json'), '{"scaffold": true}');
     mkdirSync(join(w, 'user-data/security'), { recursive: true });
     writeFileSync(join(w, 'user-data/security/manifest.json'), '{"live": true}');
-    const r = ensureManifestFromSkeleton(w);
+    const r = ensureManifestFromScaffold(w);
     assert.equal(r.copied, false);
     const cur = readFileSync(join(w, 'user-data/security/manifest.json'), 'utf-8');
     assert.match(cur, /"live": true/);

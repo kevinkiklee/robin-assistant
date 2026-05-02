@@ -2,7 +2,7 @@
 // with starter questions IF the file has no entries yet.
 //
 // Canonical question source: this migration AND
-// system/skeleton/memory/self-improvement/learning-queue.md.
+// system/scaffold/memory/self-improvement/learning-queue.md.
 // Keep both in sync.
 //
 // Idempotent: only seeds when the file has no `### ` entries.

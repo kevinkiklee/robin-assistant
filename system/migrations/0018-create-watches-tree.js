@@ -1,7 +1,7 @@
 // Migration 0018: scaffold the watches sub-tree in user-data.
 //
 // Creates:
-//   user-data/memory/watches/   (with INDEX.md and log.md from skeleton)
+//   user-data/memory/watches/   (with INDEX.md and log.md from scaffold)
 //   user-data/state/watches/    (dedup state dir for watch-topics job)
 //
 // Idempotent: individual path checks guard each file/dir creation.
@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 
 export const id = '0018-create-watches-tree';
 export const description =
-  'Scaffold user-data/memory/watches/ and user-data/state/watches/ from skeleton (idempotent).';
+  'Scaffold user-data/memory/watches/ and user-data/state/watches/ from the scaffold (idempotent).';
 
-const SKELETON_DIR = join(
+const SCAFFOLD_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../skeleton/memory/watches',
+  '../scaffold/memory/watches',
 );
 
 function ensureDir(path) {
@@ -50,16 +50,16 @@ export async function up({ workspaceDir }) {
     console.log(`[${id}] user-data/memory/watches/ already exists`);
   }
 
-  // 2. Copy INDEX.md from skeleton
+  // 2. Copy INDEX.md from scaffold
   copyIfMissing(
-    join(SKELETON_DIR, 'INDEX.md'),
+    join(SCAFFOLD_DIR, 'INDEX.md'),
     join(watchesMemDir, 'INDEX.md'),
     'user-data/memory/watches/INDEX.md',
   );
 
-  // 3. Copy log.md from skeleton
+  // 3. Copy log.md from scaffold
   copyIfMissing(
-    join(SKELETON_DIR, 'log.md'),
+    join(SCAFFOLD_DIR, 'log.md'),
     join(watchesMemDir, 'log.md'),
     'user-data/memory/watches/log.md',
   );

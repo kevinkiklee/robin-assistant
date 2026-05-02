@@ -24,7 +24,7 @@ test('migration metadata is correct', () => {
 // Happy path: fresh install
 // ---------------------------------------------------------------------------
 
-test('creates watches memory dir and skeleton files when missing', async () => {
+test('creates watches memory dir and scaffold files when missing', async () => {
   const ws = workspace();
   const memDir = join(ws, 'user-data/memory/watches');
   const stateDir = join(ws, 'user-data/state/watches');

@@ -6,7 +6,7 @@
 //
 // Discovers the package root from this file's location (works whether the
 // package is installed via `npm i -g`, linked, or run from a clone), then
-// delegates to setup.js with packageRoot threaded so the skeleton, manifest,
+// delegates to setup.js with packageRoot threaded so the scaffold, manifest,
 // and migrations are sourced from the package — not from the empty workspace.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -62,7 +62,7 @@ export async function cmdInit(argv) {
   // Package root: this file is .../system/scripts/init.js → root is two up.
   const here = dirname(fileURLToPath(import.meta.url));
   const packageRoot = resolve(here, '..', '..');
-  const skeletonDir = resolve(packageRoot, 'system', 'skeleton');
+  const scaffoldDir = resolve(packageRoot, 'system', 'scaffold');
 
   // Workspace target.
   const targetArg = args.target || process.env.ROBIN_WORKSPACE || process.cwd();
@@ -84,7 +84,7 @@ export async function cmdInit(argv) {
   await setup(target, {
     ci: args.ci,
     fromInit: true,
-    skeletonDir,
+    scaffoldDir,
     packageRoot,
   });
 

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 export async function migrateConfig(workspaceDir = process.cwd()) {
   const userPath = join(workspaceDir, 'user-data/robin.config.json');
-  const skelPath = join(workspaceDir, 'system/skeleton/robin.config.json');
+  const skelPath = join(workspaceDir, 'system/scaffold/robin.config.json');
   if (!existsSync(userPath) || !existsSync(skelPath)) return { added: [], removed: [] };
 
   const user = JSON.parse(readFileSync(userPath, 'utf-8'));
@@ -12,14 +12,14 @@ export async function migrateConfig(workspaceDir = process.cwd()) {
   const added = [];
   const removed = [];
 
-  // Add missing top-level keys (deep clone of skeleton value)
+  // Add missing top-level keys (deep clone of scaffold value)
   for (const key of Object.keys(skel)) {
     if (!(key in user)) {
       user[key] = JSON.parse(JSON.stringify(skel[key]));
       added.push(key);
     }
   }
-  // Mark fields that exist in user but not skeleton
+  // Mark fields that exist in user but not scaffold
   for (const key of Object.keys(user)) {
     if (!(key in skel)) removed.push(key);
   }

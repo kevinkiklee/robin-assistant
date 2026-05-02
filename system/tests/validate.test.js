@@ -12,7 +12,7 @@ function makeRepo(populated = true) {
   execSync('git init -q', { cwd: root });
   writeFileSync(join(root, '.gitignore'), '/user-data/\n/artifacts/\n/backup/\n');
   mkdirSync(join(root, 'system'));
-  mkdirSync(join(root, 'system/skeleton'));
+  mkdirSync(join(root, 'system/scaffold'));
   if (populated) {
     mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
     mkdirSync(join(root, 'user-data/state/locks'), { recursive: true });

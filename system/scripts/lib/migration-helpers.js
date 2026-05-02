@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path';
 
 export function createHelpers(workspaceDir) {
   const ud = join(workspaceDir, 'user-data');
-  const skel = join(workspaceDir, 'system/skeleton');
+  const scaffold = join(workspaceDir, 'system/scaffold');
 
   function readConfig() {
     const p = join(ud, 'robin.config.json');
@@ -48,11 +48,11 @@ export function createHelpers(workspaceDir) {
       const p = join(ud, name);
       if (existsSync(p)) rmSync(p, { recursive: true, force: true });
     },
-    async addFileFromSkeleton(name) {
-      const src = join(skel, name);
+    async addFileFromScaffold(name) {
+      const src = join(scaffold, name);
       const dst = join(ud, name);
       if (existsSync(dst)) return; // idempotent
-      if (!existsSync(src)) throw new Error(`skeleton missing: ${name}`);
+      if (!existsSync(src)) throw new Error(`scaffold missing: ${name}`);
       mkdirSync(dirname(dst), { recursive: true });
       copyFileSync(src, dst);
     },

@@ -18,7 +18,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), 'mig0019-'));
-  // Mirror skeleton + system migrations into the temp workspace so the
+  // Mirror scaffold + system migrations into the temp workspace so the
   // migration finds them via __dirname-relative path.
   cpSync(join(REPO_ROOT, 'system'), join(dir, 'system'), { recursive: true });
   mkdirSync(join(dir, 'user-data/memory/self-improvement'), { recursive: true });

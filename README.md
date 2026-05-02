@@ -223,7 +223,7 @@ Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 
 - **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
 - **`jobs/`** — overlays `system/jobs/`. **The default convention is a shallow override** (`override: <name>` frontmatter): you change only what you need, the rest inherits from the system definition and keeps tracking upstream upgrades. Use a full override (no `override:` key) only when you intend to fully replace a system job. Drop a brand-new file to extend the catalog.
-- **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/skeleton/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/lib/sync/`.
+- **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/lib/sync/`.
 - **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
 
 #### Customizing a job (the default pattern)
@@ -276,7 +276,7 @@ git clone git@github.com:kevinkiklee/robin-assistant.git robin
 cd robin
 
 # 2. Install. The postinstall step:
-#      - copies system/skeleton/* into user-data/
+#      - copies system/scaffold/* into user-data/
 #      - creates artifacts/input, artifacts/output, backup/
 #      - prompts for your name, timezone, email, platform, assistant name
 #      - installs the pre-commit privacy hook
@@ -299,12 +299,12 @@ If you ran `npm install` in a non-interactive shell (CI, no TTY), the prompts ar
 ```bash
 git pull                    # if you cloned upstream
 git pull upstream main      # if you forked
-npm install                 # runs migrations, config upgrade, skeleton sync, scheduler reinstall
+npm install                 # runs migrations, config upgrade, scaffold sync, scheduler reinstall
 ```
 
 This only touches files in `system/` and root pointer files. **`user-data/`, `artifacts/`, `backup/`, and `docs/` are gitignored — your personal data is never touched by an update.**
 
-Migrations, config upgrades, and skeleton sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast.
+Migrations, config upgrades, and scaffold sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast.
 
 After upgrading across the autonomous-memory cycle (≥ 2026-05-01), run once:
 
@@ -325,7 +325,7 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 |---------|---------|
 | `npm run backup` | Snapshot `user-data/` to `backup/user-data-<timestamp>.tar.gz` |
 | `npm run restore` | Restore `user-data/` from a backup archive (interactive) |
-| `npm run reset` | Wipe `user-data/`, recopy skeleton, re-prompt config (auto-backups first) |
+| `npm run reset` | Wipe `user-data/`, recopy scaffold, re-prompt config (auto-backups first) |
 | `npm test` | Run the test suite (~734 tests) |
 | `npm run lint-memory` | Check orphans, stale INDEX entries, oversized sub-trees, staleness, redundancy, ambiguous aliases, candidate entities, conversational tics |
 | `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
@@ -340,7 +340,7 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `robin jobs disable <name>` | Turn off an enabled job |
 | `robin jobs sync` | Force-reconcile OS scheduler with job definitions |
 | `robin jobs validate` | Parse and validate every job definition |
-| `robin update` | Post-`git pull` check: config migrate, pending migrations, skeleton sync, validate |
+| `robin update` | Post-`git pull` check: config migrate, pending migrations, scaffold sync, validate |
 | `robin link <path> [--dry-run]` | Apply first-mention entity links to a file. Idempotent, fail-soft, NFC-normalized |
 | `robin recall <term> [--json]` | In-process node-native lookup over `ENTITIES.md` and memory files |
 | `robin watch add "<topic>"` | Add a topic to follow; runs first fetch immediately to seed fingerprints |
@@ -398,7 +398,7 @@ robin/
 │   │   ├── index-entities.js    <- ENTITIES.md bootstrap + regenerate
 │   │   ├── backfill-entity-links.js  <- one-shot wiki linking
 │   │   └── ...
-│   ├── skeleton/            <- first-run templates for user-data/
+│   ├── scaffold/            <- first-run templates for user-data/
 │   ├── integrations/        <- per-provider setup playbooks
 │   └── tests/
 ├── user-data/               <- your data, gitignored

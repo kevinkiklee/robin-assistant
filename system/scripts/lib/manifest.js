@@ -12,14 +12,14 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 const MANIFEST_REL = 'user-data/security/manifest.json';
-const SKELETON_REL = 'system/skeleton/security/manifest.json';
+const SCAFFOLD_REL = 'system/scaffold/security/manifest.json';
 
 export function manifestPath(workspaceDir) {
   return join(workspaceDir, MANIFEST_REL);
 }
 
-export function skeletonManifestPath(workspaceDir, packageRoot) {
-  return packageRoot ? join(packageRoot, SKELETON_REL) : join(workspaceDir, SKELETON_REL);
+export function scaffoldManifestPath(workspaceDir, packageRoot) {
+  return packageRoot ? join(packageRoot, SCAFFOLD_REL) : join(workspaceDir, SCAFFOLD_REL);
 }
 
 // Read the manifest. Returns null if missing or malformed; auto-fills
@@ -50,15 +50,15 @@ export function writeManifest(workspaceDir, data) {
   writeFileSync(p, JSON.stringify(data, null, 2) + '\n');
 }
 
-// Copy skeleton → live manifest on first install if user-data version
+// Copy scaffold → live manifest on first install if user-data version
 // doesn't yet exist. Idempotent. Used by setup.js postinstall.
 // packageRoot is set when robin-assistant is installed globally and the
-// skeleton lives outside the workspace (e.g. inside the npm-global lib dir).
-export function ensureManifestFromSkeleton(workspaceDir, packageRoot) {
+// scaffold lives outside the workspace (e.g. inside the npm-global lib dir).
+export function ensureManifestFromScaffold(workspaceDir, packageRoot) {
   const live = manifestPath(workspaceDir);
   if (existsSync(live)) return { copied: false };
-  const skel = skeletonManifestPath(workspaceDir, packageRoot);
-  if (!existsSync(skel)) return { copied: false, reason: 'no-skeleton' };
+  const skel = scaffoldManifestPath(workspaceDir, packageRoot);
+  if (!existsSync(skel)) return { copied: false, reason: 'no-scaffold' };
   mkdirSync(dirname(live), { recursive: true });
   writeFileSync(live, readFileSync(skel, 'utf-8'));
   return { copied: true };

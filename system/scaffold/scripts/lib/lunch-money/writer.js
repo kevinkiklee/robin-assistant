@@ -1,4 +1,4 @@
-// Template — auto-copied to user-data/scripts/lib/lunch-money/ by skeleton-sync.
+// Template — auto-copied to user-data/scripts/lib/lunch-money/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // Each `write*` function returns an array of workspace-relative paths it wrote

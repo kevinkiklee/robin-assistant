@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by skeleton-sync.
+// Template — auto-copied to user-data/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // Calendar sync — fetches events from Google Calendar across the next 90 days

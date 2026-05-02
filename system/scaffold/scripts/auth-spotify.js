@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by skeleton-sync.
+// Template — auto-copied to user-data/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // One-shot Spotify OAuth setup.

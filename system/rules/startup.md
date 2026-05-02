@@ -9,7 +9,7 @@ Pre-flight runs at **install / update time**, not on every session:
 - `npm install` (postinstall) runs `setup.js` which scaffolds `user-data/`
   and triggers the same checks as `robin update`.
 - After `git pull`, run `robin update` to apply pending migrations,
-  config additions, and new skeleton files.
+  config additions, and new scaffold files.
 
 Findings written to `state/jobs/failures.md` (active failures) and
 `state/jobs/INDEX.md` (job dashboard). The agent reads those at session

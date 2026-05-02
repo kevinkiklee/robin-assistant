@@ -1,5 +1,5 @@
 // Migration 0019: create policies.md, action-trust.md, and pending-asks.md
-// from skeletons if absent.
+// from the scaffold if absent.
 //
 // Idempotent: existing files (any content) are not touched. Reversible
 // by deleting the created files.
@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url';
 
 export const id = '0019-create-action-state-files';
 export const description =
-  'Create policies.md, action-trust.md, and pending-asks.md from skeletons (idempotent).';
+  'Create policies.md, action-trust.md, and pending-asks.md from the scaffold (idempotent).';
 
-const SKELETON_DIR = join(dirname(fileURLToPath(import.meta.url)), '../skeleton');
+const SCAFFOLD_DIR = join(dirname(fileURLToPath(import.meta.url)), '../scaffold');
 
 const TARGETS = [
   { src: 'policies.md', dst: 'user-data/policies.md' },
@@ -31,9 +31,9 @@ export async function up({ workspaceDir }) {
       continue;
     }
     mkdirSync(dirname(target), { recursive: true });
-    const skeletonPath = join(SKELETON_DIR, t.src);
-    const skeleton = readFileSync(skeletonPath, 'utf8');
-    writeFileSync(target, skeleton);
-    console.log(`[${id}] created ${t.dst} from skeleton`);
+    const scaffoldPath = join(SCAFFOLD_DIR, t.src);
+    const content = readFileSync(scaffoldPath, 'utf8');
+    writeFileSync(target, content);
+    console.log(`[${id}] created ${t.dst} from scaffold`);
   }
 }

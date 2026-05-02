@@ -16,7 +16,7 @@ test('migration metadata is correct', () => {
   assert.match(description, /predictions/i);
 });
 
-test('creates predictions.md from skeleton when file is missing', async () => {
+test('creates predictions.md from scaffold when file is missing', async () => {
   const ws = workspace();
   const target = join(ws, 'user-data/memory/self-improvement/predictions.md');
   assert.ok(!existsSync(target), 'precondition: file must not exist');

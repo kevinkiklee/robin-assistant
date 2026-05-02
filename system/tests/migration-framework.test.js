@@ -8,7 +8,7 @@ import { join } from 'node:path';
 function setupRepo(migrationFiles) {
   const root = mkdtempSync(join(tmpdir(), 'robin-mig-'));
   mkdirSync(join(root, 'system/migrations'), { recursive: true });
-  mkdirSync(join(root, 'system/skeleton'));
+  mkdirSync(join(root, 'system/scaffold'));
   mkdirSync(join(root, 'user-data'));
   mkdirSync(join(root, 'backup'));
   writeFileSync(join(root, 'user-data/robin.config.json'), '{"version":"3.0.0"}');
