@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRedaction } from '../scripts/sync/lib/redact.js';
+import { applyRedaction } from '../../scripts/sync/lib/redact.js';
 
 function redact(s) {
   const { redacted, count } = applyRedaction(s);
@@ -84,7 +84,7 @@ describe('privacy: redact() blocks credentials and IDs', () => {
 
 describe('privacy: integration coverage', () => {
   it('redact module exports the expected surface', async () => {
-    const m = await import('../scripts/sync/lib/redact.js');
+    const m = await import('../../scripts/sync/lib/redact.js');
     assert.equal(typeof m.applyRedaction, 'function');
   });
 
@@ -92,7 +92,7 @@ describe('privacy: integration coverage', () => {
     // The atomicWrite helper in lib/sync/markdown.js uses redact() to scrub
     // before writing. This test ensures the import chain stays intact —
     // a regression here would silently disable redaction for sync writes.
-    const md = await import('../scripts/sync/lib/markdown.js');
+    const md = await import('../../scripts/sync/lib/markdown.js');
     assert.equal(typeof md.atomicWrite, 'function');
   });
 });

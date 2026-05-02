@@ -9,8 +9,8 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { atomicWrite } from '../scripts/sync/lib/markdown.js';
-import { assertOutboundContentAllowed, OutboundPolicyError } from '../scripts/lib/outbound-policy.js';
+import { atomicWrite } from '../../scripts/sync/lib/markdown.js';
+import { assertOutboundContentAllowed, OutboundPolicyError } from '../../scripts/lib/outbound-policy.js';
 
 function ws() { return mkdtempSync(join(tmpdir(), 's4-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

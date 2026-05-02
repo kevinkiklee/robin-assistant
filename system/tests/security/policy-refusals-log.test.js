@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, readFileSync, existsSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendPolicyRefusal, readRecentRefusalHashes, __test__ } from '../scripts/lib/policy-refusals-log.js';
+import { appendPolicyRefusal, readRecentRefusalHashes, __test__ } from '../../scripts/lib/policy-refusals-log.js';
 
 function ws() {
   return mkdtempSync(join(tmpdir(), 'policy-log-'));

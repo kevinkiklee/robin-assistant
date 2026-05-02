@@ -3,8 +3,8 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { requireSecret, getSecret, saveSecret, loadSecrets } from '../scripts/sync/lib/secrets.js';
-import { safeEnv, listSafeEnvKeys } from '../scripts/lib/safe-env.js';
+import { requireSecret, getSecret, saveSecret, loadSecrets } from '../../scripts/sync/lib/secrets.js';
+import { safeEnv, listSafeEnvKeys } from '../../scripts/lib/safe-env.js';
 
 function ws() { return mkdtempSync(join(tmpdir(), 'secrets-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

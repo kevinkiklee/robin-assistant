@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { checkBashCommand, SENSITIVE_PATTERNS } from '../scripts/lib/bash-sensitive-patterns.js';
+import { checkBashCommand, SENSITIVE_PATTERNS } from '../../scripts/lib/bash-sensitive-patterns.js';
 
 test('first-match-wins: returns the first matching rule', () => {
   // Two rules trip; result names the first one encountered.

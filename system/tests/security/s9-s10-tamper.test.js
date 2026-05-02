@@ -9,7 +9,7 @@ import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CHECK_SCRIPT = resolve(__dirname, '..', 'scripts', 'diagnostics', 'check-manifest.js');
+const CHECK_SCRIPT = resolve(__dirname, '..', '..', 'scripts', 'diagnostics', 'check-manifest.js');
 
 function ws() { return mkdtempSync(join(tmpdir(), 's9-10-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }
