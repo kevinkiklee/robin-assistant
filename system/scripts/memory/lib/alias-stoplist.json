@@ -1,0 +1,20 @@
+[
+  "kevin", "robin", "user", "owner", "self", "me", "you", "we", "they",
+  "overview", "summary", "description", "introduction", "background",
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+  "january", "february", "march", "april", "may", "june", "july", "august",
+  "september", "october", "november", "december",
+  "spring", "summer", "fall", "autumn", "winter",
+  "morning", "afternoon", "evening", "night", "today", "tomorrow", "yesterday",
+  "yes", "no", "maybe", "ok", "okay", "fine", "great", "good", "bad",
+  "true", "false", "null", "none", "empty",
+  "note", "notes", "todo", "warning", "error", "info",
+  "home", "work", "office", "house",
+  "this", "that", "these", "those", "here", "there",
+  "first", "second", "third", "last", "next", "previous",
+  "active", "inactive", "open", "closed", "pending", "resolved",
+  "year", "month", "week", "day", "hour", "minute", "second",
+  "name", "title", "type", "tags", "aliases", "status",
+  "file", "files", "page", "pages", "section", "sections",
+  "claude", "code", "agent", "session", "message", "prompt"
+]
