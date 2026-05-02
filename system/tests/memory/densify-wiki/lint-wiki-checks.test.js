@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findMissingAliases } from '../../../scripts/memory/lint.js';
+import { findMissingAliases, findTypeMismatches } from '../../../scripts/memory/lint.js';
 
 function tempWs() {
   const dir = mkdtempSync(join(tmpdir(), 'lint-test-'));
@@ -61,6 +61,44 @@ test('findMissingAliases handles quoted aliases array correctly', () => {
       `---\ntype: entity\naliases: ["Jake", "Joony"]\n---\n# Jake\n`);
     const findings = findMissingAliases(ws);
     assert.equal(findings.length, 0, 'quoted aliases should be recognized');
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findTypeMismatches fires on entity-shaped dir + aliases + type:topic', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/profile/people/jake-lee.md'),
+      `---\ntype: topic\naliases: [Jake]\n---\n# Jake Lee\n`);
+    const findings = findTypeMismatches(ws);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].check, 'type-mismatch');
+    assert.equal(findings[0].file, 'profile/people/jake-lee.md');
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findTypeMismatches does NOT fire when type is already entity', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/profile/people/x.md'),
+      `---\ntype: entity\naliases: [X]\n---\n`);
+    const findings = findTypeMismatches(ws);
+    assert.equal(findings.length, 0);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findTypeMismatches does NOT fire outside entity-shaped dir', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/knowledge/medical/some-page.md'),
+      `---\ntype: topic\naliases: [foo]\n---\n`);
+    const findings = findTypeMismatches(ws);
+    assert.equal(findings.length, 0);
   } finally {
     rmSync(ws, { recursive: true });
   }

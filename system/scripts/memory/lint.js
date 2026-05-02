@@ -501,6 +501,32 @@ export function findMissingAliases(workspaceDir) {
   return findings;
 }
 
+// ---------------------------------------------------------------------------
+// Type-mismatch check — entity-shaped dir pages that have aliases but still
+// carry type:topic instead of type:entity.
+// ---------------------------------------------------------------------------
+
+export function findTypeMismatches(workspaceDir) {
+  const memoryRoot = join(workspaceDir, 'user-data', 'memory');
+  const findings = [];
+  for (const relPath of walkMemoryFiles(memoryRoot)) {
+    const inEntityDir = ENTITY_SHAPED_DIRS.some(d => relPath.startsWith(d));
+    if (!inEntityDir) continue;
+    const body = readFileSync(join(memoryRoot, relPath), 'utf-8');
+    const fmM = body.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmM) continue;
+    const fm = fmM[1];
+    const typeM = fm.match(/^type:\s*(\S+)\s*$/m);
+    const aliasesM = fm.match(/^aliases:\s*\[([^\]]*)\]\s*$/m);
+    const aliases = aliasesM ? aliasesM[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean) : [];
+    if (typeM && typeM[1] === 'topic' && aliases.length > 0) {
+      findings.push({ check: 'type-mismatch', severity: 'warn', file: relPath,
+        message: 'entity-shaped page has aliases but type:topic; should be type:entity' });
+    }
+  }
+  return findings;
+}
+
 async function main() {
   const json = process.argv.includes('--json');
   const workspaceDir = REPO_ROOT;
