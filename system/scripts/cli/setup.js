@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
@@ -109,9 +109,8 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   mkdirSync(join(workspaceDir, 'backup'), { recursive: true });
 
   // Copy scaffold → user-data (skip README.md, which documents the scaffold itself).
-  // Scaffold still uses the pre-0021 flat layout; we relocate items to the
-  // post-0021 layout immediately after copy so fresh installs land in the
-  // canonical shape without waiting for migration 0021 to run.
+  // Scaffold mirrors the post-0021 layout, so a 1:1 copy lands user-data/ in the
+  // canonical shape without further relocation.
   if (existsSync(scaffold)) {
     for (const entry of readdirSync(scaffold)) {
       if (entry === 'README.md') continue;
@@ -119,29 +118,8 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     }
   }
 
-  // Relocate scaffold-copied items into the post-0021 layout.
-  // Top-level files → ops/config/, ops/* dirs.
-  const relocateMap = [
-    ['robin.config.json', 'ops/config/robin.config.json'],
-    ['integrations.md', 'ops/config/integrations.md'],
-    ['policies.md', 'ops/config/policies.md'],
-    ['jobs', 'ops/jobs'],
-    ['scripts', 'ops/scripts'],
-    ['secrets', 'ops/secrets'],
-    ['security', 'ops/security'],
-  ];
-  for (const [src, dst] of relocateMap) {
-    const srcPath = join(ud, src);
-    const dstPath = join(ud, dst);
-    if (existsSync(srcPath) && !existsSync(dstPath)) {
-      mkdirSync(join(dstPath, '..'), { recursive: true });
-      cpSync(srcPath, dstPath, { recursive: true });
-      rmSync(srcPath, { recursive: true, force: true });
-    }
-  }
-
-  // Config: prompt or skip. Use whichever location currently exists; default
-  // to the post-0021 location for fresh writes.
+  // Config: prompt or skip. Prefer the post-0021 location; fall back to the
+  // pre-0021 path for users mid-upgrade who haven't run migration 0021 yet.
   const isInteractive = !opts.ci && !process.env.CI && process.stdin.isTTY;
   const oldCfgPath = join(ud, 'robin.config.json');
   const newCfgPath = join(ud, 'ops/config/robin.config.json');
