@@ -23,6 +23,7 @@ import {
   regenIndex,
   regenUpcoming,
 } from './lib/state.js';
+import { renderHealthSection, runDoctor } from './lib/doctor.js';
 import { getAdapter } from './installer/index.js';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -189,10 +190,23 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
   // Regenerate aggregate surfaces
   const states = listJobStates(workspaceDir);
   const generatedAt = new Date();
+  // Doctor runs LAST (after install/uninstall) so it audits the post-reconcile
+  // state — orphans we just left behind, plists we just regenerated, etc.
+  let healthFindings = [];
+  try {
+    healthFindings = runDoctor(workspaceDir, jobs, { states });
+  } catch (err) {
+    result.warnings.push(`doctor: ${err.message}`);
+  }
+  result.healthFindings = healthFindings;
   try {
     regenIndex(workspaceDir, jobs, states, { generatedAt, tz });
     regenUpcoming(workspaceDir, jobs, { generatedAt, tz });
-    regenFailures(workspaceDir, jobs, states, { generatedAt, tz });
+    regenFailures(workspaceDir, jobs, states, {
+      generatedAt,
+      tz,
+      healthSection: renderHealthSection(healthFindings),
+    });
   } catch (err) {
     result.warnings.push(`telemetry regen: ${err.message}`);
   }

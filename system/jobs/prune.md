@@ -6,52 +6,23 @@ schedule: "0 5 1 * *"
 triggers: ["prune memory", "memory cleanup", "memory prune"]
 enabled: false
 catch_up: false
+context_mode: minimal
 timeout_minutes: 30
 notify_on_failure: true
 ---
 
-# Prune (memory lifecycle)
+# Protocol: prune
 
-Active vs cold storage. Active tier holds the last 12 months of content;
-older content moves to `user-data/memory/archive/`. Pruning relocates,
-never deletes — `archive/INDEX.md` keeps everything reachable.
+You are running headlessly to execute this monthly memory-prune cycle. Move >12-month-old content from active tier to `user-data/memory/archive/`. Relocate only; never delete. `archive/INDEX.md` keeps everything reachable.
 
-## Default state
+Execute the per-cycle steps below. Do NOT load Tier 1 startup files (personality, identity, hot, session-handoff, etc.); do NOT report a session summary; do NOT ask the user for direction. Write the diff report and exit.
 
-`enabled: false`. The job will not fire on schedule until you opt in.
+## Context profile
 
-## How to opt in
-
-1. **Dry-run first.** From the workspace:
-
-   ```sh
-   robin run prune --dry-run
-   ```
-
-   This previews what would move and writes a report to
-   `user-data/runtime/state/jobs/prune-preview.md`. Nothing changes on disk.
-
-2. **Review the preview** with the user. Confirm the cutoffs match
-   expectations.
-
-3. **First confirmed run:**
-
-   ```sh
-   robin run prune --confirm
-   ```
-
-   Writes a pre-prune backup to `backup/<timestamp>-pre-prune/`, then
-   relocates content. Reports to `user-data/runtime/state/jobs/prune-<timestamp>.md`.
-
-4. **Review the result.** Open `user-data/memory/archive/INDEX.md`.
-   Verify the archived buckets reflect the move.
-
-5. **Enable cron** by editing this file's frontmatter to `enabled: true`,
-   then rerun the reconciler:
-
-   ```sh
-   robin run _robin-sync
-   ```
+Minimal. Load ONLY:
+- CLAUDE.md Hard Rules section (Privacy, Verification, Local Memory, Time)
+- This protocol
+- The candidate files listed by the dry-run scan (read just-in-time per step)
 
 ## Active vs archive cutoffs
 
@@ -116,3 +87,19 @@ cp -r backup/<timestamp>-pre-prune/. user-data/memory/
 Yearly rollup keeps the active tier small. Original month files survive in
 archive — never lost. Recent-quarter queries operate on active data; deep-
 history queries open archived files individually.
+
+---
+
+## Developer notes (NOT part of the runtime protocol — for human operators only)
+
+### Default state
+
+`enabled: false` in this upstream definition. Opt in by adding a user-data override at `user-data/runtime/jobs/prune.md` with `enabled: true`.
+
+### First-time opt-in flow
+
+1. **Dry-run.** `robin run prune --dry-run` writes a preview to `user-data/runtime/state/jobs/prune-preview.md`. Nothing changes on disk.
+2. **Review** the preview. Confirm cutoffs match expectations.
+3. **Confirmed run.** `robin run prune --confirm` writes a pre-prune backup, then relocates content. Diff at `user-data/runtime/state/jobs/prune-<timestamp>.md`.
+4. **Verify** `user-data/memory/archive/INDEX.md` reflects the move.
+5. **Enable cron** via the user-data override, then `robin run _robin-sync`.
