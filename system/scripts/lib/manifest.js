@@ -1,6 +1,6 @@
 // Cycle-2b: shared helpers for tamper-detection manifest.
 //
-// loadManifest      — read user-data/ops/security/manifest.json. Auto-creates
+// loadManifest      — read user-data/runtime/security/manifest.json. Auto-creates
 //                     v2 fields (cycle-2c forward-compat). Returns null
 //                     if file missing.
 // enumerateMCPServers — best-effort list of MCP server names currently
@@ -11,8 +11,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-const MANIFEST_REL = 'user-data/ops/security/manifest.json';
-const SCAFFOLD_REL = 'system/scaffold/ops/security/manifest.json';
+const MANIFEST_REL = 'user-data/runtime/security/manifest.json';
+const SCAFFOLD_REL = 'system/scaffold/runtime/security/manifest.json';
 
 export function manifestPath(workspaceDir) {
   return join(workspaceDir, MANIFEST_REL);

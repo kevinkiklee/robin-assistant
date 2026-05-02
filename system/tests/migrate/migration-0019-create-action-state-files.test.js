@@ -22,7 +22,7 @@ function workspace() {
   // migration finds them via __dirname-relative path.
   cpSync(join(REPO_ROOT, 'system'), join(dir, 'system'), { recursive: true });
   mkdirSync(join(dir, 'user-data/memory/self-improvement'), { recursive: true });
-  mkdirSync(join(dir, 'user-data/ops/state/turn'), { recursive: true });
+  mkdirSync(join(dir, 'user-data/runtime/state/turn'), { recursive: true });
   return dir;
 }
 
@@ -35,9 +35,9 @@ test('creates all three files when absent', async () => {
   const ws = workspace();
   await up({ workspaceDir: ws });
 
-  const policies = join(ws, 'user-data/ops/config/policies.md');
+  const policies = join(ws, 'user-data/runtime/config/policies.md');
   const trust = join(ws, 'user-data/memory/self-improvement/action-trust.md');
-  const pending = join(ws, 'user-data/ops/state/turn/pending-asks.md');
+  const pending = join(ws, 'user-data/runtime/state/turn/pending-asks.md');
 
   assert.ok(existsSync(policies), 'policies.md should exist');
   assert.ok(existsSync(trust), 'action-trust.md should exist');
@@ -50,7 +50,7 @@ test('creates all three files when absent', async () => {
 
 test('idempotent: skips files that already exist with content', async () => {
   const ws = workspace();
-  const policies = join(ws, 'user-data/ops/config/policies.md');
+  const policies = join(ws, 'user-data/runtime/config/policies.md');
   mkdirSync(dirname(policies), { recursive: true });
   const userContent = `---
 description: My custom policies
@@ -70,9 +70,9 @@ type: reference
 test('idempotent: re-running on migrated state is a no-op', async () => {
   const ws = workspace();
   await up({ workspaceDir: ws });
-  const before = readFileSync(join(ws, 'user-data/ops/config/policies.md'), 'utf8');
+  const before = readFileSync(join(ws, 'user-data/runtime/config/policies.md'), 'utf8');
   await up({ workspaceDir: ws });
-  const after = readFileSync(join(ws, 'user-data/ops/config/policies.md'), 'utf8');
+  const after = readFileSync(join(ws, 'user-data/runtime/config/policies.md'), 'utf8');
   assert.equal(after, before);
 });
 
@@ -84,5 +84,5 @@ test('creates parent directories if missing', async () => {
   await up({ workspaceDir: ws });
 
   assert.ok(existsSync(join(ws, 'user-data/memory/self-improvement/action-trust.md')));
-  assert.ok(existsSync(join(ws, 'user-data/ops/state/turn/pending-asks.md')));
+  assert.ok(existsSync(join(ws, 'user-data/runtime/state/turn/pending-asks.md')));
 });

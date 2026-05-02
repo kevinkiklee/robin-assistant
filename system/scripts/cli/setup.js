@@ -94,20 +94,20 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     try {
       const m = ensureManifestFromScaffold(workspaceDir, opts.packageRoot);
       if (m.copied) {
-        console.log('postinstall: copied scaffold security manifest → user-data/ops/security/manifest.json');
+        console.log('postinstall: copied scaffold security manifest → user-data/runtime/security/manifest.json');
       }
     } catch (err) {
       console.warn(`postinstall: manifest scaffold copy skipped (${err.message})`);
     }
-    // Refresh user-data/ops/scripts/ from scaffold. Auth/sync/write scripts are
+    // Refresh user-data/runtime/scripts/ from scaffold. Auth/sync/write scripts are
     // templates whose path constants live in source — when migrations relocate
     // user-data layout (e.g. 0021), already-copied scripts retain stale paths
-    // unless we refresh. Only top-level .js files in ops/scripts/ are refreshed;
+    // unless we refresh. Only top-level .js files in runtime/scripts/ are refreshed;
     // user-authored scripts (no scaffold counterpart) and the lib/ subtree pass
     // through. Files Kevin/users add (e.g. reconcile-bh-payboo.js) are preserved.
     try {
-      const scaffoldScripts = join(scaffold, 'ops/scripts');
-      const userScripts = join(ud, 'ops/scripts');
+      const scaffoldScripts = join(scaffold, 'runtime/scripts');
+      const userScripts = join(ud, 'runtime/scripts');
       if (existsSync(scaffoldScripts) && existsSync(userScripts)) {
         let refreshed = 0;
         for (const entry of readdirSync(scaffoldScripts)) {
@@ -141,11 +141,11 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     }
   }
 
-  // Config: prompt or skip. Prefer the post-0021 location; fall back to the
-  // pre-0021 path for users mid-upgrade who haven't run migration 0021 yet.
+  // Config: prompt or skip. Prefer the post-0022 location; fall back to the
+  // pre-0021 path for users mid-upgrade who haven't run migrations yet.
   const isInteractive = !opts.ci && !process.env.CI && process.stdin.isTTY;
   const oldCfgPath = join(ud, 'robin.config.json');
-  const newCfgPath = join(ud, 'ops/config/robin.config.json');
+  const newCfgPath = join(ud, 'runtime/config/robin.config.json');
   const cfgPath = existsSync(newCfgPath) ? newCfgPath : oldCfgPath;
   let cfg = existsSync(cfgPath) ? JSON.parse(readFileSync(cfgPath, 'utf-8')) : {};
 
@@ -160,9 +160,9 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     cfg.assistant.name = (await rl.question('Assistant name (default Robin): ')).trim() || 'Robin';
     rl.close();
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-    console.log('\nConfig saved to user-data/ops/config/robin.config.json.');
+    console.log('\nConfig saved to user-data/runtime/config/robin.config.json.');
   } else {
-    console.log('Non-interactive mode. Edit user-data/ops/config/robin.config.json before first session.');
+    console.log('Non-interactive mode. Edit user-data/runtime/config/robin.config.json before first session.');
   }
 
   // Apply baseline migrations

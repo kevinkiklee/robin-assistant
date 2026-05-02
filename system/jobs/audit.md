@@ -52,7 +52,7 @@ For each finding, record:
 
 ## Phase 3: Write findings
 
-Atomically write a summary to `user-data/ops/state/audit/<YYYY-MM-DD>.md`:
+Atomically write a summary to `user-data/runtime/state/audit/<YYYY-MM-DD>.md`:
 
 ```markdown
 # Audit findings — <date>
@@ -78,11 +78,11 @@ Findings: <C contradictions, R redundancies>
 (Optional list of pairs reviewed with no findings.)
 ```
 
-Use an atomic write: write to `user-data/ops/state/audit/<YYYY-MM-DD>.md.tmp`, then rename to the final path.
+Use an atomic write: write to `user-data/runtime/state/audit/<YYYY-MM-DD>.md.tmp`, then rename to the final path.
 
 ## Phase 4: Surface
 
-Add a one-line summary to `user-data/ops/state/jobs/INDEX.md` with the count of findings and a pointer to the dated audit file. Format:
+Add a one-line summary to `user-data/runtime/state/jobs/INDEX.md` with the count of findings and a pointer to the dated audit file. Format:
 
 ```
 - [<YYYY-MM-DD>] audit: <C> contradictions, <R> redundancies → state/audit/<YYYY-MM-DD>.md

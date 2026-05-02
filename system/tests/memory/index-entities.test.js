@@ -14,7 +14,7 @@ const SCRIPT = join(REPO_ROOT, 'system/scripts/memory/index-entities.js');
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'index-entities-'));
   mkdirSync(join(ws, 'user-data/memory/profile'), { recursive: true });
-  mkdirSync(join(ws, 'user-data/ops/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/runtime/state'), { recursive: true });
   writeFileSync(join(ws, 'user-data/memory/profile/dentist.md'),
     '---\ntype: entity\nallies: []\naliases: [Park]\n---\n# Dr. Park\n');
   return ws;
@@ -35,9 +35,9 @@ describe('index-entities CLI', () => {
   it('--regenerate is idempotent (no-op when content unchanged)', () => {
     const ws = setup();
     run(ws, ['--regenerate']);
-    const stat1 = readFileSync(join(ws, 'user-data/ops/state/cache/entities-hash.txt'), 'utf8');
+    const stat1 = readFileSync(join(ws, 'user-data/runtime/state/cache/entities-hash.txt'), 'utf8');
     run(ws, ['--regenerate']);
-    const stat2 = readFileSync(join(ws, 'user-data/ops/state/cache/entities-hash.txt'), 'utf8');
+    const stat2 = readFileSync(join(ws, 'user-data/runtime/state/cache/entities-hash.txt'), 'utf8');
     assert.equal(stat1, stat2);
   });
 

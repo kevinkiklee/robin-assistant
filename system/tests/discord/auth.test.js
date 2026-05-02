@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isAllowedUser, isAllowedContext } from '../../../user-data/ops/scripts/lib/discord/auth.js';
+import { isAllowedUser, isAllowedContext } from '../../../user-data/runtime/scripts/lib/discord/auth.js';
 
 const allow = { allowedUserIds: ['111', '222'], allowedGuildId: 'g1' };
 

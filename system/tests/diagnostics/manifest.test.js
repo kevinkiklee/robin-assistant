@@ -32,8 +32,8 @@ test('loadManifest: returns null for missing file', () => {
 test('loadManifest: returns null for malformed JSON', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'user-data/ops/security'), { recursive: true });
-    writeFileSync(join(w, 'user-data/ops/security/manifest.json'), 'not json');
+    mkdirSync(join(w, 'user-data/runtime/security'), { recursive: true });
+    writeFileSync(join(w, 'user-data/runtime/security/manifest.json'), 'not json');
     assert.equal(loadManifest(w), null);
   } finally {
     clean(w);
@@ -43,7 +43,7 @@ test('loadManifest: returns null for malformed JSON', () => {
 test('loadManifest: backfills missing v2 fields (cycle-2c forward-compat)', () => {
   const w = ws();
   try {
-    writeJson(join(w, 'user-data/ops/security/manifest.json'), { version: 1, hooks: {}, mcpServers: { expected: [] } });
+    writeJson(join(w, 'user-data/runtime/security/manifest.json'), { version: 1, hooks: {}, mcpServers: { expected: [] } });
     const m = loadManifest(w);
     assert.equal(m.version, 1);
     assert.deepEqual(m.agentsmd, { hardRulesHash: '', lastSnapshot: '' });
@@ -68,14 +68,14 @@ test('writeManifest: round-trips via loadManifest', () => {
 test('ensureManifestFromScaffold: copies scaffold when live missing', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'system/scaffold/ops/security'), { recursive: true });
+    mkdirSync(join(w, 'system/scaffold/runtime/security'), { recursive: true });
     writeFileSync(
-      join(w, 'system/scaffold/ops/security/manifest.json'),
+      join(w, 'system/scaffold/runtime/security/manifest.json'),
       JSON.stringify({ version: 1, hooks: {}, mcpServers: { expected: [], writeCapable: [] } })
     );
     const r = ensureManifestFromScaffold(w);
     assert.equal(r.copied, true);
-    assert.equal(existsSync(join(w, 'user-data/ops/security/manifest.json')), true);
+    assert.equal(existsSync(join(w, 'user-data/runtime/security/manifest.json')), true);
   } finally {
     clean(w);
   }
@@ -84,13 +84,13 @@ test('ensureManifestFromScaffold: copies scaffold when live missing', () => {
 test('ensureManifestFromScaffold: does not overwrite existing live manifest', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'system/scaffold/ops/security'), { recursive: true });
-    writeFileSync(join(w, 'system/scaffold/ops/security/manifest.json'), '{"scaffold": true}');
-    mkdirSync(join(w, 'user-data/ops/security'), { recursive: true });
-    writeFileSync(join(w, 'user-data/ops/security/manifest.json'), '{"live": true}');
+    mkdirSync(join(w, 'system/scaffold/runtime/security'), { recursive: true });
+    writeFileSync(join(w, 'system/scaffold/runtime/security/manifest.json'), '{"scaffold": true}');
+    mkdirSync(join(w, 'user-data/runtime/security'), { recursive: true });
+    writeFileSync(join(w, 'user-data/runtime/security/manifest.json'), '{"live": true}');
     const r = ensureManifestFromScaffold(w);
     assert.equal(r.copied, false);
-    const cur = readFileSync(join(w, 'user-data/ops/security/manifest.json'), 'utf-8');
+    const cur = readFileSync(join(w, 'user-data/runtime/security/manifest.json'), 'utf-8');
     assert.match(cur, /"live": true/);
   } finally {
     clean(w);
@@ -178,7 +178,7 @@ test('emitDrift: writes refusal-log entries for non-info drift', () => {
     }
     assert.match(stderrOut, /TAMPER DRIFT \[severe\]: unexpected-hook/);
 
-    const log = readFileSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log'), 'utf-8');
+    const log = readFileSync(join(w, 'user-data/runtime/state/telemetry/policy-refusals.log'), 'utf-8');
     assert.match(log, /\ttamper\t/);
     assert.equal(log.split('\n').filter(Boolean).length, 2);
   } finally {
@@ -190,7 +190,7 @@ test('emitDrift: empty drift is a no-op', () => {
   const w = ws();
   try {
     emitDrift(w, []);
-    assert.equal(existsSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log')), false);
+    assert.equal(existsSync(join(w, 'user-data/runtime/state/telemetry/policy-refusals.log')), false);
   } finally {
     clean(w);
   }

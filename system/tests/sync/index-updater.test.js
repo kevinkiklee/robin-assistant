@@ -26,25 +26,25 @@ test('updateIndex regenerates user-data/memory/INDEX.md', async () => {
 test('updateIndex acquires the lock and releases on success', async () => {
   const ws = setupWorkspace();
   await updateIndex(ws);
-  assert.ok(!existsSync(join(ws, 'user-data/ops/state/locks/index.lock')));
+  assert.ok(!existsSync(join(ws, 'user-data/runtime/state/locks/index.lock')));
   rmSync(ws, { recursive: true });
 });
 
 test('updateIndex skips cleanly when lock is already held by a live PID', async () => {
   const ws = setupWorkspace();
-  mkdirSync(join(ws, 'user-data/ops/state/locks'), { recursive: true });
-  writeFileSync(join(ws, 'user-data/ops/state/locks/index.lock'), `${process.pid}`);
+  mkdirSync(join(ws, 'user-data/runtime/state/locks'), { recursive: true });
+  writeFileSync(join(ws, 'user-data/runtime/state/locks/index.lock'), `${process.pid}`);
   const result = await updateIndex(ws, { skipIfLocked: true });
   assert.equal(result, 'skipped');
-  const owner = readFileSync(join(ws, 'user-data/ops/state/locks/index.lock'), 'utf-8');
+  const owner = readFileSync(join(ws, 'user-data/runtime/state/locks/index.lock'), 'utf-8');
   assert.equal(owner, `${process.pid}`);
   rmSync(ws, { recursive: true });
 });
 
 test('updateIndex steals a stale lock (PID not running)', async () => {
   const ws = setupWorkspace();
-  mkdirSync(join(ws, 'user-data/ops/state/locks'), { recursive: true });
-  writeFileSync(join(ws, 'user-data/ops/state/locks/index.lock'), '999999');
+  mkdirSync(join(ws, 'user-data/runtime/state/locks'), { recursive: true });
+  writeFileSync(join(ws, 'user-data/runtime/state/locks/index.lock'), '999999');
   const result = await updateIndex(ws);
   assert.equal(result, 'updated');
   rmSync(ws, { recursive: true });

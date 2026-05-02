@@ -40,7 +40,7 @@ Skip non-secret reads (CLAUDE_PATH, TIMEOUT_MS, ROBIN_WORKSPACE, SPOTIFY_AUTH_PO
 
 Grep audit:
 ```sh
-grep -rE "process\.env\.[A-Z_]+(TOKEN|KEY|SECRET|PAT|PASS|REFRESH)" system/ user-data/ops/scripts/
+grep -rE "process\.env\.[A-Z_]+(TOKEN|KEY|SECRET|PAT|PASS|REFRESH)" system/ user-data/runtime/scripts/
 ```
 Should return zero matches outside `secrets.js`.
 
@@ -94,7 +94,7 @@ Append to `security-rules.md`: bash patterns reference, known limitations (encod
 
 ## Step 10 — Acceptance tests
 
-- `s6-supply-chain-postinstall.test.js` — synthetic Bash `cat user-data/ops/secrets/.env` → blocked.
+- `s6-supply-chain-postinstall.test.js` — synthetic Bash `cat user-data/runtime/secrets/.env` → blocked.
 - `s8-jailbreak-cat-env.test.js` — `env | grep TOKEN` → blocked.
 
 ## Step 11 — Run tests + commit

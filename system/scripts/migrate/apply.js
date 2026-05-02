@@ -17,24 +17,29 @@ function resolveMigrationsDir(workspaceDir, opts = {}) {
 // pending. Skips the per-file dynamic import dance ~95% of the time. Only
 // triggers a full scan when migrations directory has changed since the last
 // applied migration was recorded.
-// Resolve the migrations-applied log path. Pre-0021 workspaces store it at
-// user-data/.migrations-applied.json; after 0021 it moves to
-// user-data/ops/state/migrations-applied.json. Read prefers the new path
-// when present; otherwise falls back to the old.
+// Resolve the migrations-applied log path across layouts:
+//   pre-0021:  user-data/.migrations-applied.json
+//   post-0021: user-data/ops/state/migrations-applied.json
+//   post-0022: user-data/runtime/state/migrations-applied.json
+// Read prefers the newest layout present; otherwise falls back.
 function logReadPath(workspaceDir) {
-  const newP = join(workspaceDir, 'user-data/ops/state/migrations-applied.json');
+  const newP = join(workspaceDir, 'user-data/runtime/state/migrations-applied.json');
   if (existsSync(newP)) return newP;
+  const opsP = join(workspaceDir, 'user-data/ops/state/migrations-applied.json');
+  if (existsSync(opsP)) return opsP;
   const oldP = join(workspaceDir, 'user-data/.migrations-applied.json');
   if (existsSync(oldP)) return oldP;
   return newP;
 }
 
-// Where to write the log. Always the new path, except when the old path is
-// present and the new path is absent (pre-0021 in-flight); in that case keep
-// writing to the old path so 0021 can move it cleanly.
+// Where to write the log. Prefer the newest layout that already exists so an
+// in-flight migration can move the log file cleanly; default to the newest
+// path when no log exists yet (fresh installs).
 function logWritePath(workspaceDir) {
-  const newP = join(workspaceDir, 'user-data/ops/state/migrations-applied.json');
+  const newP = join(workspaceDir, 'user-data/runtime/state/migrations-applied.json');
   if (existsSync(newP)) return newP;
+  const opsP = join(workspaceDir, 'user-data/ops/state/migrations-applied.json');
+  if (existsSync(opsP)) return opsP;
   const oldP = join(workspaceDir, 'user-data/.migrations-applied.json');
   if (existsSync(oldP)) return oldP;
   return newP;
@@ -110,8 +115,8 @@ export async function runPendingMigrations(workspaceDir = process.cwd(), opts = 
       throw err;
     }
   }
-  // After migrations run, re-resolve the write path because 0021 may have
-  // moved the log file mid-run.
+  // After migrations run, re-resolve the write path because 0021/0022 may
+  // have moved the log file mid-run.
   const finalLogPath = logWritePath(workspaceDir);
   mkdirSync(dirname(finalLogPath), { recursive: true });
   writeFileSync(finalLogPath, JSON.stringify(log, null, 2) + '\n');

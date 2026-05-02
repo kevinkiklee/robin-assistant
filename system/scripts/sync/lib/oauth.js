@@ -50,11 +50,11 @@ export function getProvider(name) {
 }
 
 // getAccessToken — refreshes via stored refresh_token if needed.
-// State file shape (per-provider): user-data/ops/state/sync/<provider>.json
+// State file shape (per-provider): user-data/runtime/state/sync/<provider>.json
 //   { access_token, access_token_expires_at, ...other fields }
 export async function getAccessToken(workspaceDir, providerName, opts = {}) {
   const provider = getProvider(providerName);
-  // Cycle-2a: read each secret on demand from user-data/ops/secrets/.env without
+  // Cycle-2a: read each secret on demand from user-data/runtime/secrets/.env without
   // polluting process.env. loadSecrets is a no-op shim retained only for
   // unmigrated callers.
   const refreshToken = requireSecret(workspaceDir, provider.refreshTokenEnv);

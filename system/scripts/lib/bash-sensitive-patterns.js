@@ -7,7 +7,7 @@
 export const SENSITIVE_PATTERNS = [
   {
     name: 'secrets-read',
-    pattern: /(?:^|[\s|;&])(?:cat|less|more|head|tail|grep|awk|sed|cp|mv|tar|zip|rsync)\s+[^|;&]*(?:user-data\/(?:ops\/)?secrets\/|\.env\b)/,
+    pattern: /(?:^|[\s|;&])(?:cat|less|more|head|tail|grep|awk|sed|cp|mv|tar|zip|rsync)\s+[^|;&]*(?:user-data\/(?:runtime\/|ops\/)?secrets\/|\.env\b)/,
     why: 'Reads secrets file or .env',
   },
   {

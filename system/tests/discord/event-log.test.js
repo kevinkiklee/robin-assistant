@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createEventLog } from '../../../user-data/ops/scripts/lib/discord/event-log.js';
+import { createEventLog } from '../../../user-data/runtime/scripts/lib/discord/event-log.js';
 
 test('event log: appends one JSON line per event', async () => {
   const root = mkdtempSync(join(tmpdir(), 'robin-evt-'));

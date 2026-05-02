@@ -10,7 +10,7 @@ const ROBIN_ROOT = resolve(__dirname, '../../../');
 const LABEL = 'com.robin.discord-bot';
 const PLIST_PATH = resolve(homedir(), 'Library/LaunchAgents', `${LABEL}.plist`);
 const SCRIPT_PATH = resolve(__dirname, 'discord-bot.js');
-const LOG_DIR = resolve(ROBIN_ROOT, 'user-data/ops/state/services');
+const LOG_DIR = resolve(ROBIN_ROOT, 'user-data/runtime/state/services');
 
 async function findNode() {
   // Use the running node binary's path so this works under launchd's

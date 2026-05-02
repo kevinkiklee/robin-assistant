@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/runtime/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // GitHub write CLI. Single entry point dispatched on --action.
 //
 // Usage examples:
-//   node user-data/ops/scripts/github-write.js --action create-issue \
+//   node user-data/runtime/scripts/github-write.js --action create-issue \
 //     --json '{"repo":"acme/foo","title":"Hello","body":"world","labels":["bug"]}'
 //
-//   node user-data/ops/scripts/github-write.js --action comment \
+//   node user-data/runtime/scripts/github-write.js --action comment \
 //     --json '{"repo":"acme/foo","number":123,"body":"Thanks!"}'
 //
-//   node user-data/ops/scripts/github-write.js --action label \
+//   node user-data/runtime/scripts/github-write.js --action label \
 //     --json '{"repo":"acme/foo","number":123,"labels":["bug","p1"]}'
 //
-//   node user-data/ops/scripts/github-write.js --action mark-read \
+//   node user-data/runtime/scripts/github-write.js --action mark-read \
 //     --json '{"thread_id":"12345"}'
 //
 // All actions write externally-visible state. Per AGENTS.md `Rule: Ask vs Act`,

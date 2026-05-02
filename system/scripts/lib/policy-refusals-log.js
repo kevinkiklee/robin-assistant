@@ -1,4 +1,4 @@
-// Policy refusals log — append-only TSV at user-data/ops/state/telemetry/policy-refusals.log.
+// Policy refusals log — append-only TSV at user-data/runtime/state/telemetry/policy-refusals.log.
 //
 // Used by cycle-1b (outbound policy), cycle-2a (bash hook), cycle-2b (tamper
 // detection), cycle-2c (PII write hook). Each entry has:
@@ -10,14 +10,14 @@
 // reason   - human-readable, <120 chars.
 // content-hash - FNV-1a-64 hex of the refused content (16 chars), or '' for tamper events without content.
 //
-// Rotation at 1MB: oldest log is moved to user-data/ops/state/telemetry/policy-refusals-YYYY-MM.log
+// Rotation at 1MB: oldest log is moved to user-data/runtime/state/telemetry/policy-refusals-YYYY-MM.log
 // keyed by the month of the first entry in the rolled file.
 
 import { readFileSync, writeFileSync, existsSync, statSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const ROTATE_BYTES = 1024 * 1024;  // 1MB
-const LOG_REL = 'user-data/ops/state/telemetry/policy-refusals.log';
+const LOG_REL = 'user-data/runtime/state/telemetry/policy-refusals.log';
 
 function logPath(workspaceDir) {
   return join(workspaceDir, LOG_REL);
@@ -48,7 +48,7 @@ function rotateIfLarge(workspaceDir) {
   } catch {
     monthTag = new Date().toISOString().slice(0, 7);
   }
-  const archive = join(workspaceDir, `user-data/ops/state/telemetry/policy-refusals-${monthTag}.log`);
+  const archive = join(workspaceDir, `user-data/runtime/state/telemetry/policy-refusals-${monthTag}.log`);
   if (existsSync(archive)) {
     // Append to existing archive instead of overwriting.
     const existing = readFileSync(p, 'utf-8');

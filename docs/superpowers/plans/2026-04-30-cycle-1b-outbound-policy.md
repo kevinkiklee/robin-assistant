@@ -17,7 +17,7 @@ Test: `system/tests/security/policy-refusals-log.test.js`.
 Sentence-hash index helpers:
 - `splitSentences(text)` — split on `.!?\n\s*\n\n\s*[-*]\s\|`. Drop sentences <20 chars after trim.
 - `fnv1a64(s)` — hash function.
-- `loadOrRefreshIndex(workspaceDir)` — read `user-data/ops/state/cache/untrusted-index.json`. Stat all source files; if any newer than recorded mtime, rebuild that source's entry. Returns `{ sources: { path: {mtime, hashes[]} } }`.
+- `loadOrRefreshIndex(workspaceDir)` — read `user-data/runtime/state/cache/untrusted-index.json`. Stat all source files; if any newer than recorded mtime, rebuild that source's entry. Returns `{ sources: { path: {mtime, hashes[]} } }`.
 - `updateIndexForFile(workspaceDir, relPath, content)` — wired into `atomicWrite` when `opts.trust === 'untrusted'`. Re-extracts sentences (post-frontmatter, post-marker stripping), hashes, replaces source entry.
 
 Test: `system/tests/security/untrusted-index.test.js`.
@@ -46,7 +46,7 @@ Tests: `outbound-policy-{taint,secrets,target,cache}.test.js`.
 ## Step 4 — `system/scripts/lib/github-allowlist.js`
 
 GitHub repo list cache:
-- `loadGithubAllowlist(workspaceDir)` — read cache; if expired (1h TTL) or missing, fetch `/user/repos?per_page=100&affiliation=owner,collaborator,organization_member`, paginate via `Link: ... rel="next"`. Cache to `user-data/ops/state/cache/github-allowlist-cache.json`.
+- `loadGithubAllowlist(workspaceDir)` — read cache; if expired (1h TTL) or missing, fetch `/user/repos?per_page=100&affiliation=owner,collaborator,organization_member`, paginate via `Link: ... rel="next"`. Cache to `user-data/runtime/state/cache/github-allowlist-cache.json`.
 - `invalidateGithubAllowlist(workspaceDir)` — delete cache file. Called on 401/403.
 
 ## Step 5 — Wire into sync writers
@@ -60,7 +60,7 @@ For `system/skeleton/scripts/{github-write,spotify-write,discord-bot}.js`:
 - **github-write.js / spotify-write.js**: wrap outbound HTTP. On `OutboundPolicyError`, append refusal log + `process.exit(11)`.
 - **discord-bot.js**: wrap subprocess output reply. On error, replace content with `(declined to send full reply: outbound policy layer N — <reason>)`. Don't exit (long-lived process).
 
-Note: `github-write.js`, `spotify-write.js`, `discord-bot.js` live in `user-data/ops/scripts/` per integrations.md (Kevin's instance). For the package, wire the equivalent skeleton files in `system/skeleton/scripts/`.
+Note: `github-write.js`, `spotify-write.js`, `discord-bot.js` live in `user-data/runtime/scripts/` per integrations.md (Kevin's instance). For the package, wire the equivalent skeleton files in `system/skeleton/scripts/`.
 
 ## Step 7 — Create `system/rules/security.md`
 

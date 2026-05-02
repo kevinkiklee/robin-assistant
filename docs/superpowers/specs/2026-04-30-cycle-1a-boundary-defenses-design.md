@@ -333,7 +333,7 @@ Pre-filter writes one row per quarantined line. `content` column paraphrases (do
 
 > **Quarantine review.** If `user-data/memory/quarantine/captures.md` has new entries since the previous morning briefing, list them in a "Security: quarantined captures" section. Each entry: timestamp, origin, paraphrased content. Ask Kevin whether to (a) route to permanent memory anyway (override), (b) keep quarantined as evidence, or (c) delete.
 
-Track "previous morning briefing" via a cursor in `user-data/ops/state/quarantine-cursor.json`.
+Track "previous morning briefing" via a cursor in `user-data/runtime/state/quarantine-cursor.json`.
 
 ### 7.3 Manual override
 

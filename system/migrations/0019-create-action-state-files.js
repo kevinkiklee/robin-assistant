@@ -14,19 +14,20 @@ export const description =
 
 const SCAFFOLD_DIR = join(dirname(fileURLToPath(import.meta.url)), '../scaffold');
 
-// Sources and destinations both use the post-0021 layout. On a fresh install,
-// 0019 writes directly to ops/* paths; when 0021 runs afterward, its
-// existsSync(src) checks at the pre-0021 paths fail and 0021 no-ops gracefully
+// Sources match the current scaffold layout (post-0022: runtime/).
+// Destinations use the post-0022 user-data layout. On a fresh install, 0019
+// writes directly to runtime/* paths; when 0021 and 0022 run afterward, their
+// existsSync(src) checks at the prior paths fail and they no-op gracefully
 // for these files. On older installs that already ran 0019 at pre-0021
-// destinations, 0019 is recorded applied and doesn't re-run; 0021 then moves
-// the pre-0021 files to the new layout in the normal way.
+// destinations, 0019 is recorded applied and doesn't re-run; 0021 + 0022
+// then move the pre-0021 files to the new layout in the normal way.
 const TARGETS = [
-  { src: 'ops/config/policies.md', dst: 'user-data/ops/config/policies.md' },
+  { src: 'runtime/config/policies.md', dst: 'user-data/runtime/config/policies.md' },
   {
     src: 'memory/self-improvement/action-trust.md',
     dst: 'user-data/memory/self-improvement/action-trust.md',
   },
-  { src: 'ops/state/turn/pending-asks.md', dst: 'user-data/ops/state/turn/pending-asks.md' },
+  { src: 'runtime/state/turn/pending-asks.md', dst: 'user-data/runtime/state/turn/pending-asks.md' },
 ];
 
 export async function up({ workspaceDir }) {

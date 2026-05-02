@@ -19,11 +19,11 @@ Two passes: **memory management** (route, promote, prune facts) and **self-impro
 
 Dream runs in two ways:
 - **Scheduled** (the common case) — daily at 04:00 local via the job system. The runner handles locking, catch-up after missed runs, telemetry, and failure surfacing. You never check eligibility or manage `dream.lock` yourself.
-- **Trigger phrase** ("dream", "memory check", "daily maintenance") — runs in-session. Acquire `user-data/ops/state/jobs/locks/dream.lock` via `robin job acquire dream` before starting; release with `robin job release dream` when done. If acquire returns non-zero, a scheduled run is in progress — skip cleanly.
+- **Trigger phrase** ("dream", "memory check", "daily maintenance") — runs in-session. Acquire `user-data/runtime/state/jobs/locks/dream.lock` via `robin job acquire dream` before starting; release with `robin job release dream` when done. If acquire returns non-zero, a scheduled run is in progress — skip cleanly.
 
 ## Pre-flight
 
-Read `user-data/ops/state/jobs/failures.md`. If any active FATAL entry is present, skip this Dream run and append a one-line note to `user-data/ops/state/dream-state.md` explaining why it was skipped. INFO/WARN entries get included in your one-line summary at the end of the run.
+Read `user-data/runtime/state/jobs/failures.md`. If any active FATAL entry is present, skip this Dream run and append a one-line note to `user-data/runtime/state/dream-state.md` explaining why it was skipped. INFO/WARN entries get included in your one-line summary at the end of the run.
 
 ## Phase 0: Auto-memory migration (auto-run)
 
@@ -31,7 +31,7 @@ Per the **Local Memory** rule, persistent memory lives in `user-data/`. Some hos
 
 The `migrate-auto-memory` node-runtime job (`system/jobs/migrate-auto-memory.md`) drains these directories every hour. By the time Dream runs, anything that needs migrating is already in `user-data/memory/streams/inbox.md` with a `(migrated from <host> auto-memory: <file>)` provenance suffix. Phase 2 routes those entries like any other inbox content.
 
-You don't need to invoke the migration script. If `user-data/ops/state/jobs/migrate-auto-memory.json` shows the job hasn't run recently or its status is `error`, mention it in your one-line summary.
+You don't need to invoke the migration script. If `user-data/runtime/state/jobs/migrate-auto-memory.json` shows the job hasn't run recently or its status is `error`, mention it in your one-line summary.
 
 ## Phase 0.5: Pre-filter inbox (security)
 
@@ -45,7 +45,7 @@ Confirm exit code 0. The script moves quarantined lines to `user-data/memory/qua
 
 ## Phase X: Pattern TTL maintenance (cycle-2c)
 
-After memory routing and self-improvement passes, run the pattern lifecycle pass. This processes the per-pattern firings recorded by the model in `user-data/ops/state/pattern-firings.log` and archives stale patterns:
+After memory routing and self-improvement passes, run the pattern lifecycle pass. This processes the per-pattern firings recorded by the model in `user-data/runtime/state/pattern-firings.log` and archives stale patterns:
 
 ```sh
 node -e "import('./system/scripts/memory/lib/pattern-ttl.js').then(m => console.log(m.processPatternTTL(process.cwd())))"
@@ -62,7 +62,7 @@ Append a summary line to journal: `Dream: archived N patterns, updated M last_fi
 **Pattern firing convention (model-instruction)**: when applying a learned pattern (recognizing its signal, executing its counter-action), append one line to `pattern-firings.log` via Bash:
 
 ```sh
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/ops/state/pattern-firings.log
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/runtime/state/pattern-firings.log
 ```
 
 This idiom is a single Bash call, not blocked by cycle-2a's sensitive-pattern hook. Skipping the append is not a security violation but causes the pattern to drift toward TTL archive.
@@ -70,12 +70,12 @@ This idiom is a single Bash call, not blocked by cycle-2a's sensitive-pattern ho
 ## Phase 1: Scan
 
 Read these files:
-- `user-data/ops/state/dream-state.md` (for `last_dream_at` timestamp)
+- `user-data/runtime/state/dream-state.md` (for `last_dream_at` timestamp)
 - `user-data/memory/streams/journal.md` — entries dated after `last_dream_at`
 - `user-data/memory/streams/inbox.md` — all unprocessed entries
 - `user-data/memory/tasks.md` — completed or stale items
 - `user-data/memory/self-improvement/` — corrections.md, predictions.md, action-trust.md, learning-queue.md, session-handoff.md, communication-style.md, domain-confidence.md, calibration.md, preferences.md (each maintained in its own file)
-- `user-data/ops/config/policies.md` — explicit per-action-class policy (read for cross-reference with action-trust outcomes)
+- `user-data/runtime/config/policies.md` — explicit per-action-class policy (read for cross-reference with action-trust outcomes)
 - `user-data/memory/streams/decisions.md` — decisions older than 30 days with no recorded outcome
 - `user-data/memory/hot.md` — recent session context (helps with routing accuracy)
 - `user-data/memory/streams/log.md` — recent operations (know what was ingested/linted recently)
@@ -119,7 +119,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. Prediction accuracy is owned by `outcome-check` (when enabled) — Dream does not recompute it. If `predictions.md` has resolved entries newer than the last `outcome-check` run, include "N resolved predictions awaiting rollup" in the summary.
 
-11.5. **Recall telemetry review.** Read entries from `user-data/ops/state/recall.log` since `last_dream_at`. Surface in escalation report:
+11.5. **Recall telemetry review.** Read entries from `user-data/runtime/state/recall.log` since `last_dream_at`. Surface in escalation report:
    - Auto-recall avg injection bytes; flag if trend is rising >2× compared to prior period.
    - Frequently-matched entities that route to nothing → suggest creating a topic file.
    - Aliases skipped due to missing disambiguator → list for backfill.
@@ -138,7 +138,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 Runs after all other phases. Maintains the memory tree structure.
 
-13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/memory/lib/memory-index.js` with the threshold from `user-data/ops/config/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range).
+13. **Threshold splitting** — walk the memory tree. For each topic file under `profile/`, `knowledge/`, or `events/`, run `planSplit` from `system/scripts/memory/lib/memory-index.js` with the threshold from `user-data/runtime/config/robin.config.json` (`memory.split_threshold_lines`, default 200). For any file with a non-null plan: write the children to `<parent-dir>/<parent-stem>/<slug>.md`, delete the parent file, then run a memory-tree-wide search-and-replace updating inbound markdown links from the old path to each child. **Exempt files** (never split): `decisions.md`, `journal.md`, `log.md` (append-only logs read by date range).
 
 14. **Empty-file cleanup** — any topic file that is empty (frontmatter only or no content) is deleted. Any topic folder that ends up empty is removed.
 
@@ -148,13 +148,13 @@ Runs after all other phases. Maintains the memory tree structure.
 
 17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/memory/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
 
-17.5. **Compact-summary regeneration** — run the helper from `system/scripts/capture/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/ops/config/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
+17.5. **Compact-summary regeneration** — run the helper from `system/scripts/capture/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/runtime/config/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
 
 17.6. **ENTITIES.md regeneration.** Run `node system/scripts/memory/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
 
 17.7. **Telemetry log rotation.** Cap each file to its limit:
-   - `user-data/ops/state/recall.log` → 5000 lines
-   - `user-data/ops/state/hook-perf.log` → 1000 lines
+   - `user-data/runtime/state/recall.log` → 5000 lines
+   - `user-data/runtime/state/hook-perf.log` → 1000 lines
 
    Use `node -e "import('./system/scripts/diagnostics/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for recall.log, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
 
@@ -168,13 +168,13 @@ Dream maintains `user-data/memory/INDEX.md` via `regenerate-memory-index.js` (Ph
 
 Dream maintains `user-data/memory/LINKS.md` via `regenerate-links.js` when structural changes occurred (Phase 4 step 17).
 
-Dream maintains the compact-summary block inside `user-data/ops/config/policies.md` via `regenerateCompactSummary` (Phase 4 step 17.5). The bullet body is user-edited; Dream only rewrites the delimited block.
+Dream maintains the compact-summary block inside `user-data/runtime/config/policies.md` via `regenerateCompactSummary` (Phase 4 step 17.5). The bullet body is user-edited; Dream only rewrites the delimited block.
 
 Dream trims `user-data/memory/hot.md` to a rolling window of 3 sessions (Phase 4 step 16).
 
 Lock management is handled by the runner (scheduled invocation) or the `robin job acquire/release dream` wrappers (trigger-phrase invocation). Dream NEVER edits other lock files.
 
-Dream NEVER edits: `AGENTS.md`, `system/jobs/`, `user-data/ops/config/integrations.md`, `system/rules/startup.md`, `system/rules/capture.md`, `user-data/ops/config/robin.config.json`.
+Dream NEVER edits: `AGENTS.md`, `system/jobs/`, `user-data/runtime/config/integrations.md`, `system/rules/startup.md`, `system/rules/capture.md`, `user-data/runtime/config/robin.config.json`.
 
 Dream NEVER runs external commands or makes network requests.
 
@@ -186,10 +186,10 @@ One-line summary written to stdout: "Dreamt: pruned N tasks, routed M from inbox
 
 ### Escalation report
 
-Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, preference contradictions, calibration drift, sycophancy signals, or errors. Append to `user-data/ops/state/jobs/failures.md` under the active failures section, OR for in-session invocation, present under a `## Needs your input` heading. Neutral, factual tone.
+Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, preference contradictions, calibration drift, sycophancy signals, or errors. Append to `user-data/runtime/state/jobs/failures.md` under the active failures section, OR for in-session invocation, present under a `## Needs your input` heading. Neutral, factual tone.
 
 ## Failure modes
 
 - Lock held by another runner → exit 0 cleanly (the runner already records "skipped:locked" telemetry).
 - Error mid-phase → exit non-zero with the error line as the last stderr line; the runner categorizes and surfaces.
-- If `user-data/ops/state/dream-state.md` is corrupted → recreate baseline, log to runner.log, exit 0.
+- If `user-data/runtime/state/dream-state.md` is corrupted → recreate baseline, log to runner.log, exit 0.

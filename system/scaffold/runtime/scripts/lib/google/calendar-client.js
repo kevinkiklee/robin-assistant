@@ -1,4 +1,4 @@
-// Template — auto-copied to user-data/ops/scripts/lib/google/ by scaffold-sync.
+// Template — auto-copied to user-data/runtime/scripts/lib/google/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 
 import { fetchJson, AuthError } from '../../../../system/scripts/sync/lib/http.js';

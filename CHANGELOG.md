@@ -36,7 +36,7 @@ New orchestrator at `system/scripts/memory/densify-wiki.js` runs four passes:
 3. **Pass 3 — `related:` heuristic** (`memory/lib/related-heuristic.js`). Mechanical: builds a per-file entity-mention matrix, generates cross-directory pairs with sub-tree dampening (same-parent excluded), drops the top 5% most-mentioned slugs as super-hubs, applies a 3-shared-entity threshold, picks top-K=5 outbound per file with symmetric back-edges (≤10 total). Hand-curated `related:` entries are preserved on re-run.
 4. **Pass 4 — index regen.** Subprocess `index-entities.js --regenerate`; in-process `writeLinksIndex` and `writeMemoryIndex`.
 
-Wrapped in pre-flight `npm run backup`, `wiki-densify` lock at `<workspaceDir>/.locks/wiki-densify.lock` (with stale-PID + 5-min mtime sweep), pass-level resume markers at `user-data/ops/state/densify-wiki/.pass-N-{done,failed}`, and a tiered sentinel cap (250 first-run / 50 ongoing). Output: dated markdown report + `summary.json` companion at `user-data/ops/state/densify-wiki/<YYYY-MM-DD>.{md,json}`.
+Wrapped in pre-flight `npm run backup`, `wiki-densify` lock at `<workspaceDir>/.locks/wiki-densify.lock` (with stale-PID + 5-min mtime sweep), pass-level resume markers at `user-data/runtime/state/densify-wiki/.pass-N-{done,failed}`, and a tiered sentinel cap (250 first-run / 50 ongoing). Output: dated markdown report + `summary.json` companion at `user-data/runtime/state/densify-wiki/<YYYY-MM-DD>.{md,json}`.
 
 Three new lint checks added to `system/scripts/memory/lint.js`:
 - **`missing-aliases`** — entity-shaped page has no `aliases:` declared.
@@ -64,7 +64,7 @@ when a substantive turn finished without writing to `user-data/memory/`.
 Model must either write a tagged line to `inbox.md` (or direct-write a
 file) OR emit a `<!-- no-capture-needed: <reason> -->` marker. Bounded
 retry (default 1). Per-turn write-intent recorded by PreToolUse to
-`user-data/ops/state/telemetry/turn-writes.log`. Tier classifier
+`user-data/runtime/state/telemetry/turn-writes.log`. Tier classifier
 (`lib/capture-keyword-scan.js`) decides enforcement strictness from
 user-message word count, capture keywords, and entity matches. Disable via
 `ROBIN_CAPTURE_ENFORCEMENT=off` or `memory.capture_enforcement.enabled =
@@ -82,10 +82,10 @@ subcommand for ad-hoc lookup. Incremental ENTITIES.md refresh runs
 inline if any entity-bearing file is newer than the index.
 
 **Telemetry.** Three new logs surface in Dream Phase 3.11.5:
-- `user-data/ops/state/telemetry/capture-enforcement.log` — outcomes per turn
+- `user-data/runtime/state/telemetry/capture-enforcement.log` — outcomes per turn
   (skipped-trivial, captured, marker-pass, retried, retried-failed)
-- `user-data/ops/state/recall.log` — entities matched, hits injected, bytes
-- `user-data/ops/state/hook-perf.log` — slow-path warnings (UserPromptSubmit
+- `user-data/runtime/state/recall.log` — entities matched, hits injected, bytes
+- `user-data/runtime/state/hook-perf.log` — slow-path warnings (UserPromptSubmit
   >80ms target)
 
 Dream Phase 4.17.6 regenerates ENTITIES.md daily; 4.17.7 caps log files.
@@ -118,7 +118,7 @@ Five sequenced security cycles closing 28 of 42 audit gaps directly,
   ingress + origin attribution.
 - **cycle-1b** (outbound write policy): `outbound-policy.js` with
   three layers — sentence-hash taint check against
-  `user-data/ops/state/cache/untrusted-index.json` haystack, sensitive-shape
+  `user-data/runtime/state/cache/untrusted-index.json` haystack, sensitive-shape
   detection (PII patterns + `process.env` value substring scan),
   credential-derived target allowlist for github/spotify/discord. Wired
   into github-write, spotify-write, discord-bot reply path.
@@ -126,21 +126,21 @@ Five sequenced security cycles closing 28 of 42 audit gaps directly,
   refusal-log substrate. New `system/rules/security.md` Tier-2 reference.
 - **cycle-2a** (secrets containment + bash policy): `secrets.js`
   rewritten — `requireSecret(workspaceDir, key)` reads
-  `user-data/ops/secrets/.env` per call without polluting `process.env`;
+  `user-data/runtime/secrets/.env` per call without polluting `process.env`;
   `loadSecrets` becomes a no-op shim. `safe-env.js:safeEnv()` builds
   explicit minimal env for spawn sites. Discord-bot deletes secret
   keys from `process.env` after `dotenv.config`. `bash-sensitive-patterns.js`
   + `claude-code-hook.js --on-pre-bash` hook the Bash tool with six
   rules (secrets-read, env-dump, destructive-rm, low-level-fs,
   git-expose-userdata, eval-injection); fail-closed on hook errors.
-- **cycle-2b** (tamper detection): `user-data/ops/security/manifest.json`
+- **cycle-2b** (tamper detection): `user-data/runtime/security/manifest.json`
   v2 baseline; `check-manifest.js` runs on SessionStart; severe drift
   surfaces in stderr (≤5 entries; collapses beyond), all non-info
   drift logs `kind=tamper`. `manifest-snapshot.js` for first-deploy
   bootstrap (`--apply --confirm-trust-current-state`).
 - **cycle-2c** (rule backstops + lifecycle): PreToolUse hook gains PII
   scan on writes to `user-data/memory/` (block-and-explain) plus
-  high-stakes destination audit to `user-data/ops/state/telemetry/high-stakes-writes.log`.
+  high-stakes destination audit to `user-data/runtime/state/telemetry/high-stakes-writes.log`.
   Manifest schema v2 adds `agentsmd.hardRulesHash` + `userDataJobs.knownFiles`.
   `pattern-ttl.js` runs a 180-day TTL pass in Dream's Phase X, fed by
   `pattern-firings.log` written by the model via Bash echo.
@@ -153,7 +153,7 @@ Hotfixes shipped during the audit cycle:
 Net code: ~8540 line additions across 7 commits. 18 new test files;
 734/734 tests passing. Token-budget caps bumped: AGENTS.md 80→90,
 per_protocol 3700→4200, tier1 7800→8400. Skeleton scripts mirrored
-into user-data/ops/scripts/ so the live discord-bot picks up cycle-2a's
+into user-data/runtime/scripts/ so the live discord-bot picks up cycle-2a's
 secrets-containment defenses on next restart.
 
 Specs at `docs/superpowers/specs/2026-04-30-cycle-{1a,1b,2a,2b,2c}-*-design.md`;
@@ -264,14 +264,14 @@ checks: staleness (`last_verified` past decay threshold) and redundancy
 pairing via `LINKS.md` + same-sub-tree, recency-prioritized, max 20
 pairs/run). New `audit.md` job (weekly Sunday 11 AM, disabled): LLM-pass
 surfaces contradictions and redundancies; minimal context (skip Tier 1
-personalization); output to `user-data/ops/state/audit/<YYYY-MM-DD>.md`;
+personalization); output to `user-data/runtime/state/audit/<YYYY-MM-DD>.md`;
 never auto-edits. system-maintenance gains an audit-findings-review
 step. Test corpus at `system/tests/fixtures/audit/`.
 
 **W1 — Watch-a-topic (Phase 1).** Proactive capability — Robin follows
 topics on the user's behalf. `user-data/memory/watches/<id>.md` per
 watch (frontmatter-driven). Per-watch dedup state in
-`user-data/ops/state/watches/<id>.json` (last 50 fingerprints).
+`user-data/runtime/state/watches/<id>.json` (last 50 fingerprints).
 `system/scripts/watches/lib/watches.js` (slugify, paths, list, state I/O).
 Migration 0018 scaffolds the sub-tree. Full CLI surface:
 `robin watch add/list/enable/disable/tail/run`. New `watch-topics.md`
@@ -395,21 +395,21 @@ Calendar and Gmail writes use Claude Code's native MCPs in-session per the spec 
 
 ```sh
 # Calendar + Gmail (one auth covers both)
-node user-data/ops/scripts/auth-google.js
-node user-data/ops/scripts/sync-calendar.js --bootstrap
+node user-data/runtime/scripts/auth-google.js
+node user-data/runtime/scripts/sync-calendar.js --bootstrap
 node bin/robin.js jobs enable sync-calendar
-node user-data/ops/scripts/sync-gmail.js --bootstrap
+node user-data/runtime/scripts/sync-gmail.js --bootstrap
 node bin/robin.js jobs enable sync-gmail
 
 # GitHub
-# (paste GITHUB_PAT into user-data/ops/secrets/.env)
-node user-data/ops/scripts/auth-github.js
-node user-data/ops/scripts/sync-github.js --bootstrap
+# (paste GITHUB_PAT into user-data/runtime/secrets/.env)
+node user-data/runtime/scripts/auth-github.js
+node user-data/runtime/scripts/sync-github.js --bootstrap
 node bin/robin.js jobs enable sync-github
 
 # Spotify
-node user-data/ops/scripts/auth-spotify.js
-node user-data/ops/scripts/sync-spotify.js --bootstrap
+node user-data/runtime/scripts/auth-spotify.js
+node user-data/runtime/scripts/sync-spotify.js --bootstrap
 node bin/robin.js jobs enable sync-spotify
 ```
 
@@ -421,7 +421,7 @@ First step toward a hybrid sync/MCP integration system. Establishes the shared i
 
 Six small, focused modules — each independently tested:
 - `secrets.js` — `loadSecrets`, `requireSecret`, atomic `saveSecret` (preserves comments, supports rotating refresh tokens).
-- `cursor.js` — per-source state files at `user-data/ops/state/sync/<name>.json` with shallow-merge `saveCursor`.
+- `cursor.js` — per-source state files at `user-data/runtime/state/sync/<name>.json` with shallow-merge `saveCursor`.
 - `redact.js` — privacy patterns (US SSN, Canadian SIN, Luhn-checked credit cards, OpenAI/GitHub/Slack/AWS API keys, URL credentials).
 - `http.js` — `fetchJson` with exponential backoff on 429/5xx and a typed `AuthError` that bails on 401/403.
 - `markdown.js` — `atomicWrite` (redaction-aware via tmp+rename), `openItem` (lazy fetch), `writeTable`.
@@ -429,14 +429,14 @@ Six small, focused modules — each independently tested:
 
 #### Per-user integration convention
 
-Integration code now lives in `user-data/ops/scripts/`, not `system/`. Each user can add an integration by dropping `user-data/ops/jobs/<name>.md` + `user-data/ops/scripts/<name>.js` and importing from `system/scripts/sync/lib/`. No `system/` changes required. Canonical templates ship from `system/skeleton/scripts/` and auto-copy into `user-data/` on first run via the existing skeleton-sync.
+Integration code now lives in `user-data/runtime/scripts/`, not `system/`. Each user can add an integration by dropping `user-data/runtime/jobs/<name>.md` + `user-data/runtime/scripts/<name>.js` and importing from `system/scripts/sync/lib/`. No `system/` changes required. Canonical templates ship from `system/skeleton/scripts/` and auto-copy into `user-data/` on first run via the existing skeleton-sync.
 
 #### Lunch Money migration
 
-- Code relocated: `system/scripts/fetch-lunch-money.js` → `user-data/ops/scripts/sync-lunch-money.js`.
-- Lib relocated: `lunch-money-client.js` and `finance-writer.js` → `user-data/ops/scripts/lib/lunch-money/`.
-- Job renamed: `fetch-finances` → `sync-lunch-money`. New `command: node user-data/ops/scripts/sync-lunch-money.js`.
-- Migration `0007-rename-fetch-finances.js` handles the rename and converts the old state file shape (`user-data/ops/state/lunch-money-sync.json` → `user-data/ops/state/sync/lunch-money.json`) idempotently.
+- Code relocated: `system/scripts/fetch-lunch-money.js` → `user-data/runtime/scripts/sync-lunch-money.js`.
+- Lib relocated: `lunch-money-client.js` and `finance-writer.js` → `user-data/runtime/scripts/lib/lunch-money/`.
+- Job renamed: `fetch-finances` → `sync-lunch-money`. New `command: node user-data/runtime/scripts/sync-lunch-money.js`.
+- Migration `0007-rename-fetch-finances.js` handles the rename and converts the old state file shape (`user-data/runtime/state/lunch-money-sync.json` → `user-data/runtime/state/sync/lunch-money.json`) idempotently.
 - Legacy launchd wrapper `system/scripts/run-fetch-finances.sh` deleted (the unified job runner replaces it).
 - npm script renamed: `npm run fetch-finances` → `npm run sync-lunch-money`.
 
@@ -454,7 +454,7 @@ After an independent code review of the Phase 1 work, six follow-up fixes landed
 - **`loadCursor` robust to corrupt JSON** — a truncated state file (from a prior crash) would crash every subsequent sync. Now detected, quarantined as `<path>.corrupt-<timestamp>`, and a fresh start returned. The 7-day overlap window means we don't lose data.
 - **Migration 0007 quarantines corrupt state** — was previously logging and bailing but leaving the bad file in place, causing the migration framework to retry forever. Now renames the bad file aside on parse failure.
 - **Redact: tighter SIN, type check** — SIN regex was matching any 3-3-3 digit grouping (false positives on phone numbers like `416-555-9876` and Lunch Money payee IDs). Now requires Luhn validity. Also throws `TypeError` on non-string input so a `Buffer` write doesn't silently skip redaction.
-- **Sync script lock** — direct invocation (`node user-data/ops/scripts/sync-lunch-money.js`) bypassed the unified runner's lock. A manual run during a cron-fired sync would double-fetch and race on cursor writes. Now acquires the same per-job lock the runner uses; if held by another live process, exits cleanly with a "lock held" message.
+- **Sync script lock** — direct invocation (`node user-data/runtime/scripts/sync-lunch-money.js`) bypassed the unified runner's lock. A manual run during a cron-fired sync would double-fetch and race on cursor writes. Now acquires the same per-job lock the runner uses; if held by another live process, exits cleanly with a "lock held" message.
 
 #### Spec & plan
 
@@ -486,10 +486,10 @@ Replaces the ad-hoc mix of `system/operations/` (LLM protocols invoked at sessio
 - Native OS notifications, debounced on (job, category) status transitions; global 6h debounce for `auth_expired` since one expired token affects every agent-runtime job.
 
 ### Telemetry (token-optimized for agent consumption)
-- `user-data/ops/state/jobs/INDEX.md` — auto-regenerated jobs dashboard, ~500 tokens.
-- `user-data/ops/state/jobs/upcoming.md` — 7-day forward calendar.
-- `user-data/ops/state/jobs/failures.md` — per-job grouped (O(jobs) not O(events)), active + resolved sections.
-- `user-data/ops/state/jobs/<name>.json` — per-job structured state.
+- `user-data/runtime/state/jobs/INDEX.md` — auto-regenerated jobs dashboard, ~500 tokens.
+- `user-data/runtime/state/jobs/upcoming.md` — 7-day forward calendar.
+- `user-data/runtime/state/jobs/failures.md` — per-job grouped (O(jobs) not O(events)), active + resolved sections.
+- `user-data/runtime/state/jobs/<name>.json` — per-job structured state.
 - All writes content-addressed (skip if unchanged), atomic via tmp + rename.
 - Logs split: full subprocess log, runner.log (~10 lines of decisions), summary.log (last 50 non-empty lines + exit code) — agent reads the small ones by default.
 
@@ -501,13 +501,13 @@ Replaces the ad-hoc mix of `system/operations/` (LLM protocols invoked at sessio
 
 ### No user intervention after init
 - Postinstall hook installs scheduler entries for all enabled jobs.
-- Adding a job: drop a markdown file in `user-data/ops/jobs/`. Live within 6h, no install command.
+- Adding a job: drop a markdown file in `user-data/runtime/jobs/`. Live within 6h, no install command.
 - Removing a job: delete the file. Entry pruned within 6h.
 - Failure: native OS notification fires; agent surfaces failures.md at next session start.
 
 ### Migrations
 - `0005-job-system.js` — moves `system/operations/*.md` to `system/jobs/*.md` with added frontmatter (runtime, schedule, enabled defaults), removes legacy `system/launchd/` template, updates AGENTS.md and manifest.md references.
-- `0006-fetch-finances-job.js` — converts the legacy fetch-finances launchd setup into a `user-data/ops/jobs/fetch-finances.md` job def.
+- `0006-fetch-finances-job.js` — converts the legacy fetch-finances launchd setup into a `user-data/runtime/jobs/fetch-finances.md` job def.
 
 ### Out of scope (v2 candidates)
 - Programmable `shouldRun(now)` gates per job (e.g., NHL game-day-only).

@@ -12,19 +12,19 @@ The user may run multiple AI sessions concurrently. This protocol prevents data 
 
 ## Triggers
 
-- Automatic on every session start (register in `user-data/ops/state/sessions.md`)
+- Automatic on every session start (register in `user-data/runtime/state/sessions.md`)
 - Automatic before editing pillar files (acquire lock)
 - "list active sessions", "who else is running", "session status"
 
 ## Session ID format
 
-`<platform>-<timestamp>` — e.g., `claude-code-20260426T090000Z`. Read the platform from `user-data/ops/config/integrations.md` or `user-data/ops/config/robin.config.json`.
+`<platform>-<timestamp>` — e.g., `claude-code-20260426T090000Z`. Read the platform from `user-data/runtime/config/integrations.md` or `user-data/runtime/config/robin.config.json`.
 
 ## Session lifecycle
 
 ### On startup
 
-1. Read `user-data/ops/state/sessions.md`.
+1. Read `user-data/runtime/state/sessions.md`.
 2. Remove entries with "Last active" older than 2 hours (stale).
 3. Append a new row: your session ID, platform, start time, last active = now.
 4. If other active entries exist, tell the user.
@@ -35,7 +35,7 @@ Update your "Last active" timestamp periodically (~every 10 file operations or b
 
 ### On session end
 
-Best effort: remove your row from `user-data/ops/state/sessions.md`.
+Best effort: remove your row from `user-data/runtime/state/sessions.md`.
 
 ## File categories
 
@@ -49,11 +49,11 @@ Best effort: remove your row from `user-data/ops/state/sessions.md`.
 
 To edit a pillar or mixed-use file:
 
-1. Check if `user-data/ops/state/locks/<filename>.lock` exists.
+1. Check if `user-data/runtime/state/locks/<filename>.lock` exists.
 2. If it exists, read it:
    - Timestamp < 5 minutes old -> lock is held. Tell the user: "Another session is editing <file>. Wait or work on something else?"
    - Timestamp > 5 minutes old -> stale lock. Delete the file and proceed.
-3. If no lock exists, create `user-data/ops/state/locks/<filename>.lock`:
+3. If no lock exists, create `user-data/runtime/state/locks/<filename>.lock`:
    ```
    session: <your-session-id>
    acquired: <ISO-8601-timestamp>

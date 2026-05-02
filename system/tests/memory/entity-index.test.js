@@ -17,7 +17,7 @@ function setup() {
   const mem = join(ws, 'user-data/memory');
   mkdirSync(join(mem, 'profile'), { recursive: true });
   mkdirSync(join(mem, 'knowledge/finance'), { recursive: true });
-  mkdirSync(join(ws, 'user-data/ops/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/runtime/state'), { recursive: true });
   return { ws, mem };
 }
 

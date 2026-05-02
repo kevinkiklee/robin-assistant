@@ -14,12 +14,12 @@ import { cleanupStaleLocks } from '../../scripts/jobs/lib/lock-cleanup.js';
 
 function makeWorkspace() {
   const root = mkdtempSync(join(tmpdir(), 'robin-lc-'));
-  mkdirSync(join(root, 'user-data/ops/state/jobs/locks'), { recursive: true });
+  mkdirSync(join(root, 'user-data/runtime/state/jobs/locks'), { recursive: true });
   return root;
 }
 
 function writeLock(workspaceDir, name, content) {
-  const p = join(workspaceDir, 'user-data/ops/state/jobs/locks', name + '.lock');
+  const p = join(workspaceDir, 'user-data/runtime/state/jobs/locks', name + '.lock');
   writeFileSync(p, typeof content === 'string' ? content : JSON.stringify(content));
   return p;
 }
@@ -80,7 +80,7 @@ describe('cleanupStaleLocks', () => {
 
   test('ignores non-.lock files in locks dir', () => {
     const root = makeWorkspace();
-    writeFileSync(join(root, 'user-data/ops/state/jobs/locks', 'README.txt'), 'ignored');
+    writeFileSync(join(root, 'user-data/runtime/state/jobs/locks', 'README.txt'), 'ignored');
     const result = cleanupStaleLocks(root, { staleMs: 5 * 60 * 1000 });
     assert.deepEqual(result.removed, []);
     rmSync(root, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/runtime/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // GitHub sync — pulls the authed user's last-30-days public events, current
@@ -7,9 +7,9 @@
 // activity.md / notifications.md / releases.md to user-data/memory/knowledge/github/.
 //
 // Usage:
-//   node user-data/ops/scripts/sync-github.js
-//   node user-data/ops/scripts/sync-github.js --bootstrap
-//   node user-data/ops/scripts/sync-github.js --dry-run
+//   node user-data/runtime/scripts/sync-github.js
+//   node user-data/runtime/scripts/sync-github.js --bootstrap
+//   node user-data/runtime/scripts/sync-github.js --dry-run
 
 import { join } from 'node:path';
 import { hostname } from 'node:os';
@@ -187,7 +187,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const bootstrap = process.argv.includes('--bootstrap');
 
   const underRunner = !!process.env.ROBIN_WORKSPACE;
-  const lockPath = join(workspaceDir, `user-data/ops/state/jobs/locks/${SOURCE}.lock`);
+  const lockPath = join(workspaceDir, `user-data/runtime/state/jobs/locks/${SOURCE}.lock`);
   let acquired = false;
 
   async function run() {

@@ -82,7 +82,7 @@ function checkSensitiveShapes({ content }) {
   }
 }
 
-const GITHUB_ALLOWLIST_REL = 'user-data/ops/state/cache/github-allowlist-cache.json';
+const GITHUB_ALLOWLIST_REL = 'user-data/runtime/state/cache/github-allowlist-cache.json';
 
 function loadGithubAllowlist(workspaceDir) {
   const p = join(workspaceDir, GITHUB_ALLOWLIST_REL);

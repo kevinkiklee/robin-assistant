@@ -60,8 +60,8 @@ run_scenario 3 "morning briefing"
 run_scenario 4 "List all the well-known paths in this workspace."
 
 # Scenario 5 — multi-session detection (with sibling injected)
-cp user-data/ops/state/sessions.md user-data/ops/state/sessions.md.bak
-cat > user-data/ops/state/sessions.md <<'EOF'
+cp user-data/runtime/state/sessions.md user-data/runtime/state/sessions.md.bak
+cat > user-data/runtime/state/sessions.md <<'EOF'
 # Active Sessions
 
 | Session ID | Platform | Started | Last active |
@@ -69,7 +69,7 @@ cat > user-data/ops/state/sessions.md <<'EOF'
 | sibling-test | claude-code | 2026-04-29T16:00:00Z | 2026-04-29T16:00:00Z |
 EOF
 run_scenario 5 "Hi"
-mv user-data/ops/state/sessions.md.bak user-data/ops/state/sessions.md
+mv user-data/runtime/state/sessions.md.bak user-data/runtime/state/sessions.md
 
 # Scenario 6 — direct-write correction (backup + restore so the test
 # correction doesn't persist across runs)

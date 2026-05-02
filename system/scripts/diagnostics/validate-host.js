@@ -162,7 +162,7 @@ function validateScenario4(parsed) {
 
 function validateScenario5(parsed) {
   const failures = [];
-  const readSessions = parsed.reads.includes('user-data/ops/state/sessions.md');
+  const readSessions = parsed.reads.includes('user-data/runtime/state/sessions.md');
   if (!readSessions) {
     failures.push({
       severity: 'hard',

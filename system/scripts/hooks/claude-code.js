@@ -13,7 +13,7 @@
 //   --on-pre-bash      cycle-2a: fires before every Bash tool call. Reads the
 //                      proposed command from stdin event, scans against
 //                      bash-sensitive-patterns.js, blocks (exit 2) on match.
-//                      Refusal logged to user-data/ops/state/telemetry/policy-refusals.log
+//                      Refusal logged to user-data/runtime/state/telemetry/policy-refusals.log
 //                      with kind=bash. Top-level try/catch fail-closed —
 //                      uncaught error in the hook also blocks (exit 2).
 //
@@ -354,7 +354,7 @@ function maybeRefreshEntitiesIndex(ws) {
 
 function appendRecallLog(ws, { sessionId, entitiesMatched, hitsInjected, bytesInjected }) {
   try {
-    const file = join(ws, 'user-data/ops/state/recall.log');
+    const file = join(ws, 'user-data/runtime/state/recall.log');
     mkdirSync(dirname(file), { recursive: true });
     appendFileSync(file, `${new Date().toISOString()}\t${sessionId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\n`);
   } catch { /* best-effort */ }

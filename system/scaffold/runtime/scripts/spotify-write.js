@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/runtime/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // Spotify write CLI. Single entry point dispatched on --action.
 //
 // Usage examples:
-//   node user-data/ops/scripts/spotify-write.js --action queue \
+//   node user-data/runtime/scripts/spotify-write.js --action queue \
 //     --json '{"track_uri":"spotify:track:11dFghVXANMlKmJXsNCbNl"}'
 //
-//   node user-data/ops/scripts/spotify-write.js --action playlist-add \
+//   node user-data/runtime/scripts/spotify-write.js --action playlist-add \
 //     --json '{"playlist_id":"37i9dQZF...","track_uris":["spotify:track:..."]}'
 //
-//   node user-data/ops/scripts/spotify-write.js --action skip --json '{}'
+//   node user-data/runtime/scripts/spotify-write.js --action skip --json '{}'
 //
 // Per AGENTS.md `Rule: Ask vs Act`, the agent confirms with the user before
 // invoking writes that affect playback or playlists.

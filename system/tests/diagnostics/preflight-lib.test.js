@@ -14,18 +14,18 @@ function repo(populated = true) {
     '---\ndescription: Identity\n---\n# Identity\n'
   );
   writeFileSync(join(root, 'system/scaffold/memory/INDEX.md'), '# Memory Index\n');
-  mkdirSync(join(root, 'system/scaffold/ops/config'), { recursive: true });
-  writeFileSync(join(root, 'system/scaffold/ops/config/robin.config.json'), '{"version":"3.0.0"}');
+  mkdirSync(join(root, 'system/scaffold/runtime/config'), { recursive: true });
+  writeFileSync(join(root, 'system/scaffold/runtime/config/robin.config.json'), '{"version":"3.0.0"}');
   writeFileSync(join(root, 'system/CHANGELOG.md'), '## [3.0.0]\n');
   if (populated) {
     mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
-    mkdirSync(join(root, 'user-data/ops/config'), { recursive: true });
+    mkdirSync(join(root, 'user-data/runtime/config'), { recursive: true });
     writeFileSync(
       join(root, 'user-data/memory/profile/identity.md'),
       '---\ndescription: Identity\n---\n# Identity\n'
     );
     writeFileSync(join(root, 'user-data/memory/INDEX.md'), '# Memory Index\n');
-    writeFileSync(join(root, 'user-data/ops/config/robin.config.json'), '{"version":"3.0.0"}');
+    writeFileSync(join(root, 'user-data/runtime/config/robin.config.json'), '{"version":"3.0.0"}');
   }
   return root;
 }

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 function repo() {
   const root = mkdtempSync(join(tmpdir(), 'robin-mh-'));
-  mkdirSync(join(root, 'user-data/ops/config'), { recursive: true });
+  mkdirSync(join(root, 'user-data/runtime/config'), { recursive: true });
   mkdirSync(join(root, 'system/scaffold'), { recursive: true });
   return root;
 }
@@ -40,21 +40,21 @@ test('addFileFromScaffold copies scaffold file when missing', async () => {
 
 test('addConfigField adds nested key with default', async () => {
   const root = repo();
-  writeFileSync(join(root, 'user-data/ops/config/robin.config.json'), JSON.stringify({ user: { name: 'T' } }));
+  writeFileSync(join(root, 'user-data/runtime/config/robin.config.json'), JSON.stringify({ user: { name: 'T' } }));
   const helpers = createHelpers(root);
   await helpers.addConfigField('memory.maxItems', 1000);
-  const cfg = JSON.parse(readFileSync(join(root, 'user-data/ops/config/robin.config.json'), 'utf-8'));
+  const cfg = JSON.parse(readFileSync(join(root, 'user-data/runtime/config/robin.config.json'), 'utf-8'));
   assert.equal(cfg.memory.maxItems, 1000);
   rmSync(root, { recursive: true, force: true });
 });
 
 test('renameConfigField moves nested value', async () => {
   const root = repo();
-  writeFileSync(join(root, 'user-data/ops/config/robin.config.json'),
+  writeFileSync(join(root, 'user-data/runtime/config/robin.config.json'),
     JSON.stringify({ memory: { knowledgeFile: 'knowledge.md' } }));
   const helpers = createHelpers(root);
   await helpers.renameConfigField('memory.knowledgeFile', 'memory.referenceFile');
-  const cfg = JSON.parse(readFileSync(join(root, 'user-data/ops/config/robin.config.json'), 'utf-8'));
+  const cfg = JSON.parse(readFileSync(join(root, 'user-data/runtime/config/robin.config.json'), 'utf-8'));
   assert.equal(cfg.memory.referenceFile, 'knowledge.md');
   assert.equal(cfg.memory.knowledgeFile, undefined);
   rmSync(root, { recursive: true, force: true });

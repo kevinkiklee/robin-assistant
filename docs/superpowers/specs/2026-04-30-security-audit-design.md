@@ -301,7 +301,7 @@ Empirical checks NOT allowed in this audit (escalate to cycle-1's test plan):
 Before writing any audit content:
 
 - [ ] `git status` clean on `system/`, `bin/`, `.claude/`. No local hook tampering, no in-flight changes that would stale `[verified]` claims.
-- [ ] Latest sync runs completed — `user-data/ops/state/jobs/INDEX.md` shows recent timestamps for all enabled syncs.
+- [ ] Latest sync runs completed — `user-data/runtime/state/jobs/INDEX.md` shows recent timestamps for all enabled syncs.
 - [ ] `docs/security/` directory created; verify it's gitignored (`git check-ignore docs/security/audit-2026-04-30.md`).
 - [ ] Pin: record `git rev-parse HEAD` in audit §0 (Method). All code-citing findings reference this SHA.
 - [ ] `npm audit` output saved into the audit body (under §2 surface 17).

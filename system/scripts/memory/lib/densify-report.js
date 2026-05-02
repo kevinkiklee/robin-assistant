@@ -8,7 +8,7 @@ function bullet(s) { return `- ${s}\n`; }
 function passSection(title, body) { return `## ${title}\n\n${body}\n\n`; }
 
 export function writeRunReport({ workspaceDir, date, mode, backupPath, passes, errors = [] }) {
-  const outDir = join(workspaceDir, 'user-data', 'ops', 'state', 'densify-wiki');
+  const outDir = join(workspaceDir, 'user-data', 'runtime', 'state', 'densify-wiki');
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
   const restoreCmd = backupPath ? `npm run restore -- --from ${backupPath}` : '(no backup taken)';

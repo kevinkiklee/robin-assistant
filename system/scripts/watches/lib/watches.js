@@ -46,7 +46,7 @@ export function watchPath(workspaceDir, id) {
 
 /** Full path to a watch state JSON file. */
 export function watchStatePath(workspaceDir, id) {
-  return join(workspaceDir, 'user-data/ops/state/watches', `${id}.json`);
+  return join(workspaceDir, 'user-data/runtime/state/watches', `${id}.json`);
 }
 
 // ---------------------------------------------------------------------------

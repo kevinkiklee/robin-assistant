@@ -84,7 +84,7 @@ Three layers, all checked by `assertOutboundContentAllowed({content, target, wor
 
 #### Layer 1 — Taint check
 
-Every sentence in proposed outbound `content` is normalized (lowercase + trim + strip trailing punctuation + collapse whitespace) and FNV-1a-64 hashed. Hashes are looked up in `user-data/ops/state/cache/untrusted-index.json` — the haystack of every sentence from every `trust:untrusted` file in `user-data/memory/`. A hit means outbound content is quoting an untrusted source.
+Every sentence in proposed outbound `content` is normalized (lowercase + trim + strip trailing punctuation + collapse whitespace) and FNV-1a-64 hashed. Hashes are looked up in `user-data/runtime/state/cache/untrusted-index.json` — the haystack of every sentence from every `trust:untrusted` file in `user-data/memory/`. A hit means outbound content is quoting an untrusted source.
 
 Index updates happen in `atomicWrite()` whenever `opts.trust` is set. Stale-mtime detection rebuilds entries on read.
 
@@ -94,7 +94,7 @@ PII pattern check (url-cred, api-key shapes, SSN) on outbound content. Plus iter
 
 #### Layer 3 — Target allowlist (credential-derived)
 
-- **github**: target shape `github:owner/repo`. Cached at `user-data/ops/state/cache/github-allowlist-cache.json` (TTL 1h). Empty/missing cache passes (caller is expected to populate from the GitHub PAT scope on first authenticated call); explicit empty list denies all.
+- **github**: target shape `github:owner/repo`. Cached at `user-data/runtime/state/cache/github-allowlist-cache.json` (TTL 1h). Empty/missing cache passes (caller is expected to populate from the GitHub PAT scope on first authenticated call); explicit empty list denies all.
 - **spotify**: target must be `spotify:user:*` (Spotify OAuth is user-bound; nothing finer-grained is useful).
 - **discord**: target must equal `ctx.inboundOrigin` (reply must go back to the inbound channel/DM). Format: `discord:dm:<userId>` or `discord:guild:<gid>:channel:<cid>` or `discord:guild:<gid>:channel:<cid>:thread:<tid>`.
 
@@ -105,7 +105,7 @@ PII pattern check (url-cred, api-key shapes, SSN) on outbound content. Plus iter
 
 ### Refusal log
 
-`user-data/ops/state/telemetry/policy-refusals.log` — TSV append-only:
+`user-data/runtime/state/telemetry/policy-refusals.log` — TSV append-only:
 ```
 timestamp \t kind \t target \t layer \t reason \t content-hash
 ```
@@ -128,7 +128,7 @@ Surfaced in morning briefing for retrospective review.
 
 ### Lazy-read secrets
 
-`system/scripts/sync/lib/secrets.js:requireSecret(workspaceDir, key)` reads `user-data/ops/secrets/.env` per call. **It does NOT pollute `process.env`.** Subprocesses spawned afterward (e.g., discord-bot's `claude -p` children) cannot inherit secrets via env.
+`system/scripts/sync/lib/secrets.js:requireSecret(workspaceDir, key)` reads `user-data/runtime/secrets/.env` per call. **It does NOT pollute `process.env`.** Subprocesses spawned afterward (e.g., discord-bot's `claude -p` children) cannot inherit secrets via env.
 
 `loadSecrets(workspaceDir)` is now a no-op shim; older callers fail loudly if they invoke it without a workspaceDir.
 
@@ -171,7 +171,7 @@ The bot script calls `dotenv.config()` for backward-compat (the user's `.env` ma
 
 | Name | Catches |
 |---|---|
-| `secrets-read` | cat/less/head/tail/grep/awk/sed/cp/mv/tar/zip/rsync targeting `user-data/ops/secrets/` or `.env` files |
+| `secrets-read` | cat/less/head/tail/grep/awk/sed/cp/mv/tar/zip/rsync targeting `user-data/runtime/secrets/` or `.env` files |
 | `env-dump` | `env`, `printenv` (used to dump environment) |
 | `destructive-rm` | `rm -rf`, `rm -fr`, `rm --recursive --force` |
 | `low-level-fs` | `dd`, `mkfs[.fstype]`, `format`, `shred`, `fdisk`, `wipefs` |
@@ -195,7 +195,7 @@ The hook is defense-in-depth, not a sandbox.
 
 ### Manifest
 
-Trusted baseline at `user-data/ops/security/manifest.json`. Schema:
+Trusted baseline at `user-data/runtime/security/manifest.json`. Schema:
 
 ```json
 {
@@ -212,7 +212,7 @@ Trusted baseline at `user-data/ops/security/manifest.json`. Schema:
 }
 ```
 
-The scaffold at `system/scaffold/ops/security/manifest.json` ships with Robin's owned hooks; empty MCP arrays. `setup.js` postinstall copies the scaffold to `user-data/ops/security/manifest.json` if the live manifest is absent.
+The scaffold at `system/scaffold/runtime/security/manifest.json` ships with Robin's owned hooks; empty MCP arrays. `setup.js` postinstall copies the scaffold to `user-data/runtime/security/manifest.json` if the live manifest is absent.
 
 ### SessionStart hook
 
@@ -231,8 +231,8 @@ The scaffold at `system/scaffold/ops/security/manifest.json` ships with Robin's 
 ```sh
 # Read-only snapshot (safe to run any time):
 node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json
-diff user-data/ops/security/manifest.json /tmp/snap.json
-$EDITOR user-data/ops/security/manifest.json   # paste in additions
+diff user-data/runtime/security/manifest.json /tmp/snap.json
+$EDITOR user-data/runtime/security/manifest.json   # paste in additions
 
 # First-deploy bootstrap (overwrites live manifest with current state):
 node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
@@ -258,7 +258,7 @@ Cooperative model retries with `[REDACTED:ssn]` substitution; jailbroken model t
 
 ### High-stakes destination audit (G-05)
 
-Same hook, additional check: writes to one of these paths log a row to `user-data/ops/state/telemetry/high-stakes-writes.log` (TSV: `timestamp \t target \t content-hash`):
+Same hook, additional check: writes to one of these paths log a row to `user-data/runtime/state/telemetry/high-stakes-writes.log` (TSV: `timestamp \t target \t content-hash`):
 
 - `user-data/memory/tasks.md`
 - `user-data/memory/streams/decisions.md`
@@ -278,18 +278,18 @@ Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `#
 
 When Kevin intentionally edits Hard Rules, run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
 
-### user-data/ops/jobs override drift (G-03)
+### user-data/runtime/jobs override drift (G-03)
 
-Manifest v2 `userDataJobs.knownFiles` is an allowlist of override filenames Kevin has accepted. Drift detection lists `*.md` in `user-data/ops/jobs/`; any not in the allowlist surface as **mild** drift. Mass-drift on first deploy is handled by the bootstrap snapshot.
+Manifest v2 `userDataJobs.knownFiles` is an allowlist of override filenames Kevin has accepted. Drift detection lists `*.md` in `user-data/runtime/jobs/`; any not in the allowlist surface as **mild** drift. Mass-drift on first deploy is handled by the bootstrap snapshot.
 
 ### Pattern lifecycle TTL (G-27)
 
 Each promoted pattern gains `last_fired: YYYY-MM-DD` + `fired_count: N` frontmatter, optionally `ttl_days: N` per-pattern override.
 
-Model writes one line per pattern application to `user-data/ops/state/pattern-firings.log` via Bash echo:
+Model writes one line per pattern application to `user-data/runtime/state/pattern-firings.log` via Bash echo:
 
 ```sh
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/ops/state/pattern-firings.log
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/runtime/state/pattern-firings.log
 ```
 
 Dream's TTL phase (`processPatternTTL`):
@@ -302,7 +302,7 @@ Dream's TTL phase (`processPatternTTL`):
 
 The cycle-2c one-shot migration has already run on existing workspaces:
 1. Stamped existing patterns with `last_fired: <today>` + `fired_count: 0` to prevent immediate auto-archive.
-2. Bumped `user-data/ops/security/manifest.json` from v1 to v2 (adds empty `agentsmd` + `userDataJobs` fields).
+2. Bumped `user-data/runtime/security/manifest.json` from v1 to v2 (adds empty `agentsmd` + `userDataJobs` fields).
 
 (The script itself has been retired since it is no longer needed.)
 

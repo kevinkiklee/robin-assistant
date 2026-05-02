@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const LOG_REL = 'user-data/ops/state/telemetry/high-stakes-writes.log';
+const LOG_REL = 'user-data/runtime/state/telemetry/high-stakes-writes.log';
 const DEDUP_WINDOW_MS = 60 * 60 * 1000;
 
 function logPath(workspaceDir) {

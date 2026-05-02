@@ -29,7 +29,7 @@ For each prediction needing resolution, scan recent context for evidence:
 
 Propose one of: `resolved-accurate` | `resolved-miss` | `inconclusive`. Include a one-line basis for the proposal.
 
-Output a summary block to `user-data/ops/state/outcome-check-<YYYY-MM-DD>.md` listing each prediction + proposed resolution. The user reviews this in their next system-maintenance run.
+Output a summary block to `user-data/runtime/state/outcome-check-<YYYY-MM-DD>.md` listing each prediction + proposed resolution. The user reviews this in their next system-maintenance run.
 
 ## Phase 3: Auto-resolve stale
 

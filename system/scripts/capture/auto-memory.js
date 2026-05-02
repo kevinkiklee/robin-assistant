@@ -23,7 +23,7 @@ import { createHash } from 'node:crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const INBOX = join(REPO_ROOT, 'user-data/memory/streams/inbox.md');
-const MIGRATION_LOG = join(REPO_ROOT, 'user-data/ops/state/migrated-auto-memory-log.json');
+const MIGRATION_LOG = join(REPO_ROOT, 'user-data/runtime/state/migrated-auto-memory-log.json');
 const LOG_CAP = 500;
 
 function workspaceSlug() {

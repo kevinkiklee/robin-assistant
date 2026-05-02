@@ -13,20 +13,20 @@
 
   "tier1_files": [
     { "path": "AGENTS.md", "stability": "frozen", "max_lines": 90, "required": true, "$comment": "Original 120 lines. Slimmed to ~70. Cap 80 → 90: absorbs Action-states + Conversational-tics rules (autonomy Ship 1) and security-cycles Hard Rules (untrusted ingress, outbound writes, bash policy, tamper detection, mechanical backstops)." },
-    { "path": "user-data/ops/config/robin.config.json", "stability": "frozen", "required": true },
+    { "path": "user-data/runtime/config/robin.config.json", "stability": "frozen", "required": true },
     { "path": "user-data/memory/profile/identity.md", "stability": "slow", "max_lines": 100, "required": false },
     { "path": "user-data/memory/profile/personality.md", "stability": "slow", "max_lines": 120, "required": false },
     { "path": "user-data/memory/INDEX.md", "stability": "slow", "max_lines": 90, "required": true, "$comment": "Cap 90: covers archive + 4 sub-indexes (events/movies/photography/calendar-events) + root files + small sub-trees with growth headroom. Raised from 70 → 80 → 90 across 2026-04-30 (calendar events subindex; security cycles)." },
     { "path": "user-data/memory/ENTITIES.md", "stability": "slow", "max_lines": 160, "required": false, "optional_existence": true, "$comment": "Auto-generated entity index for fast recall lookup; capped at ~150 rows in lib/entity-index.js writeEntitiesAtomic. Loaded right after INDEX.md so both daily-Dream-regenerated files invalidate together." },
-    { "path": "user-data/ops/config/integrations.md", "stability": "slow", "required": false },
+    { "path": "user-data/runtime/config/integrations.md", "stability": "slow", "required": false },
     { "path": "user-data/custom-rules.md", "stability": "slow", "required": false, "optional_existence": true },
     { "path": "user-data/memory/self-improvement/communication-style.md", "stability": "slow", "max_lines": 25, "required": false, "optional_existence": true },
     { "path": "user-data/memory/self-improvement/domain-confidence.md", "stability": "slow", "max_lines": 25, "required": false, "optional_existence": true },
     { "path": "user-data/memory/hot.md", "stability": "volatile", "max_lines": 60, "required": false },
     { "path": "user-data/memory/self-improvement/session-handoff.md", "stability": "volatile", "max_lines": 20, "required": false, "optional_existence": true },
     { "path": "user-data/memory/self-improvement/learning-queue.md", "stability": "volatile", "max_lines": 60, "required": false, "optional_existence": true, "$comment": "Cap 60: migration 0014 seeds 7 starter questions (~43 lines incl. frontmatter). Headroom for 2-3 organically-promoted questions before alerting." },
-    { "path": "user-data/ops/state/sessions.md", "stability": "volatile", "required": false, "optional_existence": true },
-    { "path": "user-data/ops/state/jobs/failures.md", "stability": "volatile", "required": false, "optional_existence": true }
+    { "path": "user-data/runtime/state/sessions.md", "stability": "volatile", "required": false, "optional_existence": true },
+    { "path": "user-data/runtime/state/jobs/failures.md", "stability": "volatile", "required": false, "optional_existence": true }
   ],
 
   "tier2_globs": [

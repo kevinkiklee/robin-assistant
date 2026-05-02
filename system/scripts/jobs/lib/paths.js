@@ -3,11 +3,11 @@
 import { join } from 'node:path';
 
 export function jobsPaths(workspaceDir) {
-  const stateDir = join(workspaceDir, 'user-data/ops/state/jobs');
+  const stateDir = join(workspaceDir, 'user-data/runtime/state/jobs');
   return {
     workspaceDir,
     systemJobsDir: join(workspaceDir, 'system/jobs'),
-    userJobsDir: join(workspaceDir, 'user-data/ops/jobs'),
+    userJobsDir: join(workspaceDir, 'user-data/runtime/jobs'),
     stateDir,
     indexMd: join(stateDir, 'INDEX.md'),
     upcomingMd: join(stateDir, 'upcoming.md'),

@@ -107,11 +107,11 @@ describe('claude-code-hook usage errors', () => {
 
 test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {
   const ws = mkdtempSync(join(tmpdir(), 'hook-'));
-  mkdirSync(join(ws, 'user-data/ops/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/runtime/state'), { recursive: true });
   mkdirSync(join(ws, 'user-data/memory/streams'), { recursive: true });
   mkdirSync(join(ws, 'user-data/memory/self-improvement'), { recursive: true });
   const now = new Date();
-  writeFileSync(join(ws, 'user-data/ops/state/sessions.md'),
+  writeFileSync(join(ws, 'user-data/runtime/state/sessions.md'),
     `# Active sessions
 
 | Session | Last active |

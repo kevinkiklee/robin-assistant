@@ -23,8 +23,8 @@ function runCheck(workspaceDir) {
 
 function setupBaseline(workspaceDir, opts = {}) {
   // Write a manifest with a single Stop hook + opts.expectedMCPs allowed.
-  mkdirSync(join(workspaceDir, 'user-data/ops/security'), { recursive: true });
-  writeFileSync(join(workspaceDir, 'user-data/ops/security/manifest.json'), JSON.stringify({
+  mkdirSync(join(workspaceDir, 'user-data/runtime/security'), { recursive: true });
+  writeFileSync(join(workspaceDir, 'user-data/runtime/security/manifest.json'), JSON.stringify({
     version: 1,
     hooks: { Stop: [{ command: 'node system/scripts/hooks/claude-code.js --on-stop' }] },
     mcpServers: { expected: opts.expectedMCPs ?? [], writeCapable: opts.writeCapableMCPs ?? [] },
@@ -52,7 +52,7 @@ test('S10: extra hook in settings.json → severe drift logged + stderr', () => 
     assert.match(r.stderr, /TAMPER DRIFT \[severe\]: unexpected-hook/);
     assert.match(r.stderr, /silent-logger\.js/);
 
-    const log = readFileSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log'), 'utf-8');
+    const log = readFileSync(join(w, 'user-data/runtime/state/telemetry/policy-refusals.log'), 'utf-8');
     assert.match(log, /\ttamper\t/);
     assert.match(log, /unexpected-hook/);
   } finally {
@@ -87,7 +87,7 @@ test('S9-mild: unexpected read-only MCP → mild drift; logged but not in stderr
     assert.equal(r.status, 0);
     // ≤5 mild → silent in stderr. But logged.
     assert.doesNotMatch(r.stderr, /TAMPER DRIFT/);
-    const log = readFileSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log'), 'utf-8');
+    const log = readFileSync(join(w, 'user-data/runtime/state/telemetry/policy-refusals.log'), 'utf-8');
     assert.match(log, /random-read-mcp/);
   } finally {
     clean(w);
@@ -111,7 +111,7 @@ test('Missing manifest: exit 0 with WARNING (fail-soft)', () => {
   try {
     const r = runCheck(w);
     assert.equal(r.status, 0);
-    assert.match(r.stderr, /WARNING: user-data\/ops\/security\/manifest\.json missing/);
+    assert.match(r.stderr, /WARNING: user-data\/runtime\/security\/manifest\.json missing/);
   } finally {
     clean(w);
   }
@@ -130,7 +130,7 @@ test('Dedup: identical drift within 24h is logged once', () => {
     runCheck(w);
     runCheck(w);
     runCheck(w);
-    const log = readFileSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log'), 'utf-8');
+    const log = readFileSync(join(w, 'user-data/runtime/state/telemetry/policy-refusals.log'), 'utf-8');
     const tamperLines = log.split('\n').filter(l => l.includes('\ttamper\t') && l.includes('unexpected-hook'));
     assert.equal(tamperLines.length, 1);
   } finally {

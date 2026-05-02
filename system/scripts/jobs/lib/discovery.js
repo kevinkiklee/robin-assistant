@@ -1,4 +1,4 @@
-// Job discovery: read system/jobs/ + user-data/ops/jobs/, parse, validate, and
+// Job discovery: read system/jobs/ + user-data/runtime/jobs/, parse, validate, and
 // return effective definitions (with overrides merged).
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';

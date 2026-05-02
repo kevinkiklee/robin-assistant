@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from '
 import { join, dirname } from 'node:path';
 
 export function cursorPath(workspaceDir, name) {
-  return join(workspaceDir, `user-data/ops/state/sync/${name}.json`);
+  return join(workspaceDir, `user-data/runtime/state/sync/${name}.json`);
 }
 
 // Read state JSON. On corruption (truncated/invalid JSON from a prior crash),

@@ -52,7 +52,7 @@ test('Write tool: classifies by destination path', () => {
     'write-memory-file',
   );
   assert.equal(
-    classifyAction({ name: 'Write', input: { file_path: '/abs/user-data/ops/state/x.json' } }),
+    classifyAction({ name: 'Write', input: { file_path: '/abs/user-data/runtime/state/x.json' } }),
     'write-state-file',
   );
   assert.equal(

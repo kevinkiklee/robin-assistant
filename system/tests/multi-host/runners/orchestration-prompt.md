@@ -77,8 +77,8 @@ Then append a markdown summary section to `system/tests/multi-host/results-<DATE
 
 **Setup:**
 
-    cp user-data/ops/state/sessions.md user-data/ops/state/sessions.md.bak
-    cat > user-data/ops/state/sessions.md <<'EOF'
+    cp user-data/runtime/state/sessions.md user-data/runtime/state/sessions.md.bak
+    cat > user-data/runtime/state/sessions.md <<'EOF'
     # Active Sessions
 
     | Session ID | Platform | Started | Last active |
@@ -89,7 +89,7 @@ Then append a markdown summary section to `system/tests/multi-host/results-<DATE
 **Prompt:** Hi
 **Cleanup:**
 
-    mv user-data/ops/state/sessions.md.bak user-data/ops/state/sessions.md
+    mv user-data/runtime/state/sessions.md.bak user-data/runtime/state/sessions.md
 
 ### Scenario 6 — Direct-write correction
 

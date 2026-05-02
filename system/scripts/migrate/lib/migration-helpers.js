@@ -5,11 +5,14 @@ export function createHelpers(workspaceDir) {
   const ud = join(workspaceDir, 'user-data');
   const scaffold = join(workspaceDir, 'system/scaffold');
 
-  // Resolve config path: prefer the post-0021 location, fall back to the
-  // pre-0021 location for migrations that run before 0021 has executed.
+  // Resolve config path: prefer the post-0022 location (runtime/), fall back
+  // to post-0021 (ops/) and pre-0021 (root) for migrations that run before
+  // those rename migrations have executed.
   function configPath() {
-    const newP = join(ud, 'ops/config/robin.config.json');
+    const newP = join(ud, 'runtime/config/robin.config.json');
     if (existsSync(newP)) return newP;
+    const opsP = join(ud, 'ops/config/robin.config.json');
+    if (existsSync(opsP)) return opsP;
     const oldP = join(ud, 'robin.config.json');
     if (existsSync(oldP)) return oldP;
     // Default to new path for fresh writes when neither exists.

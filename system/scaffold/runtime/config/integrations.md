@@ -16,15 +16,15 @@ Platform: claude-code
   - sync: knowledge/finance/lunch-money/  (daily, via sync-lunch-money job)
 - github: github
   - sync: knowledge/github/               (hourly, when sync-github job is enabled)
-  - write: user-data/ops/scripts/github-write.js (--action create-issue|comment|label|mark-read)
+  - write: user-data/runtime/scripts/github-write.js (--action create-issue|comment|label|mark-read)
 - music: spotify
   - sync: knowledge/spotify/              (every 4h, when sync-spotify job is enabled)
-  - write: user-data/ops/scripts/spotify-write.js (--action queue|skip|playlist-add)
+  - write: user-data/runtime/scripts/spotify-write.js (--action queue|skip|playlist-add)
 - weather: user-provided (paste or summarize)
 - browser: user-provided (paste or summarize)
 - discord: discord
-  - bot: user-data/ops/scripts/discord-bot.js (launchd-supervised on macOS)
-  - control: user-data/ops/scripts/discord-bot-{install,status,health}.js
+  - bot: user-data/runtime/scripts/discord-bot.js (launchd-supervised on macOS)
+  - control: user-data/runtime/scripts/discord-bot-{install,status,health}.js
   - triggers: @mention, DM, /new /cancel /help
   - allowlisted: DISCORD_ALLOWED_USER_IDS + DISCORD_ALLOWED_GUILD_ID
 
@@ -34,16 +34,16 @@ The Calendar / Gmail / GitHub / Spotify sync jobs ship `enabled: false` and
 do not run until you complete the per-provider auth setup. Each setup is a
 one-shot script:
 
-  node user-data/ops/scripts/auth-google.js     # Calendar + Gmail (shared OAuth client)
-  node user-data/ops/scripts/auth-github.js     # validate fine-grained PAT
-  node user-data/ops/scripts/auth-spotify.js    # OAuth, port 8765 callback
+  node user-data/runtime/scripts/auth-google.js     # Calendar + Gmail (shared OAuth client)
+  node user-data/runtime/scripts/auth-github.js     # validate fine-grained PAT
+  node user-data/runtime/scripts/auth-spotify.js    # OAuth, port 8765 callback
 
 After auth succeeds, run a `--bootstrap` once and enable the job:
 
-  node user-data/ops/scripts/sync-<name>.js --bootstrap
+  node user-data/runtime/scripts/sync-<name>.js --bootstrap
   node bin/robin.js jobs enable sync-<name>
 
-See system/scaffold/ops/secrets/README.md for the .env keys each provider needs.
+See system/scaffold/runtime/secrets/README.md for the .env keys each provider needs.
 
 ## Not configured
 

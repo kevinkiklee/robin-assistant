@@ -28,7 +28,7 @@
 ### Constraints
 - Must function alongside the other agent's `feat/a3-session-end-sweep` (Stop hook, AGENTS.md edits). Re-read before edits.
 - Reuses `policy-refusals.log` infrastructure from cycle-2a/2b for `kind=pii-bypass`. High-stakes audits go to a separate file (kept distinct from refusals).
-- Reuses cycle-2b's `user-data/ops/security/manifest.json`; bumps schema to v2.
+- Reuses cycle-2b's `user-data/runtime/security/manifest.json`; bumps schema to v2.
 - Pattern-firings via Bash echo append (not blocked by cycle-2a sensitive patterns).
 
 ---
@@ -45,7 +45,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────────┐
 │ Group B — Integrity drift (manifest v2)                         │
-│  user-data/ops/security/manifest.json gains:                        │
+│  user-data/runtime/security/manifest.json gains:                        │
 │   • agentsmd.hardRulesHash (G-01) — fnv1a-64 of normalized      │
 │     "## Hard Rules" section.                                    │
 │   • userDataJobs.knownFiles (G-03) — allowlist of override      │
@@ -137,7 +137,7 @@ if (HIGH_STAKES_DESTINATIONS.some(p => target.endsWith(p))) {
 
 `appendHighStakesWrite` deduplicates: same `target+contentHash` within a 1-hour window → single entry. Avoids log spam during active editing.
 
-`user-data/ops/state/telemetry/high-stakes-writes.log`:
+`user-data/runtime/state/telemetry/high-stakes-writes.log`:
 
 ```
 timestamp \t target \t content-hash
@@ -154,7 +154,7 @@ Distinct from `policy-refusals.log` so refusals (blocked attacks) don't get conf
 
 ```markdown
 **High-stakes writes review.**
-Read user-data/ops/state/telemetry/high-stakes-writes.log entries since last briefing cursor.
+Read user-data/runtime/state/telemetry/high-stakes-writes.log entries since last briefing cursor.
 Aggregate by target. Output:
 
   Security: high-stakes writes (since last briefing)
@@ -252,7 +252,7 @@ function checkUserDataJobs(workspaceDir, expected) {
     .map(f => ({
       severity: 'mild',
       kind: 'unexpected-job-override',
-      detail: `user-data/ops/jobs/${f}`,
+      detail: `user-data/runtime/jobs/${f}`,
       hash: fnv1a(`job:${f}`),
     }));
 }
@@ -274,12 +274,12 @@ Snapshot helper extends to populate v2 fields:
     lastSnapshot: '<today>',
   },
   userDataJobs: {
-    knownFiles: <current files in user-data/ops/jobs/*.md>,
+    knownFiles: <current files in user-data/runtime/jobs/*.md>,
   },
 }
 ```
 
-Default mode (read-only): writes to stdout. `--apply --confirm-trust-current-state` overwrites `user-data/ops/security/manifest.json`. Same two-flag pattern as cycle-2b.
+Default mode (read-only): writes to stdout. `--apply --confirm-trust-current-state` overwrites `user-data/runtime/security/manifest.json`. Same two-flag pattern as cycle-2b.
 
 ### 4.5 First-run baseline UX
 
@@ -310,7 +310,7 @@ created: 2025-11-02
 
 ### 5.2 Firing log (`pattern-firings.log`)
 
-`user-data/ops/state/pattern-firings.log` — append-only, truncate-on-Dream-success.
+`user-data/runtime/state/pattern-firings.log` — append-only, truncate-on-Dream-success.
 
 Format (TSV):
 ```
@@ -320,7 +320,7 @@ Format (TSV):
 
 **Recommended write idiom (model)**: when applying a pattern, append via Bash:
 ```sh
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/ops/state/pattern-firings.log
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/runtime/state/pattern-firings.log
 ```
 
 Single Bash call; not blocked by cycle-2a sensitive patterns (echo is not on the sensitive list, target is not under `secrets/`, no env dump). Cheaper than Edit on the patterns.md file (which would touch frontmatter every firing).
@@ -334,14 +334,14 @@ Alternative: model uses Write/Edit append. Either works.
 ```markdown
 ## Phase X — Pattern TTL maintenance
 
-1. Read user-data/ops/state/pattern-firings.log into a Map<pattern-name, [timestamps]>.
+1. Read user-data/runtime/state/pattern-firings.log into a Map<pattern-name, [timestamps]>.
 2. Read user-data/memory/self-improvement/patterns.md (existing pattern frontmatter).
 3. For each active pattern:
    a. Compute new last_fired = max(existing last_fired, max(firings[name]) || existing).
    b. Compute fired_count_increment = firings[name]?.length ?? 0.
    c. Set new fired_count = existing fired_count + fired_count_increment.
    d. Update frontmatter atomically.
-4. After all updates, truncate user-data/ops/state/pattern-firings.log (write empty file).
+4. After all updates, truncate user-data/runtime/state/pattern-firings.log (write empty file).
 5. For each active pattern:
    a. Compute ttl = pattern.ttl_days ?? 180.
    b. If today - last_fired > ttl days:
@@ -373,7 +373,7 @@ Result: existing patterns get a fresh "last fired" baseline (today), so they don
 Single line under Hard Rules (cycle-2c):
 
 ```markdown
-- **Mechanical backstops.** PII patterns in writes to `user-data/memory/` block at the hook layer (G-02). High-stakes destination writes are audited (G-05). AGENTS.md Hard Rules and `user-data/ops/jobs/` are integrity-checked at session start (G-01, G-03). Promoted patterns auto-archive after 180 days inactivity (G-27). See `system/rules/security.md`.
+- **Mechanical backstops.** PII patterns in writes to `user-data/memory/` block at the hook layer (G-02). High-stakes destination writes are audited (G-05). AGENTS.md Hard Rules and `user-data/runtime/jobs/` are integrity-checked at session start (G-01, G-03). Promoted patterns auto-archive after 180 days inactivity (G-27). See `system/rules/security.md`.
 ```
 
 Cumulative AGENTS.md additions across all four security cycles: ~6 lines net.
@@ -385,9 +385,9 @@ In capture-rules.md (or wherever pattern application is documented), add:
 ```markdown
 ## Pattern application
 
-When applying a learned pattern (recognizing its signal, executing its counter-action), append to `user-data/ops/state/pattern-firings.log`:
+When applying a learned pattern (recognizing its signal, executing its counter-action), append to `user-data/runtime/state/pattern-firings.log`:
 
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/ops/state/pattern-firings.log
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/runtime/state/pattern-firings.log
 
 Single Bash call. Dream batches updates to pattern frontmatter (last_fired, fired_count) and truncates the log on success. Skipping the append is not a security violation but causes pattern to drift toward TTL archive.
 ```
@@ -424,8 +424,8 @@ Estimated addition: ~80 lines.
 node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json
 
 # 5. Diff and copy:
-diff user-data/ops/security/manifest.json /tmp/snap.json
-$EDITOR user-data/ops/security/manifest.json
+diff user-data/runtime/security/manifest.json /tmp/snap.json
+$EDITOR user-data/runtime/security/manifest.json
 # Add agentsmd.hardRulesHash from /tmp/snap.json
 
 # 6. Verify:
@@ -445,7 +445,7 @@ $EDITOR AGENTS.md
 
 # 3. Re-baseline:
 node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json
-$EDITOR user-data/ops/security/manifest.json
+$EDITOR user-data/runtime/security/manifest.json
 # update agentsmd.hardRulesHash with new value
 # update agentsmd.lastSnapshot to today
 ```
@@ -455,7 +455,7 @@ $EDITOR user-data/ops/security/manifest.json
 ```
 Session 1 — pattern P1 fires:
   - Model recognizes signal, applies counter-action.
-  - Model: echo "..." >> user-data/ops/state/pattern-firings.log
+  - Model: echo "..." >> user-data/runtime/state/pattern-firings.log
 
 Session 2 — P1 fires again, plus P2.
   - Two more lines in pattern-firings.log.
@@ -471,7 +471,7 @@ Dream runs (next day) — Phase X:
   - Appends one summary line to journal.
 ```
 
-### 7.4 Walkthrough D — `user-data/ops/jobs/` override workflow
+### 7.4 Walkthrough D — `user-data/runtime/jobs/` override workflow
 
 Same flow as cycle-2b's MCP triage (mild drift; Kevin reviews, accepts via manifest edit). See cycle-2b spec §7.2 for the canonical example. Cycle-2c reuses the pattern verbatim — only the manifest field name differs (`userDataJobs.knownFiles` instead of `mcpServers.expected`).
 
@@ -509,7 +509,7 @@ Same flow as cycle-2b's MCP triage (mild drift; Kevin reviews, accepts via manif
 ### 9.3 Smoke (manual)
 
 1. Edit AGENTS.md Hard Rules; observe SessionStart drift surfaces severe entry; baseline; verify silent.
-2. Drop a fake `user-data/ops/jobs/foo.md`; observe mild drift entry next session; add to manifest; verify silent.
+2. Drop a fake `user-data/runtime/jobs/foo.md`; observe mild drift entry next session; add to manifest; verify silent.
 3. Synthetic pattern with `last_fired: <200 days ago>`; run Dream TTL pass; pattern moved to archive.
 4. Synthetic Write tool call with SSN; observe block + refusal log entry.
 5. Append synthetic line to `pattern-firings.log`; run Dream; verify pattern's frontmatter updated, log truncated.
@@ -577,7 +577,7 @@ Same flow as cycle-2b's MCP triage (mild drift; Kevin reviews, accepts via manif
 ## 13. Definition of done
 
 1. PII backstop in `claude-code-hook.js --on-pre-tool-use` blocks writes to `user-data/memory/` containing PII patterns. Refusal logged with `kind=pii-bypass`.
-2. High-stakes destinations write to `user-data/ops/state/telemetry/high-stakes-writes.log` with 1h dedup; allow the underlying write.
+2. High-stakes destinations write to `user-data/runtime/state/telemetry/high-stakes-writes.log` with 1h dedup; allow the underlying write.
 3. Manifest schema v2: auto-migration from v1; `agentsmd.hardRulesHash` and `userDataJobs.knownFiles` present (empty until baselined).
 4. `check-manifest.js` checks AGENTS.md Hard Rules hash + user-data/jobs drift; baseline-missing → info; mismatch → severe.
 5. `extractSection` handles edge cases per unit tests.

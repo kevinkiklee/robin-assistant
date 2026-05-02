@@ -16,9 +16,9 @@ function makeRepo(populated = true) {
   if (populated) {
     mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
     mkdirSync(join(root, 'user-data/memory/streams'), { recursive: true });
-    mkdirSync(join(root, 'user-data/ops/state/locks'), { recursive: true });
-    mkdirSync(join(root, 'user-data/ops/config'), { recursive: true });
-    writeFileSync(join(root, 'user-data/ops/config/robin.config.json'),
+    mkdirSync(join(root, 'user-data/runtime/state/locks'), { recursive: true });
+    mkdirSync(join(root, 'user-data/runtime/config'), { recursive: true });
+    writeFileSync(join(root, 'user-data/runtime/config/robin.config.json'),
       JSON.stringify({ version: '3.0.0', user: { name: 'T', timezone: 'UTC' }, platform: 'claude-code' }));
     writeFileSync(join(root, 'user-data/memory/INDEX.md'), '# Memory Index\n');
     writeFileSync(join(root, 'user-data/memory/profile/identity.md'),
@@ -28,9 +28,9 @@ function makeRepo(populated = true) {
     for (const f of ['decisions.md','journal.md','inbox.md']) {
       writeFileSync(join(root, 'user-data/memory/streams', f), '# stub\n');
     }
-    writeFileSync(join(root, 'user-data/ops/config/integrations.md'), '# stub\n');
-    writeFileSync(join(root, 'user-data/ops/state/sessions.md'), '');
-    writeFileSync(join(root, 'user-data/ops/state/dream-state.md'), '');
+    writeFileSync(join(root, 'user-data/runtime/config/integrations.md'), '# stub\n');
+    writeFileSync(join(root, 'user-data/runtime/state/sessions.md'), '');
+    writeFileSync(join(root, 'user-data/runtime/state/dream-state.md'), '');
   }
   return root;
 }

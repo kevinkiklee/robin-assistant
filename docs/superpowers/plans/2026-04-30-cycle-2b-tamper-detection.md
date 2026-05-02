@@ -28,12 +28,12 @@ Skeleton manifest (shipped with package). Lists Robin's owned hooks; empty MCP a
 
 ## Step 2 — Setup.js extension
 
-`system/scripts/cli/setup.js` (postinstall): if `user-data/ops/security/manifest.json` doesn't exist, copy from skeleton. Idempotent.
+`system/scripts/cli/setup.js` (postinstall): if `user-data/runtime/security/manifest.json` doesn't exist, copy from skeleton. Idempotent.
 
 ## Step 3 — `system/scripts/lib/manifest.js`
 
 Shared helpers:
-- `loadManifest(workspaceDir)` — reads `user-data/ops/security/manifest.json`. Throws clear error on missing/malformed. Auto-migrates v1 → v2 schema if needed (but v2 fields are cycle-2c).
+- `loadManifest(workspaceDir)` — reads `user-data/runtime/security/manifest.json`. Throws clear error on missing/malformed. Auto-migrates v1 → v2 schema if needed (but v2 fields are cycle-2c).
 - `enumerateMCPServers(workspaceDir)` — reads `.mcp.json` (project) + `~/.claude/mcp_settings.json`, `~/.claude/settings.json`, `~/Library/Application Support/Claude/claude_desktop_config.json` (global candidates). Deduped sorted list. Fails soft on missing paths.
 - `loadCurrentSettings(workspaceDir)` — reads `.claude/settings.json`.
 - `fnv1a64(s)` — hash function (or import from cycle-1b's untrusted-index.js).
@@ -59,7 +59,7 @@ Tests: `manifest-drift-hooks.test.js`, `manifest-drift-mcp.test.js`, `check-mani
 ## Step 5 — `system/scripts/diagnostics/manifest-snapshot.js`
 
 Default mode: build manifest-shaped JSON from current state, write to stdout.
-`--apply --confirm-trust-current-state`: overwrite `user-data/ops/security/manifest.json`. Single-flag `--apply` exits 1 with explanation.
+`--apply --confirm-trust-current-state`: overwrite `user-data/runtime/security/manifest.json`. Single-flag `--apply` exits 1 with explanation.
 
 Test: `system/tests/security/manifest-snapshot.test.js`.
 

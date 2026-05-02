@@ -39,7 +39,7 @@ import {
 const STDERR_BUFFER_BYTES = 4 * 1024;
 
 function readWorkspaceConfig(workspaceDir) {
-  return readJSON(resolve(workspaceDir, 'user-data/ops/config/robin.config.json'), {});
+  return readJSON(resolve(workspaceDir, 'user-data/runtime/config/robin.config.json'), {});
 }
 
 function lastNonEmptyLine(s) {

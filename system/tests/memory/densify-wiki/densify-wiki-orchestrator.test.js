@@ -49,8 +49,8 @@ test('detectFirstRun is true when no dated reports exist', () => {
   const ws = mkdtempSync(join(tmpdir(), 'orch-test-'));
   try {
     assert.equal(detectFirstRun(ws), true);
-    mkdirSync(join(ws, 'user-data/ops/state/densify-wiki'), { recursive: true });
-    writeFileSync(join(ws, 'user-data/ops/state/densify-wiki/2026-04-15.md'), '# old run');
+    mkdirSync(join(ws, 'user-data/runtime/state/densify-wiki'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/runtime/state/densify-wiki/2026-04-15.md'), '# old run');
     assert.equal(detectFirstRun(ws), false);
   } finally {
     rmSync(ws, { recursive: true });
@@ -60,9 +60,9 @@ test('detectFirstRun is true when no dated reports exist', () => {
 test('detectFirstRun ignores non-report files in the directory', () => {
   const ws = mkdtempSync(join(tmpdir(), 'orch-test-'));
   try {
-    mkdirSync(join(ws, 'user-data/ops/state/densify-wiki'), { recursive: true });
-    writeFileSync(join(ws, 'user-data/ops/state/densify-wiki/.pass-1-done'), '');
-    writeFileSync(join(ws, 'user-data/ops/state/densify-wiki/notes.txt'), '');
+    mkdirSync(join(ws, 'user-data/runtime/state/densify-wiki'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/runtime/state/densify-wiki/.pass-1-done'), '');
+    writeFileSync(join(ws, 'user-data/runtime/state/densify-wiki/notes.txt'), '');
     assert.equal(detectFirstRun(ws), true, 'first-run should still be true (no YYYY-MM-DD.md report)');
   } finally {
     rmSync(ws, { recursive: true });
@@ -73,8 +73,8 @@ test('computeSentinelCap returns 250 on first run, 50 ongoing', () => {
   const ws = mkdtempSync(join(tmpdir(), 'cap-test-'));
   try {
     assert.equal(computeSentinelCap(ws), 250);
-    mkdirSync(join(ws, 'user-data/ops/state/densify-wiki'), { recursive: true });
-    writeFileSync(join(ws, 'user-data/ops/state/densify-wiki/2026-04-15.md'), '# old');
+    mkdirSync(join(ws, 'user-data/runtime/state/densify-wiki'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/runtime/state/densify-wiki/2026-04-15.md'), '# old');
     assert.equal(computeSentinelCap(ws), 50);
   } finally {
     rmSync(ws, { recursive: true });

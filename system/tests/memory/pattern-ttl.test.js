@@ -15,8 +15,8 @@ function ws() { return mkdtempSync(join(tmpdir(), 'ttl-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }
 
 function writeLog(workspaceDir, content) {
-  mkdirSync(join(workspaceDir, 'user-data/ops/state'), { recursive: true });
-  writeFileSync(join(workspaceDir, 'user-data/ops/state/pattern-firings.log'), content);
+  mkdirSync(join(workspaceDir, 'user-data/runtime/state'), { recursive: true });
+  writeFileSync(join(workspaceDir, 'user-data/runtime/state/pattern-firings.log'), content);
 }
 
 function writePatterns(workspaceDir, content) {
@@ -56,7 +56,7 @@ test('truncateFirings: empties the log', () => {
   try {
     writeLog(w, '2026-04-30T00:00:00Z\tx\n');
     truncateFirings(w);
-    const after = readFileSync(join(w, 'user-data/ops/state/pattern-firings.log'), 'utf-8');
+    const after = readFileSync(join(w, 'user-data/runtime/state/pattern-firings.log'), 'utf-8');
     assert.equal(after, '');
   } finally {
     clean(w);
@@ -88,7 +88,7 @@ body of pattern.
     assert.match(after, /fired_count: 4/);
 
     // Log truncated.
-    const log = readFileSync(join(w, 'user-data/ops/state/pattern-firings.log'), 'utf-8');
+    const log = readFileSync(join(w, 'user-data/runtime/state/pattern-firings.log'), 'utf-8');
     assert.equal(log, '');
   } finally {
     clean(w);

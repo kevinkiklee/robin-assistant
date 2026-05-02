@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripMention, splitMessage } from '../../../user-data/ops/scripts/lib/discord/formatter.js';
+import { stripMention, splitMessage } from '../../../user-data/runtime/scripts/lib/discord/formatter.js';
 
 test('stripMention: removes <@id> prefix', () => {
   assert.equal(stripMention('<@123> hello', '123'), 'hello');

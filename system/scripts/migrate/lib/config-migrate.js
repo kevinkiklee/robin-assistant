@@ -2,9 +2,12 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 function resolveConfigPath(workspaceDir) {
-  // Prefer the post-0021 location, fall back to the pre-0021 location.
-  const newP = join(workspaceDir, 'user-data/ops/config/robin.config.json');
+  // Prefer the post-0022 location (runtime/), fall back to post-0021 (ops/)
+  // and pre-0021 (root) for users mid-upgrade.
+  const newP = join(workspaceDir, 'user-data/runtime/config/robin.config.json');
   if (existsSync(newP)) return newP;
+  const opsP = join(workspaceDir, 'user-data/ops/config/robin.config.json');
+  if (existsSync(opsP)) return opsP;
   const oldP = join(workspaceDir, 'user-data/robin.config.json');
   if (existsSync(oldP)) return oldP;
   return newP;
@@ -12,7 +15,7 @@ function resolveConfigPath(workspaceDir) {
 
 export async function migrateConfig(workspaceDir = process.cwd()) {
   const userPath = resolveConfigPath(workspaceDir);
-  const skelPath = join(workspaceDir, 'system/scaffold/ops/config/robin.config.json');
+  const skelPath = join(workspaceDir, 'system/scaffold/runtime/config/robin.config.json');
   if (!existsSync(userPath) || !existsSync(skelPath)) return { added: [], removed: [] };
 
   const user = JSON.parse(readFileSync(userPath, 'utf-8'));

@@ -2,7 +2,7 @@
 // Cycle-2b: SessionStart drift detector.
 //
 // Compares current state (hooks in .claude/settings.json + loaded MCP servers)
-// against the trusted manifest at user-data/ops/security/manifest.json. Severe
+// against the trusted manifest at user-data/runtime/security/manifest.json. Severe
 // drift surfaces in stderr (visible in model context). Mild/info drift goes
 // to policy-refusals.log for retrospective review in morning briefing.
 //
@@ -93,7 +93,7 @@ export function computeDrift(expected, currentSettings, currentMCP, opts = {}) {
     }
   }
 
-  // Cycle-2c: user-data/ops/jobs/ override drift.
+  // Cycle-2c: user-data/runtime/jobs/ override drift.
   if (opts.userDataJobsFiles !== undefined) {
     const known = new Set(expected.userDataJobs?.knownFiles ?? []);
     for (const f of opts.userDataJobsFiles) {
@@ -101,7 +101,7 @@ export function computeDrift(expected, currentSettings, currentMCP, opts = {}) {
         drift.push({
           severity: 'mild',
           kind: 'unexpected-job-override',
-          detail: `user-data/ops/jobs/${f}`,
+          detail: `user-data/runtime/jobs/${f}`,
           hash: fnv1a64(`job:${f}`),
         });
       }
@@ -122,7 +122,7 @@ function readAgentsMD(workspaceDir) {
 }
 
 function listUserDataJobs(workspaceDir) {
-  const dir = join(workspaceDir, 'user-data/ops/jobs');
+  const dir = join(workspaceDir, 'user-data/runtime/jobs');
   if (!existsSync(dir)) return [];
   try {
     return readdirSync(dir).filter((f) => f.endsWith('.md')).sort();
@@ -169,7 +169,7 @@ async function main() {
     const manifest = loadManifest(workspaceDir);
     if (!manifest) {
       process.stderr.write(
-        'WARNING: user-data/ops/security/manifest.json missing or malformed; tamper detection inactive. ' +
+        'WARNING: user-data/runtime/security/manifest.json missing or malformed; tamper detection inactive. ' +
         'Run `node system/scripts/cli/setup.js` to bootstrap, or `node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state`.\n'
       );
       process.exit(0);

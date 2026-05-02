@@ -28,7 +28,7 @@ export function parseArgv(argv) {
 }
 
 function markersDir(workspaceDir) {
-  return join(workspaceDir, 'user-data', 'ops', 'state', 'densify-wiki');
+  return join(workspaceDir, 'user-data', 'runtime', 'state', 'densify-wiki');
 }
 
 export function writePassMarker(workspaceDir, n, kind) {

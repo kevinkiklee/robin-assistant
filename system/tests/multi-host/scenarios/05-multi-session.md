@@ -15,7 +15,7 @@ and surfaces it.
 
 ```sh
 # Inject a sibling-session row dated within the last 2 hours
-cat > user-data/ops/state/sessions.md <<'EOF'
+cat > user-data/runtime/state/sessions.md <<'EOF'
 # Active Sessions
 
 | Session ID | Platform | Started | Last active |
@@ -32,12 +32,12 @@ EOF
 
 - **HARD** — Agent's first response mentions another session being active OR
   references the platform/start time of the sibling row.
-- **HARD** — Transcript shows a Read of `user-data/ops/state/sessions.md`.
+- **HARD** — Transcript shows a Read of `user-data/runtime/state/sessions.md`.
 
 ## Cleanup
 
 ```sh
-echo "" > user-data/ops/state/sessions.md
+echo "" > user-data/runtime/state/sessions.md
 ```
 
 ## Common failure modes

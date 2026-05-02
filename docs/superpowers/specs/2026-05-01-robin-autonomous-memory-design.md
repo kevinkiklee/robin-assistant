@@ -37,12 +37,12 @@ On every user message:
 - If any `type: entity` file or any file with `aliases:` frontmatter has `mtime > ENTITIES.md.mtime` → run incremental update appending the new entity row(s).
 - If any entities matched → in-process recall produces a `<!-- relevant memory -->` block (see S2.4).
 - Also scan the **most recently emitted complete assistant message** in the transcript for entity matches; merge with user-msg matches (dedup), so follow-ups like "schedule it" inherit entities Robin just mentioned.
-- Atomic write `user-data/ops/state/turn/turn.json`:
+- Atomic write `user-data/runtime/state/turn/turn.json`:
   ```json
   {"turn_id":"...","started_at":"...","user_words":12,"tier":3,"entities_matched":["dr-park"]}
   ```
 - Inject the relevant-memory block (if any) via stdout (Claude Code's `additionalContext` protocol).
-- Hard timeout: 80 ms. On timeout, abort gracefully (no injection), append `<ts>\t<hook>\t<duration_ms>\t<reason>` to `user-data/ops/state/hook-perf.log`, exit 0.
+- Hard timeout: 80 ms. On timeout, abort gracefully (no injection), append `<ts>\t<hook>\t<duration_ms>\t<reason>` to `user-data/runtime/state/hook-perf.log`, exit 0.
 
 #### S1.2 — `Stop` hook capture verifier
 
@@ -54,12 +54,12 @@ Steps:
    - **Tier 1** (`user_words < 5` OR pure greeting/ack pattern) → pass.
    - **Tier 2** (`5 ≤ user_words < 20` AND no capture-keyword hits) → light enforcement. Marker accepted without justification.
    - **Tier 3** (`user_words ≥ 20` OR any capture-keyword hit) → full enforcement. Marker requires a one-line reason.
-3. Read `user-data/ops/state/telemetry/turn-writes.log`, filter by `turn_id`, count writes to `user-data/memory/`. ≥1 write → pass.
+3. Read `user-data/runtime/state/telemetry/turn-writes.log`, filter by `turn_id`, count writes to `user-data/memory/`. ≥1 write → pass.
 4. Else read `event.transcript_path` (fallback: derive from `session_id`), tail last 16 KB, regex-scan for `<!-- no-capture-needed: ... -->`. Found and well-formed for tier → pass.
-5. Else check `user-data/ops/state/turn/capture-retry.json` for current `turn_id`:
+5. Else check `user-data/runtime/state/turn/capture-retry.json` for current `turn_id`:
    - `attempts < retry_budget` (default 1) → increment, exit 2 with corrective stderr message.
    - `attempts ≥ retry_budget` → log `skipped: budget exhausted`, append `<!-- capture-skipped -->` to the auto-line, pass.
-6. Append one telemetry line to `user-data/ops/state/telemetry/capture-enforcement.log`: `<ts>\t<turn_id>\t<tier>\t<outcome>` where outcome ∈ `{skipped-trivial, captured, marker-pass, retried-passed, retried-failed, error}`.
+6. Append one telemetry line to `user-data/runtime/state/telemetry/capture-enforcement.log`: `<ts>\t<turn_id>\t<tier>\t<outcome>` where outcome ∈ `{skipped-trivial, captured, marker-pass, retried-passed, retried-failed, error}`.
 
 Corrective stderr message:
 > `Capture before ending the turn. Either (a) write a tagged line to user-data/memory/streams/inbox.md per AGENTS.md capture-rules, or (b) emit "<!-- no-capture-needed: <one-line reason> -->" if nothing in this turn warrants capture. This is enforced; second pass is allowed once.`
@@ -67,7 +67,7 @@ Corrective stderr message:
 #### S1.3 — Write-intent tracking via `PreToolUse`
 
 Extend the existing `--on-pre-tool-use` mode and `--on-pre-bash` mode:
-- For `Write`/`Edit`/`NotebookEdit` whose target is under `user-data/memory/`: append `<turn_id>\t<target>\t<tool>` to `user-data/ops/state/telemetry/turn-writes.log` (atomic append). Existing PII / high-stakes / auto-memory blocks happen first; write-intent log is recorded only on allow path.
+- For `Write`/`Edit`/`NotebookEdit` whose target is under `user-data/memory/`: append `<turn_id>\t<target>\t<tool>` to `user-data/runtime/state/telemetry/turn-writes.log` (atomic append). Existing PII / high-stakes / auto-memory blocks happen first; write-intent log is recorded only on allow path.
 - For `Bash` commands matching `>>?\s*[^\s]*user-data/memory/` (covers `>` and `>>` redirections to memory paths, e.g. `echo "..." >> user-data/memory/streams/inbox.md`): same log entry with `tool=bash`. Existing sensitive-pattern check happens first.
 
 This eliminates the need for any filesystem walk or mtime snapshot. Stop verification becomes O(1).
@@ -76,17 +76,17 @@ This eliminates the need for any filesystem walk or mtime snapshot. Stop verific
 
 | Path | Owner | Lifecycle |
 |---|---|---|
-| `user-data/ops/state/turn/turn.json` | UserPromptSubmit (write) / Stop (read) | Overwritten per turn; cleared at SessionStart > 6 h old |
-| `user-data/ops/state/telemetry/turn-writes.log` | PreToolUse (append) / Stop (read+prune) | Stop rewrites in-place keeping entries with `ts > now - 1h` at end-of-turn; SessionStart caps file at 1000 lines |
-| `user-data/ops/state/turn/capture-retry.json` | Stop (read+write) | Per `turn_id`; SessionStart clears entries > 6 h old |
-| `user-data/ops/state/telemetry/capture-enforcement.log` | Stop (append) | Capped 5000 lines; Dream Phase 4.17.7 rotates |
-| `user-data/ops/state/hook-perf.log` | Any hook (append on slow-path) | Capped 1000 lines; Dream rotates |
+| `user-data/runtime/state/turn/turn.json` | UserPromptSubmit (write) / Stop (read) | Overwritten per turn; cleared at SessionStart > 6 h old |
+| `user-data/runtime/state/telemetry/turn-writes.log` | PreToolUse (append) / Stop (read+prune) | Stop rewrites in-place keeping entries with `ts > now - 1h` at end-of-turn; SessionStart caps file at 1000 lines |
+| `user-data/runtime/state/turn/capture-retry.json` | Stop (read+write) | Per `turn_id`; SessionStart clears entries > 6 h old |
+| `user-data/runtime/state/telemetry/capture-enforcement.log` | Stop (append) | Capped 5000 lines; Dream Phase 4.17.7 rotates |
+| `user-data/runtime/state/hook-perf.log` | Any hook (append on slow-path) | Capped 1000 lines; Dream rotates |
 
 All writes atomic (temp + rename or `O_APPEND` + flock).
 
 #### S1.5 — Triviality filter config
 
-`user-data/ops/config/robin.config.json → memory.capture_enforcement`:
+`user-data/runtime/config/robin.config.json → memory.capture_enforcement`:
 ```json
 {
   "enabled": true,
@@ -123,7 +123,7 @@ Register `UserPromptSubmit` hook entry pointing at `node system/scripts/hooks/cl
 - Atomic `settings.json` write (temp + rename).
 - Re-run `manifest-snapshot.js` after registration so `check-manifest.js` doesn't flag drift on next SessionStart.
 
-#### S1.9 — `user-data/ops/security/manifest.json` update
+#### S1.9 — `user-data/runtime/security/manifest.json` update
 
 Add the new hook to the manifest baseline. Done as part of the install run.
 
@@ -155,7 +155,7 @@ generated: 2026-05-01T04:00:00Z
 
 - **Cap:** ~150 rows / ~1.2 k tokens for the hot file. Overflow → `ENTITIES-extended.md` (loaded on demand by `recall` and the auto-recall hook only).
 - **Hot/extended split sort:** by hit-frequency in `recall.log` (descending), tie-broken alphabetically. Dream computes the cut.
-- **Edit safety:** generation script aborts with clear error if user edits below the marker (compares against `user-data/ops/state/cache/entities-hash.txt`); existing file kept; surfaced in dream summary.
+- **Edit safety:** generation script aborts with clear error if user edits below the marker (compares against `user-data/runtime/state/cache/entities-hash.txt`); existing file kept; surfaced in dream summary.
 - **Atomic write:** `.tmp` + fsync + rename.
 
 #### S2.2 — Frontmatter conventions on entity-bearing files
@@ -420,7 +420,7 @@ None at design time. Resolve during implementation:
 - `system/rules/capture.md` (drop T1, add marker protocol section)
 - `system/jobs/dream.md` (new Phase 3.11.5, 4.17.6, 4.17.7 steps)
 - `system/scripts/diagnostics/lib/token-baselines.json` (new baseline fields)
-- `user-data/ops/security/manifest.json` (new hook in baseline)
+- `user-data/runtime/security/manifest.json` (new hook in baseline)
 - `.claude/settings.json` (new UserPromptSubmit hook entry)
-- `user-data/ops/config/robin.config.json` (new `memory.capture_enforcement` block)
+- `user-data/runtime/config/robin.config.json` (new `memory.capture_enforcement` block)
 - `CHANGELOG.md` (entry)

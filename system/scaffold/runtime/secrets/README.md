@@ -7,7 +7,7 @@ scopes, known gotchas), see `system/integrations/`.
 
 ## Convention
 
-- One `.env` file per workspace at `user-data/ops/secrets/.env`.
+- One `.env` file per workspace at `user-data/runtime/secrets/.env`.
 - One key per line, `KEY=value` format.
 - Comments with `#`.
 - No quotes around values unless the value contains spaces.
@@ -27,7 +27,7 @@ For OAuth integrations whose refresh tokens may rotate, use `saveSecret(workspac
 
 ## Safety
 
-- This folder is gitignored at the repo root (`/user-data/`) and again locally (`user-data/ops/secrets/.gitignore`).
+- This folder is gitignored at the repo root (`/user-data/`) and again locally (`user-data/runtime/secrets/.gitignore`).
 - Never commit a real `.env`. Only `.env.example` (with placeholder values) is tracked.
 - Run `npm run gitleaks` (if configured) before pushing.
 

@@ -20,7 +20,7 @@ notify_on_failure: true
 ### 1. Last week recap
 
 - Read `user-data/memory/tasks.md` for completed items in the past 7 days.
-- Read `user-data/ops/config/integrations.md` for calendar status.
+- Read `user-data/runtime/config/integrations.md` for calendar status.
   - If available: list events that happened this week.
   - If not available: ask "What were the key events this week?"
 
@@ -31,7 +31,7 @@ notify_on_failure: true
 
 ### 3. Financial check (mini)
 
-- Read `user-data/ops/config/integrations.md` for email status.
+- Read `user-data/runtime/config/integrations.md` for email status.
   - If available: pull recent receipts/orders.
   - If not available: skip or ask "Any notable spending this week?"
 - Check `user-data/memory/knowledge/finance/subscriptions.md` for anything anomalous.
@@ -42,7 +42,7 @@ Read `user-data/memory/profile/goals.md`. Prompt the user for progress on active
 
 ### 5. Look ahead
 
-- Read `user-data/ops/config/integrations.md` for calendar status.
+- Read `user-data/runtime/config/integrations.md` for calendar status.
   - If available: next 7 days of calendar.
   - If not available: ask "What's coming up next week?"
 - Prep needed for any meetings/events?

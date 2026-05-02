@@ -35,7 +35,7 @@ step.)
 ## 3. Run the OAuth flow
 
 ```sh
-node user-data/ops/scripts/auth-google.js
+node user-data/runtime/scripts/auth-google.js
 ```
 
 A browser tab opens to Google's consent screen. Click **Advanced →
@@ -48,8 +48,8 @@ tokens, and writes `GOOGLE_OAUTH_REFRESH_TOKEN` back to `.env`.
 ## 4. Bootstrap and enable the sync jobs
 
 ```sh
-node user-data/ops/scripts/sync-calendar.js --bootstrap
-node user-data/ops/scripts/sync-gmail.js --bootstrap
+node user-data/runtime/scripts/sync-calendar.js --bootstrap
+node user-data/runtime/scripts/sync-gmail.js --bootstrap
 node bin/robin.js jobs enable sync-calendar
 node bin/robin.js jobs enable sync-gmail
 ```
