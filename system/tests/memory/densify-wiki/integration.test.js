@@ -35,13 +35,16 @@ test('integration: full orchestrator run on golden corpus in dry-run', async () 
       `expected ≥1 type flip proposed, got ${summary.counts.type_flips}`
     );
 
-    // Pass 3 should produce some related: edges from cross-directory entity sharing
-    // (jake-lee.md and snapshot.md share Mom, Dad, Morgan Stanley).
-    // In dry-run mode, edges aren't written but they're still computed and counted.
+    // Pass 3: the fixture corpus (6 entities with canonical:) does not produce any pair
+    // that shares >= 3 entities at the default threshold. jake-lee.md mentions
+    // {home, morgan-stanley} and snapshot.md mentions {jake-lee, mom, dad, morgan-stanley};
+    // their shared set is {morgan-stanley} = 1, below threshold=3. No edges are written
+    // in dry-run regardless. The count must be a non-negative integer.
     assert.ok(
       summary.counts.related_edges_added >= 0,
       `related_edges_added should be a non-negative count, got ${summary.counts.related_edges_added}`
     );
+    assert.equal(typeof summary.counts.related_edges_added, 'number', 'related_edges_added must be a number');
   } finally {
     rmSync(ws, { recursive: true });
   }

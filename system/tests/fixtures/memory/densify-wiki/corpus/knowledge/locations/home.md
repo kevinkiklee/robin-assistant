@@ -1,5 +1,6 @@
 ---
 type: entity
+canonical: Home
 aliases: ["Astoria apartment", "current home"]
 ---
 

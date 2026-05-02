@@ -1,5 +1,6 @@
 ---
 type: topic
+canonical: Photobot
 aliases: ["Discord photo bot"]
 ---
 

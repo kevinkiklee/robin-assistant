@@ -1,5 +1,6 @@
 ---
 type: entity
+canonical: Jhong Hee Lee
 aliases: ["Mom", "Umma"]
 ---
 
