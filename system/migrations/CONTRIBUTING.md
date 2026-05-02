@@ -7,7 +7,7 @@ journals, decisions, financial history go away. This contract is binding.
 
 Strictly sequential. Pick the next available `<N>-<slug>.js`. **Never reorder
 after merge** — applied numbers are stored in
-`user-data/.migrations-applied.json` and the runner relies on numerical order
+`user-data/ops/state/migrations-applied.json` and the runner relies on numerical order
 for dependency resolution.
 
 If a migration's purpose changes after merge, write a new migration that
@@ -45,7 +45,7 @@ side effects.
 
 ### 2. Pre-migration backup
 
-The runner (`migrate.js`) handles this automatically — `user-data/` is
+The runner (`migrate/apply.js`) handles this automatically — `user-data/` is
 tarballed to `backup/pre-migration-<ts>.tar.gz` before any migration runs.
 **Don't disable.** If a migration writes to a non-`user-data/` path, it
 must take its own backup.
@@ -70,7 +70,7 @@ and some didn't. **A retry of a partially-applied migration must converge.**
 
 ### 5. Tests
 
-Add `system/tests/migration-<slug>.test.js` covering:
+Add `system/tests/migrate/migration-<slug>.test.js` covering:
 
 - Happy path on a fresh fixture.
 - Re-run on already-migrated state (idempotent → no-op).
@@ -100,7 +100,7 @@ appear in the user's terminal during `npm install` and at session start.
 - **No network calls.** Migrations run offline.
 - **No async ops without await.** Migrations are awaited; an unawaited
   promise can leave state in flight when the next migration runs.
-- **No reading the user's secrets** (`user-data/secrets/`). If a migration
+- **No reading the user's secrets** (`user-data/ops/secrets/`). If a migration
   needs to know an API key, it's not a migration — it's a configuration step
   that belongs in `robin configure`.
 
