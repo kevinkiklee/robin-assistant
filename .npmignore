@@ -1,0 +1,7 @@
+system/tests/
+system/migrations/CONTRIBUTING.md
+docs/
+backup/
+.worktrees/
+.locks/
+scripts-temp/
