@@ -7,8 +7,8 @@ import { homedir, userInfo } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROBIN_ROOT = resolve(__dirname, '../../');
-const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/state');
-const LOG_DIR = resolve(STATE_DIR, 'logs');
+const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/ops/state/services');
+const LOG_DIR = STATE_DIR;
 const EVENTS_PATH = resolve(LOG_DIR, 'discord-bot.events.jsonl');
 const SESSIONS_PATH = resolve(STATE_DIR, 'discord-sessions.json');
 const STATUS_PATH = resolve(STATE_DIR, 'discord-bot.status.json');

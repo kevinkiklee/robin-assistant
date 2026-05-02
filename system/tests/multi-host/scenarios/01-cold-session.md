@@ -15,9 +15,9 @@ is loaded unprompted.
 
 ```sh
 # Restore a known clean session: no sibling sessions, no pending failures
-echo "" > user-data/state/sessions.md
-mkdir -p user-data/state/jobs
-cat > user-data/state/jobs/failures.md <<'EOF'
+echo "" > user-data/ops/state/sessions.md
+mkdir -p user-data/ops/state/jobs
+cat > user-data/ops/state/jobs/failures.md <<'EOF'
 # Job Failures
 
 ## Active failures

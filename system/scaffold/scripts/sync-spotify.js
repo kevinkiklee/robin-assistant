@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // Spotify sync — pulls recently-played (append-only), top tracks/artists
 // (regenerated), and playlist snapshots. Lazy-caches audio-features per track.
 //
 // Usage:
-//   node user-data/scripts/sync-spotify.js
-//   node user-data/scripts/sync-spotify.js --bootstrap
-//   node user-data/scripts/sync-spotify.js --dry-run
+//   node user-data/ops/scripts/sync-spotify.js
+//   node user-data/ops/scripts/sync-spotify.js --bootstrap
+//   node user-data/ops/scripts/sync-spotify.js --dry-run
 
 import { join } from 'node:path';
 import { hostname } from 'node:os';
@@ -315,7 +315,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const bootstrap = process.argv.includes('--bootstrap');
 
   const underRunner = !!process.env.ROBIN_WORKSPACE;
-  const lockPath = join(workspaceDir, `user-data/state/jobs/locks/${SOURCE}.lock`);
+  const lockPath = join(workspaceDir, `user-data/ops/state/jobs/locks/${SOURCE}.lock`);
   let acquired = false;
 
   async function run() {

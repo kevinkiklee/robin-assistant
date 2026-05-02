@@ -7,6 +7,11 @@ export const EXCLUDED_PATHS = [
   'hot.md',
   'LINKS.md',
   'INDEX.md',
+  // Post-0021 streams/ subdir:
+  'streams/inbox.md',
+  'streams/journal.md',
+  'streams/log.md',
+  'streams/decisions.md',
 ];
 
 export const EXCLUDED_PREFIXES = [

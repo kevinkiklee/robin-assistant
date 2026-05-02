@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drains host-managed auto-memory directories into user-data/memory/inbox.md.
+// Drains host-managed auto-memory directories into user-data/memory/streams/inbox.md.
 //
 // Per the Local Memory immutable rule (AGENTS.md), persistent memory must
 // live in user-data/. Some hosts write to ~/.claude/projects/.../memory/
@@ -22,8 +22,8 @@ import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
-const INBOX = join(REPO_ROOT, 'user-data/memory/inbox.md');
-const MIGRATION_LOG = join(REPO_ROOT, 'user-data/state/migrated-auto-memory-log.json');
+const INBOX = join(REPO_ROOT, 'user-data/memory/streams/inbox.md');
+const MIGRATION_LOG = join(REPO_ROOT, 'user-data/ops/state/migrated-auto-memory-log.json');
 const LOG_CAP = 500;
 
 function workspaceSlug() {
@@ -247,7 +247,7 @@ function main() {
   }
   if (apply) {
     const skipped = report.skipped ?? 0;
-    console.log(`Migrated: ${report.migrated} appended, ${skipped} skipped (dup) → user-data/memory/inbox.md`);
+    console.log(`Migrated: ${report.migrated} appended, ${skipped} skipped (dup) → user-data/memory/streams/inbox.md`);
   } else if (Object.values(report.by_host).some((h) => h.count > 0)) console.log(`Run with --apply to perform the migration.`);
 }
 

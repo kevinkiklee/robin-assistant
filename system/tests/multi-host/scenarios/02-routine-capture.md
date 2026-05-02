@@ -16,7 +16,7 @@ AGENTS.md is sufficient for routine cases.
 
 ```sh
 # Snapshot inbox to detect the new entry, restore at end of run
-cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
+cp user-data/memory/streams/inbox.md user-data/memory/streams/inbox.md.bak
 ```
 
 ## Prompt
@@ -25,7 +25,7 @@ cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
 
 ## Pass criteria
 
-- **HARD** — Transcript shows a Write/Edit to `user-data/memory/inbox.md`.
+- **HARD** — Transcript shows a Write/Edit to `user-data/memory/streams/inbox.md`.
 - **HARD** — Inbox content gains a `[preference]` line referencing dark roast.
 - **SOFT** — `system/rules/capture.md` does NOT appear as a Read in the
   transcript.
@@ -33,7 +33,7 @@ cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
 ## Cleanup
 
 ```sh
-mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
+mv user-data/memory/streams/inbox.md.bak user-data/memory/streams/inbox.md
 ```
 
 ## Common failure modes

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by system/scripts/diagnostics/startup-check.js
-// on first run (scaffold-sync). Imports use paths relative to user-data/scripts/,
+// Template — auto-copied to user-data/ops/scripts/ by system/scripts/diagnostics/startup-check.js
+// on first run (scaffold-sync). Imports use paths relative to user-data/ops/scripts/,
 // so this file is NOT runnable in place — only after it's been copied.
 import { join } from 'node:path';
 import { hostname } from 'node:os';
@@ -114,12 +114,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   // When invoked via the unified job runner (`robin run sync-lunch-money`),
   // the runner already holds the per-job lock at
-  // user-data/state/jobs/locks/sync-lunch-money.lock and sets ROBIN_WORKSPACE.
+  // user-data/ops/state/jobs/locks/sync-lunch-money.lock and sets ROBIN_WORKSPACE.
   // When invoked directly from a terminal we hold the lock ourselves so two
   // concurrent invocations (manual + cron) don't double-fetch the API and
   // race on cursor writes.
   const underRunner = !!process.env.ROBIN_WORKSPACE;
-  const lockPath = join(workspaceDir, 'user-data/state/jobs/locks/sync-lunch-money.lock');
+  const lockPath = join(workspaceDir, 'user-data/ops/state/jobs/locks/sync-lunch-money.lock');
   let acquired = false;
 
   async function run() {

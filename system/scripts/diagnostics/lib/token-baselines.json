@@ -17,7 +17,7 @@
         "over_cap_at": null
       },
       {
-        "path": "user-data/robin.config.json",
+        "path": "user-data/ops/config/robin.config.json",
         "stability": "frozen",
         "exists": true,
         "required": true,
@@ -77,7 +77,7 @@
         "over_cap_at": null
       },
       {
-        "path": "user-data/integrations.md",
+        "path": "user-data/ops/config/integrations.md",
         "stability": "slow",
         "exists": true,
         "required": false,
@@ -161,7 +161,7 @@
         "over_cap_at": null
       },
       {
-        "path": "user-data/state/sessions.md",
+        "path": "user-data/ops/state/sessions.md",
         "stability": "volatile",
         "exists": true,
         "required": false,
@@ -173,7 +173,7 @@
         "over_cap_at": null
       },
       {
-        "path": "user-data/state/jobs/failures.md",
+        "path": "user-data/ops/state/jobs/failures.md",
         "stability": "volatile",
         "exists": true,
         "required": false,

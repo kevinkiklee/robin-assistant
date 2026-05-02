@@ -5,7 +5,7 @@ type: topic
 
 # Action Trust
 
-Calibration evidence per action class. Source of truth; the compact-summary block in `user-data/policies.md` is the derived view loaded at session start.
+Calibration evidence per action class. Source of truth; the compact-summary block in `user-data/ops/config/policies.md` is the derived view loaded at session start.
 
 Outcome states for `[action]` capture entries:
 - `silent` — AUTO action with no objection

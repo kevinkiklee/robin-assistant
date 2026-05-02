@@ -22,14 +22,14 @@ Read `predictions.md`. For each entry under `## Open`:
 ## Phase 2: Propose resolution
 
 For each prediction needing resolution, scan recent context for evidence:
-- `user-data/memory/journal.md` (recent entries)
-- `user-data/memory/inbox.md` (recent items)
-- `user-data/memory/decisions.md` (decisions that confirm/refute the prediction)
+- `user-data/memory/streams/journal.md` (recent entries)
+- `user-data/memory/streams/inbox.md` (recent items)
+- `user-data/memory/streams/decisions.md` (decisions that confirm/refute the prediction)
 - The originating session-id mentioned in the prediction
 
 Propose one of: `resolved-accurate` | `resolved-miss` | `inconclusive`. Include a one-line basis for the proposal.
 
-Output a summary block to `user-data/state/outcome-check-<YYYY-MM-DD>.md` listing each prediction + proposed resolution. The user reviews this in their next system-maintenance run.
+Output a summary block to `user-data/ops/state/outcome-check-<YYYY-MM-DD>.md` listing each prediction + proposed resolution. The user reviews this in their next system-maintenance run.
 
 ## Phase 3: Auto-resolve stale
 

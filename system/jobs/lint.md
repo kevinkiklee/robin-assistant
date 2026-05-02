@@ -116,7 +116,7 @@ Skip files matching `robin.config.json` → `memory.graph_exclude` patterns. Def
 
 ## Log
 
-Append lint results summary to `user-data/memory/log.md`:
+Append lint results summary to `user-data/memory/streams/log.md`:
 
 ```markdown
 ## [YYYY-MM-DD] lint | <scope> | issues: N

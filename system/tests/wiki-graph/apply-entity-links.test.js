@@ -136,10 +136,10 @@ test('applyEntityLinks: fail-soft when registry build throws (alias collision)',
 test('applyEntityLinks: no-op on excluded paths (inbox.md, etc.)', async () => {
   const ws = await copyFixtureToTmp('linker-excluded');
   const reg = await buildEntityRegistry(ws);
-  const result = await applyEntityLinks(ws, 'inbox.md', reg);
+  const result = await applyEntityLinks(ws, 'streams/inbox.md', reg);
   assert.equal(result.written, false);
   assert.equal(result.inserted, 0);
-  const after = await readFile(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+  const after = await readFile(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
   assert.doesNotMatch(after, /\[Dr\. Lee\]\(/);
 });
 

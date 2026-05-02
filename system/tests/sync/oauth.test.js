@@ -7,14 +7,14 @@ import { getAccessToken, runAuthCodeFlow, getProvider } from '../../scripts/sync
 
 function workspace() {
   const ws = mkdtempSync(join(tmpdir(), 'oauth-'));
-  mkdirSync(join(ws, 'user-data/secrets'), { recursive: true });
-  mkdirSync(join(ws, 'user-data/state/sync'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/ops/secrets'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/ops/state/sync'), { recursive: true });
   return ws;
 }
 
 function writeEnv(ws, kv) {
   const lines = Object.entries(kv).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
-  writeFileSync(join(ws, 'user-data/secrets/.env'), lines);
+  writeFileSync(join(ws, 'user-data/ops/secrets/.env'), lines);
 }
 
 function fakeFetch(responses) {
@@ -51,7 +51,7 @@ test('getAccessToken returns cached token when not expired', async () => {
   // Pre-seed state with a fresh access token
   const futureExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   writeFileSync(
-    join(ws, 'user-data/state/sync/google.json'),
+    join(ws, 'user-data/ops/state/sync/google.json'),
     JSON.stringify({ access_token: 'cached-token', access_token_expires_at: futureExpiry }) + '\n'
   );
   // fakeFetch with no responses — call should not hit network
@@ -70,7 +70,7 @@ test('getAccessToken refreshes when access token expired', async () => {
   });
   const pastExpiry = new Date(Date.now() - 60 * 1000).toISOString();
   writeFileSync(
-    join(ws, 'user-data/state/sync/google.json'),
+    join(ws, 'user-data/ops/state/sync/google.json'),
     JSON.stringify({ access_token: 'old-token', access_token_expires_at: pastExpiry }) + '\n'
   );
   const fetch = fakeFetch([
@@ -79,7 +79,7 @@ test('getAccessToken refreshes when access token expired', async () => {
   const token = await getAccessToken(ws, 'google', { fetch });
   assert.equal(token, 'new-token');
   // Cached for next call
-  const state = JSON.parse(readFileSync(join(ws, 'user-data/state/sync/google.json'), 'utf-8'));
+  const state = JSON.parse(readFileSync(join(ws, 'user-data/ops/state/sync/google.json'), 'utf-8'));
   assert.equal(state.access_token, 'new-token');
   assert.equal(state.auth_status, 'ok');
   assert.ok(Date.parse(state.access_token_expires_at) > Date.now());
@@ -113,7 +113,7 @@ test('getAccessToken writes back rotated refresh token', async () => {
     { status: 200, json: { access_token: 'at', expires_in: 3600, refresh_token: 'rt-new' } },
   ]);
   await getAccessToken(ws, 'spotify', { fetch });
-  const env = readFileSync(join(ws, 'user-data/secrets/.env'), 'utf-8');
+  const env = readFileSync(join(ws, 'user-data/ops/secrets/.env'), 'utf-8');
   assert.match(env, /SPOTIFY_REFRESH_TOKEN=rt-new/);
   assert.doesNotMatch(env, /rt-old/);
   rmSync(ws, { recursive: true });

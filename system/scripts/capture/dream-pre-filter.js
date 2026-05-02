@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Dream pre-filter — runs before any Dream routing of user-data/memory/inbox.md.
+// Dream pre-filter — runs before any Dream routing of user-data/memory/streams/inbox.md.
 //
 // Cycle-1a's capture-loop attribution layer. Every inbox tag line carries an
 // `origin=...` field (per AGENTS.md capture rule). The pre-filter:
@@ -29,7 +29,7 @@ import { applyRedaction } from '../sync/lib/redact.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
-const INBOX_REL = 'user-data/memory/inbox.md';
+const INBOX_REL = 'user-data/memory/streams/inbox.md';
 const QUARANTINE_REL = 'user-data/memory/quarantine/captures.md';
 
 const QUARANTINE_HEADER = `---

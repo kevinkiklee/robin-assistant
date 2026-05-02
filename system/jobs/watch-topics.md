@@ -28,7 +28,7 @@ Sort by `last_run_at` ascending (least-recent first). Take top 5 (cap per tick).
 
 For each eligible watch:
 
-1. Read `user-data/state/watches/<id>.json` for the fingerprint set.
+1. Read `user-data/ops/state/watches/<id>.json` for the fingerprint set.
 2. Issue WebSearch with the watch's `query`.
 3. For each result hit (top 5–10), build a fingerprint: `sha256(canonical-url + summary-first-200-chars)`.
 4. Drop hits whose fingerprint is in the set.
@@ -39,7 +39,7 @@ For each eligible watch:
 
 For each watch with new hits:
 
-1. Append `[watch:<id>] <topic> — <hit-title> (<canonical-url>): <one-line summary>` to `user-data/memory/inbox.md`.
+1. Append `[watch:<id>] <topic> — <hit-title> (<canonical-url>): <one-line summary>` to `user-data/memory/streams/inbox.md`.
 2. Add the new fingerprints to `state/watches/<id>.json`'s ring buffer (keep last 50, drop oldest).
 3. Update `last_run_at` in both the markdown frontmatter and the state JSON.
 
@@ -47,7 +47,7 @@ For each watch with new hits:
 
 On per-watch failure (network error, summarization error, write error):
 - Increment `consecutive_failures` in state JSON.
-- If `consecutive_failures >= 3`: set the watch's `enabled: false` and append a row to `user-data/state/jobs/failures.md` with category `watch_disabled` and reason.
+- If `consecutive_failures >= 3`: set the watch's `enabled: false` and append a row to `user-data/ops/state/jobs/failures.md` with category `watch_disabled` and reason.
 
 On success, reset `consecutive_failures` to 0.
 

@@ -20,8 +20,8 @@ timeout_minutes: 15
 3. Identify implicit obligations (commitments user made, follow-ups owed).
 4. For each, classify:
    - **Action item** -> add to appropriate section in `user-data/memory/tasks.md`
-   - **FYI / context** -> note in `user-data/memory/journal.md` if useful for future sessions
-   - **Decision needed** -> create entry in `user-data/memory/decisions.md`
+   - **FYI / context** -> note in `user-data/memory/streams/journal.md` if useful for future sessions
+   - **Decision needed** -> create entry in `user-data/memory/streams/decisions.md`
 5. Extract: task description, due date if mentioned, priority based on tone/sender.
 
 ## Output

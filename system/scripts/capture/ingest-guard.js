@@ -20,7 +20,7 @@ export class IngestForbiddenError extends Error {
 
 const FORBIDDEN_PATHS = [
   'user-data/memory/tasks.md',
-  'user-data/memory/decisions.md',
+  'user-data/memory/streams/decisions.md',
   'user-data/memory/self-improvement/corrections.md',
   'user-data/memory/self-improvement/preferences.md',
   'user-data/memory/self-improvement/patterns.md',

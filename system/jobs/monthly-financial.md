@@ -34,4 +34,4 @@ notify_on_failure: true
 
 ## After
 
-Update `user-data/memory/knowledge.md` with any new financial facts. Log the review in `user-data/memory/journal.md`.
+Update `user-data/memory/knowledge.md` with any new financial facts. Log the review in `user-data/memory/streams/journal.md`.

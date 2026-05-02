@@ -15,9 +15,9 @@ test('loadCursor returns empty object when state file is missing', () => {
   rmSync(ws, { recursive: true });
 });
 
-test('cursorPath is workspace + user-data/state/sync/<name>.json', () => {
+test('cursorPath is workspace + user-data/ops/state/sync/<name>.json', () => {
   const ws = setup();
-  assert.equal(cursorPath(ws, 'lunch-money'), join(ws, 'user-data/state/sync/lunch-money.json'));
+  assert.equal(cursorPath(ws, 'lunch-money'), join(ws, 'user-data/ops/state/sync/lunch-money.json'));
   rmSync(ws, { recursive: true });
 });
 
@@ -44,28 +44,28 @@ test('saveCursor merges with existing state (does not drop fields)', () => {
 test('saveCursor creates state dir if missing', () => {
   const ws = setup();
   saveCursor(ws, 'foo', { ok: true });
-  assert.ok(existsSync(join(ws, 'user-data/state/sync')));
+  assert.ok(existsSync(join(ws, 'user-data/ops/state/sync')));
   rmSync(ws, { recursive: true });
 });
 
 test('saveCursor writes atomically (no .tmp left behind)', () => {
   const ws = setup();
   saveCursor(ws, 'foo', { ok: true });
-  assert.ok(!existsSync(join(ws, 'user-data/state/sync/foo.json.tmp')));
+  assert.ok(!existsSync(join(ws, 'user-data/ops/state/sync/foo.json.tmp')));
   rmSync(ws, { recursive: true });
 });
 
 test('saveCursor formats JSON with 2-space indent + trailing newline', () => {
   const ws = setup();
   saveCursor(ws, 'foo', { a: 1 });
-  const content = readFileSync(join(ws, 'user-data/state/sync/foo.json'), 'utf-8');
+  const content = readFileSync(join(ws, 'user-data/ops/state/sync/foo.json'), 'utf-8');
   assert.equal(content, '{\n  "a": 1\n}\n');
   rmSync(ws, { recursive: true });
 });
 
 test('loadCursor quarantines a corrupt state file and returns empty object', () => {
   const ws = setup();
-  const dir = join(ws, 'user-data/state/sync');
+  const dir = join(ws, 'user-data/ops/state/sync');
   mkdirSync(dir, { recursive: true });
   const path = join(dir, 'foo.json');
   writeFileSync(path, '{ this is not valid JSON');
@@ -91,7 +91,7 @@ test('loadCursor quarantines a corrupt state file and returns empty object', () 
 
 test('saveCursor recovers from a corrupt prior state by quarantining and starting fresh', () => {
   const ws = setup();
-  const dir = join(ws, 'user-data/state/sync');
+  const dir = join(ws, 'user-data/ops/state/sync');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'foo.json'), '{ corrupt');
   const origWarn = console.warn;

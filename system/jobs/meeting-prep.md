@@ -16,24 +16,24 @@ timeout_minutes: 15
 
 ### 1. Get the event
 
-Read `user-data/integrations.md` for calendar status.
+Read `user-data/ops/config/integrations.md` for calendar status.
 - If available: get the calendar event (subject, time, attendees, location, description).
 - If not available: ask "What's the meeting? Give me the subject, time, attendees, and any context."
 
 ### 2. Search for related context
 
-Read `user-data/integrations.md` for email status.
+Read `user-data/ops/config/integrations.md` for email status.
 - If email available: search for threads by subject keywords and attendee names (past 30 days).
 - If not available: ask "Any recent email threads related to this meeting?"
 
-Read `user-data/integrations.md` for storage status.
+Read `user-data/ops/config/integrations.md` for storage status.
 - If storage available: search for documents by subject keywords and attendee names.
 - If not available: skip this section.
 
 ### 3. Check workspace
 
 Read `user-data/memory/knowledge.md` for any vendor/contact/topic matching the meeting subject.
-Read `user-data/memory/journal.md` and `user-data/memory/profile.md` for prior context.
+Read `user-data/memory/streams/journal.md` and `user-data/memory/profile.md` for prior context.
 
 ## Output
 

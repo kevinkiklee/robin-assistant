@@ -69,4 +69,4 @@ Pick the single highest-leverage improvement for the next quarter.
 
 ## After
 
-Log in `user-data/memory/journal.md`. Update `user-data/memory/self-improvement.md` -> `## Calibration`.
+Log in `user-data/memory/streams/journal.md`. Update `user-data/memory/self-improvement.md` -> `## Calibration`.

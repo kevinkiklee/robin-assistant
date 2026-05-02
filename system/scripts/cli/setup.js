@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
@@ -94,7 +94,7 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     try {
       const m = ensureManifestFromScaffold(workspaceDir, opts.packageRoot);
       if (m.copied) {
-        console.log('postinstall: copied scaffold security manifest → user-data/security/manifest.json');
+        console.log('postinstall: copied scaffold security manifest → user-data/ops/security/manifest.json');
       }
     } catch (err) {
       console.warn(`postinstall: manifest scaffold copy skipped (${err.message})`);
@@ -108,7 +108,10 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   mkdirSync(join(workspaceDir, 'artifacts/output'), { recursive: true });
   mkdirSync(join(workspaceDir, 'backup'), { recursive: true });
 
-  // Copy scaffold → user-data (skip README.md, which documents the scaffold itself)
+  // Copy scaffold → user-data (skip README.md, which documents the scaffold itself).
+  // Scaffold still uses the pre-0021 flat layout; we relocate items to the
+  // post-0021 layout immediately after copy so fresh installs land in the
+  // canonical shape without waiting for migration 0021 to run.
   if (existsSync(scaffold)) {
     for (const entry of readdirSync(scaffold)) {
       if (entry === 'README.md') continue;
@@ -116,9 +119,33 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     }
   }
 
-  // Config: prompt or skip
+  // Relocate scaffold-copied items into the post-0021 layout.
+  // Top-level files → ops/config/, ops/* dirs.
+  const relocateMap = [
+    ['robin.config.json', 'ops/config/robin.config.json'],
+    ['integrations.md', 'ops/config/integrations.md'],
+    ['policies.md', 'ops/config/policies.md'],
+    ['jobs', 'ops/jobs'],
+    ['scripts', 'ops/scripts'],
+    ['secrets', 'ops/secrets'],
+    ['security', 'ops/security'],
+  ];
+  for (const [src, dst] of relocateMap) {
+    const srcPath = join(ud, src);
+    const dstPath = join(ud, dst);
+    if (existsSync(srcPath) && !existsSync(dstPath)) {
+      mkdirSync(join(dstPath, '..'), { recursive: true });
+      cpSync(srcPath, dstPath, { recursive: true });
+      rmSync(srcPath, { recursive: true, force: true });
+    }
+  }
+
+  // Config: prompt or skip. Use whichever location currently exists; default
+  // to the post-0021 location for fresh writes.
   const isInteractive = !opts.ci && !process.env.CI && process.stdin.isTTY;
-  const cfgPath = join(ud, 'robin.config.json');
+  const oldCfgPath = join(ud, 'robin.config.json');
+  const newCfgPath = join(ud, 'ops/config/robin.config.json');
+  const cfgPath = existsSync(newCfgPath) ? newCfgPath : oldCfgPath;
   let cfg = existsSync(cfgPath) ? JSON.parse(readFileSync(cfgPath, 'utf-8')) : {};
 
   if (isInteractive) {
@@ -132,9 +159,9 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     cfg.assistant.name = (await rl.question('Assistant name (default Robin): ')).trim() || 'Robin';
     rl.close();
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-    console.log('\nConfig saved to user-data/robin.config.json.');
+    console.log('\nConfig saved to user-data/ops/config/robin.config.json.');
   } else {
-    console.log('Non-interactive mode. Edit user-data/robin.config.json before first session.');
+    console.log('Non-interactive mode. Edit user-data/ops/config/robin.config.json before first session.');
   }
 
   // Apply baseline migrations

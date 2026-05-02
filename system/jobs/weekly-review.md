@@ -20,7 +20,7 @@ notify_on_failure: true
 ### 1. Last week recap
 
 - Read `user-data/memory/tasks.md` for completed items in the past 7 days.
-- Read `user-data/integrations.md` for calendar status.
+- Read `user-data/ops/config/integrations.md` for calendar status.
   - If available: list events that happened this week.
   - If not available: ask "What were the key events this week?"
 
@@ -31,7 +31,7 @@ notify_on_failure: true
 
 ### 3. Financial check (mini)
 
-- Read `user-data/integrations.md` for email status.
+- Read `user-data/ops/config/integrations.md` for email status.
   - If available: pull recent receipts/orders.
   - If not available: skip or ask "Any notable spending this week?"
 - Check `user-data/memory/knowledge.md` -> `## Subscriptions` for anything anomalous.
@@ -42,18 +42,18 @@ Read `user-data/memory/profile.md` -> `## Goals`. Prompt the user for progress o
 
 ### 5. Look ahead
 
-- Read `user-data/integrations.md` for calendar status.
+- Read `user-data/ops/config/integrations.md` for calendar status.
   - If available: next 7 days of calendar.
   - If not available: ask "What's coming up next week?"
 - Prep needed for any meetings/events?
 
 ### 6. Decisions waiting
 
-Read `user-data/memory/decisions.md` for entries marked pending input.
+Read `user-data/memory/streams/decisions.md` for entries marked pending input.
 
 ### 7. Inbox sweep
 
-Read `user-data/memory/inbox.md`. For each entry, classify per `system/rules/capture.md` routing and move to the right file.
+Read `user-data/memory/streams/inbox.md`. For each entry, classify per `system/rules/capture.md` routing and move to the right file.
 
 ## Output
 

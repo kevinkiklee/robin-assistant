@@ -3,18 +3,18 @@
 import { join } from 'node:path';
 
 export function jobsPaths(workspaceDir) {
-  const stateDir = join(workspaceDir, 'user-data/state/jobs');
+  const stateDir = join(workspaceDir, 'user-data/ops/state/jobs');
   return {
     workspaceDir,
     systemJobsDir: join(workspaceDir, 'system/jobs'),
-    userJobsDir: join(workspaceDir, 'user-data/jobs'),
+    userJobsDir: join(workspaceDir, 'user-data/ops/jobs'),
     stateDir,
     indexMd: join(stateDir, 'INDEX.md'),
     upcomingMd: join(stateDir, 'upcoming.md'),
     failuresMd: join(stateDir, 'failures.md'),
-    workspacePathFile: join(stateDir, '.workspace-path'),
-    syncHashFile: join(stateDir, '.sync-hash'),
-    notificationStateFile: join(stateDir, '.notification-state.json'),
+    workspacePathFile: join(stateDir, 'workspace-path'),
+    syncHashFile: join(stateDir, 'sync-hash'),
+    notificationStateFile: join(stateDir, 'notification-state.json'),
     locksDir: join(stateDir, 'locks'),
     logsDir: join(stateDir, 'logs'),
     stateJSON: (name) => join(stateDir, `${name}.json`),

@@ -7,9 +7,9 @@ import { preFilter } from '../../scripts/capture/dream-pre-filter.js';
 
 function makeWorkspace(inboxContent) {
   const ws = mkdtempSync(join(tmpdir(), 'pre-filter-'));
-  mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/memory/streams'), { recursive: true });
   if (inboxContent !== null) {
-    writeFileSync(join(ws, 'user-data/memory/inbox.md'), inboxContent);
+    writeFileSync(join(ws, 'user-data/memory/streams/inbox.md'), inboxContent);
   }
   return ws;
 }
@@ -45,7 +45,7 @@ description: x
     const result = preFilter(ws);
     assert.equal(result.quarantined, 0);
     assert.equal(result.kept, 2);
-    const after = readFileSync(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+    const after = readFileSync(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
     assert.match(after, /kevin loves coffee/);
     assert.match(after, /buy more beans/);
     assert.equal(existsSync(join(ws, 'user-data/memory/quarantine/captures.md')), false);
@@ -74,7 +74,7 @@ test('preFilter: quarantines sync:* origin lines and removes from inbox', () => 
     assert.equal(result.quarantined, 1);
     assert.equal(result.kept, 1);
 
-    const inboxAfter = readFileSync(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+    const inboxAfter = readFileSync(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
     assert.doesNotMatch(inboxAfter, /attacker payload/);
     assert.match(inboxAfter, /kevin's real fact/);
 
@@ -106,7 +106,7 @@ test('preFilter: derived origin allowed but audited to quarantine log', () => {
     assert.equal(result.audited, 1);
     assert.equal(result.kept, 0);
     // Line still in inbox.
-    const inboxAfter = readFileSync(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+    const inboxAfter = readFileSync(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
     assert.match(inboxAfter, /inferred from mixed sources/);
     // But also written to quarantine for audit.
     const qAfter = readFileSync(join(ws, 'user-data/memory/quarantine/captures.md'), 'utf-8');
@@ -132,9 +132,9 @@ test('preFilter: idempotent — second run is no-op', () => {
   const ws = makeWorkspace(inbox);
   try {
     preFilter(ws);
-    const inboxAfter1 = readFileSync(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+    const inboxAfter1 = readFileSync(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
     const result2 = preFilter(ws);
-    const inboxAfter2 = readFileSync(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+    const inboxAfter2 = readFileSync(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
     assert.equal(inboxAfter1, inboxAfter2);
     assert.equal(result2.quarantined, 0);
   } finally {
@@ -180,7 +180,7 @@ Another paragraph at the end.
   const ws = makeWorkspace(inbox);
   try {
     preFilter(ws);
-    const after = readFileSync(join(ws, 'user-data/memory/inbox.md'), 'utf-8');
+    const after = readFileSync(join(ws, 'user-data/memory/streams/inbox.md'), 'utf-8');
     assert.match(after, /Some intro paragraph/);
     assert.match(after, /## 2026-04-30 session/);
     assert.match(after, /Another paragraph at the end/);

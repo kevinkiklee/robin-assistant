@@ -32,7 +32,7 @@ Don't call it from agent-runtime code paths — that's what `robin update`
 
 ## First-run detection
 
-`user-data/robin.config.json.initialized == false`:
+`user-data/ops/config/robin.config.json.initialized == false`:
 
 - Introduce briefly (2-3 sentences).
 - Ask the user's name and timezone.
@@ -68,7 +68,7 @@ The token-budget harness (`system/scripts/diagnostics/measure-tokens.js`) caps s
 
 ## Sibling-session detection
 
-Read `user-data/state/sessions.md` at startup. Other active rows ("Last
+Read `user-data/ops/state/sessions.md` at startup. Other active rows ("Last
 active" within 2h): note "Another session is active (platform X, started
 Y)." in the first response. Multi-session write coordination per
 `system/jobs/multi-session-coordination.md`.

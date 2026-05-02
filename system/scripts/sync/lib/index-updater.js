@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path';
 import { writeMemoryIndex } from '../../memory/regenerate-index.js';
 
 function lockPath(workspaceDir) {
-  return join(workspaceDir, 'user-data/state/locks/index.lock');
+  return join(workspaceDir, 'user-data/ops/state/locks/index.lock');
 }
 
 function pidIsAlive(pid) {

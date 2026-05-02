@@ -31,18 +31,18 @@ describe('claude-code parser', () => {
     const transcript = [
       JSON.stringify({ name: 'Read', input: { file_path: 'AGENTS.md' } }),
       JSON.stringify({ name: 'Read', input: { file_path: 'user-data/memory/INDEX.md' } }),
-      JSON.stringify({ name: 'Write', input: { file_path: 'user-data/memory/inbox.md' } }),
+      JSON.stringify({ name: 'Write', input: { file_path: 'user-data/memory/streams/inbox.md' } }),
     ].join('\n');
     const r = parseClaudeCode(transcript);
     assert.deepEqual(r.reads, ['AGENTS.md', 'user-data/memory/INDEX.md']);
-    assert.deepEqual(r.writes, ['user-data/memory/inbox.md']);
+    assert.deepEqual(r.writes, ['user-data/memory/streams/inbox.md']);
   });
 
   it('falls back to free-text Read("...") patterns', () => {
-    const transcript = `Read("AGENTS.md")\nEdit("user-data/memory/inbox.md")`;
+    const transcript = `Read("AGENTS.md")\nEdit("user-data/memory/streams/inbox.md")`;
     const r = parseClaudeCode(transcript);
     assert.ok(r.reads.includes('AGENTS.md'));
-    assert.ok(r.writes.includes('user-data/memory/inbox.md'));
+    assert.ok(r.writes.includes('user-data/memory/streams/inbox.md'));
   });
 
   it('strips absolute repo prefix from paths', () => {
@@ -66,12 +66,12 @@ describe('codex parser', () => {
       JSON.stringify({
         type: 'tool_call',
         tool: 'shell',
-        arguments: { command: ['echo', 'hi', '>', 'user-data/memory/inbox.md'] },
+        arguments: { command: ['echo', 'hi', '>', 'user-data/memory/streams/inbox.md'] },
       }),
     ].join('\n');
     const r = parseCodex(transcript);
     assert.ok(r.reads.includes('AGENTS.md'));
-    assert.ok(r.writes.includes('user-data/memory/inbox.md'));
+    assert.ok(r.writes.includes('user-data/memory/streams/inbox.md'));
   });
 
   it('parses dedicated read_file/write_file events', () => {
@@ -80,12 +80,12 @@ describe('codex parser', () => {
       JSON.stringify({
         type: 'tool_call',
         tool: 'write_file',
-        arguments: { path: 'user-data/memory/inbox.md' },
+        arguments: { path: 'user-data/memory/streams/inbox.md' },
       }),
     ].join('\n');
     const r = parseCodex(transcript);
     assert.deepEqual(r.reads, ['AGENTS.md']);
-    assert.deepEqual(r.writes, ['user-data/memory/inbox.md']);
+    assert.deepEqual(r.writes, ['user-data/memory/streams/inbox.md']);
   });
 });
 
@@ -105,7 +105,7 @@ describe('validate-host scenarios', () => {
   it('scenario 2 passes when inbox.md is written and capture-rules is not loaded', () => {
     const transcript = JSON.stringify({
       name: 'Write',
-      input: { file_path: 'user-data/memory/inbox.md' },
+      input: { file_path: 'user-data/memory/streams/inbox.md' },
     });
     withTempTranscript(transcript, (p) => {
       const { exitCode, output } = runValidator([

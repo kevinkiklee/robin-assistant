@@ -21,7 +21,7 @@ LUNCH_MONEY_API_KEY=<your-token>
 ## 3. Bootstrap and enable
 
 ```sh
-node user-data/scripts/sync-lunch-money.js --bootstrap
+node user-data/ops/scripts/sync-lunch-money.js --bootstrap
 node bin/robin.js jobs enable sync-lunch-money
 ```
 

@@ -27,8 +27,8 @@ GITHUB_PAT=<github_pat_...>
 ## 3. Validate, bootstrap, enable
 
 ```sh
-node user-data/scripts/auth-github.js          # validates PAT, prints user + rate limit
-node user-data/scripts/sync-github.js --bootstrap
+node user-data/ops/scripts/auth-github.js          # validates PAT, prints user + rate limit
+node user-data/ops/scripts/sync-github.js --bootstrap
 node bin/robin.js jobs enable sync-github
 ```
 

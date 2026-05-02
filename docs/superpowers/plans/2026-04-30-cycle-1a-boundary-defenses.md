@@ -27,7 +27,7 @@ Test: `system/tests/security/atomic-write-trust.test.js`.
 
 ## Step 3 — Create `system/scripts/capture/dream-pre-filter.js`
 
-Reads `user-data/memory/inbox.md`. Splits into lines. Parses each tag line for `origin=` field.
+Reads `user-data/memory/streams/inbox.md`. Splits into lines. Parses each tag line for `origin=` field.
 
 Lines without `origin=` → treat as violation (post-migration), move to quarantine.
 Lines with `origin=user` → keep in inbox.
@@ -45,7 +45,7 @@ Test: `system/tests/security/dream-pre-filter.test.js`.
 
 Exports `assertIngestDestinationAllowed(path)` that throws `IngestForbiddenError` for any path matching the blocklist:
 - `user-data/memory/tasks.md`
-- `user-data/memory/decisions.md`
+- `user-data/memory/streams/decisions.md`
 - `user-data/memory/self-improvement/corrections.md`
 - `user-data/memory/self-improvement/preferences.md`
 - `user-data/memory/self-improvement/patterns.md`
@@ -59,7 +59,7 @@ Test: `system/tests/security/ingest-guard.test.js`.
 
 One-shot migration:
 - Walk `user-data/memory/knowledge/` for files written by sync-* sources. For each: rewrite with `trust: untrusted` + `trust-source` frontmatter and inline markers. (Or skip if cycle-1a's first sync run will overwrite naturally.)
-- Walk `user-data/memory/inbox.md`: stamp every existing tag line with `origin=user|legacy` if it lacks `origin=`.
+- Walk `user-data/memory/streams/inbox.md`: stamp every existing tag line with `origin=user|legacy` if it lacks `origin=`.
 - Create `user-data/memory/quarantine/` directory if absent; create `quarantine/captures.md` template.
 - Idempotent: rerunnable; only modifies files lacking the new state.
 
@@ -84,7 +84,7 @@ Phase 1 (or wherever inbox is first read): prepend
 ## Step 9 — Update `system/jobs/ingest.md`
 
 Add "Forbidden destinations" section:
-> Ingest MUST NOT write to or modify any of: `user-data/memory/tasks.md`, `user-data/memory/decisions.md`, `user-data/memory/self-improvement/*`, `user-data/memory/profile/identity.md`. Mechanical enforcement via `system/scripts/capture/ingest-guard.js:assertIngestDestinationAllowed(path)`.
+> Ingest MUST NOT write to or modify any of: `user-data/memory/tasks.md`, `user-data/memory/streams/decisions.md`, `user-data/memory/self-improvement/*`, `user-data/memory/profile/identity.md`. Mechanical enforcement via `system/scripts/capture/ingest-guard.js:assertIngestDestinationAllowed(path)`.
 
 ## Step 10 — Update sync writers
 

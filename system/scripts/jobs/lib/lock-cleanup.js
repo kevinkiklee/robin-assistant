@@ -16,7 +16,7 @@ import { readLock, releaseLock } from './atomic.js';
 const DEFAULT_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Scan <workspaceDir>/user-data/state/jobs/locks/ and remove stale lock files.
+ * Scan <workspaceDir>/user-data/ops/state/jobs/locks/ and remove stale lock files.
  *
  * @param {string} workspaceDir
  * @param {{ staleMs?: number }} [opts]

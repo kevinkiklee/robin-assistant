@@ -19,7 +19,7 @@ notify_on_failure: true
 
 ### 1. Gather charges
 
-Read `user-data/integrations.md` for email status.
+Read `user-data/ops/config/integrations.md` for email status.
 - If email available: search for recurring-charge signals — "subscription", "renewal", "auto-renew", "monthly payment", "annual subscription", "your receipt", "invoice", "billing". Search common providers: streaming, music, cloud storage, SaaS, gym, insurance.
 - If not available: ask "Can you paste a recent bank statement or list your known recurring charges?"
 

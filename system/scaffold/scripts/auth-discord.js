@@ -8,7 +8,7 @@ import { requireSecret, getSecret } from '../../system/scripts/sync/lib/secrets.
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROBIN_ROOT = resolve(__dirname, '../../');
-const ENV_PATH = resolve(ROBIN_ROOT, 'user-data/secrets/.env');
+const ENV_PATH = resolve(ROBIN_ROOT, 'user-data/ops/secrets/.env');
 // Cycle-2a: do NOT call dotenv.config — secrets stay out of process.env.
 // Read each value via requireSecret/getSecret which read .env directly.
 

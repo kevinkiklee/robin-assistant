@@ -55,10 +55,10 @@ describe('claude-code-hook --on-pre-tool-use', () => {
     assert.equal(r.exit, 2);
   });
 
-  it('allows Write to user-data/memory/inbox.md', () => {
+  it('allows Write to user-data/memory/streams/inbox.md', () => {
     const event = JSON.stringify({
       tool_name: 'Write',
-      tool_input: { file_path: '/Users/iser/workspace/robin/robin-assistant/user-data/memory/inbox.md' },
+      tool_input: { file_path: '/Users/iser/workspace/robin/robin-assistant/user-data/memory/streams/inbox.md' },
     });
     const r = runHook(['--on-pre-tool-use'], event);
     assert.equal(r.exit, 0);
@@ -107,17 +107,18 @@ describe('claude-code-hook usage errors', () => {
 
 test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {
   const ws = mkdtempSync(join(tmpdir(), 'hook-'));
-  mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/ops/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/memory/streams'), { recursive: true });
   mkdirSync(join(ws, 'user-data/memory/self-improvement'), { recursive: true });
   const now = new Date();
-  writeFileSync(join(ws, 'user-data/state/sessions.md'),
+  writeFileSync(join(ws, 'user-data/ops/state/sessions.md'),
     `# Active sessions
 
 | Session | Last active |
 |---------|-------------|
 | claude-code-20260430-2055 | ${now.toISOString()} |
 `);
-  writeFileSync(join(ws, 'user-data/memory/inbox.md'),
+  writeFileSync(join(ws, 'user-data/memory/streams/inbox.md'),
     `# Inbox
 
 ## Items

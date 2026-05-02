@@ -3,12 +3,12 @@ import { join, dirname } from 'node:path';
 
 // Cycle-2a: secrets are NOT loaded into process.env at startup. Each consumer
 // calls requireSecret(workspaceDir, key) to read the value lazily from
-// user-data/secrets/.env on demand. This prevents subprocess inheritance of
+// user-data/ops/secrets/.env on demand. This prevents subprocess inheritance of
 // secrets via env (the discord-bot's claude -p children, for example, no
 // longer see GITHUB_PAT or DISCORD_BOT_TOKEN in their process.env).
 
 function envPath(workspaceDir) {
-  return join(workspaceDir, 'user-data/secrets/.env');
+  return join(workspaceDir, 'user-data/ops/secrets/.env');
 }
 
 function parseEnv(workspaceDir) {
@@ -26,7 +26,7 @@ function parseEnv(workspaceDir) {
   return out;
 }
 
-// Read a single secret from user-data/secrets/.env. Throws if missing.
+// Read a single secret from user-data/ops/secrets/.env. Throws if missing.
 // Does NOT pollute process.env. Per-call I/O cost is ~1ms on SSD —
 // secrets are read 2-3 times per session in practice; caching would
 // defeat the "secrets don't linger in module memory" property.
@@ -37,7 +37,7 @@ export function requireSecret(workspaceDir, key) {
   const value = parseEnv(workspaceDir).get(key);
   if (!value) {
     throw new Error(
-      `Missing secret: ${key}. Add it to user-data/secrets/.env (see system/scaffold/secrets/README.md).`
+      `Missing secret: ${key}. Add it to user-data/ops/secrets/.env (see system/scaffold/secrets/README.md).`
     );
   }
   return value;

@@ -39,19 +39,19 @@ Three tiers governed by stability and frequency of access. Cache layout: **froze
 Loaded every session, in this declared order:
 
 1. `AGENTS.md` (~50 lines, down from 120)
-2. `user-data/robin.config.json` (small — name, timezone, assistant name)
+2. `user-data/ops/config/robin.config.json` (small — name, timezone, assistant name)
 3. `user-data/memory/profile/identity.md` (cap 100 lines)
 4. `user-data/memory/profile/personality.md` (cap 100 lines)
 5. `user-data/memory/INDEX.md` (cap 40 lines)
-6. `user-data/integrations.md`
+6. `user-data/ops/config/integrations.md`
 7. `user-data/custom-rules.md` (if exists)
 8. `user-data/memory/self-improvement/communication-style.md` (~20 lines, stable)
 9. `user-data/memory/self-improvement/domain-confidence.md` (~20 lines, stable)
 10. `user-data/memory/hot.md` (cap 60 lines, volatile)
 11. `user-data/memory/self-improvement/session-handoff.md` (~15 lines, volatile)
 12. `user-data/memory/self-improvement/learning-queue.md` (~5 lines, volatile)
-13. `user-data/state/sessions.md` (volatile)
-14. `user-data/state/jobs/failures.md` (volatile)
+13. `user-data/ops/state/sessions.md` (volatile)
+14. `user-data/ops/state/jobs/failures.md` (volatile)
 
 Tier 1 contains:
 - The 5-line capture checkpoint (so capture works even if Tier 2 fails to load).
@@ -140,7 +140,7 @@ Each Tier-3 sub-tree gets its own INDEX so the main INDEX stays under 40 lines.
 ### `system/scripts/lib/platforms.js` updated
 
 ```js
-const POINTER = 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/inbox.md with tags.\n';
+const POINTER = 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/streams/inbox.md with tags.\n';
 
 export const PLATFORMS = {
   'claude-code': { pointerFile: 'CLAUDE.md', pointerContent: POINTER },

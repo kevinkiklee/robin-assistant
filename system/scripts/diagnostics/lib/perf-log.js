@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
-const PERF_LOG = 'user-data/state/hook-perf.log';
+const PERF_LOG = 'user-data/ops/state/hook-perf.log';
 
 function ensureDir(file) {
   mkdirSync(dirname(file), { recursive: true });

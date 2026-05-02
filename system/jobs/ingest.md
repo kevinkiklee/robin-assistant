@@ -30,7 +30,7 @@ Ingest is a **direct-write exception** per `system/rules/capture.md`. It writes 
 
 Ingest MUST NOT write to or modify any of:
 - `user-data/memory/tasks.md`
-- `user-data/memory/decisions.md`
+- `user-data/memory/streams/decisions.md`
 - `user-data/memory/self-improvement/corrections.md`
 - `user-data/memory/self-improvement/preferences.md`
 - `user-data/memory/self-improvement/patterns.md`
@@ -103,7 +103,7 @@ When new data contradicts existing knowledge:
    > **Contradiction (YYYY-MM-DD):** Previous: <old value>. New source says: <new value>.
    > Source: [<source-title>](relative-path-to-source-page.md)
    ```
-2. Log to `user-data/memory/log.md`
+2. Log to `user-data/memory/streams/log.md`
 3. Surface to user during ingest — do not silently file
 
 Per Rule: Precedence, the newer verified source data supersedes older data. Flag the contradiction for user review, then update the knowledge file with the new data.
@@ -116,7 +116,7 @@ Skip if no new files were created (only existing files updated).
 
 ### 8. Log
 
-Append to `user-data/memory/log.md`:
+Append to `user-data/memory/streams/log.md`:
 
 ```markdown
 ## [YYYY-MM-DD] ingest | <source title> | touched: N files

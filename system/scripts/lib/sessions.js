@@ -1,6 +1,6 @@
 // system/scripts/lib/sessions.js
 //
-// Reads user-data/state/sessions.md and returns the most-recent
+// Reads user-data/ops/state/sessions.md and returns the most-recent
 // session-id for a given platform whose last-active is within 2h.
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -10,7 +10,7 @@ const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 export function mostRecentSessionId(workspaceDir, platform, opts = {}) {
   const now = opts.now ?? new Date();
-  const file = join(workspaceDir, 'user-data/state/sessions.md');
+  const file = join(workspaceDir, 'user-data/ops/state/sessions.md');
   if (!existsSync(file)) return null;
   const text = readFileSync(file, 'utf8');
 

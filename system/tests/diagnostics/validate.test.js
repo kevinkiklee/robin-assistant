@@ -15,18 +15,22 @@ function makeRepo(populated = true) {
   mkdirSync(join(root, 'system/scaffold'));
   if (populated) {
     mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
-    mkdirSync(join(root, 'user-data/state/locks'), { recursive: true });
-    writeFileSync(join(root, 'user-data/robin.config.json'),
+    mkdirSync(join(root, 'user-data/memory/streams'), { recursive: true });
+    mkdirSync(join(root, 'user-data/ops/state/locks'), { recursive: true });
+    mkdirSync(join(root, 'user-data/ops/config'), { recursive: true });
+    writeFileSync(join(root, 'user-data/ops/config/robin.config.json'),
       JSON.stringify({ version: '3.0.0', user: { name: 'T', timezone: 'UTC' }, platform: 'claude-code' }));
     writeFileSync(join(root, 'user-data/memory/INDEX.md'), '# Memory Index\n');
     writeFileSync(join(root, 'user-data/memory/profile/identity.md'),
       '---\ndescription: Identity\n---\n# Identity\n');
-    for (const f of ['tasks.md','decisions.md','journal.md','inbox.md','self-improvement.md']) {
-      writeFileSync(join(root, 'user-data/memory', f), '# stub\n');
+    writeFileSync(join(root, 'user-data/memory/tasks.md'), '# stub\n');
+    writeFileSync(join(root, 'user-data/memory/self-improvement.md'), '# stub\n');
+    for (const f of ['decisions.md','journal.md','inbox.md']) {
+      writeFileSync(join(root, 'user-data/memory/streams', f), '# stub\n');
     }
-    writeFileSync(join(root, 'user-data/integrations.md'), '# stub\n');
-    writeFileSync(join(root, 'user-data/state/sessions.md'), '');
-    writeFileSync(join(root, 'user-data/state/dream-state.md'), '');
+    writeFileSync(join(root, 'user-data/ops/config/integrations.md'), '# stub\n');
+    writeFileSync(join(root, 'user-data/ops/state/sessions.md'), '');
+    writeFileSync(join(root, 'user-data/ops/state/dream-state.md'), '');
   }
   return root;
 }

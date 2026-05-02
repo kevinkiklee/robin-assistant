@@ -38,14 +38,14 @@ DISCORD_ALLOWED_USER_IDS=<your user id>      # comma-separated if you ever add o
 DISCORD_ALLOWED_GUILD_ID=<your server id>
 ```
 
-`chmod 600 user-data/secrets/.env` if you haven't already. The setup
+`chmod 600 user-data/ops/secrets/.env` if you haven't already. The setup
 script (`auth-discord.js`) will fill in `DISCORD_BOT_CLAUDE_PATH`
 automatically.
 
 ## 4. Validate token and get the invite URL
 
 ```sh
-node user-data/scripts/auth-discord.js
+node user-data/ops/scripts/auth-discord.js
 ```
 
 This:
@@ -60,13 +60,13 @@ Open the printed URL in your browser, pick your server, and authorize.
 ## 5. Install the launchd service
 
 ```sh
-node user-data/scripts/discord-bot-install.js
+node user-data/ops/scripts/discord-bot-install.js
 ```
 
 This writes `~/Library/LaunchAgents/com.robin.discord-bot.plist` and
 loads it via `launchctl bootstrap`. The service auto-starts at login,
 auto-restarts on crash (with a 30s throttle), and logs to
-`user-data/state/logs/discord-bot.log`.
+`user-data/ops/state/services/discord-bot.log`.
 
 ## 6. Smoke test
 
@@ -106,27 +106,27 @@ launchctl bootstrap  gui/$(id -u) ~/Library/LaunchAgents/com.robin.discord-bot.p
 launchctl kickstart -k gui/$(id -u)/com.robin.discord-bot
 
 # Status
-node user-data/scripts/discord-bot-status.js
+node user-data/ops/scripts/discord-bot-status.js
 
 # Uninstall
-node user-data/scripts/discord-bot-install.js --uninstall
+node user-data/ops/scripts/discord-bot-install.js --uninstall
 ```
 
 ## Optional: weekly health summary
 
 ```sh
-node user-data/scripts/discord-bot-health.js --install
+node user-data/ops/scripts/discord-bot-health.js --install
 ```
 
 Schedules a launchd job (Sundays 09:00 local) that scans
 `discord-bot.events.jsonl` for the last 7 days and writes a verdict
 report (GREEN/YELLOW/RED + error breakdown + 7-day cost) to
-`user-data/state/logs/discord-bot-health.md`. Manual run:
-`node user-data/scripts/discord-bot-health.js`.
+`user-data/ops/state/services/discord-bot-health.md`. Manual run:
+`node user-data/ops/scripts/discord-bot-health.js`.
 
 ## Privacy
 
-The events log under `user-data/state/logs/discord-bot.events.jsonl`
+The events log under `user-data/ops/state/services/discord-bot.events.jsonl`
 records **metadata only** — timestamp, user ID, conversation key,
 latency, status, error tail, Claude session ID, cost. **No prompt or
 reply text.** Discord itself stores message content (server property,
@@ -145,7 +145,7 @@ cheaper.
 
 ## Security
 
-- Bot token + client secret should be in `user-data/secrets/.env` only,
+- Bot token + client secret should be in `user-data/ops/secrets/.env` only,
   with mode `0600`. Never commit them.
 - Allowlist enforces both user ID **and** guild ID for non-DM messages.
   If you ever invite the bot to another server, it will silently ignore
@@ -158,14 +158,14 @@ cheaper.
 
 ```sh
 # 1. Reset Token (and/or Reset Secret) in the Discord Developer Portal.
-# 2. Update the values in user-data/secrets/.env.
+# 2. Update the values in user-data/ops/secrets/.env.
 # 3. Restart the bot:
 launchctl kickstart -k gui/$(id -u)/com.robin.discord-bot
 ```
 
 ## Troubleshooting
 
-- **Bot offline / not replying:** `node user-data/scripts/discord-bot-status.js`.
+- **Bot offline / not replying:** `node user-data/ops/scripts/discord-bot-status.js`.
   If `launchd: NOT loaded`, re-run the installer.
 - **"missing required env" exit:** the bot validates env at startup.
   Check the message for which key is missing or blank.
@@ -173,4 +173,4 @@ launchctl kickstart -k gui/$(id -u)/com.robin.discord-bot
   dev portal Bot tab.
 - **Manual run conflicts with launchd:** stop launchd first
   (`launchctl bootout gui/$(id -u)/com.robin.discord-bot`) before running
-  `node user-data/scripts/discord-bot.js` directly.
+  `node user-data/ops/scripts/discord-bot.js` directly.

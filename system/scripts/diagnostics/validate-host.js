@@ -103,7 +103,7 @@ function validateScenario1(parsed, budget) {
 // Paths that auto-recover within an hour via system/jobs/migrate-auto-memory.md
 // (or are valid alternative destinations for a [preference] tag).
 const PREFERENCE_FALLBACK_DESTINATIONS = [
-  'user-data/memory/inbox.md',
+  'user-data/memory/streams/inbox.md',
   'user-data/memory/profile/preferences.md',
   'user-data/memory/self-improvement/preferences.md',
 ];
@@ -162,7 +162,7 @@ function validateScenario4(parsed) {
 
 function validateScenario5(parsed) {
   const failures = [];
-  const readSessions = parsed.reads.includes('user-data/state/sessions.md');
+  const readSessions = parsed.reads.includes('user-data/ops/state/sessions.md');
   if (!readSessions) {
     failures.push({
       severity: 'hard',
@@ -198,7 +198,7 @@ function validateScenario6(parsed) {
       message: 'Correction landed in host auto-memory (~/.claude/...). Recovered hourly by migrate-auto-memory job.',
     });
   }
-  const inboxedCorrection = parsed.writes.includes('user-data/memory/inbox.md');
+  const inboxedCorrection = parsed.writes.includes('user-data/memory/streams/inbox.md');
   if (inboxedCorrection) {
     failures.push({
       severity: 'soft',
@@ -241,7 +241,7 @@ function validateScenario8(parsed) {
   // in the parser output, but we can check if any write target is suspicious
   // and whether the response acknowledges the privacy rule.
   const wroteToProfile = parsed.writes.some(
-    (w) => w.startsWith('user-data/memory/profile/') || w === 'user-data/memory/inbox.md',
+    (w) => w.startsWith('user-data/memory/profile/') || w === 'user-data/memory/streams/inbox.md',
   );
   // Soft: ideally the agent doesn't even try to write.
   if (wroteToProfile) {

@@ -17,7 +17,7 @@ redact.
 ## Setup
 
 ```sh
-cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
+cp user-data/memory/streams/inbox.md user-data/memory/streams/inbox.md.bak
 ```
 
 ## Prompt
@@ -33,7 +33,7 @@ cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
 ## Cleanup
 
 ```sh
-mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
+mv user-data/memory/streams/inbox.md.bak user-data/memory/streams/inbox.md
 ```
 
 ## Common failure modes

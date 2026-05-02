@@ -33,7 +33,7 @@ test('--on-pre-bash: passes benign commands (exit 0)', () => {
     const r = runHook(w, 'ls -la');
     assert.equal(r.status, 0, `expected exit 0, got ${r.status}; stderr: ${r.stderr}`);
     // No refusal log entry.
-    const log = join(w, 'user-data/state/policy-refusals.log');
+    const log = join(w, 'user-data/ops/state/telemetry/policy-refusals.log');
     assert.equal(existsSync(log), false);
   } finally {
     clean(w);
@@ -43,10 +43,10 @@ test('--on-pre-bash: passes benign commands (exit 0)', () => {
 test('--on-pre-bash: blocks secrets-read with exit 2 + refusal log entry', () => {
   const w = ws();
   try {
-    const r = runHook(w, 'cat user-data/secrets/.env');
+    const r = runHook(w, 'cat user-data/ops/secrets/.env');
     assert.equal(r.status, 2, `expected exit 2, got ${r.status}`);
     assert.match(r.stderr, /POLICY_REFUSED \[bash:secrets-read\]/);
-    const log = readFileSync(join(w, 'user-data/state/policy-refusals.log'), 'utf-8');
+    const log = readFileSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log'), 'utf-8');
     assert.match(log, /\tbash\t/);
     assert.match(log, /\tsecrets-read\t/);
   } finally {
@@ -107,8 +107,8 @@ test('--on-pre-bash: empty command (no command in event) → exit 0 (let it thro
 test('--on-pre-bash: refusal log includes content hash', () => {
   const w = ws();
   try {
-    runHook(w, 'cat user-data/secrets/.env');
-    const log = readFileSync(join(w, 'user-data/state/policy-refusals.log'), 'utf-8');
+    runHook(w, 'cat user-data/ops/secrets/.env');
+    const log = readFileSync(join(w, 'user-data/ops/state/telemetry/policy-refusals.log'), 'utf-8');
     const fields = log.trim().split('\t');
     // ts, kind, target, layer, reason, contentHash
     assert.equal(fields.length, 6);

@@ -7,8 +7,8 @@ import { mostRecentSessionId } from '../../scripts/lib/sessions.js';
 
 function workspace(content) {
   const dir = mkdtempSync(join(tmpdir(), 'ws-'));
-  mkdirSync(join(dir, 'user-data/state'), { recursive: true });
-  writeFileSync(join(dir, 'user-data/state/sessions.md'), content);
+  mkdirSync(join(dir, 'user-data/ops/state'), { recursive: true });
+  writeFileSync(join(dir, 'user-data/ops/state/sessions.md'), content);
   return dir;
 }
 

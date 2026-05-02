@@ -7,10 +7,10 @@ const PILLAR_USER_FILES = [
   'memory/INDEX.md',
   'memory/profile/identity.md',
   'memory/tasks.md',
-  'memory/decisions.md',
-  'memory/journal.md',
-  'memory/inbox.md',
-  'integrations.md',
+  'memory/streams/decisions.md',
+  'memory/streams/journal.md',
+  'memory/streams/inbox.md',
+  'ops/config/integrations.md',
 ];
 
 // Either-or: at least one of these self-improvement representations must be
@@ -22,15 +22,15 @@ export async function validateInDir(workspaceDir) {
   const ud = join(workspaceDir, 'user-data');
 
   // config
-  const configPath = join(ud, 'robin.config.json');
+  const configPath = join(ud, 'ops/config/robin.config.json');
   try {
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-    ok('user-data/robin.config.json is valid JSON');
+    ok('user-data/ops/config/robin.config.json is valid JSON');
     if (!config.user?.name) warn('user.name not set');
     if (!config.user?.timezone) warn('user.timezone not set');
     if (!config.platform) warn('platform not set');
   } catch {
-    fail('user-data/robin.config.json missing or invalid'); issues++;
+    fail('user-data/ops/config/robin.config.json missing or invalid'); issues++;
   }
 
   // pillar files
@@ -45,12 +45,12 @@ export async function validateInDir(workspaceDir) {
   else { fail('user-data/memory/self-improvement.md MISSING'); issues++; }
 
   // state
-  for (const f of ['state/sessions.md', 'state/dream-state.md']) {
+  for (const f of ['ops/state/sessions.md', 'ops/state/dream-state.md']) {
     if (existsSync(join(ud, f))) ok(`user-data/${f} exists`);
     else { fail(`user-data/${f} MISSING`); issues++; }
   }
-  if (existsSync(join(ud, 'state/locks'))) ok('user-data/state/locks/ exists');
-  else { fail('user-data/state/locks/ MISSING'); issues++; }
+  if (existsSync(join(ud, 'ops/state/locks'))) ok('user-data/ops/state/locks/ exists');
+  else { fail('user-data/ops/state/locks/ MISSING'); issues++; }
 
   // privacy: gitignore guard
   try {
@@ -77,7 +77,7 @@ export async function validateInDir(workspaceDir) {
   }
 
   // stale locks
-  const locksDir = join(ud, 'state/locks');
+  const locksDir = join(ud, 'ops/state/locks');
   if (existsSync(locksDir)) {
     for (const lock of readdirSync(locksDir).filter(f => f.endsWith('.lock'))) {
       const content = readFileSync(join(locksDir, lock), 'utf-8');

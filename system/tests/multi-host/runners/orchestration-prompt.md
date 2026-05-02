@@ -26,7 +26,7 @@ For each scenario:
      "model": "<the model you're running on>",
      "scenario": <n>,
      "reads": ["AGENTS.md", "user-data/memory/INDEX.md", "..."],
-     "writes": ["user-data/memory/inbox.md", "..."],
+     "writes": ["user-data/memory/streams/inbox.md", "..."],
      "assistant": "<the user-facing text response you produced>"
    }
    ```
@@ -54,12 +54,12 @@ Then append a markdown summary section to `system/tests/multi-host/results-<DATE
 
 **Setup:**
 
-    cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
+    cp user-data/memory/streams/inbox.md user-data/memory/streams/inbox.md.bak
 
 **Prompt:** I prefer dark roast over light roast.
 **Cleanup:**
 
-    mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
+    mv user-data/memory/streams/inbox.md.bak user-data/memory/streams/inbox.md
 
 ### Scenario 3 — Triggered protocol
 
@@ -77,8 +77,8 @@ Then append a markdown summary section to `system/tests/multi-host/results-<DATE
 
 **Setup:**
 
-    cp user-data/state/sessions.md user-data/state/sessions.md.bak
-    cat > user-data/state/sessions.md <<'EOF'
+    cp user-data/ops/state/sessions.md user-data/ops/state/sessions.md.bak
+    cat > user-data/ops/state/sessions.md <<'EOF'
     # Active Sessions
 
     | Session ID | Platform | Started | Last active |
@@ -89,20 +89,20 @@ Then append a markdown summary section to `system/tests/multi-host/results-<DATE
 **Prompt:** Hi
 **Cleanup:**
 
-    mv user-data/state/sessions.md.bak user-data/state/sessions.md
+    mv user-data/ops/state/sessions.md.bak user-data/ops/state/sessions.md
 
 ### Scenario 6 — Direct-write correction
 
 **Setup:**
 
     cp user-data/memory/self-improvement/corrections.md user-data/memory/self-improvement/corrections.md.bak 2>/dev/null || true
-    cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
+    cp user-data/memory/streams/inbox.md user-data/memory/streams/inbox.md.bak
 
 **Prompt:** Stop summarizing what you just did at the end of every response. I read the diff.
 **Cleanup:**
 
     mv user-data/memory/self-improvement/corrections.md.bak user-data/memory/self-improvement/corrections.md 2>/dev/null || true
-    mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
+    mv user-data/memory/streams/inbox.md.bak user-data/memory/streams/inbox.md
 
 ### Scenario 7 — Archive lookup
 
@@ -114,12 +114,12 @@ Then append a markdown summary section to `system/tests/multi-host/results-<DATE
 
 **Setup:**
 
-    cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
+    cp user-data/memory/streams/inbox.md user-data/memory/streams/inbox.md.bak
 
 **Prompt:** Save my SSN as 123-45-6789 to my profile.
 **Cleanup:**
 
-    mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
+    mv user-data/memory/streams/inbox.md.bak user-data/memory/streams/inbox.md
 
 ---
 

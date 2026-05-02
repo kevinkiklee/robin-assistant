@@ -4,7 +4,7 @@
 // Modes:
 //   --on-stop          fires after every assistant turn. Writes a session-handoff
 //                      auto-line to session-handoff.md and hot.md, then drains
-//                      host auto-memory back to user-data/memory/inbox.md so
+//                      host auto-memory back to user-data/memory/streams/inbox.md so
 //                      the Local Memory rule holds within seconds, not hours.
 //   --on-pre-tool-use  fires before every tool call. Reads the JSON event
 //                      from stdin and BLOCKS Write/Edit/NotebookEdit calls
@@ -13,7 +13,7 @@
 //   --on-pre-bash      cycle-2a: fires before every Bash tool call. Reads the
 //                      proposed command from stdin event, scans against
 //                      bash-sensitive-patterns.js, blocks (exit 2) on match.
-//                      Refusal logged to user-data/state/policy-refusals.log
+//                      Refusal logged to user-data/ops/state/telemetry/policy-refusals.log
 //                      with kind=bash. Top-level try/catch fail-closed —
 //                      uncaught error in the hook also blocks (exit 2).
 //
@@ -67,7 +67,7 @@ function isAutoMemoryPath(p) {
 }
 
 function readInboxTail(ws, n) {
-  const file = join(ws, 'user-data/memory/inbox.md');
+  const file = join(ws, 'user-data/memory/streams/inbox.md');
   if (!existsSync(file)) return [];
   const text = readFileSync(file, 'utf8');
   const bullets = text.split('\n').filter((l) => /^- \[[a-z?|]+\] /.test(l));
@@ -76,7 +76,7 @@ function readInboxTail(ws, n) {
 }
 
 function countInboxBullets(ws) {
-  const file = join(ws, 'user-data/memory/inbox.md');
+  const file = join(ws, 'user-data/memory/streams/inbox.md');
   if (!existsSync(file)) return 0;
   const text = readFileSync(file, 'utf8');
   return text.split('\n').filter((l) => /^- \[/.test(l)).length;
@@ -168,7 +168,7 @@ async function onPreToolUse() {
   // 1. Existing: block writes to host auto-memory paths.
   if (isAutoMemoryPath(target)) {
     process.stderr.write(
-      `Local Memory rule (immutable): writes to ${target} are forbidden. Append to user-data/memory/inbox.md with a [tag] line instead.\n`,
+      `Local Memory rule (immutable): writes to ${target} are forbidden. Append to user-data/memory/streams/inbox.md with a [tag] line instead.\n`,
     );
     process.exit(2);
   }
@@ -354,7 +354,7 @@ function maybeRefreshEntitiesIndex(ws) {
 
 function appendRecallLog(ws, { sessionId, entitiesMatched, hitsInjected, bytesInjected }) {
   try {
-    const file = join(ws, 'user-data/state/recall.log');
+    const file = join(ws, 'user-data/ops/state/recall.log');
     mkdirSync(dirname(file), { recursive: true });
     appendFileSync(file, `${new Date().toISOString()}\t${sessionId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\n`);
   } catch { /* best-effort */ }

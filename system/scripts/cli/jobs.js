@@ -30,7 +30,7 @@ const useColor = !process.env.NO_COLOR && process.stdout.isTTY;
 const c = (code, s) => (useColor ? `${code}${s}${ANSI.reset}` : s);
 
 function readWorkspaceConfig(workspaceDir) {
-  return readJSON(join(workspaceDir, 'user-data/robin.config.json'), {});
+  return readJSON(join(workspaceDir, 'user-data/ops/config/robin.config.json'), {});
 }
 
 function statusColor(status) {

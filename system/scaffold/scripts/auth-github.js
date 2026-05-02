@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // GitHub PAT validator. Confirms the token in .env actually authenticates,
 // reports the user it's tied to, and lists granted scopes.
 //
 // Usage:
-//   node user-data/scripts/auth-github.js
+//   node user-data/ops/scripts/auth-github.js
 //
-// Prerequisite: in user-data/secrets/.env, set:
+// Prerequisite: in user-data/ops/secrets/.env, set:
 //   GITHUB_PAT=<fine-grained personal access token>
 // Generate at: https://github.com/settings/tokens?type=beta
 // Recommended scopes: read:user, repo (or public_repo), notifications.
@@ -30,7 +30,7 @@ async function main() {
       '  https://github.com/settings/tokens?type=beta\n' +
       'with these scopes (or repo equivalents):\n' +
       '  - read:user\n  - repo (or public_repo for read-only public)\n  - notifications\n' +
-      'Then add this line to user-data/secrets/.env:\n' +
+      'Then add this line to user-data/ops/secrets/.env:\n' +
       '  GITHUB_PAT=<your-token>\n'
     );
     process.exit(1);
@@ -67,7 +67,7 @@ async function main() {
   console.log('');
   console.log('  Enable the sync job with:');
   console.log('    node bin/robin.js jobs enable sync-github');
-  console.log('    node user-data/scripts/sync-github.js --bootstrap');
+  console.log('    node user-data/ops/scripts/sync-github.js --bootstrap');
 }
 
 main().catch((err) => {

@@ -232,7 +232,7 @@ export function cmdWatchTail(args) {
     else if (!a.startsWith('-')) watchId = a;
   }
 
-  const inboxPath = join(ws, 'user-data/memory/inbox.md');
+  const inboxPath = join(ws, 'user-data/memory/streams/inbox.md');
   if (!existsSync(inboxPath)) {
     process.stdout.write('(inbox.md not found)\n');
     return;

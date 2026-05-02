@@ -11,10 +11,11 @@ let workspaceDir;
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), 'jobs-reconciler-'));
   mkdirSync(join(workspaceDir, 'system/jobs'), { recursive: true });
-  mkdirSync(join(workspaceDir, 'user-data/jobs'), { recursive: true });
-  mkdirSync(join(workspaceDir, 'user-data/state/jobs'), { recursive: true });
+  mkdirSync(join(workspaceDir, 'user-data/ops/jobs'), { recursive: true });
+  mkdirSync(join(workspaceDir, 'user-data/ops/state/jobs'), { recursive: true });
+  mkdirSync(join(workspaceDir, 'user-data/ops/config'), { recursive: true });
   writeFileSync(
-    join(workspaceDir, 'user-data/robin.config.json'),
+    join(workspaceDir, 'user-data/ops/config/robin.config.json'),
     JSON.stringify({ user: { timezone: 'UTC' } })
   );
 });
@@ -42,7 +43,7 @@ function fakeAdapter() {
   };
 }
 
-function writeJob(name, frontmatter, body = '', dir = 'user-data/jobs') {
+function writeJob(name, frontmatter, body = '', dir = 'user-data/ops/jobs') {
   const fm = Object.entries(frontmatter)
     .map(([k, v]) => {
       if (v && typeof v === 'object' && !Array.isArray(v)) {
@@ -86,7 +87,7 @@ describe('reconcile sync cycle', () => {
 
   test('leaves unrelated com.robin.* entries alone (discord-bot regression)', () => {
     // Simulates a non-job plist in the launchd namespace (e.g. com.robin.discord-bot
-    // installed by user-data/scripts/discord-bot-install.js). The reconciler
+    // installed by user-data/ops/scripts/discord-bot-install.js). The reconciler
     // must not reap it just because it shares the LABEL_PREFIX.
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
     const adapter = fakeAdapter();
@@ -142,7 +143,7 @@ describe('reconcile sync cycle', () => {
     assert.deepEqual(r.orphansRemoved, ['orphan']);
   });
 
-  test('shallow override: system/jobs/x.md + user-data/jobs/x.md (override:) merges', () => {
+  test('shallow override: system/jobs/x.md + user-data/ops/jobs/x.md (override:) merges', () => {
     writeJob(
       'x',
       { name: 'x', description: 'd', runtime: 'node', schedule: '0 5 * * *', command: 'echo', enabled: true },
@@ -156,7 +157,7 @@ describe('reconcile sync cycle', () => {
     assert.equal(adapter._state.has('x'), false);
   });
 
-  test('full override: user-data/jobs/x.md without override: replaces system schedule', () => {
+  test('full override: user-data/ops/jobs/x.md without override: replaces system schedule', () => {
     writeJob(
       'x',
       { name: 'x', description: 'sys', runtime: 'node', schedule: '0 5 * * *', command: 'echo' },

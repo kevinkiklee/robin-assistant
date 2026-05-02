@@ -24,9 +24,9 @@ test('allowed paths pass without throwing', () => {
     'user-data/memory/knowledge/movies/inception.md',
     'user-data/memory/knowledge/email/inbox-snapshot.md',
     'user-data/memory/knowledge/sources/letterboxd-2026-04-30.md',
-    'user-data/memory/journal.md',
+    'user-data/memory/streams/journal.md',
     'user-data/memory/LINKS.md',
-    'user-data/memory/inbox.md',
+    'user-data/memory/streams/inbox.md',
     'user-data/memory/profile/personality.md',  // not identity.md
   ];
   for (const path of allowed) {
@@ -62,7 +62,7 @@ test('IngestForbiddenError carries path and code', () => {
 
 test('error message guides toward the workaround', () => {
   try {
-    assertIngestDestinationAllowed('user-data/memory/decisions.md');
+    assertIngestDestinationAllowed('user-data/memory/streams/decisions.md');
     assert.fail('expected throw');
   } catch (e) {
     assert.match(e.message, /direct edit, not ingest/);

@@ -29,7 +29,7 @@ never deletes — `archive/INDEX.md` keeps everything reachable.
    ```
 
    This previews what would move and writes a report to
-   `user-data/state/jobs/prune-preview.md`. Nothing changes on disk.
+   `user-data/ops/state/jobs/prune-preview.md`. Nothing changes on disk.
 
 2. **Review the preview** with the user. Confirm the cutoffs match
    expectations.
@@ -41,7 +41,7 @@ never deletes — `archive/INDEX.md` keeps everything reachable.
    ```
 
    Writes a pre-prune backup to `backup/<timestamp>-pre-prune/`, then
-   relocates content. Reports to `user-data/state/jobs/prune-<timestamp>.md`.
+   relocates content. Reports to `user-data/ops/state/jobs/prune-<timestamp>.md`.
 
 4. **Review the result.** Open `user-data/memory/archive/INDEX.md`.
    Verify the archived buckets reflect the move.

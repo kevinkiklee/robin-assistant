@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createHelpers } from './lib/migration-helpers.js';
@@ -17,9 +17,32 @@ function resolveMigrationsDir(workspaceDir, opts = {}) {
 // pending. Skips the per-file dynamic import dance ~95% of the time. Only
 // triggers a full scan when migrations directory has changed since the last
 // applied migration was recorded.
+// Resolve the migrations-applied log path. Pre-0021 workspaces store it at
+// user-data/.migrations-applied.json; after 0021 it moves to
+// user-data/ops/state/migrations-applied.json. Read prefers the new path
+// when present; otherwise falls back to the old.
+function logReadPath(workspaceDir) {
+  const newP = join(workspaceDir, 'user-data/ops/state/migrations-applied.json');
+  if (existsSync(newP)) return newP;
+  const oldP = join(workspaceDir, 'user-data/.migrations-applied.json');
+  if (existsSync(oldP)) return oldP;
+  return newP;
+}
+
+// Where to write the log. Always the new path, except when the old path is
+// present and the new path is absent (pre-0021 in-flight); in that case keep
+// writing to the old path so 0021 can move it cleanly.
+function logWritePath(workspaceDir) {
+  const newP = join(workspaceDir, 'user-data/ops/state/migrations-applied.json');
+  if (existsSync(newP)) return newP;
+  const oldP = join(workspaceDir, 'user-data/.migrations-applied.json');
+  if (existsSync(oldP)) return oldP;
+  return newP;
+}
+
 function fastPathHasPending(workspaceDir, opts = {}) {
   const migrationsDir = resolveMigrationsDir(workspaceDir, opts);
-  const logPath = join(workspaceDir, 'user-data/.migrations-applied.json');
+  const logPath = logReadPath(workspaceDir);
   if (!existsSync(migrationsDir)) return false;
   if (!existsSync(logPath)) return true; // never run yet
   try {
@@ -43,10 +66,11 @@ export async function runPendingMigrations(workspaceDir = process.cwd(), opts = 
   }
 
   const migrationsDir = resolveMigrationsDir(workspaceDir, opts);
-  const logPath = join(workspaceDir, 'user-data/.migrations-applied.json');
+  const logPath = logWritePath(workspaceDir);
   if (!existsSync(migrationsDir)) return { applied: [], would: [] };
 
-  const log = existsSync(logPath) ? JSON.parse(readFileSync(logPath, 'utf-8')) : [];
+  const readPath = logReadPath(workspaceDir);
+  const log = existsSync(readPath) ? JSON.parse(readFileSync(readPath, 'utf-8')) : [];
   const applied = new Set(log.map(e => e.id));
 
   const candidates = readdirSync(migrationsDir)
@@ -86,7 +110,11 @@ export async function runPendingMigrations(workspaceDir = process.cwd(), opts = 
       throw err;
     }
   }
-  writeFileSync(logPath, JSON.stringify(log, null, 2) + '\n');
+  // After migrations run, re-resolve the write path because 0021 may have
+  // moved the log file mid-run.
+  const finalLogPath = logWritePath(workspaceDir);
+  mkdirSync(dirname(finalLogPath), { recursive: true });
+  writeFileSync(finalLogPath, JSON.stringify(log, null, 2) + '\n');
   return result;
 }
 

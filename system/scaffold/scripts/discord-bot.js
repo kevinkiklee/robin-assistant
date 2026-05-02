@@ -19,12 +19,12 @@ import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROBIN_ROOT = resolve(__dirname, '../../');
-const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/state');
-const LOG_DIR = resolve(STATE_DIR, 'logs');
+const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/ops/state/services');
+const LOG_DIR = STATE_DIR;
 const SESSIONS_PATH = resolve(STATE_DIR, 'discord-sessions.json');
 const EVENTS_PATH = resolve(LOG_DIR, 'discord-bot.events.jsonl');
 const STATUS_PATH = resolve(STATE_DIR, 'discord-bot.status.json');
-const SECRETS_ENV = resolve(ROBIN_ROOT, 'user-data/secrets/.env');
+const SECRETS_ENV = resolve(ROBIN_ROOT, 'user-data/ops/secrets/.env');
 
 // Cycle-2a: dotenv.config still loads non-secret config from .env (the bot
 // needs DISCORD_BOT_CLAUDE_PATH, TIMEOUT_MS, etc. as env so they show up in

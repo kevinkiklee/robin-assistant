@@ -8,7 +8,7 @@ import { appendPerfLog, capPerfLog } from '../../scripts/diagnostics/lib/perf-lo
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'perf-log-'));
-  mkdirSync(join(ws, 'user-data/state'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/ops/state'), { recursive: true });
   return ws;
 }
 
@@ -16,7 +16,7 @@ describe('perf-log', () => {
   it('appendPerfLog writes one TSV line', () => {
     const ws = setup();
     appendPerfLog(ws, { hook: 'UserPromptSubmit', duration_ms: 95, reason: 'timeout' });
-    const text = readFileSync(join(ws, 'user-data/state/hook-perf.log'), 'utf8');
+    const text = readFileSync(join(ws, 'user-data/ops/state/hook-perf.log'), 'utf8');
     const cols = text.trim().split('\t');
     assert.equal(cols.length, 4);
     assert.equal(cols[1], 'UserPromptSubmit');
@@ -28,7 +28,7 @@ describe('perf-log', () => {
     const ws = setup();
     for (let i = 0; i < 10; i++) appendPerfLog(ws, { hook: 'h', duration_ms: i, reason: `r${i}` });
     capPerfLog(ws, 3);
-    const lines = readFileSync(join(ws, 'user-data/state/hook-perf.log'), 'utf8').trim().split('\n');
+    const lines = readFileSync(join(ws, 'user-data/ops/state/hook-perf.log'), 'utf8').trim().split('\n');
     assert.equal(lines.length, 3);
     assert.ok(lines[2].includes('r9'));
   });

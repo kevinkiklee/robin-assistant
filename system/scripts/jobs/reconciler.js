@@ -28,7 +28,7 @@ import { getAdapter } from './installer/index.js';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function readWorkspaceConfig(workspaceDir) {
-  return readJSON(join(workspaceDir, 'user-data/robin.config.json'), {});
+  return readJSON(join(workspaceDir, 'user-data/ops/config/robin.config.json'), {});
 }
 
 function hashJobsDir(dir) {
@@ -120,9 +120,9 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
   }
 
   // Names this reconciler is allowed to touch: any job def discoverable in
-  // system/jobs or user-data/jobs (regardless of enabled state). Plists with
+  // system/jobs or user-data/ops/jobs (regardless of enabled state). Plists with
   // names outside this set share the LABEL_PREFIX namespace but are managed
-  // by something else (e.g. user-data/scripts/discord-bot-install.js) — never
+  // by something else (e.g. user-data/ops/scripts/discord-bot-install.js) — never
   // remove them.
   const managedNames = new Set(jobs.keys());
 

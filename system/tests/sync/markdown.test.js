@@ -34,8 +34,8 @@ test('atomicWrite redacts content for paths under user-data/memory/', async () =
 
 test('atomicWrite skips redaction for paths outside user-data/memory/', async () => {
   const ws = setup();
-  await atomicWrite(ws, 'user-data/state/foo.md', 'SSN 123-45-6789 here');
-  const content = readFileSync(join(ws, 'user-data/state/foo.md'), 'utf-8');
+  await atomicWrite(ws, 'user-data/ops/state/foo.md', 'SSN 123-45-6789 here');
+  const content = readFileSync(join(ws, 'user-data/ops/state/foo.md'), 'utf-8');
   assert.equal(content, 'SSN 123-45-6789 here');
   rmSync(ws, { recursive: true });
 });

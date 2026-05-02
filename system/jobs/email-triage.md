@@ -14,7 +14,7 @@ timeout_minutes: 15
 
 ## Prerequisites
 
-Read `user-data/integrations.md` for email status.
+Read `user-data/ops/config/integrations.md` for email status.
 - If email is not available: ask the user to paste or forward email content, then proceed with classification below.
 
 ## Steps

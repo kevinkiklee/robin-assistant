@@ -10,7 +10,7 @@
 // Optional per-pattern `ttl_days: N` overrides the default 180-day window.
 //
 // Dream calls processPatternTTL(workspaceDir) during its TTL phase. It:
-//   1. Reads user-data/state/pattern-firings.log (one line per firing,
+//   1. Reads user-data/ops/state/pattern-firings.log (one line per firing,
 //      written by the model via Bash echo).
 //   2. Updates each pattern's last_fired + fired_count.
 //   3. Truncates the firings log on success.
@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 
 export const DEFAULT_TTL_DAYS = 180;
 
-const FIRINGS_LOG_REL = 'user-data/state/pattern-firings.log';
+const FIRINGS_LOG_REL = 'user-data/ops/state/pattern-firings.log';
 const PATTERNS_FILE_REL = 'user-data/memory/self-improvement/patterns.md';
 const ARCHIVE_FILE_REL = 'user-data/memory/self-improvement/patterns-archive.md';
 

@@ -4,7 +4,7 @@
 // marked `trust: untrusted` (or `untrusted-mixed`). Outbound write tools
 // hash sentences in their proposed content and refuse if any match.
 //
-// The index lives at user-data/state/untrusted-index.json. Sync writers
+// The index lives at user-data/ops/state/cache/untrusted-index.json. Sync writers
 // update it via updateIndexForFile() after each atomicWrite. Outbound
 // policy reads the index via loadOrRefreshIndex(), which stat-checks every
 // tracked source and rebuilds entries whose mtime has advanced.
@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const INDEX_REL = 'user-data/state/untrusted-index.json';
+const INDEX_REL = 'user-data/ops/state/cache/untrusted-index.json';
 
 // FNV-1a 64-bit hash. Returns a 16-char lowercase hex string.
 export function fnv1a64(s) {

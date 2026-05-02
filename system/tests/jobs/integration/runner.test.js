@@ -12,10 +12,11 @@ let workspaceDir;
 function setup() {
   workspaceDir = mkdtempSync(join(tmpdir(), 'jobs-runner-'));
   mkdirSync(join(workspaceDir, 'system/jobs'), { recursive: true });
-  mkdirSync(join(workspaceDir, 'user-data/jobs'), { recursive: true });
-  mkdirSync(join(workspaceDir, 'user-data/state/jobs'), { recursive: true });
+  mkdirSync(join(workspaceDir, 'user-data/ops/jobs'), { recursive: true });
+  mkdirSync(join(workspaceDir, 'user-data/ops/state/jobs'), { recursive: true });
+  mkdirSync(join(workspaceDir, 'user-data/ops/config'), { recursive: true });
   writeFileSync(
-    join(workspaceDir, 'user-data/robin.config.json'),
+    join(workspaceDir, 'user-data/ops/config/robin.config.json'),
     JSON.stringify({ user: { timezone: 'UTC' } })
   );
 }
@@ -40,7 +41,7 @@ function writeJob(name, frontmatter, body = '') {
     })
     .join('\n');
   const content = `---\n${fm}\n---\n${body}`;
-  writeFileSync(join(workspaceDir, 'user-data/jobs', `${name}.md`), content);
+  writeFileSync(join(workspaceDir, 'user-data/ops/jobs', `${name}.md`), content);
 }
 
 // Mock spawn that returns a process emitting controlled output and exit code.
@@ -268,7 +269,7 @@ describe('runner gates', () => {
   test('definition_invalid → exit 2 + category', async () => {
     // Write an invalid def
     writeFileSync(
-      join(workspaceDir, 'user-data/jobs/broken.md'),
+      join(workspaceDir, 'user-data/ops/jobs/broken.md'),
       '---\nname: broken\nruntime: agent\n---\nbody'
     );
     const result = await run({

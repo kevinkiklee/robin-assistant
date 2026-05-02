@@ -75,7 +75,7 @@ function bashSlug(input) {
 function writeSlug(input, prefix = 'write') {
   const path = input?.file_path ?? '';
   if (path.includes('/user-data/memory/')) return `${prefix}-memory-file`;
-  if (path.includes('/user-data/state/')) return `${prefix}-state-file`;
+  if (path.includes('/user-data/ops/state/')) return `${prefix}-state-file`;
   if (path.includes('/user-data/')) return `${prefix}-userdata-file`;
   return `${prefix}-file`;
 }

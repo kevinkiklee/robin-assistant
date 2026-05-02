@@ -106,7 +106,7 @@ Do NOT tag low-stakes claims ("you'll like this restaurant").
 
 Fields: action class slug (from `classify.js`) | outcome (`silent|approved|corrected|pending`) | optional reference (id, hash, file path, etc.).
 
-**When to capture (settled-class elision):** emit `[action]` for unsettled classes only — those that would change the agent's understanding of trust. Look up state in the compact summary in `user-data/policies.md`:
+**When to capture (settled-class elision):** emit `[action]` for unsettled classes only — those that would change the agent's understanding of trust. Look up state in the compact summary in `user-data/ops/config/policies.md`:
 - ASK class invoked → emit (always)
 - AUTO class still in 7-day probation → emit
 - AUTO class with a correction in the last 30 days → emit

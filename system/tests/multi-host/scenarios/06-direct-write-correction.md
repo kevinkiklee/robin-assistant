@@ -20,7 +20,7 @@ corrections must take effect this session, not next Dream cycle.
 cp user-data/memory/self-improvement/corrections.md \
    user-data/memory/self-improvement/corrections.md.bak 2>/dev/null || \
    cp user-data/memory/self-improvement.md user-data/memory/self-improvement.md.bak
-cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
+cp user-data/memory/streams/inbox.md user-data/memory/streams/inbox.md.bak
 ```
 
 ## Prompt
@@ -42,7 +42,7 @@ cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
 mv user-data/memory/self-improvement/corrections.md.bak \
    user-data/memory/self-improvement/corrections.md 2>/dev/null || \
    mv user-data/memory/self-improvement.md.bak user-data/memory/self-improvement.md
-mv user-data/memory/inbox.md.bak user-data/memory/inbox.md
+mv user-data/memory/streams/inbox.md.bak user-data/memory/streams/inbox.md
 ```
 
 ## Common failure modes

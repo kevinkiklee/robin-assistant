@@ -4,7 +4,7 @@ import { checkBashCommand, SENSITIVE_PATTERNS } from '../../scripts/lib/bash-sen
 
 test('first-match-wins: returns the first matching rule', () => {
   // Two rules trip; result names the first one encountered.
-  const out = checkBashCommand('cat user-data/secrets/.env && rm -rf /tmp/x');
+  const out = checkBashCommand('cat user-data/ops/secrets/.env && rm -rf /tmp/x');
   assert.equal(out.blocked, true);
   assert.equal(out.name, 'secrets-read');
 });
@@ -28,15 +28,15 @@ test('benign commands pass', () => {
   }
 });
 
-test('secrets-read: catches reads of user-data/secrets/', () => {
+test('secrets-read: catches reads of user-data/ops/secrets/', () => {
   const cases = [
-    'cat user-data/secrets/.env',
-    'less user-data/secrets/.env',
-    'head user-data/secrets/.env',
-    'tail user-data/secrets/.env',
-    'grep -r "TOKEN" user-data/secrets/',
-    'cp user-data/secrets/.env /tmp/leak',
-    'tar czf /tmp/x.tar.gz user-data/secrets/',
+    'cat user-data/ops/secrets/.env',
+    'less user-data/ops/secrets/.env',
+    'head user-data/ops/secrets/.env',
+    'tail user-data/ops/secrets/.env',
+    'grep -r "TOKEN" user-data/ops/secrets/',
+    'cp user-data/ops/secrets/.env /tmp/leak',
+    'tar czf /tmp/x.tar.gz user-data/ops/secrets/',
   ];
   for (const cmd of cases) {
     const r = checkBashCommand(cmd);
@@ -87,8 +87,8 @@ test('low-level-fs: catches dd/mkfs/format/shred', () => {
 test('git-expose-userdata: catches git ops exposing user-data', () => {
   const cases = [
     'git log -- user-data/memory/finance/hsa.md',
-    'git show HEAD:user-data/secrets/.env',
-    'git diff user-data/memory/journal.md',
+    'git show HEAD:user-data/ops/secrets/.env',
+    'git diff user-data/memory/streams/journal.md',
   ];
   for (const cmd of cases) {
     const r = checkBashCommand(cmd);
@@ -111,7 +111,7 @@ test('eval-injection: catches eval and nested $(...) substitution', () => {
 });
 
 test('returns object shape with name + why on match', () => {
-  const r = checkBashCommand('cat user-data/secrets/.env');
+  const r = checkBashCommand('cat user-data/ops/secrets/.env');
   assert.ok(typeof r.name === 'string');
   assert.ok(typeof r.why === 'string');
   assert.match(r.why, /\w+/);

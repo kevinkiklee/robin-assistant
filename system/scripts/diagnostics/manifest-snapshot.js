@@ -8,7 +8,7 @@
 //
 // First-deploy bootstrap (overwrites live manifest):
 //   node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
-//   → writes the snapshot to user-data/security/manifest.json.
+//   → writes the snapshot to user-data/ops/security/manifest.json.
 //   Two-flag pattern; `--apply` alone exits 1 with explanation.
 
 import { dirname, resolve, join } from 'node:path';
@@ -43,7 +43,7 @@ function buildSnapshot(workspaceDir) {
 
   const mcpExpected = enumerateMCPServers(workspaceDir);
 
-  // Cycle-2c: snapshot the AGENTS.md Hard Rules hash + user-data/jobs files.
+  // Cycle-2c: snapshot the AGENTS.md Hard Rules hash + user-data/ops/jobs files.
   let hardRulesHash = '';
   const agentsmdPath = join(workspaceDir, 'AGENTS.md');
   if (existsSync(agentsmdPath)) {
@@ -53,7 +53,7 @@ function buildSnapshot(workspaceDir) {
     } catch { /* leave empty */ }
   }
   let userDataJobs = [];
-  const jobsDir = join(workspaceDir, 'user-data/jobs');
+  const jobsDir = join(workspaceDir, 'user-data/ops/jobs');
   if (existsSync(jobsDir)) {
     try {
       userDataJobs = readdirSync(jobsDir).filter((f) => f.endsWith('.md')).sort();
@@ -96,7 +96,7 @@ async function main() {
   if (args.apply && !args.confirm) {
     process.stderr.write(
       'manifest-snapshot.js --apply requires --confirm-trust-current-state to proceed.\n' +
-      'This overwrites user-data/security/manifest.json with current state, which\n' +
+      'This overwrites user-data/ops/security/manifest.json with current state, which\n' +
       'accepts whatever is currently registered as trusted. Use only after reviewing.\n'
     );
     process.exit(1);
@@ -104,7 +104,7 @@ async function main() {
 
   if (args.apply) {
     writeManifest(workspaceDir, snapshot);
-    process.stderr.write('manifest-snapshot.js: wrote user-data/security/manifest.json\n');
+    process.stderr.write('manifest-snapshot.js: wrote user-data/ops/security/manifest.json\n');
     process.exit(0);
   }
 

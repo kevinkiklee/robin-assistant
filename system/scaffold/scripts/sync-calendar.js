@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // Calendar sync — fetches events from Google Calendar across the next 90 days
@@ -8,9 +8,9 @@
 // or meeting links.
 //
 // Usage:
-//   node user-data/scripts/sync-calendar.js              # incremental
-//   node user-data/scripts/sync-calendar.js --bootstrap  # full window pull
-//   node user-data/scripts/sync-calendar.js --dry-run    # no writes
+//   node user-data/ops/scripts/sync-calendar.js              # incremental
+//   node user-data/ops/scripts/sync-calendar.js --bootstrap  # full window pull
+//   node user-data/ops/scripts/sync-calendar.js --dry-run    # no writes
 //
 // Requires: GOOGLE_OAUTH_REFRESH_TOKEN/CLIENT_ID/CLIENT_SECRET in .env
 // (run auth-google.js first).
@@ -208,7 +208,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const bootstrap = process.argv.includes('--bootstrap');
 
   const underRunner = !!process.env.ROBIN_WORKSPACE;
-  const lockPath = join(workspaceDir, `user-data/state/jobs/locks/${SOURCE}.lock`);
+  const lockPath = join(workspaceDir, `user-data/ops/state/jobs/locks/${SOURCE}.lock`);
   let acquired = false;
 
   async function run() {

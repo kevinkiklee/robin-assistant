@@ -30,7 +30,7 @@ SPOTIFY_CLIENT_SECRET=<your-client-secret>
 ## 3. Run the OAuth flow
 
 ```sh
-node user-data/scripts/auth-spotify.js
+node user-data/ops/scripts/auth-spotify.js
 ```
 
 The script listens on port 8765 by default (override with
@@ -40,7 +40,7 @@ the Spotify dashboard to match). Click **Agree** in the consent screen.
 ## 4. Bootstrap and enable
 
 ```sh
-node user-data/scripts/sync-spotify.js --bootstrap
+node user-data/ops/scripts/sync-spotify.js --bootstrap
 node bin/robin.js jobs enable sync-spotify
 ```
 

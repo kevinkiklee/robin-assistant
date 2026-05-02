@@ -181,7 +181,7 @@ For each line in inbox.md:
 ### 4.3 Mechanical pre-filter (defense in depth)
 
 A small script `system/scripts/capture/dream-pre-filter.js` runs before any Dream invocation. It:
-1. Reads `user-data/memory/inbox.md`.
+1. Reads `user-data/memory/streams/inbox.md`.
 2. For each tagged line: parses `origin=`. If absent, treat as `origin=user` (backwards compat for pre-cycle-1a captures).
 3. Lines with `origin in {sync:*, ingest:*, tool:*}` are moved to `user-data/memory/quarantine/captures.md` (with timestamp).
 4. The de-quarantined `inbox.md` is what Dream sees.
@@ -256,7 +256,7 @@ Sanitization is idempotent. Running it twice on the same content produces the sa
 Ingest is forbidden from writing to or modifying:
 
 - `user-data/memory/tasks.md`
-- `user-data/memory/decisions.md`
+- `user-data/memory/streams/decisions.md`
 - `user-data/memory/self-improvement/corrections.md`
 - `user-data/memory/self-improvement/preferences.md`
 - `user-data/memory/self-improvement/patterns.md`
@@ -333,7 +333,7 @@ Pre-filter writes one row per quarantined line. `content` column paraphrases (do
 
 > **Quarantine review.** If `user-data/memory/quarantine/captures.md` has new entries since the previous morning briefing, list them in a "Security: quarantined captures" section. Each entry: timestamp, origin, paraphrased content. Ask Kevin whether to (a) route to permanent memory anyway (override), (b) keep quarantined as evidence, or (c) delete.
 
-Track "previous morning briefing" via a cursor in `user-data/state/quarantine-cursor.json`.
+Track "previous morning briefing" via a cursor in `user-data/ops/state/quarantine-cursor.json`.
 
 ### 7.3 Manual override
 
@@ -407,7 +407,7 @@ Add new section, "Forbidden destinations":
 
 Ingest MUST NOT write to or modify any of:
 - `user-data/memory/tasks.md`
-- `user-data/memory/decisions.md`
+- `user-data/memory/streams/decisions.md`
 - `user-data/memory/self-improvement/*`
 - `user-data/memory/profile/identity.md`
 
@@ -470,7 +470,7 @@ These are softer than the unit tests — they verify model adherence, which is b
 2. First sync after deployment rewrites synced files with new frontmatter + markers automatically.
 3. Existing files without `trust:` frontmatter remain trusted by default — no breaking change.
 4. inbox.md captures created before cycle-1a do NOT have `origin=`. The migration handles this with a one-time pass: `system/scripts/migrate-cycle-1a.js` (per item 5 below) reads the existing inbox.md, stamps every existing line with `origin=user|legacy`, and rewrites the file. After migration, the pre-filter's policy is unambiguous: **missing `origin=` is treated as a violation and the line is quarantined.** The migration is the cutoff. New captures written without `origin=` after migration are either a model-rule failure or an attack — quarantine catches both. This avoids the contradiction of "missing-origin = trusted" leaving a permanent loophole.
-5. After deployment, a one-shot script `system/scripts/migrate-cycle-1a.js` runs as part of the cycle-1a migration step (mandatory, not optional). It (a) walks `user-data/memory/knowledge/` and rewrites old synced files with the new `trust:` frontmatter + inline markers; (b) walks `user-data/memory/inbox.md` and stamps every existing tag with `origin=user|legacy`. After this script runs, the pre-filter's "missing origin = quarantine" policy from item 4 is in effect.
+5. After deployment, a one-shot script `system/scripts/migrate-cycle-1a.js` runs as part of the cycle-1a migration step (mandatory, not optional). It (a) walks `user-data/memory/knowledge/` and rewrites old synced files with the new `trust:` frontmatter + inline markers; (b) walks `user-data/memory/streams/inbox.md` and stamps every existing tag with `origin=user|legacy`. After this script runs, the pre-filter's "missing origin = quarantine" policy from item 4 is in effect.
 
 No DB migration. No ID renaming. No breaking-format changes to existing memory files.
 

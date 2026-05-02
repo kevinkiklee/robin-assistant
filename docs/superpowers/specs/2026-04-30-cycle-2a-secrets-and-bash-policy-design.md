@@ -89,7 +89,7 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync, chmodSy
 import { join, dirname } from 'node:path';
 
 function envPath(workspaceDir) {
-  return join(workspaceDir, 'user-data/secrets/.env');
+  return join(workspaceDir, 'user-data/ops/secrets/.env');
 }
 
 function parseEnv(workspaceDir) {
@@ -111,7 +111,7 @@ export function requireSecret(workspaceDir, key) {
   const value = parseEnv(workspaceDir).get(key);
   if (!value) {
     throw new Error(
-      `Missing secret: ${key}. Add it to user-data/secrets/.env (see system/skeleton/secrets/README.md).`
+      `Missing secret: ${key}. Add it to user-data/ops/secrets/.env (see system/skeleton/secrets/README.md).`
     );
   }
   return value;
@@ -433,17 +433,17 @@ Estimated addition: ~80 lines.
    - Refactor 5 direct `process.env.<SECRET>` readers in `auth-discord.js`, `discord-bot.js`.
    - Add `system/scripts/lib/safe-env.js`.
    - Update 3 `spawn`/`fork` sites to use `safeEnv()`.
-   - **Grep audit** (mandatory before merge): `grep -rE "process\.env\.[A-Z_]+(TOKEN|KEY|SECRET|PAT|PASS|REFRESH)" system/ user-data/scripts/` returns zero matches outside `secrets.js`.
+   - **Grep audit** (mandatory before merge): `grep -rE "process\.env\.[A-Z_]+(TOKEN|KEY|SECRET|PAT|PASS|REFRESH)" system/ user-data/ops/scripts/` returns zero matches outside `secrets.js`.
 4. **Hook pass**:
    - Add `system/scripts/lib/bash-sensitive-patterns.js`.
    - Add `--on-pre-bash` mode to `claude-code-hook.js`.
    - Add Bash matcher to `.claude/settings.json`.
 5. **Refusal log rename** (if cycle-1b shipped first):
-   - Rename file: `mv user-data/state/outbound-refusals.log user-data/state/policy-refusals.log` (only if non-empty; otherwise let cycle-2a create fresh).
+   - Rename file: `mv user-data/ops/state/outbound-refusals.log user-data/ops/state/telemetry/policy-refusals.log` (only if non-empty; otherwise let cycle-2a create fresh).
    - Rename module: `outbound-log.js` → `policy-refusals-log.js`. Update `outbound-policy.js` import + function name.
    - Update morning-briefing protocol reference.
 6. **Restart discord-bot** so it picks up new hook config and re-spawns subprocesses with `safeEnv()`.
-7. **Smoke**: synthetic Bash command `cat user-data/secrets/.env` blocked; subprocess `process.env` has no `DISCORD_BOT_TOKEN`.
+7. **Smoke**: synthetic Bash command `cat user-data/ops/secrets/.env` blocked; subprocess `process.env` has no `DISCORD_BOT_TOKEN`.
 
 No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfix).
 
@@ -453,7 +453,7 @@ No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfi
 
 | Risk | Mitigation |
 |---|---|
-| Refactor misses a `process.env.<SECRET>` reader | Mandatory grep audit in DoD #2; runs against `system/` and `user-data/scripts/`. |
+| Refactor misses a `process.env.<SECRET>` reader | Mandatory grep audit in DoD #2; runs against `system/` and `user-data/ops/scripts/`. |
 | `safeEnv()` excludes a var some subprocess actually needs | Allowlist conservative growth; smoke test discord-bot end-to-end; add to allowlist with rationale if needed. |
 | `requireSecret` per-call I/O latency in a hot path | ~1ms per call on SSD; secrets accessed 2-3x per session. Acceptable. Future opt-in cache with TTL if hot path emerges. |
 | Bash hook adds 50-100ms per command | Lazy import of patterns module; first-match-wins; <50ms target enforced via test. If unacceptable in practice, consider a long-lived hook daemon (out of scope; future cycle). |
@@ -462,7 +462,7 @@ No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfi
 | Hook itself has a bug → silent passthrough loses defense | Fail-closed pattern: any uncaught error in hook exits 2 with `hook-internal-error` reason. Morning briefing flags these for triage. |
 | Concurrent Bash invocations race on log file | `appendFileSync` is atomic at OS level for small writes. No race. |
 | discord.js library caches BOT_TOKEN in heap | Acknowledged residual. Heap not Bash-readable; out of scope for cycle-2a. |
-| `loadSecrets` removal breaks an unknown caller | Removal pass with `grep -rn "loadSecrets" system/ user-data/scripts/`; replace any survivors. Tests would have caught a missing import. |
+| `loadSecrets` removal breaks an unknown caller | Removal pass with `grep -rn "loadSecrets" system/ user-data/ops/scripts/`; replace any survivors. Tests would have caught a missing import. |
 | Other agent's `feat/a3-session-end-sweep` work has touched these files | Re-read `claude-code-hook.js`, `.claude/settings.json`, `secrets.js`, `discord-bot.js` before edits. Coordinate via git merge after their branch lands. |
 
 ---
@@ -499,13 +499,13 @@ No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfi
 
 ### 10.2 Acceptance tests (mechanical)
 
-- `s6-supply-chain-postinstall.test.js` — synthetic postinstall script that attempts `cat user-data/secrets/.env` via Bash; the hook blocks at `secrets-read`. Pre-install file unchanged.
+- `s6-supply-chain-postinstall.test.js` — synthetic postinstall script that attempts `cat user-data/ops/secrets/.env` via Bash; the hook blocks at `secrets-read`. Pre-install file unchanged.
 - `s8-jailbreak-cat-env.test.js` — synthetic `env | grep TOKEN` Bash command; hook blocks at `env-dump`.
-- `s8-jailbreak-cat-secrets.test.js` — synthetic `cat user-data/secrets/.env` Bash command; hook blocks at `secrets-read`.
+- `s8-jailbreak-cat-secrets.test.js` — synthetic `cat user-data/ops/secrets/.env` Bash command; hook blocks at `secrets-read`.
 
 ### 10.3 Smoke (manual, post-deploy)
 
-1. Drop synthetic Bash `cat user-data/secrets/.env`; confirm hook blocks; refusal log entry; agent's next reply mentions block.
+1. Drop synthetic Bash `cat user-data/ops/secrets/.env`; confirm hook blocks; refusal log entry; agent's next reply mentions block.
 2. Spawn discord-bot subprocess; confirm `process.env` inside subprocess does NOT contain `DISCORD_BOT_TOKEN`, `GITHUB_PAT`, OAuth refresh tokens; confirm bot still functions end-to-end (Kevin sends a DM, bot replies).
 3. Run `requireSecret(workspaceDir, 'DISCORD_BOT_TOKEN')` in REPL; confirm value returned, `process.env.DISCORD_BOT_TOKEN` still undefined.
 4. Run `bash-sensitive-patterns.js` directly with mock commands; confirm first-match-wins.

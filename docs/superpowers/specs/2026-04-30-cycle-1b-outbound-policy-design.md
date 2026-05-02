@@ -42,7 +42,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 1 — Taint check (sentence-hash match against haystack)    │
-│  Reads user-data/state/untrusted-index.json. Hashes outbound    │
+│  Reads user-data/ops/state/cache/untrusted-index.json. Hashes outbound    │
 │  sentences. Set-membership check. Hit → refuse.                 │
 └─────────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────────┐
@@ -71,7 +71,7 @@
 ```
 
 A failed layer throws `OutboundPolicyError(reason, layer)`. The calling script:
-1. Appends a hashed entry to `user-data/state/outbound-refusals.log`.
+1. Appends a hashed entry to `user-data/ops/state/outbound-refusals.log`.
 2. Writes `OUTBOUND_REFUSED [layer=N]: <reason>` to stderr.
 3. Exits with code 11.
 
@@ -103,7 +103,7 @@ FNV-1a 64-bit. Cheap, sufficient for collision resistance at our scale (millions
 
 ### 3.4 Pre-built index
 
-`user-data/state/untrusted-index.json`:
+`user-data/ops/state/cache/untrusted-index.json`:
 
 ```json
 {
@@ -210,7 +210,7 @@ Per-call cost: O(env_var_count × content_length). With ~50 env vars and ~1KB co
 
 Robin uses fine-grained PATs (per `system/skeleton/scripts/auth-github.js`). Fine-grained PATs are bound to a specific set of repositories selected at PAT-creation time; we enumerate them by paginating `GET /user/repos?per_page=100&affiliation=owner,collaborator,organization_member` and following `Link: <...>; rel="next"` headers to completion. Empty list (PAT has no repo access) is allowed and means github-write refuses everything until the PAT is recreated with repos.
 
-Cache to `user-data/state/github-allowlist-cache.json`:
+Cache to `user-data/ops/state/cache/github-allowlist-cache.json`:
 ```json
 {
   "fetched_at": "2026-05-01T08:00:00Z",
@@ -355,7 +355,7 @@ The user gets a one-line refusal note instead of the violating content. Hashed f
 
 ### 7.1 Format
 
-`user-data/state/outbound-refusals.log` — TSV, append-only:
+`user-data/ops/state/outbound-refusals.log` — TSV, append-only:
 
 ```
 2026-05-01T14:23:11Z	github:owner/repo	1	outbound content quotes a sentence from inbox-snapshot.md	a1b2c3d4
@@ -376,9 +376,9 @@ Columns: `timestamp | target | layer | reason | content-hash`.
 
 `system/jobs/morning-briefing.md` adds a step parallel to cycle-1a's quarantine review:
 
-> **Outbound refusals review.** If `user-data/state/outbound-refusals.log` has new entries since the previous morning briefing, list them in a "Security: outbound refusals" section. For each: timestamp, target, layer (1=taint, 2=secret, 3=target), reason. Ask Kevin whether to (a) treat as confirmed attack (move to a separate evidence log), (b) treat as false positive (note pattern for future tuning), (c) ignore.
+> **Outbound refusals review.** If `user-data/ops/state/outbound-refusals.log` has new entries since the previous morning briefing, list them in a "Security: outbound refusals" section. For each: timestamp, target, layer (1=taint, 2=secret, 3=target), reason. Ask Kevin whether to (a) treat as confirmed attack (move to a separate evidence log), (b) treat as false positive (note pattern for future tuning), (c) ignore.
 
-Cursor at `user-data/state/quarantine-cursor.json` is shared with cycle-1a — the cursor stamps "last reviewed at" once per morning briefing, covering both quarantine and outbound-refusal review.
+Cursor at `user-data/ops/state/quarantine-cursor.json` is shared with cycle-1a — the cursor stamps "last reviewed at" once per morning briefing, covering both quarantine and outbound-refusal review.
 
 ---
 
@@ -458,8 +458,8 @@ One scenario: synthetic untrusted email-knowledge in context; agent asked "draft
 Cycle-1b migration is minimal — depends on cycle-1a being deployed first.
 
 1. **Deploy cycle-1a first.** Cycle-1b's taint check requires cycle-1a's `trust:untrusted` markers to populate the haystack.
-2. **First sync run after cycle-1b lands** populates `user-data/state/untrusted-index.json`. Until then, layer-1 has empty haystack (no false matches; also no taint protection until first sync — acceptable).
-3. **First github-write call** populates `user-data/state/github-allowlist-cache.json`.
+2. **First sync run after cycle-1b lands** populates `user-data/ops/state/cache/untrusted-index.json`. Until then, layer-1 has empty haystack (no false matches; also no taint protection until first sync — acceptable).
+3. **First github-write call** populates `user-data/ops/state/cache/github-allowlist-cache.json`.
 4. **First refusal** creates `outbound-refusals.log`.
 
 No data migration. No file rewrites. No skeleton changes beyond new code. Backwards-compat: scripts that don't call the helper are unaffected (existing code paths unchanged); only github-write, spotify-write, and discord-bot.js are updated.
@@ -510,7 +510,7 @@ Cycle-1b is done when ALL of:
 2. Sentence-hash index file written/read by the helper; incremental update wired into `markdown.js:atomicWrite`; mtime-based invalidation.
 3. `github-write.js`, `spotify-write.js`, `discord-bot.js` each call `assertOutboundContentAllowed` before HTTP. Verified by reading each script.
 4. Discord-bot subprocess wrapper translates exit code 11 into a Discord-safe refusal note.
-5. GitHub PAT scope cached at `user-data/state/github-allowlist-cache.json` with TTL + 401-invalidation.
+5. GitHub PAT scope cached at `user-data/ops/state/cache/github-allowlist-cache.json` with TTL + 401-invalidation.
 6. `outbound-refusals.log` template exists; rotation at 1MB tested.
 7. AGENTS.md gains 3-line outbound rule. `system/rules/security.md` created with full detail; AGENTS.md Tier 2 reference table updated.
 8. `system/jobs/morning-briefing.md` updated with outbound-refusals review step.

@@ -29,7 +29,7 @@ For each of the 6 scenarios in `../scenarios/0N-*.md`:
      "model": "<selected model>",
      "scenario": <n>,
      "reads": ["AGENTS.md", "user-data/memory/INDEX.md", "..."],
-     "writes": ["user-data/memory/inbox.md"],
+     "writes": ["user-data/memory/streams/inbox.md"],
      "assistant": "<the assistant's response text>"
    }
    ```

@@ -10,7 +10,7 @@ timeout_minutes: 1
 notify_on_failure: false
 ---
 
-Heartbeat that runs every 6 hours. Reads system/jobs/ and user-data/jobs/,
+Heartbeat that runs every 6 hours. Reads system/jobs/ and user-data/ops/jobs/,
 diffs against currently installed scheduler entries, and applies the delta.
 
 Idempotent. Hash-based early-exit when nothing has changed (sub-10ms in the

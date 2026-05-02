@@ -30,7 +30,8 @@ import { parseWatchFile, readWatchState, serializeWatchFile } from '../../script
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-watches-cli-'));
   mkdirSync(join(dir, 'user-data/memory/watches'), { recursive: true });
-  mkdirSync(join(dir, 'user-data/state/watches'), { recursive: true });
+  mkdirSync(join(dir, 'user-data/memory/streams'), { recursive: true });
+  mkdirSync(join(dir, 'user-data/ops/state/watches'), { recursive: true });
   return dir;
 }
 
@@ -90,7 +91,7 @@ test('watch add: creates watch file and state JSON', async () => {
   assert.equal(frontmatter.enabled, true);
   assert.equal(frontmatter.notify, false);
 
-  const stateFile = join(ws, 'user-data/state/watches/sigma-lens-releases.json');
+  const stateFile = join(ws, 'user-data/ops/state/watches/sigma-lens-releases.json');
   assert.ok(existsSync(stateFile), 'state file should be created');
   const state = JSON.parse(readFileSync(stateFile, 'utf8'));
   assert.deepEqual(state.fingerprints, []);
@@ -234,7 +235,7 @@ test('watch tail: empty inbox shows no-items message', async () => {
 
 test('watch tail: shows matching [watch] lines from inbox', async () => {
   const ws = workspace();
-  const inboxPath = join(ws, 'user-data/memory/inbox.md');
+  const inboxPath = join(ws, 'user-data/memory/streams/inbox.md');
   writeFileSync(inboxPath, [
     '- [fact] some fact <!-- id:20260430-1000-aa01 -->',
     '- [watch:sigma-lens] Sigma 35mm f/1.4 DG DN release — new announcement (https://sigma-global.com): New full-frame lens announced for Sony E mount <!-- id:20260430-1001-bb01 -->',
@@ -251,7 +252,7 @@ test('watch tail: shows matching [watch] lines from inbox', async () => {
 
 test('watch tail: filters by id when provided', async () => {
   const ws = workspace();
-  const inboxPath = join(ws, 'user-data/memory/inbox.md');
+  const inboxPath = join(ws, 'user-data/memory/streams/inbox.md');
   writeFileSync(inboxPath, [
     '- [watch:sigma-lens] Hit 1',
     '- [watch:aronofsky] Hit 2',
@@ -265,7 +266,7 @@ test('watch tail: filters by id when provided', async () => {
 
 test('watch tail: --n limits output count', async () => {
   const ws = workspace();
-  const inboxPath = join(ws, 'user-data/memory/inbox.md');
+  const inboxPath = join(ws, 'user-data/memory/streams/inbox.md');
   const lines = Array.from({ length: 20 }, (_, i) => `- [watch:test] item ${i + 1}`);
   writeFileSync(inboxPath, lines.join('\n') + '\n');
 

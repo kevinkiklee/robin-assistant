@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // One-shot Spotify OAuth setup.
 //
 // Usage:
-//   node user-data/scripts/auth-spotify.js
+//   node user-data/ops/scripts/auth-spotify.js
 //
 // Prerequisite: Create a Spotify app at
 //   https://developer.spotify.com/dashboard
 // Add http://127.0.0.1:<any-port>/oauth-callback to its redirect URIs (you
 // can use any port like 8765 — the script picks one and prints it). Then in
-// user-data/secrets/.env, set:
+// user-data/ops/secrets/.env, set:
 //   SPOTIFY_CLIENT_ID=...
 //   SPOTIFY_CLIENT_SECRET=...
 
@@ -50,7 +50,7 @@ async function main() {
       'Create a Spotify app at\n' +
       '  https://developer.spotify.com/dashboard\n' +
       `Add this redirect URI to it:\n  http://127.0.0.1:${REDIRECT_PORT}/oauth-callback\n` +
-      'Then add these lines to user-data/secrets/.env:\n' +
+      'Then add these lines to user-data/ops/secrets/.env:\n' +
       '  SPOTIFY_CLIENT_ID=<your-client-id>\n' +
       '  SPOTIFY_CLIENT_SECRET=<your-client-secret>\n'
     );
@@ -73,10 +73,10 @@ async function main() {
     last_auth_at: new Date().toISOString(),
   });
 
-  console.log('\n[auth-spotify] success — refresh token saved to user-data/secrets/.env');
+  console.log('\n[auth-spotify] success — refresh token saved to user-data/ops/secrets/.env');
   console.log('[auth-spotify] enable the sync job:');
   console.log('  node bin/robin.js jobs enable sync-spotify');
-  console.log('  node user-data/scripts/sync-spotify.js --bootstrap');
+  console.log('  node user-data/ops/scripts/sync-spotify.js --bootstrap');
 }
 
 main().catch((err) => {

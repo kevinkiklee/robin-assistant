@@ -94,7 +94,7 @@ test('watchPath: returns correct path', () => {
 
 test('watchStatePath: returns correct path', () => {
   const ws = '/tmp/test-ws';
-  assert.equal(watchStatePath(ws, 'my-watch'), '/tmp/test-ws/user-data/state/watches/my-watch.json');
+  assert.equal(watchStatePath(ws, 'my-watch'), '/tmp/test-ws/user-data/ops/state/watches/my-watch.json');
 });
 
 // ---------------------------------------------------------------------------
@@ -226,7 +226,7 @@ test('readWatchState: returns default when file missing', () => {
 
 test('writeWatchState + readWatchState: round-trip', () => {
   const ws = workspace();
-  mkdirSync(join(ws, 'user-data/state/watches'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/ops/state/watches'), { recursive: true });
   const state = {
     id: 'round-trip',
     fingerprints: ['sha256:abc123', 'sha256:def456'],
@@ -243,9 +243,9 @@ test('writeWatchState + readWatchState: round-trip', () => {
 
 test('writeWatchState: atomic write — no .tmp file left behind', () => {
   const ws = workspace();
-  mkdirSync(join(ws, 'user-data/state/watches'), { recursive: true });
+  mkdirSync(join(ws, 'user-data/ops/state/watches'), { recursive: true });
   writeWatchState(ws, 'atomic-test', { fingerprints: [], last_run_at: null, consecutive_failures: 0 });
-  const tmpPath = join(ws, 'user-data/state/watches', 'atomic-test.json.tmp');
+  const tmpPath = join(ws, 'user-data/ops/state/watches', 'atomic-test.json.tmp');
   assert.ok(!existsSync(tmpPath), '.tmp file should not exist after write');
 });
 
@@ -253,13 +253,13 @@ test('writeWatchState: creates state directory if missing', () => {
   const ws = workspace();
   // Do NOT pre-create the state/watches dir
   writeWatchState(ws, 'no-dir-test', { fingerprints: [], last_run_at: null, consecutive_failures: 0 });
-  const statePath = join(ws, 'user-data/state/watches/no-dir-test.json');
+  const statePath = join(ws, 'user-data/ops/state/watches/no-dir-test.json');
   assert.ok(existsSync(statePath), 'state file should be created');
 });
 
 test('readWatchState: handles corrupt JSON gracefully', () => {
   const ws = workspace();
-  const dir = join(ws, 'user-data/state/watches');
+  const dir = join(ws, 'user-data/ops/state/watches');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'corrupt.json'), 'not valid json {{{');
   const state = readWatchState(ws, 'corrupt');

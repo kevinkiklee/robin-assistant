@@ -5,12 +5,23 @@ export function createHelpers(workspaceDir) {
   const ud = join(workspaceDir, 'user-data');
   const scaffold = join(workspaceDir, 'system/scaffold');
 
+  // Resolve config path: prefer the post-0021 location, fall back to the
+  // pre-0021 location for migrations that run before 0021 has executed.
+  function configPath() {
+    const newP = join(ud, 'ops/config/robin.config.json');
+    if (existsSync(newP)) return newP;
+    const oldP = join(ud, 'robin.config.json');
+    if (existsSync(oldP)) return oldP;
+    // Default to new path for fresh writes when neither exists.
+    return newP;
+  }
   function readConfig() {
-    const p = join(ud, 'robin.config.json');
-    return JSON.parse(readFileSync(p, 'utf-8'));
+    return JSON.parse(readFileSync(configPath(), 'utf-8'));
   }
   function writeConfig(cfg) {
-    writeFileSync(join(ud, 'robin.config.json'), JSON.stringify(cfg, null, 2) + '\n');
+    const p = configPath();
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
   }
   function getPath(obj, path) {
     return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);

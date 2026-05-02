@@ -31,7 +31,7 @@
 - Must function alongside the other agent's `feat/a3-session-end-sweep` (Stop hook, `.claude/settings.json` edits). Re-read the file before edits.
 - Reuses `policy-refusals.log` infrastructure from cycle-1b/2a (gains `kind=tamper` rows).
 - SessionStart hook target: <50ms typical / <100ms ceiling.
-- Manifest is per-install (not shipped). Lives in `user-data/security/`. Skeleton ships in `system/skeleton/security/` and is copied on first install.
+- Manifest is per-install (not shipped). Lives in `user-data/ops/security/`. Skeleton ships in `system/skeleton/security/` and is copied on first install.
 
 ---
 
@@ -41,7 +41,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │ Mechanism — Manifest-based drift detection                      │
 │                                                                 │
-│  user-data/security/manifest.json     ← per-install trusted     │
+│  user-data/ops/security/manifest.json     ← per-install trusted     │
 │              │                          baseline (gitignored).  │
 │              ▼                                                  │
 │   system/scripts/                                               │
@@ -75,7 +75,7 @@
 
 ### 3.1 Location
 
-- **Per-install (live):** `user-data/security/manifest.json` (gitignored under `user-data/`).
+- **Per-install (live):** `user-data/ops/security/manifest.json` (gitignored under `user-data/`).
 - **Skeleton (shipped):** `system/skeleton/security/manifest.json` (tracked in package).
 - **Setup behavior:** `system/scripts/cli/setup.js` (postinstall) copies skeleton → live if live doesn't exist. Idempotent: never overwrites an existing manifest.
 
@@ -110,13 +110,13 @@
 ### 3.3 Skeleton vs. live
 
 The shipped skeleton lists Robin's owned hooks and empty MCP arrays. After install:
-- The live manifest at `user-data/security/manifest.json` is initialized from the skeleton.
+- The live manifest at `user-data/ops/security/manifest.json` is initialized from the skeleton.
 - Kevin populates `mcpServers.expected` (and `writeCapable` where applicable) on first deploy via the bootstrap flow (§7).
 - Kevin's edits live only in `user-data/`; future `npm install`s don't overwrite.
 
 ### 3.4 No cryptographic signing
 
-The manifest is plain JSON. An attacker who can edit `.claude/settings.json` can also edit `user-data/security/manifest.json`. The detection layer is **git review of pull diffs**: if a fork commits a malicious hook AND its corresponding manifest update, both diffs appear in the pull. Not a defense against an attacker already on the filesystem; documented in `system/rules/security.md` known limitations.
+The manifest is plain JSON. An attacker who can edit `.claude/settings.json` can also edit `user-data/ops/security/manifest.json`. The detection layer is **git review of pull diffs**: if a fork commits a malicious hook AND its corresponding manifest update, both diffs appear in the pull. Not a defense against an attacker already on the filesystem; documented in `system/rules/security.md` known limitations.
 
 ---
 
@@ -131,10 +131,10 @@ Runs as the `SessionStart` hook command. Each new Claude Code session triggers i
 ```js
 async function main() {
   const workspaceDir = process.env.ROBIN_WORKSPACE || process.cwd();
-  const manifestPath = join(workspaceDir, 'user-data/security/manifest.json');
+  const manifestPath = join(workspaceDir, 'user-data/ops/security/manifest.json');
 
   if (!existsSync(manifestPath)) {
-    process.stderr.write('WARNING: user-data/security/manifest.json missing; tamper detection inactive.\n');
+    process.stderr.write('WARNING: user-data/ops/security/manifest.json missing; tamper detection inactive.\n');
     process.exit(0);  // fail-soft
   }
 
@@ -331,8 +331,8 @@ Useful flow:
 
 ```sh
 node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snapshot.json
-diff user-data/security/manifest.json /tmp/snapshot.json
-$EDITOR user-data/security/manifest.json   # paste in additions
+diff user-data/ops/security/manifest.json /tmp/snapshot.json
+$EDITOR user-data/ops/security/manifest.json   # paste in additions
 ```
 
 ### 5.2 `--apply --confirm-trust-current-state` (first-deploy bootstrap)
@@ -341,14 +341,14 @@ $EDITOR user-data/security/manifest.json   # paste in additions
 node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
 ```
 
-Overwrites `user-data/security/manifest.json` with current state. The two-flag pattern (separate `--apply` + explicit `--confirm-trust-current-state`) prevents accidental "snapshot accepts whatever drift is in place." The flag name is intentionally long.
+Overwrites `user-data/ops/security/manifest.json` with current state. The two-flag pattern (separate `--apply` + explicit `--confirm-trust-current-state`) prevents accidental "snapshot accepts whatever drift is in place." The flag name is intentionally long.
 
 Use only at first deploy or when Kevin has manually reviewed every entry.
 
 If `--apply` is given without `--confirm-trust-current-state`, exits 1 with:
 ```
 manifest-snapshot.js --apply requires --confirm-trust-current-state to proceed.
-This overwrites user-data/security/manifest.json with current state, which
+This overwrites user-data/ops/security/manifest.json with current state, which
 accepts whatever is currently registered as trusted. Use only after reviewing.
 ```
 
@@ -391,16 +391,16 @@ Kevin's documented post-install steps for cycle-2b. Lives in `system/rules/secur
 
 ```sh
 # 1. Verify the skeleton landed.
-ls user-data/security/manifest.json     # exists; copied by setup.js (postinstall)
+ls user-data/ops/security/manifest.json     # exists; copied by setup.js (postinstall)
 
 # 2. Capture current state for review.
 node system/scripts/diagnostics/manifest-snapshot.js > /tmp/current-state.json
 
 # 3. Diff against the live manifest.
-diff user-data/security/manifest.json /tmp/current-state.json
+diff user-data/ops/security/manifest.json /tmp/current-state.json
 
 # 4a. EITHER — manually copy the additions you trust:
-$EDITOR user-data/security/manifest.json
+$EDITOR user-data/ops/security/manifest.json
 
 # 4b. OR — for first-deploy convenience, accept current state in one shot:
 node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state
@@ -419,7 +419,7 @@ node system/scripts/diagnostics/check-manifest.js
 #   TAMPER DRIFT [mild]: unexpected-mcp - new-mcp-name
 
 # Edit the manifest.
-$EDITOR user-data/security/manifest.json
+$EDITOR user-data/ops/security/manifest.json
 # Add "new-mcp-name" to mcpServers.expected.
 # If it can write to external services, also add to writeCapable.
 
@@ -477,7 +477,7 @@ For kind=tamper specifically:
 One line under Hard Rules:
 
 ```markdown
-- **Tamper detection.** Drift in `.claude/settings.json` hooks or in the loaded MCP server list is checked at session start by `system/scripts/diagnostics/check-manifest.js` against `user-data/security/manifest.json`. Severe drift surfaces in the model context immediately; mild/info goes to `policy-refusals.log` (deduped 24h) for morning-briefing review. See `system/rules/security.md`.
+- **Tamper detection.** Drift in `.claude/settings.json` hooks or in the loaded MCP server list is checked at session start by `system/scripts/diagnostics/check-manifest.js` against `user-data/ops/security/manifest.json`. Severe drift surfaces in the model context immediately; mild/info goes to `policy-refusals.log` (deduped 24h) for morning-briefing review. See `system/rules/security.md`.
 ```
 
 Cumulative AGENTS.md additions across all four security cycles: ~5 lines net (cycle-1a +5, cycle-1b -2, cycle-2a +1, cycle-2b +1).
@@ -534,7 +534,7 @@ Estimated addition: ~80 lines.
 ## 11. Migration
 
 1. **Order:** deploys after cycle-2a (uses `policy-refusals.log` + `system/rules/security.md`).
-2. **Skeleton ship:** `system/skeleton/security/manifest.json` lands in the package; `setup.js` (postinstall) copies it to `user-data/security/manifest.json` if not already present.
+2. **Skeleton ship:** `system/skeleton/security/manifest.json` lands in the package; `setup.js` (postinstall) copies it to `user-data/ops/security/manifest.json` if not already present.
 3. **First session after deploy:** Kevin sees drift entries for every MCP not in the (initially empty) manifest. He runs the bootstrap (§7.1) — likely option 4b (`--apply --confirm-trust-current-state`) for first-deploy convenience.
 4. **Subsequent sessions:** silent unless drift appears.
 
@@ -580,7 +580,7 @@ No data migration. No file rewrites of existing logs.
 ## 14. Definition of done
 
 1. `system/skeleton/security/manifest.json` ships with Robin's owned hooks; empty MCP arrays.
-2. `setup.js` (postinstall) copies skeleton → `user-data/security/manifest.json` if absent.
+2. `setup.js` (postinstall) copies skeleton → `user-data/ops/security/manifest.json` if absent.
 3. `check-manifest.js` runs on SessionStart; computes drift; emits stderr per bounding rules; logs to `policy-refusals.log` with `kind=tamper`.
 4. `manifest-snapshot.js` default-mode is read-only; `--apply --confirm-trust-current-state` overwrites; missing-confirm-flag exits 1 with explanation.
 5. `enumerateMCPServers` reads project + global MCP configs; fails soft on missing paths; returns deduped sorted list.

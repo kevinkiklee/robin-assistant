@@ -24,7 +24,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ### 2. Decisions follow-up
 
-- Read `user-data/memory/decisions.md`. For decisions >30 days old with no recorded outcome, ask user for the outcome. Update the entry.
+- Read `user-data/memory/streams/decisions.md`. For decisions >30 days old with no recorded outcome, ask user for the outcome. Update the entry.
 
 ### 3. Goals check-in
 
@@ -32,7 +32,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ### 4. Inbox review
 
-- Read `user-data/memory/inbox.md`. Any items Dream couldn't route (ambiguous) — present to user for classification. Goal: empty inbox.
+- Read `user-data/memory/streams/inbox.md`. Any items Dream couldn't route (ambiguous) — present to user for classification. Goal: empty inbox.
 
 ### 5. Pattern effectiveness
 
@@ -40,12 +40,12 @@ Proactive: first session of each week (Monday) — offer it.
 
 ### 6. Coordination cleanup
 
-- Read `user-data/state/sessions.md`. Remove stale entries (>2 hours old).
-- Check `user-data/state/locks/` for any lock files older than 24 hours. Delete them (stale from crashed sessions).
+- Read `user-data/ops/state/sessions.md`. Remove stale entries (>2 hours old).
+- Check `user-data/ops/state/locks/` for any lock files older than 24 hours. Delete them (stale from crashed sessions).
 
 ### 7. Prediction resolutions
 
-- Check `user-data/state/` for any `outcome-check-<date>.md` summary files produced by recent `outcome-check` runs.
+- Check `user-data/ops/state/` for any `outcome-check-<date>.md` summary files produced by recent `outcome-check` runs.
 - For each pending summary, walk the user through the proposed resolutions one at a time:
   - Read the prediction and the proposed outcome (`resolved-accurate` / `resolved-miss` / `inconclusive`).
   - Ask the user: "Does this match what happened? [y / change outcome / skip]"
@@ -56,7 +56,7 @@ Proactive: first session of each week (Monday) — offer it.
 
 ### 8. Audit findings review
 
-- Check `user-data/state/audit/` for any pending `<date>.md` files produced by recent `audit` runs.
+- Check `user-data/ops/state/audit/` for any pending `<date>.md` files produced by recent `audit` runs.
 - For each audit file, walk the user through findings one at a time:
   - Present the finding: type (`contradiction` or `redundancy`), the two files, the conflicting/duplicate claims, and the suggested action.
   - Ask the user: "How do you want to handle this? [fix now / skip / dismiss]"
@@ -64,7 +64,7 @@ Proactive: first session of each week (Monday) — offer it.
   - On **skip**: leave the finding in the audit file for the next maintenance run.
   - On **dismiss**: mark the finding as reviewed with no action needed.
 - After all findings in a file are resolved or skipped, delete the audit `<date>.md` file.
-- If no audit files exist and the `audit` job is enabled, note how many days since the last run (check `user-data/state/jobs/INDEX.md`).
+- If no audit files exist and the `audit` job is enabled, note how many days since the last run (check `user-data/ops/state/jobs/INDEX.md`).
 
 ### 9. Self-improvement check-in
 
@@ -78,4 +78,4 @@ Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Predicti
 
 ## After
 
-Log completion date in `user-data/memory/journal.md` so next maintenance knows the baseline.
+Log completion date in `user-data/memory/streams/journal.md` so next maintenance knows the baseline.

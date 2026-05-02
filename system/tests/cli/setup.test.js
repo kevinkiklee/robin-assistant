@@ -31,7 +31,7 @@ test('setup populates user-data/ from scaffold in CI mode', async () => {
   await setup(root, { ci: true });
   assert.ok(existsSync(join(root, 'user-data/memory/profile/identity.md')));
   assert.ok(existsSync(join(root, 'user-data/memory/INDEX.md')));
-  assert.ok(existsSync(join(root, 'user-data/robin.config.json')));
+  assert.ok(existsSync(join(root, 'user-data/ops/config/robin.config.json')));
   assert.ok(existsSync(join(root, 'artifacts/input')));
   assert.ok(existsSync(join(root, 'artifacts/output')));
   assert.ok(existsSync(join(root, 'backup')));
@@ -44,7 +44,7 @@ test('setup records baseline migration as applied', async () => {
   writeFileSync(join(root, 'system/migrations/0001-baseline.js'),
     'export const id = "0001-baseline"; export async function up() {}');
   await setup(root, { ci: true });
-  const log = JSON.parse(readFileSync(join(root, 'user-data/.migrations-applied.json'), 'utf-8'));
+  const log = JSON.parse(readFileSync(join(root, 'user-data/ops/state/migrations-applied.json'), 'utf-8'));
   assert.ok(log.find(e => e.id === '0001-baseline'));
   rmSync(root, { recursive: true, force: true });
 });

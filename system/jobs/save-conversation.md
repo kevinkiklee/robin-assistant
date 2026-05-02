@@ -59,7 +59,7 @@ Body structure:
 
 1. Append edges to `user-data/memory/LINKS.md` for any cross-references in the summary
 2. Run `node system/scripts/memory/regenerate-index.js` to add the page to INDEX.md
-3. Append to `user-data/memory/log.md`: `## [YYYY-MM-DD] filed | <title> | type: conversation`
+3. Append to `user-data/memory/streams/log.md`: `## [YYYY-MM-DD] filed | <title> | type: conversation`
 
 ## Query-to-Wiki Filing
 
@@ -89,4 +89,4 @@ Conversation pages older than 90 days with no inbound links in LINKS.md are flag
 
 ## Boundary rule
 
-Save-conversation can write to `user-data/memory/knowledge/conversations/` and append to `user-data/memory/LINKS.md` and `user-data/memory/log.md`. It triggers INDEX.md regeneration via script.
+Save-conversation can write to `user-data/memory/knowledge/conversations/` and append to `user-data/memory/LINKS.md` and `user-data/memory/streams/log.md`. It triggers INDEX.md regeneration via script.

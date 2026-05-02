@@ -30,8 +30,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const MEM = join(REPO_ROOT, 'user-data', 'memory');
 const ARCHIVE = join(MEM, 'archive');
-const SESSIONS_PATH = join(REPO_ROOT, 'user-data', 'state', 'sessions.md');
-const STATE_DIR = join(REPO_ROOT, 'user-data', 'state', 'jobs');
+const SESSIONS_PATH = join(REPO_ROOT, 'user-data', 'ops', 'state', 'sessions.md');
+const STATE_DIR = join(REPO_ROOT, 'user-data', 'ops', 'state', 'jobs');
 
 const NOW = new Date();
 const TWELVE_MO_AGO = new Date(NOW.getFullYear(), NOW.getMonth() - 12, NOW.getDate());

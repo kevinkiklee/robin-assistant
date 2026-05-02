@@ -105,9 +105,9 @@ test('layer 2: blocks process.env values >=30 chars in content', () => {
 test('layer 3 (target): github target outside PAT cache → block', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'user-data/state'), { recursive: true });
+    mkdirSync(join(w, 'user-data/ops/state/cache'), { recursive: true });
     writeFileSync(
-      join(w, 'user-data/state/github-allowlist-cache.json'),
+      join(w, 'user-data/ops/state/cache/github-allowlist-cache.json'),
       JSON.stringify({
         fetched_at: new Date().toISOString(),
         ttl_seconds: 3600,
@@ -130,9 +130,9 @@ test('layer 3 (target): github target outside PAT cache → block', () => {
 test('layer 3: github target inside PAT cache → pass', () => {
   const w = ws();
   try {
-    mkdirSync(join(w, 'user-data/state'), { recursive: true });
+    mkdirSync(join(w, 'user-data/ops/state/cache'), { recursive: true });
     writeFileSync(
-      join(w, 'user-data/state/github-allowlist-cache.json'),
+      join(w, 'user-data/ops/state/cache/github-allowlist-cache.json'),
       JSON.stringify({
         fetched_at: new Date().toISOString(),
         ttl_seconds: 3600,

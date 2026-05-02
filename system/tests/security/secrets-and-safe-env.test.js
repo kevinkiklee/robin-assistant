@@ -10,8 +10,8 @@ function ws() { return mkdtempSync(join(tmpdir(), 'secrets-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }
 
 function writeEnv(workspaceDir, content) {
-  mkdirSync(join(workspaceDir, 'user-data/secrets'), { recursive: true });
-  writeFileSync(join(workspaceDir, 'user-data/secrets/.env'), content);
+  mkdirSync(join(workspaceDir, 'user-data/ops/secrets'), { recursive: true });
+  writeFileSync(join(workspaceDir, 'user-data/ops/secrets/.env'), content);
 }
 
 test('requireSecret: reads value from .env file', () => {

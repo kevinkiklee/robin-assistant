@@ -22,7 +22,7 @@ Feed it a document with the **Ingest** command and it extracts facts, creates so
 
 The model is supposed to look things up but doesn't always remember to. Robin closes the gap with a UserPromptSubmit hook: when you submit a prompt, the hook scans your message *and* the previous assistant message for known entities, then injects relevant memory directly into the model's input as `<!-- relevant memory -->` blocks. Follow-ups like "schedule it" inherit the entity from the prior turn.
 
-All retrieval is in-process Node-native — no ripgrep, no API key, no external service. Telemetry lives in `user-data/state/{recall,hook-perf}.log`.
+All retrieval is in-process Node-native — no ripgrep, no API key, no external service. Telemetry lives in `user-data/ops/state/{recall,hook-perf}.log`.
 
 ### Self-improvement
 
@@ -46,7 +46,7 @@ Personal data has explicit defenses against prompt injection from sync sources a
 
 - **Boundary defenses** — every sync writer wraps untrusted content in `UNTRUSTED-START`/`UNTRUSTED-END` sentinels and stamps `trust:untrusted` frontmatter. Capture tags carry an `origin=` attribution. A pre-filter quarantines inbox lines that don't claim `origin=user`.
 - **Outbound write policy** — outbound write paths (github-write, spotify-write, discord reply) run through a three-layer policy: sentence-hash taint check against the untrusted index, sensitive-shape detection (PII patterns + `process.env` value substring scan), and a credential-derived target allowlist.
-- **Secrets containment** — secrets are read on demand from `user-data/secrets/.env` per call without polluting `process.env`. Spawn sites build explicit minimal envs.
+- **Secrets containment** — secrets are read on demand from `user-data/ops/secrets/.env` per call without polluting `process.env`. Spawn sites build explicit minimal envs.
 - **Bash policy** — six rules (secrets-read, env-dump, destructive-rm, low-level-fs, git-expose-userdata, eval-injection) hook the Bash tool and fail closed.
 - **Tamper detection** — a manifest baseline + `check-manifest.js` runs on SessionStart; severe drift surfaces in stderr and logs `kind=tamper`.
 - **PII scan on memory writes** — PreToolUse hook scans writes to `user-data/memory/` for credentials and high-stakes shapes; blocks and explains.
@@ -101,7 +101,7 @@ Lint catches structural issues: ambiguous aliases (same alias claimed by two ent
 
 **Lint** audits memory health: contradictions across linked files, dead links, stale claims (per-sub-tree decay thresholds), orphan pages, missing pages (concepts mentioned 3+ times without a dedicated file), redundancy (exact-paragraph duplicates across files), ambiguous aliases, candidate entities, conversational-tic patterns in `session-handoff.md`, frontmatter gaps, size warnings, orphan `.tmp` files.
 
-**Audit** (weekly LLM-pass, disabled by default) generates entity-graph candidate pairs via `LINKS.md`, runs an LLM pass with minimal context to surface contradictions and redundancies, and writes findings to `user-data/state/audit/<YYYY-MM-DD>.md` for review in system-maintenance. Never auto-edits.
+**Audit** (weekly LLM-pass, disabled by default) generates entity-graph candidate pairs via `LINKS.md`, runs an LLM pass with minimal context to surface contradictions and redundancies, and writes findings to `user-data/ops/state/audit/<YYYY-MM-DD>.md` for review in system-maintenance. Never auto-edits.
 
 **Save conversation** files the key outcomes of the current conversation as a lightweight summary page. Conversations older than 90 days with no inbound links are flagged for archival.
 
@@ -167,7 +167,7 @@ Shipped jobs span daily maintenance, financial review, productivity, and system 
 | Watch topics | Hourly (disabled) | Iterate active watches, fetch via WebSearch, dedupe vs per-watch fingerprints, redact, write deltas to inbox with `[watch:<id>]` tag |
 | Reconciler heartbeat | Every 6 hours | Pick up new/changed job definitions, update scheduler entries, sweep stale locks |
 
-Add a job by dropping a markdown file in `user-data/jobs/` — the reconciler picks it up within 6 hours.
+Add a job by dropping a markdown file in `user-data/ops/jobs/` — the reconciler picks it up within 6 hours.
 
 The runner handles atomic locks, active-window gating, catch-up for missed runs (laptop was closed), failure categorization, and native OS notifications on status transitions.
 
@@ -226,7 +226,7 @@ Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 Tweak any shipped job — schedule, body, prompt, enabled flag — without forking the package:
 
 ```markdown
-<!-- user-data/jobs/morning-briefing.md -->
+<!-- user-data/ops/jobs/morning-briefing.md -->
 ---
 override: morning-briefing
 schedule: "0 6 * * *"   # only the fields you want to change
@@ -285,7 +285,7 @@ npm install
 
 That's it. No global CLI. The repo is self-contained.
 
-If you ran `npm install` in a non-interactive shell (CI, no TTY), the prompts are skipped and `user-data/robin.config.json` ships with placeholder values — fill them in before your first session.
+If you ran `npm install` in a non-interactive shell (CI, no TTY), the prompts are skipped and `user-data/ops/config/robin.config.json` ships with placeholder values — fill them in before your first session.
 
 ---
 

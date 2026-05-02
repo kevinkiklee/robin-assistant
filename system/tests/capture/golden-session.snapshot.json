@@ -8,7 +8,7 @@
       "optional_existence": false
     },
     {
-      "path": "user-data/robin.config.json",
+      "path": "user-data/ops/config/robin.config.json",
       "stability": "frozen",
       "required": true,
       "optional_existence": false
@@ -38,7 +38,7 @@
       "optional_existence": true
     },
     {
-      "path": "user-data/integrations.md",
+      "path": "user-data/ops/config/integrations.md",
       "stability": "slow",
       "required": false,
       "optional_existence": false
@@ -80,13 +80,13 @@
       "optional_existence": true
     },
     {
-      "path": "user-data/state/sessions.md",
+      "path": "user-data/ops/state/sessions.md",
       "stability": "volatile",
       "required": false,
       "optional_existence": true
     },
     {
-      "path": "user-data/state/jobs/failures.md",
+      "path": "user-data/ops/state/jobs/failures.md",
       "stability": "volatile",
       "required": false,
       "optional_existence": true

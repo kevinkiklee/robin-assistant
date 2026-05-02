@@ -12,7 +12,7 @@ cd ~/code/robin-dev
 npm install
 ```
 
-`npm install` runs `system/scripts/cli/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
+`npm install` runs `system/scripts/cli/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/ops/config/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
 
 ## Running tests
 
@@ -45,7 +45,7 @@ Add a CHANGELOG entry for any user-visible behavior change. The session-start CH
 
 ## Adding a job
 
-Jobs are markdown files with frontmatter under `system/jobs/` (ships with the package) or `user-data/jobs/` (workspace-specific). Each job has a `runtime` (`agent` for LLM protocols, `node` for scripts), an optional `schedule` (cron expression, OS-local timezone), optional `triggers` (phrases for in-session invocation), and an optional `active` window for season-bounded jobs.
+Jobs are markdown files with frontmatter under `system/jobs/` (ships with the package) or `user-data/ops/jobs/` (workspace-specific). Each job has a `runtime` (`agent` for LLM protocols, `node` for scripts), an optional `schedule` (cron expression, OS-local timezone), optional `triggers` (phrases for in-session invocation), and an optional `active` window for season-bounded jobs.
 
 **Trigger-only protocol** (no schedule):
 ```markdown
@@ -102,7 +102,7 @@ git commit -m "feat(jobs): add <name>"
 
 The reconciler picks up the new job within 6 hours (or run `robin jobs sync` for immediate effect).
 
-**Override-friendliness is part of the contract.** The default user-customization path is a shallow override at `user-data/jobs/<name>.md` with `override: <name>` frontmatter — users change only the fields they need and inherit the rest from your system job. Design accordingly:
+**Override-friendliness is part of the contract.** The default user-customization path is a shallow override at `user-data/ops/jobs/<name>.md` with `override: <name>` frontmatter — users change only the fields they need and inherit the rest from your system job. Design accordingly:
 
 - Keep the protocol body self-contained — users may replace the whole body but won't cherry-pick steps.
 - Avoid hard-coding user-specific details in the body. Put those in profile/preferences/integrations files that the body reads at runtime.
@@ -120,7 +120,7 @@ Add an entry to `system/scripts/lib/platforms.js`:
 ```javascript
 'newtool': {
   pointerFile: '.newtoolrules',  // or null if it reads AGENTS.md natively
-  pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/inbox.md with tags.\n',
+  pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/streams/inbox.md with tags.\n',
   nativeIntegrations: {},
 },
 ```

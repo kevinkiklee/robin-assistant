@@ -27,7 +27,7 @@ Test: `system/tests/security/pii-write-hook.test.js`.
 ## Step 2 — High-stakes audit log
 
 `system/scripts/lib/high-stakes-log.js`:
-- `appendHighStakesWrite(workspaceDir, { target, contentHash })` — append to `user-data/state/high-stakes-writes.log`. Dedup 1h on `target+contentHash`.
+- `appendHighStakesWrite(workspaceDir, { target, contentHash })` — append to `user-data/ops/state/telemetry/high-stakes-writes.log`. Dedup 1h on `target+contentHash`.
 
 Add to hook (after PII check):
 ```js
@@ -82,7 +82,7 @@ Tests: `extract-section.test.js`, `hash-normalize.test.js`, `agentsmd-hash.test.
 ## Step 5 — Extend `check-manifest.js`
 
 Add `checkAgentsMD(workspaceDir, expected)` — returns severity+kind based on hash compare. Empty baseline → info.
-Add `checkUserDataJobs(workspaceDir, expected)` — readdir `user-data/jobs/*.md`, diff against `userDataJobs.knownFiles`. New files → mild drift.
+Add `checkUserDataJobs(workspaceDir, expected)` — readdir `user-data/ops/jobs/*.md`, diff against `userDataJobs.knownFiles`. New files → mild drift.
 
 Test: `userdata-jobs-drift.test.js`.
 
@@ -100,12 +100,12 @@ Snapshot includes computed `hardRulesHash`, current `userDataJobs.knownFiles`, i
 ## Step 8 — Pattern firings log helper
 
 `system/scripts/lib/pattern-firings.js`:
-- `readFirings(workspaceDir)` — read `user-data/state/pattern-firings.log`. Returns Map<pattern-name, [timestamps]>.
+- `readFirings(workspaceDir)` — read `user-data/ops/state/pattern-firings.log`. Returns Map<pattern-name, [timestamps]>.
 - `truncateFirings(workspaceDir)` — empty the log file.
 
 The model writes via Bash echo (no helper needed for write side):
 ```sh
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/state/pattern-firings.log
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)\t<pattern-name>" >> user-data/ops/state/pattern-firings.log
 ```
 
 Test: `pattern-firings-log.test.js`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Template — auto-copied to user-data/scripts/ by scaffold-sync.
+// Template — auto-copied to user-data/ops/scripts/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 //
 // Gmail sync — fetches the last 30 days of inbox messages (metadata only:
@@ -8,9 +8,9 @@
 // MCP or a dedicated read script.
 //
 // Usage:
-//   node user-data/scripts/sync-gmail.js              # incremental
-//   node user-data/scripts/sync-gmail.js --bootstrap  # full window
-//   node user-data/scripts/sync-gmail.js --dry-run
+//   node user-data/ops/scripts/sync-gmail.js              # incremental
+//   node user-data/ops/scripts/sync-gmail.js --bootstrap  # full window
+//   node user-data/ops/scripts/sync-gmail.js --dry-run
 
 import { join } from 'node:path';
 import { hostname } from 'node:os';
@@ -185,7 +185,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const bootstrap = process.argv.includes('--bootstrap');
 
   const underRunner = !!process.env.ROBIN_WORKSPACE;
-  const lockPath = join(workspaceDir, `user-data/state/jobs/locks/${SOURCE}.lock`);
+  const lockPath = join(workspaceDir, `user-data/ops/state/jobs/locks/${SOURCE}.lock`);
   let acquired = false;
 
   async function run() {

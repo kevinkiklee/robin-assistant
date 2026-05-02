@@ -16,7 +16,7 @@ timeout_minutes: 15
 
 ### 1. Gather receipts
 
-Read `user-data/integrations.md` for email status.
+Read `user-data/ops/config/integrations.md` for email status.
 - If email available: search for receipt/order keywords + optional vendor/date filter — "receipt", "order confirmation", "your order", "shipped".
 - If not available: ask "Can you paste or forward the receipts you want tracked?"
 

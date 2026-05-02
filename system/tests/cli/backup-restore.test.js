@@ -12,8 +12,9 @@ import { join } from 'node:path';
 function makeRepo() {
   const root = mkdtempSync(join(tmpdir(), 'robin-bk-'));
   mkdirSync(join(root, 'user-data/memory'), { recursive: true });
+  mkdirSync(join(root, 'user-data/ops/config'), { recursive: true });
   writeFileSync(join(root, 'user-data/memory/profile.md'), '# Test profile\n');
-  writeFileSync(join(root, 'user-data/robin.config.json'), '{"version":"3.0.0"}');
+  writeFileSync(join(root, 'user-data/ops/config/robin.config.json'), '{"version":"3.0.0"}');
   return root;
 }
 
