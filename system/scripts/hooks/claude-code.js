@@ -42,6 +42,8 @@ import { recall, formatRecallHits } from '../memory/lib/recall.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
+const RECALL_HIT_CAP = 3;
+
 function parseArgs(argv) {
   const args = { mode: null, workspace: null, drain: true, debug: false };
   for (let i = 2; i < argv.length; i++) {
@@ -447,10 +449,11 @@ async function onUserPromptSubmit(args) {
         .filter((e) => allEntitiesMatched.includes(e.name) || e.aliases.some((a) => allEntitiesMatched.includes(a)))
         .slice(0, 5);
       const patterns = matchedEntities.flatMap((e) => [e.name, ...e.aliases]);
-      const r = recall(ws, patterns, { topN: matchedEntities.length * 3 });
+      const r = recall(ws, patterns, { topN: RECALL_HIT_CAP });
       const formatted = formatRecallHits(r);
       if (formatted) {
-        const block = `<!-- relevant memory (auto-loaded based on entities in your message) -->\n${formatted}\n<!-- /relevant memory -->\n`;
+        const matchedNames = matchedEntities.map((e) => e.name).join(', ');
+        const block = `<!-- relevant memory: ${r.hits.length} hits for ${matchedNames} -->\n${formatted}\n<!-- /relevant memory -->\n`;
         process.stdout.write(block);
         appendRecallLog(ws, {
           sessionId,

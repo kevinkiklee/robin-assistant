@@ -173,6 +173,49 @@ describe('claude-code-hook usage errors', () => {
   });
 });
 
+// Build a minimal tmp workspace with ENTITIES.md + the listed topic files,
+// suitable for exercising --on-user-prompt-submit recall behavior.
+function makeWorkspaceWithEntities(entities) {
+  const ws = mkdtempSync(join(tmpdir(), 'hook-recall-'));
+  mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
+  const entityLines = ['---', 'description: Auto-generated entity index for fast recall lookup', 'type: reference', '---', '# Entities', ''];
+  for (const e of entities) {
+    entityLines.push(`- ${e.name} — ${e.file}`);
+    const full = join(ws, 'user-data/memory', e.file);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, `---\ntype: entity\n---\n# ${e.name}\n\n${e.body}\n`);
+  }
+  writeFileSync(join(ws, 'user-data/memory/ENTITIES.md'), entityLines.join('\n') + '\n');
+  return ws;
+}
+
+test('UserPromptSubmit caps recall hits at 3 and uses new preface format', () => {
+  const ws = makeWorkspaceWithEntities([
+    {
+      name: 'Alice',
+      file: 'profile/relationships.md',
+      body: 'Alice likes coffee.\nAlice lives in NYC.\nAlice works at Acme.\nAlice has a dog.\nAlice runs marathons.',
+    },
+  ]);
+  const event = JSON.stringify({
+    session_id: 'test',
+    user_message: 'tell me about Alice',
+    transcript_path: '',
+  });
+  const out = execFileSync(
+    'node',
+    [join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'), '--on-user-prompt-submit', '--workspace', ws],
+    { input: event, encoding: 'utf8' },
+  );
+
+  // Preface format: <!-- relevant memory: <N> hits for <entity1>, <entity2> -->
+  assert.match(out, /<!-- relevant memory: \d+ hits for Alice -->/);
+  // Cap of 3: at most 3 hit bullet lines between preface and closer
+  const inner = out.split('<!-- relevant memory:')[1]?.split('<!-- /relevant memory -->')[0] ?? '';
+  const hitLines = inner.split('\n').filter((l) => l.startsWith('- '));
+  assert.ok(hitLines.length <= 3, `expected at most 3 hit lines, got ${hitLines.length}`);
+});
+
 test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {
   const ws = mkdtempSync(join(tmpdir(), 'hook-'));
   mkdirSync(join(ws, 'user-data/runtime/state'), { recursive: true });
