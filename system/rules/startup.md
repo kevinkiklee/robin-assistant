@@ -19,8 +19,6 @@ needed.
 ## When to invoke preflight directly
 
 `robin update` runs the pre-flight pipeline via `system/scripts/lib/preflight.js`.
-The old `node system/scripts/diagnostics/startup-check.js` still works as a deprecation shim
-but will be removed in a future minor version.
 
 Only invoke the pipeline directly when:
 
