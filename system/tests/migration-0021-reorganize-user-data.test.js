@@ -81,3 +81,10 @@ function setupFixture() {
 function cleanup(root) {
   rmSync(root, { recursive: true, force: true });
 }
+
+test('migration scaffold exposes id and description', () => {
+  assert.equal(migration.id, '0021-reorganize-user-data');
+  assert.match(migration.description, /Reorganize user-data/i);
+  assert.equal(typeof migration.up, 'function');
+  assert.equal(typeof migration.down, 'function');
+});
