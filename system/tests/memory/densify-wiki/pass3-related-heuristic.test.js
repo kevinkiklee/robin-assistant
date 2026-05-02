@@ -82,3 +82,30 @@ test('generatePairs computes shared entity counts', () => {
   assert.equal(pairs.length, 1);
   assert.deepEqual([...pairs[0].sharedEntities].sort(), ['dad', 'mom', 'morgan-stanley'].sort());
 });
+
+import { computeSuperHubs, applySuperHubFilter } from '../../../scripts/memory/lib/related-heuristic.js';
+
+test('computeSuperHubs returns top-N% most-mentioned slugs', () => {
+  const matrix = new Map([
+    ['a.md', new Set(['kevin', 'mom'])],
+    ['b.md', new Set(['kevin', 'dad'])],
+    ['c.md', new Set(['kevin', 'home'])],
+    ['d.md', new Set(['kevin'])],
+    ['e.md', new Set(['mom'])],
+    ['f.md', new Set(['dad'])],
+    ['g.md', new Set(['home'])],
+    ['h.md', new Set(['rare'])],
+  ]);
+  // 5 distinct slugs (kevin, mom, dad, home, rare); top 5% = ceil(0.25) = 1; "kevin" is most mentioned (4).
+  const hubs = computeSuperHubs(matrix, { pct: 0.05 });
+  assert.deepEqual([...hubs], ['kevin']);
+});
+
+test('applySuperHubFilter removes super-hubs from each pair shared set', () => {
+  const pairs = [{
+    a: 'x.md', b: 'y.md',
+    sharedEntities: new Set(['kevin', 'mom', 'dad']),
+  }];
+  const filtered = applySuperHubFilter(pairs, new Set(['kevin']));
+  assert.deepEqual([...filtered[0].sharedEntities].sort(), ['dad', 'mom']);
+});

@@ -53,6 +53,26 @@ export function generatePairs(matrix, { excludedSubtrees } = {}) {
 
 export { DEFAULT_EXCLUDED_PREFIXES };
 
+export function computeSuperHubs(matrix, { pct = 0.05 } = {}) {
+  const counts = new Map();
+  for (const set of matrix.values()) {
+    for (const slug of set) counts.set(slug, (counts.get(slug) ?? 0) + 1);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const cutoff = Math.max(1, Math.ceil(sorted.length * pct));
+  return new Set(sorted.slice(0, cutoff).map(([slug]) => slug));
+}
+
+export function applySuperHubFilter(pairs, hubs) {
+  return pairs.map(p => {
+    const filtered = new Set();
+    for (const s of p.sharedEntities) {
+      if (!hubs.has(s)) filtered.add(s);
+    }
+    return { ...p, sharedEntities: filtered };
+  });
+}
+
 function isSelfReference(relPath, slug) {
   // Avoid a page counting itself as a mention.
   // Works for both simple slugs (jake-lee) and path slugs (profile/people/jake-lee).
