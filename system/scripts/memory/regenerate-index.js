@@ -9,6 +9,37 @@ const SKIP_NAMES = new Set(['INDEX.md', 'LINKS.md', 'log.md', 'hot.md', '.gitkee
 // sub-trees grow.
 const SUB_INDEXED_BARRIERS = ['archive'];
 
+const MARKER_BEGIN = '<!-- BEGIN where-to-look-first -->';
+const MARKER_END = '<!-- END where-to-look-first -->';
+
+const DEFAULT_ROUTING_BLOCK = `${MARKER_BEGIN}
+## Where to look first
+
+| If the question is about… | Start with |
+|---|---|
+| A specific person | \`profile/relationships.md\`; cross-ref \`ENTITIES.md\` for canonical file |
+| A purchase or expense | \`knowledge/finance/transactions.md\` |
+| A photo, camera, or lens | \`knowledge/photography-collection/INDEX.md\` |
+| A trip or event | \`knowledge/events/INDEX.md\` |
+| A subscription or recurring charge | \`knowledge/finance/subscriptions.md\` |
+| A medical event or appointment | \`knowledge/medical/INDEX.md\` |
+| Anything else with a clear topic | \`knowledge/<topic>/INDEX.md\`; otherwise the auto-table below |
+${MARKER_END}`;
+
+function extractRoutingBlock(existingText) {
+  if (!existingText) return null;
+  const startIdx = existingText.indexOf(MARKER_BEGIN);
+  const endIdx = existingText.indexOf(MARKER_END);
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) return null;
+  return existingText.slice(startIdx, endIdx + MARKER_END.length);
+}
+
+function stripRoutingBlock(text) {
+  const escapedBegin = MARKER_BEGIN.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  const escapedEnd = MARKER_END.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  return text.replace(new RegExp(`${escapedBegin}[\\s\\S]*?${escapedEnd}`), '<<ROUTING_BLOCK>>');
+}
+
 function walk(dir, base = dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
@@ -35,6 +66,10 @@ function walk(dir, base = dir) {
 
 export function generateMemoryIndex(memoryDir) {
   if (!existsSync(memoryDir)) throw new Error(`memory dir not found: ${memoryDir}`);
+  const existingPath = join(memoryDir, 'INDEX.md');
+  const existing = existsSync(existingPath) ? readFileSync(existingPath, 'utf-8') : '';
+  const routingBlock = extractRoutingBlock(existing) ?? DEFAULT_ROUTING_BLOCK;
+
   const paths = walk(memoryDir).sort();
   const missing = [];
   const rows = [];
@@ -53,7 +88,9 @@ export function generateMemoryIndex(memoryDir) {
   const lines = [
     '# Memory Index',
     '',
-    "Robin's memory tree. Read this to decide which file to open. Generated — do not edit by hand.",
+    "Robin's memory tree. The \"Where to look first\" block below is hand-curated; the path table is auto-regenerated. Read both before opening a sub-tree.",
+    '',
+    routingBlock,
     '',
     "| path | what's in it |",
     '|------|--------------|',
@@ -76,7 +113,7 @@ export function checkMemoryIndex(memoryDir) {
   const actualPath = join(memoryDir, 'INDEX.md');
   if (!existsSync(actualPath)) return false;
   const actual = readFileSync(actualPath, 'utf-8');
-  return actual === expected;
+  return stripRoutingBlock(actual) === stripRoutingBlock(expected);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

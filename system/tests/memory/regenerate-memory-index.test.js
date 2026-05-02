@@ -69,3 +69,70 @@ test('checkMemoryIndex returns false when INDEX differs', () => {
   assert.equal(checkMemoryIndex(mem), false);
   rmSync(root, { recursive: true, force: true });
 });
+
+test('generateMemoryIndex emits default routing block when no existing INDEX.md', () => {
+  const { root, mem } = makeTree();
+  const out = generateMemoryIndex(mem);
+  assert.match(out, /<!-- BEGIN where-to-look-first -->/);
+  assert.match(out, /<!-- END where-to-look-first -->/);
+  assert.match(out, /## Where to look first/);
+  // Default rows present
+  assert.match(out, /A specific person/);
+  assert.match(out, /knowledge\/finance\/transactions\.md/);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('generateMemoryIndex preserves user-edited routing block from existing INDEX.md', () => {
+  const { root, mem } = makeTree();
+  // Seed an INDEX.md with a customized routing block
+  const existing = `# Memory Index
+
+Robin's memory tree. The "Where to look first" block below is hand-curated; the path table is auto-regenerated. Read both before opening a sub-tree.
+
+<!-- BEGIN where-to-look-first -->
+## Where to look first
+
+| If the question is about… | Start with |
+|---|---|
+| MY CUSTOM ROW | custom/path.md |
+<!-- END where-to-look-first -->
+
+| path | what's in it |
+|------|--------------|
+`;
+  writeFileSync(join(mem, 'INDEX.md'), existing);
+  const out = generateMemoryIndex(mem);
+  assert.match(out, /MY CUSTOM ROW/, 'custom row preserved');
+  assert.doesNotMatch(out, /A specific person/, 'default rows not re-injected when user has edits');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('checkMemoryIndex ignores changes inside the routing block', () => {
+  const { root, mem } = makeTree();
+  writeMemoryIndex(mem); // baseline
+  const existing = readFileSync(join(mem, 'INDEX.md'), 'utf8');
+  // Modify only inside the routing block
+  const edited = existing.replace(
+    /<!-- BEGIN where-to-look-first -->[\s\S]*?<!-- END where-to-look-first -->/,
+    `<!-- BEGIN where-to-look-first -->
+## Where to look first
+| edited row | foo.md |
+<!-- END where-to-look-first -->`,
+  );
+  writeFileSync(join(mem, 'INDEX.md'), edited);
+  assert.equal(checkMemoryIndex(mem), true, 'routing-block edits do not fail consistency');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('checkMemoryIndex still fails on auto-table drift', () => {
+  const { root, mem } = makeTree();
+  writeMemoryIndex(mem);
+  // Tamper with the auto-table region
+  const existing = readFileSync(join(mem, 'INDEX.md'), 'utf8');
+  writeFileSync(
+    join(mem, 'INDEX.md'),
+    existing.replace(/\| profile\/identity\.md \| .+? \|/, '| profile/identity.md | tampered description |'),
+  );
+  assert.equal(checkMemoryIndex(mem), false);
+  rmSync(root, { recursive: true, force: true });
+});
