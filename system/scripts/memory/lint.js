@@ -478,16 +478,24 @@ function* walkMemoryFiles(root, base = root) {
 // that have no aliases declared.
 // ---------------------------------------------------------------------------
 
+// Filenames that are directory meta-files, not entities.
+const NON_ENTITY_FILENAMES = new Set(['INDEX.md', '_overview.md']);
+// Frontmatter `type:` values that explicitly mark a file as non-entity.
+const NON_ENTITY_TYPES = new Set(['reference', 'snapshot', 'analysis', 'event', 'source', 'conversation']);
+
 export function findMissingAliases(workspaceDir) {
   const memoryRoot = join(workspaceDir, 'user-data', 'memory');
   const findings = [];
   for (const relPath of walkMemoryFiles(memoryRoot)) {
+    const basename = relPath.split('/').pop();
+    if (NON_ENTITY_FILENAMES.has(basename)) continue;
     const body = readFileSync(join(memoryRoot, relPath), 'utf-8');
     const fmM = body.match(/^---\n([\s\S]*?)\n---/);
     if (!fmM) continue;
     const fm = fmM[1];
     const typeM = fm.match(/^type:\s*(\S+)\s*$/m);
     const type = typeM ? typeM[1] : '';
+    if (NON_ENTITY_TYPES.has(type)) continue;
     const aliasesM = fm.match(/^aliases:\s*\[([^\]]*)\]\s*$/m);
     const aliases = aliasesM ? aliasesM[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean) : [];
     if (aliases.length > 0) continue;
