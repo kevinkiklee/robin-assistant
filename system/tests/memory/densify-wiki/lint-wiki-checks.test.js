@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findMissingAliases, findTypeMismatches } from '../../../scripts/memory/lint.js';
+import { findMissingAliases, findTypeMismatches, findStaleRelated } from '../../../scripts/memory/lint.js';
 
 function tempWs() {
   const dir = mkdtempSync(join(tmpdir(), 'lint-test-'));
@@ -98,6 +98,46 @@ test('findTypeMismatches does NOT fire outside entity-shaped dir', () => {
     writeFileSync(join(ws, 'user-data/memory/knowledge/medical/some-page.md'),
       `---\ntype: topic\naliases: [foo]\n---\n`);
     const findings = findTypeMismatches(ws);
+    assert.equal(findings.length, 0);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findStaleRelated fires on missing target', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/x.md'),
+      `---\nrelated: [does-not-exist.md]\n---\n# X\n`);
+    const findings = findStaleRelated(ws);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].check, 'stale-related');
+    assert.match(findings[0].message, /does-not-exist\.md/);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findStaleRelated does NOT fire on archive/ targets', () => {
+  const ws = tempWs();
+  try {
+    mkdirSync(join(ws, 'user-data/memory/archive'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/memory/x.md'),
+      `---\nrelated: [archive/old-page.md]\n---\n# X\n`);
+    const findings = findStaleRelated(ws);
+    assert.equal(findings.length, 0);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findStaleRelated does NOT fire on existing targets', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/x.md'),
+      `---\nrelated: [y.md]\n---\n# X\n`);
+    writeFileSync(join(ws, 'user-data/memory/y.md'), `# Y\n`);
+    const findings = findStaleRelated(ws);
     assert.equal(findings.length, 0);
   } finally {
     rmSync(ws, { recursive: true });

@@ -527,6 +527,33 @@ export function findTypeMismatches(workspaceDir) {
   return findings;
 }
 
+// ---------------------------------------------------------------------------
+// Stale-related check — related: frontmatter targets that no longer exist
+// on disk (ignoring archive/ targets which may be intentionally removed).
+// ---------------------------------------------------------------------------
+
+export function findStaleRelated(workspaceDir) {
+  const memoryRoot = join(workspaceDir, 'user-data', 'memory');
+  const findings = [];
+  for (const relPath of walkMemoryFiles(memoryRoot)) {
+    const body = readFileSync(join(memoryRoot, relPath), 'utf-8');
+    const fmM = body.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmM) continue;
+    const m = fmM[1].match(/^related:\s*\[([^\]]*)\]\s*$/m);
+    if (!m) continue;
+    const targets = m[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    for (const t of targets) {
+      if (t.startsWith('archive/')) continue;
+      const fullTarget = join(memoryRoot, t);
+      if (!existsSync(fullTarget)) {
+        findings.push({ check: 'stale-related', severity: 'warn', file: relPath,
+          message: `related: target does not exist: ${t}` });
+      }
+    }
+  }
+  return findings;
+}
+
 async function main() {
   const json = process.argv.includes('--json');
   const workspaceDir = REPO_ROOT;
