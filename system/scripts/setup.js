@@ -60,15 +60,29 @@ async function promptPlatform(rl) {
 }
 
 export async function setup(workspaceDir = process.cwd(), opts = {}) {
+  // Global installs (`npm i -g robin-assistant`) run postinstall with cwd set
+  // to the package install dir — bootstrapping there would create a stray
+  // user-data/ inside node_modules. Skip cleanly; users get a real workspace
+  // by running `robin init --target <dir>` afterwards.
+  if (!opts.fromInit && process.env.npm_config_global === 'true') {
+    return;
+  }
+
   const ud = join(workspaceDir, 'user-data');
-  const skel = join(workspaceDir, 'system/skeleton');
+  // Skeleton lives next to setup.js when robin-assistant is installed globally
+  // (workspaceDir is then a fresh user dir, not the package dir). Callers can
+  // override via opts.skeletonDir; default is workspaceDir/system/skeleton for
+  // backwards compatibility with cloned-repo installs.
+  const skel = opts.skeletonDir || join(workspaceDir, 'system/skeleton');
+
+  const migrationsDir = opts.packageRoot ? join(opts.packageRoot, 'system/migrations') : undefined;
 
   // Existing install: apply pending migrations and exit. This is the path
   // existing users hit after `npm install` post-`git pull`. Without this,
   // migrations would only run via `robin update`.
   if (existsSync(ud) && readdirSync(ud).length > 0) {
     try {
-      const r = await runPendingMigrations(workspaceDir);
+      const r = await runPendingMigrations(workspaceDir, { migrationsDir });
       if (r.applied.length > 0) {
         console.log(`postinstall: applied migrations ${r.applied.join(', ')}`);
       }
@@ -78,7 +92,7 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     // Cycle-2b: ensure the security manifest exists for existing installs
     // (won't be added by skeleton-copy since user-data is non-empty).
     try {
-      const m = ensureManifestFromSkeleton(workspaceDir);
+      const m = ensureManifestFromSkeleton(workspaceDir, opts.packageRoot);
       if (m.copied) {
         console.log('postinstall: copied skeleton security manifest → user-data/security/manifest.json');
       }
@@ -124,7 +138,7 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
 
   // Apply baseline migrations
   try {
-    await runPendingMigrations(workspaceDir);
+    await runPendingMigrations(workspaceDir, { migrationsDir });
   } catch (err) {
     console.warn(`Initial migration apply skipped: ${err.message}`);
   }

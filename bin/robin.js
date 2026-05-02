@@ -5,7 +5,9 @@
 const HELP = `Robin — personal AI assistant CLI
 
 usage:
+  robin init                          [--target <dir>] [--no-prompt]
   robin run <name> [--force | --dry-run | --no-lock]
+  robin run --due                     # run all enabled, due jobs
   robin job <acquire | release> <name>
   robin jobs                          # alias for "robin jobs list"
   robin jobs list                     [--json]
@@ -42,6 +44,10 @@ async function main() {
     process.exit(0);
   }
 
+  if (cmd === 'init') {
+    const { cmdInit } = await import('../system/scripts/init.js');
+    return cmdInit(rest);
+  }
   if (cmd === 'run') {
     const cli = await import('../system/scripts/jobs/cli.js');
     return cli.cmdRun(rest);

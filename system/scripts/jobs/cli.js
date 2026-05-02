@@ -81,11 +81,18 @@ export function cmdRun(args) {
     if (a === '--force') flags.force = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--no-lock') flags.noLock = true;
+    else if (a === '--due') flags.due = true;
     else positional.push(a);
+  }
+  if (flags.due) {
+    return cmdRunDue({ dryRun: flags.dryRun }).then(({ ran, failed }) => {
+      process.exit(failed > 0 ? 1 : 0);
+    });
   }
   const name = positional[0];
   if (!name) {
     process.stderr.write('usage: robin run <name> [--force | --dry-run | --no-lock]\n');
+    process.stderr.write('       robin run --due [--dry-run]\n');
     process.exit(2);
   }
   return runJob({
@@ -97,6 +104,64 @@ export function cmdRun(args) {
     if (r.status === 'failed') process.exit(r.exitCode || 1);
     process.exit(0);
   });
+}
+
+// Iterate every enabled, scheduled job and run the ones whose computed
+// next_run_at has already passed. Designed for an external scheduler tick
+// (systemd timer, cron, or the askrobin.io VM supervisor) that doesn't
+// know which jobs exist.
+export async function cmdRunDue({ dryRun = false } = {}) {
+  const ws = workspaceDir();
+  const { jobs } = discoverJobs(ws);
+  const states = listJobStates(ws);
+  const now = new Date();
+  let ran = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const [name, def] of jobs) {
+    if (def.frontmatter.enabled === false) {
+      skipped++;
+      continue;
+    }
+    if (!def.frontmatter.schedule) {
+      skipped++;
+      continue;
+    }
+    if (def.frontmatter.active && !inActiveWindow(def.frontmatter.active, now)) {
+      skipped++;
+      continue;
+    }
+    const s = states.get(name);
+    const nextStr = (s && s.next_run_at) || computeNextRun(def, now);
+    if (!nextStr) {
+      skipped++;
+      continue;
+    }
+    if (new Date(nextStr) > now) {
+      skipped++;
+      continue;
+    }
+    if (dryRun) {
+      process.stderr.write(`[run --due] would run ${name} (was due ${nextStr})\n`);
+      ran++;
+      continue;
+    }
+    try {
+      const r = await runJob({
+        workspaceDir: ws,
+        name,
+        flags: {},
+        onLog: (l) => process.stderr.write(l + '\n'),
+      });
+      if (r.status === 'failed') failed++;
+      else ran++;
+    } catch (err) {
+      failed++;
+      process.stderr.write(`[run --due] ${name}: ${err.message || err}\n`);
+    }
+  }
+  process.stderr.write(`[run --due] ran=${ran} failed=${failed} skipped=${skipped}\n`);
+  return { ran, failed, skipped };
 }
 
 export function cmdJob(args) {

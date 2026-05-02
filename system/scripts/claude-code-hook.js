@@ -121,14 +121,35 @@ function readRetryBudget(ws) {
   } catch { return 1; }
 }
 
-function tailScanForNoCaptureMarker(transcriptPath, maxBytes = 16 * 1024) {
+// Scan the most recent assistant text message for a no-capture-needed marker.
+// Parses JSONL backward so we only match the CURRENT turn's response, not stale
+// markers from prior turns still in the tail window. Skips tool_use/tool_result
+// records — only text content counts.
+function tailScanForNoCaptureMarker(transcriptPath, maxBytes = 256 * 1024) {
   if (!transcriptPath || !existsSync(transcriptPath)) return null;
   try {
     const fd = readFileSync(transcriptPath);
     const buf = fd.length > maxBytes ? fd.subarray(fd.length - maxBytes) : fd;
-    const text = buf.toString('utf8');
-    const m = text.match(/<!--\s*no-capture-needed:\s*([^>]+?)\s*-->/);
-    return m ? { reason: m[1].trim() } : null;
+    const lines = buf.toString('utf8').split('\n').filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let obj;
+      try { obj = JSON.parse(lines[i]); } catch { continue; }
+      const role = obj.role ?? obj.message?.role;
+      if (role !== 'assistant') continue;
+      const content = obj.content ?? obj.message?.content;
+      let text = '';
+      if (typeof content === 'string') text = content;
+      else if (Array.isArray(content)) {
+        text = content
+          .filter((c) => c?.type === 'text' || typeof c?.text === 'string')
+          .map((c) => c.text ?? '')
+          .join('\n');
+      }
+      if (!text) continue;
+      const m = text.match(/<!--\s*no-capture-needed:\s*([^>]+?)\s*-->/);
+      return m ? { reason: m[1].trim() } : null;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -155,6 +176,11 @@ async function verifyCapture(ws, event) {
 
   const marker = tailScanForNoCaptureMarker(event?.transcript_path);
   const tier = turn.tier;
+  // Debug: log scan inputs to help diagnose first-call misses.
+  try {
+    appendFileSync(join(ws, 'user-data/state/capture-enforcement-debug.log'),
+      `${new Date().toISOString()}\t${turn.turn_id}\ttier=${tier}\tpath=${event?.transcript_path ?? 'NONE'}\tmarker=${marker ? 'YES:' + marker.reason.slice(0,50) : 'NO'}\n`);
+  } catch { /* */ }
   if (marker) {
     if (tier === 2 || (tier === 3 && marker.reason && marker.reason.length > 0)) {
       return { allow: true, outcome: 'marker-pass', turnId: turn.turn_id, tier };

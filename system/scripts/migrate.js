@@ -4,12 +4,21 @@ import { execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createHelpers } from './lib/migration-helpers.js';
 
+// When robin-assistant is installed globally (e.g. `npm i -g robin-assistant`),
+// the migration files ship inside the package directory while the workspace
+// lives elsewhere. opts.migrationsDir lets callers override the default
+// `<workspaceDir>/system/migrations` lookup so `robin init` and the global
+// install path can still apply migrations.
+function resolveMigrationsDir(workspaceDir, opts = {}) {
+  return opts.migrationsDir || join(workspaceDir, 'system/migrations');
+}
+
 // Fast path: a single mtime + count check decides whether any migration is
 // pending. Skips the per-file dynamic import dance ~95% of the time. Only
 // triggers a full scan when migrations directory has changed since the last
 // applied migration was recorded.
-function fastPathHasPending(workspaceDir) {
-  const migrationsDir = join(workspaceDir, 'system/migrations');
+function fastPathHasPending(workspaceDir, opts = {}) {
+  const migrationsDir = resolveMigrationsDir(workspaceDir, opts);
   const logPath = join(workspaceDir, 'user-data/.migrations-applied.json');
   if (!existsSync(migrationsDir)) return false;
   if (!existsSync(logPath)) return true; // never run yet
@@ -29,11 +38,11 @@ function fastPathHasPending(workspaceDir) {
 export async function runPendingMigrations(workspaceDir = process.cwd(), opts = {}) {
   // Fast path: if nothing has changed since last apply, skip the dynamic
   // import + per-file work entirely.
-  if (!opts.dryRun && !opts.force && !fastPathHasPending(workspaceDir)) {
+  if (!opts.dryRun && !opts.force && !fastPathHasPending(workspaceDir, opts)) {
     return { applied: [], would: [] };
   }
 
-  const migrationsDir = join(workspaceDir, 'system/migrations');
+  const migrationsDir = resolveMigrationsDir(workspaceDir, opts);
   const logPath = join(workspaceDir, 'user-data/.migrations-applied.json');
   if (!existsSync(migrationsDir)) return { applied: [], would: [] };
 
