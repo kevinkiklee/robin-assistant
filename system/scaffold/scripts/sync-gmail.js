@@ -19,7 +19,7 @@ import { getAccessToken } from '../../system/scripts/lib/sync/oauth.js';
 import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js';
 import { atomicWrite, writeTable } from '../../system/scripts/lib/sync/markdown.js';
 import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
-import { acquireLock, releaseLock } from '../../system/scripts/lib/jobs/atomic.js';
+import { acquireLock, releaseLock } from '../../system/scripts/jobs/lib/atomic.js';
 import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
 import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
 import { GmailClient, header } from './lib/google/gmail-client.js';

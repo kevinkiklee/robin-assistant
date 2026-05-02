@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../../../scripts/jobs/runner.js';
-import { jobsPaths } from '../../../scripts/lib/jobs/paths.js';
-import { readJSON } from '../../../scripts/lib/jobs/atomic.js';
+import { jobsPaths } from '../../../scripts/jobs/lib/paths.js';
+import { readJSON } from '../../../scripts/jobs/lib/atomic.js';
 
 let workspaceDir;
 

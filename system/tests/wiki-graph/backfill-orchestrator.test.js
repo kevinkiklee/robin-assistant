@@ -38,7 +38,7 @@ test('runBackfill: apply mode writes files', async () => {
 });
 
 test('runBackfill: apply mode acquires wiki-backfill lock', async () => {
-  const { readLock } = await import('../../scripts/lib/jobs/atomic.js');
+  const { readLock } = await import('../../scripts/jobs/lib/atomic.js');
   const ws = await copyFixtureToTmp('backfill-multi');
   const lockPath = join(ws, '.locks', 'wiki-backfill.lock');
   const result = await runBackfill({ workspaceDir: ws, scope: 'all', apply: true });

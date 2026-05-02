@@ -3,19 +3,19 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { discoverJobs, loadJob } from '../lib/jobs/discovery.js';
-import { jobsPaths } from '../lib/jobs/paths.js';
+import { discoverJobs, loadJob } from '../jobs/lib/discovery.js';
+import { jobsPaths } from '../jobs/lib/paths.js';
 import {
   acquireLock,
   releaseLock,
   readJSON,
-} from '../lib/jobs/atomic.js';
+} from '../jobs/lib/atomic.js';
 import { hostname } from 'node:os';
-import { computeNextRun, formatLocal, listJobStates } from '../lib/jobs/state.js';
+import { computeNextRun, formatLocal, listJobStates } from '../jobs/lib/state.js';
 import { run as runJob } from '../jobs/runner.js';
 import { reconcile, resolveRobinArgv } from '../jobs/reconciler.js';
-import { inActiveWindow, validateCron } from '../lib/jobs/cron.js';
-import { validateJobDef } from '../lib/jobs/frontmatter.js';
+import { inActiveWindow, validateCron } from '../jobs/lib/cron.js';
+import { validateJobDef } from '../jobs/lib/frontmatter.js';
 
 const ANSI = {
   reset: '\x1b[0m',

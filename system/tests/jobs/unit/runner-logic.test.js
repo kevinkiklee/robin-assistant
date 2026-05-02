@@ -6,7 +6,7 @@ import {
   recordNotification,
   clearDedupForJob,
   notificationText,
-} from '../../../scripts/lib/jobs/categorize.js';
+} from '../../../scripts/jobs/lib/categorize.js';
 
 describe('categorizeFailure', () => {
   test('exit 0 → null', () => {

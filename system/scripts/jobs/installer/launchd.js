@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFile
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { parseCron } from '../../lib/jobs/cron.js';
+import { parseCron } from '../lib/cron.js';
 
 export const LABEL_PREFIX = 'com.robin.';
 

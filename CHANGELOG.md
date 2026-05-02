@@ -187,7 +187,7 @@ validate → skeleton-sync → changelog-notify). `bin/robin.js update` uses
 the lib directly. Dream Phase 0 reads `state/jobs/failures.md` instead
 of running pre-flight. `startup-check.js` becomes a deprecation shim
 (removed in a future minor version). Bonus: new
-`system/scripts/lib/jobs/lock-cleanup.js` (`cleanupStaleLocks` — sweeps
+`system/scripts/jobs/lib/lock-cleanup.js` (`cleanupStaleLocks` — sweeps
 locks older than 5 min OR with non-running PIDs); runner pre-hook +
 reconciler tick both call it.
 

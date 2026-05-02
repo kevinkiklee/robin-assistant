@@ -6,35 +6,35 @@ import { spawn as childSpawn } from 'node:child_process';
 import { safeEnv } from '../lib/safe-env.js';
 import { hostname } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { loadJob, discoverJobs } from '../lib/jobs/discovery.js';
-import { jobsPaths, logTimestamp } from '../lib/jobs/paths.js';
+import { loadJob, discoverJobs } from './lib/discovery.js';
+import { jobsPaths, logTimestamp } from './lib/paths.js';
 import {
   acquireLock,
   ensureDir,
   readJSON,
   releaseLock,
   writeJSONIfChanged,
-} from '../lib/jobs/atomic.js';
-import { cleanupStaleLocks } from '../lib/jobs/lock-cleanup.js';
+} from './lib/atomic.js';
+import { cleanupStaleLocks } from './lib/lock-cleanup.js';
 import {
   parseCron,
   cronPrev,
   expectedIntervalMs,
   inActiveWindow,
-} from '../lib/jobs/cron.js';
+} from './lib/cron.js';
 import {
   categorizeFailure,
   shouldNotify,
   recordNotification,
   notificationText,
-} from '../lib/jobs/categorize.js';
-import { notify as defaultNotify } from '../lib/jobs/notify.js';
+} from './lib/categorize.js';
+import { notify as defaultNotify } from './lib/notify.js';
 import {
   computeNextRun,
   listJobStates,
   regenIndex,
   rotateLogs,
-} from '../lib/jobs/state.js';
+} from './lib/state.js';
 
 const STDERR_BUFFER_BYTES = 4 * 1024;
 

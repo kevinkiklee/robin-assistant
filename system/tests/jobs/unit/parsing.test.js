@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseJobFrontmatter, validateJobDef, mergeOverride } from '../../../scripts/lib/jobs/frontmatter.js';
-import { parseCron, validateCron, cronMatches, cronNext, cronPrev, expectedIntervalMs, inActiveWindow } from '../../../scripts/lib/jobs/cron.js';
+import { parseJobFrontmatter, validateJobDef, mergeOverride } from '../../../scripts/jobs/lib/frontmatter.js';
+import { parseCron, validateCron, cronMatches, cronNext, cronPrev, expectedIntervalMs, inActiveWindow } from '../../../scripts/jobs/lib/cron.js';
 
 describe('parseJobFrontmatter', () => {
   test('parses scalar fields with type coercion', () => {

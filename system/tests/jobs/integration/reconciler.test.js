@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { reconcile, computeSyncHash } from '../../../scripts/jobs/reconciler.js';
-import { jobsPaths } from '../../../scripts/lib/jobs/paths.js';
+import { jobsPaths } from '../../../scripts/jobs/lib/paths.js';
 
 let workspaceDir;
 

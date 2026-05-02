@@ -14,7 +14,7 @@ import {
   writeJSON,
   writeJSONIfChanged,
   sha256,
-} from '../../../scripts/lib/jobs/atomic.js';
+} from '../../../scripts/jobs/lib/atomic.js';
 
 let dir;
 beforeEach(() => {
@@ -123,7 +123,7 @@ describe('acquireLock / releaseLock', () => {
     const p = join(dir, 'a.lock');
     // Each child holds the lock briefly so both are alive when contending.
     const script = `
-      import { acquireLock } from '${join(process.cwd(), 'system/scripts/lib/jobs/atomic.js')}';
+      import { acquireLock } from '${join(process.cwd(), 'system/scripts/jobs/lib/atomic.js')}';
       const r = acquireLock('${p}');
       process.stdout.write(r === null ? 'won' : 'lost');
       await new Promise((r) => setTimeout(r, 200));

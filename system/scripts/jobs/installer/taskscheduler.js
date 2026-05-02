@@ -3,7 +3,7 @@
 // from `cronToTaskTrigger`; the installer skips those with a warning.
 
 import { spawnSync } from 'node:child_process';
-import { parseCron } from '../../lib/jobs/cron.js';
+import { parseCron } from '../lib/cron.js';
 
 export const TASK_FOLDER = '\\Robin\\';
 

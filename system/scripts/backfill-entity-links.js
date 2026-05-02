@@ -5,7 +5,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { applyEntityLinks } from './lib/wiki-graph/apply-entity-links.js';
 import { buildEntityRegistry } from './lib/wiki-graph/build-entity-registry.js';
 import { isExcludedPath } from './lib/wiki-graph/exclusions.js';
-import { acquireLock, releaseLock } from './lib/jobs/atomic.js';
+import { acquireLock, releaseLock } from './jobs/lib/atomic.js';
 import { writeLinksIndex } from './regenerate-links.js';
 
 async function* walkMd(root, base = root) {

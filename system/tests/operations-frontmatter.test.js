@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { parseJobFrontmatter, validateJobDef } from '../scripts/lib/jobs/frontmatter.js';
+import { parseJobFrontmatter, validateJobDef } from '../scripts/jobs/lib/frontmatter.js';
 
 const JOBS = fileURLToPath(new URL('../jobs', import.meta.url));
 

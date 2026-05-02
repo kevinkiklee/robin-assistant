@@ -4,8 +4,8 @@
 
 import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { discoverJobs } from '../lib/jobs/discovery.js';
-import { jobsPaths } from '../lib/jobs/paths.js';
+import { discoverJobs } from './lib/discovery.js';
+import { jobsPaths } from './lib/paths.js';
 import {
   acquireLock,
   ensureDir,
@@ -14,15 +14,15 @@ import {
   sha256,
   writeIfChanged,
   writeJSONIfChanged,
-} from '../lib/jobs/atomic.js';
-import { cleanupStaleLocks } from '../lib/jobs/lock-cleanup.js';
+} from './lib/atomic.js';
+import { cleanupStaleLocks } from './lib/lock-cleanup.js';
 import {
   deleteJobState,
   listJobStates,
   regenFailures,
   regenIndex,
   regenUpcoming,
-} from '../lib/jobs/state.js';
+} from './lib/state.js';
 import { getAdapter } from './installer/index.js';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
