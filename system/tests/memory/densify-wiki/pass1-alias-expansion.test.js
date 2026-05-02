@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { deriveCandidates, applyFilters, shouldFlipType } from '../../../scripts/memory/lib/alias-expander.js';
+import { deriveCandidates, applyFilters, shouldFlipType, expandAliases } from '../../../scripts/memory/lib/alias-expander.js';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+function tempWorkspace() {
+  const dir = mkdtempSync(join(tmpdir(), 'densify-test-'));
+  mkdirSync(join(dir, 'user-data', 'memory', 'profile', 'people'), { recursive: true });
+  mkdirSync(join(dir, 'user-data', 'memory', 'knowledge', 'service-providers'), { recursive: true });
+  return dir;
+}
 
 test('deriveCandidates extracts H1 and filename', () => {
   const body = `---
@@ -110,4 +120,50 @@ test('shouldFlipType does NOT flip when no aliases', () => {
 
 test('shouldFlipType does NOT flip when already type:entity', () => {
   assert.equal(shouldFlipType({ relPath: 'profile/people/jake-lee.md', currentType: 'entity', hasAliases: true }), false);
+});
+
+test('expandAliases writes additions to entity-shaped files atomically', async () => {
+  const ws = tempWorkspace();
+  try {
+    const filePath = join(ws, 'user-data/memory/profile/people/jake-lee.md');
+    writeFileSync(filePath, `---\ntype: topic\naliases: [Jake]\n---\n\n# Jake Lee\n\nBrother.\n`);
+
+    const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+
+    const after = readFileSync(filePath, 'utf-8');
+    assert.match(after, /aliases: \[Jake, Jake Lee\]/);
+    assert.match(after, /type: entity/);
+    assert.equal(result.filesModified.length, 1);
+    assert.deepEqual(result.summary.aliasesAdded, 1);
+    assert.deepEqual(result.summary.typeFlips, 1);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('expandAliases is idempotent on second run', async () => {
+  const ws = tempWorkspace();
+  try {
+    const filePath = join(ws, 'user-data/memory/profile/people/jake-lee.md');
+    writeFileSync(filePath, `---\ntype: topic\naliases: [Jake]\n---\n\n# Jake Lee\n\n`);
+    await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    const result2 = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    assert.equal(result2.summary.aliasesAdded, 0);
+    assert.equal(result2.summary.typeFlips, 0);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('expandAliases lists files without any aliases as missing-aliases (lint section)', async () => {
+  const ws = tempWorkspace();
+  try {
+    const filePath = join(ws, 'user-data/memory/profile/people/no-aliases.md');
+    writeFileSync(filePath, `---\ntype: topic\n---\n\n# Some Person\n\n`);
+    const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    assert.equal(result.summary.aliasesAdded, 0);
+    assert.deepEqual(result.lint.missingAliases, ['profile/people/no-aliases.md']);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
 });

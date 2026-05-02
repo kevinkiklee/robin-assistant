@@ -2,8 +2,15 @@
 // Derives alias candidates from H1 + filename, applies filter chain,
 // writes atomic frontmatter mutations.
 
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { atomicWrite } from '../../jobs/lib/atomic.js';
+
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/;
 const H1_RE = /^#\s+(.+)$/m;
+const ALIASES_RE = /^aliases:\s*\[([^\]]*)\]\s*$/m;
+const TYPE_RE = /^type:\s*(\S+)\s*$/m;
+const FM_BLOCK_RE = /^(---\n[\s\S]*?\n---\n?)/;
 
 function stripFrontmatter(body) {
   return body.replace(FRONTMATTER_RE, '');
@@ -83,4 +90,122 @@ export function shouldFlipType({ relPath, currentType, hasAliases }) {
   if (!hasAliases) return false;
   if (!inEntityShapedDir(relPath)) return false;
   return currentType === 'topic';
+}
+
+function parseAliasArray(line) {
+  if (!line) return [];
+  return line.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function getFrontmatterField(body, re) {
+  const m = body.match(re);
+  return m ? m[1].trim() : '';
+}
+
+function setAliasesAndType(body, newAliases, newType) {
+  const fm = body.match(FM_BLOCK_RE);
+  if (!fm) {
+    const aliasesLine = `aliases: [${newAliases.join(', ')}]`;
+    const typeLine = newType ? `\ntype: ${newType}` : '';
+    return `---\n${aliasesLine}${typeLine}\n---\n${body}`;
+  }
+  let block = fm[1];
+  const newAliasesLine = `aliases: [${newAliases.join(', ')}]`;
+  block = ALIASES_RE.test(block)
+    ? block.replace(ALIASES_RE, newAliasesLine)
+    : block.replace(/\n---\n?$/, `\n${newAliasesLine}\n---\n`);
+  if (newType) {
+    block = TYPE_RE.test(block)
+      ? block.replace(TYPE_RE, `type: ${newType}`)
+      : block.replace(/\n---\n?$/, `\ntype: ${newType}\n---\n`);
+  }
+  return block + body.slice(fm[1].length);
+}
+
+function* walkMd(root, base = root) {
+  if (!existsSync(root)) return;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const full = join(root, entry.name);
+    if (entry.isDirectory()) {
+      yield* walkMd(full, base);
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      yield relative(base, full).split(/[\\/]/).join('/');
+    }
+  }
+}
+
+export async function expandAliases({ workspaceDir, stopList = new Set(), dryRun = false }) {
+  const memoryRoot = join(workspaceDir, 'user-data', 'memory');
+  const result = {
+    filesModified: [],
+    perFile: [],
+    lint: { missingAliases: [] },
+    summary: { aliasesAdded: 0, typeFlips: 0, rejections: [] },
+  };
+  const inPassRegistry = new Map();
+
+  // First pass: build registry from existing aliases.
+  for (const relPath of walkMd(memoryRoot)) {
+    const body = readFileSync(join(memoryRoot, relPath), 'utf-8');
+    const existing = parseAliasArray(getFrontmatterField(body, ALIASES_RE));
+    for (const a of existing) {
+      inPassRegistry.set(a, relPath);
+      inPassRegistry.set(a.toLowerCase(), relPath);
+    }
+  }
+
+  // Second pass: derive + filter + write per file.
+  for (const relPath of walkMd(memoryRoot)) {
+    const filePath = join(memoryRoot, relPath);
+    const body = readFileSync(filePath, 'utf-8');
+    const inEntityDir = inEntityShapedDir(relPath);
+    const currentType = getFrontmatterField(body, TYPE_RE);
+    const isTypeEntity = currentType === 'entity';
+    const existingAliasesLine = getFrontmatterField(body, ALIASES_RE);
+    const existingAliases = parseAliasArray(existingAliasesLine);
+
+    if (!inEntityDir && !isTypeEntity && existingAliases.length === 0) continue;
+
+    if (existingAliases.length === 0) {
+      if (inEntityDir || isTypeEntity) {
+        result.lint.missingAliases.push(relPath);
+      }
+      continue;
+    }
+
+    const filename = relPath.split('/').pop();
+    const candidates = deriveCandidates({ body, filename });
+    const filtered = applyFilters(candidates, {
+      existingAliases: new Set(existingAliases),
+      inPassRegistry,
+      stopList,
+    });
+    const flipType = shouldFlipType({ relPath, currentType, hasAliases: existingAliases.length > 0 });
+
+    if (filtered.accepted.length === 0 && !flipType) continue;
+
+    const newAliases = [...existingAliases, ...filtered.accepted];
+    for (const a of filtered.accepted) {
+      inPassRegistry.set(a, relPath);
+      inPassRegistry.set(a.toLowerCase(), relPath);
+    }
+
+    if (!dryRun) {
+      const newBody = setAliasesAndType(body, newAliases, flipType ? 'entity' : null);
+      atomicWrite(filePath, newBody);
+    }
+
+    result.filesModified.push(relPath);
+    result.perFile.push({
+      relPath,
+      added: filtered.accepted,
+      rejected: filtered.rejected,
+      typeFlipped: flipType,
+    });
+    result.summary.aliasesAdded += filtered.accepted.length;
+    if (flipType) result.summary.typeFlips += 1;
+    result.summary.rejections.push(...filtered.rejected.map(r => ({ relPath, ...r })));
+  }
+
+  return result;
 }
