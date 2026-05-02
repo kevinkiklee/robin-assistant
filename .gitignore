@@ -1,7 +1,5 @@
 # Personal data — never commit
 /user-data/
-/artifacts/
-/backup/
 /system/tests/multi-host/transcripts/
 
 # Internal design notes — local-only

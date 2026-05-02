@@ -14,7 +14,7 @@ function repo() {
     '# Memory Index\n');
   mkdirSync(join(root, 'system/scaffold/runtime/config'), { recursive: true });
   writeFileSync(join(root, 'system/scaffold/runtime/config/robin.config.json'),
-    JSON.stringify({ version: '3.0.0', user: { name: '', timezone: 'UTC' }, platform: 'claude-code' }));
+    JSON.stringify({ version: '3.0.0', user: { name: '', timezone: 'UTC' } }));
   return root;
 }
 
@@ -33,9 +33,9 @@ test('setup populates user-data/ from scaffold in CI mode', async () => {
   assert.ok(existsSync(join(root, 'user-data/memory/profile/identity.md')));
   assert.ok(existsSync(join(root, 'user-data/memory/INDEX.md')));
   assert.ok(existsSync(join(root, 'user-data/runtime/config/robin.config.json')));
-  assert.ok(existsSync(join(root, 'artifacts/input')));
-  assert.ok(existsSync(join(root, 'artifacts/output')));
-  assert.ok(existsSync(join(root, 'backup')));
+  assert.ok(existsSync(join(root, 'user-data/artifacts/input')));
+  assert.ok(existsSync(join(root, 'user-data/artifacts/output')));
+  assert.ok(existsSync(join(root, 'user-data/backup')));
   rmSync(root, { recursive: true, force: true });
 });
 

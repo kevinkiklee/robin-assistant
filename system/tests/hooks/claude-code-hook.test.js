@@ -55,6 +55,74 @@ describe('claude-code-hook --on-pre-tool-use', () => {
     assert.equal(r.exit, 2);
   });
 
+  it('blocks Write to bare <workspace>/artifacts/* (suggests user-data/artifacts/)', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'hook-art-'));
+    const event = JSON.stringify({
+      tool_name: 'Write',
+      tool_input: { file_path: join(ws, 'artifacts/output/foo.png') },
+    });
+    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      input: event,
+      env: { ...process.env, ROBIN_WORKSPACE: ws },
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /WRITE_REFUSED \[artifacts\]/);
+    assert.match(r.stderr, /user-data\/artifacts\/output\/foo\.png/);
+  });
+
+  it('allows Write to <workspace>/user-data/artifacts/*', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'hook-art-ok-'));
+    const event = JSON.stringify({
+      tool_name: 'Write',
+      tool_input: { file_path: join(ws, 'user-data/artifacts/output/foo.png') },
+    });
+    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      input: event,
+      env: { ...process.env, ROBIN_WORKSPACE: ws },
+    });
+    assert.equal(r.status, 0);
+  });
+
+  it('blocks Write to bare <workspace>/backup/* (suggests user-data/backup/)', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'hook-bk-'));
+    const event = JSON.stringify({
+      tool_name: 'Write',
+      tool_input: { file_path: join(ws, 'backup/snapshot.tar.gz') },
+    });
+    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      input: event,
+      env: { ...process.env, ROBIN_WORKSPACE: ws },
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /WRITE_REFUSED \[backup\]/);
+    assert.match(r.stderr, /user-data\/backup\/snapshot\.tar\.gz/);
+  });
+
+  it('blocks misrouted path inside an MCP-style nested tool_input', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'hook-mcp-'));
+    const event = JSON.stringify({
+      tool_name: 'mcp__gemini-nano-banana__generate_image',
+      tool_input: {
+        prompt: 'a photo',
+        output: { save_to: join(ws, 'artifacts/output/image.png') },
+      },
+    });
+    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      input: event,
+      env: { ...process.env, ROBIN_WORKSPACE: ws },
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /WRITE_REFUSED \[artifacts\]/);
+  });
+
   it('allows Write to user-data/memory/streams/inbox.md', () => {
     const event = JSON.stringify({
       tool_name: 'Write',

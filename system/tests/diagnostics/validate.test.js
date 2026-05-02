@@ -10,7 +10,7 @@ function makeRepo(populated = true) {
   const root = mkdtempSync(join(tmpdir(), 'robin-validate-'));
   // Real git repo with user-data/ gitignored, matching v3 workspace shape.
   execSync('git init -q', { cwd: root });
-  writeFileSync(join(root, '.gitignore'), '/user-data/\n/artifacts/\n/backup/\n');
+  writeFileSync(join(root, '.gitignore'), '/user-data/\n');
   mkdirSync(join(root, 'system'));
   mkdirSync(join(root, 'system/scaffold'));
   if (populated) {
@@ -19,7 +19,7 @@ function makeRepo(populated = true) {
     mkdirSync(join(root, 'user-data/runtime/state/locks'), { recursive: true });
     mkdirSync(join(root, 'user-data/runtime/config'), { recursive: true });
     writeFileSync(join(root, 'user-data/runtime/config/robin.config.json'),
-      JSON.stringify({ version: '3.0.0', user: { name: 'T', timezone: 'UTC' }, platform: 'claude-code' }));
+      JSON.stringify({ version: '3.0.0', user: { name: 'T', timezone: 'UTC' } }));
     writeFileSync(join(root, 'user-data/memory/INDEX.md'), '# Memory Index\n');
     writeFileSync(join(root, 'user-data/memory/profile/identity.md'),
       '---\ndescription: Identity\n---\n# Identity\n');

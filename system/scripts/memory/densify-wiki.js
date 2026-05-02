@@ -93,12 +93,12 @@ function todayDate() {
 }
 
 function findLatestBackup(workspaceDir) {
-  const dir = join(workspaceDir, 'backup');
+  const dir = join(workspaceDir, 'user-data/backup');
   if (!existsSync(dir)) return null;
   const entries = readdirSync(dir).filter(f => f.startsWith('user-data-'));
   if (entries.length === 0) return null;
   entries.sort();
-  return join('backup', entries[entries.length - 1]);
+  return join('user-data/backup', entries[entries.length - 1]);
 }
 
 function runBackupCli(workspaceDir) {

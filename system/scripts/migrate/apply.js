@@ -92,13 +92,17 @@ export async function runPendingMigrations(workspaceDir = process.cwd(), opts = 
   if (pending.length === 0) return { applied: [], would: [] };
   if (opts.dryRun) return { applied: [], would: pending.map(m => m.id) };
 
-  // Pre-migration backup
+  // Pre-migration backup. Skip self-inclusion: user-data/backup/ would
+  // recursively contain previous archives, blowing up the snapshot size.
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupDir = join(workspaceDir, 'backup');
+  const backupDir = join(workspaceDir, 'user-data/backup');
   if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true });
   const backupPath = join(backupDir, `pre-migration-${ts}.tar.gz`);
   if (existsSync(join(workspaceDir, 'user-data'))) {
-    execSync(`tar -czf ${JSON.stringify(backupPath)} -C ${JSON.stringify(workspaceDir)} user-data`, { stdio: 'inherit' });
+    execSync(
+      `tar -czf ${JSON.stringify(backupPath)} -C ${JSON.stringify(workspaceDir)} --exclude='user-data/backup' user-data`,
+      { stdio: 'inherit' },
+    );
   }
 
   const helpers = createHelpers(workspaceDir);

@@ -46,7 +46,7 @@ side effects.
 ### 2. Pre-migration backup
 
 The runner (`migrate/apply.js`) handles this automatically — `user-data/` is
-tarballed to `backup/pre-migration-<ts>.tar.gz` before any migration runs.
+tarballed to `user-data/backup/pre-migration-<ts>.tar.gz` before any migration runs.
 **Don't disable.** If a migration writes to a non-`user-data/` path, it
 must take its own backup.
 

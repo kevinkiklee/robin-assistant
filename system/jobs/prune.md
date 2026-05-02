@@ -49,7 +49,7 @@ INFO + retry next cycle.
 2. **Dry-run scan** — enumerate prune candidates; counts and bytes saved.
    Write to `state/jobs/prune-preview.md`.
 3. **Pre-prune backup** — full snapshot of `user-data/memory/` to
-   `backup/<timestamp>-pre-prune/`. Cap retention at 3 most recent
+   `user-data/backup/<timestamp>-pre-prune/`. Cap retention at 3 most recent
    pre-prune backups (system-maintenance handles cleanup).
 4. **Atomic moves** — `renameSync` for each file (under file lock). Never
    delete + recreate.
@@ -79,7 +79,7 @@ this. If the agent needs an archived month, it opens it directly by path.
 Restore from the pre-prune backup:
 
 ```sh
-cp -r backup/<timestamp>-pre-prune/. user-data/memory/
+cp -r user-data/backup/<timestamp>-pre-prune/. user-data/memory/
 ```
 
 ## Trade-off

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Lints markdown files for stale `system/...` path references.
-// Skips: node_modules, .git, docs/superpowers, system/migrations, CHANGELOG.md, user-data, backup.
+// Skips: node_modules, .git, docs/superpowers, system/migrations, CHANGELOG.md, user-data.
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -10,10 +10,8 @@ const SKIP_DIR_NAMES = new Set([
   'node_modules',
   '.git',
   'user-data',
-  'backup',
   '.worktrees',
   '.superpowers',
-  'artifacts',
   'docs',
 ]);
 const SKIP_REL_DIRS = ['docs/superpowers', 'system/migrations'];

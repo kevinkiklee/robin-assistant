@@ -66,6 +66,33 @@ function isAutoMemoryPath(p) {
   return /\.claude\/projects\/[^/]+\/memory\//.test(p);
 }
 
+// Recursively scans a tool_input object for any string value that begins
+// with one of the misrouted prefixes. Returns { path, bad, good, label } on
+// first match, or null. Bounded by tool_input shape — these are small.
+function findMisroutedPath(input, reroutes, depth = 0) {
+  if (depth > 6) return null;
+  if (typeof input === 'string') {
+    for (const r of reroutes) {
+      if (input.startsWith(r.bad)) return { path: input, ...r };
+    }
+    return null;
+  }
+  if (Array.isArray(input)) {
+    for (const v of input) {
+      const r = findMisroutedPath(v, reroutes, depth + 1);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (input && typeof input === 'object') {
+    for (const v of Object.values(input)) {
+      const r = findMisroutedPath(v, reroutes, depth + 1);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
 function readInboxTail(ws, n) {
   const file = join(ws, 'user-data/memory/streams/inbox.md');
   if (!existsSync(file)) return [];
@@ -152,18 +179,42 @@ async function onPreToolUse() {
   }
 
   const toolName = event.tool_name ?? event.name;
-  if (toolName !== 'Write' && toolName !== 'Edit' && toolName !== 'NotebookEdit') {
-    process.exit(0);
-  }
-
-  const target = event.tool_input?.file_path ?? event.input?.file_path;
-  if (!target) {
-    process.exit(0);
-  }
+  const toolInput = event.tool_input ?? event.input ?? {};
 
   // Logs go to the active workspace, which differs from REPO_ROOT under the
   // multi-host test harness and any out-of-tree install. Prefer ROBIN_WORKSPACE.
   const ws = process.env.ROBIN_WORKSPACE || REPO_ROOT;
+  const wsClean = ws.replace(/\/+$/, '');
+
+  // Misrouted-path guard (applies to ALL tools — Write/Edit/NotebookEdit AND
+  // any MCP tool that takes a path argument, e.g. image-generation save paths).
+  // Bare `<workspace>/artifacts/` and `<workspace>/backup/` are wrong; canonical
+  // locations are under user-data/. Recurses through tool_input to catch any
+  // string field whose value looks like a misrouted absolute path.
+  const REROUTES = [
+    { bad: `${wsClean}/artifacts/`, good: `${wsClean}/user-data/artifacts/`, label: 'artifacts' },
+    { bad: `${wsClean}/backup/`,    good: `${wsClean}/user-data/backup/`,    label: 'backup' },
+  ];
+  const offending = findMisroutedPath(toolInput, REROUTES);
+  if (offending) {
+    const suggested = offending.good + offending.path.slice(offending.bad.length);
+    process.stderr.write(
+      `WRITE_REFUSED [${offending.label}]: ${toolName} would write to ${offending.path} ` +
+      `(bare ${offending.label}/ at workspace root is misrouted). ` +
+      `Canonical path is user-data/${offending.label}/. Retry with: ${suggested}\n`,
+    );
+    process.exit(2);
+  }
+
+  // Remaining checks only apply to file-content tools.
+  if (toolName !== 'Write' && toolName !== 'Edit' && toolName !== 'NotebookEdit') {
+    process.exit(0);
+  }
+
+  const target = toolInput.file_path;
+  if (!target) {
+    process.exit(0);
+  }
 
   // 1. Existing: block writes to host auto-memory paths.
   if (isAutoMemoryPath(target)) {

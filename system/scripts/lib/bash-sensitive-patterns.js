@@ -35,6 +35,21 @@ export const SENSITIVE_PATTERNS = [
     pattern: /(?:^|[\s|;&])eval\s+[^|;&]|(?:^|[\s|;&])eval\s*\(|\$\(\s*\$\(/,
     why: 'Eval or nested-substitution injection',
   },
+  {
+    // Catch writes to bare `artifacts/` or `backup/` at the workspace root.
+    // Canonical locations are `user-data/artifacts/` and `user-data/backup/`.
+    // Patterns target obvious write contexts:
+    //   1. redirects (`> path`, `>> path`, `2> path`, etc.)
+    //   2. `mv|cp|tar|rsync|install|mkdir|ln` at command position (start of
+    //      string or after shell separators `;` `&`, NOT after a pipe `|`)
+    //      with a bare-path argument.
+    // The command word must be at command position — not preceded by `|` —
+    // so that prose mentioning `mkdir|ln` inside a quoted string (e.g. a
+    // git commit message body) does not false-positive.
+    name: 'misrouted-write',
+    pattern: /(?:(?:^|\s)(?:>>?|2>>?|&>>?)\s*(?:\.\/)?(?:artifacts|backup)\/)|(?:(?:^|[\s;&])(?:mv|cp|tar|rsync|install|mkdir|ln)\s+[^|;&\n]*\s(?:\.\/)?(?:artifacts|backup)\/)/,
+    why: 'Writes to bare artifacts/ or backup/ at workspace root — canonical paths are user-data/artifacts/ and user-data/backup/',
+  },
 ];
 
 export function checkBashCommand(cmd) {

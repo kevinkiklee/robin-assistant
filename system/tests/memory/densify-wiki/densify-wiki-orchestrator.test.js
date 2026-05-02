@@ -99,7 +99,7 @@ test('runDensifyWiki end-to-end on minimal workspace produces report (dry-run)',
     // Build a minimal workspace structure.
     mkdirSync(join(ws, 'user-data/memory/profile/people'), { recursive: true });
     mkdirSync(join(ws, 'user-data/memory/knowledge/finance'), { recursive: true });
-    mkdirSync(join(ws, 'backup'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/backup'), { recursive: true });
     writeFileSync(join(ws, 'user-data/memory/INDEX.md'), '# INDEX\n');
     writeFileSync(join(ws, 'user-data/memory/profile/people/jake-lee.md'),
       `---\ntype: topic\naliases: ["Jake"]\n---\n# Jake Lee\nMet Mom and Dad at home.`);
@@ -129,7 +129,7 @@ test('runDensifyWiki captures errors from a failing pass and still writes a repo
   try {
     // Empty memory dir — passes should run but find nothing. Should NOT crash.
     mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
-    mkdirSync(join(ws, 'backup'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/backup'), { recursive: true });
     const result = await runDensifyWiki({ workspaceDir: ws, mode: 'dry-run', skipBackup: true });
     // Even with an empty memory dir, should still produce a report (no crash).
     assert.ok(result.summaryPath);

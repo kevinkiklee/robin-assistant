@@ -8,12 +8,12 @@ export async function backup(workspaceDir = process.cwd()) {
     console.error('No user-data/ to back up.');
     process.exit(1);
   }
-  const backupDir = join(workspaceDir, 'backup');
+  const backupDir = join(workspaceDir, 'user-data/backup');
   if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const archive = join(backupDir, `user-data-${ts}.tar.gz`);
-  execSync(`tar -czf ${JSON.stringify(archive)} -C ${JSON.stringify(workspaceDir)} user-data`, { stdio: 'inherit' });
+  execSync(`tar -czf ${JSON.stringify(archive)} -C ${JSON.stringify(workspaceDir)} --exclude='user-data/backup' user-data`, { stdio: 'inherit' });
   console.log(`Backed up to ${archive}`);
   return archive;
 }

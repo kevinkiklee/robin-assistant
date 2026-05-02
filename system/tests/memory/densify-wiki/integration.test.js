@@ -13,7 +13,7 @@ test('integration: full orchestrator run on golden corpus in dry-run', async () 
   const ws = mkdtempSync(join(tmpdir(), 'integration-'));
   try {
     mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
-    mkdirSync(join(ws, 'backup'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/backup'), { recursive: true });
     cpSync(FIXTURE_CORPUS, join(ws, 'user-data/memory'), { recursive: true });
 
     const r = await runDensifyWiki({ workspaceDir: ws, mode: 'dry-run', skipBackup: true });
@@ -54,7 +54,7 @@ test('integration: archive files are excluded from passes (no mutation)', async 
   const ws = mkdtempSync(join(tmpdir(), 'integration-archive-'));
   try {
     mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
-    mkdirSync(join(ws, 'backup'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/backup'), { recursive: true });
     cpSync(FIXTURE_CORPUS, join(ws, 'user-data/memory'), { recursive: true });
 
     const beforeArchive = readFileSync(join(ws, 'user-data/memory/archive/old-page.md'), 'utf-8');
@@ -73,7 +73,7 @@ test('integration: dry-run does not modify fixture files in temp workspace', asy
   const ws = mkdtempSync(join(tmpdir(), 'integration-dryrun-'));
   try {
     mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
-    mkdirSync(join(ws, 'backup'), { recursive: true });
+    mkdirSync(join(ws, 'user-data/backup'), { recursive: true });
     cpSync(FIXTURE_CORPUS, join(ws, 'user-data/memory'), { recursive: true });
 
     const beforeJake = readFileSync(join(ws, 'user-data/memory/profile/people/jake-lee.md'), 'utf-8');

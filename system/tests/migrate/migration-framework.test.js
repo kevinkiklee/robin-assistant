@@ -10,7 +10,7 @@ function setupRepo(migrationFiles) {
   mkdirSync(join(root, 'system/migrations'), { recursive: true });
   mkdirSync(join(root, 'system/scaffold'));
   mkdirSync(join(root, 'user-data/runtime/config'), { recursive: true });
-  mkdirSync(join(root, 'backup'));
+  mkdirSync(join(root, 'user-data/backup'), { recursive: true });
   writeFileSync(join(root, 'user-data/runtime/config/robin.config.json'), '{"version":"3.0.0"}');
   for (const [name, content] of Object.entries(migrationFiles)) {
     writeFileSync(join(root, 'system/migrations', name), content);

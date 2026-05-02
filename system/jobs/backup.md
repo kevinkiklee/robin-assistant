@@ -1,6 +1,6 @@
 ---
 name: backup
-description: Daily snapshot of user-data/ to backup/.
+description: Daily snapshot of user-data/ to user-data/backup/.
 runtime: node
 enabled: true
 schedule: "0 3 * * *"
@@ -10,4 +10,4 @@ timeout_minutes: 5
 notify_on_failure: true
 ---
 
-Snapshots user-data/ into a timestamped folder under backup/.
+Snapshots user-data/ into a timestamped folder under user-data/backup/.

@@ -46,7 +46,7 @@ test('writeRunReport produces markdown + summary.json', () => {
       workspaceDir: ws,
       date: '2026-05-02',
       mode: 'apply',
-      backupPath: 'backup/user-data-20260502-1234.tar.gz',
+      backupPath: 'user-data/backup/user-data-20260502-1234.tar.gz',
       passes: fixturePassResults,
     });
     const md = readFileSync(result.markdownPath, 'utf-8');
@@ -56,11 +56,11 @@ test('writeRunReport produces markdown + summary.json', () => {
     assert.match(md, /# Densify-wiki run — 2026-05-02/);
     assert.match(md, /## Summary/);
     assert.match(md, /Mode: --apply/);
-    assert.match(md, /Backup: backup\/user-data-20260502-1234\.tar\.gz/);
+    assert.match(md, /Backup: user-data\/backup\/user-data-20260502-1234\.tar\.gz/);
     assert.match(md, /## Pass 1 — alias expansion/);
     assert.match(md, /## Pass 3 — related: edges/);
     assert.match(md, /## Lint findings/);
-    assert.match(md, /Restore command: npm run restore -- --from backup/);
+    assert.match(md, /Restore command: npm run restore -- --from user-data\/backup/);
 
     // JSON schema
     assert.equal(json.date, '2026-05-02');
@@ -68,7 +68,7 @@ test('writeRunReport produces markdown + summary.json', () => {
     assert.equal(json.counts.aliases_added, 23);
     assert.equal(json.counts.related_edges_added, 64);
     assert.equal(json.counts.lint_findings.missing_aliases, 1);
-    assert.equal(json.backup_path, 'backup/user-data-20260502-1234.tar.gz');
+    assert.equal(json.backup_path, 'user-data/backup/user-data-20260502-1234.tar.gz');
     assert.equal(json.exit_code, 0);
   } finally {
     rmSync(ws, { recursive: true });

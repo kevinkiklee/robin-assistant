@@ -3,10 +3,22 @@ import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
+// Wipes everything inside user-data/ except `backup/` (where the archives
+// we're restoring from live). Without this guard, restore would delete its
+// own source archive mid-operation.
+function wipeUserDataExceptBackup(workspaceDir) {
+  const ud = join(workspaceDir, 'user-data');
+  if (!existsSync(ud)) return;
+  for (const entry of readdirSync(ud)) {
+    if (entry === 'backup') continue;
+    rmSync(join(ud, entry), { recursive: true, force: true });
+  }
+}
+
 export async function restore(workspaceDir = process.cwd(), opts = {}) {
-  const backupDir = join(workspaceDir, 'backup');
+  const backupDir = join(workspaceDir, 'user-data/backup');
   if (!existsSync(backupDir)) {
-    console.error('No backup/ directory.');
+    console.error('No user-data/backup/ directory.');
     process.exit(1);
   }
   const archives = readdirSync(backupDir)
@@ -30,7 +42,7 @@ export async function restore(workspaceDir = process.cwd(), opts = {}) {
 
   if (!opts.auto) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const confirm = await rl.question('This will wipe user-data/. Continue? [y/N] ');
+    const confirm = await rl.question('This will wipe user-data/ (except user-data/backup/). Continue? [y/N] ');
     rl.close();
     if (confirm.trim().toLowerCase() !== 'y') {
       console.log('Aborted.');
@@ -38,7 +50,7 @@ export async function restore(workspaceDir = process.cwd(), opts = {}) {
     }
   }
 
-  rmSync(join(workspaceDir, 'user-data'), { recursive: true, force: true });
+  wipeUserDataExceptBackup(workspaceDir);
   execSync(`tar -xzf ${JSON.stringify(join(backupDir, chosen))} -C ${JSON.stringify(workspaceDir)}`, { stdio: 'inherit' });
   console.log(`Restored from ${chosen}`);
 }

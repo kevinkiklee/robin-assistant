@@ -5,8 +5,6 @@ import { installHooks } from './install-hooks.js';
 import { runPendingMigrations } from '../migrate/apply.js';
 import { ensureManifestFromScaffold } from '../lib/manifest.js';
 
-const PLATFORMS = ['claude-code', 'cursor', 'gemini-cli', 'codex', 'antigravity'];
-
 function detectTimezone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -47,16 +45,6 @@ async function promptTimezone(rl) {
   const pick = (await rl.question('  Pick a number (or Enter for #1): ')).trim();
   const idx = pick ? parseInt(pick, 10) - 1 : 0;
   return matches[idx] ?? matches[0];
-}
-
-async function promptPlatform(rl) {
-  console.log('Platform:');
-  for (let i = 0; i < PLATFORMS.length; i++) {
-    console.log(`  ${i + 1}) ${PLATFORMS[i]}`);
-  }
-  const pick = (await rl.question('Pick a number [1]: ')).trim();
-  const idx = pick ? parseInt(pick, 10) - 1 : 0;
-  return PLATFORMS[idx] ?? PLATFORMS[0];
 }
 
 export async function setup(workspaceDir = process.cwd(), opts = {}) {
@@ -127,9 +115,9 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
 
   // Create directories
   mkdirSync(ud, { recursive: true });
-  mkdirSync(join(workspaceDir, 'artifacts/input'), { recursive: true });
-  mkdirSync(join(workspaceDir, 'artifacts/output'), { recursive: true });
-  mkdirSync(join(workspaceDir, 'backup'), { recursive: true });
+  mkdirSync(join(ud, 'artifacts/input'), { recursive: true });
+  mkdirSync(join(ud, 'artifacts/output'), { recursive: true });
+  mkdirSync(join(ud, 'backup'), { recursive: true });
 
   // Copy scaffold → user-data (skip README.md, which documents the scaffold itself).
   // Scaffold mirrors the post-0021 layout, so a 1:1 copy lands user-data/ in the
@@ -155,7 +143,6 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     cfg.user.name = (await rl.question('Your name: ')).trim() || cfg.user.name || '';
     cfg.user.timezone = await promptTimezone(rl);
     cfg.user.email = (await rl.question('Email (optional): ')).trim() || cfg.user.email || '';
-    cfg.platform = await promptPlatform(rl);
     cfg.assistant = cfg.assistant || {};
     cfg.assistant.name = (await rl.question('Assistant name (default Robin): ')).trim() || 'Robin';
     rl.close();

@@ -27,22 +27,27 @@ function readUserData(root) {
   return out;
 }
 
-test('backup writes a tar.gz under backup/', async () => {
+test('backup writes a tar.gz under user-data/backup/', async () => {
   const root = makeRepo();
   await backup(root);
-  const archives = readdirSync(join(root, 'backup')).filter(f => f.endsWith('.tar.gz'));
+  const archives = readdirSync(join(root, 'user-data/backup')).filter(f => f.endsWith('.tar.gz'));
   assert.equal(archives.length, 1);
   assert.match(archives[0], /^user-data-.*\.tar\.gz$/);
   rmSync(root, { recursive: true, force: true });
 });
 
-test('restore: backup → wipe → restore returns identical content', async () => {
+test('restore: backup → wipe → restore returns identical content (preserves backup/)', async () => {
   const root = makeRepo();
   const before = readUserData(root);
   await backup(root);
-  rmSync(join(root, 'user-data'), { recursive: true, force: true });
+  // Simulate user damage: delete some live state but keep user-data/backup/.
+  rmSync(join(root, 'user-data/memory'), { recursive: true, force: true });
+  rmSync(join(root, 'user-data/runtime'), { recursive: true, force: true });
   await restore(root, { auto: true }); // auto-pick most recent
   const after = readUserData(root);
   assert.deepEqual(after, before);
+  // Backup archive must still be present after restore.
+  const archives = readdirSync(join(root, 'user-data/backup')).filter(f => f.endsWith('.tar.gz'));
+  assert.equal(archives.length, 1, 'backup archive should survive restore');
   rmSync(root, { recursive: true, force: true });
 });

@@ -9,8 +9,8 @@
 //
 // Skips when sibling sessions are active (multi-session safety per spec).
 //
-// Reversibility: full pre-prune backup at backup/<ts>-pre-prune/. Restore
-// with: cp -r backup/<ts>-pre-prune/. user-data/memory/
+// Reversibility: full pre-prune backup at user-data/backup/<ts>-pre-prune/.
+// Restore with: cp -r user-data/backup/<ts>-pre-prune/. user-data/memory/
 
 import {
   readdirSync,
@@ -99,7 +99,7 @@ function bucketConversations() {
 }
 
 function makePreBackup(workspaceDir, ts) {
-  const backupDir = join(workspaceDir, 'backup', `${ts}-pre-prune`);
+  const backupDir = join(workspaceDir, 'user-data/backup', `${ts}-pre-prune`);
   mkdirSync(backupDir, { recursive: true });
   // Copy user-data/memory/ recursively. cpSync preserves structure.
   cpSync(MEM, join(backupDir, 'memory'), { recursive: true });
@@ -107,7 +107,7 @@ function makePreBackup(workspaceDir, ts) {
 }
 
 function pruneOldBackups(workspaceDir, keep = 3) {
-  const backupRoot = join(workspaceDir, 'backup');
+  const backupRoot = join(workspaceDir, 'user-data/backup');
   if (!existsSync(backupRoot)) return [];
   const all = readdirSync(backupRoot).filter((n) => /-pre-prune$/.test(n)).sort();
   if (all.length <= keep) return [];

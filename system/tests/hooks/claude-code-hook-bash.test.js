@@ -104,6 +104,65 @@ test('--on-pre-bash: empty command (no command in event) → exit 0 (let it thro
   }
 });
 
+test('--on-pre-bash: blocks misrouted-write to bare artifacts/', () => {
+  const w = ws();
+  try {
+    const r = runHook(w, 'mv /tmp/foo.png artifacts/output/foo.png');
+    assert.equal(r.status, 2, `expected exit 2, got ${r.status}; stderr: ${r.stderr}`);
+    assert.match(r.stderr, /POLICY_REFUSED \[bash:misrouted-write\]/);
+  } finally {
+    clean(w);
+  }
+});
+
+test('--on-pre-bash: blocks misrouted-write redirect to bare backup/', () => {
+  const w = ws();
+  try {
+    const r = runHook(w, 'tar -czf - user-data > backup/snapshot.tar.gz');
+    assert.equal(r.status, 2, `expected exit 2, got ${r.status}; stderr: ${r.stderr}`);
+    assert.match(r.stderr, /POLICY_REFUSED \[bash:misrouted-write\]/);
+  } finally {
+    clean(w);
+  }
+});
+
+test('--on-pre-bash: allows write to user-data/artifacts/ and user-data/backup/', () => {
+  const w = ws();
+  try {
+    const r1 = runHook(w, 'mv /tmp/foo.png user-data/artifacts/output/foo.png');
+    assert.equal(r1.status, 0, `expected exit 0, got ${r1.status}; stderr: ${r1.stderr}`);
+    const r2 = runHook(w, 'tar -czf user-data/backup/snap.tar.gz user-data');
+    assert.equal(r2.status, 0, `expected exit 0, got ${r2.status}; stderr: ${r2.stderr}`);
+  } finally {
+    clean(w);
+  }
+});
+
+test('--on-pre-bash: allows benign mention of artifacts/ string (e.g., grep)', () => {
+  const w = ws();
+  try {
+    const r = runHook(w, 'grep -rn "artifacts/" user-data/');
+    assert.equal(r.status, 0, `expected exit 0, got ${r.status}; stderr: ${r.stderr}`);
+  } finally {
+    clean(w);
+  }
+});
+
+test('--on-pre-bash: allows commit message that mentions mkdir|ln + artifacts/', () => {
+  // Regression: an earlier version of the misrouted-write pattern allowed
+  // `|` in the leading char-class, which caused false positives on prose
+  // like `mv|cp|tar|rsync|install|mkdir|ln ... artifacts/` inside a git
+  // commit message body. Command words must be at real command position.
+  const w = ws();
+  try {
+    const cmd = `git commit -m "alphabet: mv|cp|tar|rsync|install|mkdir|ln with a bare artifacts/ destination"`;
+    const r = runHook(w, cmd);
+    assert.equal(r.status, 0, `expected exit 0, got ${r.status}; stderr: ${r.stderr}`);
+  } finally {
+    clean(w);
+  }
+});
+
 test('--on-pre-bash: refusal log includes content hash', () => {
   const w = ws();
   try {
