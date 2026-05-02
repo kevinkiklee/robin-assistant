@@ -17,7 +17,7 @@ import {
   writeWatchState,
   parseWatchFile,
   serializeWatchFile,
-} from '../lib/watches.js';
+} from '../watches/lib/watches.js';
 
 const ANSI = {
   reset: '\x1b[0m',

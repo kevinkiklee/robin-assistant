@@ -223,7 +223,7 @@ step. Test corpus at `system/tests/fixtures/audit/`.
 topics on the user's behalf. `user-data/memory/watches/<id>.md` per
 watch (frontmatter-driven). Per-watch dedup state in
 `user-data/state/watches/<id>.json` (last 50 fingerprints).
-`system/scripts/lib/watches.js` (slugify, paths, list, state I/O).
+`system/scripts/watches/lib/watches.js` (slugify, paths, list, state I/O).
 Migration 0018 scaffolds the sub-tree. Full CLI surface:
 `robin watch add/list/enable/disable/tail/run`. New `watch-topics.md`
 job (hourly, disabled): iterates ≤5 active watches per tick, fetches

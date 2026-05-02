@@ -18,7 +18,7 @@ import {
   writeWatchState,
   parseWatchFile,
   serializeWatchFile,
-} from '../scripts/lib/watches.js';
+} from '../../scripts/watches/lib/watches.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
