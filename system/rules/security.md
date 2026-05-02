@@ -300,9 +300,11 @@ Dream's TTL phase (`processPatternTTL`):
 
 ### Migration
 
-`system/scripts/migrate-cycle-2c.js` (one-shot, idempotent):
-1. Stamps existing patterns with `last_fired: <today>` + `fired_count: 0` to prevent immediate auto-archive.
-2. Bumps `user-data/security/manifest.json` from v1 to v2 (adds empty `agentsmd` + `userDataJobs` fields).
+The cycle-2c one-shot migration has already run on existing workspaces:
+1. Stamped existing patterns with `last_fired: <today>` + `fired_count: 0` to prevent immediate auto-archive.
+2. Bumped `user-data/security/manifest.json` from v1 to v2 (adds empty `agentsmd` + `userDataJobs` fields).
+
+(The script itself has been retired since it is no longer needed.)
 
 ### Known limitations
 
