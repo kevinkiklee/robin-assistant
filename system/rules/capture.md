@@ -166,24 +166,6 @@ These skip inbox:
 
 Coverage: T2 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antigravity there is no equivalent host hook — file freshness on those hosts depends entirely on T1 agent compliance. Quarterly `host-validation` (`system/jobs/host-validation.md`) checks each host produced a session-handoff entry within the last 30 days.
 
-**Note:** the prior mid-session ~20-turn sweep ("T1 long session") was removed because per-turn capture enforcement (Marker protocol below) supersedes it.
-
-## Marker protocol (capture-enforcement)
-
-Capture is enforced at end-of-turn by `system/scripts/hooks/claude-code.js --on-stop` via `verifyCapture`. The hook checks whether `user-data/memory/` was written during the turn (recorded by PreToolUse to `user-data/state/turn-writes.log`). If not, the model must declare a waiver inline:
-
-    <!-- no-capture-needed: <one-line reason> -->
-
-Tier semantics (from `system/scripts/lib/capture-keyword-scan.js`, set by UserPromptSubmit):
-
-- **Tier 1** (trivial — `user_words < 5` or pure greeting): no enforcement; marker not required.
-- **Tier 2** (`5 ≤ user_words < 20`, no capture keywords): marker accepted with empty reason.
-- **Tier 3** (`user_words ≥ 20`, OR capture keyword detected, OR entity match): marker requires a one-line reason.
-
-If neither a write nor a marker is present and retry budget allows, the hook exits 2 with a corrective stderr message; the model receives the message and re-emits with capture or marker. Default `retry_budget: 1` (configurable in `user-data/robin.config.json` → `memory.capture_enforcement`).
-
-Disable enforcement: `ROBIN_CAPTURE_ENFORCEMENT=off` env var, or set `enabled: false` in the config block.
-
 ## Hot cache
 
 At session end or compaction, append a session summary to `hot.md`:

@@ -34,9 +34,8 @@ import { writeSessionBlock } from '../lib/handoff.js';
 import { mostRecentSessionId } from '../lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
 import { applyRedaction } from '../sync/lib/redact.js';
-import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson, readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from '../lib/turn-state.js';
 import { appendPerfLog } from '../lib/perf-log.js';
-import { classifyTier, scanEntityAliases } from '../lib/capture-keyword-scan.js';
+import { scanEntityAliases } from '../lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
 import { recall, formatRecallHits } from '../memory/lib/recall.js';
 
@@ -101,127 +100,11 @@ function writeAutoLine(ws) {
   writeSessionBlock(hotFile, sid, body, { maxBlocks: 3, position: 'top' });
 }
 
-const CORRECTIVE_MSG =
-  'Capture before ending the turn. Either (a) write a tagged line to user-data/memory/inbox.md per AGENTS.md capture-rules, or (b) emit "<!-- no-capture-needed: <one-line reason> -->" if nothing in this turn warrants capture. This is enforced; second pass is allowed once.\n';
-
-function captureEnforcementEnabled(ws) {
-  if ((process.env.ROBIN_CAPTURE_ENFORCEMENT ?? '').toLowerCase() === 'off') return false;
-  try {
-    const cfg = JSON.parse(readFileSync(join(ws, 'user-data/robin.config.json'), 'utf8'));
-    return cfg?.memory?.capture_enforcement?.enabled !== false;
-  } catch {
-    return true;
-  }
-}
-
-function readRetryBudget(ws) {
-  try {
-    const cfg = JSON.parse(readFileSync(join(ws, 'user-data/robin.config.json'), 'utf8'));
-    return cfg?.memory?.capture_enforcement?.retry_budget ?? 1;
-  } catch { return 1; }
-}
-
-// Scan the most recent assistant text message for a no-capture-needed marker.
-// Parses JSONL backward so we only match the CURRENT turn's response, not stale
-// markers from prior turns still in the tail window. Skips tool_use/tool_result
-// records — only text content counts.
-function tailScanForNoCaptureMarker(transcriptPath, maxBytes = 256 * 1024) {
-  if (!transcriptPath || !existsSync(transcriptPath)) return null;
-  try {
-    const fd = readFileSync(transcriptPath);
-    const buf = fd.length > maxBytes ? fd.subarray(fd.length - maxBytes) : fd;
-    const lines = buf.toString('utf8').split('\n').filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      let obj;
-      try { obj = JSON.parse(lines[i]); } catch { continue; }
-      const role = obj.role ?? obj.message?.role;
-      if (role !== 'assistant') continue;
-      const content = obj.content ?? obj.message?.content;
-      let text = '';
-      if (typeof content === 'string') text = content;
-      else if (Array.isArray(content)) {
-        text = content
-          .filter((c) => c?.type === 'text' || typeof c?.text === 'string')
-          .map((c) => c.text ?? '')
-          .join('\n');
-      }
-      if (!text) continue;
-      const m = text.match(/<!--\s*no-capture-needed:\s*([^>]+?)\s*-->/);
-      return m ? { reason: m[1].trim() } : null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function appendEnforcementLog(ws, line) {
-  try {
-    const file = join(ws, 'user-data/state/capture-enforcement.log');
-    mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, line);
-  } catch { /* best-effort */ }
-}
-
-async function verifyCapture(ws, event) {
-  if (!captureEnforcementEnabled(ws)) return { allow: true, outcome: 'disabled' };
-
-  const turn = readTurnJson(ws);
-  if (!turn?.turn_id) return { allow: true, outcome: 'no-turn-state' };
-
-  if (turn.tier === 1) return { allow: true, outcome: 'skipped-trivial', turnId: turn.turn_id, tier: 1 };
-
-  const intents = readWriteIntents(ws, turn.turn_id);
-  if (intents.length > 0) return { allow: true, outcome: 'captured', turnId: turn.turn_id, tier: turn.tier };
-
-  const marker = tailScanForNoCaptureMarker(event?.transcript_path);
-  const tier = turn.tier;
-  // Debug: log scan inputs to help diagnose first-call misses.
-  try {
-    appendFileSync(join(ws, 'user-data/state/capture-enforcement-debug.log'),
-      `${new Date().toISOString()}\t${turn.turn_id}\ttier=${tier}\tpath=${event?.transcript_path ?? 'NONE'}\tmarker=${marker ? 'YES:' + marker.reason.slice(0,50) : 'NO'}\n`);
-  } catch { /* */ }
-  if (marker) {
-    if (tier === 2 || (tier === 3 && marker.reason && marker.reason.length > 0)) {
-      return { allow: true, outcome: 'marker-pass', turnId: turn.turn_id, tier };
-    }
-  }
-
-  const budget = readRetryBudget(ws);
-  const attempts = readRetry(ws, turn.turn_id);
-  if (attempts < budget) {
-    incrementRetry(ws, turn.turn_id);
-    return { allow: false, outcome: 'retried', turnId: turn.turn_id, tier };
-  }
-  return { allow: true, outcome: 'retried-failed', turnId: turn.turn_id, tier };
-}
-
 async function onStop(args) {
   const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
 
-  // Read event from stdin (Claude Code passes session_id, transcript_path, ...).
-  let event = {};
-  try {
-    const stdin = await readStdin();
-    if (stdin) event = JSON.parse(stdin);
-  } catch { /* keep event = {} */ }
-
-  // Capture verification — gate before any other Stop-time work.
-  let verifyResult = { allow: true, outcome: 'error' };
-  try {
-    verifyResult = await verifyCapture(ws, event);
-  } catch { /* fail-open */ }
-
-  appendEnforcementLog(ws,
-    `${new Date().toISOString()}\t${verifyResult.turnId ?? '-'}\t${verifyResult.tier ?? '-'}\t${verifyResult.outcome}\n`);
-
-  if (!verifyResult.allow) {
-    process.stderr.write(CORRECTIVE_MSG);
-    process.exit(2);
-  }
-
-  // Prune turn-writes.log to last hour.
-  try { pruneWriteIntents(ws); } catch { /* */ }
+  // Drain stdin so Claude Code doesn't hang waiting on us. We don't read it.
+  try { await readStdin(); } catch { /* */ }
 
   // Write session-handoff auto-line synchronously. Failure must not block drain.
   try {
@@ -338,20 +221,6 @@ async function onPreToolUse() {
     } catch { /* audit best-effort */ }
   }
 
-  // Cycle-3: write-intent log for capture enforcement.
-  if (isMemoryWrite) {
-    try {
-      const turn = readTurnJson(ws);
-      if (turn?.turn_id) {
-        appendWriteIntent(ws, {
-          turn_id: turn.turn_id,
-          target: target.replace(/^.*user-data\/memory\//, 'user-data/memory/'),
-          tool: toolName,
-        });
-      }
-    } catch { /* fail-open */ }
-  }
-
   process.exit(0);
 }
 
@@ -404,22 +273,6 @@ async function onPreBash(args) {
       process.stderr.write(`POLICY_REFUSED [bash:${result.name}]: ${result.why}\n`);
       process.exit(2);
     }
-
-    // Cycle-3: write-intent log for Bash redirections to user-data/memory/.
-    try {
-      const memWriteRe = />>?\s*[^\s]*user-data\/memory\//;
-      if (memWriteRe.test(cmd)) {
-        const turn = readTurnJson(ws);
-        if (turn?.turn_id) {
-          const m = cmd.match(/(user-data\/memory\/[^\s;|&)]+)/);
-          appendWriteIntent(ws, {
-            turn_id: turn.turn_id,
-            target: m?.[1] ?? 'user-data/memory/',
-            tool: 'bash',
-          });
-        }
-      }
-    } catch { /* fail-open */ }
 
     process.exit(0);
   } catch (err) {
@@ -499,12 +352,17 @@ function maybeRefreshEntitiesIndex(ws) {
   } catch { return false; }
 }
 
-function appendRecallLog(ws, { turnId, entitiesMatched, hitsInjected, bytesInjected }) {
+function appendRecallLog(ws, { sessionId, entitiesMatched, hitsInjected, bytesInjected }) {
   try {
     const file = join(ws, 'user-data/state/recall.log');
     mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, `${new Date().toISOString()}\t${turnId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\n`);
+    appendFileSync(file, `${new Date().toISOString()}\t${sessionId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\n`);
   } catch { /* best-effort */ }
+}
+
+function scanEntitiesInMessage(text, aliases) {
+  if (!text || !aliases.length) return [];
+  return scanEntityAliases(String(text), aliases);
 }
 
 async function onUserPromptSubmit(args) {
@@ -528,19 +386,10 @@ async function onUserPromptSubmit(args) {
       for (const a of e.aliases) aliasIndex.push(a);
     }
 
-    const tierResult = classifyTier({ userMessage, entityAliases: aliasIndex });
-
     // Inherit entities from the previous assistant message ("schedule it" pattern).
+    const fromUser = scanEntitiesInMessage(userMessage, aliasIndex);
     const fromAssistant = scanLastAssistantMessage(event.transcript_path, aliasIndex);
-    const allEntitiesMatched = [...new Set([...tierResult.entitiesMatched, ...fromAssistant])];
-
-    const turnId = mintTurnId(sessionId);
-    writeTurnJson(ws, {
-      turn_id: turnId,
-      user_words: tierResult.wc,
-      tier: tierResult.tier,
-      entities_matched: allEntitiesMatched,
-    });
+    const allEntitiesMatched = [...new Set([...fromUser, ...fromAssistant])];
 
     if (allEntitiesMatched.length > 0) {
       const matchedEntities = entityList
@@ -553,7 +402,7 @@ async function onUserPromptSubmit(args) {
         const block = `<!-- relevant memory (auto-loaded based on entities in your message) -->\n${formatted}\n<!-- /relevant memory -->\n`;
         process.stdout.write(block);
         appendRecallLog(ws, {
-          turnId,
+          sessionId,
           entitiesMatched: allEntitiesMatched,
           hitsInjected: r.hits.length,
           bytesInjected: block.length,

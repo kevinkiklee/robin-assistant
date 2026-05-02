@@ -18,14 +18,11 @@ Every entity (person, place, project, service) gets a page with `aliases:` in it
 
 Feed it a document with the **Ingest** command and it extracts facts, creates source pages, ripples updates across related files, and maintains cross-references automatically. Run **Lint** to audit the knowledge base for contradictions, dead links, stale claims, orphans, conversational tics, ambiguous aliases, and concepts mentioned three times without a dedicated page. Over time, the wiki compounds — each session leaves Robin knowing more than the last.
 
-### Enforced capture and recall
+### Auto-recall
 
-The model is supposed to write things down and look things up. It doesn't always do either. Robin closes the gap with Claude Code lifecycle hooks instead of trusting model discipline:
+The model is supposed to look things up but doesn't always remember to. Robin closes the gap with a UserPromptSubmit hook: when you submit a prompt, the hook scans your message *and* the previous assistant message for known entities, then injects relevant memory directly into the model's input as `<!-- relevant memory -->` blocks. Follow-ups like "schedule it" inherit the entity from the prior turn.
 
-- **Capture enforcement** — at turn end, a Stop hook hard-walls the response if a substantive turn finished without writing to memory. The model must either write a tagged line to `inbox.md` (or directly to a memory file) or emit a `<!-- no-capture-needed: <reason> -->` marker. A tier classifier decides enforcement strictness from message word count, capture keywords, and entity matches.
-- **Auto-recall** — when you submit a prompt, a UserPromptSubmit hook scans your message *and* the previous assistant message for known entities, then injects relevant memory directly into the model's input as `<!-- relevant memory -->` blocks. Follow-ups like "schedule it" inherit the entity from the prior turn.
-
-All retrieval is in-process Node-native — no ripgrep, no API key, no external service. Telemetry lives in `user-data/state/{capture-enforcement,recall,hook-perf}.log`.
+All retrieval is in-process Node-native — no ripgrep, no API key, no external service. Telemetry lives in `user-data/state/{recall,hook-perf}.log`.
 
 ### Self-improvement
 
@@ -61,8 +58,6 @@ Personal data has explicit defenses against prompt injection from sync sources a
 ### Passive capture
 
 Robin silently captures information from your conversations without you saying "remember this." It recognizes names and relationships, dates and deadlines, preferences, decisions with reasoning, corrections, commitments, predictions worth grading, and facts mentioned in passing. Each capture is tagged (`[fact]`, `[preference]`, `[decision]`, `[correction]`, `[task]`, `[journal]`, `[predict]`, `[action]`, `[watch:<id>]`) with an `origin=` attribution and written to an inbox. The nightly Dream cycle routes inbox entries to the right file. High-stakes captures (medical, financial, legal) are confirmed before storing.
-
-Capture is enforced by a Stop hook (Claude Code) — substantive turns that finish without writing to memory are walled off until the model either writes a tagged line or emits an explicit `<!-- no-capture-needed: <reason> -->` marker. Disable via `ROBIN_CAPTURE_ENFORCEMENT=off` if you'd rather trust the model.
 
 ### Structured memory
 
