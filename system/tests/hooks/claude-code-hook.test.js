@@ -7,7 +7,7 @@
 import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -285,6 +285,69 @@ test('Stop hook writes one line to turn-stats.log per turn', async () => {
   assert.equal(cols[1], 'test');
   assert.equal(cols[2], '2', 'rounds');
   assert.equal(cols[3], '2', 'reads (only Read calls; Bash excluded)');
+});
+
+test('Stop hook writes nothing when transcript_path is missing', async () => {
+  const ws = makeWorkspaceWithEntities([]);
+  const event = JSON.stringify({ session_id: 'no-tx' }); // no transcript_path
+
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: event, encoding: 'utf8' });
+
+  const logPath = join(ws, 'user-data/runtime/state/turn-stats.log');
+  // No log line should be written when there's no transcript to analyze.
+  assert.equal(existsSync(logPath), false, 'no log file when transcript_path is missing');
+});
+
+test('Stop hook writes nothing when transcript has only user messages', async () => {
+  const ws = makeWorkspaceWithEntities([]);
+  const txDir = join(ws, 'transcript');
+  mkdirSync(txDir, { recursive: true });
+  const tx = join(txDir, 'session.jsonl');
+  writeFileSync(tx, [
+    JSON.stringify({ role: 'user', content: 'hi' }),
+    JSON.stringify({ role: 'user', content: 'still hi' }),
+  ].join('\n'));
+
+  const event = JSON.stringify({ session_id: 'user-only', transcript_path: tx });
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: event, encoding: 'utf8' });
+
+  const logPath = join(ws, 'user-data/runtime/state/turn-stats.log');
+  assert.equal(existsSync(logPath), false, 'no log when no assistant turn yet');
+});
+
+test('Stop hook writes nothing when transcript ends mid-turn (no final text)', async () => {
+  const ws = makeWorkspaceWithEntities([]);
+  const txDir = join(ws, 'transcript');
+  mkdirSync(txDir, { recursive: true });
+  const tx = join(txDir, 'session.jsonl');
+  // Final assistant message has tool_use, no text — turn not yet complete.
+  writeFileSync(tx, [
+    JSON.stringify({ role: 'user', content: 'hi' }),
+    JSON.stringify({ role: 'assistant', content: [
+      { type: 'tool_use', name: 'Read', input: { file_path: '/x' } },
+    ] }),
+  ].join('\n'));
+
+  const event = JSON.stringify({ session_id: 'mid-turn', transcript_path: tx });
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: event, encoding: 'utf8' });
+
+  const logPath = join(ws, 'user-data/runtime/state/turn-stats.log');
+  assert.equal(existsSync(logPath), false, 'no log when no completed turn');
 });
 
 test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {

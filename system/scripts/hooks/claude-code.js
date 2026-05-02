@@ -129,6 +129,10 @@ function writeAutoLine(ws) {
   writeSessionBlock(hotFile, sid, body, { maxBlocks: 3, position: 'top' });
 }
 
+// Reads the last 32KB of the transcript JSONL and counts rounds + Read calls
+// in the most recent assistant turn (the one ending at the final-text message).
+// Trend monitoring only — very long turns may push earlier rounds out of the
+// 32KB window and undercount. Acceptable for the latency-proxy use case.
 function lastAssistantTurnFromTranscript(transcriptPath) {
   if (!transcriptPath || !existsSync(transcriptPath)) return null;
   const buf = readFileSync(transcriptPath);
@@ -146,10 +150,7 @@ function lastAssistantTurnFromTranscript(transcriptPath) {
   for (let i = records.length - 1; i >= 0; i--) {
     const r = records[i];
     const role = r.role ?? r.message?.role;
-    if (role !== 'assistant') {
-      if (foundFinal && role === 'assistant') break;
-      continue;
-    }
+    if (role !== 'assistant') continue;
     const content = r.content ?? r.message?.content;
     const blocks = Array.isArray(content) ? content : [];
     const toolUses = blocks.filter((b) => b?.type === 'tool_use');
