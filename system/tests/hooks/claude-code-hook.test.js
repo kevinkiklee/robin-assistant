@@ -244,6 +244,49 @@ test('UserPromptSubmit sanitizes "-->" in entity names so preface comment cannot
   assert.match(prefaceMatch[1], /Bad->Name/);
 });
 
+test('Stop hook writes one line to turn-stats.log per turn', async () => {
+  const ws = makeWorkspaceWithEntities([]); // empty memory is fine here; reuse helper from Task 2
+  // Seed a fake transcript: one assistant turn with 2 rounds + 2 reads + 1 bash + final text.
+  const txDir = join(ws, 'transcript');
+  mkdirSync(txDir, { recursive: true });
+  const tx = join(txDir, 'session.jsonl');
+  writeFileSync(tx, [
+    JSON.stringify({ role: 'user', content: 'hi' }),
+    JSON.stringify({ role: 'assistant', content: [
+      { type: 'tool_use', name: 'Read', input: { file_path: '/x' } },
+    ] }),
+    JSON.stringify({ role: 'user', content: '[tool_result]' }),
+    JSON.stringify({ role: 'assistant', content: [
+      { type: 'tool_use', name: 'Read', input: { file_path: '/y' } },
+      { type: 'tool_use', name: 'Bash', input: { command: 'ls' } },
+    ] }),
+    JSON.stringify({ role: 'user', content: '[tool_result]' }),
+    JSON.stringify({ role: 'assistant', content: 'final answer' }),
+  ].join('\n'));
+
+  const event = JSON.stringify({
+    session_id: 'test',
+    transcript_path: tx,
+  });
+
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: event, encoding: 'utf8' });
+
+  const log = readFileSync(join(ws, 'user-data/runtime/state/turn-stats.log'), 'utf8');
+  const lines = log.trim().split('\n');
+  assert.equal(lines.length, 1);
+  const cols = lines[0].split('\t');
+  // <iso>\t<sessionId>\t<rounds>\t<reads>\t<recall_fired>\t<memory_read_after_recall>
+  assert.equal(cols.length, 6);
+  assert.equal(cols[1], 'test');
+  assert.equal(cols[2], '2', 'rounds');
+  assert.equal(cols[3], '2', 'reads (only Read calls; Bash excluded)');
+});
+
 test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {
   const ws = mkdtempSync(join(tmpdir(), 'hook-'));
   mkdirSync(join(ws, 'user-data/runtime/state'), { recursive: true });

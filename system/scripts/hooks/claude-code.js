@@ -129,17 +129,100 @@ function writeAutoLine(ws) {
   writeSessionBlock(hotFile, sid, body, { maxBlocks: 3, position: 'top' });
 }
 
+function lastAssistantTurnFromTranscript(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return null;
+  const buf = readFileSync(transcriptPath);
+  const tail = buf.length > 32 * 1024 ? buf.subarray(buf.length - 32 * 1024) : buf;
+  const lines = tail.toString('utf8').split('\n').filter(Boolean);
+  // Walk records and find the most recent contiguous assistant turn.
+  // A turn ends at a final-text assistant message (no tool_use).
+  const records = [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try { records.unshift(JSON.parse(lines[i])); } catch { /* skip */ }
+  }
+  let rounds = 0;
+  let reads = 0;
+  let foundFinal = false;
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    const role = r.role ?? r.message?.role;
+    if (role !== 'assistant') {
+      if (foundFinal && role === 'assistant') break;
+      continue;
+    }
+    const content = r.content ?? r.message?.content;
+    const blocks = Array.isArray(content) ? content : [];
+    const toolUses = blocks.filter((b) => b?.type === 'tool_use');
+    if (!foundFinal && toolUses.length === 0) {
+      foundFinal = true;
+      continue;
+    }
+    if (foundFinal && toolUses.length === 0) break; // previous turn's final
+    if (foundFinal) {
+      rounds += 1;
+      reads += toolUses.filter((b) => b.name === 'Read').length;
+    }
+  }
+  return foundFinal ? { rounds, reads } : null;
+}
+
+function recallFiredInTranscript(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return false;
+  const buf = readFileSync(transcriptPath);
+  const tail = buf.length > 32 * 1024 ? buf.subarray(buf.length - 32 * 1024) : buf;
+  return /<!-- relevant memory:/.test(tail.toString('utf8'));
+}
+
+function memoryReadAfterRecall(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return false;
+  const buf = readFileSync(transcriptPath);
+  const tail = buf.length > 32 * 1024 ? buf.subarray(buf.length - 32 * 1024) : buf;
+  const text = tail.toString('utf8');
+  if (!/<!-- relevant memory:/.test(text)) return false;
+  // Coarse signal: any Read of a path under user-data/memory/ in the tail.
+  return /"name"\s*:\s*"Read"[\s\S]*?"file_path"\s*:\s*"[^"]*user-data\/memory\//.test(text);
+}
+
+function appendTurnStats(ws, event) {
+  const turn = lastAssistantTurnFromTranscript(event.transcript_path);
+  if (!turn) return; // no completed turn to log
+  const fired = recallFiredInTranscript(event.transcript_path);
+  const reread = fired ? memoryReadAfterRecall(event.transcript_path) : false;
+  const file = join(ws, 'user-data/runtime/state/turn-stats.log');
+  mkdirSync(dirname(file), { recursive: true });
+  const line = [
+    new Date().toISOString(),
+    event.session_id ?? 'unknown',
+    turn.rounds,
+    turn.reads,
+    fired ? '1' : '0',
+    reread ? '1' : '0',
+  ].join('\t');
+  appendFileSync(file, line + '\n');
+}
+
 async function onStop(args) {
   const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
 
-  // Drain stdin so Claude Code doesn't hang waiting on us. We don't read it.
-  try { await readStdin(); } catch { /* */ }
+  // Read the event from stdin (we now use it for telemetry).
+  let event = {};
+  try {
+    const stdin = await readStdin();
+    event = stdin ? JSON.parse(stdin) : {};
+  } catch { /* fail-open */ }
 
   // Write session-handoff auto-line synchronously. Failure must not block drain.
   try {
     writeAutoLine(ws);
   } catch (err) {
     process.stderr.write(`[claude-code-hook] writeAutoLine failed: ${err.message}\n`);
+  }
+
+  // Per-turn telemetry (best-effort; never blocks the rest of the hook).
+  try {
+    appendTurnStats(ws, event);
+  } catch (err) {
+    process.stderr.write(`[claude-code-hook] appendTurnStats failed: ${err.message}\n`);
   }
 
   if (!args.drain) {
