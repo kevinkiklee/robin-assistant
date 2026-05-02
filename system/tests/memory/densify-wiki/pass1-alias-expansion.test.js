@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { deriveCandidates, applyFilters } from '../../../scripts/memory/lib/alias-expander.js';
+import { deriveCandidates, applyFilters, shouldFlipType } from '../../../scripts/memory/lib/alias-expander.js';
 
 test('deriveCandidates extracts H1 and filename', () => {
   const body = `---
@@ -84,4 +84,30 @@ test('applyFilters rejects stop-list entries (whole-string, case-insensitive)', 
   });
   assert.deepEqual(result.accepted, ['Bay Photo']);
   assert.equal(result.rejected.find(r => r.candidate === 'Generic Page').reason, 'stop-list');
+});
+
+test('shouldFlipType flips entity-shaped dir + aliases + type:topic', () => {
+  assert.equal(shouldFlipType({ relPath: 'profile/people/jake-lee.md', currentType: 'topic', hasAliases: true }), true);
+  assert.equal(shouldFlipType({ relPath: 'knowledge/projects/photobot.md', currentType: 'topic', hasAliases: true }), true);
+  assert.equal(shouldFlipType({ relPath: 'knowledge/service-providers/abco.md', currentType: 'topic', hasAliases: true }), true);
+  assert.equal(shouldFlipType({ relPath: 'knowledge/locations/home.md', currentType: 'topic', hasAliases: true }), true);
+});
+
+test('shouldFlipType does NOT flip type:snapshot/analysis/event/source', () => {
+  for (const t of ['snapshot', 'analysis', 'event', 'source']) {
+    assert.equal(shouldFlipType({ relPath: 'profile/people/jake-lee.md', currentType: t, hasAliases: true }), false, `type:${t} must not flip`);
+  }
+});
+
+test('shouldFlipType does NOT flip when not in entity-shaped dir', () => {
+  assert.equal(shouldFlipType({ relPath: 'knowledge/medical/back-spine.md', currentType: 'topic', hasAliases: true }), false);
+  assert.equal(shouldFlipType({ relPath: 'journal.md', currentType: 'topic', hasAliases: true }), false);
+});
+
+test('shouldFlipType does NOT flip when no aliases', () => {
+  assert.equal(shouldFlipType({ relPath: 'profile/people/jake-lee.md', currentType: 'topic', hasAliases: false }), false);
+});
+
+test('shouldFlipType does NOT flip when already type:entity', () => {
+  assert.equal(shouldFlipType({ relPath: 'profile/people/jake-lee.md', currentType: 'entity', hasAliases: true }), false);
 });

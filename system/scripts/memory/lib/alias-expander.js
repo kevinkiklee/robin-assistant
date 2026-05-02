@@ -66,3 +66,21 @@ export function applyFilters(candidates, { existingAliases, inPassRegistry, stop
   }
   return { accepted, rejected };
 }
+
+export const ENTITY_SHAPED_DIRS = [
+  'profile/people/',
+  'knowledge/service-providers/',
+  'knowledge/projects/',
+  'knowledge/locations/',
+];
+
+export function inEntityShapedDir(relPath) {
+  const norm = relPath.replace(/\\/g, '/');
+  return ENTITY_SHAPED_DIRS.some(d => norm.startsWith(d));
+}
+
+export function shouldFlipType({ relPath, currentType, hasAliases }) {
+  if (!hasAliases) return false;
+  if (!inEntityShapedDir(relPath)) return false;
+  return currentType === 'topic';
+}
