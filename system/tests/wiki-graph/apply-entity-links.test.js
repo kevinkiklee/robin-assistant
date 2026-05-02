@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtemp, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { applyEntityLinks } from '../../scripts/lib/wiki-graph/apply-entity-links.js';
-import { buildEntityRegistry } from '../../scripts/lib/wiki-graph/build-entity-registry.js';
+import { applyEntityLinks } from '../../scripts/wiki-graph/lib/apply-entity-links.js';
+import { buildEntityRegistry } from '../../scripts/wiki-graph/lib/build-entity-registry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

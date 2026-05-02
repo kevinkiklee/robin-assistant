@@ -355,7 +355,7 @@ function findTicViolations(memRoot) {
 // ---------------------------------------------------------------------------
 
 async function findAmbiguousAliases(workspaceDir) {
-  const { buildEntityRegistry } = await import('./lib/wiki-graph/build-entity-registry.js');
+  const { buildEntityRegistry } = await import('./wiki-graph/lib/build-entity-registry.js');
   try {
     await buildEntityRegistry(workspaceDir);
     return [];
@@ -388,8 +388,8 @@ const PROPER_NOUN_RE = /\b([A-Z][a-zA-Z]+ [A-Z][a-zA-Z]+)\b/g;
 
 async function findCandidateEntities(workspaceDir) {
   const { readFile } = await import('node:fs/promises');
-  const { buildEntityRegistry } = await import('./lib/wiki-graph/build-entity-registry.js');
-  const { isExcludedPath } = await import('./lib/wiki-graph/exclusions.js');
+  const { buildEntityRegistry } = await import('./wiki-graph/lib/build-entity-registry.js');
+  const { isExcludedPath } = await import('./wiki-graph/lib/exclusions.js');
   const { join, relative } = await import('node:path');
 
   let registry;

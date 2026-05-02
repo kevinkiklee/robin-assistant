@@ -69,7 +69,7 @@ async function main() {
     process.exit(0);
   }
   if (cmd === 'link') {
-    const { cmdLink } = await import('../system/scripts/lib/wiki-graph/cli-link.js');
+    const { cmdLink } = await import('../system/scripts/wiki-graph/lib/cli-link.js');
     process.exit(await cmdLink(rest));
   }
   if (cmd === 'watch') {

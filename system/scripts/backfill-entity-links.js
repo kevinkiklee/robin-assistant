@@ -2,9 +2,9 @@ import { readdir, mkdir, writeFile } from 'node:fs/promises';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdirSync } from 'node:fs';
-import { applyEntityLinks } from './lib/wiki-graph/apply-entity-links.js';
-import { buildEntityRegistry } from './lib/wiki-graph/build-entity-registry.js';
-import { isExcludedPath } from './lib/wiki-graph/exclusions.js';
+import { applyEntityLinks } from './wiki-graph/lib/apply-entity-links.js';
+import { buildEntityRegistry } from './wiki-graph/lib/build-entity-registry.js';
+import { isExcludedPath } from './wiki-graph/lib/exclusions.js';
 import { acquireLock, releaseLock } from './jobs/lib/atomic.js';
 import { writeLinksIndex } from './regenerate-links.js';
 

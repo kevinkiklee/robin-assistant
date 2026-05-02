@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isExcludedPath, EXCLUDED_PATHS } from '../../scripts/lib/wiki-graph/exclusions.js';
+import { isExcludedPath, EXCLUDED_PATHS } from '../../scripts/wiki-graph/lib/exclusions.js';
 
 test('isExcludedPath: top-level operational files are excluded', () => {
   for (const p of ['inbox.md', 'journal.md', 'log.md', 'decisions.md', 'tasks.md', 'hot.md', 'LINKS.md', 'INDEX.md']) {
@@ -24,7 +24,7 @@ test('EXCLUDED_PATHS exposes the constant for orchestrator use', () => {
   assert.ok(EXCLUDED_PATHS.includes('inbox.md'));
 });
 
-import { computeSkipRanges, isInsideSkipRange } from '../../scripts/lib/wiki-graph/exclusions.js';
+import { computeSkipRanges, isInsideSkipRange } from '../../scripts/wiki-graph/lib/exclusions.js';
 
 test('computeSkipRanges: YAML frontmatter is a skip range', () => {
   const body = '---\ntitle: x\n---\nHello world';

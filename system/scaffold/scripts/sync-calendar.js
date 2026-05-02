@@ -23,8 +23,8 @@ import { loadCursor, saveCursor } from '../../system/scripts/sync/lib/cursor.js'
 import { atomicWrite, writeTable, openItem } from '../../system/scripts/sync/lib/markdown.js';
 import { updateIndex } from '../../system/scripts/sync/lib/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/jobs/lib/atomic.js';
-import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
-import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
+import { buildEntityRegistry } from '../../system/scripts/wiki-graph/lib/build-entity-registry.js';
+import { applyEntityLinks } from '../../system/scripts/wiki-graph/lib/apply-entity-links.js';
 import { CalendarClient } from './lib/google/calendar-client.js';
 
 const SOURCE = 'sync-calendar';

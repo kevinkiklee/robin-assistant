@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtemp, cp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { cmdLink } from '../../scripts/lib/wiki-graph/cli-link.js';
+import { cmdLink } from '../../scripts/wiki-graph/lib/cli-link.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

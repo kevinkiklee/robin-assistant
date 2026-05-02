@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { buildEntityRegistry } from '../../scripts/lib/wiki-graph/build-entity-registry.js';
+import { buildEntityRegistry } from '../../scripts/wiki-graph/lib/build-entity-registry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
