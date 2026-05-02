@@ -127,15 +127,19 @@ function getFrontmatterField(body, re) {
   return m ? m[1].trim() : '';
 }
 
+function quoteAlias(a) {
+  return `"${a.replace(/"/g, '\\"')}"`;
+}
+
 function setAliasesAndType(body, newAliases, newType) {
   const fm = body.match(FM_BLOCK_RE);
   if (!fm) {
-    const aliasesLine = `aliases: [${newAliases.join(', ')}]`;
+    const aliasesLine = `aliases: [${newAliases.map(quoteAlias).join(', ')}]`;
     const typeLine = newType ? `\ntype: ${newType}` : '';
     return `---\n${aliasesLine}${typeLine}\n---\n${body}`;
   }
   let block = fm[1];
-  const newAliasesLine = `aliases: [${newAliases.join(', ')}]`;
+  const newAliasesLine = `aliases: [${newAliases.map(quoteAlias).join(', ')}]`;
   block = ALIASES_RE.test(block)
     ? block.replace(ALIASES_RE, newAliasesLine)
     : block.replace(/\n---\n?$/, `\n${newAliasesLine}\n---\n`);

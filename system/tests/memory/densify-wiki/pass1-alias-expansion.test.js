@@ -140,7 +140,7 @@ test('expandAliases writes additions to entity-shaped files atomically', async (
     const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
 
     const after = readFileSync(filePath, 'utf-8');
-    assert.match(after, /aliases: \[Jake, Jake Lee\]/);
+    assert.match(after, /aliases: \["Jake", "Jake Lee"\]/);
     assert.match(after, /type: entity/);
     assert.equal(result.filesModified.length, 1);
     assert.deepEqual(result.summary.aliasesAdded, 1);
@@ -185,7 +185,7 @@ test('expandAliases handles quoted aliases array on read (real user-data format)
     const result = await expandAliases({ workspaceDir: ws, stopList: new Set() });
     // Existing aliases recognized: Jake, Joony, brother. New candidate: Jake Lee. Collision check sees clean.
     const after = readFileSync(filePath, 'utf-8');
-    assert.match(after, /aliases: \[Jake, Joony, brother, Jake Lee\]/);
+    assert.match(after, /aliases: \["Jake", "Joony", "brother", "Jake Lee"\]/);
     assert.equal(result.summary.aliasesAdded, 1);
     assert.equal(result.summary.typeFlips, 1);
   } finally {
@@ -215,6 +215,23 @@ test('expandAliases registry detects collision across two files with quoted alia
     );
     assert.ok(rejection, 'expected collision rejection for Bay Photo on another.md');
     assert.match(rejection.reason, /collision/);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('expandAliases preserves comma-bearing aliases through round-trip', async () => {
+  const ws = tempWorkspace();
+  try {
+    const filePath = join(ws, 'user-data/memory/profile/people/dr-yangdhar.md');
+    writeFileSync(filePath, `---\ntype: topic\naliases: ["Dr. Yangdhar", "Nyima Yangdhar, MD"]\n---\n# Dr Yangdhar\n`);
+    await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    const after = readFileSync(filePath, 'utf-8');
+    // The comma-bearing alias must survive — not split into two.
+    assert.match(after, /"Nyima Yangdhar, MD"/, 'comma-bearing alias must be quoted');
+    // Subsequent read should recognize the original alias unchanged.
+    const result2 = await expandAliases({ workspaceDir: ws, stopList: new Set() });
+    assert.equal(result2.summary.aliasesAdded, 0, 'second run should be a no-op');
   } finally {
     rmSync(ws, { recursive: true });
   }
