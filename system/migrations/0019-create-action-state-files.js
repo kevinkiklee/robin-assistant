@@ -14,16 +14,19 @@ export const description =
 
 const SCAFFOLD_DIR = join(dirname(fileURLToPath(import.meta.url)), '../scaffold');
 
-// Scaffold sources moved to the post-0021 layout (ops/config, ops/state/turn).
-// Destinations remain at the pre-0021 paths because 0019 runs BEFORE 0021;
-// migration 0021 then reorganizes user-data/ to match scaffold.
+// Sources and destinations both use the post-0021 layout. On a fresh install,
+// 0019 writes directly to ops/* paths; when 0021 runs afterward, its
+// existsSync(src) checks at the pre-0021 paths fail and 0021 no-ops gracefully
+// for these files. On older installs that already ran 0019 at pre-0021
+// destinations, 0019 is recorded applied and doesn't re-run; 0021 then moves
+// the pre-0021 files to the new layout in the normal way.
 const TARGETS = [
-  { src: 'ops/config/policies.md', dst: 'user-data/policies.md' },
+  { src: 'ops/config/policies.md', dst: 'user-data/ops/config/policies.md' },
   {
     src: 'memory/self-improvement/action-trust.md',
     dst: 'user-data/memory/self-improvement/action-trust.md',
   },
-  { src: 'ops/state/turn/pending-asks.md', dst: 'user-data/state/pending-asks.md' },
+  { src: 'ops/state/turn/pending-asks.md', dst: 'user-data/ops/state/turn/pending-asks.md' },
 ];
 
 export async function up({ workspaceDir }) {
