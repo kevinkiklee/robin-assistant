@@ -99,6 +99,29 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     } catch (err) {
       console.warn(`postinstall: manifest scaffold copy skipped (${err.message})`);
     }
+    // Refresh user-data/ops/scripts/ from scaffold. Auth/sync/write scripts are
+    // templates whose path constants live in source — when migrations relocate
+    // user-data layout (e.g. 0021), already-copied scripts retain stale paths
+    // unless we refresh. Only top-level .js files in ops/scripts/ are refreshed;
+    // user-authored scripts (no scaffold counterpart) and the lib/ subtree pass
+    // through. Files Kevin/users add (e.g. reconcile-bh-payboo.js) are preserved.
+    try {
+      const scaffoldScripts = join(scaffold, 'ops/scripts');
+      const userScripts = join(ud, 'ops/scripts');
+      if (existsSync(scaffoldScripts) && existsSync(userScripts)) {
+        let refreshed = 0;
+        for (const entry of readdirSync(scaffoldScripts)) {
+          if (!entry.endsWith('.js')) continue;
+          cpSync(join(scaffoldScripts, entry), join(userScripts, entry), { force: true });
+          refreshed++;
+        }
+        if (refreshed > 0) {
+          console.log(`postinstall: refreshed ${refreshed} script template(s) from scaffold`);
+        }
+      }
+    } catch (err) {
+      console.warn(`postinstall: scaffold scripts refresh skipped (${err.message})`);
+    }
     return;
   }
 

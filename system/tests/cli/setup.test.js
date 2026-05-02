@@ -49,3 +49,24 @@ test('setup records baseline migration as applied', async () => {
   assert.ok(log.find(e => e.id === '0001-baseline'));
   rmSync(root, { recursive: true, force: true });
 });
+
+test('setup refreshes existing user-data scripts from scaffold', async () => {
+  const root = repo();
+  // Existing user-data with stale script + custom (Kevin-authored) script
+  mkdirSync(join(root, 'user-data/memory/profile'), { recursive: true });
+  writeFileSync(join(root, 'user-data/memory/profile/identity.md'), '# Already filled\n');
+  mkdirSync(join(root, 'user-data/ops/scripts'), { recursive: true });
+  writeFileSync(join(root, 'user-data/ops/scripts/sync-gmail.js'), '// STALE: user-data/secrets/.env\n');
+  writeFileSync(join(root, 'user-data/ops/scripts/custom-script.js'), '// custom Kevin script\n');
+  // Scaffold has the canonical version
+  mkdirSync(join(root, 'system/scaffold/ops/scripts'), { recursive: true });
+  writeFileSync(join(root, 'system/scaffold/ops/scripts/sync-gmail.js'), '// FRESH: user-data/ops/secrets/.env\n');
+
+  await setup(root, { ci: true });
+
+  // Stale template overwritten with scaffold version
+  assert.match(readFileSync(join(root, 'user-data/ops/scripts/sync-gmail.js'), 'utf-8'), /FRESH/);
+  // Kevin's custom script (no scaffold counterpart) preserved
+  assert.equal(readFileSync(join(root, 'user-data/ops/scripts/custom-script.js'), 'utf-8'), '// custom Kevin script\n');
+  rmSync(root, { recursive: true, force: true });
+});
