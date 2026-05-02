@@ -12,7 +12,7 @@ NEVER: gmail-send-new-thread, calendar-delete-event-with-attendees, shell-rm-rec
 
 User-editable. Comments allowed (anything after `#`). First match wins per class. Hard rules cannot be bypassed.
 
-Action class slug derivation: `system/scripts/lib/actions/classify.js`. Earned trust evidence: `user-data/memory/self-improvement/action-trust.md`.
+Action class slug derivation: `system/scripts/capture/lib/actions/classify.js`. Earned trust evidence: `user-data/memory/self-improvement/action-trust.md`.
 
 ## AUTO
 

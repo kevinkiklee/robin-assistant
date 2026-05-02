@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeSessionBlock } from '../scripts/lib/handoff.js';
+import { writeSessionBlock } from '../../scripts/capture/lib/handoff.js';
 
 function setup(initialContent) {
   const dir = mkdtempSync(join(tmpdir(), 'handoff-'));

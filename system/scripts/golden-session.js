@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 const BUDGET_PATH = join(REPO_ROOT, 'system', 'scripts', 'lib', 'token-budget.json');
-const SNAPSHOT_PATH = join(REPO_ROOT, 'system', 'tests', 'golden-session.snapshot.json');
+const SNAPSHOT_PATH = join(REPO_ROOT, 'system', 'tests', 'capture', 'golden-session.snapshot.json');
 
 function buildSnapshot() {
   const budget = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'));

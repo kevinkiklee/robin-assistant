@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyAction } from '../scripts/lib/actions/classify.js';
+import { classifyAction } from '../../scripts/capture/lib/actions/classify.js';
 
 test('mcp tool: provider-verb extracts provider from prefix', () => {
   assert.equal(

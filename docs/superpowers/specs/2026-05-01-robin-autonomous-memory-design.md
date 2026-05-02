@@ -402,7 +402,7 @@ None at design time. Resolve during implementation:
 **New:**
 - `system/scripts/memory/index-entities.js`
 - `system/scripts/memory/lib/recall.js`
-- `system/scripts/lib/capture-keyword-scan.js`
+- `system/scripts/capture/lib/capture-keyword-scan.js`
 - `system/tests/claude-code-hook.test.js` (extends existing tests if any)
 - `system/tests/index-entities.test.js`
 - `system/tests/recall.test.js`

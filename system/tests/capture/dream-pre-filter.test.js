@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { preFilter } from '../scripts/dream-pre-filter.js';
+import { preFilter } from '../../scripts/capture/dream-pre-filter.js';
 
 function makeWorkspace(inboxContent) {
   const ws = mkdtempSync(join(tmpdir(), 'pre-filter-'));

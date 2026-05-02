@@ -51,7 +51,7 @@ Every line in `user-data/memory/inbox.md` must include `origin=...` in its tag:
 
 ### Dream pre-filter
 
-Before Dream's routing phase, `system/scripts/dream-pre-filter.js` runs against `inbox.md`:
+Before Dream's routing phase, `system/scripts/capture/dream-pre-filter.js` runs against `inbox.md`:
 
 - `origin=user` and `origin=user|legacy` → keep in inbox.
 - `origin=derived` → keep AND log to quarantine for retrospective audit.
@@ -72,7 +72,7 @@ Ingest cannot write to:
 - `user-data/memory/self-improvement/{corrections,preferences,patterns,communication-style,calibration}.md`
 - `user-data/memory/profile/identity.md`
 
-Mechanical enforcement: every ingest-driven multi-file write goes through `system/scripts/ingest-guard.js:assertIngestDestinationAllowed(path)`, which throws `IngestForbiddenError` on a blocklist match.
+Mechanical enforcement: every ingest-driven multi-file write goes through `system/scripts/capture/ingest-guard.js:assertIngestDestinationAllowed(path)`, which throws `IngestForbiddenError` on a blocklist match.
 
 ---
 

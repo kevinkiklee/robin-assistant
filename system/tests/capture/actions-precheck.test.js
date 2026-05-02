@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { precheckAction } from '../scripts/lib/actions/precheck.js';
+import { precheckAction } from '../../scripts/capture/lib/actions/precheck.js';
 
 test('clean call passes', () => {
   const r = precheckAction({

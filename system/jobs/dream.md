@@ -38,7 +38,7 @@ You don't need to invoke the migration script. If `user-data/state/jobs/migrate-
 Before Phase 1 reads inbox.md, run the cycle-1a pre-filter to quarantine any captures that originated from synced/ingested/tool content (lines whose tag carries `origin=sync:*`, `origin=ingest:*`, or `origin=tool:*`):
 
 ```sh
-node system/scripts/dream-pre-filter.js
+node system/scripts/capture/dream-pre-filter.js
 ```
 
 Confirm exit code 0. The script moves quarantined lines to `user-data/memory/quarantine/captures.md` (paraphrased + redacted) and removes them from inbox.md. Phase 1 then reads the cleaned inbox. Lines without any `origin=` field (post-migration) are also quarantined as policy violations.
@@ -148,7 +148,7 @@ Runs after all other phases. Maintains the memory tree structure.
 
 17. **LINKS.md maintenance** — if structural changes occurred in this Dream cycle (files were split, deleted, or moved in steps 13-14), run `node system/scripts/memory/regenerate-links.js` to rebuild `user-data/memory/LINKS.md` from the current link graph. Otherwise, trust incremental appends and skip. Deduplicate any duplicate edges.
 
-17.5. **Compact-summary regeneration** — run the helper from `system/scripts/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
+17.5. **Compact-summary regeneration** — run the helper from `system/scripts/capture/lib/actions/compact-summary.js` (`regenerateCompactSummary('user-data/policies.md')`) to refresh the `<!-- BEGIN compact-summary -->` block from the AUTO/ASK/NEVER bullet body. Idempotent — content-addressed write, no-op when nothing changed.
 
 17.6. **ENTITIES.md regeneration.** Run `node system/scripts/memory/index-entities.js --regenerate`. Idempotent — exits clean if nothing changed. If it exits 2 ("user-edited"), include the warning in the dream summary and skip; do not retry until the user resolves.
 

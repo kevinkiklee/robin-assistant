@@ -21,7 +21,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const INBOX = join(REPO_ROOT, 'user-data/memory/inbox.md');
 const MIGRATION_LOG = join(REPO_ROOT, 'user-data/state/migrated-auto-memory-log.json');
 const LOG_CAP = 500;

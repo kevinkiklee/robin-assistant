@@ -5,7 +5,7 @@
 // at session start. The body remains the user-editable source of truth.
 
 import { readFileSync } from 'node:fs';
-import { writeIfChanged } from '../../jobs/lib/atomic.js';
+import { writeIfChanged } from '../../../jobs/lib/atomic.js';
 
 const SECTION_RE = /^##\s+(AUTO|ASK|NEVER)\s*$/i;
 const BULLET_RE = /^-\s+([a-z0-9][a-z0-9-]*)/i;

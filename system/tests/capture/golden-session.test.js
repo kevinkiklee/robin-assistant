@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'golden-session.js');
-const SNAPSHOT = join(REPO_ROOT, 'system', 'tests', 'golden-session.snapshot.json');
+const SNAPSHOT = join(REPO_ROOT, 'system', 'tests', 'capture', 'golden-session.snapshot.json');
 
 describe('golden-session', () => {
   it('snapshot exists', () => {

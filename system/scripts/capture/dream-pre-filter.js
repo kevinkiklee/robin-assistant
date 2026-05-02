@@ -24,10 +24,10 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRedaction } from './sync/lib/redact.js';
+import { applyRedaction } from '../sync/lib/redact.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 const INBOX_REL = 'user-data/memory/inbox.md';
 const QUARANTINE_REL = 'user-data/memory/quarantine/captures.md';

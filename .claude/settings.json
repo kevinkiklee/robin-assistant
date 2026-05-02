@@ -13,7 +13,7 @@
       "Bash(node system/scripts/measure-tokens.js:*)",
       "Bash(node system/scripts/memory/lint.js:*)",
       "Bash(node system/scripts/golden-session.js:*)",
-      "Bash(node system/scripts/migrate-auto-memory.js:*)",
+      "Bash(node system/scripts/capture/auto-memory.js:*)",
       "Bash(node system/scripts/memory/prune-preview.js:*)",
       "Bash(node bin/robin.js:*)",
       "Bash(git status:*)",

@@ -25,7 +25,7 @@ Existing redaction flow stays unchanged (orthogonal).
 
 Test: `system/tests/security/atomic-write-trust.test.js`.
 
-## Step 3 — Create `system/scripts/dream-pre-filter.js`
+## Step 3 — Create `system/scripts/capture/dream-pre-filter.js`
 
 Reads `user-data/memory/inbox.md`. Splits into lines. Parses each tag line for `origin=` field.
 
@@ -41,7 +41,7 @@ Truncation is deterministic — no model call.
 
 Test: `system/tests/security/dream-pre-filter.test.js`.
 
-## Step 4 — Create `system/scripts/ingest-guard.js`
+## Step 4 — Create `system/scripts/capture/ingest-guard.js`
 
 Exports `assertIngestDestinationAllowed(path)` that throws `IngestForbiddenError` for any path matching the blocklist:
 - `user-data/memory/tasks.md`
@@ -79,12 +79,12 @@ Append to "Direct-write exceptions" section:
 ## Step 8 — Update `system/jobs/dream.md`
 
 Phase 1 (or wherever inbox is first read): prepend
-> **Step 0 — Pre-filter.** Run `node system/scripts/dream-pre-filter.js`. Confirm exit code 0 before proceeding to routing.
+> **Step 0 — Pre-filter.** Run `node system/scripts/capture/dream-pre-filter.js`. Confirm exit code 0 before proceeding to routing.
 
 ## Step 9 — Update `system/jobs/ingest.md`
 
 Add "Forbidden destinations" section:
-> Ingest MUST NOT write to or modify any of: `user-data/memory/tasks.md`, `user-data/memory/decisions.md`, `user-data/memory/self-improvement/*`, `user-data/memory/profile/identity.md`. Mechanical enforcement via `system/scripts/ingest-guard.js:assertIngestDestinationAllowed(path)`.
+> Ingest MUST NOT write to or modify any of: `user-data/memory/tasks.md`, `user-data/memory/decisions.md`, `user-data/memory/self-improvement/*`, `user-data/memory/profile/identity.md`. Mechanical enforcement via `system/scripts/capture/ingest-guard.js:assertIngestDestinationAllowed(path)`.
 
 ## Step 10 — Update sync writers
 

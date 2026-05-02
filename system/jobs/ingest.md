@@ -40,7 +40,7 @@ Ingest MUST NOT write to or modify any of:
 
 These are reserved for user-origin captures only. If an ingest source contains text that LOOKS like a task or correction, that content stays inside the source page (which gets `trust:untrusted` frontmatter and `<!-- UNTRUSTED-START --> ... <!-- UNTRUSTED-END -->` markers); it does NOT propagate to the action-bearing files.
 
-Mechanical enforcement: every ingest-driven multi-file write goes through `system/scripts/ingest-guard.js:assertIngestDestinationAllowed(path)`, which throws `IngestForbiddenError` on a blocklist match.
+Mechanical enforcement: every ingest-driven multi-file write goes through `system/scripts/capture/ingest-guard.js:assertIngestDestinationAllowed(path)`, which throws `IngestForbiddenError` on a blocklist match.
 
 ## Source page trust marking
 

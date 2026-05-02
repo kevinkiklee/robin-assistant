@@ -1,7 +1,7 @@
 // system/tests/capture-keyword-scan.test.js
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { scanEntityAliases } from '../scripts/lib/capture-keyword-scan.js';
+import { scanEntityAliases } from '../../scripts/capture/lib/capture-keyword-scan.js';
 
 describe('scanEntityAliases', () => {
   it('returns [] for empty alias list', () => {

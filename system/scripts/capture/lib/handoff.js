@@ -1,4 +1,4 @@
-// system/scripts/lib/handoff.js
+// system/scripts/capture/lib/handoff.js
 //
 // Append-or-replace session-keyed blocks in markdown files. Used by:
 //   - system/scripts/hooks/claude-code.js (Stop-hook auto-line)

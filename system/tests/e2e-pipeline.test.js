@@ -66,7 +66,7 @@ describe('e2e: full toolchain', () => {
   });
 
   it('migrate-auto-memory dry-run succeeds', () => {
-    const r = run('node', ['system/scripts/migrate-auto-memory.js', '--json']);
+    const r = run('node', ['system/scripts/capture/auto-memory.js', '--json']);
     assert.equal(r.exit, 0);
     const out = JSON.parse(r.stdout);
     assert.ok('by_host' in out);

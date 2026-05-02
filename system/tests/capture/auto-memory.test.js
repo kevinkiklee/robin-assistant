@@ -4,11 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import { normalizeSummary, summaryHash } from '../scripts/migrate-auto-memory.js';
+import { normalizeSummary, summaryHash } from '../../scripts/capture/auto-memory.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'migrate-auto-memory.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const SCRIPT = join(REPO_ROOT, 'system', 'scripts', 'capture', 'auto-memory.js');
 
 function runScript(args = []) {
   return execFileSync('node', [SCRIPT, ...args, '--json'], {

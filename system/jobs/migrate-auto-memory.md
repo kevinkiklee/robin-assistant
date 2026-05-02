@@ -4,7 +4,7 @@ description: Drains host-managed auto-memory (e.g., Claude Code) into user-data/
 runtime: node
 enabled: true
 schedule: "5 * * * *"
-command: node system/scripts/migrate-auto-memory.js --apply
+command: node system/scripts/capture/auto-memory.js --apply
 catch_up: false
 timeout_minutes: 1
 notify_on_failure: false

@@ -115,7 +115,7 @@ plans at `docs/superpowers/plans/2026-04-30-cycle-*.md`. Source audit at
 
 Replaces the single global "Ask vs Act" rule with a three-tier action
 state machine (AUTO/ASK/NEVER). New deterministic libs:
-`system/scripts/lib/actions/classify.js` (tool-call → class slug),
+`system/scripts/capture/lib/actions/classify.js` (tool-call → class slug),
 `precheck.js` (privacy/dollar/legal/explicit-NEVER hard-rule check),
 `compact-summary.js` (regenerates Tier 1 summary block in policies.md
 from the user-edited body).
@@ -168,7 +168,7 @@ proactive capability. Roadmap parent: `docs/superpowers/specs/2026-04-30-cli-imp
 `session-handoff.md`, and `learning-queue.md`. Three coexisting triggers:
 T1 (long session ≥20 turns or compaction-imminent reminder), T2 (graceful
 end on user wrap signal), T3 (Stop-hook auto-line — Claude Code only;
-other hosts depend on T1/T2). New `system/scripts/lib/handoff.js`
+other hosts depend on T1/T2). New `system/scripts/capture/lib/handoff.js`
 (`writeSessionBlock` — atomic append-or-replace by session-id header
 with input validation). New `system/scripts/lib/sessions.js`
 (`mostRecentSessionId` — parses `state/sessions.md`, ±2h window with

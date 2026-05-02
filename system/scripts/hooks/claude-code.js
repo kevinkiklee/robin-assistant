@@ -30,12 +30,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
-import { writeSessionBlock } from '../lib/handoff.js';
+import { writeSessionBlock } from '../capture/lib/handoff.js';
 import { mostRecentSessionId } from '../lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
 import { applyRedaction } from '../sync/lib/redact.js';
 import { appendPerfLog } from '../lib/perf-log.js';
-import { scanEntityAliases } from '../lib/capture-keyword-scan.js';
+import { scanEntityAliases } from '../capture/lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
 import { recall, formatRecallHits } from '../memory/lib/recall.js';
 
@@ -120,11 +120,11 @@ async function onStop(args) {
   // Drain auto-memory in the background so the user's next response isn't
   // blocked. Discard output unless --debug.
   //
-  // The migrate-auto-memory.js script always lives in the package (REPO_ROOT)
+  // The auto-memory.js script always lives in the package (REPO_ROOT)
   // — that's where the code is. But the WORKSPACE it targets is `ws`, which
   // may differ from REPO_ROOT when --workspace is passed. Set cwd + the
   // ROBIN_WORKSPACE env var so the drain operates on the right user-data tree.
-  const drainArgs = [join(REPO_ROOT, 'system', 'scripts', 'migrate-auto-memory.js'), '--apply'];
+  const drainArgs = [join(REPO_ROOT, 'system', 'scripts', 'capture', 'auto-memory.js'), '--apply'];
   if (args.debug) drainArgs.push('--json');
 
   // Cycle-2a: spawn with explicit safe env so subprocess never inherits

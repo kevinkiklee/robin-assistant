@@ -1,4 +1,4 @@
-// system/scripts/lib/capture-keyword-scan.js
+// system/scripts/capture/lib/capture-keyword-scan.js
 //
 // Entity-alias scanner. Used by the UserPromptSubmit hook to surface entities
 // referenced in the user's message (and the prior assistant turn) so the

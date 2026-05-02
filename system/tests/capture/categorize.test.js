@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadRules, categorize, categorizeAll, summarizeByCategory } from '../scripts/lib/categorize.js';
+import { loadRules, categorize, categorizeAll, summarizeByCategory } from '../../scripts/lib/categorize.js';
 
 function writeRules(content) {
   const dir = mkdtempSync(join(tmpdir(), 'categorize-'));

@@ -17,7 +17,7 @@
 **New files (libs):**
 - `system/scripts/lib/turn-state.js` — read/write/atomic helpers for `turn.json`, `turn-writes.log`, `capture-retry.json`
 - `system/scripts/lib/perf-log.js` — append helper for `hook-perf.log` with size cap
-- `system/scripts/lib/capture-keyword-scan.js` — keyword regex + tier classifier
+- `system/scripts/capture/lib/capture-keyword-scan.js` — keyword regex + tier classifier
 - `system/scripts/memory/lib/recall.js` — Node-native in-process retrieval
 - `system/scripts/memory/lib/entity-index.js` — read/write/incremental update of `ENTITIES.md`
 
@@ -391,7 +391,7 @@ git commit -m "feat(memory/capture): hook-perf.log helper"
 ## Task 3: `lib/capture-keyword-scan.js` — keyword scan + tier classifier
 
 **Files:**
-- Create: `system/scripts/lib/capture-keyword-scan.js`
+- Create: `system/scripts/capture/lib/capture-keyword-scan.js`
 - Test: `system/tests/capture-keyword-scan.test.js`
 
 - [ ] **Step 1: Write failing tests**
@@ -400,7 +400,7 @@ git commit -m "feat(memory/capture): hook-perf.log helper"
 // system/tests/capture-keyword-scan.test.js
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyTier, scanKeywords } from '../scripts/lib/capture-keyword-scan.js';
+import { classifyTier, scanKeywords } from '../scripts/capture/lib/capture-keyword-scan.js';
 
 describe('capture-keyword-scan', () => {
   it('tier 1 — fewer than 5 user words', () => {
@@ -464,7 +464,7 @@ Expected: FAIL — module not found.
 - [ ] **Step 3: Implement `lib/capture-keyword-scan.js`**
 
 ```javascript
-// system/scripts/lib/capture-keyword-scan.js
+// system/scripts/capture/lib/capture-keyword-scan.js
 //
 // Scans a user message and assigns a capture-enforcement tier.
 //   tier 1 — trivial (skip enforcement)
@@ -541,7 +541,7 @@ Expected: PASS — 9 tests green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/scripts/lib/capture-keyword-scan.js system/tests/capture-keyword-scan.test.js
+git add system/scripts/capture/lib/capture-keyword-scan.js system/tests/capture-keyword-scan.test.js
 git commit -m "feat(memory/capture): keyword scan and tier classifier"
 ```
 

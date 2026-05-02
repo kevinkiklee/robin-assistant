@@ -5,7 +5,7 @@ import {
   assertIngestDestinationAllowed,
   listForbiddenPaths,
   IngestForbiddenError,
-} from '../scripts/ingest-guard.js';
+} from '../../scripts/capture/ingest-guard.js';
 
 test('every forbidden path throws on assert', () => {
   for (const path of listForbiddenPaths()) {

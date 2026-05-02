@@ -7,7 +7,7 @@ import {
   parsePolicies,
   buildSummary,
   regenerateCompactSummary,
-} from '../scripts/lib/actions/compact-summary.js';
+} from '../../scripts/capture/lib/actions/compact-summary.js';
 
 function tmp() {
   return mkdtempSync(join(tmpdir(), 'compact-'));
