@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
-import { createRunner } from '../../../user-data/scripts/lib/discord/claude-runner.js';
+import { createRunner } from '../../../user-data/ops/scripts/lib/discord/claude-runner.js';
 
 function fakeChild({ stdout = '', stderr = '', code = 0, delayMs = 0 } = {}) {
   const child = new EventEmitter();

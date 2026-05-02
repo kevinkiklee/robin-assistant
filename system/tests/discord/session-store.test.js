@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSessionStore } from '../../../user-data/scripts/lib/discord/session-store.js';
+import { createSessionStore } from '../../../user-data/ops/scripts/lib/discord/session-store.js';
 
 function mkRoot() {
   return mkdtempSync(join(tmpdir(), 'robin-disc-'));

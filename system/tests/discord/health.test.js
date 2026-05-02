@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeEvents, formatReport } from '../../../user-data/scripts/discord-bot-health.js';
+import { analyzeEvents, formatReport } from '../../../user-data/ops/scripts/discord-bot-health.js';
 
 const NOW = new Date('2026-04-29T12:00:00Z').getTime();
 const PERIOD = 7 * 24 * 3600 * 1000;
