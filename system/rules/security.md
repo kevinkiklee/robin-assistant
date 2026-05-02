@@ -278,7 +278,7 @@ Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `#
 
 When Kevin intentionally edits Hard Rules, run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
 
-### user-data/jobs override drift (G-03)
+### user-data/ops/jobs override drift (G-03)
 
 Manifest v2 `userDataJobs.knownFiles` is an allowlist of override filenames Kevin has accepted. Drift detection lists `*.md` in `user-data/ops/jobs/`; any not in the allowlist surface as **mild** drift. Mass-drift on first deploy is handled by the bootstrap snapshot.
 
