@@ -109,3 +109,42 @@ test('applySuperHubFilter removes super-hubs from each pair shared set', () => {
   const filtered = applySuperHubFilter(pairs, new Set(['kevin']));
   assert.deepEqual([...filtered[0].sharedEntities].sort(), ['dad', 'mom']);
 });
+
+import { selectEdges } from '../../../scripts/memory/lib/related-heuristic.js';
+
+test('selectEdges enforces top-K outbound + threshold + symmetric', () => {
+  const pairs = [
+    { a: 'x.md', b: 'y.md', sharedEntities: new Set(['m', 'n', 'o']) },
+    { a: 'x.md', b: 'z.md', sharedEntities: new Set(['m', 'n', 'o', 'p', 'q']) },
+    { a: 'x.md', b: 'w.md', sharedEntities: new Set(['m', 'n']) },           // overlap=2 fails threshold=3
+    { a: 'x.md', b: 'v.md', sharedEntities: new Set(['m', 'n', 'o', 'p']) },
+    { a: 'x.md', b: 'u.md', sharedEntities: new Set(['m', 'n', 'o']) },
+    { a: 'x.md', b: 't.md', sharedEntities: new Set(['m', 'n', 'o']) },
+    { a: 'x.md', b: 's.md', sharedEntities: new Set(['m', 'n', 'o']) },
+  ];
+  const existing = new Map();
+  const edges = selectEdges(pairs, { threshold: 3, topK: 5, totalCap: 10, existing });
+  assert.equal(edges.get('x.md').size, 5);
+  for (const target of edges.get('x.md')) {
+    assert.ok(edges.get(target).has('x.md'), `${target} missing back-edge`);
+  }
+  assert.ok(!edges.has('w.md'), 'w should not appear at all (under threshold)');
+});
+
+test('selectEdges preserves hand-curated existing edges (set union)', () => {
+  const pairs = [
+    { a: 'x.md', b: 'y.md', sharedEntities: new Set(['m', 'n', 'o']) },
+  ];
+  const existing = new Map([['x.md', new Set(['hand-curated.md'])]]);
+  const edges = selectEdges(pairs, { threshold: 3, topK: 5, totalCap: 10, existing });
+  assert.ok(edges.get('x.md').has('hand-curated.md'));
+  assert.ok(edges.get('x.md').has('y.md'));
+});
+
+test('selectEdges respects totalCap when inbound additions arrive', () => {
+  const pairs = Array.from({ length: 12 }, (_, i) => ({
+    a: `f${i}.md`, b: 'z.md', sharedEntities: new Set(['m', 'n', 'o']),
+  }));
+  const edges = selectEdges(pairs, { threshold: 3, topK: 5, totalCap: 10, existing: new Map() });
+  assert.ok(edges.get('z.md').size <= 10, `z.md has ${edges.get('z.md').size} edges, expected ≤ 10`);
+});
