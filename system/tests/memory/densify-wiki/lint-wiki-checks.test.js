@@ -1,0 +1,67 @@
+import { test } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { findMissingAliases } from '../../../scripts/memory/lint.js';
+
+function tempWs() {
+  const dir = mkdtempSync(join(tmpdir(), 'lint-test-'));
+  mkdirSync(join(dir, 'user-data', 'memory', 'profile', 'people'), { recursive: true });
+  mkdirSync(join(dir, 'user-data', 'memory', 'knowledge', 'medical'), { recursive: true });
+  mkdirSync(join(dir, 'user-data', 'memory', 'knowledge', 'service-providers'), { recursive: true });
+  return dir;
+}
+
+test('findMissingAliases fires on entity-shaped dir without aliases', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/profile/people/no-aliases.md'),
+      `---\ntype: topic\n---\n# Some Person\n`);
+    writeFileSync(join(ws, 'user-data/memory/profile/people/has-aliases.md'),
+      `---\ntype: entity\naliases: [Jane]\n---\n# Jane\n`);
+    const findings = findMissingAliases(ws);
+    assert.deepEqual(findings.map(f => f.file), ['profile/people/no-aliases.md']);
+    assert.equal(findings[0].check, 'missing-aliases');
+    assert.equal(findings[0].severity, 'warn');
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findMissingAliases fires on type:entity outside entity-shaped dir', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/knowledge/medical/some-page.md'),
+      `---\ntype: entity\n---\n# X\n`);
+    const findings = findMissingAliases(ws);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].file, 'knowledge/medical/some-page.md');
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findMissingAliases does NOT fire on non-entity files', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/knowledge/medical/back-spine.md'),
+      `---\ntype: topic\n---\n# Back\n`);
+    const findings = findMissingAliases(ws);
+    assert.equal(findings.length, 0);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('findMissingAliases handles quoted aliases array correctly', () => {
+  const ws = tempWs();
+  try {
+    writeFileSync(join(ws, 'user-data/memory/profile/people/jake.md'),
+      `---\ntype: entity\naliases: ["Jake", "Joony"]\n---\n# Jake\n`);
+    const findings = findMissingAliases(ws);
+    assert.equal(findings.length, 0, 'quoted aliases should be recognized');
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});

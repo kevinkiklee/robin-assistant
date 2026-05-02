@@ -25,6 +25,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter } from './lib/memory-index.js';
 import { defaultDecayFor, isStale } from './lib/decay.js';
+import { ENTITY_SHAPED_DIRS } from './lib/alias-expander.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
@@ -455,6 +456,50 @@ async function findCandidateEntities(workspaceDir) {
 }
 
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Shared walker for the new wiki-quality lint checks below.
+// Yields relPaths (forward-slash, relative to memoryRoot) for all .md files.
+// ---------------------------------------------------------------------------
+
+function* walkMemoryFiles(root, base = root) {
+  if (!existsSync(root)) return;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const full = join(root, entry.name);
+    if (entry.isDirectory()) yield* walkMemoryFiles(full, base);
+    else if (entry.isFile() && entry.name.endsWith('.md')) {
+      yield relative(base, full).split(/[\\/]/).join('/');
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Missing-aliases check — entity pages (entity-shaped dir or type:entity)
+// that have no aliases declared.
+// ---------------------------------------------------------------------------
+
+export function findMissingAliases(workspaceDir) {
+  const memoryRoot = join(workspaceDir, 'user-data', 'memory');
+  const findings = [];
+  for (const relPath of walkMemoryFiles(memoryRoot)) {
+    const body = readFileSync(join(memoryRoot, relPath), 'utf-8');
+    const fmM = body.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmM) continue;
+    const fm = fmM[1];
+    const typeM = fm.match(/^type:\s*(\S+)\s*$/m);
+    const type = typeM ? typeM[1] : '';
+    const aliasesM = fm.match(/^aliases:\s*\[([^\]]*)\]\s*$/m);
+    const aliases = aliasesM ? aliasesM[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean) : [];
+    if (aliases.length > 0) continue;
+    const inEntityDir = ENTITY_SHAPED_DIRS.some(d => relPath.startsWith(d));
+    const isEntityType = type === 'entity';
+    if (inEntityDir || isEntityType) {
+      findings.push({ check: 'missing-aliases', severity: 'warn', file: relPath,
+        message: 'entity-shaped page has no aliases declared' });
+    }
+  }
+  return findings;
+}
 
 async function main() {
   const json = process.argv.includes('--json');
