@@ -50,12 +50,26 @@ function titleCase(s) {
     .join(' ');
 }
 
+// Strip markdown formatting from a candidate string before alias use.
+// `[text](url)` → `text`; backticks, bold/italic markers removed; whitespace collapsed.
+// Without this, an H1 like `# Outdoor Space — [2134 Broadway Apt 2A](../home.md), Astoria`
+// would get added verbatim as an alias, including raw markdown link syntax.
+function stripMarkdown(s) {
+  return s
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')   // [text](url) → text
+    .replace(/`([^`]+)`/g, '$1')                // `code` → code
+    .replace(/\*\*([^*]+)\*\*/g, '$1')          // **bold** → bold
+    .replace(/\*([^*]+)\*/g, '$1')              // *italic* → italic
+    .replace(/\s+/g, ' ')                        // collapse whitespace
+    .trim();
+}
+
 export function deriveCandidates({ body, filename }) {
   const candidates = new Set();
   const afterFm = stripFrontmatter(body);
   const h1Match = afterFm.match(H1_RE);
   if (h1Match) {
-    const h1 = h1Match[1].trim();
+    const h1 = stripMarkdown(h1Match[1]);
     if (h1) candidates.add(h1);
   }
   const stem = filename.replace(/\.md$/, '');

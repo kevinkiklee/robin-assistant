@@ -251,3 +251,28 @@ test('expandAliases gracefully skips files with block-style YAML aliases (treats
     rmSync(ws, { recursive: true });
   }
 });
+
+test('deriveCandidates strips markdown link syntax from H1', () => {
+  // Real bug: outdoor-space.md H1 is `# Outdoor Space — [2134 Broadway Apt 2A](../locations/home.md), Astoria`.
+  // Without stripping, the raw H1 became a corrupted alias.
+  const body = `---\ntype: entity\n---\n# Outdoor Space — [2134 Broadway Apt 2A](../locations/home.md), Astoria\n`;
+  const result = deriveCandidates({ body, filename: 'outdoor-space.md' });
+  for (const c of result) {
+    assert.doesNotMatch(c, /\[.*\]\(/, `candidate "${c}" still contains markdown link syntax`);
+    assert.doesNotMatch(c, /\.md\)/, `candidate "${c}" still contains markdown link target`);
+  }
+  // The H1-derived candidate should be the link text inlined: "Outdoor Space — 2134 Broadway Apt 2A, Astoria"
+  assert.ok(
+    result.some(c => c === 'Outdoor Space — 2134 Broadway Apt 2A, Astoria'),
+    `expected stripped H1 in candidates, got: ${JSON.stringify(result)}`,
+  );
+});
+
+test('deriveCandidates strips inline code, bold, italic from H1', () => {
+  const body = `# **Strong** \`code\` *emph* Name`;
+  const result = deriveCandidates({ body, filename: 'name.md' });
+  assert.ok(
+    result.some(c => c === 'Strong code emph Name'),
+    `expected markdown stripped, got: ${JSON.stringify(result)}`,
+  );
+});
