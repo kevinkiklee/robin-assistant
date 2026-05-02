@@ -18,6 +18,7 @@ import {
   parseWatchFile,
   serializeWatchFile,
 } from '../watches/lib/watches.js';
+import { resolveCliWorkspaceDir } from '../lib/workspace-root.js';
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -54,7 +55,7 @@ function table(rows, headers) {
 }
 
 function workspaceDir() {
-  return process.env.ROBIN_WORKSPACE || process.cwd();
+  return resolveCliWorkspaceDir();
 }
 
 // ---------------------------------------------------------------------------

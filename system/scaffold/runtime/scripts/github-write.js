@@ -17,7 +17,7 @@
 //   node user-data/runtime/scripts/github-write.js --action mark-read \
 //     --json '{"thread_id":"12345"}'
 //
-// All actions write externally-visible state. Per AGENTS.md `Rule: Ask vs Act`,
+// All actions write externally-visible state. Per CLAUDE.md `Rule: Ask vs Act`,
 // the agent must confirm with the user before invoking this script.
 
 import { fileURLToPath } from 'node:url';

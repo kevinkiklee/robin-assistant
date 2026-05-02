@@ -12,7 +12,7 @@ cd ~/code/robin-dev
 npm install
 ```
 
-`npm install` runs `system/scripts/cli/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/runtime/config/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
+`npm install` runs `system/scripts/cli/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/runtime/config/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored, includes `user-data/artifacts/{input,output}`) and `.git/hooks/pre-commit`.
 
 ## Running tests
 
@@ -113,27 +113,9 @@ Full replacement (omitting `override:`) is supported as an escape hatch but is n
 
 For scheduled jobs, see also `docs/superpowers/specs/2026-04-29-job-system-design.md` for the full job-system design (runtime semantics, cross-platform install, telemetry, failure handling).
 
-## Adding a new AI tool platform
+## Single-host posture
 
-Add an entry to `system/scripts/lib/platforms.js`:
-
-```javascript
-'newtool': {
-  pointerFile: '.newtoolrules',  // or null if it reads AGENTS.md natively
-  pointerContent: 'Read and follow AGENTS.md for all instructions.\nAfter every response, scan for capturable signals and write to user-data/memory/streams/inbox.md with tags.\n',
-  nativeIntegrations: {},
-},
-```
-
-Then regenerate the pointer files:
-
-```bash
-npm run regenerate-pointers
-git add system/scripts/lib/platforms.js .newtoolrules
-git commit -m "feat(platforms): support newtool"
-```
-
-`tests/pointer-consistency.test.js` verifies committed root pointer files match `platforms.js`. CI catches drift.
+Robin v5.0.0 supports Claude Code only. The canonical instruction file is the workspace-root `CLAUDE.md`, read by Claude Code via auto-discovery. There is no platform-selection step, no pointer-file generator, and no per-host adapter. Don't add multi-host abstractions back; v5 is a deliberate hard cut from the v4 multi-tool framing.
 
 ## Commit conventions
 
@@ -146,10 +128,10 @@ Follow Conventional Commits with these scopes:
 - `test` for test-only changes
 - `chore` for tooling and meta
 
-Common components: `validate`, `backup`, `restore`, `reset`, `setup`, `hook`, `migrations`, `lib`, `operations`, `generate`, `AGENTS`, `startup`, `manifest`, `package`, `CHANGELOG`, `README`.
+Common components: `validate`, `backup`, `restore`, `reset`, `setup`, `hook`, `migrations`, `lib`, `operations`, `generate`, `CLAUDE`, `startup`, `manifest`, `package`, `CHANGELOG`, `README`.
 
 ## Pull requests
 
-Branch from `main`. Open the PR with a description that links the relevant CHANGELOG entry (or proposes one). All tests must pass. Don't commit anything under `user-data/`, `artifacts/`, `backup/`, or `docs/` — the pre-commit hook blocks it.
+Branch from `main`. Open the PR with a description that links the relevant CHANGELOG entry (or proposes one). All tests must pass. Don't commit anything under `user-data/`, `backup/`, or `docs/` — the pre-commit hook blocks it.
 
 If you're sending changes that affect a user's existing data (e.g., file structure changes), include the migration in the same PR and the CHANGELOG entry should describe what users will see.

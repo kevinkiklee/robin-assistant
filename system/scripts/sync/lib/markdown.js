@@ -85,7 +85,12 @@ export async function atomicWrite(workspaceDir, relPath, content, opts = {}) {
   if (shouldRedact(relPath)) {
     const { redacted, count } = applyRedaction(body);
     if (count > 0) {
-      body = `<!-- redaction: ${count} matches blocked -->\n${redacted}`;
+      // Insert the redaction notice INSIDE the body, immediately after the
+      // frontmatter. Prepending above the frontmatter breaks parseFrontmatter
+      // (which requires the file to start with `---\n`), and the index
+      // regenerator crashes on any redacted file.
+      const [fm, rest] = splitFrontmatter(redacted);
+      body = `${fm}<!-- redaction: ${count} matches blocked -->\n${rest}`;
     } else {
       body = redacted;
     }

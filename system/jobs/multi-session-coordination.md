@@ -1,14 +1,14 @@
 ---
 name: multi-session-coordination
 triggers: []
-description: Detects concurrent sessions and coordinates handoff via file-based registration and lock acquisition.
+description: Detects concurrent Claude Code sessions and coordinates handoff via file-based registration and lock acquisition.
 runtime: "agent"
 enabled: false
 timeout_minutes: 5
 ---
 # Protocol: Multi-Session Coordination
 
-The user may run multiple AI sessions concurrently. This protocol prevents data loss and conflicts using file-based coordination.
+The user may run multiple Claude Code sessions concurrently against this workspace (different terminals, IDE panes, or the Discord-bot subprocess). This protocol prevents data loss and conflicts using file-based coordination.
 
 ## Triggers
 
@@ -18,7 +18,7 @@ The user may run multiple AI sessions concurrently. This protocol prevents data 
 
 ## Session ID format
 
-`<platform>-<timestamp>` — e.g., `claude-code-20260426T090000Z`. Read the platform from `user-data/runtime/config/integrations.md` or `user-data/runtime/config/robin.config.json`.
+`claude-code-<timestamp>` — e.g., `claude-code-20260426T090000Z`.
 
 ## Session lifecycle
 
@@ -41,7 +41,7 @@ Best effort: remove your row from `user-data/runtime/state/sessions.md`.
 
 | Category | Files | Rule |
 |----------|-------|------|
-| Pillar (always lock) | `AGENTS.md`, `user-data/memory/profile/`, `user-data/memory/self-improvement/` | Acquire lock before any edit. Locks apply to specific subtopic files within the directory (e.g., `profile/goals.md`, `self-improvement/calibration.md`); use the subtopic filename for the lock. |
+| Pillar (always lock) | `CLAUDE.md`, `user-data/memory/profile/`, `user-data/memory/self-improvement/` | Acquire lock before any edit. Locks apply to specific subtopic files within the directory (e.g., `profile/goals.md`, `self-improvement/calibration.md`); use the subtopic filename for the lock. |
 | Mixed-use | `user-data/memory/tasks.md`, `user-data/memory/knowledge/` | Lock when modifying or removing existing content. Appending a new entry is safe without a lock. When in doubt, lock. For the `knowledge/` directory, locks apply to the specific subtopic file being edited. |
 | Append-only | `user-data/memory/streams/journal.md`, `user-data/memory/streams/decisions.md`, `user-data/memory/streams/inbox.md` | No lock needed. Read-before-write still applies. |
 

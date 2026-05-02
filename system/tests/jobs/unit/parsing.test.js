@@ -135,7 +135,7 @@ describe('validateJobDef', () => {
 
   test('override does not require schedule', () => {
     const r = validateJobDef({
-      frontmatter: { name: 'x', description: 'd', runtime: 'agent', override: 'morning-briefing', enabled: true },
+      frontmatter: { name: 'x', description: 'd', runtime: 'agent', override: 'daily-briefing', enabled: true },
       body: '',
     });
     assert.deepEqual(r, { valid: true });

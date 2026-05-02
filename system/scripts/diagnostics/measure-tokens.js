@@ -8,7 +8,6 @@
 //   --diff                diff against committed baseline (token-baselines.json)
 //   --diff-against=<ref>  diff against this script's output at a given git ref
 //   --update-baseline     overwrite committed baseline with current snapshot (requires CHANGELOG entry, enforced by reviewer)
-//   --host=<name>         include that host's pointer files in tier 1 (validates per-host load)
 //
 // Reads tier classification from system/scripts/diagnostics/lib/token-budget.json.
 // Bytes is the primary metric; tokens are derived (see lib/tokenizer.js).
@@ -86,7 +85,7 @@ function validateCacheOrder(tier1Files, stabilityOrder) {
   return violations;
 }
 
-function snapshotTier1(budget, host) {
+function snapshotTier1(budget) {
   const files = [];
   for (const entry of budget.tier1_files) {
     const m = measureFile(entry.path);
@@ -104,25 +103,6 @@ function snapshotTier1(budget, host) {
       max_lines: entry.max_lines ?? null,
       over_cap_at: overCap,
     });
-  }
-
-  if (host && budget.host_pointers?.[host]) {
-    for (const ptr of budget.host_pointers[host]) {
-      const m = measureFile(ptr);
-      files.unshift({
-        path: ptr,
-        stability: 'frozen',
-        exists: m.exists,
-        required: true,
-        optional_existence: false,
-        bytes: m.bytes,
-        lines: m.lines,
-        tokens: m.tokens,
-        max_lines: null,
-        over_cap_at: null,
-        host_pointer_for: host,
-      });
-    }
   }
 
   const totalBytes = files.reduce((s, f) => s + f.bytes, 0);
@@ -223,14 +203,13 @@ function findFailures(snap, budget) {
   return failures;
 }
 
-async function takeSnapshot({ host = null } = {}) {
+async function takeSnapshot() {
   const budget = loadBudget();
-  const tier1 = snapshotTier1(budget, host);
+  const tier1 = snapshotTier1(budget);
   const tier2 = await snapshotTier2(budget);
   const snap = {
     snapshot_at: new Date().toISOString(),
     enforce_caps: budget.enforce_caps === true,
-    host: host ?? null,
     tier1,
     tier2,
   };
@@ -370,7 +349,6 @@ function parseArgs(argv) {
     diff: false,
     diffAgainst: null,
     updateBaseline: false,
-    host: null,
   };
   for (const a of argv.slice(2)) {
     if (a === '--json') args.json = true;
@@ -380,10 +358,9 @@ function parseArgs(argv) {
       args.diff = true;
       args.diffAgainst = a.slice('--diff-against='.length);
     } else if (a === '--update-baseline') args.updateBaseline = true;
-    else if (a.startsWith('--host=')) args.host = a.slice('--host='.length);
     else if (a === '--help' || a === '-h') {
       console.log(
-        'Usage: measure-tokens.js [--json] [--check] [--diff] [--diff-against=<ref>] [--update-baseline] [--host=<name>]',
+        'Usage: measure-tokens.js [--json] [--check] [--diff] [--diff-against=<ref>] [--update-baseline]',
       );
       process.exit(0);
     } else {
@@ -396,7 +373,7 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const snap = await takeSnapshot({ host: args.host });
+  const snap = await takeSnapshot();
 
   if (args.updateBaseline) {
     writeBaseline(snap);

@@ -1,6 +1,6 @@
 # Session Startup — edge cases
 
-The full startup sequence is inlined in `AGENTS.md`. This file holds edge cases.
+The full startup sequence is inlined in `CLAUDE.md`. This file holds edge cases.
 
 ## Pre-flight check
 
@@ -47,7 +47,7 @@ release with `robin job release dream`.
 
 If no host scheduler is installed (no `com.robin.scheduler` launchd plist
 or equivalent — common on hosts where only the Stop hook fires node jobs),
-the AGENTS.md session-startup step that reads `state/dream-state.md` acts
+the CLAUDE.md session-startup step that reads `state/dream-state.md` acts
 as a fallback nudge: it surfaces stale-Dream and offers an inline run.
 Without this fallback, `runtime: agent` jobs never fire and the inbox
 accumulates unrouted entries.

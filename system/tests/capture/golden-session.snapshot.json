@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tier1_load_order": [
     {
-      "path": "AGENTS.md",
+      "path": "CLAUDE.md",
       "stability": "frozen",
       "required": true,
       "optional_existence": false

@@ -88,7 +88,8 @@ async function main() {
       process.exit(1);
     }
     const { recall, formatRecallHits } = await import('../system/scripts/memory/lib/recall.js');
-    const ws = process.env.ROBIN_WORKSPACE || process.cwd();
+    const { resolveCliWorkspaceDir } = await import('../system/scripts/lib/workspace-root.js');
+    const ws = resolveCliWorkspaceDir();
     const result = recall(ws, rest);
     if (wantsJson) {
       console.log(JSON.stringify(result));

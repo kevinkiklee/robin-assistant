@@ -1,12 +1,12 @@
-// Cycle-2c: AGENTS.md Hard Rules integrity helpers.
+// Hard Rules integrity helpers.
 //
 // extractSection(md, headerName) — pulls the body of a `## <headerName>`
 //   section. Requires line-start anchor + exactly two `#`. Returns null
 //   if the section is missing.
 // normalizeForHash(text) — strips trailing whitespace, collapses runs of
 //   blank lines, trims, lowercases. Stable against cosmetic edits.
-// hashHardRules(agentsmdContent) — returns FNV-1a-64 hex of the
-//   normalized "## Hard Rules" section, or null if missing.
+// hashHardRules(mdContent) — returns FNV-1a-64 hex of the normalized
+//   "## Hard Rules" section, or null if missing.
 
 import { fnv1a64 } from '../sync/lib/untrusted-index.js';
 
@@ -31,8 +31,8 @@ export function normalizeForHash(text) {
     .trim();
 }
 
-export function hashHardRules(agentsmdContent) {
-  const section = extractSection(agentsmdContent, 'Hard Rules');
+export function hashHardRules(mdContent) {
+  const section = extractSection(mdContent, 'Hard Rules');
   if (section === null) return null;
   return fnv1a64(normalizeForHash(section));
 }

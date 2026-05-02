@@ -18,7 +18,7 @@ User-initiated only. Never auto-triggered. The user must explicitly say "ingest 
 
 | Type | Example | Acquisition |
 |------|---------|-------------|
-| **File** | "ingest this PDF" | If in `artifacts/input/`, move to `user-data/sources/`. If already in `sources/`, proceed. |
+| **File** | "ingest this PDF" | If in `user-data/artifacts/input/`, move to `user-data/sources/`. If already in `sources/`, proceed. |
 | **URL** | "ingest this article" + URL | Fetch content, save to `user-data/sources/articles/<slug>.md`, proceed. |
 | **Inline** | "ingest this:" + pasted text | Save to `user-data/sources/notes/<slug>.md`, proceed. |
 
@@ -151,4 +151,4 @@ When user says "ingest all of these" or provides multiple sources:
 
 ## Boundary rule
 
-Ingest can read and write any file under `user-data/memory/` and `user-data/sources/`. It can move files from `artifacts/input/` to `user-data/sources/`. It follows all lock protocols from `system/jobs/multi-session-coordination.md` for pillar and mixed-use files.
+Ingest can read and write any file under `user-data/memory/` and `user-data/sources/`. It can move files from `user-data/artifacts/input/` to `user-data/sources/`. It follows all lock protocols from `system/jobs/multi-session-coordination.md` for pillar and mixed-use files.

@@ -15,7 +15,7 @@ Weekly contradiction-detection pass over memory files. The pairing helper genera
 ## Context profile
 
 This job runs with **minimal context**. Skip the usual Tier 1 reads — do NOT load `personality.md`, `identity.md`, `communication-style.md`, `domain-confidence.md`, `hot.md`, `session-handoff.md`, `learning-queue.md`. Load ONLY:
-- AGENTS.md Hard Rules section (Privacy, Verification, Local Memory, Time)
+- CLAUDE.md Hard Rules section (Privacy, Verification, Local Memory, Time)
 - The candidate pair files for each comparison (one pair at a time)
 - This protocol
 

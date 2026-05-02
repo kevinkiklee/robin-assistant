@@ -2,7 +2,7 @@
 //
 // Usage:
 //   robin init [--target <dir>] [--no-prompt | --ci]
-//              [--name <s>] [--tz <iana>] [--email <e>] [--platform <p>]
+//              [--name <s>] [--tz <iana>] [--email <e>]
 //
 // Discovers the package root from this file's location (works whether the
 // package is installed via `npm i -g`, linked, or run from a clone), then
@@ -27,7 +27,6 @@ function parseArgs(argv) {
     else if (key === '--name') out.fields.name = next();
     else if (key === '--tz' || key === '--timezone') out.fields.timezone = next();
     else if (key === '--email') out.fields.email = next();
-    else if (key === '--platform') out.fields.platform = next();
     else if (key === '--assistant-name') out.fields.assistantName = next();
     else if (key === '-h' || key === '--help') out.help = true;
   }
@@ -39,7 +38,6 @@ const HELP = `robin init — bootstrap a fresh workspace
 usage:
   robin init [--target <dir>] [--no-prompt]
              [--name <s>] [--tz <iana>] [--email <e>]
-             [--platform claude-code|cursor|gemini-cli|codex|antigravity]
              [--assistant-name <s>]
 
 flags:
@@ -48,7 +46,6 @@ flags:
   --name           user's name
   --tz             IANA timezone (e.g. America/New_York)
   --email          contact email
-  --platform       which AI coding tool will host Robin
   --assistant-name display name (default Robin)
 `;
 
@@ -103,7 +100,6 @@ export async function cmdInit(argv) {
     if (args.fields.name) cfg.user.name = args.fields.name;
     if (args.fields.timezone) cfg.user.timezone = args.fields.timezone;
     if (args.fields.email) cfg.user.email = args.fields.email;
-    if (args.fields.platform) cfg.platform = args.fields.platform;
     if (args.fields.assistantName) {
       cfg.assistant = cfg.assistant || {};
       cfg.assistant.name = args.fields.assistantName;

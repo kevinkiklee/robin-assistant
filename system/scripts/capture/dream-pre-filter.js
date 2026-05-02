@@ -2,7 +2,7 @@
 // Dream pre-filter — runs before any Dream routing of user-data/memory/streams/inbox.md.
 //
 // Cycle-1a's capture-loop attribution layer. Every inbox tag line carries an
-// `origin=...` field (per AGENTS.md capture rule). The pre-filter:
+// `origin=...` field (per CLAUDE.md capture rule). The pre-filter:
 //   1. Parses bullet-style tag lines: `- [<tag>(|<modifiers>)?] <content>`.
 //   2. Reads `origin=` from the modifiers.
 //   3. Lines whose origin is `user` or `user|legacy` (the migration tag) stay
@@ -40,7 +40,7 @@ type: quarantine
 # Captures Quarantine
 
 Append-only audit log of inbox lines whose \`origin=\` indicated synced,
-ingested, or tool-sourced content. Surface in morning briefing for review.
+ingested, or tool-sourced content. Surface in daily briefing for review.
 
 | timestamp | origin | tag | content (paraphrased + redacted) | source-pointer |
 |---|---|---|---|---|

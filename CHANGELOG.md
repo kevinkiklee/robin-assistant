@@ -1,5 +1,33 @@
 # Changelog
 
+## 5.0.0 — 2026-05-02
+
+**Hard cut to Claude Code only.** Multi-host support (Cursor, Antigravity, Codex, Gemini CLI) is removed. The canonical instruction file is now `CLAUDE.md` (former `AGENTS.md` content folded in, plus a new "Claude Code specifics" section).
+
+### Breaking changes
+
+- **Files removed from package and repo root:** `AGENTS.md`, `GEMINI.md`.
+- **CLAUDE.md is now the canonical instruction file** (~90 lines, tier-1 cap raised 90 → 120).
+- **`cfg.platform` removed from `robin.config.json`** via migration `0024-drop-platform-field.js`.
+- **CLI flag `--platform` removed** from `robin init`; `promptPlatform()` removed from `setup.js`.
+- **npm script `regenerate-pointers` removed**; `system/scripts/lib/platforms.js` and `system/scripts/memory/regenerate-pointers.js` deleted.
+- **`system/scripts/lib/agentsmd-hash.js` renamed to `hard-rules-hash.js`.** Manifest schema field `agentsmd.hardRulesHash` renamed to `claudemd.hardRulesHash`. Drift kinds renamed `agentsmd-*` → `claudemd-*`.
+- **`system/scripts/diagnostics/validate-host.js`, `system/scripts/diagnostics/lib/parsers/*`, `system/jobs/host-validation.md`, `system/tests/multi-host/`** all deleted.
+- **package.json keywords**: `cursor`, `gemini-cli`, `codex`, `antigravity` removed.
+- **measure-tokens `--host=<name>` flag removed** (no host_pointers map left to consult).
+
+### Upgrade
+
+```bash
+git pull                                                                          # brings new CLAUDE.md; deletes AGENTS.md, GEMINI.md
+npm install                                                                        # runs migration 0024; reconciler removes host-validation scheduler entry
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection (Hard Rules now in CLAUDE.md)
+```
+
+If you run the Discord bot, restart its launchd agent with `npm run discord:install`. If you customized `AGENTS.md` directly, move customizations into `user-data/custom-rules.md` / `user-data/runtime/jobs/` / `user-data/runtime/scripts/` before pulling.
+
+Spec: `docs/superpowers/specs/2026-05-02-claude-code-only-design.md` (local; gitignored).
+
 ## 4.0.0 — 2026-05-01
 
 **Breaking restructure of `system/`.** All internal paths have changed. After upgrading, run `npx robin-assistant install-hooks` once to relocate the git pre-commit hook to its new path. The Claude Code PreToolUse hook in `~/.claude/settings.json` is per-machine — if you customized it manually to point at `system/scripts/claude-code-hook.js`, update it to `system/scripts/hooks/claude-code.js`.

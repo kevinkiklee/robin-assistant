@@ -37,7 +37,7 @@ Things Robin wants to understand better about the user. Each entry: question, wh
 - why: low-priority but improves daily feel
 - status: open
 
-### 2026-04-30 — Promote corrections to AGENTS.md vs keep as patterns
+### 2026-04-30 — Promote corrections to CLAUDE.md vs keep as patterns
 - domain: self-improvement
 - why: hard rules are sticky; patterns are revisable
 - status: open

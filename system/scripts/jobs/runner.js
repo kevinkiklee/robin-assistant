@@ -35,6 +35,7 @@ import {
   regenIndex,
   rotateLogs,
 } from './lib/state.js';
+import { resolveCliWorkspaceDir } from '../lib/workspace-root.js';
 
 const STDERR_BUFFER_BYTES = 4 * 1024;
 
@@ -578,7 +579,7 @@ async function cliMain(argv) {
     process.stderr.write('usage: robin run <name> [--force | --dry-run | --no-lock]\n');
     process.exit(2);
   }
-  const workspaceDir = process.env.ROBIN_WORKSPACE || process.cwd();
+  const workspaceDir = resolveCliWorkspaceDir();
   const result = await run({
     workspaceDir,
     name,

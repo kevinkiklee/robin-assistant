@@ -4,7 +4,7 @@
 // Compares current state (hooks in .claude/settings.json + loaded MCP servers)
 // against the trusted manifest at user-data/runtime/security/manifest.json. Severe
 // drift surfaces in stderr (visible in model context). Mild/info drift goes
-// to policy-refusals.log for retrospective review in morning briefing.
+// to policy-refusals.log for retrospective review in daily briefing.
 //
 // Fail-soft: missing manifest → warning + exit 0. Uncaught error → log
 // + warning + exit 0 (we don't block sessions on a hook bug).
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { loadManifest, loadCurrentSettings, enumerateMCPServers } from '../lib/manifest.js';
 import { appendPolicyRefusal, readRecentRefusalHashes } from '../lib/policy-refusals-log.js';
 import { fnv1a64 } from '../sync/lib/untrusted-index.js';
-import { hashHardRules } from '../lib/agentsmd-hash.js';
+import { hashHardRules } from '../lib/hard-rules-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
@@ -65,30 +65,30 @@ export function computeDrift(expected, currentSettings, currentMCP, opts = {}) {
     }
   }
 
-  // Cycle-2c: AGENTS.md Hard Rules hash check.
-  if (opts.agentsmdContent !== undefined) {
-    const currentHash = hashHardRules(opts.agentsmdContent);
+  // CLAUDE.md Hard Rules hash check.
+  if (opts.claudemdContent !== undefined) {
+    const currentHash = hashHardRules(opts.claudemdContent);
     if (currentHash === null) {
       drift.push({
         severity: 'severe',
-        kind: 'agentsmd-hard-rules-missing',
-        detail: 'Hard Rules section not found in AGENTS.md',
-        hash: 'agentsmd-missing',
+        kind: 'claudemd-hard-rules-missing',
+        detail: 'Hard Rules section not found in CLAUDE.md',
+        hash: 'claudemd-missing',
       });
-    } else if (!expected.agentsmd?.hardRulesHash) {
+    } else if (!expected.claudemd?.hardRulesHash) {
       // First-run baseline missing — info only.
       drift.push({
         severity: 'info',
-        kind: 'agentsmd-hard-rules-baseline-missing',
+        kind: 'claudemd-hard-rules-baseline-missing',
         detail: `Run manifest-snapshot.js to populate hardRulesHash (current=${currentHash.slice(0, 8)}…)`,
         hash: `baseline:${currentHash}`,
       });
-    } else if (expected.agentsmd.hardRulesHash !== currentHash) {
+    } else if (expected.claudemd.hardRulesHash !== currentHash) {
       drift.push({
         severity: 'severe',
-        kind: 'agentsmd-hard-rules-drift',
-        detail: `Hard Rules hash mismatch (expected ${expected.agentsmd.hardRulesHash.slice(0, 8)}…, got ${currentHash.slice(0, 8)}…)`,
-        hash: `agentsmd-drift:${currentHash}`,
+        kind: 'claudemd-hard-rules-drift',
+        detail: `Hard Rules hash mismatch (expected ${expected.claudemd.hardRulesHash.slice(0, 8)}…, got ${currentHash.slice(0, 8)}…)`,
+        hash: `claudemd-drift:${currentHash}`,
       });
     }
   }
@@ -111,8 +111,8 @@ export function computeDrift(expected, currentSettings, currentMCP, opts = {}) {
   return drift;
 }
 
-function readAgentsMD(workspaceDir) {
-  const p = join(workspaceDir, 'AGENTS.md');
+function readClaudeMD(workspaceDir) {
+  const p = join(workspaceDir, 'CLAUDE.md');
   if (!existsSync(p)) return undefined;
   try {
     return readFileSync(p, 'utf-8');
@@ -147,7 +147,7 @@ export function emitDrift(workspaceDir, drift) {
   if (mild.length > STDERR_BOUND) {
     process.stderr.write(`TAMPER DRIFT [mild]: ${mild.length} entries — see policy-refusals.log\n`);
   }
-  // ≤5 mild entries: silent at session start; morning briefing surfaces.
+  // ≤5 mild entries: silent at session start; daily briefing surfaces.
 
   // Refusal log — deduped 24h.
   const recent = readRecentRefusalHashes(workspaceDir, 'tamper', DEDUP_WINDOW_MS);
@@ -176,9 +176,9 @@ async function main() {
     }
     const currentSettings = loadCurrentSettings(workspaceDir);
     const currentMCP = enumerateMCPServers(workspaceDir);
-    const agentsmdContent = readAgentsMD(workspaceDir);
+    const claudemdContent = readClaudeMD(workspaceDir);
     const userDataJobsFiles = listUserDataJobs(workspaceDir);
-    const drift = computeDrift(manifest, currentSettings, currentMCP, { agentsmdContent, userDataJobsFiles });
+    const drift = computeDrift(manifest, currentSettings, currentMCP, { claudemdContent, userDataJobsFiles });
     emitDrift(workspaceDir, drift);
     process.exit(0);
   } catch (err) {

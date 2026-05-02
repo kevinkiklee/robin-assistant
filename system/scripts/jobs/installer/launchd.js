@@ -3,8 +3,36 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { parseCron } from '../lib/cron.js';
+
+const BASE_PATH = '/usr/local/bin:/usr/bin:/bin';
+
+// Build a PATH that resolves bare `node` and `claude` when launchd execs the
+// runner subprocess. The runner's execNode/execAgent invoke them by name, so
+// the dirs that hold this node binary and the claude CLI must be on PATH.
+export function resolveLaunchdEnvPath() {
+  const dirs = new Set();
+  // Current node's bin dir (typically nvm or homebrew)
+  if (process.execPath) dirs.add(dirname(process.execPath));
+  // Look up `claude` via login shell so nvm/asdf/PATH shims resolve correctly
+  try {
+    const r = spawnSync(process.env.SHELL || '/bin/zsh', ['-l', '-c', 'command -v claude'], {
+      stdio: 'pipe',
+      timeout: 3000,
+    });
+    const out = (r.stdout?.toString() || '').trim();
+    if (r.status === 0 && out) dirs.add(dirname(out));
+  } catch {
+    // best effort
+  }
+  // Common user-local install dirs that frequently host `claude`
+  const home = homedir();
+  for (const d of [join(home, '.local/bin'), '/opt/homebrew/bin']) {
+    if (existsSync(d)) dirs.add(d);
+  }
+  return [...dirs, ...BASE_PATH.split(':')].join(':');
+}
 
 export const LABEL_PREFIX = 'com.robin.';
 
@@ -73,7 +101,7 @@ function plistDict(obj) {
   return lines.join('\n');
 }
 
-export function generatePlist({ name, argv, workspaceDir, schedule, envPath = '/usr/local/bin:/usr/bin:/bin' }) {
+export function generatePlist({ name, argv, workspaceDir, schedule, envPath = BASE_PATH }) {
   if (!Array.isArray(argv) || argv.length === 0 || argv.some((t) => typeof t !== 'string' || t.length === 0)) {
     throw new Error('generatePlist: argv must be a non-empty array of non-empty strings');
   }
@@ -132,11 +160,11 @@ function launchctl(args) {
   return spawnSync('launchctl', args, { stdio: 'pipe' });
 }
 
-export function installEntry({ name, argv, workspaceDir, schedule }) {
+export function installEntry({ name, argv, workspaceDir, schedule, envPath = resolveLaunchdEnvPath() }) {
   const dir = agentsDir();
   mkdirSync(dir, { recursive: true });
   const path = plistPath(name);
-  const xml = generatePlist({ name, argv, workspaceDir, schedule });
+  const xml = generatePlist({ name, argv, workspaceDir, schedule, envPath });
   // bootout if exists; ignore failure
   if (existsSync(path)) {
     launchctl(['bootout', `${bootstrapDomain()}/${LABEL_PREFIX}${name}`]);

@@ -29,6 +29,8 @@ import { parseWatchFile, readWatchState, serializeWatchFile } from '../../script
 
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-watches-cli-'));
+  mkdirSync(join(dir, 'bin'), { recursive: true });
+  writeFileSync(join(dir, 'bin/robin.js'), '#!/usr/bin/env node\n');
   mkdirSync(join(dir, 'user-data/memory/watches'), { recursive: true });
   mkdirSync(join(dir, 'user-data/memory/streams'), { recursive: true });
   mkdirSync(join(dir, 'user-data/runtime/state/watches'), { recursive: true });

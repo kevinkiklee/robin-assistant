@@ -91,13 +91,6 @@ describe('measure-tokens harness', () => {
     assert.ok(Array.isArray(json.stability_order));
   });
 
-  it('--host=claude-code prepends CLAUDE.md to tier1', () => {
-    const snap = JSON.parse(runHarness(['--json', '--host=claude-code']));
-    const claudePtr = snap.tier1.files.find((f) => f.path === 'CLAUDE.md');
-    assert.ok(claudePtr, 'CLAUDE.md should appear in tier1 when --host=claude-code');
-    assert.equal(claudePtr.host_pointer_for, 'claude-code');
-  });
-
   it('detects cache-order violations when stability is mis-ordered', () => {
     // Synthetic test: read budget, swap two entries to create a violation, validate.
     // We don't mutate the file; just verify the validator reports nothing on the real config.

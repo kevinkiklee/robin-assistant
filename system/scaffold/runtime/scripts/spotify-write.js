@@ -13,7 +13,7 @@
 //
 //   node user-data/runtime/scripts/spotify-write.js --action skip --json '{}'
 //
-// Per AGENTS.md `Rule: Ask vs Act`, the agent confirms with the user before
+// Per CLAUDE.md `Rule: Ask vs Act`, the agent confirms with the user before
 // invoking writes that affect playback or playlists.
 
 import { fileURLToPath } from 'node:url';

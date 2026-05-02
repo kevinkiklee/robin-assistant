@@ -9,7 +9,7 @@ test('flags reference to a system path that does not exist', () => {
   const dir = mkdtempSync(join(tmpdir(), 'lint-'));
   mkdirSync(join(dir, 'system/scripts/cli'), { recursive: true });
   writeFileSync(join(dir, 'system/scripts/cli/setup.js'), '// real');
-  writeFileSync(join(dir, 'AGENTS.md'), [
+  writeFileSync(join(dir, 'CLAUDE.md'), [
     '`system/scripts/cli/setup.js` exists.',
     '`system/scripts/cli/missing.js` does not exist.',
   ].join('\n'));
@@ -24,7 +24,7 @@ test('reports zero issues when all paths exist', () => {
   mkdirSync(join(dir, 'system/scripts/cli'), { recursive: true });
   writeFileSync(join(dir, 'system/scripts/cli/setup.js'), '// real');
   writeFileSync(join(dir, 'system/scripts/cli/init.js'), '// real');
-  writeFileSync(join(dir, 'AGENTS.md'), [
+  writeFileSync(join(dir, 'CLAUDE.md'), [
     '`system/scripts/cli/setup.js` and `system/scripts/cli/init.js` are both real.',
   ].join('\n'));
 

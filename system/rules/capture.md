@@ -1,6 +1,6 @@
 # Capture Rules
 
-The 5-line capture checkpoint lives in `AGENTS.md` so it's always loaded. This
+The 5-line capture checkpoint lives in `CLAUDE.md` so it's always loaded. This
 file is the full vocabulary, routing table, and sweep protocol — fetch on
 demand for non-routine cases.
 
@@ -13,7 +13,7 @@ After every response, scan for capturable signals.
 - **Inbox-write** with `[tag]` for everything else. Dream routes within 24h.
 - **Tags:** `[fact|preference|decision|correction|task|update|derived|journal|predict|action|?]`.
 
-If AGENTS.md and this file disagree, AGENTS.md wins.
+If CLAUDE.md and this file disagree, CLAUDE.md wins.
 
 ## Signal patterns
 
@@ -164,7 +164,7 @@ These skip inbox:
 
 **Trigger 2 — Stop-hook auto-line (Claude Code only).** The Stop hook (`system/scripts/hooks/claude-code.js --on-stop`) writes an auto-line to `session-handoff.md` and `hot.md` on every assistant turn end. It uses the same session-id as the agent's T1 sweep, so Trigger 1 cleanly replaces it when it fires.
 
-Coverage: T2 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antigravity there is no equivalent host hook — file freshness on those hosts depends entirely on T1 agent compliance. Quarterly `host-validation` (`system/jobs/host-validation.md`) checks each host produced a session-handoff entry within the last 30 days.
+Coverage: T2 is reliable on Claude Code via the Stop hook in `.claude/settings.json`.
 
 ## Hot cache
 
@@ -194,7 +194,7 @@ the same turn — don't wait for the user to say "save that."
 | Recurring patterns / preferences | `profile/` or `self-improvement/preferences.md` |
 | Reference inventories | `knowledge/<topic>.md` |
 | Project state with goals/gaps | `tasks.md` (active) or `profile/<topic>.md` (initiative) |
-| Long-form artifact | `artifacts/output/<YYYY-MM-DD-topic>/` (surface path inline) |
+| Long-form artifact | `user-data/artifacts/output/<YYYY-MM-DD-topic>/` (surface path inline) |
 
 Capture files hold the durable distillation, pointing to the artifact for the
 full analysis. Update in place if a finding overlaps an existing entry.

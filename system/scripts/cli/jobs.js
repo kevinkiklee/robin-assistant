@@ -16,6 +16,7 @@ import { run as runJob } from '../jobs/runner.js';
 import { reconcile, resolveRobinArgv } from '../jobs/reconciler.js';
 import { inActiveWindow, validateCron } from '../jobs/lib/cron.js';
 import { validateJobDef } from '../jobs/lib/frontmatter.js';
+import { resolveCliWorkspaceDir } from '../lib/workspace-root.js';
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -64,7 +65,7 @@ function stripAnsi(s) {
 }
 
 function workspaceDir() {
-  return process.env.ROBIN_WORKSPACE || process.cwd();
+  return resolveCliWorkspaceDir();
 }
 
 

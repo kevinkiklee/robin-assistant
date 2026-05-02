@@ -1,10 +1,10 @@
 # Robin Assistant
 
-A personal AI assistant that builds a persistent wiki about your life, learns from its mistakes, and works across multiple AI tools at the same time.
+A personal AI assistant for Claude Code that builds a persistent wiki about your life and learns from its mistakes.
 
-Most AI assistants forget you when the session ends. Robin doesn't. It silently captures facts, preferences, and decisions as you talk, organizes them into a structured wiki, cross-links every entity automatically, and pulls the relevant pages back in on the next turn — before you finish your sentence. Correct it twice and it writes a permanent rule so the mistake stops happening. Open it in Claude Code and Cursor at the same time — same memory, coordinated writes, no conflicts.
+Most AI assistants forget you when the session ends. Robin doesn't. It silently captures facts, preferences, and decisions as you talk, organizes them into a structured wiki, cross-links every entity automatically, and pulls the relevant pages back in on the next turn — before you finish your sentence. Correct it twice and it writes a permanent rule so the mistake stops happening. Open multiple Claude Code sessions at the same time — same memory, coordinated writes, no conflicts.
 
-The repo *is* the workspace. You clone it, open it in your AI tool, and Robin is alive.
+The repo *is* the workspace. You clone it, open it in Claude Code, and Robin is alive.
 
 ---
 
@@ -34,11 +34,9 @@ It also builds a model of how to communicate with you. Positive feedback accumul
 
 Instead of a single global "ask before acting" rule, Robin classifies every tool call into one of three classes — AUTO (just do it), ASK (confirm first), NEVER (refuse). Classes live in `policies.md` (you edit them); a deterministic precheck enforces hard rules (privacy, dollar amounts, legal, explicit NEVERs). A separate **action-trust** ledger tracks earned trust per class: 5+ successes with no corrections over 30 days proposes promotion ASK → AUTO; a single user reversal demotes back to ASK. Self-correction is a first-class path — Robin can reverse its own AUTO action and write the correction in the same turn.
 
-### Multi-agent coordination
+### Parallel Claude Code sessions
 
-Robin works across AI coding tools — Claude Code, Cursor, Gemini CLI, Antigravity, Codex. Same workspace, same memory, same rules. Switch tools mid-week and Robin picks up where it left off.
-
-Open two tools at the same time and Robin coordinates. A session registry tracks which tools are active. File-based locks prevent conflicting writes to shared files. Append-only files like the journal and decision log are safe to write concurrently. When you start a session, Robin tells you if another session is already running.
+Open multiple Claude Code sessions against the same workspace and Robin coordinates. A session registry tracks which sessions are active. File-based locks prevent conflicting writes to shared files. Append-only files like the journal and decision log are safe to write concurrently. When you start a session, Robin tells you if another session is already running.
 
 ### Security boundaries
 
@@ -90,7 +88,7 @@ Every page that defines an entity declares `aliases: [...]` in its frontmatter. 
 - All sync writers (Calendar, Gmail, GitHub, Spotify, Lunch Money) — every newly written page gets linked before the runner exits.
 - Dream Phase 2 — runs `robin link` on every file the inbox router touched.
 - Ingest Step 5 — runs `robin link` on every rippled file.
-- A capture rule in AGENTS.md — model must invoke the linker after any direct write to memory.
+- A capture rule in CLAUDE.md — model must invoke the linker after any direct write to memory.
 - A backfill orchestrator (`backfill-entity-links.js`) for one-shot linking of the entire wiki, dry-run by default, `--apply` mode acquires a `wiki-backfill` lock and regenerates `LINKS.md` after.
 
 Lint catches structural issues: ambiguous aliases (same alias claimed by two entities), candidate entities (terms mentioned 3+ times without a page), trust:untrusted skip, alias-collision rejection.
@@ -143,7 +141,7 @@ Shipped jobs span daily maintenance, financial review, productivity, and system 
 | Job | Schedule | What it does |
 |-----|----------|--------------|
 | Dream | Daily 4 AM | Memory maintenance, self-improvement, telemetry surfacing, ENTITIES.md regen |
-| Morning briefing | Daily 7 AM (disabled) | Calendar, priorities, flagged items, suggested focus |
+| Daily briefing | Daily 7 AM (disabled) | Calendar, priorities, flagged items, suggested focus |
 | Weekly review | Sunday 10 AM (disabled) | Accomplishments, backlog health, goal check-ins, look-ahead |
 | Monthly financial | 1st of month (disabled) | Income, recurring outflows, budget variance, anomalies |
 | Quarterly self-assessment | Quarterly (disabled) | Effectiveness audit, calibration check, conversational-tic detection, user grading |
@@ -197,7 +195,7 @@ Setup walkthrough: [`system/integrations/discord-setup.md`](system/integrations/
 
 Personal data never leaves your machine unless you explicitly push it to a remote you control. Four layers enforce this:
 
-1. **`.gitignore`** excludes `user-data/`, `artifacts/`, `backup/`, `docs/`
+1. **`.gitignore`** excludes `user-data/`, `backup/`, `docs/` (`user-data/artifacts/` is covered by `user-data/`)
 2. **Pre-commit hook** refuses any commit that stages files in those directories or removes `user-data/` from `.gitignore`
 3. **Capture rules** block writes containing full government IDs, payment card numbers, passwords, API keys, or credentials. Cannot be overridden, even by your own custom rules.
 4. **Redaction module** automatically strips sensitive patterns (SSNs, SINs with Luhn validation, credit card numbers, API keys, URL credentials) from sync data before storage
@@ -226,12 +224,12 @@ Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 Tweak any shipped job — schedule, body, prompt, enabled flag — without forking the package:
 
 ```markdown
-<!-- user-data/runtime/jobs/morning-briefing.md -->
+<!-- user-data/runtime/jobs/daily-briefing.md -->
 ---
-override: morning-briefing
+override: daily-briefing
 schedule: "0 6 * * *"   # only the fields you want to change
 ---
-# Protocol: Morning Briefing (user override)
+# Protocol: Daily Briefing (user override)
 
 …your custom protocol body, or omit the body to keep the system default…
 ```
@@ -260,7 +258,7 @@ Robin maintains a rolling handoff note for the next session. At session end (or 
 
 - **Node.js 18 or later** — check with `node --version`
 - **git**
-- An AI coding tool: Claude Code, Cursor, Antigravity, Codex, or Gemini CLI
+- **Claude Code** — Robin v5 supports Claude Code only.
 
 ### Steps
 
@@ -272,14 +270,13 @@ cd robin
 
 # 2. Install. The postinstall step:
 #      - copies system/scaffold/* into user-data/
-#      - creates artifacts/input, artifacts/output, backup/
-#      - prompts for your name, timezone, email, platform, assistant name
+#      - creates user-data/artifacts/{input,output}, backup/
+#      - prompts for your name, timezone, email, assistant name
 #      - installs the pre-commit privacy hook
 #      - applies migrations and installs scheduler entries
 npm install
 
-# 3. Open the repo in your AI tool. It reads AGENTS.md directly (Cursor,
-#    Antigravity, Codex) or via a pointer file (CLAUDE.md, GEMINI.md).
+# 3. Open the repo in Claude Code. CLAUDE.md is auto-discovered from cwd.
 #    Robin will introduce itself.
 ```
 
@@ -297,7 +294,7 @@ git pull upstream main      # if you forked
 npm install                 # runs migrations, config upgrade, scaffold sync, scheduler reinstall
 ```
 
-This only touches files in `system/` and root pointer files. **`user-data/`, `artifacts/`, `backup/`, and `docs/` are gitignored — your personal data is never touched by an update.**
+This only touches files in `system/` and root pointer files. **`user-data/`, `backup/`, and `docs/` are gitignored — your personal data is never touched by an update.**
 
 Migrations, config upgrades, and scaffold sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast.
 
@@ -308,9 +305,23 @@ node system/scripts/memory/index-entities.js --bootstrap          # seed ENTITIE
 node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection
 ```
 
+### Upgrading to v5.0.0 (Claude Code only)
+
+v5 removes multi-host support and folds the former `AGENTS.md` into a single canonical `CLAUDE.md`. After pulling v5:
+
+```bash
+git pull                                                           # brings new CLAUDE.md; deletes AGENTS.md, GEMINI.md
+npm install                                                        # runs migration 0024 (drops cfg.platform); reconciler removes the host-validation scheduler entry
+node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection (Hard Rules now in CLAUDE.md)
+```
+
+If you run the Discord bot, restart its launchd agent with `npm run discord:install` so it picks up the updated code.
+
+If you customized `AGENTS.md` directly (system files are upstream-owned), move your customizations into `user-data/custom-rules.md`, `user-data/runtime/jobs/`, or `user-data/runtime/scripts/` per the extension-point convention before pulling. On a `git pull` conflict, run `git checkout -- AGENTS.md` and accept the upstream deletion.
+
 Users who customized `.claude/settings.json` locally must merge the new `UserPromptSubmit` hook entry by hand; everyone else picks it up via `git pull`.
 
-If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — tracked files are upstream-owned. Move customizations into the extension points above.
+If `git pull` reports a conflict on any other tracked file, run `git checkout -- <conflicting-path>` — tracked files are upstream-owned. Move customizations into the extension points above.
 
 ---
 
@@ -357,9 +368,7 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 
 ```
 robin/
-├── AGENTS.md                <- Canonical instructions (read natively by Cursor, Antigravity, Codex)
-├── CLAUDE.md                <- Pointer -> AGENTS.md (Claude Code)
-├── GEMINI.md                <- Pointer -> AGENTS.md (Gemini CLI)
+├── CLAUDE.md                <- Canonical instructions (auto-discovered by Claude Code from cwd)
 ├── bin/
 │   └── robin.js             <- CLI entry point (run, jobs, link, recall, watch, update)
 ├── system/                  <- upstream-owned, tracked, never user-edited
@@ -370,14 +379,14 @@ robin/
 │   │   ├── cli/             <- user-facing CLI entry points (invoked by bin/robin.js)
 │   │   ├── hooks/           <- claude-code.js (UserPromptSubmit / PreToolUse / Stop / on-pre-bash) + pre-commit.js
 │   │   ├── jobs/            <- runner, reconciler, OS-scheduler installer adapters
-│   │   ├── memory/          <- index-entities, backfill-entity-links, lint, prune, regenerate-{index,links,pointers}
+│   │   ├── memory/          <- index-entities, backfill-entity-links, lint, prune, regenerate-{index,links}
 │   │   ├── capture/         <- ingest guard, dream pre-filter, auto-memory, action classification
-│   │   ├── sync/            <- oauth, secrets, http, redact, markdown, cursor, untrusted-index
+│   │   ├── sync/            <- oauth, secrets, http, redact, markdown, cursor (DB cursor), untrusted-index
 │   │   ├── wiki-graph/      <- entity registry, link application, exclusions
 │   │   ├── watches/         <- slugify, frontmatter parse, list/state I/O
 │   │   ├── migrate/         <- migration apply harness + helpers
-│   │   ├── diagnostics/     <- check-manifest, manifest-snapshot, measure-tokens, validate-host, check-doc-paths
-│   │   └── lib/             <- cross-cutting utilities (outbound-policy, bash-sensitive-patterns, manifest, platforms…)
+│   │   ├── diagnostics/     <- check-manifest, manifest-snapshot, measure-tokens, check-doc-paths, hard-rules-hash
+│   │   └── lib/             <- cross-cutting utilities (outbound-policy, bash-sensitive-patterns, manifest)
 │   ├── scaffold/            <- first-run templates for user-data/
 │   ├── integrations/        <- per-provider setup playbooks
 │   └── tests/               <- mirrors system/scripts/ layout
@@ -389,28 +398,14 @@ robin/
 │   ├── security/            <- manifest.json baseline, refusal logs
 │   ├── sources/             <- immutable source document archive
 │   ├── state/               <- sessions, locks, sync cursors, job logs, capture/recall/hook-perf logs
+│   ├── artifacts/{input,output} <- file pipe (input drop / generated output)
 │   ├── policies.md          <- AUTO/ASK/NEVER action classes
 │   ├── integrations.md      <- declared integrations
 │   ├── custom-rules.md      <- your appended rules
 │   └── robin.config.json
-├── artifacts/{input,output} <- file pipe, gitignored
 ├── backup/                  <- tar.gz archives, gitignored
 └── docs/                    <- design notes, specs, plans (gitignored)
 ```
-
----
-
-## Supported platforms
-
-| Tool | Pointer file | How it works |
-|------|-------------|--------------|
-| Claude Code | `CLAUDE.md` | Pointer to `AGENTS.md` |
-| Gemini CLI | `GEMINI.md` | Pointer to `AGENTS.md` |
-| Cursor | (none) | Reads `AGENTS.md` natively |
-| Antigravity | (none) | Reads `AGENTS.md` natively |
-| Codex | (none) | Reads `AGENTS.md` natively |
-
-Pointer files are generated from `system/scripts/lib/platforms.js`. Adding a new tool is one entry there + `npm run regenerate-pointers`.
 
 ---
 

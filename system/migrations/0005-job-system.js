@@ -25,7 +25,7 @@ export const description = 'Unify operations and jobs; introduce job runner syst
 // Per the design doc.
 const JOB_DEFAULTS = {
   dream: { runtime: 'agent', schedule: '0 4 * * *', enabled: true, catch_up: true, timeout_minutes: 30, notify_on_failure: true },
-  'morning-briefing': { runtime: 'agent', schedule: '0 7 * * *', enabled: false, catch_up: true, timeout_minutes: 15, notify_on_failure: true },
+  'daily-briefing': { runtime: 'agent', schedule: '0 7 * * *', enabled: false, catch_up: true, timeout_minutes: 15, notify_on_failure: true },
   'weekly-review': { runtime: 'agent', schedule: '0 10 * * 0', enabled: false, catch_up: true, timeout_minutes: 30, notify_on_failure: true },
   'monthly-financial': { runtime: 'agent', schedule: '0 9 1 * *', enabled: false, catch_up: true, timeout_minutes: 30, notify_on_failure: true },
   'quarterly-self-assessment': { runtime: 'agent', schedule: '0 9 1 1,4,7,10 *', enabled: false, catch_up: true, timeout_minutes: 30, notify_on_failure: true },

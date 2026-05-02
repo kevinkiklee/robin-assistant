@@ -5,7 +5,7 @@ type: queue
 
 # Pending Asks
 
-Each entry: source job, class, summary, payload, written_at. The session-start step in AGENTS.md asks the top item when a natural moment arises (one per session max).
+Each entry: source job, class, summary, payload, written_at. The session-start step in CLAUDE.md asks the top item when a natural moment arises (one per session max).
 
 <!-- Active asks appended here. Newest first. Format:
 

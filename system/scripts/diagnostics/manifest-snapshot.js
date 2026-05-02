@@ -15,7 +15,7 @@ import { dirname, resolve, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { writeManifest, loadCurrentSettings, enumerateMCPServers } from '../lib/manifest.js';
-import { hashHardRules } from '../lib/agentsmd-hash.js';
+import { hashHardRules } from '../lib/hard-rules-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
@@ -43,12 +43,12 @@ function buildSnapshot(workspaceDir) {
 
   const mcpExpected = enumerateMCPServers(workspaceDir);
 
-  // Cycle-2c: snapshot the AGENTS.md Hard Rules hash + user-data/runtime/jobs files.
+  // Snapshot the CLAUDE.md Hard Rules hash + user-data/runtime/jobs files.
   let hardRulesHash = '';
-  const agentsmdPath = join(workspaceDir, 'AGENTS.md');
-  if (existsSync(agentsmdPath)) {
+  const claudemdPath = join(workspaceDir, 'CLAUDE.md');
+  if (existsSync(claudemdPath)) {
     try {
-      const md = readFileSync(agentsmdPath, 'utf-8');
+      const md = readFileSync(claudemdPath, 'utf-8');
       hardRulesHash = hashHardRules(md) ?? '';
     } catch { /* leave empty */ }
   }
@@ -67,7 +67,7 @@ function buildSnapshot(workspaceDir) {
       expected: mcpExpected,
       writeCapable: [],
     },
-    agentsmd: {
+    claudemd: {
       hardRulesHash,
       lastSnapshot: new Date().toISOString().slice(0, 10),
     },

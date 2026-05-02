@@ -139,7 +139,9 @@ export function regenIndex(workspaceDir, jobs, states, opts = {}) {
 }
 
 // failures.md — per-job grouped, derived entirely from state JSONs.
-export function renderFailures({ jobs, states, generatedAt = new Date(), tz = null }) {
+// `healthSection` (string, optional) is appended verbatim — typically the
+// `## Health check` block produced by `renderHealthSection()` in doctor.js.
+export function renderFailures({ jobs, states, generatedAt = new Date(), tz = null, healthSection = null }) {
   const active = [];
   const resolved = [];
   for (const [name, def] of jobs) {
@@ -189,6 +191,9 @@ export function renderFailures({ jobs, states, generatedAt = new Date(), tz = nu
     }
   }
   lines.push('');
+  if (healthSection) {
+    lines.push(healthSection);
+  }
   return lines.join('\n');
 }
 

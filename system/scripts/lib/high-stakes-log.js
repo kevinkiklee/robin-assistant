@@ -5,7 +5,7 @@
 // Format: timestamp \t target \t content-hash. Dedup 1h window on
 // (target, content-hash) so active editing doesn't spam.
 //
-// Surfaced in morning briefing aggregated by destination.
+// Surfaced in daily briefing aggregated by destination.
 
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';

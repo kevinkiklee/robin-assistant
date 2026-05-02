@@ -24,7 +24,7 @@ function setupFixture() {
   for (const d of ['jobs', 'scripts', 'secrets', 'security', 'sources/notes']) {
     mkdirSync(join(ud, d), { recursive: true });
   }
-  writeFileSync(join(ud, 'jobs/morning-briefing.md'), '# Morning Briefing\n');
+  writeFileSync(join(ud, 'jobs/daily-briefing.md'), '# Daily Briefing\n');
   writeFileSync(join(ud, 'scripts/sync-gmail.js'), '// sync gmail\n');
   writeFileSync(join(ud, 'secrets/.env'), 'GITHUB_PAT=fake\n');
   writeFileSync(join(ud, 'secrets/.gitignore'), '*\n!.gitignore\n!README.md\n');
@@ -112,7 +112,7 @@ test('top-level moves: jobs/, scripts/, secrets/, security/ into ops/', async ()
     }
     assert.ok(existsSync(join(ud, 'ops/secrets/.env')), '.env preserved');
     assert.ok(existsSync(join(ud, 'ops/scripts/sync-gmail.js')), 'script preserved');
-    assert.ok(existsSync(join(ud, 'ops/jobs/morning-briefing.md')), 'job preserved');
+    assert.ok(existsSync(join(ud, 'ops/jobs/daily-briefing.md')), 'job preserved');
   } finally { cleanup(root); }
 });
 

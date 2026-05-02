@@ -309,7 +309,7 @@ function findRedundantParagraphs(memRoot) {
 
 // ---------------------------------------------------------------------------
 // Conversational-tic detection — scans session-handoff.md for known patterns
-// that violate AGENTS.md's "Conversational tics" Operational Rule.
+// that violate CLAUDE.md's "Conversational tics" Operational Rule.
 // ---------------------------------------------------------------------------
 
 const TIC_PATTERNS = [

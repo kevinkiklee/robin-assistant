@@ -25,6 +25,7 @@ import {
 } from './lib/state.js';
 import { renderHealthSection, runDoctor } from './lib/doctor.js';
 import { getAdapter } from './installer/index.js';
+import { resolveCliWorkspaceDir } from '../lib/workspace-root.js';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -224,13 +225,13 @@ async function cliMain(argv) {
   for (const a of argv.slice(2)) {
     if (a === '--force') flags.force = true;
   }
-  const workspaceDir = process.env.ROBIN_WORKSPACE || process.cwd();
+  const workspaceDir = resolveCliWorkspaceDir();
   const r = reconcile({ workspaceDir, argv: resolveRobinArgv(workspaceDir), force: flags.force });
   process.stdout.write(JSON.stringify(r, null, 2) + '\n');
   process.exit(r.ok ? 0 : 1);
 }
 
-export function resolveRobinArgv(workspaceDir = process.env.ROBIN_WORKSPACE || process.cwd()) {
+export function resolveRobinArgv(workspaceDir = resolveCliWorkspaceDir()) {
   // Each element becomes one argv token in the OS scheduler entry. Keep the
   // node binary and script as separate tokens — joining them with a space
   // makes launchd treat the whole string as a single argv[0] and exec fails.

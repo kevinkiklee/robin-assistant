@@ -1,7 +1,7 @@
 ---
-name: morning-briefing
-triggers: ["good morning", "brief me", "morning briefing"]
-description: Daily morning briefing covering calendar, weather, priorities, and any flagged items needing attention today.
+name: daily-briefing
+triggers: ["good morning", "brief me", "daily briefing", "morning briefing"]
+description: Daily briefing covering calendar, weather, priorities, and any flagged items needing attention today.
 runtime: "agent"
 schedule: "0 7 * * *"
 enabled: false
@@ -9,11 +9,11 @@ catch_up: true
 timeout_minutes: 15
 notify_on_failure: true
 ---
-# Protocol: Morning Briefing
+# Protocol: Daily Briefing
 
 ## Triggers
 
-"morning briefing", "good morning", "brief me", "what's today", "what do I have today"
+"daily briefing", "morning briefing", "good morning", "brief me", "what's today", "what do I have today"
 
 ## Steps
 

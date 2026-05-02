@@ -114,7 +114,7 @@ Used by cycle-1b (kind=outbound) and future cycles (cycle-2a kind=bash, cycle-2b
 
 Rotation at 1MB: oldest log moves to `policy-refusals-YYYY-MM.log`.
 
-Surfaced in morning briefing for retrospective review.
+Surfaced in daily briefing for retrospective review.
 
 ### Known limitations
 
@@ -265,16 +265,16 @@ Same hook, additional check: writes to one of these paths log a row to `user-dat
 - `user-data/memory/self-improvement/{corrections,patterns,preferences,communication-style,calibration}.md`
 - `user-data/memory/profile/identity.md`
 
-Log is audit-only — write proceeds. Dedup window 1h on `target+contentHash`. Surfaced in morning briefing aggregated by destination.
+Log is audit-only — write proceeds. Dedup window 1h on `target+contentHash`. Surfaced in daily briefing aggregated by destination.
 
-### AGENTS.md Hard Rules integrity (G-01)
+### CLAUDE.md Hard Rules integrity (G-01)
 
-Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `## Hard Rules` section) and `agentsmd.lastSnapshot` (date string). `check-manifest.js` extracts the section from current AGENTS.md, normalizes (strips trailing whitespace per line; collapses 3+ blank lines; trims), hashes, and compares.
+Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `## Hard Rules` section) and `agentsmd.lastSnapshot` (date string). `check-manifest.js` extracts the section from current CLAUDE.md, normalizes (strips trailing whitespace per line; collapses 3+ blank lines; trims), hashes, and compares.
 
 - Match → no drift.
 - Mismatch → severe drift (`agentsmd-hard-rules-drift`).
 - Section missing → severe drift (`agentsmd-hard-rules-missing`).
-- Empty `hardRulesHash` (first-deploy baseline missing) → info entry; morning briefing prompts `manifest-snapshot.js` run.
+- Empty `hardRulesHash` (first-deploy baseline missing) → info entry; daily briefing prompts `manifest-snapshot.js` run.
 
 When Kevin intentionally edits Hard Rules, run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
 
@@ -309,5 +309,5 @@ The cycle-2c one-shot migration has already run on existing workspaces:
 ### Known limitations
 
 - The PII backstop uses the same patterns as `applyRedaction`. Email/phone aren't currently in scope (the privacy hard rule names SSN/SIN/passport/payment/credentials only).
-- AGENTS.md hash is per-section. Kevin's edits to OTHER sections of AGENTS.md (Operational Rules, etc.) do not trip drift.
+- CLAUDE.md hash is per-section. Kevin's edits to OTHER sections of CLAUDE.md (Operational Rules, etc.) do not trip drift.
 - Pattern TTL relies on the model honestly logging firings. A model that refuses to log will see its patterns drift toward archive — acceptable: better to lose a pattern than to keep a stale one.

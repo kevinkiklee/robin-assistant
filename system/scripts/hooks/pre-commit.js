@@ -13,7 +13,7 @@ try {
 
 const staged = execSync('git diff --cached --name-only', { encoding: 'utf-8' })
   .split('\n').filter(Boolean)
-  .filter(f => /^(user-data|artifacts|backup)\//.test(f));
+  .filter(f => /^(user-data|backup)\//.test(f));
 if (staged.length) {
   console.error('FATAL: refusing to commit personal data. Staged files:');
   staged.forEach(f => console.error('  ' + f));

@@ -14,7 +14,7 @@ Hourly pass over active watches. Fetches new info, dedupes, writes deltas.
 
 ## Context profile
 
-Minimal context. Skip Tier 1 personalization reads; load AGENTS.md hard rules + this protocol + per-watch markdown files only. Saves ~3,000 tokens × 5 watches per tick.
+Minimal context. Skip Tier 1 personalization reads; load CLAUDE.md hard rules + this protocol + per-watch markdown files only. Saves ~3,000 tokens × 5 watches per tick.
 
 ## Phase 1: Pick eligible watches
 

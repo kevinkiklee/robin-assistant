@@ -7,16 +7,13 @@
 *                                                  @kevinkiklee
 
 # Tier 1 root + framework files (token-budget governance)
-/AGENTS.md                                         @kevinkiklee
 /CLAUDE.md                                         @kevinkiklee
-/GEMINI.md                                         @kevinkiklee
 /system/rules/startup.md                           @kevinkiklee
 /system/rules/capture.md                           @kevinkiklee
 /system/rules/self-improvement.md                  @kevinkiklee
 /system/jobs/                                      @kevinkiklee
 /system/scripts/diagnostics/lib/token-budget.json  @kevinkiklee
 /system/scripts/diagnostics/lib/token-baselines.json  @kevinkiklee
-/system/scripts/lib/platforms.js                   @kevinkiklee
 /system/tests/golden-session.snapshot.json         @kevinkiklee
 
 # Migrations

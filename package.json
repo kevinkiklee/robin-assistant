@@ -1,7 +1,7 @@
 {
   "name": "robin-assistant",
-  "version": "4.0.0",
-  "description": "A self-improving personal assistant — portable across AI coding tools",
+  "version": "5.0.0",
+  "description": "A self-improving personal assistant for Claude Code",
   "type": "module",
   "bin": {
     "robin": "bin/robin.js"
@@ -11,7 +11,6 @@
     "backup": "node system/scripts/cli/backup.js",
     "restore": "node system/scripts/cli/restore.js",
     "reset": "node system/scripts/cli/reset.js",
-    "regenerate-pointers": "node system/scripts/memory/regenerate-pointers.js",
     "regenerate-memory-index": "node system/scripts/memory/regenerate-index.js",
     "sync-lunch-money": "node user-data/runtime/scripts/sync-lunch-money.js",
     "analyze-finances": "node system/scripts/diagnostics/analyze-finances.js",
@@ -41,10 +40,6 @@
     "assistant",
     "personal-assistant",
     "claude-code",
-    "cursor",
-    "gemini-cli",
-    "codex",
-    "antigravity",
     "discord"
   ],
   "license": "MIT",
@@ -60,7 +55,6 @@
   "files": [
     "bin",
     "system",
-    "AGENTS.md",
     "CLAUDE.md",
     "LICENSE",
     "README.md"

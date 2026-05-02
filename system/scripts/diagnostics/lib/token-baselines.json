@@ -1,19 +1,18 @@
 {
-  "snapshot_at": "2026-05-02T00:38:35.862Z",
+  "snapshot_at": "2026-05-02T14:07:52.578Z",
   "enforce_caps": true,
-  "host": null,
   "tier1": {
     "files": [
       {
-        "path": "AGENTS.md",
+        "path": "CLAUDE.md",
         "stability": "frozen",
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 10819,
-        "lines": 83,
-        "tokens": 2925,
-        "max_lines": 90,
+        "bytes": 11710,
+        "lines": 90,
+        "tokens": 3165,
+        "max_lines": 120,
         "over_cap_at": null
       },
       {
@@ -22,9 +21,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 646,
-        "lines": 33,
-        "tokens": 175,
+        "bytes": 487,
+        "lines": 27,
+        "tokens": 132,
         "max_lines": null,
         "over_cap_at": null
       },
@@ -58,9 +57,9 @@
         "exists": true,
         "required": true,
         "optional_existence": false,
-        "bytes": 10115,
-        "lines": 87,
-        "tokens": 2734,
+        "bytes": 10228,
+        "lines": 88,
+        "tokens": 2765,
         "max_lines": 90,
         "over_cap_at": null
       },
@@ -70,9 +69,9 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 2713,
-        "lines": 27,
-        "tokens": 734,
+        "bytes": 4733,
+        "lines": 45,
+        "tokens": 1280,
         "max_lines": 160,
         "over_cap_at": null
       },
@@ -166,9 +165,9 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 363,
-        "lines": 6,
-        "tokens": 99,
+        "bytes": 234,
+        "lines": 5,
+        "tokens": 64,
         "max_lines": null,
         "over_cap_at": null
       },
@@ -178,21 +177,21 @@
         "exists": true,
         "required": false,
         "optional_existence": true,
-        "bytes": 298,
-        "lines": 10,
-        "tokens": 81,
+        "bytes": 372,
+        "lines": 11,
+        "tokens": 101,
         "max_lines": null,
         "over_cap_at": null
       }
     ],
-    "total_bytes": 36580,
-    "total_lines": 486,
-    "total_tokens": 9887,
-    "cache_stable_bytes": 33229,
-    "cache_stable_tokens": 8981,
+    "total_bytes": 39390,
+    "total_lines": 506,
+    "total_tokens": 10646,
+    "cache_stable_bytes": 36094,
+    "cache_stable_tokens": 9756,
     "budget": {
       "max_lines": 510,
-      "max_tokens": 10200
+      "max_tokens": 10800
     },
     "cache_order_violations": []
   },
@@ -200,107 +199,114 @@
     "files": [
       {
         "path": "system/jobs/dream.md",
-        "bytes": 16837,
-        "lines": 197,
-        "tokens": 4551,
+        "bytes": 16667,
+        "lines": 195,
+        "tokens": 4505,
         "over_cap_at": null
       },
       {
         "path": "system/rules/capture.md",
-        "bytes": 12603,
-        "lines": 263,
-        "tokens": 3407,
+        "bytes": 11277,
+        "lines": 245,
+        "tokens": 3048,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/ingest.md",
-        "bytes": 6667,
+        "bytes": 6699,
         "lines": 154,
-        "tokens": 1802,
+        "tokens": 1811,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/lint.md",
-        "bytes": 5140,
+        "bytes": 5148,
         "lines": 132,
-        "tokens": 1390,
+        "tokens": 1392,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/system-maintenance.md",
-        "bytes": 4165,
+        "bytes": 4276,
         "lines": 81,
-        "tokens": 1126,
+        "tokens": 1156,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/prune.md",
-        "bytes": 4092,
+        "bytes": 4108,
         "lines": 118,
-        "tokens": 1106,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/save-conversation.md",
-        "bytes": 3211,
-        "lines": 92,
-        "tokens": 868,
+        "tokens": 1111,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/multi-session-coordination.md",
-        "bytes": 3010,
+        "bytes": 3344,
         "lines": 73,
-        "tokens": 814,
+        "tokens": 904,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/save-conversation.md",
+        "bytes": 3227,
+        "lines": 92,
+        "tokens": 873,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/audit.md",
-        "bytes": 2997,
+        "bytes": 3033,
         "lines": 91,
-        "tokens": 810,
+        "tokens": 820,
         "over_cap_at": null
       },
       {
         "path": "system/rules/startup.md",
-        "bytes": 2912,
-        "lines": 74,
-        "tokens": 788,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/watch-topics.md",
-        "bytes": 2288,
-        "lines": 56,
-        "tokens": 619,
+        "bytes": 2819,
+        "lines": 72,
+        "tokens": 762,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/quarterly-self-assessment.md",
-        "bytes": 2282,
+        "bytes": 2399,
         "lines": 72,
-        "tokens": 617,
+        "tokens": 649,
         "over_cap_at": null
       },
       {
         "path": "system/rules/self-improvement.md",
-        "bytes": 2099,
+        "bytes": 2336,
         "lines": 39,
-        "tokens": 568,
+        "tokens": 632,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/watch-topics.md",
+        "bytes": 2312,
+        "lines": 56,
+        "tokens": 625,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/outcome-check.md",
-        "bytes": 1984,
+        "bytes": 2016,
         "lines": 50,
-        "tokens": 537,
+        "tokens": 545,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/meeting-prep.md",
+        "bytes": 1949,
+        "lines": 49,
+        "tokens": 527,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/weekly-review.md",
-        "bytes": 1795,
+        "bytes": 1848,
         "lines": 60,
-        "tokens": 486,
+        "tokens": 500,
         "over_cap_at": null
       },
       {
@@ -311,105 +317,98 @@
         "over_cap_at": null
       },
       {
-        "path": "system/jobs/host-validation.md",
-        "bytes": 1744,
-        "lines": 56,
-        "tokens": 472,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/meeting-prep.md",
-        "bytes": 1733,
-        "lines": 49,
-        "tokens": 469,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/morning-briefing.md",
-        "bytes": 1674,
+        "path": "system/jobs/daily-briefing.md",
+        "bytes": 1694,
         "lines": 58,
-        "tokens": 453,
+        "tokens": 458,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/email-triage.md",
-        "bytes": 1544,
+        "bytes": 1559,
         "lines": 49,
+        "tokens": 422,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/monthly-financial.md",
+        "bytes": 1543,
+        "lines": 37,
         "tokens": 418,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/subscription-audit.md",
-        "bytes": 1472,
+        "bytes": 1509,
         "lines": 50,
-        "tokens": 398,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/monthly-financial.md",
-        "bytes": 1412,
-        "lines": 37,
-        "tokens": 382,
-        "over_cap_at": null
-      },
-      {
-        "path": "system/jobs/todo-extraction.md",
-        "bytes": 1302,
-        "lines": 39,
-        "tokens": 352,
+        "tokens": 408,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/receipt-tracking.md",
-        "bytes": 1254,
+        "bytes": 1336,
         "lines": 44,
-        "tokens": 339,
+        "tokens": 362,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/todo-extraction.md",
+        "bytes": 1318,
+        "lines": 39,
+        "tokens": 357,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/migrate-auto-memory.md",
-        "bytes": 850,
+        "bytes": 858,
         "lines": 23,
-        "tokens": 230,
+        "tokens": 232,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/_robin-sync.md",
-        "bytes": 629,
+        "bytes": 637,
         "lines": 18,
-        "tokens": 170,
+        "tokens": 173,
         "over_cap_at": null
       },
       {
         "path": "system/jobs/backup.md",
-        "bytes": 285,
+        "bytes": 289,
         "lines": 13,
-        "tokens": 78,
+        "tokens": 79,
+        "over_cap_at": null
+      },
+      {
+        "path": "system/jobs/README.md",
+        "bytes": 113,
+        "lines": 3,
+        "tokens": 31,
         "over_cap_at": null
       }
     ],
-    "total_bytes": 87741,
-    "total_tokens": 23726,
+    "total_bytes": 86074,
+    "total_tokens": 23276,
     "top_5": [
       {
         "path": "system/jobs/dream.md",
-        "tokens": 4551
+        "tokens": 4505
       },
       {
         "path": "system/rules/capture.md",
-        "tokens": 3407
+        "tokens": 3048
       },
       {
         "path": "system/jobs/ingest.md",
-        "tokens": 1802
+        "tokens": 1811
       },
       {
         "path": "system/jobs/lint.md",
-        "tokens": 1390
+        "tokens": 1392
       },
       {
         "path": "system/jobs/system-maintenance.md",
-        "tokens": 1126
+        "tokens": 1156
       }
     ]
   },

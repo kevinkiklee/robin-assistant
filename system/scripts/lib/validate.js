@@ -28,7 +28,6 @@ export async function validateInDir(workspaceDir) {
     ok('user-data/runtime/config/robin.config.json is valid JSON');
     if (!config.user?.name) warn('user.name not set');
     if (!config.user?.timezone) warn('user.timezone not set');
-    if (!config.platform) warn('platform not set');
   } catch {
     fail('user-data/runtime/config/robin.config.json missing or invalid'); issues++;
   }
@@ -64,7 +63,7 @@ export async function validateInDir(workspaceDir) {
   try {
     const staged = execSync('git diff --cached --name-only', { cwd: workspaceDir, encoding: 'utf-8' })
       .split('\n').filter(Boolean)
-      .filter(f => /^(user-data|artifacts|backup)\//.test(f));
+      .filter(f => /^(user-data|backup)\//.test(f));
     if (staged.length === 0) ok('no personal data staged');
     else { fail(`staged personal data: ${staged.join(', ')}`); issues++; }
   } catch { /* not a git repo — fine in tests */ }

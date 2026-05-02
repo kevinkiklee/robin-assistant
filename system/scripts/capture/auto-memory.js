@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Drains host-managed auto-memory directories into user-data/memory/streams/inbox.md.
 //
-// Per the Local Memory immutable rule (AGENTS.md), persistent memory must
+// Per the Local Memory immutable rule (CLAUDE.md), persistent memory must
 // live in user-data/. Some hosts write to ~/.claude/projects/.../memory/
 // despite our instructions; this script migrates those entries during
 // Dream's Phase 0 and removes the source.
