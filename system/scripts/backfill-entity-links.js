@@ -30,7 +30,7 @@ function inScope(relPath, scope) {
 export async function runBackfill({ workspaceDir, scope = 'all', apply = false, reportDir }) {
   const memoryRoot = join(workspaceDir, 'user-data', 'memory');
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const outDir = reportDir || join(workspaceDir, 'artifacts', `wiki-graph-${ts}`);
+  const outDir = reportDir || join(workspaceDir, 'user-data', 'artifacts', `wiki-graph-${ts}`);
   await mkdir(outDir, { recursive: true });
 
   let lockPath = null;
