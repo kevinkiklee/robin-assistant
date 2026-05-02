@@ -1,6 +1,20 @@
 # Memory Index
 
-Robin's memory tree. Read this to decide which file to open. Generated — do not edit by hand.
+Robin's memory tree. The "Where to look first" block below is hand-curated; the path table is auto-regenerated. Read both before opening a sub-tree.
+
+<!-- BEGIN where-to-look-first -->
+## Where to look first
+
+| If the question is about… | Start with |
+|---|---|
+| A specific person | `profile/relationships.md`; cross-ref `ENTITIES.md` for canonical file |
+| A purchase or expense | `knowledge/finance/transactions.md` |
+| A photo, camera, or lens | `knowledge/photography-collection/INDEX.md` |
+| A trip or event | `knowledge/events/INDEX.md` |
+| A subscription or recurring charge | `knowledge/finance/subscriptions.md` |
+| A medical event or appointment | `knowledge/medical/INDEX.md` |
+| Anything else with a clear topic | `knowledge/<topic>/INDEX.md`; otherwise the auto-table below |
+<!-- END where-to-look-first -->
 
 | path | what's in it |
 |------|--------------|
