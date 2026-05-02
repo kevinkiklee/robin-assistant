@@ -13,6 +13,7 @@ const JOBS = fileURLToPath(new URL('../../jobs', import.meta.url));
 test('every system job parses + validates', () => {
   for (const f of readdirSync(JOBS)) {
     if (!f.endsWith('.md')) continue;
+    if (f === 'README.md') continue;
     const content = readFileSync(join(JOBS, f), 'utf-8');
     const parsed = parseJobFrontmatter(content);
     assert.ok(parsed.frontmatter.name, `${f}: missing name`);

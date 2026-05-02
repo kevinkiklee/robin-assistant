@@ -108,9 +108,10 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   mkdirSync(join(workspaceDir, 'artifacts/output'), { recursive: true });
   mkdirSync(join(workspaceDir, 'backup'), { recursive: true });
 
-  // Copy scaffold → user-data
+  // Copy scaffold → user-data (skip README.md, which documents the scaffold itself)
   if (existsSync(scaffold)) {
     for (const entry of readdirSync(scaffold)) {
+      if (entry === 'README.md') continue;
       cpSync(join(scaffold, entry), join(ud, entry), { recursive: true });
     }
   }

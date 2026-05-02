@@ -1,4 +1,4 @@
-import { existsSync, rmSync, cpSync, mkdirSync } from 'node:fs';
+import { existsSync, rmSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { backup } from './backup.js';
@@ -17,7 +17,12 @@ export async function reset(workspaceDir = process.cwd(), opts = {}) {
   mkdirSync(ud, { recursive: true });
 
   const skel = join(workspaceDir, 'system/scaffold');
-  if (existsSync(skel)) cpSync(skel, ud, { recursive: true });
+  if (existsSync(skel)) {
+    for (const entry of readdirSync(skel)) {
+      if (entry === 'README.md') continue;
+      cpSync(join(skel, entry), join(ud, entry), { recursive: true });
+    }
+  }
   console.log('user-data/ reset to scaffold.');
 }
 

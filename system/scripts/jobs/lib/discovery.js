@@ -10,7 +10,7 @@ import { jobsPaths } from './paths.js';
 function listDefs(dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => f.endsWith('.md'))
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
     .map((f) => ({
       filename: f,
       path: join(dir, f),
