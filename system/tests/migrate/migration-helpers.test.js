@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHelpers } from '../scripts/lib/migration-helpers.js';
+import { createHelpers } from '../../scripts/migrate/lib/migration-helpers.js';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

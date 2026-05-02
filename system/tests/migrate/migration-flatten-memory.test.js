@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as migration from '../migrations/0003-flatten-memory.js';
-import { createHelpers } from '../scripts/lib/migration-helpers.js';
+import * as migration from '../../migrations/0003-flatten-memory.js';
+import { createHelpers } from '../../scripts/migrate/lib/migration-helpers.js';
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), 'robin-mig-'));

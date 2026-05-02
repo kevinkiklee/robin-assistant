@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
-import { runPendingMigrations } from '../migrate.js';
+import { runPendingMigrations } from '../migrate/apply.js';
 import { ensureManifestFromScaffold } from '../lib/manifest.js';
 
 const PLATFORMS = ['claude-code', 'cursor', 'gemini-cli', 'codex', 'antigravity'];

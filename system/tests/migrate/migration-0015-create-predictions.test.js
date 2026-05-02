@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { up, id, description } from '../migrations/0015-create-predictions.js';
+import { up, id, description } from '../../migrations/0015-create-predictions.js';
 
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), 'mig0015-'));

@@ -6,9 +6,9 @@
 
 import { existsSync, readdirSync, statSync, copyFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { migrateConfig } from './config-migrate.js';
+import { migrateConfig } from '../migrate/lib/config-migrate.js';
 import { checkChangelog } from './changelog-notify.js';
-import { runPendingMigrations } from '../migrate.js';
+import { runPendingMigrations } from '../migrate/apply.js';
 import { validateInDir } from './validate.js';
 
 export async function runPreflight(workspaceDir = process.cwd()) {

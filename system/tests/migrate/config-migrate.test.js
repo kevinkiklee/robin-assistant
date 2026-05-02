@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateConfig } from '../scripts/lib/config-migrate.js';
+import { migrateConfig } from '../../scripts/migrate/lib/config-migrate.js';
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

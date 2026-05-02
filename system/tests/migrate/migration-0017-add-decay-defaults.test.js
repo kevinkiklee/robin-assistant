@@ -8,8 +8,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { up, id, description } from '../migrations/0017-add-decay-defaults.js';
-import { parseFrontmatter } from '../scripts/memory/lib/memory-index.js';
+import { up, id, description } from '../../migrations/0017-add-decay-defaults.js';
+import { parseFrontmatter } from '../../scripts/memory/lib/memory-index.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures

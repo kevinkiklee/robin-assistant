@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { up, id, description } from '../migrations/0014-seed-learning-queue.js';
+import { up, id, description } from '../../migrations/0014-seed-learning-queue.js';
 
 function workspace(initial) {
   const dir = mkdtempSync(join(tmpdir(), 'mig0014-'));

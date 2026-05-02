@@ -12,7 +12,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 function run(cmd, args = []) {
   try {
@@ -53,7 +53,7 @@ describe('e2e: full toolchain', () => {
   });
 
   it('migrate.js dry-run succeeds', () => {
-    const r = run('node', ['system/scripts/migrate.js', '--dry-run']);
+    const r = run('node', ['system/scripts/migrate/apply.js', '--dry-run']);
     assert.equal(r.exit, 0, `migrate dry-run failed: ${r.stderr}`);
   });
 

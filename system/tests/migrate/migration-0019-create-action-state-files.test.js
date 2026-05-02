@@ -11,10 +11,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { up, id, description } from '../migrations/0019-create-action-state-files.js';
+import { up, id, description } from '../../migrations/0019-create-action-state-files.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), 'mig0019-'));

@@ -74,7 +74,7 @@ scripts/validate.js            <- rewrite for v2 file checks
 scripts/cli/reset.js               <- rewrite for v2 user files
 scripts/export.js              <- rewrite for v2 file list
 scripts/check-update.js        <- update state dir path
-scripts/migrate.js             <- keep as-is (future migrations)
+scripts/migrate/apply.js             <- keep as-is (future migrations)
 ```
 
 ### Files to delete

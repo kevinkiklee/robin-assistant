@@ -5,8 +5,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as migration from '../migrations/0021-reorganize-user-data.js';
-import { createHelpers } from '../scripts/lib/migration-helpers.js';
+import * as migration from '../../migrations/0021-reorganize-user-data.js';
+import { createHelpers } from '../../scripts/migrate/lib/migration-helpers.js';
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), 'robin-mig-0021-'));

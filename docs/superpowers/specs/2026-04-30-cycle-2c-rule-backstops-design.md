@@ -672,7 +672,7 @@ At spec-write time, the other agent's `feat/a3-session-end-sweep` branch is acti
 - **`claude-code-hook.js --on-pre-tool-use`**: other agent didn't touch (their work was Stop-mode); cycle-2c extends pre-tool-use. Low conflict.
 - **`system/jobs/dream.md`**: cycle-2c adds a TTL phase. Other agent's work is on session-end / Stop hook; Dream protocol unchanged by them. Low conflict but verify.
 - **`system/jobs/morning-briefing.md`**: cycle-2c adds high-stakes-writes review. Other agent's work was on Session End; not morning briefing. Low conflict but verify.
-- **`system/scripts/migrate.js`**: cycle-2c adds `migrate-cycle-2c.js` as a one-shot; doesn't touch existing migration system. Low conflict.
+- **`system/scripts/migrate/apply.js`**: cycle-2c adds `migrate-cycle-2c.js` as a one-shot; doesn't touch existing migration system. Low conflict.
 
 Implementation paused until user greenlights. Re-read all five coupling notes (cycles 1a/1b/2a/2b/2c) when resuming.
 

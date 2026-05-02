@@ -37,7 +37,7 @@ export async function up({ workspaceDir, helpers }) {
 }
 ```
 
-`helpers` comes from `system/scripts/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromScaffold`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
+`helpers` comes from `system/scripts/migrate/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromScaffold`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
 
 The migration framework auto-applies pending migrations on the next session start, taking a `backup/pre-migration-<timestamp>.tar.gz` snapshot first. Users get a one-line notice; if anything fails, restore is one `npm run restore` away.
 

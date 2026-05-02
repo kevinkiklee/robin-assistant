@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, readdirSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { up } from '../migrations/0007-rename-fetch-finances.js';
+import { up } from '../../migrations/0007-rename-fetch-finances.js';
 
 function workspace() {
   const ws = mkdtempSync(join(tmpdir(), 'mig0007-'));

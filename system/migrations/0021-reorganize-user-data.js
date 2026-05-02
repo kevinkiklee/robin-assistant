@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
-import { createHelpers } from '../scripts/lib/migration-helpers.js';
+import { createHelpers } from '../scripts/migrate/lib/migration-helpers.js';
 
 export const id = '0021-reorganize-user-data';
 export const description = 'Reorganize user-data into memory/, sources/, and ops/.';
