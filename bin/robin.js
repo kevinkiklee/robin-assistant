@@ -45,19 +45,19 @@ async function main() {
   }
 
   if (cmd === 'init') {
-    const { cmdInit } = await import('../system/scripts/init.js');
+    const { cmdInit } = await import('../system/scripts/cli/init.js');
     return cmdInit(rest);
   }
   if (cmd === 'run') {
-    const cli = await import('../system/scripts/jobs/cli.js');
+    const cli = await import('../system/scripts/cli/jobs.js');
     return cli.cmdRun(rest);
   }
   if (cmd === 'job') {
-    const cli = await import('../system/scripts/jobs/cli.js');
+    const cli = await import('../system/scripts/cli/jobs.js');
     return cli.cmdJob(rest);
   }
   if (cmd === 'jobs') {
-    const cli = await import('../system/scripts/jobs/cli.js');
+    const cli = await import('../system/scripts/cli/jobs.js');
     return cli.dispatchJobs(rest);
   }
   if (cmd === 'update') {
@@ -73,7 +73,7 @@ async function main() {
     process.exit(await cmdLink(rest));
   }
   if (cmd === 'watch') {
-    const { dispatchWatch } = await import('../system/scripts/watches/cli.js');
+    const { dispatchWatch } = await import('../system/scripts/cli/watches.js');
     return dispatchWatch(rest);
   }
 

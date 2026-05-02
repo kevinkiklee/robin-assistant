@@ -20,8 +20,8 @@ import {
   cmdWatchEnable,
   cmdWatchTail,
   cmdWatchRun,
-} from '../scripts/watches/cli.js';
-import { parseWatchFile, readWatchState, serializeWatchFile } from '../scripts/lib/watches.js';
+} from '../../scripts/cli/watches.js';
+import { parseWatchFile, readWatchState, serializeWatchFile } from '../../scripts/lib/watches.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

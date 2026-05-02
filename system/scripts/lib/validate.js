@@ -73,7 +73,7 @@ export async function validateInDir(workspaceDir) {
   if (existsSync(join(workspaceDir, '.git/hooks/pre-commit'))) {
     ok('pre-commit hook installed');
   } else {
-    warn('pre-commit hook not installed — run `node system/scripts/install-hooks.js`');
+    warn('pre-commit hook not installed — run `node system/scripts/cli/install-hooks.js`');
   }
 
   // stale locks

@@ -77,7 +77,7 @@
 
 - **Per-install (live):** `user-data/security/manifest.json` (gitignored under `user-data/`).
 - **Skeleton (shipped):** `system/skeleton/security/manifest.json` (tracked in package).
-- **Setup behavior:** `system/scripts/setup.js` (postinstall) copies skeleton → live if live doesn't exist. Idempotent: never overwrites an existing manifest.
+- **Setup behavior:** `system/scripts/cli/setup.js` (postinstall) copies skeleton → live if live doesn't exist. Idempotent: never overwrites an existing manifest.
 
 ### 3.2 Schema
 
@@ -563,7 +563,7 @@ No data migration. No file rewrites of existing logs.
 - **Target:** 0.75 working day.
 - **Ceiling:** 1.5 working days.
 - **Per-component:**
-  - `manifest.json` skeleton + `system/scripts/setup.js` postinstall copy: 0.5h
+  - `manifest.json` skeleton + `system/scripts/cli/setup.js` postinstall copy: 0.5h
   - `check-manifest.js`: 1.5h
   - `manifest-snapshot.js`: 0.5h
   - `enumerateMCPServers` + hook-introspection helper: 0.75h (path discovery is fiddly)
@@ -612,7 +612,7 @@ When cycle-2b signs off:
 At spec-write time, the other agent's `feat/a3-session-end-sweep` branch is active. Coupling concerns for cycle-2b:
 
 - **`.claude/settings.json`**: cycle-2b adds a `SessionStart` hook entry. Other agent has been editing this file (Stop hook). Re-read before edits; merge SessionStart additively. Both can coexist.
-- **`system/scripts/setup.js`**: cycle-2b adds a manifest-copy step to setup. Other agent's `760a1ee feat(migrations): 0014 seed learning-queue with starter questions` may have touched setup.js or the migration system. Re-read before edits.
+- **`system/scripts/cli/setup.js`**: cycle-2b adds a manifest-copy step to setup. Other agent's `760a1ee feat(migrations): 0014 seed learning-queue with starter questions` may have touched setup.js or the migration system. Re-read before edits.
 - **AGENTS.md**: other agent edited Hard Rules and Session End sections. Cycle-2b appends one line to Hard Rules. Different lines; low conflict.
 - **`system/scripts/lib/`**: cycle-2b adds new files (`policy-refusals-log.js` from cycle-2a is reused; new `lib/manifest.js` if extracted). Verify no naming collision before commit.
 

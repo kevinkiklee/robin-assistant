@@ -12,8 +12,8 @@ import {
 } from '../lib/jobs/atomic.js';
 import { hostname } from 'node:os';
 import { computeNextRun, formatLocal, listJobStates } from '../lib/jobs/state.js';
-import { run as runJob } from './runner.js';
-import { reconcile, resolveRobinArgv } from './reconciler.js';
+import { run as runJob } from '../jobs/runner.js';
+import { reconcile, resolveRobinArgv } from '../jobs/reconciler.js';
 import { inActiveWindow, validateCron } from '../lib/jobs/cron.js';
 import { validateJobDef } from '../lib/jobs/frontmatter.js';
 

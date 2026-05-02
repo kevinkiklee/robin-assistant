@@ -12,7 +12,7 @@ cd ~/code/robin-dev
 npm install
 ```
 
-`npm install` runs `system/scripts/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
+`npm install` runs `system/scripts/cli/setup.js`. In a TTY, it prompts for config; in CI, it skips prompts and writes a placeholder `user-data/robin.config.json`. Either way, you'll get a populated `user-data/` (gitignored), an `artifacts/` directory, and `.git/hooks/pre-commit`.
 
 ## Running tests
 
@@ -86,7 +86,7 @@ description: Daily snapshot of user-data/ to backup/.
 runtime: node
 enabled: true
 schedule: "0 3 * * *"
-command: node system/scripts/backup.js
+command: node system/scripts/cli/backup.js
 timeout_minutes: 5
 ---
 

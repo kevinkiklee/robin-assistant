@@ -30,7 +30,7 @@
 | File | Change |
 |------|--------|
 | `scripts/lib/platforms.js` | Add `INDEX_FILES` constant, add `index/` to directory expectations |
-| `scripts/init.js` | Create `core/index/` directory during workspace scaffolding |
+| `scripts/cli/init.js` | Create `core/index/` directory during workspace scaffolding |
 | `scripts/validate.js` | Add v2.1.0 index integrity checks (index dir, sidecar files, manifest, entry count match) |
 | `scripts/update.js` | Preserve `index/` and `manifest.md` during system file updates; prompt migration for pre-2.1.0 |
 | `core/robin.config.json` | Bump to `2.1.0`, add `indexing` field |
@@ -1142,7 +1142,7 @@ git commit -m "feat: add INDEX_FILES constant to platforms.js"
 ## Task 8: Update `init.js` — Create Index Directory
 
 **Files:**
-- Modify: `scripts/init.js`
+- Modify: `scripts/cli/init.js`
 - Modify: `tests/init.test.js`
 
 - [ ] **Step 1: Write failing test for index directory creation**
@@ -1151,7 +1151,7 @@ Add to `tests/init.test.js`, inside the `describe('robin init', ...)` block:
 
 ```javascript
   it('creates index/ directory during scaffolding', async () => {
-    const { initWithOptions } = await import('../scripts/init.js');
+    const { initWithOptions } = await import('../scripts/cli/init.js');
     const targetDir = join(tmpDir, 'idx-workspace');
     await initWithOptions(targetDir, {
       force: true,
@@ -1171,7 +1171,7 @@ Expected: FAIL — `index/` directory not created
 
 - [ ] **Step 3: Add index directory creation to `init.js`**
 
-In `scripts/init.js`, in the `initWithOptions` function, after the line `mkdirSync(join(targetDir, 'archive'), { recursive: true });`, add:
+In `scripts/cli/init.js`, in the `initWithOptions` function, after the line `mkdirSync(join(targetDir, 'archive'), { recursive: true });`, add:
 
 ```javascript
   mkdirSync(join(targetDir, 'index'), { recursive: true });
@@ -1185,7 +1185,7 @@ Expected: PASS (all tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/init.js tests/init.test.js
+git add scripts/cli/init.js tests/init.test.js
 git commit -m "feat: create index/ directory during workspace init"
 ```
 
@@ -1634,7 +1634,7 @@ git commit -m "feat: add index directory template and empty manifest"
 
 ```javascript
   it('full lifecycle: init creates workspace, migrate-index adds indexing, validate passes', async () => {
-    const { initWithOptions } = await import('../scripts/init.js');
+    const { initWithOptions } = await import('../scripts/cli/init.js');
     const { migrateIndexInDir } = await import('../scripts/migrate-index.js');
     const { validateInDir } = await import('../scripts/validate.js');
 

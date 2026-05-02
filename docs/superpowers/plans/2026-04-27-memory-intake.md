@@ -545,7 +545,7 @@ Add the following test to the existing `describe('robin init', ...)` block in `t
 
 ```javascript
   it('scaffolds updated capture system in new workspace', async () => {
-    const { initWithOptions } = await import('../scripts/init.js');
+    const { initWithOptions } = await import('../scripts/cli/init.js');
     const targetDir = join(tmpDir, 'capture-ws');
     await initWithOptions(targetDir, {
       force: true,

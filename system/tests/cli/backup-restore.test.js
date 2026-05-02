@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { backup } from '../scripts/backup.js';
-import { restore } from '../scripts/restore.js';
+import { backup } from '../../scripts/cli/backup.js';
+import { restore } from '../../scripts/cli/restore.js';
 import {
   mkdtempSync, writeFileSync, mkdirSync, readdirSync, rmSync,
   readFileSync, statSync,

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { installHooks } from '../scripts/install-hooks.js';
+import { installHooks } from '../../scripts/cli/install-hooks.js';
 import { execSync } from 'node:child_process';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';

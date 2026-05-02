@@ -170,7 +170,7 @@ async function main() {
     if (!manifest) {
       process.stderr.write(
         'WARNING: user-data/security/manifest.json missing or malformed; tamper detection inactive. ' +
-        'Run `node system/scripts/setup.js` to bootstrap, or `node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state`.\n'
+        'Run `node system/scripts/cli/setup.js` to bootstrap, or `node system/scripts/manifest-snapshot.js --apply --confirm-trust-current-state`.\n'
       );
       process.exit(0);
     }

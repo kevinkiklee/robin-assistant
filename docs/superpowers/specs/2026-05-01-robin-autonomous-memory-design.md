@@ -117,7 +117,7 @@ Net token delta: ~+20 tokens (new enforcement line); ~-50 tokens from removing T
 
 Register `UserPromptSubmit` hook entry pointing at `node system/scripts/claude-code-hook.js --on-user-prompt-submit`. Keep all existing entries.
 
-#### S1.8 — `system/scripts/install-hooks.js` updates
+#### S1.8 — `system/scripts/cli/install-hooks.js` updates
 
 - Idempotent registration of the new `UserPromptSubmit` matcher + command.
 - Atomic `settings.json` write (temp + rename).
@@ -372,7 +372,7 @@ Before merging:
 ## Migration / rollout
 
 1. Land code + tests behind `memory.capture_enforcement.enabled = false`.
-2. Run `node system/scripts/install-hooks.js` to register the new `UserPromptSubmit` handler and re-snapshot manifest.
+2. Run `node system/scripts/cli/install-hooks.js` to register the new `UserPromptSubmit` handler and re-snapshot manifest.
 3. Run `node system/scripts/index-entities.js --bootstrap`. Review the "files would benefit from explicit aliases" report; backfill the most important entries.
 4. Flip `enabled = true` in `robin.config.json`.
 5. Watch `capture-enforcement.log` and `recall.log` over the first week.
@@ -413,7 +413,7 @@ None at design time. Resolve during implementation:
 
 **Modified:**
 - `system/scripts/claude-code-hook.js` (new modes + verifyCapture)
-- `system/scripts/install-hooks.js` (new hook registration, atomic write)
+- `system/scripts/cli/install-hooks.js` (new hook registration, atomic write)
 - `system/scripts/manifest-snapshot.js` (re-run after install)
 - `bin/robin.js` (new `recall` subcommand)
 - `AGENTS.md` (capture-checkpoint update + recall instruction)

@@ -4,7 +4,7 @@ description: Daily snapshot of user-data/ to backup/.
 runtime: node
 enabled: true
 schedule: "0 3 * * *"
-command: node system/scripts/backup.js
+command: node system/scripts/cli/backup.js
 catch_up: true
 timeout_minutes: 5
 notify_on_failure: true

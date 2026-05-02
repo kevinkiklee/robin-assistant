@@ -276,6 +276,6 @@ it", "more detail please") are all preference data.
 | `startup.md` | Step 4 reads 3 additional sections from self-improvement.md. |
 | `protocols/system-maintenance.md` | Add step 7: communication style and domain confidence check-in. |
 | `capture-rules.md` | Add positive signal routing row and capture bar guidance. |
-| `scripts/init.js` | Seed Learning Queue with 5 foundational questions on first init. |
+| `scripts/cli/init.js` | Seed Learning Queue with 5 foundational questions on first init. |
 
 No new files are created. All changes extend existing files.

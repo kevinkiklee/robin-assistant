@@ -59,9 +59,9 @@ export async function cmdInit(argv) {
     return;
   }
 
-  // Package root: this file is .../system/scripts/init.js → root is two up.
+  // Package root: this file is .../system/scripts/cli/init.js → root is three up.
   const here = dirname(fileURLToPath(import.meta.url));
-  const packageRoot = resolve(here, '..', '..');
+  const packageRoot = resolve(here, '..', '..', '..');
   const scaffoldDir = resolve(packageRoot, 'system', 'scaffold');
 
   // Workspace target.

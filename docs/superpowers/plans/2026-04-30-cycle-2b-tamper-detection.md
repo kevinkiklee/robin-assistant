@@ -28,7 +28,7 @@ Skeleton manifest (shipped with package). Lists Robin's owned hooks; empty MCP a
 
 ## Step 2 — Setup.js extension
 
-`system/scripts/setup.js` (postinstall): if `user-data/security/manifest.json` doesn't exist, copy from skeleton. Idempotent.
+`system/scripts/cli/setup.js` (postinstall): if `user-data/security/manifest.json` doesn't exist, copy from skeleton. Idempotent.
 
 ## Step 3 — `system/scripts/lib/manifest.js`
 

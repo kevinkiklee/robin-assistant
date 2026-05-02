@@ -66,12 +66,12 @@ tests/
 ```
 package.json                   <- remove handlebars, update files, bump version
 bin/arc.js                     <- add migrate-v2 command, update description
-scripts/init.js                <- rewrite for v2 scaffold
+scripts/cli/init.js                <- rewrite for v2 scaffold
 scripts/configure.js           <- rewrite for platform switching + integrations
 scripts/update.js              <- rewrite for system-file allowlist
 scripts/rollback.js            <- rewrite for pre-v2 full-restore
 scripts/validate.js            <- rewrite for v2 file checks
-scripts/reset.js               <- rewrite for v2 user files
+scripts/cli/reset.js               <- rewrite for v2 user files
 scripts/export.js              <- rewrite for v2 file list
 scripts/check-update.js        <- update state dir path
 scripts/migrate.js             <- keep as-is (future migrations)
@@ -1575,10 +1575,10 @@ git commit -m "Update package.json and CLI entry point for v2"
 
 ---
 
-## Task 7: Rewrite scripts/init.js
+## Task 7: Rewrite scripts/cli/init.js
 
 **Files:**
-- Modify: `scripts/init.js`
+- Modify: `scripts/cli/init.js`
 - Test: `tests/init.test.js`
 
 - [ ] **Step 1: Write test `tests/init.test.js`**
@@ -1603,7 +1603,7 @@ describe('arc init', () => {
   after(() => { cleanTempDir(tmpDir); });
 
   it('scaffolds all expected files for claude-code platform', async () => {
-    const { initWithOptions } = await import('../scripts/init.js');
+    const { initWithOptions } = await import('../scripts/cli/init.js');
     const targetDir = join(tmpDir, 'workspace');
     await initWithOptions(targetDir, {
       force: true,
@@ -1642,7 +1642,7 @@ describe('arc init', () => {
   });
 
   it('scaffolds cursor platform with .cursorrules', async () => {
-    const { initWithOptions } = await import('../scripts/init.js');
+    const { initWithOptions } = await import('../scripts/cli/init.js');
     const targetDir = join(tmpDir, 'cursor-ws');
     await initWithOptions(targetDir, {
       force: true,
@@ -1656,7 +1656,7 @@ describe('arc init', () => {
   });
 
   it('scaffolds codex platform with no pointer file', async () => {
-    const { initWithOptions } = await import('../scripts/init.js');
+    const { initWithOptions } = await import('../scripts/cli/init.js');
     const targetDir = join(tmpDir, 'codex-ws');
     await initWithOptions(targetDir, {
       force: true,
@@ -1677,7 +1677,7 @@ describe('arc init', () => {
 Run: `node --test tests/init.test.js`
 Expected: FAIL — `initWithOptions` not exported yet.
 
-- [ ] **Step 3: Rewrite `scripts/init.js`**
+- [ ] **Step 3: Rewrite `scripts/cli/init.js`**
 
 ```js
 import { existsSync, readdirSync, mkdirSync, cpSync, writeFileSync, chmodSync, readFileSync } from 'fs';
@@ -1778,7 +1778,7 @@ Expected: All 3 tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/init.js tests/init.test.js
+git add scripts/cli/init.js tests/init.test.js
 git commit -m "Rewrite init.js for v2 scaffold with platform support"
 ```
 
@@ -2100,7 +2100,7 @@ git commit -m "Rewrite update.js and rollback.js for v2 system-file allowlist"
 
 **Files:**
 - Modify: `scripts/validate.js`
-- Modify: `scripts/reset.js`
+- Modify: `scripts/cli/reset.js`
 - Modify: `scripts/export.js`
 - Modify: `scripts/check-update.js`
 - Test: `tests/validate.test.js`
@@ -2274,7 +2274,7 @@ function fail(msg) { console.log(`  ✗ ${msg}`); }
 function warn(msg) { console.log(`  ⚠ ${msg}`); }
 ```
 
-- [ ] **Step 4: Rewrite `scripts/reset.js`**
+- [ ] **Step 4: Rewrite `scripts/cli/reset.js`**
 
 ```js
 import { readFileSync, writeFileSync, existsSync, rmSync, cpSync } from 'fs';
@@ -2421,7 +2421,7 @@ Expected: All tests PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/validate.js scripts/reset.js scripts/export.js scripts/check-update.js tests/validate.test.js
+git add scripts/validate.js scripts/cli/reset.js scripts/export.js scripts/check-update.js tests/validate.test.js
 git commit -m "Rewrite validate, reset, export, check-update for v2"
 ```
 

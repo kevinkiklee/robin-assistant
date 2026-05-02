@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
-import { runPendingMigrations } from './migrate.js';
-import { ensureManifestFromScaffold } from './lib/manifest.js';
+import { runPendingMigrations } from '../migrate.js';
+import { ensureManifestFromScaffold } from '../lib/manifest.js';
 
 const PLATFORMS = ['claude-code', 'cursor', 'gemini-cli', 'codex', 'antigravity'];
 
@@ -152,7 +152,7 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
 
   // Install scheduler entries for enabled jobs (cross-platform). Idempotent.
   try {
-    const { reconcile, resolveRobinArgv } = await import('./jobs/reconciler.js');
+    const { reconcile, resolveRobinArgv } = await import('../jobs/reconciler.js');
     const r = reconcile({ workspaceDir, argv: resolveRobinArgv(workspaceDir) });
     if (r && r.added && r.added.length > 0) {
       console.log(`Job scheduler entries installed: ${r.added.join(', ')}`);
