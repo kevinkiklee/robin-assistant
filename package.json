@@ -18,6 +18,7 @@
     "regenerate-links": "node system/scripts/memory/regenerate-links.js",
     "measure-tokens": "node system/scripts/diagnostics/measure-tokens.js",
     "lint-memory": "node system/scripts/memory/lint.js",
+    "densify-wiki": "node system/scripts/memory/densify-wiki.js",
     "golden-session": "node system/scripts/diagnostics/golden-session.js",
     "prune-preview": "node system/scripts/memory/prune-preview.js",
     "prune-execute": "node system/scripts/memory/prune-execute.js",
