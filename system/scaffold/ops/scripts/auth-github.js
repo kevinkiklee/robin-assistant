@@ -14,8 +14,8 @@
 // Recommended scopes: read:user, repo (or public_repo), notifications.
 
 import { fileURLToPath } from 'node:url';
-import { fetchJson } from '../../system/scripts/sync/lib/http.js';
-import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
+import { fetchJson } from '../../../system/scripts/sync/lib/http.js';
+import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
 
 async function main() {
   const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));

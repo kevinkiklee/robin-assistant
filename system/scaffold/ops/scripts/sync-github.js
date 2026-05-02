@@ -14,13 +14,13 @@
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
-import { loadCursor, saveCursor } from '../../system/scripts/sync/lib/cursor.js';
-import { atomicWrite, writeTable } from '../../system/scripts/sync/lib/markdown.js';
-import { updateIndex } from '../../system/scripts/sync/lib/index-updater.js';
-import { acquireLock, releaseLock } from '../../system/scripts/jobs/lib/atomic.js';
-import { buildEntityRegistry } from '../../system/scripts/wiki-graph/lib/build-entity-registry.js';
-import { applyEntityLinks } from '../../system/scripts/wiki-graph/lib/apply-entity-links.js';
+import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
+import { loadCursor, saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
+import { atomicWrite, writeTable } from '../../../system/scripts/sync/lib/markdown.js';
+import { updateIndex } from '../../../system/scripts/sync/lib/index-updater.js';
+import { acquireLock, releaseLock } from '../../../system/scripts/jobs/lib/atomic.js';
+import { buildEntityRegistry } from '../../../system/scripts/wiki-graph/lib/build-entity-registry.js';
+import { applyEntityLinks } from '../../../system/scripts/wiki-graph/lib/apply-entity-links.js';
 import { GitHubClient } from './lib/github/client.js';
 
 const SOURCE = 'sync-github';

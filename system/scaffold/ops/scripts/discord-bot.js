@@ -12,13 +12,13 @@ import { createEventLog } from './lib/discord/event-log.js';
 import { createRunner } from './lib/discord/claude-runner.js';
 import { isAllowedContext } from './lib/discord/auth.js';
 import { stripMention, splitMessage } from './lib/discord/formatter.js';
-import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
-import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
-import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
+import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../../system/scripts/lib/outbound-policy.js';
+import { appendPolicyRefusal } from '../../../system/scripts/lib/policy-refusals-log.js';
+import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const ROBIN_ROOT = resolve(__dirname, '../../');
+const ROBIN_ROOT = resolve(__dirname, '../../../');
 const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/ops/state/services');
 const LOG_DIR = STATE_DIR;
 const SESSIONS_PATH = resolve(STATE_DIR, 'discord-sessions.json');

@@ -11,7 +11,7 @@ import { homedir, userInfo } from 'node:os';
 import { createEventLog } from './lib/discord/event-log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROBIN_ROOT = resolve(__dirname, '../../');
+const ROBIN_ROOT = resolve(__dirname, '../../../');
 const STATE_DIR = resolve(ROBIN_ROOT, 'user-data/ops/state/services');
 const LOG_DIR = STATE_DIR;
 const EVENTS_PATH = resolve(LOG_DIR, 'discord-bot.events.jsonl');

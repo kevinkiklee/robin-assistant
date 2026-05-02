@@ -6,7 +6,7 @@ import { writeFile, unlink, mkdir, access, constants } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROBIN_ROOT = resolve(__dirname, '../../');
+const ROBIN_ROOT = resolve(__dirname, '../../../');
 const LABEL = 'com.robin.discord-bot';
 const PLIST_PATH = resolve(homedir(), 'Library/LaunchAgents', `${LABEL}.plist`);
 const SCRIPT_PATH = resolve(__dirname, 'discord-bot.js');

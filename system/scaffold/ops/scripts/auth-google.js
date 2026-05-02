@@ -17,9 +17,9 @@
 // the initial access token in user-data/ops/state/sync/google.json.
 
 import { fileURLToPath } from 'node:url';
-import { runAuthCodeFlow } from '../../system/scripts/sync/lib/oauth.js';
-import { requireSecret, saveSecret } from '../../system/scripts/sync/lib/secrets.js';
-import { saveCursor } from '../../system/scripts/sync/lib/cursor.js';
+import { runAuthCodeFlow } from '../../../system/scripts/sync/lib/oauth.js';
+import { requireSecret, saveSecret } from '../../../system/scripts/sync/lib/secrets.js';
+import { saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',

@@ -4,10 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFile, writeFile, access, chmod, constants } from 'node:fs/promises';
 import { PermissionsBitField } from 'discord.js';
-import { requireSecret, getSecret } from '../../system/scripts/sync/lib/secrets.js';
+import { requireSecret, getSecret } from '../../../system/scripts/sync/lib/secrets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROBIN_ROOT = resolve(__dirname, '../../');
+const ROBIN_ROOT = resolve(__dirname, '../../../');
 const ENV_PATH = resolve(ROBIN_ROOT, 'user-data/ops/secrets/.env');
 // Cycle-2a: do NOT call dotenv.config — secrets stay out of process.env.
 // Read each value via requireSecret/getSecret which read .env directly.
