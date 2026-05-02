@@ -9,6 +9,8 @@ import {
   writePassMarker,
   clearPassMarkers,
   detectFirstRun,
+  computeSentinelCap,
+  validateAgainstCap,
 } from '../../../scripts/memory/densify-wiki.js';
 
 test('parseArgv default mode is dry-run', () => {
@@ -64,4 +66,28 @@ test('detectFirstRun ignores non-report files in the directory', () => {
   } finally {
     rmSync(ws, { recursive: true });
   }
+});
+
+test('computeSentinelCap returns 250 on first run, 50 ongoing', () => {
+  const ws = mkdtempSync(join(tmpdir(), 'cap-test-'));
+  try {
+    assert.equal(computeSentinelCap(ws), 250);
+    mkdirSync(join(ws, 'user-data/ops/state/densify-wiki'), { recursive: true });
+    writeFileSync(join(ws, 'user-data/ops/state/densify-wiki/2026-04-15.md'), '# old');
+    assert.equal(computeSentinelCap(ws), 50);
+  } finally {
+    rmSync(ws, { recursive: true });
+  }
+});
+
+test('validateAgainstCap throws when estimate exceeds cap', () => {
+  assert.throws(
+    () => validateAgainstCap(300, 250),
+    /too many changes/i,
+  );
+  assert.doesNotThrow(() => validateAgainstCap(100, 250));
+});
+
+test('validateAgainstCap accepts equal-to-cap', () => {
+  assert.doesNotThrow(() => validateAgainstCap(250, 250));
 });
