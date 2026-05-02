@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
-const HOOK = join(REPO_ROOT, 'system', 'scripts', 'claude-code-hook.js');
+const HOOK = join(REPO_ROOT, 'system', 'scripts', 'hooks', 'claude-code.js');
 const SAMPLE_MEM = join(REPO_ROOT, 'system/tests/fixtures/sample-memory');
 
 function makeWorkspace() {

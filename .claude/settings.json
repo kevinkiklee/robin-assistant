@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/claude-code-hook.js\" --on-pre-tool-use"
+            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/hooks/claude-code.js\" --on-pre-tool-use"
           }
         ]
       },
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/claude-code-hook.js\" --on-pre-bash"
+            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/hooks/claude-code.js\" --on-pre-bash"
           }
         ]
       }
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/claude-code-hook.js\" --on-stop"
+            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/hooks/claude-code.js\" --on-stop"
           }
         ]
       }
@@ -69,7 +69,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/claude-code-hook.js\" --on-user-prompt-submit"
+            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/hooks/claude-code.js\" --on-user-prompt-submit"
           }
         ]
       }

@@ -30,18 +30,18 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
-import { writeSessionBlock } from './lib/handoff.js';
-import { mostRecentSessionId } from './lib/sessions.js';
+import { writeSessionBlock } from '../lib/handoff.js';
+import { mostRecentSessionId } from '../lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
-import { applyRedaction } from './lib/sync/redact.js';
-import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson, readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from './lib/turn-state.js';
-import { appendPerfLog } from './lib/perf-log.js';
-import { classifyTier, scanEntityAliases } from './lib/capture-keyword-scan.js';
-import { readEntities, collectEntities, writeEntitiesAtomic } from './lib/entity-index.js';
-import { recall, formatRecallHits } from './lib/recall.js';
+import { applyRedaction } from '../lib/sync/redact.js';
+import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson, readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from '../lib/turn-state.js';
+import { appendPerfLog } from '../lib/perf-log.js';
+import { classifyTier, scanEntityAliases } from '../lib/capture-keyword-scan.js';
+import { readEntities, collectEntities, writeEntitiesAtomic } from '../lib/entity-index.js';
+import { recall, formatRecallHits } from '../lib/recall.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 
 function parseArgs(argv) {
   const args = { mode: null, workspace: null, drain: true, debug: false };
@@ -246,7 +246,7 @@ async function onStop(args) {
 
   // Cycle-2a: spawn with explicit safe env so subprocess never inherits
   // secrets even if some future code path leaks them back into process.env.
-  const { safeEnv } = await import('./lib/safe-env.js');
+  const { safeEnv } = await import('../lib/safe-env.js');
   const child = spawn('node', drainArgs, {
     cwd: ws,
     env: safeEnv({ ROBIN_WORKSPACE: ws }),
@@ -300,12 +300,12 @@ async function onPreToolUse() {
       event.tool_input?.new_string ??
       '';
     if (typeof content === 'string' && content.length > 0) {
-      const { applyRedaction } = await import('./lib/sync/redact.js');
+      const { applyRedaction } = await import('../lib/sync/redact.js');
       const { count } = applyRedaction(content);
       if (count > 0) {
         try {
-          const { appendPolicyRefusal } = await import('./lib/policy-refusals-log.js');
-          const { fnv1a64 } = await import('./lib/sync/untrusted-index.js');
+          const { appendPolicyRefusal } = await import('../lib/policy-refusals-log.js');
+          const { fnv1a64 } = await import('../lib/sync/untrusted-index.js');
           appendPolicyRefusal(ws, {
             kind: 'pii-bypass',
             target,
@@ -324,8 +324,8 @@ async function onPreToolUse() {
 
     // 3. Cycle-2c: high-stakes destination audit (allow + log).
     try {
-      const { isHighStakesDestination, appendHighStakesWrite } = await import('./lib/high-stakes-log.js');
-      const { fnv1a64 } = await import('./lib/sync/untrusted-index.js');
+      const { isHighStakesDestination, appendHighStakesWrite } = await import('../lib/high-stakes-log.js');
+      const { fnv1a64 } = await import('../lib/sync/untrusted-index.js');
       if (isHighStakesDestination(target)) {
         const relPath = target.split('user-data/memory/')[1]
           ? 'user-data/memory/' + target.split('user-data/memory/')[1]
@@ -386,13 +386,13 @@ async function onPreBash(args) {
       process.exit(0);
     }
 
-    const { checkBashCommand } = await import('./lib/bash-sensitive-patterns.js');
+    const { checkBashCommand } = await import('../lib/bash-sensitive-patterns.js');
     const result = checkBashCommand(cmd);
 
     if (result.blocked) {
       try {
-        const { appendPolicyRefusal } = await import('./lib/policy-refusals-log.js');
-        const { fnv1a64 } = await import('./lib/sync/untrusted-index.js');
+        const { appendPolicyRefusal } = await import('../lib/policy-refusals-log.js');
+        const { fnv1a64 } = await import('../lib/sync/untrusted-index.js');
         appendPolicyRefusal(ws, {
           kind: 'bash',
           target: 'local-bash',
@@ -425,7 +425,7 @@ async function onPreBash(args) {
   } catch (err) {
     // Fail-closed.
     try {
-      const { appendPolicyRefusal } = await import('./lib/policy-refusals-log.js');
+      const { appendPolicyRefusal } = await import('../lib/policy-refusals-log.js');
       appendPolicyRefusal(ws, {
         kind: 'bash',
         target: 'local-bash',
@@ -578,7 +578,7 @@ async function main() {
   if (args.mode === 'on-pre-tool-use') return onPreToolUse(args);
   if (args.mode === 'on-pre-bash') return onPreBash(args);
   if (args.mode === 'on-user-prompt-submit') return onUserPromptSubmit(args);
-  console.error('Usage: claude-code-hook.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit');
+  console.error('Usage: claude-code.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit');
   process.exit(2);
 }
 

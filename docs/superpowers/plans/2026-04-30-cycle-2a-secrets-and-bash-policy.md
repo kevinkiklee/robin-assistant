@@ -48,7 +48,7 @@ Should return zero matches outside `secrets.js`.
 
 In each `spawn()`/`fork()`/`exec()` in:
 - `system/skeleton/scripts/discord-bot.js` (claude -p subprocess)
-- `system/scripts/claude-code-hook.js` (migrate-auto-memory subprocess)
+- `system/scripts/hooks/claude-code.js` (migrate-auto-memory subprocess)
 - `system/scripts/jobs/runner.js` (job execution)
 - (audit `grep -rn "spawn(" system/` and add wherever missing)
 
@@ -63,7 +63,7 @@ Export `checkBashCommand(cmd)` returning `{blocked, name, why}` or `{blocked: fa
 
 Test: `system/tests/security/bash-patterns.test.js` — positive + negative per rule.
 
-## Step 6 — Extend `system/scripts/claude-code-hook.js`
+## Step 6 — Extend `system/scripts/hooks/claude-code.js`
 
 Add `--on-pre-bash` mode:
 1. Read JSON event from stdin.
@@ -78,7 +78,7 @@ Test: `system/tests/security/claude-code-hook-bash.test.js`.
 
 Add Bash matcher to PreToolUse:
 ```json
-{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "node system/scripts/claude-code-hook.js --on-pre-bash" }] }
+{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "node system/scripts/hooks/claude-code.js --on-pre-bash" }] }
 ```
 
 ## Step 8 — Refusal log rename
@@ -88,7 +88,7 @@ If cycle-1b's `outbound-refusals.log` exists in user-data, migrate to `policy-re
 ## Step 9 — Update AGENTS.md + `system/rules/security.md`
 
 AGENTS.md Hard Rule:
-> **Bash policy.** Bash commands are gated by `system/scripts/claude-code-hook.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. See `system/rules/security.md`.
+> **Bash policy.** Bash commands are gated by `system/scripts/hooks/claude-code.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. See `system/rules/security.md`.
 
 Append to `security-rules.md`: bash patterns reference, known limitations (encoded bypasses, alias-laundered binaries, compound-command edge cases), `policy-refusals.log` schema with `kind` column.
 

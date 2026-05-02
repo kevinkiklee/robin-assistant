@@ -13,8 +13,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const HOOK = join(REPO_ROOT, 'system', 'scripts', 'claude-code-hook.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const HOOK = join(REPO_ROOT, 'system', 'scripts', 'hooks', 'claude-code.js');
 
 function runHook(args, stdin = '') {
   const r = spawnSync('node', [HOOK, ...args], {
@@ -141,7 +141,7 @@ description: Session Handoff
 `);
 
   const r = spawnSync('node', [
-    join(REPO_ROOT, 'system/scripts/claude-code-hook.js'),
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
     '--on-stop',
     '--workspace', ws,
     '--no-drain',

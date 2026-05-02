@@ -11,11 +11,11 @@ export async function installHooks(workspaceDir = process.cwd()) {
   if (existsSync(hookPath)) {
     console.log('Existing pre-commit hook found; not overwriting.');
     console.log("To integrate Robin's privacy guard, append:");
-    console.log('  node system/scripts/pre-commit-hook.js || exit 1');
+    console.log('  node system/scripts/hooks/pre-commit.js || exit 1');
     return;
   }
   const content = `#!/usr/bin/env bash
-exec node "$(git rev-parse --show-toplevel)/system/scripts/pre-commit-hook.js"
+exec node "$(git rev-parse --show-toplevel)/system/scripts/hooks/pre-commit.js"
 `;
   writeFileSync(hookPath, content);
   chmodSync(hookPath, 0o755);

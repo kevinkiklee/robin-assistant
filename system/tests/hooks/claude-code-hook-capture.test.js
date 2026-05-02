@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const HOOK = join(REPO_ROOT, 'system', 'scripts', 'claude-code-hook.js');
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+const HOOK = join(REPO_ROOT, 'system', 'scripts', 'hooks', 'claude-code.js');
 
 function makeWs() {
   const ws = mkdtempSync(join(tmpdir(), 'cc-hook-cap-'));

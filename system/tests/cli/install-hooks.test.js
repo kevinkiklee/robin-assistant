@@ -6,16 +6,16 @@ import { mkdtempSync, existsSync, readFileSync, writeFileSync, rmSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-test('install-hooks writes a pre-commit hook that invokes pre-commit-hook.js', async () => {
+test('install-hooks writes a pre-commit hook that invokes pre-commit.js', async () => {
   const root = mkdtempSync(join(tmpdir(), 'robin-ih-'));
   execSync('git init -q', { cwd: root });
-  mkdirSync(join(root, 'system/scripts'), { recursive: true });
-  writeFileSync(join(root, 'system/scripts/pre-commit-hook.js'), '#!/usr/bin/env node\nprocess.exit(0);\n');
+  mkdirSync(join(root, 'system/scripts/hooks'), { recursive: true });
+  writeFileSync(join(root, 'system/scripts/hooks/pre-commit.js'), '#!/usr/bin/env node\nprocess.exit(0);\n');
   await installHooks(root);
   const hookPath = join(root, '.git/hooks/pre-commit');
   assert.ok(existsSync(hookPath));
   const content = readFileSync(hookPath, 'utf-8');
-  assert.match(content, /pre-commit-hook\.js/);
+  assert.match(content, /hooks\/pre-commit\.js/);
   rmSync(root, { recursive: true, force: true });
 });
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HOOK = fileURLToPath(new URL('../scripts/pre-commit-hook.js', import.meta.url));
+const HOOK = fileURLToPath(new URL('../../scripts/hooks/pre-commit.js', import.meta.url));
 
 function gitInit() {
   const root = mkdtempSync(join(tmpdir(), 'robin-hk-'));

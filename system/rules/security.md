@@ -158,7 +158,7 @@ The bot script calls `dotenv.config()` for backward-compat (the user's `.env` ma
 
 ### Hook
 
-`.claude/settings.json` registers `system/scripts/claude-code-hook.js --on-pre-bash` as the PreToolUse hook for `Bash`. Every Bash invocation runs through it. The hook:
+`.claude/settings.json` registers `system/scripts/hooks/claude-code.js --on-pre-bash` as the PreToolUse hook for `Bash`. Every Bash invocation runs through it. The hook:
 
 1. Reads the JSON event from stdin.
 2. Extracts `tool_input.command`.
@@ -201,8 +201,8 @@ Trusted baseline at `user-data/security/manifest.json`. Schema:
 {
   "version": 1,
   "hooks": {
-    "PreToolUse": [{ "matcher": "Bash", "command": "node system/scripts/claude-code-hook.js --on-pre-bash" }, ...],
-    "Stop":       [{ "command": "node system/scripts/claude-code-hook.js --on-stop" }],
+    "PreToolUse": [{ "matcher": "Bash", "command": "node system/scripts/hooks/claude-code.js --on-pre-bash" }, ...],
+    "Stop":       [{ "command": "node system/scripts/hooks/claude-code.js --on-stop" }],
     "SessionStart": [{ "command": "node system/scripts/check-manifest.js" }]
   },
   "mcpServers": {
@@ -252,7 +252,7 @@ The two-flag `--apply --confirm-trust-current-state` pattern requires explicit a
 
 ### PII write hook (G-02)
 
-`system/scripts/claude-code-hook.js --on-pre-tool-use` extends to scan content of any Write/Edit/NotebookEdit targeting `user-data/memory/`. Reuses `applyRedaction` patterns. Match → exit 2 with `WRITE_REFUSED [pii]: <count> PII pattern(s) detected ...`. Refusal logged to `policy-refusals.log` with `kind=pii-bypass`.
+`system/scripts/hooks/claude-code.js --on-pre-tool-use` extends to scan content of any Write/Edit/NotebookEdit targeting `user-data/memory/`. Reuses `applyRedaction` patterns. Match → exit 2 with `WRITE_REFUSED [pii]: <count> PII pattern(s) detected ...`. Refusal logged to `policy-refusals.log` with `kind=pii-bypass`.
 
 Cooperative model retries with `[REDACTED:ssn]` substitution; jailbroken model that refuses to retry gets permanently blocked.
 

@@ -392,7 +392,9 @@ robin/
 │   │   │   ├── pattern-ttl.js   <- 180-day pattern retirement
 │   │   │   ├── audit-pairs.js   <- entity-graph candidate generation
 │   │   │   └── token-budget.json
-│   │   ├── claude-code-hook.js  <- UserPromptSubmit / PreToolUse / Stop / on-pre-bash hooks
+│   │   ├── hooks/
+│   │   │   ├── claude-code.js   <- UserPromptSubmit / PreToolUse / Stop / on-pre-bash hooks
+│   │   │   └── pre-commit.js    <- privacy guard for git pre-commit
 │   │   ├── check-manifest.js    <- SessionStart tamper detection
 │   │   ├── manifest-snapshot.js <- baseline snapshot (first deploy)
 │   │   ├── index-entities.js    <- ENTITIES.md bootstrap + regenerate

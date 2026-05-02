@@ -12,11 +12,11 @@ Skeleton manifest (shipped with package). Lists Robin's owned hooks; empty MCP a
   "version": 1,
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Write|Edit|NotebookEdit", "command": "node system/scripts/claude-code-hook.js --on-pre-tool-use" },
-      { "matcher": "Bash", "command": "node system/scripts/claude-code-hook.js --on-pre-bash" }
+      { "matcher": "Write|Edit|NotebookEdit", "command": "node system/scripts/hooks/claude-code.js --on-pre-tool-use" },
+      { "matcher": "Bash", "command": "node system/scripts/hooks/claude-code.js --on-pre-bash" }
     ],
     "Stop": [
-      { "command": "node system/scripts/claude-code-hook.js --on-stop" }
+      { "command": "node system/scripts/hooks/claude-code.js --on-stop" }
     ],
     "SessionStart": [
       { "command": "node system/scripts/check-manifest.js" }

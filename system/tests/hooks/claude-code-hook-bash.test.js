@@ -13,7 +13,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const HOOK_SCRIPT = resolve(__dirname, '..', 'scripts', 'claude-code-hook.js');
+const HOOK_SCRIPT = resolve(__dirname, '..', '..', 'scripts', 'hooks', 'claude-code.js');
 
 function ws() { return mkdtempSync(join(tmpdir(), 'bash-hook-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

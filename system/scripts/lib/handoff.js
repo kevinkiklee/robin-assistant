@@ -1,7 +1,7 @@
 // system/scripts/lib/handoff.js
 //
 // Append-or-replace session-keyed blocks in markdown files. Used by:
-//   - system/scripts/claude-code-hook.js (Stop-hook auto-line)
+//   - system/scripts/hooks/claude-code.js (Stop-hook auto-line)
 //   - the agent's in-session sweep (T1/T2 triggers)
 //
 // Block format:

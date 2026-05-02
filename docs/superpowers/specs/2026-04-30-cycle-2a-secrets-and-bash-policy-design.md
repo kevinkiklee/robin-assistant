@@ -158,7 +158,7 @@ OAuth flow already uses `requireSecret(provider.refreshTokenEnv)` etc. via `syst
 
 Every `spawn`/`fork`/`exec` call site adds `env: safeEnv()`. Sites:
 - `system/skeleton/scripts/discord-bot.js` — `claude -p` subprocess
-- `system/scripts/claude-code-hook.js:47` — migrate-auto-memory subprocess
+- `system/scripts/hooks/claude-code.js:47` — migrate-auto-memory subprocess
 - `system/scripts/jobs/runner.js` — job execution subprocesses
 - (Audit during implementation: any other `spawn` call.)
 
@@ -230,13 +230,13 @@ async function main() {
       {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "node system/scripts/claude-code-hook.js --on-pre-tool-use" }
+          { "type": "command", "command": "node system/scripts/hooks/claude-code.js --on-pre-tool-use" }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "node system/scripts/claude-code-hook.js --on-pre-bash" }
+          { "type": "command", "command": "node system/scripts/hooks/claude-code.js --on-pre-bash" }
         ]
       }
     ],
@@ -406,7 +406,7 @@ Security: policy refusals (since last briefing)
 Cycle-1b adds a "Outbound writes" Hard Rule. Cycle-2a adds one more line:
 
 ```markdown
-- **Bash policy.** Bash commands are gated by `system/scripts/claude-code-hook.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. Defense-in-depth, not a sandbox — see `system/rules/security.md` for limitations.
+- **Bash policy.** Bash commands are gated by `system/scripts/hooks/claude-code.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. Defense-in-depth, not a sandbox — see `system/rules/security.md` for limitations.
 ```
 
 Single line added to the Hard Rules list. Total cycle-2a token addition to AGENTS.md: ~1 line.

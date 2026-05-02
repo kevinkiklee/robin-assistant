@@ -162,7 +162,7 @@ These skip inbox:
 
 **Scope:** 30 seconds of effort, not 5 minutes. Ambiguous items get `[?]`.
 
-**Trigger 2 — Stop-hook auto-line (Claude Code only).** The Stop hook (`system/scripts/claude-code-hook.js --on-stop`) writes an auto-line to `session-handoff.md` and `hot.md` on every assistant turn end. It uses the same session-id as the agent's T1 sweep, so Trigger 1 cleanly replaces it when it fires.
+**Trigger 2 — Stop-hook auto-line (Claude Code only).** The Stop hook (`system/scripts/hooks/claude-code.js --on-stop`) writes an auto-line to `session-handoff.md` and `hot.md` on every assistant turn end. It uses the same session-id as the agent's T1 sweep, so Trigger 1 cleanly replaces it when it fires.
 
 Coverage: T2 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antigravity there is no equivalent host hook — file freshness on those hosts depends entirely on T1 agent compliance. Quarterly `host-validation` (`system/jobs/host-validation.md`) checks each host produced a session-handoff entry within the last 30 days.
 
@@ -170,7 +170,7 @@ Coverage: T2 is reliable on Claude Code. On Cursor, Gemini CLI, Codex, and Antig
 
 ## Marker protocol (capture-enforcement)
 
-Capture is enforced at end-of-turn by `system/scripts/claude-code-hook.js --on-stop` via `verifyCapture`. The hook checks whether `user-data/memory/` was written during the turn (recorded by PreToolUse to `user-data/state/turn-writes.log`). If not, the model must declare a waiver inline:
+Capture is enforced at end-of-turn by `system/scripts/hooks/claude-code.js --on-stop` via `verifyCapture`. The hook checks whether `user-data/memory/` was written during the turn (recorded by PreToolUse to `user-data/state/turn-writes.log`). If not, the model must declare a waiver inline:
 
     <!-- no-capture-needed: <one-line reason> -->
 

@@ -38,7 +38,7 @@
 - `system/tests/fixtures/sample-memory/` (small markdown tree for entity tests)
 
 **Modified files:**
-- `system/scripts/claude-code-hook.js` — new `--on-user-prompt-submit` mode; `verifyCapture()` integration in `--on-stop`; write-intent logging in `--on-pre-tool-use` and `--on-pre-bash`
+- `system/scripts/hooks/claude-code.js` — new `--on-user-prompt-submit` mode; `verifyCapture()` integration in `--on-stop`; write-intent logging in `--on-pre-tool-use` and `--on-pre-bash`
 - `bin/robin.js` — new `recall` subcommand
 - `system/skeleton/robin.config.json` — add `memory.capture_enforcement` block
 - `.claude/settings.json` — register UserPromptSubmit hook
@@ -1239,7 +1239,7 @@ git commit -m "feat(memory/recall): bin/robin.js recall subcommand"
 ## Task 8: PreToolUse — write-intent logging
 
 **Files:**
-- Modify: `system/scripts/claude-code-hook.js` (extend `--on-pre-tool-use` and `--on-pre-bash`)
+- Modify: `system/scripts/hooks/claude-code.js` (extend `--on-pre-tool-use` and `--on-pre-bash`)
 - Test: `system/tests/claude-code-hook-capture.test.js` (new)
 
 - [ ] **Step 1: Write failing test for the new logging behavior**
@@ -1338,7 +1338,7 @@ Expected: FAIL — write-intent log not created (existing hook doesn't log).
 
 - [ ] **Step 3: Extend `claude-code-hook.js` PreToolUse handlers**
 
-Open `system/scripts/claude-code-hook.js`. At the top, add to existing imports:
+Open `system/scripts/hooks/claude-code.js`. At the top, add to existing imports:
 
 ```javascript
 import { readTurnJson, appendWriteIntent } from './lib/turn-state.js';
@@ -1399,7 +1399,7 @@ Expected: all existing tests still PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add system/scripts/claude-code-hook.js system/tests/claude-code-hook-capture.test.js
+git add system/scripts/hooks/claude-code.js system/tests/claude-code-hook-capture.test.js
 git commit -m "feat(memory/capture): PreToolUse write-intent logging"
 ```
 
@@ -1408,7 +1408,7 @@ git commit -m "feat(memory/capture): PreToolUse write-intent logging"
 ## Task 9: UserPromptSubmit handler
 
 **Files:**
-- Modify: `system/scripts/claude-code-hook.js`
+- Modify: `system/scripts/hooks/claude-code.js`
 - Test: `system/tests/claude-code-hook-capture.test.js` (extend)
 
 - [ ] **Step 1: Add tests for UserPromptSubmit**
@@ -1489,7 +1489,7 @@ Expected: new tests FAIL — `--on-user-prompt-submit` mode unknown.
 
 - [ ] **Step 3: Implement the handler**
 
-In `system/scripts/claude-code-hook.js`, add to imports:
+In `system/scripts/hooks/claude-code.js`, add to imports:
 
 ```javascript
 import { mintTurnId, writeTurnJson } from './lib/turn-state.js';
@@ -1579,7 +1579,7 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add system/scripts/claude-code-hook.js system/tests/claude-code-hook-capture.test.js
+git add system/scripts/hooks/claude-code.js system/tests/claude-code-hook-capture.test.js
 git commit -m "feat(memory/capture+recall): UserPromptSubmit handler (turn-state + auto-recall)"
 ```
 
@@ -1588,7 +1588,7 @@ git commit -m "feat(memory/capture+recall): UserPromptSubmit handler (turn-state
 ## Task 10: Stop hook `verifyCapture` integration
 
 **Files:**
-- Modify: `system/scripts/claude-code-hook.js`
+- Modify: `system/scripts/hooks/claude-code.js`
 - Test: `system/tests/claude-code-hook-capture.test.js` (extend)
 
 - [ ] **Step 1: Add tests for verifyCapture**
@@ -1684,7 +1684,7 @@ Expected: new Stop tests FAIL.
 
 - [ ] **Step 3: Implement `verifyCapture` and integrate into `onStop`**
 
-In `system/scripts/claude-code-hook.js`, add to imports:
+In `system/scripts/hooks/claude-code.js`, add to imports:
 
 ```javascript
 import { readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from './lib/turn-state.js';
@@ -1824,7 +1824,7 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add system/scripts/claude-code-hook.js system/tests/claude-code-hook-capture.test.js
+git add system/scripts/hooks/claude-code.js system/tests/claude-code-hook-capture.test.js
 git commit -m "feat(memory/capture): Stop hook verifyCapture (hard wall + retry + telemetry)"
 ```
 
@@ -1851,7 +1851,7 @@ Edit `.claude/settings.json`. Add to the `hooks` object (preserve existing entri
         "hooks": [
           {
             "type": "command",
-            "command": "node system/scripts/claude-code-hook.js --on-user-prompt-submit"
+            "command": "node system/scripts/hooks/claude-code.js --on-user-prompt-submit"
           }
         ]
       }
@@ -2067,7 +2067,7 @@ After the `## Direct-write exceptions` section, add a new section:
 ```markdown
 ## Marker protocol (capture-enforcement)
 
-Capture is enforced at end-of-turn by `system/scripts/claude-code-hook.js --on-stop`. The hook checks whether `user-data/memory/` was written during the turn (via `user-data/state/turn-writes.log`). If not, the model must declare a waiver inline:
+Capture is enforced at end-of-turn by `system/scripts/hooks/claude-code.js --on-stop`. The hook checks whether `user-data/memory/` was written during the turn (via `user-data/state/turn-writes.log`). If not, the model must declare a waiver inline:
 
     <!-- no-capture-needed: <one-line reason> -->
 

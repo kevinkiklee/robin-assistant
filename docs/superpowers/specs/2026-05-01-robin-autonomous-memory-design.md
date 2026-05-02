@@ -27,7 +27,7 @@ A hard wall at end-of-turn: if the turn was substantive and the model didn't cap
 
 #### S1.1 — `UserPromptSubmit` hook handler
 
-New mode in `system/scripts/claude-code-hook.js`: `--on-user-prompt-submit`.
+New mode in `system/scripts/hooks/claude-code.js`: `--on-user-prompt-submit`.
 
 On every user message:
 - Mint `turn_id = <session_id>:<UTC ms>`.
@@ -115,7 +115,7 @@ Net token delta: ~+20 tokens (new enforcement line); ~-50 tokens from removing T
 
 #### S1.7 — `.claude/settings.json` registration
 
-Register `UserPromptSubmit` hook entry pointing at `node system/scripts/claude-code-hook.js --on-user-prompt-submit`. Keep all existing entries.
+Register `UserPromptSubmit` hook entry pointing at `node system/scripts/hooks/claude-code.js --on-user-prompt-submit`. Keep all existing entries.
 
 #### S1.8 — `system/scripts/cli/install-hooks.js` updates
 
@@ -412,7 +412,7 @@ None at design time. Resolve during implementation:
 - `user-data/memory/ENTITIES.md` (generated)
 
 **Modified:**
-- `system/scripts/claude-code-hook.js` (new modes + verifyCapture)
+- `system/scripts/hooks/claude-code.js` (new modes + verifyCapture)
 - `system/scripts/cli/install-hooks.js` (new hook registration, atomic write)
 - `system/scripts/manifest-snapshot.js` (re-run after install)
 - `bin/robin.js` (new `recall` subcommand)
