@@ -17,6 +17,7 @@ test('alias-stoplist.json is valid JSON with required entries', () => {
     assert.ok(entry.length > 0, 'no empty strings');
     assert.equal(entry, entry.toLowerCase(), 'entries are lowercase');
   }
+  assert.equal(new Set(list).size, list.length, 'no duplicate entries');
   for (const required of ['kevin', 'robin', 'user', 'overview', 'summary', 'description']) {
     assert.ok(list.includes(required), `must include "${required}"`);
   }

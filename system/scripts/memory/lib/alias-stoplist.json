@@ -11,7 +11,7 @@
   "note", "notes", "todo", "warning", "error", "info",
   "home", "work", "office", "house",
   "this", "that", "these", "those", "here", "there",
-  "first", "second", "third", "last", "next", "previous",
+  "first", "third", "last", "next", "previous",
   "active", "inactive", "open", "closed", "pending", "resolved",
   "year", "month", "week", "day", "hour", "minute", "second",
   "name", "title", "type", "tags", "aliases", "status",
