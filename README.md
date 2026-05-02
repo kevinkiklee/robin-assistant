@@ -323,6 +323,7 @@ If `git pull` reports a conflict, run `git checkout -- <conflicting-path>` — t
 | `npm run reset` | Wipe `user-data/`, recopy scaffold, re-prompt config (auto-backups first) |
 | `npm test` | Run the test suite (~734 tests) |
 | `npm run lint-memory` | Check orphans, stale INDEX entries, oversized sub-trees, staleness, redundancy, ambiguous aliases, candidate entities, conversational tics |
+| `npm run densify-wiki -- --dry-run` | Audit cross-linking gaps across `user-data/memory/` and write a report. Use `--apply` to backfill aliases, run the linker, add `related:` edges, and regen indexes |
 | `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
 | `npm run prune-preview` | Preview what the 12-month archive prune would move |
 | `npm run prune-execute` | Run the archive prune (auto-backups first) |
