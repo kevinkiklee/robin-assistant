@@ -50,20 +50,20 @@ test('integration: full orchestrator run on golden corpus in dry-run', async () 
   }
 });
 
-test('integration: archive files are excluded from related: heuristic', async () => {
+test('integration: archive files are excluded from passes (no mutation)', async () => {
   const ws = mkdtempSync(join(tmpdir(), 'integration-archive-'));
   try {
     mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
     mkdirSync(join(ws, 'backup'), { recursive: true });
     cpSync(FIXTURE_CORPUS, join(ws, 'user-data/memory'), { recursive: true });
 
+    const beforeArchive = readFileSync(join(ws, 'user-data/memory/archive/old-page.md'), 'utf-8');
+
     const r = await runDensifyWiki({ workspaceDir: ws, mode: 'dry-run', skipBackup: true });
     assert.equal(r.exitCode, 0);
 
-    // archive/old-page.md should not appear in summary's pass3 perFile (if exposed),
-    // but easier check: the run completes without crashing on the archive file.
-    // (The actual exclusion is unit-tested in pass3-related-heuristic.test.js;
-    // here we verify integration stability.)
+    const afterArchive = readFileSync(join(ws, 'user-data/memory/archive/old-page.md'), 'utf-8');
+    assert.equal(beforeArchive, afterArchive, 'archive file must not be mutated');
   } finally {
     rmSync(ws, { recursive: true });
   }
