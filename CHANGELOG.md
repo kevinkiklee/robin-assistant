@@ -25,6 +25,32 @@ After running `npm i robin-assistant@4`, run `npx robin-assistant install-hooks`
 
 ## [Unreleased]
 
+### 2026-05-02 — Densify-wiki Phase 1: backfill cross-linking across user-data
+
+A two-pass audit of `user-data/memory/` (297 files) found ~60% of the cross-link gap is "linker never run" (alias-declared files like `knowledge/finance/financial-snapshot.md`, `decisions.md` mention entities as plain text without `[[…]]`) and ~30% is "missing service-provider entity pages" (only `abco-properties.md` exists; ~15 services are mentioned in `profile/interests.md` and `profile/routines.md` without entity targets).
+
+New orchestrator at `system/scripts/memory/densify-wiki.js` runs four passes:
+
+1. **Pass 1 — alias expansion** (`memory/lib/alias-expander.js`). Walks entity-shaped files (`profile/people/`, `knowledge/{service-providers,projects,locations}/`, plus `type: entity` everywhere). Derives candidates from H1 + filename, applies a filter chain (length ≥3, ≥2 tokens to mitigate the disambiguator gap, dedupe vs. existing, in-pass collision check, stop-list at `memory/lib/alias-stoplist.json`). Type-flip rule: `topic` → `entity` for entity-shaped + has-aliases. Quote-aware parsing — handles real user-data format `aliases: ["Jake", "Joony"]`.
+2. **Pass 2 — linker backfill** (reuses `runBackfill` from `memory/backfill-entity-links.js`). Operates on the expanded entity registry from Pass 1.
+3. **Pass 3 — `related:` heuristic** (`memory/lib/related-heuristic.js`). Mechanical: builds a per-file entity-mention matrix, generates cross-directory pairs with sub-tree dampening (same-parent excluded), drops the top 5% most-mentioned slugs as super-hubs, applies a 3-shared-entity threshold, picks top-K=5 outbound per file with symmetric back-edges (≤10 total). Hand-curated `related:` entries are preserved on re-run.
+4. **Pass 4 — index regen.** Subprocess `index-entities.js --regenerate`; in-process `writeLinksIndex` and `writeMemoryIndex`.
+
+Wrapped in pre-flight `npm run backup`, `wiki-densify` lock at `<workspaceDir>/.locks/wiki-densify.lock` (with stale-PID + 5-min mtime sweep), pass-level resume markers at `user-data/ops/state/densify-wiki/.pass-N-{done,failed}`, and a tiered sentinel cap (250 first-run / 50 ongoing). Output: dated markdown report + `summary.json` companion at `user-data/ops/state/densify-wiki/<YYYY-MM-DD>.{md,json}`.
+
+Three new lint checks added to `system/scripts/memory/lint.js`:
+- **`missing-aliases`** — entity-shaped page has no `aliases:` declared.
+- **`type-mismatch`** — entity-shaped dir + has aliases + `type: topic` (should be `entity`).
+- **`stale-related`** — `related:` frontmatter points to a non-existent file (archive paths excluded — pointing into archive is intentional).
+
+Pre-Pass 0 (out-of-band, hand-authored): 15 service-provider stubs to be created at `user-data/memory/knowledge/service-providers/` (Bay Photo, Mt Sinai Queens, Whoop, Amazon Pharmacy, Ender Squad, Amped Airsoft, etc.) before the orchestrator runs. Listed in spec Appendix A.
+
+Phase 2 candidates (recurring-payee auto-promotion, monthly re-link sweep, Dream `related:` re-evaluation) are sketched in spec Appendix B for follow-up.
+
+Tests: +66 in `system/tests/memory/densify-wiki/`, full suite 867/867 pass.
+
+Spec at `docs/superpowers/specs/2026-05-01-densify-wiki-design.md`; plan at `docs/superpowers/plans/2026-05-01-densify-wiki.md` (both gitignored under `docs/`).
+
 ### 2026-05-01 — Autonomous memory: capture enforcement + recall (cycles 3a / 3b)
 
 Two subsystems shipped together, both closing the same architectural gap:
