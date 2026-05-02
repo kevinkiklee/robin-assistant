@@ -210,10 +210,38 @@ test('UserPromptSubmit caps recall hits at 3 and uses new preface format', () =>
 
   // Preface format: <!-- relevant memory: <N> hits for <entity1>, <entity2> -->
   assert.match(out, /<!-- relevant memory: \d+ hits for Alice -->/);
-  // Cap of 3: at most 3 hit bullet lines between preface and closer
+  // Cap of 3: fixture has 5 matchable Alice lines, recall emits one bullet per hit,
+  // so with the cap working we should get exactly 3 — not 0, not 1, not 5.
   const inner = out.split('<!-- relevant memory:')[1]?.split('<!-- /relevant memory -->')[0] ?? '';
   const hitLines = inner.split('\n').filter((l) => l.startsWith('- '));
-  assert.ok(hitLines.length <= 3, `expected at most 3 hit lines, got ${hitLines.length}`);
+  assert.equal(hitLines.length, 3, `expected exactly 3 hit lines, got ${hitLines.length}`);
+});
+
+test('UserPromptSubmit sanitizes "-->" in entity names so preface comment cannot break out', () => {
+  const ws = makeWorkspaceWithEntities([
+    {
+      name: 'Bad-->Name',
+      file: 'profile/relationships.md',
+      body: 'Bad-->Name appeared in a log line.',
+    },
+  ]);
+  const event = JSON.stringify({
+    session_id: 'test',
+    user_message: 'tell me about Bad-->Name',
+    transcript_path: '',
+  });
+  const out = execFileSync(
+    'node',
+    [join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'), '--on-user-prompt-submit', '--workspace', ws],
+    { input: event, encoding: 'utf8' },
+  );
+
+  // The preface line itself must not contain "-->" before the closing "-->" of the comment.
+  // Match the preface line and ensure its body uses "->" not "-->".
+  const prefaceMatch = out.match(/<!-- relevant memory: \d+ hits for ([^\n]*?) -->/);
+  assert.ok(prefaceMatch, `expected preface in output, got: ${out}`);
+  assert.ok(!prefaceMatch[1].includes('-->'), `entity-name segment leaked "-->" into comment: ${prefaceMatch[1]}`);
+  assert.match(prefaceMatch[1], /Bad->Name/);
 });
 
 test('onStop writes session-handoff + hot.md auto-line for current claude-code session', () => {

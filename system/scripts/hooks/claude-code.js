@@ -452,7 +452,8 @@ async function onUserPromptSubmit(args) {
       const r = recall(ws, patterns, { topN: RECALL_HIT_CAP });
       const formatted = formatRecallHits(r);
       if (formatted) {
-        const matchedNames = matchedEntities.map((e) => e.name).join(', ');
+        // strip "-->" so entity names can't break out of the HTML comment
+        const matchedNames = matchedEntities.map((e) => e.name.replace(/-->/g, '->')).join(', ');
         const block = `<!-- relevant memory: ${r.hits.length} hits for ${matchedNames} -->\n${formatted}\n<!-- /relevant memory -->\n`;
         process.stdout.write(block);
         appendRecallLog(ws, {
