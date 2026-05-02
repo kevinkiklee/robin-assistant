@@ -1,7 +1,7 @@
 // Template — auto-copied to user-data/scripts/lib/github/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
 
-import { fetchJson, AuthError } from '../../../../system/scripts/lib/sync/http.js';
+import { fetchJson, AuthError } from '../../../../system/scripts/sync/lib/http.js';
 
 export { AuthError };
 

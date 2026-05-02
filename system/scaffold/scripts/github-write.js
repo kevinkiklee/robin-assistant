@@ -21,7 +21,7 @@
 // the agent must confirm with the user before invoking this script.
 
 import { fileURLToPath } from 'node:url';
-import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
 import { GitHubClient } from './lib/github/client.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
 import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';

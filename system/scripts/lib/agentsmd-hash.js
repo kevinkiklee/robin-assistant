@@ -8,7 +8,7 @@
 // hashHardRules(agentsmdContent) — returns FNV-1a-64 hex of the
 //   normalized "## Hard Rules" section, or null if missing.
 
-import { fnv1a64 } from './sync/untrusted-index.js';
+import { fnv1a64 } from '../sync/lib/untrusted-index.js';
 
 export function extractSection(md, headerName) {
   if (typeof md !== 'string') return null;

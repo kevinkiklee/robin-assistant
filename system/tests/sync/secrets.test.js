@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadSecrets, requireSecret, saveSecret } from '../../scripts/lib/sync/secrets.js';
+import { loadSecrets, requireSecret, saveSecret } from '../../scripts/sync/lib/secrets.js';
 
 function setup() {
   const ws = mkdtempSync(join(tmpdir(), 'secrets-'));

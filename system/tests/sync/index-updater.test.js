@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { updateIndex } from '../../scripts/lib/sync/index-updater.js';
+import { updateIndex } from '../../scripts/sync/lib/index-updater.js';
 
 function setupWorkspace() {
   const ws = mkdtempSync(join(tmpdir(), 'idx-'));

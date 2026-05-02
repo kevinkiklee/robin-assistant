@@ -15,10 +15,10 @@ scopes, known gotchas), see `system/integrations/`.
 
 ## Loading
 
-Scripts that need a secret read it via `process.env.KEY` after loading the env file. Use the helper at `system/scripts/lib/sync/secrets.js`:
+Scripts that need a secret read it via `process.env.KEY` after loading the env file. Use the helper at `system/scripts/sync/lib/secrets.js`:
 
 ```js
-import { loadSecrets, requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { loadSecrets, requireSecret } from '../../system/scripts/sync/lib/secrets.js';
 loadSecrets(workspaceDir);
 const apiKey = requireSecret('MY_API_KEY');
 ```

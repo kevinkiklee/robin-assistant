@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { atomicWrite } from '../scripts/lib/sync/markdown.js';
+import { atomicWrite } from '../scripts/sync/lib/markdown.js';
 import {
   assertOutboundContentAllowed,
   OutboundPolicyError,

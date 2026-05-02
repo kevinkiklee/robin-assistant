@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchJson, AuthError } from '../../scripts/lib/sync/http.js';
+import { fetchJson, AuthError } from '../../scripts/sync/lib/http.js';
 
 function fakeFetch(responses) {
   let i = 0;

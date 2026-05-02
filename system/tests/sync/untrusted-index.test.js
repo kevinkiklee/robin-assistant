@@ -9,7 +9,7 @@ import {
   updateIndexForFile,
   loadOrRefreshIndex,
   findSourceForHash,
-} from '../scripts/lib/sync/untrusted-index.js';
+} from '../../scripts/sync/lib/untrusted-index.js';
 
 function ws() { return mkdtempSync(join(tmpdir(), 'idx-')); }
 function clean(p) { rmSync(p, { recursive: true, force: true }); }

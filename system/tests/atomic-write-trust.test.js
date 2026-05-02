@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { atomicWrite } from '../scripts/lib/sync/markdown.js';
+import { atomicWrite } from '../scripts/sync/lib/markdown.js';
 
 function freshWorkspace() {
   return mkdtempSync(join(tmpdir(), 'atomic-write-trust-'));

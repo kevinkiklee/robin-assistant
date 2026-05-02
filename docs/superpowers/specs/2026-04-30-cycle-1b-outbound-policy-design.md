@@ -161,7 +161,7 @@ Per-call cost: O(num_sources × stat) for invalidation check + O(outbound_senten
 
 ```js
 const SECRET_PATTERNS = [
-  // Reused from system/scripts/lib/sync/redact.js
+  // Reused from system/scripts/sync/lib/redact.js
   /(https?:\/\/)([^:\s/@]+):([^@\s]+)@/g,                         // url-cred
   /\b(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|xoxb-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/g,  // api-key shapes
   /\b\d{3}-\d{2}-\d{4}\b/g,                                       // SSN
@@ -179,7 +179,7 @@ This is the load-bearing check for S4's falsifiability. Catches: GitHub PATs, OA
 
 ### 4.3 No `secrets/.env` direct read
 
-`system/scripts/lib/sync/secrets.js:loadSecrets()` already populates `process.env` from `secrets/.env`. Helper iterates `process.env` only. Same coverage; one less file read; simpler code.
+`system/scripts/sync/lib/secrets.js:loadSecrets()` already populates `process.env` from `secrets/.env`. Helper iterates `process.env` only. Same coverage; one less file read; simpler code.
 
 ### 4.4 Helper integration
 

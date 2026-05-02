@@ -188,7 +188,7 @@ Robin can pull data from external services on a schedule so it has context about
 
 Each integration is a standalone script with OAuth setup, bootstrap sync, and a job definition. All ship disabled — they only run after you complete auth setup. Per-provider walkthroughs (creating OAuth clients, choosing scopes, known gotchas like Spotify's `127.0.0.1` redirect requirement and GitHub fine-grained PAT limits on `/notifications`) live in [`system/integrations/`](system/integrations/README.md). Write CLIs are available for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`) with `--dry-run` support. Calendar and Gmail writes use your AI tool's native capabilities.
 
-The integration system is built on a shared library (`system/scripts/lib/sync/`) providing OAuth2 token refresh, secrets management, sync cursors, HTTP retry with exponential backoff, privacy redaction, and atomic markdown writes.
+The integration system is built on a shared library (`system/scripts/sync/lib/`) providing OAuth2 token refresh, secrets management, sync cursors, HTTP retry with exponential backoff, privacy redaction, and atomic markdown writes.
 
 ### Chat front-ends
 
@@ -223,7 +223,7 @@ Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 
 - **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
 - **`jobs/`** — overlays `system/jobs/`. **The default convention is a shallow override** (`override: <name>` frontmatter): you change only what you need, the rest inherits from the system definition and keeps tracking upstream upgrades. Use a full override (no `override:` key) only when you intend to fully replace a system job. Drop a brand-new file to extend the catalog.
-- **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/lib/sync/`.
+- **`scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/sync/lib/`.
 - **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
 
 #### Customizing a job (the default pattern)

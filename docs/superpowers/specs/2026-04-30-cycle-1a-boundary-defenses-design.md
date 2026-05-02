@@ -115,7 +115,7 @@ The marker pair is recognized as data by the agent (per AGENTS.md rule §6.1 bel
 
 ### 3.3 Implementation: `atomicWrite` extension
 
-Single touch point. `system/scripts/lib/sync/markdown.js:atomicWrite(workspaceDir, relPath, content, opts?)` gains:
+Single touch point. `system/scripts/sync/lib/markdown.js:atomicWrite(workspaceDir, relPath, content, opts?)` gains:
 
 ```js
 opts.trust         // 'untrusted' | 'untrusted-mixed' | undefined
@@ -206,7 +206,7 @@ Under new **Hard Rule** (added to existing list):
 
 ### 5.1 Function
 
-New file: `system/scripts/lib/sync/sanitize-tags.js`.
+New file: `system/scripts/sync/lib/sanitize-tags.js`.
 
 ```js
 // Capture tags Robin recognizes (per AGENTS.md / system/rules/capture.md).
@@ -493,7 +493,7 @@ Items adjacent to cycle-1a but explicitly deferred:
 Cycle-1a is done when ALL of:
 
 1. `atomicWrite` accepts `opts.trust` + `opts.trustSource`; sets frontmatter + wraps body in inline markers; runs sanitization. Unit tests pass.
-2. `sanitizeUntrustedString()` exists in `system/scripts/lib/sync/sanitize-tags.js`; unit tests pass.
+2. `sanitizeUntrustedString()` exists in `system/scripts/sync/lib/sanitize-tags.js`; unit tests pass.
 3. All five sync writers (gmail, github, calendar, lunch-money, spotify) pass `{trust:'untrusted', trustSource:'sync-<name>'}` to `atomicWrite`. Verified by reading each script.
 4. `dream-pre-filter.js` exists; quarantines non-user-origin captures; unit tests pass; Dream protocol references it.
 5. `ingest-guard.js` exists; rejects blocklist paths; ingest protocol references it. Unit tests pass.

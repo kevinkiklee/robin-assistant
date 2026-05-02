@@ -516,5 +516,5 @@ None at design time. Implementation may surface host-specific transcript-parsing
 - [Antigravity rules support — AGENTS.md since v1.20.3](https://antigravity.codes/blog/user-rules)
 - [Cursor Rules docs — AGENTS.md is current; .cursorrules deprecated](https://cursor.com/docs/rules)
 - Existing migration patterns — `migrations/0007*` (mtime guard, quarantine on corrupt state)
-- Existing atomic-write helpers — `system/scripts/lib/sync/`
+- Existing atomic-write helpers — `system/scripts/sync/lib/`
 - Existing job system — `system/jobs/`, `state/jobs/INDEX.md`, `failures.md`

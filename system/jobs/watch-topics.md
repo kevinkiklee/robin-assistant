@@ -32,7 +32,7 @@ For each eligible watch:
 2. Issue WebSearch with the watch's `query`.
 3. For each result hit (top 5–10), build a fingerprint: `sha256(canonical-url + summary-first-200-chars)`.
 4. Drop hits whose fingerprint is in the set.
-5. For new hits, redact via `applyRedaction()` from `system/scripts/lib/sync/redact.js`.
+5. For new hits, redact via `applyRedaction()` from `system/scripts/sync/lib/redact.js`.
 6. If a hit is fully redacted (nothing left), skip it.
 
 ## Phase 3: Write outputs

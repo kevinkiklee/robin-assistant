@@ -1,6 +1,6 @@
 // Template — auto-copied to user-data/scripts/lib/lunch-money/ by scaffold-sync.
 // Imports resolve only after copy; not runnable in place.
-import { fetchJson, AuthError } from '../../../../system/scripts/lib/sync/http.js';
+import { fetchJson, AuthError } from '../../../../system/scripts/sync/lib/http.js';
 
 const BASE = 'https://dev.lunchmoney.app/v1';
 

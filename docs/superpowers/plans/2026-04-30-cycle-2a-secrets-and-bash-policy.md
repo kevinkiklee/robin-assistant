@@ -3,13 +3,13 @@
 **Spec:** `docs/superpowers/specs/2026-04-30-cycle-2a-secrets-and-bash-policy-design.md`
 **Depends on:** cycle-1b (refusal-log infrastructure).
 
-## Step 1 — Rewrite `system/scripts/lib/sync/secrets.js`
+## Step 1 — Rewrite `system/scripts/sync/lib/secrets.js`
 
 - Drop `loadSecrets()` (delete the export).
 - Change `requireSecret(key)` → `requireSecret(workspaceDir, key)` — reads `secrets/.env` directly per call. Parses .env line-by-line. Throws if missing.
 - Keep `saveSecret` (cycle-3 hotfix's chmod 0600 stays).
 
-Update `system/scripts/lib/sync/oauth.js` to thread `workspaceDir` through to `requireSecret` calls.
+Update `system/scripts/sync/lib/oauth.js` to thread `workspaceDir` through to `requireSecret` calls.
 
 Test: `system/tests/security/secrets-lazy-read.test.js`.
 

@@ -16,9 +16,9 @@
 //   SPOTIFY_CLIENT_SECRET=...
 
 import { fileURLToPath } from 'node:url';
-import { runAuthCodeFlow } from '../../system/scripts/lib/sync/oauth.js';
-import { requireSecret, saveSecret } from '../../system/scripts/lib/sync/secrets.js';
-import { saveCursor } from '../../system/scripts/lib/sync/cursor.js';
+import { runAuthCodeFlow } from '../../system/scripts/sync/lib/oauth.js';
+import { requireSecret, saveSecret } from '../../system/scripts/sync/lib/secrets.js';
+import { saveCursor } from '../../system/scripts/sync/lib/cursor.js';
 
 const SCOPES = [
   'user-read-recently-played',

@@ -33,7 +33,7 @@ import { homedir } from 'node:os';
 import { writeSessionBlock } from '../lib/handoff.js';
 import { mostRecentSessionId } from '../lib/sessions.js';
 // applyRedaction(text) -> { redacted: string, count: number }
-import { applyRedaction } from '../lib/sync/redact.js';
+import { applyRedaction } from '../sync/lib/redact.js';
 import { readTurnJson, appendWriteIntent, mintTurnId, writeTurnJson, readWriteIntents, pruneWriteIntents, readRetry, incrementRetry } from '../lib/turn-state.js';
 import { appendPerfLog } from '../lib/perf-log.js';
 import { classifyTier, scanEntityAliases } from '../lib/capture-keyword-scan.js';
@@ -300,12 +300,12 @@ async function onPreToolUse() {
       event.tool_input?.new_string ??
       '';
     if (typeof content === 'string' && content.length > 0) {
-      const { applyRedaction } = await import('../lib/sync/redact.js');
+      const { applyRedaction } = await import('../sync/lib/redact.js');
       const { count } = applyRedaction(content);
       if (count > 0) {
         try {
           const { appendPolicyRefusal } = await import('../lib/policy-refusals-log.js');
-          const { fnv1a64 } = await import('../lib/sync/untrusted-index.js');
+          const { fnv1a64 } = await import('../sync/lib/untrusted-index.js');
           appendPolicyRefusal(ws, {
             kind: 'pii-bypass',
             target,
@@ -325,7 +325,7 @@ async function onPreToolUse() {
     // 3. Cycle-2c: high-stakes destination audit (allow + log).
     try {
       const { isHighStakesDestination, appendHighStakesWrite } = await import('../lib/high-stakes-log.js');
-      const { fnv1a64 } = await import('../lib/sync/untrusted-index.js');
+      const { fnv1a64 } = await import('../sync/lib/untrusted-index.js');
       if (isHighStakesDestination(target)) {
         const relPath = target.split('user-data/memory/')[1]
           ? 'user-data/memory/' + target.split('user-data/memory/')[1]
@@ -392,7 +392,7 @@ async function onPreBash(args) {
     if (result.blocked) {
       try {
         const { appendPolicyRefusal } = await import('../lib/policy-refusals-log.js');
-        const { fnv1a64 } = await import('../lib/sync/untrusted-index.js');
+        const { fnv1a64 } = await import('../sync/lib/untrusted-index.js');
         appendPolicyRefusal(ws, {
           kind: 'bash',
           target: 'local-bash',

@@ -14,7 +14,7 @@ import { isAllowedContext } from './lib/discord/auth.js';
 import { stripMention, splitMessage } from './lib/discord/formatter.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
 import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';
-import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

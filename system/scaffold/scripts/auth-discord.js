@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFile, writeFile, access, chmod, constants } from 'node:fs/promises';
 import { PermissionsBitField } from 'discord.js';
-import { requireSecret, getSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret, getSecret } from '../../system/scripts/sync/lib/secrets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROBIN_ROOT = resolve(__dirname, '../../');

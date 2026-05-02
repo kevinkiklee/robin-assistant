@@ -14,7 +14,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadManifest, loadCurrentSettings, enumerateMCPServers } from './lib/manifest.js';
 import { appendPolicyRefusal, readRecentRefusalHashes } from './lib/policy-refusals-log.js';
-import { fnv1a64 } from './lib/sync/untrusted-index.js';
+import { fnv1a64 } from './sync/lib/untrusted-index.js';
 import { hashHardRules } from './lib/agentsmd-hash.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

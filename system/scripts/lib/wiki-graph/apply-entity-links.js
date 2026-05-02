@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { posix } from 'node:path';
 import { join } from 'node:path';
-import { atomicWrite } from '../sync/markdown.js';
+import { atomicWrite } from '../../sync/lib/markdown.js';
 import { buildEntityRegistry } from './build-entity-registry.js';
 import { computeSkipRanges, isInsideSkipRange, isExcludedPath } from './exclusions.js';
 

@@ -17,7 +17,7 @@
 // invoking writes that affect playback or playlists.
 
 import { fileURLToPath } from 'node:url';
-import { getAccessToken } from '../../system/scripts/lib/sync/oauth.js';
+import { getAccessToken } from '../../system/scripts/sync/lib/oauth.js';
 import { SpotifyClient } from './lib/spotify/client.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../system/scripts/lib/outbound-policy.js';
 import { appendPolicyRefusal } from '../../system/scripts/lib/policy-refusals-log.js';

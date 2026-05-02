@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRedaction } from '../../scripts/lib/sync/redact.js';
+import { applyRedaction } from '../../scripts/sync/lib/redact.js';
 
 test('redacts US SSN', () => {
   const { redacted, count } = applyRedaction('My SSN is 123-45-6789.');

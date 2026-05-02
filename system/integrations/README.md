@@ -13,7 +13,7 @@ copied to `user-data/scripts/` on first run:
   `sync-lunch-money.js` — periodic data pulls
 
 The OAuth library used by all OAuth providers lives in
-`system/scripts/lib/sync/oauth.js`.
+`system/scripts/sync/lib/oauth.js`.
 
 ## Per-provider playbooks
 

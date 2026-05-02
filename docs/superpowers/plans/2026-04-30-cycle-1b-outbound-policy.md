@@ -12,7 +12,7 @@ Append-only log helper (forward name; cycle-2a renames `outbound-refusals` → `
 
 Test: `system/tests/security/policy-refusals-log.test.js`.
 
-## Step 2 — `system/scripts/lib/sync/untrusted-index.js`
+## Step 2 — `system/scripts/sync/lib/untrusted-index.js`
 
 Sentence-hash index helpers:
 - `splitSentences(text)` — split on `.!?\n\s*\n\n\s*[-*]\s\|`. Drop sentences <20 chars after trim.

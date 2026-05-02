@@ -10,7 +10,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadOrRefreshIndex, splitSentences, fnv1a64, findSourceForHash } from './sync/untrusted-index.js';
+import { loadOrRefreshIndex, splitSentences, fnv1a64, findSourceForHash } from '../sync/lib/untrusted-index.js';
 
 export class OutboundPolicyError extends Error {
   constructor(reason, layer) {

@@ -71,7 +71,7 @@
 
 ### 3.1 `secrets.js` rewrite
 
-**Current** (`system/scripts/lib/sync/secrets.js`):
+**Current** (`system/scripts/sync/lib/secrets.js`):
 - `loadSecrets(workspaceDir)` reads `secrets/.env` and writes every key to `process.env`.
 - `requireSecret(key)` reads `process.env[key]`.
 - `saveSecret(workspaceDir, key, value)` atomic-writes the file (cycle-3 hotfix added mode 0600).
@@ -84,7 +84,7 @@
 **No cache.** Per-call file read is ~1ms on SSD. Secrets are accessed 2-3 times per session in practice (login, OAuth refresh). Caching would defeat the "secrets don't linger in module memory" property. If a future hot path emerges, an opt-in module-level Map cache with a 30-second TTL is the future hardening — not now.
 
 ```js
-// system/scripts/lib/sync/secrets.js (after)
+// system/scripts/sync/lib/secrets.js (after)
 import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
@@ -152,7 +152,7 @@ Direct `process.env.<SECRET>` readers replaced with `requireSecret(workspaceDir,
 
 Lines like `discord-bot.js:47-50` (CLAUDE_PATH, TIMEOUT_MS, MAX_TURNS, MAX_CONCURRENT_RUNS) are configuration, not secrets — stay in `process.env`. Same line for `ROBIN_WORKSPACE`, `SPOTIFY_AUTH_PORT`. Rule: anything stored in `secrets/.env` becomes a `requireSecret` call; anything else stays as `process.env`.
 
-OAuth flow already uses `requireSecret(provider.refreshTokenEnv)` etc. via `system/scripts/lib/sync/oauth.js`; that helper continues to work after the rewrite (signature changes from `requireSecret(key)` to `requireSecret(workspaceDir, key)` — caller passes `workspaceDir` through).
+OAuth flow already uses `requireSecret(provider.refreshTokenEnv)` etc. via `system/scripts/sync/lib/oauth.js`; that helper continues to work after the rewrite (signature changes from `requireSecret(key)` to `requireSecret(workspaceDir, key)` — caller passes `workspaceDir` through).
 
 ### 3.4 Spawn-site updates
 
@@ -189,7 +189,7 @@ async function main() {
 After:
 ```js
 import { Client } from 'discord.js';
-import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
+import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
 import { safeEnv } from '../../system/scripts/lib/safe-env.js';
 
 const workspaceDir = process.env.ROBIN_WORKSPACE || resolve(__dirname, '../..');

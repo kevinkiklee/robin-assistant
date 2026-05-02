@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getAccessToken, runAuthCodeFlow, getProvider } from '../../scripts/lib/sync/oauth.js';
+import { getAccessToken, runAuthCodeFlow, getProvider } from '../../scripts/sync/lib/oauth.js';
 
 function workspace() {
   const ws = mkdtempSync(join(tmpdir(), 'oauth-'));

@@ -31,7 +31,7 @@ Both the frontmatter flag and the inline markers signal "this content is authore
 
 ### Sanitization at write time
 
-Sync writers pass content through `system/scripts/lib/sync/sanitize-tags.js:sanitizeUntrustedString()`. It rewrites:
+Sync writers pass content through `system/scripts/sync/lib/sanitize-tags.js:sanitizeUntrustedString()`. It rewrites:
 - `[fact|preference|decision|correction|task|update|derived|journal](...)` → `［...］` (full-width brackets) so capture-tag regex doesn't match.
 - `[system:|assistant:|user:` → `［system:|...` — neutralizes role-shift attempts.
 - `<!-- UNTRUSTED-(START|END)` → `&lt;!-- UNTRUSTED-...` — neutralizes marker-confusion attempts.
@@ -128,7 +128,7 @@ Surfaced in morning briefing for retrospective review.
 
 ### Lazy-read secrets
 
-`system/scripts/lib/sync/secrets.js:requireSecret(workspaceDir, key)` reads `user-data/secrets/.env` per call. **It does NOT pollute `process.env`.** Subprocesses spawned afterward (e.g., discord-bot's `claude -p` children) cannot inherit secrets via env.
+`system/scripts/sync/lib/secrets.js:requireSecret(workspaceDir, key)` reads `user-data/secrets/.env` per call. **It does NOT pollute `process.env`.** Subprocesses spawned afterward (e.g., discord-bot's `claude -p` children) cannot inherit secrets via env.
 
 `loadSecrets(workspaceDir)` is now a no-op shim; older callers fail loudly if they invoke it without a workspaceDir.
 

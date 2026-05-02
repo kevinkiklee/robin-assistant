@@ -3,7 +3,7 @@
 **Spec:** `docs/superpowers/specs/2026-04-30-cycle-1a-boundary-defenses-design.md`
 **Branch:** `feat/security-cycles`
 
-## Step 1 — Create `system/scripts/lib/sync/sanitize-tags.js`
+## Step 1 — Create `system/scripts/sync/lib/sanitize-tags.js`
 
 Pure function module. Exports `sanitizeUntrustedString(s)` that:
 - Replaces `[fact|preference|decision|correction|task|update|derived|journal](...)` with `［...］` (full-width brackets) so capture-tag regex doesn't match.
@@ -12,7 +12,7 @@ Pure function module. Exports `sanitizeUntrustedString(s)` that:
 
 Test: `system/tests/security/sanitize-tags.test.js` — positive + negative cases for each pattern, idempotency.
 
-## Step 2 — Extend `system/scripts/lib/sync/markdown.js:atomicWrite`
+## Step 2 — Extend `system/scripts/sync/lib/markdown.js:atomicWrite`
 
 Signature change: `atomicWrite(workspaceDir, relPath, content, opts = {})`.
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { sanitizeUntrustedString } from '../scripts/lib/sync/sanitize-tags.js';
+import { sanitizeUntrustedString } from '../../scripts/sync/lib/sanitize-tags.js';
 
 test('sanitize: rewrites capture tags', () => {
   const out = sanitizeUntrustedString('Note: [correction] you should know.');

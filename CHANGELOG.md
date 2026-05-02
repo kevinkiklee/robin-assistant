@@ -313,7 +313,7 @@ Adds the four read+write integrations the Phase 1 lib was built to support. All 
 
 #### New shared lib module: oauth.js
 
-`system/scripts/lib/sync/oauth.js` adds the OAuth2 flow that all OAuth-based integrations share:
+`system/scripts/sync/lib/oauth.js` adds the OAuth2 flow that all OAuth-based integrations share:
 - **`getAccessToken(workspaceDir, provider)`** — runtime helper. Reads the long-lived refresh token from `.env`, returns a cached access token from state if still valid (60s clock skew), or calls the provider's token endpoint to refresh and caches the new access token. Writes back rotated refresh tokens (Spotify rotates them; Google does not).
 - **`runAuthCodeFlow(opts)`** — one-shot setup helper. Spins up a localhost callback server on a random (or fixed) port, opens the user's browser to the consent URL, captures the auth code, exchanges it for tokens. CSRF-safe via random `state`. Cross-platform browser opener.
 - Provider registry currently has Google and Spotify wired up.
@@ -368,7 +368,7 @@ node bin/robin.js jobs enable sync-spotify
 
 First step toward a hybrid sync/MCP integration system. Establishes the shared infrastructure all per-user integrations import from, and migrates the existing Lunch Money sync onto it.
 
-#### Shared sync lib (`system/scripts/lib/sync/`)
+#### Shared sync lib (`system/scripts/sync/lib/`)
 
 Six small, focused modules — each independently tested:
 - `secrets.js` — `loadSecrets`, `requireSecret`, atomic `saveSecret` (preserves comments, supports rotating refresh tokens).
@@ -380,7 +380,7 @@ Six small, focused modules — each independently tested:
 
 #### Per-user integration convention
 
-Integration code now lives in `user-data/scripts/`, not `system/`. Each user can add an integration by dropping `user-data/jobs/<name>.md` + `user-data/scripts/<name>.js` and importing from `system/scripts/lib/sync/`. No `system/` changes required. Canonical templates ship from `system/skeleton/scripts/` and auto-copy into `user-data/` on first run via the existing skeleton-sync.
+Integration code now lives in `user-data/scripts/`, not `system/`. Each user can add an integration by dropping `user-data/jobs/<name>.md` + `user-data/scripts/<name>.js` and importing from `system/scripts/sync/lib/`. No `system/` changes required. Canonical templates ship from `system/skeleton/scripts/` and auto-copy into `user-data/` on first run via the existing skeleton-sync.
 
 #### Lunch Money migration
 

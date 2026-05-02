@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { atomicWrite, openItem, writeTable } from '../../scripts/lib/sync/markdown.js';
+import { atomicWrite, openItem, writeTable } from '../../scripts/sync/lib/markdown.js';
 
 function setup() {
   return mkdtempSync(join(tmpdir(), 'markdown-'));

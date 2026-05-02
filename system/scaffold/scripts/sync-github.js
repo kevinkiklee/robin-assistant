@@ -14,10 +14,10 @@
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { requireSecret } from '../../system/scripts/lib/sync/secrets.js';
-import { loadCursor, saveCursor } from '../../system/scripts/lib/sync/cursor.js';
-import { atomicWrite, writeTable } from '../../system/scripts/lib/sync/markdown.js';
-import { updateIndex } from '../../system/scripts/lib/sync/index-updater.js';
+import { requireSecret } from '../../system/scripts/sync/lib/secrets.js';
+import { loadCursor, saveCursor } from '../../system/scripts/sync/lib/cursor.js';
+import { atomicWrite, writeTable } from '../../system/scripts/sync/lib/markdown.js';
+import { updateIndex } from '../../system/scripts/sync/lib/index-updater.js';
 import { acquireLock, releaseLock } from '../../system/scripts/jobs/lib/atomic.js';
 import { buildEntityRegistry } from '../../system/scripts/lib/wiki-graph/build-entity-registry.js';
 import { applyEntityLinks } from '../../system/scripts/lib/wiki-graph/apply-entity-links.js';
