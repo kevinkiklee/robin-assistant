@@ -23,7 +23,7 @@ sacrifice findability.
 Any change to:
 
 - `AGENTS.md` (Tier 1 root)
-- `system/manifest.md`, `system/capture-rules.md`, `system/startup.md`
+- `system/manifest.md`, `system/rules/capture.md`, `system/rules/startup.md`
 - `system/jobs/*.md`
 - `system/scripts/lib/token-budget.json` (the source of truth)
 - `system/scripts/lib/platforms.js` (host pointer files)

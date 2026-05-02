@@ -11,9 +11,9 @@
 /CLAUDE.md                                         @kevinkiklee
 /GEMINI.md                                         @kevinkiklee
 /system/manifest.md                                @kevinkiklee
-/system/startup.md                                 @kevinkiklee
-/system/capture-rules.md                           @kevinkiklee
-/system/self-improvement-rules.md                  @kevinkiklee
+/system/rules/startup.md                           @kevinkiklee
+/system/rules/capture.md                           @kevinkiklee
+/system/rules/self-improvement.md                  @kevinkiklee
 /system/jobs/                                      @kevinkiklee
 /system/scripts/lib/token-budget.json              @kevinkiklee
 /system/scripts/lib/token-baselines.json           @kevinkiklee

@@ -366,14 +366,14 @@ Result: existing patterns get a fresh "last fired" baseline (today), so they don
 
 ---
 
-## 6. AGENTS.md and `system/security-rules.md`
+## 6. AGENTS.md and `system/rules/security.md`
 
 ### 6.1 AGENTS.md change
 
 Single line under Hard Rules (cycle-2c):
 
 ```markdown
-- **Mechanical backstops.** PII patterns in writes to `user-data/memory/` block at the hook layer (G-02). High-stakes destination writes are audited (G-05). AGENTS.md Hard Rules and `user-data/jobs/` are integrity-checked at session start (G-01, G-03). Promoted patterns auto-archive after 180 days inactivity (G-27). See `system/security-rules.md`.
+- **Mechanical backstops.** PII patterns in writes to `user-data/memory/` block at the hook layer (G-02). High-stakes destination writes are audited (G-05). AGENTS.md Hard Rules and `user-data/jobs/` are integrity-checked at session start (G-01, G-03). Promoted patterns auto-archive after 180 days inactivity (G-27). See `system/rules/security.md`.
 ```
 
 Cumulative AGENTS.md additions across all four security cycles: ~6 lines net.
@@ -392,7 +392,7 @@ When applying a learned pattern (recognizing its signal, executing its counter-a
 Single Bash call. Dream batches updates to pattern frontmatter (last_fired, fired_count) and truncates the log on success. Skipping the append is not a security violation but causes pattern to drift toward TTL archive.
 ```
 
-### 6.3 `system/security-rules.md` extensions
+### 6.3 `system/rules/security.md` extensions
 
 - PII backstop reference (write-hook, redact.js patterns reused).
 - High-stakes destination list (the 7 paths) + audit log + morning-briefing surface.
@@ -568,7 +568,7 @@ Same flow as cycle-2b's MCP triage (mild drift; Kevin reviews, accepts via manif
   - Dream TTL phase + protocol update + test: 1.5h
   - `pattern-ttl.js` config + per-pattern override + test: 0.5h
   - Acceptance test S8: 0.75h
-  - AGENTS.md + `system/security-rules.md` updates: 1h
+  - AGENTS.md + `system/rules/security.md` updates: 1h
   - Walkthroughs in security-rules.md: 0.5h
   - Smoke + cleanup: 0.5h
 
@@ -586,7 +586,7 @@ Same flow as cycle-2b's MCP triage (mild drift; Kevin reviews, accepts via manif
 8. Patterns gain `last_fired` + `fired_count` frontmatter; `migrate-cycle-2c.js` seeds existing patterns; per-pattern `ttl_days` override supported.
 9. AGENTS.md / capture-rules.md instruct model to append to `pattern-firings.log` on application via Bash echo idiom.
 10. Dream TTL phase: reads firings log, batch-updates patterns.md frontmatter (last_fired + fired_count), truncates log, archives patterns over TTL, appends journal summary.
-11. AGENTS.md gains 1-line backstops rule. `system/security-rules.md` extended with cycle-2c walkthroughs A/B/C/D and limitations.
+11. AGENTS.md gains 1-line backstops rule. `system/rules/security.md` extended with cycle-2c walkthroughs A/B/C/D and limitations.
 12. Morning-briefing protocol surfaces high-stakes-writes summary aggregated by destination.
 13. S8 acceptance test passes.
 14. Existing test suite green.

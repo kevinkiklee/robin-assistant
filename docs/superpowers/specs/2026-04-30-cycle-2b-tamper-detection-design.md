@@ -4,7 +4,7 @@
 **Author:** Kevin (with Claude)
 **Status:** Draft — implementation paused (other agent active on package)
 **Source audit:** `docs/security/audit-2026-04-30.md` (audit pinned SHA: `b5f413c1ba7c60910a1f2c111b248c1ae6daa9f3`)
-**Predecessor cycles:** cycle-1a, cycle-1b, cycle-2a (reuses `policy-refusals.log` + `system/security-rules.md`).
+**Predecessor cycles:** cycle-1a, cycle-1b, cycle-2a (reuses `policy-refusals.log` + `system/rules/security.md`).
 **Source-audit gap IDs:** G-28, G-37
 **Acceptance scenarios:** S9 (compromised MCP server), S10 (hook tampering)
 
@@ -116,7 +116,7 @@ The shipped skeleton lists Robin's owned hooks and empty MCP arrays. After insta
 
 ### 3.4 No cryptographic signing
 
-The manifest is plain JSON. An attacker who can edit `.claude/settings.json` can also edit `user-data/security/manifest.json`. The detection layer is **git review of pull diffs**: if a fork commits a malicious hook AND its corresponding manifest update, both diffs appear in the pull. Not a defense against an attacker already on the filesystem; documented in `system/security-rules.md` known limitations.
+The manifest is plain JSON. An attacker who can edit `.claude/settings.json` can also edit `user-data/security/manifest.json`. The detection layer is **git review of pull diffs**: if a fork commits a malicious hook AND its corresponding manifest update, both diffs appear in the pull. Not a defense against an attacker already on the filesystem; documented in `system/rules/security.md` known limitations.
 
 ---
 
@@ -385,7 +385,7 @@ The skeleton's `manifest.json` self-references this entry, so the manifest agree
 
 ## 7. First-deploy bootstrap (user-facing flow)
 
-Kevin's documented post-install steps for cycle-2b. Lives in `system/security-rules.md`:
+Kevin's documented post-install steps for cycle-2b. Lives in `system/rules/security.md`:
 
 ### 7.1 First time (after cycle-2b ships)
 
@@ -470,19 +470,19 @@ For kind=tamper specifically:
 
 ---
 
-## 9. AGENTS.md and `system/security-rules.md`
+## 9. AGENTS.md and `system/rules/security.md`
 
 ### 9.1 AGENTS.md change
 
 One line under Hard Rules:
 
 ```markdown
-- **Tamper detection.** Drift in `.claude/settings.json` hooks or in the loaded MCP server list is checked at session start by `system/scripts/check-manifest.js` against `user-data/security/manifest.json`. Severe drift surfaces in the model context immediately; mild/info goes to `policy-refusals.log` (deduped 24h) for morning-briefing review. See `system/security-rules.md`.
+- **Tamper detection.** Drift in `.claude/settings.json` hooks or in the loaded MCP server list is checked at session start by `system/scripts/check-manifest.js` against `user-data/security/manifest.json`. Severe drift surfaces in the model context immediately; mild/info goes to `policy-refusals.log` (deduped 24h) for morning-briefing review. See `system/rules/security.md`.
 ```
 
 Cumulative AGENTS.md additions across all four security cycles: ~5 lines net (cycle-1a +5, cycle-1b -2, cycle-2a +1, cycle-2b +1).
 
-### 9.2 `system/security-rules.md` additions
+### 9.2 `system/rules/security.md` additions
 
 - Manifest schema reference.
 - First-deploy bootstrap walkthrough (§7 above, copied verbatim).
@@ -533,7 +533,7 @@ Estimated addition: ~80 lines.
 
 ## 11. Migration
 
-1. **Order:** deploys after cycle-2a (uses `policy-refusals.log` + `system/security-rules.md`).
+1. **Order:** deploys after cycle-2a (uses `policy-refusals.log` + `system/rules/security.md`).
 2. **Skeleton ship:** `system/skeleton/security/manifest.json` lands in the package; `setup.js` (postinstall) copies it to `user-data/security/manifest.json` if not already present.
 3. **First session after deploy:** Kevin sees drift entries for every MCP not in the (initially empty) manifest. He runs the bootstrap (§7.1) — likely option 4b (`--apply --confirm-trust-current-state`) for first-deploy convenience.
 4. **Subsequent sessions:** silent unless drift appears.
@@ -546,9 +546,9 @@ No data migration. No file rewrites of existing logs.
 
 | Risk | Mitigation |
 |---|---|
-| Manifest itself can be edited by an attacker on the filesystem | Detection layer is git-diff review on pulls. Documented in `system/security-rules.md` known limitations. T3 already accepted as a gap (G-33; cycle-2c territory). |
+| Manifest itself can be edited by an attacker on the filesystem | Detection layer is git-diff review on pulls. Documented in `system/rules/security.md` known limitations. T3 already accepted as a gap (G-33; cycle-2c territory). |
 | Initial deploy floods refusal log with mild MCP drift | One-time triage via bootstrap mode (`--apply --confirm-trust-current-state`); subsequent sessions silent. |
-| MCP discovery path varies across Claude Code versions | `enumerateMCPServers` tries multiple known paths; fails soft (returns empty) on each. Re-verify path during implementation. Update `system/security-rules.md` with the canonical path once verified. |
+| MCP discovery path varies across Claude Code versions | `enumerateMCPServers` tries multiple known paths; fails soft (returns empty) on each. Re-verify path during implementation. Update `system/rules/security.md` with the canonical path once verified. |
 | Heuristic tool-name detection dropped → write-capable MCPs default to mild drift | Acceptable. Kevin promotes them to `writeCapable` allowlist on triage. Worst case: a write-capable MCP is "mild" for one session before Kevin reads morning briefing. Alternative (the heuristic) added complexity for marginal benefit. |
 | SessionStart hook adds session-start latency | <30ms typical / <50ms ceiling. Node startup dominates. If unacceptable in practice, port to a faster runtime (out of scope for cycle-2b). |
 | Concurrent SessionStart hooks (multiple parallel Claude Code instances) race on log writes | `appendFileSync` atomic at OS level. No race. |
@@ -572,7 +572,7 @@ No data migration. No file rewrites of existing logs.
   - Morning-briefing protocol update for tamper-novelty filter: 0.5h
   - Unit tests (7 files): 2h
   - Acceptance tests S9, S10: 1h
-  - AGENTS.md + `system/security-rules.md`: 0.75h
+  - AGENTS.md + `system/rules/security.md`: 0.75h
   - Smoke + cleanup: 0.25h
 
 ---
@@ -586,7 +586,7 @@ No data migration. No file rewrites of existing logs.
 5. `enumerateMCPServers` reads project + global MCP configs; fails soft on missing paths; returns deduped sorted list.
 6. Severity classifier matches Q1 hybrid (severe / mild / info).
 7. Refusal-log entries deduped 24h via `readRecentRefusalHashes`.
-8. AGENTS.md gains 1-line tamper rule. `system/security-rules.md` extended with manifest workflow + limitations + bootstrap walkthrough.
+8. AGENTS.md gains 1-line tamper rule. `system/rules/security.md` extended with manifest workflow + limitations + bootstrap walkthrough.
 9. Morning-briefing protocol surfaces tamper drift with novelty filter; flags `hook-internal-error` for triage.
 10. S9 and S10 acceptance tests pass.
 11. Unit tests for drift-hooks, drift-mcp, emit, dedup, fail-soft, snapshot, mcp-enumeration — all pass.

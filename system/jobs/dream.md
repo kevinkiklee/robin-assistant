@@ -83,13 +83,13 @@ Read these files:
 ## Phase 2: Memory management
 
 1. **Inbox routing** — for each entry in `user-data/memory/inbox.md`:
-   - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `system/capture-rules.md` routing table — tags are hints, not binding.
+   - If the entry has a tag (e.g., `[fact]`, `[preference]`), use it as a first-pass routing signal. Verify against `system/rules/capture.md` routing table — tags are hints, not binding.
    - `[watch:<id>]` tagged entries: append to `watches/log.md` (append-only). Delete from inbox.
    - `[?]` tagged entries: treat as unclassified, classify from content.
    - `[update]` tagged entries: use `(supersedes: <hint>)` if present to locate the original entry. Update the original, then remove the inbox item.
-   - Untagged entries: classify per `system/capture-rules.md` routing table.
+   - Untagged entries: classify per `system/rules/capture.md` routing table.
    - Consult `user-data/memory/INDEX.md` to pick the destination topic file. Insert under the matching `## ` subsection if one exists.
-   - **Dream is the only writer that creates new topic files for inbox-routed content.** If no topic file fits, create one with `description:` and `type:` frontmatter inferred from the entry (see type vocabulary in `system/capture-rules.md`); the next index regen picks it up.
+   - **Dream is the only writer that creates new topic files for inbox-routed content.** If no topic file fits, create one with `description:` and `type:` frontmatter inferred from the entry (see type vocabulary in `system/rules/capture.md`); the next index regen picks it up.
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
@@ -176,7 +176,7 @@ Dream trims `user-data/memory/hot.md` to a rolling window of 3 sessions (Phase 4
 
 Lock management is handled by the runner (scheduled invocation) or the `robin job acquire/release dream` wrappers (trigger-phrase invocation). Dream NEVER edits other lock files.
 
-Dream NEVER edits: `AGENTS.md`, `system/jobs/`, `user-data/integrations.md`, `system/startup.md`, `system/capture-rules.md`, `user-data/robin.config.json`.
+Dream NEVER edits: `AGENTS.md`, `system/jobs/`, `user-data/integrations.md`, `system/rules/startup.md`, `system/rules/capture.md`, `user-data/robin.config.json`.
 
 Dream NEVER runs external commands or makes network requests.
 

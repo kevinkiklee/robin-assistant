@@ -132,7 +132,7 @@ Each arrow is a trust boundary. The capture-loop edge (`[model context] → [inb
 |---|---|---|
 | 1 | AGENTS.md / CLAUDE.md / GEMINI.md | Prompt context |
 | 2 | `system/jobs/*.md` (protocols) | Prompt context |
-| 3 | `system/capture-rules.md` | Prompt context |
+| 3 | `system/rules/capture.md` | Prompt context |
 | 4 | sync-gmail | Sync inputs |
 | 5 | sync-github | Sync inputs |
 | 6 | sync-calendar | Sync inputs |
@@ -290,7 +290,7 @@ Empirical checks NOT allowed in this audit (escalate to cycle-1's test plan):
 | `process.env` reads | grep all env-var consumers |
 | Outbound HTTP destinations | grep `fetch`/`axios`/`http.request` |
 | launchd/cron entries | `launchctl list \| grep robin` |
-| Capture-rules direct-write exceptions | re-read `system/capture-rules.md`, list all |
+| Capture-rules direct-write exceptions | re-read `system/rules/capture.md`, list all |
 | `validate-host.js` coverage | read, list which rules it actually exercises |
 | Code SHA pin | `git rev-parse HEAD` recorded in audit §0 (Method header) |
 

@@ -206,7 +206,7 @@
         "over_cap_at": null
       },
       {
-        "path": "system/capture-rules.md",
+        "path": "system/rules/capture.md",
         "bytes": 12603,
         "lines": 263,
         "tokens": 3407,
@@ -269,7 +269,7 @@
         "over_cap_at": null
       },
       {
-        "path": "system/startup.md",
+        "path": "system/rules/startup.md",
         "bytes": 2912,
         "lines": 74,
         "tokens": 788,
@@ -290,7 +290,7 @@
         "over_cap_at": null
       },
       {
-        "path": "system/self-improvement-rules.md",
+        "path": "system/rules/self-improvement.md",
         "bytes": 2099,
         "lines": 39,
         "tokens": 568,
@@ -396,7 +396,7 @@
         "tokens": 4466
       },
       {
-        "path": "system/capture-rules.md",
+        "path": "system/rules/capture.md",
         "tokens": 3407
       },
       {

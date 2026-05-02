@@ -367,11 +367,12 @@ robin/
 ├── bin/
 │   └── robin.js             <- CLI entry point (run, jobs, link, recall, watch, update)
 ├── system/                  <- upstream-owned, tracked, never user-edited
-│   ├── startup.md
-│   ├── capture-rules.md
 │   ├── manifest.md
-│   ├── security-rules.md
-│   ├── self-improvement-rules.md
+│   ├── rules/
+│   │   ├── startup.md
+│   │   ├── capture.md
+│   │   ├── security.md
+│   │   └── self-improvement.md
 │   ├── jobs/                <- shipped jobs (agent protocols + node scripts)
 │   ├── migrations/          <- versioned schema migrations (0002 → 0020)
 │   ├── scripts/

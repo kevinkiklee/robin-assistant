@@ -43,7 +43,7 @@
 - `system/skeleton/robin.config.json` — add `memory.capture_enforcement` block
 - `.claude/settings.json` — register UserPromptSubmit hook
 - `AGENTS.md` — capture-checkpoint rewrite, recall instruction, ENTITIES.md in startup load order
-- `system/capture-rules.md` — drop T1 sweep, add marker-protocol section
+- `system/rules/capture.md` — drop T1 sweep, add marker-protocol section
 - `system/jobs/dream.md` — Phase 3.11.5, 4.17.6, 4.17.7
 - `system/scripts/lib/manifest.js` (only if hook-shape conversion needs adjustment) — verify
 - `CHANGELOG.md` — entry
@@ -2003,7 +2003,7 @@ After every response, scan for capturable signals.
 - **Capture is enforced at turn-end.** Either (a) write to `inbox.md` / direct-write file, or (b) emit `<!-- no-capture-needed: <one-line reason> -->` in your response. Failing both blocks turn-end with one retry.
 - **Tags:** `[fact|origin=...|preference|decision|correction|task|update|derived|journal|predict|?]`. Every captured line MUST include `origin=<user|sync:X|ingest:X|tool:X|derived>`. Set `origin=user` ONLY when the line text comes from the user's own message in the current turn (verbatim or paraphrased from the user's own statements). Captures from `trust:untrusted` files or UNTRUSTED-START blocks get the matching `origin=sync|ingest|tool` value. Dishonest origin attribution is a hard-rule violation. Direct-write exceptions also gate on `origin=user`.
 
-Routing details: `system/capture-rules.md`.
+Routing details: `system/rules/capture.md`.
 ```
 
 - [ ] **Step 2: Add recall instruction to Operational Rules**
@@ -2054,11 +2054,11 @@ git commit -m "docs(memory): AGENTS.md — capture enforcement + recall + ENTITI
 ## Task 14: capture-rules.md updates
 
 **Files:**
-- Modify: `system/capture-rules.md`
+- Modify: `system/rules/capture.md`
 
 - [ ] **Step 1: Drop the T1 (~20-turn) sweep section**
 
-In `system/capture-rules.md`, locate the `## Capture sweep (safety net)` section. Remove the `**Trigger 1 — long session.**` block. Keep `**Trigger 2 — graceful session end.**` and `**Trigger 3 — Stop-hook auto-line ...**` intact. Update the surrounding prose so it reads naturally without T1.
+In `system/rules/capture.md`, locate the `## Capture sweep (safety net)` section. Remove the `**Trigger 1 — long session.**` block. Keep `**Trigger 2 — graceful session end.**` and `**Trigger 3 — Stop-hook auto-line ...**` intact. Update the surrounding prose so it reads naturally without T1.
 
 - [ ] **Step 2: Add "Marker protocol" subsection**
 
@@ -2085,7 +2085,7 @@ Disable enforcement: `ROBIN_CAPTURE_ENFORCEMENT=off` env var, or set `enabled: f
 - [ ] **Step 3: Commit**
 
 ```bash
-git add system/capture-rules.md
+git add system/rules/capture.md
 git commit -m "docs(memory/capture): drop T1 sweep, add marker protocol section"
 ```
 

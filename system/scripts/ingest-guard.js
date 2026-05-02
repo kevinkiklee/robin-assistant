@@ -1,7 +1,7 @@
 // Ingest guard — refuses ingest's multi-file writes to high-impact destinations.
 //
 // Cycle-1a's ingest destination blocklist (G-15). Ingest is a direct-write
-// exception (per system/capture-rules.md) that bypasses inbox routing. Without
+// exception (per system/rules/capture.md) that bypasses inbox routing. Without
 // this guard, an attacker who plants instructions in an ingested document
 // could cause ingest to write tasks, decisions, corrections, or patterns
 // directly. The blocklist forbids those high-impact destinations.

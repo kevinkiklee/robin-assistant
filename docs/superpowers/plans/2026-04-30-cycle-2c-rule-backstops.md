@@ -129,7 +129,7 @@ Add TTL phase (call to `processPatternTTL`). Append summary line to journal.
 AGENTS.md: 1 line for backstops rule.
 capture-rules.md (or AGENTS.md self-improvement section): instruct model to append to pattern-firings.log via Bash echo on pattern application.
 
-Append `system/security-rules.md` with cycle-2c walkthroughs A/B/C/D.
+Append `system/rules/security.md` with cycle-2c walkthroughs A/B/C/D.
 
 ## Step 12 — Update morning-briefing protocol
 

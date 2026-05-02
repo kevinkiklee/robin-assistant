@@ -352,7 +352,7 @@ Patterns deliberately exclude `curl`/`wget`/`nc` — too many legitimate uses; c
 - **First-match-wins** terminates pattern scan early.
 - **Concurrent hooks** are independent processes; refusal-log uses `appendFileSync` which is atomic at the OS level — no race issues.
 
-### 4.5 Known limitations (documented in `system/security-rules.md`)
+### 4.5 Known limitations (documented in `system/rules/security.md`)
 
 - **Encoded payloads** — `echo b64 | base64 -d | bash` evades regex; the inner Bash is what runs. Mitigation: lazy-read fix means secrets aren't in env to be dumped; the file is still readable but that's also true with no hook.
 - **Aliased binaries** — `alias cat=mv` could redirect; we don't normalize aliases (out of scope; bash doesn't expose alias resolution to the hook).
@@ -399,19 +399,19 @@ Security: policy refusals (since last briefing)
 
 ---
 
-## 6. AGENTS.md and `system/security-rules.md`
+## 6. AGENTS.md and `system/rules/security.md`
 
 ### 6.1 AGENTS.md change
 
 Cycle-1b adds a "Outbound writes" Hard Rule. Cycle-2a adds one more line:
 
 ```markdown
-- **Bash policy.** Bash commands are gated by `system/scripts/claude-code-hook.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. Defense-in-depth, not a sandbox — see `system/security-rules.md` for limitations.
+- **Bash policy.** Bash commands are gated by `system/scripts/claude-code-hook.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. Defense-in-depth, not a sandbox — see `system/rules/security.md` for limitations.
 ```
 
 Single line added to the Hard Rules list. Total cycle-2a token addition to AGENTS.md: ~1 line.
 
-### 6.2 `system/security-rules.md` updates
+### 6.2 `system/rules/security.md` updates
 
 Cycle-1b creates this file. Cycle-2a appends:
 - Bash sensitive-patterns reference (link to `bash-sensitive-patterns.js` for the canonical list; rationale + examples per rule).
@@ -480,7 +480,7 @@ No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfi
   - `claude-code-hook.js --on-pre-bash` mode + tests: 1h
   - `.claude/settings.json` Bash matcher: 0.25h
   - Refusal log rename (if needed): 0.5h
-  - AGENTS.md + `system/security-rules.md`: 0.75h
+  - AGENTS.md + `system/rules/security.md`: 0.75h
   - Acceptance tests (S6, S8): 1.5h
   - Smoke + cleanup: 0.5h
 
@@ -520,7 +520,7 @@ No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfi
 4. `bash-sensitive-patterns.js` covers 6 rules with positive + negative unit tests for each.
 5. `claude-code-hook.js --on-pre-bash` mode wired in `.claude/settings.json`; fail-closed try/catch; <50ms typical runtime.
 6. `policy-refusals.log` covers `kind=bash` entries; rotation works; renamed cleanly from cycle-1b's `outbound-refusals.log` if applicable.
-7. AGENTS.md gains 1-line Bash policy rule. `system/security-rules.md` extended with bash patterns + limitations.
+7. AGENTS.md gains 1-line Bash policy rule. `system/rules/security.md` extended with bash patterns + limitations.
 8. Morning-briefing protocol surfaces refusals grouped by `kind`; flags `hook-internal-error` separately for triage.
 9. S6 and S8 acceptance tests pass.
 10. Smoke tests 1-4 pass manually.
@@ -535,7 +535,7 @@ No data migration on `secrets/.env` (mode 0600 already enforced by cycle-3 hotfi
 When cycle-2a signs off:
 - Cycle-2b's spec frontmatter cites this spec's path + commit SHA + cycle-1a + cycle-1b.
 - Cycle-2b's brainstorm starts with G-28 (hook tampering via fork's `.claude/settings.json`) and G-37 (compromised MCP server). Tamper detection group.
-- Cycle-2a's `policy-refusals.log` and `system/security-rules.md` are reusable — cycle-2b's tamper-detection findings would surface in the same refusal log.
+- Cycle-2a's `policy-refusals.log` and `system/rules/security.md` are reusable — cycle-2b's tamper-detection findings would surface in the same refusal log.
 - Cycle-2c (rule backstops) starts after 2b: G-01, G-02, G-03, G-05, G-13, G-27.
 
 ---

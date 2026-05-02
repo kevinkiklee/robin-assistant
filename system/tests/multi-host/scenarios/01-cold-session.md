@@ -39,7 +39,7 @@ EOF
   the transcript.
 - **HARD** — Read order matches the declared `tier1_files` order. Cache
   pessimism is a hard fail.
-- **SOFT** — No Tier 2 file (`system/manifest.md`, `system/capture-rules.md`,
+- **SOFT** — No Tier 2 file (`system/manifest.md`, `system/rules/capture.md`,
   `system/jobs/*`) appears as a Read.
 
 ## Common failure modes

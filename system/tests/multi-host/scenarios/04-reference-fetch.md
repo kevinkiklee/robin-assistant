@@ -29,4 +29,4 @@ None.
 
 - Agent answers from training data or memory — hard fail (manifest is the
   source of truth and may have updated).
-- Agent fetches manifest plus extras (capture-rules.md, jobs/*) — soft fail.
+- Agent fetches manifest plus extras (rules/capture.md, jobs/*) — soft fail.

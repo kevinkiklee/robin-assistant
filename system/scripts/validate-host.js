@@ -123,11 +123,11 @@ function validateScenario2(parsed) {
       message: 'Wrote to host auto-memory (~/.claude/...). Recovered hourly by migrate-auto-memory job.',
     });
   }
-  const loadedRules = parsed.reads.includes('system/capture-rules.md');
+  const loadedRules = parsed.reads.includes('system/rules/capture.md');
   if (loadedRules) {
     failures.push({
       severity: 'soft',
-      message: 'Loaded capture-rules.md for routine capture (should be unnecessary)',
+      message: 'Loaded rules/capture.md for routine capture (should be unnecessary)',
     });
   }
   return failures;

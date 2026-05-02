@@ -76,7 +76,7 @@ Add SessionStart hook:
 
 (No `matcher` if SessionStart hooks don't filter; verify schema.)
 
-## Step 8 — Update AGENTS.md + `system/security-rules.md`
+## Step 8 — Update AGENTS.md + `system/rules/security.md`
 
 AGENTS.md: 1 line for tamper detection rule.
 `security-rules.md`: append manifest schema, update workflow, severity classifier, limitations. Bootstrap walkthrough A (first deploy) + B (legitimate edits).

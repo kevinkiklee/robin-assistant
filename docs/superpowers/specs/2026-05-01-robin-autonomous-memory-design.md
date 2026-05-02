@@ -98,7 +98,7 @@ All writes atomic (temp + rename or `O_APPEND` + flock).
 - Disable via env var `ROBIN_CAPTURE_ENFORCEMENT=off` (checked before config) for fast escape from a shell.
 - All thresholds tunable.
 
-#### S1.6 — `AGENTS.md` and `system/capture-rules.md` updates
+#### S1.6 — `AGENTS.md` and `system/rules/capture.md` updates
 
 `AGENTS.md` "Capture checkpoint" block becomes:
 > After every response, scan for capturable signals.
@@ -417,7 +417,7 @@ None at design time. Resolve during implementation:
 - `system/scripts/manifest-snapshot.js` (re-run after install)
 - `bin/robin.js` (new `recall` subcommand)
 - `AGENTS.md` (capture-checkpoint update + recall instruction)
-- `system/capture-rules.md` (drop T1, add marker protocol section)
+- `system/rules/capture.md` (drop T1, add marker protocol section)
 - `system/jobs/dream.md` (new Phase 3.11.5, 4.17.6, 4.17.7 steps)
 - `system/scripts/lib/token-baselines.json` (new baseline fields)
 - `user-data/security/manifest.json` (new hook in baseline)

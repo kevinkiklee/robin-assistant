@@ -62,7 +62,7 @@ For `system/skeleton/scripts/{github-write,spotify-write,discord-bot}.js`:
 
 Note: `github-write.js`, `spotify-write.js`, `discord-bot.js` live in `user-data/scripts/` per integrations.md (Kevin's instance). For the package, wire the equivalent skeleton files in `system/skeleton/scripts/`.
 
-## Step 7 — Create `system/security-rules.md`
+## Step 7 — Create `system/rules/security.md`
 
 New file. Contents:
 - Outbound policy detail (layers, refusal log, refusal-note convention).
@@ -72,9 +72,9 @@ New file. Contents:
 ## Step 8 — Update AGENTS.md
 
 Append to Hard Rules:
-> **Outbound writes.** `github-write`, `spotify-write`, and `discord-bot` replies are gated by `system/scripts/lib/outbound-policy.js`. Self-police: don't include content from `trust:untrusted` files, secrets, or env values. Mechanical backstop catches violations. See `system/security-rules.md`.
+> **Outbound writes.** `github-write`, `spotify-write`, and `discord-bot` replies are gated by `system/scripts/lib/outbound-policy.js`. Self-police: don't include content from `trust:untrusted` files, secrets, or env values. Mechanical backstop catches violations. See `system/rules/security.md`.
 
-Add Tier 2 reference table row pointing to `system/security-rules.md`.
+Add Tier 2 reference table row pointing to `system/rules/security.md`.
 
 If feasible, move cycle-1a's verbose untrusted-ingress detail to security-rules.md (keep the cardinal rule in AGENTS.md only).
 

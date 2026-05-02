@@ -74,7 +74,7 @@ Five sequenced security cycles closing 28 of 42 audit gaps directly,
   credential-derived target allowlist for github/spotify/discord. Wired
   into github-write, spotify-write, discord-bot reply path.
   `policy-refusals.log` (TSV append-only, 1MB rotation) is the shared
-  refusal-log substrate. New `system/security-rules.md` Tier-2 reference.
+  refusal-log substrate. New `system/rules/security.md` Tier-2 reference.
 - **cycle-2a** (secrets containment + bash policy): `secrets.js`
   rewritten — `requireSecret(workspaceDir, key)` reads
   `user-data/secrets/.env` per call without polluting `process.env`;

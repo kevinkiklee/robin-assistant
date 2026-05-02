@@ -64,10 +64,10 @@ Tier 1 contains:
 | File | Purpose |
 |---|---|
 | `system/manifest.md` | Path catalog |
-| `system/capture-rules.md` | Full capture vocabulary, routing table, sweep |
-| `system/startup.md` | First-run + edge cases (sequence collapsed into AGENTS.md) |
+| `system/rules/capture.md` | Full capture vocabulary, routing table, sweep |
+| `system/rules/startup.md` | First-run + edge cases (sequence collapsed into AGENTS.md) |
 | `system/jobs/*.md` | Protocols (12 today) |
-| `system/self-improvement-rules.md` | Correction processing |
+| `system/rules/self-improvement.md` | Correction processing |
 | `user-data/memory/LINKS.md` | Cross-reference graph |
 | `user-data/memory/self-improvement/corrections.md` | Historical corrections |
 | `user-data/memory/self-improvement/preferences.md` | Captured preferences |
@@ -116,8 +116,8 @@ Each Tier-3 sub-tree gets its own INDEX so the main INDEX stays under 40 lines.
 | File | Today | Target | Change |
 |---|---|---|---|
 | `system/manifest.md` | 117 | ~60 | Trim catalog; drop tables now in AGENTS.md |
-| `system/capture-rules.md` | 279 | ~120 | Reorganize; drop redundant examples; Tier 1 keeps 5-line decision rule |
-| `system/startup.md` | 40 | ~15 | Sequence collapses into AGENTS.md; keep first-run + edge cases |
+| `system/rules/capture.md` | 279 | ~120 | Reorganize; drop redundant examples; Tier 1 keeps 5-line decision rule |
+| `system/rules/startup.md` | 40 | ~15 | Sequence collapses into AGENTS.md; keep first-run + edge cases |
 | `system/jobs/*.md` (12 files) | 37–134 | 30–40% lighter | Wording pass; common preamble extracted |
 | **NEW** `self-improvement/corrections.md`, `preferences.md`, `calibration.md` | — | per-topic | Split from monolith |
 
@@ -307,10 +307,10 @@ Tier-1 5-line capture rule:
 > Direct-write to file: (a) corrections to assistant behavior, (b) user-stated "remember this", (c) updates that supersede a fact in a file currently in your context.
 > Inbox-write `[tag]` for everything else (Dream routes within 24h).
 > Tags: `[fact|preference|decision|correction|task|update|derived|journal|?]`.
-> For routing details, read `system/capture-rules.md`.
+> For routing details, read `system/rules/capture.md`.
 
 ### R2. Capture redundancy (defense in depth)
-The capture rule lives in AGENTS.md AND `system/capture-rules.md`. AGENTS.md wins on conflict.
+The capture rule lives in AGENTS.md AND `system/rules/capture.md`. AGENTS.md wins on conflict.
 
 ### R3. Lint enforcement (CI hard-fail unless noted)
 

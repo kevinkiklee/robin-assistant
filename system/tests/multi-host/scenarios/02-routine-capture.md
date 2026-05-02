@@ -9,7 +9,7 @@ priority: hard-fail
 ## Probes
 
 A routine `[preference]` capture writes to `inbox.md` without fetching the full
-`system/capture-rules.md`. Validates that the 5-line capture checkpoint in
+`system/rules/capture.md`. Validates that the 5-line capture checkpoint in
 AGENTS.md is sufficient for routine cases.
 
 ## Setup
@@ -27,7 +27,7 @@ cp user-data/memory/inbox.md user-data/memory/inbox.md.bak
 
 - **HARD** — Transcript shows a Write/Edit to `user-data/memory/inbox.md`.
 - **HARD** — Inbox content gains a `[preference]` line referencing dark roast.
-- **SOFT** — `system/capture-rules.md` does NOT appear as a Read in the
+- **SOFT** — `system/rules/capture.md` does NOT appear as a Read in the
   transcript.
 
 ## Cleanup

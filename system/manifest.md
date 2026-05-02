@@ -7,10 +7,10 @@ The v3 layout separates immutable framework code from user data. Use this manife
 | Path | Purpose |
 |------|---------|
 | `AGENTS.md` (root) | Agent rules + Tier 2 pointer table. Source of truth for all hosts. |
-| `system/startup.md` | Edge cases — first-run, sibling-session detection. (Sequence inlined in AGENTS.md.) |
-| `system/capture-rules.md` | Full capture vocabulary, routing table, sweep protocol. (5-line checkpoint inlined in AGENTS.md.) |
+| `system/rules/startup.md` | Edge cases — first-run, sibling-session detection. (Sequence inlined in AGENTS.md.) |
+| `system/rules/capture.md` | Full capture vocabulary, routing table, sweep protocol. (5-line checkpoint inlined in AGENTS.md.) |
 | `system/manifest.md` | This file. |
-| `system/self-improvement-rules.md` | How Robin processes corrections, patterns, preferences. |
+| `system/rules/self-improvement.md` | How Robin processes corrections, patterns, preferences. |
 | `system/jobs/` | Agent + node job definitions. Schedulable and trigger-invocable. |
 | `system/migrations/` | Numbered migrations. Auto-applied at startup via `migrate.js`. |
 | `system/skeleton/` | Default `user-data/` layout copied on first run. |

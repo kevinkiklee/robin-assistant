@@ -85,10 +85,10 @@ Add Bash matcher to PreToolUse:
 
 If cycle-1b's `outbound-refusals.log` exists in user-data, migrate to `policy-refusals.log`. Update `outbound-log.js` → `policy-refusals-log.js` module name. Update import in `outbound-policy.js`. Add `kind` column to schema (cycle-1b's entries get `kind=outbound` retroactively if needed; new entries always tagged).
 
-## Step 9 — Update AGENTS.md + `system/security-rules.md`
+## Step 9 — Update AGENTS.md + `system/rules/security.md`
 
 AGENTS.md Hard Rule:
-> **Bash policy.** Bash commands are gated by `system/scripts/claude-code-hook.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. See `system/security-rules.md`.
+> **Bash policy.** Bash commands are gated by `system/scripts/claude-code-hook.js --on-pre-bash` against patterns in `system/scripts/lib/bash-sensitive-patterns.js`. Sensitive commands block at the hook layer; refusals land in `policy-refusals.log`. See `system/rules/security.md`.
 
 Append to `security-rules.md`: bash patterns reference, known limitations (encoded bypasses, alias-laundered binaries, compound-command edge cases), `policy-refusals.log` schema with `kind` column.
 

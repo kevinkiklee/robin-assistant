@@ -24,7 +24,7 @@ User-initiated only. Never auto-triggered. The user must explicitly say "ingest 
 
 ## Classification
 
-Ingest is a **direct-write exception** per `system/capture-rules.md`. It writes directly to knowledge files, bypassing inbox. Rationale: ingest is user-supervised, multi-file, and too structural for inbox-first routing.
+Ingest is a **direct-write exception** per `system/rules/capture.md`. It writes directly to knowledge files, bypassing inbox. Rationale: ingest is user-supervised, multi-file, and too structural for inbox-first routing.
 
 ## Forbidden destinations (security boundary)
 

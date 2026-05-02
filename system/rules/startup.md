@@ -57,7 +57,7 @@ accumulates unrouted entries.
 ## Capture sweep on compaction
 
 When context compaction is imminent, run the mini-sweep per
-`system/capture-rules.md` → "Capture sweep". Most important trigger — once
+`system/rules/capture.md` → "Capture sweep". Most important trigger — once
 context compacts, detail is gone.
 
 ## Read budget

@@ -53,7 +53,7 @@ Read `user-data/memory/decisions.md` for entries marked pending input.
 
 ### 7. Inbox sweep
 
-Read `user-data/memory/inbox.md`. For each entry, classify per `system/capture-rules.md` routing and move to the right file.
+Read `user-data/memory/inbox.md`. For each entry, classify per `system/rules/capture.md` routing and move to the right file.
 
 ## Output
 
