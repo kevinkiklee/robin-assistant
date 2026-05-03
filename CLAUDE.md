@@ -68,7 +68,7 @@ The user-data version is authoritative for the user's actual workflow. The syste
 
 **Dispatch:** each protocol declares `dispatch: subagent | inline` and `model: opus | sonnet | haiku` in its frontmatter. **Default: run inline** regardless of frontmatter — only switch to subagent dispatch when `optimize.subagent_dispatch` in `user-data/runtime/config/robin.config.json` is `"read-only-protocols"` (only lint + todo-extraction dispatch) or `"all-side-quest"` (every protocol with `dispatch: subagent` dispatches). User overrides per-invocation: include "inline" or "subagent" in the invocation phrase. When dispatching: invoke `Agent` tool with `subagent_type: general-purpose`, the protocol's declared `model`, and a self-contained prompt referencing `system/jobs/<name>.md` by path.
 
-Protocols: `daily-briefing` · `weekly-review` · `email-triage` · `meeting-prep` · `ingest` · `lint` · `save-conversation` · `dream` · `subscription-audit` · `receipt-tracking` · `todo-extraction` · `monthly-financial` · `quarterly-self-assessment` · `system-maintenance` · `prune`.
+Protocols: `daily-briefing` · `weekly-review` · `email-triage` · `meeting-prep` · `ingest` · `lint` · `save-conversation` · `dream` · `subscription-audit` · `receipt-tracking` · `todo-extraction` · `monthly-financial` · `quarterly-self-assessment` · `system-maintenance` · `prune` · `audit` · `outcome-check` · `deep-ripple` · `multi-session-coordination` · `watch-topics`.
 
 ## Tier 2 — fetch by path when needed
 

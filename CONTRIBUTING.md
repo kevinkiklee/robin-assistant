@@ -16,8 +16,13 @@ npm install
 
 ## Running tests
 
+The suite is split into three tiers:
+
 ```bash
-npm test
+npm test              # unit + e2e (default for CI and pre-push)
+npm run test:unit     # unit tests only — fast, no subprocess spawning
+npm run test:e2e      # e2e scenarios that exercise the CLI from outside
+npm run test:install  # `npm pack` + install scenario (slowest, 120s timeout)
 ```
 
 Tests use `node --test` and create their own temp dirs in `os.tmpdir()`. They don't depend on the dev clone's `user-data/`. A fresh clone with no postinstall should also pass — although in practice postinstall always runs.
@@ -27,8 +32,8 @@ Tests use `node --test` and create their own temp dirs in `os.tmpdir()`. They do
 Drop a versioned file into `system/migrations/` named `<NNNN>-<short-description>.js`:
 
 ```javascript
-// system/migrations/0007-rename-knowledge-to-reference.js
-export const id = '0007-rename-knowledge-to-reference';
+// system/migrations/0099-rename-knowledge-to-reference.js  (hypothetical example)
+export const id = '0099-rename-knowledge-to-reference';
 export const description = 'Rename user-data/memory/knowledge.md to user-data/reference.md';
 
 export async function up({ workspaceDir, helpers }) {
@@ -36,6 +41,8 @@ export async function up({ workspaceDir, helpers }) {
   await helpers.renameConfigField('memory.knowledgeFile', 'memory.referenceFile');
 }
 ```
+
+(Use the next free number. The current high-water mark lives in `system/migrations/`.)
 
 `helpers` comes from `system/scripts/migrate/lib/migration-helpers.js` and exposes idempotent operations: `renameFile`, `removeFile`, `addFileFromScaffold`, `addConfigField`, `renameConfigField`, `transformFileContent`. Add new helpers there if you need them (with tests in `tests/migration-helpers.test.js`).
 

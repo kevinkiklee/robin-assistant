@@ -117,7 +117,7 @@ Nine dimensions of self-improvement, each stored in its own file:
 - **Calibration** — prediction accuracy by confidence band, effectiveness scores for high-stakes recommendations, sycophancy tracking. *Derived rollup* — fed by `predictions.md`.
 - **Predictions** — open and resolved high-stakes claims tagged `[predict|<check-by>|<confidence>]`. Source of truth for calibration; revisited weekly by the outcome-check job.
 - **Action-trust** — earned-trust calibration per action class (mirrors predictions shape). 5+ successes / 0 corrections / 30 days proposes ASK → AUTO promotion; finalized after 24h surfaced-at; demotes on a single user reversal; AUTO decays after 90d idle.
-- **Learning queue** — questions Robin wants to ask you when a natural moment arises. One question max per session. Migration 0014 seeds 7 starter questions.
+- **Learning queue** — questions Robin wants to ask you when a natural moment arises. One question max per session. Migration 0014 seeds 6 starter questions.
 
 ### Dream cycle
 
@@ -149,7 +149,7 @@ Shipped jobs span daily maintenance, financial review, productivity, and system 
 | System maintenance | On demand (disabled) | Interactive review of stale tasks, pending decisions, pattern effectiveness, prediction resolution, audit findings |
 | Backup | Daily 3 AM | Snapshot of user-data to timestamped backup |
 | Prune | Monthly (disabled) | Archive content older than 12 months |
-| Auto-memory migration | Hourly | Drain host auto-memory into Robin's inbox |
+| migrate-auto-memory | Hourly | Drain host auto-memory into Robin's inbox |
 | Email triage | On demand (disabled) | Classify unread email, surface action items, route receipts |
 | Meeting prep | On demand (disabled) | Gather context, attendees, prior history, talking points |
 | Todo extraction | On demand (disabled) | Extract action items from forwarded email/documents |
@@ -203,7 +203,7 @@ Personal data never leaves your machine unless you explicitly push it to a remot
 
 Robin's instruction layer is organized into tiers to minimize token usage at session start:
 
-- **Tier 1** (always loaded) — core rules, identity, INDEX, ENTITIES, hot cache, communication style, learning queue. Capped at 13,500 tokens / 620 lines (12,200 for the cache-stable prefix).
+- **Tier 1** (always loaded) — core rules, identity, INDEX, ENTITIES, hot cache, communication style, learning queue. Capped at 12,200 tokens / 560 lines (10,900 for the cache-stable prefix).
 - **Tier 2** (on demand) — job protocols, capture rules, manifest, security rules, self-improvement rules. Loaded only when triggered.
 - **Tier 3** (cold storage) — archived memory, historical data, full per-event detail pages.
 
@@ -382,7 +382,7 @@ robin/
 │   │   ├── jobs/            <- runner, reconciler, OS-scheduler installer adapters
 │   │   ├── memory/          <- index-entities, backfill-entity-links, lint, prune, regenerate-{index,links}
 │   │   ├── capture/         <- ingest guard, dream pre-filter, auto-memory, action classification
-│   │   ├── sync/            <- oauth, secrets, http, redact, markdown, cursor (DB cursor), untrusted-index
+│   │   ├── sync/            <- oauth, secrets, http, redact, markdown, cursor (sync state), untrusted-index
 │   │   ├── wiki-graph/      <- entity registry, link application, exclusions
 │   │   ├── watches/         <- slugify, frontmatter parse, list/state I/O
 │   │   ├── migrate/         <- migration apply harness + helpers
@@ -394,7 +394,7 @@ robin/
 └── user-data/               <- your data, gitignored
     ├── memory/              <- structured memory tree (INDEX, ENTITIES, profile, knowledge, self-improvement, streams, watches, archive)
     ├── runtime/             <- everything that isn't user memory
-    │   ├── config/          <- robin.config.json, integrations.md, policies.md, llm-pricing.json
+    │   ├── config/          <- robin.config.json, integrations.md, integrations-setup.md, policies.md
     │   ├── jobs/            <- your custom jobs + shallow overrides
     │   ├── scripts/         <- per-user integration scripts (sync-*, auth-*, *-write, discord-bot)
     │   ├── secrets/         <- credentials (.env, mode 0600 enforced)
