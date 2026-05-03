@@ -89,7 +89,7 @@ export async function cmdInit(argv) {
   // prompting in that mode and just leaves the file as-is, so callers
   // (control planes, scripts) can pin the user's identity here.
   if (args.ci && Object.keys(args.fields).length > 0) {
-    const cfgPath = join(target, 'user-data', 'robin.config.json');
+    const cfgPath = join(target, 'user-data', 'runtime', 'config', 'robin.config.json');
     let cfg = {};
     try {
       cfg = existsSync(cfgPath) ? JSON.parse(readFileSync(cfgPath, 'utf-8')) : {};
