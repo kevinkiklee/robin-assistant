@@ -30,11 +30,7 @@ Read `user-data/runtime/state/jobs/failures.md`. If any active FATAL entry is pr
 
 ## Phase 0: Auto-memory migration (auto-run)
 
-Per the **Local Memory** rule, persistent memory lives in `user-data/`. Claude Code writes to `~/.claude/projects/<slug>/memory/` regardless.
-
-The `migrate-auto-memory` node-runtime job (`system/jobs/migrate-auto-memory.md`) drains that directory every hour. By the time Dream runs, anything that needs migrating is already in `user-data/memory/streams/inbox.md` with a `(migrated from claude-code auto-memory: <file>)` provenance suffix. Phase 2 routes those entries like any other inbox content.
-
-You don't need to invoke the migration script. If `user-data/runtime/state/jobs/migrate-auto-memory.json` shows the job hasn't run recently or its status is `error`, mention it in your one-line summary.
+The hourly `migrate-auto-memory` job has already drained `~/.claude/projects/<slug>/memory/` into `user-data/memory/streams/inbox.md` with a `(migrated from claude-code auto-memory: <file>)` provenance suffix. Phase 2 routes them like any other inbox entry. If `user-data/runtime/state/jobs/migrate-auto-memory.json` is stale or its status is `error`, mention it in your one-line summary.
 
 ## Phase 0.5: Pre-filter inbox (security)
 
@@ -93,7 +89,7 @@ Read these files:
    - Untagged entries: classify per `system/rules/capture.md` routing table.
    - Consult `user-data/memory/INDEX.md` to pick the destination topic file. Insert under the matching `## ` subsection if one exists.
    - **Dream is the only writer that creates new topic files for inbox-routed content.** If no topic file fits, create one with `description:` and `type:` frontmatter inferred from the entry (see type vocabulary in `system/rules/capture.md`); the next index regen picks it up.
-   - **Entity aliases must cover canonical names AND colloquial / activity terms.** The user calls things by what they DO there, not just what they ARE. An "Outdoor Space" used for gardening needs `garden`/`outdoor garden`/`container garden` aliases; a "Home Office" used for streaming needs `studio`/`stream setup` aliases. When creating or updating `type: entity` files, list every plausible term the user might use to refer to it — auto-recall hits on alias match only.
+   - **Entity aliases must cover both canonical names and colloquial/activity terms** — auto-recall hits on aliases only. For each `type: entity` file, list every plausible term the user might use (e.g., a gardening outdoor space gets `garden`/`container garden`; a streaming home office gets `studio`).
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
