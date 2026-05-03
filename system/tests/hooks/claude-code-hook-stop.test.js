@@ -1,12 +1,17 @@
-// Tests for the Claude Code lifecycle hook handler.
+// Tests for the Claude Code lifecycle hook handler — --on-stop mode.
 //
-// Two modes:
-//   --on-pre-tool-use: blocks Write/Edit targeting ~/.claude/projects/.../memory/
-//   --on-stop: drains auto-memory in the background
+// Three responsibilities:
+//   1. Smoke: exits 0 immediately (drain happens in background).
+//   2. Per-turn stats: writes one line to turn-stats.log per completed
+//      assistant turn, derived from transcript_path JSONL.
+//   3. Session handoff: writes session-handoff + hot.md auto-line on
+//      session end (Stop fallback for the in-session capture sweep).
+//   4. Verbose-output trend log: long pure-narrative replies append to
+//      telemetry/verbose-output.log; tool-use and short replies are exempt.
 
 import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -14,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
-const HOOK = join(REPO_ROOT, 'system', 'scripts', 'hooks', 'claude-code.js');
+const HOOK = join(REPO_ROOT, 'system/scripts/hooks/claude-code.js');
 
 function runHook(args, stdin = '') {
   const r = spawnSync('node', [HOOK, ...args], {
@@ -25,158 +30,11 @@ function runHook(args, stdin = '') {
   return { exit: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-describe('claude-code-hook --on-pre-tool-use', () => {
-  it('blocks Write to ~/.claude/projects/.../memory/', () => {
-    const event = JSON.stringify({
-      tool_name: 'Write',
-      tool_input: { file_path: '/Users/iser/.claude/projects/-Users-iser-workspace-robin-robin-assistant/memory/foo.md' },
-    });
-    const r = runHook(['--on-pre-tool-use'], event);
-    assert.equal(r.exit, 2);
-    assert.match(r.stderr, /Local Memory rule/);
-    assert.match(r.stderr, /forbidden/);
-  });
-
-  it('blocks Edit to auto-memory dir', () => {
-    const event = JSON.stringify({
-      tool_name: 'Edit',
-      tool_input: { file_path: '/Users/iser/.claude/projects/abc/memory/MEMORY.md' },
-    });
-    const r = runHook(['--on-pre-tool-use'], event);
-    assert.equal(r.exit, 2);
-  });
-
-  it('blocks NotebookEdit to auto-memory dir', () => {
-    const event = JSON.stringify({
-      tool_name: 'NotebookEdit',
-      tool_input: { file_path: '/Users/iser/.claude/projects/abc/memory/x.md' },
-    });
-    const r = runHook(['--on-pre-tool-use'], event);
-    assert.equal(r.exit, 2);
-  });
-
-  it('blocks Write to bare <workspace>/artifacts/* (suggests user-data/artifacts/)', () => {
-    const ws = mkdtempSync(join(tmpdir(), 'hook-art-'));
-    const event = JSON.stringify({
-      tool_name: 'Write',
-      tool_input: { file_path: join(ws, 'artifacts/output/foo.png') },
-    });
-    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      input: event,
-      env: { ...process.env, ROBIN_WORKSPACE: ws },
-    });
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /WRITE_REFUSED \[artifacts\]/);
-    assert.match(r.stderr, /user-data\/artifacts\/output\/foo\.png/);
-  });
-
-  it('allows Write to <workspace>/user-data/artifacts/*', () => {
-    const ws = mkdtempSync(join(tmpdir(), 'hook-art-ok-'));
-    const event = JSON.stringify({
-      tool_name: 'Write',
-      tool_input: { file_path: join(ws, 'user-data/artifacts/output/foo.png') },
-    });
-    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      input: event,
-      env: { ...process.env, ROBIN_WORKSPACE: ws },
-    });
-    assert.equal(r.status, 0);
-  });
-
-  it('blocks Write to bare <workspace>/backup/* (suggests user-data/backup/)', () => {
-    const ws = mkdtempSync(join(tmpdir(), 'hook-bk-'));
-    const event = JSON.stringify({
-      tool_name: 'Write',
-      tool_input: { file_path: join(ws, 'backup/snapshot.tar.gz') },
-    });
-    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      input: event,
-      env: { ...process.env, ROBIN_WORKSPACE: ws },
-    });
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /WRITE_REFUSED \[backup\]/);
-    assert.match(r.stderr, /user-data\/backup\/snapshot\.tar\.gz/);
-  });
-
-  it('blocks misrouted path inside an MCP-style nested tool_input', () => {
-    const ws = mkdtempSync(join(tmpdir(), 'hook-mcp-'));
-    const event = JSON.stringify({
-      tool_name: 'mcp__gemini-nano-banana__generate_image',
-      tool_input: {
-        prompt: 'a photo',
-        output: { save_to: join(ws, 'artifacts/output/image.png') },
-      },
-    });
-    const r = spawnSync('node', [HOOK, '--on-pre-tool-use'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      input: event,
-      env: { ...process.env, ROBIN_WORKSPACE: ws },
-    });
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /WRITE_REFUSED \[artifacts\]/);
-  });
-
-  it('allows Write to user-data/memory/streams/inbox.md', () => {
-    const event = JSON.stringify({
-      tool_name: 'Write',
-      tool_input: { file_path: '/Users/iser/workspace/robin/robin-assistant/user-data/memory/streams/inbox.md' },
-    });
-    const r = runHook(['--on-pre-tool-use'], event);
-    assert.equal(r.exit, 0);
-  });
-
-  it('allows non-Write tool calls (e.g., Read)', () => {
-    const event = JSON.stringify({
-      tool_name: 'Read',
-      tool_input: { file_path: '/Users/iser/.claude/projects/abc/memory/foo.md' },
-    });
-    const r = runHook(['--on-pre-tool-use'], event);
-    assert.equal(r.exit, 0);
-  });
-
-  it('allows when stdin is malformed JSON (fail open)', () => {
-    const r = runHook(['--on-pre-tool-use'], 'not json');
-    assert.equal(r.exit, 0);
-  });
-
-  it('allows when input has no file_path', () => {
-    const event = JSON.stringify({ tool_name: 'Write', tool_input: {} });
-    const r = runHook(['--on-pre-tool-use'], event);
-    assert.equal(r.exit, 0);
-  });
-});
-
-describe('claude-code-hook --on-stop', () => {
-  it('exits 0 immediately (drain runs in background)', () => {
-    const r = runHook(['--on-stop']);
-    assert.equal(r.exit, 0);
-  });
-});
-
-describe('claude-code-hook usage errors', () => {
-  it('exits 2 on unknown mode', () => {
-    const r = runHook(['--invalid-mode']);
-    assert.equal(r.exit, 2);
-    assert.match(r.stderr, /Usage/);
-  });
-
-  it('exits 2 with no args', () => {
-    const r = runHook([]);
-    assert.equal(r.exit, 2);
-  });
-});
-
-// Build a minimal tmp workspace with ENTITIES.md + the listed topic files,
-// suitable for exercising --on-user-prompt-submit recall behavior.
-function makeWorkspaceWithEntities(entities) {
-  const ws = mkdtempSync(join(tmpdir(), 'hook-recall-'));
+// Build a minimal tmp workspace with ENTITIES.md + the listed topic files.
+// Used here to seed an empty workspace dir for stop-hook tests; entities are
+// optional but the dir layout needs to look like a Robin workspace.
+function makeWorkspace(entities = []) {
+  const ws = mkdtempSync(join(tmpdir(), 'hook-stop-'));
   mkdirSync(join(ws, 'user-data/memory'), { recursive: true });
   const entityLines = ['---', 'description: Auto-generated entity index for fast recall lookup', 'type: reference', '---', '# Entities', ''];
   for (const e of entities) {
@@ -189,63 +47,15 @@ function makeWorkspaceWithEntities(entities) {
   return ws;
 }
 
-test('UserPromptSubmit caps recall hits at 3 and uses new preface format', () => {
-  const ws = makeWorkspaceWithEntities([
-    {
-      name: 'Alice',
-      file: 'profile/relationships.md',
-      body: 'Alice likes coffee.\nAlice lives in NYC.\nAlice works at Acme.\nAlice has a dog.\nAlice runs marathons.',
-    },
-  ]);
-  const event = JSON.stringify({
-    session_id: 'test',
-    user_message: 'tell me about Alice',
-    transcript_path: '',
+describe('claude-code-hook --on-stop: smoke', () => {
+  it('exits 0 immediately (drain runs in background)', () => {
+    const r = runHook(['--on-stop']);
+    assert.equal(r.exit, 0);
   });
-  const out = execFileSync(
-    'node',
-    [join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'), '--on-user-prompt-submit', '--workspace', ws],
-    { input: event, encoding: 'utf8' },
-  );
-
-  // Preface format: <!-- relevant memory: <N> hits for <entity1>, <entity2> -->
-  assert.match(out, /<!-- relevant memory: \d+ hits for Alice -->/);
-  // Cap of 3: fixture has 5 matchable Alice lines, recall emits one bullet per hit,
-  // so with the cap working we should get exactly 3 — not 0, not 1, not 5.
-  const inner = out.split('<!-- relevant memory:')[1]?.split('<!-- /relevant memory -->')[0] ?? '';
-  const hitLines = inner.split('\n').filter((l) => l.startsWith('- '));
-  assert.equal(hitLines.length, 3, `expected exactly 3 hit lines, got ${hitLines.length}`);
-});
-
-test('UserPromptSubmit sanitizes "-->" in entity names so preface comment cannot break out', () => {
-  const ws = makeWorkspaceWithEntities([
-    {
-      name: 'Bad-->Name',
-      file: 'profile/relationships.md',
-      body: 'Bad-->Name appeared in a log line.',
-    },
-  ]);
-  const event = JSON.stringify({
-    session_id: 'test',
-    user_message: 'tell me about Bad-->Name',
-    transcript_path: '',
-  });
-  const out = execFileSync(
-    'node',
-    [join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'), '--on-user-prompt-submit', '--workspace', ws],
-    { input: event, encoding: 'utf8' },
-  );
-
-  // The preface line itself must not contain "-->" before the closing "-->" of the comment.
-  // Match the preface line and ensure its body uses "->" not "-->".
-  const prefaceMatch = out.match(/<!-- relevant memory: \d+ hits for ([^\n]*?) -->/);
-  assert.ok(prefaceMatch, `expected preface in output, got: ${out}`);
-  assert.ok(!prefaceMatch[1].includes('-->'), `entity-name segment leaked "-->" into comment: ${prefaceMatch[1]}`);
-  assert.match(prefaceMatch[1], /Bad->Name/);
 });
 
 test('Stop hook writes one line to turn-stats.log per turn', async () => {
-  const ws = makeWorkspaceWithEntities([]); // empty memory is fine here; reuse helper from Task 2
+  const ws = makeWorkspace();
   // Seed a fake transcript: one assistant turn with 2 rounds + 2 reads + 1 bash + final text.
   const txDir = join(ws, 'transcript');
   mkdirSync(txDir, { recursive: true });
@@ -270,7 +80,7 @@ test('Stop hook writes one line to turn-stats.log per turn', async () => {
   });
 
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
@@ -288,23 +98,22 @@ test('Stop hook writes one line to turn-stats.log per turn', async () => {
 });
 
 test('Stop hook writes nothing when transcript_path is missing', async () => {
-  const ws = makeWorkspaceWithEntities([]);
+  const ws = makeWorkspace();
   const event = JSON.stringify({ session_id: 'no-tx' }); // no transcript_path
 
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
   ], { input: event, encoding: 'utf8' });
 
   const logPath = join(ws, 'user-data/runtime/state/turn-stats.log');
-  // No log line should be written when there's no transcript to analyze.
   assert.equal(existsSync(logPath), false, 'no log file when transcript_path is missing');
 });
 
 test('Stop hook writes nothing when transcript has only user messages', async () => {
-  const ws = makeWorkspaceWithEntities([]);
+  const ws = makeWorkspace();
   const txDir = join(ws, 'transcript');
   mkdirSync(txDir, { recursive: true });
   const tx = join(txDir, 'session.jsonl');
@@ -315,7 +124,7 @@ test('Stop hook writes nothing when transcript has only user messages', async ()
 
   const event = JSON.stringify({ session_id: 'user-only', transcript_path: tx });
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
@@ -326,7 +135,7 @@ test('Stop hook writes nothing when transcript has only user messages', async ()
 });
 
 test('Stop hook writes nothing when transcript ends mid-turn (no final text)', async () => {
-  const ws = makeWorkspaceWithEntities([]);
+  const ws = makeWorkspace();
   const txDir = join(ws, 'transcript');
   mkdirSync(txDir, { recursive: true });
   const tx = join(txDir, 'session.jsonl');
@@ -340,7 +149,7 @@ test('Stop hook writes nothing when transcript ends mid-turn (no final text)', a
 
   const event = JSON.stringify({ session_id: 'mid-turn', transcript_path: tx });
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
@@ -387,7 +196,7 @@ description: Session Handoff
 `);
 
   const r = spawnSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--workspace', ws,
     '--no-drain',
@@ -403,7 +212,7 @@ description: Session Handoff
 });
 
 test('Stop hook logs verbose-output when final-text reply exceeds threshold and turn had no tool use', async () => {
-  const ws = makeWorkspaceWithEntities([]);
+  const ws = makeWorkspace();
   const txDir = join(ws, 'transcript');
   mkdirSync(txDir, { recursive: true });
   const tx = join(txDir, 'session.jsonl');
@@ -417,7 +226,7 @@ test('Stop hook logs verbose-output when final-text reply exceeds threshold and 
   ].join('\n'));
 
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
@@ -433,7 +242,7 @@ test('Stop hook logs verbose-output when final-text reply exceeds threshold and 
 });
 
 test('Stop hook does NOT log verbose-output when turn had tool use (legitimate long output)', async () => {
-  const ws = makeWorkspaceWithEntities([]);
+  const ws = makeWorkspace();
   const txDir = join(ws, 'transcript');
   mkdirSync(txDir, { recursive: true });
   const tx = join(txDir, 'session.jsonl');
@@ -452,7 +261,7 @@ test('Stop hook does NOT log verbose-output when turn had tool use (legitimate l
   ].join('\n'));
 
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
@@ -463,7 +272,7 @@ test('Stop hook does NOT log verbose-output when turn had tool use (legitimate l
 });
 
 test('Stop hook does NOT log verbose-output when output_tokens are below threshold', async () => {
-  const ws = makeWorkspaceWithEntities([]);
+  const ws = makeWorkspace();
   const txDir = join(ws, 'transcript');
   mkdirSync(txDir, { recursive: true });
   const tx = join(txDir, 'session.jsonl');
@@ -476,7 +285,7 @@ test('Stop hook does NOT log verbose-output when output_tokens are below thresho
   ].join('\n'));
 
   execFileSync('node', [
-    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    HOOK,
     '--on-stop',
     '--no-drain',
     '--workspace', ws,
