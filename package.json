@@ -1,6 +1,6 @@
 {
   "name": "robin-assistant",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "A self-improving personal assistant for Claude Code",
   "type": "module",
   "bin": {
@@ -55,6 +55,7 @@
   "files": [
     "bin",
     "system",
+    "CHANGELOG.md",
     "CLAUDE.md",
     "LICENSE",
     "README.md"

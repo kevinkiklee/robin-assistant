@@ -1,5 +1,18 @@
 # Changelog
 
+## 5.0.1 — 2026-05-02
+
+Cleanup pass: fix two failing tests, finish a partial rename from v5.0.0, ship the changelog.
+
+### Fixes
+
+- **`measure-tokens --check` now passes.** `system/jobs/dream.md` (4633 tokens) had grown past `per_protocol_max_tokens` (4600). Cap bumped to 4800 (~167 tokens of headroom).
+- **Manifest field `agentsmd` → `claudemd` rename completed.** v5.0.0 renamed the runtime field but the loader, scaffold, test, and security-rules doc still wrote the old key. New migration `0025-rename-agentsmd-to-claudemd.js` renames the field in existing user manifests (idempotent; prefers `claudemd` if both keys present).
+
+### Package
+
+- **`CHANGELOG.md` now ships in the npm tarball** (added to `package.json` `files`).
+
 ## 5.0.0 — 2026-05-02
 
 **Hard cut to Claude Code only.** Multi-host support (Cursor, Antigravity, Codex, Gemini CLI) is removed. The canonical instruction file is now `CLAUDE.md` (former `AGENTS.md` content folded in, plus a new "Claude Code specifics" section).
