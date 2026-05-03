@@ -83,6 +83,11 @@ export async function runScenario(opts) {
     const ioCaptures = [];
     const baseEnv = scenarioEnvFor(tempdir, fixture, clock);
 
+    // Snapshot of inproc-mode block events, captured BEFORE uninstallStubs()
+    // clears the ledger. (Bug fix: previously this lived after the finally
+    // and read empty state.)
+    let blockSummary = null;
+
     if (mode === 'inproc') {
       installClock(clock);
       installRandom(fixture);
@@ -95,6 +100,8 @@ export async function runScenario(opts) {
           ioCaptures.push(await runInprocStep(steps[i], { tempdir, baseEnv }));
         }
       } finally {
+        // Capture ledger state before tearing down stubs.
+        blockSummary = { hasBlocks: hasBlockEvents(), ledger: getLedger() };
         process.exit = realExit;
         uninstallStubs();
         uninstallRandom();
@@ -110,8 +117,8 @@ export async function runScenario(opts) {
     }
 
     // Block-event guard: any unstubbed call attempted in inproc → fail.
-    if (mode === 'inproc' && hasBlockEvents()) {
-      throw new Error(`Scenario attempted unstubbed outbound calls. Ledger: ${JSON.stringify(getLedger(), null, 2)}`);
+    if (blockSummary && blockSummary.hasBlocks) {
+      throw new Error(`Scenario attempted unstubbed outbound calls. Ledger: ${JSON.stringify(blockSummary.ledger, null, 2)}`);
     }
 
     // Tree assertion / write.
