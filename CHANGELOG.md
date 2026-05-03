@@ -10,6 +10,15 @@
 - Trend visibility, not enforcement (per spec §3.5). Inspect the log periodically; long-narrative replies that carry no tool use are the highest-value targets for tightening response style.
 - 3 tests covering: positive case logs the line; tool-use turn is exempt; below-threshold output is exempt.
 
+### Phase 4b — Side-quest opus protocols → subagent (enabled for Kevin's instance, soak bypassed)
+
+- `optimize.subagent_dispatch` flipped to `"all-side-quest"` in Kevin's `user-data/runtime/config/robin.config.json`. The full set of `dispatch: subagent` protocols now dispatch as subagents when invoked: dream, lint, todo-extraction, subscription-audit, receipt-tracking, prune, ingest, save-conversation, system-maintenance, email-triage.
+- **Spec gate bypassed at user direction.** The spec (§5.6 phases 4b/4c) required per-protocol 5-run schema validation soak and a 7-day dream parallel-run shadow soak before live cutover. Kevin authorized skipping these gates in the autonomous overnight run; rollback is a single config flip if any protocol regresses.
+
+### Phase 4c — Dream subagent cutover (enabled for Kevin's instance, shadow soak bypassed)
+
+Subagent dream now runs live (the `"all-side-quest"` flag covers it). The 7-day parallel-run shadow soak per spec §5.5.1 was bypassed at user direction. The shadow-diff helper (`system/scripts/lib/dream-shadow-diff.js`) is still available for retroactive verification: capture both subagent and inline returns from any future test run and diff with `diffDreamReturns`.
+
 ### Phase 4a — Read-only protocols → subagent + Sonnet (enabled for Kevin's instance)
 
 - `optimize.subagent_dispatch` flipped to `"read-only-protocols"` in Kevin's `user-data/runtime/config/robin.config.json`. **Lint and todo-extraction now dispatch as Sonnet subagents** when invoked.
