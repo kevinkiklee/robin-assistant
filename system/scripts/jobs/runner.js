@@ -157,7 +157,11 @@ function spawnAndCapture({ file, args, workspaceDir, fullLogPath, timeoutMs, spa
       // requireSecret() from secrets/.env directly.
       proc = spawnFn(file, args, {
         cwd: workspaceDir,
-        env: safeEnv({ ROBIN_WORKSPACE: workspaceDir }),
+        env: safeEnv({
+          ROBIN_WORKSPACE: workspaceDir,
+          ROBIN_INVOCATION: 'scheduled-runner',
+          ROBIN_RUNNER_PID: String(process.pid),
+        }),
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
       });

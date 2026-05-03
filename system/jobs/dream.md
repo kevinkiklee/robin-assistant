@@ -19,9 +19,10 @@ Two passes: **memory management** (route, promote, prune facts) and **self-impro
 
 ## Invocation
 
-Dream runs in two ways:
-- **Scheduled** (the common case) — daily at 04:00 local via the job system. The runner handles locking, catch-up after missed runs, telemetry, and failure surfacing. You never check eligibility or manage `dream.lock` yourself.
-- **Trigger phrase** ("dream", "memory check", "daily maintenance") — runs in-session. Acquire `user-data/runtime/state/jobs/locks/dream.lock` via `robin job acquire dream` before starting; release with `robin job release dream` when done. If acquire returns non-zero, a scheduled run is in progress — skip cleanly.
+Dream runs in two ways. **Detect which mode you're in by checking `$ROBIN_INVOCATION` in your environment** (`node -e 'console.log(process.env.ROBIN_INVOCATION)'` or read it from a Bash call before doing anything else):
+
+- **Scheduled (runner-spawned)** — `$ROBIN_INVOCATION=scheduled-runner`. The job system fires this daily at 04:00 local. The runner already acquired `dream.lock` (its own PID, in `$ROBIN_RUNNER_PID`, is written to the file). **Do NOT read, check, or touch the lock yourself** — the lockfile contains your parent runner's PID, and matching it as a sibling will make you skip cleanly without doing any work. The runner handles locking, catch-up after missed runs, telemetry, and failure surfacing. Proceed straight to Pre-flight.
+- **Trigger phrase** ("dream", "memory check", "daily maintenance") — `$ROBIN_INVOCATION` is unset. You're running in-session. Acquire the lock via `node bin/robin.js job acquire dream` before starting; release with `node bin/robin.js job release dream` when done. If acquire returns non-zero, a scheduled run is in progress — skip cleanly.
 
 ## Pre-flight
 
