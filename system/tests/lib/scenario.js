@@ -285,7 +285,10 @@ function runSubprocessStep(step, { tempdir, baseEnv, stubsFile }) {
 
   const r = spawnSync('node', nodeArgs, { env, input: stdinInput, encoding: 'utf8' });
   return {
-    exitCode: r.status ?? 0,
+    // r.status is null when killed by signal — surface that as exit 1 rather
+    // than papering over with 0, which would silently turn a SIGTERM-killed
+    // subprocess into an apparent success.
+    exitCode: r.status ?? (r.signal ? 1 : 0),
     stdout: r.stdout ?? '',
     stderr: r.stderr ?? '',
   };

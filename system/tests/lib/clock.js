@@ -38,4 +38,5 @@ export function uninstallClock() {
   // eslint-disable-next-line no-global-assign
   globalThis.Date = realDate;
   installed = null;
+  delete process.env.ROBIN_CLOCK;
 }

@@ -38,7 +38,7 @@ function listE2eTests(root) {
   return out;
 }
 
-describe('e2e: fixture audit', () => {
+describe('lib: fixture audit', () => {
   it('every fixture dir is referenced by a .test.js', () => {
     const fixtures = listLeafFixtureDirs(FIXTURES);
     const tests = listE2eTests(E2E);
