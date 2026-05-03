@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "node --test --test-name-pattern='^(?!e2e:)' 'system/tests/**/*.test.js'",
+    "test:unit": "node --test 'system/tests/{capture,cli,diagnostics,discord,hooks,jobs,lib,memory,migrate,security,sync,watches,wiki-graph}/**/*.test.js'",
     "test:e2e": "node --test 'system/tests/e2e/{hooks,memory,jobs}/**/*.test.js'",
     "test:install": "node --test --test-timeout=120000 'system/tests/e2e/install/**/*.test.js'",
     "backup": "node system/scripts/cli/backup.js",
