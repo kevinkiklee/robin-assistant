@@ -207,3 +207,7 @@ notable: [string]           # facts/decisions worth surfacing back to parent
 errors: [string]            # routing failures or pre-filter rejections
 tier1_touched: [string]     # paths under user-data/memory modified in Tier 1
 ```
+
+## Subagent cutover
+
+Dream writes memory daily — highest-stakes migration. Before retiring inline, run a 7-day parallel-run shadow soak. Procedure + diff helper: `system/scripts/lib/dream-shadow-diff.js` (`diffDreamReturns`, `evaluateSoakWindow`). Gate per spec §5.2 row 4c: 7 consecutive days with no `'major'` severity. Rollback: flip `optimize.subagent_dispatch` in `robin.config.json`.
