@@ -1,5 +1,7 @@
 ---
 name: daily-briefing
+dispatch: inline
+model: opus
 triggers: ["good morning", "brief me", "daily briefing", "morning briefing"]
 description: Daily briefing covering calendar, weather, priorities, and any flagged items needing attention today.
 runtime: "agent"

@@ -1,5 +1,7 @@
 ---
 name: watch-topics
+dispatch: inline
+model: opus
 description: Hourly check of active watches. Fetches new info via WebSearch, dedupes against per-watch fingerprints, redacts, writes deltas to inbox with [watch:<id>] tag. Default disabled.
 runtime: agent
 schedule: "0 * * * *"

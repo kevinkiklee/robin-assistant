@@ -1,5 +1,7 @@
 ---
 name: migrate-auto-memory
+dispatch: inline
+model: opus
 description: Drains host-managed auto-memory (e.g., Claude Code) into user-data/memory/streams/inbox.md per the Local Memory rule.
 runtime: node
 enabled: true

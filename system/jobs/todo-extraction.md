@@ -1,5 +1,7 @@
 ---
 name: todo-extraction
+dispatch: subagent
+model: sonnet
 triggers: ["extract todos from this", "todo extraction"]
 description: Extract action items from a forwarded email, message, or document and add them to tasks.
 runtime: "agent"

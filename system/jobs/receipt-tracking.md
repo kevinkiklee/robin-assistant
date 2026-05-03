@@ -1,5 +1,7 @@
 ---
 name: receipt-tracking
+dispatch: subagent
+model: opus
 triggers: ["track my receipts", "receipt tracking"]
 description: Find and summarize receipts by vendor, time range, or category.
 runtime: "agent"

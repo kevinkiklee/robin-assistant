@@ -1,5 +1,7 @@
 ---
 name: monthly-financial
+dispatch: inline
+model: opus
 triggers: ["month-end review", "monthly financial"]
 description: Month-end financial review covering income reconciliation, recurring outflows, and budget variance.
 runtime: "agent"

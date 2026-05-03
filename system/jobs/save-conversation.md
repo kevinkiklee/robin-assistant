@@ -1,5 +1,7 @@
 ---
 name: save-conversation
+dispatch: subagent
+model: opus
 triggers: ["save this conversation", "file this session", "save conversation"]
 description: File the key outcomes of the current conversation as a lightweight summary page in the knowledge base.
 runtime: "agent"

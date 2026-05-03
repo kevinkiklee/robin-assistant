@@ -1,5 +1,7 @@
 ---
 name: system-maintenance
+dispatch: subagent
+model: opus
 triggers: ["clean up the workspace", "system maintenance"]
 description: Weekly interactive review covering items that need user input; complements Dream's automated housekeeping.
 runtime: "agent"

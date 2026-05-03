@@ -1,5 +1,7 @@
 ---
 name: ingest
+dispatch: subagent
+model: opus
 triggers: ["ingest this", "ingest", "process this document", "add this to the wiki"]
 description: Process a source document into the knowledge base — extract facts, ripple updates across knowledge files, log cross-references, and commit.
 runtime: "agent"

@@ -1,5 +1,7 @@
 ---
 name: subscription-audit
+dispatch: subagent
+model: opus
 triggers: ["what am I paying for", "subscription audit"]
 description: Audit recurring charges and subscriptions; surface candidates to cancel or renegotiate.
 runtime: "agent"

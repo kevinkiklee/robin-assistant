@@ -1,5 +1,7 @@
 ---
 name: dream
+dispatch: subagent
+model: opus
 triggers: ["dream", "memory check", "daily maintenance"]
 description: Daily memory routing, fact promotion, pattern review, and index maintenance.
 runtime: agent

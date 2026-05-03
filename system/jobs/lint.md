@@ -1,5 +1,7 @@
 ---
 name: lint
+dispatch: subagent
+model: sonnet
 triggers: ["lint the wiki", "health check memory", "lint", "check memory health"]
 description: Health-check the knowledge base for contradictions, stale claims, orphan pages, dead links, missing pages, and data gaps.
 runtime: "agent"

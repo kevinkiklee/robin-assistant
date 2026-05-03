@@ -1,5 +1,7 @@
 ---
 name: prune
+dispatch: subagent
+model: opus
 description: Memory pruning — moves >12-month-old content from active tier to archive/. Default disabled.
 runtime: agent
 schedule: "0 5 1 * *"
