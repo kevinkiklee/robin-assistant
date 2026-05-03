@@ -158,7 +158,6 @@ Shipped jobs span daily maintenance, financial review, productivity, and system 
 | Lint | On demand (disabled) | Audit memory health |
 | Save conversation | On demand (disabled) | File conversation outcomes as summary pages |
 | Deep-ripple | On demand (disabled) | Agent protocol for high-impact ingestions whose ripple exceeds the mechanical pass |
-| Host validation | Quarterly | Verify all supported AI tools still honor loading rules |
 | Multi-session coordination | On demand (disabled) | In-session protocol that registers active sessions and acquires file locks |
 | Outcome check | Sunday 10 AM (disabled) | Revisit open `[predict]` claims past their check-by date; propose resolution; user confirms in system-maintenance |
 | Audit | Sunday 11 AM (disabled) | LLM-pass over candidate file pairs (via LINKS.md cross-references) to surface contradictions and redundancies for user review |
@@ -195,8 +194,8 @@ Setup walkthrough: [`system/integrations/discord-setup.md`](system/integrations/
 
 Personal data never leaves your machine unless you explicitly push it to a remote you control. Four layers enforce this:
 
-1. **`.gitignore`** excludes `user-data/`, `backup/`, `docs/` (`user-data/artifacts/` is covered by `user-data/`)
-2. **Pre-commit hook** refuses any commit that stages files in those directories or removes `user-data/` from `.gitignore`
+1. **`.gitignore`** excludes `user-data/` and `docs/` (`user-data/{artifacts,backup}/` are covered by `user-data/`).
+2. **Pre-commit hook** refuses any commit that stages files in those directories or removes `user-data/` from `.gitignore`.
 3. **Capture rules** block writes containing full government IDs, payment card numbers, passwords, API keys, or credentials. Cannot be overridden, even by your own custom rules.
 4. **Redaction module** automatically strips sensitive patterns (SSNs, SINs with Luhn validation, credit card numbers, API keys, URL credentials) from sync data before storage
 
@@ -204,11 +203,11 @@ Personal data never leaves your machine unless you explicitly push it to a remot
 
 Robin's instruction layer is organized into tiers to minimize token usage at session start:
 
-- **Tier 1** (always loaded) — core rules, identity, INDEX, ENTITIES, hot cache, communication style, learning queue. Capped at 10,200 tokens / 510 lines (9,300 for the cache-stable prefix).
+- **Tier 1** (always loaded) — core rules, identity, INDEX, ENTITIES, hot cache, communication style, learning queue. Capped at 13,500 tokens / 620 lines (12,200 for the cache-stable prefix).
 - **Tier 2** (on demand) — job protocols, capture rules, manifest, security rules, self-improvement rules. Loaded only when triggered.
 - **Tier 3** (cold storage) — archived memory, historical data, full per-event detail pages.
 
-CI enforces token budgets on every PR. A measurement harness tracks per-file token counts, a golden-session snapshot detects load-order drift, and a memory linter catches structural issues. Caps live in `system/scripts/diagnostics/lib/token-budget.json` — a single source of truth read by the harness and host validators.
+CI enforces token budgets on every PR. A measurement harness tracks per-file token counts, a golden-session snapshot detects load-order drift, and a memory linter catches structural issues. Caps live in `system/scripts/diagnostics/lib/token-budget.json` — a single source of truth read by the harness.
 
 ### Customization
 
@@ -216,7 +215,7 @@ Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 
 - **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
 - **`jobs/`** — overlays `system/jobs/`. **The default convention is a shallow override** (`override: <name>` frontmatter): you change only what you need, the rest inherits from the system definition and keeps tracking upstream upgrades. Use a full override (no `override:` key) only when you intend to fully replace a system job. Drop a brand-new file to extend the catalog.
-- **`ops/scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/runtime/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/sync/lib/`.
+- **`runtime/scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/runtime/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/sync/lib/`.
 - **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
 
 #### Customizing a job (the default pattern)
@@ -270,7 +269,7 @@ cd robin
 
 # 2. Install. The postinstall step:
 #      - copies system/scaffold/* into user-data/
-#      - creates user-data/artifacts/{input,output}, backup/
+#      - creates user-data/{artifacts/{input,output},backup,sources}/
 #      - prompts for your name, timezone, email, assistant name
 #      - installs the pre-commit privacy hook
 #      - applies migrations and installs scheduler entries
@@ -294,7 +293,7 @@ git pull upstream main      # if you forked
 npm install                 # runs migrations, config upgrade, scaffold sync, scheduler reinstall
 ```
 
-This only touches files in `system/` and root pointer files. **`user-data/`, `backup/`, and `docs/` are gitignored — your personal data is never touched by an update.**
+This only touches files in `system/` and root pointer files. **`user-data/` and `docs/` are gitignored — your personal data is never touched by an update.**
 
 Migrations, config upgrades, and scaffold sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast.
 
@@ -332,7 +331,7 @@ If `git pull` reports a conflict on any other tracked file, run `git checkout --
 | `npm run backup` | Snapshot `user-data/` to `backup/user-data-<timestamp>.tar.gz` |
 | `npm run restore` | Restore `user-data/` from a backup archive (interactive) |
 | `npm run reset` | Wipe `user-data/`, recopy scaffold, re-prompt config (auto-backups first) |
-| `npm test` | Run the test suite (~734 tests) |
+| `npm test` | Run the test suite |
 | `npm run lint-memory` | Check orphans, stale INDEX entries, oversized sub-trees, staleness, redundancy, ambiguous aliases, candidate entities, conversational tics |
 | `npm run densify-wiki -- --dry-run` | Audit cross-linking gaps across `user-data/memory/` and write a report to `user-data/runtime/state/densify-wiki/<date>.{md,json}`. **Always run dry-run first**, review the report, then `npm run densify-wiki -- --apply` to commit the changes (auto-backups first; reversible via `npm run restore`) |
 | `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
@@ -390,22 +389,22 @@ robin/
 │   ├── scaffold/            <- first-run templates for user-data/
 │   ├── integrations/        <- per-provider setup playbooks
 │   └── tests/               <- mirrors system/scripts/ layout
-├── user-data/               <- your data, gitignored
-│   ├── memory/              <- structured memory tree (incl. ENTITIES.md, watches/, predictions.md)
-│   ├── jobs/                <- your custom jobs + shallow overrides
-│   ├── scripts/             <- per-user integration scripts (sync-*, auth-*, *-write, discord-bot)
-│   ├── secrets/             <- credentials (.env, mode 0600 enforced)
-│   ├── security/            <- manifest.json baseline, refusal logs
-│   ├── sources/             <- immutable source document archive
-│   ├── state/               <- sessions, locks, sync cursors, job logs, capture/recall/hook-perf logs
-│   ├── artifacts/{input,output} <- file pipe (input drop / generated output)
-│   ├── policies.md          <- AUTO/ASK/NEVER action classes
-│   ├── integrations.md      <- declared integrations
-│   ├── custom-rules.md      <- your appended rules
-│   └── robin.config.json
-├── backup/                  <- tar.gz archives, gitignored
-└── docs/                    <- design notes, specs, plans (gitignored)
+└── user-data/               <- your data, gitignored
+    ├── memory/              <- structured memory tree (INDEX, ENTITIES, profile, knowledge, self-improvement, streams, watches, archive)
+    ├── runtime/             <- everything that isn't user memory
+    │   ├── config/          <- robin.config.json, integrations.md, policies.md, llm-pricing.json
+    │   ├── jobs/            <- your custom jobs + shallow overrides
+    │   ├── scripts/         <- per-user integration scripts (sync-*, auth-*, *-write, discord-bot)
+    │   ├── secrets/         <- credentials (.env, mode 0600 enforced)
+    │   ├── security/        <- manifest.json baseline, refusal logs
+    │   └── state/           <- sessions, locks, sync cursors, job logs, capture/recall/hook-perf logs
+    ├── artifacts/{input,output} <- file pipe (input drop / generated output)
+    ├── sources/             <- immutable source document archive
+    ├── backup/              <- tar.gz snapshots taken before risky operations
+    └── custom-rules.md      <- your appended rules (optional)
 ```
+
+`docs/` (design notes, specs, plans) is also gitignored if present locally; it does not ship in the package.
 
 ---
 

@@ -88,4 +88,4 @@ Workspace has personal data. Suggest commits, never auto-commit.
 - **Skills** surface in the system-reminder list of available skills. When the user types `/<name>`, invoke via the Skill tool with the exact name shown. Never invent skill names.
 - **MCP tools** appear as `mcp__<server>__<tool>`. Treat as first-class. Some are deferred and need ToolSearch to load schemas before use.
 - **Sub-agents** via the Agent tool parallelize independent searches/probes without polluting the main context. Prefer `Explore` for "where is X" lookups across 3+ files; `general-purpose` for multi-step research.
-- `--bare` is NOT used. Skills, MCPs, and CLAUDE.md auto-discovery remain on. Don't modify `.claude/settings.json` or anything in `.claude/` unless the user explicitly asks.
+- **`.claude/`** is host-managed. Don't modify `.claude/settings.json` or anything else under `.claude/` unless the user explicitly asks — drift there trips tamper-detection.

@@ -1,3 +1,3 @@
 # Diagnostics
 
-Devtools and validation — token measurement, host validation, manifest drift detection, doc-path linter.
+Devtools and validation — token measurement, manifest drift detection, doc-path linter, tool-call stats.
