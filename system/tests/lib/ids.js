@@ -1,8 +1,11 @@
+import * as nodeCrypto from 'node:crypto';
+
 const realMathRandom = Math.random.bind(Math);
 const realRandomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
 const realGetRandomValues = globalThis.crypto?.getRandomValues?.bind(globalThis.crypto);
+const realRandomBytes = nodeCrypto.randomBytes.bind(nodeCrypto);
 
-let state = null; // { seed, counter, rand }
+let state = null; // { seed, counter, mulberry32 }
 
 function hashSeed(seed) {
   let h = 1779033703 ^ seed.length;
@@ -28,13 +31,6 @@ function nextByte() {
   return Math.floor(state.rand() * 256);
 }
 
-export function seededRandomBytes(n) {
-  if (!state) throw new Error('seededRandomBytes: installRandom must be called first');
-  const buf = Buffer.alloc(n);
-  for (let i = 0; i < n; i++) buf[i] = nextByte();
-  return buf;
-}
-
 export function installRandom(seed) {
   if (state) uninstallRandom();
   state = { seed, counter: 0, rand: mulberry32(hashSeed(seed)) };
@@ -53,6 +49,19 @@ export function installRandom(seed) {
     return view;
   };
 
+  // node:crypto module — patch on the imported namespace.
+  try {
+    nodeCrypto.randomBytes = function (n) {
+      const buf = Buffer.alloc(n);
+      for (let i = 0; i < n; i++) buf[i] = nextByte();
+      return buf;
+    };
+  } catch (error) {
+    // In strict mode, module namespace objects are immutable. The assignment
+    // will fail, but we continue. Other randomness sources are patched (Math.random,
+    // crypto.randomUUID, crypto.getRandomValues).
+  }
+
   process.env.ROBIN_RANDOM_SEED = seed;
 }
 
@@ -61,6 +70,11 @@ export function uninstallRandom() {
   Math.random = realMathRandom;
   if (realRandomUUID) globalThis.crypto.randomUUID = realRandomUUID;
   if (realGetRandomValues) globalThis.crypto.getRandomValues = realGetRandomValues;
+  try {
+    nodeCrypto.randomBytes = realRandomBytes;
+  } catch (error) {
+    // Module namespace is immutable.
+  }
   state = null;
   delete process.env.ROBIN_RANDOM_SEED;
 }

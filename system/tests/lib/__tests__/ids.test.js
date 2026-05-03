@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installRandom, uninstallRandom, seededRandomBytes } from '../ids.js';
+import { installRandom, uninstallRandom } from '../ids.js';
 
 describe('ids', () => {
   afterEach(() => uninstallRandom());
@@ -38,9 +38,10 @@ describe('ids', () => {
     assert.equal(a, b);
   });
 
-  it('crypto.randomBytes returns Buffer of correct length', () => {
+  it('crypto.randomBytes returns Buffer of correct length', async () => {
     installRandom('seed-A');
-    const buf = seededRandomBytes(16);
+    const { randomBytes } = await import('node:crypto');
+    const buf = randomBytes(16);
     assert.ok(Buffer.isBuffer(buf));
     assert.equal(buf.length, 16);
   });
