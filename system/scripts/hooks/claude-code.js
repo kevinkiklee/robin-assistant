@@ -25,6 +25,7 @@
 // workspace's working directory.
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync, appendFileSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +39,7 @@ import { appendPerfLog } from '../diagnostics/lib/perf-log.js';
 import { scanEntityAliases } from '../capture/lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
 import { recall, formatRecallHits } from '../memory/lib/recall.js';
+import { ExitSignal } from '../lib/exit-signal.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
@@ -225,14 +227,18 @@ function appendTurnStats(ws, event) {
   appendFileSync(file, line + '\n');
 }
 
-async function onStop(args) {
+async function onStop(args, stdinData) {
   const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
 
-  // Read the event from stdin (we now use it for telemetry).
+  // Use pre-parsed stdin if provided (in-process); otherwise read from process.stdin.
   let event = {};
   try {
-    const stdin = await readStdin();
-    event = stdin ? JSON.parse(stdin) : {};
+    if (stdinData !== undefined && stdinData !== null) {
+      event = typeof stdinData === 'object' ? stdinData : (stdinData ? JSON.parse(stdinData) : {});
+    } else {
+      const stdin = await readStdin();
+      event = stdin ? JSON.parse(stdin) : {};
+    }
   } catch { /* fail-open */ }
 
   // Write session-handoff auto-line synchronously. Failure must not block drain.
@@ -258,7 +264,7 @@ async function onStop(args) {
   }
 
   if (!args.drain) {
-    process.exit(0);
+    return { exitCode: 0 };
   }
 
   // Drain auto-memory in the background so the user's next response isn't
@@ -281,18 +287,22 @@ async function onStop(args) {
     stdio: args.debug ? 'inherit' : 'ignore',
   });
   child.unref();
-  process.exit(0);
+  return { exitCode: 0 };
 }
 
-async function onPreToolUse() {
-  // Read the hook event JSON from stdin.
-  const stdin = await readStdin();
+async function onPreToolUse(stdinData) {
+  // Use pre-parsed stdin if provided (in-process); otherwise read from process.stdin.
   let event;
   try {
-    event = JSON.parse(stdin);
+    if (stdinData !== undefined && stdinData !== null) {
+      event = typeof stdinData === 'object' ? stdinData : JSON.parse(stdinData);
+    } else {
+      const stdin = await readStdin();
+      event = JSON.parse(stdin);
+    }
   } catch {
     // Malformed input — allow the tool to proceed.
-    process.exit(0);
+    return { exitCode: 0 };
   }
 
   const toolName = event.tool_name ?? event.name;
@@ -320,17 +330,17 @@ async function onPreToolUse() {
       `(bare ${offending.label}/ at workspace root is misrouted). ` +
       `Canonical path is user-data/${offending.label}/. Retry with: ${suggested}\n`,
     );
-    process.exit(2);
+    return { exitCode: 2 };
   }
 
   // Remaining checks only apply to file-content tools.
   if (toolName !== 'Write' && toolName !== 'Edit' && toolName !== 'NotebookEdit') {
-    process.exit(0);
+    return { exitCode: 0 };
   }
 
   const target = toolInput.file_path;
   if (!target) {
-    process.exit(0);
+    return { exitCode: 0 };
   }
 
   // 1. Existing: block writes to host auto-memory paths.
@@ -338,7 +348,7 @@ async function onPreToolUse() {
     process.stderr.write(
       `Local Memory rule (immutable): writes to ${target} are forbidden. Append to user-data/memory/streams/inbox.md with a [tag] line instead.\n`,
     );
-    process.exit(2);
+    return { exitCode: 2 };
   }
 
   // 2. Cycle-2c: PII backstop for writes to user-data/memory/.
@@ -369,7 +379,7 @@ async function onPreToolUse() {
           `WRITE_REFUSED [pii]: ${count} PII pattern(s) detected in write to ${target}. ` +
           `Redact (e.g., replace SSN with [REDACTED:ssn]) before retrying.\n`
         );
-        process.exit(2);
+        return { exitCode: 2 };
       }
     }
 
@@ -389,7 +399,7 @@ async function onPreToolUse() {
     } catch { /* audit best-effort */ }
   }
 
-  process.exit(0);
+  return { exitCode: 0 };
 }
 
 function readStdin() {
@@ -403,15 +413,19 @@ function readStdin() {
   });
 }
 
-async function onPreBash(args) {
+async function onPreBash(args, stdinData) {
   const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
   // Top-level try/catch fail-closed: any uncaught error in the hook
   // blocks rather than silently letting the command through.
   try {
-    const stdin = await readStdin();
     let event;
     try {
-      event = stdin ? JSON.parse(stdin) : {};
+      if (stdinData !== undefined && stdinData !== null) {
+        event = typeof stdinData === 'object' ? stdinData : (stdinData ? JSON.parse(stdinData) : {});
+      } else {
+        const stdin = await readStdin();
+        event = stdin ? JSON.parse(stdin) : {};
+      }
     } catch {
       // Malformed input: fail-closed.
       throw new Error('hook event JSON is malformed');
@@ -420,7 +434,7 @@ async function onPreBash(args) {
     const cmd = event.tool_input?.command ?? event.input?.command ?? '';
     if (!cmd) {
       // No command to inspect — let it through.
-      process.exit(0);
+      return { exitCode: 0 };
     }
 
     const { checkBashCommand } = await import('../lib/bash-sensitive-patterns.js');
@@ -439,10 +453,10 @@ async function onPreBash(args) {
         });
       } catch { /* logging best-effort */ }
       process.stderr.write(`POLICY_REFUSED [bash:${result.name}]: ${result.why}\n`);
-      process.exit(2);
+      return { exitCode: 2 };
     }
 
-    process.exit(0);
+    return { exitCode: 0 };
   } catch (err) {
     // Fail-closed.
     try {
@@ -456,7 +470,7 @@ async function onPreBash(args) {
       });
     } catch { /* nested logging failure ignored */ }
     process.stderr.write(`POLICY_REFUSED [bash:hook-internal-error]: ${err?.message || String(err)}\n`);
-    process.exit(2);
+    return { exitCode: 2 };
   }
 }
 
@@ -533,13 +547,19 @@ function scanEntitiesInMessage(text, aliases) {
   return scanEntityAliases(String(text), aliases);
 }
 
-async function onUserPromptSubmit(args) {
+async function onUserPromptSubmit(args, stdinData) {
   const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
   const start = Date.now();
   try {
-    const stdin = await readStdin();
     let event = {};
-    try { event = JSON.parse(stdin); } catch { /* fail-open */ }
+    try {
+      if (stdinData !== undefined && stdinData !== null) {
+        event = typeof stdinData === 'object' ? stdinData : (stdinData ? JSON.parse(stdinData) : {});
+      } else {
+        const stdin = await readStdin();
+        event = stdin ? JSON.parse(stdin) : {};
+      }
+    } catch { /* fail-open */ }
 
     const sessionId = event.session_id ?? mostRecentSessionId(ws, 'claude-code') ?? 'unknown';
     const userMessage = event.user_message ?? event.prompt ?? '';
@@ -584,21 +604,75 @@ async function onUserPromptSubmit(args) {
     if (elapsed > 80) {
       appendPerfLog(ws, { hook: 'UserPromptSubmit', duration_ms: elapsed, reason: 'slow' });
     }
-    process.exit(0);
+    return { exitCode: 0 };
   } catch (err) {
     try { appendPerfLog(ws, { hook: 'UserPromptSubmit', duration_ms: Date.now() - start, reason: `error:${err.message}` }); } catch { /* */ }
-    process.exit(0); // fail-open
+    return { exitCode: 0 }; // fail-open
   }
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
-  if (args.mode === 'on-stop') return onStop(args);
-  if (args.mode === 'on-pre-tool-use') return onPreToolUse(args);
-  if (args.mode === 'on-pre-bash') return onPreBash(args);
-  if (args.mode === 'on-user-prompt-submit') return onUserPromptSubmit(args);
-  console.error('Usage: claude-code.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit');
-  process.exit(2);
+// ---------------------------------------------------------------------------
+// Public API: callable in-process by the e2e test harness.
+// ---------------------------------------------------------------------------
+
+/**
+ * Run the hook logic for the given mode without calling process.exit.
+ *
+ * @param {string} mode - 'on-stop' | 'on-pre-tool-use' | 'on-pre-bash' | 'on-user-prompt-submit'
+ * @param {object} [opts]
+ * @param {object|null} [opts.stdin] - Pre-parsed JSON event (harness passes object; subprocess reads from process.stdin)
+ * @param {object} [opts.env] - Environment (currently unused; process.env is used directly by helpers)
+ * @param {string} [opts.workspace] - Workspace directory (equivalent to --workspace flag)
+ * @param {boolean} [opts.debug] - Enable debug output
+ * @returns {Promise<{exitCode: number}>}
+ */
+export async function runHook(mode, { stdin = null, env = process.env, workspace, debug = false } = {}) {
+  try {
+    const args = { mode, workspace: workspace ?? null, drain: true, debug };
+
+    if (mode === 'on-stop') return await onStop(args, stdin);
+    if (mode === 'on-pre-tool-use') return await onPreToolUse(stdin);
+    if (mode === 'on-pre-bash') return await onPreBash(args, stdin);
+    if (mode === 'on-user-prompt-submit') return await onUserPromptSubmit(args, stdin);
+
+    process.stderr.write('Usage: claude-code.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit\n');
+    return { exitCode: 2 };
+  } catch (e) {
+    if (e instanceof ExitSignal) return { exitCode: e.code };
+    throw e;
+  }
 }
 
-main();
+// ---------------------------------------------------------------------------
+// Shell guard — subprocess invocation only.
+// ---------------------------------------------------------------------------
+
+async function readStdinSubprocess() {
+  if (process.stdin.isTTY) return '';
+  let data = '';
+  process.stdin.setEncoding('utf8');
+  for await (const chunk of process.stdin) data += chunk;
+  return data;
+}
+
+const isMain = process.argv[1]
+  && (() => {
+    try {
+      return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+    } catch {
+      return false;
+    }
+  })();
+
+if (isMain) {
+  const args = parseArgs(process.argv);
+  const stdinRaw = await readStdinSubprocess();
+  let parsed = null;
+  try { parsed = stdinRaw ? JSON.parse(stdinRaw) : null; } catch { parsed = null; }
+  runHook(args.mode, { stdin: parsed, workspace: args.workspace, debug: args.debug })
+    .then(({ exitCode }) => process.exit(exitCode))
+    .catch((err) => {
+      process.stderr.write(`hook error: ${err.stack || err.message}\n`);
+      process.exit(2); // fail-closed
+    });
+}
