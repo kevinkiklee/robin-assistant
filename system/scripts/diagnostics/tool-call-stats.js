@@ -77,6 +77,49 @@ export function computeBaselineFromTranscripts(transcriptPaths) {
   };
 }
 
+// Aggregate the tab-separated turn-stats.log written by the Stop hook (Task 5).
+// Format per line: ISO_TS\tSESSION_ID\tROUNDS\tREADS\tRECALL_FIRED(0|1)\tREREAD_AFTER_RECALL(0|1)
+//
+// Note: a turn is the user message → final text-only assistant message span.
+// A single assistant message with both `text` and `tool_use` blocks is mid-turn
+// "reasoning aloud", NOT a turn boundary — only text-only assistant messages
+// close a turn (matches turnsFromTranscript above).
+export function aggregateTurnStatsLog(text) {
+  const rows = text.split('\n').filter(Boolean).map((line) => {
+    const cols = line.split('\t');
+    return {
+      ts: cols[0],
+      sessionId: cols[1],
+      rounds: Number(cols[2]) || 0,
+      reads: Number(cols[3]) || 0,
+      recallFired: cols[4] === '1',
+      rereadAfterRecall: cols[5] === '1',
+    };
+  });
+  const n = rows.length;
+  if (n === 0) {
+    return {
+      turns: 0,
+      meanRounds: 0,
+      meanReads: 0,
+      recallFiredRate: 0,
+      memoryReadAfterRecallRate: 0,
+    };
+  }
+  const meanRounds = rows.reduce((s, r) => s + r.rounds, 0) / n;
+  const meanReads = rows.reduce((s, r) => s + r.reads, 0) / n;
+  const recallFired = rows.filter((r) => r.recallFired);
+  return {
+    turns: n,
+    meanRounds,
+    meanReads,
+    recallFiredRate: recallFired.length / n,
+    memoryReadAfterRecallRate: recallFired.length
+      ? recallFired.filter((r) => r.rereadAfterRecall).length / recallFired.length
+      : 0,
+  };
+}
+
 function defaultTranscriptPaths(sinceMs) {
   const slug = REPO_ROOT.replace(/\//g, '-');
   const projectsDir = join(homedir(), '.claude', 'projects', slug);
@@ -99,8 +142,14 @@ async function main() {
   const args = process.argv.slice(2);
   const mode = args.find((a) => a === '--baseline' || a === '--report') ?? '--baseline';
   if (mode === '--report') {
-    console.error('--report not yet implemented (Task 9)');
-    process.exit(2);
+    const logPath = join(REPO_ROOT, 'user-data/runtime/state/turn-stats.log');
+    if (!existsSync(logPath)) {
+      console.error(`No log at ${logPath}. Telemetry not yet active or no turns yet.`);
+      process.exit(1);
+    }
+    const result = aggregateTurnStatsLog(readFileSync(logPath, 'utf8'));
+    console.log(JSON.stringify(result, null, 2));
+    return;
   }
 
   const sinceArgIdx = args.indexOf('--since-days');

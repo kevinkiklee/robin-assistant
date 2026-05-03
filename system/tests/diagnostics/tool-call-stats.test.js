@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { computeBaselineFromTranscripts } from '../../scripts/diagnostics/tool-call-stats.js';
+import {
+  computeBaselineFromTranscripts,
+  aggregateTurnStatsLog,
+} from '../../scripts/diagnostics/tool-call-stats.js';
 
 function makeTranscriptDir() {
   const dir = mkdtempSync(join(tmpdir(), 'tcs-'));
@@ -45,5 +48,27 @@ describe('tool-call-stats baseline', () => {
     const result = computeBaselineFromTranscripts([]);
     assert.deepEqual(result.turns, []);
     assert.equal(result.aggregate.turns, 0);
+  });
+});
+
+describe('tool-call-stats report', () => {
+  it('aggregates turn-stats.log into rounds/reads/recall metrics', () => {
+    const log = [
+      '2026-05-02T10:00:00Z\tsess-a\t3\t5\t1\t0',
+      '2026-05-02T10:01:00Z\tsess-a\t1\t1\t1\t1',
+      '2026-05-02T10:02:00Z\tsess-a\t2\t2\t0\t0',
+    ].join('\n') + '\n';
+    const result = aggregateTurnStatsLog(log);
+    assert.equal(result.turns, 3);
+    assert.equal(result.meanRounds, 2);
+    assert.equal(result.meanReads, 8 / 3);
+    assert.equal(result.recallFiredRate, 2 / 3);
+    assert.equal(result.memoryReadAfterRecallRate, 1 / 2); // 1 reread out of 2 recall-fired
+  });
+
+  it('returns zeros for empty log', () => {
+    const result = aggregateTurnStatsLog('');
+    assert.equal(result.turns, 0);
+    assert.equal(result.recallFiredRate, 0);
   });
 });
