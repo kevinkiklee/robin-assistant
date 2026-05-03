@@ -2,6 +2,19 @@
 
 ## Unreleased — Cost & Latency Optimization
 
+### Phase 4a — Read-only protocols → subagent + Sonnet (enabled for Kevin's instance)
+
+- `optimize.subagent_dispatch` flipped to `"read-only-protocols"` in Kevin's `user-data/runtime/config/robin.config.json`. **Lint and todo-extraction now dispatch as Sonnet subagents** when invoked.
+- Other instances ship with `"off"` default; this is a per-machine opt-in.
+- Rollback: flip back to `"off"`. No code change.
+
+### Phase 4c — Dream parallel-run shadow (infrastructure ready, soak pending)
+
+- **`system/scripts/lib/dream-shadow-diff.js`** — `diffDreamReturns(subagent, inline)` and `evaluateSoakWindow(dailyDiffs)` for the 7-day shadow gate per spec §5.5.1 / §5.2 row 4c. 12 tests.
+- **`system/jobs/dream.md`** — references the diff helper and gate from a brief subagent-cutover section.
+- Cutover blocked on real elapsed time (7-day soak). Procedure: enable `"all-side-quest"`, capture both subagent + inline return schemas to disk daily, diff with the helper, retire inline shadow when 7 consecutive days have no `'major'` severity. Per-protocol rollback via the feature flag.
+- `per_protocol_max_tokens` cap nudged 4800 → 5000 to absorb the cutover docs in dream.md.
+
 ### Phase 4 — Dream subagent migration (deferred pending soak)
 
 Per spec §5.6 phase 4c, the dream cutover from inline to subagent dispatch requires a 7-day parallel-run shadow soak (subagent dream live, inline dream as shadow, diffed daily on `routed_count` and `notable`). This soak window cannot be compressed into a single autonomous run; it requires real elapsed time. Phase 4 is left in a "ready, not yet enabled" state:
