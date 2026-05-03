@@ -1,0 +1,22 @@
+{
+  "name": "sample",
+  "runtime": "node",
+  "enabled": true,
+  "schedule": null,
+  "active": null,
+  "last_run_at": "<TS>",
+  "last_ended_at": "<TS>",
+  "last_duration_ms": <N>,
+  "last_exit_code": 1,
+  "last_status": "failed",
+  "last_log_path": "user-data/runtime/state/jobs/logs/sample-20260502-120000.log",
+  "last_summary_path": "user-data/runtime/state/jobs/logs/sample-20260502-120000.summary.log",
+  "last_runner_log_path": "user-data/runtime/state/jobs/logs/sample-20260502-120000.runner.log",
+  "last_failure_category": "runtime_error",
+  "last_error_line": null,
+  "next_run_at": null,
+  "consecutive_failures": 1,
+  "failing_since": "<TS>",
+  "previously_failed_until": null,
+  "previously_failed_duration_ms": null
+}

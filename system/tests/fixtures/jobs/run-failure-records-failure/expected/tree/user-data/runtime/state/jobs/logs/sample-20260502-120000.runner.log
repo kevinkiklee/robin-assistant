@@ -1,0 +1,6 @@
+[+<N>ms] starting "sample" runtime=node
+[+<N>ms] lock acquired
+[+<N>ms] catch_up decision: no schedule
+[+<N>ms] subprocess exited code=1 signal=— duration=<N>ms
+[+<N>ms] status=failed category=runtime_error
+[+<N>ms] notification suppressed (debounced)
