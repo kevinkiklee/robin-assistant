@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readdirSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  cpSync,
+  writeFileSync,
+  readFileSync,
+  lstatSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
@@ -17,6 +26,36 @@ function searchTimezones(query) {
   const all = Intl.supportedValuesOf('timeZone');
   const q = query.toLowerCase();
   return all.filter(tz => tz.toLowerCase().includes(q)).slice(0, 10);
+}
+
+// Ensure CLAUDE.md exists at the workspace root so Claude Code (and other
+// agents that auto-load CLAUDE.md) pick up Robin's instructions. The file
+// lives at packageRoot/CLAUDE.md and is symlinked rather than copied so
+// `npm update -g robin-assistant` flows updates through automatically.
+// Skipped when packageRoot is the workspace itself (cloned-repo dev) or
+// when the user has authored their own CLAUDE.md at the workspace root.
+function ensureClaudeMdLink(workspaceDir, packageRoot) {
+  if (!packageRoot || packageRoot === workspaceDir) return;
+  const src = join(packageRoot, 'CLAUDE.md');
+  const dst = join(workspaceDir, 'CLAUDE.md');
+  if (!existsSync(src)) return;
+  try {
+    lstatSync(dst);
+    return; // anything at dst (file or symlink) — leave alone
+  } catch {
+    // ENOENT — proceed to create.
+  }
+  try {
+    symlinkSync(src, dst);
+    console.log(`postinstall: linked CLAUDE.md → ${src}`);
+  } catch (err) {
+    try {
+      cpSync(src, dst);
+      console.log(`postinstall: copied CLAUDE.md → ${dst} (symlink failed: ${err.message})`);
+    } catch (cpErr) {
+      console.warn(`postinstall: CLAUDE.md install skipped (${cpErr.message})`);
+    }
+  }
 }
 
 async function promptTimezone(rl) {
@@ -110,6 +149,7 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
     } catch (err) {
       console.warn(`postinstall: scaffold scripts refresh skipped (${err.message})`);
     }
+    ensureClaudeMdLink(workspaceDir, opts.packageRoot);
     return;
   }
 
@@ -128,6 +168,8 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
       cpSync(join(scaffold, entry), join(ud, entry), { recursive: true });
     }
   }
+
+  ensureClaudeMdLink(workspaceDir, opts.packageRoot);
 
   // Config: prompt or skip. Prefer the post-0022 location; fall back to the
   // pre-0021 path for users mid-upgrade who haven't run migrations yet.
