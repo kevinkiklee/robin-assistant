@@ -30,3 +30,13 @@ jobs:
           name: e2e-tempdirs
           path: /tmp/robin-e2e-*
           if-no-files-found: ignore
+
+  install:
+    runs-on: ubuntu-latest
+    needs: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run test:install
