@@ -2,6 +2,9 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "$comment": "Project-level Claude Code settings. Tracked in git. Per-machine settings go in .claude/settings.local.json (gitignored).",
 
+  "$comment_enabledPlugins": "Empty object stub is required for per-machine enabledPlugins overrides in .claude/settings.local.json to be honored. Per upstream issue anthropics/claude-code#27247, settings.local.json's enabledPlugins is silently ignored unless the key also exists in this tracked file. Project-shared plugin policy is empty by design — each developer chooses their own plugins via settings.local.json.",
+  "enabledPlugins": {},
+
   "permissions": {
     "allow": [
       "Bash(npm test:*)",

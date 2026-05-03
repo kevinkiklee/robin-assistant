@@ -1,0 +1,10 @@
+{
+  "$comment": "Plugins/skills allowed in robin-assistant Claude Code sessions. The check-plugin-prefix drift detector flags anything else. Update when intentionally adding a plugin. Tied to the Phase 1a prune in .claude/settings.local.json.",
+  "version": 1,
+  "whitelist": [
+    "superpowers",
+    "gemini-nano-banana",
+    "chrome-devtools",
+    "context7"
+  ]
+}
