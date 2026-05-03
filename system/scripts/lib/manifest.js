@@ -23,7 +23,7 @@ export function scaffoldManifestPath(workspaceDir, packageRoot) {
 }
 
 // Read the manifest. Returns null if missing or malformed; auto-fills
-// missing v2 fields (agentsmd, userDataJobs) so cycle-2c can layer in.
+// missing v2 fields (claudemd, userDataJobs) so cycle-2c can layer in.
 export function loadManifest(workspaceDir) {
   const p = manifestPath(workspaceDir);
   if (!existsSync(p)) return null;
@@ -39,7 +39,7 @@ export function loadManifest(workspaceDir) {
   if (!Array.isArray(data.mcpServers.expected)) data.mcpServers.expected = [];
   if (!Array.isArray(data.mcpServers.writeCapable)) data.mcpServers.writeCapable = [];
   // v2 fields added by cycle-2c. Default empty for v1.
-  if (!data.agentsmd) data.agentsmd = { hardRulesHash: '', lastSnapshot: '' };
+  if (!data.claudemd) data.claudemd = { hardRulesHash: '', lastSnapshot: '' };
   if (!data.userDataJobs) data.userDataJobs = { knownFiles: [] };
   return data;
 }

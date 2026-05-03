@@ -46,7 +46,7 @@ test('loadManifest: backfills missing v2 fields (cycle-2c forward-compat)', () =
     writeJson(join(w, 'user-data/runtime/security/manifest.json'), { version: 1, hooks: {}, mcpServers: { expected: [] } });
     const m = loadManifest(w);
     assert.equal(m.version, 1);
-    assert.deepEqual(m.agentsmd, { hardRulesHash: '', lastSnapshot: '' });
+    assert.deepEqual(m.claudemd, { hardRulesHash: '', lastSnapshot: '' });
     assert.deepEqual(m.userDataJobs, { knownFiles: [] });
   } finally {
     clean(w);

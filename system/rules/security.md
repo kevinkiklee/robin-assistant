@@ -269,14 +269,14 @@ Log is audit-only — write proceeds. Dedup window 1h on `target+contentHash`. S
 
 ### CLAUDE.md Hard Rules integrity (G-01)
 
-Manifest schema v2 adds `agentsmd.hardRulesHash` (FNV-1a-64 of the normalized `## Hard Rules` section) and `agentsmd.lastSnapshot` (date string). `check-manifest.js` extracts the section from current CLAUDE.md, normalizes (strips trailing whitespace per line; collapses 3+ blank lines; trims), hashes, and compares.
+Manifest schema v2 adds `claudemd.hardRulesHash` (FNV-1a-64 of the normalized `## Hard Rules` section) and `claudemd.lastSnapshot` (date string). `check-manifest.js` extracts the section from current CLAUDE.md, normalizes (strips trailing whitespace per line; collapses 3+ blank lines; trims), hashes, and compares.
 
 - Match → no drift.
-- Mismatch → severe drift (`agentsmd-hard-rules-drift`).
-- Section missing → severe drift (`agentsmd-hard-rules-missing`).
+- Mismatch → severe drift (`claudemd-hard-rules-drift`).
+- Section missing → severe drift (`claudemd-hard-rules-missing`).
 - Empty `hardRulesHash` (first-deploy baseline missing) → info entry; daily briefing prompts `manifest-snapshot.js` run.
 
-When Kevin intentionally edits Hard Rules, run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json` and copy the new `agentsmd.hardRulesHash` into the live manifest.
+When Kevin intentionally edits Hard Rules, run `node system/scripts/diagnostics/manifest-snapshot.js > /tmp/snap.json` and copy the new `claudemd.hardRulesHash` into the live manifest.
 
 ### user-data/runtime/jobs override drift (G-03)
 
@@ -302,7 +302,7 @@ Dream's TTL phase (`processPatternTTL`):
 
 The cycle-2c one-shot migration has already run on existing workspaces:
 1. Stamped existing patterns with `last_fired: <today>` + `fired_count: 0` to prevent immediate auto-archive.
-2. Bumped `user-data/runtime/security/manifest.json` from v1 to v2 (adds empty `agentsmd` + `userDataJobs` fields).
+2. Bumped `user-data/runtime/security/manifest.json` from v1 to v2 (adds empty `claudemd` + `userDataJobs` fields).
 
 (The script itself has been retired since it is no longer needed.)
 
