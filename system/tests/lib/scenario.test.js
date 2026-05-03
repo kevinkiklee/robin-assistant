@@ -1,5 +1,5 @@
 import { describe, it } from 'node:test';
-import { runScenario } from '../scenario.js';
+import { runScenario } from './scenario.js';
 
 describe('scenario: self-test', () => {
   it('throws when fixture does not exist', async () => {

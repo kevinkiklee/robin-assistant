@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync } from 'node:fs';
-import { captureTree, compareTrees, writeTreeAtomic } from '../snapshot.js';
+import { captureTree, compareTrees, writeTreeAtomic } from './snapshot.js';
 
 describe('snapshot', () => {
   let root;

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { now, today, nowIso, installClock, uninstallClock } from '../clock.js';
+import { now, today, nowIso, installClock, uninstallClock } from './clock.js';
 
 describe('clock', () => {
   afterEach(() => { uninstallClock(); delete process.env.ROBIN_CLOCK; });

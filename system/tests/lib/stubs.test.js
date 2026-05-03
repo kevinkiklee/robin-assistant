@@ -1,7 +1,7 @@
-// system/tests/lib/__tests__/stubs.test.js
+// system/tests/lib/stubs.test.js
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installStubs, uninstallStubs, getLedger, hasBlockEvents } from '../stubs.js';
+import { installStubs, uninstallStubs, getLedger, hasBlockEvents } from './stubs.js';
 
 describe('stubs', () => {
   afterEach(() => uninstallStubs());

@@ -4,10 +4,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { seedFixture, makeTempdir, cleanupTempdir } from '../fixtures.js';
+import { seedFixture, makeTempdir, cleanupTempdir } from './fixtures.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
+const REPO_ROOT = join(__dirname, '..', '..', '..');
 
 describe('fixtures', () => {
   let tmp;

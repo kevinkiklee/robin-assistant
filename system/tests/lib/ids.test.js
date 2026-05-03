@@ -1,7 +1,7 @@
-// system/tests/lib/__tests__/ids.test.js
+// system/tests/lib/ids.test.js
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installRandom, uninstallRandom } from '../ids.js';
+import { installRandom, uninstallRandom } from './ids.js';
 
 describe('ids', () => {
   afterEach(() => uninstallRandom());
