@@ -22,8 +22,11 @@ import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
-const INBOX = join(REPO_ROOT, 'user-data/memory/streams/inbox.md');
-const MIGRATION_LOG = join(REPO_ROOT, 'user-data/runtime/state/migrated-auto-memory-log.json');
+// ROBIN_WORKSPACE overrides the workspace root so the drain targets a test
+// tempdir rather than the live user-data/ (used by the e2e harness).
+const WORKSPACE_ROOT = process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
+const INBOX = join(WORKSPACE_ROOT, 'user-data/memory/streams/inbox.md');
+const MIGRATION_LOG = join(WORKSPACE_ROOT, 'user-data/runtime/state/migrated-auto-memory-log.json');
 const LOG_CAP = 500;
 
 function workspaceSlug() {
@@ -36,7 +39,8 @@ function workspaceSlug() {
 const HOST_DIRS = [
   {
     host: 'claude-code',
-    dir: join(homedir(), '.claude', 'projects', workspaceSlug(), 'memory'),
+    dir: process.env.ROBIN_AUTO_MEMORY_DIR
+      ?? join(homedir(), '.claude', 'projects', workspaceSlug(), 'memory'),
   },
 ];
 

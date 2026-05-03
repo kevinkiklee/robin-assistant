@@ -16,6 +16,8 @@ const SAFE_ENV_KEYS = [
   'ROBIN_AGENT_COMMAND',
   'ROBIN_BIN',
   'ROBIN_NO_NOTIFY',
+  'ROBIN_AUTO_MEMORY_DIR',
+  'ROBIN_DRAIN_SYNC',
   // Locale is needed for some CLIs (e.g., date formatting in claude).
   'LC_ALL',
   'LC_CTYPE',

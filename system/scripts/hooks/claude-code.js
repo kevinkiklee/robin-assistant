@@ -26,7 +26,7 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync, appendFileSync } from 'node:fs';
 import { realpathSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -62,6 +62,7 @@ function parseArgs(argv) {
 }
 
 function autoMemoryDir() {
+  if (process.env.ROBIN_AUTO_MEMORY_DIR) return process.env.ROBIN_AUTO_MEMORY_DIR;
   const slug = REPO_ROOT.replace(/\//g, '-');
   return join(homedir(), '.claude', 'projects', slug, 'memory');
 }
@@ -280,9 +281,22 @@ async function onStop(args, stdinData) {
   // Cycle-2a: spawn with explicit safe env so subprocess never inherits
   // secrets even if some future code path leaks them back into process.env.
   const { safeEnv } = await import('../lib/safe-env.js');
+  const drainEnv = safeEnv({ ROBIN_WORKSPACE: ws });
+
+  // ROBIN_DRAIN_SYNC=1: run the drain synchronously (used by the e2e test
+  // harness so the tree snapshot is taken after the drain completes).
+  if (process.env.ROBIN_DRAIN_SYNC === '1') {
+    spawnSync('node', drainArgs, {
+      cwd: ws,
+      env: drainEnv,
+      stdio: args.debug ? 'inherit' : 'ignore',
+    });
+    return { exitCode: 0 };
+  }
+
   const child = spawn('node', drainArgs, {
     cwd: ws,
-    env: safeEnv({ ROBIN_WORKSPACE: ws }),
+    env: drainEnv,
     detached: true,
     stdio: args.debug ? 'inherit' : 'ignore',
   });
