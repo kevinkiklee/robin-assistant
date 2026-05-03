@@ -146,6 +146,7 @@ function lastAssistantTurnFromTranscript(transcriptPath) {
   }
   let rounds = 0;
   let reads = 0;
+  let finalOutputTokens = 0;
   let foundFinal = false;
   for (let i = records.length - 1; i >= 0; i--) {
     const r = records[i];
@@ -156,6 +157,9 @@ function lastAssistantTurnFromTranscript(transcriptPath) {
     const toolUses = blocks.filter((b) => b?.type === 'tool_use');
     if (!foundFinal && toolUses.length === 0) {
       foundFinal = true;
+      // Capture output_tokens from the final-text message's usage.
+      const usage = r.message?.usage ?? r.usage;
+      finalOutputTokens = usage?.output_tokens ?? 0;
       continue;
     }
     if (foundFinal && toolUses.length === 0) break; // previous turn's final
@@ -164,7 +168,26 @@ function lastAssistantTurnFromTranscript(transcriptPath) {
       reads += toolUses.filter((b) => b.name === 'Read').length;
     }
   }
-  return foundFinal ? { rounds, reads } : null;
+  return foundFinal ? { rounds, reads, finalOutputTokens } : null;
+}
+
+const VERBOSE_OUTPUT_THRESHOLD = 800;
+
+// Spec §3.5: log when the final-text reply exceeds a soft token threshold
+// AND the turn had no tool_use rounds (pure narrative). Trend visibility,
+// not enforcement.
+function appendVerboseOutputLog(ws, event, turn) {
+  if (!turn) return;
+  if (turn.rounds > 0) return; // tool-use turns can legitimately be long
+  if (turn.finalOutputTokens <= VERBOSE_OUTPUT_THRESHOLD) return;
+  const file = join(ws, 'user-data/runtime/state/telemetry/verbose-output.log');
+  mkdirSync(dirname(file), { recursive: true });
+  const line = [
+    new Date().toISOString(),
+    event.session_id ?? 'unknown',
+    turn.finalOutputTokens,
+  ].join('\t');
+  appendFileSync(file, line + '\n');
 }
 
 function recallFiredInTranscript(transcriptPath) {
@@ -224,6 +247,14 @@ async function onStop(args) {
     appendTurnStats(ws, event);
   } catch (err) {
     process.stderr.write(`[claude-code-hook] appendTurnStats failed: ${err.message}\n`);
+  }
+
+  // Spec §3.5 — verbose output trend log. Best-effort; non-fatal.
+  try {
+    const turn = lastAssistantTurnFromTranscript(event.transcript_path);
+    appendVerboseOutputLog(ws, event, turn);
+  } catch (err) {
+    process.stderr.write(`[claude-code-hook] appendVerboseOutputLog failed: ${err.message}\n`);
   }
 
   if (!args.drain) {
