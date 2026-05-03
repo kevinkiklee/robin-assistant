@@ -335,6 +335,8 @@ If `git pull` reports a conflict on any other tracked file, run `git checkout --
 | `npm run lint-memory` | Check orphans, stale INDEX entries, oversized sub-trees, staleness, redundancy, ambiguous aliases, candidate entities, conversational tics |
 | `npm run densify-wiki -- --dry-run` | Audit cross-linking gaps across `user-data/memory/` and write a report to `user-data/runtime/state/densify-wiki/<date>.{md,json}`. **Always run dry-run first**, review the report, then `npm run densify-wiki -- --apply` to commit the changes (auto-backups first; reversible via `npm run restore`) |
 | `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
+| `npm run measure-prefix-bloat -- <session.jsonl>` | Measure plugin/skill prefix bloat from a Claude Code session JSONL. `--first-turn` for clean session-start signal, `--usage-only`/`--reminder-only` to narrow output |
+| `npm run check-plugin-prefix -- <session.jsonl>` | Detect plugins/MCPs not on `system/scripts/diagnostics/lib/plugin-whitelist.json`. Useful after plugin auto-updates |
 | `npm run prune-preview` | Preview what the 12-month archive prune would move |
 | `npm run prune-execute` | Run the archive prune (auto-backups first) |
 | `robin run <name>` | Manually invoke a job. `--force` skips gating, `--dry-run` prints the plan |
