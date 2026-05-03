@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — E2E Test Harness
+## 5.2.0 — 2026-05-03 — E2E Test Harness
 
 Subprocess + in-process e2e test harness for the CLI package. Locks down the filesystem-state contract under `user-data/` so the capture pipeline, hooks layer, memory ops, and jobs runner can be refactored freely. 9 day-one scenarios across hooks, memory, jobs, and install. Spec at `docs/superpowers/specs/2026-05-03-e2e-test-harness-design.md`; plan at `docs/superpowers/plans/2026-05-03-e2e-test-harness.md`.
 
