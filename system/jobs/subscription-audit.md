@@ -1,5 +1,7 @@
 ---
 name: subscription-audit
+dispatch: subagent
+model: opus
 triggers: ["what am I paying for", "subscription audit"]
 description: Audit recurring charges and subscriptions; surface candidates to cancel or renegotiate.
 runtime: "agent"
@@ -48,3 +50,14 @@ Read `user-data/memory/knowledge/finance/subscriptions.md` for previously tracke
 ## After audit
 
 Suggest cancellations. Update `user-data/memory/knowledge/finance/subscriptions.md` with confirmed recurring charges.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+active_count: int
+new_subscriptions: [{vendor, amount, started}]
+canceled: [{vendor, amount, last_seen}]
+suspicious: [{vendor, amount, why}]
+total_monthly: number
+total_annual: number
+```

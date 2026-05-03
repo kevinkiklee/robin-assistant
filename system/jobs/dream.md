@@ -1,5 +1,7 @@
 ---
 name: dream
+dispatch: subagent
+model: opus
 triggers: ["dream", "memory check", "daily maintenance"]
 description: Daily memory routing, fact promotion, pattern review, and index maintenance.
 runtime: agent
@@ -194,3 +196,14 @@ Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive
 - Lock held by another runner → exit 0 cleanly (the runner already records "skipped:locked" telemetry).
 - Error mid-phase → exit non-zero with the error line as the last stderr line; the runner categorizes and surfaces.
 - If `user-data/runtime/state/dream-state.md` is corrupted → recreate baseline, log to runner.log, exit 0.
+
+## Return schema (when dispatched as subagent)
+
+When dispatched via the Agent tool with `subagent_type: general-purpose` per CLAUDE.md, return:
+
+```yaml
+routed_count: int           # items moved from inbox to topic files
+notable: [string]           # facts/decisions worth surfacing back to parent
+errors: [string]            # routing failures or pre-filter rejections
+tier1_touched: [string]     # paths under user-data/memory modified in Tier 1
+```

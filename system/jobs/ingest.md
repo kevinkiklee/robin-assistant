@@ -1,5 +1,7 @@
 ---
 name: ingest
+dispatch: subagent
+model: opus
 triggers: ["ingest this", "ingest", "process this document", "add this to the wiki"]
 description: Process a source document into the knowledge base — extract facts, ripple updates across knowledge files, log cross-references, and commit.
 runtime: "agent"
@@ -152,3 +154,12 @@ When user says "ingest all of these" or provides multiple sources:
 ## Boundary rule
 
 Ingest can read and write any file under `user-data/memory/` and `user-data/sources/`. It can move files from `user-data/artifacts/input/` to `user-data/sources/`. It follows all lock protocols from `system/jobs/multi-session-coordination.md` for pillar and mixed-use files.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+sources: [{path, kind, items}]
+written: [{path, kind, summary}]
+quarantined: [{source, reason}]
+errors: [string]
+```

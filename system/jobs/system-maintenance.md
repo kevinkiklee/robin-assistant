@@ -1,5 +1,7 @@
 ---
 name: system-maintenance
+dispatch: subagent
+model: opus
 triggers: ["clean up the workspace", "system maintenance"]
 description: Weekly interactive review covering items that need user input; complements Dream's automated housekeeping.
 runtime: "agent"
@@ -79,3 +81,12 @@ Summary report with sections: Tasks, Decisions, Goals, Inbox, Patterns, Predicti
 ## After
 
 Log completion date in `user-data/memory/streams/journal.md` so next maintenance knows the baseline.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+checks_run: [string]
+issues: [{kind, path, severity, fix_suggested}]
+auto_fixed: [{kind, path, what}]
+manual_required: [{kind, path, what}]
+```

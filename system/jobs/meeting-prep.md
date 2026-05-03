@@ -1,5 +1,7 @@
 ---
 name: meeting-prep
+dispatch: inline
+model: opus
 triggers: ["prep for my meeting", "meeting prep"]
 description: Prepare for an upcoming meeting by gathering context, attendees, prior history, and likely talking points.
 runtime: "agent"

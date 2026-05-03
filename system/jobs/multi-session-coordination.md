@@ -1,5 +1,7 @@
 ---
 name: multi-session-coordination
+dispatch: inline
+model: opus
 triggers: []
 description: Detects concurrent Claude Code sessions and coordinates handoff via file-based registration and lock acquisition.
 runtime: "agent"

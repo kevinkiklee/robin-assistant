@@ -1,5 +1,7 @@
 ---
 name: deep-ripple
+dispatch: inline
+model: opus
 triggers: ["deep ripple", "find missing links", "expand the wiki graph"]
 description: Agent-driven semantic pass that proposes links the mechanical linker missed (paraphrases, role references, indirect mentions).
 runtime: "agent"

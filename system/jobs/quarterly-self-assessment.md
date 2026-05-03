@@ -1,5 +1,7 @@
 ---
 name: quarterly-self-assessment
+dispatch: inline
+model: opus
 triggers: ["how have you been doing", "quarterly review"]
 description: Quarterly review of self-improvement effectiveness, calibration accuracy, and pattern impact.
 runtime: "agent"

@@ -1,5 +1,7 @@
 ---
 name: outcome-check
+dispatch: inline
+model: opus
 description: Weekly review of open predictions whose check-by date has passed. Proposes resolution; user confirms in system-maintenance.
 runtime: agent
 schedule: "0 10 * * 0"

@@ -1,5 +1,7 @@
 ---
 name: weekly-review
+dispatch: inline
+model: opus
 triggers: ["weekly review"]
 description: End-of-week recap covering accomplishments, missed items, and the upcoming week's priorities.
 runtime: "agent"

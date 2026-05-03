@@ -2,6 +2,38 @@
 
 ## Unreleased — Cost & Latency Optimization
 
+### Phase 4 — Dream subagent migration (deferred pending soak)
+
+Per spec §5.6 phase 4c, the dream cutover from inline to subagent dispatch requires a 7-day parallel-run shadow soak (subagent dream live, inline dream as shadow, diffed daily on `routed_count` and `notable`). This soak window cannot be compressed into a single autonomous run; it requires real elapsed time. Phase 4 is left in a "ready, not yet enabled" state:
+
+- `dream`'s frontmatter declares `dispatch: subagent` (Phase 2)
+- The `optimize.subagent_dispatch` feature flag is `"off"` by default (Phase 2)
+- Return schema is defined (Phase 3)
+- The shadow procedure is documented in spec §5.5.1
+
+Cutover process when ready: flip `optimize.subagent_dispatch` to `"all-side-quest"` in `user-data/runtime/config/robin.config.json`, run the 7-day shadow soak with manual diffing of dream outputs, and only retire the inline shadow when 7 consecutive days show no meaningful diff.
+
+### Phase 5 — Cache-TTL audit (no-op)
+
+Per spec §5.6 phase 5 pre-step: verified that Claude Code does not expose a user-facing TTL configuration. Issue [anthropics/claude-code#32671](https://github.com/anthropics/claude-code/issues/32671) tracks the missing knob. Phase 5 closed as no-op; the plugin/MCP prune from Phase 1a indirectly reduces what gets written into the 1h cache. See `docs/superpowers/specs/baselines/2026-05-03-phase-5-cache-ttl-finding.md`.
+
+### Phase 3 — Per-protocol return-schema contracts
+
+Documents the structured-return contract between a subagent-dispatched protocol and the parent agent (per spec §4.5). Schemas are documentation, not runtime-enforced — the parent reads them when interpreting the subagent's reply. Schemas added to: dream, lint, todo-extraction, email-triage, subscription-audit, receipt-tracking, prune, ingest, save-conversation, system-maintenance.
+
+### Phase 2 — Subagent dispatch infrastructure
+
+Adds per-protocol dispatch + model frontmatter, parser/validator, CLAUDE.md amendment describing the dispatch flow, and a `optimize.subagent_dispatch` feature flag in `robin.config.json` (default off — flip to opt in). Pre-flight verification confirmed subagents inherit `CLAUDE.md` auto-discovery and project hooks.
+
+- **`system/scripts/lib/protocol-frontmatter.js`** — parser + validator (12 tests).
+- **22 protocols updated** with `dispatch` + `model` frontmatter:
+  - subagent + sonnet: `lint`, `todo-extraction`
+  - subagent + opus: `dream`, `subscription-audit`, `receipt-tracking`, `prune`, `ingest`, `save-conversation`, `system-maintenance`, `email-triage`
+  - inline + opus: `daily-briefing`, `weekly-review`, `monthly-financial`, `quarterly-self-assessment`, `meeting-prep`, plus other unspec'd protocols defaulted to inline+opus (status quo)
+- **`system/migrations/0026-add-optimize-config.js`** — backfills `optimize` block on existing user configs (6 tests).
+- **`system/scaffold/runtime/config/robin.config.json`** — adds `optimize.subagent_dispatch: "off"` default.
+- **CLAUDE.md** — Protocols section describes dispatch flow, feature flag, and per-invocation override pattern.
+
 Cost and latency optimization rollout per `docs/superpowers/specs/2026-05-02-robin-cost-and-latency-optimization-design.md`.
 
 ### Phase 1a — Plugin/MCP prune
