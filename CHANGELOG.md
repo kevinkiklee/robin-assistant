@@ -2,6 +2,14 @@
 
 ## Unreleased — Cost & Latency Optimization
 
+### Phase 6 — Output-verbosity polish (Stop-hook trend log)
+
+- **Stop hook** now logs to `user-data/runtime/state/telemetry/verbose-output.log` when the just-ended assistant turn meets BOTH conditions:
+  - had no `tool_use` rounds (pure narrative reply)
+  - the final-text reply's `output_tokens` exceeded `800`
+- Trend visibility, not enforcement (per spec §3.5). Inspect the log periodically; long-narrative replies that carry no tool use are the highest-value targets for tightening response style.
+- 3 tests covering: positive case logs the line; tool-use turn is exempt; below-threshold output is exempt.
+
 ### Phase 4a — Read-only protocols → subagent + Sonnet (enabled for Kevin's instance)
 
 - `optimize.subagent_dispatch` flipped to `"read-only-protocols"` in Kevin's `user-data/runtime/config/robin.config.json`. **Lint and todo-extraction now dispatch as Sonnet subagents** when invoked.

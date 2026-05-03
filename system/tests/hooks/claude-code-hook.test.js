@@ -401,3 +401,87 @@ description: Session Handoff
   const hot = readFileSync(join(ws, 'user-data/memory/hot.md'), 'utf8');
   assert.match(hot, /## Session — claude-code-20260430-2055/);
 });
+
+test('Stop hook logs verbose-output when final-text reply exceeds threshold and turn had no tool use', async () => {
+  const ws = makeWorkspaceWithEntities([]);
+  const txDir = join(ws, 'transcript');
+  mkdirSync(txDir, { recursive: true });
+  const tx = join(txDir, 'session.jsonl');
+  // Long-output, no-tool-use turn: should log.
+  writeFileSync(tx, [
+    JSON.stringify({ role: 'user', content: 'tell me about everything' }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'long...' }], usage: { output_tokens: 1500 } },
+    }),
+  ].join('\n'));
+
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: JSON.stringify({ session_id: 'verbose-test', transcript_path: tx }), encoding: 'utf8' });
+
+  const logPath = join(ws, 'user-data/runtime/state/telemetry/verbose-output.log');
+  assert.ok(existsSync(logPath), 'verbose-output.log should exist');
+  const log = readFileSync(logPath, 'utf8').trim();
+  const cols = log.split('\t');
+  assert.equal(cols.length, 3);
+  assert.equal(cols[1], 'verbose-test');
+  assert.equal(cols[2], '1500');
+});
+
+test('Stop hook does NOT log verbose-output when turn had tool use (legitimate long output)', async () => {
+  const ws = makeWorkspaceWithEntities([]);
+  const txDir = join(ws, 'transcript');
+  mkdirSync(txDir, { recursive: true });
+  const tx = join(txDir, 'session.jsonl');
+  // Tool-use turn → exempt regardless of output length.
+  writeFileSync(tx, [
+    JSON.stringify({ role: 'user', content: 'do x' }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] },
+    }),
+    JSON.stringify({ role: 'user', content: '[tool_result]' }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'long...' }], usage: { output_tokens: 1500 } },
+    }),
+  ].join('\n'));
+
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: JSON.stringify({ session_id: 'tool-use-test', transcript_path: tx }), encoding: 'utf8' });
+
+  const logPath = join(ws, 'user-data/runtime/state/telemetry/verbose-output.log');
+  assert.equal(existsSync(logPath), false, 'verbose-output.log should NOT be written when turn had tool use');
+});
+
+test('Stop hook does NOT log verbose-output when output_tokens are below threshold', async () => {
+  const ws = makeWorkspaceWithEntities([]);
+  const txDir = join(ws, 'transcript');
+  mkdirSync(txDir, { recursive: true });
+  const tx = join(txDir, 'session.jsonl');
+  writeFileSync(tx, [
+    JSON.stringify({ role: 'user', content: 'short' }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { output_tokens: 100 } },
+    }),
+  ].join('\n'));
+
+  execFileSync('node', [
+    join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'),
+    '--on-stop',
+    '--no-drain',
+    '--workspace', ws,
+  ], { input: JSON.stringify({ session_id: 'short-test', transcript_path: tx }), encoding: 'utf8' });
+
+  const logPath = join(ws, 'user-data/runtime/state/telemetry/verbose-output.log');
+  assert.equal(existsSync(logPath), false, 'verbose-output.log should NOT be written for short outputs');
+});
