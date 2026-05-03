@@ -668,7 +668,17 @@ if (isMain) {
   const args = parseArgs(process.argv);
   const stdinRaw = await readStdinSubprocess();
   let parsed = null;
-  try { parsed = stdinRaw ? JSON.parse(stdinRaw) : null; } catch { parsed = null; }
+  let parseErr = null;
+  try { parsed = stdinRaw ? JSON.parse(stdinRaw) : null; } catch (err) { parseErr = err; }
+  if (parseErr) {
+    // Fail-closed for malformed stdin. The pre-refactor hook caught the
+    // JSON.parse error inside the per-mode try/catch and emitted this
+    // exact message; the post-refactor shell guard owns the parse, so it
+    // owns the fail-closed surface too. Layer label is generic
+    // "hook-internal-error" — covers all modes uniformly.
+    process.stderr.write(`POLICY_REFUSED [bash:hook-internal-error]: ${parseErr?.message || String(parseErr)}\n`);
+    process.exit(2);
+  }
   runHook(args.mode, { stdin: parsed, workspace: args.workspace, debug: args.debug })
     .then(({ exitCode }) => process.exit(exitCode))
     .catch((err) => {

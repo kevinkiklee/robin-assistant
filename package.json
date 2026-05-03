@@ -7,7 +7,9 @@
     "robin": "bin/robin.js"
   },
   "scripts": {
-    "test": "node --test 'system/tests/**/*.test.js'",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test --test-name-pattern='^(?!e2e:)' 'system/tests/**/*.test.js'",
+    "test:e2e": "node --test 'system/tests/e2e/{hooks,memory,jobs}/**/*.test.js'",
     "backup": "node system/scripts/cli/backup.js",
     "restore": "node system/scripts/cli/restore.js",
     "reset": "node system/scripts/cli/reset.js",
