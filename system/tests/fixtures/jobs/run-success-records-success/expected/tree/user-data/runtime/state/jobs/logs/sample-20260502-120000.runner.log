@@ -1,0 +1,5 @@
+[+<N>ms] starting "sample" runtime=node
+[+<N>ms] lock acquired
+[+<N>ms] catch_up decision: no schedule
+[+<N>ms] subprocess exited code=0 signal=— duration=<N>ms
+[+<N>ms] status=ok
