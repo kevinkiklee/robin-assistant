@@ -77,7 +77,58 @@ Assumption to verify against Claude Code documentation pre-merge: `onUserPromptS
 
 ### Telemetry
 
-Every fire (injection, block, hook error) appends one JSONL line to `state/telemetry/protocol-override-enforcement.log`. Existing telemetry files (`policy-refusals.log`, `verbose-output.log`) don't auto-rotate; this one matches the pattern. Dream Phase 4 housekeeping prunes if growth becomes a problem (defer until measured).
+Every fire appends one JSONL line to `<workspace>/user-data/runtime/state/telemetry/protocol-override-enforcement.log` (abbreviated `state/telemetry/...` elsewhere in this spec). Existing telemetry files (`policy-refusals.log`, `verbose-output.log`) don't auto-rotate; this one matches the pattern. Dream Phase 4 housekeeping prunes if growth becomes a problem (defer until measured).
+
+**Event schema (JSONL).** Every line has these common fields plus event-specific fields:
+
+```jsonc
+// Common
+{
+  "ts": "2026-05-03T21:00:00.000Z",   // ISO 8601 UTC
+  "session": "abc123",                 // event.session_id
+  "event": "injected" | "blocked" | "hook_error",
+  "protocol": "daily-briefing"         // protocol name; null for hook_error not tied to a protocol
+}
+
+// "injected"
+{ ..., "event": "injected", "protocol": "daily-briefing", "phrase": "morning briefing" }
+
+// "blocked"
+{ ..., "event": "blocked", "protocol": "daily-briefing" }
+
+// "hook_error"
+{ ..., "event": "hook_error", "protocol": null, "mode": "onUserPromptSubmit", "error_class": "state_write_failed", "message": "EACCES: ..." }
+```
+
+### Canonical injection text
+
+UserPromptSubmit emits ONE injection block per matched protocol with override. The block is wrapped in `<system-reminder>` tags so the host treats it with the appropriate prominence:
+
+```
+<system-reminder>
+Protocol invocation detected: "<name>" (matched on "<phrase>").
+A user-data override exists at <workspace>/user-data/runtime/jobs/<name>.md.
+Read this override BEFORE any other action on this protocol — it is
+authoritative; the system version is a strict subset.
+
+This reminder is enforced mechanically by the protocol-override hook.
+Reading system/jobs/<name>.md without first reading the override above
+will be blocked at PreToolUse. (Reference: corrections.md 2026-05-03,
+"Always use the user-data daily-briefing override".)
+</system-reminder>
+```
+
+Path placeholders are filled at injection time. If multiple protocols match in one prompt, multiple blocks are emitted (one per protocol).
+
+### Canonical refusal text
+
+PreToolUse block emits to stderr and exits 2:
+
+```
+POLICY_REFUSED [protocol-override:must-read-user-data]: <name> override not yet read; read <workspace>/user-data/runtime/jobs/<name>.md first
+```
+
+Format matches the existing `POLICY_REFUSED [<channel>:<rule>]: <why>` convention used by bash-policy refusals.
 
 ### Cost
 
@@ -108,7 +159,11 @@ The hook enforces a *stricter* rule (read user-data BEFORE system) than the unde
 ## Components (modified)
 
 - **`system/scripts/hooks/claude-code.js`** — extend `onUserPromptSubmit` (always-overwrite state; conditional inject) and `onPreToolUse` (Read enforcement). Preserves existing fail-mode contract.
-- **`system/jobs/dream.md`** — Phase 3 gains "Hook enforcement review" step (details below). Pre-merge gate: re-measure with `measure-tokens` to confirm the addition fits within the per-protocol cap recently tightened in commit `dc73a6c`. Fallback if over cap: split into separate `system/jobs/hook-enforcement-review.md` agent job (scheduled weekly), and Dream just calls into it.
+- **`system/jobs/dream.md`** — two changes:
+  - Phase 3 gains "Hook enforcement review" step (details under "Dream Phase 3 feedback" below).
+  - Phase 4 gains a state-file orphan cleanup step: prune any file in `<workspace>/user-data/runtime/state/protocol-overrides/` whose `session_id` doesn't appear in `runtime/state/sessions.md` AND whose mtime is >24h.
+
+  Pre-merge gate: re-measure with `measure-tokens` to confirm the additions fit within the per-protocol cap recently tightened in commit `dc73a6c`. Fallback if over cap: split the Phase 3 review into a separate `system/jobs/hook-enforcement-review.md` agent job (scheduled weekly); Phase 4 cleanup stays in dream.
 - **`system/jobs/weekly-review.md`** — gains "Hook enforcement summary" section (counts per protocol, this week vs last week).
 - **`system/jobs/{_robin-sync,audit,backup,migrate-auto-memory,outcome-check,watch-topics}.md`** — add `triggers: []` to frontmatter (opt-out from trigger lint; these are scheduled-only, not user-invoked).
 - **`CLAUDE.md`** — Operational Rules section gains a brief note documenting the hook so the model isn't surprised by a block: "Protocol invocation surfaces a hook reminder to read the user-data override first; ignoring it is mechanically blocked at PreToolUse."
@@ -217,6 +272,8 @@ These are observation appends only — Dream never auto-edits the hook, the trig
 - `protocol-override-cross-turn-clears.test.js` — turn 1 fires trigger, turn 2 does not → turn 2 Read of system file is allowed (verifies always-overwrite).
 - `protocol-override-fail-open.test.js` — corrupt state file → hook logs `severity=hook_error`, allows.
 - `protocol-override-state-write-failure.test.js` — state write fails → hook attempts delete; PreToolUse allows.
+- `protocol-override-user-only-protocol.test.js` — protocol exists only in user-data with declared triggers → trigger fires, no system file to block on, injection still emitted.
+- `protocol-override-trigger-overlap.test.js` — two protocols share an overlapping trigger phrase → both injection blocks emitted; both `triggers_fired` entries set; both blocks fire if model attempts respective system files.
 
 ### Unit tests
 
@@ -235,4 +292,4 @@ Before merging this change:
 
 ## Scope
 
-**M.** Touches: 1 hook file (extended), 3 new scripts, 6 protocol-file frontmatter additions, CLAUDE.md note, weekly-review section, dream Phase 3 + 4 additions, CI workflow step, package.json script, ~13 tests. No public-facing API change.
+**M.** Touches: 1 hook file (extended), 3 new scripts, 6 protocol-file frontmatter additions, CLAUDE.md note, weekly-review section, dream Phase 3 + Phase 4 additions, CI workflow step, package.json script, ~15 tests. No public-facing API change.
