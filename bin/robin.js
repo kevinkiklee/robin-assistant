@@ -34,6 +34,10 @@ env:
   ROBIN_NO_NOTIFY  disable native OS notifications
 `;
 
+// `env` is documented as part of main's contract for the e2e harness; sub-commands
+// still read `process.env` directly. The harness (system/tests/lib/scenario.js)
+// mutates and restores `process.env` around each main() call, so per-scenario
+// env overlays propagate without threading the param through every sub-command.
 async function main(argv = process.argv.slice(2), env = process.env) {
   const cmd = argv[0];
   const rest = argv.slice(1);
