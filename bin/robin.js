@@ -27,6 +27,7 @@ usage:
   robin watch tail [<id>]             [--n=10]
   robin watch run <id>                [--dry-run | --bootstrap]
   robin recall [--json] <term> [<term> ...]
+  robin regenerate-memory-index            [--check]
 
 env:
   ROBIN_WORKSPACE  override the workspace directory
@@ -85,6 +86,24 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     return { exitCode: 0 };
   }
 
+  if (cmd === 'regenerate-memory-index') {
+    const { writeMemoryIndex, checkMemoryIndex } = await import('../system/scripts/memory/regenerate-index.js');
+    const { resolveCliWorkspaceDir } = await import('../system/scripts/lib/workspace-root.js');
+    const ws = resolveCliWorkspaceDir();
+    const memoryDir = join(ws, 'user-data', 'memory');
+    if (rest.includes('--check')) {
+      if (!checkMemoryIndex(memoryDir)) {
+        process.stderr.write('memory/INDEX.md is out of date. Run regenerate-memory-index to fix.\n');
+        return { exitCode: 1 };
+      }
+      process.stdout.write('memory/INDEX.md is up to date.\n');
+      return { exitCode: 0 };
+    }
+    writeMemoryIndex(memoryDir);
+    process.stdout.write('memory/INDEX.md regenerated.\n');
+    return { exitCode: 0 };
+  }
+
   if (cmd === 'recall') {
     if (rest.length === 0) {
       process.stderr.write('Usage: robin recall [--json] <term> [<term> ...]\n');
@@ -117,6 +136,7 @@ export { main };
 // Subprocess shell guard — runs only when invoked directly, not when imported.
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 
 const isMain = process.argv[1]
   && (() => {
