@@ -34,58 +34,62 @@ env:
   ROBIN_NO_NOTIFY  disable native OS notifications
 `;
 
-async function main() {
-  const argv = process.argv.slice(2);
+async function main(argv = process.argv.slice(2), env = process.env) {
   const cmd = argv[0];
   const rest = argv.slice(1);
 
   if (!cmd || cmd === '-h' || cmd === '--help' || cmd === 'help') {
     process.stdout.write(HELP);
-    process.exit(0);
+    return { exitCode: 0 };
   }
 
   if (cmd === 'init') {
     const { cmdInit } = await import('../system/scripts/cli/init.js');
-    return cmdInit(rest);
+    await cmdInit(rest);
+    return { exitCode: 0 };
   }
   if (cmd === 'run') {
     const cli = await import('../system/scripts/cli/jobs.js');
-    return cli.cmdRun(rest);
+    await cli.cmdRun(rest);
+    return { exitCode: 0 };
   }
   if (cmd === 'job') {
     const cli = await import('../system/scripts/cli/jobs.js');
-    return cli.cmdJob(rest);
+    await cli.cmdJob(rest);
+    return { exitCode: 0 };
   }
   if (cmd === 'jobs') {
     const cli = await import('../system/scripts/cli/jobs.js');
-    return cli.dispatchJobs(rest);
+    await cli.dispatchJobs(rest);
+    return { exitCode: 0 };
   }
   if (cmd === 'update') {
     const { runPreflight } = await import('../system/scripts/lib/preflight.js');
     const r = await runPreflight();
     for (const f of r.findings) console.log(`${f.level}: ${f.message}`);
-    if (r.findings.some((f) => f.level === 'FATAL')) process.exit(1);
+    if (r.findings.some((f) => f.level === 'FATAL')) return { exitCode: 1 };
     if (r.findings.length === 0) console.log('Nothing to do.');
-    process.exit(0);
+    return { exitCode: 0 };
   }
   if (cmd === 'link') {
     const { cmdLink } = await import('../system/scripts/wiki-graph/lib/cli-link.js');
-    process.exit(await cmdLink(rest));
+    return { exitCode: await cmdLink(rest) };
   }
   if (cmd === 'watch') {
     const { dispatchWatch } = await import('../system/scripts/cli/watches.js');
-    return dispatchWatch(rest);
+    await dispatchWatch(rest);
+    return { exitCode: 0 };
   }
 
   if (cmd === 'recall') {
     if (rest.length === 0) {
       process.stderr.write('Usage: robin recall [--json] <term> [<term> ...]\n');
-      process.exit(1);
+      return { exitCode: 1 };
     }
     const wantsJson = rest[0] === '--json' && rest.shift();
     if (rest.length === 0) {
       process.stderr.write('Usage: robin recall [--json] <term> [<term> ...]\n');
-      process.exit(1);
+      return { exitCode: 1 };
     }
     const { recall, formatRecallHits } = await import('../system/scripts/memory/lib/recall.js');
     const { resolveCliWorkspaceDir } = await import('../system/scripts/lib/workspace-root.js');
@@ -97,14 +101,33 @@ async function main() {
       const formatted = formatRecallHits(result);
       console.log(formatted || 'No matches.');
     }
-    return;
+    return { exitCode: 0 };
   }
 
   process.stderr.write(`unknown command: ${cmd}\n${HELP}`);
-  process.exit(2);
+  return { exitCode: 2 };
 }
 
-main().catch((err) => {
-  process.stderr.write(`robin: ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+export { main };
+
+// Subprocess shell guard — runs only when invoked directly, not when imported.
+import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
+
+const isMain = process.argv[1]
+  && (() => {
+    try {
+      return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+    } catch {
+      return false;
+    }
+  })();
+
+if (isMain) {
+  main()
+    .then(({ exitCode }) => process.exit(exitCode))
+    .catch((err) => {
+      process.stderr.write(`robin: ${err.stack || err.message}\n`);
+      process.exit(1);
+    });
+}
