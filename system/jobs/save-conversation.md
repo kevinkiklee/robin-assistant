@@ -92,3 +92,13 @@ Conversation pages older than 90 days with no inbound links in LINKS.md are flag
 ## Boundary rule
 
 Save-conversation can write to `user-data/memory/knowledge/conversations/` and append to `user-data/memory/LINKS.md` and `user-data/memory/streams/log.md`. It triggers INDEX.md regeneration via script.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+captured_facts: int
+inbox_appended: bool
+session_handoff_updated: bool
+hot_md_updated: bool
+notable: [string]
+```

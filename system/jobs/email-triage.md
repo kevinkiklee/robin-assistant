@@ -49,3 +49,13 @@ Read `user-data/runtime/config/integrations.md` for email status.
 ## After triage
 
 Ask: "Want me to draft replies, add todos for any of these, or unsubscribe from anything?"
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+scanned_count: int
+urgent: [{from, subject, summary, suggested_action}]
+drafted: [{to, subject, body, in_reply_to}]
+needs_decision: [{from, subject, question, options}]
+archived_count: int
+```

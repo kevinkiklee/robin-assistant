@@ -44,3 +44,12 @@ Per-receipt or aggregated summary depending on the question.
 ## After
 
 If a recurring category audit, log results to the appropriate `user-data/memory/knowledge/finance/` subtopic file (e.g., `spending-analysis.md`). If a one-time lookup, no need to persist.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+scanned: int
+extracted: [{source, vendor, date, amount, currency, items_count}]
+unmatched: [{source, reason}]
+written_to: [string]
+```

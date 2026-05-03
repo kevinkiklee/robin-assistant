@@ -105,3 +105,12 @@ history queries open archived files individually.
 3. **Confirmed run.** `robin run prune --confirm` writes a pre-prune backup, then relocates content. Diff at `user-data/runtime/state/jobs/prune-<timestamp>.md`.
 4. **Verify** `user-data/memory/archive/INDEX.md` reflects the move.
 5. **Enable cron** via the user-data override, then `robin run _robin-sync`.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+candidates_examined: int
+pruned: [{path, reason, archived_to}]
+preserved: [{path, reason}]
+archive_index_updated: bool
+```

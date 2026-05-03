@@ -39,3 +39,10 @@ Confirm with user before adding, unless they said "just add them."
 ## After
 
 Add confirmed items to the relevant files.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+sources_scanned: int
+extracted: [{source, line, text, suggested_priority}]
+```

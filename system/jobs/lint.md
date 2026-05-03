@@ -132,3 +132,12 @@ Append lint results summary to `user-data/memory/streams/log.md`:
 ## Boundary rule
 
 Lint is read-only during the scan phase. It only writes when the user approves a fix. Lint can read any file under `user-data/memory/` and `user-data/memory/LINKS.md`.
+
+## Return schema (when dispatched as subagent)
+
+```yaml
+violations: [{file, rule, severity}]
+files_scanned: int
+warnings: int
+errors: int
+```
