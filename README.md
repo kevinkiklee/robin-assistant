@@ -73,88 +73,54 @@ Personal data has explicit defenses against prompt injection from sync sources a
 
 ### Passive capture
 
-Robin silently captures information from your conversations without you saying "remember this." It recognizes names and relationships, dates and deadlines, preferences, decisions with reasoning, corrections, commitments, predictions worth grading, and facts mentioned in passing. Each capture is tagged (`[fact]`, `[preference]`, `[decision]`, `[correction]`, `[task]`, `[journal]`, `[predict]`, `[action]`, `[watch:<id>]`) with an `origin=` attribution and written to an inbox. The nightly Dream cycle routes inbox entries to the right file. High-stakes captures (medical, financial, legal) are confirmed before storing.
+Tags facts, preferences, decisions, corrections, tasks, predictions, and watch deltas as you talk — no "remember this" needed. Writes to an inbox; nightly Dream routes to the right file. High-stakes captures (medical, financial, legal) are confirmed before storing.
 
 ### Structured memory
 
-Memory is organized into topic directories with per-file frontmatter (description, type, tags, aliases, cross-references, `last_verified`, `decay`). The layout:
+Topic directories with per-file frontmatter (description, type, tags, aliases, decay). Files split at 200 lines; per-sub-tree decay drives staleness alerts.
 
 | Path | Holds |
 |------|-------|
-| `INDEX.md` | Generated directory of every memory file — read at session start |
-| `ENTITIES.md` | Auto-generated entity index (name, aliases, path) for recall + linker. Hot cap 150 rows; overflow → `ENTITIES-extended.md` |
-| `hot.md` | Rolling window of last 3 session summaries for seamless continuation |
-| `LINKS.md` | Cross-reference graph between memory files |
-| `profile/` | Identity, personality, interests, goals, routines, people in your life (one page per person, `type: entity`) |
-| `knowledge/` | Reference facts — locations, medical, projects, restaurants, recipes, service providers |
-| `knowledge/sources/` | Source pages created by the Ingest command |
-| `knowledge/conversations/` | Summaries of substantive conversations |
-| `self-improvement/` | Corrections, patterns, preferences, calibration, predictions, communication style, domain confidence, action-trust, learning queue |
-| `watches/` | Per-watch pages and `log.md` for proactive topic following |
-| `tasks.md` | Active tasks grouped by category |
-| `decisions.md` | Append-only log of decisions and their reasoning |
-| `journal.md` | Dated reflections and daily notes |
-| `inbox.md` | Quick-capture items waiting to be routed by Dream |
-| `archive/` | Content older than 12 months, pruned automatically |
-
-Topic files split automatically when they exceed 200 lines. Per-sub-tree decay defaults (`profile/` slow=365d, `knowledge/` and `self-improvement/` medium=90d, `decisions.md`/`journal.md`/`inbox.md` immortal) drive staleness alerts.
+| `INDEX.md` / `ENTITIES.md` / `LINKS.md` | Generated indexes — read at session start for fast recall |
+| `hot.md` | Rolling window of recent session summaries |
+| `profile/` | Identity, personality, goals, routines, people |
+| `knowledge/` | Reference facts — locations, medical, projects, restaurants, providers |
+| `self-improvement/` | Corrections, patterns, preferences, calibration, predictions |
+| `watches/` | Per-topic pages for proactive following |
+| `tasks.md` / `decisions.md` / `journal.md` / `inbox.md` | Append-only logs |
+| `archive/` | Content older than 12 months |
 
 ### Wiki-graph (entity linking)
 
-Every page that defines an entity declares `aliases: [...]` in its frontmatter. The linker (`robin link <path>`) builds a registry from those declarations and converts the first occurrence of every alias in a target file into a wiki-link in a single pass — preserving original case, skipping frontmatter / fenced code / existing links / URLs, fail-soft on errors. It's wired into:
-
-- All sync writers (Calendar, Gmail, GitHub, Spotify, Lunch Money) — every newly written page gets linked before the runner exits.
-- Dream Phase 2 — runs `robin link` on every file the inbox router touched.
-- Ingest Step 5 — runs `robin link` on every rippled file.
-- A capture rule in CLAUDE.md — model must invoke the linker after any direct write to memory.
-- A backfill orchestrator (`backfill-entity-links.js`) for one-shot linking of the entire wiki, dry-run by default, `--apply` mode acquires a `wiki-backfill` lock and regenerates `LINKS.md` after.
-
-Lint catches structural issues: ambiguous aliases (same alias claimed by two entities), candidate entities (terms mentioned 3+ times without a page), trust:untrusted skip, alias-collision rejection.
+Pages declare `aliases:` in frontmatter. `robin link <path>` converts the first occurrence of every known alias into a wiki-link — preserving case, skipping frontmatter / code / URLs, fail-soft. Wired into every sync writer, Dream, Ingest, and a capture rule. Lint flags ambiguous aliases and concepts mentioned 3+ times without a dedicated page.
 
 ### Wiki operations
 
-**Ingest** processes source documents (files, URLs, inline text) into the knowledge base — extracts entities and facts, creates source pages, ripples updates across related files, runs the entity linker on every touched file, adds cross-references to the link graph, and commits the result for rollback.
+- **Ingest** — process source documents into the knowledge base; extracts facts, ripples updates, links entities, commits for rollback.
+- **Lint** — audit for contradictions, dead links, stale claims, orphans, missing pages, ambiguous aliases, conversational tics.
+- **Audit** — weekly LLM-pass over candidate file pairs; surfaces contradictions for review. Never auto-edits.
+- **Save conversation** — file conversation outcomes as a summary page.
+- **Deep-ripple** — agent protocol for ingestions whose ripple exceeds the mechanical pass.
 
-**Lint** audits memory health: contradictions across linked files, dead links, stale claims (per-sub-tree decay thresholds), orphan pages, missing pages (concepts mentioned 3+ times without a dedicated file), redundancy (exact-paragraph duplicates across files), ambiguous aliases, candidate entities, conversational-tic patterns in `session-handoff.md`, frontmatter gaps, size warnings, orphan `.tmp` files.
+### Self-improvement
 
-**Audit** (weekly LLM-pass, disabled by default) generates entity-graph candidate pairs via `LINKS.md`, runs an LLM pass with minimal context to surface contradictions and redundancies, and writes findings to `user-data/runtime/state/audit/<YYYY-MM-DD>.md` for review in system-maintenance. Never auto-edits.
+Robin tracks what it gets wrong and what works. Each lives in its own file under `self-improvement/`:
 
-**Save conversation** files the key outcomes of the current conversation as a lightweight summary page. Conversations older than 90 days with no inbound links are flagged for archival.
-
-**Deep-ripple** is an agent protocol for high-impact ingestions — when a single source touches many areas of the wiki and a mechanical ripple isn't enough.
-
-### Self-improvement framework
-
-Nine dimensions of self-improvement, each stored in its own file:
-
-- **Corrections** — what Robin got wrong and what to do instead. Append-only log.
-- **Patterns** — recurring mistakes promoted automatically from 3+ similar corrections. Each has recognition signals and counter-actions. 180-day TTL — retired when they stop firing.
-- **Preferences** — positive signals and explicit style feedback. 3+ similar signals promote to communication style rules.
-- **Communication style** — Robin's learned interaction model. Base style plus domain-specific overrides, built from preferences over time. Seeds with five named conversational tics on install.
-- **Domain confidence** — self-assessed competence per area of your life. New domains start at medium. Decays after 90 days of inactivity.
-- **Calibration** — prediction accuracy by confidence band, effectiveness scores for high-stakes recommendations, sycophancy tracking. *Derived rollup* — fed by `predictions.md`.
-- **Predictions** — open and resolved high-stakes claims tagged `[predict|<check-by>|<confidence>]`. Source of truth for calibration; revisited weekly by the outcome-check job.
-- **Action-trust** — earned-trust calibration per action class (mirrors predictions shape). 5+ successes / 0 corrections / 30 days proposes ASK → AUTO promotion; finalized after 24h surfaced-at; demotes on a single user reversal; AUTO decays after 90d idle.
-- **Learning queue** — questions Robin wants to ask you when a natural moment arises. One question max per session. Migration 0014 seeds 6 starter questions.
+- **Corrections** → promote to **patterns** after 3+ similar mistakes (180-day TTL).
+- **Preferences** → promote to **communication style** rules.
+- **Predictions** tagged `[predict|<check-by>|<confidence>]` feed **calibration** weekly via the outcome-check job.
+- **Action-trust** earns ASK→AUTO promotion from a clean 30-day track; demotes on any user reversal.
+- **Learning queue** surfaces one question per session at natural moments.
 
 ### Dream cycle
 
-Runs every night at 4 AM via the OS scheduler — no session needed. Phases:
-
-1. **Phase 0 — Auto-memory migration** — drains host-managed memory (e.g., Claude Code's auto-memory) into Robin's inbox.
-2. **Phase 1 — Scan** — reads inbox, tasks, journal, self-improvement files, hot cache, operation log.
-3. **Phase 2 — Memory management** — routes inbox entries to topic files, runs `robin link` on every routed file, routes `[watch:<id>]` items to `watches/log.md`, promotes durable facts from journal, prunes finished tasks, checks freshness of profile and knowledge files.
-4. **Phase 3 — Self-improvement processing** — promotes corrections to patterns, reviews pattern effectiveness (180-day TTL), processes session reflections, promotes preferences to communication style, updates domain confidence, maintains learning queue, runs action-trust calibration (step 12.5), surfaces telemetry from recall / hook-perf logs (step 11.5), updates calibration.
-5. **Phase 4 — Memory tree maintenance** — splits oversized files, cleans empty files, regenerates `INDEX.md`, regenerates `ENTITIES.md` (step 17.6), regenerates compact-summary in `policies.md` (step 17.5), caps log files (step 17.7), trims hot cache, rebuilds link graph, flags old conversations for archival.
-6. **Phase X — Pattern TTL** — 180-day pass over `pattern-firings.log` retires patterns that stopped firing.
-
-Unresolvable issues are escalated in a report: contradictions, ambiguous inbox items, time-sensitive items, ineffective patterns, calibration drift, tamper-detection findings.
+Runs nightly via the OS scheduler — no session needed. Routes the inbox, promotes corrections to patterns, regenerates indexes, retires patterns that stopped firing, and escalates unresolvable items (contradictions, calibration drift, tamper findings) in a morning report.
 
 ### Job system
 
-A cross-platform scheduler that runs jobs on your OS (launchd on macOS, cron on Linux, Task Scheduler on Windows), independent of AI sessions. Jobs are defined as markdown files with YAML frontmatter specifying runtime (agent or node), schedule, triggers, and timeout.
+Cross-platform scheduler (launchd / cron / Task Scheduler) running independently of AI sessions. Jobs are markdown files with YAML frontmatter (`runtime`, `schedule`, `triggers`, `timeout`). The runner handles atomic locks, active windows, catch-up for missed runs, and OS notifications. Drop a file in `user-data/runtime/jobs/` to add one.
 
-Shipped jobs span daily maintenance, financial review, productivity, and system health:
+Shipped jobs:
 
 | Job | Schedule | What it does |
 |-----|----------|--------------|
@@ -182,90 +148,67 @@ Shipped jobs span daily maintenance, financial review, productivity, and system 
 | Watch topics | Hourly (disabled) | Iterate active watches, fetch via WebSearch, dedupe vs per-watch fingerprints, redact, write deltas to inbox with `[watch:<id>]` tag |
 | Reconciler heartbeat | Every 6 hours | Pick up new/changed job definitions, update scheduler entries, sweep stale locks |
 
-Add a job by dropping a markdown file in `user-data/runtime/jobs/` — the reconciler picks it up within 6 hours.
-
-The runner handles atomic locks, active-window gating, catch-up for missed runs (laptop was closed), failure categorization, and native OS notifications on status transitions.
-
 ### Service integrations
 
-Robin can pull data from external services on a schedule so it has context about your life without you pasting things in:
+Pull data from external services on a schedule so Robin has context without you pasting it in. All ship disabled until you complete auth setup; per-provider walkthroughs in [`system/integrations/`](system/integrations/README.md).
 
-- **Google Calendar** — upcoming and recent events (every 30 min)
-- **Gmail** — inbox metadata: senders, subjects, labels (every 15 min, no message bodies)
-- **GitHub** — authored events, notifications, releases from starred repos (hourly)
-- **Spotify** — recently played, top tracks/artists, playlists (every 4 hours)
-- **Lunch Money** — financial transactions and category breakdowns (daily 1 AM)
+- **Google Calendar** — events (every 30 min)
+- **Gmail** — inbox metadata: senders, subjects, labels (every 15 min, no bodies)
+- **GitHub** — authored events, notifications, releases (hourly)
+- **Spotify** — recently played, top tracks, playlists (every 4 hours)
+- **Lunch Money** — transactions and category breakdowns (daily)
 
-Each integration is a standalone script with OAuth setup, bootstrap sync, and a job definition. All ship disabled — they only run after you complete auth setup. Per-provider walkthroughs (creating OAuth clients, choosing scopes, known gotchas like Spotify's `127.0.0.1` redirect requirement and GitHub fine-grained PAT limits on `/notifications`) live in [`system/integrations/`](system/integrations/README.md). Write CLIs are available for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`) with `--dry-run` support. Calendar and Gmail writes use your AI tool's native capabilities.
-
-The integration system is built on a shared library (`system/scripts/sync/lib/`) providing OAuth2 token refresh, secrets management, sync cursors, HTTP retry with exponential backoff, privacy redaction, and atomic markdown writes.
+Write CLIs (with `--dry-run`) for GitHub (`create-issue`, `comment`, `label`, `mark-read`) and Spotify (`queue`, `skip`, `playlist-add`). Calendar and Gmail writes use your AI tool's native capabilities. Shared library at `system/scripts/sync/lib/` handles OAuth refresh, secrets, retry with backoff, redaction, and atomic writes.
 
 ### Chat front-ends
 
-Talk to Robin from outside your terminal. The first front-end is a personal **Discord bot** (macOS, launchd-supervised) — `@`-mention or DM the bot in your private server and it spawns a Claude Code subprocess against your Robin workspace, replying inline with full session continuity per Discord thread / DM channel. Allowlisted to a single user + a single guild; the events log records metadata only (no prompt or reply text).
-
-A launchd watchdog monitors the bot (and vice-versa) for mutual self-heal recovery — if either process disappears unexpectedly, the other restarts it. The reply path runs through the outbound write policy (taint check, sensitive-shape scan, target allowlist) so messages can't exfiltrate secrets or echo untrusted content back to Discord.
-
-Setup walkthrough: [`system/integrations/discord-setup.md`](system/integrations/discord-setup.md).
+Talk to Robin outside your terminal. The first front-end is a personal **Discord bot** (macOS, launchd-supervised) — `@`-mention or DM and it spawns a Claude Code subprocess against your workspace with full session continuity per thread / DM. Allowlisted to a single user + guild; events log records metadata only. The reply path runs through the outbound write policy (taint check, sensitive-shape scan, target allowlist). Setup: [`system/integrations/discord-setup.md`](system/integrations/discord-setup.md).
 
 ### Privacy
 
-Personal data never leaves your machine unless you explicitly push it to a remote you control. Four layers enforce this:
+Personal data never leaves your machine unless you push it. Four layers:
 
-1. **`.gitignore`** excludes `user-data/` and `docs/` (`user-data/{artifacts,backup}/` are covered by `user-data/`).
-2. **Pre-commit hook** refuses any commit that stages files in those directories or removes `user-data/` from `.gitignore`.
-3. **Capture rules** block writes containing full government IDs, payment card numbers, passwords, API keys, or credentials. Cannot be overridden, even by your own custom rules.
-4. **Redaction module** automatically strips sensitive patterns (SSNs, SINs with Luhn validation, credit card numbers, API keys, URL credentials) from sync data before storage
+1. **`.gitignore`** excludes `user-data/` and `docs/`.
+2. **Pre-commit hook** refuses commits that stage files in those dirs.
+3. **Capture rules** block writes containing government IDs, card numbers, passwords, or API keys. Cannot be overridden.
+4. **Redaction module** strips sensitive patterns from sync data before storage.
 
 ### Token optimization
 
-Robin's instruction layer is organized into tiers to minimize token usage at session start:
+The instruction layer loads in tiers to minimize session-start tokens:
 
-- **Tier 1** (always loaded) — core rules, identity, INDEX, ENTITIES, hot cache, communication style, learning queue. Capped at 12,200 tokens / 560 lines (10,900 for the cache-stable prefix).
-- **Tier 2** (on demand) — job protocols, capture rules, manifest, security rules, self-improvement rules. Loaded only when triggered.
-- **Tier 3** (cold storage) — archived memory, historical data, full per-event detail pages.
+- **Tier 1** (always loaded): core rules, identity, indexes, hot cache. Capped at 12,200 tokens / 560 lines.
+- **Tier 2** (on demand): protocols, capture rules, security rules.
+- **Tier 3** (cold): archived memory, full historical detail.
 
-CI enforces token budgets on every PR. A measurement harness tracks per-file token counts, a golden-session snapshot detects load-order drift, and a memory linter catches structural issues. Caps live in `system/scripts/diagnostics/lib/token-budget.json` — a single source of truth read by the harness.
+A token-budget JSON is the single source of truth; a measurement harness and golden-session snapshot enforce caps and catch load-order drift.
 
 ### Customization
 
 Four extension points, all in `user-data/` (gitignored, survives `git pull`):
 
-- **`custom-rules.md`** — your own rules, appended to the rule list. Override operational rules but not immutable rules (privacy, verification). Examples: language preference, persona overrides, custom capture rules.
-- **`jobs/`** — overlays `system/jobs/`. **The default convention is a shallow override** (`override: <name>` frontmatter): you change only what you need, the rest inherits from the system definition and keeps tracking upstream upgrades. Use a full override (no `override:` key) only when you intend to fully replace a system job. Drop a brand-new file to extend the catalog.
-- **`runtime/scripts/`** — per-user integration scripts. Templates scaffolded from `system/scaffold/runtime/scripts/` on install. Add a new integration by dropping a job def + script and importing from `system/scripts/sync/lib/`.
-- **`integrations.md`** — declare which platform integrations are configured. Jobs check this before assuming a capability is available.
-
-#### Customizing a job (the default pattern)
-
-Tweak any shipped job — schedule, body, prompt, enabled flag — without forking the package:
+- **`custom-rules.md`** — your own rules, appended to the rule list (can't override immutable privacy / verification rules).
+- **`runtime/jobs/`** — overlays `system/jobs/`. Drop a file with `override: <name>` frontmatter to tweak only the fields you want; the rest inherits and keeps tracking upstream changes.
+- **`runtime/scripts/`** — per-user integration scripts (templated from `system/scaffold/runtime/scripts/`).
+- **`integrations.md`** — declare which integrations are configured; jobs gate on this.
 
 ```markdown
-<!-- user-data/runtime/jobs/daily-briefing.md -->
+<!-- user-data/runtime/jobs/daily-briefing.md — example override -->
 ---
 override: daily-briefing
-schedule: "0 6 * * *"   # only the fields you want to change
+schedule: "0 6 * * *"
 ---
-# Protocol: Daily Briefing (user override)
-
-…your custom protocol body, or omit the body to keep the system default…
 ```
 
-The merge rules (system def + user override → effective def):
-
-- Frontmatter: user override wins on field collisions, system fields are preserved otherwise.
-- Body: replaced wholesale if the override has a non-empty body; system body is used if the override body is empty.
-- To revert: delete the override file. To fully replace: omit the `override:` key (the file then stands alone).
-
-`robin jobs enable <name>` and `robin jobs disable <name>` write a shallow override automatically — that's how the CLI itself flips state. Authoring your own override is the same pattern, just by hand.
+`robin jobs enable <name>` / `disable <name>` write shallow overrides automatically.
 
 ### Memory lifecycle
 
-Content older than 12 months is automatically archived by the prune job. Transactions, conversations, calibration entries move to `archive/<year>/`. Year-end splits break decisions and journal files by calendar year. A dry-run preview shows what would move before anything happens. Pre-prune backups are automatic.
+Content older than 12 months is automatically archived by the prune job. Year-end splits break `decisions.md` and `journal.md` by calendar year. Dry-run preview before any move; pre-prune backups automatic.
 
 ### Session handoff
 
-Robin maintains a rolling handoff note for the next session. At session end (or when context compaction is imminent), it runs a capture sweep — scanning for uncaptured signals, deduplicating against the inbox, and writing a session summary to the hot cache. The next session reads the hot cache immediately after the index, picking up where you left off.
+At session end, Robin runs a capture sweep — scans for uncaptured signals, dedupes against the inbox, writes a session summary to `hot.md`. The next session reads it right after the index and picks up where you left off.
 
 ---
 
@@ -315,30 +258,7 @@ This only touches files in `system/` and root pointer files. **`user-data/` and 
 
 Migrations, config upgrades, and scaffold sync run during `npm install` (via the postinstall hook), not at session start. This keeps the AI session's cold start fast.
 
-After upgrading across the autonomous-memory cycle (≥ 2026-05-01), run once:
-
-```bash
-node system/scripts/memory/index-entities.js --bootstrap          # seed ENTITIES.md
-node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection
-```
-
-### Upgrading to v5.0.0 (Claude Code only)
-
-v5 removes multi-host support and folds the former `AGENTS.md` into a single canonical `CLAUDE.md`. After pulling v5:
-
-```bash
-git pull                                                           # brings new CLAUDE.md; deletes AGENTS.md, GEMINI.md
-npm install                                                        # runs migration 0024 (drops cfg.platform); reconciler removes the host-validation scheduler entry
-node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state   # re-baseline tamper detection (Hard Rules now in CLAUDE.md)
-```
-
-If you run the Discord bot, restart its launchd agent with `npm run discord:install` so it picks up the updated code.
-
-If you customized `AGENTS.md` directly (system files are upstream-owned), move your customizations into `user-data/custom-rules.md`, `user-data/runtime/jobs/`, or `user-data/runtime/scripts/` per the extension-point convention before pulling. On a `git pull` conflict, run `git checkout -- AGENTS.md` and accept the upstream deletion.
-
-Users who customized `.claude/settings.json` locally must merge the new `UserPromptSubmit` hook entry by hand; everyone else picks it up via `git pull`.
-
-If `git pull` reports a conflict on any other tracked file, run `git checkout -- <conflicting-path>` — tracked files are upstream-owned. Move customizations into the extension points above.
+If `git pull` reports a conflict on a tracked file, run `git checkout -- <path>` — tracked files are upstream-owned. Move any customizations into the extension points (`user-data/custom-rules.md`, `user-data/runtime/jobs/`, `user-data/runtime/scripts/`).
 
 ---
 
