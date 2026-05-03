@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, existsSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, existsSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 
 function* walk(rootDir, currentDir) {
