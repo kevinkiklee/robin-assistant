@@ -55,9 +55,15 @@ function listMd(dir, base = dir, out = [], stopAtSubIndex = false) {
   return out;
 }
 
+// INDEX.md regenerator preserves a hand-curated "Where to look first" routing
+// block between these markers. Its table rows are routing hints, not file paths,
+// so lint must skip them — otherwise rows like "A specific person" get treated
+// as missing paths.
+const ROUTING_BLOCK_RE = /<!-- BEGIN where-to-look-first -->[\s\S]*?<!-- END where-to-look-first -->/;
+
 function indexEntries(indexPath) {
   if (!existsSync(indexPath)) return [];
-  const text = readFileSync(indexPath, 'utf-8');
+  const text = readFileSync(indexPath, 'utf-8').replace(ROUTING_BLOCK_RE, '');
   const out = [];
   for (const line of text.split('\n')) {
     const m = line.match(/^\|\s*([^|]+?)\s*\|/);
