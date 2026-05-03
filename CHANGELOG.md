@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — E2E Test Harness
+
+Subprocess + in-process e2e test harness for the CLI package. Locks down the filesystem-state contract under `user-data/` so the capture pipeline, hooks layer, memory ops, and jobs runner can be refactored freely. 9 day-one scenarios across hooks, memory, jobs, and install. Spec at `docs/superpowers/specs/2026-05-03-e2e-test-harness-design.md`; plan at `docs/superpowers/plans/2026-05-03-e2e-test-harness.md`.
+
+### New
+- **`robin regenerate-memory-index [--check]`** — CLI subcommand that runs (or verifies) `system/scripts/memory/regenerate-index.js`. Exit `0` on success, `1` on stale index in `--check` mode.
+- `npm run test:unit` / `test:e2e` / `test:install` scripts and a sibling CI workflow at `.github/workflows/tests.yml` (`unit` → `e2e` → `install`).
+
+### Refactored (callable in-process for the harness, subprocess behavior unchanged)
+- `bin/robin.js` — `main(argv, env)` returns `{exitCode}` instead of calling `process.exit`. Bottom-of-file shell guard preserves direct invocation.
+- `system/scripts/hooks/claude-code.js` — extracted `runHook(mode, opts)` from the 573-line top-level body; per-mode handlers (`onStop`, `onPreToolUse`, `onPreBash`, `onUserPromptSubmit`) now compose explicitly.
+
+### Source-side enabling changes (inert when relevant env vars are unset)
+- `system/scripts/capture/auto-memory.js` — drain target now honors `ROBIN_WORKSPACE` (was hardcoded to the package's own `user-data/`; real bug fix for any caller using a non-package workspace).
+- `system/scripts/hooks/claude-code.js` — `ROBIN_AUTO_MEMORY_DIR` overrides the host auto-memory directory; `ROBIN_DRAIN_SYNC=1` makes the drain step synchronous (harness-only; production stays async).
+- `system/scripts/lib/safe-env.js` — allowlist extended for the two new env vars so they reach the drain subprocess.
+
 ## 5.1.0 — 2026-05-03 — Cost & Latency Optimization
 
 Major rollout of cost-and-latency optimization across plugin/MCP prefix bloat, Tier 1 memory content, subagent-dispatch infrastructure, per-protocol return-schema contracts, output-verbosity trend logging, and ancillary diagnostics. All changes are backward-compatible (feature flag default off; per-user content trims are opt-in). See `docs/superpowers/specs/2026-05-02-robin-cost-and-latency-optimization-design.md` for the design and `docs/superpowers/plans/2026-05-02-robin-section-1-waste-cutting.md` for the Section 1 implementation plan.

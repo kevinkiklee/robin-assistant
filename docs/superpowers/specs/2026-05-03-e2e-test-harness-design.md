@@ -45,7 +45,7 @@ system/tests/
 
 ### Scope boundary — what e2e tests, what they don't
 
-E2e covers **system-side** flows: `bin/`, `system/scripts/`, hooks, jobs in `system/jobs/`, skeleton templates in `system/skeleton/`. It does **not** cover code under `user-data/runtime/scripts/` — that's per-user, gitignored, not packaged. Outbound integrations are stubbed at the in-repo adapter layer (`system/scripts/sync/lib/`, `system/scripts/discord/`).
+E2e covers **system-side** flows: `bin/`, `system/scripts/`, hooks, jobs in `system/jobs/`, skeleton templates in `system/scaffold/`. It does **not** cover code under `user-data/runtime/scripts/` — that's per-user, gitignored, not packaged. Outbound integrations are stubbed at the in-repo adapter layer (`system/scripts/sync/lib/`, `system/scripts/discord/`).
 
 ### Two run modes, one API
 
@@ -166,7 +166,7 @@ system/tests/fixtures/memory/recall-multi-entity/
 
 ### Skeleton seeding
 
-Default: harness seeds `<tempdir>/user-data/` with `input/user-data/` only — no implicit skeleton copy. Scenarios that need skeleton-shaped user-data declare `seed: 'skeleton'`, which copies `system/skeleton/` first then overlays `input/`. Install and first-run scenarios use `seed: 'none'` (the default) because they're testing skeleton creation.
+Default: harness seeds `<tempdir>/user-data/` with `input/user-data/` only — no implicit skeleton copy. Scenarios that need skeleton-shaped user-data declare `seed: 'scaffold'`, which copies `system/scaffold/` first then overlays `input/`. Install and first-run scenarios use `seed: 'none'` (the default) because they're testing skeleton creation.
 
 ### Expected-tree completeness rule
 
@@ -222,7 +222,7 @@ runScenario({
   steps,                      // required, array
   mode: 'inproc',             // 'subprocess' for hooks/install (per-subsystem default)
   clock: '2026-01-01T00:00Z', // any frozen ISO date
-  seed: 'none',               // or 'skeleton'
+  seed: 'none',               // or 'scaffold'
   expect: {
     tree: true,               // assert tree (mirror); optionally { ignore: [...] }
     io: false,                // exit code always; opt in for stdout/stderr text
@@ -371,7 +371,7 @@ Scenario errors (load failure, fixture missing, runtime exception) prevent snaps
 
 ### Authoring workflow
 
-1. Create `system/tests/fixtures/<sub>/<name>/input/user-data/` with seed state. Add `seed: 'skeleton'` to the test file if needed.
+1. Create `system/tests/fixtures/<sub>/<name>/input/user-data/` with seed state. Add `seed: 'scaffold'` to the test file if needed.
 2. Write `system/tests/e2e/<sub>/<name>.test.js`.
 3. `UPDATE_SNAPSHOTS=1 node --test system/tests/e2e/<sub>/<name>.test.js`.
 4. `git diff system/tests/fixtures/<sub>/<name>/expected/` — read every line.
@@ -421,7 +421,7 @@ Deferred: `memory/link-inserts-cross-refs`, `memory/lint-detects-orphan-referenc
 
 #### Jobs runner (mode: `inproc`) — 2 scenarios
 
-Both use a synthetic fixture job at `<tempdir>/user-data/runtime/jobs/sample.md` with `runtime: script` (not `agent`). Path is in workspace scope; no override needed.
+Both use a synthetic fixture job at `<tempdir>/user-data/runtime/jobs/sample.md` with `runtime: node` (not `agent`). Path is in workspace scope; no override needed.
 
 1. **`jobs/run-success-records-success`** — happy path; runtime state updated, `failures.md` unchanged.
 2. **`jobs/run-failure-records-failure`** — synthetic failing job; failure recorded with stack/timestamp normalized.
@@ -445,7 +445,7 @@ Each phase ends with green CI plus zero flake across 5 sequential local runs.
 
 1. **Harness foundation + 1 smoke scenario.** Build all `lib/` files. Refactor `bin/robin.js` `main()` and `claude-code.js` `runHook`. Ship `hooks/on-pre-bash-blocks-sensitive-command` to validate subprocess mode end-to-end.
 2. **Hooks (3 remaining) + memory (2)** — 5 scenarios. Validates both subprocess and inproc paths.
-3. **Jobs (2)** — 2 scenarios using `runtime: script` fixture jobs.
+3. **Jobs (2)** — 2 scenarios using `runtime: node` fixture jobs.
 4. **Install (1)** — heavyweight, gated.
 
 If a phase reveals a harness-design issue, fix before next phase starts.

@@ -63,7 +63,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `system/tests/e2e/jobs/run-success-records-success.test.js` + fixture | Synthetic `runtime: script` happy-path job. |
+| `system/tests/e2e/jobs/run-success-records-success.test.js` + fixture | Synthetic `runtime: node` happy-path job. |
 | `system/tests/e2e/jobs/run-failure-records-failure.test.js` + fixture | Synthetic failing job. |
 
 ### New files (Phase 4)
@@ -551,7 +551,7 @@ describe('fixtures', () => {
     mkdirSync(join(fixtureDir, 'input/user-data/memory'), { recursive: true });
     writeFileSync(join(fixtureDir, 'input/user-data/memory/INDEX.md'), 'OVERRIDE');
 
-    seedFixture({ fixtureDir, seed: 'skeleton', tempdir: tmp, repoRoot: REPO_ROOT });
+    seedFixture({ fixtureDir, seed: 'scaffold', tempdir: tmp, repoRoot: REPO_ROOT });
     // Skeleton-derived file exists.
     assert.ok(existsSync(join(tmp, 'user-data/memory')), 'skeleton memory dir should exist');
     // Override won.
@@ -605,15 +605,15 @@ export function makeTempdir() {
 /**
  * @param {{
  *   fixtureDir: string,    // absolute path to system/tests/fixtures/<sub>/<name>/
- *   seed: 'none' | 'skeleton',
+ *   seed: 'none' | 'scaffold',
  *   tempdir: string,       // destination
- *   repoRoot?: string,     // package root, needed for seed='skeleton'
+ *   repoRoot?: string,     // package root, needed for seed='scaffold'
  * }} opts
  */
 export function seedFixture({ fixtureDir, seed, tempdir, repoRoot }) {
-  if (seed === 'skeleton') {
+  if (seed === 'scaffold') {
     if (!repoRoot) throw new Error('seed=skeleton requires repoRoot');
-    const skeleton = join(repoRoot, 'system/skeleton');
+    const skeleton = join(repoRoot, 'system/scaffold');
     if (!existsSync(skeleton)) {
       throw new Error(`skeleton not found at ${skeleton}`);
     }
@@ -2108,7 +2108,7 @@ git commit -m "feat(tests): scenario — on-pre-tool-use blocks auto-memory writ
 
 **Files:**
 - Create: `system/tests/e2e/hooks/on-stop-comprehensive.test.js`
-- Create: `system/tests/fixtures/hooks/on-stop-comprehensive/input/user-data/...` (skeleton-shaped seed via `seed: 'skeleton'`)
+- Create: `system/tests/fixtures/hooks/on-stop-comprehensive/input/user-data/...` (skeleton-shaped seed via `seed: 'scaffold'`)
 
 This tests the on-stop hook's two outputs: (1) drains host auto-memory dir into `inbox.md`, (2) writes `## Session — <id>` block to `session-handoff.md` and updates `hot.md`.
 
@@ -2432,7 +2432,7 @@ If no such job exists, this scenario uses a different invocation (e.g., a direct
 
 — but `bin/robin.js` doesn't have a `__call_script__` command. The pragmatic alternative: invoke the script via `node` directly, which means `mode: 'subprocess'` and a custom step verb… that's scope creep.
 
-**Cleaner fix:** add a `regenerate-memory-index` job under `system/jobs/` that simply calls the script. (One-line job file with `runtime: script` frontmatter pointing at the existing script.) Or use the `npm run regenerate-memory-index` entrypoint via a `spawn` step — also scope creep.
+**Cleaner fix:** add a `regenerate-memory-index` job under `system/jobs/` that simply calls the script. (One-line job file with `runtime: node` frontmatter pointing at the existing script.) Or use the `npm run regenerate-memory-index` entrypoint via a `spawn` step — also scope creep.
 
 **Recommendation:** during this task, verify `system/jobs/` for a regen job. If absent, narrow the test: assert *only* that running an existing job that regenerates indexes (e.g., `audit` if it does, or `lint` if it touches INDEX) produces the expected change. If no clean fit exists, **defer this scenario** to a follow-up and replace it in Phase 2 with `memory/lint-detects-orphan-references` or `memory/link-inserts-cross-refs` from the deferred list.
 
@@ -2473,7 +2473,7 @@ git commit -m "feat(tests): scenario — memory index regen after content change
 - Create: `system/tests/e2e/jobs/run-success-records-success.test.js`
 - Create: `system/tests/fixtures/jobs/run-success-records-success/input/user-data/runtime/jobs/sample.md`
 
-Synthetic job at `user-data/runtime/jobs/sample.md` with `runtime: script` and a trivial command (e.g., `node -e 'process.exit(0)'`). The runner picks it up because runtime/jobs is loaded from the workspace.
+Synthetic job at `user-data/runtime/jobs/sample.md` with `runtime: node` and a trivial command (e.g., `node -e 'process.exit(0)'`). The runner picks it up because runtime/jobs is loaded from the workspace.
 
 - [ ] **Step 1: Create the synthetic job + input fixture**
 
@@ -2488,7 +2488,7 @@ EOF
 cat > $SCEN/input/user-data/runtime/jobs/sample.md <<'EOF'
 ---
 name: sample
-runtime: script
+runtime: node
 script: node -e "console.log('ok')"
 schedule: "0 0 1 1 *"
 enabled: true
@@ -2572,7 +2572,7 @@ EOF
 cat > $SCEN/input/user-data/runtime/jobs/sample.md <<'EOF'
 ---
 name: sample
-runtime: script
+runtime: node
 script: node -e "process.exit(2)"
 schedule: "0 0 1 1 *"
 enabled: true
@@ -2827,7 +2827,7 @@ No mismatches.
 Implementer should verify these against the codebase before starting (especially in Phase 2/3):
 
 1. **Task 20** — does `bin/robin.js run` accept `regenerate-memory-index`? If no job by that name exists, swap to `memory/lint-detects-orphan-references` from the deferred list (same shape, different scenario).
-2. **Task 21/22** — does the job runner support `runtime: script` with a `script:` frontmatter field? Inspect `system/scripts/jobs/runner.js` first; adjust frontmatter to match.
+2. **Task 21/22** — does the job runner support `runtime: node` with a `script:` frontmatter field? Inspect `system/scripts/jobs/runner.js` first; adjust frontmatter to match.
 3. **Task 23** — what does `system/scripts/cli/setup.js` actually do? `captureRoot` in the helper depends on its output paths.
 4. **Task 13** — does `node --test` exit 0 or 1 on no files matching the glob (relevant for `test:e2e` before Task 14 lands)? If 1, defer adding `test:e2e` until Task 14.
 
