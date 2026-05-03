@@ -1,0 +1,8 @@
+[
+  {
+    "step": 0,
+    "exitCode": 0,
+    "stdout": "{\"hits\":[{\"file\":\"user-data/memory/knowledge/people/alice.md\",\"line\":1,\"text\":\"# Alice\"},{\"file\":\"user-data/memory/self-improvement/journal.md\",\"line\":3,\"text\":\"2026-05-01: Met with Alice to review priorities.\"},{\"file\":\"user-data/memory/streams/inbox.md\",\"line\":3,\"text\":\"- [fact|origin=user] Alice mentioned the new dashboard\"},{\"file\":\"user-data/memory/streams/inbox.md\",\"line\":4,\"text\":\"- [task|origin=user] follow up with Alice next week\"}],\"truncated\":false}\n",
+    "stderr": ""
+  }
+]
