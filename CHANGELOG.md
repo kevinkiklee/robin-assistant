@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Cost & Latency Optimization
+
+Cost and latency optimization rollout per `docs/superpowers/specs/2026-05-02-robin-cost-and-latency-optimization-design.md`.
+
+### Phase 1a — Plugin/MCP prune
+
+- **`enabledPlugins` stub in tracked `.claude/settings.json`** to enable per-machine overrides (workaround for upstream issue [anthropics/claude-code#27247](https://github.com/anthropics/claude-code/issues/27247) where `enabledPlugins` in `settings.local.json` is silently ignored unless the same key exists in tracked settings). Project-shared plugin policy stays empty by design — each developer chooses their plugins per-machine via `.claude/settings.local.json`.
+- **`measure-prefix-bloat` diagnostic** (`system/scripts/diagnostics/measure-prefix-bloat.js`) — measures plugin/skill prefix bloat from a Claude Code session JSONL. Two modes: usage-based (primary; aggregates assistant `usage` fields, deterministic) and reminder-based (fallback; parses `<system-reminder>` blocks). Add `--first-turn` for clean session-start measurement, `--usage-only` / `--reminder-only` for narrowed output. Pre-prune baseline (4-session sample): mean first-turn prefix 51,780 tokens, of which ~35,607 is `cache_creation_input_tokens` (the plugin/skill metadata written into the prompt cache on session start).
+- **`check-plugin-prefix` drift detector** (`system/scripts/diagnostics/check-plugin-prefix.js`) — flags any skill whose namespace is not on `system/scripts/diagnostics/lib/plugin-whitelist.json`. Catches the failure mode where plugin auto-updates silently re-introduce a previously-pruned plugin and erode Phase 1a savings.
+- **Whitelist (`system/scripts/diagnostics/lib/plugin-whitelist.json`):** `superpowers`, `gemini-nano-banana`, `chrome-devtools`, `context7`. Update when intentionally adding a plugin.
+- **npm scripts added:** `measure-prefix-bloat`, `check-plugin-prefix`.
+
 ## 5.0.1 — 2026-05-02
 
 Cleanup pass: fix two failing tests, finish a partial rename from v5.0.0, ship the changelog.
