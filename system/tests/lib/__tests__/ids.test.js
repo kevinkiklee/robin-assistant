@@ -1,3 +1,4 @@
+// system/tests/lib/__tests__/ids.test.js
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { installRandom, uninstallRandom } from '../ids.js';
@@ -38,12 +39,15 @@ describe('ids', () => {
     assert.equal(a, b);
   });
 
-  it('crypto.randomBytes returns Buffer of correct length', async () => {
+  it('crypto.getRandomValues fills typed array deterministically', () => {
     installRandom('seed-A');
-    const { randomBytes } = await import('node:crypto');
-    const buf = randomBytes(16);
-    assert.ok(Buffer.isBuffer(buf));
-    assert.equal(buf.length, 16);
+    const a = new Uint8Array(8);
+    crypto.getRandomValues(a);
+    uninstallRandom();
+    installRandom('seed-A');
+    const b = new Uint8Array(8);
+    crypto.getRandomValues(b);
+    assert.deepEqual(Array.from(a), Array.from(b));
   });
 
   it('uninstallRandom restores Math.random', () => {

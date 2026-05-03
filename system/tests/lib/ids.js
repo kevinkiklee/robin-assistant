@@ -1,11 +1,25 @@
-import * as nodeCrypto from 'node:crypto';
+// system/tests/lib/ids.js
+//
+// Deterministic random patches for the e2e harness.
+//
+// Patched surfaces:
+//   - Math.random
+//   - globalThis.crypto.randomUUID
+//   - globalThis.crypto.getRandomValues
+//
+// NOT patched: node:crypto's randomBytes / randomFillSync / etc. These
+// live on an immutable ES module namespace and cannot be reassigned at
+// runtime. Source code that needs deterministic bytes should use
+// globalThis.crypto.getRandomValues (which IS patchable) or migrate to a
+// shared lib/ids.js helper. Robin's package does not currently rely on
+// node:crypto.randomBytes for any value that ends up in snapshot output,
+// so this gap does not affect harness correctness today.
 
 const realMathRandom = Math.random.bind(Math);
 const realRandomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
 const realGetRandomValues = globalThis.crypto?.getRandomValues?.bind(globalThis.crypto);
-const realRandomBytes = nodeCrypto.randomBytes.bind(nodeCrypto);
 
-let state = null; // { seed, counter, mulberry32 }
+let state = null; // { seed, rand }
 
 function hashSeed(seed) {
   let h = 1779033703 ^ seed.length;
@@ -33,7 +47,7 @@ function nextByte() {
 
 export function installRandom(seed) {
   if (state) uninstallRandom();
-  state = { seed, counter: 0, rand: mulberry32(hashSeed(seed)) };
+  state = { seed, rand: mulberry32(hashSeed(seed)) };
 
   Math.random = state.rand;
 
@@ -49,19 +63,6 @@ export function installRandom(seed) {
     return view;
   };
 
-  // node:crypto module — patch on the imported namespace.
-  try {
-    nodeCrypto.randomBytes = function (n) {
-      const buf = Buffer.alloc(n);
-      for (let i = 0; i < n; i++) buf[i] = nextByte();
-      return buf;
-    };
-  } catch (error) {
-    // In strict mode, module namespace objects are immutable. The assignment
-    // will fail, but we continue. Other randomness sources are patched (Math.random,
-    // crypto.randomUUID, crypto.getRandomValues).
-  }
-
   process.env.ROBIN_RANDOM_SEED = seed;
 }
 
@@ -70,11 +71,6 @@ export function uninstallRandom() {
   Math.random = realMathRandom;
   if (realRandomUUID) globalThis.crypto.randomUUID = realRandomUUID;
   if (realGetRandomValues) globalThis.crypto.getRandomValues = realGetRandomValues;
-  try {
-    nodeCrypto.randomBytes = realRandomBytes;
-  } catch (error) {
-    // Module namespace is immutable.
-  }
   state = null;
   delete process.env.ROBIN_RANDOM_SEED;
 }
