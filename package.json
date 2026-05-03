@@ -1,6 +1,6 @@
 {
   "name": "robin-assistant",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "description": "A self-improving personal assistant for Claude Code",
   "type": "module",
   "bin": {

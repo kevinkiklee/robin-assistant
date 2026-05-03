@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased — Cost & Latency Optimization
+## 5.1.0 — 2026-05-03 — Cost & Latency Optimization
+
+Major rollout of cost-and-latency optimization across plugin/MCP prefix bloat, Tier 1 memory content, subagent-dispatch infrastructure, per-protocol return-schema contracts, output-verbosity trend logging, and ancillary diagnostics. All changes are backward-compatible (feature flag default off; per-user content trims are opt-in). See `docs/superpowers/specs/2026-05-02-robin-cost-and-latency-optimization-design.md` for the design and `docs/superpowers/plans/2026-05-02-robin-section-1-waste-cutting.md` for the Section 1 implementation plan.
+
+**Verified delta on Kevin's instance:**
+- First-turn `cache_creation_input_tokens` (1h cache writes): 35,607 → 24,050 (−32.5%) — measured 2026-05-03 from a fresh post-prune session
+- Tier 1 token total: 13,026 → 11,740 (−10%); Tier 1 lines: 600 → 538 (−10%); cache-stable: 11,680 → 10,394 (−11%)
+- Test count: 974 → 1012 (+38 new tests)
+
 
 ### Phase 6 — Output-verbosity polish (Stop-hook trend log)
 

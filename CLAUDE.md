@@ -45,7 +45,7 @@ Routing details: `system/rules/capture.md`.
 1. Read `user-data/runtime/state/sessions.md`. If it has rows with last-active <2h, note "Another session is active (started Y)" in your first response. **Append** your row to it (`claude-code-<timestamp>`) — NEVER overwrite the file (no `cat > sessions.md`, no `echo > sessions.md`; use `>>` append or read-modify-write only). Also drop rows with last-active >2h old.
 2. Read `user-data/runtime/state/jobs/failures.md`; mention any "Active failures" in your first response.
 3. Read `user-data/runtime/state/dream-state.md`. If `last_dream_at` is more than 28h before now, mention "Dream overdue (last ran <date>; <N> items in inbox)" in your first response and offer to run it inline (fetch `system/jobs/dream.md`, run Phase 2 inbox routing). Dream is `runtime: agent` and is the only writer that routes inbox entries to topic files; without periodic runs, captured facts never reach their destination.
-4. Read `user-data/runtime/config/integrations.md`, then read these files **in this exact order** (matters for prompt-cache reuse — frozen → slow → volatile): `user-data/memory/INDEX.md`, `user-data/memory/ENTITIES.md` (auto-generated entity index for fast recall; created if missing during first install), `user-data/memory/profile/identity.md`, `user-data/memory/profile/personality.md`, `user-data/memory/self-improvement/communication-style.md`, `user-data/memory/self-improvement/domain-confidence.md`, `user-data/memory/hot.md`, `user-data/memory/self-improvement/session-handoff.md`, `user-data/memory/self-improvement/learning-queue.md`. Open everything else on demand.
+4. Read `user-data/runtime/config/integrations.md`, then read these files **in this exact order** (matters for prompt-cache reuse — frozen → slow → volatile): `user-data/memory/INDEX.md`, `user-data/memory/ENTITIES.md` (auto-generated entity index for fast recall; created if missing during first install), `user-data/memory/profile/identity.md`, `user-data/memory/profile/personality.md`, `user-data/memory/self-improvement/communication-style.md`, `user-data/memory/self-improvement/corrections.md` (load-bearing — past misses are recorded here; skipping it causes recurrences), `user-data/memory/self-improvement/domain-confidence.md`, `user-data/memory/hot.md`, `user-data/memory/self-improvement/session-handoff.md`, `user-data/memory/self-improvement/learning-queue.md`. Open everything else on demand.
 5. Scan `user-data/runtime/jobs/` and `system/jobs/`. Same name → user-data wins (full) or merges (`override:` frontmatter). Read `custom-rules.md` if present.
 6. First-run: ask name + timezone, set `initialized:true`. Config migration, pending migrations, scaffold sync, and validation run at install (`npm install` postinstall) and after `git pull` via `robin update`. Session startup does NOT spawn a subprocess.
 
@@ -56,7 +56,15 @@ Edge cases (Dream in-session, sibling sessions): `system/rules/startup.md`.
 On session wrap, run 30-second sweep. **T1** (~20 turns), **T2** (user wrap signal), **T3** (Stop-hook fallback). Sweep: scan context for unwritten signals → dedupe vs `inbox.md` → batch-append tagged items → write a `## Session — <id>` block to `session-handoff.md` + `hot.md` (last 3). Block fields: `ended:`, `inbox additions:`, `context:`.
 
 ## Protocols
-When the user invokes a protocol by name (or close paraphrase), FETCH `system/jobs/<name>.md` and follow it. Don't compose from Tier 1 alone.
+When the user invokes a protocol by name (or close paraphrase), resolve the protocol file with **user-data precedence**, then follow it. Don't compose from Tier 1 alone.
+
+**Resolution order (mandatory — failing to check user-data is a hard miss):**
+1. Read `user-data/runtime/jobs/<name>.md` if it exists.
+   - If its frontmatter has `override: <name>` → it **fully replaces** the system version. Follow only this file.
+   - Otherwise → shallow-merge with `system/jobs/<name>.md` (user-data overrides on conflicting keys/sections).
+2. If no user-data file exists → fall back to `system/jobs/<name>.md`.
+
+The user-data version is authoritative for the user's actual workflow. The system version is the package default and is often a strict subset. Briefings, weekly reviews, ingest, etc. routinely have user-added sections (NHL, Whoop, finance, analytics, birding, etc.) that **only** live in user-data. Skipping the user-data check produces a partial output and counts as ignoring user instructions.
 
 **Dispatch:** each protocol declares `dispatch: subagent | inline` and `model: opus | sonnet | haiku` in its frontmatter. **Default: run inline** regardless of frontmatter — only switch to subagent dispatch when `optimize.subagent_dispatch` in `user-data/runtime/config/robin.config.json` is `"read-only-protocols"` (only lint + todo-extraction dispatch) or `"all-side-quest"` (every protocol with `dispatch: subagent` dispatches). User overrides per-invocation: include "inline" or "subagent" in the invocation phrase. When dispatching: invoke `Agent` tool with `subagent_type: general-purpose`, the protocol's declared `model`, and a self-contained prompt referencing `system/jobs/<name>.md` by path.
 
