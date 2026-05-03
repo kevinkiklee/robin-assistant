@@ -16,6 +16,7 @@
     "analyze-finances": "node system/scripts/diagnostics/analyze-finances.js",
     "regenerate-links": "node system/scripts/memory/regenerate-links.js",
     "measure-tokens": "node system/scripts/diagnostics/measure-tokens.js",
+    "measure-prefix-bloat": "node system/scripts/diagnostics/measure-prefix-bloat.js",
     "lint-memory": "node system/scripts/memory/lint.js",
     "densify-wiki": "node system/scripts/memory/densify-wiki.js",
     "golden-session": "node system/scripts/diagnostics/golden-session.js",
