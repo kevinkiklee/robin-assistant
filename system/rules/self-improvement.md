@@ -18,13 +18,15 @@ Positive signals and explicit style feedback go here. Each entry: what worked, d
 
 Rolling notes for the next session. Newest entry at top. The capture sweep writes a brief summary here at session end: "Captured N items to inbox (breakdown by tag). [Any context the next session needs]."
 
-## Session Reflections
-
-Meta-learning about Robin's performance. Written at natural session wind-down. Each entry: date, what went well, what was clumsy, knowledge gaps exposed, domains touched. Dream processes these into Learning Queue and Domain Confidence. Pruned after 30 days.
-
 ## Learning Queue
 
-Things Robin wants to understand better about the user. Each entry: question, why it matters, domain, date added, status (open/answered/dropped). One question per session max, only at natural moments.
+Things Robin wants to understand better about the user. Lifecycle owned by Dream (`system/jobs/learning-queue.md`):
+
+- **Population** — Dream scans `inbox.md` (`[?|...]`), session-handoff capture summaries, recent corrections, and journal entries for knowledge gaps. Promotes worthy ones to a new `### YYYY-MM-DD — Title` block with `qid:`, `domain:`, `why:`, `status: open`, `added:`.
+- **Selection + surfacing** — Dream picks one question per day by score (+2 exact `domain:` match against last 24h of captures, +1 keyword overlap ≥2 non-stopword tokens; oldest `added:` then qid lexical as tiebreakers) and writes it to `user-data/runtime/state/learning-queue/today.md`. CLAUDE.md startup #4 reads it.
+- **In-session ask** — when `today.md` is non-empty and a natural moment arises (topic match, lull, end of low-stakes exchange), the model asks the question. If the user dismisses or signals "not now," the model does NOT re-ask the same question this session.
+- **Closure** — when the user answers substantively, capture as `[answer|qid=<qid>|<original-tag>|origin=user] <answer>` to inbox. Next Dream run promotes the answer to its destination (preferences/decisions/corrections/profile/knowledge), flips `status: answered`, and clears `today.md` if its qid matches.
+- **Retire** — open questions older than 60 days flip to `status: dropped` with `dropped_reason: "stale, never answered"`.
 
 ## Calibration
 

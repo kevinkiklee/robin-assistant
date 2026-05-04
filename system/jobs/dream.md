@@ -109,13 +109,13 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 6. **Pattern review** — for each existing pattern in `## Patterns`, check recent corrections and journal entries: is the counter-action working? If the same mistake keeps recurring despite the pattern, ESCALATE so the user knows the current counter-action isn't effective.
 
-7. **Session reflection processing** — scan `## Session Reflections` written since last dream. Also scan `## Session Handoff` for capture sweep summaries ("Captured N items to inbox...") — these are data points about session capture quality. Extract knowledge gaps and add to `## Learning Queue`. Note domains touched and feed into `## Domain Confidence`. Prune reflections older than 30 days.
+7. **Session-handoff scan** — scan `## Session Handoff` capture-sweep summaries; feed domains touched into `## Domain Confidence`. (Knowledge-gap extraction is now part of step 10.)
 
 8. **Preference promotion** — scan `## Preferences` for dimensions with 3+ consistent signals. Promote to `## Communication Style` (base style or domain override as appropriate). Check for contradictions between recent signals and established preferences — update or narrow stale preferences. Flag unresolvable contradictions in escalation report.
 
-9. **Domain confidence update** — review session reflections, effectiveness scores, and corrections since last dream. Adjust confidence levels. Decay any domain not touched in 90+ days by one level (high→medium; medium stays).
+9. **Domain confidence update** — review session-handoff summaries, effectiveness scores, and corrections since last dream. Adjust confidence levels. Decay any domain not touched in 90+ days by one level (high→medium; medium stays).
 
-10. **Learning queue maintenance** — add items from knowledge gaps in session reflections. Scan recent journal entries and session handoffs for organically answered questions — mark them answered. Drop items older than 60 days that never found a natural moment.
+10. **Learning queue maintenance** — run `system/jobs/learning-queue.md` inline. Owns population, surfacing to `today.md`, closure of `[answer|qid=...]` markers, and 60-day retire.
 
 11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. Prediction accuracy is owned by `outcome-check` (when enabled) — Dream does not recompute it. If `predictions.md` has resolved entries newer than the last `outcome-check` run, include "N resolved predictions awaiting rollup" in the summary.
 
@@ -161,6 +161,8 @@ Runs after all other phases. Maintains the memory tree structure.
    Use `node -e "import('./system/scripts/diagnostics/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for recall.log, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
 
 17.8. **Protocol-override state cleanup.** Prune files in `user-data/runtime/state/protocol-overrides/` whose basename (session_id) is absent from `runtime/state/sessions.md` AND mtime >24h. Orphans from crashed sessions; hook tolerates stale state itself.
+
+17.9. **Stale today.md cleanup.** If `runtime/state/learning-queue/today.md` mtime >48h (Dream-skip indicator), delete it via `clearToday` from `system/scripts/lib/learning-queue.js`; next Dream rewrites.
 
 18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
 
