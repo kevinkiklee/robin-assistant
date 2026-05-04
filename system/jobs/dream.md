@@ -121,16 +121,15 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. Prediction accuracy is owned by `outcome-check` (when enabled) — Dream does not recompute it. If `predictions.md` has resolved entries newer than the last `outcome-check` run, include "N resolved predictions awaiting rollup" in the summary.
 
-11.5. **Recall telemetry review.** Read entries from `user-data/runtime/state/recall.log` since `last_dream_at`. Append findings to `needs-your-input.md` under `Recall telemetry` via `appendSection`:
-   - Auto-recall avg injection bytes; flag if trend is rising >2× compared to prior period.
-   - Frequently-matched entities that route to nothing → suggest creating a topic file.
-   - Aliases skipped due to missing disambiguator → list for backfill.
+11.5. **Recall telemetry review** — run `system/jobs/recall-telemetry-review.md` inline. Owns recall.log analysis (injection-bytes trend, entities-matched-but-routed-nowhere, dead-keyword domains in `recall-domains.md`); writes `Recall telemetry` section in `needs-your-input.md`.
 
 11.6. **Hook enforcement review.** Run `system/jobs/hook-enforcement-review.md` inline (≤40 lines).
 
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/streams/journal.md` or delete if resolved.
 
 12.5. **Action-trust calibration** — run `system/jobs/action-trust-calibration.md` inline. Owns capture-pipeline check, per-class tally, demotion-on-correction, promotion proposals (24h auto-finalize via `needs-your-input.md`), probation maintenance, and 90-day decay.
+
+12.6. **Stale-sync surfacing.** `node system/scripts/diagnostics/dream-stale-sync.js` — scans synced files for missing or `>24h` `last_synced`, writes/clears the `Stale sync files` section in `needs-your-input.md`. Idempotent.
 
 ## Phase 4: Memory tree maintenance
 
@@ -188,7 +187,7 @@ One-line summary written to stdout: "Dreamt: pruned N tasks, routed M from inbox
 
 ### needs-your-input.md
 
-Persistent user-facing surface (`user-data/runtime/state/needs-your-input.md`) — write via `appendSection`/`clearSection` from `system/scripts/lib/needs-input.js`. Sections used: `Action-trust promotion proposals`, `Action-trust capture pipeline`, `Recall telemetry`, `Preference contradictions`, `Conversation pruning candidates`. CLAUDE.md startup #4 reads it; the model surfaces items in the first session response. Errors and unresolvable contradictions also append to `user-data/runtime/state/jobs/failures.md`. Neutral, factual tone.
+Persistent user-facing surface (`user-data/runtime/state/needs-your-input.md`) — write via `appendSection`/`clearSection` from `system/scripts/lib/needs-input.js`. Sections used: `Action-trust promotion proposals`, `Action-trust capture pipeline`, `Recall telemetry`, `Preference contradictions`, `Conversation pruning candidates`, `Stale sync files`. CLAUDE.md startup #4 reads it; the model surfaces items in the first session response. Errors and unresolvable contradictions also append to `user-data/runtime/state/jobs/failures.md`. Neutral, factual tone.
 
 ## Failure modes
 
