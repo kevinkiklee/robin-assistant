@@ -3,7 +3,7 @@
   "version": 2,
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Write|Edit|NotebookEdit", "command": "node system/scripts/hooks/claude-code.js --on-pre-tool-use" },
+      { "matcher": "Write|Edit|NotebookEdit|Read", "command": "node system/scripts/hooks/claude-code.js --on-pre-tool-use" },
       { "matcher": "Bash", "command": "node system/scripts/hooks/claude-code.js --on-pre-bash" }
     ],
     "Stop": [

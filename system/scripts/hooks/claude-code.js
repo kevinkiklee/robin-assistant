@@ -40,6 +40,16 @@ import { scanEntityAliases } from '../capture/lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
 import { recall, formatRecallHits } from '../memory/lib/recall.js';
 import { ExitSignal } from '../lib/exit-signal.js';
+import { loadTriggerMap, findMatchingProtocols } from '../lib/protocol-trigger-match.js';
+import {
+  readState as readOverrideState,
+  writeState as writeOverrideState,
+  deleteState as deleteOverrideState,
+  markOverrideRead,
+  isStateStale,
+  stateFilePath as overrideStateFilePath,
+} from './lib/protocol-override-state.js';
+import { appendTelemetry as appendOverrideTelemetry } from './lib/protocol-override-telemetry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
@@ -304,6 +314,71 @@ async function onStop(args, stdinData) {
   return { exitCode: 0 };
 }
 
+// ---------------------------------------------------------------------------
+// Pre-protocol-override hook helpers (spec: 2026-05-03-pre-protocol-assertion-hook-design)
+// ---------------------------------------------------------------------------
+
+// Returns true if the workspace has a user-data override for the given protocol.
+function userDataOverrideExists(workspace, protocol) {
+  return existsSync(join(workspace, 'user-data/runtime/jobs', `${protocol}.md`));
+}
+
+// Build the canonical injection block for one matched protocol. Path
+// placeholders are filled at injection time. Wrapped in <system-reminder>
+// per Claude Code injection convention (existing recall code uses HTML
+// comment; this hook needs the higher-prominence system-reminder shape per
+// the spec because the model has been ignoring the underlying rule).
+function buildOverrideInjectionBlock(workspace, protocol, phrase) {
+  const overridePath = join(workspace, 'user-data/runtime/jobs', `${protocol}.md`);
+  return `<system-reminder>\n` +
+    `Protocol invocation detected: "${protocol}" (matched on "${phrase}").\n` +
+    `A user-data override exists at ${overridePath}.\n` +
+    `Read this override BEFORE any other action on this protocol — it is\n` +
+    `authoritative; the system version is a strict subset.\n\n` +
+    `This reminder is enforced mechanically by the protocol-override hook.\n` +
+    `Reading system/jobs/${protocol}.md without first reading the override above\n` +
+    `will be blocked at PreToolUse. (Reference: corrections.md 2026-05-03,\n` +
+    `"Always use the user-data daily-briefing override".)\n` +
+    `</system-reminder>\n`;
+}
+
+// Match a Read tool_input file_path against a protocol file location.
+// Returns { kind: 'override' | 'system', protocol } or null. Matches both
+// absolute paths under <workspace> and relative paths from the workspace.
+function classifyProtocolFileRead(filePath, workspace) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  // Normalize trailing slashes off the workspace.
+  const ws = workspace.replace(/\/+$/, '');
+  const sysPrefixAbs = join(ws, 'system/jobs') + '/';
+  const udPrefixAbs = join(ws, 'user-data/runtime/jobs') + '/';
+  const sysPrefixRel = 'system/jobs/';
+  const udPrefixRel = 'user-data/runtime/jobs/';
+
+  function nameFromPrefix(prefix, kind) {
+    if (!filePath.startsWith(prefix)) return null;
+    const rest = filePath.slice(prefix.length);
+    if (!rest.endsWith('.md')) return null;
+    if (rest.includes('/')) return null; // not a top-level <name>.md
+    const protocol = rest.replace(/\.md$/, '');
+    if (protocol.startsWith('_') || protocol === 'README') return null;
+    return { kind, protocol };
+  }
+
+  return (
+    nameFromPrefix(udPrefixAbs, 'override')
+    || nameFromPrefix(sysPrefixAbs, 'system')
+    || nameFromPrefix(udPrefixRel, 'override')
+    || nameFromPrefix(sysPrefixRel, 'system')
+  );
+}
+
+// Spec: hook serialization assumption. The pre-protocol-override flow
+// requires that onUserPromptSubmit runs to completion (writing the per-turn
+// state file) before any onPreToolUse fires for the same turn. Existing
+// hooks in this file (recall injection, Stop drain, turn stats) make the
+// same implicit assumption — they all read/write workspace files
+// synchronously without inter-hook locks. State writes use atomic
+// tmp+rename for crash safety regardless.
 async function onPreToolUse(stdinData) {
   // Use pre-parsed stdin if provided (in-process); otherwise read from process.stdin.
   let event;
@@ -345,6 +420,56 @@ async function onPreToolUse(stdinData) {
       `Canonical path is user-data/${offending.label}/. Retry with: ${suggested}\n`,
     );
     return { exitCode: 2 };
+  }
+
+  // Pre-protocol-override enforcement: only inspects Read tool calls. Fail-open
+  // on any error — cost of a missed block is one duplicated miss; cost of
+  // breaking ALL Reads is catastrophic.
+  if (toolName === 'Read') {
+    try {
+      const filePath = toolInput.file_path;
+      const sessionId = event.session_id ?? 'unknown';
+      const classified = classifyProtocolFileRead(filePath, ws);
+      if (classified) {
+        const statePath = overrideStateFilePath(ws, sessionId);
+        if (classified.kind === 'override') {
+          // Mark this protocol's override as Read; allow.
+          markOverrideRead(ws, sessionId, classified.protocol);
+        } else if (classified.kind === 'system') {
+          if (!isStateStale(statePath)) {
+            const state = readOverrideState(ws, sessionId);
+            if (state
+                && Array.isArray(state.triggers_fired)
+                && state.triggers_fired.includes(classified.protocol)
+                && !(Array.isArray(state.overrides_read) && state.overrides_read.includes(classified.protocol))
+                && userDataOverrideExists(ws, classified.protocol)) {
+              const overridePath = join(ws, 'user-data/runtime/jobs', `${classified.protocol}.md`);
+              process.stderr.write(
+                `POLICY_REFUSED [protocol-override:must-read-user-data]: ` +
+                `${classified.protocol} override not yet read; read ${overridePath} first\n`
+              );
+              appendOverrideTelemetry(ws, {
+                session: sessionId,
+                event: 'blocked',
+                protocol: classified.protocol,
+              });
+              return { exitCode: 2 };
+            }
+          }
+        }
+      }
+    } catch (err) {
+      appendOverrideTelemetry(ws, {
+        session: event.session_id ?? 'unknown',
+        event: 'hook_error',
+        protocol: null,
+        mode: 'onPreToolUse',
+        error_class: 'preToolUse_failed',
+        message: err?.message || String(err),
+      });
+      // Fall through to allow.
+    }
+    return { exitCode: 0 };
   }
 
   // Remaining checks only apply to file-content tools.
@@ -612,6 +737,91 @@ async function onUserPromptSubmit(args, stdinData) {
           bytesInjected: block.length,
         });
       }
+    }
+
+    // ---------------------------------------------------------------------
+    // Pre-protocol-override hook: trigger detection + injection.
+    // ALWAYS writes per-turn state (even when no trigger fires) so stale
+    // state from a prior turn never causes a false block.
+    // ---------------------------------------------------------------------
+    try {
+      let triggerMap = {};
+      try {
+        triggerMap = loadTriggerMap(ws);
+      } catch (err) {
+        appendOverrideTelemetry(ws, {
+          session: sessionId,
+          event: 'hook_error',
+          protocol: null,
+          mode: 'onUserPromptSubmit',
+          error_class: 'trigger_map_load_failed',
+          message: err?.message || String(err),
+        });
+        // Fall through with empty map so state still gets reset.
+      }
+
+      const matches = findMatchingProtocols(userMessage, triggerMap);
+      // Dedupe protocols (preserve set semantics for triggers_fired) but keep
+      // a representative phrase per protocol for the injection block.
+      const seen = new Map();
+      for (const m of matches) if (!seen.has(m.protocol)) seen.set(m.protocol, m.phrase);
+      const triggers_fired = [...seen.keys()];
+
+      const newState = {
+        session_id: sessionId,
+        turn_started_at: new Date().toISOString(),
+        triggers_fired,
+        overrides_read: [],
+      };
+      try {
+        writeOverrideState(ws, sessionId, newState);
+      } catch (err) {
+        // State-write-failure mitigation: try to delete prior state so the
+        // PreToolUse path falls into the no-state allow branch (eliminates
+        // false-block window on stale state).
+        appendOverrideTelemetry(ws, {
+          session: sessionId,
+          event: 'hook_error',
+          protocol: null,
+          mode: 'onUserPromptSubmit',
+          error_class: 'state_write_failed',
+          message: err?.message || String(err),
+        });
+        const deleted = deleteOverrideState(ws, sessionId);
+        if (!deleted) {
+          appendOverrideTelemetry(ws, {
+            session: sessionId,
+            event: 'hook_error',
+            protocol: null,
+            mode: 'onUserPromptSubmit',
+            error_class: 'state_delete_failed',
+            message: 'best-effort delete after write failure also failed',
+          });
+        }
+      }
+
+      // Conditional inject for protocols that have a user-data override.
+      for (const [protocol, phrase] of seen) {
+        if (!userDataOverrideExists(ws, protocol)) continue;
+        const block = buildOverrideInjectionBlock(ws, protocol, phrase);
+        process.stdout.write(block);
+        appendOverrideTelemetry(ws, {
+          session: sessionId,
+          event: 'injected',
+          protocol,
+          phrase,
+        });
+      }
+    } catch (err) {
+      // Top-level fail-open for the entire override flow.
+      appendOverrideTelemetry(ws, {
+        session: sessionId,
+        event: 'hook_error',
+        protocol: null,
+        mode: 'onUserPromptSubmit',
+        error_class: 'override_flow_failed',
+        message: err?.message || String(err),
+      });
     }
 
     const elapsed = Date.now() - start;
