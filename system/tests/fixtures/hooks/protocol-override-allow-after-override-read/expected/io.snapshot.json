@@ -1,0 +1,20 @@
+[
+  {
+    "step": 0,
+    "exitCode": 0,
+    "stdout": "<system-reminder>\nProtocol invocation detected: \"daily-briefing\" (matched on \"good morning\").\nA user-data override exists at <WS>/user-data/runtime/jobs/daily-briefing.md.\nRead this override BEFORE any other action on this protocol — it is\nauthoritative; the system version is a strict subset.\n\nThis reminder is enforced mechanically by the protocol-override hook.\nReading system/jobs/daily-briefing.md without first reading the override above\nwill be blocked at PreToolUse. (Reference: corrections.md 2026-05-03,\n\"Always use the user-data daily-briefing override\".)\n</system-reminder>\n",
+    "stderr": ""
+  },
+  {
+    "step": 1,
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "step": 2,
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

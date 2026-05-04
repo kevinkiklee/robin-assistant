@@ -343,33 +343,39 @@ function buildOverrideInjectionBlock(workspace, protocol, phrase) {
 }
 
 // Match a Read tool_input file_path against a protocol file location.
-// Returns { kind: 'override' | 'system', protocol } or null. Matches both
-// absolute paths under <workspace> and relative paths from the workspace.
-function classifyProtocolFileRead(filePath, workspace) {
+// Returns { kind: 'override' | 'system', protocol } or null.
+//
+// The system protocol files live in the package (REPO_ROOT); the user-data
+// override files live in the active workspace (ws). These can differ under
+// the e2e harness or any out-of-package install. Also matches the relative
+// forms `system/jobs/<name>.md` and `user-data/runtime/jobs/<name>.md` for
+// hosts that pass relative paths through.
+function classifyProtocolFileRead(filePath, workspace, packageRoot) {
   if (!filePath || typeof filePath !== 'string') return null;
-  // Normalize trailing slashes off the workspace.
   const ws = workspace.replace(/\/+$/, '');
-  const sysPrefixAbs = join(ws, 'system/jobs') + '/';
-  const udPrefixAbs = join(ws, 'user-data/runtime/jobs') + '/';
-  const sysPrefixRel = 'system/jobs/';
-  const udPrefixRel = 'user-data/runtime/jobs/';
-
-  function nameFromPrefix(prefix, kind) {
-    if (!filePath.startsWith(prefix)) return null;
-    const rest = filePath.slice(prefix.length);
-    if (!rest.endsWith('.md')) return null;
-    if (rest.includes('/')) return null; // not a top-level <name>.md
+  const pkg = (packageRoot ?? workspace).replace(/\/+$/, '');
+  const prefixes = [
+    { p: join(ws, 'user-data/runtime/jobs') + '/', kind: 'override' },
+    { p: join(pkg, 'system/jobs') + '/', kind: 'system' },
+    // Also recognize system-jobs paths when they live inside the workspace
+    // (typical when the package == workspace, e.g. running Robin from its
+    // own checkout). This must be after the ws-rooted user-data prefix to
+    // avoid an `system/jobs/` rooted at ws shadowing a real override path.
+    { p: join(ws, 'system/jobs') + '/', kind: 'system' },
+    { p: 'user-data/runtime/jobs/', kind: 'override' },
+    { p: 'system/jobs/', kind: 'system' },
+  ];
+  // Also handle ws == pkg (no duplication needed; first hit wins).
+  for (const { p, kind } of prefixes) {
+    if (!filePath.startsWith(p)) continue;
+    const rest = filePath.slice(p.length);
+    if (!rest.endsWith('.md')) continue;
+    if (rest.includes('/')) continue; // not a top-level <name>.md
     const protocol = rest.replace(/\.md$/, '');
-    if (protocol.startsWith('_') || protocol === 'README') return null;
+    if (protocol.startsWith('_') || protocol === 'README') continue;
     return { kind, protocol };
   }
-
-  return (
-    nameFromPrefix(udPrefixAbs, 'override')
-    || nameFromPrefix(sysPrefixAbs, 'system')
-    || nameFromPrefix(udPrefixRel, 'override')
-    || nameFromPrefix(sysPrefixRel, 'system')
-  );
+  return null;
 }
 
 // Spec: hook serialization assumption. The pre-protocol-override flow
@@ -429,7 +435,7 @@ async function onPreToolUse(stdinData) {
     try {
       const filePath = toolInput.file_path;
       const sessionId = event.session_id ?? 'unknown';
-      const classified = classifyProtocolFileRead(filePath, ws);
+      const classified = classifyProtocolFileRead(filePath, ws, REPO_ROOT);
       if (classified) {
         const statePath = overrideStateFilePath(ws, sessionId);
         if (classified.kind === 'override') {
@@ -747,7 +753,9 @@ async function onUserPromptSubmit(args, stdinData) {
     try {
       let triggerMap = {};
       try {
-        triggerMap = loadTriggerMap(ws);
+        // System protocols live in the package (REPO_ROOT); user-data
+        // overrides live in the active workspace.
+        triggerMap = loadTriggerMap(REPO_ROOT, ws);
       } catch (err) {
         appendOverrideTelemetry(ws, {
           session: sessionId,

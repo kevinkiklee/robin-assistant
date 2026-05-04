@@ -62,9 +62,13 @@ function listProtocolFiles(dir) {
   return names.filter(isProtocolFile);
 }
 
-export function loadTriggerMap(repoRoot) {
+// `repoRoot` is the package root (where `system/jobs/` lives).
+// `workspaceRoot` (optional) is the user's workspace (where
+// `user-data/runtime/jobs/` lives). When omitted, both lookups use repoRoot
+// (works for the simple case where the package and workspace coincide).
+export function loadTriggerMap(repoRoot, workspaceRoot = repoRoot) {
   const sysDir = join(repoRoot, 'system', 'jobs');
-  const udDir = join(repoRoot, 'user-data', 'runtime', 'jobs');
+  const udDir = join(workspaceRoot, 'user-data', 'runtime', 'jobs');
 
   const map = Object.create(null);
 

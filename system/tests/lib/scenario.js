@@ -43,6 +43,20 @@ function substituteTempdir(envOverlay, tempdir) {
   return out;
 }
 
+// Recursively replace __TEMPDIR__ in any string value within an object/array.
+// Used so step.stdin can reference the runtime tempdir without test code
+// having to know its name in advance (e.g., for hook tool_input.file_path).
+function substituteTempdirDeep(value, tempdir) {
+  if (typeof value === 'string') return value.replace(/__TEMPDIR__/g, tempdir);
+  if (Array.isArray(value)) return value.map((v) => substituteTempdirDeep(v, tempdir));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = substituteTempdirDeep(v, tempdir);
+    return out;
+  }
+  return value;
+}
+
 function scenarioEnvFor(tempdir, fixture, clock) {
   return {
     ROBIN_WORKSPACE: tempdir,
@@ -228,7 +242,8 @@ async function runInprocStep(step, { tempdir, baseEnv }) {
     } else if (step.hook) {
       const { runHook } = await import('../../scripts/hooks/claude-code.js');
       try {
-        const r = await runHook(step.hook, { stdin: step.stdin ?? null, env, workspace: tempdir });
+        const stdinSubbed = step.stdin == null ? null : substituteTempdirDeep(step.stdin, tempdir);
+        const r = await runHook(step.hook, { stdin: stdinSubbed, env, workspace: tempdir });
         exitCode = r.exitCode;
       } catch (e) {
         if (e instanceof ExitSignal) exitCode = e.code;
@@ -273,7 +288,8 @@ function runSubprocessStep(step, { tempdir, baseEnv, stubsFile }) {
     stdinInput = '';
   } else if (step.hook) {
     nodeArgs = [...preloads, join(REPO_ROOT, 'system/scripts/hooks/claude-code.js'), `--${step.hook}`, '--workspace', tempdir];
-    stdinInput = JSON.stringify(step.stdin ?? {});
+    const stdinSubbed = step.stdin == null ? {} : substituteTempdirDeep(step.stdin, tempdir);
+    stdinInput = JSON.stringify(stdinSubbed);
   } else if (step.writeFile) {
     const filePath = join(tempdir, step.writeFile);
     mkdirSync(dirname(filePath), { recursive: true });
