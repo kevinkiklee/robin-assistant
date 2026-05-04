@@ -80,12 +80,40 @@ describe('bin/robin: dispatcher', () => {
     // If a subcommand is added/removed, this test's expected list updates
     // alongside HELP — keeps the dispatcher's surface honest.
     const expected = [
-      'init', 'run', 'job ', 'jobs', 'update', 'link',
-      'watch', 'recall', 'trust', 'regenerate-memory-index',
+      'init', 'update', 'run', 'job ', 'jobs', 'watch', 'trust',
+      'memory', 'discord', 'backup', 'restore',
     ];
     for (const cmd of expected) {
       assert.match(output, new RegExp(`\\brobin ${cmd}`), `HELP missing: robin ${cmd}`);
     }
+  });
+
+  it('default help hides internal escape hatches and the dev namespace', async () => {
+    const { output } = await captureStdout(() => main([], process.env));
+    for (const cmd of ['link', 'recall', 'regenerate-memory-index']) {
+      assert.doesNotMatch(output, new RegExp(`^\\s+robin ${cmd}\\b`, 'm'),
+        `default help leaked internal subcommand: ${cmd}`);
+    }
+    assert.doesNotMatch(output, /^\s+robin dev\b/m,
+      'default help leaked the hidden dev namespace');
+  });
+
+  it('robin dev --help lists developer ops', async () => {
+    const { result, output } = await captureStdout(() => main(['dev', '--help'], process.env));
+    assert.equal(result.exitCode, 0);
+    for (const op of ['measure-tokens', 'check-plugin-prefix', 'reset', 'analyze-finances']) {
+      assert.match(output, new RegExp(`\\b${op.replace(/-/g, '\\-')}\\b`));
+    }
+  });
+
+  it('internal escape-hatch subcommands still dispatch (not advertised but functional)', async () => {
+    // recall with no args should print its own usage (not "unknown command")
+    const { output: recallOut } = await captureStderr(() => main(['recall'], process.env));
+    assert.match(recallOut, /usage: robin recall/i);
+
+    // link with no args same shape
+    const { output: linkOut } = await captureStderr(() => main(['link'], process.env));
+    assert.match(linkOut, /usage: robin link/i);
   });
 
   it('robin memory --help dispatches', async () => {
