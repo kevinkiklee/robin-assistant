@@ -1,8 +1,13 @@
 import { applyEntityLinks } from './apply-entity-links.js';
 import { buildEntityRegistry } from './build-entity-registry.js';
+import { resolveCliWorkspaceDir } from '../../lib/workspace-root.js';
 
 export async function cmdLink(argv, opts = {}) {
-  const workspaceDir = opts.workspaceDir || process.env.ROBIN_WORKSPACE || process.cwd();
+  // Fall through to resolveCliWorkspaceDir when no override is passed — it
+  // validates ROBIN_WORKSPACE / process.cwd() against the bin/robin.js marker
+  // and fails loudly if invoked from inside user-data/ (which would otherwise
+  // double up workspace-rooted paths via join(workspaceDir, 'user-data/...')).
+  const workspaceDir = opts.workspaceDir || resolveCliWorkspaceDir();
   const dryRun = argv.includes('--dry-run');
   const path = argv.find((a) => !a.startsWith('--'));
 

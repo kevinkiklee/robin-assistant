@@ -10,8 +10,13 @@ import { migrateConfig } from '../migrate/lib/config-migrate.js';
 import { checkChangelog } from './changelog-notify.js';
 import { runPendingMigrations } from '../migrate/apply.js';
 import { validateInDir } from './validate.js';
+import { resolveCliWorkspaceDir } from './workspace-root.js';
 
-export async function runPreflight(workspaceDir = process.cwd()) {
+export async function runPreflight(workspaceDir) {
+  // Resolve via the validating helper when no override is passed. Catches the
+  // user-data/-as-cwd case loudly instead of producing a misleading "user-data/
+  // missing" finding from join(<root>/user-data, 'user-data').
+  if (!workspaceDir) workspaceDir = resolveCliWorkspaceDir();
   const findings = [];
   const ud = join(workspaceDir, 'user-data');
 
