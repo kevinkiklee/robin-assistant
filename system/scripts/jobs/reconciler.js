@@ -99,19 +99,11 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths, spawnFn
     skipped: [],
     warnings: [],
     orphansRemoved: [],
+    dispatched: [],
   };
 
-  // Hash early-exit
-  const hash = computeSyncHash(workspaceDir);
-  const lastHash = existsSync(paths.syncHashFile) ? readFileSync(paths.syncHashFile, 'utf-8') : '';
-  if (!force && hash === lastHash && existsSync(paths.indexMd) && existsSync(paths.upcomingMd)) {
-    // workspace path may have moved; verify
-    const stored = existsSync(paths.workspacePathFile) ? readFileSync(paths.workspacePathFile, 'utf-8').trim() : '';
-    if (stored === workspaceDir) {
-      return { ok: true, skipped: 'no-change', hash };
-    }
-  }
-
+  // Discover jobs + load states upfront so the catch-up dispatch can run
+  // regardless of whether the install/regen path early-exits.
   const { jobs, errors } = discoverJobs(workspaceDir);
   for (const e of errors) {
     result.warnings.push(`${e.path || e.name}: ${(e.errors || []).join('; ')}`);
@@ -122,6 +114,49 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths, spawnFn
     if (def.frontmatter.enabled === false) continue;
     if (!def.frontmatter.schedule) continue;
     desired.set(name, def);
+  }
+
+  const states = listJobStates(workspaceDir);
+
+  // Catch-up dispatch — driven by state.last_run_at, not by job-def changes.
+  // Must run on every heartbeat tick (including the hash early-exit path),
+  // otherwise launchd-dropped firings would never be caught up in steady state.
+  // Self-exclude _robin-sync so we don't recurse.
+  try {
+    const missed = findMissedFires({
+      jobs: desired,
+      states,
+      now: new Date(),
+      excludeNames: ['_robin-sync'],
+    });
+    for (const m of missed) {
+      try {
+        const child = spawnFn(argv[0], [...argv.slice(1), 'run', m.name], {
+          detached: true,
+          stdio: 'ignore',
+          cwd: workspaceDir,
+        });
+        child.unref();
+        result.dispatched.push(m.name);
+      } catch (err) {
+        result.warnings.push(`dispatch ${m.name}: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    result.warnings.push(`missed-fire scan: ${err.message}`);
+  }
+
+  // Hash early-exit for the install/regen work (cheap path when nothing changed).
+  const hash = computeSyncHash(workspaceDir);
+  const lastHash = existsSync(paths.syncHashFile) ? readFileSync(paths.syncHashFile, 'utf-8') : '';
+  if (!force && hash === lastHash && existsSync(paths.indexMd) && existsSync(paths.upcomingMd)) {
+    // workspace path may have moved; verify
+    const stored = existsSync(paths.workspacePathFile) ? readFileSync(paths.workspacePathFile, 'utf-8').trim() : '';
+    if (stored === workspaceDir) {
+      // result.skipped is the install-failure list (always [] on this path);
+      // spread first so the top-level skipped='no-change' marker wins.
+      return { ok: true, hash, ...result, skipped: 'no-change' };
+    }
   }
 
   // Names this reconciler is allowed to touch: any job def discoverable in
@@ -192,22 +227,24 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths, spawnFn
     }
   }
 
-  // Regenerate aggregate surfaces
-  const states = listJobStates(workspaceDir);
+  // Regenerate aggregate surfaces (states are reloaded — `discoverJobs` may
+  // have triggered orphan deletions just above, and a state JSON might have
+  // been touched by a concurrent runner since we first loaded it).
+  const freshStates = listJobStates(workspaceDir);
   const generatedAt = new Date();
   // Doctor runs LAST (after install/uninstall) so it audits the post-reconcile
   // state — orphans we just left behind, plists we just regenerated, etc.
   let healthFindings = [];
   try {
-    healthFindings = runDoctor(workspaceDir, jobs, { states });
+    healthFindings = runDoctor(workspaceDir, jobs, { states: freshStates });
   } catch (err) {
     result.warnings.push(`doctor: ${err.message}`);
   }
   result.healthFindings = healthFindings;
   try {
-    regenIndex(workspaceDir, jobs, states, { generatedAt, tz });
+    regenIndex(workspaceDir, jobs, freshStates, { generatedAt, tz });
     regenUpcoming(workspaceDir, jobs, { generatedAt, tz });
-    regenFailures(workspaceDir, jobs, states, {
+    regenFailures(workspaceDir, jobs, freshStates, {
       generatedAt,
       tz,
       healthSection: renderHealthSection(healthFindings),
@@ -219,35 +256,6 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths, spawnFn
   // Persist hash + workspace path
   writeIfChanged(paths.syncHashFile, hash);
   writeIfChanged(paths.workspacePathFile, workspaceDir);
-
-  // Catch-up dispatch: find jobs whose last_run_at is past 1.5x interval and
-  // spawn the runner detached. The runner re-checks catch-up before executing,
-  // and per-job locks prevent overlap with a concurrent launchd-fired runner.
-  // Self-exclude so we never recursively spawn another reconcile.
-  result.dispatched = [];
-  try {
-    const missed = findMissedFires({
-      jobs: desired,
-      states,
-      now: new Date(),
-      excludeNames: ['_robin-sync'],
-    });
-    for (const m of missed) {
-      try {
-        const child = spawnFn(argv[0], [...argv.slice(1), 'run', m.name], {
-          detached: true,
-          stdio: 'ignore',
-          cwd: workspaceDir,
-        });
-        child.unref();
-        result.dispatched.push(m.name);
-      } catch (err) {
-        result.warnings.push(`dispatch ${m.name}: ${err.message}`);
-      }
-    }
-  } catch (err) {
-    result.warnings.push(`missed-fire scan: ${err.message}`);
-  }
 
   return { ok: true, hash, ...result };
 }

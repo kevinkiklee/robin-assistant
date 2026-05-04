@@ -179,7 +179,7 @@ describe('reconcile catch-up dispatch', () => {
     const HOUR = 60 * 60 * 1000;
     writeFileSync(
       paths.stateJSON('overdue'),
-      JSON.stringify({ name: 'overdue', last_run_at: new Date(Date.now() - 36 * HOUR).toISOString() })
+      JSON.stringify({ name: 'overdue', last_run_at: new Date(Date.now() - 40 * HOUR).toISOString() })
     );
     writeFileSync(
       paths.stateJSON('fresh'),
@@ -194,6 +194,36 @@ describe('reconcile catch-up dispatch', () => {
     const r = reconcile({ workspaceDir, argv: ['/robin'], adapter, spawnFn });
     assert.deepEqual(r.dispatched, ['overdue']);
     assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ['run', 'overdue']);
+  });
+
+  test('dispatches missed jobs even when hash early-exit fires (steady-state heartbeat)', () => {
+    // Steady state: jobs MD files unchanged since last reconcile. The hash
+    // early-exit short-circuits the install/regen work — but catch-up dispatch
+    // is driven by state, not job defs, and MUST still fire.
+    writeJob('overdue', { name: 'overdue', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
+    const adapter = fakeAdapter();
+    // First reconcile: writes hash, no dispatch (state has no last_run_at yet).
+    reconcile({ workspaceDir, argv: ['/robin'], adapter });
+    // Now backdate the job's state to simulate a missed firing.
+    const paths = jobsPaths(workspaceDir);
+    writeFileSync(
+      paths.stateJSON('overdue'),
+      JSON.stringify({ name: 'overdue', last_run_at: new Date(Date.now() - 40 * 60 * 60 * 1000).toISOString() })
+    );
+    // Second reconcile: hash matches → early-exit, but dispatch must still run.
+    const calls = [];
+    const r = reconcile({
+      workspaceDir,
+      argv: ['/robin'],
+      adapter,
+      spawnFn: (cmd, args) => {
+        calls.push({ cmd, args });
+        return { unref: () => {} };
+      },
+    });
+    assert.equal(r.skipped, 'no-change', 'should hit hash early-exit');
+    assert.deepEqual(r.dispatched, ['overdue'], 'dispatch must run on early-exit path');
     assert.deepEqual(calls[0].args, ['run', 'overdue']);
   });
 
