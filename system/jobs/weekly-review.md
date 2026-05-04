@@ -57,6 +57,10 @@ Read `user-data/memory/streams/decisions.md` for entries marked pending input.
 
 Read `user-data/memory/streams/inbox.md`. For each entry, classify per `system/rules/capture.md` routing and move to the right file.
 
+### 8. Hook enforcement summary
+
+Read `user-data/runtime/state/telemetry/protocol-override-enforcement.log`. Tabulate `event: blocked` and `event: injected` counts per protocol for this week vs. last week (7-day windows ending today and 7 days ago). Surface protocols whose block count grew or whose inject count dropped to zero (signal that the override path may be drifting).
+
 ## Output
 
 Section-by-section summary. End with: "Anything to capture or commit to before next week?"

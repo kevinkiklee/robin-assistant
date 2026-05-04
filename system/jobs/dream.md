@@ -124,6 +124,8 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
    - Frequently-matched entities that route to nothing → suggest creating a topic file.
    - Aliases skipped due to missing disambiguator → list for backfill.
 
+11.6. **Hook enforcement review.** Run `system/jobs/hook-enforcement-review.md` inline (≤40 lines).
+
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/streams/journal.md` or delete if resolved.
 
 12.5. **Action-trust calibration** — read `user-data/memory/self-improvement/action-trust.md`. For each class in `## Open`:
@@ -157,6 +159,8 @@ Runs after all other phases. Maintains the memory tree structure.
    - `user-data/runtime/state/hook-perf.log` → 1000 lines
 
    Use `node -e "import('./system/scripts/diagnostics/lib/perf-log.js').then(m => m.capPerfLog(process.cwd(), 1000))"` for hook-perf; for recall.log, simple `tail -n 5000 file > file.tmp && mv file.tmp file` (atomic enough at Dream cadence).
+
+17.8. **Protocol-override state cleanup.** Prune files in `user-data/runtime/state/protocol-overrides/` whose basename (session_id) is absent from `runtime/state/sessions.md` AND mtime >24h. Orphans from crashed sessions; hook tolerates stale state itself.
 
 18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
 
