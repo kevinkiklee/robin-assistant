@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Action-trust closing-the-loop (persistent surface + CLI + e2e coverage)
+
+Closed the dangling end of the action-state machine. Dream's promotion proposals previously named a "escalation report" file that didn't exist — proposals went nowhere, auto-finalize fired after 24h whether or not the user actually saw them, and the calibration loop was effectively unobserved. This PR makes the surface real, gives the model a session-start signal, and adds a CLI for ad-hoc inspection. Spec at `docs/superpowers/specs/2026-05-03-action-trust-closing-the-loop-design.md`; plan at `docs/superpowers/plans/2026-05-03-action-trust-closing-the-loop.md`.
+
+#### New
+- **`system/scripts/lib/needs-input.js`** — atomic `appendSection` / `clearSection` / `clearFile` / `readSections` for `user-data/runtime/state/needs-your-input.md`. Re-appending the same section name replaces (no duplication when Dream re-runs daily). The empty state is `_(no items)_` so consumers can detect "nothing to surface."
+- **`system/scripts/cli/trust.js`** + `robin trust` subcommand — read-only inspection: default summary (counts of AUTO/ASK/NEVER, open trust entries, pending promotions); `status` (full lists); `pending` (just the action-trust section of needs-your-input.md); `history [--days N]` (## Closed entries); `class <slug>` (state + counters + history for one class).
+- **`system/scripts/diagnostics/check-action-captures.js`** + `npm run check-action-captures` — scans inbox.md (last 30d) for `[action] <class> • <outcome> • <ref>` lines, reports total + per-class + per-outcome counts, cross-references with action-trust.md `## Open`, and surfaces a 7-day silence warning consumed by Phase 12.5. Always exits 0; informational. Baseline against current state confirms the spec hypothesis (0 captures in 7 days — the calibration loop was starved).
+- **`system/jobs/action-trust-calibration.md`** — Dream Phase 12.5 delegated job. Owns capture-pipeline check, per-class tally, demote-on-correction, promotion proposal emission, 24h auto-finalize, probation maintenance, 90-day decay. Split out so dream.md stays under the 5000-token per-protocol cap (mirrors the learning-queue.md pattern).
+- **8 e2e scenarios + 33 unit tests** covering the full loop: promotion-proposal, auto-finalize, promotion-rejected, demotion-on-correction, probation-clear, 90d-decay, capture-warning, and a startup-load contract test that asserts CLAUDE.md / token-budget.json / needs-input.js all reference the same path.
+
+#### Modified
+- **`system/jobs/dream.md`** — Pre-flight gains needs-your-input.md surface-cleanup (clear resolved proposals, expired probation watches; each clear wrapped in try/catch). Four "escalation report" prose references (phases 8 / 11.5 / 12.5 / 18) replaced with explicit `appendSection` calls into named sections (Preference contradictions / Recall telemetry / Action-trust capture pipeline / Action-trust promotion proposals / Conversation pruning candidates). Phase 12.5 replaced with a one-line invocation of `system/jobs/action-trust-calibration.md`. Output section's "Escalation report" subsection rewritten as "needs-your-input.md" naming the helper API. Post-edit dream.md is at 4877/5000 tokens (was 4957, net 80 headroom).
+- **`CLAUDE.md`** — startup #4 inserts `runtime/state/needs-your-input.md` right before `today.md` (both volatile, both at the end of the read list to keep cache stability). Operational rules gain two lines: "Needs your input" (surface in first response, name auto-finalize deadlines) and "Action captures" (capture.md `### [action] tag` is load-bearing — without captures, calibration starves).
+- **`bin/robin.js`** — register `trust` subcommand + HELP entry.
+- **`package.json`** — `check-action-captures` script.
+- **`system/scripts/diagnostics/lib/token-budget.json`** — needs-your-input.md added to tier1_files (volatile, max_lines: 50). Tier 1 cap 12500 → 12700 / cache-stable 11050 → 11200 to absorb the CLAUDE.md operational-rule additions (~155 tokens). Lines stayed under 565 (559/565).
+- **`system/tests/capture/golden-session.snapshot.json`** — regenerated to acknowledge needs-your-input.md in tier1_files.
+
+#### Notes
+- The 7-day silence warning is **the diagnostic showing the actual problem**: `npm run check-action-captures` against the current workspace returns 0 captures, which is why no promotion has ever fired despite the machinery existing. Phase 12.5 will now surface this as a banner each Dream cycle until captures start flowing — the recurring banner is intentional ("real signal that something needs fixing" per spec).
+- Auto-finalize is **24h after the proposal first surfaces**, not 24h after Dream emits it. The proposal carries a `surfaced-at:` timestamp written into the class block in action-trust.md the same cycle the proposal lands in needs-your-input.md.
+- All needs-input.md mutations are **atomic** (tmp + rename) so Dream interruption can't leave a torn frontmatter.
+
 ### Learning-queue activation (Dream-owned daily lifecycle)
 
 Wired up the previously-broken Learning Queue: `inbox.md` `[?]` items, recent corrections, and journal/handoff knowledge-gap signals are now the population source (the spec referenced a non-existent `## Session Reflections` file); Dream picks one question per day and writes it to `user-data/runtime/state/learning-queue/today.md`, which CLAUDE.md startup #4 reads into Tier 1 so the model can ask at a natural moment; substantive answers are captured to inbox as `[answer|qid=<qid>|<original-tag>|origin=user] <answer>` and the next Dream run promotes them to the right destination file (preferences/decisions/corrections/profile/knowledge), flips the queue entry to `answered`, and clears `today.md`. Open questions older than 60 days flip to `dropped`. Spec at `docs/superpowers/specs/2026-05-03-learning-queue-activation-design.md`; plan at `docs/superpowers/plans/2026-05-03-learning-queue-activation.md`.
