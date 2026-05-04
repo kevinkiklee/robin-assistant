@@ -16,7 +16,7 @@ import { expectedIntervalMs, parseCron } from './cron.js';
 // Add new names here if the user runs other long-lived services under
 // ~/Library/LaunchAgents/com.robin.* (preferred: use a com.robin.user.*
 // sub-namespace for new services to avoid editing this list).
-const KNOWN_NON_JOB_LABELS = new Set(['discord-bot', 'discord-bot-watchdog']);
+const KNOWN_NON_JOB_LABELS = new Set(['discord-bot', 'discord-bot-watchdog', 'discord-bot-health']);
 
 // severity: 'error' surfaces as failure-equivalent; 'warn' is informational.
 function f(severity, code, target, message) {

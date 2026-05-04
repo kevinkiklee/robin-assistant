@@ -89,6 +89,25 @@ describe('doctor: checkPlists', () => {
     rmSync(agentsDir, { recursive: true, force: true });
   });
 
+  test('known non-job services are not flagged as orphans', () => {
+    // Service-style plists that share the com.robin.* namespace but aren't
+    // managed by the reconciler. Adding a new long-lived service? Either add
+    // it to KNOWN_NON_JOB_LABELS in doctor.js OR install it under com.robin.user.*.
+    const { ws, agentsDir } = setupPlistEnv();
+    const services = ['discord-bot', 'discord-bot-watchdog', 'discord-bot-health'];
+    for (const name of services) {
+      writePlist(agentsDir, name, { argv: ['/usr/bin/node', '/x.js'], wd: ws, path: '/usr/bin' });
+    }
+    const jobs = new Map();
+    const o = opts(agentsDir);
+    o.listEntries = () => services;
+    const r = checkPlists(ws, jobs, o);
+    const orphans = r.filter((x) => x.code === 'plist-orphan');
+    assert.deepEqual(orphans, [], `unexpected orphan findings: ${JSON.stringify(orphans)}`);
+    rmSync(ws, { recursive: true, force: true });
+    rmSync(agentsDir, { recursive: true, force: true });
+  });
+
   test('workspace mismatch: plist points at different repo dir', () => {
     const { ws, agentsDir } = setupPlistEnv();
     writePlist(agentsDir, 'sync-x', { argv: ['/usr/bin/node', '/x.js'], wd: '/some/other/path', path: '/usr/bin:' + process.execPath.replace(/\/[^/]+$/, '') });
