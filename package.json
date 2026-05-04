@@ -23,6 +23,8 @@
     "check-plugin-prefix": "node system/scripts/diagnostics/check-plugin-prefix.js",
     "check-protocol-triggers": "node system/scripts/diagnostics/check-protocol-triggers.js",
     "check-action-captures": "node system/scripts/diagnostics/check-action-captures.js",
+    "check-sync-freshness": "node system/scripts/diagnostics/check-sync-freshness.js",
+    "check-derived-tagging": "node system/scripts/diagnostics/check-derived-tagging.js",
     "lint-memory": "node system/scripts/memory/lint.js",
     "densify-wiki": "node system/scripts/memory/densify-wiki.js",
     "golden-session": "node system/scripts/diagnostics/golden-session.js",
