@@ -90,6 +90,12 @@
       "stability": "volatile",
       "required": false,
       "optional_existence": true
+    },
+    {
+      "path": "user-data/runtime/state/learning-queue/today.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": true
     }
   ],
   "stability_order": [

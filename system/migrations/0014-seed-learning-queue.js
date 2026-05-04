@@ -14,39 +14,53 @@ export const id = '0014-seed-learning-queue';
 export const description = 'Seed Learning Queue with starter questions if empty (idempotent).';
 
 const SEED_QUESTIONS = `### 2026-04-30 — Best work time of day
+- qid: 2026-04-30-best-work-time-of-day
 - domain: scheduling
 - why: tailor when to surface focus-heavy items
 - status: open
+- added: 2026-04-30
 
 ### 2026-04-30 — Decisions to flag vs decide autonomously
+- qid: 2026-04-30-decisions-to-flag-vs-decide-autonomously
 - domain: ask-vs-act
 - why: calibrate the operational rule on the user's actual preference
 - status: open
+- added: 2026-04-30
 
 ### 2026-04-30 — Detail level for finance >$1k
+- qid: 2026-04-30-detail-level-for-finance-1k
 - domain: stress-test
 - why: hard rule says stress-test these; depth depends on user
 - status: open
+- added: 2026-04-30
 
 ### 2026-04-30 — Tolerance for prediction-style claims being saved + checked back
+- qid: 2026-04-30-tolerance-for-prediction-style-claims-being-saved-checked-back
 - domain: outcome-learning
 - why: gates whether outcome-check job (X1) should be enabled
 - status: open
+- added: 2026-04-30
 
 ### 2026-04-30 — Signals for "deep work" sessions
+- qid: 2026-04-30-signals-for-deep-work-sessions
 - domain: capture-sweep
 - why: when to defer vs when to interrupt
 - status: open
+- added: 2026-04-30
 
 ### 2026-04-30 — Style: verbal-style match vs explicit
+- qid: 2026-04-30-style-verbal-style-match-vs-explicit
 - domain: communication-style
 - why: low-priority but improves daily feel
 - status: open
+- added: 2026-04-30
 
-### 2026-04-30 — Promote corrections to AGENTS.md vs keep as patterns
+### 2026-04-30 — Promote corrections to CLAUDE.md vs keep as patterns
+- qid: 2026-04-30-promote-corrections-to-claude-md-vs-keep-as-patterns
 - domain: self-improvement
 - why: hard rules are sticky; patterns are revisable
 - status: open
+- added: 2026-04-30
 `;
 
 export async function up({ workspaceDir }) {
