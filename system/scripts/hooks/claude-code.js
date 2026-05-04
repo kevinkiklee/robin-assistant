@@ -16,6 +16,12 @@
 //                      Refusal logged to user-data/runtime/state/telemetry/policy-refusals.log
 //                      with kind=bash. Top-level try/catch fail-closed —
 //                      uncaught error in the hook also blocks (exit 2).
+//   --on-post-tool-use fires after every successful Write/Edit/NotebookEdit.
+//                      Scope-filters tool_input.file_path against
+//                      user-data/memory/{knowledge,profile} (excluding
+//                      append-only files and reserved subtrees) and runs the
+//                      link library on qualifying writes. Always exits 0
+//                      (fail-soft) — never blocks a successful write.
 //
 // Exit code 0 = allow the tool call to proceed (after any rewrite).
 // Exit code 2 = block the tool call (with a stderr message Claude Code
@@ -65,6 +71,7 @@ function parseArgs(argv) {
     else if (a === '--on-pre-tool-use') args.mode = 'on-pre-tool-use';
     else if (a === '--on-pre-bash') args.mode = 'on-pre-bash';
     else if (a === '--on-user-prompt-submit') args.mode = 'on-user-prompt-submit';
+    else if (a === '--on-post-tool-use') args.mode = 'on-post-tool-use';
     else if (a === '--no-drain') args.drain = false;
     else if (a === '--debug') args.debug = true;
     else if (a === '--workspace') args.workspace = argv[++i];
@@ -620,6 +627,98 @@ async function onPreBash(args, stdinData) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// PostToolUse handler.
+//
+// Fires on every successful Write/Edit/NotebookEdit. Scope-filters to
+// in-scope memory writes (knowledge/**, profile/** excluding append-only
+// files like inbox.md/journal.md/log.md/decisions.md/tasks.md/hot.md and
+// reserved subtrees) and runs the link library on the target file. Always
+// exits 0 — never blocks a successful write. Same logic as `robin link`,
+// different trigger.
+//
+// Bail-fast: cheap path checks happen before any heavy import. The link
+// library is only loaded on qualifying writes.
+// ---------------------------------------------------------------------------
+
+const POST_TOOL_USE_OUT_OF_SCOPE_ROOT_FILES = new Set([
+  'inbox.md', 'journal.md', 'log.md', 'decisions.md', 'tasks.md', 'hot.md',
+  'INDEX.md', 'ENTITIES.md', 'LINKS.md',
+]);
+const POST_TOOL_USE_OUT_OF_SCOPE_PREFIXES = [
+  'archive/', 'streams/', 'quarantine/', 'runtime/',
+  'knowledge/conversations/',
+];
+
+function postToolUseInScope(relPath) {
+  if (POST_TOOL_USE_OUT_OF_SCOPE_ROOT_FILES.has(relPath)) return false;
+  for (const p of POST_TOOL_USE_OUT_OF_SCOPE_PREFIXES) {
+    if (relPath.startsWith(p)) return false;
+  }
+  return relPath.startsWith('knowledge/') || relPath.startsWith('profile/');
+}
+
+async function onPostToolUse(args, stdinData) {
+  const ws = args.workspace ?? process.env.ROBIN_WORKSPACE ?? REPO_ROOT;
+  const t0 = Date.now();
+  try {
+    let event = {};
+    try {
+      if (stdinData !== undefined && stdinData !== null) {
+        event = typeof stdinData === 'object' ? stdinData : (stdinData ? JSON.parse(stdinData) : {});
+      } else {
+        const stdin = await readStdin();
+        event = stdin ? JSON.parse(stdin) : {};
+      }
+    } catch { /* fail-soft on malformed stdin */ }
+
+    const filePath = event?.tool_input?.file_path
+      || event?.tool_input?.notebook_path
+      || null;
+    if (!filePath) return { exitCode: 0 };
+
+    const memDir = join(ws, 'user-data', 'memory');
+    const abs = resolve(filePath);
+    if (!abs.startsWith(memDir + '/') && abs !== memDir) return { exitCode: 0 };
+
+    const rel = abs.slice(memDir.length + 1);
+    if (!postToolUseInScope(rel)) {
+      try {
+        appendPerfLog(ws, {
+          hook: 'link-hook-skip',
+          duration_ms: Date.now() - t0,
+          reason: rel,
+        });
+      } catch { /* never block on telemetry */ }
+      return { exitCode: 0 };
+    }
+
+    const { applyEntityLinks } = await import('../wiki-graph/lib/apply-entity-links.js');
+    const { buildEntityRegistry } = await import('../wiki-graph/lib/build-entity-registry.js');
+    const registry = await buildEntityRegistry(ws);
+    await applyEntityLinks(ws, rel, registry, {});
+    try {
+      appendPerfLog(ws, {
+        hook: 'link-hook',
+        duration_ms: Date.now() - t0,
+        reason: rel,
+      });
+    } catch { /* never block on telemetry */ }
+  } catch (err) {
+    try {
+      const { appendPolicyRefusal } = await import('../lib/policy-refusals-log.js');
+      appendPolicyRefusal(ws, {
+        kind: 'link-hook-error',
+        target: 'link-hook',
+        layer: 'runtime-error',
+        reason: err?.message || String(err),
+        contentHash: '',
+      });
+    } catch { /* nested logging failure ignored */ }
+  }
+  return { exitCode: 0 };
+}
+
 // Scan the most recent COMPLETE assistant message in a Claude Code transcript (.jsonl)
 // for entity-alias hits. Tail-bounded read; fail-open on any I/O issue.
 function scanLastAssistantMessage(transcriptPath, aliasIndex) {
@@ -899,7 +998,7 @@ async function onUserPromptSubmit(args, stdinData) {
 /**
  * Run the hook logic for the given mode without calling process.exit.
  *
- * @param {string} mode - 'on-stop' | 'on-pre-tool-use' | 'on-pre-bash' | 'on-user-prompt-submit'
+ * @param {string} mode - 'on-stop' | 'on-pre-tool-use' | 'on-pre-bash' | 'on-user-prompt-submit' | 'on-post-tool-use'
  * @param {object} [opts]
  * @param {object|null} [opts.stdin] - Pre-parsed JSON event (harness passes object; subprocess reads from process.stdin)
  * @param {object} [opts.env] - Environment (currently unused; process.env is used directly by helpers)
@@ -915,8 +1014,9 @@ export async function runHook(mode, { stdin = null, env = process.env, workspace
     if (mode === 'on-pre-tool-use') return await onPreToolUse(stdin);
     if (mode === 'on-pre-bash') return await onPreBash(args, stdin);
     if (mode === 'on-user-prompt-submit') return await onUserPromptSubmit(args, stdin);
+    if (mode === 'on-post-tool-use') return await onPostToolUse(args, stdin);
 
-    process.stderr.write('Usage: claude-code.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit\n');
+    process.stderr.write('Usage: claude-code.js --on-stop | --on-pre-tool-use | --on-pre-bash | --on-user-prompt-submit | --on-post-tool-use\n');
     return { exitCode: 2 };
   } catch (e) {
     if (e instanceof ExitSignal) return { exitCode: e.code };
