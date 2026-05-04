@@ -86,6 +86,35 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     await dispatchWatch(rest);
     return { exitCode: 0 };
   }
+  if (cmd === 'memory') {
+    const { dispatchMemory } = await import('../system/scripts/cli/memory.js');
+    return { exitCode: await dispatchMemory(rest) };
+  }
+  if (cmd === 'discord') {
+    const { dispatchDiscord } = await import('../system/scripts/cli/discord.js');
+    return { exitCode: await dispatchDiscord(rest) };
+  }
+  if (cmd === 'dev') {
+    const { dispatchDev } = await import('../system/scripts/cli/dev.js');
+    return { exitCode: await dispatchDev(rest) };
+  }
+  if (cmd === 'backup' || cmd === 'restore') {
+    const { spawn } = await import('node:child_process');
+    const { resolve, dirname } = await import('node:path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const root = resolve(here, '..');
+    const script = cmd === 'backup' ? 'backup.js' : 'restore.js';
+    const scriptPath = join(root, 'system/scripts/cli', script);
+    const code = await new Promise((res) => {
+      const c = spawn(process.execPath, [scriptPath, ...rest], { stdio: 'inherit' });
+      c.on('error', (err) => {
+        process.stderr.write(`robin ${cmd}: failed to spawn — ${err.message}\n`);
+        res(1);
+      });
+      c.on('exit', (n, signal) => res(signal ? 1 : (n ?? 0)));
+    });
+    return { exitCode: code };
+  }
 
   if (cmd === 'regenerate-memory-index') {
     const { writeMemoryIndex, checkMemoryIndex } = await import('../system/scripts/memory/regenerate-index.js');
