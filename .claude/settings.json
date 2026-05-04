@@ -76,6 +76,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/system/scripts/hooks/claude-code.js\" --on-post-tool-use"
+          }
+        ]
+      }
     ]
   }
 }
