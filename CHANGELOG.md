@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Learning-queue activation (Dream-owned daily lifecycle)
+
+Wired up the previously-broken Learning Queue: `inbox.md` `[?]` items, recent corrections, and journal/handoff knowledge-gap signals are now the population source (the spec referenced a non-existent `## Session Reflections` file); Dream picks one question per day and writes it to `user-data/runtime/state/learning-queue/today.md`, which CLAUDE.md startup #4 reads into Tier 1 so the model can ask at a natural moment; substantive answers are captured to inbox as `[answer|qid=<qid>|<original-tag>|origin=user] <answer>` and the next Dream run promotes them to the right destination file (preferences/decisions/corrections/profile/knowledge), flips the queue entry to `answered`, and clears `today.md`. Open questions older than 60 days flip to `dropped`. Spec at `docs/superpowers/specs/2026-05-03-learning-queue-activation-design.md`; plan at `docs/superpowers/plans/2026-05-03-learning-queue-activation.md`.
+
+#### New
+- **`system/scripts/lib/learning-queue.js`** — deterministic helpers: `loadQueue`, `qidFromHeading` (slug + 2-char base36 collision suffix), `pickToday` (selection scoring: +2 domain match, +1 ≥2-token keyword overlap; oldest `added:` / qid lexical tiebreakers), `writeToday` / `readToday` / `clearToday` (atomic), `markAnswered` (in-place edit, respects manual edits), `retireStale`, `routeFromTag` (preference→preferences.md, decision→decisions.md, correction→corrections.md, fact/update→null so Dream picks at runtime, other→inbox.md fallback).
+- **`system/jobs/learning-queue.md`** — separate agent job invoked from Dream Phase 3 step 10 (split out so dream.md stays under the 5000-token per-protocol cap; mirrors the hook-enforcement-review.md pattern from the previous PR). Owns population, selection, surfacing, closure, retire end-to-end.
+- **`system/migrations/0027-add-qids-to-learning-queue.js`** — backfills `- qid: <slug>` as the first bullet under each `### YYYY-MM-DD — Title` heading. Idempotent: skips entries already containing `- qid:`. Runs on existing installs at next `npm install` postinstall.
+- **`system/scaffold/runtime/state/learning-queue/.gitkeep`** — directory exists at install.
+- **48 unit tests + 13 e2e scenarios** covering parser, qid generation, selection scoring, atomic writes, closure, retire, stale today.md cleanup.
+
+#### Modified
+- **`system/jobs/dream.md`** — replaced broken Steps 7+10 (referenced a non-existent `## Session Reflections` source and had no closure mechanism). Step 7 trimmed to "session-handoff scan"; step 10 now invokes `system/jobs/learning-queue.md`. New Phase 4 step 17.9: stale today.md cleanup (mtime >48h → delete, next Dream rewrites). Post-edit dream.md is at 4957/5000 tokens (was 4980).
+- **`system/rules/self-improvement.md`** — dropped the dangling `## Session Reflections` paragraph (described a file that never existed); rewrote `## Learning Queue` section to document the new Dream-owned lifecycle.
+- **`CLAUDE.md`** — startup #4 appends `runtime/state/learning-queue/today.md` to the LAST position in the read list (per-day volatile, cache-friendliest at the tail). Operational rules gain a Learning queue line.
+- **`system/scaffold/memory/self-improvement/learning-queue.md`** + **`system/migrations/0014-seed-learning-queue.js`** — schema example and seeded entries updated to include `qid:` and `added:`.
+- **`system/scripts/diagnostics/lib/token-budget.json`** — tier1 12300→12500 / cache-stable 10950→11050 / tier1_max_lines 560→565 to absorb the CLAUDE.md additions and the +109-token migration-0027 backfill on Kevin's live queue. `today.md` added to `tier1_files` with `max_lines: 30` so its size is tracked even when present.
+- **`system/tests/capture/golden-session.snapshot.json`** — regenerated to acknowledge today.md's presence in tier1_files.
+
+#### Notes
+- **Closure is explicit, not LLM-judged** (rejected during design): the `[answer|qid=...]` capture marker is the only mechanism that promotes an open question. The model's only in-session role is recognizing a natural moment and capturing the user's substantive response with the correct marker.
+- **Single question per day**, no multi-surfacing (multi-question would compete with whatever else the user actually wants to do that day).
+- **Population is best-effort.** Dream judgment filters `[?]` items — not every question mark is a learning-queue candidate.
+
 ### Pre-protocol-override hook (mechanical override enforcement)
 
 Mechanical guard that prevents the model from invoking a protocol without first reading its `user-data/runtime/jobs/<name>.md` override (when one exists). The `daily-briefing` user-data override had been ignored 4 times historically; this is the spec-mandated 5th-miss escalation. Spec at `docs/superpowers/specs/2026-05-03-pre-protocol-assertion-hook-design.md`; plan at `docs/superpowers/plans/2026-05-03-pre-protocol-assertion-hook.md`.
