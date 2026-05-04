@@ -171,6 +171,61 @@ describe('reconcile sync cycle', () => {
   });
 });
 
+describe('reconcile catch-up dispatch', () => {
+  test('dispatches jobs whose last_run_at is past 1.5x interval', () => {
+    writeJob('overdue', { name: 'overdue', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
+    writeJob('fresh', { name: 'fresh', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
+    const paths = jobsPaths(workspaceDir);
+    const HOUR = 60 * 60 * 1000;
+    writeFileSync(
+      paths.stateJSON('overdue'),
+      JSON.stringify({ name: 'overdue', last_run_at: new Date(Date.now() - 36 * HOUR).toISOString() })
+    );
+    writeFileSync(
+      paths.stateJSON('fresh'),
+      JSON.stringify({ name: 'fresh', last_run_at: new Date(Date.now() - 6 * HOUR).toISOString() })
+    );
+    const adapter = fakeAdapter();
+    const calls = [];
+    const spawnFn = (cmd, args) => {
+      calls.push({ cmd, args });
+      return { unref: () => {} };
+    };
+    const r = reconcile({ workspaceDir, argv: ['/robin'], adapter, spawnFn });
+    assert.deepEqual(r.dispatched, ['overdue']);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ['run', 'overdue']);
+  });
+
+  test('does not dispatch _robin-sync itself', () => {
+    writeJob('_robin-sync', {
+      name: '_robin-sync',
+      description: 'd',
+      runtime: 'node',
+      schedule: '*/15 * * * *',
+      command: 'echo',
+    });
+    const paths = jobsPaths(workspaceDir);
+    writeFileSync(
+      paths.stateJSON('_robin-sync'),
+      JSON.stringify({ name: '_robin-sync', last_run_at: new Date(Date.now() - 999 * 60 * 60 * 1000).toISOString() })
+    );
+    const adapter = fakeAdapter();
+    const calls = [];
+    const r = reconcile({
+      workspaceDir,
+      argv: ['/robin'],
+      adapter,
+      spawnFn: (cmd, args) => {
+        calls.push({ cmd, args });
+        return { unref: () => {} };
+      },
+    });
+    assert.deepEqual(r.dispatched, []);
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe('computeSyncHash', () => {
   test('changes when a file changes', () => {
     writeJob('a', { name: 'a', description: 'd', runtime: 'node', schedule: '0 4 * * *', command: 'echo' });
