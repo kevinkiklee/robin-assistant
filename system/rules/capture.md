@@ -120,6 +120,29 @@ Update the class block's counters (attempts, successes, corrections, last-action
 
 **Self-correction.** If Robin discovers its own AUTO action was wrong (mid-turn, next turn, or surfaced by Dream), it self-writes a `[correction]` to `corrections.md` AND demotes the class in `action-trust.md` (AUTO → ASK same turn). No threshold; one self-detected error counts the same as a user correction.
 
+### Derived sources (low trust for identity claims)
+
+The following data sources contain CORRELATIONAL signals only — they cannot
+be promoted to identity, taste, or behavior assertions without explicit user
+confirmation:
+
+- Browsing history (chrome history, search history, URL visits)
+- Subscription / follow lists (YouTube subs, Spotify follows, Twitter follows)
+- App installs / device inventory
+- Forum / site visit counts
+- Email subject/sender frequency (without read state)
+
+Captures from these sources MUST use `[?|origin=<derived-source>]` (uncertain),
+not `[fact|origin=<derived-source>]` (asserted). Counts and clusters can be
+reported literally ("113 visits to X.com in 30d"), but behavioral labels
+("active gamer", "cook", "frequent orderer") require explicit confirmation.
+
+Sync writers for derived sources stamp captures with the appropriate tag
+automatically; the model should respect the inherited tag. Lint
+`npm run check-derived-tagging` (CI gate) catches violations. Suppress a
+single legitimate `[fact|origin=<derived>]` line by appending
+`# allow-derived-fact: <reason>` on the same line.
+
 ### Multi-faceted moments
 
 Split into separate atomic entries. Each routes independently.
