@@ -6,13 +6,30 @@ import {
   writeFileSync,
   readFileSync,
   lstatSync,
+  realpathSync,
   symlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 import { installHooks } from './install-hooks.js';
 import { runPendingMigrations } from '../migrate/apply.js';
 import { ensureManifestFromScaffold } from '../lib/manifest.js';
+
+// macOS resolves /var/folders → /private/var/folders, so a literal startsWith
+// check against tmpdir() misses npm-postinstall subprocess paths. Compare via
+// realpath so install-scenario e2e tests can't reach into the real user
+// launchd domain via the launchd job adapter.
+function isUnderTmpdir(workspaceDir) {
+  if (!workspaceDir) return false;
+  try {
+    const tmpReal = realpathSync(tmpdir());
+    const wdReal = existsSync(workspaceDir) ? realpathSync(workspaceDir) : workspaceDir;
+    return wdReal.startsWith(tmpReal) || workspaceDir.startsWith(tmpdir());
+  } catch {
+    return workspaceDir.startsWith(tmpdir());
+  }
+}
 
 function detectTimezone() {
   try {
@@ -209,6 +226,13 @@ export async function setup(workspaceDir = process.cwd(), opts = {}) {
   }
 
   // Install scheduler entries for enabled jobs (cross-platform). Idempotent.
+  // Skip in tempdir contexts: the launchd adapter writes plists to ~/Library/
+  // LaunchAgents and bootstraps in the user's real gui/<uid> domain, which
+  // would corrupt the user's real job plists (and bootout running services)
+  // every time an e2e install scenario test runs.
+  if (isUnderTmpdir(workspaceDir)) {
+    return;
+  }
   try {
     const { reconcile, resolveRobinArgv } = await import('../jobs/reconciler.js');
     const r = reconcile({ workspaceDir, argv: resolveRobinArgv(workspaceDir) });

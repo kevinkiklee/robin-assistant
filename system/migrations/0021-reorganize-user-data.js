@@ -5,7 +5,7 @@
 // Reversible via down().
 
 import {
-  existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, cpSync,
+  existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, cpSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,10 +15,26 @@ import { createHelpers } from '../scripts/migrate/lib/migration-helpers.js';
 export const id = '0021-reorganize-user-data';
 export const description = 'Reorganize user-data into memory/, sources/, and ops/.';
 
+// macOS resolves /var/folders → /private/var/folders, so a literal startsWith
+// check against tmpdir() misses subprocess cwd paths that come back resolved
+// (e.g. npm install postinstall under a tempdir). Compare via realpath.
+function isUnderTmpdir(workspaceDir) {
+  if (!workspaceDir) return false;
+  try {
+    const tmpReal = realpathSync(tmpdir());
+    const wdReal = existsSync(workspaceDir) ? realpathSync(workspaceDir) : workspaceDir;
+    return wdReal.startsWith(tmpReal) || workspaceDir.startsWith(tmpdir());
+  } catch {
+    return workspaceDir.startsWith(tmpdir());
+  }
+}
+
 function stopDaemons(workspaceDir) {
   if (process.platform !== 'darwin') return;
-  // Skip when running against a test workspace (tmpdir).
-  if (workspaceDir && workspaceDir.startsWith(tmpdir())) return;
+  // Skip when running against a test workspace (tmpdir). Touching the real
+  // user launchd domain from a tempdir-scoped install (e.g. e2e install
+  // scenario tests) tears down the user's running discord bot.
+  if (isUnderTmpdir(workspaceDir)) return;
   for (const label of ['com.robin.discord-bot-watchdog', 'com.robin.discord-bot']) {
     try {
       execSync(`launchctl unload ~/Library/LaunchAgents/${label}.plist 2>/dev/null`, {
