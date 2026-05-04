@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### CLI consolidation + auto-link hook
+
+#### Changed (BREAKING)
+
+- **CLI consolidation.** `package.json` scripts shrunk from 24 to 5. All maintenance, diagnostic, and discord-lifecycle commands now live under `robin <namespace>`. `npm run X` for any of `backup`, `restore`, `reset`, `lint-memory`, `prune-preview`, `prune-execute`, `regenerate-memory-index`, `regenerate-links`, `densify-wiki`, `migrate-auto-memory`, `measure-tokens`, `measure-prefix-bloat`, `check-plugin-prefix`, `check-protocol-triggers`, `golden-session`, `jobs`, `jobs:sync`, `jobs:list`, `discord:auth`, `discord:install`, `discord:uninstall`, `discord:status`, `discord:health`, `sync-lunch-money`, `analyze-finances` will fail with "Missing script". Use the corresponding `robin` subcommand instead.
+
+#### Added
+
+- `robin memory <regenerate-links|index-entities|lint|densify|prune-preview|prune-execute>`
+- `robin discord <install|uninstall|auth|status|health>`
+- `robin dev <…>` (hidden namespace for diagnostics, one-time migrations, destructive `reset`, and `analyze-finances`)
+- `robin backup`, `robin restore` (promoted from npm scripts)
+- `PostToolUse` hook: every Write/Edit/NotebookEdit to `user-data/memory/{knowledge,profile}/**` now auto-links via `claude-code.js --on-post-tool-use`. The CLAUDE.md instruction telling Claude to invoke `robin link` after each write has been removed — the hook handles it deterministically.
+
+#### Changed
+
+- `CLAUDE.md` recall instruction replaced: Claude now searches the loaded `ENTITIES.md` for entity lookups and uses the native `Grep` tool against `user-data/memory/` for content matches, instead of invoking `node bin/robin.js recall`.
+- `robin update` now auto-re-snapshots the tamper-detection manifest when an upstream-driven `.claude/settings.json` hook change is detected (working tree matches HEAD but differs from manifest's recorded hash).
+
+#### Removed (from prompt files; CLI subcommands kept as escape hatches)
+
+- `robin link <path>` invocation in CLAUDE.md, `system/jobs/dream.md`, `system/jobs/ingest.md`, README.
+- `robin recall <term>` recommendation in CLAUDE.md.
+
 ### Verify-before-asserting systematization (domain recall + freshness contract + derived-source dampening)
 
 Three independent components addressing recurring "model asserted X without checking the authoritative source" failures (gardening recommendations ignoring `outdoor-space.md`, stale Whoop quoted as "today's", inherited `financial-snapshot.md` claims never re-verified, identity inferred from sync-chrome browsing data). Spec at `docs/superpowers/specs/2026-05-03-verify-before-asserting-design.md`; plan at `docs/superpowers/plans/2026-05-03-verify-before-asserting.md`.
