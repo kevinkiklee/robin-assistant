@@ -95,7 +95,6 @@ Read these files:
    - Confident match -> move to destination file, delete from inbox
    - Ambiguous -> leave in inbox, ESCALATE
    - Time-sensitive (deadline <=14d) -> route AND ESCALATE
-   - After writing the topic file, invoke `node bin/robin.js link <memRelPath>` (where `memRelPath` is the path relative to `user-data/memory/`, e.g., `profile/identity.md`). Linker output is a one-line confirmation. If it errors, log to dream output and continue — never block routing on a linker failure.
 
 2. **Fact promotion** — durable facts in `user-data/memory/streams/journal.md` entries (e.g., "got a new doctor: Dr. Smith") -> promote to the matching topic file under `user-data/memory/profile/` or `user-data/memory/knowledge/`.
 
