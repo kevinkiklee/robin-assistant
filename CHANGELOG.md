@@ -2,6 +2,69 @@
 
 ## Unreleased
 
+### Verify-before-asserting systematization (domain recall + freshness contract + derived-source dampening)
+
+Three independent components addressing recurring "model asserted X without checking the authoritative source" failures (gardening recommendations ignoring `outdoor-space.md`, stale Whoop quoted as "today's", inherited `financial-snapshot.md` claims never re-verified, identity inferred from sync-chrome browsing data). Spec at `docs/superpowers/specs/2026-05-03-verify-before-asserting-design.md`; plan at `docs/superpowers/plans/2026-05-03-verify-before-asserting.md`.
+
+#### Component 1 — Domain-trigger recall
+
+Activity / topic keywords ("fertilizer", "Roth", "whoop") now surface mapped memory files at session prompt time even when no entity name appears, complementing the existing entity-alias recall.
+
+- **`system/scripts/hooks/lib/domain-recall.js`** — parser, matcher, `runDomainRecall(workspaceDir, text, { excludeFiles })` helper. Word-boundary case-insensitive matching, dedupes against entity-recall hits, fail-open on malformed maps.
+- **`system/scaffold/runtime/config/recall-domains.md`** — default map: gardening, finance, health, briefing-freshness. Deliberately narrow to avoid context-budget bloat; Dream Phase 11.5 surfaces dead keywords for cleanup.
+- **`system/migrations/0028-add-recall-domains.js`** — copies defaults to existing installs (fresh installs get them via setup.js scaffold copy). Idempotent.
+- **`system/scripts/hooks/claude-code.js`** — `onUserPromptSubmit` calls `runDomainRecall` after entity recall, dedupes file paths, emits a single combined `recall.log` row per turn with new `source` field (`entity` | `domain` | `entity+domain`). Existing rows treated as `entity` for backward compat.
+
+#### Component 2 — Freshness contract for synced data
+
+- **`system/scripts/lib/freshness.js`** — atomic `stampLastSynced(filePath, [ts])` (tmp + rename), `isFresh(filePath, maxAgeHours)` (returns null when missing/unparseable), `getLastSynced(filePath)`. Sync writers stamp; the model checks before quoting fields as "today's" / "current".
+- **`system/scripts/diagnostics/check-sync-freshness.js`** + `npm run check-sync-freshness` — informational scan. `--all` mode walks every `*.md` under `user-data/memory/` and `user-data/runtime/state/` that already declares `last_synced` (catches Kevin-style layouts where synced data lives under `knowledge/<topic>/`).
+- **`system/scripts/diagnostics/dream-stale-sync.js`** — Dream-helper that composes scan + needs-input write/clear. Invoked from new Dream Phase 12.6.
+- **CLAUDE.md operational rule** — "Freshness check": before quoting a `last_synced`-bearing field as "today's"/"current", verify with `isFresh`; stale → kickstart sync inline and re-read, or label `data from <date>`. Missing stamp → "freshness unknown."
+
+#### Component 3 — Derived-source identity dampening
+
+- **`system/rules/capture.md`** — new `### Derived sources (low trust for identity claims)` subsection enumerating browsing history, sub/follow lists, app installs, forum visit counts, email-frequency. Mandates `[?|origin=<derived-source>]` over `[fact|origin=<derived-source>]`.
+- **`system/scripts/diagnostics/check-derived-tagging.js`** + `npm run check-derived-tagging` — lint scans `inbox.md` + recent direct-writes for violations. CI gate (added to `.github/workflows/tests.yml`). Suppress legitimate exceptions with `# allow-derived-fact: <reason>` on the same line. Append-only telemetry log at `user-data/runtime/state/telemetry/derived-tagging.log` (JSONL).
+- **CLAUDE.md operational rule** — "Derived-source dampening": correlational signals never become `[fact]`; use `[?]` and ask for confirmation.
+
+#### Dream + telemetry updates
+
+- **`system/jobs/recall-telemetry-review.md`** — new sub-job extracted from Dream Phase 11.5 to keep `dream.md` under the 5000-token per-protocol cap (mirrors thread #3's action-trust-calibration.md split). Documents the `recall.log` TSV schema with the new `source` field and the dead-keyword surfacing logic.
+- **`system/jobs/dream.md`** — Phase 11.5 now delegates to `recall-telemetry-review.md`; Phase 12.6 invokes `dream-stale-sync.js`. `Stale sync files` added to the documented `needs-your-input.md` section list.
+
+#### Tests
+
+- **38 new unit tests + 14 new e2e tests, all green:**
+  - `freshness.test.js` (18 tests) — atomic write, idempotency, frontmatter insertion, isFresh boundary cases (exactly-24h, future timestamp, missing field, unparseable date).
+  - `check-sync-freshness.test.js` (3) — mix-of-files classification, missing-roots tolerance, `--all` filter.
+  - `check-derived-tagging.test.js` (12) — flags vs ignores by origin, suppression-comment respect, multi-file scan, allowed origins (`sync:gmail`, `user`).
+  - `domain-recall.test.js` (20) — parser, matcher (word-boundary, case-insensitive, dedup), formatter (truncation, missing files), one-shot composition.
+  - `migration-0028-recall-domains.test.js` (5) — seed, idempotency, parent-dir creation.
+  - `onUserPromptSubmit-domain-recall-injection.test.js` (2) — fertilizer prompt → garden file injected; non-match → no block.
+  - `onUserPromptSubmit-domain-no-double-inject.test.js` (1) — entity AND domain both match same file → injected once.
+  - `onUserPromptSubmit-domain-empty-map.test.js` (3) — missing/empty/malformed map → entity recall still fires; no crash.
+  - `dream-stale-sync-flag.test.js` (5) — stale-flagging, Kevin-layout discovery, section clearing, missing-stamp surfacing, section isolation.
+
+#### Modified
+
+- **`package.json`** — `check-sync-freshness` and `check-derived-tagging` scripts.
+- **`.github/workflows/tests.yml`** — `check-derived-tagging` step in the `unit` job before `test:unit`.
+- **`system/scripts/diagnostics/lib/token-budget.json`** — tier1 12700→12900 / cache-stable 11200→11400 to absorb the two new CLAUDE.md operational rules (~175 tokens / +2 lines). Lines 561/565 (tight; next bump should likely also raise `tier1_max_lines`).
+
+#### Pre-merge baselines (Kevin's instance)
+
+- `npm run check-sync-freshness` (default scan paths): **0 fresh / 0 stale / 0 missing / 0 unparseable** — `user-data/memory/sync/` and `user-data/runtime/state/sync/` markdown roots empty on Kevin's instance (synced data lives under `knowledge/<topic>/`).
+- `npm run check-sync-freshness -- --all` (every file with a `last_synced` field): **2 fresh / 0 stale / 0 missing / 0 unparseable**. Confirms the freshness contract is currently tracking 2 files. Coverage will expand when the user-data follow-up lands (sync writers in `user-data/runtime/scripts/sync-*.js` need a one-time pass to call `stampLastSynced` after each successful write — out of scope for this PR; package only ships the helper).
+- `npm run check-derived-tagging`: **OK, scanned 322 files, 0 violations.** Clean baseline; CI gate will catch future regressions.
+- Domain recall byte-injection delta: **negligible until users opt in.** Kevin's instance has no `recall-domains.md` yet (migration 0028 lands at next install). Defaults are deliberately narrow (4 domains × ≤1 file each, with file truncation at 4KB), so post-migration injection bytes per turn are bounded well under 2× the entity-recall baseline.
+
+#### Notes
+
+- **User-data follow-up (out of scope for the package):** sync writers in `user-data/runtime/scripts/sync-{whoop,nhl,gmail,calendar,weather,ebird,lunch-money,github,spotify,chrome,linear,youtube}.js` need a one-time pass to call `stampLastSynced` after each successful write. Spec lists this explicitly; the package ships only the helper.
+- **CLAUDE.md token bump:** the two new operational rules pushed Tier 1 over the prior cap; bumped tokens 12700→12900 and cache-stable 11200→11400. Lines now 561/565 — getting tight; the next thread to add an operational rule should also raise `tier1_max_lines`.
+- **Dream-protocol cap split:** `dream.md` Phase 11.5 was inlined initially (4 sub-bullets covering injection-bytes trend, dead-route entities, alias-disambiguator backfill, and dead-keyword surfacing) and pushed dream.md to 5036/5000. Extracted to `recall-telemetry-review.md` (mirrors the action-trust-calibration / hook-enforcement-review pattern); post-split dream.md at 4898/5000.
+
 ### Action-trust closing-the-loop (persistent surface + CLI + e2e coverage)
 
 Closed the dangling end of the action-state machine. Dream's promotion proposals previously named a "escalation report" file that didn't exist — proposals went nowhere, auto-finalize fired after 24h whether or not the user actually saw them, and the calibration loop was effectively unobserved. This PR makes the surface real, gives the model a session-start signal, and adds a CLI for ad-hoc inspection. Spec at `docs/superpowers/specs/2026-05-03-action-trust-closing-the-loop-design.md`; plan at `docs/superpowers/plans/2026-05-03-action-trust-closing-the-loop.md`.
