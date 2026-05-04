@@ -20,7 +20,7 @@
 // All actions write externally-visible state. Per CLAUDE.md `Rule: Ask vs Act`,
 // the agent must confirm with the user before invoking this script.
 
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
 import { GitHubClient } from './lib/github/client.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../../system/scripts/lib/outbound-policy.js';
@@ -100,7 +100,7 @@ async function main() {
     return;
   }
 
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
   const pat = requireSecret(workspaceDir, 'GITHUB_PAT');
   const client = new GitHubClient(pat);
 

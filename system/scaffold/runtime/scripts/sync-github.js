@@ -13,7 +13,7 @@
 
 import { join } from 'node:path';
 import { hostname } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
 import { loadCursor, saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
 import { atomicWrite, writeTable } from '../../../system/scripts/sync/lib/markdown.js';
@@ -182,7 +182,7 @@ export async function syncGitHub({ workspaceDir, dryRun = false, bootstrap = fal
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
   const dryRun = process.argv.includes('--dry-run');
   const bootstrap = process.argv.includes('--bootstrap');
 

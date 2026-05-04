@@ -4,7 +4,7 @@
 // so this file is NOT runnable in place — only after it's been copied.
 import { join } from 'node:path';
 import { hostname } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
 import { loadCursor, saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
 import { updateIndex } from '../../../system/scripts/sync/lib/index-updater.js';
@@ -109,7 +109,7 @@ export async function syncLunchMoney({ workspaceDir, dryRun = false }) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
   const dryRun = process.argv.includes('--dry-run');
 
   // When invoked via the unified job runner (`robin run sync-lunch-money`),

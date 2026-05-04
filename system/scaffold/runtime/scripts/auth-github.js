@@ -13,12 +13,12 @@
 // Generate at: https://github.com/settings/tokens?type=beta
 // Recommended scopes: read:user, repo (or public_repo), notifications.
 
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { fetchJson } from '../../../system/scripts/sync/lib/http.js';
 import { requireSecret } from '../../../system/scripts/sync/lib/secrets.js';
 
 async function main() {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
 
   let pat;
   try {

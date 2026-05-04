@@ -15,7 +15,7 @@
 //   SPOTIFY_CLIENT_ID=...
 //   SPOTIFY_CLIENT_SECRET=...
 
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { runAuthCodeFlow } from '../../../system/scripts/sync/lib/oauth.js';
 import { requireSecret, saveSecret } from '../../../system/scripts/sync/lib/secrets.js';
 import { saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
@@ -38,7 +38,7 @@ const SCOPES = [
 const REDIRECT_PORT = parseInt(process.env.SPOTIFY_AUTH_PORT || '8765', 10);
 
 async function main() {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
 
   let clientId, clientSecret;
   try {

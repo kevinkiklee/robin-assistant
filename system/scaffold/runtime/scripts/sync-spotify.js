@@ -12,7 +12,7 @@
 
 import { join } from 'node:path';
 import { hostname } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { getAccessToken } from '../../../system/scripts/sync/lib/oauth.js';
 import { loadCursor, saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
@@ -310,7 +310,7 @@ export async function syncSpotify({ workspaceDir, dryRun = false, bootstrap = fa
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
   const dryRun = process.argv.includes('--dry-run');
   const bootstrap = process.argv.includes('--bootstrap');
 

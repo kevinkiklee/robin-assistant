@@ -16,7 +16,7 @@
 // Per CLAUDE.md `Rule: Ask vs Act`, the agent confirms with the user before
 // invoking writes that affect playback or playlists.
 
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { getAccessToken } from '../../../system/scripts/sync/lib/oauth.js';
 import { SpotifyClient } from './lib/spotify/client.js';
 import { assertOutboundContentAllowed, OutboundPolicyError, buildRefusalEntry } from '../../../system/scripts/lib/outbound-policy.js';
@@ -79,7 +79,7 @@ async function main() {
     return;
   }
 
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
   const accessToken = await getAccessToken(workspaceDir, 'spotify');
   const client = new SpotifyClient(accessToken);
 

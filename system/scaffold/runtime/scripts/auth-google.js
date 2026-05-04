@@ -16,7 +16,7 @@
 // On success, writes GOOGLE_OAUTH_REFRESH_TOKEN to .env (atomic) and caches
 // the initial access token in user-data/runtime/state/sync/google.json.
 
-import { fileURLToPath } from 'node:url';
+import { resolveWorkspaceDir } from '../../../system/scripts/lib/workspace-root.js';
 import { runAuthCodeFlow } from '../../../system/scripts/sync/lib/oauth.js';
 import { requireSecret, saveSecret } from '../../../system/scripts/sync/lib/secrets.js';
 import { saveCursor } from '../../../system/scripts/sync/lib/cursor.js';
@@ -27,7 +27,7 @@ const SCOPES = [
 ];
 
 async function main() {
-  const workspaceDir = fileURLToPath(new URL('../..', import.meta.url));
+  const workspaceDir = resolveWorkspaceDir(import.meta.url);
 
   let clientId, clientSecret;
   try {
