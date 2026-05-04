@@ -39,6 +39,7 @@ import { appendPerfLog } from '../diagnostics/lib/perf-log.js';
 import { scanEntityAliases } from '../capture/lib/capture-keyword-scan.js';
 import { readEntities, collectEntities, writeEntitiesAtomic } from '../memory/lib/entity-index.js';
 import { recall, formatRecallHits } from '../memory/lib/recall.js';
+import { runDomainRecall } from './lib/domain-recall.js';
 import { ExitSignal } from '../lib/exit-signal.js';
 import { loadTriggerMap, findMatchingProtocols } from '../lib/protocol-trigger-match.js';
 import {
@@ -679,11 +680,20 @@ function maybeRefreshEntitiesIndex(ws) {
   } catch { return false; }
 }
 
-function appendRecallLog(ws, { sessionId, entitiesMatched, hitsInjected, bytesInjected }) {
+// recall.log schema: tab-separated columns
+//   ts \t sessionId \t entitiesMatched (comma-joined) \t hitsInjected \t bytesInjected \t source
+//
+// `source` is one of:
+//   - "entity"          (default; pre-source-field rows are entity-only by convention)
+//   - "domain"          (only domain-recall fired)
+//   - "entity+domain"   (both fired in the same turn)
+// Existing log rows lacking the source column are treated as `entity` for
+// backward compat by downstream readers (Dream Phase 11.5).
+function appendRecallLog(ws, { sessionId, entitiesMatched, hitsInjected, bytesInjected, source = 'entity' }) {
   try {
     const file = join(ws, 'user-data/runtime/state/recall.log');
     mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, `${new Date().toISOString()}\t${sessionId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\n`);
+    appendFileSync(file, `${new Date().toISOString()}\t${sessionId}\t${entitiesMatched.join(',')}\t${hitsInjected}\t${bytesInjected}\t${source}\n`);
   } catch { /* best-effort */ }
 }
 
@@ -724,6 +734,13 @@ async function onUserPromptSubmit(args, stdinData) {
     const fromAssistant = scanLastAssistantMessage(event.transcript_path, aliasIndex);
     const allEntitiesMatched = [...new Set([...fromUser, ...fromAssistant])];
 
+    // Track files injected by entity recall so domain recall can dedupe
+    // against them (no double-injection when both passes hit the same file).
+    let entityHitFiles = [];
+    let entityBlockBytes = 0;
+    let entityHitCount = 0;
+    let entityBlockEmitted = false;
+
     if (allEntitiesMatched.length > 0) {
       const matchedEntities = entityList
         .filter((e) => allEntitiesMatched.includes(e.name) || e.aliases.some((a) => allEntitiesMatched.includes(a)))
@@ -736,13 +753,45 @@ async function onUserPromptSubmit(args, stdinData) {
         const matchedNames = matchedEntities.map((e) => e.name.replace(/-->/g, '->')).join(', ');
         const block = `<!-- relevant memory: ${r.hits.length} hits for ${matchedNames} -->\n${formatted}\n<!-- /relevant memory -->\n`;
         process.stdout.write(block);
-        appendRecallLog(ws, {
-          sessionId,
-          entitiesMatched: allEntitiesMatched,
-          hitsInjected: r.hits.length,
-          bytesInjected: block.length,
-        });
+        entityHitFiles = [...new Set(r.hits.map((h) => h.file))];
+        entityBlockBytes = block.length;
+        entityHitCount = r.hits.length;
+        entityBlockEmitted = true;
       }
+    }
+
+    // Domain-trigger recall — parallel pass to entity recall. Matches
+    // activity / topic keywords (fertilizer → garden file, IRA → finance
+    // snapshot, etc.) loaded from user-data/runtime/config/recall-domains.md.
+    // Dedupes file paths against entity-recall hits so the same file isn't
+    // injected twice. Graceful no-op when the map is missing or empty.
+    let domainBlockBytes = 0;
+    let domainFiles = [];
+    let domainsMatched = [];
+    try {
+      const dr = runDomainRecall(ws, userMessage, { excludeFiles: entityHitFiles });
+      if (dr.block) {
+        process.stdout.write(dr.block);
+        domainBlockBytes = dr.bytes;
+        domainFiles = dr.files;
+        domainsMatched = dr.domainsMatched;
+      }
+    } catch { /* fail-open — entity recall already fired */ }
+
+    // Emit one combined recall.log row per turn — captures both passes.
+    if (entityBlockEmitted || domainBlockBytes > 0) {
+      let source;
+      if (entityBlockEmitted && domainBlockBytes > 0) source = 'entity+domain';
+      else if (domainBlockBytes > 0) source = 'domain';
+      else source = 'entity';
+      const labels = [...allEntitiesMatched, ...domainsMatched.map((d) => `domain:${d}`)];
+      appendRecallLog(ws, {
+        sessionId,
+        entitiesMatched: labels,
+        hitsInjected: entityHitCount + domainFiles.length,
+        bytesInjected: entityBlockBytes + domainBlockBytes,
+        source,
+      });
     }
 
     // ---------------------------------------------------------------------
