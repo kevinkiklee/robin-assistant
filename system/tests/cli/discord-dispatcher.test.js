@@ -68,4 +68,10 @@ describe('robin discord: dispatcher', () => {
     assert.notEqual(result, 0);
     assert.match(output, /unknown/i);
   });
+
+  it('rejects prototype-key lookups (no crash, exit 2)', async () => {
+    const { result, output } = await captureStderr(() => dispatchDiscord(['__proto__']));
+    assert.notEqual(result, 0);
+    assert.match(output, /unknown/i);
+  });
 });

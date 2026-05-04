@@ -76,6 +76,12 @@ describe('robin memory: dispatcher', () => {
     assert.match(output, /unknown/i);
   });
 
+  it('rejects prototype-key lookups (no crash, exit 2)', async () => {
+    const { result, output } = await captureStderr(() => dispatchMemory(['__proto__']));
+    assert.notEqual(result, 0);
+    assert.match(output, /unknown/i);
+  });
+
   it('spawn path: prune-preview returns a numeric exit code', { timeout: 10000 }, async () => {
     const result = await dispatchMemory(['prune-preview']);
     assert.equal(typeof result, 'number', 'spawn should resolve to a numeric exit code');

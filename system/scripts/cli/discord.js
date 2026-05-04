@@ -58,12 +58,12 @@ export async function dispatchDiscord(args) {
     return 0;
   }
 
-  const entry = OPS[op];
-  if (!entry) {
+  if (!Object.hasOwn(OPS, op)) {
     process.stderr.write(`robin discord: unknown op: ${op}\n`);
     process.stderr.write(HELP);
     return 2;
   }
+  const entry = OPS[op];
 
   const ws = resolveCliWorkspaceDir();
   const scriptPath = join(ws, 'user-data/runtime/scripts', entry.script);

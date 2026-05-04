@@ -62,12 +62,12 @@ export async function dispatchMemory(args) {
     return 0;
   }
 
-  const scriptFile = OPS[op];
-  if (!scriptFile) {
+  if (!Object.hasOwn(OPS, op)) {
     process.stderr.write(`robin memory: unknown op: ${op}\n`);
     process.stderr.write(HELP);
     return 2;
   }
+  const scriptFile = OPS[op];
 
   return runOp(scriptFile, rest);
 }
