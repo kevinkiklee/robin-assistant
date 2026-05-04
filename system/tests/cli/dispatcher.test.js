@@ -79,7 +79,7 @@ describe('bin/robin: dispatcher', () => {
     // alongside HELP — keeps the dispatcher's surface honest.
     const expected = [
       'init', 'run', 'job ', 'jobs', 'update', 'link',
-      'watch', 'recall', 'regenerate-memory-index',
+      'watch', 'recall', 'trust', 'regenerate-memory-index',
     ];
     for (const cmd of expected) {
       assert.match(output, new RegExp(`\\brobin ${cmd}`), `HELP missing: robin ${cmd}`);

@@ -27,6 +27,7 @@ usage:
   robin watch tail [<id>]             [--n=10]
   robin watch run <id>                [--dry-run | --bootstrap]
   robin recall [--json] <term> [<term> ...]
+  robin trust [status | pending | history [--days N] | class <slug>]
   robin regenerate-memory-index            [--check]
 
 env:
@@ -102,6 +103,12 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     writeMemoryIndex(memoryDir);
     process.stdout.write('memory/INDEX.md regenerated.\n');
     return { exitCode: 0 };
+  }
+
+  if (cmd === 'trust') {
+    const { runTrust } = await import('../system/scripts/cli/trust.js');
+    const r = await runTrust(rest);
+    return { exitCode: r.exitCode };
   }
 
   if (cmd === 'recall') {
