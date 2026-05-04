@@ -6,29 +6,23 @@ const HELP = `Robin — personal AI assistant CLI
 
 usage:
   robin init                          [--target <dir>] [--no-prompt]
-  robin run <name> [--force | --dry-run | --no-lock]
-  robin run --due                     # run all enabled, due jobs
-  robin job <acquire | release> <name>
+  robin update                        # post-pull migration runner
+
+  robin run <name>                    [--force | --dry-run | --no-lock]
+  robin run --due                     # cron entry point: run all enabled, due jobs
+  robin job <acquire|release> <name>
+
   robin jobs                          # alias for "robin jobs list"
-  robin jobs list                     [--json]
-  robin jobs status [<name>]          [--json]
-  robin jobs logs <name>              [--full | --tail=N | --list]
-  robin jobs upcoming
-  robin jobs enable <name>
-  robin jobs disable <name>
-  robin jobs sync                     [--force | --json]
-  robin jobs validate [<name>]
-  robin update                        # post-pull check: config migrate + pending migrations + scaffold sync + validate
-  robin link <path>                   [--dry-run]
-  robin watch add "<topic>"           [--cadence daily|weekly|hourly] [--query <q>] [--notify]
-  robin watch list
-  robin watch enable <id>
-  robin watch disable <id>
-  robin watch tail [<id>]             [--n=10]
-  robin watch run <id>                [--dry-run | --bootstrap]
-  robin recall [--json] <term> [<term> ...]
+  robin jobs <list|status|logs|upcoming|enable|disable|sync|validate>
+  robin watch <add|list|enable|disable|tail|run>
+
   robin trust [status | pending | history [--days N] | class <slug>]
-  robin regenerate-memory-index            [--check]
+
+  robin memory <regenerate-links|index-entities|lint|densify|prune-preview|prune-execute>
+  robin discord <install|uninstall|auth|status|health>
+
+  robin backup
+  robin restore
 
 env:
   ROBIN_WORKSPACE  override the workspace directory
