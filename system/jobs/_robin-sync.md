@@ -1,5 +1,6 @@
 ---
 name: _robin-sync
+triggers: []
 description: Reconciler heartbeat — picks up new/removed jobs and re-installs scheduler entries.
 runtime: node
 enabled: true

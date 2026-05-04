@@ -2,6 +2,7 @@
 name: backup
 dispatch: inline
 model: opus
+triggers: []
 description: Daily snapshot of user-data/ to user-data/backup/.
 runtime: node
 enabled: true

@@ -2,6 +2,7 @@
 name: audit
 dispatch: inline
 model: opus
+triggers: []
 description: Weekly LLM-pass to flag potential contradictions across memory files. Pairs candidate files via LINKS.md, surfaces proposed changes for user review. Never auto-edits.
 runtime: agent
 schedule: "0 11 * * 0"
