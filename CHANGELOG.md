@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Pre-protocol-override hook (mechanical override enforcement)
+
+Mechanical guard that prevents the model from invoking a protocol without first reading its `user-data/runtime/jobs/<name>.md` override (when one exists). The `daily-briefing` user-data override had been ignored 4 times historically; this is the spec-mandated 5th-miss escalation. Spec at `docs/superpowers/specs/2026-05-03-pre-protocol-assertion-hook-design.md`; plan at `docs/superpowers/plans/2026-05-03-pre-protocol-assertion-hook.md`.
+
+#### New
+- **`onUserPromptSubmit` extension** in `system/scripts/hooks/claude-code.js` — parses the prompt for protocol triggers, always overwrites per-turn state at `user-data/runtime/state/protocol-overrides/<session_id>.json`, and emits one `<system-reminder>` block per matched protocol that has a user-data override.
+- **`onPreToolUse` extension** — handles `Read` tool calls. Reading the override marks it as Read in turn state; reading `system/jobs/<name>.md` before the override (when the trigger fired AND the override exists AND state is fresh) blocks with `POLICY_REFUSED [protocol-override:must-read-user-data]: ...` (exit 2).
+- **`system/scripts/lib/protocol-trigger-match.js`** — `loadTriggerMap(repoRoot, workspaceRoot?)` and `findMatchingProtocols(prompt, map)`. Word-boundary case-insensitive matching avoids false positives on phrases inside longer words.
+- **`system/scripts/hooks/lib/protocol-override-state.js`** — atomic per-session state I/O with 24h staleness handling and idempotent override-read tracking.
+- **`system/scripts/hooks/lib/protocol-override-telemetry.js`** — JSONL telemetry at `user-data/runtime/state/telemetry/protocol-override-enforcement.log` (events: `injected`, `blocked`, `hook_error`).
+- **`system/scripts/diagnostics/check-protocol-triggers.js`** + `npm run check-protocol-triggers` — lint that errors if a protocol file in `system/jobs/` is missing the `triggers:` frontmatter key. `triggers: []` is a valid intentional opt-out. Wired into the `unit` CI job before `test:unit`.
+- **`system/jobs/hook-enforcement-review.md`** + `system/scripts/jobs/lib/hook-enforcement-review.js` — Dream Phase 3 step 11.6 reads the telemetry log, aggregates per-protocol blocks, and appends a recurring-miss note to `corrections.md` when a protocol is blocked ≥2 times since the last dream. Repeated `hook_error` classes (≥3) → learning queue.
+- **`system/jobs/dream.md` Phase 4 step 17.8** — prunes orphaned state files (session_id absent from `sessions.md` AND mtime >24h).
+- **`system/jobs/weekly-review.md` step 8** — week-over-week tally of injected vs blocked counts per protocol.
+- **6 protocol files** (`_robin-sync`, `audit`, `backup`, `migrate-auto-memory`, `outcome-check`, `watch-topics`) gain `triggers: []` for the new lint.
+- **CLAUDE.md operational rule** documenting the hook so models aren't surprised by a block.
+- **65 new tests** (36 unit + 13 e2e + 16 helper-aggregation).
+
+#### Modified
+- **`.claude/settings.json`** — PreToolUse matcher extended `Write|Edit|NotebookEdit` → `Write|Edit|NotebookEdit|Read` so the hook fires on Read calls. `system/scaffold/runtime/security/manifest.json` updated to match. **Existing installs will see a one-time tamper drift on next session start until they re-baseline:** `node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state`.
+- **`system/tests/lib/scenario.js`** — the e2e harness now substitutes `__TEMPDIR__` recursively in `step.stdin` (not just `step.env`), so test code can declare `tool_input.file_path` paths that resolve to the runtime tempdir.
+- **`system/scripts/diagnostics/lib/token-budget.json`** — tier1 cap 12200 → 12300, cache-stable 10900 → 10950 to absorb the CLAUDE.md operational-rule addition.
+
+#### Notes
+- The pre-protocol-override hook enforces a **stricter** rule (read user-data BEFORE system) than the underlying contract (user-data WINS over system on conflicts). Read-order enforcement is the simplest mechanical approximation of conflict-resolution behavior.
+- Both hook modes are **fail-open** on internal errors: the cost of a missed block is one duplicated miss; the cost of breaking all Reads is catastrophic.
+
 ## 5.2.0 — 2026-05-03 — E2E Test Harness
 
 Subprocess + in-process e2e test harness for the CLI package. Locks down the filesystem-state contract under `user-data/` so the capture pipeline, hooks layer, memory ops, and jobs runner can be refactored freely. 9 day-one scenarios across hooks, memory, jobs, and install. Spec at `docs/superpowers/specs/2026-05-03-e2e-test-harness-design.md`; plan at `docs/superpowers/plans/2026-05-03-e2e-test-harness.md`.
