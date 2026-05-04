@@ -28,6 +28,8 @@ Dream runs in two ways. **Detect which mode you're in by checking `$ROBIN_INVOCA
 
 Read `user-data/runtime/state/jobs/failures.md`. If any active FATAL entry is present, skip this Dream run and append a one-line note to `user-data/runtime/state/dream-state.md` explaining why it was skipped. INFO/WARN entries get included in your one-line summary at the end of the run.
 
+Then clear resolved items from `user-data/runtime/state/needs-your-input.md` via `clearSection` (`system/scripts/lib/needs-input.js`): proposals whose proposal-id has a matching `## Closed` entry in `action-trust.md`; probation-watch entries past `probation-until`; pruning candidates the user already deleted. Wrap each clear in try/catch — failure on one section must not abort the cycle.
+
 ## Phase 0: Auto-memory migration (auto-run)
 
 The hourly `migrate-auto-memory` job has already drained `~/.claude/projects/<slug>/memory/` into `user-data/memory/streams/inbox.md` with a `(migrated from claude-code auto-memory: <file>)` provenance suffix. Phase 2 routes them like any other inbox entry. If `user-data/runtime/state/jobs/migrate-auto-memory.json` is stale or its status is `error`, mention it in your one-line summary.
@@ -111,7 +113,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 7. **Session-handoff scan** — scan `## Session Handoff` capture-sweep summaries; feed domains touched into `## Domain Confidence`. (Knowledge-gap extraction is now part of step 10.)
 
-8. **Preference promotion** — scan `## Preferences` for dimensions with 3+ consistent signals. Promote to `## Communication Style` (base style or domain override as appropriate). Check for contradictions between recent signals and established preferences — update or narrow stale preferences. Flag unresolvable contradictions in escalation report.
+8. **Preference promotion** — scan `## Preferences` for dimensions with 3+ consistent signals. Promote to `## Communication Style` (base style or domain override as appropriate). Check for contradictions between recent signals and established preferences — update or narrow stale preferences. Append unresolvable contradictions to `needs-your-input.md` under `Preference contradictions` via `appendSection`.
 
 9. **Domain confidence update** — review session-handoff summaries, effectiveness scores, and corrections since last dream. Adjust confidence levels. Decay any domain not touched in 90+ days by one level (high→medium; medium stays).
 
@@ -119,7 +121,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 11. **Calibration update** — update effectiveness scores where outcomes can be inferred from recent sessions (user follow-up, contradictory actions, or 30+ days of silence → unknown). Disagreement/sycophancy check. Prediction accuracy is owned by `outcome-check` (when enabled) — Dream does not recompute it. If `predictions.md` has resolved entries newer than the last `outcome-check` run, include "N resolved predictions awaiting rollup" in the summary.
 
-11.5. **Recall telemetry review.** Read entries from `user-data/runtime/state/recall.log` since `last_dream_at`. Surface in escalation report:
+11.5. **Recall telemetry review.** Read entries from `user-data/runtime/state/recall.log` since `last_dream_at`. Append findings to `needs-your-input.md` under `Recall telemetry` via `appendSection`:
    - Auto-recall avg injection bytes; flag if trend is rising >2× compared to prior period.
    - Frequently-matched entities that route to nothing → suggest creating a topic file.
    - Aliases skipped due to missing disambiguator → list for backfill.
@@ -128,13 +130,7 @@ All steps run every dream. Steps with nothing to do are no-ops. Priority order d
 
 12. **Session handoff cleanup** — entries in `## Session Handoff` older than 14 days -> archive to `user-data/memory/streams/journal.md` or delete if resolved.
 
-12.5. **Action-trust calibration** — read `user-data/memory/self-improvement/action-trust.md`. For each class in `## Open`:
-   - Tally `[action]` outcomes captured since last dream from `inbox.md` and direct-writes already integrated.
-   - On any `corrected` outcome: demote class to ASK in `policies.md` (move from AUTO list to ASK list). Append a `## Closed` entry noting the demotion.
-   - Promotion candidates (≥5 successes, 0 corrections in 30d, no privacy/dollar/legal hard-rule overlap, not currently in probation): emit a promotion proposal to the escalation report with `<!-- promotion-id:YYYYMMDD-NN -->`. Include the proposal in `## Needs your input` for in-session invocations.
-   - For prior promotion proposals: if the proposal's `surfaced-at:` timestamp is more than 24h old AND no objection has appeared in `corrections.md` referencing the class or proposal-id, finalize the promotion (move class to AUTO list in `policies.md`, append `## Closed` entry, set 7-day probation flag on the class block).
-   - Probation expiry: any AUTO class whose `probation-until:` has passed and has zero corrections during probation → clear the probation flag.
-   - 90-day decay: any AUTO class with no entries in 90 days → demote to ASK with `## Closed` entry "decay (idle 90d)".
+12.5. **Action-trust calibration** — run `system/jobs/action-trust-calibration.md` inline. Owns capture-pipeline check, per-class tally, demotion-on-correction, promotion proposals (24h auto-finalize via `needs-your-input.md`), probation maintenance, and 90-day decay.
 
 ## Phase 4: Memory tree maintenance
 
@@ -164,7 +160,7 @@ Runs after all other phases. Maintains the memory tree structure.
 
 17.9. **Stale today.md cleanup.** If `runtime/state/learning-queue/today.md` mtime >48h (Dream-skip indicator), delete it via `clearToday` from `system/scripts/lib/learning-queue.js`; next Dream rewrites.
 
-18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → flag for user review in escalation report. Do not auto-delete.
+18. **Conversation pruning** — scan `user-data/memory/knowledge/conversations/` for pages older than 90 days. Check `user-data/memory/LINKS.md` for inbound links. Conversations with zero inbound links after 90 days → append to `needs-your-input.md` under `Conversation pruning candidates` via `appendSection`. Do not auto-delete.
 
 ## Boundary rule
 
@@ -190,9 +186,9 @@ Dream NEVER runs external commands or makes network requests.
 
 One-line summary written to stdout: "Dreamt: pruned N tasks, routed M from inbox, promoted K facts, processed L reflections, reviewed P patterns, split S topic files, trimmed hot cache, regenerated INDEX/LINKS."
 
-### Escalation report
+### needs-your-input.md
 
-Triggered by: unresolvable contradictions, ambiguous inbox items, time-sensitive routed items, ineffective patterns, preference contradictions, calibration drift, sycophancy signals, or errors. Append to `user-data/runtime/state/jobs/failures.md` under the active failures section, OR for in-session invocation, present under a `## Needs your input` heading. Neutral, factual tone.
+Persistent user-facing surface (`user-data/runtime/state/needs-your-input.md`) — write via `appendSection`/`clearSection` from `system/scripts/lib/needs-input.js`. Sections used: `Action-trust promotion proposals`, `Action-trust capture pipeline`, `Recall telemetry`, `Preference contradictions`, `Conversation pruning candidates`. CLAUDE.md startup #4 reads it; the model surfaces items in the first session response. Errors and unresolvable contradictions also append to `user-data/runtime/state/jobs/failures.md`. Neutral, factual tone.
 
 ## Failure modes
 
