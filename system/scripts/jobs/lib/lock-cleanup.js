@@ -1,19 +1,21 @@
 // lock-cleanup.js — sweep stale lock files from the locks directory.
 //
-// A lock is stale when:
-//   a) Its mtime is older than staleMs (default 5 min), OR
-//   b) The PID recorded inside the lock file is no longer running.
+// PID liveness is the authoritative signal. A live PID is never stale,
+// regardless of mtime — long-running jobs (dream, ingest, weekly-review)
+// routinely take many minutes; if mtime alone could preempt a lock, the
+// next runner would clobber a job mid-flight. mtime is a backstop only:
+// used when the lock has no PID (legacy / malformed) so it can still be
+// reaped after a process crash that left a corrupt lock behind.
 //
 // Uses process.kill(pid, 0) to check liveness — throws ESRCH when dead.
-// Leverages readLock / releaseLock from atomic.js to avoid reinventing
-// JSON parse / unlink logic.
+// EPERM means the process exists but we can't signal it — treat as alive.
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { jobsPaths } from './paths.js';
 import { readLock, releaseLock } from './atomic.js';
 
-const DEFAULT_STALE_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_STALE_MS = 5 * 60 * 1000; // 5 minutes — backstop for PID-less locks only
 
 /**
  * Scan <workspaceDir>/user-data/runtime/state/jobs/locks/ and remove stale lock files.
@@ -43,35 +45,37 @@ export function cleanupStaleLocks(workspaceDir, opts = {}) {
     if (!filename.endsWith('.lock')) continue;
     const lockPath = join(locksDir, filename);
 
-    let isStale = false;
-
-    // Check mtime first (cheap, no JSON parse needed)
+    // statSync first so a vanished file (race between readdir and stat) is a clean skip.
     try {
-      const st = statSync(lockPath);
-      if (Date.now() - st.mtimeMs > staleMs) {
-        isStale = true;
-      }
+      statSync(lockPath);
     } catch {
-      // File vanished between readdir and statSync — skip
       continue;
     }
 
-    // If not stale by mtime, check whether the PID is still alive
-    if (!isStale) {
-      const holder = readLock(lockPath);
-      if (holder && typeof holder.pid === 'number') {
-        try {
-          process.kill(holder.pid, 0);
-          // PID is alive — not stale
-        } catch (err) {
-          if (err.code === 'ESRCH') {
-            isStale = true;
-          }
-          // EPERM means the process exists but we can't signal it — treat as alive
+    let isStale = false;
+    const holder = readLock(lockPath);
+
+    if (holder === null) {
+      // Unreadable / corrupt lock — reap it.
+      isStale = true;
+    } else if (typeof holder.pid === 'number') {
+      // PID present — liveness is authoritative.
+      try {
+        process.kill(holder.pid, 0);
+        // alive — keep, regardless of mtime
+      } catch (err) {
+        if (err.code === 'ESRCH') {
+          isStale = true;
         }
-      } else if (holder === null) {
-        // Unreadable / corrupt lock — treat as stale
-        isStale = true;
+        // EPERM: exists but unsignalable → treat as alive
+      }
+    } else {
+      // Lock parsed but has no usable pid field — fall back to mtime backstop.
+      try {
+        const st = statSync(lockPath);
+        if (Date.now() - st.mtimeMs > staleMs) isStale = true;
+      } catch {
+        continue;
       }
     }
 

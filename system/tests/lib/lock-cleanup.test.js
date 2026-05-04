@@ -38,14 +38,33 @@ describe('cleanupStaleLocks', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  test('removes lock stale by mtime', () => {
+  test('keeps lock with old mtime when PID is alive (long-running job, e.g. dream)', () => {
     const root = makeWorkspace();
     const lp = writeLock(root, 'old-job', { pid: process.pid, started_at: new Date().toISOString() });
-    // Backdate mtime to 6 minutes ago
+    // Backdate mtime to 6 minutes ago — the job has been working for >5min.
     setMtime(lp, 6 * 60 * 1000);
     const result = cleanupStaleLocks(root, { staleMs: 5 * 60 * 1000 });
-    assert.deepEqual(result.removed, ['old-job.lock']);
-    assert.equal(existsSync(lp), false, 'lock file should be removed');
+    assert.deepEqual(result.removed, [], 'live PID should keep its lock regardless of mtime');
+    assert.equal(existsSync(lp), true, 'lock file should still exist');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('reaps lock with no pid field once mtime exceeds staleMs (legacy backstop)', () => {
+    const root = makeWorkspace();
+    const lp = writeLock(root, 'legacy', { started_at: new Date().toISOString() });
+    setMtime(lp, 6 * 60 * 1000);
+    const result = cleanupStaleLocks(root, { staleMs: 5 * 60 * 1000 });
+    assert.deepEqual(result.removed, ['legacy.lock']);
+    assert.equal(existsSync(lp), false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('keeps lock with no pid field while mtime is fresh', () => {
+    const root = makeWorkspace();
+    const lp = writeLock(root, 'fresh-legacy', { started_at: new Date().toISOString() });
+    const result = cleanupStaleLocks(root, { staleMs: 5 * 60 * 1000 });
+    assert.deepEqual(result.removed, []);
+    assert.equal(existsSync(lp), true);
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -88,12 +107,11 @@ describe('cleanupStaleLocks', () => {
 
   test('returns all removed lock names when multiple are stale', () => {
     const root = makeWorkspace();
-    const lp1 = writeLock(root, 'a', { pid: process.pid, started_at: new Date().toISOString() });
-    const lp2 = writeLock(root, 'b', { pid: process.pid, started_at: new Date().toISOString() });
+    // dead PIDs with old mtime → both should be reaped
+    writeLock(root, 'a', { pid: 999999991, started_at: new Date().toISOString() });
+    writeLock(root, 'b', { pid: 999999992, started_at: new Date().toISOString() });
+    // live PID, fresh — should be kept
     writeLock(root, 'c', { pid: process.pid, started_at: new Date().toISOString() });
-    setMtime(lp1, 6 * 60 * 1000);
-    setMtime(lp2, 6 * 60 * 1000);
-    // c is fresh — should be kept
     const result = cleanupStaleLocks(root, { staleMs: 5 * 60 * 1000 });
     assert.deepEqual([...result.removed].sort(), ['a.lock', 'b.lock']);
     rmSync(root, { recursive: true, force: true });
