@@ -92,6 +92,12 @@
       "optional_existence": true
     },
     {
+      "path": "user-data/runtime/state/needs-your-input.md",
+      "stability": "volatile",
+      "required": false,
+      "optional_existence": true
+    },
+    {
       "path": "user-data/runtime/state/learning-queue/today.md",
       "stability": "volatile",
       "required": false,
