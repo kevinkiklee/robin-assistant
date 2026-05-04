@@ -18,7 +18,7 @@ cd robin
 npm install
 ```
 
-`npm install`'s postinstall scaffolds `user-data/`, prompts for your name + timezone (in a TTY) or writes placeholders (in CI), and installs the pre-commit privacy hook.
+`npm install`'s postinstall scaffolds `user-data/`, prompts for your name, timezone, email, and assistant name (in a TTY) or writes placeholders (in CI), and installs the pre-commit privacy hook.
 
 Open `robin/` in Claude Code. `CLAUDE.md` is auto-discovered from cwd; Robin introduces itself on the first prompt.
 
@@ -38,7 +38,7 @@ Feed it a document with the **Ingest** command and it extracts facts, creates so
 
 ### Auto-recall
 
-The model is supposed to look things up but doesn't always remember to. Robin closes the gap with a UserPromptSubmit hook: when you submit a prompt, the hook scans your message *and* the previous assistant message for known entities, then injects relevant memory directly into the model's input as `<!-- relevant memory -->` blocks. Follow-ups like "schedule it" inherit the entity from the prior turn.
+The model is supposed to look things up but doesn't always remember to. Robin closes the gap with a UserPromptSubmit hook: when you submit a prompt, the hook scans your message *and* the previous assistant message for known entities, plus a configurable activity-keyword map (e.g. "fertilizer" → garden notes, "whoop" → recovery file), then injects the matching memory directly into the model's input as `<!-- relevant memory -->` blocks. Follow-ups like "schedule it" inherit the entity from the prior turn.
 
 All retrieval is in-process Node-native — no ripgrep, no API key, no external service. Telemetry lives in `user-data/runtime/state/{recall,hook-perf}.log`.
 
@@ -63,7 +63,7 @@ Personal data has explicit defenses against prompt injection from sync sources a
 - **Boundary defenses** — every sync writer wraps untrusted content in `UNTRUSTED-START`/`UNTRUSTED-END` sentinels and stamps `trust:untrusted` frontmatter. Capture tags carry an `origin=` attribution. A pre-filter quarantines inbox lines that don't claim `origin=user`.
 - **Outbound write policy** — outbound write paths (github-write, spotify-write, discord reply) run through a three-layer policy: sentence-hash taint check against the untrusted index, sensitive-shape detection (PII patterns + `process.env` value substring scan), and a credential-derived target allowlist.
 - **Secrets containment** — secrets are read on demand from `user-data/runtime/secrets/.env` per call without polluting `process.env`. Spawn sites build explicit minimal envs.
-- **Bash policy** — six rules (secrets-read, env-dump, destructive-rm, low-level-fs, git-expose-userdata, eval-injection) hook the Bash tool and fail closed.
+- **Bash policy** — seven rules (secrets-read, env-dump, destructive-rm, low-level-fs, git-expose-userdata, eval-injection, misrouted-write) hook the Bash tool and fail closed.
 - **Tamper detection** — a manifest baseline + `check-manifest.js` runs on SessionStart; severe drift surfaces in stderr and logs `kind=tamper`.
 - **PII scan on memory writes** — PreToolUse hook scans writes to `user-data/memory/` for credentials and high-stakes shapes; blocks and explains.
 
@@ -177,7 +177,7 @@ Personal data never leaves your machine unless you push it. Four layers:
 
 The instruction layer loads in tiers to minimize session-start tokens:
 
-- **Tier 1** (always loaded): core rules, identity, indexes, hot cache. Capped at 12,200 tokens / 560 lines.
+- **Tier 1** (always loaded): core rules, identity, indexes, hot cache. Capped at 13,800 tokens / 595 lines.
 - **Tier 2** (on demand): protocols, capture rules, security rules.
 - **Tier 3** (cold): archived memory, full historical detail.
 
@@ -264,46 +264,86 @@ If `git pull` reports a conflict on a tracked file, run `git checkout -- <path>`
 
 ## Commands
 
+Most surface lives under `robin <namespace>`. The npm script set is intentionally tiny.
+
+**Tests**
+
 | Command | Purpose |
 |---------|---------|
-| `npm run backup` | Snapshot `user-data/` to `backup/user-data-<timestamp>.tar.gz` |
-| `npm run restore` | Restore `user-data/` from a backup archive (interactive) |
-| `npm run reset` | Wipe `user-data/`, recopy scaffold, re-prompt config (auto-backups first) |
 | `npm test` | Unit + e2e tests (default) |
 | `npm run test:unit` / `test:e2e` / `test:install` | Run a single test tier individually. `test:install` is the slowest (`npm pack` + install scenario, 120s timeout) |
-| `npm run lint-memory` | Check orphans, stale INDEX entries, oversized sub-trees, staleness, redundancy, ambiguous aliases, candidate entities, conversational tics |
-| `npm run regenerate-memory-index` | Rebuild `user-data/memory/INDEX.md` from per-file frontmatter. Idempotent. Add `--check` to fail closed when stale (used in CI / e2e) |
-| `npm run regenerate-links` | One-shot rebuild of the cross-reference graph in `user-data/memory/LINKS.md` |
-| `npm run golden-session` | Snapshot Tier 1 load order; `--check` fails on drift. Catches load-order regressions that affect prompt-cache stability |
-| `npm run densify-wiki -- --dry-run` | Audit cross-linking gaps across `user-data/memory/` and write a report to `user-data/runtime/state/densify-wiki/<date>.{md,json}`. **Always run dry-run first**, review the report, then `npm run densify-wiki -- --apply` to commit the changes (auto-backups first; reversible via `npm run restore`) |
-| `npm run measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
-| `npm run measure-prefix-bloat -- <session.jsonl>` | Measure plugin/skill prefix bloat from a Claude Code session JSONL. `--first-turn` for clean session-start signal, `--usage-only`/`--reminder-only` to narrow output |
-| `npm run check-plugin-prefix -- <session.jsonl>` | Detect plugins/MCPs not on `system/scripts/diagnostics/lib/plugin-whitelist.json`. Useful after plugin auto-updates |
-| `npm run prune-preview` | Preview what the 12-month archive prune would move |
-| `npm run prune-execute` | Run the archive prune (auto-backups first) |
+
+**Top-level**
+
+| Command | Purpose |
+|---------|---------|
 | `robin init [--target <dir>] [--no-prompt]` | Bootstrap a fresh workspace from the installed package. Used when installing globally (`npm i -g robin-assistant`) instead of cloning |
+| `robin update` | Post-`git pull` check: config migrate, pending migrations, scaffold sync, validate. Also re-snapshots the tamper manifest when an upstream-driven `.claude/settings.json` hook change is detected |
+| `robin backup` | Snapshot `user-data/` to `backup/user-data-<timestamp>.tar.gz` |
+| `robin restore` | Restore `user-data/` from a backup archive (interactive) |
 | `robin run <name>` | Manually invoke a job. `--force` skips gating, `--dry-run` prints the plan |
-| `robin run --due` | Run every enabled job whose schedule has elapsed since the last run |
+| `robin run --due` | Cron entry point — run every enabled job whose schedule has elapsed since the last run |
+
+**Jobs**
+
+| Command | Purpose |
+|---------|---------|
 | `robin jobs list` | Show all jobs with enabled state, schedule, last run, status |
 | `robin jobs status <name>` | Detail on one job — last run, log location, next run |
 | `robin jobs logs <name>` | Tail the most recent run's summary (`--full` for complete log) |
 | `robin jobs upcoming` | 7-day forward calendar of scheduled runs |
-| `robin jobs enable <name>` | Turn on a disabled job |
-| `robin jobs disable <name>` | Turn off an enabled job |
+| `robin jobs enable <name>` / `disable <name>` | Toggle a job on/off |
 | `robin jobs sync` | Force-reconcile OS scheduler with job definitions |
 | `robin jobs validate` | Parse and validate every job definition |
-| `robin update` | Post-`git pull` check: config migrate, pending migrations, scaffold sync, validate |
+
+**Memory**
+
+| Command | Purpose |
+|---------|---------|
+| `robin memory regenerate-links` | Rebuild the cross-reference graph in `user-data/memory/LINKS.md` |
+| `robin memory index-entities` | Rebuild `user-data/memory/ENTITIES.md` from frontmatter aliases |
+| `robin memory lint` | Audit memory: orphans, stale INDEX entries, oversized sub-trees, staleness, ambiguous aliases, candidate entities, conversational tics |
+| `robin memory densify [--dry-run \| --apply]` | Audit cross-linking gaps across `user-data/memory/` and write a report. **Always run `--dry-run` first**, review, then `--apply` to commit (auto-backups first; reversible via `robin restore`) |
+| `robin memory prune-preview` | Preview what the 12-month archive prune would move |
+| `robin memory prune-execute` | Run the archive prune (auto-backups first) |
+
+**Watches**
+
+| Command | Purpose |
+|---------|---------|
 | `robin watch add "<topic>"` | Add a topic to follow; runs first fetch immediately to seed fingerprints |
 | `robin watch list` | List active and disabled watches |
 | `robin watch enable <id>` / `disable <id>` | Toggle a watch on/off |
 | `robin watch tail [<id>]` | Show recent `[watch]` items from inbox (filtered by id if given) |
 | `robin watch run <id> [--dry-run \| --bootstrap]` | Manually trigger a watch (real fetch requires the watch-topics agent-runtime job) |
-| `node system/scripts/memory/index-entities.js --bootstrap` | Seed `ENTITIES.md` from frontmatter (run once after upgrade) |
-| `node system/scripts/memory/backfill-entity-links.js [--apply]` | One-shot link the entire wiki. `--apply` acquires `wiki-backfill` lock and regenerates `LINKS.md` |
-| `node system/scripts/diagnostics/manifest-snapshot.js --apply --confirm-trust-current-state` | Re-snapshot the security manifest (after major upgrades) |
-| `npm run discord:auth` | Walk through Discord bot OAuth + token storage |
-| `npm run discord:install` / `discord:uninstall` | Install / remove the Discord bot launchd agent (macOS) |
-| `npm run discord:status` / `discord:health` | Inspect bot daemon status / liveness |
+
+**Trust ledger**
+
+| Command | Purpose |
+|---------|---------|
+| `robin trust [status \| pending \| history [--days N] \| class <slug>]` | Inspect the action-trust ledger — current ASK/AUTO/NEVER state per class, pending promotions, recent history |
+
+**Discord**
+
+| Command | Purpose |
+|---------|---------|
+| `robin discord install` / `uninstall` | Install / remove the Discord bot launchd agent (macOS) |
+| `robin discord auth` | Walk through Discord bot OAuth + token storage |
+| `robin discord status` / `health` | Inspect bot daemon status / liveness |
+
+**Dev (diagnostics + escape hatches)**
+
+| Command | Purpose |
+|---------|---------|
+| `robin dev measure-tokens` | Measure tier token counts. `--check` enforces caps, `--diff` shows delta |
+| `robin dev measure-prefix-bloat -- <session.jsonl>` | Measure plugin/skill prefix bloat from a Claude Code session JSONL. `--first-turn` for clean session-start signal |
+| `robin dev check-plugin-prefix -- <session.jsonl>` | Detect plugins/MCPs not on the diagnostics whitelist. Useful after plugin auto-updates |
+| `robin dev check-protocol-triggers` | Audit protocol trigger phrases for collisions / regressions |
+| `robin dev check-doc-paths` | Verify doc cross-references resolve |
+| `robin dev golden-session` | Snapshot Tier 1 load order; `--check` fails on drift. Catches load-order regressions that affect prompt-cache stability |
+| `robin dev tool-call-stats` | Aggregate tool-call statistics across sessions |
+| `robin dev migrate-auto-memory` | One-time migration: drain host auto-memory into Robin's inbox |
+| `robin dev reset` | DESTRUCTIVE — wipe `user-data/`, recopy scaffold, re-prompt config (auto-backups first) |
 
 ---
 
@@ -313,7 +353,7 @@ If `git pull` reports a conflict on a tracked file, run `git checkout -- <path>`
 robin/
 ├── CLAUDE.md                <- Canonical instructions (auto-discovered by Claude Code from cwd)
 ├── bin/
-│   └── robin.js             <- CLI entry point (run, jobs, link, recall, watch, update)
+│   └── robin.js             <- CLI entry point (init, update, run, jobs, memory, watch, trust, discord, dev, backup, restore)
 ├── system/                  <- upstream-owned, tracked, never user-edited
 │   ├── rules/               <- agent-readable rules (capture, security, self-improvement, startup)
 │   ├── jobs/                <- shipped jobs (agent protocols + node scripts)
@@ -322,7 +362,7 @@ robin/
 │   │   ├── cli/             <- user-facing CLI entry points (invoked by bin/robin.js)
 │   │   ├── hooks/           <- claude-code.js (UserPromptSubmit / PreToolUse / Stop / on-pre-bash) + pre-commit.js
 │   │   ├── jobs/            <- runner, reconciler, OS-scheduler installer adapters
-│   │   ├── memory/          <- index-entities, backfill-entity-links, lint, prune, regenerate-{index,links}
+│   │   ├── memory/          <- index-entities, backfill-entity-links, densify-wiki, lint, prune, regenerate-{index,links}
 │   │   ├── capture/         <- ingest guard, dream pre-filter, auto-memory, action classification
 │   │   ├── sync/            <- oauth, secrets, http, redact, markdown, cursor (sync state), untrusted-index
 │   │   ├── wiki-graph/      <- entity registry, link application, exclusions
