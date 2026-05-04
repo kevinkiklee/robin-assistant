@@ -32,7 +32,7 @@ For non-interactive installs, install scenarios (CI), fork vs. clone, and post-i
 
 Robin's memory isn't a chat log. It's a structured wiki — topic files organized into directories, cross-referenced with a link graph, and indexed so Robin loads only what it needs. You don't tell it to remember things. You just talk. Robin watches for capturable signals — facts, preferences, decisions, corrections, dated reflections — and writes them to the right file in the same turn it answers you.
 
-Every entity (person, place, project, service) gets a page with `aliases:` in its frontmatter. After any write, Robin runs `robin link` to convert the *first mention* of every known entity into a wiki-link automatically — no manual `[[…]]` typing. The result is a self-maintaining knowledge graph: the more Robin learns, the more densely connected the wiki becomes.
+Every entity (person, place, project, service) gets a page with `aliases:` in its frontmatter. Every memory write auto-links via a `PostToolUse` hook that converts the *first mention* of every known entity into a wiki-link — no manual `[[…]]` typing. The result is a self-maintaining knowledge graph: the more Robin learns, the more densely connected the wiki becomes.
 
 Feed it a document with the **Ingest** command and it extracts facts, creates source pages, ripples updates across related files, and maintains cross-references automatically. Run **Lint** to audit the knowledge base for contradictions, dead links, stale claims, orphans, conversational tics, ambiguous aliases, and concepts mentioned three times without a dedicated page. Over time, the wiki compounds — each session leaves Robin knowing more than the last.
 
@@ -92,7 +92,7 @@ Topic directories with per-file frontmatter (description, type, tags, aliases, d
 
 ### Wiki-graph (entity linking)
 
-Pages declare `aliases:` in frontmatter. `robin link <path>` converts the first occurrence of every known alias into a wiki-link — preserving case, skipping frontmatter / code / URLs, fail-soft. Wired into every sync writer, Dream, Ingest, and a capture rule. Lint flags ambiguous aliases and concepts mentioned 3+ times without a dedicated page.
+Pages declare `aliases:` in frontmatter. The `PostToolUse` hook converts the first occurrence of every known alias into a wiki-link on every memory write — preserving case, skipping frontmatter / code / URLs, fail-soft. Sync writers and protocols rely on the same hook. Lint flags ambiguous aliases and concepts mentioned 3+ times without a dedicated page.
 
 ### Wiki operations
 
@@ -293,8 +293,6 @@ If `git pull` reports a conflict on a tracked file, run `git checkout -- <path>`
 | `robin jobs sync` | Force-reconcile OS scheduler with job definitions |
 | `robin jobs validate` | Parse and validate every job definition |
 | `robin update` | Post-`git pull` check: config migrate, pending migrations, scaffold sync, validate |
-| `robin link <path> [--dry-run]` | Apply first-mention entity links to a file. Idempotent, fail-soft, NFC-normalized |
-| `robin recall <term> [--json]` | In-process node-native lookup over `ENTITIES.md` and memory files |
 | `robin watch add "<topic>"` | Add a topic to follow; runs first fetch immediately to seed fingerprints |
 | `robin watch list` | List active and disabled watches |
 | `robin watch enable <id>` / `disable <id>` | Toggle a watch on/off |
