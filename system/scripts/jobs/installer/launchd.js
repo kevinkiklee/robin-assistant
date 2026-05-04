@@ -101,7 +101,7 @@ function plistDict(obj) {
   return lines.join('\n');
 }
 
-export function generatePlist({ name, argv, workspaceDir, schedule, envPath = BASE_PATH }) {
+export function generatePlist({ name, argv, workspaceDir, schedule, envPath = BASE_PATH, runAtLoad = false }) {
   if (!Array.isArray(argv) || argv.length === 0 || argv.some((t) => typeof t !== 'string' || t.length === 0)) {
     throw new Error('generatePlist: argv must be a non-empty array of non-empty strings');
   }
@@ -122,6 +122,7 @@ export function generatePlist({ name, argv, workspaceDir, schedule, envPath = BA
       ROBIN_WORKSPACE: workspaceDir,
     },
   };
+  if (runAtLoad) dict.RunAtLoad = true;
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">',
@@ -160,13 +161,23 @@ function launchctl(args) {
   return spawnSync('launchctl', args, { stdio: 'pipe' });
 }
 
-export function installEntry({ name, argv, workspaceDir, schedule, envPath = resolveLaunchdEnvPath() }) {
+export function installEntry({ name, argv, workspaceDir, schedule, envPath = resolveLaunchdEnvPath(), runAtLoad = false }) {
   const dir = agentsDir();
   mkdirSync(dir, { recursive: true });
   const path = plistPath(name);
-  const xml = generatePlist({ name, argv, workspaceDir, schedule, envPath });
-  // bootout if exists; ignore failure
+  const xml = generatePlist({ name, argv, workspaceDir, schedule, envPath, runAtLoad });
+  // Idempotency: if the plist content is unchanged, skip the bootout/bootstrap
+  // cycle. Otherwise RunAtLoad jobs would fire on every reconcile, including
+  // their own dispatch, creating a feedback loop.
   if (existsSync(path)) {
+    try {
+      const existing = readFileSync(path, 'utf-8');
+      if (existing === xml) {
+        return { ok: true, stderr: '', unchanged: true };
+      }
+    } catch {
+      // fall through to rewrite
+    }
     launchctl(['bootout', `${bootstrapDomain()}/${LABEL_PREFIX}${name}`]);
   }
   writeFileSync(path, xml);

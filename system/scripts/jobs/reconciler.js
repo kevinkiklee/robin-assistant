@@ -3,8 +3,10 @@
 // `robin jobs sync`. Exits in <10ms when nothing has changed (hash early-exit).
 
 import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { discoverJobs } from './lib/discovery.js';
+import { findMissedFires } from './lib/missed-fires.js';
 import { jobsPaths } from './lib/paths.js';
 import {
   acquireLock,
@@ -62,6 +64,7 @@ export function reconcile({
   argv,
   force = false,
   adapter = getAdapter(),
+  spawnFn = spawn,
 } = {}) {
   if (!Array.isArray(argv) || argv.length === 0) {
     throw new Error('reconcile: argv must be a non-empty array of strings (e.g. [process.execPath, "/path/to/bin/robin.js"])');
@@ -78,13 +81,13 @@ export function reconcile({
     return { ok: true, skipped: 'reconciler-already-running' };
   }
   try {
-    return reconcileInner({ workspaceDir, argv, force, adapter, tz, paths });
+    return reconcileInner({ workspaceDir, argv, force, adapter, tz, paths, spawnFn });
   } finally {
     releaseLock(paths.syncLock);
   }
 }
 
-function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
+function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths, spawnFn }) {
   // Sweep stale locks once per reconcile tick — keeps the locks dir tidy
   // independent of whether the hash early-exit fires.
   cleanupStaleLocks(workspaceDir);
@@ -155,6 +158,7 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
           argv,
           workspaceDir,
           schedule: def.frontmatter.schedule,
+          runAtLoad: def.frontmatter.run_at_load === true,
         });
         if (!r.ok) {
           result.warnings.push(`install ${name}: ${r.stderr || 'failed'}`);
@@ -215,6 +219,35 @@ function reconcileInner({ workspaceDir, argv, force, adapter, tz, paths }) {
   // Persist hash + workspace path
   writeIfChanged(paths.syncHashFile, hash);
   writeIfChanged(paths.workspacePathFile, workspaceDir);
+
+  // Catch-up dispatch: find jobs whose last_run_at is past 1.5x interval and
+  // spawn the runner detached. The runner re-checks catch-up before executing,
+  // and per-job locks prevent overlap with a concurrent launchd-fired runner.
+  // Self-exclude so we never recursively spawn another reconcile.
+  result.dispatched = [];
+  try {
+    const missed = findMissedFires({
+      jobs: desired,
+      states,
+      now: new Date(),
+      excludeNames: ['_robin-sync'],
+    });
+    for (const m of missed) {
+      try {
+        const child = spawnFn(argv[0], [...argv.slice(1), 'run', m.name], {
+          detached: true,
+          stdio: 'ignore',
+          cwd: workspaceDir,
+        });
+        child.unref();
+        result.dispatched.push(m.name);
+      } catch (err) {
+        result.warnings.push(`dispatch ${m.name}: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    result.warnings.push(`missed-fire scan: ${err.message}`);
+  }
 
   return { ok: true, hash, ...result };
 }

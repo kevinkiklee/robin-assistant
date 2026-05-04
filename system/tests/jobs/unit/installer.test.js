@@ -86,6 +86,27 @@ describe('launchd: generatePlist', () => {
       /argv/
     );
   });
+
+  test('runAtLoad: false (default) omits RunAtLoad key', () => {
+    const xml = generatePlist({
+      name: 'x',
+      argv: ['/r'],
+      workspaceDir: '/ws',
+      schedule: '0 4 * * *',
+    });
+    assert.equal(xml.includes('<key>RunAtLoad</key>'), false);
+  });
+
+  test('runAtLoad: true emits RunAtLoad <true/>', () => {
+    const xml = generatePlist({
+      name: '_robin-sync',
+      argv: ['/r'],
+      workspaceDir: '/ws',
+      schedule: '*/15 * * * *',
+      runAtLoad: true,
+    });
+    assert.match(xml, /<key>RunAtLoad<\/key>\s*<true\/>/);
+  });
 });
 
 describe('cron-linux: managed block', () => {

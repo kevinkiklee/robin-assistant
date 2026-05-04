@@ -1,19 +1,30 @@
 ---
 name: _robin-sync
 triggers: []
-description: Reconciler heartbeat — picks up new/removed jobs and re-installs scheduler entries.
+description: Reconciler heartbeat — picks up new/removed jobs, re-installs scheduler entries, and dispatches missed runs.
 runtime: node
 enabled: true
-schedule: "15 */6 * * *"
+schedule: "*/15 * * * *"
 command: node system/scripts/jobs/reconciler.js
 catch_up: false
+run_at_load: true
 timeout_minutes: 1
 notify_on_failure: false
 ---
 
-Heartbeat that runs every 6 hours. Reads system/jobs/ and user-data/runtime/jobs/,
-diffs against currently installed scheduler entries, and applies the delta.
+Heartbeat that runs every 15 minutes (and at every launchd load via
+`run_at_load: true`, so it fires after login / reboot / plist changes).
 
-Idempotent. Hash-based early-exit when nothing has changed (sub-10ms in the
-common case). Also regenerates INDEX.md, upcoming.md, and failures.md and
-cleans up orphaned per-job state files.
+Reads system/jobs/ and user-data/runtime/jobs/, diffs against currently
+installed scheduler entries, and applies the delta. Hash-based early-exit
+keeps the no-op path sub-10ms.
+
+Also regenerates INDEX.md, upcoming.md, and failures.md, cleans up orphaned
+per-job state files, and — crucially — dispatches any job whose `last_run_at`
+is older than 1.5x its expected interval. macOS launchd silently drops
+`StartCalendarInterval` firings during sleep / clamshell / login-session
+glitches; this catch-up dispatch is the safety net that ensures missed runs
+self-heal within 15 minutes of the system being responsive again.
+
+The dispatched runner re-checks catch-up before executing, and per-job locks
+prevent overlap with a concurrent launchd-fired runner.
