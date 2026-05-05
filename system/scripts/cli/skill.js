@@ -79,6 +79,78 @@ function cmdShow(argv) {
   return 0;
 }
 
+// fetchToStaging — clone/copy the source into a fresh staging dir under
+// externalDir(ws). Returns { stageRoot, stagedFolder, commit } on success
+// or throws Error on failure. Caller is responsible for moving `stagedFolder`
+// to its final destination AND for cleaning up `stageRoot` in `finally`.
+//
+// `commit` is captured BEFORE the staged folder is copied/moved out — once
+// the .git directory is gone (or the staged folder is moved into the parent
+// repo's working tree), `git rev-parse HEAD` would walk up parent directories
+// and resolve to the wrapping repo's HEAD, recording the wrong commit.
+//
+// `opts.commit` (optional) — if set on a git source, do a full clone (no
+// `--depth 1`) and `git checkout <commit>` to pin. Without it, shallow clone.
+function fetchToStaging(ws, resolved, opts = {}) {
+  const stageRoot = join(externalDir(ws), '.staging-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  mkdirSync(stageRoot, { recursive: true });
+
+  const pinCommit = opts.commit || '';
+
+  if (resolved.kind === 'local') {
+    const dest = join(stageRoot, resolved.defaultName);
+    cpSync(resolved.localPath, dest, { recursive: true });
+    return { stageRoot, stagedFolder: dest, commit: '' };
+  }
+
+  if (resolved.kind === 'git-root') {
+    const dest = join(stageRoot, resolved.defaultName);
+    const cloneArgs = pinCommit
+      ? ['clone', resolved.cloneUrl, dest]
+      : ['clone', '--depth', '1', resolved.cloneUrl, dest];
+    const r = spawnSync('git', cloneArgs, { stdio: 'inherit' });
+    if (r.error) throw new Error(`could not run git: ${r.error.message}`);
+    if (r.status !== 0) throw new Error('git clone exited non-zero');
+    if (pinCommit) {
+      const co = spawnSync('git', ['-C', dest, 'checkout', pinCommit], { stdio: 'inherit' });
+      if (co.error) throw new Error(`could not run git: ${co.error.message}`);
+      if (co.status !== 0) throw new Error(`git checkout ${pinCommit} exited non-zero`);
+    }
+    let commit = '';
+    const ch = spawnSync('git', ['-C', dest, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+    if (ch.status === 0) commit = ch.stdout.trim();
+    return { stageRoot, stagedFolder: dest, commit };
+  }
+
+  if (resolved.kind === 'git-subdir') {
+    const repoDir = join(stageRoot, '_repo');
+    const cloneArgs = pinCommit
+      ? ['clone', '--branch', resolved.branch, resolved.cloneUrl, repoDir]
+      : ['clone', '--depth', '1', '--branch', resolved.branch, resolved.cloneUrl, repoDir];
+    const r = spawnSync('git', cloneArgs, { stdio: 'inherit' });
+    if (r.error) throw new Error(`could not run git: ${r.error.message}`);
+    if (r.status !== 0) throw new Error('git clone exited non-zero');
+    if (pinCommit) {
+      const co = spawnSync('git', ['-C', repoDir, 'checkout', pinCommit], { stdio: 'inherit' });
+      if (co.error) throw new Error(`could not run git: ${co.error.message}`);
+      if (co.status !== 0) throw new Error(`git checkout ${pinCommit} exited non-zero`);
+    }
+    let commit = '';
+    const ch = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+    if (ch.status === 0) commit = ch.stdout.trim();
+    const subPath = join(repoDir, resolved.subPath);
+    if (!existsSync(subPath)) {
+      throw new Error(`subdirectory ${resolved.subPath} not found in repo`);
+    }
+    const dest = join(stageRoot, resolved.defaultName);
+    cpSync(subPath, dest, { recursive: true });
+    rmSync(repoDir, { recursive: true, force: true });
+    return { stageRoot, stagedFolder: dest, commit };
+  }
+
+  throw new Error(`unsupported install kind: ${resolved.kind}`);
+}
+
 function cmdInstall(argv) {
   const target = argv[0];
   if (!target) {
@@ -94,59 +166,18 @@ function cmdInstall(argv) {
     return 1;
   }
 
-  // Stage to a temp folder first so we can validate before committing.
-  const stageRoot = join(externalDir(ws), '.staging-' + Date.now());
-  mkdirSync(stageRoot, { recursive: true });
-
-  let stagedFolder;
-  // Capture the upstream commit hash from the staging checkout BEFORE we
-  // copy/rename the folder — once the .git directory is gone (or the staged
-  // folder is moved into the parent repo's working tree), `git rev-parse
-  // HEAD` would walk up and resolve to the parent repo's HEAD, recording the
-  // wrong commit.
-  let stagedCommit = '';
+  let stageRoot;
   try {
-    if (resolved.kind === 'local') {
-      const dest = join(stageRoot, resolved.defaultName);
-      cpSync(resolved.localPath, dest, { recursive: true });
-      stagedFolder = dest;
-    } else if (resolved.kind === 'git-root') {
-      const dest = join(stageRoot, resolved.defaultName);
-      const r = spawnSync('git', ['clone', '--depth', '1', resolved.cloneUrl, dest], { stdio: 'inherit' });
-      if (r.error) {
-        process.stderr.write(`install failed: could not run git: ${r.error.message}\n`);
-        return 1;
-      }
-      if (r.status !== 0) {
-        process.stderr.write('install failed: git clone exited non-zero\n');
-        return 1;
-      }
-      stagedFolder = dest;
-      const ch = spawnSync('git', ['-C', dest, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
-      if (ch.status === 0) stagedCommit = ch.stdout.trim();
-    } else if (resolved.kind === 'git-subdir') {
-      const repoDir = join(stageRoot, '_repo');
-      const r = spawnSync('git', ['clone', '--depth', '1', '--branch', resolved.branch, resolved.cloneUrl, repoDir], { stdio: 'inherit' });
-      if (r.error) {
-        process.stderr.write(`install failed: could not run git: ${r.error.message}\n`);
-        return 1;
-      }
-      if (r.status !== 0) {
-        process.stderr.write('install failed: git clone exited non-zero\n');
-        return 1;
-      }
-      const ch = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
-      if (ch.status === 0) stagedCommit = ch.stdout.trim();
-      const subPath = join(repoDir, resolved.subPath);
-      if (!existsSync(subPath)) {
-        process.stderr.write(`install failed: subdirectory ${resolved.subPath} not found in repo\n`);
-        return 1;
-      }
-      const dest = join(stageRoot, resolved.defaultName);
-      cpSync(subPath, dest, { recursive: true });
-      rmSync(repoDir, { recursive: true, force: true });
-      stagedFolder = dest;
+    let staged;
+    try {
+      staged = fetchToStaging(ws, resolved);
+    } catch (err) {
+      process.stderr.write(`install failed: ${err.message}\n`);
+      return 1;
     }
+    stageRoot = staged.stageRoot;
+    const stagedFolder = staged.stagedFolder;
+    const stagedCommit = staged.commit;
 
     // Validate.
     const validation = validateSkill(stagedFolder);
@@ -180,16 +211,11 @@ function cmdInstall(argv) {
     mkdirSync(externalDir(ws), { recursive: true });
     cpSync(stagedFolder, finalDest, { recursive: true });
 
-    // Commit hash (if git source) was captured from the staging checkout
-    // above — `git rev-parse HEAD` against finalDest would resolve to the
-    // parent repo's HEAD when no .git is present.
-    const commit = resolved.kind === 'local' ? '' : stagedCommit;
-
     // Manifest entry + INDEX regen.
     addManifestEntry(ws, {
       name: skillName,
       source: resolved.kind === 'local' ? `file://${resolved.localPath}` : target,
-      commit,
+      commit: stagedCommit,
       installedAt: new Date().toISOString(),
       trust: 'untrusted-mixed',
     });
@@ -213,7 +239,7 @@ function cmdInstall(argv) {
     process.stderr.write(`install failed: ${err.message}\n`);
     return 1;
   } finally {
-    rmSync(stageRoot, { recursive: true, force: true });
+    if (stageRoot) rmSync(stageRoot, { recursive: true, force: true });
   }
 }
 
@@ -243,6 +269,42 @@ function cmdUninstall(argv) {
   return 0;
 }
 
+// resolveSourceForRefetch — turn a manifest entry's `source` into the input
+// `resolveInstallTarget` expects. file:// URLs need their scheme stripped so
+// the local-path branch matches.
+function resolveSourceForRefetch(source) {
+  return source.startsWith('file://') ? source.slice('file://'.length) : source;
+}
+
+// updateGitSubdir — re-fetch a git-subdir skill. Same pattern as install but
+// the destination already exists, so we replace it atomically (rmSync then
+// cpSync). Returns the new commit hash, or throws.
+function refetchAndReplace(ws, entry, resolved, opts = {}) {
+  const folder = join(externalDir(ws), entry.name);
+  let stageRoot;
+  try {
+    const staged = fetchToStaging(ws, resolved, opts);
+    stageRoot = staged.stageRoot;
+
+    const validation = validateSkill(staged.stagedFolder);
+    if (!validation.ok) {
+      throw new Error(validation.reason);
+    }
+    if (validation.skill.name !== entry.name) {
+      throw new Error(`upstream skill name "${validation.skill.name}" no longer matches installed name "${entry.name}"`);
+    }
+
+    // Replace the existing folder atomically-ish: rm + cpSync.
+    if (existsSync(folder)) rmSync(folder, { recursive: true, force: true });
+    mkdirSync(externalDir(ws), { recursive: true });
+    cpSync(staged.stagedFolder, folder, { recursive: true });
+
+    return staged.commit;
+  } finally {
+    if (stageRoot) rmSync(stageRoot, { recursive: true, force: true });
+  }
+}
+
 function cmdUpdate(argv) {
   const ws = resolveCliWorkspaceDir();
   const manifest = loadInstalledManifest(ws);
@@ -260,26 +322,63 @@ function cmdUpdate(argv) {
       process.stdout.write(`skipping ${entry.name}: local-path source (no upstream to pull)\n`);
       continue;
     }
-    const folder = join(externalDir(ws), entry.name);
-    if (!existsSync(join(folder, '.git'))) {
-      process.stdout.write(`skipping ${entry.name}: not a git checkout\n`);
-      continue;
-    }
-    const r = spawnSync('git', ['-C', folder, 'pull', '--ff-only'], { stdio: 'inherit' });
-    if (r.error) {
-      process.stderr.write(`update failed for ${entry.name}: could not run git: ${r.error.message}\n`);
+    let resolved;
+    try {
+      resolved = resolveInstallTarget(resolveSourceForRefetch(entry.source));
+    } catch (err) {
+      process.stderr.write(`update failed for ${entry.name}: ${err.message}\n`);
       failures += 1;
       continue;
     }
-    if (r.status !== 0) {
-      process.stderr.write(`update failed for ${entry.name}: git pull exited non-zero\n`);
-      failures += 1;
+
+    if (resolved.kind === 'local') {
+      // Defensive — should be impossible since file:// already handled above.
+      process.stdout.write(`skipping ${entry.name}: local-path source (no upstream to pull)\n`);
       continue;
     }
-    const ch = spawnSync('git', ['-C', folder, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
-    if (ch.status === 0) {
-      addManifestEntry(ws, { ...entry, commit: ch.stdout.trim() });
+
+    if (resolved.kind === 'git-root') {
+      const folder = join(externalDir(ws), entry.name);
+      if (!existsSync(join(folder, '.git'))) {
+        process.stdout.write(`skipping ${entry.name}: not a git checkout\n`);
+        continue;
+      }
+      const r = spawnSync('git', ['-C', folder, 'pull', '--ff-only'], { stdio: 'inherit' });
+      if (r.error) {
+        process.stderr.write(`update failed for ${entry.name}: could not run git: ${r.error.message}\n`);
+        failures += 1;
+        continue;
+      }
+      if (r.status !== 0) {
+        process.stderr.write(`update failed for ${entry.name}: git pull exited non-zero\n`);
+        failures += 1;
+        continue;
+      }
+      const ch = spawnSync('git', ['-C', folder, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+      if (ch.status === 0) {
+        addManifestEntry(ws, { ...entry, commit: ch.stdout.trim() });
+      }
+      process.stdout.write(`updated: ${entry.name}\n`);
+      continue;
     }
+
+    if (resolved.kind === 'git-subdir') {
+      // git-subdir installs have no .git in the skill folder — re-fetch the
+      // repo, copy the subdir over the existing folder.
+      try {
+        process.stdout.write(`updating ${entry.name} from ${entry.source}\n`);
+        const newCommit = refetchAndReplace(ws, entry, resolved);
+        addManifestEntry(ws, { ...entry, commit: newCommit });
+        process.stdout.write(`updated: ${entry.name}\n`);
+      } catch (err) {
+        process.stderr.write(`update failed for ${entry.name}: ${err.message}\n`);
+        failures += 1;
+      }
+      continue;
+    }
+
+    process.stderr.write(`update failed for ${entry.name}: unsupported source kind ${resolved.kind}\n`);
+    failures += 1;
   }
   generateIndex(ws);
   return failures === 0 ? 0 : 1;
@@ -357,16 +456,47 @@ function cmdRestore() {
       process.stdout.write(`already present: ${entry.name}\n`);
       continue;
     }
-    const source = entry.source.startsWith('file://') ? entry.source.slice('file://'.length) : entry.source;
-    process.stdout.write(`restoring: ${entry.name} from ${source}\n`);
-    // Remove the existing manifest entry first so install doesn't reject as duplicate.
-    removeManifestEntry(ws, entry.name);
-    const exit = cmdInstall([source]);
-    if (exit !== 0) {
-      // Reinstate the entry on failure for accurate accounting.
-      addManifestEntry(ws, entry);
+    const sourceForLog = entry.source;
+    process.stdout.write(`restoring: ${entry.name} from ${sourceForLog}\n`);
+    try {
+      reinstallFromManifest(ws, entry);
+    } catch (err) {
+      process.stderr.write(`restore failed for ${entry.name}: ${err.message}\n`);
       failures += 1;
     }
   }
+  generateIndex(ws);
   return failures === 0 ? 0 : 1;
+}
+
+// reinstallFromManifest — re-fetch a skill at its recorded commit (when the
+// source is a git URL) and write it into externalDir. Preserves the original
+// `installedAt` timestamp; updates `commit` only if the recorded one is empty
+// (legacy entries) and a new value is captured. Throws on failure.
+function reinstallFromManifest(ws, entry) {
+  let resolved;
+  try {
+    resolved = resolveInstallTarget(resolveSourceForRefetch(entry.source));
+  } catch (err) {
+    throw new Error(`unrecognized source ${entry.source}: ${err.message}`);
+  }
+
+  // Pin to the recorded commit for git sources. Local sources have no commit.
+  const opts = resolved.kind === 'local' ? {} : { commit: entry.commit || '' };
+
+  // For local sources we just re-copy the folder.
+  // For git-root and git-subdir we use the same refetch helper as update.
+  // refetchAndReplace expects the destination to already exist (or not) — it
+  // rmSyncs then cpSyncs. That's the same semantic we need here.
+  const newCommit = refetchAndReplace(ws, entry, resolved, opts);
+
+  // Preserve installedAt; preserve commit if pinned (newCommit will equal
+  // entry.commit when pinned). For legacy entries with empty commit, record
+  // whatever the fetch saw.
+  const finalCommit = entry.commit && entry.commit.length > 0 ? entry.commit : newCommit;
+  addManifestEntry(ws, {
+    ...entry,
+    commit: finalCommit,
+    // installedAt preserved via spread above.
+  });
 }

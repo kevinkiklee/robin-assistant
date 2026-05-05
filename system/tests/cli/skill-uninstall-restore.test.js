@@ -71,6 +71,66 @@ describe('robin skill restore', () => {
       rmSync(ws, { recursive: true, force: true });
     }
   });
+
+  it('preserves installedAt timestamp on restore (does not drift forward)', async () => {
+    const ws = makeWorkspace();
+    const prev = process.env.ROBIN_WORKSPACE;
+    process.env.ROBIN_WORKSPACE = ws;
+    try {
+      await dispatchSkill(['install', join(FIXTURES, 'valid-basic')]);
+      const manifestPath = join(ws, 'user-data/runtime/state/installed-skills.json');
+      const beforeManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      const installedAtBefore = beforeManifest.skills[0].installedAt;
+      assert.ok(installedAtBefore, 'installedAt should be set after install');
+
+      // Backdate the manifest to simulate an older install. We want to prove
+      // restore preserves the recorded date, not bumps it to "now".
+      const backdated = '2025-01-15T00:00:00.000Z';
+      beforeManifest.skills[0].installedAt = backdated;
+      writeFileSync(manifestPath, JSON.stringify(beforeManifest, null, 2) + '\n');
+
+      // Wipe folder and restore.
+      rmSync(join(ws, 'user-data/skills/external'), { recursive: true, force: true });
+      const exit = await dispatchSkill(['restore']);
+      assert.equal(exit, 0);
+
+      const afterManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      assert.equal(
+        afterManifest.skills[0].installedAt,
+        backdated,
+        'restore must preserve installedAt — the original install date is what users care about, not "when did I last restore"'
+      );
+    } finally {
+      process.env.ROBIN_WORKSPACE = prev;
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves recorded commit on restore (does not silently follow upstream HEAD)', async () => {
+    // For local sources, restore goes through the same path but commit
+    // stays empty. For git sources we'd need network. This test exercises
+    // the local branch and asserts commit doesn't get rewritten to
+    // something unexpected (which would happen if rev-parse walked up).
+    const ws = makeWorkspace();
+    const prev = process.env.ROBIN_WORKSPACE;
+    process.env.ROBIN_WORKSPACE = ws;
+    try {
+      await dispatchSkill(['install', join(FIXTURES, 'valid-basic')]);
+      const manifestPath = join(ws, 'user-data/runtime/state/installed-skills.json');
+      const before = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      assert.equal(before.skills[0].commit, '', 'local install records empty commit');
+
+      rmSync(join(ws, 'user-data/skills/external'), { recursive: true, force: true });
+      const exit = await dispatchSkill(['restore']);
+      assert.equal(exit, 0);
+
+      const after = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      assert.equal(after.skills[0].commit, '', 'restore must not rewrite empty commit to a stray value');
+    } finally {
+      process.env.ROBIN_WORKSPACE = prev;
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('robin skill update', () => {
