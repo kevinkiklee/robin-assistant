@@ -2,7 +2,7 @@
 // user-data/skills/external/. See
 // docs/superpowers/specs/2026-05-04-external-skill-compat-layer.md.
 
-import { mkdirSync, cpSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, cpSync, existsSync, readFileSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { resolveCliWorkspaceDir } from '../lib/workspace-root.js';
@@ -40,6 +40,7 @@ export async function dispatchSkill(argv) {
   if (sub === 'show') return cmdShow(rest);
   if (sub === 'uninstall') return cmdUninstall(rest);
   if (sub === 'update') return cmdUpdate(rest);
+  if (sub === 'doctor') return cmdDoctor(rest);
   if (sub === 'restore') return cmdRestore();
   process.stderr.write(`unknown skill subcommand: ${sub}\n${HELP}`);
   return 2;
@@ -260,6 +261,64 @@ function cmdUpdate(argv) {
   }
   generateIndex(ws);
   return failures === 0 ? 0 : 1;
+}
+
+function cmdDoctor(argv) {
+  const fix = argv.includes('--fix');
+  const ws = resolveCliWorkspaceDir();
+  const findings = [];
+
+  // Always regenerate INDEX.md (idempotent, harmless).
+  generateIndex(ws);
+
+  // Check 1: each manifest entry has a real folder.
+  const manifest = loadInstalledManifest(ws);
+  const orphans = [];
+  for (const entry of manifest.skills) {
+    const folder = join(externalDir(ws), entry.name);
+    if (!existsSync(folder)) {
+      findings.push(`orphan manifest entry: ${entry.name} (folder missing)`);
+      orphans.push(entry.name);
+    }
+  }
+
+  // Check 2: each external folder validates and is in the manifest.
+  const dir = externalDir(ws);
+  if (existsSync(dir)) {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'INDEX.md' || entry.startsWith('.')) continue;
+      const folderPath = join(dir, entry);
+      let st;
+      try { st = statSync(folderPath); } catch { continue; }
+      if (!st.isDirectory()) continue;
+      const v = validateSkill(folderPath);
+      if (!v.ok) {
+        findings.push(`invalid folder ${entry}: ${v.reason}`);
+        continue;
+      }
+      const inManifest = manifest.skills.some((s) => s.name === v.skill.name);
+      if (!inManifest) {
+        findings.push(`unmanaged folder: ${entry} (not in manifest — reinstall with source URL)`);
+      }
+    }
+  }
+
+  // Print findings.
+  for (const f of findings) process.stderr.write(`drift: ${f}\n`);
+
+  if (fix && orphans.length > 0) {
+    for (const name of orphans) removeManifestEntry(ws, name);
+    process.stdout.write(`fixed: removed ${orphans.length} orphan manifest entries\n`);
+    generateIndex(ws);
+    return 0;
+  }
+
+  if (findings.length > 0) {
+    process.stderr.write('run `robin skill doctor --fix` to auto-correct.\n');
+    return 1;
+  }
+  process.stdout.write('skill: ok\n');
+  return 0;
 }
 
 function cmdRestore() {
