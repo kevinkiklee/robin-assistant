@@ -2,7 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseSkillFrontmatter, validateSkill } from '../../scripts/lib/external-skill-loader.js';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, cpSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex } from '../../scripts/lib/external-skill-loader.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/external-skills');
 
@@ -86,5 +88,67 @@ describe('external-skill-loader: validateSkill', () => {
     const result = validateSkill(join(FIXTURES, 'invalid-with-override'));
     assert.equal(result.ok, false);
     assert.match(result.reason, /override/);
+  });
+});
+
+function makeWorkspace() {
+  const ws = mkdtempSync(join(tmpdir(), 'robin-skill-test-'));
+  mkdirSync(join(ws, 'user-data', 'skills', 'external'), { recursive: true });
+  return ws;
+}
+
+describe('external-skill-loader: scanSkills', () => {
+  it('returns empty array when external/ is empty or missing', () => {
+    const ws = makeWorkspace();
+    try {
+      assert.deepEqual(scanSkills(ws), []);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('returns valid skills and skips invalid ones', () => {
+    const ws = makeWorkspace();
+    const ext = join(ws, 'user-data', 'skills', 'external');
+    cpSync(join(FIXTURES, 'valid-basic'), join(ext, 'valid-basic'), { recursive: true });
+    cpSync(join(FIXTURES, 'invalid-no-description'), join(ext, 'invalid-no-description'), { recursive: true });
+    try {
+      const skills = scanSkills(ws);
+      assert.equal(skills.length, 1);
+      assert.equal(skills[0].name, 'valid-basic');
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('external-skill-loader: generateIndex', () => {
+  it('writes INDEX.md atomically with one entry per valid skill', () => {
+    const ws = makeWorkspace();
+    const ext = join(ws, 'user-data', 'skills', 'external');
+    cpSync(join(FIXTURES, 'valid-basic'), join(ext, 'valid-basic'), { recursive: true });
+    cpSync(join(FIXTURES, 'valid-with-aliases'), join(ext, 'valid-with-aliases'), { recursive: true });
+    try {
+      generateIndex(ws);
+      const idx = readFileSync(join(ext, 'INDEX.md'), 'utf8');
+      assert.match(idx, /# External skills installed/);
+      assert.match(idx, /\*\*valid-basic\*\* — A minimal valid skill/);
+      assert.match(idx, /\*\*valid-with-aliases\*\* — A skill with trigger aliases/);
+      assert.match(idx, /Triggered by "extract article", "fetch article"/);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('writes empty INDEX.md when no skills installed', () => {
+    const ws = makeWorkspace();
+    try {
+      generateIndex(ws);
+      const idx = readFileSync(join(ws, 'user-data', 'skills', 'external', 'INDEX.md'), 'utf8');
+      assert.match(idx, /# External skills installed/);
+      assert.match(idx, /_no skills installed_/);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
   });
 });
