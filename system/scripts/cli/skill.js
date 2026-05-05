@@ -2,10 +2,19 @@
 // user-data/skills/external/. See
 // docs/superpowers/specs/2026-05-04-external-skill-compat-layer.md.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, cpSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { resolveCliWorkspaceDir } from '../lib/workspace-root.js';
-import { externalDir, loadInstalledManifest } from '../lib/external-skill-loader.js';
+import {
+  externalDir,
+  loadInstalledManifest,
+  addManifestEntry,
+  validateSkill,
+  generateIndex,
+  resolveInstallTarget,
+  lightScan,
+} from '../lib/external-skill-loader.js';
 
 const HELP = `usage: robin skill <subcommand>
 
@@ -25,6 +34,7 @@ export async function dispatchSkill(argv) {
     process.stdout.write(HELP);
     return 0;
   }
+  if (sub === 'install') return cmdInstall(rest);
   if (sub === 'list') return cmdList();
   if (sub === 'show') return cmdShow(rest);
   process.stderr.write(`unknown skill subcommand: ${sub}\n${HELP}`);
@@ -61,4 +71,122 @@ function cmdShow(argv) {
   }
   process.stdout.write(readFileSync(skillFile, 'utf8'));
   return 0;
+}
+
+function cmdInstall(argv) {
+  const target = argv[0];
+  if (!target) {
+    process.stderr.write('usage: robin skill install <git-url-or-path>\n');
+    return 2;
+  }
+  const ws = resolveCliWorkspaceDir();
+  let resolved;
+  try {
+    resolved = resolveInstallTarget(target);
+  } catch (err) {
+    process.stderr.write(`install failed: ${err.message}\n`);
+    return 1;
+  }
+
+  // Stage to a temp folder first so we can validate before committing.
+  const stageRoot = join(externalDir(ws), '.staging-' + Date.now());
+  mkdirSync(stageRoot, { recursive: true });
+
+  let stagedFolder;
+  try {
+    if (resolved.kind === 'local') {
+      const dest = join(stageRoot, resolved.defaultName);
+      cpSync(resolved.localPath, dest, { recursive: true });
+      stagedFolder = dest;
+    } else if (resolved.kind === 'git-root') {
+      const dest = join(stageRoot, resolved.defaultName);
+      const r = spawnSync('git', ['clone', '--depth', '1', resolved.cloneUrl, dest], { stdio: 'inherit' });
+      if (r.status !== 0) {
+        rmSync(stageRoot, { recursive: true, force: true });
+        return 1;
+      }
+      stagedFolder = dest;
+    } else if (resolved.kind === 'git-subdir') {
+      const repoDir = join(stageRoot, '_repo');
+      const r = spawnSync('git', ['clone', '--depth', '1', '--branch', resolved.branch, resolved.cloneUrl, repoDir], { stdio: 'inherit' });
+      if (r.status !== 0) {
+        rmSync(stageRoot, { recursive: true, force: true });
+        return 1;
+      }
+      const subPath = join(repoDir, resolved.subPath);
+      if (!existsSync(subPath)) {
+        process.stderr.write(`install failed: subdirectory ${resolved.subPath} not found in repo\n`);
+        rmSync(stageRoot, { recursive: true, force: true });
+        return 1;
+      }
+      const dest = join(stageRoot, resolved.defaultName);
+      cpSync(subPath, dest, { recursive: true });
+      rmSync(repoDir, { recursive: true, force: true });
+      stagedFolder = dest;
+    }
+
+    // Validate.
+    const validation = validateSkill(stagedFolder);
+    if (!validation.ok) {
+      process.stderr.write(`install failed: ${validation.reason}\n`);
+      rmSync(stageRoot, { recursive: true, force: true });
+      return 1;
+    }
+    const skillName = validation.skill.name;
+
+    // Collision checks.
+    const finalDest = join(externalDir(ws), skillName);
+    if (existsSync(finalDest)) {
+      process.stderr.write(`install failed: skill "${skillName}" is already installed\n`);
+      rmSync(stageRoot, { recursive: true, force: true });
+      return 1;
+    }
+    const jobFile = join(ws, 'system', 'jobs', `${skillName}.md`);
+    if (existsSync(jobFile)) {
+      process.stderr.write(`install failed: name collision with system protocol "${skillName}"\n`);
+      rmSync(stageRoot, { recursive: true, force: true });
+      return 1;
+    }
+
+    // Light scan (advisory).
+    const scan = lightScan(stagedFolder);
+    if (scan.warnings.length > 0) {
+      process.stderr.write('warning: light scan flagged the following:\n');
+      for (const w of scan.warnings) process.stderr.write(`  - ${w}\n`);
+      process.stderr.write('  (advisory only; runtime hooks remain authoritative)\n');
+    }
+
+    // Commit: move from staging to final.
+    mkdirSync(externalDir(ws), { recursive: true });
+    cpSync(stagedFolder, finalDest, { recursive: true });
+    rmSync(stageRoot, { recursive: true, force: true });
+
+    // Resolve commit hash if git source.
+    let commit = '';
+    if (resolved.kind !== 'local') {
+      const r = spawnSync('git', ['-C', finalDest, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+      if (r.status === 0) commit = r.stdout.trim();
+    }
+
+    // Manifest entry + INDEX regen.
+    addManifestEntry(ws, {
+      name: skillName,
+      source: resolved.kind === 'local' ? `file://${resolved.localPath}` : target,
+      commit,
+      installedAt: new Date().toISOString(),
+      trust: 'untrusted-mixed',
+    });
+    generateIndex(ws);
+
+    process.stdout.write(`installed: ${skillName}\n`);
+    process.stdout.write(`  source: ${target}\n`);
+    process.stdout.write(`  body:   user-data/skills/external/${skillName}/SKILL.md\n`);
+    process.stdout.write('  trust:  untrusted-mixed\n');
+    process.stdout.write('  hint:   if SKILL.md mentions node/python/ruby scripts, you may need to install dependencies inside the skill folder.\n');
+    return 0;
+  } catch (err) {
+    rmSync(stageRoot, { recursive: true, force: true });
+    process.stderr.write(`install failed: ${err.message}\n`);
+    return 1;
+  }
 }
