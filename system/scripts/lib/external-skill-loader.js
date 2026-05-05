@@ -9,6 +9,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { SENSITIVE_PATTERNS } from './bash-sensitive-patterns.js';
 
 const FM_RE = /^---\n([\s\S]*?)\n---\n?/;
 
@@ -246,9 +247,22 @@ export function lightScan(folderPath) {
         break;
       }
     }
+    // Bash-sensitive patterns: scan shell scripts (.sh) and shell-block content
+    // in markdown. The full set lives in bash-sensitive-patterns.js — same set
+    // that gates Bash() calls at the PreToolUse hook.
+    if (/\.(sh|md|mjs|cjs|js|ts)$/.test(rel)) {
+      for (const sp of SENSITIVE_PATTERNS) {
+        if (sp.pattern.test(content)) {
+          warnings.push(`${rel}: matches bash-sensitive pattern "${sp.name}" — ${sp.why}`);
+          break;
+        }
+      }
+    }
   });
   return { warnings };
 }
+
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'vendor', '.next']);
 
 function walkFiles(root, visit, prefix = '') {
   let entries;
@@ -258,9 +272,14 @@ function walkFiles(root, visit, prefix = '') {
     return;
   }
   for (const e of entries) {
+    if (e.isSymbolicLink()) continue; // Issue 3: don't follow symlinks (escape risk)
     const full = join(root, e.name);
     const rel = prefix ? `${prefix}/${e.name}` : e.name;
-    if (e.isDirectory()) walkFiles(full, visit, rel);
-    else if (e.isFile()) visit(full, rel);
+    if (e.isDirectory()) {
+      if (SKIP_DIRS.has(e.name)) continue;
+      walkFiles(full, visit, rel);
+    } else if (e.isFile()) {
+      visit(full, rel);
+    }
   }
 }

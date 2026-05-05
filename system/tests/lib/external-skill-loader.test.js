@@ -258,4 +258,10 @@ describe('external-skill-loader: lightScan', () => {
     assert.ok(result.warnings.length > 0);
     assert.match(result.warnings.join('\n'), /credential|\.aws|secret/i);
   });
+
+  it('warns when SKILL.md contains a bash-sensitive pattern', () => {
+    const result = lightScan(join(FIXTURES, 'has-bash-pattern'));
+    assert.ok(result.warnings.length > 0);
+    assert.match(result.warnings.join('\n'), /bash-sensitive pattern/);
+  });
 });
