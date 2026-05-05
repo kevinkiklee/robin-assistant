@@ -101,22 +101,29 @@ function cmdInstall(argv) {
     } else if (resolved.kind === 'git-root') {
       const dest = join(stageRoot, resolved.defaultName);
       const r = spawnSync('git', ['clone', '--depth', '1', resolved.cloneUrl, dest], { stdio: 'inherit' });
+      if (r.error) {
+        process.stderr.write(`install failed: could not run git: ${r.error.message}\n`);
+        return 1;
+      }
       if (r.status !== 0) {
-        rmSync(stageRoot, { recursive: true, force: true });
+        process.stderr.write('install failed: git clone exited non-zero\n');
         return 1;
       }
       stagedFolder = dest;
     } else if (resolved.kind === 'git-subdir') {
       const repoDir = join(stageRoot, '_repo');
       const r = spawnSync('git', ['clone', '--depth', '1', '--branch', resolved.branch, resolved.cloneUrl, repoDir], { stdio: 'inherit' });
+      if (r.error) {
+        process.stderr.write(`install failed: could not run git: ${r.error.message}\n`);
+        return 1;
+      }
       if (r.status !== 0) {
-        rmSync(stageRoot, { recursive: true, force: true });
+        process.stderr.write('install failed: git clone exited non-zero\n');
         return 1;
       }
       const subPath = join(repoDir, resolved.subPath);
       if (!existsSync(subPath)) {
         process.stderr.write(`install failed: subdirectory ${resolved.subPath} not found in repo\n`);
-        rmSync(stageRoot, { recursive: true, force: true });
         return 1;
       }
       const dest = join(stageRoot, resolved.defaultName);
@@ -129,7 +136,6 @@ function cmdInstall(argv) {
     const validation = validateSkill(stagedFolder);
     if (!validation.ok) {
       process.stderr.write(`install failed: ${validation.reason}\n`);
-      rmSync(stageRoot, { recursive: true, force: true });
       return 1;
     }
     const skillName = validation.skill.name;
@@ -138,13 +144,11 @@ function cmdInstall(argv) {
     const finalDest = join(externalDir(ws), skillName);
     if (existsSync(finalDest)) {
       process.stderr.write(`install failed: skill "${skillName}" is already installed\n`);
-      rmSync(stageRoot, { recursive: true, force: true });
       return 1;
     }
     const jobFile = join(ws, 'system', 'jobs', `${skillName}.md`);
     if (existsSync(jobFile)) {
       process.stderr.write(`install failed: name collision with system protocol "${skillName}"\n`);
-      rmSync(stageRoot, { recursive: true, force: true });
       return 1;
     }
 
@@ -159,7 +163,6 @@ function cmdInstall(argv) {
     // Commit: move from staging to final.
     mkdirSync(externalDir(ws), { recursive: true });
     cpSync(stagedFolder, finalDest, { recursive: true });
-    rmSync(stageRoot, { recursive: true, force: true });
 
     // Resolve commit hash if git source.
     let commit = '';
@@ -185,8 +188,9 @@ function cmdInstall(argv) {
     process.stdout.write('  hint:   if SKILL.md mentions node/python/ruby scripts, you may need to install dependencies inside the skill folder.\n');
     return 0;
   } catch (err) {
-    rmSync(stageRoot, { recursive: true, force: true });
     process.stderr.write(`install failed: ${err.message}\n`);
     return 1;
+  } finally {
+    rmSync(stageRoot, { recursive: true, force: true });
   }
 }
