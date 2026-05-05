@@ -99,6 +99,12 @@ function cmdInstall(argv) {
   mkdirSync(stageRoot, { recursive: true });
 
   let stagedFolder;
+  // Capture the upstream commit hash from the staging checkout BEFORE we
+  // copy/rename the folder — once the .git directory is gone (or the staged
+  // folder is moved into the parent repo's working tree), `git rev-parse
+  // HEAD` would walk up and resolve to the parent repo's HEAD, recording the
+  // wrong commit.
+  let stagedCommit = '';
   try {
     if (resolved.kind === 'local') {
       const dest = join(stageRoot, resolved.defaultName);
@@ -116,6 +122,8 @@ function cmdInstall(argv) {
         return 1;
       }
       stagedFolder = dest;
+      const ch = spawnSync('git', ['-C', dest, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+      if (ch.status === 0) stagedCommit = ch.stdout.trim();
     } else if (resolved.kind === 'git-subdir') {
       const repoDir = join(stageRoot, '_repo');
       const r = spawnSync('git', ['clone', '--depth', '1', '--branch', resolved.branch, resolved.cloneUrl, repoDir], { stdio: 'inherit' });
@@ -127,6 +135,8 @@ function cmdInstall(argv) {
         process.stderr.write('install failed: git clone exited non-zero\n');
         return 1;
       }
+      const ch = spawnSync('git', ['-C', repoDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+      if (ch.status === 0) stagedCommit = ch.stdout.trim();
       const subPath = join(repoDir, resolved.subPath);
       if (!existsSync(subPath)) {
         process.stderr.write(`install failed: subdirectory ${resolved.subPath} not found in repo\n`);
@@ -170,12 +180,10 @@ function cmdInstall(argv) {
     mkdirSync(externalDir(ws), { recursive: true });
     cpSync(stagedFolder, finalDest, { recursive: true });
 
-    // Resolve commit hash if git source.
-    let commit = '';
-    if (resolved.kind !== 'local') {
-      const r = spawnSync('git', ['-C', finalDest, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
-      if (r.status === 0) commit = r.stdout.trim();
-    }
+    // Commit hash (if git source) was captured from the staging checkout
+    // above — `git rev-parse HEAD` against finalDest would resolve to the
+    // parent repo's HEAD when no .git is present.
+    const commit = resolved.kind === 'local' ? '' : stagedCommit;
 
     // Manifest entry + INDEX regen.
     addManifestEntry(ws, {
