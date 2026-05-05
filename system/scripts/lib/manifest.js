@@ -41,6 +41,8 @@ export function loadManifest(workspaceDir) {
   // v2 fields added by cycle-2c. Default empty for v1.
   if (!data.claudemd) data.claudemd = { hardRulesHash: '', lastSnapshot: '' };
   if (!data.userDataJobs) data.userDataJobs = { knownFiles: [] };
+  if (!data.externalSkills) data.externalSkills = { knownNames: [] };
+  if (!Array.isArray(data.externalSkills.knownNames)) data.externalSkills.knownNames = [];
   return data;
 }
 

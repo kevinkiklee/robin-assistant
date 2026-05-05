@@ -10,7 +10,7 @@
 // + warning + exit 0 (we don't block sessions on a hook bug).
 
 import { dirname, resolve, join } from 'node:path';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadManifest, loadCurrentSettings, enumerateMCPServers } from '../lib/manifest.js';
 import { appendPolicyRefusal, readRecentRefusalHashes } from '../lib/policy-refusals-log.js';
@@ -131,6 +131,23 @@ function listUserDataJobs(workspaceDir) {
   }
 }
 
+function checkExternalSkills(workspaceDir, manifest) {
+  const findings = [];
+  const dir = join(workspaceDir, 'user-data', 'skills', 'external');
+  if (!existsSync(dir)) return findings;
+  const known = new Set(manifest.externalSkills?.knownNames || []);
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'INDEX.md' || entry.startsWith('.')) continue;
+    let st;
+    try { st = statSync(join(dir, entry)); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    if (!known.has(entry)) {
+      findings.push({ level: 'INFO', message: `external skill folder not in manifest: ${entry}` });
+    }
+  }
+  return findings;
+}
+
 export function emitDrift(workspaceDir, drift) {
   if (drift.length === 0) return;
   const severe = drift.filter((d) => d.severity === 'severe');
@@ -179,6 +196,14 @@ async function main() {
     const claudemdContent = readClaudeMD(workspaceDir);
     const userDataJobsFiles = listUserDataJobs(workspaceDir);
     const drift = computeDrift(manifest, currentSettings, currentMCP, { claudemdContent, userDataJobsFiles });
+    for (const f of checkExternalSkills(workspaceDir, manifest)) {
+      drift.push({
+        severity: 'info',
+        kind: 'unexpected-external-skill',
+        detail: f.message,
+        hash: fnv1a64(`external-skill:${f.message}`),
+      });
+    }
     emitDrift(workspaceDir, drift);
     process.exit(0);
   } catch (err) {

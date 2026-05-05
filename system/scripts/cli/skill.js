@@ -16,6 +16,7 @@ import {
   resolveInstallTarget,
   lightScan,
 } from '../lib/external-skill-loader.js';
+import { loadManifest, writeManifest } from '../lib/manifest.js';
 
 const HELP = `usage: robin skill <subcommand>
 
@@ -184,6 +185,14 @@ function cmdInstall(argv) {
       installedAt: new Date().toISOString(),
       trust: 'untrusted-mixed',
     });
+    const sec = loadManifest(ws);
+    if (sec) {
+      if (!sec.externalSkills.knownNames.includes(skillName)) {
+        sec.externalSkills.knownNames.push(skillName);
+        sec.externalSkills.knownNames.sort();
+        writeManifest(ws, sec);
+      }
+    }
     generateIndex(ws);
 
     process.stdout.write(`installed: ${skillName}\n`);
@@ -216,6 +225,11 @@ function cmdUninstall(argv) {
   }
   if (existsSync(folder)) rmSync(folder, { recursive: true, force: true });
   removeManifestEntry(ws, name);
+  const sec = loadManifest(ws);
+  if (sec) {
+    sec.externalSkills.knownNames = sec.externalSkills.knownNames.filter((n) => n !== name);
+    writeManifest(ws, sec);
+  }
   generateIndex(ws);
   process.stdout.write(`uninstalled: ${name}\n`);
   return 0;
