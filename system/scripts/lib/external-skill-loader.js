@@ -170,6 +170,10 @@ export function manifestPath(workspaceDir) {
   return join(workspaceDir, ...MANIFEST_REL);
 }
 
+// Factory (not a shared constant): a `const DEFAULT = { ..., skills: [] }`
+// + `{ ...DEFAULT }` shallow-copy would leak the same `skills` array across
+// returns; addManifestEntry's push/sort would mutate it in place. A factory
+// guarantees a fresh object + fresh array on every call.
 function defaultManifest() {
   return { schemaVersion: 1, skills: [] };
 }
@@ -184,6 +188,8 @@ export function loadInstalledManifest(workspaceDir) {
     if (!Array.isArray(data.skills)) data.skills = [];
     return data;
   } catch {
+    // TODO(skill-doctor): silent fallback hides corrupted manifest.
+    // Task 11 should detect (e.g., rename to installed-skills.json.bad-<ts>) and surface.
     return defaultManifest();
   }
 }
@@ -191,7 +197,9 @@ export function loadInstalledManifest(workspaceDir) {
 export function writeInstalledManifest(workspaceDir, manifest) {
   const p = manifestPath(workspaceDir);
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(manifest, null, 2) + '\n');
+  const tmp = p + '.tmp';
+  writeFileSync(tmp, JSON.stringify(manifest, null, 2) + '\n');
+  renameSync(tmp, p);
 }
 
 export function addManifestEntry(workspaceDir, entry) {

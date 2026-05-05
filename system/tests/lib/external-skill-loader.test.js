@@ -219,4 +219,30 @@ describe('external-skill-loader: installed-skills.json', () => {
       rmSync(ws, { recursive: true, force: true });
     }
   });
+
+  it('addManifestEntry upserts by name (no duplicates on re-add)', () => {
+    const ws = makeWorkspace();
+    try {
+      addManifestEntry(ws, { name: 'a', source: 'foo', commit: '1', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      addManifestEntry(ws, { name: 'a', source: 'foo', commit: '2', installedAt: '2026-05-05', trust: 'untrusted-mixed' });
+      const m = loadInstalledManifest(ws);
+      assert.equal(m.skills.length, 1);
+      assert.equal(m.skills[0].commit, '2');
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('addManifestEntry keeps skills sorted alphabetically', () => {
+    const ws = makeWorkspace();
+    try {
+      addManifestEntry(ws, { name: 'c', source: 'foo', commit: '1', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      addManifestEntry(ws, { name: 'a', source: 'bar', commit: '2', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      addManifestEntry(ws, { name: 'b', source: 'baz', commit: '3', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      const m = loadInstalledManifest(ws);
+      assert.deepEqual(m.skills.map((s) => s.name), ['a', 'b', 'c']);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
 });
