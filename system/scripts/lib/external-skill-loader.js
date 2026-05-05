@@ -218,3 +218,49 @@ export function removeManifestEntry(workspaceDir, name) {
   writeInstalledManifest(workspaceDir, m);
   return m;
 }
+
+// Patterns we surface as warnings during install. Advisory only — never
+// blocks. Real protection is the runtime hooks (PreToolUse, outbound-policy,
+// PII patterns). See spec: light scan is intentionally light.
+const CREDENTIAL_PATH_PATTERNS = [
+  /user-data\/(?:runtime\/|ops\/)?secrets\//,
+  /\.env\b/,
+  /\.aws\b/,
+  /\.ssh\b/,
+  /user-data\/memory\/profile\//,
+];
+
+export function lightScan(folderPath) {
+  const warnings = [];
+  walkFiles(folderPath, (filePath, rel) => {
+    if (!/\.(js|ts|sh|mjs|cjs|md|py|rb)$/.test(rel)) return;
+    let content;
+    try {
+      content = readFileSync(filePath, 'utf8');
+    } catch {
+      return;
+    }
+    for (const pat of CREDENTIAL_PATH_PATTERNS) {
+      if (pat.test(content)) {
+        warnings.push(`${rel}: references credential-related path (${pat.source})`);
+        break;
+      }
+    }
+  });
+  return { warnings };
+}
+
+function walkFiles(root, visit, prefix = '') {
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    const full = join(root, e.name);
+    const rel = prefix ? `${prefix}/${e.name}` : e.name;
+    if (e.isDirectory()) walkFiles(full, visit, rel);
+    else if (e.isFile()) visit(full, rel);
+  }
+}

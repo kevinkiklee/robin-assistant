@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync, mkdirSync, readFileSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex, loadInstalledManifest, writeInstalledManifest, addManifestEntry, removeManifestEntry } from '../../scripts/lib/external-skill-loader.js';
+import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex, loadInstalledManifest, writeInstalledManifest, addManifestEntry, removeManifestEntry, lightScan } from '../../scripts/lib/external-skill-loader.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/external-skills');
 
@@ -244,5 +244,18 @@ describe('external-skill-loader: installed-skills.json', () => {
     } finally {
       rmSync(ws, { recursive: true, force: true });
     }
+  });
+});
+
+describe('external-skill-loader: lightScan', () => {
+  it('returns no warnings on a clean skill', () => {
+    const result = lightScan(join(FIXTURES, 'valid-basic'));
+    assert.equal(result.warnings.length, 0);
+  });
+
+  it('warns when a script references credential paths', () => {
+    const result = lightScan(join(FIXTURES, 'has-suspicious-script'));
+    assert.ok(result.warnings.length > 0);
+    assert.match(result.warnings.join('\n'), /credential|\.aws|secret/i);
   });
 });
