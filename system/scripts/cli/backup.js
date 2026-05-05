@@ -13,7 +13,9 @@ export async function backup(workspaceDir = process.cwd()) {
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const archive = join(backupDir, `user-data-${ts}.tar.gz`);
-  execSync(`tar -czf ${JSON.stringify(archive)} -C ${JSON.stringify(workspaceDir)} --exclude='user-data/backup' user-data`, { stdio: 'inherit' });
+  // Exclude backup/ (would recursively contain prior archives) and
+  // artifacts/input/ (transient user-dropped files — can run hundreds of MB).
+  execSync(`tar -czf ${JSON.stringify(archive)} -C ${JSON.stringify(workspaceDir)} --exclude='user-data/backup' --exclude='user-data/artifacts/input' user-data`, { stdio: 'inherit' });
   console.log(`Backed up to ${archive}`);
   return archive;
 }

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
 import { backup } from '../../scripts/cli/backup.js';
 import { restore } from '../../scripts/cli/restore.js';
 import {
@@ -33,6 +34,20 @@ test('backup writes a tar.gz under user-data/backup/', async () => {
   const archives = readdirSync(join(root, 'user-data/backup')).filter(f => f.endsWith('.tar.gz'));
   assert.equal(archives.length, 1);
   assert.match(archives[0], /^user-data-.*\.tar\.gz$/);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('backup excludes artifacts/input (transient user-dropped files)', async () => {
+  const root = makeRepo();
+  mkdirSync(join(root, 'user-data/artifacts/input'), { recursive: true });
+  mkdirSync(join(root, 'user-data/artifacts/output'), { recursive: true });
+  writeFileSync(join(root, 'user-data/artifacts/input/big-blob.bin'), 'x'.repeat(1024));
+  writeFileSync(join(root, 'user-data/artifacts/output/result.txt'), 'computed\n');
+  await backup(root);
+  const archive = readdirSync(join(root, 'user-data/backup')).find(f => f.endsWith('.tar.gz'));
+  const entries = execSync(`tar -tzf ${JSON.stringify(join(root, 'user-data/backup', archive))}`, { encoding: 'utf-8' });
+  assert.ok(!entries.includes('user-data/artifacts/input/'), 'artifacts/input should be excluded');
+  assert.ok(entries.includes('user-data/artifacts/output/'), 'artifacts/output should be included');
   rmSync(root, { recursive: true, force: true });
 });
 
