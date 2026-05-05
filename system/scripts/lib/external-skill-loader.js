@@ -123,6 +123,7 @@ export function scanSkills(workspaceDir) {
     if (!st.isDirectory()) continue;
     const result = validateSkill(folderPath);
     if (result.ok) skills.push(result.skill);
+    // TODO(skill-doctor): surface rejected folders + reasons (handled by `robin skill doctor` in Task 11).
   }
   return skills.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -159,6 +160,6 @@ export function generateIndex(workspaceDir) {
 }
 
 function truncate(s, max) {
-  if (s.length <= max) return s.replace(/\.+$/, '');
-  return s.slice(0, max - 1).replace(/\.+$/, '') + '…';
+  const trimmed = s.replace(/\.+$/, '');
+  return trimmed.length <= max ? trimmed : trimmed.slice(0, max - 1) + '…';
 }
