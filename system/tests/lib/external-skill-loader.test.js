@@ -294,4 +294,11 @@ describe('external-skill-loader: resolveInstallTarget', () => {
   it('rejects gibberish', () => {
     assert.throws(() => resolveInstallTarget('not-a-url-or-path'), /unrecognized/i);
   });
+
+  it('rejects subPath with .. segment', () => {
+    assert.throws(
+      () => resolveInstallTarget('https://github.com/owner/repo/tree/main/foo/../etc'),
+      /unsafe/i
+    );
+  });
 });

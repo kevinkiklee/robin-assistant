@@ -124,7 +124,8 @@ export function scanSkills(workspaceDir) {
     if (!st.isDirectory()) continue;
     const result = validateSkill(folderPath);
     if (result.ok) skills.push(result.skill);
-    // TODO(skill-doctor): surface rejected folders + reasons (handled by `robin skill doctor` in Task 11).
+    // Note: invalid folders are silently dropped from scan results.
+    // `robin skill doctor` re-validates each folder and surfaces failures explicitly.
   }
   return skills.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -189,8 +190,8 @@ export function loadInstalledManifest(workspaceDir) {
     if (!Array.isArray(data.skills)) data.skills = [];
     return data;
   } catch {
-    // TODO(skill-doctor): silent fallback hides corrupted manifest.
-    // Task 11 should detect (e.g., rename to installed-skills.json.bad-<ts>) and surface.
+    // Silent fallback to default — log to a sidecar in the future if corruption surfaces.
+    // (`robin skill doctor` doesn't yet detect this case.)
     return defaultManifest();
   }
 }
@@ -279,6 +280,9 @@ export function resolveInstallTarget(input) {
   const treeMatch = trimmed.match(GH_TREE_RE);
   if (treeMatch) {
     const [, owner, repo, branch, subPath] = treeMatch;
+    if (subPath.split('/').some((seg) => seg === '..' || seg === '')) {
+      throw new Error(`unsafe subPath in install target: ${subPath}`);
+    }
     return {
       kind: 'git-subdir',
       cloneUrl: `https://github.com/${owner}/${repo}.git`,

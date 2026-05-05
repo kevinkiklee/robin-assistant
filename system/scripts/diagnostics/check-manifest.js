@@ -131,7 +131,7 @@ function listUserDataJobs(workspaceDir) {
   }
 }
 
-function checkExternalSkills(workspaceDir, manifest) {
+export function checkExternalSkills(workspaceDir, manifest) {
   const findings = [];
   const dir = join(workspaceDir, 'user-data', 'skills', 'external');
   if (!existsSync(dir)) return findings;
