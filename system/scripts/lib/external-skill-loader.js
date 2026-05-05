@@ -8,7 +8,7 @@
 // docs/superpowers/specs/2026-05-04-external-skill-compat-layer.md.
 
 import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 const FM_RE = /^---\n([\s\S]*?)\n---\n?/;
 
@@ -162,4 +162,51 @@ export function generateIndex(workspaceDir) {
 function truncate(s, max) {
   const trimmed = s.replace(/\.+$/, '');
   return trimmed.length <= max ? trimmed : trimmed.slice(0, max - 1) + '…';
+}
+
+const MANIFEST_REL = ['user-data', 'runtime', 'state', 'installed-skills.json'];
+
+export function manifestPath(workspaceDir) {
+  return join(workspaceDir, ...MANIFEST_REL);
+}
+
+function defaultManifest() {
+  return { schemaVersion: 1, skills: [] };
+}
+
+export function loadInstalledManifest(workspaceDir) {
+  const p = manifestPath(workspaceDir);
+  if (!existsSync(p)) return defaultManifest();
+  try {
+    const data = JSON.parse(readFileSync(p, 'utf8'));
+    if (!data || typeof data !== 'object') return defaultManifest();
+    if (typeof data.schemaVersion !== 'number') data.schemaVersion = 1;
+    if (!Array.isArray(data.skills)) data.skills = [];
+    return data;
+  } catch {
+    return defaultManifest();
+  }
+}
+
+export function writeInstalledManifest(workspaceDir, manifest) {
+  const p = manifestPath(workspaceDir);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(manifest, null, 2) + '\n');
+}
+
+export function addManifestEntry(workspaceDir, entry) {
+  const m = loadInstalledManifest(workspaceDir);
+  const i = m.skills.findIndex((s) => s.name === entry.name);
+  if (i >= 0) m.skills[i] = entry;
+  else m.skills.push(entry);
+  m.skills.sort((a, b) => a.name.localeCompare(b.name));
+  writeInstalledManifest(workspaceDir, m);
+  return m;
+}
+
+export function removeManifestEntry(workspaceDir, name) {
+  const m = loadInstalledManifest(workspaceDir);
+  m.skills = m.skills.filter((s) => s.name !== name);
+  writeInstalledManifest(workspaceDir, m);
+  return m;
 }

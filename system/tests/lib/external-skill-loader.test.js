@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, rmSync, mkdirSync, readFileSync, cpSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex } from '../../scripts/lib/external-skill-loader.js';
+import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex, loadInstalledManifest, writeInstalledManifest, addManifestEntry, removeManifestEntry } from '../../scripts/lib/external-skill-loader.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/external-skills');
 
@@ -147,6 +147,74 @@ describe('external-skill-loader: generateIndex', () => {
       const idx = readFileSync(join(ws, 'user-data', 'skills', 'external', 'INDEX.md'), 'utf8');
       assert.match(idx, /# External skills installed/);
       assert.match(idx, /_no skills installed_/);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('external-skill-loader: installed-skills.json', () => {
+  it('returns default empty manifest when file is missing', () => {
+    const ws = makeWorkspace();
+    try {
+      const m = loadInstalledManifest(ws);
+      assert.equal(m.schemaVersion, 1);
+      assert.deepEqual(m.skills, []);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('writeInstalledManifest creates parent dir and persists', () => {
+    const ws = makeWorkspace();
+    try {
+      writeInstalledManifest(ws, {
+        schemaVersion: 1,
+        skills: [{ name: 'x', source: 'foo', commit: 'abc', installedAt: '2026-05-04', trust: 'untrusted-mixed' }],
+      });
+      const m = loadInstalledManifest(ws);
+      assert.equal(m.skills.length, 1);
+      assert.equal(m.skills[0].name, 'x');
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('addManifestEntry appends and persists', () => {
+    const ws = makeWorkspace();
+    try {
+      addManifestEntry(ws, { name: 'a', source: 'foo', commit: '1', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      addManifestEntry(ws, { name: 'b', source: 'bar', commit: '2', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      const m = loadInstalledManifest(ws);
+      assert.equal(m.skills.length, 2);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('removeManifestEntry removes by name', () => {
+    const ws = makeWorkspace();
+    try {
+      addManifestEntry(ws, { name: 'a', source: 'foo', commit: '1', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      addManifestEntry(ws, { name: 'b', source: 'bar', commit: '2', installedAt: '2026-05-04', trust: 'untrusted-mixed' });
+      removeManifestEntry(ws, 'a');
+      const m = loadInstalledManifest(ws);
+      assert.equal(m.skills.length, 1);
+      assert.equal(m.skills[0].name, 'b');
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('returns default empty manifest if file is malformed JSON', () => {
+    const ws = makeWorkspace();
+    const path = join(ws, 'user-data', 'runtime', 'state', 'installed-skills.json');
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, '{ not json');
+    try {
+      const m = loadInstalledManifest(ws);
+      assert.equal(m.schemaVersion, 1);
+      assert.deepEqual(m.skills, []);
     } finally {
       rmSync(ws, { recursive: true, force: true });
     }
