@@ -72,3 +72,38 @@ describe('robin skill restore', () => {
     }
   });
 });
+
+describe('robin skill update', () => {
+  it('skips file:// source skills (no upstream to pull)', async () => {
+    const ws = makeWorkspace();
+    const prev = process.env.ROBIN_WORKSPACE;
+    process.env.ROBIN_WORKSPACE = ws;
+    try {
+      // Install from a local file path → manifest source is file://...
+      await dispatchSkill(['install', join(FIXTURES, 'valid-basic')]);
+      // Update should succeed (exit 0) with skip message — no failures.
+      const exit = await dispatchSkill(['update']);
+      assert.equal(exit, 0);
+      // Manifest should be unchanged.
+      const m = JSON.parse(readFileSync(join(ws, 'user-data/runtime/state/installed-skills.json'), 'utf8'));
+      assert.equal(m.skills.length, 1);
+      assert.ok(m.skills[0].source.startsWith('file://'));
+    } finally {
+      process.env.ROBIN_WORKSPACE = prev;
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('returns non-zero when named skill is not installed', async () => {
+    const ws = makeWorkspace();
+    const prev = process.env.ROBIN_WORKSPACE;
+    process.env.ROBIN_WORKSPACE = ws;
+    try {
+      const exit = await dispatchSkill(['update', 'does-not-exist']);
+      assert.notEqual(exit, 0);
+    } finally {
+      process.env.ROBIN_WORKSPACE = prev;
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
