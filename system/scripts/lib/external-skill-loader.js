@@ -7,6 +7,9 @@
 // loader does NOT touch system/jobs/. See
 // docs/superpowers/specs/2026-05-04-external-skill-compat-layer.md.
 
+import { readFileSync, existsSync } from 'node:fs';
+import { basename, join } from 'node:path';
+
 const FM_RE = /^---\n([\s\S]*?)\n---\n?/;
 
 export function parseSkillFrontmatter(content) {
@@ -59,4 +62,41 @@ function parseValue(raw) {
       .filter((s) => s.length > 0);
   }
   return raw;
+}
+
+// validateSkill(folderPath) → { ok: true, skill } | { ok: false, reason }
+export function validateSkill(folderPath) {
+  const skillFile = join(folderPath, 'SKILL.md');
+  if (!existsSync(skillFile)) {
+    return { ok: false, reason: `SKILL.md not found at ${skillFile}` };
+  }
+  let content;
+  try {
+    content = readFileSync(skillFile, 'utf8');
+  } catch (err) {
+    return { ok: false, reason: `Failed to read SKILL.md: ${err.message}` };
+  }
+  const { frontmatter } = parseSkillFrontmatter(content);
+  if (!frontmatter.name) {
+    return { ok: false, reason: 'Frontmatter missing required field: name' };
+  }
+  if (!frontmatter.description) {
+    return { ok: false, reason: 'Frontmatter missing required field: description' };
+  }
+  if (frontmatter.override !== undefined) {
+    return { ok: false, reason: 'External skills must not declare `override:` (reserved for system + user-data overrides)' };
+  }
+  const folderName = basename(folderPath);
+  if (frontmatter.name !== folderName) {
+    return { ok: false, reason: `Frontmatter name "${frontmatter.name}" does not match folder name "${folderName}"` };
+  }
+  return {
+    ok: true,
+    skill: {
+      name: frontmatter.name,
+      description: frontmatter.description,
+      triggerAliases: frontmatter['trigger-aliases'] || [],
+      folderPath,
+    },
+  };
 }

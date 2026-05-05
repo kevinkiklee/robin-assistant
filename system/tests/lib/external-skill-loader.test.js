@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSkillFrontmatter } from '../../scripts/lib/external-skill-loader.js';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseSkillFrontmatter, validateSkill } from '../../scripts/lib/external-skill-loader.js';
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/external-skills');
 
 describe('external-skill-loader: parseSkillFrontmatter', () => {
   it('parses name and description from frontmatter', () => {
@@ -50,5 +54,37 @@ body
 `;
     const { frontmatter } = parseSkillFrontmatter(content);
     assert.deepEqual(frontmatter['trigger-aliases'], ['a', 'b']);
+  });
+});
+
+describe('external-skill-loader: validateSkill', () => {
+  it('accepts a valid skill folder', () => {
+    const result = validateSkill(join(FIXTURES, 'valid-basic'));
+    assert.equal(result.ok, true);
+    assert.equal(result.skill.name, 'valid-basic');
+  });
+
+  it('rejects when SKILL.md is missing', () => {
+    const result = validateSkill(join(FIXTURES, 'does-not-exist'));
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /SKILL\.md not found/);
+  });
+
+  it('rejects when description is missing', () => {
+    const result = validateSkill(join(FIXTURES, 'invalid-no-description'));
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /description/);
+  });
+
+  it('rejects when name does not match folder', () => {
+    const result = validateSkill(join(FIXTURES, 'invalid-name-mismatch'));
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /name.*folder/);
+  });
+
+  it('rejects when override is set', () => {
+    const result = validateSkill(join(FIXTURES, 'invalid-with-override'));
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /override/);
   });
 });
