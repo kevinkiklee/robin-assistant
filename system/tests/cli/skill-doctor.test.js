@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, existsSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +64,22 @@ describe('robin skill doctor', () => {
       assert.equal(exit, 0);
       const m = JSON.parse(readFileSync(join(ws, 'user-data/runtime/state/installed-skills.json'), 'utf8'));
       assert.equal(m.skills.length, 0);
+    } finally {
+      process.env.ROBIN_WORKSPACE = prev;
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('--fix returns non-zero when non-orphan findings remain', async () => {
+    const ws = makeWorkspace();
+    const prev = process.env.ROBIN_WORKSPACE;
+    process.env.ROBIN_WORKSPACE = ws;
+    try {
+      // Create an unmanaged folder (valid skill, not in manifest).
+      cpSync(join(FIXTURES, 'valid-basic'), join(ws, 'user-data/skills/external/valid-basic'), { recursive: true });
+      // No manifest entry exists, so it's "unmanaged".
+      const exit = await dispatchSkill(['doctor', '--fix']);
+      assert.notEqual(exit, 0);
     } finally {
       process.env.ROBIN_WORKSPACE = prev;
       rmSync(ws, { recursive: true, force: true });

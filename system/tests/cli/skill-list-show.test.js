@@ -56,6 +56,29 @@ describe('robin skill list', () => {
       rmSync(ws, { recursive: true, force: true });
     }
   });
+
+  it('--full prints tabular manifest content', async () => {
+    const ws = makeWorkspace();
+    const prev = process.env.ROBIN_WORKSPACE;
+    process.env.ROBIN_WORKSPACE = ws;
+    cpSync(join(FIXTURES, 'valid-basic'), join(ws, 'user-data/skills/external/valid-basic'), { recursive: true });
+    // Write a manifest entry directly
+    mkdirSync(join(ws, 'user-data/runtime/state'), { recursive: true });
+    writeFileSync(
+      join(ws, 'user-data/runtime/state/installed-skills.json'),
+      JSON.stringify({ schemaVersion: 1, skills: [{ name: 'valid-basic', source: 'file:///foo', commit: '', installedAt: '2026-05-04T00:00:00.000Z', trust: 'untrusted-mixed' }] })
+    );
+    try {
+      const { result, output } = await captureStdout(() => dispatchSkill(['list', '--full']));
+      assert.equal(result, 0);
+      assert.match(output, /name\tcommit\tinstalledAt\tsource/);
+      assert.match(output, /valid-basic/);
+      assert.match(output, /\(local\)/);
+    } finally {
+      process.env.ROBIN_WORKSPACE = prev;
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('robin skill show', () => {

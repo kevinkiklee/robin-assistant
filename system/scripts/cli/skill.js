@@ -22,7 +22,7 @@ const HELP = `usage: robin skill <subcommand>
 
   install <git-url-or-path>     Install an external skill
   uninstall <name>              Remove an installed external skill
-  list                          List installed external skills
+  list [--full]                 List installed external skills (--full: tabular form with commits)
   show <name>                   Print SKILL.md body and manifest entry
   update [<name>]               Pull latest from upstream (no re-scan)
   doctor [--fix]                Validate folders, regenerate INDEX.md
@@ -37,7 +37,7 @@ export async function dispatchSkill(argv) {
     return 0;
   }
   if (sub === 'install') return cmdInstall(rest);
-  if (sub === 'list') return cmdList();
+  if (sub === 'list') return cmdList(rest);
   if (sub === 'show') return cmdShow(rest);
   if (sub === 'uninstall') return cmdUninstall(rest);
   if (sub === 'update') return cmdUpdate(rest);
@@ -47,8 +47,20 @@ export async function dispatchSkill(argv) {
   return 2;
 }
 
-function cmdList() {
+function cmdList(argv) {
   const ws = resolveCliWorkspaceDir();
+  if (argv.includes('--full')) {
+    const manifest = loadInstalledManifest(ws);
+    if (manifest.skills.length === 0) {
+      process.stdout.write('No external skills installed.\n');
+      return 0;
+    }
+    process.stdout.write('name\tcommit\tinstalledAt\tsource\n');
+    for (const s of manifest.skills) {
+      process.stdout.write(`${s.name}\t${s.commit || '(local)'}\t${s.installedAt}\t${s.source}\n`);
+    }
+    return 0;
+  }
   const indexPath = join(externalDir(ws), 'INDEX.md');
   if (!existsSync(indexPath)) {
     process.stdout.write('No external skills installed (INDEX.md not found).\n');
@@ -229,11 +241,27 @@ function cmdInstall(argv) {
     }
     generateIndex(ws);
 
+    // Detect scripts shipped (any files in scripts/ subdir).
+    const scriptsDir = join(finalDest, 'scripts');
+    let scriptsList = '';
+    if (existsSync(scriptsDir)) {
+      try {
+        const entries = readdirSync(scriptsDir).filter((e) => !e.startsWith('.'));
+        if (entries.length > 0) scriptsList = entries.join(', ');
+      } catch { /* ignore */ }
+    }
+
     process.stdout.write(`installed: ${skillName}\n`);
-    process.stdout.write(`  source: ${target}\n`);
-    process.stdout.write(`  body:   user-data/skills/external/${skillName}/SKILL.md\n`);
-    process.stdout.write('  trust:  untrusted-mixed\n');
-    process.stdout.write('  hint:   if SKILL.md mentions node/python/ruby scripts, you may need to install dependencies inside the skill folder.\n');
+    process.stdout.write(`  description: ${validation.skill.description}\n`);
+    process.stdout.write(`  source:      ${target}\n`);
+    process.stdout.write(`  body:        user-data/skills/external/${skillName}/SKILL.md\n`);
+    if (scriptsList) {
+      process.stdout.write(`  scripts:     ${scriptsList}\n`);
+    }
+    process.stdout.write('  trust:       untrusted-mixed\n');
+    if (scriptsList) {
+      process.stdout.write('  hint:        scripts shipped — you may need to install their dependencies (npm/pip/etc.) inside the skill folder.\n');
+    }
     return 0;
   } catch (err) {
     process.stderr.write(`install failed: ${err.message}\n`);
@@ -405,6 +433,7 @@ function cmdDoctor(argv) {
 
   // Check 2: each external folder validates and is in the manifest.
   const dir = externalDir(ws);
+  let nonOrphanFindings = 0;
   if (existsSync(dir)) {
     for (const entry of readdirSync(dir)) {
       if (entry === 'INDEX.md' || entry.startsWith('.')) continue;
@@ -415,11 +444,13 @@ function cmdDoctor(argv) {
       const v = validateSkill(folderPath);
       if (!v.ok) {
         findings.push(`invalid folder ${entry}: ${v.reason}`);
+        nonOrphanFindings += 1;
         continue;
       }
       const inManifest = manifest.skills.some((s) => s.name === v.skill.name);
       if (!inManifest) {
         findings.push(`unmanaged folder: ${entry} (not in manifest — reinstall with source URL)`);
+        nonOrphanFindings += 1;
       }
     }
   }
@@ -431,11 +462,15 @@ function cmdDoctor(argv) {
     for (const name of orphans) removeManifestEntry(ws, name);
     process.stdout.write(`fixed: removed ${orphans.length} orphan manifest entries\n`);
     generateIndex(ws);
+    if (nonOrphanFindings > 0) {
+      process.stderr.write('note: some findings remain (invalid or unmanaged folders) — manual action required.\n');
+      return 1;
+    }
     return 0;
   }
 
   if (findings.length > 0) {
-    process.stderr.write('run `robin skill doctor --fix` to auto-correct.\n');
+    process.stderr.write('run `robin skill doctor --fix` to auto-correct orphan entries.\n');
     return 1;
   }
   process.stdout.write('skill: ok\n');
