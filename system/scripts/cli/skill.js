@@ -10,6 +10,7 @@ import {
   externalDir,
   loadInstalledManifest,
   addManifestEntry,
+  removeManifestEntry,
   validateSkill,
   generateIndex,
   resolveInstallTarget,
@@ -37,6 +38,9 @@ export async function dispatchSkill(argv) {
   if (sub === 'install') return cmdInstall(rest);
   if (sub === 'list') return cmdList();
   if (sub === 'show') return cmdShow(rest);
+  if (sub === 'uninstall') return cmdUninstall(rest);
+  if (sub === 'update') return cmdUpdate(rest);
+  if (sub === 'restore') return cmdRestore();
   process.stderr.write(`unknown skill subcommand: ${sub}\n${HELP}`);
   return 2;
 }
@@ -193,4 +197,95 @@ function cmdInstall(argv) {
   } finally {
     rmSync(stageRoot, { recursive: true, force: true });
   }
+}
+
+function cmdUninstall(argv) {
+  const name = argv[0];
+  if (!name) {
+    process.stderr.write('usage: robin skill uninstall <name>\n');
+    return 2;
+  }
+  const ws = resolveCliWorkspaceDir();
+  const folder = join(externalDir(ws), name);
+  const manifest = loadInstalledManifest(ws);
+  const inManifest = manifest.skills.find((s) => s.name === name);
+  if (!existsSync(folder) && !inManifest) {
+    process.stderr.write(`skill not found: ${name}\n`);
+    return 1;
+  }
+  if (existsSync(folder)) rmSync(folder, { recursive: true, force: true });
+  removeManifestEntry(ws, name);
+  generateIndex(ws);
+  process.stdout.write(`uninstalled: ${name}\n`);
+  return 0;
+}
+
+function cmdUpdate(argv) {
+  const ws = resolveCliWorkspaceDir();
+  const manifest = loadInstalledManifest(ws);
+  const targetName = argv[0];
+  const targets = targetName
+    ? manifest.skills.filter((s) => s.name === targetName)
+    : manifest.skills;
+  if (targetName && targets.length === 0) {
+    process.stderr.write(`not installed: ${targetName}\n`);
+    return 1;
+  }
+  let failures = 0;
+  for (const entry of targets) {
+    if (entry.source.startsWith('file://')) {
+      process.stdout.write(`skipping ${entry.name}: local-path source (no upstream to pull)\n`);
+      continue;
+    }
+    const folder = join(externalDir(ws), entry.name);
+    if (!existsSync(join(folder, '.git'))) {
+      process.stdout.write(`skipping ${entry.name}: not a git checkout\n`);
+      continue;
+    }
+    const r = spawnSync('git', ['-C', folder, 'pull', '--ff-only'], { stdio: 'inherit' });
+    if (r.error) {
+      process.stderr.write(`update failed for ${entry.name}: could not run git: ${r.error.message}\n`);
+      failures += 1;
+      continue;
+    }
+    if (r.status !== 0) {
+      process.stderr.write(`update failed for ${entry.name}: git pull exited non-zero\n`);
+      failures += 1;
+      continue;
+    }
+    const ch = spawnSync('git', ['-C', folder, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+    if (ch.status === 0) {
+      addManifestEntry(ws, { ...entry, commit: ch.stdout.trim() });
+    }
+  }
+  generateIndex(ws);
+  return failures === 0 ? 0 : 1;
+}
+
+function cmdRestore() {
+  const ws = resolveCliWorkspaceDir();
+  const manifest = loadInstalledManifest(ws);
+  if (manifest.skills.length === 0) {
+    process.stdout.write('nothing to restore — manifest is empty.\n');
+    return 0;
+  }
+  let failures = 0;
+  for (const entry of manifest.skills) {
+    const folder = join(externalDir(ws), entry.name);
+    if (existsSync(folder)) {
+      process.stdout.write(`already present: ${entry.name}\n`);
+      continue;
+    }
+    const source = entry.source.startsWith('file://') ? entry.source.slice('file://'.length) : entry.source;
+    process.stdout.write(`restoring: ${entry.name} from ${source}\n`);
+    // Remove the existing manifest entry first so install doesn't reject as duplicate.
+    removeManifestEntry(ws, entry.name);
+    const exit = cmdInstall([source]);
+    if (exit !== 0) {
+      // Reinstate the entry on failure for accurate accounting.
+      addManifestEntry(ws, entry);
+      failures += 1;
+    }
+  }
+  return failures === 0 ? 0 : 1;
 }
