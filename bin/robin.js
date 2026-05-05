@@ -20,6 +20,7 @@ usage:
 
   robin memory <regenerate-links|index-entities|lint|densify|prune-preview|prune-execute>
   robin discord <install|uninstall|auth|status|health>
+  robin skill <install|uninstall|list|show|update|doctor|restore>
 
   robin backup
   robin restore
@@ -87,6 +88,10 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (cmd === 'discord') {
     const { dispatchDiscord } = await import('../system/scripts/cli/discord.js');
     return { exitCode: await dispatchDiscord(rest) };
+  }
+  if (cmd === 'skill') {
+    const { dispatchSkill } = await import('../system/scripts/cli/skill.js');
+    return { exitCode: await dispatchSkill(rest) };
   }
   if (cmd === 'dev') {
     const { dispatchDev } = await import('../system/scripts/cli/dev.js');
