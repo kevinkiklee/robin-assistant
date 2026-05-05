@@ -347,6 +347,33 @@ Most surface lives under `robin <namespace>`. The npm script set is intentionall
 
 ---
 
+## Installing community skills
+
+Robin can install external Claude SKILL.md skills from awesome-claude-skills or any GitHub repo:
+
+```bash
+robin skill install https://github.com/anthropics/skills/tree/main/skills/pdf
+robin skill install https://github.com/owner/skill-repo
+robin skill install /path/to/local/skill
+```
+
+Installed skills land under `user-data/skills/external/<name>/` and are auto-discovered at the next session via `user-data/skills/external/INDEX.md`. They're treated as `trust: untrusted-mixed` — Robin paraphrases their outputs and routes their actions through its existing PII, outbound, and bash hooks.
+
+Manage installed skills:
+
+```bash
+robin skill list                # what's installed
+robin skill show <name>         # SKILL.md body + manifest entry
+robin skill update [<name>]     # git pull (no re-validation)
+robin skill uninstall <name>    # remove
+robin skill doctor [--fix]      # validate + regen INDEX.md
+robin skill restore             # reinstall from manifest (cross-machine recovery)
+```
+
+If a skill ships scripts (Node, Python, Ruby), you may need to install its dependencies manually inside the skill folder.
+
+---
+
 ## Workspace structure
 
 ```
