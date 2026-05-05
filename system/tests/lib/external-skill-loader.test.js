@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync, mkdirSync, readFileSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex, loadInstalledManifest, writeInstalledManifest, addManifestEntry, removeManifestEntry, lightScan } from '../../scripts/lib/external-skill-loader.js';
+import { parseSkillFrontmatter, validateSkill, scanSkills, generateIndex, loadInstalledManifest, writeInstalledManifest, addManifestEntry, removeManifestEntry, lightScan, resolveInstallTarget } from '../../scripts/lib/external-skill-loader.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/external-skills');
 
@@ -263,5 +263,35 @@ describe('external-skill-loader: lightScan', () => {
     const result = lightScan(join(FIXTURES, 'has-bash-pattern'));
     assert.ok(result.warnings.length > 0);
     assert.match(result.warnings.join('\n'), /bash-sensitive pattern/);
+  });
+});
+
+describe('external-skill-loader: resolveInstallTarget', () => {
+  it('resolves a plain GitHub repo URL', () => {
+    const r = resolveInstallTarget('https://github.com/user/article-extractor');
+    assert.equal(r.kind, 'git-root');
+    assert.equal(r.cloneUrl, 'https://github.com/user/article-extractor.git');
+    assert.equal(r.subPath, '');
+    assert.equal(r.defaultName, 'article-extractor');
+  });
+
+  it('resolves a GitHub subdirectory tree URL', () => {
+    const r = resolveInstallTarget('https://github.com/anthropics/skills/tree/main/skills/pdf');
+    assert.equal(r.kind, 'git-subdir');
+    assert.equal(r.cloneUrl, 'https://github.com/anthropics/skills.git');
+    assert.equal(r.branch, 'main');
+    assert.equal(r.subPath, 'skills/pdf');
+    assert.equal(r.defaultName, 'pdf');
+  });
+
+  it('resolves a local directory path', () => {
+    const r = resolveInstallTarget('/abs/path/to/my-skill');
+    assert.equal(r.kind, 'local');
+    assert.equal(r.localPath, '/abs/path/to/my-skill');
+    assert.equal(r.defaultName, 'my-skill');
+  });
+
+  it('rejects gibberish', () => {
+    assert.throws(() => resolveInstallTarget('not-a-url-or-path'), /unrecognized/i);
   });
 });

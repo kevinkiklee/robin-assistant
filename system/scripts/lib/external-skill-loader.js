@@ -262,6 +262,44 @@ export function lightScan(folderPath) {
   return { warnings };
 }
 
+const GH_TREE_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
+const GH_ROOT_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+
+export function resolveInstallTarget(input) {
+  const trimmed = input.trim();
+  // Local path: starts with `/` or `.` or `~`, or exists on disk.
+  if (/^[./~]/.test(trimmed)) {
+    const localPath = trimmed.startsWith('~') ? trimmed.replace(/^~/, process.env.HOME || '') : trimmed;
+    return {
+      kind: 'local',
+      localPath,
+      defaultName: basename(localPath.replace(/\/$/, '')),
+    };
+  }
+  const treeMatch = trimmed.match(GH_TREE_RE);
+  if (treeMatch) {
+    const [, owner, repo, branch, subPath] = treeMatch;
+    return {
+      kind: 'git-subdir',
+      cloneUrl: `https://github.com/${owner}/${repo}.git`,
+      branch,
+      subPath,
+      defaultName: basename(subPath),
+    };
+  }
+  const rootMatch = trimmed.match(GH_ROOT_RE);
+  if (rootMatch) {
+    const [, owner, repo] = rootMatch;
+    return {
+      kind: 'git-root',
+      cloneUrl: `https://github.com/${owner}/${repo}.git`,
+      subPath: '',
+      defaultName: repo,
+    };
+  }
+  throw new Error(`unrecognized install target: ${input}`);
+}
+
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'vendor', '.next']);
 
 function walkFiles(root, visit, prefix = '') {
