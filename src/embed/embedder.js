@@ -60,3 +60,27 @@ export async function createTransformersEmbedder({ modelId = 'Xenova/bge-base-en
     },
   };
 }
+
+const OOM_PATTERNS = /\b(out of memory|allocation failed|enomem|cannot allocate)\b/i;
+
+export async function batchEmbed(inner, texts, { startSize = 64 } = {}) {
+  const out = new Array(texts.length);
+  let i = 0;
+  let size = Math.min(startSize, texts.length);
+  while (i < texts.length) {
+    const slice = texts.slice(i, i + size);
+    try {
+      const vecs = await inner(slice);
+      for (let j = 0; j < vecs.length; j++) out[i + j] = vecs[j];
+      i += slice.length;
+      // Optimistically grow back toward startSize on success
+      if (size < startSize) size = Math.min(startSize, size * 2);
+    } catch (e) {
+      if (!OOM_PATTERNS.test(String(e.message)) || size === 1) {
+        throw e;
+      }
+      size = Math.max(1, Math.floor(size / 2));
+    }
+  }
+  return out;
+}
