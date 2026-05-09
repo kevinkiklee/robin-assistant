@@ -9,6 +9,10 @@ export async function main(argv) {
     const { migrate } = await import('./commands/migrate.js');
     return migrate();
   }
+  if (cmd === 'biographer-catchup') {
+    const { biographerCatchup } = await import('./commands/biographer-catchup.js');
+    return biographerCatchup(argv.slice(1));
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);

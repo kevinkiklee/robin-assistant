@@ -3,6 +3,8 @@ export function help() {
 
 USAGE
   robin migrate           run pending schema migrations
+  robin biographer-catchup [--retry-failed]
+                          biograph all unprocessed events (or retry failures)
   robin --version | -v
   robin --help    | -h
 
