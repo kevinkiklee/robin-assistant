@@ -3,8 +3,12 @@
   "version": "6.0.0-alpha.0",
   "description": "SurrealDB-first personal AI assistant (v2 rebuild)",
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
-  "bin": { "robin": "bin/robin" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bin": {
+    "robin": "bin/robin"
+  },
   "scripts": {
     "test": "node --test --test-force-exit 'tests/**/*.test.js'",
     "test:unit": "node --test --test-force-exit 'tests/unit/**/*.test.js'",
@@ -13,14 +17,17 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@xenova/transformers": "^2.17.2",
-    "surrealdb": "^2.0.3",
-    "@surrealdb/node": "^3.0.3"
+    "@huggingface/transformers": "^4.2.0",
+    "@surrealdb/node": "^3.0.3",
+    "surrealdb": "^2.0.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4"
   },
   "license": "MIT",
   "author": "Kevin K Lee",
-  "repository": { "type": "git", "url": "git+https://github.com/kevinkiklee/robin-assistant.git" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevinkiklee/robin-assistant.git"
+  }
 }
