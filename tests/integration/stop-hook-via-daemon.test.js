@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { test } from 'node:test';
+import { stopHookHandler } from '../../src/hooks/stop-hook.js';
+
+async function waitForState(home, timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      return JSON.parse(readFileSync(join(home, '.daemon.state'), 'utf8'));
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  throw new Error('daemon did not start');
+}
+
+test('Stop hook routes through daemon when running', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'robin-stop-daemon-'));
+  const root = resolve(import.meta.dirname, '../..');
+  const m = spawn('node', [join(root, 'bin/robin'), 'migrate'], {
+    env: { ...process.env, ROBIN_HOME: tmp },
+    stdio: 'inherit',
+  });
+  await new Promise((resolve) => m.on('exit', resolve));
+  const daemon = spawn('node', [join(root, 'src/daemon/server.js')], {
+    env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude_code' },
+    stdio: 'pipe',
+  });
+  try {
+    await waitForState(tmp);
+    const orig = process.env.ROBIN_HOME;
+    process.env.ROBIN_HOME = tmp;
+    try {
+      await stopHookHandler({ since: new Date().toISOString() });
+    } finally {
+      if (orig) process.env.ROBIN_HOME = orig;
+      else Reflect.deleteProperty(process.env, 'ROBIN_HOME');
+    }
+    assert.ok(true);
+  } finally {
+    daemon.kill('SIGTERM');
+    await new Promise((r) => setTimeout(r, 500));
+    rmSync(tmp, { recursive: true });
+  }
+});
