@@ -22,6 +22,23 @@ export async function main(argv) {
     console.error(`unknown biographer subcommand: ${sub}`);
     process.exit(1);
   }
+  if (cmd === 'mcp') {
+    const sub = argv[1];
+    const subcommands = {
+      start: 'mcp-start.js',
+      stop: 'mcp-stop.js',
+      status: 'mcp-status.js',
+      restart: 'mcp-restart.js',
+      'ensure-running': 'mcp-ensure-running.js',
+    };
+    if (!subcommands[sub]) {
+      console.error(`unknown mcp subcommand: ${sub}`);
+      process.exit(1);
+    }
+    const mod = await import(`./commands/${subcommands[sub]}`);
+    const fn = Object.values(mod)[0];
+    return fn(argv.slice(2));
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);
