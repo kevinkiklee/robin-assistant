@@ -13,6 +13,10 @@ export async function main(argv) {
     const { install } = await import('./commands/install.js');
     return install(argv.slice(1));
   }
+  if (cmd === 'uninstall') {
+    const { uninstall } = await import('./commands/uninstall.js');
+    return uninstall();
+  }
   if (cmd === 'biographer-catchup') {
     const { biographerCatchup } = await import('./commands/biographer-catchup.js');
     return biographerCatchup(argv.slice(1));
