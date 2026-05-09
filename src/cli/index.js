@@ -49,6 +49,39 @@ export async function main(argv) {
     const fn = Object.values(mod)[0];
     return fn(argv.slice(2));
   }
+  if (cmd === 'dream') {
+    if (argv[1] === 'run') {
+      const { dreamRun } = await import('./commands/dream-run.js');
+      return dreamRun();
+    }
+    console.error('usage: robin dream run');
+    process.exit(1);
+  }
+  if (cmd === 'rules') {
+    const sub = argv[1];
+    const subcommands = {
+      pending: 'rules-pending.js',
+      approve: 'rules-approve.js',
+      reject: 'rules-reject.js',
+      list: 'rules-list.js',
+      deactivate: 'rules-deactivate.js',
+    };
+    if (!subcommands[sub]) {
+      console.error(`unknown rules subcommand: ${sub}`);
+      process.exit(1);
+    }
+    const mod = await import(`./commands/${subcommands[sub]}`);
+    const fn = Object.values(mod)[0];
+    return fn(argv.slice(2));
+  }
+  if (cmd === 'journal') {
+    const { journalCmd } = await import('./commands/journal.js');
+    return journalCmd(argv.slice(1));
+  }
+  if (cmd === 'hot') {
+    const { hotCmd } = await import('./commands/hot.js');
+    return hotCmd();
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);
