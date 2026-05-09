@@ -1,5 +1,16 @@
 # Changelog
 
+## [6.0.0-alpha.3] — 2026-05-09
+
+Phase 2b followups: zero-friction setup + integration test gaps.
+
+- **`robin install`** — one-command full setup (migrate + mcp install + auto-start + auto-register + auto-supervise).
+- **`robin uninstall`** — mirror command (stops daemon, unregisters from hosts, unloads supervisor).
+- **`robin mcp install` enhanced:** auto-starts daemon, auto-registers with `claude mcp add` and `gemini mcp add` when those CLIs are on PATH, auto-loads launchd / enables systemd. New flags: `--no-supervise`, `--no-register`, `--no-agents-md`, `--no-start`.
+- **Integration test for full install flow** — verifies plist + AGENTS.md generation, plus `plutil -lint` validation of the launchd plist on macOS.
+- **Daemon-spawn test timeouts** bumped from 8s to 15s for slow CI runners.
+- Graceful degradation when host CLIs / supervisors aren't available.
+
 ## [6.0.0-alpha.2] — 2026-05-09
 
 Phase 2b: MCP daemon + agent-facing tools + self-improvement feedback infra.
