@@ -9,6 +9,12 @@ function messagesToPrompt(messages, system) {
   return sysText ? `${sysText}\n\n${conv}` : conv;
 }
 
+// Gemini CLI manages context caching transparently — there's no cachedContent
+// resource lifecycle for v2 to manage. The CLI's stats.models[*].tokens.cached
+// field reports how many tokens were cache-hit per call; we surface that as
+// usage.cache_read_tokens so callers can observe cache effectiveness without
+// owning the cache. (Path B with direct Google API would require lifecycle
+// management; Path A delegates it to the CLI.)
 function summarizeUsage(stats) {
   // Per the spike note, the real Gemini CLI returns `stats.models` as an
   // object keyed by model name, with per-model `tokens.{prompt,candidates,cached,...}`.
