@@ -36,14 +36,44 @@ async function loadRuntime(db) {
   return rows.length === 0 ? null : (rows[0]?.value ?? null);
 }
 
+// SurrealDB embedded engines surface "Transaction conflict: Write conflict"
+// when two callers write the same record concurrently. The error is
+// retryable — the engine asks us to retry the whole transaction. For our
+// idempotent writes (UPSERT, gated UPDATE, check-then-RELATE) a small
+// bounded retry loop converges parallel callers to a single resolved row.
+const MAX_TX_RETRIES = 4;
+
+function isTxConflict(err) {
+  return String(err?.message ?? '').includes('Transaction conflict');
+}
+
+async function withTxRetry(fn) {
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_TX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isTxConflict(e)) throw e;
+      lastErr = e;
+      // brief backoff with a jitter so paired callers desynchronise
+      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 10)));
+    }
+  }
+  throw lastErr;
+}
+
 async function ensureRuntime(db) {
   const existing = await loadRuntime(db);
   if (existing?.config) return existing;
   const initial = { config: DEFAULT_CONFIG, entity_catalog_version: 0 };
-  await db
-    .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${initial}`)
-    .collect();
-  return initial;
+  await withTxRetry(async () => {
+    const current = await loadRuntime(db);
+    if (current?.config) return;
+    await db
+      .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${initial}`)
+      .collect();
+  });
+  return (await loadRuntime(db)) ?? initial;
 }
 
 export async function biographerProcess(db, embedder, host, eventId) {
@@ -74,7 +104,10 @@ export async function biographerProcess(db, embedder, host, eventId) {
     throw new Error(`biographer LLM output failed validation: ${validation.error}`);
   }
 
-  // 4-5. Resolve / create entities
+  // 4-5. Resolve / create entities. Creation uses a deterministic record id
+  // keyed by (type, name_lower) and UPSERT, so two parallel biographer runs
+  // on the same event converge to a single row instead of racing past Stage 1
+  // and producing duplicates. Mirrors the stable-id pattern in writeCoOccursWith.
   const nameToId = new Map();
   for (const ent of output.entities) {
     const r = await resolveEntity(db, embedder, host, {
@@ -86,10 +119,16 @@ export async function biographerProcess(db, embedder, host, eventId) {
       nameToId.set(ent.name, r.entityId);
     } else {
       const vec = Array.from(await embedder.embed(`${ent.type}: ${ent.name}`));
-      const [created] = await db
-        .query(surql`CREATE entities CONTENT ${{ name: ent.name, type: ent.type, embedding: vec }}`)
-        .collect();
-      const row = Array.isArray(created) ? created[0] : created;
+      const stableKey = `${ent.type}__${ent.name.toLowerCase()}`;
+      const row = await withTxRetry(async () => {
+        const [upserted] = await db
+          .query(
+            surql`UPSERT type::record('entities', ${stableKey})
+              SET name = ${ent.name}, type = ${ent.type}, embedding = ${vec}`,
+          )
+          .collect();
+        return Array.isArray(upserted) ? upserted[0] : upserted;
+      });
       nameToId.set(ent.name, row.id);
     }
   }
@@ -142,9 +181,22 @@ export async function biographerProcess(db, embedder, host, eventId) {
   }
 
   // 8. Mark event biographed
-  await db
-    .query(surql`UPDATE ${eventId} SET biographed_at = time::now(), episode_id = ${episodeId}`)
-    .collect();
+  const updated = await withTxRetry(async () => {
+    const [rows] = await db
+      .query(surql`
+        UPDATE ${eventId}
+          SET biographed_at = time::now(), episode_id = ${episodeId}
+          WHERE biographed_at IS NONE
+      `)
+      .collect();
+    return rows;
+  });
+  if (!updated || updated.length === 0) {
+    // Lost the race — the other process biographed first.
+    // Phase 2a: log and let the redundant writes stand (they're effectively idempotent
+    // for entities thanks to stable record ids on entities and co_occurs_with).
+    console.warn(`biographer race detected on ${eventId}; this run's writes may be redundant`);
+  }
 
   // 9. Update runtime
   const nextRuntime = {
@@ -152,9 +204,11 @@ export async function biographerProcess(db, embedder, host, eventId) {
     last_processed_event_id: String(eventId),
     last_run_at: new Date(),
   };
-  await db
-    .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${nextRuntime}`)
-    .collect();
+  await withTxRetry(async () => {
+    await db
+      .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${nextRuntime}`)
+      .collect();
+  });
 
   return { processed: true, episodeId, entitiesCount: nameToId.size };
 }
