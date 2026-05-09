@@ -6,9 +6,9 @@
   "engines": { "node": ">=22.0.0" },
   "bin": { "robin": "bin/robin" },
   "scripts": {
-    "test": "node --test 'tests/**/*.test.js'",
-    "test:unit": "node --test 'tests/unit/**/*.test.js'",
-    "test:integration": "node --test 'tests/integration/**/*.test.js'",
+    "test": "node --test --test-force-exit 'tests/**/*.test.js'",
+    "test:unit": "node --test --test-force-exit 'tests/unit/**/*.test.js'",
+    "test:integration": "node --test --test-force-exit 'tests/integration/**/*.test.js'",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
