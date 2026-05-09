@@ -13,7 +13,7 @@ test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () =
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /applied 2 migrations/);
+  assert.match(result.stdout, /applied 3 migrations/);
   assert.ok(existsSync(join(tmp, 'db')));
   assert.ok(existsSync(join(tmp, 'models')));
 
