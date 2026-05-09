@@ -1,5 +1,5 @@
-import { version } from './commands/version.js';
 import { help } from './commands/help.js';
+import { version } from './commands/version.js';
 
 export async function main(argv) {
   const [cmd] = argv;
