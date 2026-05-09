@@ -10,7 +10,7 @@ import { recall } from '../../src/recall/index.js';
 test('recall query plan uses the HNSW index (Iterator: Knn)', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 768 });
+  const e = createStubEmbedder({ dimension: 384 });
   // Need at least one row for the planner to pick the vector index path
   await recordEvent(db, e, { source: 'cli', content: 'one' });
   const r = await recall(db, e, 'one', { explain: true });

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
-test('robin migrate bootstraps ROBIN_HOME and applies 0001-init', () => {
+test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-bootstrap-'));
   const root = resolve(import.meta.dirname, '../..');
   const result = spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
@@ -13,7 +13,7 @@ test('robin migrate bootstraps ROBIN_HOME and applies 0001-init', () => {
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /applied 1 migration/);
+  assert.match(result.stdout, /applied 2 migrations/);
   assert.ok(existsSync(join(tmp, 'db')));
   assert.ok(existsSync(join(tmp, 'models')));
 

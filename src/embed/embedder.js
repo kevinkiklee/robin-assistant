@@ -10,7 +10,7 @@ import { sha256 } from './hash.js';
 
 // Deterministic non-cryptographic vector derived from sha256 of the input.
 // Used in tests; *not* a substitute for a real embedder for recall quality.
-export function createStubEmbedder({ dimension = 768 } = {}) {
+export function createStubEmbedder({ dimension = 384 } = {}) {
   return {
     dimension,
     modelId: 'stub:sha256',
@@ -38,7 +38,7 @@ function stubVector(text, dim) {
 // Real embedder lazy-loaded in Task 12.
 // Note: package was migrated from @xenova/transformers to @huggingface/transformers
 // (the maintained successor). The pipeline API is the same.
-export async function createTransformersEmbedder({ modelId = 'Xenova/bge-base-en-v1.5' } = {}) {
+export async function createTransformersEmbedder({ modelId = 'Xenova/bge-small-en-v1.5' } = {}) {
   const { pipeline } = await import('@huggingface/transformers');
   const extractor = await pipeline('feature-extraction', modelId);
   // Probe dimension with a sentinel embedding

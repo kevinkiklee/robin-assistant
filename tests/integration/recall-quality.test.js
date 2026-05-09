@@ -23,8 +23,8 @@ test('recall achieves NDCG@5 ≥ 0.75 against synthetic clusters', { timeout: 18
   const events = JSON.parse(await readFile(resolve(FIXTURES, 'synthetic-events.json'), 'utf8'));
   const pairs = JSON.parse(await readFile(resolve(FIXTURES, 'seed-recall-pairs.json'), 'utf8'));
 
-  const embedder = await createTransformersEmbedder({ modelId: 'Xenova/bge-base-en-v1.5' });
-  assert.equal(embedder.dimension, 768);
+  const embedder = await createTransformersEmbedder({ modelId: 'Xenova/bge-small-en-v1.5' });
+  assert.equal(embedder.dimension, 384);
 
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
