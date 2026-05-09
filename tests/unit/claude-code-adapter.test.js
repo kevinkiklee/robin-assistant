@@ -5,7 +5,7 @@ import { createClaudeCodeAdapter } from '../../src/hosts/claude-code.js';
 // Note on test technique: Node 22's `mock.module()` requires the
 // `--experimental-test-module-mocks` flag and cannot redefine the same
 // module across multiple tests in a run (ERR_INVALID_STATE). To keep the
-// 5 behaviors covered while staying on stable Node APIs, the adapter
+// behaviors covered while staying on stable Node APIs, the adapter
 // exposes a `createClaudeCodeAdapter({ spawn })` factory that takes the
 // spawn dependency by injection. The default `claudeCodeAdapter` export
 // is built from the real `node:child_process` spawn.
@@ -46,9 +46,11 @@ function makeErroringSpawn(error) {
   }));
 }
 
-test('claudeCodeAdapter.invokeLLM spawns claude CLI and parses stdout', async () => {
+test('claudeCodeAdapter.invokeLLM spawns claude CLI and parses JSON envelope', async () => {
+  // Real `claude -p --output-format=json` envelope shape.
   const stdout = JSON.stringify({
-    content: '{"ok":true}',
+    type: 'result',
+    result: '{"ok":true}',
     usage: { input_tokens: 10, output_tokens: 5 },
   });
   const fakeSpawn = makeFakeSpawn(stdout, 0);
@@ -62,8 +64,11 @@ test('claudeCodeAdapter.invokeLLM spawns claude CLI and parses stdout', async ()
   assert.equal(result.usage.input_tokens, 10);
   assert.equal(result.usage.output_tokens, 5);
   assert.equal(fakeSpawn.mock.callCount(), 1);
-  const [cmd] = fakeSpawn.mock.calls[0].arguments;
+  const [cmd, args] = fakeSpawn.mock.calls[0].arguments;
   assert.equal(cmd, 'claude');
+  assert.ok(args.includes('-p'), `args missing -p: ${args}`);
+  assert.ok(args.includes('--output-format=json'), `args missing --output-format=json: ${args}`);
+  assert.ok(args.includes('--model'), `args missing --model: ${args}`);
 });
 
 test('claudeCodeAdapter.invokeLLM rejects when claude exits non-zero', async () => {

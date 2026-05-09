@@ -2,9 +2,17 @@ import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import { createClaudeCodeAdapter } from '../../src/hosts/claude-code.js';
 
-function fakeSpawnFactory({ stdout = '', exitCode = 0 } = {}) {
-  let capturedStdin = '';
-  const fn = mock.fn(() => {
+// The Claude Code CLI takes a single positional prompt under `-p`. Unlike
+// the v1 SDK call, `cache_control: { type: 'ephemeral' }` is not a CLI
+// surface — Claude Code manages prompt caching transparently across
+// invocations. These tests pin the contract that system messages flow
+// into the concatenated prompt so callers don't lose system context when
+// they migrate from the v1 SDK shape.
+
+function captureArgsSpawn({ stdout = '', exitCode = 0 } = {}) {
+  let lastArgs = null;
+  const fn = mock.fn((_cmd, args) => {
+    lastArgs = args;
     return {
       stdout: {
         on: (event, cb) => {
@@ -12,46 +20,58 @@ function fakeSpawnFactory({ stdout = '', exitCode = 0 } = {}) {
         },
       },
       stderr: { on: () => {} },
-      stdin: {
-        write: (s) => {
-          capturedStdin += s.toString();
-        },
-        end: () => {},
-      },
+      stdin: { write: () => {}, end: () => {} },
       on: (event, cb) => {
         if (event === 'exit') setImmediate(() => cb(exitCode));
       },
     };
   });
-  fn.getCapturedStdin = () => capturedStdin;
+  fn.getLastArgs = () => lastArgs;
   return fn;
 }
 
-test('Claude adapter forwards cache_control on system messages', async () => {
-  const stdout = JSON.stringify({ content: 'ok', usage: { input_tokens: 0, output_tokens: 0 } });
-  const fakeSpawn = fakeSpawnFactory({ stdout });
+function getPromptArg(args) {
+  // The prompt is the positional arg directly after `-p`.
+  const i = args.indexOf('-p');
+  assert.ok(i >= 0, `-p not in args: ${args}`);
+  return args[i + 1];
+}
+
+test('Claude adapter concatenates multiple system messages into the prompt', async () => {
+  const stdout = JSON.stringify({
+    type: 'result',
+    result: 'ok',
+    usage: { input_tokens: 0, output_tokens: 0 },
+  });
+  const fakeSpawn = captureArgsSpawn({ stdout });
   const adapter = createClaudeCodeAdapter({ spawn: fakeSpawn });
 
   await adapter.invokeLLM([{ role: 'user', content: 'q' }], {
     system: [
       { role: 'system', content: 'sys-prompt-1', cache_control: { type: 'ephemeral' } },
-      { role: 'system', content: 'sys-prompt-2' }, // no cache_control on this one
+      { role: 'system', content: 'sys-prompt-2' },
     ],
   });
 
-  const payload = JSON.parse(fakeSpawn.getCapturedStdin());
-  assert.equal(payload.system.length, 2);
-  assert.deepEqual(payload.system[0].cache_control, { type: 'ephemeral' });
-  assert.equal(payload.system[1].cache_control, undefined);
+  const prompt = getPromptArg(fakeSpawn.getLastArgs());
+  // Both system contents must appear in the prompt; user content too.
+  assert.ok(prompt.includes('sys-prompt-1'), `prompt missing sys-prompt-1: ${prompt}`);
+  assert.ok(prompt.includes('sys-prompt-2'), `prompt missing sys-prompt-2: ${prompt}`);
+  assert.ok(prompt.includes('USER: q'), `prompt missing USER turn: ${prompt}`);
 });
 
-test('Claude adapter omits system field cleanly when no system messages', async () => {
-  const stdout = JSON.stringify({ content: 'ok', usage: { input_tokens: 0, output_tokens: 0 } });
-  const fakeSpawn = fakeSpawnFactory({ stdout });
+test('Claude adapter omits system text cleanly when no system messages', async () => {
+  const stdout = JSON.stringify({
+    type: 'result',
+    result: 'ok',
+    usage: { input_tokens: 0, output_tokens: 0 },
+  });
+  const fakeSpawn = captureArgsSpawn({ stdout });
   const adapter = createClaudeCodeAdapter({ spawn: fakeSpawn });
 
   await adapter.invokeLLM([{ role: 'user', content: 'q' }], { tier: 'fast' });
 
-  const payload = JSON.parse(fakeSpawn.getCapturedStdin());
-  assert.deepEqual(payload.system, []);
+  const prompt = getPromptArg(fakeSpawn.getLastArgs());
+  // With no system messages, the prompt is just the conversation.
+  assert.equal(prompt, 'USER: q');
 });

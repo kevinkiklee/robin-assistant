@@ -30,6 +30,28 @@ function runClaude(spawnFn, args, stdin) {
   });
 }
 
+// Claude Code CLI takes a single prompt string as a positional arg under
+// `-p / --print`. Concatenate any system messages + the conversation into
+// one prompt, mirroring the Gemini adapter so v1's role-prefixed pattern
+// carries over.
+function messagesToPrompt(messages, system) {
+  const sysText = (system ?? []).map((s) => s.content).join('\n\n');
+  const conv = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+  return sysText ? `${sysText}\n\n${conv}` : conv;
+}
+
+// Real `claude -p --output-format=json` envelope is
+// `{ type: 'result', result: '<text>', usage: { input_tokens, output_tokens, cache_read_input_tokens, ... } }`.
+// We normalize usage to the shape the rest of v2 expects.
+function summarizeUsage(envelope) {
+  const u = envelope?.usage ?? {};
+  return {
+    input_tokens: u.input_tokens ?? u.prompt_tokens ?? 0,
+    output_tokens: u.output_tokens ?? u.candidates_tokens ?? 0,
+    cache_read_tokens: u.cache_read_tokens ?? u.cache_read_input_tokens ?? 0,
+  };
+}
+
 /**
  * Build a Claude Code host adapter. The `spawn` dependency is injected so
  * tests can swap in a fake without touching the real subprocess.
@@ -55,18 +77,19 @@ export function createClaudeCodeAdapter(deps = {}) {
     async invokeLLM(messages, opts = {}) {
       const tier = opts.tier ?? DEFAULT_TIER;
       const model = CLAUDE_TIER_MAP[tier];
-      const payload = {
-        model,
-        messages,
-        system: opts.system ?? [],
-        max_tokens: opts.maxTokens ?? 4096,
-        ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-      };
-      const out = await runClaude(spawnFn, ['invokeLLM'], JSON.stringify(payload));
-      const parsed = JSON.parse(out);
+      const prompt = messagesToPrompt(messages, opts.system);
+      const args = ['-p', prompt, '--output-format=json', '--model', model];
+      const out = await runClaude(spawnFn, args, undefined);
+      let parsed;
+      try {
+        parsed = JSON.parse(out);
+      } catch (e) {
+        throw new Error(`claude stdout was not valid JSON: ${e.message}`);
+      }
+      const content = parsed.result ?? parsed.content ?? '';
       return {
-        content: parsed.content,
-        usage: parsed.usage ?? { input_tokens: 0, output_tokens: 0 },
+        content,
+        usage: summarizeUsage(parsed),
       };
     },
   };
