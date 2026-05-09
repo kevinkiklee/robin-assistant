@@ -1,5 +1,30 @@
 # Changelog
 
+## [6.0.0-alpha.2] — 2026-05-09
+
+Phase 2b: MCP daemon + agent-facing tools + self-improvement feedback infra.
+
+- New schema (migration 0004): `recall_events` for self-improvement feedback capture.
+- `robin-mcp` HTTP+SSE daemon owns the embedded SurrealDB; multi-instance Claude Code safe.
+- 10 MCP tools exposed via `@modelcontextprotocol/sdk`:
+  - **Memory:** `recall` (with auto-capture into recall_events), `remember`, `run_biographer`.
+  - **Graph:** `find_entity`, `get_entity`, `related_entities`.
+  - **Episodes:** `list_episodes`.
+  - **Daemon:** `health`.
+  - **Self-improvement:** `mark_recall_used`, `record_correction`.
+- Stop hook routes through daemon when running; falls back to spawn-detached subprocess otherwise.
+- Migration coordination: `robin migrate` refuses while daemon is running.
+- Daemon supervision generators: launchd plist (macOS) + systemd user unit (Linux).
+- AGENTS.md template with feedback section installed by `robin mcp install` (writes to `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`, append-with-fenced-section to preserve personal content).
+- Implicit-signal detection: repeat-query-within-5min flagged in `recall_events.meta`.
+- Idle-embedder unloader: 10-minute timeout.
+- Version handshake: daemon refuses requests from version-skew CLI.
+- New CLI: `robin mcp start/stop/status/restart/ensure-running/install/uninstall`.
+
+Both Claude Code (2.1.138) and Gemini CLI (0.37.1) confirmed to support HTTP/SSE MCP transport — no stdio shim needed.
+
+Phase 2c (dream + memory shapes) is the immediate follow-on.
+
 ## [6.0.0-alpha.1] — 2026-05-09
 
 Phase 2a: graph + biographer foundation.
