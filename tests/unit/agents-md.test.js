@@ -26,6 +26,25 @@ test('agentsMdContent has feedback section', () => {
   assert.match(md, /correction/i);
 });
 
+test('agentsMdContent includes active-rules instruction with list_rules({status: active})', () => {
+  const md = agentsMdContent();
+  assert.match(md, /list_rules\(\{status: 'active'\}\)/);
+  assert.match(md, /Active rules/);
+});
+
+test('agentsMdContent includes pending-rules instruction with update_rule', () => {
+  const md = agentsMdContent();
+  assert.match(md, /list_rules\(\{status: 'pending'\}\)/);
+  assert.match(md, /update_rule\(id, 'approve'\)/);
+  assert.match(md, /update_rule\(id, 'reject'/);
+});
+
+test('agentsMdContent includes profile-update-as-candidate instruction', () => {
+  const md = agentsMdContent();
+  assert.match(md, /Profile updates as candidates/);
+  assert.match(md, /profile_update/);
+});
+
 test('mergeAgentsMdContent fences the Robin section', () => {
   const merged = mergeAgentsMdContent('', agentsMdContent());
   assert.match(merged, /<!-- robin-mcp:start -->/);

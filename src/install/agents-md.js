@@ -46,6 +46,34 @@ When the user corrects you — "no, that's wrong", "I actually prefer X",
 Be specific in \`content\`: "user prefers concise answers over detailed ones",
 not just "user disagreed."
 
+## Active rules (read at session start)
+
+At the start of each conversation, call \`list_rules({status: 'active'})\` once and
+fold the returned rules into how you respond. These are user preferences and
+corrections the user has previously approved. Apply them silently; don't recite
+them back.
+
+## Pending rule candidates
+
+Robin's dream agent periodically surfaces "rule candidates" — patterns from
+recent user corrections that might warrant a permanent rule. When you have
+opportunity (natural breakpoint, after a correction, or when user asks about
+their preferences), call \`list_rules({status: 'pending'})\` and surface
+candidates conversationally:
+
+  "I noticed you've corrected me three times about verbosity in the last week.
+   Want me to remember 'prefer concise answers'?"
+
+If user says yes → \`update_rule(id, 'approve')\`.
+If user says no → \`update_rule(id, 'reject', { reason: '...' })\`.
+Don't badger; once per session at most for any given candidate.
+
+## Profile updates as candidates
+
+Profile changes (name, pronouns, timezone, interests) come through the same
+\`rule_candidates\` flow with kind='profile_update'. Same approve/reject pattern.
+Approval applies the field changes to the user's profile.
+
 ## Daemon health
 
 \`health()\` reports daemon status — useful for debugging if memory tools
