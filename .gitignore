@@ -1,0 +1,6 @@
+node_modules/
+.robin/
+*.log
+.DS_Store
+tests/fixtures/synthetic-events.json
+tests/fixtures/seed-recall-pairs.json
