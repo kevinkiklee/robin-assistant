@@ -36,6 +36,8 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
   try {
     const state = await waitForState(tmp);
     assert.ok(state.port > 0);
+    // 10 Phase 2b tools + 9 Phase 2c tools = 19 total wired into the daemon.
+    assert.equal(state.tool_count, 19, `expected 19 registered tools, got ${state.tool_count}`);
     // Smoke: connecting to /sse should at least open (we don't parse SSE here)
     const res = await fetch(`http://127.0.0.1:${state.port}/sse`, {
       signal: AbortSignal.timeout(2000),
