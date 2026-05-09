@@ -30,6 +30,8 @@ export async function main(argv) {
       status: 'mcp-status.js',
       restart: 'mcp-restart.js',
       'ensure-running': 'mcp-ensure-running.js',
+      install: 'mcp-install.js',
+      uninstall: 'mcp-uninstall.js',
     };
     if (!subcommands[sub]) {
       console.error(`unknown mcp subcommand: ${sub}`);
