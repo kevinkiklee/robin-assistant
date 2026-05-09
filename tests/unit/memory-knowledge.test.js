@@ -1,0 +1,97 @@
+import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+import { test } from 'node:test';
+import { surql } from 'surrealdb';
+import { close, connect } from '../../src/db/client.js';
+import { runMigrations } from '../../src/db/migrate.js';
+import { createStubEmbedder } from '../../src/embed/embedder.js';
+import {
+  createKnowledge,
+  getKnowledgeByContentHash,
+  listKnowledge,
+  searchKnowledge,
+} from '../../src/memory/knowledge.js';
+
+async function fresh() {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  return db;
+}
+
+test('createKnowledge writes a row with content_hash', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 384 });
+  const r = await createKnowledge(db, e, {
+    content: 'Alice works on Atlas',
+    confidence: 0.9,
+    source_events: [],
+    source_episodes: [],
+  });
+  assert.ok(r.id);
+  const [rows] = await db.query(surql`SELECT count() AS n FROM knowledge GROUP ALL`).collect();
+  assert.equal(rows[0].n, 1);
+  await close(db);
+});
+
+test('getKnowledgeByContentHash dedupes', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 384 });
+  await createKnowledge(db, e, {
+    content: 'fact',
+    confidence: 0.9,
+    source_events: [],
+    source_episodes: [],
+  });
+  const existing = await getKnowledgeByContentHash(db, 'fact');
+  assert.ok(existing);
+  await close(db);
+});
+
+test('searchKnowledge returns vector-similar results', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 384 });
+  await createKnowledge(db, e, {
+    content: 'apple is red',
+    confidence: 0.9,
+    source_events: [],
+    source_episodes: [],
+  });
+  await createKnowledge(db, e, {
+    content: 'banana is yellow',
+    confidence: 0.9,
+    source_events: [],
+    source_episodes: [],
+  });
+  // Stub embedder is sha256-derived, not semantic — query the exact content
+  // so the closest neighbour is deterministic.
+  const hits = await searchKnowledge(db, e, 'apple is red', { limit: 1 });
+  assert.ok(hits.length >= 1);
+  assert.match(hits[0].content, /apple/);
+  await close(db);
+});
+
+test('listKnowledge filters by subject_id when provided', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 384 });
+  const v = Array.from(await e.embed('person: Alice'));
+  const [created] = await db
+    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: v }}`)
+    .collect();
+  const aliceId = (Array.isArray(created) ? created[0] : created).id;
+  await createKnowledge(db, e, {
+    content: 'fact about alice',
+    subject_id: aliceId,
+    confidence: 0.9,
+    source_events: [],
+    source_episodes: [],
+  });
+  await createKnowledge(db, e, {
+    content: 'unrelated fact',
+    confidence: 0.9,
+    source_events: [],
+    source_episodes: [],
+  });
+  const filtered = await listKnowledge(db, { subject_id: aliceId });
+  assert.equal(filtered.length, 1);
+  await close(db);
+});
