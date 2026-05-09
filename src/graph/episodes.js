@@ -1,0 +1,23 @@
+import { surql } from 'surrealdb';
+
+export async function findActiveEpisode(db, source) {
+  const [rows] = await db
+    .query(surql`SELECT * FROM episodes WHERE source = ${source} AND ended_at IS NONE LIMIT 1`)
+    .collect();
+  return rows.length === 0 ? null : rows[0];
+}
+
+export async function createEpisode(db, { source, summary }) {
+  const fields = { source, ...(summary ? { summary } : {}) };
+  const [created] = await db.query(surql`CREATE episodes CONTENT ${fields}`).collect();
+  const row = Array.isArray(created) ? created[0] : created;
+  return { id: row.id };
+}
+
+export async function closeEpisode(db, episodeId, { endedAt, summary }) {
+  const set = {
+    ended_at: endedAt ?? new Date(),
+    ...(summary !== undefined ? { summary } : {}),
+  };
+  await db.query(surql`UPDATE ${episodeId} MERGE ${set}`).collect();
+}
