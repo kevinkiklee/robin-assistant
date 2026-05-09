@@ -1,5 +1,16 @@
 #!/usr/bin/env node
-import('../src/cli/index.js').then(m => m.main(process.argv.slice(2))).catch(e => {
-  console.error(e.message);
-  process.exit(1);
-});
+// Always exit explicitly after dispatch.
+//
+// @surrealdb/node v3.0.3 has a hang-on-close bug when the schema includes
+// `DEFINE INDEX ... UNIQUE` — the embedded engine keeps the event loop alive
+// even after `db.close()` resolves. Without an explicit exit, `robin migrate`
+// would appear to succeed but never release the user's terminal. Exiting here
+// makes every command snappy and is harmless for commands that never opened
+// the DB. The test suite passes `--test-force-exit` for the same reason.
+import('../src/cli/index.js')
+  .then((m) => m.main(process.argv.slice(2)))
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e.message);
+    process.exit(1);
+  });
