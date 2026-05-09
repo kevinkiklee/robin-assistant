@@ -76,7 +76,36 @@ async function ensureRuntime(db) {
   return (await loadRuntime(db)) ?? initial;
 }
 
-export async function biographerProcess(db, embedder, host, eventId) {
+async function invokeWithRetry(host, messages, opts, retries = 3, baseDelayMs = 1000) {
+  let lastErr;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await host.invokeLLM(messages, opts);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries - 1 && baseDelayMs > 0) {
+        const delay = baseDelayMs * 2 ** attempt;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function recordFailure(db, eventId, error) {
+  await withTxRetry(async () => {
+    await db
+      .query(surql`
+        UPSERT type::record('runtime', 'biographer')
+        SET value.failed_event_ids = array::distinct(array::concat(value.failed_event_ids ?? [], [${String(eventId)}])),
+            value.last_error = ${String(error.message)}
+      `)
+      .collect();
+  });
+}
+
+export async function biographerProcess(db, embedder, host, eventId, opts = {}) {
+  const retryBaseDelayMs = opts.retryBaseDelayMs ?? 1000;
   // 1. Read event; skip if already biographed
   const [eventRows] = await db.query(surql`SELECT * FROM ${eventId}`).collect();
   if (eventRows.length === 0) throw new Error(`event ${eventId} not found`);
@@ -91,17 +120,29 @@ export async function biographerProcess(db, embedder, host, eventId) {
   const activeEpisode = await findActiveEpisode(db, event.source);
   const { system, messages } = buildBiographerPrompt({ event, catalog, activeEpisode });
 
-  // 3. Invoke LLM
-  const response = await host.invokeLLM(messages, { tier: 'fast', json: true, system });
+  // 3. Invoke LLM (with retry)
+  let response;
+  try {
+    response = await invokeWithRetry(
+      host,
+      messages,
+      { tier: 'fast', json: true, system },
+      3,
+      retryBaseDelayMs,
+    );
+  } catch (e) {
+    await recordFailure(db, eventId, e);
+    throw e;
+  }
+  // 4. Validate output
   let output;
   try {
     output = JSON.parse(response.content);
+    const validation = validateBiographerOutput(output);
+    if (!validation.ok) throw new Error(`validation failed: ${validation.error}`);
   } catch (e) {
+    await recordFailure(db, eventId, e);
     throw new Error(`biographer LLM returned malformed JSON: ${e.message}`);
-  }
-  const validation = validateBiographerOutput(output);
-  if (!validation.ok) {
-    throw new Error(`biographer LLM output failed validation: ${validation.error}`);
   }
 
   // 4-5. Resolve / create entities. Creation uses a deterministic record id
