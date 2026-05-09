@@ -13,6 +13,15 @@ export async function main(argv) {
     const { biographerCatchup } = await import('./commands/biographer-catchup.js');
     return biographerCatchup(argv.slice(1));
   }
+  if (cmd === 'biographer') {
+    const sub = argv[1];
+    if (sub === 'process-pending') {
+      const { biographerProcessPending } = await import('./commands/biographer-process-pending.js');
+      return biographerProcessPending(argv.slice(2));
+    }
+    console.error(`unknown biographer subcommand: ${sub}`);
+    process.exit(1);
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);
