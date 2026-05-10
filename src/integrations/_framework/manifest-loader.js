@@ -1,0 +1,58 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parseCadence } from './cadence.js';
+
+const VALID_AUTH_KINDS = new Set(['oauth2-google', 'api-key', 'discord-bot']);
+const VALID_CAPTURE_MODES = new Set(['insert-or-skip', 'upsert']);
+
+export function validateManifest(m) {
+  if (!m || typeof m !== 'object') throw new Error('manifest must be an object');
+  if (!m.name || typeof m.name !== 'string') throw new Error('manifest.name required (string)');
+  let cadence_ms;
+  if (m.cadence === null || m.cadence === undefined) {
+    cadence_ms = null;
+  } else {
+    cadence_ms = parseCadence(m.cadence);
+  }
+  if (!m.auth || !VALID_AUTH_KINDS.has(m.auth.kind)) {
+    throw new Error(`manifest.auth.kind must be one of: ${[...VALID_AUTH_KINDS].join(', ')}`);
+  }
+  const capture_mode = m.capture_mode ?? 'insert-or-skip';
+  if (!VALID_CAPTURE_MODES.has(capture_mode)) {
+    throw new Error(`manifest.capture_mode must be one of: ${[...VALID_CAPTURE_MODES].join(', ')}`);
+  }
+  return {
+    name: m.name,
+    cadence_ms,
+    embed: m.embed ?? true,
+    capture_mode,
+    auth: m.auth,
+    tools: m.tools ?? [],
+    sync: m.sync,
+    start: m.start,
+    stop: m.stop,
+    config: m.config ?? {},
+  };
+}
+
+export async function loadManifests(integrationsDir) {
+  let entries;
+  try {
+    entries = await readdir(integrationsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
+    const manifestPath = join(integrationsDir, ent.name, 'manifest.js');
+    try {
+      const mod = await import(manifestPath);
+      const validated = validateManifest(mod.manifest ?? mod.default);
+      out.push(validated);
+    } catch (e) {
+      console.warn(`integration ${ent.name}: ${e.message}`);
+    }
+  }
+  return out;
+}
