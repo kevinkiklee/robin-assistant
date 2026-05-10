@@ -1,0 +1,38 @@
+// Example rework script — copy to scripts/audit-fixup.js and edit.
+//
+// 1. Run `robin migrate-from-v1 --export-mappings ./mappings.json` first.
+// 2. Stop the daemon: `robin mcp stop`.
+// 3. Run this script: `node scripts/audit-fixup.js`.
+//
+// Operates on the v2 DB at paths().db. Filter every UPDATE/DELETE on
+// `meta.from_v1.source_hash IS NOT NONE` so you don't touch native captures.
+
+import { readFileSync } from 'node:fs';
+import { surql } from 'surrealdb';
+import { connect, close } from '../src/db/client.js';
+import { paths } from '../src/runtime/home.js';
+
+const mappings = JSON.parse(readFileSync('./mappings.json', 'utf-8'));
+// mappings = { entities: {v1_id: v2_id}, episodes: {...}, events: {...} }
+
+const db = await connect({ engine: `rocksdb://${paths().db}` });
+try {
+  // Example: promote v1_correction events to rule_candidates
+  const [corrections] = await db
+    .query(`SELECT id, content, meta FROM events WHERE meta.kind = 'v1_correction'`)
+    .collect();
+  for (const c of corrections) {
+    const payload = c.meta?.v1_payload ?? {};
+    await db.query(surql`CREATE rule_candidates CONTENT ${{
+      content: payload.what_to_do ?? c.content,
+      kind: 'behavior',
+      signal_events: [c.id],
+      payload,
+      confidence: 0.5,
+      status: 'pending',
+    }}`).collect();
+  }
+  console.log(`promoted ${corrections.length} corrections to rule_candidates`);
+} finally {
+  await close(db);
+}
