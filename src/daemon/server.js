@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { dirname as _jobsDirname, join as _jobsJoin } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -13,6 +15,10 @@ import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
 import { createCapture } from '../integrations/_framework/capture.js';
 import { loadManifests } from '../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../integrations/_framework/run-sync.js';
+import { garbageCollect, getJob, upsertFromDiscovered } from '../jobs/db.js';
+import { discoverJobs } from '../jobs/loader.js';
+import { runOneJob } from '../jobs/runner.js';
+import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
@@ -23,6 +29,7 @@ import { createHealthTool } from '../mcp/tools/health.js';
 import { createIntegrationRunTool } from '../mcp/tools/integration-run.js';
 import { createIntegrationStatusTool } from '../mcp/tools/integration-status.js';
 import { createListEpisodesTool } from '../mcp/tools/list-episodes.js';
+import { createListJobsTool } from '../mcp/tools/list-jobs.js';
 import { createListJournalTool } from '../mcp/tools/list-journal.js';
 import { createListPatternsTool } from '../mcp/tools/list-patterns.js';
 import { createListRulesTool } from '../mcp/tools/list-rules.js';
@@ -34,6 +41,7 @@ import { createRelatedEntitiesTool } from '../mcp/tools/related-entities.js';
 import { createRememberTool } from '../mcp/tools/remember.js';
 import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
 import { createRunDreamTool } from '../mcp/tools/run-dream.js';
+import { createRunJobTool } from '../mcp/tools/run-job.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
 import { readConfig } from '../runtime/config.js';
 import { ensureHome, paths } from '../runtime/home.js';
@@ -47,6 +55,13 @@ import { endSession, listActiveSessions, markStaleSessions, registerSession } fr
 import { clearDaemonState, writeDaemonState } from './state.js';
 import { runTamperCheck } from './tamper-check.js';
 import { getCliVersion } from './version-handshake.js';
+
+const BUILTIN_JOBS_DIR = _jobsJoin(
+  _jobsDirname(fileURLToPath(import.meta.url)),
+  '..',
+  'jobs',
+  'builtin',
+);
 
 export async function startDaemon() {
   const version = await getCliVersion();
@@ -323,6 +338,20 @@ export async function startDaemon() {
       }
     }
 
+    // Phase 4d — discover jobs (built-in + user) and UPSERT into runtime_jobs.
+    const jobsCache = { current: [] };
+    const refreshJobs = async () => {
+      const userJobsDir = _jobsJoin(p.home, 'jobs');
+      jobsCache.current = discoverJobs({
+        builtinDir: BUILTIN_JOBS_DIR,
+        userDir: userJobsDir,
+      });
+      await upsertFromDiscovered(dbHandle, jobsCache.current);
+      await garbageCollect(dbHandle, new Set(jobsCache.current.map((j) => j.name)));
+      await planNextRunAt(dbHandle, jobsCache.current);
+    };
+    await refreshJobs();
+
     const tools = [
       createHealthTool({
         version,
@@ -388,74 +417,116 @@ export async function startDaemon() {
       }
     }
 
+    // Phase 4d — job runner MCP tools.
+    const captureForJobs = createCapture({
+      db: dbHandle,
+      embedder: embedderWrap,
+      source: 'job_output',
+      embed: false,
+      mode: 'insert-or-skip',
+    });
+    tools.push(createListJobsTool({ db: dbHandle }));
+    tools.push(
+      createRunJobTool({
+        db: dbHandle,
+        capture: captureForJobs,
+        host,
+        tools: () => tools,
+        getJobs: () => jobsCache.current,
+      }),
+    );
+
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
     // un-biographed event queue overflows. Skipped without a host since dream
     // and biographer both need one.
     if (host) {
+      const baseListDue = async () => {
+        const due = [];
+        const [rows] = await dbHandle
+          .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+          .collect();
+        const value = rows[0]?.value ?? {};
+        const integrations = value.integrations ?? {};
+        const now = new Date();
+        for (const [name, row] of Object.entries(integrations)) {
+          if (!row?.next_run_at) continue;
+          if (new Date(row.next_run_at) <= now && !row.in_flight) {
+            due.push({ name, kind: 'integration' });
+          }
+        }
+        const dreamCursor = value.dream;
+        if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
+          due.push({ name: '__dream__', kind: 'dream' });
+        }
+        // embed_backfill is always-due if there's any pending row
+        const [pending] = await dbHandle
+          .query(
+            'SELECT count() AS n FROM events WHERE embedding IS NONE AND meta.embed_failed IS NOT true GROUP ALL',
+          )
+          .collect();
+        if ((pending[0]?.n ?? 0) > 0) {
+          due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
+        }
+        return due;
+      };
+      const baseRunOne = async (name) => {
+        if (name === '__embed_backfill__') {
+          const e = await idleEmbedder.get();
+          const { embedBackfillTick } = await import('../embed/backfill.js');
+          return await embedBackfillTick({
+            db: dbHandle,
+            embedder: e,
+            batch: 64,
+            log: console.log,
+          });
+        }
+        if (name === '__dream__') {
+          const e = await idleEmbedder.get();
+          const h = await getHost();
+          try {
+            return await dreamProcess(dbHandle, h, e);
+          } finally {
+            const next = new Date();
+            next.setHours(4, 0, 0, 0);
+            if (next <= new Date()) next.setDate(next.getDate() + 1);
+            const [rows] = await dbHandle
+              .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+              .collect();
+            const value = rows[0]?.value ?? {};
+            const dream = { ...(value.dream ?? {}), next_run_at: next, last_run_at: new Date() };
+            await dbHandle
+              .query(
+                surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, dream }}`,
+              )
+              .collect();
+          }
+        }
+        return await runIntegrationSync(dbHandle, registry, name);
+      };
       scheduler = createScheduler({
         listDue: async () => {
-          const due = [];
-          const [rows] = await dbHandle
-            .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-            .collect();
-          const value = rows[0]?.value ?? {};
-          const integrations = value.integrations ?? {};
-          const now = new Date();
-          for (const [name, row] of Object.entries(integrations)) {
-            if (!row?.next_run_at) continue;
-            if (new Date(row.next_run_at) <= now && !row.in_flight) {
-              due.push({ name, kind: 'integration' });
-            }
-          }
-          const dreamCursor = value.dream;
-          if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
-            due.push({ name: '__dream__', kind: 'dream' });
-          }
-          // embed_backfill is always-due if there's any pending row
-          const [pending] = await dbHandle
-            .query(
-              'SELECT count() AS n FROM events WHERE embedding IS NONE AND meta.embed_failed IS NOT true GROUP ALL',
-            )
-            .collect();
-          if ((pending[0]?.n ?? 0) > 0) {
-            due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
-          }
-          return due;
+          // Refresh jobs from disk so drop-in markdown is picked up.
+          await refreshJobs();
+          const baseDue = await baseListDue();
+          const jobsDue = await listDueJobs(dbHandle, new Date());
+          return [...baseDue, ...jobsDue]; // integrations + dream first, then jobs
         },
         runOne: async (name) => {
-          if (name === '__embed_backfill__') {
-            const e = await idleEmbedder.get();
-            const { embedBackfillTick } = await import('../embed/backfill.js');
-            return await embedBackfillTick({
+          const job = jobsCache.current.find((j) => j.name === name);
+          if (job) {
+            await runOneJob({
               db: dbHandle,
-              embedder: e,
-              batch: 64,
-              log: console.log,
+              capture: captureForJobs,
+              host,
+              jobs: jobsCache.current,
+              tools,
+              name,
             });
+            await planNextRunAt(dbHandle, jobsCache.current);
+            return;
           }
-          if (name === '__dream__') {
-            const e = await idleEmbedder.get();
-            const h = await getHost();
-            try {
-              return await dreamProcess(dbHandle, h, e);
-            } finally {
-              const next = new Date();
-              next.setHours(4, 0, 0, 0);
-              if (next <= new Date()) next.setDate(next.getDate() + 1);
-              const [rows] = await dbHandle
-                .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-                .collect();
-              const value = rows[0]?.value ?? {};
-              const dream = { ...(value.dream ?? {}), next_run_at: next, last_run_at: new Date() };
-              await dbHandle
-                .query(
-                  surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, dream }}`,
-                )
-                .collect();
-            }
-          }
-          return await runIntegrationSync(dbHandle, registry, name);
+          return baseRunOne(name);
         },
         isOverflow: async () => {
           const [rows] = await dbHandle
@@ -557,6 +628,55 @@ export async function startDaemon() {
           );
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/jobs/run') {
+          const body = await readJsonBody(req);
+          const name = body?.name;
+          const force = body?.force === true;
+          if (!name) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'missing name' }));
+            return;
+          }
+          const row = await getJob(dbHandle, name);
+          if (!row) {
+            res.writeHead(404, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'job not found' }));
+            return;
+          }
+          if (row.in_flight && !force) {
+            res.writeHead(409, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'in_flight' }));
+            return;
+          }
+          if (row.manually_runnable === false && !force) {
+            res.writeHead(403, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'not_manually_runnable' }));
+            return;
+          }
+          await runOneJob({
+            db: dbHandle,
+            capture: captureForJobs,
+            host,
+            jobs: jobsCache.current,
+            tools,
+            name,
+          });
+          const after = await getJob(dbHandle, name);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              ok: after.last_run_ok === true,
+              last_error: after.last_error ?? null,
+            }),
+          );
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/jobs/reload') {
+          await refreshJobs();
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, count: jobsCache.current.length }));
           return;
         }
         if (req.method === 'POST' && req.url === '/internal/auto-recall') {
