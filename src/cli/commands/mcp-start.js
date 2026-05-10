@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +10,9 @@ export async function mcpStart() {
   const p = paths();
   const here = dirname(fileURLToPath(import.meta.url));
   const serverPath = join(here, '../../daemon/server.js');
-  const logFh = await open(join(p.logs, 'daemon.log'), 'a');
+  const logsDir = join(p.cache, 'logs');
+  mkdirSync(logsDir, { recursive: true });
+  const logFh = await open(join(logsDir, 'daemon.log'), 'a');
   const proc = spawn(process.execPath, [serverPath], {
     detached: true,
     stdio: ['ignore', logFh.fd, logFh.fd],
@@ -17,5 +20,5 @@ export async function mcpStart() {
   });
   proc.unref();
   await logFh.close();
-  console.log(`daemon spawning (pid ${proc.pid}); logs at ${p.logs}/daemon.log`);
+  console.log(`daemon spawning (pid ${proc.pid}); logs at ${logsDir}/daemon.log`);
 }

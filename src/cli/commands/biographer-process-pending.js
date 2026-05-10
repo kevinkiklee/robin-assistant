@@ -13,7 +13,7 @@ export async function biographerProcessPending(argv) {
 
   await ensureHome();
   const p = paths();
-  const release = await acquire(p.lock);
+  const release = await acquire(p.daemonLock);
   try {
     const db = await connect({ engine: `rocksdb://${p.db}` });
     try {

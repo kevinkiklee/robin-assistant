@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isPidAlive } from '../daemon/lock.js';
@@ -24,13 +25,15 @@ async function tryDaemonRoute(state, since) {
 export async function stopHookHandler({ since } = {}) {
   await ensureHome();
   const p = paths();
-  const state = await readDaemonState(join(p.home, '.daemon.state'));
+  const state = await readDaemonState(p.daemonState);
   if (state && isPidAlive(state.pid)) {
     const ok = await tryDaemonRoute(state, since);
     if (ok) return;
   }
   // Fallback: spawn-detached subprocess
-  const logFh = await open(join(p.logs, 'biographer.log'), 'a');
+  const logsDir = join(p.cache, 'logs');
+  mkdirSync(logsDir, { recursive: true });
+  const logFh = await open(join(logsDir, 'biographer.log'), 'a');
   const args = [resolveBinPath(), 'biographer', 'process-pending'];
   if (since) args.push('--since', since);
   const proc = spawn(process.execPath, args, {

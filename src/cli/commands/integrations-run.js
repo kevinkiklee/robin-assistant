@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { surql } from 'surrealdb';
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
@@ -18,14 +17,14 @@ export async function integrationsRun(argv) {
   const name = argv[0];
   await ensureHome();
   const p = paths();
-  const state = await readDaemonState(join(p.home, '.daemon.state'));
+  const state = await readDaemonState(p.daemonState);
   if (state && isPidAlive(state.pid)) {
     console.error(
       'daemon is running. Use the integration_run MCP tool, or stop the daemon first: robin mcp stop',
     );
     process.exit(1);
   }
-  const release = await acquire(p.lock);
+  const release = await acquire(p.daemonLock);
   try {
     const db = await connect({ engine: `rocksdb://${p.db}` });
     try {

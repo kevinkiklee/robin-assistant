@@ -1,5 +1,5 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { paths } from '../../runtime/home.js';
 import { readSqliteSnapshot } from '../_local/sqlite.js';
 import { chromeHistoryPath } from './manifest.js';
 
@@ -12,8 +12,7 @@ function chromeTimeToDate(visit_time) {
 }
 
 function cacheDir() {
-  const home = process.env.ROBIN_HOME ?? join(homedir(), '.robin');
-  return join(home, 'cache', 'sqlite-snapshots');
+  return join(paths().cache, 'sqlite-snapshots');
 }
 
 export async function sync(ctx) {

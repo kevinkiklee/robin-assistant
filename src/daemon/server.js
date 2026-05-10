@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -56,8 +55,8 @@ export async function startDaemon() {
     );
   }
   const p = paths();
-  const lockPath = join(p.home, '.daemon.lock');
-  const statePath = join(p.home, '.daemon.state');
+  const lockPath = p.daemonLock;
+  const statePath = p.daemonState;
 
   await acquireDaemonLock(lockPath);
 

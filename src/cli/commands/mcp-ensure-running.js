@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { isPidAlive } from '../../daemon/lock.js';
 import { clearDaemonState, readDaemonState } from '../../daemon/state.js';
 import { paths } from '../../runtime/home.js';
@@ -6,7 +5,7 @@ import { mcpStart } from './mcp-start.js';
 
 export async function mcpEnsureRunning() {
   const p = paths();
-  const statePath = join(p.home, '.daemon.state');
+  const statePath = p.daemonState;
   const state = await readDaemonState(statePath);
   if (state && isPidAlive(state.pid)) {
     console.log(`daemon already running on :${state.port}`);

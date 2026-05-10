@@ -15,7 +15,7 @@ test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () =
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /applied 7 migrations/);
   assert.ok(existsSync(join(tmp, 'db')));
-  assert.ok(existsSync(join(tmp, 'models')));
+  assert.ok(existsSync(join(tmp, 'cache')));
 
   // Re-run is a no-op
   const result2 = spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
