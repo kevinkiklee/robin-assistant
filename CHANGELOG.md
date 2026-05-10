@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.0.0-alpha.7] — 2026-05-10
+
+Phase 2f: OAuth generalization + spotify-write + headless OAuth + rate limiter + 8 read-sync integrations.
+
+- **OAuth2 generalization**: `_auth/oauth2-google.js` → `_auth/oauth2.js` with PROVIDERS registry (google/spotify/whoop). `google-token-cache.js` → `token-cache.js` keyed per-provider. Refresh-token rotation handled when provider declares `rotatesRefreshToken: true`.
+- **Headless OAuth `--code` flag**: `robin auth google --code [<VALUE>]` for VM/SSH cases. Re-introduces `auth google/spotify/whoop` CLIs (removed in 2e). `--code=<VALUE>` inline; `--code` alone interactive prompt.
+- **Per-tool rate limiter**: `runtime:outbound_rate.<tool>` sliding 1-hour window. Default 10/hr. Per-tool env override (`GITHUB_WRITE_RATE_LIMIT`, `SPOTIFY_WRITE_RATE_LIMIT`).
+- **spotify-write**: tool-only with 3 actions (queue, skip, playlist-add). First integration to exercise refresh-token rotation roundtrip.
+- **8 new read-sync integrations**: weather (6h), ebird (12h), nhl (12h), linear (1h), whoop (30m, 4-9am EDT only via quiet_window), ga (1d, requires `analytics.readonly` re-auth), chrome (1d, local SQLite), lrc (1w, local SQLite).
+- **Manifest preflight**: optional `manifest.preflight()` async export. Failed preflight → `unavailable` list; daemon stays up; `integrations list` shows the row.
+- **Quiet-window scheduler**: manifests can declare `quiet_window: { tz, active_hours }`. After each sync, `runIntegrationSync` advances `next_run_at` past inactive hours.
+- **better-sqlite3** added as dep (transient client lib for chrome/lrc local SQLite reads; never used as storage — SurrealDB remains sole datastore).
+- **13 new MCP tools** (44 baseline daemon surface; some preflight-gated by env / file presence).
+- **AGENTS.md** updated with 16 integrations + spotify_write outbound caveat. Outbound writes section now covers both github_write and spotify_write with rate-limit semantics.
+- **v1 env var compatibility verified at Task 0**: linear uses `LINEAR_API_KEY` (not `PAT`), ga uses `GA_PROPERTIES` (multi-property comma-sep), whoop adds `read:body_measurement` and `offline` scopes.
+- **Apple Photos NOT included** (dropped per user directive during brainstorm).
+
+Phase 2g candidates: `integration_run` MCP tool (deferred since Phase 2d), per-integration filtering in `integrations list`, `discord_send` MCP tool, additional v1 integrations as needed.
+
 ## [6.0.0-alpha.6] — 2026-05-09
 
 Phase 2e: .env secrets layer + Calendar/Drive/YouTube + github_write.
