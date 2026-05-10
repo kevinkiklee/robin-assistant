@@ -3,9 +3,9 @@ import { test } from 'node:test';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 
 test('stub embedder produces vectors of the configured dimension', async () => {
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const v = await e.embed('hello');
-  assert.equal(v.length, 384);
+  assert.equal(v.length, 1024);
   assert.ok(v instanceof Float32Array);
 });
 

@@ -33,7 +33,7 @@ function fakeHost(content) {
 
 test('dreamStepCorrections proposes a rule when 3+ similar corrections cluster', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   // Identical content → identical stub vectors → cosine = 1.0 → trivially clusters.
   for (let i = 0; i < 3; i++) {
     await recordEvent(db, e, {

@@ -29,7 +29,7 @@ async function fresh() {
 
 test('remember tool writes an event', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const queue = { enqueue: () => Promise.resolve() };
   const tool = createRememberTool({ db, embedder: e, queue });
   const result = await tool.handler({ content: 'noted', source: 'manual' });
@@ -41,7 +41,7 @@ test('remember tool writes an event', async () => {
 
 test('remember triggers biographer when trigger_biographer not false', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const enqueueCalls = [];
   const queue = {
     enqueue: (id) => {
@@ -59,7 +59,7 @@ test('remember triggers biographer when trigger_biographer not false', async () 
 
 test('remember skips biographer when trigger_biographer: false', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const enqueueCalls = [];
   const queue = {
     enqueue: (id) => {

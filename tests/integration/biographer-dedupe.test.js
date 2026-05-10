@@ -24,7 +24,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('two parallel biographer invocations on same event do not double-extract', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'Alice was here.' });
   let calls = 0;
   const host = {

@@ -29,7 +29,7 @@ async function fresh() {
 
 test('cascade: Stage 1 hits short-circuit Stages 2/3 (LLM never called)', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const aliceVec = Array.from(await e.embed('person: Alice'));
   await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: aliceVec }}`)
@@ -49,7 +49,7 @@ test('cascade: Stage 1 hits short-circuit Stages 2/3 (LLM never called)', async 
 
 test('cascade: with no matching entities, returns none', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const fakeHostPick = {
     invokeLLM: async () => ({ content: JSON.stringify({ pick: null }), usage: {} }),
   };
@@ -65,7 +65,7 @@ test('cascade: with no matching entities, returns none', async () => {
 
 test('cascade: type-scoped — same name as different type returns none', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const parisPlace = Array.from(await e.embed('place: Paris'));
   await db
     .query(

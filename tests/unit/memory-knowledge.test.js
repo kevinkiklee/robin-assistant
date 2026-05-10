@@ -34,7 +34,7 @@ async function fresh() {
 
 test('createKnowledge writes a row with content_hash', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const r = await createKnowledge(db, e, {
     content: 'Alice works on Atlas',
     confidence: 0.9,
@@ -49,7 +49,7 @@ test('createKnowledge writes a row with content_hash', async () => {
 
 test('getKnowledgeByContentHash dedupes', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await createKnowledge(db, e, {
     content: 'fact',
     confidence: 0.9,
@@ -63,7 +63,7 @@ test('getKnowledgeByContentHash dedupes', async () => {
 
 test('searchKnowledge returns vector-similar results', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await createKnowledge(db, e, {
     content: 'apple is red',
     confidence: 0.9,
@@ -86,7 +86,7 @@ test('searchKnowledge returns vector-similar results', async () => {
 
 test('listKnowledge filters by subject_id when provided', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const v = Array.from(await e.embed('person: Alice'));
   const [created] = await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: v }}`)

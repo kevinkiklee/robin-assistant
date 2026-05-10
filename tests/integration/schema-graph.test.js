@@ -27,7 +27,7 @@ async function fresh() {
 
 test('schema rejects entity with wrong type', async () => {
   const db = await fresh();
-  const dummy = Array.from({ length: 384 }, () => 0.1);
+  const dummy = Array.from({ length: 1024 }, () => 0.1);
   await assert.rejects(
     db
       .query(surql`CREATE entities CONTENT ${{ name: 'X', type: 'invalid', embedding: dummy }}`)
@@ -43,14 +43,14 @@ test('schema rejects entity with wrong embedding dim', async () => {
     db
       .query(surql`CREATE entities CONTENT ${{ name: 'X', type: 'person', embedding: [0.1, 0.2] }}`)
       .collect(),
-    /array::len|384/,
+    /array::len|1024/,
   );
   await close(db);
 });
 
 test('schema rejects entity with empty name', async () => {
   const db = await fresh();
-  const dummy = Array.from({ length: 384 }, () => 0.1);
+  const dummy = Array.from({ length: 1024 }, () => 0.1);
   await assert.rejects(
     db
       .query(surql`CREATE entities CONTENT ${{ name: '', type: 'person', embedding: dummy }}`)
@@ -63,7 +63,7 @@ test('schema rejects entity with empty name', async () => {
 test('ENFORCED edge rejects link to non-existent entity', async () => {
   const db = await fresh();
   // Create an event so we have a valid 'from' record
-  const dummy = Array.from({ length: 384 }, () => 0.1);
+  const dummy = Array.from({ length: 1024 }, () => 0.1);
   const [evt] = await db
     .query(
       surql`CREATE events CONTENT ${{
@@ -85,7 +85,7 @@ test('ENFORCED edge rejects link to non-existent entity', async () => {
 
 test('episode_id record link must reference an existing episode', async () => {
   const db = await fresh();
-  const dummy = Array.from({ length: 384 }, () => 0.1);
+  const dummy = Array.from({ length: 1024 }, () => 0.1);
   // Create a valid event first
   const [evt] = await db
     .query(

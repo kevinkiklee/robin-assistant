@@ -25,7 +25,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('related_entities returns co_occurs_with neighbors', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const ids = [];
   for (const n of ['Alice', 'Bob', 'Charlie']) {
     const v = Array.from(await e.embed(`person: ${n}`));
@@ -44,7 +44,7 @@ test('related_entities returns co_occurs_with neighbors', async () => {
 test('related_entities returns empty for entity with no edges', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const v = Array.from(await e.embed('person: Solo'));
   const [c] = await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Solo', type: 'person', embedding: v }}`)

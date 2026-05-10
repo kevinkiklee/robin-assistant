@@ -29,7 +29,7 @@ async function fresh() {
 }
 
 async function seed(db) {
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'Alice met Bob about Atlas.' });
   const aliceVec = Array.from(await e.embed('person: Alice'));
   const bobVec = Array.from(await e.embed('person: Bob'));

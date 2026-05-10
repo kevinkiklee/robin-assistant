@@ -31,7 +31,7 @@ async function fresh() {
 
 test('recall tool returns hits and writes recall_events row', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'apple' });
   await recordEvent(db, e, { source: 'cli', content: 'banana' });
   const detector = createRepeatQueryDetector({});
@@ -50,7 +50,7 @@ test('recall tool returns hits and writes recall_events row', async () => {
 
 test('repeated query within window sets meta.repeat_query_within_5min', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'one' });
   const detector = createRepeatQueryDetector({});
   const tool = createRecallTool({ db, embedder: e, detector, getSessionId: () => 'sess-1' });

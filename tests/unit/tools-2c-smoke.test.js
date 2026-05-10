@@ -39,7 +39,7 @@ async function fresh() {
 
 test('all 8 read/update tools have correct names + schemas + handlers run on empty DB', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const tools = [
     createGetKnowledgeTool({ db, embedder: e }),
     createListPatternsTool({ db }),
@@ -90,7 +90,7 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
 
 test('get_knowledge with query argument exercises the search path', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const tool = createGetKnowledgeTool({ db, embedder: e });
   const r = await tool.handler({ query: 'anything', limit: 5 });
   assert.deepEqual(r, { knowledge: [] });
@@ -188,7 +188,7 @@ test('update_rule rejects unknown actions', async () => {
 
 test('run_dream wraps dreamProcess and returns its summary', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const host = { invokeLLM: async () => ({ content: '{}', usage: {} }) };
   const tool = createRunDreamTool({ db, host, embedder: e, dreamProcess });
   const r = await tool.handler({});

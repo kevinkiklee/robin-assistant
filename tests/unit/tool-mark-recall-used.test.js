@@ -29,7 +29,7 @@ async function fresh() {
 }
 
 async function seedRecallEvent(db) {
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt1 = await recordEvent(db, e, { source: 'cli', content: 'a' });
   const evt2 = await recordEvent(db, e, { source: 'cli', content: 'b' });
   const queryVec = Array.from(await e.embed('test'));

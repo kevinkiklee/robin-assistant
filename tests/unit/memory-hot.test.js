@@ -71,7 +71,7 @@ test('getHotContext filters by source when provided', async () => {
 
 test('getHotContext returns recent events tied to active episodes', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const ep = await createEpisode(db, { source: 'cli' });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'hello world' });
   // Attach the event to the episode (recordEvent doesn't set episode_id on its own).
@@ -85,7 +85,7 @@ test('getHotContext returns recent events tied to active episodes', async () => 
 
 test('getHotContext drops events older than the window', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const ep = await createEpisode(db, { source: 'cli' });
   const evt = await recordEvent(db, e, {
     source: 'cli',

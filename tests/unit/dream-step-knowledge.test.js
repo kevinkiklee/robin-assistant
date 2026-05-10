@@ -34,7 +34,7 @@ function fakeHost(content) {
 
 test('dreamStepKnowledge returns 0 promoted when no eligible entities', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const host = fakeHost('{}');
   const r = await dreamStepKnowledge(db, host, e, { minSignals: 3 });
   assert.equal(r.promoted, 0);
@@ -43,7 +43,7 @@ test('dreamStepKnowledge returns 0 promoted when no eligible entities', async ()
 
 test('dreamStepKnowledge promotes when LLM says promote', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const v = Array.from(await e.embed('person: Alice'));
   const [created] = await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: v }}`)

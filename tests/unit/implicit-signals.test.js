@@ -3,12 +3,12 @@ import { test } from 'node:test';
 import { createRepeatQueryDetector } from '../../src/mcp/implicit-signals.js';
 
 function vec(seed) {
-  const v = new Float32Array(384);
-  for (let i = 0; i < 384; i++) v[i] = Math.sin(seed + i * 0.01);
+  const v = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) v[i] = Math.sin(seed + i * 0.01);
   let mag = 0;
-  for (let i = 0; i < 384; i++) mag += v[i] * v[i];
+  for (let i = 0; i < 1024; i++) mag += v[i] * v[i];
   mag = Math.sqrt(mag);
-  for (let i = 0; i < 384; i++) v[i] /= mag;
+  for (let i = 0; i < 1024; i++) v[i] /= mag;
   return Array.from(v);
 }
 

@@ -42,7 +42,7 @@ async function fresh() {
 
 test('biographer processes a single event end-to-end', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, {
     source: 'cli',
     content: 'Alice met Bob about project Atlas.',
@@ -86,7 +86,7 @@ test('biographer processes a single event end-to-end', async () => {
 
 test('biographer skips already-biographed events', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'event' });
   let calls = 0;
   const host = {
@@ -114,7 +114,7 @@ test('biographer skips already-biographed events', async () => {
 
 test('biographer extends existing episode when LLM says continues_previous=true', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt1 = await recordEvent(db, e, { source: 'cli', content: 'first' });
   const evt2 = await recordEvent(db, e, { source: 'cli', content: 'follow-up' });
   const host = fakeHost([

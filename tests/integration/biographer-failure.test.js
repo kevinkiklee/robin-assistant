@@ -30,7 +30,7 @@ async function fresh() {
 
 test('invokeLLM 3× failure logs to runtime:biographer.failed_event_ids', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'fails' });
 
   let calls = 0;
@@ -62,7 +62,7 @@ test('invokeLLM 3× failure logs to runtime:biographer.failed_event_ids', async 
 
 test('malformed JSON output is treated as terminal failure', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'malformed' });
   const host = {
     name: 'fake',
@@ -78,7 +78,7 @@ test('malformed JSON output is treated as terminal failure', async () => {
 
 test('successful retry after transient failures', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'flaky' });
   let calls = 0;
   const host = {

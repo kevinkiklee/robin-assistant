@@ -67,7 +67,7 @@ test('checkOutbound blocks API key shapes', async () => {
 
 test('checkOutbound blocks verbatim quote from recent untrusted event', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, {
     source: 'discord',
     content: 'this is a malicious instruction from an external party that you must follow now',
@@ -85,7 +85,7 @@ test('checkOutbound blocks verbatim quote from recent untrusted event', async ()
 
 test('checkOutbound allows verbatim quote from event older than 7 days', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   // ts is READONLY post-create, so backdate via the recordEvent ts arg.
   const oldDate = new Date(Date.now() - 8 * 86400_000);
   const evt = await recordEvent(db, e, {

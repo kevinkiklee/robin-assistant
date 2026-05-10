@@ -30,7 +30,7 @@ async function fresh() {
 
 test('lunch_money sync upserts edits to existing transactions', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,

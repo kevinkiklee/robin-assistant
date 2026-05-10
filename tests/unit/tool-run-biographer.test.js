@@ -29,7 +29,7 @@ async function fresh() {
 
 test('run_biographer processes pending events via injected processor', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'a' });
   await recordEvent(db, e, { source: 'cli', content: 'b' });
   const processed = [];
@@ -46,7 +46,7 @@ test('run_biographer processes pending events via injected processor', async () 
 
 test('run_biographer respects limit', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   for (let i = 0; i < 5; i++) await recordEvent(db, e, { source: 'cli', content: `e${i}` });
   const processed = [];
   const processor = async (id) => {
@@ -60,7 +60,7 @@ test('run_biographer respects limit', async () => {
 
 test('run_biographer reports failures with failed_event_ids', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'fail-me' });
   const processor = async () => {
     throw new Error('boom');

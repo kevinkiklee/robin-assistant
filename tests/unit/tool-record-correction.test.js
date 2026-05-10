@@ -24,7 +24,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('record_correction writes event with meta.kind=correction', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const processedIds = [];
   const processor = async (id) => {
     processedIds.push(String(id));
@@ -48,7 +48,7 @@ test('record_correction writes event with meta.kind=correction', async () => {
 test('record_correction works without prior_response or meta', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const processor = async () => {};
   const tool = createRecordCorrectionTool({ db, embedder: e, processor });
   const r = await tool.handler({ content: 'something' });
@@ -61,7 +61,7 @@ test('record_correction works without prior_response or meta', async () => {
 test('record_correction does not fail if processor errors', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const processor = async () => {
     throw new Error('biographer down');
   };

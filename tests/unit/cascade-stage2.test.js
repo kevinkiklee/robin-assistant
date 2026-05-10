@@ -29,7 +29,7 @@ async function fresh() {
 
 test('stage2 returns auto-resolve when best similarity ≥ high threshold (same name)', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   // Stub embedder is deterministic: same input → same vector → similarity 1.0
   const vec = Array.from(await e.embed('person: Alice'));
   await db
@@ -49,7 +49,7 @@ test('stage2 returns auto-resolve when best similarity ≥ high threshold (same 
 
 test('stage2 returns none when no entities of the requested type exist', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const result = await stage2Resolve(db, e, {
     name: 'Nonexistent',
     type: 'person',
@@ -62,7 +62,7 @@ test('stage2 returns none when no entities of the requested type exist', async (
 
 test('stage2 scopes to type — does not match entity of different type', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const vec = Array.from(await e.embed('place: Paris'));
   await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Paris', type: 'place', embedding: vec }}`)

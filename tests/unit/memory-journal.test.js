@@ -30,7 +30,7 @@ async function fresh() {
 
 test('listJournalEntries returns only biographed + significant events', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
 
   // short, biographed — content len < 50, no correction kind → filtered out
   const evt1 = await recordEvent(db, e, { source: 'cli', content: 'short' });
@@ -58,7 +58,7 @@ test('listJournalEntries returns only biographed + significant events', async ()
 
 test('listJournalEntries returns short corrections (correction kind bypasses len)', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
 
   const evt = await recordEvent(db, e, {
     source: 'cli',
@@ -75,7 +75,7 @@ test('listJournalEntries returns short corrections (correction kind bypasses len
 
 test('listJournalEntries respects since/until window', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
 
   const old = await recordEvent(db, e, {
     source: 'cli',

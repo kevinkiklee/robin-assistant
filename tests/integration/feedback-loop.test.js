@@ -27,7 +27,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('recall → mark_recall_used round-trip captures feedback signal', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'apple' });
   await recordEvent(db, e, { source: 'cli', content: 'banana' });
   await recordEvent(db, e, { source: 'cli', content: 'cherry' });

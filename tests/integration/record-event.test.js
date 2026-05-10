@@ -29,7 +29,7 @@ async function fresh() {
 
 test('recordEvent inserts a row with embedding', async () => {
   const db = await fresh();
-  const embedder = createStubEmbedder({ dimension: 384 });
+  const embedder = createStubEmbedder({ dimension: 1024 });
   const result = await recordEvent(db, embedder, {
     source: 'cli',
     content: 'hello robin',
@@ -39,13 +39,13 @@ test('recordEvent inserts a row with embedding', async () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].source, 'cli');
   assert.equal(rows[0].content, 'hello robin');
-  assert.equal(rows[0].embedding.length, 384);
+  assert.equal(rows[0].embedding.length, 1024);
   await close(db);
 });
 
 test('recordEvent populates content_hash and reuses embedding on duplicate content', async () => {
   const db = await fresh();
-  const embedder = createStubEmbedder({ dimension: 384 });
+  const embedder = createStubEmbedder({ dimension: 1024 });
   let embedCalls = 0;
   const counted = {
     ...embedder,
@@ -64,7 +64,7 @@ test('recordEvent populates content_hash and reuses embedding on duplicate conte
 
 test('recordEvent rejects unknown source enum', async () => {
   const db = await fresh();
-  const embedder = createStubEmbedder({ dimension: 384 });
+  const embedder = createStubEmbedder({ dimension: 1024 });
   await assert.rejects(
     recordEvent(db, embedder, { source: 'invalid_src', content: 'x' }),
     /source/i,
@@ -74,17 +74,17 @@ test('recordEvent rejects unknown source enum', async () => {
 
 test('recordEvent rejects empty content', async () => {
   const db = await fresh();
-  const embedder = createStubEmbedder({ dimension: 384 });
+  const embedder = createStubEmbedder({ dimension: 1024 });
   await assert.rejects(recordEvent(db, embedder, { source: 'cli', content: '' }), /content/i);
   await close(db);
 });
 
 test('recordEvent rejects wrong embedding dimension at the DB layer', async () => {
   const db = await fresh();
-  const embedder = createStubEmbedder({ dimension: 768 }); // wrong; schema asserts 384
+  const embedder = createStubEmbedder({ dimension: 768 }); // wrong; schema asserts 1024
   await assert.rejects(
     recordEvent(db, embedder, { source: 'cli', content: 'x' }),
-    /array::len|384/,
+    /array::len|1024/,
   );
   await close(db);
 });

@@ -35,7 +35,7 @@ async function fresh() {
 
 test('allowlist drops non-allowlisted messages from capture path', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,

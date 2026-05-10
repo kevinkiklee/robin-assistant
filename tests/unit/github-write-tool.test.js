@@ -39,7 +39,7 @@ async function freshSetup() {
   saveSecret('GITHUB_PAT', 'ghp_test');
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,

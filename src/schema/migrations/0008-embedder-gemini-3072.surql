@@ -26,6 +26,11 @@ DEFINE FIELD embedding ON entities TYPE array<float>
 DEFINE INDEX entities_vec ON entities FIELDS embedding
   HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 200 M 16;
 
+-- recall_events.query_vec: feedback-loop query embeddings (0004).
+REMOVE FIELD query_vec ON recall_events;
+DEFINE FIELD query_vec ON recall_events TYPE array<float>
+  ASSERT array::len($value) = 3072;
+
 -- runtime:embedder row — used by daemon-boot drift detection (Task 7).
 UPSERT type::record('runtime', 'embedder') CONTENT {
   value: {

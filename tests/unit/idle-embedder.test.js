@@ -6,7 +6,7 @@ test('idle embedder loads on first use; unloads after timeout', async () => {
   let loadCount = 0;
   const factory = async () => {
     loadCount++;
-    return { dimension: 384, embed: async () => new Float32Array(384) };
+    return { dimension: 1024, embed: async () => new Float32Array(1024) };
   };
   const ie = createIdleEmbedder({ factory, idleMs: 50 });
   const e1 = await ie.get();
@@ -23,7 +23,7 @@ test('repeated touches keep embedder alive', async () => {
   let loadCount = 0;
   const factory = async () => {
     loadCount++;
-    return { dimension: 384 };
+    return { dimension: 1024 };
   };
   const ie = createIdleEmbedder({ factory, idleMs: 100 });
   await ie.get();

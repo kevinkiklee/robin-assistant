@@ -29,7 +29,7 @@ async function fresh() {
 
 test('Stage 1 hit short-circuits — host.invokeLLM never called', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const vec = Array.from(await e.embed('person: Alice'));
   await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: vec }}`)
@@ -51,7 +51,7 @@ test('Stage 1 hit short-circuits — host.invokeLLM never called', async () => {
 
 test('Stage 2 auto-resolve bypasses Stage 3', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   // Stub embedder makes "person: Alice" deterministic; insert with that vector
   const vec = Array.from(await e.embed('person: Alice'));
   // Use a different stored name so Stage 1 misses but Stage 2 sees a high-similarity match
@@ -81,7 +81,7 @@ test('Stage 2 auto-resolve bypasses Stage 3', async () => {
 
 test('All stages miss → returns none', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const fakeHost = {
     invokeLLM: async () => ({ content: '{"pick":null}', usage: {} }),
   };

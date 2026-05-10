@@ -10,7 +10,7 @@ import { sha256 } from './hash.js';
 
 // Deterministic non-cryptographic vector derived from sha256 of the input.
 // Used in tests; *not* a substitute for a real embedder for recall quality.
-export function createStubEmbedder({ dimension = 384 } = {}) {
+export function createStubEmbedder({ dimension = 1024 } = {}) {
   return {
     dimension,
     modelId: 'stub:sha256',

@@ -34,7 +34,7 @@ async function fresh() {
 
 // Helper: create a real `events` row so we can pass record links into
 // rule_candidates.signal_events (which is `array<record<events>>` SCHEMAFULL).
-const DUMMY_EMBEDDING = Array.from({ length: 384 }, () => 0.1);
+const DUMMY_EMBEDDING = Array.from({ length: 1024 }, () => 0.1);
 async function createEvent(db, content) {
   const [created] = await db
     .query(

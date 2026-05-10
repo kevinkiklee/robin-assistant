@@ -29,7 +29,7 @@ async function fresh() {
 
 test('capture inserts new rows with deterministic IDs', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,
@@ -50,7 +50,7 @@ test('capture inserts new rows with deterministic IDs', async () => {
 
 test('capture insert-or-skip dedupes on second call', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,
@@ -67,7 +67,7 @@ test('capture insert-or-skip dedupes on second call', async () => {
 
 test('capture upsert updates existing row', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,
@@ -87,7 +87,7 @@ test('capture upsert updates existing row', async () => {
 
 test('capture with embed:false writes NULL embedding', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,
@@ -106,7 +106,7 @@ test('capture with embed:false writes NULL embedding', async () => {
 
 test('capture sanitizes special-char external_id', async () => {
   const db = await fresh();
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
     embedder: e,

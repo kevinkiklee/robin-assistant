@@ -28,7 +28,7 @@ async function fresh() {
 }
 
 async function makeEntities(db, names) {
-  const e = createStubEmbedder({ dimension: 384 });
+  const e = createStubEmbedder({ dimension: 1024 });
   const ids = [];
   for (const n of names) {
     const v = Array.from(await e.embed(`person: ${n}`));
