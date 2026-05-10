@@ -86,6 +86,35 @@ export async function main(argv) {
     const { hotCmd } = await import('./commands/hot.js');
     return hotCmd();
   }
+  if (cmd === 'jobs') {
+    const sub = argv[1];
+    if (sub === 'list') {
+      const { jobsList } = await import('./commands/jobs-list.js');
+      return jobsList(argv.slice(2));
+    }
+    if (sub === 'status') {
+      const { jobsStatus } = await import('./commands/jobs-status.js');
+      return jobsStatus(argv.slice(2));
+    }
+    if (sub === 'run') {
+      const { jobsRun } = await import('./commands/jobs-run.js');
+      return jobsRun(argv.slice(2));
+    }
+    if (sub === 'enable') {
+      const { jobsEnable } = await import('./commands/jobs-enable.js');
+      return jobsEnable(argv.slice(2));
+    }
+    if (sub === 'disable') {
+      const { jobsDisable } = await import('./commands/jobs-disable.js');
+      return jobsDisable(argv.slice(2));
+    }
+    if (sub === 'reload') {
+      const { jobsReload } = await import('./commands/jobs-reload.js');
+      return jobsReload(argv.slice(2));
+    }
+    console.error('usage: robin jobs <list|status|run|enable|disable|reload>');
+    process.exit(1);
+  }
   if (cmd === 'integrations') {
     const sub = argv[1];
     if (sub === 'list') {
