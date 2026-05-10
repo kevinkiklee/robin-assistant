@@ -122,6 +122,14 @@ export async function main(argv) {
     console.error('usage: robin auth <google|spotify|whoop> [--code [<VALUE>]]');
     process.exit(1);
   }
+  if (cmd === 'embedder') {
+    if (argv[1] === 'switch') {
+      const { embedderSwitch } = await import('./commands/embedder-switch.js');
+      return embedderSwitch(argv.slice(2));
+    }
+    console.error('usage: robin embedder switch <mxbai-1024|qwen3-4096|gemini-3072>');
+    process.exit(1);
+  }
   if (cmd === 'secrets') {
     const sub = argv[1];
     if (sub === 'import') {
