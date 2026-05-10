@@ -59,8 +59,14 @@ export async function runEntityPhase({ v1, v2db, resolver, embedder, progress })
         // We write a zero-vector placeholder; future entity-backfill (out of 3b scope) can refresh.
         const dim = embedder?.dimension ?? 1024;
         const stub = new Array(dim).fill(0);
+        // created_at is TYPE datetime — coerce ISO string to Date so SurrealDB accepts it.
+        const content = {
+          ...row,
+          embedding: stub,
+          created_at: row.created_at ? new Date(row.created_at) : undefined,
+        };
         const [created] = await v2db
-          .query(surql`CREATE entities CONTENT ${{ ...row, embedding: stub }}`)
+          .query(surql`CREATE entities CONTENT ${content}`)
           .collect();
         resolver.set('entity', String(v1Row.id), String(created[0].id));
         imported++;

@@ -158,7 +158,7 @@ export function buildLossyEvent(table, v1Row, ctx = {}) {
     content: safeContent,
     source: 'migration',
     content_hash: sha256(safeContent),
-    ts: v1Row.ts ?? v1Row.created ?? v1Row.date ?? new Date().toISOString(),
+    ts: v1Row.ts ?? v1Row.created ?? v1Row.date ?? new Date(),
     external_id: `v1:${v1Row.id}`,
     trust: 'trusted',
     meta: {

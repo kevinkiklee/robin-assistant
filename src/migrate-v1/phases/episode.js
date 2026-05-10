@@ -36,7 +36,13 @@ export async function runEpisodePhase({ v1, v2db, resolver, progress }) {
       }
       try {
         const row = buildEpisodeRow(v1Row);
-        const [created] = await v2db.query(surql`CREATE episodes CONTENT ${row}`).collect();
+        // SurrealDB option<T> fields reject JS null — strip null values so the schema
+        // DEFAULT / NONE kicks in correctly for ended_at (option<datetime>) and
+        // summary (option<string>).
+        const content = Object.fromEntries(
+          Object.entries(row).filter(([, v]) => v !== null && v !== undefined),
+        );
+        const [created] = await v2db.query(surql`CREATE episodes CONTENT ${content}`).collect();
         resolver.set('episode', String(v1Row.id), String(created[0].id));
         imported++;
       } catch (e) {

@@ -1,8 +1,18 @@
-import { surql } from 'surrealdb';
+import { RecordId, surql } from 'surrealdb';
 import { sha256 } from '../../embed/hash.js';
 import { buildFromV1, sourceHash } from '../audit.js';
 import { recordFailure } from '../failures.js';
 import { scanTable } from '../v1-client.js';
+
+/**
+ * Convert a resolver-stored record-ID string (e.g. 'episodes:abc123') back
+ * to a SurrealDB RecordId so schema fields typed record<T> accept the value.
+ */
+function toRecordId(idStr) {
+  const colon = idStr.indexOf(':');
+  if (colon < 0) throw new Error(`invalid record id string: ${idStr}`);
+  return new RecordId(idStr.slice(0, colon), idStr.slice(colon + 1));
+}
 
 export function buildCaptureRow(v1Row, { v2_episode_id }) {
   const body = v1Row.body ?? '';
@@ -55,8 +65,13 @@ export async function runCapturePhase({ v1, v2db, resolver, progress }) {
       }
       try {
         const v1Episode = derivedMap.get(String(v1Row.id)) ?? null;
-        const v2EpisodeId = v1Episode ? resolver.get('episode', v1Episode) : null;
+        const v2EpisodeIdStr = v1Episode ? resolver.get('episode', v1Episode) : null;
+        // Resolver stores IDs as strings; convert to RecordId so schema field
+        // TYPE record<episodes> accepts the value (plain strings are rejected).
+        const v2EpisodeId = v2EpisodeIdStr ? toRecordId(v2EpisodeIdStr) : null;
         const row = buildCaptureRow(v1Row, { v2_episode_id: v2EpisodeId });
+        // SurrealDB option<record<episodes>> rejects JS null — omit episode_id when absent.
+        if (row.episode_id === null) delete row.episode_id;
         const [created] = await v2db.query(surql`CREATE events CONTENT ${row}`).collect();
         resolver.set('capture', String(v1Row.id), String(created[0].id));
         imported++;
