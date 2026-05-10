@@ -38,10 +38,9 @@ async function readJobsForAgentsMd() {
   }
 }
 
-async function writeMergedAgentsMd(path) {
+async function writeMergedAgentsMd(path, jobs) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
-  const jobs = await readJobsForAgentsMd();
   const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs }));
   await writeFile(path, merged, 'utf8');
   console.log(`updated ${path}`);
@@ -172,8 +171,9 @@ export async function mcpInstall(argv) {
   if (!noAgentsMd) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
-    await writeMergedAgentsMd(claudePath);
-    await writeMergedAgentsMd(geminiPath);
+    const jobs = await readJobsForAgentsMd();
+    await writeMergedAgentsMd(claudePath, jobs);
+    await writeMergedAgentsMd(geminiPath, jobs);
   }
 
   // 7. Print summary.
