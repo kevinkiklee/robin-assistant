@@ -180,6 +180,7 @@ export async function startDaemon() {
       registry.set(m.name, { ...m, secrets, capture });
 
       // Seed scheduler cursor for scheduled integrations (cadence_ms !== null).
+      // (Note: dream cursor is seeded once below after the loop.)
       if (m.cadence_ms !== null) {
         const [rows] = await dbHandle
           .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
@@ -222,6 +223,25 @@ export async function startDaemon() {
         } catch (e) {
           console.warn(`integration ${m.name}: gateway start failed: ${e.message}`);
         }
+      }
+    }
+
+    // Seed dream cursor (next 4am) once at boot if absent.
+    {
+      const [rows] = await dbHandle
+        .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+        .collect();
+      const value = rows[0]?.value ?? {};
+      if (!value.dream?.next_run_at) {
+        const next = new Date();
+        next.setHours(4, 0, 0, 0);
+        if (next <= new Date()) next.setDate(next.getDate() + 1);
+        const dream = { ...(value.dream ?? {}), next_run_at: next };
+        await dbHandle
+          .query(
+            surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, dream }}`,
+          )
+          .collect();
       }
     }
 
@@ -313,7 +333,23 @@ export async function startDaemon() {
           if (name === '__dream__') {
             const e = await idleEmbedder.get();
             const h = await getHost();
-            return await dreamProcess(dbHandle, h, e);
+            try {
+              return await dreamProcess(dbHandle, h, e);
+            } finally {
+              const next = new Date();
+              next.setHours(4, 0, 0, 0);
+              if (next <= new Date()) next.setDate(next.getDate() + 1);
+              const [rows] = await dbHandle
+                .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+                .collect();
+              const value = rows[0]?.value ?? {};
+              const dream = { ...(value.dream ?? {}), next_run_at: next, last_run_at: new Date() };
+              await dbHandle
+                .query(
+                  surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, dream }}`,
+                )
+                .collect();
+            }
           }
           return await runIntegrationSync(dbHandle, registry, name);
         },
