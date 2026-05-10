@@ -1,0 +1,388 @@
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+
+let tmpHome;
+let tmpFakeHomedir;
+let originalHome;
+let originalExit;
+let originalStdinIsTTY;
+
+function setup() {
+  tmpHome = join(tmpdir(), `robin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpFakeHomedir = join(
+    tmpdir(),
+    `robin-fakehome-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  mkdirSync(tmpHome, { recursive: true });
+  mkdirSync(tmpFakeHomedir, { recursive: true });
+  process.env.ROBIN_HOME = tmpHome;
+  originalHome = process.env.HOME;
+  process.env.HOME = tmpFakeHomedir;
+  originalStdinIsTTY = process.stdin.isTTY;
+  // Force non-interactive by default.
+  Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+}
+
+function cleanup() {
+  rmSync(tmpHome, { recursive: true, force: true });
+  rmSync(tmpFakeHomedir, { recursive: true, force: true });
+  if (originalHome === undefined) {
+    Reflect.deleteProperty(process.env, 'HOME');
+  } else {
+    process.env.HOME = originalHome;
+  }
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: originalStdinIsTTY,
+    configurable: true,
+  });
+}
+
+function captureExit(fn) {
+  originalExit = process.exit;
+  let exitCode = null;
+  process.exit = (c) => {
+    exitCode = c;
+    throw new Error(`__test_exit__:${c}`);
+  };
+  return fn()
+    .catch((e) => {
+      if (typeof e?.message === 'string' && e.message.startsWith('__test_exit__:')) {
+        return null;
+      }
+      throw e;
+    })
+    .finally(() => {
+      process.exit = originalExit;
+    })
+    .then(() => exitCode);
+}
+
+async function importInstall() {
+  return await import(`../../src/cli/commands/install.js?cb=${Date.now()}-${Math.random()}`);
+}
+
+function noopSupervise() {
+  return async () => {};
+}
+
+// ---------- Argument parsing ----------
+
+test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', async () => {
+  setup();
+  try {
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--no-mcp'], { supervise: noopSupervise() });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+    assert.ok(cfg.installed_at);
+  } finally {
+    cleanup();
+  }
+});
+
+test('install --profile gemini-3072 --i-understand --no-mcp persists profile when key set', async () => {
+  setup();
+  try {
+    const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+    saveSecret('GEMINI_API_KEY', 'fake-key-xxx');
+    const { install } = await importInstall();
+    await install(['--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+    });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'gemini-3072');
+  } finally {
+    cleanup();
+  }
+});
+
+test('install --profile gemini-3072 in non-interactive mode without --i-understand exits 1', async () => {
+  setup();
+  try {
+    const { install } = await importInstall();
+    const exitCode = await captureExit(() =>
+      install(['--profile', 'gemini-3072', '--no-mcp'], {
+        supervise: noopSupervise(),
+        interactive: false,
+      }),
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+  } finally {
+    cleanup();
+  }
+});
+
+test('install --profile invalid-name exits 1', async () => {
+  setup();
+  try {
+    const { install } = await importInstall();
+    const exitCode = await captureExit(() =>
+      install(['--profile', 'bogus-1234', '--no-mcp'], { supervise: noopSupervise() }),
+    );
+    assert.equal(exitCode, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- Legacy ~/.robin/ detection ----------
+
+test('detects legacy ~/.robin/ and aborts in non-interactive mode without --force', async () => {
+  setup();
+  try {
+    mkdirSync(join(tmpFakeHomedir, '.robin'), { recursive: true });
+    const { install } = await importInstall();
+    const exitCode = await captureExit(() =>
+      install(['--profile', 'mxbai-1024', '--no-mcp'], {
+        supervise: noopSupervise(),
+        interactive: false,
+      }),
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+  } finally {
+    cleanup();
+  }
+});
+
+test('legacy ~/.robin/ with --force proceeds non-interactively', async () => {
+  setup();
+  try {
+    mkdirSync(join(tmpFakeHomedir, '.robin'), { recursive: true });
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
+      supervise: noopSupervise(),
+      interactive: false,
+    });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+  } finally {
+    cleanup();
+  }
+});
+
+test('legacy ~/.robin/ in interactive mode prompts and proceeds on "y"', async () => {
+  setup();
+  try {
+    mkdirSync(join(tmpFakeHomedir, '.robin'), { recursive: true });
+    const prompts = [];
+    const promptFn = async (q) => {
+      prompts.push(q);
+      return 'y';
+    };
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--no-mcp'], {
+      supervise: noopSupervise(),
+      interactive: true,
+      prompt: promptFn,
+    });
+    assert.ok(prompts.some((q) => /Continue installing v2/.test(q)));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- Reinstall short-circuit ----------
+
+test('reinstall short-circuit when config exists', async () => {
+  setup();
+  try {
+    const { writeConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+    await writeConfig({ embedder_profile: 'mxbai-1024' });
+    const installedAtBefore = existsSync(join(tmpHome, 'config.json'));
+    assert.ok(installedAtBefore);
+    let superviseCalled = false;
+    const supervise = async () => {
+      superviseCalled = true;
+    };
+    const { install } = await importInstall();
+    await install(['--profile', 'qwen3-4096', '--no-mcp'], { supervise });
+    // Did NOT switch to qwen3 — short-circuited.
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+    assert.equal(superviseCalled, false);
+  } finally {
+    cleanup();
+  }
+});
+
+test('reinstall with --force proceeds past short-circuit', async () => {
+  setup();
+  try {
+    const { writeConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+    await writeConfig({ embedder_profile: 'mxbai-1024', installed_at: 'old' });
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
+      supervise: noopSupervise(),
+    });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+    assert.notEqual(cfg.installed_at, 'old');
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- Per-profile validation: Ollama ----------
+
+test('qwen3-4096 with Ollama unreachable exits 1', async () => {
+  setup();
+  try {
+    const fetchFn = async () => {
+      throw new Error('connection refused');
+    };
+    const { install } = await importInstall();
+    const exitCode = await captureExit(() =>
+      install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
+        supervise: noopSupervise(),
+        fetch: fetchFn,
+      }),
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+  } finally {
+    cleanup();
+  }
+});
+
+test('qwen3-4096 with Ollama reachable but model missing exits 1', async () => {
+  setup();
+  try {
+    const fetchFn = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ models: [{ name: 'llama3' }] }),
+    });
+    const { install } = await importInstall();
+    const exitCode = await captureExit(() =>
+      install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
+        supervise: noopSupervise(),
+        fetch: fetchFn,
+      }),
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+  } finally {
+    cleanup();
+  }
+});
+
+test('qwen3-4096 with Ollama reachable + model present persists config', async () => {
+  setup();
+  try {
+    const fetchFn = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ models: [{ name: 'qwen3-embedding:8b' }] }),
+    });
+    const { install } = await importInstall();
+    await install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+      fetch: fetchFn,
+    });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'qwen3-4096');
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- Per-profile validation: Gemini ----------
+
+test('gemini-3072 in non-interactive without GEMINI_API_KEY exits 1', async () => {
+  setup();
+  try {
+    const { install } = await importInstall();
+    const exitCode = await captureExit(() =>
+      install(['--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'], {
+        supervise: noopSupervise(),
+        interactive: false,
+      }),
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- Config persistence ----------
+
+test('config.json is written atomically with profile and installed_at', async () => {
+  setup();
+  try {
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+    });
+    const cfgPath = join(tmpHome, 'config.json');
+    assert.ok(existsSync(cfgPath));
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+    assert.match(cfg.installed_at, /^\d{4}-\d{2}-\d{2}T/);
+    // Re-read confirms persistence.
+    const { readConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+    const reread = await readConfig();
+    assert.equal(reread.embedder_profile, 'mxbai-1024');
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- Interactive prompt picks profile ----------
+
+test('interactive prompt with default (empty input) picks mxbai-1024', async () => {
+  setup();
+  try {
+    const promptFn = async () => '';
+    const { install } = await importInstall();
+    await install(['--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+      interactive: true,
+      prompt: promptFn,
+    });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------- End-to-end smoke ----------
+
+test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtime:embedder', async () => {
+  setup();
+  try {
+    let runtimeEmbedderRow = null;
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
+      supervise: noopSupervise(),
+      onDbReady: async (db) => {
+        const [rows] = await db
+          .query("SELECT * FROM type::record('runtime', 'embedder');")
+          .collect();
+        runtimeEmbedderRow = rows;
+      },
+    });
+    // Config written
+    const cfgPath = join(tmpHome, 'config.json');
+    assert.ok(existsSync(cfgPath));
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+    // DB dir exists
+    assert.ok(existsSync(join(tmpHome, 'db')));
+    // runtime:embedder row exists with the right profile + dimension
+    assert.ok(Array.isArray(runtimeEmbedderRow));
+    assert.ok(runtimeEmbedderRow.length >= 1);
+    assert.equal(runtimeEmbedderRow[0].value.profile, 'mxbai-1024');
+    assert.equal(runtimeEmbedderRow[0].value.dimension, 1024);
+  } finally {
+    cleanup();
+  }
+});
