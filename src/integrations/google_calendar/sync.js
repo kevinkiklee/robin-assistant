@@ -1,13 +1,15 @@
-import { getGoogleAccessToken } from '../_auth/token-cache.js';
+import { getAccessToken } from '../_auth/token-cache.js';
 import { buildEventFromCalendarItem, listEvents } from './client.js';
 
 const WINDOW_DAYS = 14;
 const DAY_MS = 86_400_000;
 
 export async function sync(ctx) {
-  const accessToken = await getGoogleAccessToken({
+  const accessToken = await getAccessToken({
+    provider: 'google',
     secrets: ctx.secrets,
     fetchFn: ctx.fetchFn,
+    saveSecret: ctx.saveSecret,
   });
   const now = new Date();
   const timeMin = new Date(now.getTime() - WINDOW_DAYS * DAY_MS).toISOString();

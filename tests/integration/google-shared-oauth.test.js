@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { _resetCache, getGoogleAccessToken } from '../../src/integrations/_auth/token-cache.js';
+import { _resetCache, getAccessToken } from '../../src/integrations/_auth/token-cache.js';
 
 test('gmail + calendar + drive share one token fetch via cache singleton', async () => {
-  _resetCache();
+  _resetCache('google');
   let tokenCalls = 0;
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token')) {
@@ -18,9 +18,9 @@ test('gmail + calendar + drive share one token fetch via cache singleton', async
     GOOGLE_OAUTH_CLIENT_SECRET: 's',
   };
   const [t1, t2, t3] = await Promise.all([
-    getGoogleAccessToken({ secrets, fetchFn }),
-    getGoogleAccessToken({ secrets, fetchFn }),
-    getGoogleAccessToken({ secrets, fetchFn }),
+    getAccessToken({ provider: 'google', secrets, fetchFn }),
+    getAccessToken({ provider: 'google', secrets, fetchFn }),
+    getAccessToken({ provider: 'google', secrets, fetchFn }),
   ]);
   assert.equal(t1, 'shared-token');
   assert.equal(t2, 'shared-token');
@@ -29,7 +29,7 @@ test('gmail + calendar + drive share one token fetch via cache singleton', async
 });
 
 test('sequential gmail + calendar + drive calls hit cache', async () => {
-  _resetCache();
+  _resetCache('google');
   let tokenCalls = 0;
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token')) {
@@ -43,8 +43,8 @@ test('sequential gmail + calendar + drive calls hit cache', async () => {
     GOOGLE_OAUTH_CLIENT_ID: 'c',
     GOOGLE_OAUTH_CLIENT_SECRET: 's',
   };
-  await getGoogleAccessToken({ secrets, fetchFn });
-  await getGoogleAccessToken({ secrets, fetchFn });
-  await getGoogleAccessToken({ secrets, fetchFn });
+  await getAccessToken({ provider: 'google', secrets, fetchFn });
+  await getAccessToken({ provider: 'google', secrets, fetchFn });
+  await getAccessToken({ provider: 'google', secrets, fetchFn });
   assert.equal(tokenCalls, 1);
 });

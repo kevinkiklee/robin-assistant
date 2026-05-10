@@ -32,7 +32,7 @@ function fakeMsg(id, labels = ['INBOX']) {
 }
 
 test('gmail full-sync writes events with correct external_ids and skips SPAM', async () => {
-  _resetCache();
+  _resetCache('google');
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 384 });
   const capture = createCapture({

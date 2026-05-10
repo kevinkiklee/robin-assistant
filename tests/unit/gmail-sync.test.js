@@ -40,7 +40,7 @@ function tokenResponse() {
 }
 
 test('first-sync paginates messages.list and skips TRASH/SPAM/PROMOTIONS', async () => {
-  _resetCache();
+  _resetCache('google');
   const captured = [];
   const fetchFn = makeFetch(async (url) => {
     if (url.includes('oauth2.googleapis.com/token')) return tokenResponse();
@@ -76,7 +76,7 @@ test('first-sync paginates messages.list and skips TRASH/SPAM/PROMOTIONS', async
 });
 
 test('delta sync uses history.list when cursor present', async () => {
-  _resetCache();
+  _resetCache('google');
   const captured = [];
   const fetchFn = makeFetch(async (url) => {
     if (url.includes('oauth2.googleapis.com/token')) return tokenResponse();
@@ -109,7 +109,7 @@ test('delta sync uses history.list when cursor present', async () => {
 });
 
 test('delta sync falls back to first-sync on history_id 404', async () => {
-  _resetCache();
+  _resetCache('google');
   let firstSyncCalled = false;
   const fetchFn = makeFetch(async (url) => {
     if (url.includes('oauth2.googleapis.com/token')) return tokenResponse();

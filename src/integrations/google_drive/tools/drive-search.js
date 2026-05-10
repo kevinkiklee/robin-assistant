@@ -1,5 +1,5 @@
-import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { getGoogleAccessToken } from '../../_auth/token-cache.js';
+import { requireSecret, saveSecret } from '../../../secrets/dotenv-io.js';
+import { getAccessToken } from '../../_auth/token-cache.js';
 import { listFiles } from '../client.js';
 
 function buildSecrets() {
@@ -24,7 +24,11 @@ export function createDriveSearchTool() {
     },
     handler: async (args) => {
       try {
-        const accessToken = await getGoogleAccessToken({ secrets: buildSecrets() });
+        const accessToken = await getAccessToken({
+          provider: 'google',
+          secrets: buildSecrets(),
+          saveSecret,
+        });
         const q = `name contains '${args.query.replace(/'/g, "\\'")}'`;
         const page = await listFiles({ accessToken, q });
         return { files: (page.files ?? []).slice(0, args.limit ?? 20) };

@@ -1,5 +1,5 @@
-import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { getGoogleAccessToken } from '../../_auth/token-cache.js';
+import { requireSecret, saveSecret } from '../../../secrets/dotenv-io.js';
+import { getAccessToken } from '../../_auth/token-cache.js';
 import { listMessages } from '../client.js';
 
 function buildSecrets() {
@@ -24,7 +24,11 @@ export function createGmailSearchTool() {
     },
     handler: async (args) => {
       try {
-        const accessToken = await getGoogleAccessToken({ secrets: buildSecrets() });
+        const accessToken = await getAccessToken({
+          provider: 'google',
+          secrets: buildSecrets(),
+          saveSecret,
+        });
         const page = await listMessages({ accessToken, q: args.query });
         return { messages: (page.messages ?? []).slice(0, args.max ?? 20) };
       } catch (e) {

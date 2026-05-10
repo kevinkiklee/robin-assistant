@@ -1,5 +1,5 @@
-import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { getGoogleAccessToken } from '../../_auth/token-cache.js';
+import { requireSecret, saveSecret } from '../../../secrets/dotenv-io.js';
+import { getAccessToken } from '../../_auth/token-cache.js';
 import { getEvent } from '../client.js';
 
 function buildSecrets() {
@@ -21,7 +21,11 @@ export function createCalendarGetEventTool() {
     },
     handler: async (args) => {
       try {
-        const accessToken = await getGoogleAccessToken({ secrets: buildSecrets() });
+        const accessToken = await getAccessToken({
+          provider: 'google',
+          secrets: buildSecrets(),
+          saveSecret,
+        });
         const event = await getEvent({ accessToken, eventId: args.event_id });
         return { event };
       } catch (e) {

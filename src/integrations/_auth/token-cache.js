@@ -33,12 +33,6 @@ export async function getAccessToken({ provider, secrets, fetchFn, saveSecret = 
   return (await promise).access_token;
 }
 
-// Back-compat shim — Phase 2e callers that still use the Google-only entry point.
-// T3 migrates them to getAccessToken({ provider: 'google', ... }) and removes this shim.
-export async function getGoogleAccessToken({ secrets, fetchFn, saveSecret }) {
-  return await getAccessToken({ provider: 'google', secrets, fetchFn, saveSecret });
-}
-
 export function _resetCache(provider) {
   if (provider) {
     caches.delete(provider);
