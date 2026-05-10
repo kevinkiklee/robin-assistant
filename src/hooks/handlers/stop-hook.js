@@ -7,13 +7,13 @@ import { readDaemonState } from '../../daemon/state.js';
 import { resolveBinPath } from '../../runtime/bin.js';
 import { ensureHome, paths } from '../../runtime/home.js';
 
-async function tryDaemonRoute(state, since) {
+async function tryDaemonRoute(state, body, fetchFn) {
   try {
     const url = `http://127.0.0.1:${state.port}/internal/biographer/process-pending`;
-    const res = await fetch(url, {
+    const res = await fetchFn(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ since }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(2000),
     });
     return res.ok;
@@ -22,24 +22,33 @@ async function tryDaemonRoute(state, since) {
   }
 }
 
-// Dispatcher contract: called as `stopHookHandler({stdin})` from src/hooks/cli.js.
-// Direct callers (CLI biographer-process-pending, integration tests) pass {since}.
-// Both shapes accepted: prefer explicit `since`, else read from stdin payload
-// (Claude Code Stop hook does not include `since` natively — fallback is undefined).
 export async function stopHookHandler(args = {}) {
-  const since = args.since ?? args.stdin?.since;
+  const stdin = args.stdin ?? {};
+  const since = args.since ?? stdin.since;
+  const transcriptPath = stdin.transcript_path ?? stdin.transcriptPath;
+  const sessionId = stdin.session_id ?? stdin.sessionId;
+  const fetchFn = args.fetchFn ?? fetch;
+  const readState = args.readState;
+
   await ensureHome();
   const p = paths();
-  const state = await readDaemonState(p.daemonState);
+  const state = readState ? await readState() : await readDaemonState(p.daemonState);
   if (state && isPidAlive(state.pid)) {
-    const ok = await tryDaemonRoute(state, since);
+    const body = {};
+    if (since) body.since = since;
+    if (transcriptPath) body.transcript_path = transcriptPath;
+    if (sessionId) body.session_id = sessionId;
+    const ok = await tryDaemonRoute(state, body, fetchFn);
     if (ok) return;
   }
+  // Direct-spawn fallback
   const logsDir = join(p.cache, 'logs');
   mkdirSync(logsDir, { recursive: true });
   const logFh = await open(join(logsDir, 'biographer.log'), 'a');
   const cmdArgs = [resolveBinPath(), 'biographer', 'process-pending'];
   if (since) cmdArgs.push('--since', since);
+  if (transcriptPath) cmdArgs.push('--transcript-path', transcriptPath);
+  if (sessionId) cmdArgs.push('--session-id', sessionId);
   const proc = spawn(process.execPath, cmdArgs, {
     detached: true,
     stdio: ['ignore', logFh.fd, logFh.fd],
