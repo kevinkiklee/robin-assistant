@@ -1,6 +1,6 @@
 {
   "name": "robin-assistant",
-  "version": "6.0.0-alpha.9",
+  "version": "6.0.0-alpha.10",
   "description": "SurrealDB-first personal AI assistant (v2 rebuild)",
   "type": "module",
   "engines": {

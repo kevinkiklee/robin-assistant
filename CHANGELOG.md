@@ -1,5 +1,21 @@
 # Changelog
 
+## [6.0.0-alpha.10] — 2026-05-10
+
+Phase 4f: conversation capture. Replaces v1's `migrate-auto-memory` job with a host-agnostic Stop-hook capture step. Closes the last accidental gap from the v1→v2 audit (`migrate-auto-memory` is now formally **replaced**, not deferred or dropped).
+
+- **New `src/capture/transcript.js`** — tail-and-parse the host transcript JSONL. Returns `{userText, assistantText, hasToolCalls, tsAssistant}`. Walks backwards past `tool_result` user-role messages to find the human prompt (Claude Code stores tool returns as user-role messages; Gemini CLI uses `function_response` — both handled). Tolerates malformed final lines (transcript-write race on Stop fire) by try-parsing every line and silently skipping JSON.parse failures.
+- **New `src/capture/session-capture.js`** — `captureFromTranscript(db, embedder, {transcriptPath, sessionId, host})`. Skip heuristics in order: `no_transcript_path` → `no_assistant_turn` → `single_word_ack` (ok/yes/thanks/...) → `pure_tool_turn` (hasToolCalls && combined<30 chars) → `empty_turn` (<8 chars) → `dedup_hit` (content_hash already in `events` with `source='conversation'`) → `pii_refused`. PII guard wired (`guardInboundContent`); credential-shaped content refuses and logs to `outbound_refusals(direction='inbound')`. Skip-log JSONL line per fire to `<robinHome>/cache/logs/biographer.log` for threshold tuning.
+- **New shared `src/runtime/file-tail.js`** — extracts `readFileTail(path, maxBytes)` previously private to auto-recall. Refactor only, no behavior change for 4a.
+- **`'conversation'` added to `recordEvent`'s VALID_SOURCES.** Host (`claude_code`/`gemini`) goes into `meta.host`; `session_id` and `has_tool_calls` in `meta`. Single source value keeps recall queries simple (`WHERE source = 'conversation'` covers both hosts).
+- **Stop hook extended** to forward `transcript_path` + `session_id` from the host stdin payload to the biographer subprocess — both via the daemon `/internal/biographer/process-pending` POST body and via the direct-spawn fallback's CLI flags (`--transcript-path`, `--session-id`). Injectable `fetchFn` / `readState` for tests.
+- **`robin biographer process-pending`** accepts `--transcript-path <p>` and `--session-id <id>`. When `--transcript-path` is present, runs `captureFromTranscript` first (fail-soft) — embedder + host are hoisted so the biographer loop reuses them.
+- **Daemon endpoint** `/internal/biographer/process-pending` accepts `{transcript_path, session_id}` in its POST body and runs the same pre-step before enqueueing pending events.
+- **No new tables, no migration, no new endpoints.** Reuses `events`, the existing biographer queue, and the existing 4a `runtime_sessions.transcript_path` field. The biographer takes over from the captured event using its existing prompt — zero new LLM calls in the capture step itself; cost is one additional fast-tier biographer call per non-skipped turn.
+- **Test count**: ~20 new tests across `transcript-parse` (7), `session-capture` (9), `stop-hook-forwards-transcript` (2), `record-event-conversation-source` (1), `file-tail` (3). Integration roundtrip via `biographer-process-pending-captures.test.js`.
+
+Closes v1→v2 audit gap: `migrate-auto-memory` is now formally **replaced** by 4f's host-agnostic Stop-hook capture. Phase 4b (comm-style profile) is now unblocked — it has a steady source of conversation events to infer from.
+
 ## [6.0.0-alpha.9] — 2026-05-10
 
 Phase 4a: daily-use safety floor. Restores the v1 safety + auto-recall guarantees on top of v2's MCP-first architecture, in a form that survives the npm-global install model.
