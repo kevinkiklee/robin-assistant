@@ -129,7 +129,7 @@ export async function mcpInstall(argv) {
       await mcpEnsureRunning();
       // 4. Read port from .daemon.state.
       const p = paths();
-      const state = await readDaemonState(join(p.home, '.daemon.state'));
+      const state = await readDaemonState(p.daemonState);
       if (state?.port) port = state.port;
     } catch (e) {
       console.log(`daemon failed to start (non-fatal): ${e.message}`);

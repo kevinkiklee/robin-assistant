@@ -9,5 +9,5 @@ USAGE
   robin --help    | -h
 
 ENVIRONMENT
-  ROBIN_HOME              data directory (default ~/.robin)`);
+  ROBIN_HOME              data directory (default <package_root>/user-data)`);
 }

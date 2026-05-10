@@ -1,11 +1,9 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { paths } from '../runtime/home.js';
 
 function envPath() {
-  return process.env.ROBIN_HOME
-    ? join(process.env.ROBIN_HOME, 'secrets', '.env')
-    : join(homedir(), '.robin', 'secrets', '.env');
+  return join(paths().secrets, '.env');
 }
 
 function parseEnv(path) {

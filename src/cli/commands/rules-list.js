@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
@@ -9,12 +8,12 @@ import { ensureHome, paths } from '../../runtime/home.js';
 export async function rulesList() {
   await ensureHome();
   const p = paths();
-  const daemonState = await readDaemonState(join(p.home, '.daemon.state'));
+  const daemonState = await readDaemonState(p.daemonState);
   if (daemonState && isPidAlive(daemonState.pid)) {
     console.error('daemon is running. Stop it first: robin mcp stop');
     process.exit(1);
   }
-  const release = await acquire(p.lock);
+  const release = await acquire(p.daemonLock);
   try {
     const db = await connect({ engine: `rocksdb://${p.db}` });
     try {

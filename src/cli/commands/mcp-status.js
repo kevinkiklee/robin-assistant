@@ -1,11 +1,10 @@
-import { join } from 'node:path';
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
 import { paths } from '../../runtime/home.js';
 
 export async function mcpStatus() {
   const p = paths();
-  const state = await readDaemonState(join(p.home, '.daemon.state'));
+  const state = await readDaemonState(p.daemonState);
   if (!state) {
     console.log('not running');
     return;
