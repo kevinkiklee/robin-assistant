@@ -105,6 +105,23 @@ export async function main(argv) {
     console.error('usage: robin integrations <list|status|run|discord register-commands>');
     process.exit(1);
   }
+  if (cmd === 'auth') {
+    const sub = argv[1];
+    if (sub === 'google') {
+      const { authGoogle } = await import('./commands/auth-google.js');
+      return authGoogle(argv.slice(2));
+    }
+    if (sub === 'spotify') {
+      const { authSpotify } = await import('./commands/auth-spotify.js');
+      return authSpotify(argv.slice(2));
+    }
+    if (sub === 'whoop') {
+      const { authWhoop } = await import('./commands/auth-whoop.js');
+      return authWhoop(argv.slice(2));
+    }
+    console.error('usage: robin auth <google|spotify|whoop> [--code [<VALUE>]]');
+    process.exit(1);
+  }
   if (cmd === 'secrets') {
     const sub = argv[1];
     if (sub === 'import') {
