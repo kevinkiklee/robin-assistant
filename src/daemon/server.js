@@ -9,7 +9,6 @@ import { close, connect } from '../db/client.js';
 import { dreamProcess } from '../dream/pipeline.js';
 import { createTransformersEmbedder } from '../embed/embedder.js';
 import { detectHost } from '../hosts/detect.js';
-import { readSecrets } from '../integrations/_auth/secrets-io.js';
 import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
 import { createCapture } from '../integrations/_framework/capture.js';
 import { loadManifests } from '../integrations/_framework/manifest-loader.js';
@@ -169,7 +168,6 @@ export async function startDaemon() {
     const manifests = await loadManifests(integrationsDir);
 
     for (const m of manifests) {
-      const secrets = await readSecrets(m.name);
       const capture = createCapture({
         db: dbHandle,
         embedder: embedderWrap,
@@ -177,7 +175,7 @@ export async function startDaemon() {
         embed: m.embed,
         mode: m.capture_mode,
       });
-      registry.set(m.name, { ...m, secrets, capture });
+      registry.set(m.name, { ...m, capture });
 
       // Seed scheduler cursor for scheduled integrations (cadence_ms !== null).
       // (Note: dream cursor is seeded once below after the loop.)
@@ -202,18 +200,15 @@ export async function startDaemon() {
       }
 
       // Boot gateway integrations (cadence_ms === null with start fn).
+      // Secrets are pulled directly from dotenv inside the integration's
+      // start fn (e.g. discord), so the daemon no longer needs to fetch
+      // them ahead of time. A missing required secret throws inside start
+      // and we log + continue.
       if (m.cadence_ms === null && m.start) {
-        if (!secrets) {
-          console.warn(
-            `integration ${m.name}: gateway not started (no secrets at ~/.robin/secrets/${m.name}.json)`,
-          );
-          continue;
-        }
         try {
           const ctx = {
             db: dbHandle,
             host,
-            secrets,
             log: (...a) => console.log(`[${m.name}]`, ...a),
             capture,
           };

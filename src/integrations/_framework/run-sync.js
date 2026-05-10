@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { requireSecret, saveSecret } from '../../secrets/dotenv-io.js';
 
 const BACKOFF_THRESHOLD = 3;
 const BACKOFF_MAX_MS = 24 * 3_600_000;
@@ -56,8 +57,16 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
   const ctrl = new AbortController();
   const startMs = Date.now();
   try {
+    const secrets = {};
+    for (const key of integration.secrets?.env_keys ?? []) {
+      Object.defineProperty(secrets, key, {
+        get: () => requireSecret(key),
+        enumerable: true,
+      });
+    }
     const ctx = {
-      secrets: integration.secrets,
+      secrets,
+      saveSecret,
       log: (...args) => console.log(`[integrations:${name}]`, ...args),
       cursor: cur.cursor ?? null,
       capture: integration.capture,

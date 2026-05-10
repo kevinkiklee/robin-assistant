@@ -18,6 +18,9 @@ test('gmail_get_thread has correct shape', () => {
 
 test('gmail_search throws when not authenticated', async () => {
   process.env.ROBIN_HOME = `/tmp/robin-no-auth-${Date.now()}`;
-  const t = createGmailSearchTool();
+  const { createGmailSearchTool: factory } = await import(
+    `../../src/integrations/gmail/tools/gmail-search.js?cb=${Date.now()}`
+  );
+  const t = factory();
   await assert.rejects(() => t.handler({ query: 'x' }), /not authenticated/);
 });

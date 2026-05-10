@@ -5,7 +5,7 @@ export async function sync(ctx) {
   const todayStr = today.toISOString().slice(0, 10);
   const startDate = rollingStartDate(ctx.cursor?.start_date ?? null, today);
   const data = await listTransactions({
-    apiKey: ctx.secrets.api_key,
+    apiKey: ctx.secrets.LUNCH_MONEY_API_KEY,
     startDate,
     endDate: todayStr,
     fetchFn: ctx.fetchFn,

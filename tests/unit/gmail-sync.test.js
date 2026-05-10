@@ -21,13 +21,27 @@ function fakeMsg(id, snippet = 'snippet', labels = ['INBOX']) {
   };
 }
 
+const fakeSecrets = {
+  GOOGLE_OAUTH_CLIENT_ID: 'c',
+  GOOGLE_OAUTH_CLIENT_SECRET: 's',
+  GOOGLE_OAUTH_REFRESH_TOKEN: 'r',
+};
+
 function makeFetch(handler) {
-  return mock.fn(async (url) => handler(url));
+  return mock.fn(async (url, opts) => handler(url, opts));
+}
+
+function tokenResponse() {
+  return {
+    ok: true,
+    json: async () => ({ access_token: 'a-fresh', expires_in: 3600 }),
+  };
 }
 
 test('first-sync paginates messages.list and skips TRASH/SPAM/PROMOTIONS', async () => {
   const captured = [];
   const fetchFn = makeFetch(async (url) => {
+    if (url.includes('oauth2.googleapis.com/token')) return tokenResponse();
     if (url.includes('/profile')) return { ok: true, json: async () => fakeProfile() };
     if (url.includes('/messages?'))
       return {
@@ -43,13 +57,7 @@ test('first-sync paginates messages.list and skips TRASH/SPAM/PROMOTIONS', async
     throw new Error(`unexpected: ${url}`);
   });
   const ctx = {
-    secrets: {
-      client_id: 'c',
-      client_secret: 's',
-      refresh_token: 'r',
-      access_token: 'a',
-      expires_at: Date.now() + 3_600_000,
-    },
+    secrets: fakeSecrets,
     log: () => {},
     cursor: null,
     capture: async (rows) => {
@@ -68,6 +76,7 @@ test('first-sync paginates messages.list and skips TRASH/SPAM/PROMOTIONS', async
 test('delta sync uses history.list when cursor present', async () => {
   const captured = [];
   const fetchFn = makeFetch(async (url) => {
+    if (url.includes('oauth2.googleapis.com/token')) return tokenResponse();
     if (url.includes('/history?'))
       return {
         ok: true,
@@ -82,13 +91,7 @@ test('delta sync uses history.list when cursor present', async () => {
     throw new Error(`unexpected: ${url}`);
   });
   const ctx = {
-    secrets: {
-      client_id: 'c',
-      client_secret: 's',
-      refresh_token: 'r',
-      access_token: 'a',
-      expires_at: Date.now() + 3_600_000,
-    },
+    secrets: fakeSecrets,
     log: () => {},
     cursor: { history_id: 'h-100' },
     capture: async (rows) => {
@@ -105,6 +108,7 @@ test('delta sync uses history.list when cursor present', async () => {
 test('delta sync falls back to first-sync on history_id 404', async () => {
   let firstSyncCalled = false;
   const fetchFn = makeFetch(async (url) => {
+    if (url.includes('oauth2.googleapis.com/token')) return tokenResponse();
     if (url.includes('/history?')) return { ok: false, status: 404 };
     if (url.includes('/profile')) {
       firstSyncCalled = true;
@@ -115,13 +119,7 @@ test('delta sync falls back to first-sync on history_id 404', async () => {
     throw new Error(`unexpected: ${url}`);
   });
   const ctx = {
-    secrets: {
-      client_id: 'c',
-      client_secret: 's',
-      refresh_token: 'r',
-      access_token: 'a',
-      expires_at: Date.now() + 3_600_000,
-    },
+    secrets: fakeSecrets,
     log: () => {},
     cursor: { history_id: 'h-stale' },
     capture: async () => ({ inserted: 0, skipped: 0, updated: 0, errors: [] }),

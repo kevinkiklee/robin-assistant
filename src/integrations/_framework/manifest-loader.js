@@ -14,19 +14,24 @@ export function validateManifest(m) {
   } else {
     cadence_ms = parseCadence(m.cadence);
   }
-  if (!m.auth || !VALID_AUTH_KINDS.has(m.auth.kind)) {
+  // `auth` is the legacy Phase 2d field (kept for one transition cycle); the
+  // new model declares `secrets.env_keys: string[]`. At least one of the two
+  // must be present so we can still classify the auth kind.
+  if (m.auth && !VALID_AUTH_KINDS.has(m.auth.kind)) {
     throw new Error(`manifest.auth.kind must be one of: ${[...VALID_AUTH_KINDS].join(', ')}`);
   }
   const capture_mode = m.capture_mode ?? 'insert-or-skip';
   if (!VALID_CAPTURE_MODES.has(capture_mode)) {
     throw new Error(`manifest.capture_mode must be one of: ${[...VALID_CAPTURE_MODES].join(', ')}`);
   }
+  const env_keys = Array.isArray(m.secrets?.env_keys) ? m.secrets.env_keys : [];
   return {
     name: m.name,
     cadence_ms,
     embed: m.embed ?? true,
     capture_mode,
-    auth: m.auth,
+    auth: m.auth ?? null,
+    secrets: { env_keys },
     tools: m.tools ?? [],
     sync: m.sync,
     start: m.start,

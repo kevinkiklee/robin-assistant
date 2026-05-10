@@ -84,8 +84,7 @@ async function deltaSync(ctx, accessToken, startHistoryId) {
 }
 
 export async function sync(ctx) {
-  const fresh = await ensureFreshToken('gmail', ctx.secrets, { fetchFn: ctx.fetchFn });
-  ctx.secrets = fresh;
+  const fresh = await ensureFreshToken(ctx.secrets, { fetchFn: ctx.fetchFn });
   const accessToken = fresh.access_token;
   if (ctx.cursor?.history_id) {
     return await deltaSync(ctx, accessToken, ctx.cursor.history_id);

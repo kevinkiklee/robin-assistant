@@ -67,7 +67,7 @@ test('sync calls API and returns count + cursor', async () => {
   }));
   const captured = [];
   const r = await sync({
-    secrets: { api_key: 'k' },
+    secrets: { LUNCH_MONEY_API_KEY: 'k' },
     log: () => {},
     cursor: null,
     capture: async (rows) => {

@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { writeSecrets } from './secrets-io.js';
 
 const REDIRECT_PORT = 53682;
 const REDIRECT_URI = `http://127.0.0.1:${REDIRECT_PORT}/callback`;
@@ -86,19 +85,22 @@ export async function refreshAccessToken({
   };
 }
 
-export async function ensureFreshToken(name, secrets, deps = {}) {
-  if (!secrets.expires_at || secrets.expires_at - Date.now() < 60_000) {
-    const fresh = await refreshAccessToken({
-      client_id: secrets.client_id,
-      client_secret: secrets.client_secret,
-      refresh_token: secrets.refresh_token,
-      fetchFn: deps.fetchFn,
-    });
-    const next = { ...secrets, ...fresh };
-    await writeSecrets(name, next);
-    return next;
-  }
-  return secrets;
+/**
+ * Refresh a Google OAuth access token. The caller passes a `secrets` object
+ * exposing `GOOGLE_OAUTH_REFRESH_TOKEN`, `GOOGLE_OAUTH_CLIENT_ID`, and
+ * `GOOGLE_OAUTH_CLIENT_SECRET` (typically the getter object built by
+ * `runIntegrationSync` from the manifest's `secrets.env_keys`). No JSON file
+ * is read or written — caching is the caller's responsibility (see
+ * `google-token-cache.js`). When Google rotates the refresh token, the caller
+ * persists the new value via `ctx.saveSecret('GOOGLE_OAUTH_REFRESH_TOKEN', new)`.
+ */
+export async function ensureFreshToken(secrets, deps = {}) {
+  return await refreshAccessToken({
+    client_id: secrets.GOOGLE_OAUTH_CLIENT_ID,
+    client_secret: secrets.GOOGLE_OAUTH_CLIENT_SECRET,
+    refresh_token: secrets.GOOGLE_OAUTH_REFRESH_TOKEN,
+    fetchFn: deps.fetchFn,
+  });
 }
 
 export async function runLoopbackAuth({ client_id, client_secret, scopes, openFn, fetchFn }) {

@@ -7,9 +7,12 @@ export const manifest = {
   cadence: '15m',
   embed: true,
   capture_mode: 'insert-or-skip',
-  auth: {
-    kind: 'oauth2-google',
-    scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+  secrets: {
+    env_keys: [
+      'GOOGLE_OAUTH_REFRESH_TOKEN',
+      'GOOGLE_OAUTH_CLIENT_ID',
+      'GOOGLE_OAUTH_CLIENT_SECRET',
+    ],
   },
   sync,
   tools: [createGmailSearchTool, createGmailGetThreadTool],

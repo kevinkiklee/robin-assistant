@@ -5,7 +5,6 @@ import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { createTransformersEmbedder } from '../../embed/embedder.js';
-import { readSecrets } from '../../integrations/_auth/secrets-io.js';
 import { createCapture } from '../../integrations/_framework/capture.js';
 import { loadManifests } from '../../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../../integrations/_framework/run-sync.js';
@@ -37,7 +36,6 @@ export async function integrationsRun(argv) {
         console.error(`integration ${name} not loaded`);
         process.exit(1);
       }
-      const secrets = await readSecrets(name);
       const embedder = await createTransformersEmbedder();
       const registry = new Map([
         [
@@ -45,7 +43,7 @@ export async function integrationsRun(argv) {
           {
             cadence_ms: target.cadence_ms,
             sync: target.sync,
-            secrets,
+            secrets: target.secrets,
             capture: createCapture({
               db,
               embedder,

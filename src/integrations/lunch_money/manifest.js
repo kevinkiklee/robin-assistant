@@ -6,7 +6,7 @@ export const manifest = {
   cadence: '1d',
   embed: true,
   capture_mode: 'upsert',
-  auth: { kind: 'api-key' },
+  secrets: { env_keys: ['LUNCH_MONEY_API_KEY'] },
   sync,
   tools: [createLunchMoneyQueryTool],
 };

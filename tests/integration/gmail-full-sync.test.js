@@ -42,6 +42,13 @@ test('gmail full-sync writes events with correct external_ids and skips SPAM', a
   });
 
   const fetchFn = mock.fn(async (url) => {
+    if (url.includes('oauth2.googleapis.com/token')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'a-fresh', expires_in: 3600 }),
+      };
+    }
     if (url.includes('/profile')) {
       return { ok: true, status: 200, json: async () => ({ historyId: 'h-100' }) };
     }
@@ -68,11 +75,9 @@ test('gmail full-sync writes events with correct external_ids and skips SPAM', a
 
   const ctx = {
     secrets: {
-      client_id: 'c',
-      client_secret: 's',
-      refresh_token: 'r',
-      access_token: 'a',
-      expires_at: Date.now() + 3_600_000,
+      GOOGLE_OAUTH_CLIENT_ID: 'c',
+      GOOGLE_OAUTH_CLIENT_SECRET: 's',
+      GOOGLE_OAUTH_REFRESH_TOKEN: 'r',
     },
     log: () => {},
     cursor: null,

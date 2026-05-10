@@ -6,7 +6,14 @@ export const manifest = {
   cadence: null,
   embed: false,
   capture_mode: 'insert-or-skip',
-  auth: { kind: 'discord-bot' },
+  secrets: {
+    env_keys: [
+      'DISCORD_BOT_TOKEN',
+      'DISCORD_APPLICATION_ID',
+      'DISCORD_ALLOWED_USER_IDS',
+      'DISCORD_ALLOWED_GUILD_IDS',
+    ],
+  },
   start,
   stop,
   tools: [],
