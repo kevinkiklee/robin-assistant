@@ -86,3 +86,69 @@ test('jobs status — unknown job', async () => {
   assert.match(err.lines.join('\n'), /no such job: nope/);
   process.exitCode = 0; // reset — jobsStatus sets exitCode=1 for unknown jobs
 });
+
+import { jobsDisable } from '../../src/cli/commands/jobs-disable.js';
+import { jobsEnable } from '../../src/cli/commands/jobs-enable.js';
+import { jobsReload } from '../../src/cli/commands/jobs-reload.js';
+import { jobsRun } from '../../src/cli/commands/jobs-run.js';
+
+test('jobs run — POSTs to /internal/jobs/run', async () => {
+  const out = capture();
+  let posted;
+  await jobsRun(['foo'], {
+    out: out.fn,
+    daemonRequest: async (path, body) => {
+      posted = { path, body };
+      return { ok: true, last_error: null };
+    },
+  });
+  assert.equal(posted.path, '/internal/jobs/run');
+  assert.deepEqual(posted.body, { name: 'foo', force: false });
+  assert.match(out.lines.join('\n'), /ok/);
+});
+
+test('jobs run --force passes force=true', async () => {
+  let posted;
+  await jobsRun(['foo', '--force'], {
+    out: () => {},
+    daemonRequest: async (path, body) => {
+      posted = body;
+      return { ok: true };
+    },
+  });
+  assert.equal(posted.force, true);
+});
+
+test('jobs run reports not_manually_runnable as ok=false', async () => {
+  const out = capture();
+  const err = capture();
+  await jobsRun(['heavy'], {
+    out: out.fn,
+    err: err.fn,
+    daemonRequest: async () => ({ ok: false, reason: 'not_manually_runnable' }),
+  });
+  assert.match(err.lines.join('\n'), /not_manually_runnable/);
+  process.exitCode = 0; // reset — jobsRun sets exitCode=1 on failure
+});
+
+test('jobs enable/disable call setEnabled', async () => {
+  const calls = [];
+  await jobsEnable(['foo'], { setEnabled: async (n, v) => calls.push([n, v]), out: () => {} });
+  await jobsDisable(['foo'], { setEnabled: async (n, v) => calls.push([n, v]), out: () => {} });
+  assert.deepEqual(calls, [
+    ['foo', true],
+    ['foo', false],
+  ]);
+});
+
+test('jobs reload triggers /internal/jobs/reload', async () => {
+  let hit;
+  await jobsReload([], {
+    daemonRequest: async (path) => {
+      hit = path;
+      return { ok: true, count: 3 };
+    },
+    out: () => {},
+  });
+  assert.equal(hit, '/internal/jobs/reload');
+});
