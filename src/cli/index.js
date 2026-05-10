@@ -82,6 +82,44 @@ export async function main(argv) {
     const { hotCmd } = await import('./commands/hot.js');
     return hotCmd();
   }
+  if (cmd === 'auth') {
+    const sub = argv[1];
+    const subcommands = {
+      gmail: 'auth-gmail.js',
+      lunch_money: 'auth-lunch-money.js',
+      discord: 'auth-discord.js',
+    };
+    if (!subcommands[sub]) {
+      console.error('usage: robin auth <gmail|lunch_money|discord>');
+      process.exit(1);
+    }
+    const mod = await import(`./commands/${subcommands[sub]}`);
+    const fn = Object.values(mod)[0];
+    return fn(argv.slice(2));
+  }
+  if (cmd === 'integrations') {
+    const sub = argv[1];
+    if (sub === 'list') {
+      const { integrationsList } = await import('./commands/integrations-list.js');
+      return integrationsList();
+    }
+    if (sub === 'status') {
+      const { integrationsStatus } = await import('./commands/integrations-status.js');
+      return integrationsStatus(argv.slice(2));
+    }
+    if (sub === 'run') {
+      const { integrationsRun } = await import('./commands/integrations-run.js');
+      return integrationsRun(argv.slice(2));
+    }
+    if (sub === 'discord' && argv[2] === 'register-commands') {
+      const { integrationsDiscordRegister } = await import(
+        './commands/integrations-discord-register.js'
+      );
+      return integrationsDiscordRegister();
+    }
+    console.error('usage: robin integrations <list|status|run|discord register-commands>');
+    process.exit(1);
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);
