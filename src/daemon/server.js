@@ -9,6 +9,11 @@ import { close, connect } from '../db/client.js';
 import { dreamProcess } from '../dream/pipeline.js';
 import { createTransformersEmbedder } from '../embed/embedder.js';
 import { detectHost } from '../hosts/detect.js';
+import { readSecrets } from '../integrations/_auth/secrets-io.js';
+import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
+import { createCapture } from '../integrations/_framework/capture.js';
+import { loadManifests } from '../integrations/_framework/manifest-loader.js';
+import { runIntegrationSync } from '../integrations/_framework/run-sync.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
@@ -16,6 +21,8 @@ import { createGetHotTool } from '../mcp/tools/get-hot.js';
 import { createGetKnowledgeTool } from '../mcp/tools/get-knowledge.js';
 import { createGetProfileTool } from '../mcp/tools/get-profile.js';
 import { createHealthTool } from '../mcp/tools/health.js';
+import { createIntegrationRunTool } from '../mcp/tools/integration-run.js';
+import { createIntegrationStatusTool } from '../mcp/tools/integration-status.js';
 import { createListEpisodesTool } from '../mcp/tools/list-episodes.js';
 import { createListJournalTool } from '../mcp/tools/list-journal.js';
 import { createListPatternsTool } from '../mcp/tools/list-patterns.js';
@@ -52,25 +59,45 @@ export async function startDaemon() {
   let httpServer = null;
   let scheduler = null;
   let shuttingDown = false;
+  const gatewayClients = new Map();
+  const registry = new Map();
 
-  async function shutdown() {
+  async function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (signal) console.log(`daemon: received ${signal}, shutting down`);
     if (scheduler) {
       console.log('scheduler stopping (in-flight dream may continue briefly)');
       scheduler.stop();
+    }
+    const grace = setTimeout(() => {
+      console.warn('daemon: shutdown grace expired, forcing exit');
+      process.exit(1);
+    }, 10_000);
+    grace.unref?.();
+    for (const [name, client] of gatewayClients) {
+      const m = registry.get(name);
+      if (m?.stop) {
+        try {
+          await m.stop({ log: console.log }, client);
+          console.log(`integration ${name}: stopped`);
+        } catch (e) {
+          console.warn(`integration ${name}: stop failed: ${e.message}`);
+        }
+      }
     }
     if (httpServer) httpServer.close();
     if (dbHandle) await close(dbHandle).catch(() => {});
     await clearDaemonState(statePath).catch(() => {});
     await releaseDaemonLock(lockPath).catch(() => {});
+    clearTimeout(grace);
   }
 
   process.on('SIGTERM', () => {
-    shutdown().finally(() => process.exit(0));
+    shutdown('SIGTERM').finally(() => process.exit(0));
   });
   process.on('SIGINT', () => {
-    shutdown().finally(() => process.exit(0));
+    shutdown('SIGINT').finally(() => process.exit(0));
   });
 
   try {
@@ -133,6 +160,71 @@ export async function startDaemon() {
       embed: async (text) => (await idleEmbedder.get()).embed(text),
     };
 
+    // Boot integrations: clear stale in_flight flags, load manifests, build
+    // registry entries with secrets + per-integration capture helper, seed
+    // scheduler cursor rows for scheduled syncs, and boot gateway integrations.
+    await resetInFlightFlags(dbHandle);
+
+    const integrationsDir = new URL('../integrations/', import.meta.url).pathname;
+    const manifests = await loadManifests(integrationsDir);
+
+    for (const m of manifests) {
+      const secrets = await readSecrets(m.name);
+      const capture = createCapture({
+        db: dbHandle,
+        embedder: embedderWrap,
+        source: m.name,
+        embed: m.embed,
+        mode: m.capture_mode,
+      });
+      registry.set(m.name, { ...m, secrets, capture });
+
+      // Seed scheduler cursor for scheduled integrations (cadence_ms !== null).
+      if (m.cadence_ms !== null) {
+        const [rows] = await dbHandle
+          .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+          .collect();
+        const value = rows[0]?.value ?? {};
+        const integrations = value.integrations ?? {};
+        if (!integrations[m.name]) {
+          integrations[m.name] = {
+            cadence_ms: m.cadence_ms,
+            next_run_at: new Date(),
+            consecutive_failures: 0,
+          };
+          await dbHandle
+            .query(
+              surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, integrations }}`,
+            )
+            .collect();
+        }
+      }
+
+      // Boot gateway integrations (cadence_ms === null with start fn).
+      if (m.cadence_ms === null && m.start) {
+        if (!secrets) {
+          console.warn(
+            `integration ${m.name}: gateway not started (no secrets at ~/.robin/secrets/${m.name}.json)`,
+          );
+          continue;
+        }
+        try {
+          const ctx = {
+            db: dbHandle,
+            host,
+            secrets,
+            log: (...a) => console.log(`[${m.name}]`, ...a),
+            capture,
+          };
+          const client = await m.start(ctx);
+          gatewayClients.set(m.name, client);
+          console.log(`integration ${m.name}: gateway started`);
+        } catch (e) {
+          console.warn(`integration ${m.name}: gateway start failed: ${e.message}`);
+        }
+      }
+    }
+
     const tools = [
       createHealthTool({
         version,
@@ -177,35 +269,59 @@ export async function startDaemon() {
       }),
     ];
 
-    // Heartbeat scheduler: drives the dream pipeline either at the nightly
-    // cron hour or when the un-biographed event queue overflows. Skipped
-    // when no host is available (run_dream would crash anyway).
+    // Integration MCP tools: status + manual run + per-manifest factories.
+    tools.push(createIntegrationStatusTool({ db: dbHandle }));
+    tools.push(createIntegrationRunTool({ db: dbHandle, registry, runIntegrationSync }));
+    for (const m of manifests) {
+      for (const factory of m.tools ?? []) {
+        try {
+          const tool = factory({ db: dbHandle });
+          tools.push(tool);
+        } catch (e) {
+          console.warn(`integration ${m.name}: tool factory failed: ${e.message}`);
+        }
+      }
+    }
+
+    // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
+    // dispatches via runOne. Falls back to dream when nothing is due and the
+    // un-biographed event queue overflows. Skipped without a host since dream
+    // and biographer both need one.
     if (host) {
       scheduler = createScheduler({
-        runDream: async () => {
-          const e = await idleEmbedder.get();
-          const h = await getHost();
-          return dreamProcess(dbHandle, h, e);
+        listDue: async () => {
+          const due = [];
+          const [rows] = await dbHandle
+            .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+            .collect();
+          const value = rows[0]?.value ?? {};
+          const integrations = value.integrations ?? {};
+          const now = new Date();
+          for (const [name, row] of Object.entries(integrations)) {
+            if (!row?.next_run_at) continue;
+            if (new Date(row.next_run_at) <= now && !row.in_flight) {
+              due.push({ name, kind: 'integration' });
+            }
+          }
+          const dreamCursor = value.dream;
+          if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
+            due.push({ name: '__dream__', kind: 'dream' });
+          }
+          return due;
+        },
+        runOne: async (name) => {
+          if (name === '__dream__') {
+            const e = await idleEmbedder.get();
+            const h = await getHost();
+            return await dreamProcess(dbHandle, h, e);
+          }
+          return await runIntegrationSync(dbHandle, registry, name);
         },
         isOverflow: async () => {
           const [rows] = await dbHandle
             .query(surql`SELECT count() AS n FROM events WHERE biographed_at IS NONE GROUP ALL`)
             .collect();
           return (rows[0]?.n ?? 0) >= 500;
-        },
-        getCronHour: () => 4,
-        readNextRunAt: async () => {
-          const [rows] = await dbHandle
-            .query(surql`SELECT * FROM type::record('runtime', 'scheduler') LIMIT 1`)
-            .collect();
-          return rows[0]?.value?.next_dream_run_at ?? null;
-        },
-        writeNextRunAt: async (d) => {
-          await dbHandle
-            .query(
-              surql`UPSERT type::record('runtime', 'scheduler') SET value.next_dream_run_at = ${d}`,
-            )
-            .collect();
         },
       });
       scheduler.start();
