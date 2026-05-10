@@ -27,11 +27,21 @@ test('integration_run rejects unknown integration', async () => {
 
 test('integration_run rejects gateway integration', async () => {
   const db = await fresh();
-  const registry = new Map([['discord', { cadence_ms: null }]]);
+  const registry = new Map([['discord', { cadence_ms: null, start: () => {} }]]);
   const t = createIntegrationRunTool({ db, registry, runIntegrationSync: async () => {} });
   const r = await t.handler({ name: 'discord' });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'gateway_no_sync');
+  await close(db);
+});
+
+test('integration_run rejects tool-only integration', async () => {
+  const db = await fresh();
+  const registry = new Map([['github_write', { cadence_ms: null, tools: [() => ({})] }]]);
+  const t = createIntegrationRunTool({ db, registry, runIntegrationSync: async () => {} });
+  const r = await t.handler({ name: 'github_write' });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'tool_only_no_sync');
   await close(db);
 });
 

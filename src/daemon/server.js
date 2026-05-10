@@ -177,9 +177,9 @@ export async function startDaemon() {
       });
       registry.set(m.name, { ...m, capture });
 
-      // Seed scheduler cursor for scheduled integrations (cadence_ms !== null).
-      // (Note: dream cursor is seeded once below after the loop.)
-      if (m.cadence_ms !== null) {
+      if (m.cadence_ms !== null && m.sync) {
+        // Sync integration: seed scheduler cursor.
+        // (Note: dream cursor is seeded once below after the loop.)
         const [rows] = await dbHandle
           .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
           .collect();
@@ -197,14 +197,12 @@ export async function startDaemon() {
             )
             .collect();
         }
-      }
-
-      // Boot gateway integrations (cadence_ms === null with start fn).
-      // Secrets are pulled directly from dotenv inside the integration's
-      // start fn (e.g. discord), so the daemon no longer needs to fetch
-      // them ahead of time. A missing required secret throws inside start
-      // and we log + continue.
-      if (m.cadence_ms === null && m.start) {
+      } else if (m.cadence_ms === null && m.start) {
+        // Gateway integration: boot via start fn.
+        // Secrets are pulled directly from dotenv inside the integration's
+        // start fn (e.g. discord), so the daemon no longer needs to fetch
+        // them ahead of time. A missing required secret throws inside start
+        // and we log + continue.
         try {
           const ctx = {
             db: dbHandle,
@@ -218,6 +216,12 @@ export async function startDaemon() {
         } catch (e) {
           console.warn(`integration ${m.name}: gateway start failed: ${e.message}`);
         }
+      } else if (m.cadence_ms === null && !m.start && (m.tools?.length ?? 0) > 0) {
+        // Tool-only integration: no scheduler cursor, no gateway boot. Tools
+        // register below; the integration is invoked exclusively via MCP.
+        console.log(`integration ${m.name}: tool-only (no sync, no gateway)`);
+      } else {
+        console.warn(`integration ${m.name}: invalid kind (no sync, start, or tools)`);
       }
     }
 
@@ -290,7 +294,12 @@ export async function startDaemon() {
     for (const m of manifests) {
       for (const factory of m.tools ?? []) {
         try {
-          const tool = factory({ db: dbHandle });
+          const reg = registry.get(m.name);
+          const tool = factory({
+            db: dbHandle,
+            embedder: embedderWrap,
+            capture: reg?.capture,
+          });
           tools.push(tool);
         } catch (e) {
           console.warn(`integration ${m.name}: tool factory failed: ${e.message}`);

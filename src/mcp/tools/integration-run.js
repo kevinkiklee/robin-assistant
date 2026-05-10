@@ -15,7 +15,12 @@ export function createIntegrationRunTool({ db, registry, runIntegrationSync }) {
     handler: async (args) => {
       const integration = registry.get(args.name);
       if (!integration) return { ok: false, reason: 'unknown_integration', name: args.name };
-      if (integration.cadence_ms === null) return { ok: false, reason: 'gateway_no_sync' };
+      if (integration.cadence_ms === null && !integration.sync) {
+        if ((integration.tools?.length ?? 0) > 0 && !integration.start) {
+          return { ok: false, reason: 'tool_only_no_sync' };
+        }
+        return { ok: false, reason: 'gateway_no_sync' };
+      }
       const [rows] = await db
         .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
         .collect();

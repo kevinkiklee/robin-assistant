@@ -14,6 +14,7 @@ test('validateManifest accepts valid scheduled manifest', () => {
     capture_mode: 'insert-or-skip',
     auth: { kind: 'oauth2-google', scopes: [] },
     tools: [],
+    sync: async () => ({}),
   };
   const r = validateManifest(m);
   assert.equal(r.name, 'gmail');
@@ -27,13 +28,21 @@ test('validateManifest accepts gateway manifest with cadence: null', () => {
     embed: false,
     auth: { kind: 'discord-bot' },
     tools: [],
+    start: async () => ({}),
   };
   const r = validateManifest(m);
   assert.equal(r.cadence_ms, null);
 });
 
 test('validateManifest rejects missing name', () => {
-  assert.throws(() => validateManifest({ cadence: '15m', auth: { kind: 'api-key' }, tools: [] }));
+  assert.throws(() =>
+    validateManifest({
+      cadence: '15m',
+      auth: { kind: 'api-key' },
+      tools: [],
+      sync: async () => ({}),
+    }),
+  );
 });
 
 test('validateManifest rejects unknown auth.kind', () => {
@@ -43,12 +52,20 @@ test('validateManifest rejects unknown auth.kind', () => {
       cadence: '15m',
       auth: { kind: 'magic' },
       tools: [],
+      sync: async () => ({}),
     }),
   );
 });
 
 test('validateManifest defaults capture_mode to insert-or-skip', () => {
-  const m = { name: 'x', cadence: '1h', embed: true, auth: { kind: 'api-key' }, tools: [] };
+  const m = {
+    name: 'x',
+    cadence: '1h',
+    embed: true,
+    auth: { kind: 'api-key' },
+    tools: [],
+    sync: async () => ({}),
+  };
   const r = validateManifest(m);
   assert.equal(r.capture_mode, 'insert-or-skip');
 });
