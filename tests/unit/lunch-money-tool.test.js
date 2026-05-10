@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+import { test } from 'node:test';
+import { surql } from 'surrealdb';
+import { close, connect } from '../../src/db/client.js';
+import { runMigrations } from '../../src/db/migrate.js';
+import { createLunchMoneyQueryTool } from '../../src/integrations/lunch_money/tools/lunch-money-query.js';
+
+async function fresh() {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  return db;
+}
+
+test('lunch_money_query returns rows filtered by payee', async () => {
+  const db = await fresh();
+  await db
+    .query(
+      surql`CREATE events CONTENT ${{
+        source: 'lunch_money',
+        content: 'Coffee · -$5 · Food',
+        ts: new Date('2026-05-09'),
+        external_id: '1',
+        meta: { payee: 'Coffee Co', amount: 5, date: '2026-05-09', category: 'Food' },
+      }}`,
+    )
+    .collect();
+  await db
+    .query(
+      surql`CREATE events CONTENT ${{
+        source: 'lunch_money',
+        content: 'Gas · -$30 · Auto',
+        ts: new Date('2026-05-08'),
+        external_id: '2',
+        meta: { payee: 'Shell', amount: 30, date: '2026-05-08', category: 'Auto' },
+      }}`,
+    )
+    .collect();
+  const t = createLunchMoneyQueryTool({ db });
+  const r = await t.handler({ payee_contains: 'coffee' });
+  assert.equal(r.transactions.length, 1);
+  assert.match(r.transactions[0].content, /Coffee/);
+  await close(db);
+});
+
+test('lunch_money_query filters by min_amount', async () => {
+  const db = await fresh();
+  await db
+    .query(
+      surql`CREATE events CONTENT ${{
+        source: 'lunch_money',
+        content: 'a',
+        ts: new Date(),
+        external_id: 'a',
+        meta: { amount: 5 },
+      }}`,
+    )
+    .collect();
+  await db
+    .query(
+      surql`CREATE events CONTENT ${{
+        source: 'lunch_money',
+        content: 'b',
+        ts: new Date(),
+        external_id: 'b',
+        meta: { amount: 50 },
+      }}`,
+    )
+    .collect();
+  const t = createLunchMoneyQueryTool({ db });
+  const r = await t.handler({ min_amount: 10 });
+  assert.equal(r.transactions.length, 1);
+  await close(db);
+});
