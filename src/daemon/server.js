@@ -370,6 +370,7 @@ export async function startDaemon() {
     // Integration MCP tools: status + manual run + per-manifest factories.
     tools.push(createIntegrationStatusTool({ db: dbHandle }));
     tools.push(createIntegrationRunTool({ db: dbHandle, registry, runIntegrationSync }));
+    const getGatewayClient = (name) => gatewayClients.get(name) ?? null;
     for (const m of manifests) {
       for (const factory of m.tools ?? []) {
         try {
@@ -378,6 +379,7 @@ export async function startDaemon() {
             db: dbHandle,
             embedder: embedderWrap,
             capture: reg?.capture,
+            getGatewayClient,
           });
           tools.push(tool);
         } catch (e) {

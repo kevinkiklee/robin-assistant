@@ -1,5 +1,6 @@
 import { start } from './start.js';
 import { stop } from './stop.js';
+import { createDiscordSendTool } from './tools/discord-send.js';
 
 export const manifest = {
   name: 'discord',
@@ -16,5 +17,5 @@ export const manifest = {
   },
   start,
   stop,
-  tools: [],
+  tools: [createDiscordSendTool],
 };

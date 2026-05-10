@@ -90,7 +90,7 @@ export async function main(argv) {
     const sub = argv[1];
     if (sub === 'list') {
       const { integrationsList } = await import('./commands/integrations-list.js');
-      return integrationsList();
+      return integrationsList(argv.slice(2));
     }
     if (sub === 'status') {
       const { integrationsStatus } = await import('./commands/integrations-status.js');
@@ -106,7 +106,9 @@ export async function main(argv) {
       );
       return integrationsDiscordRegister();
     }
-    console.error('usage: robin integrations <list|status|run|discord register-commands>');
+    console.error(
+      'usage: robin integrations <list [<name> | --filter <name>]|status|run|discord register-commands>',
+    );
     process.exit(1);
   }
   if (cmd === 'auth') {

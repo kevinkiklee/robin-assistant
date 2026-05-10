@@ -68,25 +68,31 @@ last_sync_ok. Don't loop more than ~30 polls (~60s).
 Don't fabricate fresh data. Don't loop on integration_run — the 30s
 min-interval will refuse, and repeated polling burns API quota.
 
-## Outbound writes (github_write, spotify_write)
+## Outbound writes (github_write, spotify_write, discord_send)
 
 Use \`github_write\` for create-issue / comment / label / mark-read; use
-\`spotify_write\` for queue / skip / playlist-add. Both go through:
+\`spotify_write\` for queue / skip / playlist-add; use \`discord_send\` for
+send_dm / send_channel. All three go through:
 
 1. Per-tool rate limit (default 10/hr; refuses with
    { ok: false, reason: 'rate_limited', wait_seconds: N } — wait at least
    \`wait_seconds\` before retrying).
 2. Outbound-policy: text content (create-issue body, comment body, playlist
-   name/description) is checked for PII / secret / verbatim-untrusted-quote
-   leakage. If blocked, the tool returns
+   name/description, message content) is checked for PII / secret /
+   verbatim-untrusted-quote leakage. If blocked, the tool returns
    { ok: false, reason: 'outbound_blocked', blocked_by: '<policy reason>' };
    DON'T retry by paraphrasing to bypass the guard — surface the block to
    the user and ask for guidance.
 3. The actual API call.
 
+\`discord_send\` adds a 4th gate before the API call: the recipient (DM
+\`user_id\` or channel's \`guild_id\`) must be in the configured allowlist;
+otherwise { ok: false, reason: 'not_allowed' }. Content is capped at 2000
+chars; over-cap returns { ok: false, reason: 'content_too_long' }.
+
 Audit trail differs by action:
-- create-issue, comment, playlist-add → captured to events (recall
-  searchable).
+- create-issue, comment, playlist-add, send_dm, send_channel → captured to
+  events (recall searchable).
 - label, mark-read, queue, skip → daemon log only (no text content).
   Don't expect recall('issue I labeled X') to find anything.
 

@@ -107,6 +107,69 @@ test('doctor --lint-hooks: no settings.json prints empty', async () => {
   assert.match(all, /total robin-owned hook entries: 0/);
 });
 
+test('doctor status: better-sqlite3 ABI mismatch surfaces fix-it hint', async () => {
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor([], {
+    out: o.fn,
+    err: e.fn,
+    probeBetterSqlite3: async () => ({
+      ok: false,
+      message: 'native bindings: better-sqlite3 ABI mismatch',
+      details: ['fix: npm rebuild better-sqlite3'],
+    }),
+  });
+  const all = o.lines.join('\n');
+  assert.match(all, /better-sqlite3 ABI mismatch/);
+  assert.match(all, /npm rebuild better-sqlite3/);
+});
+
+test('doctor status: supervisor probe surfaces launchctl/systemctl status', async () => {
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor([], {
+    out: o.fn,
+    err: e.fn,
+    probeSupervisor: () => ({ status: 'loaded' }),
+  });
+  assert.match(o.lines.join('\n'), /supervisor: loaded/);
+});
+
+test('doctor status: integration freshness rollup names stale integrations', async () => {
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor([], {
+    out: o.fn,
+    err: e.fn,
+    probeIntegrationFreshness: async () => ({
+      total: 3,
+      stale: 2,
+      stale_names: ['gmail', 'spotify'],
+    }),
+  });
+  assert.match(o.lines.join('\n'), /integrations: 2\/3 stale.*gmail, spotify/);
+});
+
+test('doctor status: biographer.log surfaces last error line', async () => {
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor([], {
+    out: o.fn,
+    err: e.fn,
+    probeBiographerLog: () => ({
+      exists: true,
+      size: 1234,
+      tail_lines: 50,
+      error_lines: 2,
+      last_error: 'Error: connection lost to host',
+      mtime: '2026-05-10T00:00:00.000Z',
+    }),
+  });
+  const all = o.lines.join('\n');
+  assert.match(all, /biographer\.log: 50 recent lines, 2 flagged/);
+  assert.match(all, /last error: Error: connection lost/);
+});
+
 test('doctor --purge-stale-sessions: returns count without erroring', async () => {
   // Inject a mem:// db so we don't pull in the rocksdb store (which has a
   // known close-hang in @surrealdb/node v3.0.3 under tests).

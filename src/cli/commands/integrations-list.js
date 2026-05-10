@@ -14,7 +14,31 @@ function formatCadence(m) {
   return `${m.cadence_ms / 60_000}m`;
 }
 
-export async function integrationsList() {
+export function parseFilter(args) {
+  if (!args || args.length === 0) return null;
+  const positional = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === '--filter' || a === '--name') {
+      const v = args[i + 1];
+      if (!v || v.startsWith('--')) {
+        throw new Error('usage: robin integrations list [<name> | --filter <name>]');
+      }
+      return v;
+    }
+    if (a.startsWith('--filter=') || a.startsWith('--name=')) {
+      return a.slice(a.indexOf('=') + 1);
+    }
+    if (!a.startsWith('-')) positional.push(a);
+  }
+  return positional[0] ?? null;
+}
+
+export async function integrationsList(args = []) {
+  const filter = parseFilter(args);
+  const needle = filter?.toLowerCase() ?? null;
+  const matches = (name) => (needle ? name.toLowerCase().includes(needle) : true);
+
   await ensureHome();
   const p = paths();
   const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
@@ -35,7 +59,16 @@ export async function integrationsList() {
     console.log('(no integrations registered)');
     return;
   }
-  for (const m of manifests) {
+
+  const filteredManifests = manifests.filter((m) => matches(m.name));
+  const filteredUnavailable = unavailable.filter((u) => matches(u.name));
+
+  if (filter && filteredManifests.length === 0 && filteredUnavailable.length === 0) {
+    console.log(`(no integration matches '${filter}')`);
+    return;
+  }
+
+  for (const m of filteredManifests) {
     const cadence = formatCadence(m);
     const rt = rtIntegrations[m.name];
     const last = rt?.last_sync_at
@@ -46,7 +79,7 @@ export async function integrationsList() {
     const ok = rt?.last_sync_ok === true ? 'OK' : rt?.last_sync_ok === false ? 'FAIL' : '—';
     console.log(`${m.name.padEnd(15)}  ${cadence.padEnd(10)}  last=${last.padEnd(25)}  ${ok}`);
   }
-  for (const u of unavailable) {
+  for (const u of filteredUnavailable) {
     console.log(`${u.name.padEnd(15)}  ${'unavailable'.padEnd(10)}  ${u.error}`);
   }
 }

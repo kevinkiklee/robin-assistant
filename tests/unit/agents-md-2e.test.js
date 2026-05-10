@@ -18,7 +18,7 @@ test('agentsMdContent renders three sub-blocks inside one fence', () => {
   assert.match(md, /<!-- robin-integrations:start/);
   assert.match(md, /<!-- robin-integrations:end -->/);
   assert.match(md, /## Integration data freshness/);
-  assert.match(md, /## Outbound writes \(github_write, spotify_write\)/);
+  assert.match(md, /## Outbound writes \(github_write, spotify_write, discord_send\)/);
   assert.match(md, /## Available integrations/);
   assert.match(md, /gmail \(15m\): gmail_search/);
   assert.match(md, /discord \(gateway\)/);
@@ -41,6 +41,15 @@ test('outbound-writes section mentions spotify_write rate-limit and capture', ()
   assert.match(md, /spotify_write/);
   assert.match(md, /rate_limited/);
   assert.match(md, /playlist-add/);
+});
+
+test('outbound-writes section mentions discord_send allowlist + content cap', () => {
+  const md = agentsMdContent({ integrations: [] });
+  assert.match(md, /discord_send/);
+  assert.match(md, /send_dm/);
+  assert.match(md, /send_channel/);
+  assert.match(md, /not_allowed/);
+  assert.match(md, /content_too_long/);
 });
 
 test('renderIntegrationsList shows (none registered) when empty', () => {
