@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -36,6 +37,7 @@ import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
 import { createRunDreamTool } from '../mcp/tools/run-dream.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
 import { ensureHome, paths } from '../runtime/home.js';
+import { envFilePath } from '../secrets/dotenv-io.js';
 import { createBiographerQueue } from './biographer-queue.js';
 import { createIdleEmbedder } from './idle-embedder.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
@@ -47,6 +49,12 @@ import { getCliVersion } from './version-handshake.js';
 export async function startDaemon() {
   const version = await getCliVersion();
   await ensureHome();
+  if (!existsSync(envFilePath())) {
+    console.warn(`[daemon] no secrets file at ${envFilePath()} — integrations will fail.`);
+    console.warn(
+      '         Run: robin secrets import --from <v1-user-data>  (or: robin secrets set <KEY>)',
+    );
+  }
   const p = paths();
   const lockPath = join(p.home, '.daemon.lock');
   const statePath = join(p.home, '.daemon.state');
