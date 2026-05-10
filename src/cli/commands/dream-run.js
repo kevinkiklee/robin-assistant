@@ -3,7 +3,7 @@ import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { dreamProcess } from '../../dream/pipeline.js';
-import { createTransformersEmbedder } from '../../embed/embedder.js';
+import { createEmbedder } from '../../embed/factory.js';
 import { detectHost } from '../../hosts/detect.js';
 import { ensureHome, paths } from '../../runtime/home.js';
 
@@ -26,7 +26,7 @@ export async function dreamRun() {
         console.error(`dream run: ${e.message}`);
         process.exit(1);
       }
-      const embedder = await createTransformersEmbedder();
+      const embedder = await createEmbedder();
       const summary = await dreamProcess(db, host, embedder);
       console.log(JSON.stringify(summary, null, 2));
     } finally {
