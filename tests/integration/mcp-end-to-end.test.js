@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+
+function seedConfig(home) {
+  writeFileSync(join(home, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+}
 
 async function waitForState(home, timeoutMs = 15000) {
   const start = Date.now();
@@ -20,6 +24,7 @@ async function waitForState(home, timeoutMs = 15000) {
 
 test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-mcp-e2e-'));
+  seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
   // migrate first
   const m = spawn('node', [join(root, 'bin/robin'), 'migrate'], {

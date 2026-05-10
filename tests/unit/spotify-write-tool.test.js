@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
@@ -10,11 +10,26 @@ import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { createSpotifyWriteTool } from '../../src/integrations/spotify_write/tools/spotify-write.js';
 
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin } from 'node:path';
+import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+
+// __robin_test_home_setup__
+const __robinTestHome = __robinJoin(
+  __robinTmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+__robinMkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
+
 let tmpHome;
 test.beforeEach(() => {
   tmpHome = join(tmpdir(), `robin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpHome, { recursive: true });
   process.env.ROBIN_HOME = tmpHome;
+  writeFileSync(join(tmpHome, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
   _resetCache('spotify');
 });
 test.afterEach(() => {

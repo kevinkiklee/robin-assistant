@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
+function seedConfig(home) {
+  writeFileSync(join(home, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+}
+
 test('robin biographer-catchup runs without error against an empty DB', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-catchup-'));
+  seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
   // Migrate first
   spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
@@ -25,6 +30,7 @@ test('robin biographer-catchup runs without error against an empty DB', () => {
 
 test('robin biographer-catchup --retry-failed reports nothing-to-retry on empty state', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-catchup-rf-'));
+  seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
   spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },

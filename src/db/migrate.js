@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
+import { readConfig } from '../runtime/config.js';
 
 async function migrationsTableExists(db) {
   const [info] = await db.query('INFO FOR DB').collect();
@@ -24,11 +25,24 @@ function parseVersion(filename) {
 }
 
 export async function runMigrations(db, migrationsDir) {
+  const cfg = await readConfig();
+  if (!cfg?.embedder_profile) {
+    throw new Error(
+      'cannot run migrations: no embedder profile configured. Run `robin install` first.',
+    );
+  }
+  const activeEmbedderFile = `0008-embedder-${cfg.embedder_profile}.surql`;
+
   const all = (await readdir(migrationsDir)).filter((f) => f.endsWith('.surql')).sort();
   const applied = await loadApplied(db);
   const newlyApplied = [];
 
   for (const file of all) {
+    // 0008-embedder-<profile>.surql migrations are profile-specific. Apply only the
+    // file matching the active profile; skip the others.
+    if (file.startsWith('0008-embedder-') && file !== activeEmbedderFile) {
+      continue;
+    }
     const version = parseVersion(file);
     const sql = await readFile(join(migrationsDir, file), 'utf8');
     const checksum = sha256(sql);
