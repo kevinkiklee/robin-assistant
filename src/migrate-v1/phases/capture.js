@@ -71,14 +71,16 @@ export async function runCapturePhase({ v1, v2db, resolver, progress }) {
         const v2EpisodeId = v2EpisodeIdStr ? toRecordId(v2EpisodeIdStr) : null;
         const row = buildCaptureRow(v1Row, { v2_episode_id: v2EpisodeId });
         // SurrealDB option<record<episodes>> rejects JS null — omit episode_id when absent.
-        if (row.episode_id === null) delete row.episode_id;
+        if (row.episode_id === null) row.episode_id = undefined;
         const [created] = await v2db.query(surql`CREATE events CONTENT ${row}`).collect();
         resolver.set('capture', String(v1Row.id), String(created[0].id));
         imported++;
       } catch (e) {
         await recordFailure(v2db, {
-          v1_table: 'capture', v1_id: String(v1Row.id),
-          error_message: e.message, phase: 'capture',
+          v1_table: 'capture',
+          v1_id: String(v1Row.id),
+          error_message: e.message,
+          phase: 'capture',
         });
       }
       lastId = String(v1Row.id);

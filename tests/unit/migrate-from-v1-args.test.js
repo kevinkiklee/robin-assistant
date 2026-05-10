@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert';
+import { test } from 'node:test';
 import { parseArgs } from '../../src/cli/commands/migrate-from-v1.js';
 
 test('parseArgs --source + --dry-run', () => {

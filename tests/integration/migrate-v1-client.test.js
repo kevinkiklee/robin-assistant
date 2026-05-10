@@ -48,7 +48,7 @@ test('listTableCount sanitises table names against injection', async () => {
   const v1 = await openV1(dir);
   try {
     // Garbage chars are stripped; query falls through to count() on empty/missing table.
-    const n = await listTableCount(v1, "capture; DROP DATABASE main; --");
+    const n = await listTableCount(v1, 'capture; DROP DATABASE main; --');
     assert.equal(n, 0);
   } finally {
     await v1.close();

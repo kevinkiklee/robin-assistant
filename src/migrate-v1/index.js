@@ -1,11 +1,11 @@
 import { surql } from 'surrealdb';
-import { createResolver } from './resolver.js';
-import { openV1 } from './v1-client.js';
 import { runCapturePhase } from './phases/capture.js';
 import { runEdgesPhase } from './phases/edges.js';
 import { runEntityPhase } from './phases/entity.js';
 import { runEpisodePhase } from './phases/episode.js';
 import { runLossyPhase } from './phases/lossy.js';
+import { createResolver } from './resolver.js';
+import { openV1 } from './v1-client.js';
 
 const PROGRESS_ID = "type::record('runtime', 'migration_progress')";
 
@@ -16,7 +16,9 @@ async function readProgress(db) {
 
 async function writeProgress(db, value) {
   await db
-    .query(surql`UPSERT type::record('runtime', 'migration_progress') SET value = ${{ v1_to_v2: value }}`)
+    .query(
+      surql`UPSERT type::record('runtime', 'migration_progress') SET value = ${{ v1_to_v2: value }}`,
+    )
     .collect();
 }
 

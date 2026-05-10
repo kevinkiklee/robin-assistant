@@ -1,11 +1,11 @@
-import { test } from 'node:test';
 import assert from 'node:assert';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { connect, close } from '../../src/db/client.js';
+import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { runMigration } from '../../src/migrate-v1/index.js';
 import { paths } from '../../src/runtime/home.js';
@@ -142,9 +142,7 @@ test('--only runs a single phase', async () => {
 
     // capture phase did NOT run — events table has no captures
     const [caps] = await v2
-      .query(
-        `SELECT count() AS n FROM events WHERE meta.from_v1.v1_table = 'capture' GROUP ALL`,
-      )
+      .query(`SELECT count() AS n FROM events WHERE meta.from_v1.v1_table = 'capture' GROUP ALL`)
       .collect();
     assert.equal(caps[0]?.n ?? 0, 0);
   } finally {

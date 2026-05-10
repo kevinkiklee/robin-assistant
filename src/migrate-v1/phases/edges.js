@@ -26,7 +26,10 @@ export async function runEdgesPhase({ v1, v2db, resolver, progress }) {
   let lastId = progress?.cursor?.edges?.last_v1_id ?? null;
 
   try {
-    for await (const batch of scanTable(v1, 'participates_in', { batch: 200, startAfter: lastId })) {
+    for await (const batch of scanTable(v1, 'participates_in', {
+      batch: 200,
+      startAfter: lastId,
+    })) {
       for (const v1Row of batch) {
         const v2In = resolver.get('entity', String(v1Row.in));
         const v2Out = resolver.get('entity', String(v1Row.out));
