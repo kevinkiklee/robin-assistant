@@ -19,7 +19,7 @@ function fakeEvent(id, opts = {}) {
 }
 
 test('first sync captures events and saves cursor', async () => {
-  _resetCache();
+  _resetCache('google');
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -52,7 +52,7 @@ test('first sync captures events and saves cursor', async () => {
 });
 
 test('cancelled events get [CANCELLED] prefix', async () => {
-  _resetCache();
+  _resetCache('google');
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -85,7 +85,7 @@ test('cancelled events get [CANCELLED] prefix', async () => {
 });
 
 test('delta sync passes updatedMin', async () => {
-  _resetCache();
+  _resetCache('google');
   let updatedMinSeen = null;
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))

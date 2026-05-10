@@ -1,5 +1,5 @@
-import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { getGoogleAccessToken } from '../../_auth/token-cache.js';
+import { requireSecret, saveSecret } from '../../../secrets/dotenv-io.js';
+import { getAccessToken } from '../../_auth/token-cache.js';
 import { WORKSPACE_DOC, getFileBody, getFileMetadata } from '../client.js';
 
 function buildSecrets() {
@@ -22,7 +22,11 @@ export function createDriveGetFileTool() {
     },
     handler: async (args) => {
       try {
-        const accessToken = await getGoogleAccessToken({ secrets: buildSecrets() });
+        const accessToken = await getAccessToken({
+          provider: 'google',
+          secrets: buildSecrets(),
+          saveSecret,
+        });
         const metadata = await getFileMetadata({ accessToken, fileId: args.file_id });
         if (
           metadata.mimeType?.startsWith('application/vnd.google-apps.') &&

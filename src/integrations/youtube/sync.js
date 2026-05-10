@@ -1,4 +1,4 @@
-import { getGoogleAccessToken } from '../_auth/token-cache.js';
+import { getAccessToken } from '../_auth/token-cache.js';
 import {
   buildEventFromLikedVideo,
   buildEventFromPlaylist,
@@ -27,7 +27,12 @@ async function paginateAll(fetcher, accessToken, ctx, builder) {
 }
 
 export async function sync(ctx) {
-  const accessToken = await getGoogleAccessToken({ secrets: ctx.secrets, fetchFn: ctx.fetchFn });
+  const accessToken = await getAccessToken({
+    provider: 'google',
+    secrets: ctx.secrets,
+    fetchFn: ctx.fetchFn,
+    saveSecret: ctx.saveSecret,
+  });
   const [subs, playlists, liked] = await Promise.all([
     paginateAll(listSubscriptions, accessToken, ctx, buildEventFromSubscription),
     paginateAll(listMyPlaylists, accessToken, ctx, buildEventFromPlaylist),

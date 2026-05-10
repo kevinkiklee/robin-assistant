@@ -19,7 +19,7 @@ function fakeEvent(id) {
 }
 
 test('first sync without cursor, then delta with cursor', async () => {
-  _resetCache();
+  _resetCache('google');
   const calls = [];
   const fetchFn = mock.fn(async (url) => {
     calls.push(url);

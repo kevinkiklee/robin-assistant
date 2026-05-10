@@ -16,7 +16,7 @@ async function fresh() {
 }
 
 test('youtube sync produces three event kinds in events table', async () => {
-  _resetCache();
+  _resetCache('google');
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 384 });
   const capture = createCapture({

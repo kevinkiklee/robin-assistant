@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import {
-  _resetCache,
-  getAccessToken,
-  getGoogleAccessToken,
-} from '../../src/integrations/_auth/token-cache.js';
+import { _resetCache, getAccessToken } from '../../src/integrations/_auth/token-cache.js';
 
 function googleSecrets() {
   return {
@@ -146,14 +142,4 @@ test('unknown provider throws', async () => {
   await assert.rejects(() =>
     getAccessToken({ provider: 'nope', secrets: {}, fetchFn: async () => ({}) }),
   );
-});
-
-test('back-compat: getGoogleAccessToken delegates to getAccessToken("google")', async () => {
-  _resetCache();
-  const fakeFetch = mock.fn(async () => ({
-    ok: true,
-    json: async () => ({ access_token: 'shim-token', expires_in: 3600 }),
-  }));
-  const t = await getGoogleAccessToken({ secrets: googleSecrets(), fetchFn: fakeFetch });
-  assert.equal(t, 'shim-token');
 });

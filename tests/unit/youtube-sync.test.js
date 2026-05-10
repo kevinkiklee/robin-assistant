@@ -4,7 +4,7 @@ import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
 import { sync } from '../../src/integrations/youtube/sync.js';
 
 test('sync produces all three event kinds with correct external_id prefixes', async () => {
-  _resetCache();
+  _resetCache('google');
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -77,7 +77,7 @@ test('sync produces all three event kinds with correct external_id prefixes', as
 });
 
 test('sync paginates each kind independently', async () => {
-  _resetCache();
+  _resetCache('google');
   let subPage = 0;
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))

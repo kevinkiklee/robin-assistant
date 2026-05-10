@@ -18,7 +18,7 @@ function fakeFile(id) {
 }
 
 test('first sync caps at 200 and saves start_page_token', async () => {
-  _resetCache();
+  _resetCache('google');
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -48,7 +48,7 @@ test('first sync caps at 200 and saves start_page_token', async () => {
 });
 
 test('delta sync uses changes.list', async () => {
-  _resetCache();
+  _resetCache('google');
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -82,7 +82,7 @@ test('delta sync uses changes.list', async () => {
 });
 
 test('delta sync filters out removed/no-file changes', async () => {
-  _resetCache();
+  _resetCache('google');
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token'))
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };

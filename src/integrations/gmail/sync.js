@@ -1,4 +1,4 @@
-import { getGoogleAccessToken } from '../_auth/token-cache.js';
+import { getAccessToken } from '../_auth/token-cache.js';
 import {
   FIRST_SYNC_CAP,
   buildEventFromMessage,
@@ -84,9 +84,11 @@ async function deltaSync(ctx, accessToken, startHistoryId) {
 }
 
 export async function sync(ctx) {
-  const accessToken = await getGoogleAccessToken({
+  const accessToken = await getAccessToken({
+    provider: 'google',
     secrets: ctx.secrets,
     fetchFn: ctx.fetchFn,
+    saveSecret: ctx.saveSecret,
   });
   if (ctx.cursor?.history_id) {
     return await deltaSync(ctx, accessToken, ctx.cursor.history_id);
