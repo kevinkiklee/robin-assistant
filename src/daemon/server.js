@@ -561,6 +561,24 @@ export async function startDaemon() {
     httpServer = createServer(async (req, res) => {
       try {
         if (req.method === 'POST' && req.url === '/internal/biographer/process-pending') {
+          const body = await readJsonBody(req);
+          // Capture pre-step (fail-soft). When the Stop hook forwards
+          // transcript_path, read the latest turn and write a conversation
+          // event before draining pending — biographer then processes it
+          // alongside any other pending rows.
+          if (body && typeof body.transcript_path === 'string' && body.transcript_path.length > 0) {
+            try {
+              const { captureFromTranscript } = await import('../capture/session-capture.js');
+              await captureFromTranscript(dbHandle, embedderWrap, {
+                transcriptPath: body.transcript_path,
+                sessionId: body.session_id ?? body.sessionId ?? null,
+                host: host?.name ?? null,
+              });
+            } catch (e) {
+              console.error(`daemon capture pre-step failed: ${e.message}`);
+            }
+          }
+
           const [pendingRows] = await dbHandle
             .query('SELECT id, ts FROM events WHERE biographed_at IS NONE ORDER BY ts ASC LIMIT 50')
             .collect();
