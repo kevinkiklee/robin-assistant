@@ -144,3 +144,38 @@ test('unknown action returns unknown_action', async () => {
   assert.equal(r.reason, 'unknown_action');
   await close(db);
 });
+
+test('rate-limit refusal short-circuits before outbound-policy', async () => {
+  const { db, capture } = await freshSetup();
+  process.env.GITHUB_WRITE_RATE_LIMIT = '1';
+  try {
+    const fakeFetch = mock.method(globalThis, 'fetch', async () => ({
+      ok: true,
+      status: 201,
+      json: async () => ({ number: 1, html_url: 'https://github.com/x/y/issues/1' }),
+      text: async () => '',
+    }));
+    try {
+      const t = createGitHubWriteTool({ db, capture });
+      // First call: consumes the quota of 1.
+      const r1 = await t.handler({
+        action: 'create-issue',
+        args: { repo: 'x/y', title: 'first', body: 'ok' },
+      });
+      assert.equal(r1.ok, true);
+      // Second call: would be PII-blocked by outbound-policy, but rate-limit
+      // must short-circuit first and return rate_limited (not outbound_blocked).
+      const r2 = await t.handler({
+        action: 'create-issue',
+        args: { repo: 'x/y', title: 'My SSN is 123-45-6789', body: 'oops' },
+      });
+      assert.equal(r2.ok, false);
+      assert.equal(r2.reason, 'rate_limited');
+    } finally {
+      fakeFetch.mock.restore();
+    }
+  } finally {
+    Reflect.deleteProperty(process.env, 'GITHUB_WRITE_RATE_LIMIT');
+    await close(db);
+  }
+});

@@ -1,4 +1,5 @@
 import { checkOutbound } from '../../../outbound/policy.js';
+import { checkRateLimit } from '../../../outbound/rate-limit.js';
 import { addComment, applyLabels, createIssue, markNotificationRead } from '../client.js';
 
 export function createGitHubWriteTool({ db, capture }) {
@@ -15,6 +16,8 @@ export function createGitHubWriteTool({ db, capture }) {
       required: ['action', 'args'],
     },
     handler: async (input) => {
+      const rate = await checkRateLimit(db, 'github_write');
+      if (!rate.ok) return rate;
       const { action, args } = input;
       switch (action) {
         case 'create-issue': {
