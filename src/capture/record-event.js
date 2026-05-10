@@ -11,6 +11,7 @@ const VALID_SOURCES = new Set([
   'ingest',
   'discord',
   'migration',
+  'conversation',
 ]);
 
 export async function recordEvent(db, embedder, input) {
