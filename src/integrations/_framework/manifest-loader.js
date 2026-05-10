@@ -38,6 +38,21 @@ export function validateManifest(m) {
       `manifest ${m.name}: cannot determine integration kind (need sync OR start OR tools[])`,
     );
   }
+  let quiet_window = null;
+  if (m.quiet_window != null) {
+    const qw = m.quiet_window;
+    if (
+      typeof qw !== 'object' ||
+      typeof qw.tz !== 'string' ||
+      !Array.isArray(qw.active_hours) ||
+      qw.active_hours.some((h) => !Number.isInteger(h) || h < 0 || h > 23)
+    ) {
+      throw new Error(
+        'manifest.quiet_window must be { tz: string, active_hours: number[] } with hours in [0,23]',
+      );
+    }
+    quiet_window = { tz: qw.tz, active_hours: [...qw.active_hours] };
+  }
   return {
     name: m.name,
     cadence_ms,
@@ -52,6 +67,7 @@ export function validateManifest(m) {
     stop: m.stop,
     preflight: typeof m.preflight === 'function' ? m.preflight : null,
     config: m.config ?? {},
+    quiet_window,
   };
 }
 

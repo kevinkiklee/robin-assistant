@@ -49,6 +49,7 @@ export async function integrationsRun(argv) {
             cadence_ms: target.cadence_ms,
             sync: target.sync,
             secrets: target.secrets,
+            quiet_window: target.quiet_window ?? null,
             capture: createCapture({
               db,
               embedder,

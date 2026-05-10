@@ -34,6 +34,35 @@ function effectiveCadenceMs(row) {
   return Math.min(base * multiplier, BACKOFF_MAX_MS);
 }
 
+/**
+ * If a manifest declares `quiet_window: { tz, active_hours }`, advance
+ * `nextRunAt` forward in 1-hour steps until it falls inside `active_hours`
+ * in the configured timezone. Used to gate integrations whose upstream is
+ * only meaningful during specific local hours (e.g. Whoop overnight
+ * recovery scores finalize 4-9am local). Caller passes the computed
+ * scheduler tick; we never roll backward, only forward (up to 48h, which
+ * covers any 1+ hour active window plus DST gaps).
+ */
+export function adjustForQuietWindow(nextRunAt, quietWindow) {
+  if (!quietWindow) return nextRunAt;
+  const { tz, active_hours } = quietWindow;
+  if (!Array.isArray(active_hours) || active_hours.length === 0) return nextRunAt;
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour: 'numeric',
+    hour12: false,
+  });
+  let candidate = new Date(nextRunAt);
+  for (let i = 0; i < 48; i++) {
+    // `hour: numeric` in en-US can yield "24" for midnight; normalize to 0.
+    const raw = Number.parseInt(formatter.format(candidate), 10);
+    const hour = raw === 24 ? 0 : raw;
+    if (active_hours.includes(hour)) return candidate;
+    candidate = new Date(candidate.getTime() + 60 * 60_000);
+  }
+  return candidate;
+}
+
 export async function runIntegrationSync(db, registry, name, { manual = false } = {}) {
   const cur = await readIntegrationRow(db, name);
   if (!cur) throw new Error(`integration not registered: ${name}`);
@@ -75,6 +104,10 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
     };
     const result = await integration.sync(ctx);
     const durationMs = Date.now() - startMs;
+    const next_run_at = adjustForQuietWindow(
+      new Date(Date.now() + cur.cadence_ms),
+      integration.quiet_window ?? null,
+    );
     await writeIntegrationRow(db, name, {
       in_flight: false,
       in_flight_started_at: null,
@@ -84,7 +117,7 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
       last_sync_count: result?.count ?? 0,
       consecutive_failures: 0,
       cursor: result?.cursor ?? null,
-      next_run_at: new Date(Date.now() + cur.cadence_ms),
+      next_run_at,
     });
     return {
       ok: true,
