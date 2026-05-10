@@ -1,60 +1,42 @@
 /**
- * Heartbeat-based scheduler for the dream pipeline.
+ * Heartbeat-based scheduler for integrations + dream pipeline.
  *
  * Ticks every `heartbeatMs` (default 60s). Each tick:
- *   1. If `runtime:scheduler.next_dream_run_at` is past-due, run dream and
- *      advance the next scheduled time to the next nightly cron hour.
- *   2. Else, if the system is in event-count overflow, run dream.
+ *   1. `listDue()` returns `[{ name, kind }]` for items whose `next_run_at`
+ *      has passed (integrations with kind='integration', dream with
+ *      kind='dream' and name='__dream__').
+ *   2. For each due item, dispatch via `runOne(name)`. Per-name in-flight
+ *      tracking prevents the same integration from running twice but lets
+ *      different integrations run concurrently.
+ *   3. If nothing else is in flight and `isOverflow()` is true, kick the
+ *      dream pipeline via `runOne('__dream__')`.
  *
  * Heartbeat polling is sleep-resilient: when the laptop wakes, the next tick
  * fires within `heartbeatMs` and catches up missed runs. setTimeout-based
  * scheduling, by contrast, can fire far past its target or never fire at all
  * after a long sleep.
  *
- * In-flight guard prevents concurrent runs while a dream is still executing.
- *
- * Pure module — no DB access here. Inject `runDream`, `isOverflow`,
- * `getCronHour`, `readNextRunAt`, `writeNextRunAt` as deps.
+ * Pure module — no DB access here. Inject `listDue`, `runOne`, `isOverflow`
+ * as deps. Daemon wiring in Task 12 maps these to DB-backed implementations.
  */
-export function createScheduler({
-  runDream,
-  isOverflow,
-  getCronHour,
-  readNextRunAt,
-  writeNextRunAt,
-  heartbeatMs = 60_000,
-}) {
+export function createScheduler({ listDue, runOne, isOverflow, heartbeatMs = 60_000 }) {
   let timer = null;
-  let inFlight = false;
-
-  function computeNextNightly(cronHour) {
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(cronHour, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    return next;
-  }
+  const inFlight = new Set();
 
   async function tick() {
-    if (inFlight) return;
-    const next = await readNextRunAt();
-    if (next && new Date() >= new Date(next)) {
-      inFlight = true;
-      try {
-        await runDream({ trigger: 'cron' });
-        await writeNextRunAt(computeNextNightly(getCronHour()));
-      } finally {
-        inFlight = false;
-      }
-      return;
+    const due = (await listDue?.()) ?? [];
+    for (const item of due) {
+      if (inFlight.has(item.name)) continue;
+      inFlight.add(item.name);
+      runOne(item.name)
+        .catch(() => {})
+        .finally(() => inFlight.delete(item.name));
     }
-    if (!inFlight && (await isOverflow())) {
-      inFlight = true;
-      try {
-        await runDream({ trigger: 'overflow' });
-      } finally {
-        inFlight = false;
-      }
+    if (inFlight.size === 0 && (await isOverflow?.())) {
+      inFlight.add('__dream__');
+      runOne('__dream__')
+        .catch(() => {})
+        .finally(() => inFlight.delete('__dream__'));
     }
   }
 

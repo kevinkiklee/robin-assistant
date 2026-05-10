@@ -2,62 +2,77 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createScheduler } from '../../src/daemon/scheduler.js';
 
-test('scheduler heartbeat fires runDream when next_run_at is past-due', async () => {
-  let runDreamCalls = 0;
-  let nextRunAt = new Date(Date.now() - 1000); // past
+test('scheduler fires runOne for due items', async () => {
+  let calls = 0;
   const scheduler = createScheduler({
-    runDream: async () => {
-      runDreamCalls++;
+    listDue: async () => [{ name: '__dream__', kind: 'dream' }],
+    runOne: async () => {
+      calls++;
     },
     isOverflow: async () => false,
-    getCronHour: () => 4,
-    readNextRunAt: async () => nextRunAt,
-    writeNextRunAt: async (d) => {
-      nextRunAt = d;
-    },
     heartbeatMs: 50,
   });
   scheduler.start();
   await new Promise((r) => setTimeout(r, 100));
   scheduler.stop();
-  assert.ok(runDreamCalls >= 1);
+  assert.ok(calls >= 1);
 });
 
-test('scheduler heartbeat fires runDream on overflow', async () => {
-  let runDreamCalls = 0;
+test('scheduler fires runOne(__dream__) on overflow when nothing else due', async () => {
+  let calls = 0;
   let overflow = true;
   const scheduler = createScheduler({
-    runDream: async () => {
-      runDreamCalls++;
-      overflow = false;
+    listDue: async () => [],
+    runOne: async (name) => {
+      if (name === '__dream__') {
+        calls++;
+        overflow = false;
+      }
     },
     isOverflow: async () => overflow,
-    getCronHour: () => 4,
-    readNextRunAt: async () => new Date(Date.now() + 86400_000),
-    writeNextRunAt: async () => {},
     heartbeatMs: 50,
   });
   scheduler.start();
   await new Promise((r) => setTimeout(r, 150));
   scheduler.stop();
-  assert.ok(runDreamCalls >= 1);
+  assert.ok(calls >= 1);
 });
 
-test('scheduler does not run when in flight', async () => {
-  let runDreamCalls = 0;
+test('scheduler does not double-run same name while in flight', async () => {
+  let calls = 0;
   const scheduler = createScheduler({
-    runDream: async () => {
-      runDreamCalls++;
+    listDue: async () => [{ name: 'gmail', kind: 'integration' }],
+    runOne: async () => {
+      calls++;
       await new Promise((r) => setTimeout(r, 200));
     },
     isOverflow: async () => false,
-    getCronHour: () => 4,
-    readNextRunAt: async () => new Date(Date.now() - 1000),
-    writeNextRunAt: async () => {},
     heartbeatMs: 30,
   });
   scheduler.start();
   await new Promise((r) => setTimeout(r, 100));
   scheduler.stop();
-  assert.equal(runDreamCalls, 1);
+  assert.equal(calls, 1);
+});
+
+test('scheduler runs different names concurrently', async () => {
+  const calls = [];
+  const scheduler = createScheduler({
+    listDue: async () => [
+      { name: 'gmail', kind: 'integration' },
+      { name: 'lunch_money', kind: 'integration' },
+    ],
+    runOne: async (name) => {
+      calls.push(name);
+      await new Promise((r) => setTimeout(r, 100));
+    },
+    isOverflow: async () => false,
+    heartbeatMs: 50,
+  });
+  scheduler.start();
+  await new Promise((r) => setTimeout(r, 60));
+  scheduler.stop();
+  assert.equal(calls.length, 2);
+  assert.ok(calls.includes('gmail'));
+  assert.ok(calls.includes('lunch_money'));
 });
