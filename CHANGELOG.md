@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.0.0-alpha.6] — 2026-05-09
+
+Phase 2e: .env secrets layer + Calendar/Drive/YouTube + github_write.
+
+- **Secrets layer rework:** Phase 2d's per-integration JSON files at `~/.robin/secrets/<name>.json` replaced with a single `${ROBIN_HOME}/secrets/.env`. Lazy `requireSecret(key)` reads, atomic write-temp-then-rename for `saveSecret` and `importFrom`. No `process.env` pollution. Each manifest declares `secrets.env_keys: [...]`.
+- **`robin secrets import --from <path>`** copies v1's `user-data/runtime/secrets/.env` into v2's location with 0600 perms. **Required upgrade step from 2d.** Plus `robin secrets list` (key names only, never values) and `robin secrets set <KEY>` (interactive, no echo).
+- **3 new sync integrations** all reusing `GOOGLE_OAUTH_*` env keys via a `google-token-cache.js` singleton (refresh-promise dedup):
+  - `google_calendar` (30m, ±14d window, upsert)
+  - `google_drive` (4h, 30d/200-cap first sync, upsert)
+  - `youtube` (24h, three-kind capture: sub/playlist/liked, insert-or-skip)
+- **`github_write` tool-only integration** — third manifest kind alongside sync and gateway. 4 actions (create-issue, comment, label, mark-read). Text actions through outbound-policy; non-text skip. create-issue and comment captures audit events to the events table; label and mark-read are daemon-log only.
+- **7 new MCP tools** (31 total daemon surface): `calendar_list_events`, `calendar_get_event`, `drive_search`, `drive_get_file`, `youtube_list_subscriptions`, `youtube_list_liked`, `github_write`. `integration_run` gains `tool_only_no_sync` refusal reason.
+- **Removed:** `auth gmail/lunch_money/discord` CLIs and `_auth/secrets-io.js`. OAuth loopback helper retained for 2f's headless flow.
+- **AGENTS.md** restructured into three regenerable sub-blocks: Integration data freshness, Outbound writes (github_write), Available integrations.
+- **Daemon boot warning** if `${ROBIN_HOME}/secrets/.env` is missing.
+- **`integrations list`** now merges manifest registry with runtime row, displaying gateway/tool-only kinds correctly alongside synced integrations.
+
+Phase 2f candidates: spotify-write, headless OAuth `--code` flag, rate limiter, remaining v1 integrations (weather, ebird, chrome, whoop, lrc, linear, nhl, photos, ga).
+
 ## [6.0.0-alpha.5] — 2026-05-09
 
 Phase 2d: integrations framework + Gmail + Lunch Money + Discord bot.
