@@ -155,6 +155,10 @@ export async function main(argv) {
     const { hook } = await import('./commands/hook.js');
     return hook(argv.slice(1));
   }
+  if (cmd === 'remember') {
+    const { remember } = await import('./commands/remember.js');
+    return remember(argv.slice(1));
+  }
   if (cmd === 'sessions') {
     const { sessionsPurge } = await import('./commands/sessions-purge.js');
     return sessionsPurge(argv.slice(1));

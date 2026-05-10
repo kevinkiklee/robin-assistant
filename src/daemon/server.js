@@ -498,6 +498,32 @@ export async function startDaemon() {
           res.end(JSON.stringify({ enqueued: pendingRows.length }));
           return;
         }
+        if (req.method === 'POST' && req.url === '/internal/remember') {
+          const body = await readJsonBody(req);
+          if (typeof body.content !== 'string' || body.content.length === 0) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'content required' }));
+            return;
+          }
+          try {
+            const { recordEvent } = await import('../capture/record-event.js');
+            const { guardInboundContent } = await import('../hooks/inbound-guard.js');
+            const result = await recordEvent(dbHandle, embedderWrap, {
+              source: body.source ?? 'cli',
+              content: body.content,
+              meta: body.meta ?? undefined,
+              guard: body.force === true ? undefined : guardInboundContent,
+            });
+            queueWrap.enqueue(String(result.id)).catch(() => {});
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ id: String(result.id) }));
+          } catch (e) {
+            const code = e?.name === 'RobinPiiRefusedError' ? 422 : 500;
+            res.writeHead(code, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message, name: e?.name }));
+          }
+          return;
+        }
         if (req.method === 'POST' && req.url === '/internal/session/register') {
           const body = await readJsonBody(req);
           await markStaleSessions(dbHandle).catch(() => {});
