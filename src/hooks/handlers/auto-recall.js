@@ -14,9 +14,10 @@
 //     stdout into the model's context).
 //   - On any failure (no daemon, timeout, non-2xx, etc.) exit 0 silently.
 
-import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readDaemonState } from '../../daemon/state.js';
+import { readFileTail } from '../../runtime/file-tail.js';
 import { paths } from '../../runtime/home.js';
 
 const TRANSCRIPT_TAIL_BYTES = 8 * 1024;
@@ -57,35 +58,6 @@ function extractAssistantText(content) {
   return '';
 }
 
-// Read the last N bytes of a file as utf8. Designed for JSONL tails so we
-// can pick up the most recent assistant message without loading the whole
-// transcript. Returns '' on any error.
-function readTail(filePath, maxBytes) {
-  let fd;
-  try {
-    const st = statSync(filePath);
-    if (!st.isFile()) return '';
-    const size = st.size;
-    const start = Math.max(0, size - maxBytes);
-    const length = size - start;
-    if (length <= 0) return '';
-    fd = openSync(filePath, 'r');
-    const buf = Buffer.alloc(length);
-    readSync(fd, buf, 0, length, start);
-    return buf.toString('utf8');
-  } catch {
-    return '';
-  } finally {
-    if (typeof fd === 'number') {
-      try {
-        closeSync(fd);
-      } catch {
-        // ignore
-      }
-    }
-  }
-}
-
 // Find the most recent assistant message in a JSONL tail. Drops the first
 // (likely partial) line because we may have read mid-line.
 function findLastAssistantText(tail) {
@@ -114,7 +86,7 @@ function findLastAssistantText(tail) {
 
 function readPriorAssistant(transcriptPath) {
   if (!transcriptPath) return '';
-  const tail = readTail(transcriptPath, TRANSCRIPT_TAIL_BYTES);
+  const tail = readFileTail(transcriptPath, TRANSCRIPT_TAIL_BYTES);
   if (!tail) return '';
   const text = findLastAssistantText(tail);
   if (!text) return '';
