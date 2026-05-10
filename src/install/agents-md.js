@@ -1,7 +1,9 @@
 const START_MARKER = '<!-- robin-mcp:start -->';
 const END_MARKER = '<!-- robin-mcp:end -->';
 
-function formatCadence(ms) {
+function formatCadence(ms, kind) {
+  if (kind === 'gateway') return 'gateway';
+  if (kind === 'tool-only') return 'tool-only';
   if (ms === null || ms === undefined) return 'gateway';
   if (ms >= 86_400_000 && ms % 86_400_000 === 0) return `${ms / 86_400_000}d`;
   if (ms >= 3_600_000 && ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
@@ -11,13 +13,22 @@ function formatCadence(ms) {
 function renderIntegrationsList(integrations) {
   const lines = [];
   for (const i of integrations) {
-    const cadence = formatCadence(i.cadence_ms);
-    if (i.cadence_ms === null || i.cadence_ms === undefined) {
+    const cadence = formatCadence(i.cadence_ms, i.kind);
+    const hasTools = (i.tool_names ?? []).length > 0;
+    const tools = hasTools ? i.tool_names.join(', ') : '(no agent-callable tools)';
+    if (i.kind === 'gateway') {
+      lines.push(
+        `- ${i.name} (gateway): bot listens on allowlist; ${hasTools ? tools : 'no agent-callable tools'}`,
+      );
+    } else if (i.kind === 'tool-only') {
+      lines.push(`- ${i.name} (tool-only): ${tools}`);
+    } else if (i.cadence_ms === null || i.cadence_ms === undefined) {
+      // Back-compat: old-shape input without kind, null cadence → gateway-style line.
       lines.push(`- ${i.name} (${cadence}): bot listens on allowlist; no agent-callable tools`);
-    } else if ((i.tool_names ?? []).length === 0) {
+    } else if (!hasTools) {
       lines.push(`- ${i.name} (${cadence}): no agent-callable tools`);
     } else {
-      lines.push(`- ${i.name} (${cadence}): ${i.tool_names.join(', ')}`);
+      lines.push(`- ${i.name} (${cadence}): ${tools}`);
     }
   }
   if (lines.length === 0) lines.push('- (none registered)');
@@ -41,6 +52,19 @@ last_sync_ok. Don't loop more than ~30 polls (~60s).
 
 Don't fabricate fresh data. Don't loop on integration_run — the 30s
 min-interval will refuse, and repeated polling burns API quota.
+
+## Outbound writes (github_write)
+
+Use \`github_write\` for create-issue, comment, label, mark-read. Text content
+(create-issue body, comment body) passes through outbound-policy — PII /
+secret / verbatim-untrusted-quote checks. If blocked, the tool returns
+{ ok: false, reason: 'outbound_blocked', blocked_by: '<policy reason>' };
+DON'T retry by paraphrasing to bypass the guard — surface the block to the
+user and ask for guidance.
+
+create-issue and comment writes are captured to events (recall searchable);
+label and mark-read are NOT captured (no text content). Don't expect
+recall('issue I labeled X') to find anything.
 
 ## Available integrations
 
