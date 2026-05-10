@@ -38,8 +38,9 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
     assert.ok(state.port > 0);
     // 10 Phase 2b tools + 9 Phase 2c tools + 5 Phase 2d integration tools
     // (status + run + gmail_search + gmail_get_thread + lunch_money_query) = 24,
-    // + 2 Phase 2e google_calendar tools (calendar_list_events + calendar_get_event) = 26.
-    assert.equal(state.tool_count, 26, `expected 26 registered tools, got ${state.tool_count}`);
+    // + 2 Phase 2e google_calendar tools (calendar_list_events + calendar_get_event) = 26,
+    // + 2 Phase 2e google_drive tools (drive_search + drive_get_file) = 28.
+    assert.equal(state.tool_count, 28, `expected 28 registered tools, got ${state.tool_count}`);
     // Smoke: connecting to /sse should at least open (we don't parse SSE here)
     const res = await fetch(`http://127.0.0.1:${state.port}/sse`, {
       signal: AbortSignal.timeout(2000),
