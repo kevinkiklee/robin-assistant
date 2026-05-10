@@ -21,6 +21,26 @@ Phase 3b: v1→v2 migrator + missing read-sync integrations + cleanup. Builds on
 
 Phase 3b candidates that didn't ship: forward-looking biographer hint replay from `v1_mentions` lossy events; reranker training-set bootstrapping from `v1_preference` + `v1_correction` (Phase 4 work).
 
+## [6.0.0-alpha.8a] — 2026-05-10
+
+Phase 3a: pluggable embedder profiles + ROBIN_HOME path refactor.
+
+- **ROBIN_HOME path refactor.** Robin's data root moved from `~/.robin/` to `<package_root>/user-data/` (matching v1's pattern). `ROBIN_HOME` env var still overrides. `src/runtime/home.js` walks up from `import.meta.url` to find the package root; `paths()` returns `{ home, db, secrets, cache, config, backup, daemonState, daemonLock, migrationsDir }`.
+- **Pluggable `Embedder` interface** at `src/embed/types.js` with three implementations chosen at install time:
+  - `mxbai-1024` — in-process via `@huggingface/transformers` (`mixedbread-ai/mxbai-embed-large-v1`, 1024-dim, MTEB retrieval ~60). Default. (`Xenova/...` mirror is 401-walled — switched to upstream + `cls` pooling per model card.)
+  - `qwen3-4096` — local via Ollama (`qwen3-embedding:8b`, 4096-dim, MTEB retrieval ~68). `OLLAMA_HOST` env var override; falls back to `/api/embeddings` on 404.
+  - `gemini-3072` — Google AI Studio API (`gemini-embedding-001`, 3072-dim, MTEB retrieval ~68). Privacy disclosure + `--i-understand` required for non-interactive install: free tier trains on input.
+- **Factory pattern.** `src/embed/factory.js` `createEmbedder()` reads profile from `<robinHome>/config.json` and dynamic-imports the matching impl. Daemon now wires `createIdleEmbedder({ factory: createEmbedder, idleMs: 600_000 })`.
+- **Three migration files** at `src/schema/migrations/0008-embedder-<profile>.surql` — each redefines `embedding` field + HNSW index on `events`, `knowledge`, `entities` and `query_vec` on `recall_events` at the profile's dimension. Migration runner reads config and applies only the active profile's 0008.
+- **`runtime:embedder` row** written by every 0008 migration. Daemon-boot drift detection refuses to start if `config.json.embedder_profile` ≠ `runtime:embedder.value.profile`, with a one-line remediation pointing at `robin embedder switch`.
+- **Boot health-check** per profile via `idleEmbedder.get().healthCheck()` — Ollama unreachable / model missing / Gemini key absent each surfaces a profile-specific install-instruction line and `process.exit(1)`.
+- **`robin install` rewrite** (`src/cli/commands/install.js`): multi-step idempotent flow with profile prompt, legacy `~/.robin/` detection, per-profile validation (Ollama probe, Gemini key + disclosure), `runMigrations`, daemon supervision wire-up via existing `mcpInstall`. Flags: `--profile <id>`, `--force`, `--i-understand`, `--no-mcp`, `--no-migrate` (test escape hatches). Injectable deps for testability.
+- **`robin embedder switch <profile>` CLI** (`src/cli/commands/embedder-switch.js`): pre-clears stale-dim vectors (`events.embedding = NONE`, truncate `knowledge`/`entities`/`recall_events` since they regenerate from raw events via Dream + biographer + the recall feedback loop), drops the old `_migrations` row, re-applies 0008 at the new dim, re-embeds events resumably (progress in `runtime:embedder.value.switch_progress`).
+- **Test stub default dim** bumped to 1024 (matching mxbai). 46 test files updated; obsolete bge-small tests (`embedder-real`, `recall-quality`) removed.
+- **Test count:** 617/617 passing on full suite. Lint clean for all 3a-touched files.
+
+Phase 3b (separate spec) handled the v1→v2 migrator + 3 missing read-sync integrations + 30-day backup auto-prune + no-encryption decision.
+
 ## [6.0.0-alpha.7] — 2026-05-10
 
 Phase 2f: OAuth generalization + spotify-write + headless OAuth + rate limiter + 8 read-sync integrations.
