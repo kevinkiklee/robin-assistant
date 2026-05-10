@@ -1,5 +1,5 @@
 import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { getGoogleAccessToken } from '../../_auth/google-token-cache.js';
+import { getGoogleAccessToken } from '../../_auth/token-cache.js';
 import { getThread } from '../client.js';
 
 function buildSecrets() {

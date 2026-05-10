@@ -1,4 +1,4 @@
-import { getGoogleAccessToken } from '../_auth/google-token-cache.js';
+import { getGoogleAccessToken } from '../_auth/token-cache.js';
 import { buildEventFromCalendarItem, listEvents } from './client.js';
 
 const WINDOW_DAYS = 14;

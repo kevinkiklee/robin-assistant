@@ -5,7 +5,7 @@ import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { _resetCache } from '../../src/integrations/_auth/google-token-cache.js';
+import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { sync } from '../../src/integrations/gmail/sync.js';
 

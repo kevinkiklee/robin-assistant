@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { _resetCache } from '../../src/integrations/_auth/google-token-cache.js';
+import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
 import { sync } from '../../src/integrations/google_calendar/sync.js';
 
 function fakeEvent(id) {

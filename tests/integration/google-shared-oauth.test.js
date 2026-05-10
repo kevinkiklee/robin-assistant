@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import {
-  _resetCache,
-  getGoogleAccessToken,
-} from '../../src/integrations/_auth/google-token-cache.js';
+import { _resetCache, getGoogleAccessToken } from '../../src/integrations/_auth/token-cache.js';
 
 test('gmail + calendar + drive share one token fetch via cache singleton', async () => {
   _resetCache();
