@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import readline from 'node:readline/promises';
 import { close, connect } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
+import { ensureHookShim } from '../../install/hook-shim.js';
+import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
+import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { readConfig, writeConfig } from '../../runtime/config.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, packageRootDir, paths } from '../../runtime/home.js';
 import { getSecret, saveSecret } from '../../secrets/dotenv-io.js';
 import { parseArgs } from '../args.js';
 import { mcpInstall } from './mcp-install.js';
@@ -176,6 +179,37 @@ async function applyMigrations({ connectFn, closeFn, onDbReady }) {
   }
 }
 
+async function installHooksStep({ skipHooks }) {
+  if (skipHooks) {
+    console.log('skipping hook install (--no-hooks)');
+    return;
+  }
+  const packageRoot = packageRootDir();
+  await ensureHookShim();
+  try {
+    await validateRobinResolvable({ packageRoot });
+  } catch (e) {
+    console.error('');
+    console.error(`hook install failed: ${e.message}`);
+    console.error(
+      'Robin hooks need either `robin` on PATH from a login shell OR an executable shim',
+    );
+    console.error(
+      'at <package-root>/bin/robin-hook.sh. Install robin globally (`npm i -g robin-assistant`)',
+    );
+    console.error('or check filesystem permissions on the shim, then re-run `robin install`.');
+    process.exit(1);
+  }
+  const { addedByHost } = await installHooksToSettings({
+    homeDir: homedir(),
+    packageRoot,
+  });
+  for (const [host, count] of Object.entries(addedByHost)) {
+    const settingsPath = host === 'claude' ? '~/.claude/settings.json' : `~/.${host}/settings.json`;
+    console.log(`installed ${count} robin hook entries to ${settingsPath}`);
+  }
+}
+
 export async function install(argv = [], deps = {}) {
   const args = parseArgs(argv);
   const force = args.flags.force === true;
@@ -183,6 +217,8 @@ export async function install(argv = [], deps = {}) {
   const iUnderstand = args.flags['i-understand'] === true;
   const skipMcp = args.flags['no-mcp'] === true;
   const skipMigrate = args.flags['no-migrate'] === true;
+  const skipHooks = args.flags['no-hooks'] === true;
+  const hooksOnly = args.flags['hooks-only'] === true;
 
   const prompt = deps.prompt ?? defaultPrompt;
   const fetchFn = deps.fetch ?? globalThis.fetch;
@@ -191,6 +227,13 @@ export async function install(argv = [], deps = {}) {
   const connectFn = deps.connect ?? connect;
   const closeFn = deps.close ?? close;
   const onDbReady = deps.onDbReady;
+
+  // --hooks-only: short-circuit. Run ONLY the hook install (and PATH probe +
+  // shim ensure). For repair after manual settings.json edits.
+  if (hooksOnly) {
+    await installHooksStep({ skipHooks: false });
+    return;
+  }
 
   // 1. Detect legacy ~/.robin/.
   await detectLegacyHome({ prompt, interactive, force });
@@ -228,14 +271,31 @@ export async function install(argv = [], deps = {}) {
     await applyMigrations({ connectFn, closeFn, onDbReady });
   }
 
-  // 7. Daemon supervision wire-up.
+  // 7. Tamper baseline. Written after migrations + config so the manifest
+  // captures the just-installed package version + supervisor file path.
+  // Tamper-check on daemon boot compares against this baseline.
+  try {
+    const manifest = await computeManifest();
+    await writeManifest(manifest);
+    console.log(`tamper baseline written (${manifest.files.length} files)`);
+  } catch (e) {
+    console.warn(`tamper baseline failed (non-fatal): ${e.message}`);
+  }
+
+  // 8. Hook install — wire PreToolUse/UserPromptSubmit/SessionStart/Stop
+  // entries into ~/.claude/settings.json + ~/.gemini/settings.json. Skipped
+  // by --no-hooks. Failure here aborts the install (exit 1), since v2's
+  // safety floor depends on these hooks firing.
+  await installHooksStep({ skipHooks });
+
+  // 9. Daemon supervision wire-up.
   if (!skipMcp) {
     console.log('');
     console.log('Installing MCP daemon supervision and host registration...');
     await supervise(argv);
   }
 
-  // 8. Next-step guidance.
+  // 10. Next-step guidance.
   console.log('');
   console.log(`Robin installed (profile: ${profile}).`);
   console.log('Restart your Claude Code / Gemini CLI session to pick up the new MCP server.');

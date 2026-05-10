@@ -1,4 +1,5 @@
 import { recordEvent } from '../../capture/record-event.js';
+import { guardInboundContent } from '../../hooks/inbound-guard.js';
 
 export function createRecordCorrectionTool({ db, embedder, processor }) {
   return {
@@ -24,6 +25,7 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         source: 'manual',
         content: args.content,
         meta,
+        guard: guardInboundContent,
       });
       try {
         await processor(result.id);

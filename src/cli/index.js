@@ -151,6 +151,54 @@ export async function main(argv) {
     console.error('usage: robin secrets <import --from <path>|list|set <KEY>>');
     process.exit(1);
   }
+  if (cmd === 'hook') {
+    const { hook } = await import('./commands/hook.js');
+    return hook(argv.slice(1));
+  }
+  if (cmd === 'sessions') {
+    const { sessionsPurge } = await import('./commands/sessions-purge.js');
+    return sessionsPurge(argv.slice(1));
+  }
+  if (cmd === 'refusals') {
+    if (argv[1] === 'list') {
+      const { refusalsList } = await import('./commands/refusals-list.js');
+      return refusalsList(argv.slice(2));
+    }
+    console.error('usage: robin refusals list');
+    process.exit(1);
+  }
+  if (cmd === 'pre-commit') {
+    const sub = argv[1];
+    const subcommands = {
+      install: 'pre-commit-install.js',
+      uninstall: 'pre-commit-uninstall.js',
+      run: 'pre-commit-run.js',
+    };
+    if (!subcommands[sub]) {
+      console.error('usage: robin pre-commit <install|uninstall|run>');
+      process.exit(1);
+    }
+    const mod = await import(`./commands/${subcommands[sub]}`);
+    const fn = Object.values(mod)[0];
+    return fn(argv.slice(2));
+  }
+  if (cmd === 'doctor') {
+    const { doctor } = await import('./commands/doctor.js');
+    return doctor(argv.slice(1));
+  }
+  if (cmd === 'hooks') {
+    const sub = argv[1];
+    if (sub === 'disable') {
+      const { hooksDisable } = await import('./commands/hooks-disable.js');
+      return hooksDisable(argv.slice(2));
+    }
+    if (sub === 'enable') {
+      const { hooksEnable } = await import('./commands/hooks-enable.js');
+      return hooksEnable(argv.slice(2));
+    }
+    console.error('usage: robin hooks <disable|enable> <phase>');
+    process.exit(1);
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);

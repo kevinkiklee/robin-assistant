@@ -18,8 +18,8 @@ test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () =
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  // Phase 3b: 0001..0007 plus active 0008-embedder-<profile> plus 0009-migrator-v1 = 9 migrations.
-  assert.match(result.stdout, /applied 9 migrations/);
+  // Phase 4a: 0001..0007 + active 0008-embedder-<profile> + 0009-migrator-v1 + 0010-safety-floor = 10.
+  assert.match(result.stdout, /applied 10 migrations/);
   assert.ok(existsSync(join(tmp, 'db')));
   assert.ok(existsSync(join(tmp, 'cache')));
 

@@ -43,7 +43,9 @@ import { createIdleEmbedder } from './idle-embedder.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
 import { bindFreePort } from './port.js';
 import { createScheduler } from './scheduler.js';
+import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
 import { clearDaemonState, writeDaemonState } from './state.js';
+import { runTamperCheck } from './tamper-check.js';
 import { getCliVersion } from './version-handshake.js';
 
 export async function startDaemon() {
@@ -162,6 +164,22 @@ export async function startDaemon() {
       }
       process.exit(1);
     }
+    // Daemon-boot tamper check (4a). Result persists to runtime_tamper_state;
+    // SessionStart hook reads it without recomputing. Fail-soft: errors here
+    // do not block daemon boot — they surface as a finding row.
+    try {
+      const tamper = await runTamperCheck(dbHandle);
+      if (!tamper.ok && tamper.findings.length > 0) {
+        for (const f of tamper.findings) {
+          console.warn(
+            `[daemon] tamper warning — ${f.kind}${f.path ? `: ${f.path}` : ''}${f.detail ? ` (${f.detail})` : ''}`,
+          );
+        }
+      }
+    } catch (e) {
+      console.warn(`[daemon] tamper-check failed (non-fatal): ${e.message}`);
+    }
+
     // Eagerly resolve the host so the scheduler + run_dream tool can use a
     // stable reference. If detection throws (no host CLI on PATH and no
     // ROBIN_HOST override), keep `host` null and fall back to the original
@@ -450,6 +468,23 @@ export async function startDaemon() {
     const { server: probe, port } = await bindFreePort();
     probe.close();
 
+    async function readJsonBody(req) {
+      return await new Promise((resolveBody) => {
+        const chunks = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          if (!raw) return resolveBody({});
+          try {
+            resolveBody(JSON.parse(raw));
+          } catch {
+            resolveBody({});
+          }
+        });
+        req.on('error', () => resolveBody({}));
+      });
+    }
+
     httpServer = createServer(async (req, res) => {
       try {
         if (req.method === 'POST' && req.url === '/internal/biographer/process-pending') {
@@ -461,6 +496,61 @@ export async function startDaemon() {
           }
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ enqueued: pendingRows.length }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/session/register') {
+          const body = await readJsonBody(req);
+          await markStaleSessions(dbHandle).catch(() => {});
+          await registerSession(dbHandle, {
+            sessionId: body.session_id ?? body.sessionId ?? `pid-${body.pid ?? 'unknown'}`,
+            host: body.host ?? 'unknown',
+            pid: typeof body.pid === 'number' ? body.pid : null,
+            transcriptPath: body.transcript_path ?? body.transcriptPath ?? null,
+          });
+          const active = await listActiveSessions(dbHandle);
+          let tamper_findings = [];
+          try {
+            const [rows] = await dbHandle
+              .query("SELECT * FROM type::record('runtime_tamper_state', 'current')")
+              .collect();
+            tamper_findings = rows?.[0]?.findings ?? [];
+          } catch {
+            tamper_findings = [];
+          }
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ session_count: active.length, tamper_findings }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/session/end') {
+          const body = await readJsonBody(req);
+          await endSession(
+            dbHandle,
+            body.session_id ?? body.sessionId ?? `pid-${body.pid ?? 'unknown'}`,
+          );
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/auto-recall') {
+          const body = await readJsonBody(req);
+          const { autoRecallEndpoint } = await import('../recall/auto-recall.js').catch(() => ({}));
+          if (typeof autoRecallEndpoint === 'function') {
+            const result = await autoRecallEndpoint({
+              db: dbHandle,
+              embedder: embedderWrap,
+              detector,
+              query: body.query ?? '',
+              priorAssistant: body.prior_assistant ?? body.priorAssistant ?? '',
+              k: body.k ?? 6,
+              recencyDays: body.recency_days ?? body.recencyDays ?? 30,
+              tokenBudget: body.token_budget ?? body.tokenBudget ?? 1500,
+            }).catch(() => ({ block: '', hits: 0, tokens: 0, latency_ms: 0 }));
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify(result));
+            return;
+          }
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ block: '', hits: 0, tokens: 0, latency_ms: 0 }));
           return;
         }
         if (req.method === 'GET' && req.url.startsWith('/sse')) {
@@ -512,6 +602,13 @@ export async function startDaemon() {
       started_at: startedAt.toISOString(),
       tool_count: tools.length,
     });
+
+    // Stale-session sweeper: every 60s mark sessions whose last_seen_at is
+    // older than 5 minutes as 'stale'. Cleanup-only — purge is opt-in via CLI.
+    const sessionSweeper = setInterval(() => {
+      markStaleSessions(dbHandle).catch(() => {});
+    }, 60_000);
+    sessionSweeper.unref?.();
 
     console.log(`robin-mcp daemon ready on 127.0.0.1:${port}`);
 

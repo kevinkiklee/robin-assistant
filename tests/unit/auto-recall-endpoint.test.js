@@ -1,0 +1,188 @@
+import assert from 'node:assert/strict';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
+import { test } from 'node:test';
+import { surql } from 'surrealdb';
+import { recordEvent } from '../../src/capture/record-event.js';
+import { close, connect } from '../../src/db/client.js';
+import { runMigrations } from '../../src/db/migrate.js';
+import { createStubEmbedder } from '../../src/embed/embedder.js';
+import { autoRecallEndpoint } from '../../src/recall/auto-recall.js';
+import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+
+// __robin_test_home_setup__
+const __robinTestHome = __robinJoin(
+  __robinTmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+__robinMkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
+
+async function fresh() {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  return db;
+}
+
+test('autoRecallEndpoint returns formatted block with markers and writes telemetry', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, { source: 'cli', content: 'discussed sourdough hydration ratio (62%)' });
+  await recordEvent(db, e, { source: 'cli', content: 'planted tomatoes with Karen this weekend' });
+  await recordEvent(db, e, { source: 'cli', content: 'wrote up the kettlebell program for May' });
+
+  const result = await autoRecallEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'sourdough',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+  });
+
+  assert.ok(result.block.includes('<!-- relevant memory -->'));
+  assert.ok(result.block.includes('<!-- /relevant memory -->'));
+  assert.ok(result.hits >= 1, `expected >=1 hits, got ${result.hits}`);
+  assert.equal(result.truncated, false);
+  assert.ok(result.tokens > 0);
+  assert.ok(typeof result.latency_ms === 'number');
+
+  // Each event line should look like `[event YYYY-MM-DD] ...`
+  assert.match(result.block, /\[event \d{4}-\d{2}-\d{2}\] /);
+
+  const [rows] = await db.query(surql`SELECT * FROM runtime_auto_recall_telemetry`).collect();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].query_chars, 'sourdough'.length);
+  assert.equal(rows[0].hits, result.hits);
+  assert.equal(rows[0].tokens_injected, result.tokens);
+  assert.equal(rows[0].truncated, false);
+
+  await close(db);
+});
+
+test('autoRecallEndpoint tags episode_summary hits as [episode YYYY-MM-DD]', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, {
+    source: 'biographer',
+    content: 'wrapped lunch-money sync gap; trust=high',
+    meta: { kind: 'episode_summary' },
+  });
+
+  const result = await autoRecallEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'lunch money sync',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+  });
+
+  assert.ok(result.hits >= 1);
+  assert.match(result.block, /\[episode \d{4}-\d{2}-\d{2}\] /);
+
+  await close(db);
+});
+
+test('autoRecallEndpoint truncates when token budget is too small', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  // Insert several events with long content. Each line will be ~120 chars
+  // after trimming → ~30 tokens; with a budget of 50 we should fit at most one.
+  for (let i = 0; i < 5; i++) {
+    await recordEvent(db, e, {
+      source: 'cli',
+      content: `event number ${i}: ${'lorem ipsum dolor sit amet '.repeat(20)}`,
+    });
+  }
+
+  const tight = await autoRecallEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'lorem',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 50,
+  });
+
+  assert.equal(tight.truncated, true);
+
+  const loose = await autoRecallEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'lorem',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+  });
+
+  // Loose budget keeps strictly more content than the tight one.
+  assert.ok(loose.block.length > tight.block.length);
+
+  await close(db);
+});
+
+test('autoRecallEndpoint returns empty block when there are no events', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+
+  const result = await autoRecallEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'anything goes',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+  });
+
+  assert.equal(result.block, '');
+  assert.equal(result.hits, 0);
+  assert.equal(result.tokens, 0);
+  assert.equal(result.truncated, false);
+
+  // Telemetry still recorded (with hits=0).
+  const [rows] = await db.query(surql`SELECT * FROM runtime_auto_recall_telemetry`).collect();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].hits, 0);
+
+  await close(db);
+});
+
+test('autoRecallEndpoint includes prior assistant tail in the recall query', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, { source: 'cli', content: 'kettlebell program for May' });
+
+  // Empty current query, but the prior assistant turn is informative.
+  const result = await autoRecallEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: '',
+    priorAssistant: 'we were just talking about the kettlebell program for May',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+  });
+
+  // Recall ran (hits may be 0 with the stub embedder, but telemetry must
+  // have a row and the call returns cleanly).
+  assert.ok(typeof result.latency_ms === 'number');
+  const [rows] = await db.query(surql`SELECT * FROM runtime_auto_recall_telemetry`).collect();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].query_chars, 0);
+
+  await close(db);
+});

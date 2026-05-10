@@ -1,4 +1,5 @@
 import { recordEvent } from '../../capture/record-event.js';
+import { guardInboundContent } from '../../hooks/inbound-guard.js';
 
 export function createRememberTool({ db, embedder, queue }) {
   return {
@@ -20,6 +21,7 @@ export function createRememberTool({ db, embedder, queue }) {
         source: args.source ?? 'manual',
         content: args.content,
         meta: args.meta,
+        guard: guardInboundContent,
       });
       if (args.trigger_biographer !== false) {
         queue.enqueue(String(result.id)).catch(() => {});

@@ -1,5 +1,6 @@
 import { surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
+import { RobinPiiRefusedError } from './errors.js';
 
 const VALID_SOURCES = new Set([
   'cli',
@@ -13,12 +14,22 @@ const VALID_SOURCES = new Set([
 ]);
 
 export async function recordEvent(db, embedder, input) {
-  const { source, content, ts, meta } = input;
+  const { source, content, ts, meta, guard } = input;
   if (!VALID_SOURCES.has(source)) {
     throw new Error(`recordEvent: unknown source "${source}"`);
   }
   if (typeof content !== 'string' || content.length === 0) {
     throw new Error('recordEvent: content must be a non-empty string');
+  }
+
+  // Inbound PII guard. Optional — callers that didn't opt in (existing CLI
+  // ingest, sync, biographer pipelines, migration) keep their existing
+  // behavior. MCP memory-write tools wire `guardInboundContent` explicitly.
+  if (typeof guard === 'function') {
+    const verdict = await guard(db, content);
+    if (verdict && verdict.ok === false) {
+      throw new RobinPiiRefusedError(verdict.reason);
+    }
   }
 
   const content_hash = sha256(content);

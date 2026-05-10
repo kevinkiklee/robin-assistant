@@ -1,0 +1,123 @@
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+
+import { writeConfig } from '../../src/runtime/config.js';
+
+// __robin_test_home_setup__
+const __robinTestHome = join(
+  tmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+mkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await writeConfig({ embedder_profile: 'mxbai-1024' });
+
+const { doctor } = await import('../../src/cli/commands/doctor.js');
+const { packageRootDir } = await import('../../src/runtime/home.js');
+const { close: __close, connect: __connect } = await import('../../src/db/client.js');
+const { runMigrations: __runMigrations } = await import('../../src/db/migrate.js');
+
+async function __openMemDbWithMigrations() {
+  const db = await __connect({ engine: 'mem://' });
+  await __runMigrations(db, join(packageRootDir(), 'src', 'schema', 'migrations'));
+  return db;
+}
+
+function makeOutCapture() {
+  const lines = [];
+  return { lines, fn: (s) => lines.push(s) };
+}
+
+test('doctor: no flags prints status overview', async () => {
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor([], { out: o.fn, err: e.fn });
+  const all = o.lines.join('\n');
+  assert.match(all, /ROBIN_HOME:/);
+  assert.match(all, /manifest:/);
+  assert.match(all, /daemon:/);
+  assert.match(all, /secrets file:/);
+  assert.match(all, /config:/);
+});
+
+test('doctor --rebaseline: writes manifest.json', async () => {
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor(['--rebaseline'], { out: o.fn, err: e.fn });
+  const manifestPath = join(__robinTestHome, 'manifest.json');
+  assert.ok(existsSync(manifestPath), 'manifest must exist after rebaseline');
+  const all = o.lines.join('\n');
+  assert.match(all, /tamper baseline rewritten/);
+});
+
+test('doctor --lint-hooks: lists robin-owned entries from settings.json', async () => {
+  const fakeHome = join(__robinTestHome, 'fake-user-home');
+  mkdirSync(join(fakeHome, '.claude'), { recursive: true });
+  mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
+
+  const shimPath = join(packageRootDir(), 'bin', 'robin-hook.sh');
+  const claudeSettings = {
+    hooks: {
+      PreToolUse: [
+        { matcher: 'Bash', hooks: [{ type: 'command', command: `${shimPath} bash-policy` }] },
+      ],
+      UserPromptSubmit: [{ hooks: [{ type: 'command', command: `${shimPath} auto-recall` }] }],
+      // Foreign entry — should NOT be listed.
+      SessionStart: [{ hooks: [{ type: 'command', command: '/usr/bin/some-other-tool foo' }] }],
+    },
+  };
+  writeFileSync(
+    join(fakeHome, '.claude', 'settings.json'),
+    JSON.stringify(claudeSettings, null, 2),
+  );
+
+  const geminiSettings = {
+    hooks: {
+      SessionStart: [{ hooks: [{ type: 'command', command: `${shimPath} session-start` }] }],
+    },
+  };
+  writeFileSync(
+    join(fakeHome, '.gemini', 'settings.json'),
+    JSON.stringify(geminiSettings, null, 2),
+  );
+
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor(['--lint-hooks'], { out: o.fn, err: e.fn, homeDir: fakeHome });
+  const all = o.lines.join('\n');
+  assert.match(all, /claude: PreToolUse/);
+  assert.match(all, /claude: UserPromptSubmit/);
+  assert.match(all, /gemini: SessionStart/);
+  assert.doesNotMatch(all, /some-other-tool/);
+  assert.match(all, /total robin-owned hook entries: 3/);
+});
+
+test('doctor --lint-hooks: no settings.json prints empty', async () => {
+  const fakeHome = join(__robinTestHome, 'empty-home');
+  mkdirSync(fakeHome, { recursive: true });
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor(['--lint-hooks'], { out: o.fn, err: e.fn, homeDir: fakeHome });
+  const all = o.lines.join('\n');
+  assert.match(all, /claude: no settings\.json or no hooks/);
+  assert.match(all, /gemini: no settings\.json or no hooks/);
+  assert.match(all, /total robin-owned hook entries: 0/);
+});
+
+test('doctor --purge-stale-sessions: returns count without erroring', async () => {
+  // Inject a mem:// db so we don't pull in the rocksdb store (which has a
+  // known close-hang in @surrealdb/node v3.0.3 under tests).
+  const o = makeOutCapture();
+  const e = makeOutCapture();
+  await doctor(['--purge-stale-sessions'], {
+    out: o.fn,
+    err: e.fn,
+    openDb: __openMemDbWithMigrations,
+    closeDb: __close,
+  });
+  const all = o.lines.join('\n');
+  assert.match(all, /purged \d+ stale sessions/);
+});
