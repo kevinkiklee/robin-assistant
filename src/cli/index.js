@@ -120,6 +120,23 @@ export async function main(argv) {
     console.error('usage: robin integrations <list|status|run|discord register-commands>');
     process.exit(1);
   }
+  if (cmd === 'secrets') {
+    const sub = argv[1];
+    if (sub === 'import') {
+      const { secretsImport } = await import('./commands/secrets-import.js');
+      return secretsImport(argv.slice(2));
+    }
+    if (sub === 'list') {
+      const { secretsList } = await import('./commands/secrets-list.js');
+      return secretsList();
+    }
+    if (sub === 'set') {
+      const { secretsSet } = await import('./commands/secrets-set.js');
+      return secretsSet(argv.slice(2));
+    }
+    console.error('usage: robin secrets <import --from <path>|list|set <KEY>>');
+    process.exit(1);
+  }
   console.error(`unknown command: ${cmd}`);
   console.error('run `robin --help` for usage');
   process.exit(1);

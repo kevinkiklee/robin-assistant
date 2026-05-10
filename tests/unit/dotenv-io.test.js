@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+
+let tmpHome;
+test.beforeEach(() => {
+  tmpHome = join(tmpdir(), `robin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpHome, { recursive: true });
+  process.env.ROBIN_HOME = tmpHome;
+});
+test.afterEach(() => {
+  rmSync(tmpHome, { recursive: true, force: true });
+});
+
+test('requireSecret throws on missing', async () => {
+  const { requireSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  assert.throws(() => requireSecret('NOPE'), /missing secret/);
+});
+
+test('saveSecret + requireSecret round-trip', async () => {
+  const { requireSecret, saveSecret } = await import(
+    `../../src/secrets/dotenv-io.js?cb=${Date.now()}`
+  );
+  saveSecret('FOO', 'bar');
+  assert.equal(requireSecret('FOO'), 'bar');
+});
+
+test('saveSecret preserves siblings', async () => {
+  const { requireSecret, saveSecret } = await import(
+    `../../src/secrets/dotenv-io.js?cb=${Date.now()}`
+  );
+  saveSecret('A', '1');
+  saveSecret('B', '2');
+  saveSecret('A', '11');
+  assert.equal(requireSecret('A'), '11');
+  assert.equal(requireSecret('B'), '2');
+});
+
+test('saveSecret produces 0600 file', async () => {
+  const { saveSecret, envFilePath } = await import(
+    `../../src/secrets/dotenv-io.js?cb=${Date.now()}`
+  );
+  saveSecret('X', 'y');
+  const mode = statSync(envFilePath()).mode & 0o777;
+  assert.equal(mode, 0o600);
+});
+
+test('getSecret returns null on missing', async () => {
+  const { getSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  assert.equal(getSecret('NOPE'), null);
+});
+
+test('importFrom copies file with 0600 perms', async () => {
+  const { importFrom, requireSecret, envFilePath } = await import(
+    `../../src/secrets/dotenv-io.js?cb=${Date.now()}`
+  );
+  const src = join(tmpHome, 'src.env');
+  writeFileSync(src, 'KEY=value\n', 'utf-8');
+  importFrom(src);
+  assert.equal(requireSecret('KEY'), 'value');
+  const mode = statSync(envFilePath()).mode & 0o777;
+  assert.equal(mode, 0o600);
+});
+
+test('importFrom refuses without --force when dest exists', async () => {
+  const { importFrom, saveSecret } = await import(
+    `../../src/secrets/dotenv-io.js?cb=${Date.now()}`
+  );
+  saveSecret('EXISTING', 'yes');
+  const src = join(tmpHome, 'src.env');
+  writeFileSync(src, 'NEW=val\n', 'utf-8');
+  assert.throws(() => importFrom(src), /already exists/);
+});
+
+test('importFrom with force overwrites', async () => {
+  const { importFrom, saveSecret, requireSecret, getSecret } = await import(
+    `../../src/secrets/dotenv-io.js?cb=${Date.now()}`
+  );
+  saveSecret('OLD', 'v1');
+  const src = join(tmpHome, 'src.env');
+  writeFileSync(src, 'NEW=v2\n', 'utf-8');
+  importFrom(src, { force: true });
+  assert.equal(getSecret('OLD'), null);
+  assert.equal(requireSecret('NEW'), 'v2');
+});
+
+test('parser ignores comments and malformed lines', async () => {
+  const { importFrom, getSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const src = join(tmpHome, 'src.env');
+  writeFileSync(src, '# comment\n\nMALFORMED_NO_EQ\nGOOD=ok\n', 'utf-8');
+  importFrom(src);
+  assert.equal(getSecret('GOOD'), 'ok');
+  assert.equal(getSecret('MALFORMED_NO_EQ'), null);
+});
+
+test('listKeys returns names only', async () => {
+  const { saveSecret, listKeys } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  saveSecret('A', '1');
+  saveSecret('B', '2');
+  const keys = listKeys();
+  assert.deepEqual(keys.sort(), ['A', 'B']);
+});
