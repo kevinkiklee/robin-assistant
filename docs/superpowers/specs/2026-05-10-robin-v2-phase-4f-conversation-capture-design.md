@@ -18,7 +18,9 @@ Bridging Claude Code's auto-memory directly is the wrong fix in v2:
 - **Schema mismatch.** Claude Code writes typed markdown entries (user/feedback/project/reference). Robin wants events → entities/edges/episodes via the biographer.
 - **Robin already has a stronger pipeline.** biographer + dream + rules subsumes Claude Code's flat MEMORY.md.
 
-The right model: extend the Stop hook (which fires on every host with `transcript_path` in stdin) to read the latest turn and write it as one `events` row. The existing biographer then takes over. **Zero new LLM calls in the capture step.** The biographer is the LLM step, and it would have to run on the event anyway.
+The right model: extend the Stop hook (which fires on every host with `transcript_path` in stdin) to read the latest turn and write it as one `events` row. The existing biographer then takes over.
+
+**Cost: not free.** No new LLM call in the capture step itself, but each non-skipped capture creates one new event that the biographer must process — that's an incremental fast-tier LLM call per captured turn. Without 4f, biographer only runs when `remember`/`record_correction` was explicitly called or an integration wrote an event. With 4f, it runs on every non-skipped turn. The skip heuristics (§5.B) are tuned to filter pleasantries and pure tool-call turns, targeting roughly a 30–50% skip rate on typical sessions. For ~50–200 turns/day this is a meaningful but bounded uplift in biographer cost — the price of complete conversation memory.
 
 This is a hard prerequisite for Phase 4b's comm-style profile work (which needs a steady stream of conversation events to infer style).
 
@@ -66,11 +68,11 @@ No new tables. No new migrations. No new daemon endpoints (existing process-pend
 
 ### 5.A Transcript reader (`src/capture/transcript.js`)
 
-Reads the last ~32 KB of the transcript JSONL (Claude Code & Gemini CLI both write JSONL where each line is one message event). Parses backwards to find the most recent **assistant turn** and the **user turn that preceded it**. Returns:
+Reads the last ~32 KB of the transcript JSONL (Claude Code & Gemini CLI both write JSONL where each line is one message event). Parses backwards to find the most recent **assistant turn** and the **user prompt that preceded it**. Returns:
 
 ```js
 {
-  userText: string | null,    // concatenated text content of last user message
+  userText: string | null,    // concatenated text content of last *human* user message
   assistantText: string | null, // concatenated text from last assistant message (no tool_use/tool_result blocks)
   hasToolCalls: boolean,      // whether the assistant message included any tool_use
   rawTurnHash: string,        // sha256 of "<user>\n\n<assistant>" — used for dedup probe
@@ -80,24 +82,28 @@ Reads the last ~32 KB of the transcript JSONL (Claude Code & Gemini CLI both wri
 
 Parsing rules:
 
-- Each line is JSON; tolerate malformed lines (skip).
+- Each line is JSON; tolerate malformed lines (skip them, keep parsing).
 - For Claude Code: messages have shape `{type: 'user'|'assistant', message: {content: [{type, text|...}]}}` or simpler `{type, content}` variants — handle both via a shape-tolerant accessor (same pattern as 4a's `tool_input.command` resolution).
-- For Gemini CLI: format documented in the existing `runtime_sessions` flow; the function accepts both transparently.
-- **Tool blocks excluded from text** — `assistantText` is the concatenation of `text` blocks only. `tool_use` / `tool_result` / `thinking` blocks contribute to `hasToolCalls` but not to text.
+- For Gemini CLI: similar JSONL shape; accessor falls through transparently.
+- **Tool blocks excluded from text** — `assistantText` is the concatenation of `text`-type content blocks only. `tool_use` / `tool_result` / `thinking` blocks contribute to `hasToolCalls` but not to text.
+- **`tool_result` user messages are NOT the human prompt.** Claude Code stores `tool_result` content blocks inside user-role messages (i.e. the role flips for tool returns). The walk-backwards to find `userText` skips any user-role message whose content contains only `tool_result` blocks; the human user prompt is the first user-role message walking back that has at least one `text` block. (For Gemini CLI: same rule — tool returns appear as a `function_response` role and are skipped.)
 - If no assistant turn is found in the tail window, return all-nulls (skip downstream).
+- If an assistant turn is found but no preceding human user prompt fits in the window (very long tool chain), accept `userText = null` and rely on `assistantText` alone — biographer can still extract from one side.
 
 ### 5.B Skip heuristics (`src/capture/session-capture.js`)
 
 Skip the capture (return without writing) when **any** of:
 
 1. `transcript_path` is null/missing/unreadable.
-2. Transcript reader returns null `assistantText`.
-3. `assistantText.trim().length + userText.trim().length < 50` chars — pure pleasantries, single-word turns ("ok", "yes", "go ahead"), empty responses.
-4. `hasToolCalls === true` **and** combined text < 200 chars — pure operational turn (agent ran `ls`, said "Done.").
-5. `userText` is one of a small ack set: `ok`, `okay`, `yes`, `no`, `thanks`, `thank you`, `continue`, `go`, `go ahead`, `next` (case-insensitive after trim).
-6. Content hash already exists in `events` for `source='conversation'` (dedup probe; cheap unique index hit).
+2. Transcript reader returns null `assistantText` (no assistant turn found in tail window, or empty assistant response).
+3. **Single-word ack** — `userText` (trimmed, lowercased) is exactly one of: `ok`, `okay`, `yes`, `no`, `thanks`, `thank you`, `continue`, `go`, `go ahead`, `next`, `sure`, `done`. (`no, don't do that` survives because it's not exact-match.)
+4. **Pure-tool turn** — `hasToolCalls === true` AND combined `userText + assistantText` text length (after trim) < 30 chars. Catches "ls" + tool_use + "Done." and similar. Threshold tuned low because tool-call turns frequently contain meaningful short text ("fix it" + Read+Edit + "Fixed.").
+5. **Empty turn** — combined `userText + assistantText` trimmed length < 8 chars (catches "hi"/"y"/"."-style noise; does NOT catch "drop it", "fix it", "merge", which are real instructions).
+6. **Dedup** — an `events` row already exists with `source='conversation'` AND `content_hash = sha256(formatted_content)`. (The orchestrator computes the hash itself before calling `recordEvent`, because `recordEvent` caches embeddings on `content_hash` but does **not** reject duplicate rows.)
 
-Logging: each skip writes one line to the biographer log (`<robinHome>/cache/logs/biographer.log`) with the rule name. Useful for tuning later.
+The thresholds in rules 4 and 5 are first-cut. The skip-logger (see below) makes them easy to tune post-deployment.
+
+**Skip logging.** Each skip writes one structured line to the biographer log (`<robinHome>/cache/logs/biographer.log`) with `{ts, session_id, rule, user_len, assistant_len}` — enough to retune thresholds from real data without re-instrumenting.
 
 ### 5.C Session capture orchestrator (`src/capture/session-capture.js`)
 
@@ -158,6 +164,7 @@ Rationale: integration source names (`gmail`, `calendar`, `discord`) describe th
 |---|---|
 | `transcript_path` doesn't exist (race with file creation) | Skip with reason `transcript_unreadable`. Biographer still processes pending. |
 | Transcript JSONL is malformed midway | Skip malformed lines; continue parsing. If no valid assistant turn found in tail window, skip with `no_assistant_turn`. |
+| **Transcript-write race** — host is still flushing the assistant message when Stop fires | Tail read may capture a partial last line. Parser tolerates: malformed final line is dropped, walks back to the previous (complete) assistant message. If that's actually a *prior* turn, the dedup probe (rule 6) catches it on the second Stop fire. Net effect: at worst we miss one turn until the next Stop; we do not double-capture. |
 | Same turn fires Stop hook twice (host bug / user retry) | The pre-`recordEvent` dedup probe (§5.B rule 6) finds the existing `events` row by `content_hash` + `source='conversation'` and short-circuits — no second insert, no second biographer call. `recordEvent` itself does **not** dedup (it caches embeddings on `content_hash` but always `CREATE`s a row); the dedup must happen in the orchestrator. |
 | Agent calls `remember` mid-turn AND we capture the turn | Two events (one `source='manual'`, one `source='conversation'`) with overlapping content. Different content hashes (the `remember` content is the agent's summary, not the raw turn). Biographer dedupes entities via stable record id. Acceptable. |
 | Turn contains secrets that should not be in memory | The inbound PII guard from 4a runs inside `recordEvent`'s `guard` hook. **Not wired by default** for conversation source — the agent's own conversation is treated as trusted user content. **Open decision:** see §10. |
@@ -172,19 +179,25 @@ Rationale: integration source names (`gmail`, `calendar`, `discord`) describe th
 
 - `transcript-parse.test.js`
   - Parse well-formed Claude Code JSONL (text-only assistant message)
-  - Parse JSONL with tool_use blocks (hasToolCalls = true, assistantText excludes tool blocks)
-  - Tolerate malformed line in the middle
-  - Return all-nulls when no assistant turn in window
-  - Handle Gemini CLI variant shape
+  - Parse JSONL with tool_use blocks (`hasToolCalls === true`, `assistantText` excludes tool blocks)
+  - **`tool_result` user messages are walked past** to find the real human user prompt (regression for the §5.A nuance)
+  - Tolerate a malformed line in the middle, keep parsing
+  - Tolerate a malformed *final* line (transcript-write race) — falls back to the previous complete assistant turn
+  - Return all-nulls when no assistant turn in tail window
+  - Return `userText = null` + non-null `assistantText` when no human user prompt fits in the tail window (long tool chain case)
+  - Handle Gemini CLI variant shape (`function_response` role skipped like `tool_result`)
 
 - `session-capture.test.js`
   - Skip on missing transcript_path
-  - Skip on combined < 50 chars
-  - Skip on tool-calls + short text
-  - Skip on single-word ack
-  - Skip on content_hash already exists
-  - Capture path produces correctly formatted content + meta
-  - Truncation at 16 KB
+  - Skip on single-word ack (exhaustive — every word in the list)
+  - Skip on `hasToolCalls && combined < 30 chars`
+  - Skip on `combined < 8 chars`
+  - **Do NOT skip** on short-but-meaningful turn ("drop the watches feature", "no, don't do that")
+  - **Dedup probe finds existing row by `(source='conversation', content_hash)`** — second call short-circuits without calling `recordEvent`
+  - Capture path produces correctly formatted content (`USER:\n\nASSISTANT:\n\n`) + meta (`session_id`, `host`, `has_tool_calls`)
+  - Truncation at 8 KB per side, 16 KB total
+  - PII guard fires when content contains a credential shape (refusal logged to `outbound_refusals`)
+  - Skip-log line written with `{ts, session_id, rule, user_len, assistant_len}`
 
 **Integration:**
 
