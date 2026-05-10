@@ -1,7 +1,54 @@
 const START_MARKER = '<!-- robin-mcp:start -->';
 const END_MARKER = '<!-- robin-mcp:end -->';
 
-export function agentsMdContent() {
+function formatCadence(ms) {
+  if (ms === null || ms === undefined) return 'gateway';
+  if (ms >= 86_400_000 && ms % 86_400_000 === 0) return `${ms / 86_400_000}d`;
+  if (ms >= 3_600_000 && ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
+  return `${ms / 60_000}m`;
+}
+
+function renderIntegrationsList(integrations) {
+  const lines = [];
+  for (const i of integrations) {
+    const cadence = formatCadence(i.cadence_ms);
+    if (i.cadence_ms === null || i.cadence_ms === undefined) {
+      lines.push(`- ${i.name} (${cadence}): bot listens on allowlist; no agent-callable tools`);
+    } else if ((i.tool_names ?? []).length === 0) {
+      lines.push(`- ${i.name} (${cadence}): no agent-callable tools`);
+    } else {
+      lines.push(`- ${i.name} (${cadence}): ${i.tool_names.join(', ')}`);
+    }
+  }
+  if (lines.length === 0) lines.push('- (none registered)');
+  return lines.join('\n');
+}
+
+export function integrationsSection(integrations = []) {
+  return `<!-- robin-integrations:start (auto-generated, do not hand-edit) -->
+## Integration data freshness
+
+Before quoting integration data as "today's" / "current" / "latest", call
+integration_status({name}) and verify last_sync_at is within 2× the cadence.
+If stale, either label the quote as "data from <last_sync_at>" OR call
+integration_run({name}) to refresh.
+
+After integration_run, the result IS immediate when no concurrent sync is
+running — the tool awaits and returns count/cursor/duration_ms. If it returns
+{ ok: false, reason: 'in_flight' }, poll integration_status({name}) every 2s
+(don't poll faster); when in_flight flips to false, check last_sync_at and
+last_sync_ok. Don't loop more than ~30 polls (~60s).
+
+Don't fabricate fresh data. Don't loop on integration_run — the 30s
+min-interval will refuse, and repeated polling burns API quota.
+
+## Available integrations
+
+${renderIntegrationsList(integrations)}
+<!-- robin-integrations:end -->`;
+}
+
+export function agentsMdContent({ integrations = [] } = {}) {
   return `# Robin
 
 You're talking to a user through Robin. Robin gives you a memory layer
@@ -84,6 +131,8 @@ are misbehaving.
 Speak with the warmth and concision of a thoughtful friend who knows you
 well. Don't be servile. Don't summarize your own actions ("I'll now call
 recall..."). Just do the work and answer.
+
+${integrationsSection(integrations)}
 `;
 }
 
