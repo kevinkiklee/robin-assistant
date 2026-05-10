@@ -1,5 +1,26 @@
 # Changelog
 
+## [6.0.0-alpha.8b] — 2026-05-10
+
+Phase 3b: v1→v2 migrator + missing read-sync integrations + cleanup. Builds on Phase 3a (`v6.0.0-alpha.8a`) embedder profiles.
+
+- **`robin migrate-from-v1`** — top-level CLI: idempotent (`sha256('v1:'+v1_id)` dedup via `events_from_v1_hash`/`entities_from_v1_hash`/`episodes_from_v1_hash` indexes), resumable (per-phase progress in `runtime:migration_progress`), audit-friendly (`meta.from_v1` provenance on every migrated row). Phase order: entity → episode → capture → edges → lossy. v1 `mentions` migrates lossy-as-events (the naive amplification would emit ~42K false-positive `events→entities` edges); biographer can re-derive proper edges as it processes captures.
+- **5 phases × ~2,400 v1 captures + 950 entities + 38 episodes + ~3,800 lossy rows** map cleanly to v2 schema. v1 `transaction` and `watch` lossy-preserved (manual edits would have been overwritten by Lunch Money's API resync otherwise).
+- **Audit/rework surface (§12 of spec)** — `--status`, `--show-failures [--phase X]`, `--reset [--phase X] [--dry-run]` with cascade rules, `--export-mappings <path>`, `--phase X` for selective re-run. Native data is never touched: every destructive op filters on `meta.from_v1.source_hash IS NOT NONE`. Cascade for `--reset --phase entity`: edges → lossy v1-edge events → entities. `docs/AUDIT.md` walkthrough + `scripts/audit-fixup.js.example` template.
+- **`embed_backfill` daemon job** — singleton-cron drains rows where `embedding IS NONE AND meta.embed_failed IS NOT true`, batches of 64, every tick. Wired into `src/daemon/server.js` scheduler alongside `__dream__`. Embedder lazily loaded via 3a's `createEmbedder()` (mxbai/qwen3/gemini profile). Poison rows get `meta.embed_failed = true` and are excluded from future ticks.
+- **`github` read-sync** — issues / PRs / notifications / releases-of-starred via `GITHUB_PAT`. Reuses `github_write/client.js` REST helpers. 1h cadence. 2 MCP tools: `github_recent_activity`, `github_notifications`.
+- **`spotify` read-sync** — recently-played + top tracks/artists via existing `SPOTIFY_*` PROVIDERS entry. **Month-bucketed top-items external_ids** (`spotify:top_track:<window>:<YYYY-MM>:<id>`) preserve monthly snapshots instead of forever-deduping the first occurrence. Gap detection (>50 plays since last sync). 4h cadence. 2 MCP tools.
+- **`letterboxd` CSV ingest** — drop `letterboxd-*.csv` into `<package_root>/user-data/upload/`. Diary-format detection by header columns; non-Diary CSVs moved aside with `.error.txt`. Processed files → `upload/processed/`. **No daemon restart needed** when dropping a CSV after install — preflight only ensures the upload dir exists; CSV check is a soft no-op inside `sync()`.
+- **30-day backup auto-prune** — `src/db/backup.js` deletes archives older than 30 days before writing new tar. Override via `ROBIN_BACKUP_RETENTION_DAYS=N` (set to 0 to disable).
+- **No encryption at rest** — explicit `## Security posture` section in AGENTS.md (regenerable via `<!-- robin-security:start/end -->`). RocksDB has no built-in encryption; rely on FileVault / LUKS at the filesystem layer. Threat model: single-user local install, device itself is trusted.
+- **`0009-migrator-v1.surql`** — adds `meta.from_v1.source_hash` indexes on events/entities/episodes; `participates_in.meta` (FLEXIBLE) so v1 fields v2 doesn't define (confidence, valid_from, etc.) survive in `meta.v1_payload`; `events.embedded_at` field + `meta.embed_failed` for backfill tracking.
+- **5 new MCP tools** (github×2, spotify×2, letterboxd×1) → integrations now total 19 (`gmail, google_calendar, google_drive, youtube, ga, lunch_money, weather, ebird, nhl, linear, whoop, chrome, lrc, discord, github_write, spotify_write, github, spotify, letterboxd`).
+- **Cutover runbook** — see `docs/superpowers/specs/2026-05-10-robin-v2-phase-3b-migrator-design.md` §10. v6.0.0 publish stays gated on Phase 4 daily-use parity, not 3b.
+- **Several SurrealDB v3 type-coercion gotchas** discovered during integration testing and documented in code comments: JS `null` ≠ SurrealDB `NONE` for `option<T>` fields (omit the field instead); `ts: time::now()` requires a `Date` object via `surql` template, not an ISO string; `episode_id: record<episodes>` requires reconstructing the RecordId from the resolver's string id; `ORDER BY <field>` requires `<field>` to appear in `SELECT`.
+- **Test count**: 580/590 passing on full suite (10 pre-existing better-sqlite3 native-binding failures unrelated to 3b). All 3b-specific unit + integration tests pass.
+
+Phase 3b candidates that didn't ship: forward-looking biographer hint replay from `v1_mentions` lossy events; reranker training-set bootstrapping from `v1_preference` + `v1_correction` (Phase 4 work).
+
 ## [6.0.0-alpha.7] — 2026-05-10
 
 Phase 2f: OAuth generalization + spotify-write + headless OAuth + rate limiter + 8 read-sync integrations.
