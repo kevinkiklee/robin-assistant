@@ -5,7 +5,7 @@ import { createLrcSummaryTool } from './tools/lrc-summary.js';
 
 export const manifest = {
   name: 'lrc',
-  cadence: '1w',
+  cadence: '7d',
   embed: true,
   capture_mode: 'upsert',
   secrets: { env_keys: [] },
