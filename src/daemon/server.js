@@ -35,6 +35,7 @@ import { createRememberTool } from '../mcp/tools/remember.js';
 import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
 import { createRunDreamTool } from '../mcp/tools/run-dream.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
+import { readConfig } from '../runtime/config.js';
 import { ensureHome, paths } from '../runtime/home.js';
 import { envFilePath } from '../secrets/dotenv-io.js';
 import { createBiographerQueue } from './biographer-queue.js';
@@ -109,10 +110,58 @@ export async function startDaemon() {
   try {
     dbHandle = await connect({ engine: `rocksdb://${p.db}` });
 
+    // Profile-drift detection. config.json is filesystem state; runtime:embedder
+    // is set by whichever 0008-embedder-<profile>.surql migration last ran.
+    // If a user hand-edits config.json without running `robin embedder switch`,
+    // the HNSW index dimension and the new embedder dim disagree — first insert
+    // would fail an array-length assertion. Refuse to start with explicit
+    // remediation steps instead.
+    const cfg = await readConfig();
+    if (!cfg?.embedder_profile) {
+      console.error('[daemon] no embedder profile configured. Run `robin install` first.');
+      process.exit(1);
+    }
+    {
+      const [rows] = await dbHandle
+        .query(surql`SELECT * FROM type::record('runtime', 'embedder')`)
+        .collect();
+      const runtimeProfile = rows?.[0]?.value?.profile;
+      if (runtimeProfile && runtimeProfile !== cfg.embedder_profile) {
+        console.error(
+          `[daemon] config drift detected:\n  config.json says: ${cfg.embedder_profile}\n  runtime:embedder says: ${runtimeProfile}\nRun \`robin embedder switch ${cfg.embedder_profile}\` to migrate the schema, or revert config.json.`,
+        );
+        process.exit(1);
+      }
+    }
+
     const idleEmbedder = createIdleEmbedder({
       factory: createEmbedder,
       idleMs: 600_000,
     });
+
+    // Embedder health check. The IdleEmbedder wrapper is just a lifecycle
+    // shell; .get() lazily resolves the inner embedder via createEmbedder().
+    // Each profile's healthCheck is cheap: mxbai is a no-op, qwen3 hits
+    // /api/tags, gemini just verifies GEMINI_API_KEY is set. On failure print
+    // profile-specific guidance and exit.
+    try {
+      const embedder = await idleEmbedder.get();
+      await embedder.healthCheck();
+    } catch (e) {
+      const profile = cfg.embedder_profile;
+      console.error(`[daemon] embedder health check failed: ${e.message}`);
+      if (profile === 'qwen3-4096') {
+        const host = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
+        console.error(
+          `  Verify Ollama is reachable at ${host} and that qwen3-embedding:8b is installed.\n  Install: brew install ollama && ollama pull qwen3-embedding:8b`,
+        );
+      } else if (profile === 'gemini-3072') {
+        console.error(
+          '  Missing or invalid GEMINI_API_KEY. Run `robin secret set GEMINI_API_KEY <your_key>`.',
+        );
+      }
+      process.exit(1);
+    }
     // Eagerly resolve the host so the scheduler + run_dream tool can use a
     // stable reference. If detection throws (no host CLI on PATH and no
     // ROBIN_HOST override), keep `host` null and fall back to the original
