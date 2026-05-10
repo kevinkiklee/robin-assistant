@@ -125,3 +125,22 @@ test('discoverJobs — defaults filled in', () => {
   assert.equal(job.notify_on_failure, true);
   assert.equal(job.manually_runnable, true);
 });
+
+test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
+  const { discoverJobs } = await import('../../src/jobs/loader.js');
+  const { fileURLToPath } = await import('node:url');
+  const { dirname, join } = await import('node:path');
+  const builtinDir = join(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'src',
+    'jobs',
+    'builtin',
+  );
+  const jobs = discoverJobs({ builtinDir, userDir: '/nonexistent' });
+  const briefing = jobs.find((j) => j.name === 'daily-briefing');
+  assert.ok(briefing, 'daily-briefing should be discovered');
+  assert.equal(briefing.runtime, 'agent');
+  assert.equal(briefing.enabled, false);
+});
