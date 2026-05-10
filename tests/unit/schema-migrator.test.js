@@ -6,6 +6,20 @@ import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin } from 'node:path';
+import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+
+// __robin_test_home_setup__
+const __robinTestHome = __robinJoin(
+  __robinTmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+__robinMkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
+
 function setupMigrationsDir(files) {
   const dir = mkdtempSync(join(tmpdir(), 'robin-mig-'));
   for (const [name, sql] of Object.entries(files)) {
