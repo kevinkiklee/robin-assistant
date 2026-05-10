@@ -50,6 +50,36 @@ function renderIntegrationsList(integrations) {
   return lines.join('\n');
 }
 
+function renderJobsList(jobs) {
+  if (!Array.isArray(jobs)) return '(jobs surface unavailable — daemon not initialized)';
+  if (jobs.length === 0) return '(no jobs registered)';
+  return jobs
+    .map((j) => {
+      const status = j.enabled ? 'enabled' : 'disabled';
+      const next = j.next_run_at ? new Date(j.next_run_at).toISOString() : '—';
+      return `- ${j.name.padEnd(20)} ${status.padEnd(9)} ${(j.schedule ?? '').padEnd(16)} next=${next}`;
+    })
+    .join('\n');
+}
+
+export function jobsSection(jobs) {
+  return `<!-- robin-jobs:start (auto-generated, do not hand-edit) -->
+## Background jobs
+
+Robin runs scheduled jobs inside the daemon (heartbeat scheduler). You CAN
+call \`run_job({ name })\` to trigger one on the user's behalf, but SHOULD
+only do so on explicit user request. Scheduled fires happen
+autonomously; don't try to drive them.
+
+Jobs declared with \`manually_runnable: false\` (destructive maintenance,
+backups, etc.) refuse \`run_job\` regardless of who calls.
+
+### Known jobs
+
+${renderJobsList(jobs)}
+<!-- robin-jobs:end -->`;
+}
+
 export function integrationsSection(integrations = []) {
   return `<!-- robin-integrations:start (auto-generated, do not hand-edit) -->
 ## Integration data freshness
@@ -102,7 +132,7 @@ ${renderIntegrationsList(integrations)}
 <!-- robin-integrations:end -->`;
 }
 
-export function agentsMdContent({ integrations = [] } = {}) {
+export function agentsMdContent({ integrations = [], jobs } = {}) {
   return `# Robin
 
 You're talking to a user through Robin. Robin gives you a memory layer
@@ -187,6 +217,8 @@ well. Don't be servile. Don't summarize your own actions ("I'll now call
 recall..."). Just do the work and answer.
 
 ${integrationsSection(integrations)}
+
+${jobsSection(jobs)}
 
 ${buildSecurityBlock()}
 `;

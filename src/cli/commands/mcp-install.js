@@ -20,10 +20,29 @@ async function readOrEmpty(path) {
   }
 }
 
+async function readJobsForAgentsMd() {
+  try {
+    const { ensureHome, paths } = await import('../../runtime/home.js');
+    const { connect, close } = await import('../../db/client.js');
+    const { listAllJobs } = await import('../../jobs/db.js');
+    await ensureHome();
+    const p = paths();
+    const db = await connect({ engine: `rocksdb://${p.db}` });
+    try {
+      return await listAllJobs(db);
+    } finally {
+      await close(db);
+    }
+  } catch {
+    return undefined; // triggers "jobs surface unavailable"
+  }
+}
+
 async function writeMergedAgentsMd(path) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
-  const merged = mergeAgentsMdContent(existing, agentsMdContent());
+  const jobs = await readJobsForAgentsMd();
+  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs }));
   await writeFile(path, merged, 'utf8');
   console.log(`updated ${path}`);
 }
