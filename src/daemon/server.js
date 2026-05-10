@@ -173,7 +173,12 @@ export async function startDaemon() {
     await resetInFlightFlags(dbHandle);
 
     const integrationsDir = new URL('../integrations/', import.meta.url).pathname;
-    const manifests = await loadManifests(integrationsDir);
+    const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
+    if (unavailable.length > 0) {
+      for (const u of unavailable) {
+        console.warn(`[daemon] integration ${u.name} unavailable: ${u.error}`);
+      }
+    }
 
     for (const m of manifests) {
       const capture = createCapture({
