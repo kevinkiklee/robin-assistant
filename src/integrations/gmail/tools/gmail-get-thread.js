@@ -1,6 +1,14 @@
 import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { ensureFreshToken } from '../../_auth/oauth2-google.js';
+import { getGoogleAccessToken } from '../../_auth/google-token-cache.js';
 import { getThread } from '../client.js';
+
+function buildSecrets() {
+  return {
+    GOOGLE_OAUTH_REFRESH_TOKEN: requireSecret('GOOGLE_OAUTH_REFRESH_TOKEN'),
+    GOOGLE_OAUTH_CLIENT_ID: requireSecret('GOOGLE_OAUTH_CLIENT_ID'),
+    GOOGLE_OAUTH_CLIENT_SECRET: requireSecret('GOOGLE_OAUTH_CLIENT_SECRET'),
+  };
+}
 
 export function createGmailGetThreadTool() {
   return {
@@ -12,13 +20,10 @@ export function createGmailGetThreadTool() {
       required: ['thread_id'],
     },
     handler: async (args) => {
-      let secrets;
       try {
-        secrets = {
-          GOOGLE_OAUTH_REFRESH_TOKEN: requireSecret('GOOGLE_OAUTH_REFRESH_TOKEN'),
-          GOOGLE_OAUTH_CLIENT_ID: requireSecret('GOOGLE_OAUTH_CLIENT_ID'),
-          GOOGLE_OAUTH_CLIENT_SECRET: requireSecret('GOOGLE_OAUTH_CLIENT_SECRET'),
-        };
+        const accessToken = await getGoogleAccessToken({ secrets: buildSecrets() });
+        const thread = await getThread({ accessToken, threadId: args.thread_id });
+        return { thread };
       } catch (e) {
         if (/missing secret/.test(e.message)) {
           throw new Error(
@@ -27,12 +32,6 @@ export function createGmailGetThreadTool() {
         }
         throw e;
       }
-      const fresh = await ensureFreshToken(secrets);
-      const thread = await getThread({
-        accessToken: fresh.access_token,
-        threadId: args.thread_id,
-      });
-      return { thread };
     },
   };
 }

@@ -1,6 +1,14 @@
 import { requireSecret } from '../../../secrets/dotenv-io.js';
-import { ensureFreshToken } from '../../_auth/oauth2-google.js';
+import { getGoogleAccessToken } from '../../_auth/google-token-cache.js';
 import { listMessages } from '../client.js';
+
+function buildSecrets() {
+  return {
+    GOOGLE_OAUTH_REFRESH_TOKEN: requireSecret('GOOGLE_OAUTH_REFRESH_TOKEN'),
+    GOOGLE_OAUTH_CLIENT_ID: requireSecret('GOOGLE_OAUTH_CLIENT_ID'),
+    GOOGLE_OAUTH_CLIENT_SECRET: requireSecret('GOOGLE_OAUTH_CLIENT_SECRET'),
+  };
+}
 
 export function createGmailSearchTool() {
   return {
@@ -15,13 +23,10 @@ export function createGmailSearchTool() {
       required: ['query'],
     },
     handler: async (args) => {
-      let secrets;
       try {
-        secrets = {
-          GOOGLE_OAUTH_REFRESH_TOKEN: requireSecret('GOOGLE_OAUTH_REFRESH_TOKEN'),
-          GOOGLE_OAUTH_CLIENT_ID: requireSecret('GOOGLE_OAUTH_CLIENT_ID'),
-          GOOGLE_OAUTH_CLIENT_SECRET: requireSecret('GOOGLE_OAUTH_CLIENT_SECRET'),
-        };
+        const accessToken = await getGoogleAccessToken({ secrets: buildSecrets() });
+        const page = await listMessages({ accessToken, q: args.query });
+        return { messages: (page.messages ?? []).slice(0, args.max ?? 20) };
       } catch (e) {
         if (/missing secret/.test(e.message)) {
           throw new Error(
@@ -30,9 +35,6 @@ export function createGmailSearchTool() {
         }
         throw e;
       }
-      const fresh = await ensureFreshToken(secrets);
-      const page = await listMessages({ accessToken: fresh.access_token, q: args.query });
-      return { messages: (page.messages ?? []).slice(0, args.max ?? 20) };
     },
   };
 }
