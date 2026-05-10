@@ -1,5 +1,7 @@
 node_modules/
 .robin/
+user-data/
+.claude/
 *.log
 .DS_Store
 tests/fixtures/synthetic-events.json
