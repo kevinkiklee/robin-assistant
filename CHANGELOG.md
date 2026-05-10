@@ -1,5 +1,20 @@
 # Changelog
 
+## [6.0.0-alpha.5] — 2026-05-09
+
+Phase 2d: integrations framework + Gmail + Lunch Money + Discord bot.
+
+- New schema (migration 0006 + 0007): `events.external_id` UNIQUE on `(source, external_id)`, `events.trust` marker, embedding relaxed to `option<>`, `outbound_refusals` table; 0007 relaxes the `events.source` ASSERT to allow integration sources and makes `content_hash` optional.
+- **Integration framework** under `src/integrations/<name>/` — manifest + sync + tool factories + auth helpers. Heartbeat scheduler now drives per-integration cursors with per-name in-flight tracking. Backoff: 3 consecutive scheduled failures double the cadence (capped at 24h); manual triggers don't feed backoff. Daemon-boot in_flight cleanup clears stale flags from a crashed run. Dream cursor seeded + advanced as a special "__dream__" entry inside the same scheduler loop.
+- **Three reference integrations:** gmail (15m, OAuth PKCE), lunch_money (1d, API key, upsert mode for edits), discord (in-process gateway bot, allowlist-gated, replies through outbound-policy).
+- **5 new MCP tools** (24 total daemon surface): `gmail_search`, `gmail_get_thread`, `lunch_money_query`, `integration_status`, `integration_run`. `integration_run` enforces 30s min-interval + gateway/in-flight refusals.
+- **9 new CLI commands:** `robin auth gmail/lunch_money/discord`, `robin integrations list/status/run`, `robin integrations discord register-commands`.
+- **Outbound policy** (`src/outbound/policy.js`): PII / secret / verbatim-untrusted-quote (last 7d) guards. Discord bot replies pass through it; future github/spotify writes will too.
+- **AGENTS.md** integrations auto-section: regenerable `<!-- robin-integrations:start/end -->` block with freshness instructions and per-integration tool list.
+- **discord.js v14** added as production dependency.
+
+Phase 2e candidates: Calendar/Drive/YouTube reusing Gmail's OAuth (shared `google.json`); github-write + spotify-write through outbound-policy; headless OAuth device flow; `--code` flag for paste-the-code path.
+
 ## [6.0.0-alpha.4] — 2026-05-09
 
 Phase 2c: dream agent + memory shapes + heuristic loop.
