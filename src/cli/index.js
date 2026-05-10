@@ -9,6 +9,10 @@ export async function main(argv) {
     const { migrate } = await import('./commands/migrate.js');
     return migrate();
   }
+  if (cmd === 'migrate-from-v1') {
+    const { migrateFromV1 } = await import('./commands/migrate-from-v1.js');
+    return migrateFromV1(argv.slice(1));
+  }
   if (cmd === 'install') {
     const { install } = await import('./commands/install.js');
     return install(argv.slice(1));
