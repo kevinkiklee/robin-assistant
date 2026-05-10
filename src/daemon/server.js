@@ -663,6 +663,7 @@ export async function startDaemon() {
             tools,
             name,
           });
+          await planNextRunAt(dbHandle, jobsCache.current);
           const after = await getJob(dbHandle, name);
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(
