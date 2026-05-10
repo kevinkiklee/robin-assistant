@@ -343,9 +343,28 @@ export async function startDaemon() {
           if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
             due.push({ name: '__dream__', kind: 'dream' });
           }
+          // embed_backfill is always-due if there's any pending row
+          const [pending] = await dbHandle
+            .query(
+              'SELECT count() AS n FROM events WHERE embedding IS NONE AND meta.embed_failed IS NOT true GROUP ALL',
+            )
+            .collect();
+          if ((pending[0]?.n ?? 0) > 0) {
+            due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
+          }
           return due;
         },
         runOne: async (name) => {
+          if (name === '__embed_backfill__') {
+            const e = await idleEmbedder.get();
+            const { embedBackfillTick } = await import('../embed/backfill.js');
+            return await embedBackfillTick({
+              db: dbHandle,
+              embedder: e,
+              batch: 64,
+              log: console.log,
+            });
+          }
           if (name === '__dream__') {
             const e = await idleEmbedder.get();
             const h = await getHost();
