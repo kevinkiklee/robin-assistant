@@ -61,7 +61,7 @@ export function parseCodeArg(argv) {
 
 export async function unionScopes(provider) {
   const dir = new URL('../../integrations/', import.meta.url).pathname;
-  const manifests = await loadManifests(dir);
+  const { loaded: manifests } = await loadManifests(dir);
   const all = new Set();
   for (const m of manifests) {
     // Forward-compat: pick up scopes if manifests declare `secrets.oauth.{provider, scopes}`.
