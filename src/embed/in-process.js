@@ -1,6 +1,6 @@
 import { pipeline } from '@huggingface/transformers';
 
-const MODEL = 'Xenova/mxbai-embed-large-v1';
+const MODEL = 'mixedbread-ai/mxbai-embed-large-v1';
 const DIM = 1024;
 
 export async function createInProcessEmbedder() {
@@ -18,12 +18,12 @@ export async function createInProcessEmbedder() {
     modelId: MODEL,
     embed: async (text) => {
       const ex = await getExtractor();
-      const t = await ex(text, { pooling: 'mean', normalize: true });
+      const t = await ex(text, { pooling: 'cls', normalize: true });
       return Float32Array.from(t.tolist()[0]);
     },
     embedBatch: async (texts) => {
       const ex = await getExtractor();
-      const t = await ex(texts, { pooling: 'mean', normalize: true });
+      const t = await ex(texts, { pooling: 'cls', normalize: true });
       return t.tolist().map((row) => Float32Array.from(row));
     },
     healthCheck: async () => {},
