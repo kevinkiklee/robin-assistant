@@ -50,6 +50,7 @@ export function validateManifest(m) {
     sync: m.sync,
     start: m.start,
     stop: m.stop,
+    preflight: typeof m.preflight === 'function' ? m.preflight : null,
     config: m.config ?? {},
   };
 }
@@ -59,19 +60,34 @@ export async function loadManifests(integrationsDir) {
   try {
     entries = await readdir(integrationsDir, { withFileTypes: true });
   } catch {
-    return [];
+    return { loaded: [], unavailable: [] };
   }
-  const out = [];
+  const loaded = [];
+  const unavailable = [];
   for (const ent of entries) {
     if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
     const manifestPath = join(integrationsDir, ent.name, 'manifest.js');
+    let validated;
     try {
       const mod = await import(manifestPath);
-      const validated = validateManifest(mod.manifest ?? mod.default);
-      out.push(validated);
+      validated = validateManifest(mod.manifest ?? mod.default);
     } catch (e) {
+      // Invalid / failed-to-import manifests: skip silently with a warning.
+      // Distinct from `unavailable` (which is reserved for valid manifests
+      // whose preflight failed because their local data source is absent).
       console.warn(`integration ${ent.name}: ${e.message}`);
+      continue;
     }
+    if (typeof validated.preflight === 'function') {
+      try {
+        await validated.preflight();
+      } catch (e) {
+        unavailable.push({ name: validated.name, error: e.message });
+        console.warn(`integration ${validated.name}: skipped — ${e.message}`);
+        continue;
+      }
+    }
+    loaded.push(validated);
   }
-  return out;
+  return { loaded, unavailable };
 }

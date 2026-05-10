@@ -18,7 +18,7 @@ export async function integrationsList() {
   await ensureHome();
   const p = paths();
   const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
-  const manifests = await loadManifests(integrationsDir);
+  const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
 
   const db = await connect({ engine: `rocksdb://${p.db}` });
   let rtIntegrations = {};
@@ -31,7 +31,7 @@ export async function integrationsList() {
     await close(db);
   }
 
-  if (manifests.length === 0) {
+  if (manifests.length === 0 && unavailable.length === 0) {
     console.log('(no integrations registered)');
     return;
   }
@@ -45,5 +45,8 @@ export async function integrationsList() {
         : '—';
     const ok = rt?.last_sync_ok === true ? 'OK' : rt?.last_sync_ok === false ? 'FAIL' : '—';
     console.log(`${m.name.padEnd(15)}  ${cadence.padEnd(10)}  last=${last.padEnd(25)}  ${ok}`);
+  }
+  for (const u of unavailable) {
+    console.log(`${u.name.padEnd(15)}  ${'unavailable'.padEnd(10)}  ${u.error}`);
   }
 }

@@ -30,10 +30,15 @@ export async function integrationsRun(argv) {
     const db = await connect({ engine: `rocksdb://${p.db}` });
     try {
       const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
-      const manifests = await loadManifests(integrationsDir);
+      const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
       const target = manifests.find((m) => m.name === name);
       if (!target) {
-        console.error(`integration ${name} not loaded`);
+        const why = unavailable.find((u) => u.name === name);
+        if (why) {
+          console.error(`integration ${name} unavailable: ${why.error}`);
+        } else {
+          console.error(`integration ${name} not loaded`);
+        }
         process.exit(1);
       }
       const embedder = await createTransformersEmbedder();
