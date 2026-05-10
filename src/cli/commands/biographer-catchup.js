@@ -2,7 +2,7 @@ import { surql } from 'surrealdb';
 import { biographerProcess } from '../../capture/biographer.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
-import { createTransformersEmbedder } from '../../embed/embedder.js';
+import { createEmbedder } from '../../embed/factory.js';
 import { detectHost } from '../../hosts/detect.js';
 import { ensureHome, paths } from '../../runtime/home.js';
 import { parseArgs } from '../args.js';
@@ -44,7 +44,7 @@ export async function biographerCatchup(argv) {
       }
 
       // Lazy: only build embedder + host when we actually have work to do.
-      const embedder = await createTransformersEmbedder();
+      const embedder = await createEmbedder();
       const host = await detectHost();
 
       let ok = 0;

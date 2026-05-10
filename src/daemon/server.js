@@ -7,7 +7,7 @@ import { surql } from 'surrealdb';
 import { biographerProcess } from '../capture/biographer.js';
 import { close, connect } from '../db/client.js';
 import { dreamProcess } from '../dream/pipeline.js';
-import { createTransformersEmbedder } from '../embed/embedder.js';
+import { createEmbedder } from '../embed/factory.js';
 import { detectHost } from '../hosts/detect.js';
 import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
 import { createCapture } from '../integrations/_framework/capture.js';
@@ -110,7 +110,7 @@ export async function startDaemon() {
     dbHandle = await connect({ engine: `rocksdb://${p.db}` });
 
     const idleEmbedder = createIdleEmbedder({
-      factory: () => createTransformersEmbedder(),
+      factory: createEmbedder,
       idleMs: 600_000,
     });
     // Eagerly resolve the host so the scheduler + run_dream tool can use a

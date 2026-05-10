@@ -3,7 +3,7 @@ import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
-import { createTransformersEmbedder } from '../../embed/embedder.js';
+import { createEmbedder } from '../../embed/factory.js';
 import { createCapture } from '../../integrations/_framework/capture.js';
 import { loadManifests } from '../../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../../integrations/_framework/run-sync.js';
@@ -40,7 +40,7 @@ export async function integrationsRun(argv) {
         }
         process.exit(1);
       }
-      const embedder = await createTransformersEmbedder();
+      const embedder = await createEmbedder();
       const registry = new Map([
         [
           name,
