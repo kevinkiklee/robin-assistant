@@ -13,13 +13,14 @@ export function createUpdateActionPolicyTool({ db }) {
       properties: {
         class: { type: 'string', pattern: '^[a-z_]+:[a-z_-]+$' },
         state: { type: 'string', enum: ['AUTO', 'ASK', 'NEVER'] },
+        reason: { type: 'string', maxLength: 200 },
       },
       required: ['class', 'state'],
     },
-    handler: async ({ class: cls, state }) => {
+    handler: async ({ class: cls, state, reason }) => {
       if (!CLASS_PATTERN.test(cls)) return { ok: false, reason: 'invalid_class' };
       if (!VALID_STATES.has(state)) return { ok: false, reason: 'invalid_state' };
-      await setActionTrust(db, cls, state, 'user');
+      await setActionTrust(db, cls, state, 'user', reason);
       return { ok: true, class: cls, state };
     },
   };

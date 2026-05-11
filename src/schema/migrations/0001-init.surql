@@ -326,9 +326,9 @@ DEFINE INDEX refusals_created    ON refusals FIELDS created_at;
 DEFINE TABLE action_trust SCHEMAFULL TYPE NORMAL;
 DEFINE FIELD class                ON action_trust TYPE string;
 DEFINE FIELD state                ON action_trust TYPE string
-  ASSERT $value IN ['AUTO', 'ASK', 'NEVER'];
+  ASSERT $value IN ['AUTO', 'ASK', 'NEVER', 'DENY'];
 DEFINE FIELD set_by               ON action_trust TYPE string
-  ASSERT $value IN ['user', 'correction', 'default'];
+  ASSERT $value IN ['user', 'correction', 'default', 'correction_loop', 'decay_sweep'];
 DEFINE FIELD success_count        ON action_trust TYPE int DEFAULT 0;
 DEFINE FIELD correction_count     ON action_trust TYPE int DEFAULT 0;
 DEFINE FIELD last_used_at         ON action_trust TYPE option<datetime>;
