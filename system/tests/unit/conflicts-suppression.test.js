@@ -93,11 +93,7 @@ test('rule precedence: low-confidence pair attributed to low_confidence, not sta
 });
 
 test('rule 3: both sides private -> suppressed (both_blocked)', () => {
-  const r = applySuppression(
-    pair({ hitScope: 'private', otherScope: 'private' }),
-    now,
-    cfg,
-  );
+  const r = applySuppression(pair({ hitScope: 'private', otherScope: 'private' }), now, cfg);
   assert.equal(r.keep, false);
   assert.equal(r.reason, 'both_blocked');
 });

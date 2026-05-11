@@ -184,8 +184,7 @@ function renderLine(pair, redactSide) {
   const hitDate = formatDate(hitSide.ts);
   const otherDate = formatDate(otherSide.ts);
   const hitContent = redactSide === 'hit' ? REDACTED_LABEL : trimLine(hitSide.content ?? '');
-  const otherContent =
-    redactSide === 'other' ? REDACTED_LABEL : trimLine(otherSide.content ?? '');
+  const otherContent = redactSide === 'other' ? REDACTED_LABEL : trimLine(otherSide.content ?? '');
   const hitConf = (hitSide.confidence ?? 0).toFixed(2);
   const otherConf = (otherSide.confidence ?? 0).toFixed(2);
   return `[memo ${hitDate}] ${hitContent}${CONFLICT_SEPARATOR}[memo ${otherDate}] ${otherContent} (conf ${hitConf}${CONFLICT_SEPARATOR}${otherConf})`;
