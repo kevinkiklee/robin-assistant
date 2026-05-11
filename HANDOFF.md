@@ -1,5 +1,19 @@
 # SurrealDB Improvements — rollout addendum (2026-05-11, alpha.15)
 
+> **Historical note (2026-05-11 restructure):** Paths in this document predate
+> the v2 package restructure that moved `src/`, `tests/`, `scripts/`, and
+> `bin/` under a unified `system/` tree with five layers (`config/`, `data/`,
+> `cognition/`, `io/`, `runtime/`). For current path conventions see
+> `docs/development.md`. Old `src/X/...` references map roughly to
+> `system/{cognition,io,runtime,data,config}/.../...` — for example
+> `src/memory/store.js` → `system/cognition/memory/store.js`,
+> `src/db/migrate.js` → `system/data/db/migrate.js`, `scripts/...` →
+> `system/runtime/scripts/...`, `bin/robin` → `system/bin/robin`. Some
+> references (e.g. `src/migrate-v1/`) point to directories that no longer
+> exist; they remain as a historical record of the work in progress at the
+> time of writing.
+
+
 The four-phase work on branch `feat/surrealdb-improvements` corrects the
 `TYPE NORMAL` premise from the prior redesign and lands hybrid retrieval +
 hot-path batching. Spec:

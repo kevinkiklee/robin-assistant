@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
+import { test } from 'node:test';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { checkRateLimit } from '../../io/outbound/rate-limit.js';
+
+// __robin_test_home_setup__
+const __robinTestHome = __robinJoin(
+  __robinTmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+__robinMkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
+
+async function fresh() {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
+  return db;
+}
+
+test('first write proceeds', async () => {
+  const db = await fresh();
+  const r = await checkRateLimit(db, 'github_write');
+  assert.equal(r.ok, true);
+  assert.equal(r.used, 1);
+  await close(db);
+});
+
+test('11th write refused with rate_limited (cap=10)', async () => {
+  const db = await fresh();
+  for (let i = 0; i < 10; i++) await checkRateLimit(db, 'github_write');
+  const r = await checkRateLimit(db, 'github_write');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'rate_limited');
+  assert.ok(r.wait_seconds > 0);
+  await close(db);
+});
+
+test('env override GITHUB_WRITE_RATE_LIMIT=2', async () => {
+  process.env.GITHUB_WRITE_RATE_LIMIT = '2';
+  try {
+    const db = await fresh();
+    await checkRateLimit(db, 'github_write');
+    await checkRateLimit(db, 'github_write');
+    const r = await checkRateLimit(db, 'github_write');
+    assert.equal(r.ok, false);
+    await close(db);
+  } finally {
+    Reflect.deleteProperty(process.env, 'GITHUB_WRITE_RATE_LIMIT');
+  }
+});
+
+test('malformed recent_writes (non-array) recovers', async () => {
+  const db = await fresh();
+  await db
+    .query(
+      "UPSERT type::record('runtime', 'outbound_rate') SET value = { github_write: { recent_writes: 'not-an-array' } }",
+    )
+    .collect();
+  const r = await checkRateLimit(db, 'github_write');
+  assert.equal(r.ok, true);
+  await close(db);
+});
+
+test('per-tool isolation: github_write cap does not affect spotify_write', async () => {
+  const db = await fresh();
+  for (let i = 0; i < 10; i++) await checkRateLimit(db, 'github_write');
+  const r = await checkRateLimit(db, 'spotify_write');
+  assert.equal(r.ok, true);
+  await close(db);
+});

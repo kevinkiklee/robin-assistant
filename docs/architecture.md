@@ -80,7 +80,7 @@ Claude Code / Gemini CLI session
 
 Seven themes layered on top of the substrate:
 
-- **Theme 1c — Scope rework.** `src/memory/scope-registry.js` is the single
+- **Theme 1c — Scope rework.** `system/cognition/memory/scope-registry.js` is the single
   source of truth for scope policy: `policyFor`, `validateScope`,
   `scopeMatches`, `persistentScopesSqlFilter`. Hierarchical scopes via `/`
   path notation (`project:robin/v2` matches descendants). `private` scope

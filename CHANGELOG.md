@@ -1,5 +1,55 @@
 # Changelog
 
+## [6.0.0-alpha.17] — 2026-05-11 — Package restructure to `system/`
+
+Reorganizes the package tree from a flat 20-folder `src/` layout into a
+five-layer `system/` tree. **Code-only restructure — no data migrations, no
+schema changes, no public API changes, no behavior changes.**
+
+### What moved
+
+- `src/` → `system/` with five layers:
+  - `runtime/` — process lifecycle (cli, daemon, install, hosts, scripts)
+  - `data/` — persistence (db with migrations inside, embedders)
+  - `cognition/` — named faculties (intuition, biographer, discretion, dream)
+    + substrate (memory, jobs)
+  - `io/` — boundaries (capture, outbound, hooks dispatcher, integrations, mcp)
+  - `config/` — cross-cutting configuration (flat)
+- `bin/`, `scripts/`, `tests/` all moved under `system/`
+- Faculties absorb their primary engines: `recall/` → `cognition/intuition/`,
+  `graph/` → mostly `cognition/biographer/` (episodes → memory), `capture/biographer-*.js`
+  → `cognition/biographer/`, hook handlers → respective faculty folders,
+  `outbound/policy.js` → `cognition/discretion/outbound-policy.js`
+- Folded folders: `rules/` (candidates → dream, rules → memory), `secrets/`
+  (→ config), `schema/migrations/` (→ data/db/migrations/)
+- Heartbeat and introspection live in `runtime/daemon/` because functionally
+  they're scheduling / self-check, not memory operations
+- Renames: `daemon/scheduler.js` → `daemon/heartbeat.js`,
+  `hooks/cli.js` → `hooks/dispatcher.js`, `capture/biographer.js` →
+  `biographer/pipeline.js`, `daemon/biographer-queue.js` → `biographer/queue.js`
+
+### Why
+
+20 flat folders in `src/` had become hard to navigate. Distribution was uneven
+(1 file in `secrets/`, 96 in `integrations/`). Named faculties from
+`docs/faculties.md` were scattered. The new tree groups by responsibility and
+surfaces faculties as first-class folders. See
+`docs/superpowers/specs/2026-05-11-robin-v2-package-structure-design.md` for
+placement rules, import-direction rules, and the migration mapping.
+
+### Package surface
+
+- `package.json` "bin": `system/bin/robin`
+- `package.json` "files" lists `system/` and shipped docs
+- `.npmignore` excludes `system/tests/` and `system/runtime/scripts/`
+- Test/script paths in npm scripts updated
+
+### Breaking? No.
+
+External consumers see no API change — the `robin` CLI command is unchanged,
+all MCP tool names are unchanged. Only contributors editing internals will
+notice the path changes.
+
 ## [6.0.0-alpha.16] — 2026-05-11 — Robin v2 evolution (7 themes)
 
 Lands the seven-theme umbrella spec from `docs/superpowers/specs/2026-05-11-robin-v2-evolution-roadmap.md`. Each theme adds a layer of cognitive lifecycle above the schema substrate.

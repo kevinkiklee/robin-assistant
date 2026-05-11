@@ -1,0 +1,1202 @@
+[
+  {
+    "id": "synthetic:0",
+    "source": "cli",
+    "content": "I made a roast chicken with thyme and lemon.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:1",
+    "source": "cli",
+    "content": "The pasta sauce simmered for two hours.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:2",
+    "source": "cli",
+    "content": "Sourdough starter doubled overnight in the warm kitchen.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:3",
+    "source": "cli",
+    "content": "Tried a new recipe for braised short ribs tonight.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:4",
+    "source": "cli",
+    "content": "Whisked together a quick vinaigrette with mustard and shallot.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:5",
+    "source": "cli",
+    "content": "The cake came out denser than expected; need less butter next time.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:6",
+    "source": "cli",
+    "content": "Stocked the spice rack with cardamom and sumac.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:7",
+    "source": "cli",
+    "content": "Slow-cooked beans with tomato and rosemary all afternoon.",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:8",
+    "source": "cli",
+    "content": "I made a roast chicken with thyme and lemon. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:9",
+    "source": "cli",
+    "content": "The pasta sauce simmered for two hours. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:10",
+    "source": "cli",
+    "content": "Sourdough starter doubled overnight in the warm kitchen. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:11",
+    "source": "cli",
+    "content": "Tried a new recipe for braised short ribs tonight. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:12",
+    "source": "cli",
+    "content": "Whisked together a quick vinaigrette with mustard and shallot. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:13",
+    "source": "cli",
+    "content": "The cake came out denser than expected; need less butter next time. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:14",
+    "source": "cli",
+    "content": "Stocked the spice rack with cardamom and sumac. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:15",
+    "source": "cli",
+    "content": "Slow-cooked beans with tomato and rosemary all afternoon. (note 1)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:16",
+    "source": "cli",
+    "content": "I made a roast chicken with thyme and lemon. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:17",
+    "source": "cli",
+    "content": "The pasta sauce simmered for two hours. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:18",
+    "source": "cli",
+    "content": "Sourdough starter doubled overnight in the warm kitchen. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:19",
+    "source": "cli",
+    "content": "Tried a new recipe for braised short ribs tonight. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:20",
+    "source": "cli",
+    "content": "Whisked together a quick vinaigrette with mustard and shallot. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:21",
+    "source": "cli",
+    "content": "The cake came out denser than expected; need less butter next time. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:22",
+    "source": "cli",
+    "content": "Stocked the spice rack with cardamom and sumac. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:23",
+    "source": "cli",
+    "content": "Slow-cooked beans with tomato and rosemary all afternoon. (note 2)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:24",
+    "source": "cli",
+    "content": "I made a roast chicken with thyme and lemon. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:25",
+    "source": "cli",
+    "content": "The pasta sauce simmered for two hours. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:26",
+    "source": "cli",
+    "content": "Sourdough starter doubled overnight in the warm kitchen. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:27",
+    "source": "cli",
+    "content": "Tried a new recipe for braised short ribs tonight. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:28",
+    "source": "cli",
+    "content": "Whisked together a quick vinaigrette with mustard and shallot. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:29",
+    "source": "cli",
+    "content": "The cake came out denser than expected; need less butter next time. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:30",
+    "source": "cli",
+    "content": "Stocked the spice rack with cardamom and sumac. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:31",
+    "source": "cli",
+    "content": "Slow-cooked beans with tomato and rosemary all afternoon. (note 3)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:32",
+    "source": "cli",
+    "content": "I made a roast chicken with thyme and lemon. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:33",
+    "source": "cli",
+    "content": "The pasta sauce simmered for two hours. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:34",
+    "source": "cli",
+    "content": "Sourdough starter doubled overnight in the warm kitchen. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:35",
+    "source": "cli",
+    "content": "Tried a new recipe for braised short ribs tonight. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:36",
+    "source": "cli",
+    "content": "Whisked together a quick vinaigrette with mustard and shallot. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:37",
+    "source": "cli",
+    "content": "The cake came out denser than expected; need less butter next time. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:38",
+    "source": "cli",
+    "content": "Stocked the spice rack with cardamom and sumac. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:39",
+    "source": "cli",
+    "content": "Slow-cooked beans with tomato and rosemary all afternoon. (note 4)",
+    "cluster": "cooking"
+  },
+  {
+    "id": "synthetic:40",
+    "source": "cli",
+    "content": "Shot a roll of Portra 400 at the riverbank at golden hour.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:41",
+    "source": "cli",
+    "content": "The 50mm lens has the look I want for portraits.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:42",
+    "source": "cli",
+    "content": "New prints arrived; the matte paper is gorgeous.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:43",
+    "source": "cli",
+    "content": "Took a long-exposure of the bridge with a 10-stop ND filter.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:44",
+    "source": "cli",
+    "content": "Backlight at noon flattened the contrast on the cliffs.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:45",
+    "source": "cli",
+    "content": "The medium format negatives are scanning better than 35mm.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:46",
+    "source": "cli",
+    "content": "Charged batteries and packed lenses for the photowalk.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:47",
+    "source": "cli",
+    "content": "Tried HSS flash to balance midday sun on a model.",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:48",
+    "source": "cli",
+    "content": "Shot a roll of Portra 400 at the riverbank at golden hour. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:49",
+    "source": "cli",
+    "content": "The 50mm lens has the look I want for portraits. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:50",
+    "source": "cli",
+    "content": "New prints arrived; the matte paper is gorgeous. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:51",
+    "source": "cli",
+    "content": "Took a long-exposure of the bridge with a 10-stop ND filter. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:52",
+    "source": "cli",
+    "content": "Backlight at noon flattened the contrast on the cliffs. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:53",
+    "source": "cli",
+    "content": "The medium format negatives are scanning better than 35mm. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:54",
+    "source": "cli",
+    "content": "Charged batteries and packed lenses for the photowalk. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:55",
+    "source": "cli",
+    "content": "Tried HSS flash to balance midday sun on a model. (note 1)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:56",
+    "source": "cli",
+    "content": "Shot a roll of Portra 400 at the riverbank at golden hour. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:57",
+    "source": "cli",
+    "content": "The 50mm lens has the look I want for portraits. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:58",
+    "source": "cli",
+    "content": "New prints arrived; the matte paper is gorgeous. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:59",
+    "source": "cli",
+    "content": "Took a long-exposure of the bridge with a 10-stop ND filter. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:60",
+    "source": "cli",
+    "content": "Backlight at noon flattened the contrast on the cliffs. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:61",
+    "source": "cli",
+    "content": "The medium format negatives are scanning better than 35mm. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:62",
+    "source": "cli",
+    "content": "Charged batteries and packed lenses for the photowalk. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:63",
+    "source": "cli",
+    "content": "Tried HSS flash to balance midday sun on a model. (note 2)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:64",
+    "source": "cli",
+    "content": "Shot a roll of Portra 400 at the riverbank at golden hour. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:65",
+    "source": "cli",
+    "content": "The 50mm lens has the look I want for portraits. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:66",
+    "source": "cli",
+    "content": "New prints arrived; the matte paper is gorgeous. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:67",
+    "source": "cli",
+    "content": "Took a long-exposure of the bridge with a 10-stop ND filter. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:68",
+    "source": "cli",
+    "content": "Backlight at noon flattened the contrast on the cliffs. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:69",
+    "source": "cli",
+    "content": "The medium format negatives are scanning better than 35mm. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:70",
+    "source": "cli",
+    "content": "Charged batteries and packed lenses for the photowalk. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:71",
+    "source": "cli",
+    "content": "Tried HSS flash to balance midday sun on a model. (note 3)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:72",
+    "source": "cli",
+    "content": "Shot a roll of Portra 400 at the riverbank at golden hour. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:73",
+    "source": "cli",
+    "content": "The 50mm lens has the look I want for portraits. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:74",
+    "source": "cli",
+    "content": "New prints arrived; the matte paper is gorgeous. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:75",
+    "source": "cli",
+    "content": "Took a long-exposure of the bridge with a 10-stop ND filter. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:76",
+    "source": "cli",
+    "content": "Backlight at noon flattened the contrast on the cliffs. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:77",
+    "source": "cli",
+    "content": "The medium format negatives are scanning better than 35mm. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:78",
+    "source": "cli",
+    "content": "Charged batteries and packed lenses for the photowalk. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:79",
+    "source": "cli",
+    "content": "Tried HSS flash to balance midday sun on a model. (note 4)",
+    "cluster": "photography"
+  },
+  {
+    "id": "synthetic:80",
+    "source": "cli",
+    "content": "Refactored the auth middleware to use async iterators.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:81",
+    "source": "cli",
+    "content": "TypeScript narrowing finally caught the bug in the dispatcher.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:82",
+    "source": "cli",
+    "content": "Wrote a tiny CLI parser; pushed the test suite to green.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:83",
+    "source": "cli",
+    "content": "Replaced the React effect with a state machine via XState.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:84",
+    "source": "cli",
+    "content": "The migration runner is idempotent now; checksums caught a stale file.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:85",
+    "source": "cli",
+    "content": "Switched the embed model to bge and retook the latency numbers.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:86",
+    "source": "cli",
+    "content": "CI is flaky on macOS — possibly the prebuild for the native engine.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:87",
+    "source": "cli",
+    "content": "Profiling showed the hot loop spent 80% of time in JSON.stringify.",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:88",
+    "source": "cli",
+    "content": "Refactored the auth middleware to use async iterators. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:89",
+    "source": "cli",
+    "content": "TypeScript narrowing finally caught the bug in the dispatcher. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:90",
+    "source": "cli",
+    "content": "Wrote a tiny CLI parser; pushed the test suite to green. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:91",
+    "source": "cli",
+    "content": "Replaced the React effect with a state machine via XState. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:92",
+    "source": "cli",
+    "content": "The migration runner is idempotent now; checksums caught a stale file. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:93",
+    "source": "cli",
+    "content": "Switched the embed model to bge and retook the latency numbers. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:94",
+    "source": "cli",
+    "content": "CI is flaky on macOS — possibly the prebuild for the native engine. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:95",
+    "source": "cli",
+    "content": "Profiling showed the hot loop spent 80% of time in JSON.stringify. (note 1)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:96",
+    "source": "cli",
+    "content": "Refactored the auth middleware to use async iterators. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:97",
+    "source": "cli",
+    "content": "TypeScript narrowing finally caught the bug in the dispatcher. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:98",
+    "source": "cli",
+    "content": "Wrote a tiny CLI parser; pushed the test suite to green. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:99",
+    "source": "cli",
+    "content": "Replaced the React effect with a state machine via XState. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:100",
+    "source": "cli",
+    "content": "The migration runner is idempotent now; checksums caught a stale file. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:101",
+    "source": "cli",
+    "content": "Switched the embed model to bge and retook the latency numbers. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:102",
+    "source": "cli",
+    "content": "CI is flaky on macOS — possibly the prebuild for the native engine. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:103",
+    "source": "cli",
+    "content": "Profiling showed the hot loop spent 80% of time in JSON.stringify. (note 2)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:104",
+    "source": "cli",
+    "content": "Refactored the auth middleware to use async iterators. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:105",
+    "source": "cli",
+    "content": "TypeScript narrowing finally caught the bug in the dispatcher. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:106",
+    "source": "cli",
+    "content": "Wrote a tiny CLI parser; pushed the test suite to green. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:107",
+    "source": "cli",
+    "content": "Replaced the React effect with a state machine via XState. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:108",
+    "source": "cli",
+    "content": "The migration runner is idempotent now; checksums caught a stale file. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:109",
+    "source": "cli",
+    "content": "Switched the embed model to bge and retook the latency numbers. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:110",
+    "source": "cli",
+    "content": "CI is flaky on macOS — possibly the prebuild for the native engine. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:111",
+    "source": "cli",
+    "content": "Profiling showed the hot loop spent 80% of time in JSON.stringify. (note 3)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:112",
+    "source": "cli",
+    "content": "Refactored the auth middleware to use async iterators. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:113",
+    "source": "cli",
+    "content": "TypeScript narrowing finally caught the bug in the dispatcher. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:114",
+    "source": "cli",
+    "content": "Wrote a tiny CLI parser; pushed the test suite to green. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:115",
+    "source": "cli",
+    "content": "Replaced the React effect with a state machine via XState. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:116",
+    "source": "cli",
+    "content": "The migration runner is idempotent now; checksums caught a stale file. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:117",
+    "source": "cli",
+    "content": "Switched the embed model to bge and retook the latency numbers. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:118",
+    "source": "cli",
+    "content": "CI is flaky on macOS — possibly the prebuild for the native engine. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:119",
+    "source": "cli",
+    "content": "Profiling showed the hot loop spent 80% of time in JSON.stringify. (note 4)",
+    "cluster": "coding"
+  },
+  {
+    "id": "synthetic:120",
+    "source": "cli",
+    "content": "Booked a flight to Lisbon for early October.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:121",
+    "source": "cli",
+    "content": "The train from Kyoto to Osaka was on time and quiet.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:122",
+    "source": "cli",
+    "content": "Walked the coastal path at sunrise; saw seals on the rocks.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:123",
+    "source": "cli",
+    "content": "Hostel in Porto had the best breakfast of the trip.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:124",
+    "source": "cli",
+    "content": "Lost my hat to the wind on the ferry across the strait.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:125",
+    "source": "cli",
+    "content": "Bus passes saved a fortune in Buenos Aires.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:126",
+    "source": "cli",
+    "content": "The Lonely Planet 2024 edition was already out of date.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:127",
+    "source": "cli",
+    "content": "A two-week itinerary felt rushed; would do three next time.",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:128",
+    "source": "cli",
+    "content": "Booked a flight to Lisbon for early October. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:129",
+    "source": "cli",
+    "content": "The train from Kyoto to Osaka was on time and quiet. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:130",
+    "source": "cli",
+    "content": "Walked the coastal path at sunrise; saw seals on the rocks. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:131",
+    "source": "cli",
+    "content": "Hostel in Porto had the best breakfast of the trip. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:132",
+    "source": "cli",
+    "content": "Lost my hat to the wind on the ferry across the strait. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:133",
+    "source": "cli",
+    "content": "Bus passes saved a fortune in Buenos Aires. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:134",
+    "source": "cli",
+    "content": "The Lonely Planet 2024 edition was already out of date. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:135",
+    "source": "cli",
+    "content": "A two-week itinerary felt rushed; would do three next time. (note 1)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:136",
+    "source": "cli",
+    "content": "Booked a flight to Lisbon for early October. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:137",
+    "source": "cli",
+    "content": "The train from Kyoto to Osaka was on time and quiet. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:138",
+    "source": "cli",
+    "content": "Walked the coastal path at sunrise; saw seals on the rocks. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:139",
+    "source": "cli",
+    "content": "Hostel in Porto had the best breakfast of the trip. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:140",
+    "source": "cli",
+    "content": "Lost my hat to the wind on the ferry across the strait. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:141",
+    "source": "cli",
+    "content": "Bus passes saved a fortune in Buenos Aires. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:142",
+    "source": "cli",
+    "content": "The Lonely Planet 2024 edition was already out of date. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:143",
+    "source": "cli",
+    "content": "A two-week itinerary felt rushed; would do three next time. (note 2)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:144",
+    "source": "cli",
+    "content": "Booked a flight to Lisbon for early October. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:145",
+    "source": "cli",
+    "content": "The train from Kyoto to Osaka was on time and quiet. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:146",
+    "source": "cli",
+    "content": "Walked the coastal path at sunrise; saw seals on the rocks. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:147",
+    "source": "cli",
+    "content": "Hostel in Porto had the best breakfast of the trip. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:148",
+    "source": "cli",
+    "content": "Lost my hat to the wind on the ferry across the strait. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:149",
+    "source": "cli",
+    "content": "Bus passes saved a fortune in Buenos Aires. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:150",
+    "source": "cli",
+    "content": "The Lonely Planet 2024 edition was already out of date. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:151",
+    "source": "cli",
+    "content": "A two-week itinerary felt rushed; would do three next time. (note 3)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:152",
+    "source": "cli",
+    "content": "Booked a flight to Lisbon for early October. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:153",
+    "source": "cli",
+    "content": "The train from Kyoto to Osaka was on time and quiet. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:154",
+    "source": "cli",
+    "content": "Walked the coastal path at sunrise; saw seals on the rocks. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:155",
+    "source": "cli",
+    "content": "Hostel in Porto had the best breakfast of the trip. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:156",
+    "source": "cli",
+    "content": "Lost my hat to the wind on the ferry across the strait. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:157",
+    "source": "cli",
+    "content": "Bus passes saved a fortune in Buenos Aires. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:158",
+    "source": "cli",
+    "content": "The Lonely Planet 2024 edition was already out of date. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:159",
+    "source": "cli",
+    "content": "A two-week itinerary felt rushed; would do three next time. (note 4)",
+    "cluster": "travel"
+  },
+  {
+    "id": "synthetic:160",
+    "source": "cli",
+    "content": "Finished Sebald late last night; the digressions are unforgettable.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:161",
+    "source": "cli",
+    "content": "Picked up Le Guin again — every paragraph rewards rereading.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:162",
+    "source": "cli",
+    "content": "The biography of Borges has too many footnotes.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:163",
+    "source": "cli",
+    "content": "Switched to a paper book after a month of e-ink fatigue.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:164",
+    "source": "cli",
+    "content": "Found a first edition Calvino at the secondhand shop.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:165",
+    "source": "cli",
+    "content": "Returned three library books I never finished.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:166",
+    "source": "cli",
+    "content": "The poetry anthology arranged by season is a perfect bedside book.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:167",
+    "source": "cli",
+    "content": "Started Thinking, Fast and Slow again — the priming chapters age oddly.",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:168",
+    "source": "cli",
+    "content": "Finished Sebald late last night; the digressions are unforgettable. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:169",
+    "source": "cli",
+    "content": "Picked up Le Guin again — every paragraph rewards rereading. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:170",
+    "source": "cli",
+    "content": "The biography of Borges has too many footnotes. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:171",
+    "source": "cli",
+    "content": "Switched to a paper book after a month of e-ink fatigue. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:172",
+    "source": "cli",
+    "content": "Found a first edition Calvino at the secondhand shop. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:173",
+    "source": "cli",
+    "content": "Returned three library books I never finished. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:174",
+    "source": "cli",
+    "content": "The poetry anthology arranged by season is a perfect bedside book. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:175",
+    "source": "cli",
+    "content": "Started Thinking, Fast and Slow again — the priming chapters age oddly. (note 1)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:176",
+    "source": "cli",
+    "content": "Finished Sebald late last night; the digressions are unforgettable. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:177",
+    "source": "cli",
+    "content": "Picked up Le Guin again — every paragraph rewards rereading. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:178",
+    "source": "cli",
+    "content": "The biography of Borges has too many footnotes. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:179",
+    "source": "cli",
+    "content": "Switched to a paper book after a month of e-ink fatigue. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:180",
+    "source": "cli",
+    "content": "Found a first edition Calvino at the secondhand shop. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:181",
+    "source": "cli",
+    "content": "Returned three library books I never finished. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:182",
+    "source": "cli",
+    "content": "The poetry anthology arranged by season is a perfect bedside book. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:183",
+    "source": "cli",
+    "content": "Started Thinking, Fast and Slow again — the priming chapters age oddly. (note 2)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:184",
+    "source": "cli",
+    "content": "Finished Sebald late last night; the digressions are unforgettable. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:185",
+    "source": "cli",
+    "content": "Picked up Le Guin again — every paragraph rewards rereading. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:186",
+    "source": "cli",
+    "content": "The biography of Borges has too many footnotes. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:187",
+    "source": "cli",
+    "content": "Switched to a paper book after a month of e-ink fatigue. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:188",
+    "source": "cli",
+    "content": "Found a first edition Calvino at the secondhand shop. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:189",
+    "source": "cli",
+    "content": "Returned three library books I never finished. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:190",
+    "source": "cli",
+    "content": "The poetry anthology arranged by season is a perfect bedside book. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:191",
+    "source": "cli",
+    "content": "Started Thinking, Fast and Slow again — the priming chapters age oddly. (note 3)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:192",
+    "source": "cli",
+    "content": "Finished Sebald late last night; the digressions are unforgettable. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:193",
+    "source": "cli",
+    "content": "Picked up Le Guin again — every paragraph rewards rereading. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:194",
+    "source": "cli",
+    "content": "The biography of Borges has too many footnotes. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:195",
+    "source": "cli",
+    "content": "Switched to a paper book after a month of e-ink fatigue. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:196",
+    "source": "cli",
+    "content": "Found a first edition Calvino at the secondhand shop. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:197",
+    "source": "cli",
+    "content": "Returned three library books I never finished. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:198",
+    "source": "cli",
+    "content": "The poetry anthology arranged by season is a perfect bedside book. (note 4)",
+    "cluster": "reading"
+  },
+  {
+    "id": "synthetic:199",
+    "source": "cli",
+    "content": "Started Thinking, Fast and Slow again — the priming chapters age oddly. (note 4)",
+    "cluster": "reading"
+  }
+]

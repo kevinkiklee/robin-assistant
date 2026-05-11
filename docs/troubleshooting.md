@@ -35,7 +35,7 @@ brew install surrealdb/tap/surreal
 curl -sSf https://install.surrealdb.com | sh
 
 # 2. Start it with versioned storage
-node scripts/start-surreal-server.mjs --storage surrealkv+versioned
+node system/runtime/scripts/start-surreal-server.mjs --storage surrealkv+versioned
 # (the helper script reads ROBIN_HOME and writes to <home>/db)
 
 # 3. Point Robin at the server. Edit <robinHome>/config.json:
@@ -122,7 +122,7 @@ After re-installing hooks, **restart the host session** — Claude Code and Gemi
 1. Disable the hook: `robin hooks disable discretion` (affects the agent too).
 2. Run the command outside the agent's Bash tool.
 
-To see *why* a command was refused, look at the stderr line: `Robin: blocked Bash — <rule-name>: <why>`. Rules live in `src/hooks/bash-patterns.js`.
+To see *why* a command was refused, look at the stderr line: `Robin: blocked Bash — <rule-name>: <why>`. Rules live in `system/cognition/discretion/bash-patterns.js`.
 
 ### `discretion` (memory write) refusing content that doesn't actually contain PII
 
@@ -132,7 +132,7 @@ Force the write from the CLI:
 robin remember --force "the content..."
 ```
 
-Agents have no override path — they must escalate. Check the audit: `robin refusals list`. Patterns live in `src/hooks/pii-patterns.js` and `src/outbound/patterns.js`.
+Agents have no override path — they must escalate. Check the audit: `robin refusals list`. Patterns live in `system/cognition/discretion/pii-patterns.js` and `system/io/outbound/patterns.js`.
 
 ## Memory
 
@@ -169,7 +169,7 @@ Three checks, in order:
 
    Look for `Iterate Index` referencing `embeddings_mxbai_1024_events_vec`. If you see `Iterate Table` instead, the index is missing or the query shape didn't match — re-prepare the profile.
 
-For a quick ad-hoc recall: `node scripts/dev-recall.js "your query"`.
+For a quick ad-hoc recall: `node system/runtime/scripts/dev-recall.js "your query"`.
 
 ### Reinforcement loop not running
 
@@ -196,7 +196,7 @@ Common causes:
   ```
 
 - Job disabled in `runtime_jobs`: `robin jobs enable reinforce-recall`.
-- Job missing entirely: `robin jobs reload` re-syncs from `src/jobs/builtin/`.
+- Job missing entirely: `robin jobs reload` re-syncs from `system/cognition/jobs/builtin/`.
 
 ### A memo isn't surfacing in recall
 
@@ -266,7 +266,7 @@ If `n < 3`, you simply don't have enough correction signal yet.
 Boot output like:
 
 ```
-[daemon] introspection warning — hash_drift: bin/robin
+[daemon] introspection warning — hash_drift: system/bin/robin
 [daemon] introspection warning — mode_drift: secrets_env_mode
 ```
 
@@ -290,7 +290,7 @@ Each integration's manifest declares the env keys it needs. Missing keys → `un
 
 ```sh
 robin secrets list
-cat src/integrations/<name>/manifest.json
+cat system/io/integrations/<name>/manifest.json
 robin secrets set <KEY_NAME>
 ```
 
