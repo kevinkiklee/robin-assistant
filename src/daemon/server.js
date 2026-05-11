@@ -570,6 +570,18 @@ export async function startDaemon() {
       scheduler.start();
     }
 
+    // Theme 3: cadence consumer. Drains dream_triggers each minute.
+    let cadenceTicker = null;
+    if (host) {
+      const { consumePendingTriggers } = await import('./cadence-consumer.js');
+      cadenceTicker = setInterval(() => {
+        consumePendingTriggers(dbHandle, host).catch((e) => {
+          console.warn(`[cadence-consumer] ${e.message}`);
+        });
+      }, 60_000);
+      cadenceTicker.unref?.();
+    }
+
     const { server: probe, port } = await bindFreePort();
     probe.close();
 
