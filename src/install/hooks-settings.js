@@ -7,11 +7,14 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { paths } from '../runtime/data-store.js';
+import {
+  forgetHostTouchpoint,
+  readHostIntegrations,
+  recordHostTouchpoint,
+} from '../runtime/data-store.js';
 
 /**
  * Per spec §10:
@@ -127,17 +130,13 @@ function removeCommandFromPhase(phaseArr, command) {
   return { arr: out, removed };
 }
 
-function manifestPath() {
-  return join(paths.data.home(), 'installed-hooks.json');
-}
-
 /**
  * Install robin hook entries into `<homeDir>/.claude/settings.json` and
  * `<homeDir>/.gemini/settings.json`. Foreign entries are preserved.
  * Idempotent: re-running adds nothing if the entries are already present.
  *
- * Writes a manifest at `<robinHome>/installed-hooks.json` recording exactly
- * which entries we own (per host) so uninstall can be precise.
+ * Records each host's installed entries in the unified host-integrations
+ * manifest via `recordHostTouchpoint`.
  *
  * @param {{homeDir: string, packageRoot: string}} args
  * @returns {Promise<{addedByHost: Record<string, number>}>}
@@ -151,7 +150,6 @@ export async function installHooksToSettings({ homeDir, packageRoot }) {
   }
   const shimPath = join(packageRoot, 'bin', 'robin-hook.sh');
   const addedByHost = {};
-  const manifest = {};
 
   for (const host of HOSTS) {
     const settingsPath = join(homeDir, host.settingsRel);
@@ -185,21 +183,27 @@ export async function installHooksToSettings({ homeDir, packageRoot }) {
       owned.push(ownedEntry);
     }
 
-    atomicWriteJson(settingsPath, settings);
+    await recordHostTouchpoint(
+      {
+        kind: `${host.name}-hooks`,
+        path: settingsPath,
+        owned,
+        installedAt: new Date().toISOString(),
+      },
+      () => {
+        atomicWriteJson(settingsPath, settings);
+      },
+    );
     addedByHost[host.name] = added;
-    manifest[host.name] = owned;
   }
 
-  const mPath = manifestPath();
-  mkdirSync(dirname(mPath), { recursive: true });
-  atomicWriteJson(mPath, manifest);
   return { addedByHost };
 }
 
 /**
- * Remove robin-owned hook entries from settings, using the manifest as the
- * source of truth. Falls back to a scan-and-prefix-match if the manifest is
- * missing.
+ * Remove robin-owned hook entries from settings, using the unified manifest
+ * as the source of truth. Falls back to a scan-and-prefix-match if no
+ * manifest entries exist for the host.
  *
  * @param {{homeDir: string, packageRoot?: string}} args
  * @returns {Promise<{removedByHost: Record<string, number>}>}
@@ -209,7 +213,7 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
     throw new TypeError('uninstallHooksFromSettings: homeDir is required');
   }
   const removedByHost = {};
-  const manifest = await readInstalledHooks();
+  const hostIntegrations = await readHostIntegrations();
 
   for (const host of HOSTS) {
     const settingsPath = join(homeDir, host.settingsRel);
@@ -228,14 +232,19 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
     }
 
     let removed = 0;
-    if (manifest && Array.isArray(manifest[host.name])) {
+    const kind = `${host.name}-hooks`;
+    const manifestEntry =
+      hostIntegrations?.entries?.find((e) => e.kind === kind && e.path === settingsPath) ?? null;
+
+    if (manifestEntry && Array.isArray(manifestEntry.owned)) {
       // Manifest path: remove the exact commands we recorded.
-      for (const entry of manifest[host.name]) {
+      for (const entry of manifestEntry.owned) {
         if (!entry || typeof entry.command !== 'string') continue;
         const phaseArr = settings.hooks[entry.phase];
         const r = removeCommandFromPhase(phaseArr, entry.command);
         removed += r.removed;
         if (Array.isArray(r.arr) && r.arr.length === 0) {
+          // biome-ignore lint/performance/noDelete: must remove the key, not set to undefined (JSON-serialized output diverges)
           delete settings.hooks[entry.phase];
         } else {
           settings.hooks[entry.phase] = r.arr;
@@ -270,6 +279,7 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
           }
         }
         if (out.length === 0) {
+          // biome-ignore lint/performance/noDelete: must remove the key, not set to undefined (JSON-serialized output diverges)
           delete settings.hooks[phase];
         } else {
           settings.hooks[phase] = out;
@@ -284,34 +294,12 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
     }
     atomicWriteJson(settingsPath, settings);
     removedByHost[host.name] = removed;
+
+    // Remove entry from unified manifest.
+    await forgetHostTouchpoint({ kind, path: settingsPath });
   }
 
-  // Delete manifest after success.
-  const mPath = manifestPath();
-  if (existsSync(mPath)) {
-    try {
-      rmSync(mPath, { force: true });
-    } catch {
-      // Non-fatal.
-    }
-  }
   return { removedByHost };
-}
-
-/**
- * Read the installed-hooks manifest, or null if absent / unreadable.
- */
-export async function readInstalledHooks() {
-  const mPath = manifestPath();
-  if (!existsSync(mPath)) return null;
-  try {
-    const raw = readFileSync(mPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
 }
 
 /**

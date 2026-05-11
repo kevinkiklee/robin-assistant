@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { readHostIntegrations } from '../../src/runtime/data-store.js';
 
 function setup() {
   const root = join(
@@ -85,8 +86,12 @@ test('full install/uninstall cycle: foreign entries survive byte-for-byte', asyn
       );
     }
 
-    // Manifest exists.
-    assert.ok(existsSync(join(env.robinHome, 'installed-hooks.json')));
+    // Manifest entries exist in unified host-integrations.json.
+    const integrations = await readHostIntegrations();
+    assert.ok(
+      integrations.entries.some((e) => e.kind === 'claude-hooks'),
+      'claude-hooks entry should be in manifest after install',
+    );
 
     // Uninstall.
     const { removedByHost } = await uninstallHooksFromSettings({
@@ -124,8 +129,13 @@ test('full install/uninstall cycle: foreign entries survive byte-for-byte', asyn
     );
     assert.equal(geminiAfterUninstall.mySetting, geminiOriginal.mySetting);
 
-    // Manifest deleted.
-    assert.equal(existsSync(join(env.robinHome, 'installed-hooks.json')), false);
+    // Manifest entries removed from unified manifest after uninstall.
+    const integrationsAfter = await readHostIntegrations();
+    assert.equal(
+      integrationsAfter.entries.find((e) => e.kind === 'claude-hooks'),
+      undefined,
+      'claude-hooks entry should be removed after uninstall',
+    );
   } finally {
     cleanup(env.root);
   }

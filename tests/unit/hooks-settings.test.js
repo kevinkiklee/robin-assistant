@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { readHostIntegrations } from '../../src/runtime/data-store.js';
 
 function makeFreshEnv() {
   const root = join(
@@ -89,13 +90,20 @@ test('installHooksToSettings adds robin entries and preserves foreign Claude ent
       assert.ok(found, `phase ${phase} should contain a robin hook entry`);
     }
 
-    // Manifest written.
-    const manifest = JSON.parse(readFileSync(join(env.robinHome, 'installed-hooks.json'), 'utf8'));
-    assert.ok(Array.isArray(manifest.claude));
-    assert.equal(manifest.claude.length, 4);
-    assert.ok(Array.isArray(manifest.gemini));
+    // Manifest written to unified host-integrations.json.
+    const integrations = await readHostIntegrations();
+    const claudeEntry = integrations.entries.find(
+      (e) => e.kind === 'claude-hooks' && e.path === join(env.homeDir, '.claude/settings.json'),
+    );
+    assert.ok(claudeEntry, 'claude-hooks entry should be in manifest');
+    assert.ok(Array.isArray(claudeEntry.owned));
+    assert.equal(claudeEntry.owned.length, 4);
+    const geminiEntry = integrations.entries.find(
+      (e) => e.kind === 'gemini-hooks' && e.path === join(env.homeDir, '.gemini/settings.json'),
+    );
+    assert.ok(geminiEntry, 'gemini-hooks entry should be in manifest');
     // Gemini gets 3 entries (no UserPromptSubmit).
-    assert.equal(manifest.gemini.length, 3);
+    assert.equal(geminiEntry.owned.length, 3);
   } finally {
     cleanup(env.root);
   }
@@ -156,8 +164,12 @@ test('uninstallHooksFromSettings removes only robin entries; foreign entries sur
       'unrelated keys byte-identical after uninstall',
     );
 
-    // Manifest deleted.
-    assert.equal(existsSync(join(env.robinHome, 'installed-hooks.json')), false);
+    // Manifest entries removed from unified manifest.
+    const integrations = await readHostIntegrations();
+    const claudeEntry = integrations.entries.find(
+      (e) => e.kind === 'claude-hooks' && e.path === join(env.homeDir, '.claude/settings.json'),
+    );
+    assert.equal(claudeEntry, undefined, 'claude-hooks entry should be removed after uninstall');
   } finally {
     cleanup(env.root);
   }
@@ -183,27 +195,30 @@ test('Gemini settings: UserPromptSubmit is NOT installed', async () => {
   }
 });
 
-test('readInstalledHooks returns null when manifest absent, manifest object when present', async () => {
+test('readHostIntegrations returns empty entries when manifest absent, populated when present', async () => {
   const env = makeFreshEnv();
   try {
-    const { installHooksToSettings, readInstalledHooks } = await importFresh();
-    assert.equal(await readInstalledHooks(), null);
+    const { installHooksToSettings } = await importFresh();
+    const before = await readHostIntegrations();
+    assert.equal(before.entries.length, 0, 'no entries before install');
     await installHooksToSettings({ homeDir: env.homeDir, packageRoot: env.packageRoot });
-    const m = await readInstalledHooks();
-    assert.ok(m);
-    assert.ok(Array.isArray(m.claude));
+    const after = await readHostIntegrations();
+    assert.ok(after.entries.length >= 2, 'at least claude + gemini entries after install');
+    const claudeEntry = after.entries.find((e) => e.kind === 'claude-hooks');
+    assert.ok(claudeEntry, 'claude-hooks entry present');
+    assert.ok(Array.isArray(claudeEntry.owned));
   } finally {
     cleanup(env.root);
   }
 });
 
-test('uninstall fallback (no manifest) removes any command starting with the shim path', async () => {
+test('uninstall fallback (no manifest entry) removes any command starting with the shim path', async () => {
   const env = makeFreshEnv();
   try {
     const { installHooksToSettings, uninstallHooksFromSettings } = await importFresh();
     await installHooksToSettings({ homeDir: env.homeDir, packageRoot: env.packageRoot });
-    // Delete the manifest to force fallback path.
-    rmSync(join(env.robinHome, 'installed-hooks.json'), { force: true });
+    // Delete the unified manifest file to force fallback path.
+    rmSync(join(env.robinHome, 'host-integrations.json'), { force: true });
 
     const { removedByHost } = await uninstallHooksFromSettings({
       homeDir: env.homeDir,
