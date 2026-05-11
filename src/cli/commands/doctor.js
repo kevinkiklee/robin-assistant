@@ -396,8 +396,7 @@ export async function doctorData() {
           Array.isArray(phaseArr) &&
           phaseArr.some(
             (entry) =>
-              Array.isArray(entry?.hooks) &&
-              entry.hooks.some((h) => h?.command === own.command),
+              Array.isArray(entry?.hooks) && entry.hooks.some((h) => h?.command === own.command),
           );
         if (!present) {
           drift.push({ path: e.path, reason: `command not present: ${own.command}` });

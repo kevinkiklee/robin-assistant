@@ -1,7 +1,7 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -11,11 +11,7 @@ const ALLOW_FILES = new Set([
   join(ROOT, 'src/migrate-v1/v1-client.js'),
 ]);
 
-const PATTERNS = [
-  /~\/\.robin\b/,
-  /\/\.robin\//,
-  /homedir\(\)\s*,\s*['"]\.robin['"]/,
-];
+const PATTERNS = [/~\/\.robin\b/, /\/\.robin\//, /homedir\(\)\s*,\s*['"]\.robin['"]/];
 
 function walk(dir, out = []) {
   for (const ent of readdirSync(dir)) {

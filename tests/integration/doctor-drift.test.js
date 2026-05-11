@@ -1,14 +1,10 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  ensureHome,
-  recordHostTouchpoint,
-  writePointer,
-} from '../../src/runtime/data-store.js';
+import test from 'node:test';
 import { doctorData } from '../../src/cli/commands/doctor.js';
+import { ensureHome, recordHostTouchpoint, writePointer } from '../../src/runtime/data-store.js';
 
 test('doctorData: reports drift when a host file no longer contains a recorded command', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
@@ -31,7 +27,7 @@ test('doctorData: reports drift when a host file no longer contains a recorded c
     assert.ok(drift, 'should report drift for the missing command');
     assert.match(drift.reason, /command not present/);
   } finally {
-    delete process.env.ROBIN_HOME;
+    process.env.ROBIN_HOME = undefined;
     rmSync(home, { recursive: true, force: true });
   }
 });
