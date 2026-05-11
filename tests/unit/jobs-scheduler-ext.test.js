@@ -93,3 +93,36 @@ test('listDueJobs — skips disabled jobs', async () => {
   assert.deepEqual(due, []);
   await close(db);
 });
+
+test('planNextRunAt — catch_up:true, last_run >1.5× cadence behind → fires now', async () => {
+  // @hourly cadence is 1h; 2h behind > 1.5× → fire on next tick.
+  const db = await fresh();
+  const j = JOB({ catch_up: true });
+  await upsertFromDiscovered(db, [j]);
+  const twoHoursAgo = new Date(Date.now() - 2 * 3600_000);
+  await db
+    .query(`UPDATE runtime_jobs MERGE { last_run_at: d'${twoHoursAgo.toISOString()}' } WHERE name = 'foo'`)
+    .collect();
+  const now = new Date();
+  await planNextRunAt(db, [j], now);
+  const [rows] = await db.query("SELECT next_run_at FROM runtime_jobs WHERE name = 'foo'").collect();
+  const delta = Math.abs(new Date(rows[0].next_run_at).getTime() - now.getTime());
+  assert.ok(delta < 1000, `expected immediate fire on catch-up; got ${delta}ms drift`);
+  await close(db);
+});
+
+test('planNextRunAt — catch_up:false, last_run far behind → schedules forward, not now', async () => {
+  const db = await fresh();
+  const j = JOB({ catch_up: false });
+  await upsertFromDiscovered(db, [j]);
+  const twoHoursAgo = new Date(Date.now() - 2 * 3600_000);
+  await db
+    .query(`UPDATE runtime_jobs MERGE { last_run_at: d'${twoHoursAgo.toISOString()}' } WHERE name = 'foo'`)
+    .collect();
+  const now = new Date();
+  await planNextRunAt(db, [j], now);
+  const [rows] = await db.query("SELECT next_run_at FROM runtime_jobs WHERE name = 'foo'").collect();
+  const delta = new Date(rows[0].next_run_at).getTime() - now.getTime();
+  assert.ok(delta > 0, `catch_up:false must schedule forward, not fire-now; got delta=${delta}ms`);
+  await close(db);
+});

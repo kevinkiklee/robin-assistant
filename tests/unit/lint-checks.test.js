@@ -92,3 +92,67 @@ test('runLintChecks — issues sorted severity desc, kind asc, ref asc', async (
   }
   await close(db);
 });
+
+test('near_duplicate_knowledge — symmetric pair reported once', async () => {
+  // Two knowledge rows sharing the same embedding → cosine 1.0 > 0.95 threshold.
+  // Canonical [low, high] ordering should ensure only one issue, not two.
+  const { db, embedder } = await fresh();
+  const emb = Array.from(await embedder.embed('same vector'));
+  await db
+    .query(
+      surql`CREATE knowledge CONTENT ${{
+        content: 'first claim',
+        content_hash: 'nd1',
+        confidence: 0.8,
+        source_events: [],
+        source_episodes: [],
+        embedding: emb,
+      }}`,
+    )
+    .collect();
+  await db
+    .query(
+      surql`CREATE knowledge CONTENT ${{
+        content: 'second claim — same vector',
+        content_hash: 'nd2',
+        confidence: 0.8,
+        source_events: [],
+        source_episodes: [],
+        embedding: emb,
+      }}`,
+    )
+    .collect();
+  const issues = await runLintChecks(db);
+  const nearDups = issues.filter((i) => i.kind === 'near_duplicate_knowledge');
+  assert.equal(nearDups.length, 1, 'symmetric pair should be reported exactly once');
+  assert.match(nearDups[0].ref, /::/, 'ref encodes both ids');
+  await close(db);
+});
+
+test('orphan_entity — entity reachable via mentions edge is NOT flagged', async () => {
+  // Positive case for the orphan check — confirm that an entity WITH an
+  // inbound mentions edge from an event is not falsely reported.
+  const { db, embedder } = await fresh();
+  const emb = Array.from(await embedder.embed('linked'));
+  const [createdEnts] = await db
+    .query(surql`CREATE entities CONTENT ${{ name: 'Linked', type: 'thing', embedding: emb }}`)
+    .collect();
+  const entId = createdEnts[0].id;
+  const evtEmb = Array.from(await embedder.embed('event content'));
+  const [createdEvts] = await db
+    .query(
+      surql`CREATE events CONTENT ${{
+        source: 'manual',
+        content: 'event mentions Linked',
+        content_hash: 'evh1',
+        embedding: evtEmb,
+      }}`,
+    )
+    .collect();
+  const evtId = createdEvts[0].id;
+  await db.query(`RELATE ${evtId}->mentions->${entId}`).collect();
+  const issues = await runLintChecks(db);
+  const orphans = issues.filter((i) => i.kind === 'orphan_entity' && i.ref === String(entId));
+  assert.equal(orphans.length, 0, 'Linked entity has an inbound mentions edge; should not be orphan');
+  await close(db);
+});
