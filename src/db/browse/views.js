@@ -1,3 +1,8 @@
+// STALE — queries the deleted per-kind memo tables (knowledge, patterns,
+// threads, predictions) and per-relation edge tables. The new schema uses
+// `memos` (kind discriminator) and `edges` (kind discriminator). This file
+// will be rewritten in a later wave once the DB browser UI is updated.
+//
 // View-tab data fetchers. Schema-aware (v2): entities/events/episodes/threads/
 // knowledge/rules/patterns/profile/recall_events.
 
