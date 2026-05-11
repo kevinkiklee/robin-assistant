@@ -6,14 +6,25 @@
 
 **Architecture:** Five PRs against `main`. R-1 → R-2 → R-3 → R-4 must merge in order; R-5 can interleave anywhere. Each PR keeps the external surface byte-identical (hook contract, CLI command names, MCP tool names, `/internal/*` URLs, signal handling); R-4 is the only phase that changes wire format, and it does so additively. `server.js` 990 → ~80; `cli/index.js` 295 → ~55.
 
-**Tech Stack:** Node.js 18+ ESM, `node:test` test runner, SurrealDB v3 embedded, MCP SDK (`@modelcontextprotocol/sdk`), Biome for lint/format.
+**Tech Stack:** Node.js ≥22 (per `package.json` engines), ESM, `node:test` test runner, SurrealDB v3 embedded, MCP SDK (`@modelcontextprotocol/sdk`), Biome for lint/format.
 
 **Conventions used throughout:**
 - Tests: `node --test`, imports from `node:test` + `node:assert/strict`.
-- Test files: live in `system/tests/{unit,integration}/...`, suffix `.test.js`.
-- Run a single test: `node --test --test-name-pattern='<pattern>' system/tests/...`.
+- Test files: live FLAT under `system/tests/unit/<name>.test.js` and `system/tests/integration/<name>.test.js` — no subdirectories. Relative imports from a unit test reach `../../<module>.js` (two levels up to `system/`).
+- Run a single test: `node --test --test-name-pattern='<pattern>' system/tests/unit/<name>.test.js`.
 - Run all tests: `npm test`. Lint: `npm run lint`. Format: `npm run format`.
 - Commit prefix: `refactor(runtime):` or `feat(runtime):` per phase.
+
+---
+
+## Prerequisite gate
+
+**Do not start Task 0.1 until both conditions hold:**
+
+1. The `refactor/system-restructure` branch (currently active at the time this plan was written) has merged into `main`.
+2. `git checkout main && node -e "import('./system/runtime/daemon/server.js').then(() => console.log('OK'))"` prints `OK` — i.e., the broken `./state.js` import at `server.js:81` has been corrected (it should be `../../config/daemon-state.js` after the restructure lands).
+
+Until both hold, the daemon cannot boot, and R-1's tests cannot pass.
 
 ---
 
@@ -23,15 +34,18 @@
 
 **Files:** none modified.
 
-- [ ] **Step 1: Verify branch + working tree**
+- [ ] **Step 1: Verify branch + working tree + server.js loadability**
 
 Run:
 ```bash
+git checkout main
+git pull
 git status
 git log -1 --oneline
+node -e "import('./system/runtime/daemon/server.js').then(() => console.log('OK')).catch((e) => { console.error('FAIL:', e.message); process.exit(1); })"
 ```
 
-Expected: working tree clean (or only the pre-existing in-progress `src/*` files from another agent's work — leave those alone), HEAD on `main`.
+Expected: working tree clean, HEAD on `main`, the import smoke test prints `OK`. If the import fails (typically `Cannot find module .../daemon/state.js`), stop — the restructure branch has not fully landed on main yet.
 
 - [ ] **Step 2: Confirm tests pass on baseline**
 
@@ -43,7 +57,7 @@ Expected: all suites pass. Note any pre-existing failures and resolve them or fl
 
 Run: `npm run lint`
 
-Expected: no errors. If errors exist from another agent's WIP, document them but do not fix in this PR.
+Expected: no errors.
 
 - [ ] **Step 4: Create R-1 branch**
 
@@ -61,30 +75,32 @@ git checkout -b feat/runtime-r1-reliability
 **File structure for R-1:**
 
 ```
-system/runtime/
-├── daemon/
-│   ├── lock.js                  MODIFY (atomic wx-based acquire)
-│   ├── fatal.js                 CREATE (process error handlers)
-│   ├── retry.js                 CREATE (retryWithBackoff util)
-│   └── server.js                MODIFY (embedder retry + queue canary + watchdog + wire fatal)
-├── hosts/
-│   ├── index.js                 CREATE (HOSTS enum)
-│   ├── detect.js                MODIFY (hyphenated keys + back-compat warn)
-│   └── sessions.js              (no change here; in daemon/)
-└── system/
-    └── cognition/biographer/queue.js  MODIFY (maxPending canary)
-system/runtime/daemon/sessions.js     MODIFY (import HOST_VALUES)
+system/runtime/daemon/
+├── lock.js                  MODIFY (atomic wx-based acquire)
+├── fatal.js                 CREATE (process error handlers)
+├── retry.js                 CREATE (retryWithBackoff util)
+├── sessions.js              MODIFY (import HOST_VALUES from hosts/)
+└── server.js                MODIFY (embedder retry + queue canary + watchdog + wire fatal)
+
+system/runtime/hosts/
+├── index.js                 CREATE (HOSTS enum)
+└── detect.js                MODIFY (normalize ROBIN_HOST input; adapter `.name` stays underscored)
+
+system/cognition/biographer/
+└── queue.js                 MODIFY (maxPending canary; existing queue+inflight structures)
 
 system/tests/unit/
-├── runtime/daemon/lock.test.js          CREATE
-├── runtime/daemon/fatal.test.js         CREATE
-├── runtime/daemon/retry.test.js         CREATE
-├── runtime/hosts/host-naming.test.js    CREATE
-└── cognition/biographer/queue.test.js   CREATE or MODIFY
+├── lock.test.js             CREATE
+├── fatal.test.js            CREATE
+├── retry.test.js            CREATE
+├── host-naming.test.js      CREATE
+└── biographer-queue.test.js EXTEND (add cap tests to the existing file)
 
 system/tests/integration/
-└── daemon/host-watchdog.test.js         CREATE
+└── host-watchdog.test.js    CREATE
 ```
+
+**Scope note:** R-1 does NOT rename `adapter.name` from underscored (`claude_code`/`gemini_cli`) to hyphenated. That rename has a 43-reference blast radius including `install/hooks-settings.js` (which uses `${host.name}-hooks` as a key in users' `settings.json`) and historical `events.meta.host` values. It's deferred to a separate cleanup PR with explicit settings.json migration. R-1 only normalizes the user-facing `ROBIN_HOST` env input and adds the `HOSTS` enum for `sessions.js` to consume.
 
 ---
 
