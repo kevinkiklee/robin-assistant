@@ -1,4 +1,4 @@
-import { getProfile } from '../../memory/profile.js';
+import { getProfile } from '../../memory/persona.js';
 
 export function createGetProfileTool({ db }) {
   return {

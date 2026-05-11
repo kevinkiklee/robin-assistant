@@ -1,5 +1,5 @@
 import { surql } from 'surrealdb';
-import { createThread } from '../memory/threads.js';
+import { createThread } from '../memory/narrative.js';
 
 const DEFAULT_RECENCY_DAYS = 7;
 

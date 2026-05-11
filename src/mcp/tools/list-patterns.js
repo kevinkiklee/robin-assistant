@@ -1,4 +1,4 @@
-import { listPatterns } from '../../memory/patterns.js';
+import { listPatterns } from '../../memory/habits.js';
 
 export function createListPatternsTool({ db }) {
   return {

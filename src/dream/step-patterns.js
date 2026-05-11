@@ -1,5 +1,5 @@
 import { surql } from 'surrealdb';
-import { upsertPatternByName } from '../memory/patterns.js';
+import { upsertPatternByName } from '../memory/habits.js';
 
 const DEFAULT_LOOKBACK_DAYS = 7;
 const DEFAULT_MIN_STRENGTH = 5;

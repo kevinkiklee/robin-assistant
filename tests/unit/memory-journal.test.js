@@ -6,7 +6,7 @@ import { recordEvent } from '../../src/capture/record-event.js';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { listJournalEntries } from '../../src/memory/journal.js';
+import { listJournalEntries } from '../../src/memory/chronicle.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';

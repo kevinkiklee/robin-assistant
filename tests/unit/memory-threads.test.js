@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createEpisode } from '../../src/graph/episodes.js';
-import { createThread, listThreads } from '../../src/memory/threads.js';
+import { createThread, listThreads } from '../../src/memory/narrative.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';

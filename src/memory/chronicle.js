@@ -1,26 +1,20 @@
+// chronicle.js — chronological list of significant biographed events.
+// Spec §5 / module-rename from journal.js. Same filtering: biographed events,
+// content length ≥ minContentLen OR meta.kind = 'correction'.
+
 import { BoundQuery } from 'surrealdb';
 
-/**
- * Journal — chronological list of significant biographed events.
- *
- * "Significant" is content-driven: corrections always surface, plus any event
- * with content length >= `minContentLen`. Filters require `biographed_at` to
- * be set (i.e. the biographer has processed the event into the entity graph).
- *
- * `minContentLen` is interpolated as a literal integer because SurrealDB's
- * `string::len(...) >= $param` comparison is fine with bindings, but we
- * follow the recall.js precedent of validating numeric clauses up-front
- * rather than trusting whatever the caller passes through.
- */
-export async function listJournalEntries(
+export async function listChronicleEntries(
   db,
   { since, until, limit = 50, minContentLen = 50 } = {},
 ) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
-    throw new Error(`listJournalEntries: limit out of range [1,1000]: ${limit}`);
+    throw new Error(`listChronicleEntries: limit out of range [1,1000]: ${limit}`);
   }
   if (!Number.isInteger(minContentLen) || minContentLen < 0 || minContentLen > 100000) {
-    throw new Error(`listJournalEntries: minContentLen out of range [0,100000]: ${minContentLen}`);
+    throw new Error(
+      `listChronicleEntries: minContentLen out of range [0,100000]: ${minContentLen}`,
+    );
   }
 
   const filters = [
@@ -47,3 +41,6 @@ export async function listJournalEntries(
   const [rows] = await db.query(new BoundQuery(sql, bindings)).collect();
   return rows;
 }
+
+// Legacy alias for backward compatibility during migration.
+export const listJournalEntries = listChronicleEntries;
