@@ -12,7 +12,7 @@ function seedConfig(home) {
 test('robin biographer-catchup runs without error against an empty DB', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-catchup-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   // Migrate first
   spawnSync(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
@@ -35,7 +35,7 @@ test('robin biographer-catchup runs without error against an empty DB', () => {
 test('robin biographer-catchup --retry-failed reports nothing-to-retry on empty state', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-catchup-rf-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   spawnSync(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     encoding: 'utf8',

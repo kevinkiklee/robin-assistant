@@ -23,7 +23,7 @@ const BUILTIN_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
   '..',
-  'src',
+  'cognition',
   'jobs',
   'builtin',
 );

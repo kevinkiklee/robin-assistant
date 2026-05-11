@@ -25,7 +25,7 @@ async function waitForState(home, timeoutMs = 15000) {
 test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-mcp-e2e-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   // migrate first
   const m = spawn(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },

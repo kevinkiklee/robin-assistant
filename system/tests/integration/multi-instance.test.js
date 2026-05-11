@@ -24,7 +24,7 @@ async function waitForState(home, timeoutMs = 15000) {
 test('multiple parallel HTTP requests to the daemon do not corrupt the DB', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-multi-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   const m = spawn(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     stdio: 'inherit',

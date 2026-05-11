@@ -12,7 +12,7 @@ function seedConfig(home) {
 test('robin remember refuses without daemon (clear error)', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-rem-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   const result = spawnSync(
     process.execPath,
     [join(root, 'system/bin/robin'), 'remember', 'hello world'],
@@ -29,7 +29,7 @@ test('robin remember refuses without daemon (clear error)', () => {
 test('robin remember without content prints usage', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-rem-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   const result = spawnSync(process.execPath, [join(root, 'system/bin/robin'), 'remember'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     encoding: 'utf8',

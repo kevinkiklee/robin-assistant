@@ -25,7 +25,7 @@ async function waitForState(home, timeoutMs = 15000) {
 test('Stop hook routes through daemon when running', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-stop-daemon-'));
   seedConfig(tmp);
-  const root = resolve(import.meta.dirname, '../..');
+  const root = resolve(import.meta.dirname, '../../..');
   const m = spawn(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     stdio: 'inherit',
