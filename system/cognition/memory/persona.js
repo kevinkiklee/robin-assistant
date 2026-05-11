@@ -30,16 +30,35 @@ export async function updatePersonaFields(db, fields) {
     }
   }
 
-  // First UPSERT (no SET) ensures the singleton row exists. Field-scoped
-  // UPDATE … SET is then idempotent and field-local; concurrent writers to
-  // disjoint keys do not clobber each other's siblings.
-  await db.query(surql`UPSERT persona:singleton`).collect();
-
   // Build `SET k1 = $k1, k2 = $k2, …` with one bound parameter per key.
+  // UPSERT … SET (not MERGE) writes only the listed top-level fields and
+  // preserves untouched siblings (verified by persona-set-refactor.test.js).
+  // Concurrent writers to disjoint keys do not lose each other's writes at
+  // the application layer; on optimistic-concurrency engines (SurrealDB v3)
+  // a transaction may still report a write-conflict, which we retry below.
   const setClause = keys.map((k) => `${k} = $${k}`).join(', ');
-  const sql = `UPDATE persona:singleton SET ${setClause}`;
+  const sql = `UPSERT persona:singleton SET ${setClause}`;
   const params = Object.fromEntries(keys.map((k) => [k, fields[k]]));
-  await db.query(new BoundQuery(sql, params)).collect();
+
+  // Retry on transaction conflicts (engine-level optimistic concurrency).
+  // Each conflict bubbles up as an error whose message contains
+  // 'Transaction conflict' / 'Write conflict'; on retry the writer re-reads
+  // the record and re-applies its field-scoped SET, so no write is lost.
+  const MAX_ATTEMPTS = 8;
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      await db.query(new BoundQuery(sql, params)).collect();
+      return;
+    } catch (e) {
+      lastErr = e;
+      const msg = e?.message ?? '';
+      if (!/conflict/i.test(msg)) throw e;
+      // brief backoff with jitter to break the retry cycle
+      await new Promise((r) => setTimeout(r, 2 + Math.random() * 10));
+    }
+  }
+  throw lastErr;
 }
 
 /** Sub-helper used by dream/step-comm-style. */
