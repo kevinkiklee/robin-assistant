@@ -5,9 +5,11 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -299,5 +301,40 @@ export async function forgetHostTouchpoint({ kind, path: entryPath }) {
     return { removed };
   } finally {
     releaseManifestLock(handle);
+  }
+}
+
+// ----- home discovery -----
+
+function defaultDiscoveryCandidates() {
+  return [
+    join(_packageRoot, 'user-data'),
+    join(homedir(), '.robin'),
+    join(homedir(), 'Documents', 'Robin'),
+  ];
+}
+
+export function discoverExistingHomes({ candidates = defaultDiscoveryCandidates() } = {}) {
+  const out = [];
+  for (const dir of candidates) {
+    if (!existsSync(dir)) continue;
+    const markerPath = join(dir, '.robin-data');
+    if (existsSync(markerPath)) {
+      out.push({ path: dir, kind: 'marker', lastUsed: safeMtime(dir) });
+      continue;
+    }
+    if (existsSync(join(dir, 'db', 'CURRENT')) || existsSync(join(dir, 'secrets', '.env'))) {
+      out.push({ path: dir, kind: 'legacy', lastUsed: safeMtime(dir) });
+    }
+  }
+  return out;
+}
+
+function safeMtime(dir) {
+  try {
+    const s = statSync(dir);
+    return s.mtime.toISOString();
+  } catch {
+    return null;
   }
 }

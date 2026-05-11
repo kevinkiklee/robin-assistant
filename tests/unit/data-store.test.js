@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync as fsMkdirSync,
+  writeFileSync as fsWriteFileSync,
+  writeFileSync as fsWriteSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -41,7 +48,15 @@ test('migrations resolves to source tree even when ROBIN_HOME is set elsewhere',
   assert.equal(paths.source.migrations(), join(packageRootDir(), 'src', 'schema', 'migrations'));
 });
 
-import { ensureHome, packageRootDir, paths, resolveHomeStrict, POINTER_VERSION, robinHome } from '../../src/runtime/data-store.js';
+import {
+  POINTER_VERSION,
+  discoverExistingHomes,
+  ensureHome,
+  packageRootDir,
+  paths,
+  resolveHomeStrict,
+  robinHome,
+} from '../../src/runtime/data-store.js';
 
 test('paths.data is under robinHome()', () => {
   const home = robinHome();
@@ -82,9 +97,6 @@ test('paths.data and paths.source roots do not overlap', () => {
     'data root and source root must be distinct',
   );
 });
-
-// ── Task 1.4 imports ─────────────────────────────────────────────────────────
-import { writeFileSync as fsWriteSync } from 'node:fs';
 
 // ── Task 1.3: .robin-data marker ──────────────────────────────────────────────
 
@@ -158,9 +170,15 @@ test('strict resolver: pointer file with valid target resolves to it', () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
   const pkg = mkdtempSync(join(tmpdir(), 'robin-pkg-'));
   const pointerPath = join(pkg, '.robin-home');
-  fsWriteSync(pointerPath, JSON.stringify({
-    version: 1, home, installedAt: '2026-05-10T00:00:00Z', installedBy: 'test',
-  }));
+  fsWriteSync(
+    pointerPath,
+    JSON.stringify({
+      version: 1,
+      home,
+      installedAt: '2026-05-10T00:00:00Z',
+      installedBy: 'test',
+    }),
+  );
   const prev = process.env.ROBIN_HOME;
   delete process.env.ROBIN_HOME;
   try {
@@ -176,10 +194,15 @@ test('strict resolver: pointer file with valid target resolves to it', () => {
 test('strict resolver: pointer target missing throws --relocate hint', () => {
   const pkg = mkdtempSync(join(tmpdir(), 'robin-pkg-'));
   const pointerPath = join(pkg, '.robin-home');
-  fsWriteSync(pointerPath, JSON.stringify({
-    version: 1, home: '/tmp/this-path-does-not-exist-robin-xyz',
-    installedAt: '2026-05-10T00:00:00Z', installedBy: 'test',
-  }));
+  fsWriteSync(
+    pointerPath,
+    JSON.stringify({
+      version: 1,
+      home: '/tmp/this-path-does-not-exist-robin-xyz',
+      installedAt: '2026-05-10T00:00:00Z',
+      installedBy: 'test',
+    }),
+  );
   const prev = process.env.ROBIN_HOME;
   delete process.env.ROBIN_HOME;
   try {
@@ -197,7 +220,10 @@ test('strict resolver: pointer with unknown version throws', () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
   const pkg = mkdtempSync(join(tmpdir(), 'robin-pkg-'));
   const pointerPath = join(pkg, '.robin-home');
-  fsWriteSync(pointerPath, JSON.stringify({ version: 999, home, installedAt: '', installedBy: '' }));
+  fsWriteSync(
+    pointerPath,
+    JSON.stringify({ version: 999, home, installedAt: '', installedBy: '' }),
+  );
   const prev = process.env.ROBIN_HOME;
   delete process.env.ROBIN_HOME;
   try {
@@ -229,4 +255,37 @@ test('data-store.js never calls fs.rename — move uses copy+verify+delete', () 
     2,
     `expected exactly 2 renameSync calls (writePointer + writeManifestAtomic); found ${renameCalls}`,
   );
+});
+
+// ── Task 4.1: discoverExistingHomes ──────────────────────────────────────────
+
+test('discoverExistingHomes: finds marker-bearing locations', async () => {
+  const a = mkdtempSync(join(tmpdir(), 'robin-disco-a-'));
+  const b = mkdtempSync(join(tmpdir(), 'robin-disco-b-'));
+  fsWriteFileSync(
+    join(a, '.robin-data'),
+    JSON.stringify({ version: 1, createdAt: '2026-05-09T00:00:00Z' }),
+  );
+  try {
+    const result = discoverExistingHomes({ candidates: [a, b] });
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].path, a);
+    assert.strictEqual(result[0].kind, 'marker');
+  } finally {
+    rmSync(a, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true });
+  }
+});
+
+test('discoverExistingHomes: finds legacy v2 layouts (db/CURRENT or secrets/.env)', async () => {
+  const legacy = mkdtempSync(join(tmpdir(), 'robin-disco-legacy-'));
+  fsMkdirSync(join(legacy, 'db'), { recursive: true });
+  fsWriteFileSync(join(legacy, 'db', 'CURRENT'), 'fake');
+  try {
+    const result = discoverExistingHomes({ candidates: [legacy] });
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].kind, 'legacy');
+  } finally {
+    rmSync(legacy, { recursive: true, force: true });
+  }
 });
