@@ -32,6 +32,9 @@ function payload(out) {
 
 test('show_telemetry_rollup returns shadow-mode error when shadow_mode=true', async () => {
   const db = await fresh();
+  // Migration 0021 (cognition-wave-enable) flipped shadow_mode to false; this
+  // test asserts shadow-mode error path, so set the precondition explicitly.
+  await db.query('UPSERT runtime:`telemetry.config` SET value.shadow_mode = true').collect();
   const tool = createShowTelemetryRollupTool({ db });
   const out = await tool.handler({});
   const p = payload(out);

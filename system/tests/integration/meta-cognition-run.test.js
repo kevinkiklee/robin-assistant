@@ -53,6 +53,9 @@ async function seedCorrected(db, n, opts = {}) {
 
 test('T1 — disabled flag short-circuits', async () => {
   const db = await fresh();
+  // Migration 0021 (cognition-wave-enable) flipped enabled to true; this test
+  // asserts the disabled short-circuit, so set the precondition explicitly.
+  await db.query('UPSERT runtime:`meta_cognition.config` SET value.enabled = false').collect();
   const e = createStubEmbedder({ dimension: 1024 });
   await seedCorrected(db, 10);
   const result = await runMetaRecallNarrative({ db, embedder: e, host: fakeHost('{}') });

@@ -25,7 +25,8 @@ async function fresh() {
 test('readDreamConfig returns the seeded migration defaults', async () => {
   const db = await fresh();
   const cfg = await readDreamConfig(db);
-  assert.equal(cfg.parallelism_enabled, false);
+  // Migration 0021 (cognition-wave-enable) flips this to true.
+  assert.equal(cfg.parallelism_enabled, true);
   assert.equal(cfg.budget_check_enabled, true);
   // max_concurrent and budget_floor surface as null (NONE → JS null/undefined).
   assert.equal(cfg.max_concurrent ?? null, null);

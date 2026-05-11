@@ -22,7 +22,8 @@ async function fresh() {
 test('readReinforcementConfig returns seeded values after migration', async () => {
   const db = await fresh();
   const c = await readReinforcementConfig(db);
-  assert.equal(c.attribution_mode, 'off');
+  // Migration 0021 (cognition-wave-enable) flips this to 'hybrid'.
+  assert.equal(c.attribution_mode, 'hybrid');
   assert.equal(c.similarity_threshold, 0.35);
   assert.equal(c.jaccard_min_overlap_tokens, 2);
   assert.equal(c.citation_date_window_days, 2);
@@ -39,7 +40,8 @@ test('readReinforcementConfig merges partial overrides with defaults', async () 
     .collect();
   const c = await readReinforcementConfig(db);
   assert.equal(c.similarity_threshold, 0.5);
-  assert.equal(c.attribution_mode, 'off'); // unchanged
+  // Migration 0021 (cognition-wave-enable) flips this to 'hybrid'.
+  assert.equal(c.attribution_mode, 'hybrid'); // unchanged
   await close(db);
 });
 

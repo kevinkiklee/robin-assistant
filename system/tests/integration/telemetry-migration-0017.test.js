@@ -27,13 +27,14 @@ async function fresh() {
   return db;
 }
 
-test('0017 seeds runtime:telemetry.config with shadow_mode=true and expected defaults', async () => {
+test('0017 seeds runtime:telemetry.config (post-0021 shadow_mode=false) with expected defaults', async () => {
   const db = await fresh();
   const [rows] = await db.query('SELECT VALUE value FROM runtime:`telemetry.config`').collect();
   const cfg = rows?.[0];
   assert.ok(cfg, 'runtime:telemetry.config row missing');
   assert.equal(cfg.enabled, true);
-  assert.equal(cfg.shadow_mode, true);
+  // Migration 0021 (cognition-wave-enable) flips this to false.
+  assert.equal(cfg.shadow_mode, false);
   assert.equal(cfg.raw_retention_days, 7);
   assert.equal(cfg.hourly_retention_days, 90);
   assert.equal(cfg.daily_retention_days, 365);

@@ -29,7 +29,8 @@ test('getRecallConfig is exported and merges all B2 + legacy defaults', async ()
   assert.equal(cfg.rrf_k, 60);
   assert.equal(cfg.mmr_threshold, 0.92);
   // B2 keys (from 0015 seed).
-  assert.equal(cfg.conflict_surfacing_enabled, false);
+  // Migration 0021 (cognition-wave-enable) flips this to true.
+  assert.equal(cfg.conflict_surfacing_enabled, true);
   assert.equal(cfg.conflict_min_confidence, 0.4);
   assert.equal(cfg.conflict_max_age_days, 30);
   assert.equal(cfg.conflict_max_pairs_surfaced, 3);

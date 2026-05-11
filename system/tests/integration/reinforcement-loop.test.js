@@ -535,7 +535,11 @@ test('B1 section 10: explain_recall surfaces used/used_via/attribution/reply_eve
 
 test('B1: pre-B1 recall_log rows (no used field) work under mode=off', async () => {
   const db = await fresh();
-  // Seeded mode is 'off' — no UPDATE needed.
+  // Migration 0021 (cognition-wave-enable) flipped attribution_mode to
+  // 'hybrid'; this test asserts pre-B1 mode=off behavior, so set explicitly.
+  await db
+    .query("UPSERT runtime:`reinforcement.config` SET value.attribution_mode = 'off'")
+    .collect();
   const m = await store.note(db, fakeEmbedder, 'knowledge', {
     content: 'pre-B1 row',
     derived_by: 'manual',

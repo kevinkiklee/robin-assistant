@@ -28,7 +28,8 @@ test('readBeliefConfig: returns seeded defaults', async () => {
   const cfg = await readBeliefConfig(db);
   assert.equal(cfg.default_threshold, 0.6);
   assert.equal(cfg.soften_floor, 0.4);
-  assert.equal(cfg.shadow_mode, true);
+  // Migration 0021 (cognition-wave-enable) flips this to false.
+  assert.equal(cfg.shadow_mode, false);
   assert.equal(cfg.telemetry_sample_rate, 1.0);
   await close(db);
 });

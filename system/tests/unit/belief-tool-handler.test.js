@@ -25,6 +25,10 @@ async function fresh() {
 
 test('belief tool: empty DB -> unknown / fallback_path=no_hits, in shadow', async () => {
   const db = await fresh();
+  // Migration 0021 (cognition-wave-enable) flipped shadow_mode to false; this
+  // test asserts in-shadow behavior, so set the precondition explicitly.
+  await db.query('UPSERT runtime:`belief.config` SET value.shadow_mode = true').collect();
+  _resetBeliefConfigCacheForTests();
   const e = createStubEmbedder({ dimension: 1024 });
   const tool = createBeliefTool({ db, embedder: e, catalog: [] });
   const out = await tool.handler({ query: 'anything' });
@@ -36,6 +40,10 @@ test('belief tool: empty DB -> unknown / fallback_path=no_hits, in shadow', asyn
 
 test('belief tool: shadow override forces unknown, preserves shadow_would_have_been', async () => {
   const db = await fresh();
+  // Migration 0021 (cognition-wave-enable) flipped shadow_mode to false; this
+  // test asserts in-shadow behavior, so set the precondition explicitly.
+  await db.query('UPSERT runtime:`belief.config` SET value.shadow_mode = true').collect();
+  _resetBeliefConfigCacheForTests();
   const e = createStubEmbedder({ dimension: 1024 });
   for (const text of ['A about photography', 'B about photography', 'C about photography']) {
     await store.note(db, e, 'knowledge', {

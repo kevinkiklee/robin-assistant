@@ -32,6 +32,10 @@ async function fresh() {
 
 test('I1 happy path: 3 memos, shadow=true, recommendation=unknown, k_returned>0', async () => {
   const db = await fresh();
+  // Migration 0021 (cognition-wave-enable) flipped shadow_mode to false; this
+  // test asserts in-shadow behavior, so set the precondition explicitly.
+  await db.query('UPSERT runtime:`belief.config` SET value.shadow_mode = true').collect();
+  _resetBeliefConfigCacheForTests();
   const e = createStubEmbedder({ dimension: 1024 });
   for (const c of [
     'Photography f-stop notes A',

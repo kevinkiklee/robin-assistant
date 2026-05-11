@@ -27,7 +27,8 @@ test('0019 migration applies cleanly and seeds runtime:belief.config', async () 
     assert.equal(cfg.soften_floor, 0.4);
     assert.equal(cfg.relevance_threshold, 0.3);
     assert.equal(cfg.belief_overfetch_factor, 2.0);
-    assert.equal(cfg.shadow_mode, true);
+    // Migration 0021 (cognition-wave-enable) flips this to false.
+    assert.equal(cfg.shadow_mode, false);
     assert.equal(cfg.telemetry_enabled, true);
     assert.equal(cfg.telemetry_sample_rate, 1.0);
     assert.equal(cfg.meta_narrative_enabled, true);

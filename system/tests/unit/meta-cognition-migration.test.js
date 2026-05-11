@@ -21,7 +21,8 @@ test('0018 migration seeds runtime:`meta_cognition.config` with defaults', async
       .collect();
     const cfg = rows?.[0];
     assert.ok(cfg, 'expected runtime:meta_cognition.config row');
-    assert.equal(cfg.enabled, false);
+    // Migration 0021 (cognition-wave-enable) flips this to true.
+    assert.equal(cfg.enabled, true);
     assert.equal(cfg.min_corrections_threshold, 5);
     assert.equal(cfg.lookback_days, 7);
     assert.equal(cfg.max_corrected_rows, 200);
