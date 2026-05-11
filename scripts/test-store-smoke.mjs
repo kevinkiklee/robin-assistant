@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { createNodeEngines } from '@surrealdb/node';
 import { Surreal } from 'surrealdb';
 
-const ROOT = '/Users/iser/workspace/robin/robin-assistant-v2-worktrees/redesign';
+const ROOT = '/Users/iser/workspace/robin/robin-assistant-v2';
 
 // --- 1. Load modules
 console.log('loading modules...');
