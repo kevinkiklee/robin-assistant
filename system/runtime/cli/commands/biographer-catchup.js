@@ -1,5 +1,8 @@
 import { surql } from 'surrealdb';
-import { biographerProcess } from '../../../cognition/biographer/pipeline.js';
+import {
+  biographerProcess,
+  biographerProcessBatch,
+} from '../../../cognition/biographer/pipeline.js';
 import { ensureHome, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
@@ -26,7 +29,9 @@ export async function biographerCatchup(argv) {
           console.log('processed 0 events (nothing to retry)');
           return;
         }
-        const [rows] = await db.query(surql`SELECT id FROM events WHERE id IN ${ids}`).collect();
+        const [rows] = await db
+          .query(surql`SELECT id, source FROM events WHERE id IN ${ids}`)
+          .collect();
         pending = rows;
       } else {
         const { listPendingEvents } = await import(
@@ -44,15 +49,44 @@ export async function biographerCatchup(argv) {
       const embedder = await createEmbedder();
       const host = await detectHost();
 
+      // Group by source so each batch shares one episode lookup + entity catalog.
+      const bySource = new Map();
+      for (const row of pending) {
+        const key = row.source ?? '__unknown__';
+        if (!bySource.has(key)) bySource.set(key, []);
+        bySource.get(key).push(row.id);
+      }
+
       let ok = 0;
       let failed = 0;
-      for (const row of pending) {
-        try {
-          await biographerProcess(db, embedder, host, row.id);
-          ok++;
-        } catch (e) {
-          failed++;
-          console.error(`failed: ${row.id}: ${e.message}`);
+      const MAX = 8;
+      for (const ids of bySource.values()) {
+        for (let i = 0; i < ids.length; i += MAX) {
+          const chunk = ids.slice(i, i + MAX);
+          try {
+            const r = await biographerProcessBatch(db, embedder, host, chunk);
+            for (const eid of chunk) {
+              const out = r?.perEvent?.get?.(String(eid));
+              if (out?.processed) ok++;
+              else if (out?.skipped) ok++;
+              else failed++;
+            }
+          } catch (e) {
+            // Whole-batch failure — fall back to per-event so individual errors
+            // are isolated and reported.
+            console.error(
+              `batch failed (${chunk.length} events): ${e.message}; falling back to per-event`,
+            );
+            for (const eid of chunk) {
+              try {
+                await biographerProcess(db, embedder, host, eid);
+                ok++;
+              } catch (ee) {
+                failed++;
+                console.error(`failed: ${eid}: ${ee.message}`);
+              }
+            }
+          }
         }
       }
       console.log(`processed ${ok} events${failed ? ` (${failed} failed)` : ''}`);

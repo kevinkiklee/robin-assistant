@@ -277,6 +277,57 @@ test('outer JSON parse failure triggers single-event fallback', async () => {
   await close(db);
 });
 
+test('Gate #7: retries-exhausted on batch call triggers per-event fallback with last_fallback_reason=network', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
+  const ev2 = await recordEvent(db, e, { source: 'cli', content: 'two' });
+  let batchAttempts = 0;
+  let perEventCalls = 0;
+  const host = {
+    name: 'fake',
+    isAvailable: async () => true,
+    invokeLLM: async (_messages, _opts) => {
+      // The first 3 calls are batch retries (invokeWithRetry attempts the
+      // batch up to retries=3 times). The remaining calls are per-event
+      // fallbacks. We distinguish batch vs per-event by message count.
+      const isBatch =
+        Array.isArray(_messages) &&
+        _messages.some((m) => typeof m?.content === 'string' && m.content.includes('events'));
+      if (isBatch && batchAttempts < 3) {
+        batchAttempts++;
+        throw new Error('simulated network failure');
+      }
+      perEventCalls++;
+      return {
+        content: JSON.stringify({
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        }),
+        usage: {},
+      };
+    },
+  };
+  await biographerProcessBatch(db, e, host, [ev1.id, ev2.id], { retryBaseDelayMs: 0 });
+  assert.equal(batchAttempts, 3, 'batch path retried 3 times before falling back');
+  assert.equal(perEventCalls, 2, 'fallback ran per-event for both events');
+
+  const [rt] = await db
+    .query("SELECT * FROM type::record('runtime', 'biographer') LIMIT 1")
+    .collect();
+  assert.equal(rt[0]?.value?.last_fallback_reason, 'network');
+  assert.ok((rt[0]?.value?.batches_fallback ?? 0) >= 1);
+  // Both events biographed via the fallback path.
+  const [bio] = await db
+    .query('SELECT biographed_at FROM events WHERE biographed_at IS NOT NONE')
+    .collect();
+  assert.equal(bio.length, 2);
+  await close(db);
+});
+
 test('episode break mid-batch: event #3 with continues_previous=false opens new episode', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
