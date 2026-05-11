@@ -14,13 +14,16 @@ import {
   packageRootDir,
   paths,
   pointerExists,
+  readHostIntegrations,
   readPointer,
+  recordHostTouchpoint,
   writePointer,
 } from '../../runtime/data-store.js';
 import { migrateHome } from '../../runtime/migrate-home.js';
 import { getSecret, saveSecret } from '../../secrets/dotenv-io.js';
 import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
+import { doctorData } from './doctor.js';
 import { mcpInstall } from './mcp-install.js';
 
 const VALID_PROFILES = ['mxbai-1024', 'qwen3-4096', 'gemini-3072'];
@@ -289,6 +292,43 @@ export async function pickHome({ packageRoot, homedir: homeDir, inputFn }) {
   });
 }
 
+export async function relocate({ target, mode, stopDaemon, rewriteLaunchd, rewriteSystemd }) {
+  if (!target || !mode) throw new TypeError('relocate: { target, mode } required');
+  const ptr = readPointer();
+  if (!ptr) throw new Error('relocate: no .robin-home exists; run `robin install` first');
+  const source = ptr.home;
+  if (!existsSync(source)) throw new Error(`relocate: source ${source} does not exist`);
+  if (existsSync(target)) throw new Error(`relocate: target ${target} already exists`);
+  if (stopDaemon) await stopDaemon();
+  await migrateHome({ from: source, to: target, mode });
+  writePointer({ home: target, installedBy: 'robin install --relocate' });
+  process.env.ROBIN_HOME = target;
+  const m = await readHostIntegrations();
+  for (const e of m.entries) {
+    if (e.expectedHome) {
+      await recordHostTouchpoint(
+        { ...e, expectedHome: target },
+        () => {},
+      );
+    }
+  }
+  if (rewriteLaunchd) await rewriteLaunchd({ home: target });
+  if (rewriteSystemd) await rewriteSystemd({ home: target });
+}
+
+export async function repair() {
+  const { drift } = await doctorData();
+  if (drift.length === 0) {
+    console.log('Nothing to repair.');
+    return;
+  }
+  await installHooksStep({ skipHooks: false });
+  for (const d of drift) {
+    console.log(`drift: ${d.path ?? '(home)'}: ${d.reason}`);
+  }
+  console.log('Re-applied hook entries. For plist/systemd drift, run: robin install');
+}
+
 export async function install(argv = [], deps = {}) {
   const args = parseArgs(argv);
   const force = args.flags.force === true;
@@ -306,6 +346,24 @@ export async function install(argv = [], deps = {}) {
   const connectFn = deps.connect ?? connect;
   const closeFn = deps.close ?? close;
   const onDbReady = deps.onDbReady;
+
+  // --relocate <path>: move Robin home to a new location.
+  if (args.flags.relocate) {
+    const target = typeof args.flags.relocate === 'string' ? args.flags.relocate : null;
+    if (!target) {
+      console.error('--relocate requires a target path: robin install --relocate <path>');
+      process.exit(1);
+    }
+    const mode = args.flags['on-existing'] === 'copy' ? 'copy' : 'move';
+    await relocate({ target, mode });
+    return;
+  }
+
+  // --repair: re-apply hook entries from the manifest.
+  if (args.flags.repair) {
+    await repair();
+    return;
+  }
 
   // --hooks-only: short-circuit. Run ONLY the hook install (and PATH probe +
   // shim ensure). For repair after manual settings.json edits.
