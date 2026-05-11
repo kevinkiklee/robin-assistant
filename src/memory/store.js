@@ -271,17 +271,56 @@ export async function relate(db, from, to, kind, opts = {}) {
 }
 
 /**
- * Bulk relate. Same semantics as `relate` but batched into one statement —
- * used by biographer to emit 8-20 edges per processed event.
+ * Bulk relate. Builds one multi-statement query so a 20-edge biographer fan-out
+ * costs 1 round-trip instead of 20. Chunks at 50 to avoid pathological parser
+ * limits. Wrapped in BEGIN/COMMIT so a malformed edge doesn't leave partial state.
  */
+const RELATE_CHUNK = 50;
 export async function relateAll(db, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { ids: [] };
   const ids = [];
-  // SurrealDB doesn't have a multi-row UPSERT primitive for arbitrary IDs;
-  // batch into one BEGIN/COMMIT block for atomicity.
-  for (const row of rows) {
-    const { id } = await relate(db, row.from, row.to, row.kind, row);
-    ids.push(id);
+  for (let off = 0; off < rows.length; off += RELATE_CHUNK) {
+    const slice = rows.slice(off, off + RELATE_CHUNK);
+    const stmts = ['BEGIN TRANSACTION'];
+    const bindings = {};
+    slice.forEach((row, i) => {
+      const v = validateEdge(row.from, row.to, row.kind);
+      if (!v.ok) throw new Error(`relateAll[${off + i}]: ${v.errors.join('; ')}`);
+      const [cIn, cOut] = canonicalEndpoints(row.from, row.to, row.kind);
+      bindings[`k${i}`] = row.kind;
+      bindings[`i${i}`] = cIn;
+      bindings[`o${i}`] = cOut;
+      const insertFields = [
+        `id: [$k${i}, $i${i}, $o${i}]`,
+        `in: $i${i}`,
+        `out: $o${i}`,
+        `kind: $k${i}`,
+        `last_seen: time::now()`,
+      ];
+      const updateExprs = [`kind = $k${i}`, `last_seen = time::now()`];
+      if (isCounterKind(row.kind)) {
+        insertFields.push(`weight: 1`);
+        updateExprs.push(`weight += 1`);
+      } else {
+        for (const f of ['weight', 'valid_from', 'valid_until', 'context', 'meta']) {
+          if (row[f] != null) {
+            bindings[`${f}${i}`] = row[f];
+            insertFields.push(`${f}: $${f}${i}`);
+            updateExprs.push(`${f} = $${f}${i}`);
+          }
+        }
+      }
+      stmts.push(
+        `INSERT RELATION INTO edges { ${insertFields.join(', ')} } ON DUPLICATE KEY UPDATE ${updateExprs.join(', ')}`,
+      );
+    });
+    stmts.push('COMMIT TRANSACTION');
+    const results = await db.query(new BoundQuery(stmts.join(';\n'), bindings)).collect();
+    // Each INSERT RELATION returns the (now-existing) row. Flatten and collect ids.
+    for (const r of results) {
+      const row = Array.isArray(r) ? r[0] : r;
+      if (row?.id) ids.push(row.id);
+    }
   }
   return { ids };
 }
@@ -345,29 +384,33 @@ async function writeEmbedding(db, embedder, surface, recordId, text) {
 
 /**
  * Read a memo with hydrated subjects, lineage, contradictions count.
+ * Phase 3 batching: 4 sequential queries collapse to one multi-statement
+ * query (one round-trip) via LET blocks.
  */
 export async function getMemo(db, id) {
-  const [rows] = await db
-    .query(surql`SELECT *, fn::freshness(id) AS freshness FROM ${id}`)
-    .collect();
-  const memo = rows[0];
+  const sql = `
+    LET $m = (SELECT *, fn::freshness(id) AS freshness FROM $id);
+    LET $subj = (SELECT VALUE out FROM edges WHERE kind = 'about' AND in = $id);
+    LET $line = (SELECT VALUE out FROM edges WHERE kind = 'derived_from' AND in = $id);
+    LET $contra = (SELECT count() AS n FROM edges
+                   WHERE kind = 'contradicts' AND (in = $id OR out = $id) GROUP ALL);
+    RETURN {
+      memo: $m[0] ?? NONE,
+      subjects: $subj,
+      lineage: $line,
+      contradictions: $contra[0].n ?? 0
+    };
+  `;
+  const results = await db.query(new BoundQuery(sql, { id })).collect();
+  const result = results[results.length - 1];
+  const payload = Array.isArray(result) ? result[0] : result;
+  const memo = payload?.memo;
   if (!memo) return null;
-  const [subjects] = await db
-    .query(surql`SELECT VALUE out FROM edges WHERE kind = 'about' AND in = ${id}`)
-    .collect();
-  const [lineage] = await db
-    .query(surql`SELECT VALUE out FROM edges WHERE kind = 'derived_from' AND in = ${id}`)
-    .collect();
-  const [contraRows] = await db
-    .query(
-      surql`SELECT count() AS n FROM edges WHERE kind = 'contradicts' AND (in = ${id} OR out = ${id}) GROUP ALL`,
-    )
-    .collect();
   return {
     ...memo,
-    subjects,
-    lineage,
-    contradictions: contraRows?.[0]?.n ?? 0,
+    subjects: payload.subjects ?? [],
+    lineage: payload.lineage ?? [],
+    contradictions: payload.contradictions ?? 0,
   };
 }
 
