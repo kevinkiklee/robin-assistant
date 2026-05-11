@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -47,6 +47,8 @@ export const paths = {
   },
 };
 
+const MARKER_VERSION = 1;
+
 export async function ensureHome() {
   const home = robinHome();
   for (const dir of [
@@ -59,5 +61,22 @@ export async function ensureHome() {
     paths.data.upload(),
   ]) {
     mkdirSync(dir, { recursive: true });
+  }
+  const markerPath = paths.data.marker();
+  if (!existsSync(markerPath)) {
+    const payload = { version: MARKER_VERSION, createdAt: new Date().toISOString() };
+    writeFileSync(markerPath, JSON.stringify(payload, null, 2), { mode: 0o644 });
+  }
+}
+
+export function readMarker() {
+  const p = paths.data.marker();
+  if (!existsSync(p)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(p, 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed;
+  } catch {
+    return null;
   }
 }

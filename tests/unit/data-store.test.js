@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
@@ -38,7 +40,7 @@ test('migrations resolves to source tree even when ROBIN_HOME is set elsewhere',
   assert.equal(paths.source.migrations(), join(packageRootDir(), 'src', 'schema', 'migrations'));
 });
 
-import { packageRootDir, paths, robinHome } from '../../src/runtime/data-store.js';
+import { ensureHome, packageRootDir, paths, robinHome } from '../../src/runtime/data-store.js';
 
 test('paths.data is under robinHome()', () => {
   const home = robinHome();
@@ -78,4 +80,43 @@ test('paths.data and paths.source roots do not overlap', () => {
     packageRootDir(),
     'data root and source root must be distinct',
   );
+});
+
+// ── Task 1.3: .robin-data marker ──────────────────────────────────────────────
+
+test('ensureHome() writes .robin-data marker with version', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
+  const prev = process.env.ROBIN_HOME;
+  process.env.ROBIN_HOME = home;
+  try {
+    await ensureHome();
+    const markerPath = paths.data.marker();
+    const raw = readFileSync(markerPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    assert.strictEqual(parsed.version, 1);
+    assert.ok(typeof parsed.createdAt === 'string');
+    assert.ok(new Date(parsed.createdAt).toISOString() === parsed.createdAt);
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+    else delete process.env.ROBIN_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('ensureHome() is idempotent and preserves an existing marker', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
+  const prev = process.env.ROBIN_HOME;
+  process.env.ROBIN_HOME = home;
+  try {
+    await ensureHome();
+    const firstRaw = readFileSync(paths.data.marker(), 'utf8');
+    await new Promise((r) => setTimeout(r, 5));
+    await ensureHome();
+    const secondRaw = readFileSync(paths.data.marker(), 'utf8');
+    assert.strictEqual(firstRaw, secondRaw);
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+    else delete process.env.ROBIN_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
