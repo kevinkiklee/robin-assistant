@@ -22,7 +22,7 @@ Claude Code / Gemini CLI session
        ├─ Recall         HNSW kNN on per-surface embeddings → rank.score
        │                 (cosine × freshness × contradiction × trust × scope)
        │                 → MMR-lite diversity → recall_log{outcome:pending}
-       ├─ Reinforcement  5-min internal job: pending recall_log + no correction
+       ├─ Reinforcement  5-min internal job: per-hit attribution (explicit -> citation -> similarity) over pending recall_log; corroborates the ledger per used hit, refutes on correction
        │                 → signal_count++/decay_anchor=now on hits
        │                 (the keystone effectiveness fix; closes the loop)
        ├─ Biographer     per-event LLM call → entities + edges + memos
@@ -88,8 +88,10 @@ Seven themes layered on top of the substrate:
   private memos directly or transitively via `<-derived_from<-memos[WHERE scope='private']`.
 - **Theme 2a — Evidence ledger.** Confidence is derivable, not frozen.
   `fn::derived_confidence($memo)` = `(initial × prior_weight + Σcor)/(prior_weight + Σcor + Σref)`.
-  Reinforcement loop writes corroborates on reinforce AND refutes on
-  correction (the missing symmetric path). Stored `memos.confidence`
+  Reinforcement loop writes corroborates per attributed-as-used hit on
+  `reinforced` AND refutes on `corrected` rows; Theme 2a (alpha.16) -> B1
+  (post-alpha.16) tightens "every hit" to "every used hit". Stored
+  `memos.confidence`
   updated lazily by `step-confidence-recompute` (nightly dream step).
 - **Theme 2b — Action-trust ledger.** Every state change of `action_trust`
   mirrors to `action_trust_ledger`. Decay sweep (6h heartbeat) demotes
@@ -127,7 +129,7 @@ Seven themes layered on top of the substrate:
 6. **Stop hook** spawns biographer in detached subprocess. Reads new events, makes one LLM call per event, UPSERTs entities + emits `edges` via `store.relateAll(...)`, sets `events.biographed_at`.
 7. **Heartbeat** (60s) runs integration syncs, drains biographer queue, marks stale sessions, advances quiet-window cursors, and dispatches due internal jobs (notably `reinforce-recall` every 5 min).
 8. **Nightly at 4 AM**, dream runs the pipeline: step-knowledge → step-habits → step-narrative → step-persona → step-reflection → step-scope-cleanup. Each step is fail-soft. Step-knowledge emits `supersedes` when promoting contradicting facts.
-9. **Reinforce-recall** (every 5 min) walks `recall_log` rows with `outcome='pending'` and `ts < now - 5min`. If a `meta.kind='correction'` event landed in the session window → mark `outcome='corrected'`. Otherwise → for each hit memo, `signal_count += 1` and `decay_anchor = time::now()`; mark `outcome='reinforced'`. The labeled-ish output feeds a future reranker.
+9. **Reinforce-recall** (every 5 min) walks `recall_log` rows with `outcome='pending'` and `ts < now - 5min`. For each row: if a `meta.kind='correction'` event landed in the session window -> mark `outcome='corrected'` and refute every memo hit in the ledger. Otherwise -> attribute hits per the `attribute()` pipeline (explicit -> citation -> similarity, with fallback-on-no-reply), and for every hit with `used=true` bump `signal_count += 1`, refresh `decay_anchor`, and emit a corroborate ledger row weighted by use-count. Outcome is `reinforced` when any hit was used, `evaluated_no_used` when attribution matched zero hits with fallback off, `evaluated_no_signal` for empty `ranked_hits`. The labeled output (per-hit `used`/`used_via`) feeds a future reranker.
 
 ## Database shape and example queries
 
