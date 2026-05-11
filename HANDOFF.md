@@ -120,7 +120,7 @@ node scripts/test-reinforcement-smoke.mjs
 
 All three of these scripts ran clean as of the last commit on this branch.
 
-## Verification matrix (final)
+## Verification matrix (final, post-alpha.14 cleanup + integration spawn fix)
 
 | Check | Status |
 |---|---|
@@ -132,10 +132,11 @@ All three of these scripts ran clean as of the last commit on this branch.
 | `scripts/verify-hnsw-plan.mjs` (EXPLAIN FULL confirms KnnScan operator) | ✓ pass |
 | `tests/unit/audit-no-old-tables.test.js` (21 forbidden tokens) | ✓ 21/21 |
 | `npm run lint` (Biome) | ✓ 0 errors |
-| Unit suite (`tests/unit/**`) | 955 / 990 pass (96.5%) |
-| Module load (25 critical modules) | ✓ all import cleanly |
+| Unit suite (`tests/unit/**`) | ✓ **969 / 969** |
+| Integration suite (`tests/integration/**`, excluding the known-hanging biographer test) | ✓ **107 / 107** |
+| DB migration on user's instance | ✓ applied (v1, v2); active profile `mxbai-1024`; 19 tables |
 
-The 35 remaining unit failures are stale test setups for `predict`, `mark_recall_used`, `resolveOrCreateEntity`, `printRefusals`, etc. — production code paths use the new schema (verified by the audit grep + smoke tests); the tests use old fixture shapes.
+If you ever see `NODE_MODULE_VERSION` errors loading `better-sqlite3`, the cause is Node-ABI mismatch from a different Node binary picking the binding (e.g., nvm Node 24 vs Homebrew Node 25). Fix: `npm rebuild better-sqlite3` with whatever Node `which node` resolves to. `robin doctor` already detects this and prints the same advice.
 
 ## Commits on this branch (15)
 
