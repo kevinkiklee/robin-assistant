@@ -12,6 +12,7 @@ export const HALF_LIFE_BY_KIND_MS = {
   habit: 60 * 24 * 60 * 60 * 1000, // 60d
   thread: 30 * 24 * 60 * 60 * 1000, // 30d
   prediction: 365 * 24 * 60 * 60 * 1000, // 365d
+  reasoning: 30 * 24 * 60 * 60 * 1000, // 30d — weekly snapshot artefact (D2 spec §4)
 };
 
 const DEFAULT_HALF_LIFE_MS = 90 * 24 * 60 * 60 * 1000; // 90d default
