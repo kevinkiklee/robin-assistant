@@ -6,7 +6,10 @@
  * `onRetry(err, attempt)` is called after each failed attempt that will be
  * retried — useful for logging.
  */
-export async function retryWithBackoff(fn, { attempts, perAttemptTimeoutMs, backoffMs, onRetry } = {}) {
+export async function retryWithBackoff(
+  fn,
+  { attempts, perAttemptTimeoutMs, backoffMs, onRetry } = {},
+) {
   if (!Number.isInteger(attempts) || attempts < 1) {
     throw new Error('retryWithBackoff: attempts must be >= 1');
   }

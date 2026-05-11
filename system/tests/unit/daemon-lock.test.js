@@ -69,7 +69,11 @@ test('two acquireDaemonLock attempts on the same path: exactly one succeeds', as
   // After atomic wx-based acquire: exactly one fulfills, the other rejects with EALREADY.
   // Note: when both callers see no file and write concurrently, the wx flag must
   // ensure one of them gets EEXIST. Within the same process the OS guarantee holds.
-  assert.equal(fulfilled, 1, `expected exactly one acquire to fulfill, got ${fulfilled}/${rejected}`);
+  assert.equal(
+    fulfilled,
+    1,
+    `expected exactly one acquire to fulfill, got ${fulfilled}/${rejected}`,
+  );
   await releaseDaemonLock(path);
   rmSync(tmp, { recursive: true });
 });
