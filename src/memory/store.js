@@ -391,11 +391,15 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   const qvec = Array.from(await embedder.embed(query));
 
   // Step 1: HNSW kNN on the per-surface embeddings table.
+  // TIMEOUT 2s is defensive — bounds runaway HNSW exploration if the index
+  // is in a pathological state. Recall is fail-soft from the hook side, so
+  // a timeout produces an empty hit list rather than crashing the turn.
   const knnSql = `SELECT record, vector::distance::knn() AS dist
                   FROM ${embeddingTbl}
                   WHERE vector <|${limit}, ${ef}|> $qvec
                   ORDER BY dist
-                  LIMIT ${limit}`;
+                  LIMIT ${limit}
+                  TIMEOUT 2s`;
   const [knnRows] = await db.query(new BoundQuery(knnSql, { qvec })).collect();
   if (knnRows.length === 0) return { hits: [] };
 

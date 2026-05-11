@@ -69,10 +69,12 @@ export async function evaluatePending(db) {
         // We only reinforce memos (not raw events).
         const idStr = typeof hitId === 'string' ? hitId : String(hitId);
         if (!idStr.startsWith('memos:')) continue;
+        const key = idStr.slice('memos:'.length);
         try {
           await db
             .query(
-              surql`UPDATE ${hitId} SET signal_count += 1, decay_anchor = time::now()`,
+              `UPDATE type::record('memos', $key) SET signal_count += 1, decay_anchor = time::now()`,
+              { key },
             )
             .collect();
         } catch {
