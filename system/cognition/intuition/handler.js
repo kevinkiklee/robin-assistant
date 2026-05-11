@@ -90,6 +90,26 @@ function readPriorAssistant(transcriptPath) {
   return text.length > PRIOR_ASSISTANT_CAP ? text.slice(0, PRIOR_ASSISTANT_CAP) : text;
 }
 
+/**
+ * Resolve the agent-host source for the focus block (spec §4.2 step 1).
+ *
+ * Priority: ROBIN_SOURCE env → CLAUDE_PROJECT_DIR (→ agent:claude-code) →
+ * GEMINI_CLI_SESSION (→ agent:gemini-cli) → null. The daemon performs
+ * additional fallback (host?.name → most-recently-active episode lookup);
+ * the handler stays additive.
+ */
+export function resolveSourceForHandler({ env = process.env } = {}) {
+  const explicit = env.ROBIN_SOURCE;
+  if (typeof explicit === 'string' && explicit.length > 0) return explicit;
+  if (typeof env.CLAUDE_PROJECT_DIR === 'string' && env.CLAUDE_PROJECT_DIR.length > 0) {
+    return 'agent:claude-code';
+  }
+  if (typeof env.GEMINI_CLI_SESSION === 'string' && env.GEMINI_CLI_SESSION.length > 0) {
+    return 'agent:gemini-cli';
+  }
+  return null;
+}
+
 // Detect a still-active v1 hooks installation. We're conservative: only
 // the canonical v1 entrypoint counts, and only when CLAUDE_PROJECT_DIR
 // (set by Claude Code per project) names a directory containing it.
@@ -131,6 +151,7 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
 
   const query = pickQuery(stdin);
   const sessionId = pickSessionId(stdin);
+  const source = resolveSourceForHandler();
   const transcriptPath = pickTranscriptPath(stdin);
   const priorAssistant = readPriorAssistant(transcriptPath);
 
@@ -154,6 +175,7 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
       body: JSON.stringify({
         query,
         session_id: sessionId,
+        source,
         prior_assistant: priorAssistant,
         k: 6,
         recency_days: 30,
@@ -175,7 +197,10 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
   if (!payload || typeof payload !== 'object') return;
 
   const block = typeof payload.block === 'string' ? payload.block : '';
-  if (block.length > 0) {
-    writeOut(block);
+  const focusBlock = typeof payload.focus_block === 'string' ? payload.focus_block : '';
+  // Focus block (current focus) goes first, before the relevant-memory block.
+  const combined = `${focusBlock}${block}`;
+  if (combined.length > 0) {
+    writeOut(combined);
   }
 }
