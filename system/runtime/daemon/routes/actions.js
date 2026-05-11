@@ -6,23 +6,23 @@ export const actionsRoutes = [
   {
     method: 'POST',
     path: '/internal/actions/set',
+    schema: { class: 'string', state: 'string' },
     async handler({ ctx, body }) {
-      if (!body?.class || !VALID_STATES.includes(body?.state)) {
+      if (!VALID_STATES.includes(body.state)) {
         return { _status: 400, _body: { ok: false, reason: 'invalid_input' } };
       }
       await setActionTrust(ctx.db, body.class, body.state, 'user');
-      return { ok: true, class: body.class, state: body.state };
+      // 200 status is the success signal; envelope adds ok: true.
+      return { class: body.class, state: body.state };
     },
   },
   {
     method: 'POST',
     path: '/internal/actions/reset',
+    schema: { class: 'string' },
     async handler({ ctx, body }) {
-      if (!body?.class) {
-        return { _status: 400, _body: { ok: false, reason: 'missing_class' } };
-      }
       await resetActionTrust(ctx.db, body.class);
-      return { ok: true, class: body.class, state: 'ASK' };
+      return { class: body.class, state: 'ASK' };
     },
   },
 ];

@@ -97,9 +97,10 @@ test('jobs run — POSTs to /internal/jobs/run', async () => {
   let posted;
   await jobsRun(['foo'], {
     out: out.fn,
+    // After R-4: daemon returns envelope { ok: true, succeeded, last_error }.
     daemonRequest: async (path, body) => {
       posted = { path, body };
-      return { ok: true, last_error: null };
+      return { ok: true, succeeded: true, last_error: null };
     },
   });
   assert.equal(posted.path, '/internal/jobs/run');
@@ -113,7 +114,7 @@ test('jobs run --force passes force=true', async () => {
     out: () => {},
     daemonRequest: async (_path, body) => {
       posted = body;
-      return { ok: true };
+      return { ok: true, succeeded: true };
     },
   });
   assert.equal(posted.force, true);
@@ -125,6 +126,7 @@ test('jobs run reports not_manually_runnable as ok=false', async () => {
   await jobsRun(['heavy'], {
     out: out.fn,
     err: err.fn,
+    // Non-200 error shape (escape hatch returns the body verbatim).
     daemonRequest: async () => ({ ok: false, reason: 'not_manually_runnable' }),
   });
   assert.match(err.lines.join('\n'), /not_manually_runnable/);

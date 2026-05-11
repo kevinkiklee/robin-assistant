@@ -6,12 +6,10 @@ export const jobsRoutes = [
   {
     method: 'POST',
     path: '/internal/jobs/run',
+    schema: { name: 'string', force: 'boolean?' },
     async handler({ ctx, body, tools }) {
-      const name = body?.name;
+      const { name } = body;
       const force = body?.force === true;
-      if (!name) {
-        return { _status: 400, _body: { ok: false, reason: 'missing name' } };
-      }
       const row = await getJob(ctx.db, name);
       if (!row) {
         return { _status: 404, _body: { ok: false, reason: 'job not found' } };
@@ -32,8 +30,11 @@ export const jobsRoutes = [
       });
       await planNextRunAt(ctx.db, ctx.jobs.cache.current);
       const after = await getJob(ctx.db, name);
+      // Renamed from `ok` → `succeeded`: the envelope's `ok: true` (200 OK)
+      // would overwrite a semantic `ok` field. `succeeded` is the job's own
+      // result, distinct from the HTTP-level success signal.
       return {
-        ok: after.last_run_ok === true,
+        succeeded: after.last_run_ok === true,
         last_error: after.last_error ?? null,
       };
     },
@@ -42,8 +43,7 @@ export const jobsRoutes = [
     method: 'POST',
     path: '/internal/jobs/reload',
     async handler({ ctx }) {
-      await ctx.jobs.refresh();
-      return { ok: true, count: ctx.jobs.cache.current.length };
+      return { count: ctx.jobs.cache.current.length };
     },
   },
 ];
