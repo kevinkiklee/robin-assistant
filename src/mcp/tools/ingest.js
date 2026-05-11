@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { surql } from 'surrealdb';
 import { RobinPiiRefusedError } from '../../capture/errors.js';
 import { recordEvent } from '../../capture/record-event.js';
+import { sha256 } from '../../embed/hash.js';
 import { guardInboundContent } from '../../hooks/inbound-guard.js';
 import { buildIngestPrompt } from '../../jobs/ingest-prompt.js';
 import { resolveOrCreateEntity } from '../../jobs/ingest-resolver.js';
@@ -69,6 +70,15 @@ export function createIngestTool({ db, embedder, host }) {
       if (acquired.error) return { ok: false, ...acquired.error };
       const { content, source_kind, source_ref } = acquired;
 
+      // Dedup check FIRST (§3.2): avoid phantom event + wasted embedder cost on re-ingest.
+      const content_hash = sha256(content);
+      const [existingRows] = await db
+        .query(surql`SELECT id FROM events WHERE content_hash = ${content_hash}`)
+        .collect();
+      if (Array.isArray(existingRows) && existingRows.length > 0) {
+        return { ok: true, deduped: true, event_id: String(existingRows[0].id) };
+      }
+
       // Record event (with inbound PII guard). RobinPiiRefusedError thrown on match.
       let eventResult;
       try {
@@ -87,19 +97,6 @@ export function createIngestTool({ db, embedder, host }) {
 
       const event_id = eventResult.id; // raw SurrealDB RecordId — needed for RELATE + source_events
       const event_id_str = String(event_id);
-
-      // Dedup: recordEvent doesn't deduplicate — detect by querying how many
-      // events share the same content_hash. If >1, this call is a duplicate.
-      const { sha256 } = await import('../../embed/hash.js');
-      const content_hash = sha256(content);
-      const [dupeRows] = await db
-        .query(surql`SELECT id FROM events WHERE content_hash = ${content_hash}`)
-        .collect();
-      const isDedup = Array.isArray(dupeRows) && dupeRows.length > 1;
-
-      if (isDedup) {
-        return { ok: true, deduped: true, event_id: event_id_str };
-      }
 
       if (!host?.invokeLLM) return { ok: false, reason: 'no_host' };
       const llm = await host.invokeLLM([{ role: 'user', content: buildIngestPrompt(content) }], {
@@ -137,9 +134,14 @@ export function createIngestTool({ db, embedder, host }) {
         const dst = entityIds[edge.dst_name?.toLowerCase?.()];
         if (!src || !dst) continue;
         try {
+          // Pick source based on kind — migration 0003 declares FROM types:
+          //   mentions, about: FROM events TO entities  → source = event_id
+          //   works_on, participates_in, co_occurs_with: FROM entities TO entities → source = src entity
+          const edgeSourceIsEvent = edge.kind === 'mentions' || edge.kind === 'about';
+          const edgeSrc = edgeSourceIsEvent ? event_id_str : String(src);
           await db
             .query(
-              `RELATE ${event_id_str}->${edge.kind}->${String(dst)} CONTENT ${JSON.stringify(edge.meta ?? {})}`,
+              `RELATE ${edgeSrc}->${edge.kind}->${String(dst)} CONTENT ${JSON.stringify(edge.meta ?? {})}`,
             )
             .collect();
           edges_created += 1;

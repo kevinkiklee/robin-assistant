@@ -102,3 +102,18 @@ test('ingest — PII content refused', async () => {
   assert.match(r.reason, /^pii:/);
   await close(db);
 });
+
+test('ingest — dedup does not create a phantom event', async () => {
+  const { db, embedder } = await fresh();
+  const llm = stubLLM(JSON.stringify({ entities: [], edges: [], knowledge: [] }));
+  const t = createIngestTool({ db, embedder, host: llm });
+  await t.handler({ content: 'dedup test content' });
+  const before =
+    (await db.query('SELECT count() AS n FROM events GROUP ALL').collect())[0]?.[0]?.n ?? 0;
+  const r = await t.handler({ content: 'dedup test content' });
+  const after =
+    (await db.query('SELECT count() AS n FROM events GROUP ALL').collect())[0]?.[0]?.n ?? 0;
+  assert.equal(r.deduped, true);
+  assert.equal(after, before, 'second ingest of same content must not create a new event');
+  await close(db);
+});
