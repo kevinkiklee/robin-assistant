@@ -1,6 +1,6 @@
+import { clearDaemonState, readDaemonState } from '../../../config/daemon-state.js';
 import { paths } from '../../../config/data-store.js';
 import { isPidAlive } from '../../daemon/lock.js';
-import { clearDaemonState, readDaemonState } from '../../daemon/state.js';
 
 export async function mcpStop() {
   const statePath = paths.data.daemonState();

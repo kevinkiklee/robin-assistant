@@ -3,9 +3,9 @@
 // Daemon-required: agents have their own MCP `remember` tool; this CLI is the
 // human-driven path for cases where a refusal needs to be overridden.
 
+import { readDaemonState } from '../../../config/daemon-state.js';
 import { paths } from '../../../config/data-store.js';
 import { isPidAlive } from '../../daemon/lock.js';
-import { readDaemonState } from '../../daemon/state.js';
 import { parseArgs } from '../args.js';
 
 export async function remember(argv = []) {

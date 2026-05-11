@@ -8,9 +8,9 @@
 // path here is fail-soft so the host's session starts even if Robin is
 // unavailable.
 
+import { readDaemonState } from '../../config/daemon-state.js';
 import { paths } from '../../config/data-store.js';
 import { isPidAlive } from '../../runtime/daemon/lock.js';
-import { readDaemonState } from '../../runtime/daemon/state.js';
 
 function detectHost() {
   if (process.env.CLAUDECODE === '1') return 'claude-code';

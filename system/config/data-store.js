@@ -12,7 +12,7 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { migrateHooksDisabledFlag } from '../io/hooks/disabled.js';
+import { migrateHooksDisabledFlag } from '../config/hooks-disabled.js';
 
 function findPackageRoot() {
   let dir = dirname(fileURLToPath(import.meta.url));

@@ -60,7 +60,10 @@ test('migrations resolves to source tree even when ROBIN_HOME is set elsewhere',
   process.env.ROBIN_HOME = home;
   try {
     const { paths, packageRootDir } = await import(`../../config/data-store.js?cb=${Date.now()}`);
-    assert.equal(paths.source.migrations(), join(packageRootDir(), 'system', 'data', 'db', 'migrations'));
+    assert.equal(
+      paths.source.migrations(),
+      join(packageRootDir(), 'system', 'data', 'db', 'migrations'),
+    );
   } finally {
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });

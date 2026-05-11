@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { migrateHooksDisabledFlag } from '../../io/hooks/disabled.js';
+import { migrateHooksDisabledFlag } from '../../config/hooks-disabled.js';
 
 test('migrateHooksDisabledFlag: empty array when file absent', () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-mig-'));

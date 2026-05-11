@@ -4,7 +4,7 @@
 // kill-switch when a hook produces false-positives (spec §11).
 
 import { ensureHome } from '../../../config/data-store.js';
-import { addDisabled } from '../../../io/hooks/disabled.js';
+import { addDisabled } from '../../../config/hooks-disabled.js';
 import { DISPATCH } from '../../../io/hooks/dispatcher.js';
 import { parseArgs } from '../args.js';
 

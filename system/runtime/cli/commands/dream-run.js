@@ -1,10 +1,10 @@
 import { dreamProcess } from '../../../cognition/dream/pipeline.js';
+import { readDaemonState } from '../../../config/daemon-state.js';
 import { ensureHome, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { createEmbedder } from '../../../data/embed/factory.js';
 import { isPidAlive } from '../../daemon/lock.js';
-import { readDaemonState } from '../../daemon/state.js';
 import { detectHost } from '../../hosts/detect.js';
 
 export async function dreamRun() {

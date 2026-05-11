@@ -1,12 +1,15 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isHookDisabled } from './disabled.js';
+import { isHookDisabled } from '../../config/hooks-disabled.js';
 
 export const DISPATCH = {
-  discretion: { module: './handlers/discretion.js', exportName: 'discretionHandler' },
-  intuition: { module: './handlers/intuition.js', exportName: 'intuitionHandler' },
-  'session-start': { module: './handlers/session-start.js', exportName: 'sessionStartHandler' },
-  stop: { module: './handlers/stop-hook.js', exportName: 'stopHookHandler' },
+  discretion: {
+    module: '../../cognition/discretion/handler.js',
+    exportName: 'discretionHandler',
+  },
+  intuition: { module: '../../cognition/intuition/handler.js', exportName: 'intuitionHandler' },
+  'session-start': { module: './session-start.js', exportName: 'sessionStartHandler' },
+  stop: { module: './stop-hook.js', exportName: 'stopHookHandler' },
 };
 
 async function readStdin(timeoutMs = 1000) {

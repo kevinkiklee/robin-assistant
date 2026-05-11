@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readConfig, writeConfig } from '../../config/paths.js';
+import { readConfig, writeConfig } from './paths.js';
 
 // Per-phase kill-switch storage in `<robinHome>/config.json`:
 //

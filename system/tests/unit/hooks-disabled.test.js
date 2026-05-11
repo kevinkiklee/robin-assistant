@@ -11,7 +11,9 @@ const __robinTestHome = join(
 mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
-const { isHookDisabled, addDisabled, removeDisabled } = await import('../../io/hooks/disabled.js');
+const { isHookDisabled, addDisabled, removeDisabled } = await import(
+  '../../config/hooks-disabled.js'
+);
 
 const configFile = join(__robinTestHome, 'config.json');
 

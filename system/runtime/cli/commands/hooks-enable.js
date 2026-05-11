@@ -3,7 +3,7 @@
 // Per-phase: enabling one phase leaves the others untouched.
 
 import { ensureHome } from '../../../config/data-store.js';
-import { removeDisabled } from '../../../io/hooks/disabled.js';
+import { removeDisabled } from '../../../config/hooks-disabled.js';
 import { DISPATCH } from '../../../io/hooks/dispatcher.js';
 import { parseArgs } from '../args.js';
 

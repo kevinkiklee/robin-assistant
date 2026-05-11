@@ -14,7 +14,7 @@ process.env.ROBIN_HOME = __robinTestHome;
 
 const { hooksDisable } = await import('../../runtime/cli/commands/hooks-disable.js');
 const { hooksEnable } = await import('../../runtime/cli/commands/hooks-enable.js');
-const { isHookDisabled } = await import('../../io/hooks/disabled.js');
+const { isHookDisabled } = await import('../../config/hooks-disabled.js');
 
 const configFile = join(__robinTestHome, 'config.json');
 
