@@ -33,7 +33,12 @@ function dayDeltaUTC(tsLike, y, m, d) {
 
 function tokenize(s) {
   if (typeof s !== 'string') return new Set();
-  return new Set(s.toLowerCase().split(/\W+/).filter((w) => w.length > 3));
+  return new Set(
+    s
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((w) => w.length > 3),
+  );
 }
 
 function extractAssistantBody(reply) {
@@ -101,9 +106,27 @@ export function attribute(hits, replyOrBody, config) {
     }
   }
 
-  // tokenize/body retained for similarity pass added in Task 2.2.
-  void body;
-  void tokenize;
+  // ----- Pass 3: similarity (asymmetric Jaccard) -----
+  const threshold = config.similarity_threshold ?? 0.35;
+  const minOverlap = config.jaccard_min_overlap_tokens ?? 2;
+  const replyTokens = tokenize(body);
+  if (replyTokens.size > 0) {
+    for (const h of out) {
+      if (h.used) continue;
+      if (!h.content) continue;
+      const hitTokens = tokenize(h.content);
+      if (hitTokens.size === 0) continue;
+      let intersect = 0;
+      for (const t of hitTokens) if (replyTokens.has(t)) intersect++;
+      if (intersect < minOverlap) continue;
+      const score = intersect / hitTokens.size;
+      if (score >= threshold) {
+        h.used = true;
+        h.used_via = 'similarity';
+        h.used_score = score;
+      }
+    }
+  }
 
   // Hits still unmarked -> used=false; do not write used_via.
   for (const h of out) {
