@@ -192,12 +192,24 @@ function renderLine(pair, redactSide) {
   return `[memo ${hitDate}] ${hitContent}${CONFLICT_SEPARATOR}[memo ${otherDate}] ${otherContent} (conf ${hitConf}${CONFLICT_SEPARATOR}${otherConf})`;
 }
 
-// Self-pair hit-side re-pick (§2.4): when both endpoints are visible, the
-// higher-confidence side leads. Ties broken by newer ts, then by canonical id.
+// Pair orientation normalisation. fetchContradictors returns pairs whose
+// `hitSide` matches the queried memoIds set, but downstream MMR may shrink
+// that set to a smaller `visibleHitIdSet`. We re-orient so the visible side
+// (the one the agent will see in <!-- relevant memory -->) is always
+// `hitSide`. When both endpoints are visible (§2.4 self-pair branch), the
+// higher-confidence side leads, with ties broken by newer ts, then by
+// canonical id.
 function normaliseSelfPair(p, visibleHitIdSet) {
   const hitVisible = visibleHitIdSet.has(String(p.hitSide.id));
   const otherVisible = visibleHitIdSet.has(String(p.otherSide.id));
-  if (!hitVisible || !otherVisible) return p;
+  // One-side visible: ensure the visible side is hitSide so the in-view
+  // filter downstream catches it.
+  if (!hitVisible && otherVisible) {
+    return { hitSide: p.otherSide, otherSide: p.hitSide };
+  }
+  if (hitVisible && !otherVisible) return p;
+  if (!hitVisible && !otherVisible) return p;
+  // Both visible — apply the §2.4 deterministic ordering.
   const { hitSide, otherSide } = p;
   const hc = hitSide.confidence ?? 0;
   const oc = otherSide.confidence ?? 0;

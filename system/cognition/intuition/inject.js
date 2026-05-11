@@ -137,10 +137,15 @@ export async function intuitionEndpoint({
       const memoIds = memoHits.map((h) => h.record.id);
       conflictsHydration = await fetchContradictors(db, memoIds, cfg);
     }
+    // contradicts is a symmetric relation — each pair contributes +1 to BOTH
+    // endpoints' contradictionCount so contraPenalty fires on either memo if
+    // it ranks into the agent's view.
     const contraByHit = new Map();
     for (const p of conflictsHydration.pairs) {
-      const k2 = String(p.hitSide.id);
-      contraByHit.set(k2, (contraByHit.get(k2) ?? 0) + 1);
+      const hk = String(p.hitSide.id);
+      const ok = String(p.otherSide.id);
+      contraByHit.set(hk, (contraByHit.get(hk) ?? 0) + 1);
+      contraByHit.set(ok, (contraByHit.get(ok) ?? 0) + 1);
     }
 
     const merged = [...eventHits, ...memoHits].map((h) => ({
@@ -286,18 +291,20 @@ export async function intuitionEndpoint({
     }));
     const recallMeta = { latency_ms, truncated };
     if (surfacingOn) recallMeta.conflicts_surfaced = conflictSurfaced;
-    await db
-      .query(
-        surql`CREATE recall_log CONTENT ${{
-          query: safeQuery,
-          session_id: sessionId ?? null,
-          k,
-          ranked_hits: rankedHits,
-          outcome: 'pending',
-          meta: recallMeta,
-        }}`,
-      )
-      .collect();
+    // session_id is option<string> — omit the key when absent so the schema
+    // doesn't reject a NULL coercion (option<string> means string-or-missing,
+    // not string-or-null).
+    const recallContent = {
+      query: safeQuery,
+      k,
+      ranked_hits: rankedHits,
+      outcome: 'pending',
+      meta: recallMeta,
+    };
+    if (typeof sessionId === 'string' && sessionId.length > 0) {
+      recallContent.session_id = sessionId;
+    }
+    await db.query(surql`CREATE recall_log CONTENT ${recallContent}`).collect();
   } catch {
     /* fail-soft */
   }

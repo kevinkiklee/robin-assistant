@@ -481,13 +481,26 @@ const HYBRID_DEFAULTS = {
 
 let _recallConfigCache = null;
 let _recallConfigCachedAt = 0;
+
+/**
+ * Reset the recall-config cache. For tests that need to bust the 5-s TTL
+ * (e.g., after toggling `runtime:recall.value.conflict_surfacing_enabled`
+ * mid-suite). Production callers should never need this.
+ */
+export function _resetRecallConfigCache() {
+  _recallConfigCache = null;
+  _recallConfigCachedAt = 0;
+}
+
 export async function getRecallConfig(db) {
   // 5-second cache; runtime:recall is read on every search call.
   if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
     return _recallConfigCache;
   }
   try {
-    const [rows] = await db.query('SELECT value FROM runtime:recall').collect();
+    // SurrealDB v3 treats `value` as a reserved keyword in projection lists;
+    // escape with backticks. `FROM runtime:recall` directly fetches the row.
+    const [rows] = await db.query('SELECT `value` FROM runtime:recall').collect();
     const value = rows?.[0]?.value ?? {};
     _recallConfigCache = { ...HYBRID_DEFAULTS, ...value };
   } catch {
