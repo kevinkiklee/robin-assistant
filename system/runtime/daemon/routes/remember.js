@@ -18,9 +18,16 @@ export const rememberRoutes = [
           meta: body.meta ?? undefined,
           guard: body.force === true ? undefined : guardInboundContent,
         });
-        ctx.queue.enqueue(String(result.id)).catch(() => {
-          // queueWrap already logs.
-        });
+        try {
+          if (ctx.accumulator?.add) {
+            ctx.accumulator.add(String(result.id), String(body.source ?? 'cli'));
+          } else {
+            // Defensive: pre-C1 single-id path if the accumulator is unwired.
+            ctx.queue.enqueue(String(result.id)).catch(() => {});
+          }
+        } catch (e) {
+          console.warn(`[biographer] accumulator.add failed for ${result.id}: ${e.message}`);
+        }
         return { id: String(result.id) };
       } catch (e) {
         const code = e?.name === 'RobinPiiRefusedError' ? 422 : 500;
