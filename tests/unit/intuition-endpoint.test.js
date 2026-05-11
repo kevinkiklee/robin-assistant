@@ -54,7 +54,7 @@ test('intuitionEndpoint returns formatted block with markers and writes telemetr
   // Each event line should look like `[event YYYY-MM-DD] ...`
   assert.match(result.block, /\[event \d{4}-\d{2}-\d{2}\] /);
 
-  const [rows] = await db.query(surql`SELECT * FROM runtime_intuition_telemetry`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM intuition_telemetry`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].query_chars, 'sourdough'.length);
   assert.equal(rows[0].hits, result.hits);
@@ -153,7 +153,7 @@ test('intuitionEndpoint returns empty block when there are no events', async () 
   assert.equal(result.truncated, false);
 
   // Telemetry still recorded (with hits=0).
-  const [rows] = await db.query(surql`SELECT * FROM runtime_intuition_telemetry`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM intuition_telemetry`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].hits, 0);
 
@@ -180,7 +180,7 @@ test('intuitionEndpoint includes prior assistant tail in the recall query', asyn
   // Recall ran (hits may be 0 with the stub embedder, but telemetry must
   // have a row and the call returns cleanly).
   assert.ok(typeof result.latency_ms === 'number');
-  const [rows] = await db.query(surql`SELECT * FROM runtime_intuition_telemetry`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM intuition_telemetry`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].query_chars, 0);
 
