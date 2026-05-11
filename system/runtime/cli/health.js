@@ -90,6 +90,40 @@ export async function rollupStaleDream(db) {
   return { hours_since: hours, status: hours >= cfg.stale_dream_warn_hours ? 'warn' : 'ok' };
 }
 
+// Cognition D1 — state-inference health rollup.
+// Writes/24h, avg confidence, errors/1h. Exit-code thresholds: ≥1 err/1h →
+// warn (rollups returning 'warn' bump aggregate to 1); ≥3 err/1h → fail (2).
+export async function rollupStateInference(db) {
+  let writes_24h = 0;
+  let avg_conf = null;
+  let errors_1h = 0;
+  try {
+    const [r] = await db
+      .query(
+        surql`SELECT count() AS n, math::mean(confidence) AS c
+              FROM memos
+              WHERE kind = 'state_inference'
+                AND derived_at > time::now() - 24h`,
+      )
+      .collect();
+    writes_24h = r?.[0]?.n ?? 0;
+    avg_conf = r?.[0]?.c ?? null;
+  } catch {}
+  try {
+    const [r] = await db
+      .query(
+        surql`SELECT count() AS n FROM state_inference_telemetry
+              WHERE outcome = 'error' AND ts > time::now() - 1h GROUP ALL`,
+      )
+      .collect();
+    errors_1h = r?.[0]?.n ?? 0;
+  } catch {}
+  let status = 'ok';
+  if (errors_1h >= 3) status = 'fail';
+  else if (errors_1h >= 1) status = 'warn';
+  return { writes_24h, avg_conf, errors_1h, status };
+}
+
 export function aggregateExitCode(rollups) {
   for (const r of rollups) {
     if (r?.status === 'fail') return 2;
@@ -103,13 +137,14 @@ export function aggregateExitCode(rollups) {
 const GLYPH = { ok: '✓', warn: '⚠', fail: '✗' };
 
 export async function runHealth(db, { json = false } = {}) {
-  const [budget, faculties, pending, dream] = await Promise.all([
+  const [budget, faculties, pending, dream, stateInference] = await Promise.all([
     rollupTokenBudget(db),
     rollupFacultyErrors(db),
     rollupPendingTriggers(db),
     rollupStaleDream(db),
+    rollupStateInference(db),
   ]);
-  const all = [budget, ...faculties, pending, dream];
+  const all = [budget, ...faculties, pending, dream, stateInference];
   const exitCode = aggregateExitCode(all);
   if (json) {
     return {
@@ -120,6 +155,7 @@ export async function runHealth(db, { json = false } = {}) {
           faculties,
           pending,
           dream,
+          state_inference: stateInference,
           exit_code: exitCode,
         },
         null,
@@ -136,6 +172,9 @@ export async function runHealth(db, { json = false } = {}) {
   lines.push(`Pending triggers:    ${GLYPH[pending.status]} ${pending.count}`);
   lines.push(
     `Dream nightly:       ${GLYPH[dream.status]} ${dream.hours_since == null ? 'never' : `${Math.round(dream.hours_since)}h ago`}`,
+  );
+  lines.push(
+    `State inference (24h): ${GLYPH[stateInference.status]} ${stateInference.writes_24h} writes, ${stateInference.avg_conf == null ? '—' : `avg conf ${stateInference.avg_conf.toFixed(2)}`}, ${stateInference.errors_1h} errs/1h`,
   );
   lines.push('Faculty error rate (7d):');
   for (const f of faculties) {
