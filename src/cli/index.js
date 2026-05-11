@@ -19,7 +19,7 @@ export async function main(argv) {
   }
   if (cmd === 'uninstall') {
     const { uninstall } = await import('./commands/uninstall.js');
-    return uninstall();
+    return uninstall(argv.slice(1));
   }
   if (cmd === 'biographer-catchup') {
     const { biographerCatchup } = await import('./commands/biographer-catchup.js');
