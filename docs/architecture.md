@@ -35,15 +35,17 @@ Claude Code / Gemini CLI session
        └─ Introspection  manifest-baseline integrity check at boot
        │
        ▼
-   Embedded SurrealDB v3   (rocksdb:// at <robin-home>/db/)
+   Embedded SurrealDB v3   (surrealkv:// at <robin-home>/db/)
        Substrate (3 tables):
          events    · raw firehose; biographed_at/dreamed_at flags
          memos     · distilled cognition; kind ∈ {knowledge, habit, thread,
                      prediction, state_inference, reasoning, session_outcome}
          entities  · graph nouns; open `type` enum
-       Edges (1 generic table, composite-ID `edges:[kind, from, to]`):
+       Edges (1 generic RELATION table, composite-ID `edges:[kind, in, out]`):
          kind ∈ {mentions, about, before, works_on, participates_in,
                  occurs_with, derived_from, supersedes, contradicts}
+         Arrow traversal available: `<-edges[WHERE kind='X']<-source` plus
+         recursive `{1..N}`, `+shortest`, `+collect`, `+path`.
        Embeddings (per-(profile, surface)):
          embeddings_<profile>_{events,memos,entities}
          (HNSW; profile swap = new tables + reindex; data tables untouched)
@@ -56,7 +58,7 @@ Claude Code / Gemini CLI session
 ## Why it's shaped this way
 
 - **One substrate, three tables.** Events (raw), memos (distilled, kind-discriminated), entities (graph nouns). Anything memorable maps to a `memo` kind — adding a new kind is a code change (validator + lens), not a schema migration.
-- **One edges table.** Composite IDs `edges:[kind, from, to]` give idempotent UPSERT. Registry (`EDGE_KIND_REGISTRY`) enforces endpoint types, self-loop rejection, and symmetric canonicalization at write time.
+- **One edges RELATION table.** Composite IDs `edges:[kind, in, out]` give idempotent `INSERT RELATION ... ON DUPLICATE KEY UPDATE` semantics. Registry (`EDGE_KIND_REGISTRY`) enforces endpoint types, self-loop rejection, and symmetric canonicalization at write time. TYPE RELATION enables `->edges[WHERE kind=X]->target` arrow traversal everywhere, plus recursive depth-bounded paths and shortest-path queries.
 - **Embeddings separable from data.** Per-(profile, surface) tables (`embeddings_<profile>_{events,memos,entities}`). Swapping embedders never touches the data tables; just create a new profile's tables, backfill, flip `runtime:embedder.active_profile`.
 - **Open enums throughout.** `memos.kind`, `entities.type`, `events.source`, `events.trust`, `edges.kind` are unconstrained strings. Code-side registries enforce shape.
 - **Recall closes the loop.** Every recall hit is evaluated 5 min later; if no correction landed, `signal_count++` and `decay_anchor=now`. Useful memos sharpen with use. `recall_log` becomes labeled-ish training data for a future reranker.
@@ -77,7 +79,7 @@ Claude Code / Gemini CLI session
 
 ## Database shape and example queries
 
-The substrate + edges + per-surface embeddings live in one SurrealDB v3 instance. Recall, biographer, and dream all compose explicit `SELECT` over `edges` indexed by `(kind, from)` and `(kind, to)` — graph-arrow traversal is unavailable (TYPE NORMAL trade-off for composite-ID idempotence).
+The substrate + edges + per-surface embeddings live in one SurrealDB v3 instance. The edges table is `TYPE RELATION`, so arrow traversal works alongside the index-backed `(kind, in)` / `(kind, out)` lookups: recall, biographer, and dream use arrow paths where they help (`<-edges[WHERE kind='about']<-memos`, recursive `{1..N}`, `+shortest`) and explicit `SELECT ... WHERE kind = X AND in = $id` where the projection wants direct field access.
 
 Example SurrealQL — mirroring shapes Robin's pipelines run:
 
@@ -92,13 +94,13 @@ LIMIT 6;
 -- Memos about a given entity (the new shape of subject lookup).
 SELECT id, content, confidence FROM memos
 WHERE kind = 'knowledge'
-  AND id IN (SELECT VALUE from FROM edges WHERE kind = 'about' AND to = $entity_id)
+  AND id IN (SELECT VALUE in FROM edges WHERE kind = 'about' AND out = $entity_id)
 ORDER BY derived_at DESC LIMIT 10;
 
 -- All entities that co-occur with $entity, sorted by counter weight.
-SELECT IF from = $entity THEN to ELSE from END AS other, weight
+SELECT IF in = $entity THEN out ELSE in END AS other, weight
 FROM edges
-WHERE kind = 'occurs_with' AND (from = $entity OR to = $entity)
+WHERE kind = 'occurs_with' AND (in = $entity OR out = $entity)
 ORDER BY weight DESC LIMIT 10;
 
 -- Server-side freshness ranking for distilled memos in the last 7d.
@@ -109,9 +111,9 @@ ORDER BY fresh DESC LIMIT 10;
 
 -- "What did Robin believe about $entity at time $t?" — supersedes-aware.
 SELECT * FROM memos
-WHERE id IN (SELECT VALUE from FROM edges WHERE kind = 'about' AND to = $entity)
+WHERE id IN (SELECT VALUE in FROM edges WHERE kind = 'about' AND out = $entity)
   AND derived_at <= $t
-  AND id NOT IN (SELECT VALUE to FROM edges WHERE kind = 'supersedes' AND created_at <= $t)
+  AND id NOT IN (SELECT VALUE out FROM edges WHERE kind = 'supersedes' AND created_at <= $t)
 ORDER BY derived_at DESC;
 
 -- Reinforcement pending rows ready for evaluation.

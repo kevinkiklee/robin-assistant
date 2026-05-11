@@ -98,7 +98,7 @@ export async function evaluatePending(db) {
     } else {
       for (const hit of row.ranked_hits) {
         const id = hitRecordId(hit);
-        if (!id || !id.startsWith('memos:')) continue;
+        if (!id?.startsWith('memos:')) continue;
         memoHitCount.set(id, (memoHitCount.get(id) ?? 0) + 1);
       }
       // A row with only event hits (no memo) still counts as reinforced: the

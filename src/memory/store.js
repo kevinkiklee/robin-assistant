@@ -486,7 +486,10 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   const filterCount = countActiveFilters(opts, surface);
   const knnK = Math.min(
     100,
-    Math.max(limit, Math.ceil(limit * (cfg.knn_overfetch_base + filterCount * cfg.knn_overfetch_per_filter))),
+    Math.max(
+      limit,
+      Math.ceil(limit * (cfg.knn_overfetch_base + filterCount * cfg.knn_overfetch_per_filter)),
+    ),
   );
   const ef = Math.max(64, knnK * 4);
   const { readProfile } = await import('../embed/profile-router.js');
@@ -618,9 +621,13 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
  */
 async function _bm25Retrieve(db, surface, query, k) {
   const indexName =
-    surface === 'memos' ? 'memos_content_fts'
-    : surface === 'events' ? 'events_content_fts'
-    : surface === 'entities' ? 'entities_name_fts' : null;
+    surface === 'memos'
+      ? 'memos_content_fts'
+      : surface === 'events'
+        ? 'events_content_fts'
+        : surface === 'entities'
+          ? 'entities_name_fts'
+          : null;
   if (!indexName) return [];
   const field = surface === 'entities' ? 'name' : 'content';
   const sql = `SELECT id, search::score(0) AS bm25_score
