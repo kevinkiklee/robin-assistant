@@ -89,7 +89,11 @@ test('detectChange: prior older than refresh window → materially_changed=true,
 });
 
 test('detectChange: entities unchanged + arc changed only → materially_changed=true', () => {
-  const priorHash = computeSignalHash({ entities: ['entities:a'], arc_id: 'arcs:x', last_event_id: null });
+  const priorHash = computeSignalHash({
+    entities: ['entities:a'],
+    arc_id: 'arcs:x',
+    last_event_id: null,
+  });
   const prior = {
     meta: { signal_hash: priorHash, last_active_at: new Date().toISOString() },
   };

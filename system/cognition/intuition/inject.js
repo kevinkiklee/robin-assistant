@@ -100,9 +100,7 @@ export function evaluateFocusSuppression({ cfg, memo, query, now = new Date() })
   if (memo.scope && isOutboundBlocked(memo.scope)) return { suppressed: 'private' };
   const minConf = cfg.min_confidence_to_surface ?? 0.5;
   if ((memo.confidence ?? 0) < minConf) return { suppressed: 'low_confidence' };
-  const lastActive = memo?.meta?.last_active_at
-    ? new Date(memo.meta.last_active_at)
-    : new Date(0);
+  const lastActive = memo?.meta?.last_active_at ? new Date(memo.meta.last_active_at) : new Date(0);
   const ageMin = (now.getTime() - lastActive.getTime()) / 60_000;
   const staleMin = cfg.stale_after_minutes ?? 120;
   if (ageMin > staleMin) return { suppressed: 'stale' };

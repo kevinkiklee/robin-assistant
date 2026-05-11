@@ -43,12 +43,22 @@ test('buildFocusBlock omits arc tag when arc_id is null', () => {
 });
 
 test('suppression rule 1: enabled !== true → suppressed=disabled', () => {
-  const r = evaluateFocusSuppression({ cfg: { enabled: 'shadow' }, memo: null, query: '', now: new Date() });
+  const r = evaluateFocusSuppression({
+    cfg: { enabled: 'shadow' },
+    memo: null,
+    query: '',
+    now: new Date(),
+  });
   assert.equal(r.suppressed, 'disabled');
 });
 
 test('suppression rule 2: no memo → no_memo', () => {
-  const r = evaluateFocusSuppression({ cfg: { enabled: true }, memo: null, query: '', now: new Date() });
+  const r = evaluateFocusSuppression({
+    cfg: { enabled: true },
+    memo: null,
+    query: '',
+    now: new Date(),
+  });
   assert.equal(r.suppressed, 'no_memo');
 });
 

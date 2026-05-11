@@ -39,12 +39,11 @@ async function setEnabled(db, value) {
 
 const TEST_SOURCE = 'conversation';
 
-async function seedBiographedEvent(db, embedder, {
-  source = TEST_SOURCE,
-  content,
-  entities = [],
-  episodeId = null,
-}) {
+async function seedBiographedEvent(
+  db,
+  _embedder,
+  { source = TEST_SOURCE, content, entities = [], episodeId = null },
+) {
   const [created] = await db
     .query(surql`CREATE events CONTENT ${{ source, content, biographed_at: new Date() }}`)
     .collect();
@@ -288,7 +287,10 @@ test('I7 — calibration emits pivot refute (integration variant)', async () => 
   //   arcMatches = false  ✓
   // → classifyPriorVsCurrent returns 'refuted'.
   const entA = (await store.upsertEntity(db, e, { type: 'topic', name: 'A' })).id;
-  const { epId, entRefs: [entB] } = await seedSource(db, e, { entities: ['B'] });
+  const {
+    epId,
+    entRefs: [entB],
+  } = await seedSource(db, e, { entities: ['B'] });
   const prior = await noteStateInference(db, e, {
     source: TEST_SOURCE,
     content: 'about A',

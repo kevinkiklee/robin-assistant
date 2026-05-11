@@ -23,12 +23,11 @@ async function fresh() {
   return db;
 }
 
-async function seedBiographedEvent(db, embedder, {
-  source = 'conversation',
-  content,
-  entities = [],
-  episodeId = null,
-}) {
+async function seedBiographedEvent(
+  db,
+  _embedder,
+  { source = 'conversation', content, entities = [], episodeId = null },
+) {
   const [created] = await db
     .query(surql`CREATE events CONTENT ${{ source, content, biographed_at: new Date() }}`)
     .collect();

@@ -23,9 +23,7 @@ async function fresh() {
 test('evaluateStateInference returns skipped_disabled when cfg.enabled=false', async () => {
   const db = await fresh();
   // Rollout migrations 0013/0014 may pre-flip the seed; force false here.
-  await db
-    .query(`UPDATE runtime:\`state_inference.config\` SET value.enabled = false`)
-    .collect();
+  await db.query(`UPDATE runtime:\`state_inference.config\` SET value.enabled = false`).collect();
   const e = createStubEmbedder({ dimension: 1024 });
   const host = { invokeLLM: async () => ({ content: '{}', tokens_in: 0, tokens_out: 0 }) };
   const r = await evaluateStateInference({ db, host, embedder: e });
@@ -36,9 +34,7 @@ test('evaluateStateInference returns skipped_disabled when cfg.enabled=false', a
 test('evaluateStateInference no active sources → outcome=no_active_sources', async () => {
   const db = await fresh();
   await db
-    .query(
-      `UPDATE runtime:\`state_inference.config\` SET value.enabled = 'shadow'`,
-    )
+    .query(`UPDATE runtime:\`state_inference.config\` SET value.enabled = 'shadow'`)
     .collect();
   const e = createStubEmbedder({ dimension: 1024 });
   const host = { invokeLLM: async () => ({ content: '{}' }) };

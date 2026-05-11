@@ -73,10 +73,7 @@ test('latestForSource returns most-recent non-superseded memo', async () => {
   });
   // Mark a as superseded by b.
   await db
-    .query(
-      `RELATE $from->supersedes->$to CONTENT { kind: 'supersedes' }`,
-      { from: b.id, to: a.id },
-    )
+    .query(`RELATE $from->supersedes->$to CONTENT { kind: 'supersedes' }`, { from: b.id, to: a.id })
     .collect();
   const latest = await latestForSource(db, 'agent:claude-code');
   assert.ok(latest);

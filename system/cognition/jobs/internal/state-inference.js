@@ -128,7 +128,7 @@ export function validateLLMOutput(o) {
  * Also computes a `privateScopeDetected` flag (§6.1): true if any candidate
  * entity, arc, or event has `scope` in the outbound-blocked set.
  */
-export async function readInputsForSource(db, embedder, { source, windowMinutes }) {
+export async function readInputsForSource(db, _embedder, { source, windowMinutes }) {
   const attention = await getAttention(db, { source, windowMinutes });
   const entityIds = (attention.entities ?? []).map((e) => e.id);
   const entityIdStrs = entityIds.map((id) => String(id));
@@ -306,7 +306,11 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
   try {
     prior = await latestForSource(db, source);
   } catch (e) {
-    await recordTelemetry(db, { source, outcome: 'error', reason: `latestForSource: ${e.message}` });
+    await recordTelemetry(db, {
+      source,
+      outcome: 'error',
+      reason: `latestForSource: ${e.message}`,
+    });
     return { outcome: 'error', reason: e.message };
   }
 
@@ -367,9 +371,7 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
             polarity: cls === 'corroborated' ? 'corroborates' : 'refutes',
             reason: cls === 'corroborated' ? 'state_inference_held' : 'state_inference_pivoted',
             weight:
-              cls === 'corroborated'
-                ? (cfg.corroborate_weight ?? 1.0)
-                : (cfg.pivot_weight ?? 1.0),
+              cls === 'corroborated' ? (cfg.corroborate_weight ?? 1.0) : (cfg.pivot_weight ?? 1.0),
           });
         } catch {
           /* fail-soft */
@@ -481,9 +483,9 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
       arc_id: arc?.id ?? null,
       last_event_id: events[0]?.id ?? null,
       // Wrap as `{id}` so store.note's `l.id ?? l` extraction preserves the
-       // record-ref (raw RecordId objects expose `.id` as just the bare key
-       // string, which would strip the table prefix).
-       lineage: events.slice(0, 5).map((e) => ({ id: e.id })),
+      // record-ref (raw RecordId objects expose `.id` as just the bare key
+      // string, which would strip the table prefix).
+      lineage: events.slice(0, 5).map((e) => ({ id: e.id })),
       evidence_snippet: evidenceSnippet,
       last_active_at: new Date(),
       from_signal: fromSignal,

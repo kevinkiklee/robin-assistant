@@ -30,12 +30,11 @@ async function fresh() {
  * event); it also drops `episode_id`, `entity_refs`, and `biographed_at` from
  * the input, so this helper bypasses it with raw SurrealQL.
  */
-async function seedBiographedEvent(db, embedder, {
-  source = 'conversation',
-  content,
-  entities = [],
-  episodeId = null,
-}) {
+async function seedBiographedEvent(
+  db,
+  _embedder,
+  { source = 'conversation', content, entities = [], episodeId = null },
+) {
   const [created] = await db
     .query(
       surql`CREATE events CONTENT ${{
@@ -48,9 +47,7 @@ async function seedBiographedEvent(db, embedder, {
   const row = Array.isArray(created) ? created[0] : created;
   const eventId = row.id;
   if (episodeId) {
-    await db
-      .query(surql`UPDATE ${eventId} SET episode_id = ${episodeId}`)
-      .collect();
+    await db.query(surql`UPDATE ${eventId} SET episode_id = ${episodeId}`).collect();
   }
   for (const entId of entities) {
     // Use store.relate to wire mentions into the canonical `edges` relation
@@ -111,7 +108,13 @@ const CFG = {
 test('U1 — empty attention → no write', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const llm = makeLLMMock({ focus_statement: 'x', confidence: 0.7, evidence_snippet: '', ambiguous: false, drop: false });
+  const llm = makeLLMMock({
+    focus_statement: 'x',
+    confidence: 0.7,
+    evidence_snippet: '',
+    ambiguous: false,
+    drop: false,
+  });
   const r = await composeForSource({
     db,
     embedder: e,
@@ -155,7 +158,13 @@ test('U2 — no change → no LLM call, no write', async () => {
     last_active_at: new Date(),
     signal_hash: priorSig,
   });
-  const llm = makeLLMMock({ focus_statement: 'x', confidence: 0.7, evidence_snippet: '', ambiguous: false, drop: false });
+  const llm = makeLLMMock({
+    focus_statement: 'x',
+    confidence: 0.7,
+    evidence_snippet: '',
+    ambiguous: false,
+    drop: false,
+  });
   const r = await composeForSource({
     db,
     embedder: e,
