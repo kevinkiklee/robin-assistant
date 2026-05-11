@@ -403,6 +403,7 @@ robin doctor --rebaseline            # rewrite introspection manifest
 robin sessions --stale               # active vs stale sessions
 robin refusals list                  # recent in/outbound refusal audit
 robin embeddings list                # active/read profile + tables + counts
+ROBIN_DEBUG=1 robin <cmd>            # show full stack on CLI errors
 ```
 
 Via the MCP introspection tools (alpha.16):

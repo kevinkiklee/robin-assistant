@@ -11,6 +11,12 @@ import('../runtime/cli/index.js')
   .then((m) => m.main(process.argv.slice(2)))
   .then(() => process.exit(0))
   .catch((e) => {
-    console.error(e.message);
+    // ROBIN_DEBUG=1 surfaces the full stack for diagnosing CLI failures.
+    // Default is one-line message so normal users get a clean error.
+    if (process.env.ROBIN_DEBUG) {
+      console.error(e?.stack ?? e);
+    } else {
+      console.error(e?.message ?? String(e));
+    }
     process.exit(1);
   });

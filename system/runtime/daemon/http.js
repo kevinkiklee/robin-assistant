@@ -2,11 +2,31 @@ import { createServer } from 'node:http';
 import { handleSse } from './mcp-sse.js';
 import { validate } from './schema.js';
 
-async function readJsonBody(req) {
+// 5 MB is well above any legitimate /internal/* payload (the largest are
+// recall/remember bodies with full event content). Higher than this is an
+// accident or a runaway local client; loopback-only binding mitigates
+// external risk, but a memory-bomb from a local process still costs us.
+export const MAX_BODY_BYTES = 5 * 1024 * 1024;
+
+export async function readJsonBody(req) {
   return await new Promise((resolveBody, rejectBody) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    let received = 0;
+    let rejected = false;
+    req.on('data', (c) => {
+      if (rejected) return; // stop accumulating once over the cap
+      received += c.length;
+      if (received > MAX_BODY_BYTES) {
+        rejected = true;
+        const err = new Error(`request body exceeds ${MAX_BODY_BYTES} bytes`);
+        err.name = 'RobinPayloadTooLargeError';
+        rejectBody(err);
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => {
+      if (rejected) return; // promise already rejected
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw) return resolveBody({});
       try {
@@ -60,6 +80,14 @@ export function startHttp({ ctx, tools, routes, port }) {
         if (e.name === 'RobinInvalidJsonError') {
           res.writeHead(400, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: e.message, name: e.name }));
+          return;
+        }
+        if (e.name === 'RobinPayloadTooLargeError') {
+          res.writeHead(413, { 'content-type': 'application/json', connection: 'close' });
+          res.end(JSON.stringify({ ok: false, error: e.message, name: e.name }));
+          // Drop any remaining inbound bytes so the client gets ECONNRESET
+          // instead of us buffering the rest of the (oversized) upload.
+          req.destroy();
           return;
         }
         throw e;

@@ -19,3 +19,17 @@ test('generateLaunchdPlist produces a valid plist with ROBIN_HOME, KeepAlive=tru
   // Must NOT contain old ~/.robin/logs literal
   assert.doesNotMatch(xml, /\.robin\/logs/);
 });
+
+test('generateLaunchdPlist escapes XML special chars in paths', () => {
+  // Unusual but legal POSIX paths can contain `&`, `<`, `>`. Unescaped, these
+  // produce a plist that launchd refuses to load.
+  const xml = generateLaunchdPlist({
+    packageRoot: '/opt/r&d',
+    robinHome: '/Users/<weird>/data',
+  });
+  assert.match(xml, /\/opt\/r&amp;d\/system\/bin\/robin/);
+  assert.match(xml, /<string>\/Users\/&lt;weird&gt;\/data<\/string>/);
+  // Raw `&`, `<`, `>` in path positions would indicate missing escapes.
+  assert.doesNotMatch(xml, /\/opt\/r&d\//);
+  assert.doesNotMatch(xml, /\/Users\/<weird>\//);
+});

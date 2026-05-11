@@ -222,3 +222,32 @@ test('unmatched route returns 404', async () => {
   assert.equal(r.status, 404);
   server.close();
 });
+
+test('readJsonBody rejects payloads over MAX_BODY_BYTES with RobinPayloadTooLargeError', async () => {
+  // Unit-test readJsonBody directly with a mock readable. The integration
+  // path (HTTP client → server → 413) involves duplex behaviour that's
+  // awkward to drive synchronously from a test; the contract under test is
+  // the rejection semantics, not the wire-level cleanup, which the http
+  // dispatcher owns.
+  const { readJsonBody, MAX_BODY_BYTES } = await import('../../runtime/daemon/http.js');
+  const { EventEmitter } = await import('node:events');
+  const mockReq = new EventEmitter();
+  const promise = readJsonBody(mockReq);
+  // Emit one chunk that exceeds the cap in a single tick.
+  mockReq.emit('data', Buffer.alloc(MAX_BODY_BYTES + 1, 'a'));
+  await assert.rejects(promise, (e) => e.name === 'RobinPayloadTooLargeError');
+});
+
+test('readJsonBody accumulates chunks up to MAX_BODY_BYTES then rejects', async () => {
+  const { readJsonBody, MAX_BODY_BYTES } = await import('../../runtime/daemon/http.js');
+  const { EventEmitter } = await import('node:events');
+  const mockReq = new EventEmitter();
+  const promise = readJsonBody(mockReq);
+  // Two chunks: 4 MB + 1.5 MB → 5.5 MB total → over 5 MB cap on the second chunk.
+  mockReq.emit('data', Buffer.alloc(4 * 1024 * 1024, 'a'));
+  mockReq.emit('data', Buffer.alloc(Math.ceil(1.5 * 1024 * 1024), 'a'));
+  await assert.rejects(promise, (e) => e.name === 'RobinPayloadTooLargeError');
+  // MAX_BODY_BYTES is exported (export contract surface).
+  assert.equal(typeof MAX_BODY_BYTES, 'number');
+  assert.ok(MAX_BODY_BYTES > 0);
+});

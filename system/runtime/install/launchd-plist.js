@@ -1,3 +1,9 @@
+// Minimal XML escape — paths with `&`, `<`, `>` would otherwise produce
+// a broken plist that launchd refuses to load.
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /**
  * Generate launchd plist XML for the Robin daemon.
  *
@@ -14,7 +20,7 @@ export function generateLaunchdPlist({ packageRoot, robinHome }) {
   <string>io.robin-assistant.mcp</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${packageRoot}/system/bin/robin</string>
+    <string>${esc(packageRoot)}/system/bin/robin</string>
     <string>mcp</string>
     <string>start</string>
     <string>--foreground</string>
@@ -22,18 +28,18 @@ export function generateLaunchdPlist({ packageRoot, robinHome }) {
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key>
-    <string>${process.env.HOME ?? ''}</string>
+    <string>${esc(process.env.HOME ?? '')}</string>
     <key>ROBIN_HOME</key>
-    <string>${robinHome}</string>
+    <string>${esc(robinHome)}</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${logPath}</string>
+  <string>${esc(logPath)}</string>
   <key>StandardErrorPath</key>
-  <string>${logPath}</string>
+  <string>${esc(logPath)}</string>
 </dict>
 </plist>
 `;
