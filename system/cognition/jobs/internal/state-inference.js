@@ -6,10 +6,13 @@
 // (evaluateStateInference), and two pure helpers (computeSignalHash,
 // detectChange) that are unit-tested in isolation.
 
-import { BoundQuery } from 'surrealdb';
+import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../../../data/embed/hash.js';
 import { getAttention } from '../../memory/attention.js';
+import { addEvidence } from '../../memory/evidence.js';
 import { isOutboundBlocked } from '../../memory/scope-registry.js';
+import { latestForSource, noteStateInference } from '../../memory/state_inference.js';
+import * as store from '../../memory/store.js';
 
 /**
  * Stable hash over the inputs that define "what is the user working on?":
@@ -169,13 +172,16 @@ export async function readInputsForSource(db, embedder, { source, windowMinutes 
   let events = [];
   if (recentEventIds.length > 0 && entityIds.length > 0) {
     try {
+      // Mentions edges live on the unified `edges` table (TYPE RELATION) with
+      // `kind = 'mentions'`. Filter events whose id appears as `in` on a
+      // mentions edge whose `out` is one of our attention entities.
       const [rows] = await db
         .query(
           new BoundQuery(
             `SELECT id, content, ts, scope FROM events
              WHERE id IN $eids
                AND biographed_at IS NOT NONE
-               AND count(->mentions WHERE out IN $entIds) > 0
+               AND id IN (SELECT VALUE in FROM edges WHERE kind = 'mentions' AND out IN $entIds)
              ORDER BY ts DESC
              LIMIT 5`,
             { eids: recentEventIds, entIds: entityIds },
@@ -225,4 +231,301 @@ export async function readInputsForSource(db, embedder, { source, windowMinutes 
   }
 
   return { attention, arc, events, privateScopeDetected };
+}
+
+const MIN_EVENTS = 2;
+const CONTENT_MAX = 240;
+const EVIDENCE_SNIPPET_MAX = 120;
+
+async function recordTelemetry(db, row) {
+  try {
+    await db.query(surql`CREATE state_inference_telemetry CONTENT ${row}`).collect();
+  } catch {
+    /* telemetry is advisory */
+  }
+}
+
+async function priorHasCalibrationRow(db, prior) {
+  // Per spec §5.1 — skip calibration emission only when an evidence_ledger
+  // row exists for this prior with `ts > prior.derived_at` (i.e., a
+  // post-derived calibration). Rows older than the prior would belong to a
+  // prior generation and must not block the new emission.
+  try {
+    const [rows] = await db
+      .query(
+        new BoundQuery(
+          `SELECT count() AS n FROM evidence_ledger
+           WHERE memo_id = $id
+             AND reason IN ['state_inference_held','state_inference_pivoted']
+             AND ts > $prior_derived_at
+           GROUP ALL`,
+          { id: prior?.id, prior_derived_at: prior?.derived_at },
+        ),
+      )
+      .collect();
+    return (rows?.[0]?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function classifyPriorVsCurrent(prior, current) {
+  const priorEnts = new Set((prior?.meta?.entities ?? []).map((s) => String(s)));
+  const curEnts = new Set((current.entities ?? []).map((s) => String(s)));
+  let inter = 0;
+  for (const s of priorEnts) if (curEnts.has(s)) inter++;
+  const denom = Math.max(priorEnts.size, curEnts.size) || 1;
+  const overlap = inter / denom;
+  const priorArc = prior?.meta?.arc_id ?? null;
+  const curArc = current.arc_id ?? null;
+  const arcMatches = String(priorArc ?? '') === String(curArc ?? '');
+  if (overlap >= 0.5 && arcMatches) return 'corroborated';
+  if (!arcMatches && overlap < 0.25) return 'refuted';
+  return 'ambiguous';
+}
+
+/**
+ * Run the per-source pipeline (spec §1.3 steps 1–10).
+ *
+ * Returns one of:
+ *   { outcome: 'wrote', id, signal_hash, latency_ms, tokens_in, tokens_out }
+ *   { outcome: 'skipped_unchanged', signal_hash }
+ *   { outcome: 'skipped_disabled' }
+ *   { outcome: 'dropped_thin', reason }
+ *   { outcome: 'error', reason }
+ */
+export async function composeForSource({ db, embedder, host, source, cfg, now = new Date() }) {
+  if (cfg.enabled === false) {
+    await recordTelemetry(db, { source, outcome: 'skipped_disabled' });
+    return { outcome: 'skipped_disabled' };
+  }
+
+  const shadow = cfg.enabled === 'shadow';
+
+  let prior;
+  try {
+    prior = await latestForSource(db, source);
+  } catch (e) {
+    await recordTelemetry(db, { source, outcome: 'error', reason: `latestForSource: ${e.message}` });
+    return { outcome: 'error', reason: e.message };
+  }
+
+  let inputs;
+  try {
+    inputs = await readInputsForSource(db, embedder, {
+      source,
+      windowMinutes: cfg.attention_window_min,
+    });
+  } catch (e) {
+    await recordTelemetry(db, { source, outcome: 'error', reason: `readInputs: ${e.message}` });
+    return { outcome: 'error', reason: e.message };
+  }
+
+  const { attention, arc, events, privateScopeDetected } = inputs;
+  const entityIds = (attention.entities ?? []).map((e) => e.id);
+
+  // Thin-evidence guard. Empty attention OR too few events → dropped_thin.
+  const minEv = Number.isInteger(cfg.min_events_for_inference)
+    ? cfg.min_events_for_inference
+    : MIN_EVENTS;
+  if (entityIds.length === 0 || events.length < Math.max(1, minEv - 1)) {
+    await recordTelemetry(db, { source, outcome: 'dropped_thin', reason: 'empty_attention' });
+    return { outcome: 'dropped_thin', reason: 'empty_attention' };
+  }
+
+  const current = {
+    entities: entityIds.map((id) => String(id)),
+    arc_id: arc?.id != null ? String(arc.id) : null,
+    last_event_id: events[0]?.id != null ? String(events[0].id) : null,
+  };
+
+  const change = detectChange({
+    prior,
+    current,
+    now,
+    refreshAfterMinutes: cfg.refresh_after_minutes ?? 30,
+  });
+  if (!change.materially_changed) {
+    await recordTelemetry(db, {
+      source,
+      outcome: 'skipped_unchanged',
+      signal_hash: change.signal_hash,
+    });
+    return { outcome: 'skipped_unchanged', signal_hash: change.signal_hash };
+  }
+
+  // Calibration sub-step (spec §5.1) — runs before the LLM call; classified
+  // against the current snapshot regardless of whether the LLM later drops.
+  if (prior && !shadow) {
+    const cls = classifyPriorVsCurrent(prior, current);
+    if (cls !== 'ambiguous') {
+      const dedup = await priorHasCalibrationRow(db, prior);
+      if (!dedup) {
+        try {
+          await addEvidence(db, {
+            memo_id: prior.id,
+            polarity: cls === 'corroborated' ? 'corroborates' : 'refutes',
+            reason: cls === 'corroborated' ? 'state_inference_held' : 'state_inference_pivoted',
+            weight:
+              cls === 'corroborated'
+                ? (cfg.corroborate_weight ?? 1.0)
+                : (cfg.pivot_weight ?? 1.0),
+          });
+        } catch {
+          /* fail-soft */
+        }
+      }
+    }
+  }
+
+  // LLM call (spec §1.3 step 7).
+  const userPrompt = buildPrompt({
+    arc,
+    entities: attention.entities ?? [],
+    events,
+    prior,
+  });
+  const startedAt = Date.now();
+  let llmResult;
+  try {
+    const r = await host.invokeLLM([{ role: 'user', content: userPrompt }], {
+      tier: 'fast',
+      json: true,
+      system: [
+        {
+          role: 'system',
+          content: STATE_INFERENCE_SYSTEM,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+    });
+    llmResult = JSON.parse(r.content);
+    // `host.invokeLLM` returns `{ content, usage: { input_tokens,
+    // output_tokens, cache_read_tokens } }` per
+    // `system/runtime/hosts/claude-code.js`. There is no top-level
+    // `r.tokens_in` / `r.tokens_out` — those keys are always undefined.
+    llmResult._tokens_in = r.usage?.input_tokens ?? null;
+    llmResult._tokens_out = r.usage?.output_tokens ?? null;
+  } catch (e) {
+    await recordTelemetry(db, {
+      source,
+      outcome: 'error',
+      reason: `llm: ${e.message}`,
+      signal_hash: change.signal_hash,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { outcome: 'error', reason: e.message };
+  }
+
+  const validation = validateLLMOutput(llmResult);
+  if (!validation.ok) {
+    await recordTelemetry(db, {
+      source,
+      outcome: 'error',
+      reason: `validate: ${validation.error}`,
+      signal_hash: change.signal_hash,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { outcome: 'error', reason: validation.error };
+  }
+
+  if (llmResult.drop === true) {
+    await recordTelemetry(db, {
+      source,
+      outcome: 'dropped_thin',
+      signal_hash: change.signal_hash,
+      tokens_in: llmResult._tokens_in,
+      tokens_out: llmResult._tokens_out,
+      latency_ms: Date.now() - startedAt,
+      reason: 'llm_drop',
+    });
+    return { outcome: 'dropped_thin', reason: 'llm_drop' };
+  }
+
+  if (shadow) {
+    await recordTelemetry(db, {
+      source,
+      outcome: 'wrote',
+      signal_hash: change.signal_hash,
+      tokens_in: llmResult._tokens_in,
+      tokens_out: llmResult._tokens_out,
+      latency_ms: Date.now() - startedAt,
+      reason: 'shadow',
+    });
+    return {
+      outcome: 'wrote',
+      shadow: true,
+      signal_hash: change.signal_hash,
+    };
+  }
+
+  // Write the memo (spec §1.3 step 8).
+  const content = String(llmResult.focus_statement ?? '').slice(0, CONTENT_MAX);
+  const confidence = clampConfidence(llmResult.confidence, llmResult.ambiguous === true);
+  const evidenceSnippet = String(llmResult.evidence_snippet ?? '').slice(0, EVIDENCE_SNIPPET_MAX);
+
+  const fromSignal = [];
+  if (attention.entities?.length) fromSignal.push('attention');
+  if (arc) fromSignal.push('arcs');
+  if (events.length > 0) fromSignal.push('biographer');
+
+  const scope = privateScopeDetected ? 'private' : 'global';
+
+  let created;
+  try {
+    created = await noteStateInference(db, embedder, {
+      source,
+      content,
+      confidence,
+      entities: entityIds,
+      arc_id: arc?.id ?? null,
+      last_event_id: events[0]?.id ?? null,
+      // Wrap as `{id}` so store.note's `l.id ?? l` extraction preserves the
+       // record-ref (raw RecordId objects expose `.id` as just the bare key
+       // string, which would strip the table prefix).
+       lineage: events.slice(0, 5).map((e) => ({ id: e.id })),
+      evidence_snippet: evidenceSnippet,
+      last_active_at: new Date(),
+      from_signal: fromSignal,
+      signal_hash: change.signal_hash,
+      scope,
+    });
+  } catch (e) {
+    await recordTelemetry(db, {
+      source,
+      outcome: 'error',
+      reason: `write: ${e.message}`,
+      signal_hash: change.signal_hash,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { outcome: 'error', reason: e.message };
+  }
+
+  // Supersede the prior (spec §1.3 step 9).
+  if (prior) {
+    try {
+      await store.supersede(db, prior.id, created.id);
+    } catch (e) {
+      // Memo was written; supersede failure is non-fatal for this tick. Log.
+      console.warn(`[state-inference] supersede failed: ${e.message}`);
+    }
+  }
+
+  await recordTelemetry(db, {
+    source,
+    outcome: 'wrote',
+    signal_hash: change.signal_hash,
+    tokens_in: llmResult._tokens_in,
+    tokens_out: llmResult._tokens_out,
+    latency_ms: Date.now() - startedAt,
+  });
+
+  return {
+    outcome: 'wrote',
+    id: created.id,
+    signal_hash: change.signal_hash,
+    tokens_in: llmResult._tokens_in,
+    tokens_out: llmResult._tokens_out,
+    latency_ms: Date.now() - startedAt,
+  };
 }
