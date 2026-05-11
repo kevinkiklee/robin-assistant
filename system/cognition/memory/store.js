@@ -461,6 +461,22 @@ export async function searchEntities(db, embedder, query, opts = {}) {
 // the kNN side mitigates post-filter shrinkage when callers narrow by
 // kind/scope/tags/since.
 
+/**
+ * Build a SurrealQL WHERE fragment for the memo `kind` filter.
+ *
+ * Accepts string OR array. Pushes the value into `bindings.kind` and returns
+ * the WHERE fragment for callers to push into `filters`.
+ *
+ * Shared by `_surfaceSearch` (post-filter SELECT after kNN+BM25 fusion) and
+ * `listMemos` (chronological list). The two were the only sites in this file
+ * that filtered memos by `kind`; both must accept array-kind for the public
+ * API contract to hold. (Cognition D2 spec §5.)
+ */
+function kindFilter(kind, bindings) {
+  bindings.kind = kind;
+  return Array.isArray(kind) ? 'kind IN $kind' : 'kind = $kind';
+}
+
 const HYBRID_DEFAULTS = {
   rrf_k: 60,
   knn_overfetch_base: 1.5,
@@ -565,8 +581,7 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   const filters = ['id IN $ids'];
   const bindings = { ids };
   if (surface === 'memos' && opts.kind) {
-    bindings.kind = opts.kind;
-    filters.push('kind = $kind');
+    filters.push(kindFilter(opts.kind, bindings));
   }
   if (surface === 'events' && opts.source) {
     bindings.source = opts.source;
@@ -675,8 +690,7 @@ export async function listMemos(db, opts = {}) {
   const filters = [];
   const bindings = {};
   if (kind) {
-    filters.push('kind = $kind');
-    bindings.kind = kind;
+    filters.push(kindFilter(kind, bindings));
   }
   if (scope) {
     filters.push('scope = $scope');
