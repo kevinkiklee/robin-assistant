@@ -7,6 +7,7 @@ import { createEndorseTool } from '../../io/mcp/tools/endorse.js';
 import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
 import { createExplainBeliefTool } from '../../io/mcp/tools/explain-belief.js';
 import { createExplainRecallTool } from '../../io/mcp/tools/explain-recall.js';
+import { createExplainStateInferenceTool } from '../../io/mcp/tools/explain-state-inference.js';
 import { createFindEntityTool } from '../../io/mcp/tools/find-entity.js';
 import { createGetArcTool } from '../../io/mcp/tools/get-arc.js';
 import { createGetCommStyleTool } from '../../io/mcp/tools/get-comm-style.js';
@@ -144,6 +145,7 @@ export function buildTools(ctx) {
     createListArcsTool({ db: ctx.db }),
     createGetArcTool({ db: ctx.db }),
     createExplainRecallTool({ db: ctx.db }),
+    createExplainStateInferenceTool({ db: ctx.db }),
     createExplainBeliefTool({ db: ctx.db }),
     createExplainActionTrustTool({ db: ctx.db }),
     createShowPendingTriggersTool({ db: ctx.db }),

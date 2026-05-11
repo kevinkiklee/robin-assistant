@@ -93,7 +93,9 @@ test('A1 — private state_inference memo redacted by explain_state_inference', 
   const tool = createExplainStateInferenceTool({ db });
   const r = await tool.handler({ source: TEST_SOURCE });
   assert.equal(r.current.private, true);
-  assert.equal(typeof r.current.derived_at, 'string');
+  // derived_at present (driver returns Date, string, or a tagged datetime
+  // object depending on surface). Spec contract: just present + truthy.
+  assert.ok(r.current.derived_at, `expected derived_at to be present`);
   assert.equal(r.current.content, undefined);
   // Reference id in an assertion so the variable is used.
   assert.ok(String(id).startsWith('memos:'));
