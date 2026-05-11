@@ -277,6 +277,160 @@ test('outer JSON parse failure triggers single-event fallback', async () => {
   await close(db);
 });
 
+test('episode break mid-batch: event #3 with continues_previous=false opens new episode', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const baseTs = Date.now();
+  // Three events 0 / 5 min / 45 min apart. Default episode_window_minutes=30.
+  const ev1 = await recordEvent(db, e, {
+    source: 'cli',
+    content: 'one',
+    ts: new Date(baseTs).toISOString(),
+  });
+  const ev2 = await recordEvent(db, e, {
+    source: 'cli',
+    content: 'two',
+    ts: new Date(baseTs + 5 * 60_000).toISOString(),
+  });
+  const ev3 = await recordEvent(db, e, {
+    source: 'cli',
+    content: 'three',
+    ts: new Date(baseTs + 45 * 60_000).toISOString(),
+  });
+  const host = fakeHost([
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(ev1.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev2.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev3.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: 'first session ended',
+        },
+      ],
+    }),
+  ]);
+  const tBeforeBatch = Date.now();
+  await biographerProcessBatch(db, e, host, [ev1.id, ev2.id, ev3.id]);
+  const [rows] = await db.query('SELECT id, episode_id, ts FROM events ORDER BY ts ASC').collect();
+  assert.equal(String(rows[0].episode_id), String(rows[1].episode_id), 'ev1+ev2 same episode');
+  assert.notEqual(String(rows[1].episode_id), String(rows[2].episode_id), 'ev3 new episode');
+
+  const [epRows] = await db.query('SELECT count() AS n FROM episodes GROUP ALL').collect();
+  assert.equal(epRows[0].n, 2);
+
+  // Pin the accepted `started_at` divergence (spec §4 "Accepted divergence"):
+  // the new episode's `started_at` is DB-side time::now(), NOT ev3.ts.
+  const [newEpRows] = await db
+    .query(surql`SELECT started_at FROM ${rows[2].episode_id} LIMIT 1`)
+    .collect();
+  const newEpStartedAt = new Date(newEpRows[0].started_at).getTime();
+  const ev3Ts = new Date(baseTs + 45 * 60_000).getTime();
+  // started_at should be wall-clock-near-now, not 45 min in the past.
+  assert.ok(
+    newEpStartedAt >= tBeforeBatch,
+    `new episode started_at (${newEpRows[0].started_at}) should be >= test wall-clock at batch start (${new Date(tBeforeBatch).toISOString()})`,
+  );
+  assert.ok(
+    Math.abs(newEpStartedAt - ev3Ts) > 60_000,
+    'new episode.started_at must NOT equal ev3.ts — confirms accepted DB-side time::now() divergence',
+  );
+
+  await close(db);
+});
+
+test('mark step issues one UPDATE per episode group (2 episodes → 2 UPDATEs)', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const baseTs = Date.now();
+  const ev1 = await recordEvent(db, e, {
+    source: 'cli',
+    content: 'one',
+    ts: new Date(baseTs).toISOString(),
+  });
+  const ev2 = await recordEvent(db, e, {
+    source: 'cli',
+    content: 'two',
+    ts: new Date(baseTs + 5 * 60_000).toISOString(),
+  });
+  const ev3 = await recordEvent(db, e, {
+    source: 'cli',
+    content: 'three',
+    ts: new Date(baseTs + 45 * 60_000).toISOString(),
+  });
+
+  // Wrap db.query to capture every UPDATE-mark statement issued.
+  // BoundQuery (from surql tag) exposes `.query` as the SQL string.
+  const origQuery = db.query.bind(db);
+  const markUpdates = [];
+  db.query = (q, ...rest) => {
+    const text = String(q?.query ?? q ?? '');
+    if (/UPDATE\s+events[\s\S]*biographed_at\s*=\s*time::now\(\)/i.test(text)) {
+      markUpdates.push(text);
+    }
+    return origQuery(q, ...rest);
+  };
+
+  const host = fakeHost([
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(ev1.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev2.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev3.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: 'closed',
+        },
+      ],
+    }),
+  ]);
+  await biographerProcessBatch(db, e, host, [ev1.id, ev2.id, ev3.id]);
+
+  // Restore db.query.
+  db.query = origQuery;
+
+  assert.equal(
+    markUpdates.length,
+    2,
+    `expected 2 mark UPDATEs (one per episode group), got ${markUpdates.length}`,
+  );
+  await close(db);
+});
+
 test('cross-event entity dedup: 3 events × "Atlas" → 1 entity row + 3 mentions', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
