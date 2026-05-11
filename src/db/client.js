@@ -31,9 +31,32 @@ export async function defaultDbUrl() {
   return `${engine}://${paths.data.db()}`;
 }
 
+// Connect hangs on `surrealkv+versioned://` in @surrealdb/node 3.0.3.
+// A 10s race converts the silent hang into an actionable error so the daemon
+// fails fast instead of looking deadlocked.
+const CONNECT_TIMEOUT_MS = 10_000;
+
 export async function connect({ engine = 'mem://', namespace = 'robin', database = 'main' } = {}) {
   const db = new Surreal({ engines: createNodeEngines() });
-  await db.connect(engine);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `db.connect("${engine}") timed out after ${CONNECT_TIMEOUT_MS}ms. ` +
+              `If using "surrealkv+versioned://", this engine variant currently hangs in ` +
+              `@surrealdb/node 3.0.3 — switch db.engine to "surrealkv" in config.json.`,
+          ),
+        ),
+      CONNECT_TIMEOUT_MS,
+    );
+  });
+  try {
+    await Promise.race([db.connect(engine), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
   await db.use({ namespace, database });
   return db;
 }
