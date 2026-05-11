@@ -1,8 +1,9 @@
 import { surql } from 'surrealdb';
-import { dreamStepCorrections } from './step-corrections.js';
+import { dreamStepCommStyle } from './step-comm-style.js';
 import { dreamStepKnowledge } from './step-knowledge.js';
 import { dreamStepPatterns } from './step-patterns.js';
 import { dreamStepProfile } from './step-profile.js';
+import { dreamStepReflection } from './step-reflection.js';
 import { dreamStepThreads } from './step-threads.js';
 
 /**
@@ -31,9 +32,9 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.patterns = { error: e.message };
   }
   try {
-    summary.corrections = await dreamStepCorrections(db, host, opts.corrections);
+    summary.reflection = await dreamStepReflection(db, host, opts.reflection);
   } catch (e) {
-    summary.corrections = { error: e.message };
+    summary.reflection = { error: e.message };
   }
   try {
     summary.profile = await dreamStepProfile(db, host, opts.profile);
@@ -44,6 +45,11 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.threads = await dreamStepThreads(db, opts.threads);
   } catch (e) {
     summary.threads = { error: e.message };
+  }
+  try {
+    summary.commStyle = await dreamStepCommStyle(db, host);
+  } catch (e) {
+    summary.commStyle = { error: e.message };
   }
 
   await db
