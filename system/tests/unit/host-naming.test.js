@@ -18,8 +18,7 @@ test('ROBIN_HOST=claude-code (hyphenated) resolves the claude-code adapter', asy
   process.env.ROBIN_HOST = 'claude-code';
   try {
     const host = await detectHost({ skipAvailabilityCheck: true });
-    // adapter.name remains underscored — full rename is deferred to a separate PR.
-    assert.equal(host.name, 'claude_code');
+    assert.equal(host.name, 'claude-code');
   } finally {
     if (prev === undefined) delete process.env.ROBIN_HOST;
     else process.env.ROBIN_HOST = prev;
@@ -31,7 +30,7 @@ test('ROBIN_HOST=gemini-cli (hyphenated) resolves the gemini adapter', async () 
   process.env.ROBIN_HOST = 'gemini-cli';
   try {
     const host = await detectHost({ skipAvailabilityCheck: true });
-    assert.equal(host.name, 'gemini_cli');
+    assert.equal(host.name, 'gemini-cli');
   } finally {
     if (prev === undefined) delete process.env.ROBIN_HOST;
     else process.env.ROBIN_HOST = prev;
@@ -46,7 +45,7 @@ test('ROBIN_HOST=claude_code (underscored) still works and warns once', async ()
   console.warn = (...a) => warnings.push(a.join(' '));
   try {
     const host = await detectHost({ skipAvailabilityCheck: true });
-    assert.equal(host.name, 'claude_code');
+    assert.equal(host.name, 'claude-code');
     assert.ok(
       warnings.some((w) => /deprecated|hyphen/i.test(w)),
       `expected deprecation warning, got: ${warnings.join('; ')}`,

@@ -1,24 +1,18 @@
 import { claudeCodeAdapter } from './claude-code.js';
 import { geminiAdapter } from './gemini.js';
 
-// Keys remain underscored — they match adapter.name and many existing call
-// sites (e.g., install/hooks-settings.js uses `${host.name}-hooks` as a
-// settings.json key; events.meta.host carries underscored values). The full
-// repo-wide rename is deferred to a separate cleanup PR with explicit
-// settings.json migration.
+// Canonical hyphenated names: 'claude-code', 'gemini-cli'.
 const ADAPTERS = {
-  claude_code: claudeCodeAdapter,
-  gemini_cli: geminiAdapter,
+  'claude-code': claudeCodeAdapter,
+  'gemini-cli': geminiAdapter,
 };
 
-// Accept both hyphenated (canonical going forward) and underscored (legacy)
-// forms of ROBIN_HOST. Internally we still look up by underscored key.
+// Back-compat: accept legacy underscored ROBIN_HOST inputs and route them
+// to the canonical hyphenated form. The first underscored hit logs a
+// one-shot deprecation warning.
 const ROBIN_HOST_ALIASES = {
-  'claude-code': 'claude_code',
-  'gemini-cli': 'gemini_cli',
-  // identity aliases for legacy callers
-  claude_code: 'claude_code',
-  gemini_cli: 'gemini_cli',
+  claude_code: 'claude-code',
+  gemini_cli: 'gemini-cli',
 };
 
 let warnedUnderscoreOverride = false;
@@ -26,16 +20,17 @@ let warnedUnderscoreOverride = false;
 export async function detectHost(opts = {}) {
   const raw = process.env.ROBIN_HOST;
   if (raw) {
-    const internal = ROBIN_HOST_ALIASES[raw];
-    if (internal) {
-      if ((raw === 'claude_code' || raw === 'gemini_cli') && !warnedUnderscoreOverride) {
+    let key = raw;
+    if (ROBIN_HOST_ALIASES[raw]) {
+      key = ROBIN_HOST_ALIASES[raw];
+      if (!warnedUnderscoreOverride) {
         console.warn(
-          `[hosts] ROBIN_HOST=${raw} is deprecated; use the hyphenated form '${raw.replace('_', '-')}' instead.`,
+          `[hosts] ROBIN_HOST=${raw} is deprecated; use the hyphenated form '${key}' instead.`,
         );
         warnedUnderscoreOverride = true;
       }
-      return ADAPTERS[internal];
     }
+    if (ADAPTERS[key]) return ADAPTERS[key];
   }
 
   // Heuristics

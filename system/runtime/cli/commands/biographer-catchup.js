@@ -29,12 +29,10 @@ export async function biographerCatchup(argv) {
         const [rows] = await db.query(surql`SELECT id FROM events WHERE id IN ${ids}`).collect();
         pending = rows;
       } else {
-        const [rows] = await db
-          .query(
-            surql`SELECT id, ts FROM events WHERE biographed_at IS NONE ORDER BY ts ASC LIMIT 100`,
-          )
-          .collect();
-        pending = rows;
+        const { listPendingEvents } = await import(
+          '../../../cognition/biographer/pending-events.js'
+        );
+        pending = await listPendingEvents(db, { limit: 100 });
       }
 
       if (pending.length === 0) {

@@ -1,3 +1,4 @@
+import { listPendingEvents } from '../../../cognition/biographer/pending-events.js';
 import { captureFromTranscript } from '../../../io/capture/session-capture.js';
 
 export const biographerRoutes = [
@@ -20,9 +21,7 @@ export const biographerRoutes = [
           console.error(`daemon capture pre-step failed: ${e.message}`);
         }
       }
-      const [pendingRows] = await ctx.db
-        .query('SELECT id, ts FROM events WHERE biographed_at IS NONE ORDER BY ts ASC LIMIT 50')
-        .collect();
+      const pendingRows = await listPendingEvents(ctx.db, { limit: 50 });
       for (const row of pendingRows) {
         ctx.queue.enqueue(String(row.id)).catch(() => {
           // queueWrap already logs.
