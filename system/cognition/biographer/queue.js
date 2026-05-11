@@ -1,7 +1,13 @@
-export function createBiographerQueue({ worker, dedupe = false }) {
+export function createBiographerQueue({ worker, dedupe = false, maxPending = 1000 } = {}) {
   const queue = [];
   const inflight = new Map();
   let running = false;
+  let skippedSinceBoot = 0;
+  let lastSkippedAt = null;
+
+  function depth() {
+    return queue.length + (running ? 1 : 0);
+  }
 
   async function drain() {
     if (running) return;
@@ -20,7 +26,20 @@ export function createBiographerQueue({ worker, dedupe = false }) {
   }
 
   function enqueue(id) {
+    // Dedupe check FIRST — returning an existing in-flight promise must
+    // never count against the cap.
     if (dedupe && inflight.has(id)) return inflight.get(id);
+
+    if (depth() >= maxPending) {
+      skippedSinceBoot++;
+      lastSkippedAt = new Date();
+      console.warn(
+        `[biographer] queue at cap (${maxPending}), skipping ${id} ` +
+          '(will be picked up on next /internal/biographer/process-pending)',
+      );
+      return { skipped: true };
+    }
+
     const promise = new Promise((resolve, reject) => {
       queue.push({ id, resolve, reject });
     });
@@ -29,5 +48,16 @@ export function createBiographerQueue({ worker, dedupe = false }) {
     return promise;
   }
 
-  return { enqueue };
+  return {
+    enqueue,
+    get pendingDepth() {
+      return depth();
+    },
+    get skippedSinceBoot() {
+      return skippedSinceBoot;
+    },
+    get lastSkippedAt() {
+      return lastSkippedAt;
+    },
+  };
 }

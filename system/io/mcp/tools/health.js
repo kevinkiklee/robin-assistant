@@ -30,6 +30,9 @@ export function createHealthTool({ version, startedAt, db, embedder, biographerQ
         failed_events: failed,
         active_sessions: sessions.count,
         last_biographer_run_at: biographerQueue.lastRunAt,
+        biographer_queue_depth: biographerQueue.pendingDepth ?? 0,
+        biographer_skipped_since_boot: biographerQueue.skippedSinceBoot ?? 0,
+        biographer_last_skipped_at: biographerQueue.lastSkippedAt ?? null,
       };
     },
   };

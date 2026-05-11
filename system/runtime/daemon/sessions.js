@@ -11,6 +11,7 @@
 // duplicating the row.
 
 import { surql } from 'surrealdb';
+import { HOST_VALUES } from '../hosts/index.js';
 
 /**
  * Register or refresh a session.
@@ -31,7 +32,7 @@ export async function registerSession(db, { sessionId, host, pid, transcriptPath
   if (typeof sessionId !== 'string' || sessionId.length === 0) {
     throw new Error('registerSession: sessionId is required');
   }
-  if (host !== 'claude-code' && host !== 'gemini-cli' && host !== 'unknown') {
+  if (!HOST_VALUES.includes(host)) {
     throw new Error(`registerSession: invalid host ${host}`);
   }
 

@@ -20,6 +20,7 @@ import {
 } from '../../cognition/jobs/predictions.js';
 import { runOneJob } from '../../cognition/jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
+import { clearDaemonState, writeDaemonState } from '../../config/daemon-state.js';
 import { ensureHome, paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
 import { envFilePath } from '../../config/secrets.js';
@@ -72,13 +73,14 @@ import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js
 import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
 import { detectHost } from '../hosts/detect.js';
+import { createFatalHandler, installFatalHandlers } from './fatal.js';
 import { createScheduler } from './heartbeat.js';
 import { createIdleEmbedder } from './idle-embedder.js';
 import { runIntrospection } from './introspection.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
 import { bindFreePort } from './port.js';
+import { retryWithBackoff } from './retry.js';
 import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
-import { clearDaemonState, writeDaemonState } from '../../config/daemon-state.js';
 import { getCliVersion } from './version-handshake.js';
 
 const BUILTIN_JOBS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'builtin');
@@ -102,15 +104,27 @@ export async function startDaemon() {
   let httpServer = null;
   let scheduler = null;
   let sessionSweeper = null;
+  let hostWatchdog = null;
   let shuttingDown = false;
   const gatewayClients = new Map();
   const registry = new Map();
+
+  // Install fatal handlers as early as possible (post-lock, pre-DB). Boot
+  // crashes get logged to <robin-home>/logs/fatal.log; force-exit timer
+  // guarantees the process dies even if shutdown hangs.
+  const fatalLogDir = `${paths.data.home()}/logs`;
+  const fatalHandler = createFatalHandler({
+    logDir: fatalLogDir,
+    shutdown: () => shutdown('fatal'),
+  });
+  const uninstallFatal = installFatalHandlers(fatalHandler);
 
   async function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
     if (signal) console.log(`daemon: received ${signal}, shutting down`);
     if (sessionSweeper) clearInterval(sessionSweeper);
+    if (hostWatchdog) clearInterval(hostWatchdog);
     if (scheduler) {
       console.log('scheduler stopping (in-flight dream may continue briefly)');
       scheduler.stop();
@@ -135,6 +149,7 @@ export async function startDaemon() {
     if (dbHandle) await close(dbHandle).catch(() => {});
     await clearDaemonState(statePath).catch(() => {});
     await releaseDaemonLock(lockPath).catch(() => {});
+    if (uninstallFatal) uninstallFatal();
     clearTimeout(grace);
   }
 
@@ -180,11 +195,28 @@ export async function startDaemon() {
     // Embedder health check. The IdleEmbedder wrapper is just a lifecycle
     // shell; .get() lazily resolves the inner embedder via createEmbedder().
     // Each profile's healthCheck is cheap: mxbai is a no-op, qwen3 hits
-    // /api/tags, gemini just verifies GEMINI_API_KEY is set. On failure print
-    // profile-specific guidance and exit.
+    // /api/tags, gemini just verifies GEMINI_API_KEY is set.
+    //
+    // Retry up to 3 attempts (~35s worst case) to tolerate cold Ollama starts
+    // or transient network blips. On final failure print profile-specific
+    // guidance and exit.
     try {
-      const embedder = await idleEmbedder.get();
-      await embedder.healthCheck();
+      await retryWithBackoff(
+        async () => {
+          const embedder = await idleEmbedder.get();
+          await embedder.healthCheck();
+        },
+        {
+          attempts: 3,
+          perAttemptTimeoutMs: 10_000,
+          backoffMs: [1000, 4000, 0],
+          onRetry: (err, attempt) => {
+            console.warn(
+              `[daemon] embedder health attempt ${attempt} failed: ${err.message}; retrying`,
+            );
+          },
+        },
+      );
     } catch (e) {
       const profile = cfg.embedder_profile;
       console.error(`[daemon] embedder health check failed: ${e.message}`);
@@ -234,6 +266,31 @@ export async function startDaemon() {
       if (!host) host = await detectHost();
       return host;
     }
+
+    // Host reactivation watchdog. When boot-time detection failed, retry
+    // every 5 minutes. Once a host appears, log and stop the watchdog.
+    // (R-2 folds this into the bucket scheduler; for R-1 it's a standalone
+    // setInterval. Activation of host-dependent subsystems happens in R-2.)
+    if (!host) {
+      console.warn('[daemon] host-watchdog armed (5 min retries)');
+      hostWatchdog = setInterval(() => {
+        detectHost()
+          .then((h) => {
+            if (h) {
+              host = h;
+              clearInterval(hostWatchdog);
+              hostWatchdog = null;
+              console.log(
+                '[daemon] host detected by watchdog — restart daemon to fully enable scheduler',
+              );
+            }
+          })
+          .catch(() => {
+            /* still no host, keep trying */
+          });
+      }, 5 * 60_000);
+      hostWatchdog.unref?.();
+    }
     const queue = createBiographerQueue({
       worker: async (eventId) => {
         const e = await idleEmbedder.get();
@@ -245,18 +302,33 @@ export async function startDaemon() {
     let lastBiographerRunAt = null;
     const queueWrap = {
       enqueue: (id) => {
-        const promise = queue.enqueue(id);
-        promise
-          .then(() => {
-            lastBiographerRunAt = new Date().toISOString();
-          })
-          .catch((e) =>
-            console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
-          );
-        return promise;
+        const ret = queue.enqueue(id);
+        // Queue may return { skipped: true } when at maxPending cap — not a promise.
+        // Wrap it as a resolved promise so callers' .catch() / .then() chains
+        // continue to work transparently.
+        if (ret && typeof ret.then === 'function') {
+          ret
+            .then(() => {
+              lastBiographerRunAt = new Date().toISOString();
+            })
+            .catch((e) =>
+              console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
+            );
+          return ret;
+        }
+        return Promise.resolve(ret);
       },
       get lastRunAt() {
         return lastBiographerRunAt;
+      },
+      get pendingDepth() {
+        return queue.pendingDepth;
+      },
+      get skippedSinceBoot() {
+        return queue.skippedSinceBoot;
+      },
+      get lastSkippedAt() {
+        return queue.lastSkippedAt;
       },
     };
     const detector = createRepeatQueryDetector({});
