@@ -147,7 +147,7 @@ export async function installHooksToSettings({ homeDir, packageRoot }) {
   if (!packageRoot || typeof packageRoot !== 'string') {
     throw new TypeError('installHooksToSettings: packageRoot is required');
   }
-  const shimPath = join(packageRoot, 'bin', 'robin-hook.sh');
+  const shimPath = join(packageRoot, 'system', 'bin', 'robin-hook.sh');
   const addedByHost = {};
 
   for (const host of HOSTS) {
@@ -250,7 +250,7 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
       }
     } else {
       // Fallback: scan for any command starting with the shim prefix.
-      const prefix = packageRoot ? join(packageRoot, 'bin', 'robin-hook.sh') : null;
+      const prefix = packageRoot ? join(packageRoot, 'system', 'bin', 'robin-hook.sh') : null;
       for (const phase of Object.keys(settings.hooks)) {
         const phaseArr = settings.hooks[phase];
         if (!Array.isArray(phaseArr)) continue;
@@ -263,7 +263,7 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
           const filteredHooks = entry.hooks.filter((h) => {
             if (!h || h.type !== 'command' || typeof h.command !== 'string') return true;
             if (prefix && h.command.startsWith(prefix)) return false;
-            // Last-ditch: any command that contains '/bin/robin-hook.sh ' looks like ours.
+            // Last-ditch: any command that contains '/system/bin/robin-hook.sh ' looks like ours.
             if (/\/bin\/robin-hook\.sh(\s|$)/.test(h.command)) return false;
             return true;
           });
@@ -310,7 +310,7 @@ export async function validateRobinResolvable({ packageRoot }) {
   if (!packageRoot || typeof packageRoot !== 'string') {
     throw new TypeError('validateRobinResolvable: packageRoot is required');
   }
-  const shimPath = join(packageRoot, 'bin', 'robin-hook.sh');
+  const shimPath = join(packageRoot, 'system', 'bin', 'robin-hook.sh');
 
   const probe = spawnSync('/bin/sh', ['-lc', 'command -v robin'], { encoding: 'utf8' });
   const robinOnPath =

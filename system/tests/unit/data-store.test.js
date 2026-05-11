@@ -16,7 +16,7 @@ test('paths.data.home() resolves $ROBIN_HOME when set and path exists', async ()
   const home = mkdtempSync(join(tmpdir(), 'robin-ds-t1-'));
   process.env.ROBIN_HOME = home;
   try {
-    const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
+    const { paths } = await import(`../../config/data-store.js?cb=${Date.now()}`);
     assert.equal(paths.data.home(), home);
   } finally {
     delete process.env.ROBIN_HOME;
@@ -28,7 +28,7 @@ test('ROBIN_HOME env var overrides default', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-ds-t2-'));
   process.env.ROBIN_HOME = home;
   try {
-    const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
+    const { paths } = await import(`../../config/data-store.js?cb=${Date.now()}`);
     assert.equal(paths.data.home(), home);
   } finally {
     delete process.env.ROBIN_HOME;
@@ -40,7 +40,7 @@ test('paths.data includes db, secrets, cache, config, backup, daemonState, daemo
   const home = mkdtempSync(join(tmpdir(), 'robin-ds-t3-'));
   process.env.ROBIN_HOME = home;
   try {
-    const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
+    const { paths } = await import(`../../config/data-store.js?cb=${Date.now()}`);
     assert.equal(paths.data.db(), join(home, 'db'));
     assert.equal(paths.data.secrets(), join(home, 'secrets'));
     assert.equal(paths.data.cache(), join(home, 'cache'));
@@ -48,7 +48,7 @@ test('paths.data includes db, secrets, cache, config, backup, daemonState, daemo
     assert.equal(paths.data.backup(), join(home, 'backup'));
     assert.equal(paths.data.daemonState(), join(home, '.daemon.state'));
     assert.equal(paths.data.daemonLock(), join(home, '.daemon.lock'));
-    assert.match(paths.source.migrations(), /\/src\/schema\/migrations$/);
+    assert.match(paths.source.migrations(), /\/system\/data\/db\/migrations$/);
   } finally {
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
@@ -59,10 +59,8 @@ test('migrations resolves to source tree even when ROBIN_HOME is set elsewhere',
   const home = mkdtempSync(join(tmpdir(), 'robin-ds-t4-'));
   process.env.ROBIN_HOME = home;
   try {
-    const { paths, packageRootDir } = await import(
-      `../../src/runtime/data-store.js?cb=${Date.now()}`
-    );
-    assert.equal(paths.source.migrations(), join(packageRootDir(), 'src', 'schema', 'migrations'));
+    const { paths, packageRootDir } = await import(`../../config/data-store.js?cb=${Date.now()}`);
+    assert.equal(paths.source.migrations(), join(packageRootDir(), 'system', 'data', 'db', 'migrations'));
   } finally {
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
@@ -283,7 +281,7 @@ test('strict resolver: pointer with unknown version throws', () => {
 
 test('data-store.js never calls fs.rename — move uses copy+verify+delete', () => {
   const src = readFileSync(
-    fileURLToPath(new URL('../../src/runtime/data-store.js', import.meta.url)),
+    fileURLToPath(new URL('../../config/data-store.js', import.meta.url)),
     'utf8',
   );
   // Allowed single-file atomic replaces (tmp→final):

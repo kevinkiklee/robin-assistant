@@ -35,7 +35,7 @@ test.afterEach(() => {
 
 async function fresh() {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   return db;
 }
 
@@ -55,14 +55,14 @@ async function seedScheduler(db, name, fields = {}) {
 
 test('GA4 403 PERMISSION_DENIED: failure logs re-auth instruction, increments consecutive_failures, then succeeds after re-auth', async () => {
   // Seed required secrets via dotenv-io (fresh import per test for ROBIN_HOME).
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   saveSecret('GA_PROPERTIES', '12345');
   saveSecret('GOOGLE_OAUTH_REFRESH_TOKEN', 'r');
   saveSecret('GOOGLE_OAUTH_CLIENT_ID', 'c');
   saveSecret('GOOGLE_OAUTH_CLIENT_SECRET', 's');
-  const { sync } = await import(`../../src/integrations/ga/sync.js?cb=${Date.now()}`);
+  const { sync } = await import(`../../io/integrations/ga/sync.js?cb=${Date.now()}`);
   const { runIntegrationSync } = await import(
-    `../../src/integrations/_framework/run-sync.js?cb=${Date.now()}`
+    `../../io/integrations/_framework/run-sync.js?cb=${Date.now()}`
   );
 
   const db = await fresh();

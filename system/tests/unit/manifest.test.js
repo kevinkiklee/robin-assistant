@@ -17,7 +17,7 @@ test.afterEach(() => {
 });
 
 test('computeManifest returns expected shape with package_version + file hashes', async () => {
-  const { computeManifest } = await import(`../../src/install/manifest.js?cb=${Date.now()}`);
+  const { computeManifest } = await import(`../../runtime/install/manifest.js?cb=${Date.now()}`);
   const m = await computeManifest({ includeSupervisor: false });
 
   assert.ok(m.package_version, 'package_version present');
@@ -33,8 +33,8 @@ test('computeManifest returns expected shape with package_version + file hashes'
   }
   // bin/robin must be tracked — it ships with every install.
   assert.ok(
-    m.files.some((f) => f.path === 'bin/robin'),
-    'bin/robin tracked',
+    m.files.some((f) => f.path === 'system/bin/robin'),
+    'system/bin/robin tracked',
   );
 
   assert.ok(m.perms && typeof m.perms === 'object', 'perms object present');
@@ -46,7 +46,7 @@ test('computeManifest returns expected shape with package_version + file hashes'
 });
 
 test('computeManifest reports db_dir_mode for the test home', async () => {
-  const { computeManifest } = await import(`../../src/install/manifest.js?cb=${Date.now()}`);
+  const { computeManifest } = await import(`../../runtime/install/manifest.js?cb=${Date.now()}`);
   const m = await computeManifest({ includeSupervisor: false });
   // db dir was just created; mode reflects umask. Just check shape ('0xxx').
   assert.match(m.perms.db_dir_mode, /^0[0-7]{3}$/);
@@ -56,7 +56,7 @@ test('computeManifest reports db_dir_mode for the test home', async () => {
 
 test('writeManifest + readManifest round-trip', async () => {
   const { computeManifest, writeManifest, readManifest } = await import(
-    `../../src/install/manifest.js?cb=${Date.now()}`
+    `../../runtime/install/manifest.js?cb=${Date.now()}`
   );
   const m = await computeManifest({ includeSupervisor: false });
   await writeManifest(m);
@@ -69,13 +69,13 @@ test('writeManifest + readManifest round-trip', async () => {
 });
 
 test('readManifest returns null when file missing', async () => {
-  const { readManifest } = await import(`../../src/install/manifest.js?cb=${Date.now()}`);
+  const { readManifest } = await import(`../../runtime/install/manifest.js?cb=${Date.now()}`);
   assert.equal(await readManifest(), null);
 });
 
 test('readManifest returns null when file malformed', async () => {
   const { writeFileSync } = await import('node:fs');
   writeFileSync(join(tmpHome, 'manifest.json'), '{not json', 'utf-8');
-  const { readManifest } = await import(`../../src/install/manifest.js?cb=${Date.now()}`);
+  const { readManifest } = await import(`../../runtime/install/manifest.js?cb=${Date.now()}`);
   assert.equal(await readManifest(), null);
 });

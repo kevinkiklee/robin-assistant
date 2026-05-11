@@ -1,6 +1,6 @@
 // upsert-entity.js — the 3-stage entity-resolution cascade used by store.upsertEntity.
 //
-// Replaces the former `src/graph/cascade.js` (deleted in the redesign).
+// Replaces the former `cognition/cascade.js` (deleted in the redesign).
 // `store.upsertEntity` imports `upsertEntityCascade` from here.
 //
 // Stages:

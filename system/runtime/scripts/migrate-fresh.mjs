@@ -23,7 +23,7 @@ const ROBIN_HOME = robinHome();
 const CONFIG_PATH = join(ROBIN_HOME, 'config.json');
 const DB_DIR = join(ROBIN_HOME, 'db');
 const BACKUP_DIR = join(ROBIN_HOME, 'cache', 'backups');
-const MIGRATIONS_DIR = new URL('../src/schema/migrations/', import.meta.url).pathname;
+const MIGRATIONS_DIR = new URL('../../data/db/migrations/', import.meta.url).pathname;
 
 function ts() {
   return new Date().toISOString().replace(/[:.]/g, '-');

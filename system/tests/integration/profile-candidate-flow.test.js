@@ -21,7 +21,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 test('profile_update candidate → approve → profile:singleton updated', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const c = await createCandidate(db, {
     content: 'set name to Kevin',
     kind: 'profile_update',

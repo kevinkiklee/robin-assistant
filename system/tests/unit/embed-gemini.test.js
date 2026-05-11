@@ -26,7 +26,7 @@ test('embed() POSTs to embedContent endpoint', async () => {
     calls.push({ url, opts });
     return { ok: true, json: async () => ({ embedding: { values: [0.1, 0.2] } }) };
   });
-  const { createGeminiEmbedder } = await import(`../../src/embed/gemini.js?cb=${Date.now()}`);
+  const { createGeminiEmbedder } = await import(`../../data/embed/gemini.js?cb=${Date.now()}`);
   const e = await createGeminiEmbedder();
   const v = await e.embed('hello');
   assert.match(calls[0].url, /embedContent.*key=test-key/);
@@ -45,7 +45,7 @@ test('embedBatch() POSTs to batchEmbedContents', async () => {
       json: async () => ({ embeddings: [{ values: [0.1] }, { values: [0.2] }] }),
     };
   });
-  const { createGeminiEmbedder } = await import(`../../src/embed/gemini.js?cb=${Date.now()}`);
+  const { createGeminiEmbedder } = await import(`../../data/embed/gemini.js?cb=${Date.now()}`);
   const e = await createGeminiEmbedder();
   const vs = await e.embedBatch(['a', 'b']);
   assert.match(calls[0].url, /batchEmbedContents.*key=test-key/);
@@ -60,7 +60,7 @@ test('429 surfaces as GeminiError.status === 429', async () => {
     status: 429,
     text: async () => 'rate limited',
   }));
-  const { createGeminiEmbedder } = await import(`../../src/embed/gemini.js?cb=${Date.now()}`);
+  const { createGeminiEmbedder } = await import(`../../data/embed/gemini.js?cb=${Date.now()}`);
   const e = await createGeminiEmbedder();
   try {
     await e.embed('hello');
@@ -73,7 +73,7 @@ test('429 surfaces as GeminiError.status === 429', async () => {
 test('healthCheck() requires GEMINI_API_KEY', async () => {
   rmSync(join(tmpHome, 'secrets', '.env'));
   writeFileSync(join(tmpHome, 'secrets', '.env'), '', 'utf-8');
-  const { createGeminiEmbedder } = await import(`../../src/embed/gemini.js?cb=${Date.now()}`);
+  const { createGeminiEmbedder } = await import(`../../data/embed/gemini.js?cb=${Date.now()}`);
   const e = await createGeminiEmbedder();
   await assert.rejects(() => e.healthCheck(), /missing secret.*GEMINI_API_KEY/);
 });

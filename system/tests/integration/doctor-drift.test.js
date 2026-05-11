@@ -22,7 +22,7 @@ test('doctorData: reports drift when a host file no longer contains a recorded c
       {
         kind: 'claude-hooks',
         path: fakeSettings,
-        owned: [{ phase: 'PreToolUse', command: '/abs/bin/robin-hook.sh bash-policy' }],
+        owned: [{ phase: 'PreToolUse', command: '/abs/system/bin/robin-hook.sh bash-policy' }],
       },
       () => {},
     );

@@ -5,12 +5,12 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const SCAN_DIRS = ['src', 'scripts'];
+const SCAN_DIRS = ['runtime', 'data', 'cognition', 'io', 'config'];
 const ALLOW_FILES = new Set([
-  join(ROOT, 'src/runtime/data-store.js'),
-  join(ROOT, 'src/cli/commands/install.js'),
-  join(ROOT, 'src/migrate-v1/v1-client.js'),
-  join(ROOT, 'src/hooks/bash-patterns.js'),
+  join(ROOT, 'config/data-store.js'),
+  join(ROOT, 'runtime/cli/commands/install.js'),
+  join(ROOT, 'migrate-v1/v1-client.js'),
+  join(ROOT, 'cognition/discretion/bash-patterns.js'),
 ]);
 
 const CONSTRUCTION_PATTERNS = [

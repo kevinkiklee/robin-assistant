@@ -32,10 +32,10 @@ test.afterEach(() => {
 });
 
 async function freshSetup() {
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   saveSecret('GITHUB_PAT', 'ghp_test');
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   // Pre-seed all actions to AUTO so existing tests bypass the trust gate.
   for (const action of ['create-issue', 'comment', 'label', 'mark-read']) {
     await setActionTrust(db, `github_write:${action}`, 'AUTO', 'user');

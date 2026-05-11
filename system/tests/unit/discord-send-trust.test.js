@@ -32,11 +32,11 @@ test.afterEach(() => {
 });
 
 async function freshSetup({ allowedUsers = '', allowedGuilds = '' } = {}) {
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   if (allowedUsers) saveSecret('DISCORD_ALLOWED_USER_IDS', allowedUsers);
   if (allowedGuilds) saveSecret('DISCORD_ALLOWED_GUILD_IDS', allowedGuilds);
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,

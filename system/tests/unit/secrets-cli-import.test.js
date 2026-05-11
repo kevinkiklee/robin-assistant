@@ -19,7 +19,7 @@ test('secrets import --from <path>/runtime/secrets/.env succeeds', async () => {
   mkdirSync(join(v1, 'runtime', 'secrets'), { recursive: true });
   writeFileSync(join(v1, 'runtime', 'secrets', '.env'), 'KEY=value\n', 'utf-8');
   const { secretsImport } = await import(
-    `../../src/cli/commands/secrets-import.js?cb=${Date.now()}`
+    `../../runtime/cli/commands/secrets-import.js?cb=${Date.now()}`
   );
   await secretsImport(['--from', v1]);
   const dest = join(tmpHome, 'secrets', '.env');
@@ -31,7 +31,7 @@ test('secrets import accepts direct .env path', async () => {
   const src = join(tmpHome, 'custom.env');
   writeFileSync(src, 'KEY=value\n', 'utf-8');
   const { secretsImport } = await import(
-    `../../src/cli/commands/secrets-import.js?cb=${Date.now()}`
+    `../../runtime/cli/commands/secrets-import.js?cb=${Date.now()}`
   );
   await secretsImport(['--from', src]);
   const dest = join(tmpHome, 'secrets', '.env');

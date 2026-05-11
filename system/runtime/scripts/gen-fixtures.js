@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = resolve(here, '../tests/fixtures');
+const outDir = resolve(here, '../system/tests/fixtures');
 
 const CLUSTERS = [
   {

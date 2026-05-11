@@ -19,7 +19,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 test('dreamStepPatterns returns 0 upserted on empty DB', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const r = await dreamStepPatterns(db, null);
   assert.equal(r.upserted, 0);
   await close(db);

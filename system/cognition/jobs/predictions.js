@@ -3,7 +3,7 @@
 // Redesigned for the new schema: predictions are now memos with `kind='prediction'`.
 // External call sites (predict / resolve_prediction / list_open_predictions
 // MCP tools, daemon, dream/step-calibration, CLI list/show commands) keep
-// their existing signatures; the body delegates to `src/memory/foresight.js`
+// their existing signatures; the body delegates to `cognition/memory/foresight.js`
 // for the new code path, or queries `memos WHERE kind='prediction'` directly
 // for the read helpers `foresight.js` doesn't expose.
 //

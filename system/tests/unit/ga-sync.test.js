@@ -17,13 +17,13 @@ test.afterEach(() => {
 });
 
 async function seedSecrets() {
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   saveSecret('GA_PROPERTIES', '12345');
 }
 
 test('sync captures one event per day per property', async () => {
   await seedSecrets();
-  const { sync } = await import(`../../src/integrations/ga/sync.js?cb=${Date.now()}`);
+  const { sync } = await import(`../../io/integrations/ga/sync.js?cb=${Date.now()}`);
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token')) {
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -86,9 +86,9 @@ test('sync captures one event per day per property', async () => {
 
 test('sync iterates multiple properties and tags external_id per property', async () => {
   await seedSecrets();
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   saveSecret('GA_PROPERTIES', '12345, 67890');
-  const { sync } = await import(`../../src/integrations/ga/sync.js?cb=${Date.now()}`);
+  const { sync } = await import(`../../io/integrations/ga/sync.js?cb=${Date.now()}`);
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token')) {
       return { ok: true, json: async () => ({ access_token: 'a', expires_in: 3600 }) };
@@ -136,7 +136,7 @@ test('sync iterates multiple properties and tags external_id per property', asyn
 
 test('403 PERMISSION_DENIED logs re-auth instruction and re-throws', async () => {
   await seedSecrets();
-  const { sync } = await import(`../../src/integrations/ga/sync.js?cb=${Date.now()}`);
+  const { sync } = await import(`../../io/integrations/ga/sync.js?cb=${Date.now()}`);
   const messages = [];
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token')) {
@@ -167,7 +167,7 @@ test('403 PERMISSION_DENIED logs re-auth instruction and re-throws', async () =>
 
 test('403 ACCESS_TOKEN_SCOPE_INSUFFICIENT also triggers scope-error path', async () => {
   await seedSecrets();
-  const { sync } = await import(`../../src/integrations/ga/sync.js?cb=${Date.now()}`);
+  const { sync } = await import(`../../io/integrations/ga/sync.js?cb=${Date.now()}`);
   const messages = [];
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/token')) {
@@ -199,7 +199,7 @@ test('403 ACCESS_TOKEN_SCOPE_INSUFFICIENT also triggers scope-error path', async
 
 test('missing GA_PROPERTIES env throws clear error', async () => {
   // Don't seed GA_PROPERTIES.
-  const { sync } = await import(`../../src/integrations/ga/sync.js?cb=${Date.now()}`);
+  const { sync } = await import(`../../io/integrations/ga/sync.js?cb=${Date.now()}`);
   await assert.rejects(
     () =>
       sync({

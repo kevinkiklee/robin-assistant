@@ -12,7 +12,7 @@ After=default.target
 [Service]
 Type=simple
 Environment=ROBIN_HOME=${robinHome}
-ExecStart=${packageRoot}/bin/robin mcp start --foreground
+ExecStart=${packageRoot}/system/bin/robin mcp start --foreground
 Restart=on-failure
 StandardOutput=append:${robinHome}/cache/logs/daemon.log
 StandardError=append:${robinHome}/cache/logs/daemon.log

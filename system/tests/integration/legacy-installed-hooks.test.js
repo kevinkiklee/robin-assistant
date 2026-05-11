@@ -19,10 +19,10 @@ test('legacy installed-hooks.json is migrated on first manifest write and then d
           {
             phase: 'PreToolUse',
             matcher: 'Bash',
-            command: '/abs/bin/robin-hook.sh bash-policy',
+            command: '/abs/system/bin/robin-hook.sh bash-policy',
           },
         ],
-        gemini: [{ phase: 'Stop', command: '/abs/bin/robin-hook.sh stop' }],
+        gemini: [{ phase: 'Stop', command: '/abs/system/bin/robin-hook.sh stop' }],
       }),
     );
     const before = await readHostIntegrations();

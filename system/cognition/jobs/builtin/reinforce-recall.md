@@ -11,7 +11,7 @@ manually_runnable: true
 description: Reinforce memos that were recalled without a subsequent correction (5-min delayed evaluation).
 ---
 
-Internal job. Implementation in `src/jobs/internal/reinforce-recall.js`. Walks `recall_log` rows whose `outcome='pending'` and `ts < now - 5 min`; for each row:
+Internal job. Implementation in `cognition/jobs/internal/reinforce-recall.js`. Walks `recall_log` rows whose `outcome='pending'` and `ts < now - 5 min`; for each row:
 
 - If a `meta.kind='correction'` event landed in the same session within the 5-min window → mark `outcome='corrected'` (no reinforcement).
 - Else if the row recorded no hits → mark `outcome='evaluated_no_signal'`.

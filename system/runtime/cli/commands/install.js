@@ -238,7 +238,7 @@ async function installHooksStep({ skipHooks }) {
       'Robin hooks need either `robin` on PATH from a login shell OR an executable shim',
     );
     console.error(
-      'at <package-root>/bin/robin-hook.sh. Install robin globally (`npm i -g robin-assistant`)',
+      'at <package-root>/system/bin/robin-hook.sh. Install robin globally (`npm i -g robin-assistant`)',
     );
     console.error('or check filesystem permissions on the shim, then re-run `robin install`.');
     process.exit(1);

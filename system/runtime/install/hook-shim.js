@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { packageRootDir } from '../../config/data-store.js';
 
 /**
- * Verify the shipped `bin/robin-hook.sh` shim exists and is mode 755 (or at
+ * Verify the shipped `system/bin/robin-hook.sh` shim exists and is mode 755 (or at
  * least executable). If present but not executable, chmod 755 it. Modes can
  * be lost on tarball extraction depending on how npm runs.
  *
@@ -12,7 +12,7 @@ import { packageRootDir } from '../../config/data-store.js';
  */
 export async function ensureHookShim() {
   const root = packageRootDir();
-  const shim = join(root, 'bin', 'robin-hook.sh');
+  const shim = join(root, 'system', 'bin', 'robin-hook.sh');
   if (!existsSync(shim)) {
     throw new Error(`hook shim missing: ${shim}`);
   }
@@ -48,7 +48,7 @@ export async function ensureHookShim() {
  * @returns {Promise<{robinOnPath: boolean, hookShimPath: string}>}
  */
 export async function probeHookPath() {
-  const shimPath = join(packageRootDir(), 'bin', 'robin-hook.sh');
+  const shimPath = join(packageRootDir(), 'system', 'bin', 'robin-hook.sh');
   const r = spawnSync('/bin/sh', ['-lc', 'command -v robin'], { encoding: 'utf8' });
   const robinOnPath = r.status === 0 && typeof r.stdout === 'string' && r.stdout.trim() !== '';
   return { robinOnPath, hookShimPath: shimPath };

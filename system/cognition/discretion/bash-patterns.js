@@ -5,7 +5,7 @@
 // payloads (base64 | bash) and aliased binaries fall through and are
 // addressed at the secrets-containment layer.
 //
-// Lifted from Robin v1 (system/scripts/lib/bash-sensitive-patterns.js)
+// Lifted from Robin v1 (system/runtime/scripts/lib/bash-sensitive-patterns.js)
 // with v2 refresh per Phase 4a §5.A:
 //   - DROPPED `misrouted-write` (no canonical user-data/artifacts/upload/
 //     /backup paths in v2 — DB is the writable surface).

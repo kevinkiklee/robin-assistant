@@ -14,7 +14,7 @@ export function generateLaunchdPlist({ packageRoot, robinHome }) {
   <string>io.robin-assistant.mcp</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${packageRoot}/bin/robin</string>
+    <string>${packageRoot}/system/bin/robin</string>
     <string>mcp</string>
     <string>start</string>
     <string>--foreground</string>

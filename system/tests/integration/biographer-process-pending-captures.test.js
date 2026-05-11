@@ -48,7 +48,7 @@ test.skip('biographer-process-pending --transcript-path runs capture pre-step', 
   const homeDb = `rocksdb://${__robinTestHome}/db`;
   const seedDb = await connect({ engine: homeDb });
   try {
-    await runMigrations(seedDb, resolve(import.meta.dirname, '../../src/schema/migrations'));
+    await runMigrations(seedDb, resolve(import.meta.dirname, '../../data/db/migrations'));
   } finally {
     await close(seedDb);
   }

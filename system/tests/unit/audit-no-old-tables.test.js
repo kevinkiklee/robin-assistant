@@ -66,7 +66,7 @@ function isAllowed(path, text) {
   // SurrealQL comment, JS line/block comment.
   if (trimmed.startsWith('--') || trimmed.startsWith('//') || trimmed.startsWith('*')) return true;
   // Test files describing the audit itself.
-  if (path === 'tests/unit/audit-no-old-tables.test.js') return true;
+  if (path === 'system/tests/unit/audit-no-old-tables.test.js') return true;
   return false;
 }
 
@@ -76,7 +76,7 @@ function isAllowed(path, text) {
 function gitGrepAll(tokens) {
   const args = ['grep', '-nI', '--no-color', '--fixed-strings'];
   for (const t of tokens) args.push('-e', t);
-  args.push('--', 'src/');
+  args.push('--', '');
   let out = '';
   try {
     out = execFileSync('git', args, {

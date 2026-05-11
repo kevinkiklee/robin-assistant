@@ -20,13 +20,15 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 async function fresh() {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   return db;
 }
 
 test('runIntrospection without baseline returns no_baseline finding, baselined=false', async () => {
   const db = await fresh();
-  const { runIntrospection } = await import(`../../src/daemon/introspection.js?cb=${Date.now()}`);
+  const { runIntrospection } = await import(
+    `../../runtime/daemon/introspection.js?cb=${Date.now()}`
+  );
   const r = await runIntrospection(db, { includeSupervisor: false });
   assert.equal(r.ok, true);
   assert.equal(r.baselined, false);
@@ -39,10 +41,10 @@ test('runIntrospection without baseline returns no_baseline finding, baselined=f
 test('runIntrospection with fresh baseline returns ok=true, no findings, baselined=true', async () => {
   const db = await fresh();
   const { computeManifest, writeManifest } = await import(
-    `../../src/install/manifest.js?cb=${Date.now()}`
+    `../../runtime/install/manifest.js?cb=${Date.now()}`
   );
   const { runIntrospection, readLastIntrospection } = await import(
-    `../../src/daemon/introspection.js?cb=${Date.now()}`
+    `../../runtime/daemon/introspection.js?cb=${Date.now()}`
   );
 
   const baseline = await computeManifest({ includeSupervisor: false });
@@ -66,15 +68,17 @@ test('runIntrospection with fresh baseline returns ok=true, no findings, baselin
 test('runIntrospection reports hash_drift when baseline file hash mutated', async () => {
   const db = await fresh();
   const { computeManifest, writeManifest } = await import(
-    `../../src/install/manifest.js?cb=${Date.now()}`
+    `../../runtime/install/manifest.js?cb=${Date.now()}`
   );
-  const { runIntrospection } = await import(`../../src/daemon/introspection.js?cb=${Date.now()}`);
+  const { runIntrospection } = await import(
+    `../../runtime/daemon/introspection.js?cb=${Date.now()}`
+  );
 
   const baseline = await computeManifest({ includeSupervisor: false });
   // Mutate the bin/robin entry's hash so live recompute disagrees.
   const tampered = structuredClone(baseline);
-  const target = tampered.files.find((f) => f.path === 'bin/robin');
-  assert.ok(target, 'bin/robin in baseline');
+  const target = tampered.files.find((f) => f.path === 'system/bin/robin');
+  assert.ok(target, 'system/bin/robin in baseline');
   const expectedHash = 'a'.repeat(64);
   target.sha256 = expectedHash;
   await writeManifest(tampered);
@@ -82,7 +86,7 @@ test('runIntrospection reports hash_drift when baseline file hash mutated', asyn
   const r = await runIntrospection(db, { includeSupervisor: false });
   assert.equal(r.ok, false);
   assert.equal(r.baselined, true);
-  const drift = r.findings.find((f) => f.kind === 'hash_drift' && f.path === 'bin/robin');
+  const drift = r.findings.find((f) => f.kind === 'hash_drift' && f.path === 'system/bin/robin');
   assert.ok(drift, 'hash_drift finding for bin/robin');
   assert.equal(drift.expected, expectedHash);
   assert.match(drift.actual, /^[0-9a-f]{64}$/);
@@ -94,10 +98,10 @@ test('runIntrospection reports hash_drift when baseline file hash mutated', asyn
 test('readLastIntrospection returns persisted state after a run', async () => {
   const db = await fresh();
   const { computeManifest, writeManifest } = await import(
-    `../../src/install/manifest.js?cb=${Date.now()}`
+    `../../runtime/install/manifest.js?cb=${Date.now()}`
   );
   const { runIntrospection, readLastIntrospection } = await import(
-    `../../src/daemon/introspection.js?cb=${Date.now()}`
+    `../../runtime/daemon/introspection.js?cb=${Date.now()}`
   );
 
   const baseline = await computeManifest({ includeSupervisor: false });
@@ -114,7 +118,7 @@ test('readLastIntrospection returns persisted state after a run', async () => {
 test('readLastIntrospection returns null when no row exists', async () => {
   const db = await fresh();
   const { readLastIntrospection } = await import(
-    `../../src/daemon/introspection.js?cb=${Date.now()}`
+    `../../runtime/daemon/introspection.js?cb=${Date.now()}`
   );
   const last = await readLastIntrospection(db);
   assert.equal(last, null);

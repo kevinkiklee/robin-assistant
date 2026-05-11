@@ -21,7 +21,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 test('get_entity returns the entity record', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   const _v = Array.from(await e.embed('person: Alice'));
   const [created] = await db
@@ -38,7 +38,7 @@ test('get_entity returns the entity record', async () => {
 
 test('get_entity throws on unknown id', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const tool = createGetEntityTool({ db });
   await assert.rejects(tool.handler({ id: 'entities:nonexistent' }), /not found/i);
   await close(db);
@@ -47,7 +47,7 @@ test('get_entity throws on unknown id', async () => {
 test('get_entity path_to returns the shortest path through chained occurs_with', async () => {
   const { writeCoOccursWith } = await import('../../cognition/biographer/edges.js');
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   const ids = [];
   for (const n of ['A', 'B', 'C']) {
@@ -77,7 +77,7 @@ test('get_entity path_to returns the shortest path through chained occurs_with',
 
 test('get_entity path_to returns null when no path exists', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   const _v = Array.from(await e.embed('person: lonely'));
   const [c1] = await db

@@ -29,7 +29,7 @@ test('embed() uses /api/embed (newer endpoint) when available', async () => {
     };
   });
   const { createOllamaEmbedder } = await import(
-    `../../src/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `../../data/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const e = await createOllamaEmbedder();
   const v = await e.embed('hello');
@@ -61,7 +61,7 @@ test('embed() falls back to /api/embeddings on 404', async () => {
     };
   });
   const { createOllamaEmbedder } = await import(
-    `../../src/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `../../data/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const e = await createOllamaEmbedder();
   const v = await e.embed('hello');
@@ -82,7 +82,7 @@ test('healthCheck() succeeds when ollama reachable + model present', async () =>
     text: async () => '',
   }));
   const { createOllamaEmbedder } = await import(
-    `../../src/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `../../data/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const e = await createOllamaEmbedder();
   await e.healthCheck();
@@ -93,7 +93,7 @@ test('healthCheck() throws when ollama unreachable', async () => {
     throw new Error('connection refused');
   });
   const { createOllamaEmbedder } = await import(
-    `../../src/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `../../data/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const e = await createOllamaEmbedder();
   await assert.rejects(() => e.healthCheck(), /connection refused/);
@@ -107,7 +107,7 @@ test('healthCheck() throws when model missing', async () => {
     text: async () => '',
   }));
   const { createOllamaEmbedder } = await import(
-    `../../src/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `../../data/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const e = await createOllamaEmbedder();
   await assert.rejects(() => e.healthCheck(), /qwen3-embedding:8b is not installed/);
@@ -127,7 +127,7 @@ test('OLLAMA_HOST env override is honoured', async () => {
   });
   // Re-import to pick up the env var (module-level constant).
   const { createOllamaEmbedder } = await import(
-    `../../src/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `../../data/embed/ollama.js?cb=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const e = await createOllamaEmbedder();
   await e.healthCheck();

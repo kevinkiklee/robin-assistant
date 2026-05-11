@@ -71,7 +71,7 @@ test('validateManifest defaults capture_mode to insert-or-skip', () => {
 });
 
 test('loadManifests returns { loaded, unavailable } (smoke against real integrations dir)', async () => {
-  const integrationsDir = resolve(import.meta.dirname, '../../src/integrations');
+  const integrationsDir = resolve(import.meta.dirname, '../../integrations');
   const r = await loadManifests(integrationsDir);
   assert.ok(Array.isArray(r.loaded));
   assert.ok(Array.isArray(r.unavailable));

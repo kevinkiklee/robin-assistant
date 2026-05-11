@@ -15,8 +15,10 @@ function setup() {
   const packageRoot = join(root, 'pkg');
   mkdirSync(homeDir, { recursive: true });
   mkdirSync(robinHome, { recursive: true });
-  mkdirSync(join(packageRoot, 'bin'), { recursive: true });
-  writeFileSync(join(packageRoot, 'bin', 'robin-hook.sh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  mkdirSync(join(packageRoot, 'system', 'bin'), { recursive: true });
+  writeFileSync(join(packageRoot, 'system', 'bin', 'robin-hook.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o755,
+  });
   process.env.ROBIN_HOME = robinHome;
   return { root, homeDir, robinHome, packageRoot };
 }
@@ -61,7 +63,7 @@ test('full install/uninstall cycle: foreign entries survive byte-for-byte', asyn
     writeFileSync(geminiPath, JSON.stringify(geminiOriginal), 'utf8');
 
     const { installHooksToSettings, uninstallHooksFromSettings } = await import(
-      `../../src/install/hooks-settings.js?cb=${Date.now()}-${Math.random()}`
+      `../../runtime/install/hooks-settings.js?cb=${Date.now()}-${Math.random()}`
     );
 
     // Install.
@@ -74,7 +76,7 @@ test('full install/uninstall cycle: foreign entries survive byte-for-byte', asyn
 
     // Robin entries appear.
     const claudeAfterInstall = JSON.parse(readFileSync(claudePath, 'utf8'));
-    const shimPath = join(env.packageRoot, 'bin', 'robin-hook.sh');
+    const shimPath = join(env.packageRoot, 'system', 'bin', 'robin-hook.sh');
     const robinPhases = ['PreToolUse', 'UserPromptSubmit', 'SessionStart', 'Stop'];
     for (const phase of robinPhases) {
       const arr = claudeAfterInstall.hooks[phase];
@@ -145,7 +147,7 @@ test('roundtrip with no pre-existing settings files: clean install + clean unins
   const env = setup();
   try {
     const { installHooksToSettings, uninstallHooksFromSettings } = await import(
-      `../../src/install/hooks-settings.js?cb=${Date.now()}-${Math.random()}`
+      `../../runtime/install/hooks-settings.js?cb=${Date.now()}-${Math.random()}`
     );
 
     const { addedByHost } = await installHooksToSettings({

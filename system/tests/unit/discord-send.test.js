@@ -33,11 +33,11 @@ test.afterEach(() => {
 
 async function freshSetup({ allowedUsers = '', allowedGuilds = '' } = {}) {
   // Write the discord allowlist into the per-test .env so getSecret picks it up.
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   if (allowedUsers) saveSecret('DISCORD_ALLOWED_USER_IDS', allowedUsers);
   if (allowedGuilds) saveSecret('DISCORD_ALLOWED_GUILD_IDS', allowedGuilds);
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   // Seed AUTO for both actions so existing tests bypass the trust gate.
   await setActionTrust(db, 'discord_send:send_dm', 'AUTO', 'user');
   await setActionTrust(db, 'discord_send:send_channel', 'AUTO', 'user');

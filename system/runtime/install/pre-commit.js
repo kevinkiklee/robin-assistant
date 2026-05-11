@@ -1,6 +1,6 @@
 // Git pre-commit installer (Phase 4a §5.F).
 //
-// Lifts v1's `system/scripts/cli/install-hooks.js` + `hooks/pre-commit.js`
+// Lifts v1's `system/runtime/scripts/cli/install-hooks.js` + `hooks/pre-commit.js`
 // privacy logic. NOT bundled into `robin install` — it's invoked from inside
 // the user's project repo via `robin pre-commit install`.
 //
@@ -32,7 +32,7 @@ import { SECRET_PATTERNS } from '../../io/outbound/patterns.js';
 const HOOK_MARKER = 'robin pre-commit run';
 
 function preCommitRunScriptPath() {
-  return join(packageRootDir(), 'bin', 'robin');
+  return join(packageRootDir(), 'system', 'bin', 'robin');
 }
 
 function hookContent() {

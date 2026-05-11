@@ -61,7 +61,7 @@ function captureExit(fn) {
 }
 
 async function importInstall() {
-  return await import(`../../src/cli/commands/install.js?cb=${Date.now()}-${Math.random()}`);
+  return await import(`../../runtime/cli/commands/install.js?cb=${Date.now()}-${Math.random()}`);
 }
 
 function noopSupervise() {
@@ -86,7 +86,7 @@ test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', 
 test('install --profile gemini-3072 --i-understand --no-mcp persists profile when key set', async () => {
   setup();
   try {
-    const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+    const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
     saveSecret('GEMINI_API_KEY', 'fake-key-xxx');
     const { install } = await importInstall();
     await install(['--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'], {
@@ -192,7 +192,7 @@ test('install interactive: profile flag respected, config written', async () => 
 test('reinstall short-circuit when config exists', async () => {
   setup();
   try {
-    const { writeConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+    const { writeConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
     await writeConfig({ embedder_profile: 'mxbai-1024' });
     const installedAtBefore = existsSync(join(tmpHome, 'config.json'));
     assert.ok(installedAtBefore);
@@ -214,7 +214,7 @@ test('reinstall short-circuit when config exists', async () => {
 test('reinstall with --force proceeds past short-circuit', async () => {
   setup();
   try {
-    const { writeConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+    const { writeConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
     await writeConfig({ embedder_profile: 'mxbai-1024', installed_at: 'old' });
     const { install } = await importInstall();
     await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
@@ -326,7 +326,7 @@ test('config.json is written atomically with profile and installed_at', async ()
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.match(cfg.installed_at, /^\d{4}-\d{2}-\d{2}T/);
     // Re-read confirms persistence.
-    const { readConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+    const { readConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
     const reread = await readConfig();
     assert.equal(reread.embedder_profile, 'mxbai-1024');
   } finally {

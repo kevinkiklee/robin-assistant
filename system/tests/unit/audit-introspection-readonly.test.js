@@ -10,13 +10,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const INTROSPECTION_TOOLS = [
-  'src/mcp/tools/explain-recall.js',
-  'src/mcp/tools/explain-belief.js',
-  'src/mcp/tools/explain-action-trust.js',
-  'src/mcp/tools/show-pending-triggers.js',
-  'src/mcp/tools/show-step-health.js',
-  'src/mcp/tools/recent-refusals.js',
-  'src/mcp/tools/archive-history.js',
+  'system/io/mcp/tools/explain-recall.js',
+  'system/io/mcp/tools/explain-belief.js',
+  'system/io/mcp/tools/explain-action-trust.js',
+  'system/io/mcp/tools/show-pending-triggers.js',
+  'system/io/mcp/tools/show-step-health.js',
+  'system/io/mcp/tools/recent-refusals.js',
+  'system/io/mcp/tools/archive-history.js',
 ];
 
 // These are full SurrealQL statement keywords. We require them to appear

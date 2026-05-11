@@ -19,7 +19,7 @@ await __wc({ embedder_profile: 'mxbai-1024' });
 
 test('knowledge ops roundtrip: ingest → lint sees orphan → audit sees no pairs', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const embedder = createStubEmbedder({ dimension: 1024 });
 
   const llmStub = {

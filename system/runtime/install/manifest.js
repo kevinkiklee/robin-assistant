@@ -15,13 +15,13 @@ import { sha256 } from '../../data/embed/hash.js';
 // Files whose contents should be pinned. Paths relative to the package root.
 // Files that don't exist at compute time are silently omitted from the manifest.
 const TRACKED_FILES = [
-  'bin/robin',
-  'bin/robin-hook.sh',
-  'src/hooks/cli.js',
-  'src/daemon/server.js',
-  'src/capture/record-event.js',
-  'src/mcp/tools/remember.js',
-  'src/mcp/tools/record-correction.js',
+  'system/bin/robin',
+  'system/bin/robin-hook.sh',
+  'system/io/hooks/dispatcher.js',
+  'system/runtime/daemon/server.js',
+  'system/io/capture/record-event.js',
+  'system/io/mcp/tools/remember.js',
+  'system/io/mcp/tools/record-correction.js',
 ];
 
 function readPackageVersion(packageRoot) {

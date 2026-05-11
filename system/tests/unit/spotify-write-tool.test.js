@@ -34,12 +34,12 @@ test.afterEach(() => {
 });
 
 async function freshSetup() {
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   saveSecret('SPOTIFY_REFRESH_TOKEN', 'r');
   saveSecret('SPOTIFY_CLIENT_ID', 'cid');
   saveSecret('SPOTIFY_CLIENT_SECRET', 'csec');
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
@@ -217,7 +217,7 @@ test('unknown action → unknown_action', async () => {
 test('missing secret → not_authenticated', async () => {
   // Don't seed secrets — buildSecrets should throw "missing secret"
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,

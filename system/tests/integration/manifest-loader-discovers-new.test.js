@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
 
-const integrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/integrations');
+const integrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../integrations');
 
 test('manifest loader discovers github, spotify, letterboxd', async () => {
   const { loaded, unavailable } = await loadManifests(integrationsDir);

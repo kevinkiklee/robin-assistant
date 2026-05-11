@@ -22,7 +22,7 @@ const { runMigrations: __runMigrations } = await import('../../data/db/migrate.j
 
 async function __openMemDbWithMigrations() {
   const db = await __connect({ engine: 'mem://' });
-  await __runMigrations(db, join(packageRootDir(), 'src', 'schema', 'migrations'));
+  await __runMigrations(db, join(packageRootDir(), 'system', 'data', 'db', 'migrations'));
   return db;
 }
 
@@ -58,7 +58,7 @@ test('doctor --lint-hooks: lists robin-owned entries from settings.json', async 
   mkdirSync(join(fakeHome, '.claude'), { recursive: true });
   mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
 
-  const shimPath = join(packageRootDir(), 'bin', 'robin-hook.sh');
+  const shimPath = join(packageRootDir(), 'system', 'bin', 'robin-hook.sh');
   const claudeSettings = {
     hooks: {
       PreToolUse: [

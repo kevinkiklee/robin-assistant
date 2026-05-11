@@ -22,7 +22,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 test('dreamProcess runs all steps and marks events dreamed', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });
   for (let i = 0; i < 3; i++) {
     await recordEvent(db, e, {

@@ -9,7 +9,7 @@ import { test } from 'node:test';
 process.env.ROBIN_HOME = join(tmpdir(), `robin-shim-test-${process.pid}-${Date.now()}`);
 
 test('ensureHookShim returns the absolute shim path and verifies it exists', async () => {
-  const { ensureHookShim } = await import(`../../src/install/hook-shim.js?cb=${Date.now()}`);
+  const { ensureHookShim } = await import(`../../runtime/install/hook-shim.js?cb=${Date.now()}`);
   const shim = await ensureHookShim();
   assert.match(shim, /\/bin\/robin-hook\.sh$/, 'should return absolute shim path');
   // The shipped shim should already be executable.
@@ -33,7 +33,7 @@ test('ensureHookShim chmods a non-executable shim to 755', async () => {
   // chmod-on-non-exec behavior on the real shim: temporarily flip its mode
   // off, invoke ensureHookShim, assert it's executable again, then restore.
   const { ensureHookShim } = await import(
-    `../../src/install/hook-shim.js?cb=${Date.now()}-${Math.random()}`
+    `../../runtime/install/hook-shim.js?cb=${Date.now()}-${Math.random()}`
   );
   const shim = await ensureHookShim();
   const originalMode = statSync(shim).mode & 0o7777;
@@ -49,7 +49,7 @@ test('ensureHookShim chmods a non-executable shim to 755', async () => {
 });
 
 test('probeHookPath returns expected shape', async () => {
-  const { probeHookPath } = await import(`../../src/install/hook-shim.js?cb=${Date.now()}`);
+  const { probeHookPath } = await import(`../../runtime/install/hook-shim.js?cb=${Date.now()}`);
   const result = await probeHookPath();
   assert.equal(typeof result.robinOnPath, 'boolean');
   assert.equal(typeof result.hookShimPath, 'string');
@@ -61,7 +61,7 @@ test('probeHookPath: robinOnPath false when PATH stripped', async () => {
   process.env.PATH = '/nonexistent-xxx';
   try {
     const { probeHookPath } = await import(
-      `../../src/install/hook-shim.js?cb=${Date.now()}-${Math.random()}`
+      `../../runtime/install/hook-shim.js?cb=${Date.now()}-${Math.random()}`
     );
     const r = await probeHookPath();
     assert.equal(r.robinOnPath, false, 'with PATH stripped, robin should not resolve');
@@ -83,12 +83,12 @@ test('ensureHookShim throws if shim file is missing', async () => {
     tmpdir(),
     `robin-shim-missing-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
-  mkdirSync(join(fakeRoot, 'bin'), { recursive: true });
+  mkdirSync(join(fakeRoot, 'system', 'bin'), { recursive: true });
   // Don't create the shim — but ensureHookShim points at packageRootDir(),
   // which we can't change. Instead, simulate the failure path by importing
   // the function and calling it after temporarily moving the real shim.
   const { ensureHookShim } = await import(
-    `../../src/install/hook-shim.js?cb=${Date.now()}-${Math.random()}`
+    `../../runtime/install/hook-shim.js?cb=${Date.now()}-${Math.random()}`
   );
   const realShim = await ensureHookShim();
   const backup = `${realShim}.bak-test-${Date.now()}`;

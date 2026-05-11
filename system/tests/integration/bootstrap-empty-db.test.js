@@ -13,7 +13,7 @@ test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () =
   const tmp = mkdtempSync(join(tmpdir(), 'robin-bootstrap-'));
   seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
-  const result = spawnSync(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
+  const result = spawnSync(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     encoding: 'utf8',
   });
@@ -27,7 +27,7 @@ test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () =
   assert.ok(existsSync(join(tmp, 'cache')));
 
   // Re-run is a no-op
-  const result2 = spawnSync(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
+  const result2 = spawnSync(process.execPath, [join(root, 'system/bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     encoding: 'utf8',
   });

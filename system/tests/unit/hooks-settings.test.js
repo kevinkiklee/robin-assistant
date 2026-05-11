@@ -16,8 +16,10 @@ function makeFreshEnv() {
   const packageRoot = join(root, 'pkg');
   mkdirSync(homeDir, { recursive: true });
   mkdirSync(robinHome, { recursive: true });
-  mkdirSync(join(packageRoot, 'bin'), { recursive: true });
-  writeFileSync(join(packageRoot, 'bin', 'robin-hook.sh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  mkdirSync(join(packageRoot, 'system', 'bin'), { recursive: true });
+  writeFileSync(join(packageRoot, 'system', 'bin', 'robin-hook.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o755,
+  });
   process.env.ROBIN_HOME = robinHome;
   return { root, homeDir, robinHome, packageRoot };
 }
@@ -27,7 +29,7 @@ function cleanup(root) {
 }
 
 async function importFresh() {
-  return await import(`../../src/install/hooks-settings.js?cb=${Date.now()}-${Math.random()}`);
+  return await import(`../../runtime/install/hooks-settings.js?cb=${Date.now()}-${Math.random()}`);
 }
 
 const FOREIGN_PRETOOL = {
@@ -77,7 +79,7 @@ test('installHooksToSettings adds robin entries and preserves foreign Claude ent
     assert.ok(foreignPromptStill, 'foreign UserPromptSubmit entry should be preserved');
 
     // Robin entries present for all four phases.
-    const shim = join(env.packageRoot, 'bin', 'robin-hook.sh');
+    const shim = join(env.packageRoot, 'system', 'bin', 'robin-hook.sh');
     const phases = ['PreToolUse', 'UserPromptSubmit', 'SessionStart', 'Stop'];
     for (const phase of phases) {
       const arr = settings.hooks[phase];
@@ -282,7 +284,7 @@ test('validateRobinResolvable passes when shim exists+executable', async () => {
     const { validateRobinResolvable } = await importFresh();
     const r = await validateRobinResolvable({ packageRoot: env.packageRoot });
     assert.equal(typeof r.robinOnPath, 'boolean');
-    assert.equal(r.shimPath, join(env.packageRoot, 'bin', 'robin-hook.sh'));
+    assert.equal(r.shimPath, join(env.packageRoot, 'system', 'bin', 'robin-hook.sh'));
   } finally {
     cleanup(env.root);
   }
@@ -292,7 +294,7 @@ test('validateRobinResolvable throws when neither robin nor shim is available', 
   const env = makeFreshEnv();
   try {
     // Remove the shim so neither is reachable.
-    rmSync(join(env.packageRoot, 'bin', 'robin-hook.sh'), { force: true });
+    rmSync(join(env.packageRoot, 'system', 'bin', 'robin-hook.sh'), { force: true });
     // Hide robin from PATH inside the probe shell.
     const origPath = process.env.PATH;
     process.env.PATH = '/nonexistent-path-xxx-robin-test';

@@ -34,7 +34,7 @@ import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { parseArgs } from '../args.js';
 
 function shimPrefix() {
-  return join(packageRootDir(), 'bin', 'robin-hook.sh');
+  return join(packageRootDir(), 'system', 'bin', 'robin-hook.sh');
 }
 
 function readSettingsHooks(settingsPath) {

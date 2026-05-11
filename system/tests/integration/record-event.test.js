@@ -20,7 +20,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 async function fresh() {
   const db = await connect({ engine: 'mem://' });
-  const dir = resolve(import.meta.dirname, '../../src/schema/migrations');
+  const dir = resolve(import.meta.dirname, '../../data/db/migrations');
   await runMigrations(db, dir);
   return db;
 }

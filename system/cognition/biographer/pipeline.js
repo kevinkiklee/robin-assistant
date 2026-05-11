@@ -4,7 +4,7 @@
 //   - Edges go through `store.relateAll([{ from, to, kind }])` against the
 //     generic `edges` table. Registry validation is automatic.
 //   - Entities go through `store.upsertEntity` (delegates to the 3-stage
-//     cascade in `src/graph/upsert-entity.js`).
+//     cascade in `cognition/biographer/upsert-entity.js`).
 //   - Edge-kind renames applied: `co_occurs_with` → `occurs_with`,
 //     `precedes` → `before`.
 //   - When the biographer ever creates a memo (rare today), `derived_from`

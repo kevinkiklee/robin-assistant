@@ -20,7 +20,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 test('list_episodes returns episodes with event counts', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   await createEpisode(db, { source: 'cli' });
   await createEpisode(db, { source: 'manual' });
   const tool = createListEpisodesTool({ db });
@@ -31,7 +31,7 @@ test('list_episodes returns episodes with event counts', async () => {
 
 test('list_episodes filters by source', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   await createEpisode(db, { source: 'cli' });
   await createEpisode(db, { source: 'manual' });
   const tool = createListEpisodesTool({ db });

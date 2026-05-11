@@ -18,7 +18,7 @@ await __wc({ embedder_profile: 'mxbai-1024' });
 
 async function setup() {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const capture = createCapture({
     db,
     embedder: createStubEmbedder({ dimension: 1024 }),

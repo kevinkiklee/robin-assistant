@@ -32,9 +32,13 @@ test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly
       join(home, 'installed-hooks.json'),
       JSON.stringify({
         claude: [
-          { phase: 'PreToolUse', matcher: 'Bash', command: '/abs/bin/robin-hook.sh bash-policy' },
+          {
+            phase: 'PreToolUse',
+            matcher: 'Bash',
+            command: '/abs/system/bin/robin-hook.sh bash-policy',
+          },
         ],
-        gemini: [{ phase: 'Stop', command: '/abs/bin/robin-hook.sh stop' }],
+        gemini: [{ phase: 'Stop', command: '/abs/system/bin/robin-hook.sh stop' }],
       }),
     );
 

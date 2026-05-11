@@ -15,9 +15,11 @@ test.afterEach(() => {
 });
 
 test('secrets list prints keys, never values', async () => {
-  const { saveSecret } = await import(`../../src/secrets/dotenv-io.js?cb=${Date.now()}`);
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
   saveSecret('SECRET_KEY', 'super-secret-value-do-not-print');
-  const { secretsList } = await import(`../../src/cli/commands/secrets-list.js?cb=${Date.now()}`);
+  const { secretsList } = await import(
+    `../../runtime/cli/commands/secrets-list.js?cb=${Date.now()}`
+  );
   const lines = [];
   const orig = console.log;
   console.log = (s) => lines.push(s);

@@ -23,7 +23,7 @@ await __wc({ embedder_profile: 'mxbai-1024' });
 
 test('predictions roundtrip: predict → resolve → calibrate', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
 
   const predict = createPredictTool({ db });
   const resolveT = createResolvePredictionTool({ db });

@@ -26,7 +26,7 @@ test('drift check passes when config + runtime row match', async () => {
   await writeConfig({ embedder_profile: 'mxbai-1024' });
   const db = await connect({ engine: 'mem://' });
   try {
-    const migrationsDir = resolve(import.meta.dirname, '../../src/schema/migrations');
+    const migrationsDir = resolve(import.meta.dirname, '../../data/db/migrations');
     await runMigrations(db, migrationsDir);
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'embedder')`)
@@ -46,7 +46,7 @@ test('drift check detects mismatch', async () => {
   await writeConfig({ embedder_profile: 'qwen3-4096' });
   const db = await connect({ engine: 'mem://' });
   try {
-    const migrationsDir = resolve(import.meta.dirname, '../../src/schema/migrations');
+    const migrationsDir = resolve(import.meta.dirname, '../../data/db/migrations');
     await runMigrations(db, migrationsDir);
 
     // Hand-edit config to mxbai while runtime row still says qwen3.

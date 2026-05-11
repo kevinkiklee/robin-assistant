@@ -33,7 +33,7 @@ test('jobs roundtrip — discover daily-briefing → enable → run → capture 
   mkdirSync(userDir, { recursive: true });
 
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
 
   const jobs = discoverJobs({ builtinDir: BUILTIN_DIR, userDir });
   await upsertFromDiscovered(db, jobs);

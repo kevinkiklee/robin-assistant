@@ -31,7 +31,7 @@ const mockClient = () => ({
 
 test('actions roundtrip: ASK by default → user promotes → AUTO → correction demotes', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const embedder = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,

@@ -10,7 +10,7 @@ test('generateLaunchdPlist produces a valid plist with ROBIN_HOME, KeepAlive=tru
   assert.match(xml, /<key>Label<\/key>\s*<string>io\.robin-assistant\.mcp<\/string>/);
   assert.match(xml, /<key>RunAtLoad<\/key>\s*<true\/>/);
   assert.match(xml, /<key>KeepAlive<\/key>\s*<true\/>/);
-  assert.match(xml, /\/opt\/robin\/bin\/robin/);
+  assert.match(xml, /\/opt\/robin\/system\/bin\/robin/);
   assert.match(xml, /<string>mcp<\/string>/);
   assert.match(xml, /<string>start<\/string>/);
   assert.match(xml, /<string>--foreground<\/string>/);

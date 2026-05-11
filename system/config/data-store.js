@@ -209,9 +209,9 @@ export const paths = {
     marker: () => join(robinHome(), '.robin-data'),
   },
   source: {
-    migrations: () => join(_packageRoot, 'src', 'schema', 'migrations'),
-    hookShim: () => join(_packageRoot, 'bin', 'robin-hook.sh'),
-    robinBin: () => join(_packageRoot, 'bin', 'robin'),
+    migrations: () => join(_packageRoot, 'system', 'data', 'db', 'migrations'),
+    hookShim: () => join(_packageRoot, 'system', 'bin', 'robin-hook.sh'),
+    robinBin: () => join(_packageRoot, 'system', 'bin', 'robin'),
   },
 };
 

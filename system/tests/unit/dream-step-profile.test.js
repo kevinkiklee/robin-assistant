@@ -19,7 +19,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 test('dreamStepProfile returns 0 proposed on empty DB', async () => {
   const db = await connect({ engine: 'mem://' });
-  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const host = { invokeLLM: async () => ({ content: '{"candidates":[]}', usage: {} }) };
   const r = await dreamStepProfile(db, host);
   assert.equal(r.proposed, 0);

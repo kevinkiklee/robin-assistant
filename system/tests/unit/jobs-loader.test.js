@@ -134,7 +134,7 @@ test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
     dirname(fileURLToPath(import.meta.url)),
     '..',
     '..',
-    'src',
+    'cognition',
     'jobs',
     'builtin',
   );

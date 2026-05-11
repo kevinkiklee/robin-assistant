@@ -15,13 +15,13 @@ test.afterEach(() => {
 });
 
 test('createEmbedder throws when config is missing', async () => {
-  const { createEmbedder } = await import(`../../src/embed/factory.js?cb=${Date.now()}`);
+  const { createEmbedder } = await import(`../../data/embed/factory.js?cb=${Date.now()}`);
   await assert.rejects(() => createEmbedder(), /no embedder profile configured/);
 });
 
 test('createEmbedder throws on unknown profile', async () => {
-  const { writeConfig } = await import(`../../src/runtime/config.js?cb=${Date.now()}`);
+  const { writeConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
   await writeConfig({ embedder_profile: 'unknown-xxx' });
-  const { createEmbedder } = await import(`../../src/embed/factory.js?cb=${Date.now()}`);
+  const { createEmbedder } = await import(`../../data/embed/factory.js?cb=${Date.now()}`);
   await assert.rejects(() => createEmbedder(), /unknown embedder profile/);
 });
