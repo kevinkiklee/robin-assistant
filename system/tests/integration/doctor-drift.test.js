@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { doctorData } from '../../runtime/cli/commands/doctor.js';
 import { ensureHome, recordHostTouchpoint, writePointer } from '../../config/data-store.js';
+import { doctorData } from '../../runtime/cli/commands/doctor.js';
 
 test('doctorData: reports drift when a host file no longer contains a recorded command', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));

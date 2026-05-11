@@ -1,13 +1,13 @@
 import { surql } from 'surrealdb';
-import { isPidAlive } from '../../daemon/lock.js';
-import { readDaemonState } from '../../daemon/state.js';
+import { ensureHome, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { createEmbedder } from '../../../data/embed/factory.js';
 import { createCapture } from '../../../io/integrations/_framework/capture.js';
 import { loadManifests } from '../../../io/integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../../../io/integrations/_framework/run-sync.js';
-import { ensureHome, paths } from '../../../config/data-store.js';
+import { isPidAlive } from '../../daemon/lock.js';
+import { readDaemonState } from '../../daemon/state.js';
 
 export async function integrationsRun(argv) {
   if (!argv[0]) {

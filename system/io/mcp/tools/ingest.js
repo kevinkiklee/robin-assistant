@@ -13,12 +13,12 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { surql } from 'surrealdb';
-import { RobinPiiRefusedError } from '../../capture/errors.js';
-import { recordEvent } from '../../capture/record-event.js';
-import { sha256 } from '../../../data/embed/hash.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { buildIngestPrompt } from '../../../cognition/jobs/ingest-prompt.js';
 import * as store from '../../../cognition/memory/store.js';
+import { sha256 } from '../../../data/embed/hash.js';
+import { RobinPiiRefusedError } from '../../capture/errors.js';
+import { recordEvent } from '../../capture/record-event.js';
 
 const MAX_BYTES = 1_048_576;
 const URL_FETCH_TIMEOUT_MS = 30_000;

@@ -5,15 +5,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { getJob, setEnabled, upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import { discoverJobs } from '../../cognition/jobs/loader.js';
+import { runOneJob } from '../../cognition/jobs/runner.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
 import { createCapture } from '../../io/integrations/_framework/capture.js';
-import { getJob, setEnabled, upsertFromDiscovered } from '../../cognition/jobs/db.js';
-import { discoverJobs } from '../../cognition/jobs/loader.js';
-import { runOneJob } from '../../cognition/jobs/runner.js';
-
-import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });

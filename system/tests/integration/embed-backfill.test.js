@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { BoundQuery, surql } from 'surrealdb';
+import { paths } from '../../config/data-store.js';
+import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { embedBackfillTick } from '../../data/embed/backfill.js';
 import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
-import { writeConfig } from '../../config/paths.js';
-import { paths } from '../../config/data-store.js';
 
 function stubEmbedder({ dim = 1024 } = {}) {
   return {

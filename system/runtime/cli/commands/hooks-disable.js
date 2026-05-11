@@ -3,9 +3,9 @@
 // Per-phase: disabling one phase leaves the others running. Used as the
 // kill-switch when a hook produces false-positives (spec §11).
 
-import { DISPATCH } from '../../../io/hooks/dispatcher.js';
-import { addDisabled } from '../../../io/hooks/disabled.js';
 import { ensureHome } from '../../../config/data-store.js';
+import { addDisabled } from '../../../io/hooks/disabled.js';
+import { DISPATCH } from '../../../io/hooks/dispatcher.js';
 import { parseArgs } from '../args.js';
 
 export async function hooksDisable(argv = [], deps = {}) {

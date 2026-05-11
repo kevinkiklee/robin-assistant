@@ -1,7 +1,8 @@
 // src/cli/commands/calibration-show.js
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+
 import { getCalibration as defaultGet } from '../../../cognition/jobs/predictions.js';
 import { ensureHome } from '../../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 
 export async function calibrationShow(_argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));

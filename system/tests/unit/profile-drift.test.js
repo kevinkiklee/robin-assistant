@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
+import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { writeConfig } from '../../config/paths.js';
 
 // Drift-detection unit test exercises the readConfig + DB query paths in
 // isolation. The full daemon-boot wiring lives in src/daemon/server.js; an

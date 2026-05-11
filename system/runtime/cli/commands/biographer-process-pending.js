@@ -1,11 +1,11 @@
 import { surql } from 'surrealdb';
 import { biographerProcess } from '../../../cognition/biographer/pipeline.js';
-import { captureFromTranscript } from '../../../io/capture/session-capture.js';
+import { ensureHome, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { createEmbedder } from '../../../data/embed/factory.js';
+import { captureFromTranscript } from '../../../io/capture/session-capture.js';
 import { detectHost } from '../../hosts/detect.js';
-import { ensureHome, paths } from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function biographerProcessPending(argv) {

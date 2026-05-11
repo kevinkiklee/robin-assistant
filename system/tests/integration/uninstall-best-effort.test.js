@@ -3,12 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { ensureHome, readHostIntegrations, recordHostTouchpoint } from '../../config/data-store.js';
 import { uninstall } from '../../runtime/cli/commands/uninstall.js';
-import {
-  ensureHome,
-  readHostIntegrations,
-  recordHostTouchpoint,
-} from '../../config/data-store.js';
 
 test('uninstall: best-effort completes even with one malformed host file', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));

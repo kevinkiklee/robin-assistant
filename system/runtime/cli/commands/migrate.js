@@ -1,10 +1,10 @@
-import { isPidAlive } from '../../daemon/lock.js';
-import { readDaemonState } from '../../daemon/state.js';
+import { ensureHome, paths } from '../../../config/data-store.js';
 import { snapshot } from '../../../data/db/backup.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { runMigrations } from '../../../data/db/migrate.js';
-import { ensureHome, paths } from '../../../config/data-store.js';
+import { isPidAlive } from '../../daemon/lock.js';
+import { readDaemonState } from '../../daemon/state.js';
 
 export async function migrate() {
   await ensureHome();

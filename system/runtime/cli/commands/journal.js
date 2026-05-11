@@ -1,9 +1,9 @@
-import { isPidAlive } from '../../daemon/lock.js';
-import { readDaemonState } from '../../daemon/state.js';
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
-import { acquire } from '../../../data/db/lock.js';
 import { listJournalEntries } from '../../../cognition/memory/chronicle.js';
 import { ensureHome, paths } from '../../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { acquire } from '../../../data/db/lock.js';
+import { isPidAlive } from '../../daemon/lock.js';
+import { readDaemonState } from '../../daemon/state.js';
 import { parseArgs } from '../args.js';
 
 export async function journalCmd(argv) {

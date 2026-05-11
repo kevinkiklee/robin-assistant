@@ -1,7 +1,7 @@
 import { createNodeEngines } from '@surrealdb/node';
 import { createRemoteEngines, Surreal } from 'surrealdb';
-import { readConfig } from '../../config/paths.js';
 import { paths } from '../../config/data-store.js';
+import { readConfig } from '../../config/paths.js';
 
 // Default engine; can be overridden via config.json's `db.engine` field.
 // surrealkv is the canonical successor to rocksdb on SurrealDB v3.

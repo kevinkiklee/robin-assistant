@@ -3,11 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import {
-  ensureHome,
-  readHostIntegrations,
-  recordHostTouchpoint,
-} from '../../config/data-store.js';
+import { ensureHome, readHostIntegrations, recordHostTouchpoint } from '../../config/data-store.js';
 
 test('legacy installed-hooks.json is migrated on first manifest write and then deleted', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));

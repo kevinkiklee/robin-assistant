@@ -1,7 +1,8 @@
 // src/cli/commands/jobs-enable.js
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+
 import { setEnabled } from '../../../cognition/jobs/db.js';
 import { ensureHome } from '../../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 
 export async function jobsEnable(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));

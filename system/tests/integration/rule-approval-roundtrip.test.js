@@ -3,14 +3,14 @@ import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
-import { recordEvent } from '../../io/capture/record-event.js';
+import { dreamProcess } from '../../cognition/dream/pipeline.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { recordEvent } from '../../io/capture/record-event.js';
 import { createListRulesTool } from '../../io/mcp/tools/list-rules.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

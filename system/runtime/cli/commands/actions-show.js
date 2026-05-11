@@ -1,7 +1,8 @@
 // src/cli/commands/actions-show.js
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+
 import { getActionTrust as defaultGet } from '../../../cognition/jobs/action-trust.js';
 import { ensureHome } from '../../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 
 export async function actionsShow(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));

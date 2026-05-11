@@ -71,9 +71,12 @@ async function loadEmbedderFor(profile, override) {
   // backfill targeting a *non-active* profile we go around it via the static
   // loader map keyed by profile name.
   const LOADERS = {
-    'mxbai-1024': async () => (await import('../../../data/embed/in-process.js')).createInProcessEmbedder(),
-    'qwen3-4096': async () => (await import('../../../data/embed/ollama.js')).createOllamaEmbedder(),
-    'gemini-3072': async () => (await import('../../../data/embed/gemini.js')).createGeminiEmbedder(),
+    'mxbai-1024': async () =>
+      (await import('../../../data/embed/in-process.js')).createInProcessEmbedder(),
+    'qwen3-4096': async () =>
+      (await import('../../../data/embed/ollama.js')).createOllamaEmbedder(),
+    'gemini-3072': async () =>
+      (await import('../../../data/embed/gemini.js')).createGeminiEmbedder(),
   };
   const loader = LOADERS[profile];
   if (loader) return loader();

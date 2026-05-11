@@ -1,5 +1,5 @@
-import { checkActionTrust, recordOutcome } from '../../../../cognition/jobs/action-trust.js';
 import { checkOutbound } from '../../../../cognition/discretion/outbound-policy.js';
+import { checkActionTrust, recordOutcome } from '../../../../cognition/jobs/action-trust.js';
 import { checkRateLimit } from '../../../outbound/rate-limit.js';
 import { addToPlaylist, queueTrack, skipTrack } from '../client.js';
 

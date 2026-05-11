@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { BoundQuery, surql } from 'surrealdb';
+import { stage2Resolve } from '../../cognition/biographer/stage2-embedding.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
 import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
-import { stage2Resolve } from '../../cognition/biographer/stage2-embedding.js';
 
 // stage2 reads from the per-profile embeddings_<profile>_entities surface,
 // not from an inline `entities.embedding` column (gone in the redesign).

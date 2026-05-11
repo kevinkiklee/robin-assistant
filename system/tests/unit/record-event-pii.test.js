@@ -4,13 +4,13 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { RobinPiiRefusedError } from '../../io/capture/errors.js';
-import { recordEvent } from '../../io/capture/record-event.js';
+import { guardInboundContent } from '../../cognition/discretion/inbound-guard.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { guardInboundContent } from '../../cognition/discretion/inbound-guard.js';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
+import { RobinPiiRefusedError } from '../../io/capture/errors.js';
+import { recordEvent } from '../../io/capture/record-event.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

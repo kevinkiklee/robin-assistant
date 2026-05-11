@@ -9,8 +9,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { sha256 } from '../../data/embed/hash.js';
 import { packageRootDir, paths } from '../../config/data-store.js';
+import { sha256 } from '../../data/embed/hash.js';
 
 // Files whose contents should be pinned. Paths relative to the package root.
 // Files that don't exist at compute time are silently omitted from the manifest.

@@ -2,10 +2,10 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ensureHome, paths } from '../../config/data-store.js';
+import { resolveBinPath } from '../../runtime/cli/bin.js';
 import { isPidAlive } from '../../runtime/daemon/lock.js';
 import { readDaemonState } from '../../runtime/daemon/state.js';
-import { resolveBinPath } from '../../runtime/cli/bin.js';
-import { ensureHome, paths } from '../../config/data-store.js';
 
 async function tryDaemonRoute(state, body, fetchFn) {
   try {

@@ -1,14 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync, unlinkSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { uninstallHooksFromSettings } from '../../install/hooks-settings.js';
-import { uninstallPreCommit } from '../../install/pre-commit.js';
 import {
   deletePointer,
   forgetHostTouchpoint,
   readHostIntegrations,
   robinHome,
 } from '../../../config/data-store.js';
+import { uninstallHooksFromSettings } from '../../install/hooks-settings.js';
+import { uninstallPreCommit } from '../../install/pre-commit.js';
 import { parseArgs } from '../args.js';
 import { input } from '../prompts.js';
 

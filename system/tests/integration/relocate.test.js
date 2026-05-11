@@ -3,7 +3,6 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { relocate } from '../../runtime/cli/commands/install.js';
 import {
   ensureHome,
   readHostIntegrations,
@@ -11,6 +10,7 @@ import {
   recordHostTouchpoint,
   writePointer,
 } from '../../config/data-store.js';
+import { relocate } from '../../runtime/cli/commands/install.js';
 
 test('relocate: moves home + refreshes expectedHome on plist/systemd entries', async () => {
   const A = mkdtempSync(join(tmpdir(), 'robin-A-'));

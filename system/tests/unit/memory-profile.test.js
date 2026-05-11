@@ -3,10 +3,10 @@ import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import { getProfile, updateProfileFields } from '../../cognition/memory/persona.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

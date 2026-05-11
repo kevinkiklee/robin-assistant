@@ -4,16 +4,15 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import {
   DEFAULTS,
   getCommStyle,
   setCommStyle,
   validateCommStyleShape,
 } from '../../cognition/jobs/comm-style.js';
-
 import { writeConfig as __wc } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });

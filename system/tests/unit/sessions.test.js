@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
+import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 import {
   endSession,
   listActiveSessions,
@@ -11,9 +14,6 @@ import {
   purgeStaleSessions,
   registerSession,
 } from '../../runtime/daemon/sessions.js';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
-import { writeConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = join(

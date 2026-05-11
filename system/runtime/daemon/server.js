@@ -7,21 +7,28 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { surql } from 'surrealdb';
 import { biographerProcess } from '../../cognition/biographer/pipeline.js';
-import { close, connect, defaultDbUrl } from '../../data/db/client.js';
+import { createBiographerQueue } from '../../cognition/biographer/queue.js';
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
-import { createEmbedder } from '../../data/embed/factory.js';
-import { detectHost } from '../hosts/detect.js';
-import { resetInFlightFlags } from '../../io/integrations/_framework/boot-cleanup.js';
-import { createCapture } from '../../io/integrations/_framework/capture.js';
-import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
-import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { resetActionTrust, setActionTrust } from '../../cognition/jobs/action-trust.js';
 import { synthesizeCommStyle } from '../../cognition/jobs/comm-style.js';
 import { garbageCollect, getJob, upsertFromDiscovered } from '../../cognition/jobs/db.js';
 import { discoverJobs } from '../../cognition/jobs/loader.js';
-import { computeCalibration, resolvePrediction, setCalibration } from '../../cognition/jobs/predictions.js';
+import {
+  computeCalibration,
+  resolvePrediction,
+  setCalibration,
+} from '../../cognition/jobs/predictions.js';
 import { runOneJob } from '../../cognition/jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
+import { ensureHome, paths } from '../../config/data-store.js';
+import { readConfig } from '../../config/paths.js';
+import { envFilePath } from '../../config/secrets.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
+import { createEmbedder } from '../../data/embed/factory.js';
+import { resetInFlightFlags } from '../../io/integrations/_framework/boot-cleanup.js';
+import { createCapture } from '../../io/integrations/_framework/capture.js';
+import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
+import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createRepeatQueryDetector } from '../../io/mcp/implicit-signals.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';
@@ -64,15 +71,12 @@ import { createShowPendingTriggersTool } from '../../io/mcp/tools/show-pending-t
 import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js';
 import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
-import { readConfig } from '../../config/paths.js';
-import { ensureHome, paths } from '../../config/data-store.js';
-import { envFilePath } from '../../config/secrets.js';
-import { createBiographerQueue } from '../../cognition/biographer/queue.js';
+import { detectHost } from '../hosts/detect.js';
+import { createScheduler } from './heartbeat.js';
 import { createIdleEmbedder } from './idle-embedder.js';
 import { runIntrospection } from './introspection.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
 import { bindFreePort } from './port.js';
-import { createScheduler } from './heartbeat.js';
 import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
 import { clearDaemonState, writeDaemonState } from './state.js';
 import { getCliVersion } from './version-handshake.js';
@@ -499,7 +503,9 @@ export async function startDaemon() {
         // embed_backfill is always-due if any event is missing an embedding
         // row in the active profile's events surface.
         try {
-          const { activeProfile, embeddingTable } = await import('../../data/embed/profile-router.js');
+          const { activeProfile, embeddingTable } = await import(
+            '../../data/embed/profile-router.js'
+          );
           const profile = await activeProfile(dbHandle);
           const eventsEmbTbl = embeddingTable(profile, 'events');
           const [pending] = await dbHandle
@@ -602,7 +608,9 @@ export async function startDaemon() {
     // last_event_at past per-source idle threshold get ended_at.
     let staleEpisodeTicker = null;
     {
-      const { closeStaleEpisodes } = await import('../../cognition/jobs/internal/close-stale-episodes.js');
+      const { closeStaleEpisodes } = await import(
+        '../../cognition/jobs/internal/close-stale-episodes.js'
+      );
       staleEpisodeTicker = setInterval(() => {
         closeStaleEpisodes(dbHandle).catch((e) => {
           console.warn(`[close-stale-episodes] ${e.message}`);
@@ -689,7 +697,9 @@ export async function startDaemon() {
           }
           try {
             const { recordEvent } = await import('../../io/capture/record-event.js');
-            const { guardInboundContent } = await import('../../cognition/discretion/inbound-guard.js');
+            const { guardInboundContent } = await import(
+              '../../cognition/discretion/inbound-guard.js'
+            );
             const result = await recordEvent(dbHandle, embedderWrap, {
               source: body.source ?? 'cli',
               content: body.content,
@@ -876,7 +886,9 @@ export async function startDaemon() {
         }
         if (req.method === 'POST' && req.url === '/internal/embeddings/op') {
           const body = await readJsonBody(req);
-          const { dispatch: dispatchEmbeddingsOp } = await import('../../cognition/jobs/embeddings-ops.js');
+          const { dispatch: dispatchEmbeddingsOp } = await import(
+            '../../cognition/jobs/embeddings-ops.js'
+          );
           const result = await dispatchEmbeddingsOp(dbHandle, body);
           res.writeHead(result?.ok ? 200 : 400, { 'content-type': 'application/json' });
           res.end(JSON.stringify(result));
@@ -884,7 +896,9 @@ export async function startDaemon() {
         }
         if (req.method === 'POST' && req.url === '/internal/intuition') {
           const body = await readJsonBody(req);
-          const { intuitionEndpoint } = await import('../../cognition/intuition/inject.js').catch(() => ({}));
+          const { intuitionEndpoint } = await import('../../cognition/intuition/inject.js').catch(
+            () => ({}),
+          );
           if (typeof intuitionEndpoint === 'function') {
             const result = await intuitionEndpoint({
               db: dbHandle,

@@ -17,12 +17,6 @@ import { createServer } from 'node:net';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { surql } from 'surrealdb';
-import { isPidAlive } from '../../daemon/lock.js';
-import { purgeStaleSessions } from '../../daemon/sessions.js';
-import { readDaemonState } from '../../daemon/state.js';
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
-import { acquire } from '../../../data/db/lock.js';
-import { computeManifest, writeManifest } from '../../install/manifest.js';
 import {
   ensureHome,
   packageRootDir,
@@ -31,6 +25,12 @@ import {
   readPointer,
   robinHome,
 } from '../../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { acquire } from '../../../data/db/lock.js';
+import { isPidAlive } from '../../daemon/lock.js';
+import { purgeStaleSessions } from '../../daemon/sessions.js';
+import { readDaemonState } from '../../daemon/state.js';
+import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { parseArgs } from '../args.js';
 
 function shimPrefix() {

@@ -1,6 +1,7 @@
 // src/cli/daemon-request.js
-import { readDaemonState } from '../daemon/state.js';
+
 import { paths } from '../../config/data-store.js';
+import { readDaemonState } from '../daemon/state.js';
 
 export async function daemonRequest(path, body) {
   const state = await readDaemonState(paths.data.daemonState());

@@ -1,6 +1,6 @@
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { listAllJobs } from '../../../cognition/jobs/db.js';
 import { ensureHome } from '../../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 
 function fmt(d) {
   return d ? new Date(d).toISOString() : '—';

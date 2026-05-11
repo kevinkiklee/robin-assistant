@@ -1,5 +1,5 @@
-import { registerSlashCommands } from '../../../io/integrations/discord/commands.js';
 import { getSecret, requireSecret } from '../../../config/secrets.js';
+import { registerSlashCommands } from '../../../io/integrations/discord/commands.js';
 
 export async function integrationsDiscordRegister() {
   let bot_token;

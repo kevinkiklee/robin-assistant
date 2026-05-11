@@ -4,11 +4,11 @@ import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { captureFromTranscript } from '../../io/capture/session-capture.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
+import { captureFromTranscript } from '../../io/capture/session-capture.js';
 
 const __robinTestHome = __robinJoin(
   __robinTmpdir(),

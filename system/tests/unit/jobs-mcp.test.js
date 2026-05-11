@@ -3,15 +3,14 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
 import { createCapture } from '../../io/integrations/_framework/capture.js';
-import { upsertFromDiscovered } from '../../cognition/jobs/db.js';
 import { createListJobsTool } from '../../io/mcp/tools/list-jobs.js';
 import { createRunJobTool } from '../../io/mcp/tools/run-job.js';
-
-import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });

@@ -3,16 +3,16 @@ import { writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
-import { readDaemonState } from '../../daemon/state.js';
-import { agentsMdContent, mergeAgentsMdContent } from '../../install/agents-md.js';
-import { generateLaunchdPlist } from '../../install/launchd-plist.js';
-import { generateSystemdUnit } from '../../install/systemd-unit.js';
 import {
   packageRootDir,
   paths,
   recordHostTouchpoint,
   robinHome,
 } from '../../../config/data-store.js';
+import { readDaemonState } from '../../daemon/state.js';
+import { agentsMdContent, mergeAgentsMdContent } from '../../install/agents-md.js';
+import { generateLaunchdPlist } from '../../install/launchd-plist.js';
+import { generateSystemdUnit } from '../../install/systemd-unit.js';
 import { parseArgs } from '../args.js';
 import { mcpEnsureRunning } from './mcp-ensure-running.js';
 

@@ -2,7 +2,11 @@
 // eligible steps, enforces caps and daily token budget. Theme 3.
 
 import { BoundQuery, surql } from 'surrealdb';
-import { currentBudget, estimateStepCost, readCadenceConfig } from '../../cognition/dream/budget.js';
+import {
+  currentBudget,
+  estimateStepCost,
+  readCadenceConfig,
+} from '../../cognition/dream/budget.js';
 import { advanceCursor, getCursor } from '../../cognition/dream/cursors.js';
 import { dispatchStep } from '../../cognition/dream/dispatch.js';
 

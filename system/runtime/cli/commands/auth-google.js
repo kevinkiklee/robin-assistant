@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline/promises';
+import { requireSecret, saveSecret } from '../../../config/secrets.js';
 import { runHeadlessAuth, runLoopbackAuth } from '../../../io/integrations/_auth/oauth2.js';
 import { loadManifests } from '../../../io/integrations/_framework/manifest-loader.js';
-import { requireSecret, saveSecret } from '../../../config/secrets.js';
 
 // Default scope unions per provider. Manifests do not yet declare oauth scopes
 // (Phase 2f introduces them via `secrets.oauth.scopes` in a later task); until

@@ -2,12 +2,6 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import readline from 'node:readline/promises';
-import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
-import { runMigrations } from '../../../data/db/migrate.js';
-import { ensureHookShim } from '../../install/hook-shim.js';
-import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
-import { computeManifest, writeManifest } from '../../install/manifest.js';
-import { readConfig, writeConfig } from '../../../config/paths.js';
 import {
   discoverExistingHomes,
   ensureHome,
@@ -19,8 +13,14 @@ import {
   recordHostTouchpoint,
   writePointer,
 } from '../../../config/data-store.js';
-import { migrateHome } from '../../install/migrate-home.js';
+import { readConfig, writeConfig } from '../../../config/paths.js';
 import { getSecret, saveSecret } from '../../../config/secrets.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { runMigrations } from '../../../data/db/migrate.js';
+import { ensureHookShim } from '../../install/hook-shim.js';
+import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
+import { computeManifest, writeManifest } from '../../install/manifest.js';
+import { migrateHome } from '../../install/migrate-home.js';
 import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
 import { doctorData } from './doctor.js';

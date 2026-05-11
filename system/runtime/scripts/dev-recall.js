@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+
 // Manual smoke: open Robin's DB (via $ROBIN_HOME or .robin-home pointer), run a recall query, print results.
 // Not a public CLI. Phase 3 will build the real agent interface.
 
-import { close, connect, defaultDbUrl } from '../../data/db/client.js';
-import { createTransformersEmbedder } from '../../data/embed/embedder.js';
 import { recall } from '../../cognition/intuition/engine.js';
 import { ensureHome } from '../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
+import { createTransformersEmbedder } from '../../data/embed/embedder.js';
 
 const query = process.argv.slice(2).join(' ');
 if (!query) {

@@ -4,10 +4,10 @@ import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
 import { surql } from 'surrealdb';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { _resetCache } from '../../io/integrations/_auth/token-cache.js';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

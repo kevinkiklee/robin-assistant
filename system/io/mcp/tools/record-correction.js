@@ -1,5 +1,5 @@
-import { recordEvent } from '../../capture/record-event.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
+import { recordEvent } from '../../capture/record-event.js';
 
 export function createRecordCorrectionTool({ db, embedder, processor }) {
   return {

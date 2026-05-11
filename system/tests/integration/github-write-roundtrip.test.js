@@ -4,12 +4,12 @@ import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
 import { surql } from 'surrealdb';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
 import { createCapture } from '../../io/integrations/_framework/capture.js';
 import { createGitHubWriteTool } from '../../io/integrations/github_write/tools/github-write.js';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
