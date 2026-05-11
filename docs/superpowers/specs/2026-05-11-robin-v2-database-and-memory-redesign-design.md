@@ -221,15 +221,15 @@ DEFINE FUNCTION fn::freshness($memo: record<memos>) {
     WHERE kind = 'supersedes' AND to = $memo
   )[0].count ?? 0;
   IF $superseded > 0 RETURN 0;
-  LET $half_life_ms = IF $m.kind = 'knowledge' THEN 15552000000   -- 180d
-                     ELSE IF $m.kind = 'habit' THEN 5184000000    -- 60d
-                     ELSE IF $m.kind = 'thread' THEN 2592000000   -- 30d
-                     ELSE IF $m.kind = 'prediction' THEN 31536000000  -- 365d (predictions resolve on their own clock)
-                     ELSE 7776000000 END;                          -- 90d default
+  LET $half_life_ms = IF $m.kind = 'knowledge' { 15552000000 }       -- 180d
+                     ELSE IF $m.kind = 'habit' { 5184000000 }         -- 60d
+                     ELSE IF $m.kind = 'thread' { 2592000000 }        -- 30d
+                     ELSE IF $m.kind = 'prediction' { 31536000000 }   -- 365d
+                     ELSE { 7776000000 };                              -- 90d default
   LET $age_ms = (time::now() - $m.decay_anchor) / 1ms;
   LET $decay = math::pow(0.5, $age_ms / $half_life_ms);
-  LET $reinforced = math::log(1 + $m.signal_count) / math::log(2);
-  RETURN math::min(1.0, $m.confidence * $decay * $reinforced);
+  LET $reinforced = math::log(1 + $m.signal_count, 2);
+  RETURN math::min([1.0, $m.confidence * $decay * $reinforced]);
 };
 ```
 
