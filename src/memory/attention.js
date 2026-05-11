@@ -59,8 +59,8 @@ export async function getAttention(db, { source, windowMinutes = DEFAULT_WINDOW_
     // Note: SurrealDB v3 parser dislikes `DISTINCT to AS ...` — `to` is a
     // reserved word. Project via VALUE on the `to` field, then dedupe in JS.
     const entSql = `
-      SELECT VALUE to FROM edges
-      WHERE kind IN ['mentions', 'about'] AND from IN $eids
+      SELECT VALUE out FROM edges
+      WHERE kind IN ['mentions', 'about'] AND in IN $eids
       LIMIT 50
     `;
     const [rawIds] = await db.query(new BoundQuery(entSql, { eids: eventIds })).collect();

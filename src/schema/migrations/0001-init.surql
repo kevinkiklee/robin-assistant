@@ -140,13 +140,17 @@ DEFINE INDEX episodes_active   ON episodes FIELDS source, ended_at;
 DEFINE INDEX episodes_scope    ON episodes FIELDS scope;
 
 -- ----------------------------------------------------------------------------
--- Edges (single generic table replacing 6 v1 per-relation tables)
+-- Edges (single generic RELATION table; kind discriminates polymorphic edges)
 -- ----------------------------------------------------------------------------
+-- TYPE RELATION (no FROM/TO clause) enables arrow traversal (`->edges[WHERE
+-- kind=X]->target` and recursive `{1..N}` paths) while preserving open-enum
+-- kinds. Composite array IDs `edges:[kind, in, out]` keep idempotent counter
+-- UPSERT semantics. Endpoint-type safety is enforced JS-side by
+-- EDGE_KIND_REGISTRY (see src/memory/edge-registry.js).
 
-DEFINE TABLE edges SCHEMAFULL TYPE NORMAL;
+DEFINE TABLE edges SCHEMAFULL TYPE RELATION;
+-- in/out are auto-defined by TYPE RELATION as TYPE record; don't redefine.
 DEFINE FIELD kind        ON edges TYPE string;
-DEFINE FIELD from        ON edges TYPE record;
-DEFINE FIELD to          ON edges TYPE record;
 DEFINE FIELD weight      ON edges TYPE option<float>;
 DEFINE FIELD last_seen   ON edges TYPE option<datetime>;
 DEFINE FIELD valid_from  ON edges TYPE option<datetime>;
@@ -154,19 +158,19 @@ DEFINE FIELD valid_until ON edges TYPE option<datetime>;
 DEFINE FIELD context     ON edges TYPE option<string>;
 DEFINE FIELD created_at  ON edges TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD meta        ON edges TYPE option<object> FLEXIBLE;
-DEFINE INDEX edges_kind_from   ON edges FIELDS kind, from;
-DEFINE INDEX edges_kind_to     ON edges FIELDS kind, to;
+DEFINE INDEX edges_kind_in     ON edges FIELDS kind, in;
+DEFINE INDEX edges_kind_out    ON edges FIELDS kind, out;
 DEFINE INDEX edges_kind_valid  ON edges FIELDS kind, valid_from, valid_until;
 
--- Cascade-on-delete via table events: dangling edges removed in the same tx.
+-- Cascade-on-delete: dangling edges removed in the same tx as the deleted node.
 DEFINE EVENT cascade_edges_events    ON events    WHEN $event = "DELETE"
-  THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+  THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
 DEFINE EVENT cascade_edges_entities  ON entities  WHEN $event = "DELETE"
-  THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+  THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
 DEFINE EVENT cascade_edges_memos     ON memos     WHEN $event = "DELETE"
-  THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+  THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
 DEFINE EVENT cascade_edges_episodes  ON episodes  WHEN $event = "DELETE"
-  THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+  THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
 
 -- ----------------------------------------------------------------------------
 -- fn::freshness — server-side decay + supersedes-aware ranking score
@@ -174,7 +178,7 @@ DEFINE EVENT cascade_edges_episodes  ON episodes  WHEN $event = "DELETE"
 
 DEFINE FUNCTION fn::freshness($memo: record<memos>) {
   LET $m = $memo.*;
-  LET $superseded = (SELECT count() AS n FROM edges WHERE kind = 'supersedes' AND to = $memo GROUP ALL)[0].n ?? 0;
+  LET $superseded = (SELECT count() AS n FROM edges WHERE kind = 'supersedes' AND out = $memo GROUP ALL)[0].n ?? 0;
   IF $superseded > 0 { RETURN 0; };
   LET $half_life_ms = IF $m.kind = 'knowledge' { 15552000000 }
                       ELSE IF $m.kind = 'habit' { 5184000000 }

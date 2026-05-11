@@ -217,16 +217,21 @@ export async function relate(db, from, to, kind, opts = {}) {
   const toIdStr = recordStringId(cTo);
 
   if (counter) {
-    const sql = `UPSERT type::record('edges', [$kind, $from, $to]) SET
-      kind = $kind, from = $from, to = $to,
-      weight += 1,
-      last_seen = time::now()`;
+    // TYPE RELATION tables don't accept UPSERT/CREATE for new rows; use
+    // INSERT RELATION ... ON DUPLICATE KEY UPDATE for idempotent counter
+    // increments. Bind params are $inRec/$outRec to avoid $in/$out clashing
+    // with SurrealQL field-name parsing.
+    const sql = `INSERT RELATION INTO edges {
+      id: [$kind, $inRec, $outRec],
+      in: $inRec, out: $outRec, kind: $kind, weight: 1, last_seen: time::now()
+    } ON DUPLICATE KEY UPDATE
+      weight += 1, last_seen = time::now()`;
     const [ret] = await db
       .query(
         new BoundQuery(sql, {
           kind,
-          from: cFrom,
-          to: cTo,
+          inRec: cFrom,
+          outRec: cTo,
         }),
       )
       .collect();
@@ -234,8 +239,17 @@ export async function relate(db, from, to, kind, opts = {}) {
     return { id: row?.id };
   }
 
-  const bindings = { kind, from: cFrom, to: cTo };
-  const setExprs = ['kind = $kind', 'from = $from', 'to = $to', 'last_seen = time::now()'];
+  const bindings = { kind, inRec: cFrom, outRec: cTo };
+  // Build the insert-content map and the on-duplicate update set in parallel,
+  // so optional fields like weight/valid_from/etc. apply on both code paths.
+  const insertFields = [
+    'id: [$kind, $inRec, $outRec]',
+    'in: $inRec',
+    'out: $outRec',
+    'kind: $kind',
+    'last_seen: time::now()',
+  ];
+  const updateExprs = ['kind = $kind', 'last_seen = time::now()'];
   for (const [field, val] of [
     ['weight', opts.weight],
     ['valid_from', opts.valid_from],
@@ -245,10 +259,12 @@ export async function relate(db, from, to, kind, opts = {}) {
   ]) {
     if (val !== undefined && val !== null) {
       bindings[field] = val;
-      setExprs.push(`${field} = $${field}`);
+      insertFields.push(`${field}: $${field}`);
+      updateExprs.push(`${field} = $${field}`);
     }
   }
-  const sql = `UPSERT type::record('edges', [$kind, $from, $to]) SET ${setExprs.join(', ')}`;
+  const sql = `INSERT RELATION INTO edges { ${insertFields.join(', ')} }
+    ON DUPLICATE KEY UPDATE ${updateExprs.join(', ')}`;
   const [ret] = await db.query(new BoundQuery(sql, bindings)).collect();
   const row = Array.isArray(ret) ? ret[0] : ret;
   return { id: row?.id, fromId: fromIdStr, toId: toIdStr };
@@ -337,14 +353,14 @@ export async function getMemo(db, id) {
   const memo = rows[0];
   if (!memo) return null;
   const [subjects] = await db
-    .query(surql`SELECT VALUE to FROM edges WHERE kind = 'about' AND from = ${id}`)
+    .query(surql`SELECT VALUE out FROM edges WHERE kind = 'about' AND in = ${id}`)
     .collect();
   const [lineage] = await db
-    .query(surql`SELECT VALUE to FROM edges WHERE kind = 'derived_from' AND from = ${id}`)
+    .query(surql`SELECT VALUE out FROM edges WHERE kind = 'derived_from' AND in = ${id}`)
     .collect();
   const [contraRows] = await db
     .query(
-      surql`SELECT count() AS n FROM edges WHERE kind = 'contradicts' AND (from = ${id} OR to = ${id}) GROUP ALL`,
+      surql`SELECT count() AS n FROM edges WHERE kind = 'contradicts' AND (in = ${id} OR out = ${id}) GROUP ALL`,
     )
     .collect();
   return {
@@ -494,16 +510,16 @@ export async function neighbors(db, recordId, kind, opts = {}) {
   if (!spec) throw new Error(`neighbors: unknown kind ${kind}`);
   let whereClause;
   if (spec.symmetric) {
-    whereClause = '(from = $e OR to = $e)';
+    whereClause = '(in = $e OR out = $e)';
   } else if (direction === 'out') {
-    whereClause = 'from = $e';
+    whereClause = 'in = $e';
   } else if (direction === 'in') {
-    whereClause = 'to = $e';
+    whereClause = 'out = $e';
   } else {
-    whereClause = '(from = $e OR to = $e)';
+    whereClause = '(in = $e OR out = $e)';
   }
   const sql = `SELECT
-    IF from = $e THEN to ELSE from END AS other,
+    IF in = $e THEN out ELSE in END AS other,
     weight, last_seen, valid_from, valid_until
     FROM edges
     WHERE kind = $k AND ${whereClause}

@@ -32,10 +32,10 @@ export async function dreamStepKnowledge(
   // Count un-dreamed mentions per entity via the unified edges table.
   const [counts] = await db
     .query(
-      surql`SELECT to AS entity_id, count() AS mention_count
+      surql`SELECT out AS entity_id, count() AS mention_count
             FROM edges
             WHERE kind = 'mentions'
-              AND from IN ${undreamed}
+              AND in IN ${undreamed}
             GROUP BY entity_id`,
     )
     .collect();
@@ -50,8 +50,8 @@ export async function dreamStepKnowledge(
     const [evRows] = await db
       .query(
         surql`SELECT id, content, ts FROM events
-              WHERE id IN (SELECT VALUE from FROM edges
-                           WHERE kind = 'mentions' AND to = ${entityId})
+              WHERE id IN (SELECT VALUE in FROM edges
+                           WHERE kind = 'mentions' AND out = ${entityId})
                 AND dreamed_at IS NONE
               LIMIT 20`,
       )
@@ -69,8 +69,8 @@ export async function dreamStepKnowledge(
       .query(
         surql`SELECT id, content, confidence, derived_at FROM memos
               WHERE kind = 'knowledge'
-                AND id IN (SELECT VALUE from FROM edges
-                           WHERE kind = 'about' AND to = ${entityId})
+                AND id IN (SELECT VALUE in FROM edges
+                           WHERE kind = 'about' AND out = ${entityId})
               ORDER BY derived_at DESC LIMIT 10`,
       )
       .collect();

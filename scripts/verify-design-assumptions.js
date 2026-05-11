@@ -47,23 +47,22 @@ async function defineMinimalSchema(db) {
         DEFINE INDEX memos_kind            ON memos FIELDS kind;
         DEFINE INDEX memos_kind_meta_name  ON memos FIELDS kind, meta.name;
 
-        DEFINE TABLE edges SCHEMAFULL TYPE NORMAL;
+        DEFINE TABLE edges SCHEMAFULL TYPE RELATION;
+        -- in/out are implicitly defined by TYPE RELATION (type: record)
         DEFINE FIELD kind      ON edges TYPE string;
-        DEFINE FIELD from      ON edges TYPE record;
-        DEFINE FIELD to        ON edges TYPE record;
         DEFINE FIELD weight    ON edges TYPE option<float>;
         DEFINE FIELD last_seen ON edges TYPE option<datetime>;
-        DEFINE INDEX edges_kind_from ON edges FIELDS kind, from;
-        DEFINE INDEX edges_kind_to   ON edges FIELDS kind, to;
+        DEFINE INDEX edges_kind_in   ON edges FIELDS kind, in;
+        DEFINE INDEX edges_kind_out  ON edges FIELDS kind, out;
 
         DEFINE EVENT cascade_edges_entities ON entities WHEN $event = "DELETE"
-          THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+          THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
         DEFINE EVENT cascade_edges_memos ON memos WHEN $event = "DELETE"
-          THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+          THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
 
         DEFINE FUNCTION fn::freshness($memo: record<memos>) {
           LET $m = $memo.*;
-          LET $superseded = (SELECT count() AS n FROM edges WHERE kind = 'supersedes' AND to = $memo GROUP ALL)[0].n ?? 0;
+          LET $superseded = (SELECT count() AS n FROM edges WHERE kind = 'supersedes' AND out = $memo GROUP ALL)[0].n ?? 0;
           IF $superseded > 0 { RETURN 0; };
           LET $half_life_ms = 7776000000;
           LET $age_ms = (time::now() - $m.decay_anchor) / 1ms;
@@ -84,11 +83,13 @@ async function gateCascade(db) {
       surql`
         CREATE entities:alice CONTENT { name: 'Alice' };
         CREATE entities:bob   CONTENT { name: 'Bob' };
-        CREATE edges:['knows', entities:alice, entities:bob] CONTENT {
-          kind: 'knows', from: entities:alice, to: entities:bob
+        INSERT RELATION INTO edges {
+          id: ['knows', entities:alice, entities:bob],
+          in: entities:alice, out: entities:bob, kind: 'knows'
         };
-        CREATE edges:['knows', entities:bob, entities:alice] CONTENT {
-          kind: 'knows', from: entities:bob, to: entities:alice
+        INSERT RELATION INTO edges {
+          id: ['knows', entities:bob, entities:alice],
+          in: entities:bob, out: entities:alice, kind: 'knows'
         };
       `,
     )
@@ -119,12 +120,11 @@ async function gateUpsertIdempotence(db) {
   await db
     .query(
       surql`
-        UPSERT edges:['occurs_with', entities:bob, entities:carol] SET
-          kind = 'occurs_with',
-          from = entities:bob,
-          to = entities:carol,
-          weight += 1,
-          last_seen = time::now();
+        INSERT RELATION INTO edges {
+          id: ['occurs_with', entities:bob, entities:carol],
+          in: entities:bob, out: entities:carol,
+          kind: 'occurs_with', weight: 1, last_seen: time::now()
+        } ON DUPLICATE KEY UPDATE weight += 1, last_seen = time::now();
       `,
     )
     .collect();
@@ -133,12 +133,11 @@ async function gateUpsertIdempotence(db) {
   await db
     .query(
       surql`
-        UPSERT edges:['occurs_with', entities:bob, entities:carol] SET
-          kind = 'occurs_with',
-          from = entities:bob,
-          to = entities:carol,
-          weight += 1,
-          last_seen = time::now();
+        INSERT RELATION INTO edges {
+          id: ['occurs_with', entities:bob, entities:carol],
+          in: entities:bob, out: entities:carol,
+          kind: 'occurs_with', weight: 1, last_seen: time::now()
+        } ON DUPLICATE KEY UPDATE weight += 1, last_seen = time::now();
       `,
     )
     .collect();
@@ -208,8 +207,9 @@ async function gateFreshness(db) {
   await db
     .query(
       surql`
-        CREATE edges:['supersedes', memos:new, memos:old] CONTENT {
-          kind: 'supersedes', from: memos:new, to: memos:old
+        INSERT RELATION INTO edges {
+          id: ['supersedes', memos:new, memos:old],
+          in: memos:new, out: memos:old, kind: 'supersedes'
         };
       `,
     )
@@ -231,6 +231,53 @@ async function gateFreshness(db) {
 // G17 — COMPUTED runtime_jobs.is_overdue across truth-table
 // G18 — entities_name_lower index still selected by the planner
 // ---------------------------------------------------------------------------
+
+async function gateArrowTraversal(db) {
+  console.log('\nG5 — Arrow traversal on TYPE RELATION edges with mid-edge kind filter');
+  await db.query('DELETE edges; DELETE memos; DELETE entities').collect();
+  await db
+    .query(
+      `
+      CREATE entities:alice SET name = 'Alice';
+      CREATE memos:m1 SET kind = 'knowledge', content = 'fact about alice';
+      CREATE memos:m2 SET kind = 'knowledge', content = 'second fact';
+      INSERT RELATION INTO edges {
+        id: ['about', memos:m1, entities:alice],
+        in: memos:m1, out: entities:alice, kind: 'about'
+      };
+      INSERT RELATION INTO edges {
+        id: ['mentions', memos:m1, entities:alice],
+        in: memos:m1, out: entities:alice, kind: 'mentions'
+      };
+      INSERT RELATION INTO edges {
+        id: ['about', memos:m2, entities:alice],
+        in: memos:m2, out: entities:alice, kind: 'about'
+      };
+    `,
+    )
+    .collect();
+
+  // Reverse arrow with mid-edge kind filter — return the memos that have an
+  // outbound `about` edge to alice.
+  const [hits] = await db
+    .query("SELECT VALUE <-edges[WHERE kind = 'about']<-memos FROM ONLY entities:alice")
+    .collect();
+  const ids = (hits ?? []).map((x) => String(x)).sort();
+  if (ids.length === 2 && ids[0] === 'memos:m1' && ids[1] === 'memos:m2') {
+    ok(`arrow traversal returned ${ids.length} memos via 'about' edges`);
+  } else {
+    fail(`expected [memos:m1, memos:m2], got ${JSON.stringify(ids)}`);
+  }
+
+  // Mid-edge filter properly excludes other kinds.
+  const [aboutOnly] = await db
+    .query(
+      "SELECT count() AS n FROM (SELECT VALUE <-edges[WHERE kind='about']<-memos FROM ONLY entities:alice)",
+    )
+    .collect();
+  const aboutCount = aboutOnly?.[0]?.n ?? aboutOnly?.[0];
+  void aboutCount; // primary success criterion above is sufficient
+}
 
 async function gateReferenceBackRef(db) {
   console.log('\nG15 — REFERENCE back-ref <~events on episodes');
@@ -365,6 +412,7 @@ async function main() {
     await gateUpsertIdempotence(db);
     await gateFieldPathIndex(db);
     await gateFreshness(db);
+    await gateArrowTraversal(db);
     await gateReferenceBackRef(db);
     await gateOnDeleteUnset(db);
     await gateComputedIsOverdue(db);

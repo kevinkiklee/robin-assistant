@@ -22,7 +22,7 @@ export async function dreamStepPatterns(db, host, opts = {}) {
 
   const cutoff = new Date(Date.now() - lookbackDays * 86400_000);
   const sql = `
-    SELECT from, to, weight
+    SELECT in, out, weight
     FROM edges
     WHERE kind = 'occurs_with' AND last_seen >= $cutoff AND weight >= $min
     ORDER BY weight DESC
@@ -32,8 +32,8 @@ export async function dreamStepPatterns(db, host, opts = {}) {
 
   let upserted = 0;
   for (const edge of strong ?? []) {
-    const [a] = await db.query(new BoundQuery('SELECT name FROM $id', { id: edge.from })).collect();
-    const [b] = await db.query(new BoundQuery('SELECT name FROM $id', { id: edge.to })).collect();
+    const [a] = await db.query(new BoundQuery('SELECT name FROM $id', { id: edge.in })).collect();
+    const [b] = await db.query(new BoundQuery('SELECT name FROM $id', { id: edge.out })).collect();
     if (!a[0]?.name || !b[0]?.name) continue;
 
     const name = `co-occur-${a[0].name}-${b[0].name}`;

@@ -32,14 +32,14 @@ export function createRelatedEntitiesTool({ db }) {
       const related = [];
       for (const kind of requested) {
         if (related.length >= limit) break;
-        // `IF from = $self THEN to ELSE from END` collapses direction so
+        // `IF in = $self THEN out ELSE in END` collapses direction so
         // symmetric kinds (occurs_with) return the other endpoint regardless
         // of which side this entity sits on after canonical ordering.
         const sql = `SELECT
-            IF from = ${idRef} THEN to ELSE from END AS other,
+            IF in = ${idRef} THEN out ELSE in END AS other,
             weight
           FROM edges
-          WHERE kind = '${kind}' AND (from = ${idRef} OR to = ${idRef})
+          WHERE kind = '${kind}' AND (in = ${idRef} OR out = ${idRef})
           ORDER BY weight DESC
           LIMIT ${limit}`;
         const [rows] = await db.query(sql).collect();
