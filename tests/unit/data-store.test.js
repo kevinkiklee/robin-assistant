@@ -219,12 +219,14 @@ test('data-store.js never calls fs.rename — move uses copy+verify+delete', () 
     fileURLToPath(new URL('../../src/runtime/data-store.js', import.meta.url)),
     'utf8',
   );
-  // Allowed: writePointer uses renameSync for atomic pointer write — that's a
-  // single-file atomic replace, not a directory move. Whitelist that one call.
+  // Allowed single-file atomic replaces (tmp→final):
+  //   1. writePointer   (pointer file)
+  //   2. writeManifestAtomic (host-integrations.json)
+  // Directory moves must use copy+verify+delete, never rename.
   const renameCalls = (src.match(/\brename(Sync)?\s*\(/g) ?? []).length;
   assert.strictEqual(
     renameCalls,
-    1,
-    `expected exactly 1 renameSync call (in writePointer); found ${renameCalls}`,
+    2,
+    `expected exactly 2 renameSync calls (writePointer + writeManifestAtomic); found ${renameCalls}`,
   );
 });

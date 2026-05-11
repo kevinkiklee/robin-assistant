@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,15 +53,13 @@ export function resolveHomeStrict({ pointerPath = pointerFilePath() } = {}) {
   }
   if (parsed?.version !== POINTER_VERSION) {
     throw new Error(
-      `.robin-home version ${parsed?.version} is not supported (expected ${POINTER_VERSION}). ` +
-        'Run: robin install',
+      `.robin-home version ${parsed?.version} is not supported (expected ${POINTER_VERSION}). Run: robin install`,
     );
   }
   const target = typeof parsed.home === 'string' ? resolve(parsed.home) : null;
   if (!target || !existsSync(target)) {
     throw new Error(
-      `user-data path ${target ?? '(unset)'} recorded in .robin-home is missing. ` +
-        'Run: robin install --relocate',
+      `user-data path ${target ?? '(unset)'} recorded in .robin-home is missing. Run: robin install --relocate`,
     );
   }
   return target;
@@ -156,5 +163,141 @@ export function readMarker() {
     return parsed;
   } catch {
     return null;
+  }
+}
+
+// ----- host-integrations manifest -----
+
+const MANIFEST_VERSION = 1;
+const LOCK_TIMEOUT_MS = 5000;
+
+async function acquireManifestLock() {
+  const lockPath = paths.data.manifestLock();
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const fd = openSync(lockPath, 'wx');
+      return { fd, lockPath };
+    } catch (e) {
+      if (e.code === 'EEXIST') {
+        await new Promise((r) => setTimeout(r, 25));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error(`could not acquire manifest lock at ${lockPath} within ${LOCK_TIMEOUT_MS}ms`);
+}
+
+function releaseManifestLock(handle) {
+  try {
+    closeSync(handle.fd);
+  } catch {}
+  try {
+    unlinkSync(handle.lockPath);
+  } catch {}
+}
+
+function readManifestRaw() {
+  const p = paths.data.hostIntegrations();
+  const legacyPath = join(robinHome(), 'installed-hooks.json');
+  if (existsSync(p)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync(p, 'utf8'));
+    } catch (e) {
+      throw new Error(`malformed ${p}: ${e.message}`);
+    }
+    if (parsed?.version !== MANIFEST_VERSION) {
+      throw new Error(
+        `host-integrations.json version ${parsed?.version} is not supported ` +
+          `(expected ${MANIFEST_VERSION})`,
+      );
+    }
+    return parsed;
+  }
+  if (existsSync(legacyPath)) {
+    const legacy = JSON.parse(readFileSync(legacyPath, 'utf8'));
+    const entries = [];
+    if (Array.isArray(legacy?.claude)) {
+      entries.push({
+        kind: 'claude-hooks',
+        path: join(process.env.HOME ?? '', '.claude/settings.json'),
+        owned: legacy.claude,
+        installedAt: new Date().toISOString(),
+      });
+    }
+    if (Array.isArray(legacy?.gemini)) {
+      entries.push({
+        kind: 'gemini-hooks',
+        path: join(process.env.HOME ?? '', '.gemini/settings.json'),
+        owned: legacy.gemini,
+        installedAt: new Date().toISOString(),
+      });
+    }
+    return { version: MANIFEST_VERSION, updatedAt: new Date().toISOString(), entries };
+  }
+  return { version: MANIFEST_VERSION, updatedAt: new Date().toISOString(), entries: [] };
+}
+
+function writeManifestAtomic(manifest) {
+  const p = paths.data.hostIntegrations();
+  const tmp = `${p}.tmp`;
+  writeFileSync(tmp, JSON.stringify(manifest, null, 2), { mode: 0o644 });
+  renameSync(tmp, p);
+}
+
+export async function readHostIntegrations() {
+  return readManifestRaw();
+}
+
+export async function recordHostTouchpoint(entry, writeFn) {
+  if (
+    !entry ||
+    typeof entry !== 'object' ||
+    typeof entry.kind !== 'string' ||
+    typeof entry.path !== 'string'
+  ) {
+    throw new TypeError(
+      'recordHostTouchpoint: entry must have { kind: string, path: string, ... }',
+    );
+  }
+  if (typeof writeFn !== 'function') {
+    throw new TypeError('recordHostTouchpoint: writeFn must be a function');
+  }
+  // Run writeFn first; on throw, do not touch manifest or legacy file.
+  await writeFn();
+  const handle = await acquireManifestLock();
+  try {
+    const manifest = readManifestRaw();
+    const idx = manifest.entries.findIndex((e) => e.kind === entry.kind && e.path === entry.path);
+    const stored = { ...entry, installedAt: entry.installedAt ?? new Date().toISOString() };
+    if (idx === -1) manifest.entries.push(stored);
+    else manifest.entries[idx] = stored;
+    manifest.updatedAt = new Date().toISOString();
+    writeManifestAtomic(manifest);
+    const legacyPath = join(robinHome(), 'installed-hooks.json');
+    if (existsSync(legacyPath)) {
+      unlinkSync(legacyPath);
+    }
+  } finally {
+    releaseManifestLock(handle);
+  }
+}
+
+export async function forgetHostTouchpoint({ kind, path: entryPath }) {
+  const handle = await acquireManifestLock();
+  try {
+    const manifest = readManifestRaw();
+    const before = manifest.entries.length;
+    manifest.entries = manifest.entries.filter((e) => !(e.kind === kind && e.path === entryPath));
+    const removed = before - manifest.entries.length;
+    if (removed > 0) {
+      manifest.updatedAt = new Date().toISOString();
+      writeManifestAtomic(manifest);
+    }
+    return { removed };
+  } finally {
+    releaseManifestLock(handle);
   }
 }
