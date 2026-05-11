@@ -394,3 +394,111 @@ test('T7 — llm_parse_error: no memo, no candidates, telemetry only', async () 
   assert.equal(tel?.[0]?.outcome, 'llm_parse_error');
   await close(db);
 });
+
+test('T8 — idempotence: repeat invocations write a new memo each time', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'x', type: 'project', scope: 'global' }`)
+    .collect();
+  const entId = ent[0][0].id;
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `m${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entId],
+    });
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`}, query: 'q', k: 5,
+        ranked_hits: [{ record: ${m.id}, kind: 'memo' }], outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+
+  const resp = JSON.stringify({
+    narrative: 'n',
+    clusters: [
+      {
+        cluster_id: String(entId),
+        error_pattern: 'p',
+        suggested_rules: ['r'],
+        rule_confidence: [0.7],
+      },
+    ],
+  });
+
+  await runMetaRecallNarrative({ db, embedder: e, host: fakeHost(resp) });
+  await runMetaRecallNarrative({ db, embedder: e, host: fakeHost(resp) });
+  const [memoRows] = await db
+    .query("SELECT count() AS n FROM memos WHERE kind = 'reasoning' GROUP ALL")
+    .collect();
+  assert.equal(memoRows?.[0]?.n, 2, 'two distinct weekly snapshots');
+  const [candRows] = await db
+    .query(
+      "SELECT count() AS n FROM rule_candidates WHERE payload.source = 'meta_cognition' GROUP ALL",
+    )
+    .collect();
+  assert.equal(candRows?.[0]?.n, 2);
+  await close(db);
+});
+
+test('T9 — B1 absent: secondary query yields zero unused rows; corrected-only run completes', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'x', type: 'project', scope: 'global' }`)
+    .collect();
+  const entId = ent[0][0].id;
+
+  // 5 corrected rows; ranked_hits[*].used field intentionally absent — pre-B1 shape.
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `m${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entId],
+    });
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`}, query: 'q', k: 5,
+        ranked_hits: [{ record: ${m.id}, kind: 'memo' }],
+        outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+
+  const resp = JSON.stringify({
+    narrative: 'n',
+    clusters: [
+      {
+        cluster_id: String(entId),
+        error_pattern: 'p',
+        suggested_rules: ['r'],
+        rule_confidence: [0.7],
+      },
+    ],
+  });
+  const result = await runMetaRecallNarrative({ db, embedder: e, host: fakeHost(resp) });
+  const summary = JSON.parse(result);
+  assert.equal(summary.ran, true);
+  const [tel] = await db
+    .query(
+      'SELECT unused_count, rows_after_privacy, ts FROM meta_cognition_telemetry ORDER BY ts DESC LIMIT 1',
+    )
+    .collect();
+  assert.equal(tel?.[0]?.unused_count, 0);
+  assert.equal(tel?.[0]?.rows_after_privacy, 5);
+  await close(db);
+});
