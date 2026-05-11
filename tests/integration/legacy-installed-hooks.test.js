@@ -1,8 +1,8 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import test from 'node:test';
 import {
   ensureHome,
   readHostIntegrations,
@@ -35,14 +35,18 @@ test('legacy installed-hooks.json is migrated on first manifest write and then d
       { kind: 'launchd-plist', path: '/x', expectedHome: home, label: 'l' },
       () => {},
     );
-    assert.strictEqual(existsSync(legacyPath), false, 'legacy file should be deleted after first write');
+    assert.strictEqual(
+      existsSync(legacyPath),
+      false,
+      'legacy file should be deleted after first write',
+    );
     const after = await readHostIntegrations();
     assert.strictEqual(after.entries.length, 3);
     const kinds = after.entries.map((e) => e.kind).sort();
     assert.deepStrictEqual(kinds, ['claude-hooks', 'gemini-hooks', 'launchd-plist']);
   } finally {
     if (prev) process.env.ROBIN_HOME = prev;
-    else delete process.env.ROBIN_HOME;
+    else process.env.ROBIN_HOME = undefined;
     rmSync(home, { recursive: true, force: true });
   }
 });

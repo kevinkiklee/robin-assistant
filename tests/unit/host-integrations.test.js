@@ -1,14 +1,14 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import test from 'node:test';
 import {
   ensureHome,
+  forgetHostTouchpoint,
   paths,
   readHostIntegrations,
   recordHostTouchpoint,
-  forgetHostTouchpoint,
 } from '../../src/runtime/data-store.js';
 
 function withHome(t, fn) {
@@ -17,7 +17,7 @@ function withHome(t, fn) {
   process.env.ROBIN_HOME = home;
   return Promise.resolve(fn(home)).finally(() => {
     if (prev) process.env.ROBIN_HOME = prev;
-    else delete process.env.ROBIN_HOME;
+    else process.env.ROBIN_HOME = undefined;
     rmSync(home, { recursive: true, force: true });
   });
 }
