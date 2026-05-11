@@ -28,6 +28,7 @@
     "system/runtime/install/"
   ],
   "scripts": {
+    "postinstall": "node system/runtime/install/postinstall.js",
     "setup": "node system/bin/robin install",
     "test": "node --test --test-force-exit --test-timeout=20000 'system/tests/**/*.test.js'",
     "test:unit": "node --test --test-force-exit --test-timeout=20000 'system/tests/unit/**/*.test.js'",

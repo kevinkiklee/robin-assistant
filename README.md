@@ -6,7 +6,7 @@ This is the SurrealDB-first rebuild of Robin. v1 (`robin-assistant@5.x`) remains
 
 ## Status
 
-`6.0.0-alpha.12` — Phase 4 envelope + user-data isolation: daily-use safety floor (4a), action policy + comm-style + predictions/calibration (4b), knowledge ops (4c), daemon-internal job runner (4d), conversation capture (4f), the rename pass that gives every long-lived mechanism a named faculty, configurable `<robinHome>` with non-interactive install flags, per-phase hooks-disable, and `robin db browse`. Remaining envelope: 4e (trained reranker + knowledge-promotion classifier) — both data-dependent.
+`6.0.0-alpha.17` — five-layer `system/` tree (runtime, data, cognition, io, config) on top of the alpha.16 evolution work (intuition / biographer / heartbeat / discretion / dream / reflection / introspection faculties, MMR + per-hit reinforcement on recall, biographer batching, state inference, runtime hardening). Code-only restructure on top of alpha.16 — no schema or API changes.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-phase delta and the design docs under [`docs/superpowers/specs/`](docs/superpowers/specs/) for architecture rationale.
 
@@ -99,12 +99,13 @@ record_correction(...)  ──┘
 git clone git@github.com:kevinkiklee/robin-assistant.git robin-v2
 cd robin-v2
 npm install
-node system/bin/robin install     # interactive — picks embedder profile, runs migrations, installs hooks, starts daemon
 ```
+
+`npm install` runs a postinstall step that wires Robin up with safe defaults: home at `<repo>/user-data/`, `mxbai-1024` embedder, hooks + daemon supervisor + MCP host registration. To pick a different embedder or location, run `ROBIN_SKIP_INSTALL=1 npm install` and then `node system/bin/robin install` interactively.
 
 Then **restart your Claude Code / Gemini CLI session** so it picks up the new MCP server and hooks. Verify with `robin doctor`.
 
-Full walkthrough including secrets, OAuth, Discord, pre-commit hook, and uninstall: [`docs/install.md`](docs/install.md).
+Full walkthrough — including per-step skip flags, secrets, OAuth, Discord, pre-commit hook, and uninstall — in [`docs/install.md`](docs/install.md).
 
 ## Daily life
 

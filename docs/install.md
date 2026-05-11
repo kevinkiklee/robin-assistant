@@ -1,6 +1,6 @@
 # Installation
 
-The full install walkthrough. For a 3-command quickstart, see the [README](../README.md). For what to do when something goes wrong, see [troubleshooting.md](troubleshooting.md).
+The full install walkthrough. For the one-liner, see the [README](../README.md). For what to do when something goes wrong, see [troubleshooting.md](troubleshooting.md).
 
 ## Prerequisites
 
@@ -9,7 +9,7 @@ The full install walkthrough. For a 3-command quickstart, see the [README](../RE
 - **Claude Code** and/or **Gemini CLI** on PATH for auto-registration.
 - Provider credentials for whatever integrations you want (Google OAuth, Spotify, Linear API key, etc.) — set later, not at install time.
 
-## Step 1 — Clone and install dependencies
+## The fast path
 
 ```sh
 git clone git@github.com:kevinkiklee/robin-assistant.git robin-v2
@@ -17,7 +17,49 @@ cd robin-v2
 npm install
 ```
 
-## Step 2 — Run `robin install`
+`npm install` triggers a postinstall script that runs `robin install --auto` with safe defaults: home at `<repo>/user-data/`, `mxbai-1024` embedder, all hooks and daemon supervisor wired up, MCP registered with any Claude Code / Gemini CLI on PATH. No prompts.
+
+Restart your CLI host afterward so it loads the new MCP server. Verify with `robin doctor`.
+
+### When the postinstall skips itself
+
+The postinstall is conservative — it sits out anywhere auto-setup would be a surprise:
+
+| Condition | What happens |
+|---|---|
+| `ROBIN_SKIP_INSTALL=1 npm install` | Skipped silently. Run `node system/bin/robin install` yourself. |
+| `CI=true` (any CI env) | Skipped silently. |
+| `npm install -g robin-assistant` | Skipped with a hint. Run `robin install` once after global install. |
+| Installed as a transitive dep | Skipped silently. |
+| Windows | Skipped with a hint. Run `node system/bin/robin install` manually. |
+
+### Per-step skips
+
+Set any of these before `npm install` to skip a single step:
+
+| Env var | Equivalent flag |
+|---|---|
+| `ROBIN_SKIP_MCP` | `--no-mcp` |
+| `ROBIN_SKIP_DAEMON` | `--no-start` |
+| `ROBIN_SKIP_HOOKS` | `--no-hooks` |
+| `ROBIN_SKIP_AGENTS_MD` | `--no-agents-md` |
+| `ROBIN_SKIP_SUPERVISE` | `--no-supervise` |
+| `ROBIN_SKIP_REGISTER` | `--no-register` |
+
+`ROBIN_HOME=<path> npm install` overrides the home directory without any other ceremony.
+
+### First-run safety net
+
+If postinstall was skipped (global install, CI re-run, `--ignore-scripts`) and you run any non-install `robin` command later, the CLI detects the missing setup, runs `robin install --auto` once, and continues with your original command. Set `ROBIN_SKIP_FIRST_RUN=1` to disable.
+
+## The interactive path
+
+If you want to pick a different embedder profile or store data outside the repo:
+
+```sh
+ROBIN_SKIP_INSTALL=1 npm install
+node system/bin/robin install
+```
 
 One command sets up everything Robin needs.
 
@@ -67,10 +109,17 @@ The chosen location is written to `<package_root>/.robin-home` (a pointer file) 
 
 ### Install flags
 
+- `--auto` zero-prompt preset: implies `--yes --profile mxbai-1024 --on-existing ignore`. Explicit flags layer on top (e.g. `--auto --profile gemini-3072 --i-understand`).
+- `--yes` skip the home picker; accept default `<package-root>/user-data/`.
+- `--profile <id>` `mxbai-1024` | `qwen3-4096` | `gemini-3072`. Required in non-interactive mode unless `--auto` is set.
+- `--home <path>` explicit home directory; bypasses the picker.
+- `--on-existing <move|copy|ignore|abort>` what to do if pre-existing Robin data is discovered (non-interactive default: `abort`).
 - `--no-supervise` skip launchd/systemd registration
 - `--no-register` skip `mcp add` calls
 - `--no-agents-md` skip CLAUDE.md/GEMINI.md merge
 - `--no-start` install everything but don't start the daemon yet
+- `--no-mcp` skip everything in the MCP-install bundle (supervise + register + start + agents-md)
+- `--no-migrate` skip running DB migrations
 - `--no-hooks` skip host-side hook installation
 - `--hooks-only` only run the hook-install step (use after manual settings.json edits)
 - `--force` re-run even if Robin is already configured

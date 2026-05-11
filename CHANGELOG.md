@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Zero-prompt install via npm postinstall
+
+- New `system/runtime/install/postinstall.js` registered as `package.json#scripts.postinstall`. After `npm install` the script runs `robin install --auto`, wiring up the home directory, embedder profile, migrations, hooks, daemon supervisor, and MCP host registration with no further user input.
+- New `--auto` flag on `robin install`: equivalent to `--yes --profile mxbai-1024 --on-existing ignore`. Explicit flags still win, so `robin install --auto --profile gemini-3072 --i-understand` keeps the gemini profile.
+- Gating: postinstall skips silently in CI, on transitive installs, when `ROBIN_SKIP_INSTALL` is set, and when prior install state (`.robin-home` pointer or `user-data/.robin-data` marker) is already present. Global installs and Windows print a hint and exit 0. Setup failures never block `npm install`.
+- Per-step skip envs map 1:1 to install flags: `ROBIN_SKIP_MCP`, `ROBIN_SKIP_DAEMON`, `ROBIN_SKIP_HOOKS`, `ROBIN_SKIP_AGENTS_MD`, `ROBIN_SKIP_SUPERVISE`, `ROBIN_SKIP_REGISTER`.
+- Tests: 2 new install.test cases for `--auto` defaulting and explicit-flag-precedence, plus a new `postinstall-gating.test.js` covering 5 skip conditions.
+- Docs: README quickstart and `docs/install.md` rewritten around the new one-step flow with a "When the postinstall skips itself" table.
+
 ## [6.0.0-alpha.17] — 2026-05-11 — Package restructure to `system/`
 
 Reorganizes the package tree from a flat 20-folder `src/` layout into a

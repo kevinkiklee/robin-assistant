@@ -83,6 +83,36 @@ test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', 
   }
 });
 
+test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', async () => {
+  setup();
+  try {
+    const { install } = await importInstall();
+    await install(['--auto', '--no-mcp'], { supervise: noopSupervise() });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+    assert.ok(cfg.installed_at);
+  } finally {
+    cleanup();
+  }
+});
+
+test('install --auto --profile gemini-3072 --i-understand --no-mcp respects explicit profile', async () => {
+  setup();
+  try {
+    const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
+    saveSecret('GEMINI_API_KEY', 'fake-key-xxx');
+    const { install } = await importInstall();
+    await install(
+      ['--auto', '--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'],
+      { supervise: noopSupervise() },
+    );
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'gemini-3072');
+  } finally {
+    cleanup();
+  }
+});
+
 test('install --profile gemini-3072 --i-understand --no-mcp persists profile when key set', async () => {
   setup();
   try {

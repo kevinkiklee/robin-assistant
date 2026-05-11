@@ -420,6 +420,16 @@ export async function planInstallHome({
 
 export async function install(argv = [], deps = {}) {
   const args = parseArgs(argv);
+
+  // --auto: zero-interaction preset. Equivalent to `--yes --profile mxbai-1024
+  // --on-existing ignore`, but only fills in slots the caller didn't set, so
+  // explicit flags still win (e.g. `--auto --profile gemini-3072 --i-understand`).
+  if (args.flags.auto === true) {
+    if (args.flags.yes === undefined) args.flags.yes = true;
+    if (!args.flags.profile) args.flags.profile = 'mxbai-1024';
+    if (!args.flags['on-existing']) args.flags['on-existing'] = 'ignore';
+  }
+
   const force = args.flags.force === true;
   const profileFlag = typeof args.flags.profile === 'string' ? args.flags.profile : null;
   const iUnderstand = args.flags['i-understand'] === true;
