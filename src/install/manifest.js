@@ -1,9 +1,9 @@
-// Tamper-detection manifest. Captures hashes of key handler files,
+// Introspection baseline manifest. Captures hashes of key handler files,
 // permissions of sensitive paths, and the supervisor (launchd/systemd) file.
 //
 // Written by `robin install` (and `robin embedder switch`, `robin doctor
 // --rebaseline`) to <robinHome>/manifest.json. Read by daemon-boot
-// tamper-check (src/daemon/tamper-check.js) to surface drift.
+// introspection (src/daemon/introspection.js) to surface drift.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';

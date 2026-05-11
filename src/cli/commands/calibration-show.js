@@ -1,14 +1,13 @@
 // src/cli/commands/calibration-show.js
 import { close, connect } from '../../db/client.js';
 import { getCalibration as defaultGet } from '../../jobs/predictions.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function calibrationShow(_argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));
   const fetch = deps.getCalibration ?? (async () => {
     await ensureHome();
-    const p = paths();
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try { return await defaultGet(db); } finally { await close(db); }
   });
   const c = await fetch();

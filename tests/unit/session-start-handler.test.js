@@ -67,7 +67,7 @@ test('handler POSTs payload to /internal/session/register', async () => {
   const { server, port } = await startStubServer(({ req, res, body }) => {
     received = { url: req.url, method: req.method, body };
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ session_count: 1, tamper_findings: [] }));
+    res.end(JSON.stringify({ session_count: 1, introspection_findings: [] }));
   });
   writeDaemonStateFile(port);
 
@@ -125,7 +125,7 @@ test('handler exits silently when no .daemon.state is present', async () => {
 test('handler emits "session N of N" stderr when session_count > 1', async () => {
   const { server, port } = await startStubServer(({ res }) => {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ session_count: 2, tamper_findings: [] }));
+    res.end(JSON.stringify({ session_count: 2, introspection_findings: [] }));
   });
   writeDaemonStateFile(port);
 
@@ -141,13 +141,13 @@ test('handler emits "session N of N" stderr when session_count > 1', async () =>
   clearDaemonStateFile();
 });
 
-test('handler surfaces tamper findings on stderr', async () => {
+test('handler surfaces introspection findings on stderr', async () => {
   const { server, port } = await startStubServer(({ res }) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(
       JSON.stringify({
         session_count: 1,
-        tamper_findings: [
+        introspection_findings: [
           { kind: 'hash_drift', path: '/some/file' },
           { kind: 'mode_drift', path: '/secrets/.env' },
         ],
@@ -162,8 +162,8 @@ test('handler surfaces tamper findings on stderr', async () => {
     stderr: (s) => errs.push(s),
   });
   assert.equal(errs.length, 2);
-  assert.match(errs[0], /tamper warning — hash_drift: \/some\/file/);
-  assert.match(errs[1], /tamper warning — mode_drift: \/secrets\/\.env/);
+  assert.match(errs[0], /introspection warning — hash_drift: \/some\/file/);
+  assert.match(errs[1], /introspection warning — mode_drift: \/secrets\/\.env/);
 
   server.close();
   clearDaemonStateFile();

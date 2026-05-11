@@ -1,7 +1,7 @@
-// Daemon-boot tamper detection. Compares the live filesystem against the
+// Daemon-boot introspection. Compares the live filesystem against the
 // baseline at <robinHome>/manifest.json (written by `robin install`) and
-// persists the result to runtime_tamper_state for SessionStart hooks to
-// read without recomputing.
+// persists the result to runtime_introspection_state for SessionStart hooks
+// to read without recomputing.
 //
 // Findings shape:
 //   { kind: 'hash_drift'|'mode_drift'|'missing_file'|'supervisor_drift',
@@ -77,13 +77,14 @@ function diffSupervisor(expected, actual) {
   return [];
 }
 
-async function persistTamperState(db, { ok, findings }) {
-  // runtime_tamper_state is a singleton keyed by 'current'. UPSERT replaces
-  // the row each boot. The field 'checked_at' is set explicitly so callers
-  // get a deterministic timestamp; the schema also defaults it to time::now().
+async function persistIntrospectionState(db, { ok, findings }) {
+  // runtime_introspection_state is a singleton keyed by 'current'. UPSERT
+  // replaces the row each boot. The field 'checked_at' is set explicitly so
+  // callers get a deterministic timestamp; the schema also defaults it to
+  // time::now().
   await db
     .query(
-      surql`UPSERT type::record('runtime_tamper_state', 'current') CONTENT {
+      surql`UPSERT type::record('runtime_introspection_state', 'current') CONTENT {
         checked_at: time::now(),
         ok: ${ok},
         findings: ${findings}
@@ -92,7 +93,7 @@ async function persistTamperState(db, { ok, findings }) {
     .collect();
 }
 
-export async function runTamperCheck(db, opts = {}) {
+export async function runIntrospection(db, opts = {}) {
   const baseline = await readManifest();
   if (!baseline) {
     const findings = [
@@ -102,7 +103,7 @@ export async function runTamperCheck(db, opts = {}) {
       },
     ];
     // We still record the boot-time state so SessionStart can surface it.
-    await persistTamperState(db, { ok: true, findings });
+    await persistIntrospectionState(db, { ok: true, findings });
     return { ok: true, findings, baselined: false };
   }
 
@@ -119,13 +120,13 @@ export async function runTamperCheck(db, opts = {}) {
   ];
 
   const ok = findings.length === 0;
-  await persistTamperState(db, { ok, findings });
+  await persistIntrospectionState(db, { ok, findings });
   return { ok, findings, baselined: true };
 }
 
-export async function readLastTamperCheck(db) {
+export async function readLastIntrospection(db) {
   const [rows] = await db
-    .query(surql`SELECT * FROM type::record('runtime_tamper_state', 'current')`)
+    .query(surql`SELECT * FROM type::record('runtime_introspection_state', 'current')`)
     .collect();
   if (!rows || rows.length === 0) return null;
   return rows[0];

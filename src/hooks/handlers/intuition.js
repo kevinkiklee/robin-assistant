@@ -1,18 +1,9 @@
-// UserPromptSubmit hook handler (Phase 4a §5.D + §8 cutover).
+// UserPromptSubmit hook handler — intuition.
 //
-// Hook contract (Claude Code UserPromptSubmit, current shape):
-//   stdin JSON has shape { prompt, transcript_path, session_id, ... }
-//
-// Responsibilities:
-//   - Cutover suppression: if v1 hooks are still active in this project
-//     (`$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js` exists),
-//     yield silently with a one-line stderr notice. Avoids double
-//     `<!-- relevant memory -->` blocks from two different DBs (§8).
-//   - Read prior assistant turn from the transcript JSONL tail (cap 8 KB).
-//   - POST to the daemon at /internal/auto-recall with a 300ms hard cap.
-//   - On success, write the daemon's `block` to stdout (the host injects
-//     stdout into the model's context).
-//   - On any failure (no daemon, timeout, non-2xx, etc.) exit 0 silently.
+// Cutover suppression: if v1 hooks are still active in this project
+// (`$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js` exists), yield
+// silently with a one-line stderr notice. Avoids double
+// `<!-- relevant memory -->` blocks from two different DBs.
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -121,14 +112,14 @@ function v1HooksActive() {
  *   Override for daemon-state lookup (used in tests).
  * @param {typeof fetch} [args.fetchFn]  Override for fetch (used in tests).
  */
-export async function autoRecallHandler({ stdin, stdout, stderr, readState, fetchFn } = {}) {
+export async function intuitionHandler({ stdin, stdout, stderr, readState, fetchFn } = {}) {
   const writeOut = typeof stdout === 'function' ? stdout : (s) => process.stdout.write(s);
   const writeErr = typeof stderr === 'function' ? stderr : (s) => process.stderr.write(`${s}\n`);
   const doFetch = typeof fetchFn === 'function' ? fetchFn : fetch;
 
-  // §8 cutover suppression: if v1 hooks are also installed, yield this turn.
+  // Cutover suppression: if v1 hooks are also installed, yield this turn.
   if (v1HooksActive()) {
-    writeErr('Robin: v1 hooks active in this project; v2 auto-recall yielding.');
+    writeErr('Robin: v1 hooks active in this project; v2 intuition yielding.');
     return;
   }
 
@@ -150,7 +141,7 @@ export async function autoRecallHandler({ stdin, stdout, stderr, readState, fetc
 
   let res;
   try {
-    res = await doFetch(`http://127.0.0.1:${state.port}/internal/auto-recall`, {
+    res = await doFetch(`http://127.0.0.1:${state.port}/internal/intuition`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

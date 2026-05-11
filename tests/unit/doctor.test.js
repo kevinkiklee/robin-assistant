@@ -50,7 +50,7 @@ test('doctor --rebaseline: writes manifest.json', async () => {
   const manifestPath = join(__robinTestHome, 'manifest.json');
   assert.ok(existsSync(manifestPath), 'manifest must exist after rebaseline');
   const all = o.lines.join('\n');
-  assert.match(all, /tamper baseline rewritten/);
+  assert.match(all, /introspection baseline rewritten/);
 });
 
 test('doctor --lint-hooks: lists robin-owned entries from settings.json', async () => {
@@ -62,9 +62,9 @@ test('doctor --lint-hooks: lists robin-owned entries from settings.json', async 
   const claudeSettings = {
     hooks: {
       PreToolUse: [
-        { matcher: 'Bash', hooks: [{ type: 'command', command: `${shimPath} bash-policy` }] },
+        { matcher: 'Bash', hooks: [{ type: 'command', command: `${shimPath} discretion` }] },
       ],
-      UserPromptSubmit: [{ hooks: [{ type: 'command', command: `${shimPath} auto-recall` }] }],
+      UserPromptSubmit: [{ hooks: [{ type: 'command', command: `${shimPath} intuition` }] }],
       // Foreign entry — should NOT be listed.
       SessionStart: [{ hooks: [{ type: 'command', command: '/usr/bin/some-other-tool foo' }] }],
     },

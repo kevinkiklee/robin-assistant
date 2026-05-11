@@ -6,224 +6,129 @@ This is the SurrealDB-first rebuild of Robin. v1 (`robin-assistant@5.x`) remains
 
 ## Status
 
-`6.0.0-alpha.9` — Phase 4a (daily-use safety floor: bash policy, PII guard inside MCP, tamper detection, auto-recall on prompt, multi-session registry, pre-commit hook, host-side hook installation).
+`6.0.0-alpha.10` — daily-use safety floor (discretion on bash + memory writes, introspection at daemon boot, intuition on prompt, multi-session registry, pre-commit hook, host-side hook installation) plus the in-flight rename pass that gives every long-lived mechanism a named faculty.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-phase delta and the design docs under [`docs/superpowers/specs/`](docs/superpowers/specs/) for architecture rationale.
 
-## How Robin works
+## Key features
 
-### The big picture
+- **Short-term memory — the biographer agent.** After each agent turn (Stop hook), the biographer reads the new rows in `events`, makes one LLM call per event, and writes structured `entities`, typed edges (`mentions`, `about`, `works_on`, `participates_in`, `co_occurs_with`, `precedes`), and `episode` boundaries. This is the working-memory layer: each raw turn is normalised into who/what was discussed and how it links to prior turns.
+- **Long-term memory — the dream agent.** Nightly at 4 AM (`process.env.TZ`), dream runs a 5-step pipeline over events stamped `dreamed_at IS NONE`: promotes durable facts into `knowledge`, mines recurring `patterns`, updates the user `profile`, segments long-running `threads`, and clusters corrections into `rule_candidates`. Events are then stamped `dreamed_at`, so re-running is idempotent.
+- **Self-improvement and learning — the reflection loop.** Corrections captured via `record_correction` accumulate in the DB. Reflection (step 3 of the dream pipeline) clusters them (cosine ≥ 0.85, min 3 occurrences, 30-day window) into `rule_candidates`. You approve or reject with `robin rules approve <id>`; approved rules surface in `CLAUDE.md` / `GEMINI.md` on the next session start.
+- **Multi-model storage with a graph database.** Robin runs on embedded SurrealDB v3 (`rocksdb://`). One database and one query language (SurrealQL) cover: documents (`events`, `knowledge`, `profile`), a typed graph with foreign-key-enforced edges (`mentions`, `about`, `precedes`, `works_on`, `participates_in`, `co_occurs_with`), HNSW vector indexes (768-dim event embeddings, 384-dim entity/knowledge embeddings), key-value runtime state (`runtime_*`), and time-ordered event streams. Graph traversal, vector kNN, and field filters compose in a single query — no application-level join layer between stores.
+- **MCP as the agent interface.** Every agent-facing operation — `recall`, `remember`, `find_entity`, `related_entities`, `list_episodes`, `list_threads`, `list_journal`, `record_correction`, `run_biographer`, `run_dream`, plus per-integration tools (gmail, calendar, github, spotify, …) — is exposed as an MCP tool over SSE. Claude Code, Gemini CLI, and any other MCP-aware host talk to Robin the same way they talk to any other MCP server.
+
+## Faculties at a glance
+
+Robin's behaviour is organised into seven named faculties. Each maps to a specific mechanism and a small set of files. See [`docs/faculties.md`](docs/faculties.md) for the deep dive.
+
+| Faculty | What it does | Lives in |
+|---|---|---|
+| **intuition** | UserPromptSubmit hook injects relevant memory into the next turn | `src/hooks/handlers/intuition.js`, `src/recall/intuition.js` |
+| **biographer** | Per-turn: normalises new events into entities, edges, episodes | `src/capture/biographer.js`, `src/graph/` |
+| **heartbeat** | 60s tick: integration syncs, biographer queue, stale-session sweep | `src/daemon/scheduler.js` |
+| **discretion** | Refuses inappropriate writes (inbound), commands (bash), and outbound payloads | `src/hooks/handlers/discretion.js`, `src/hooks/inbound-guard.js`, `src/outbound/policy.js` |
+| **dream** | Nightly 5-step consolidation into knowledge, patterns, profile, threads, rule candidates | `src/dream/pipeline.js` |
+| **reflection** | Step 3 of dream — clusters correction events into rule candidates | `src/dream/step-reflection.js` |
+| **introspection** | Daemon-boot integrity check against the install manifest baseline | `src/daemon/introspection.js`, `runtime_introspection_state` |
+
+## How the memory pipeline looks
+
+**Biographer — short-term memory, one LLM call per event:**
 
 ```
-Claude Code / Gemini CLI session
-   │
-   ├─ SessionStart hook ────────────► registers session + tamper warnings
-   ├─ UserPromptSubmit hook ────────► auto-recall: injects relevant memory
-   ├─ PreToolUse(Bash) hook ────────► bash policy: refuses risky commands
-   ├─ MCP tool calls (SSE) ─────────► recall, remember, find_entity, etc.
-   └─ Stop hook ────────────────────► biographer processes new events
-       │
-       ▼
-   robin-mcp daemon  (single owner of the embedded DB)
-       ├─ Capture        recordEvent → embed → events table
-       │                 (HNSW vector index — dim depends on embedder profile)
-       │                 + inbound PII guard refuses credential-shaped writes
-       ├─ Recall         HNSW kNN + recency window + source/trust filters
-       ├─ Biographer     1 LLM call per event → entities, edges, episodes
-       ├─ Dream          nightly 5-step batch → knowledge / patterns /
-       │                 profile / threads / rule candidates
-       ├─ Heartbeat      60s tick: integration syncs, biographer queue,
-       │                 stale-session sweeper
-       ├─ Outbound       PII / secret / verbatim-quote guards + sliding-1h
-       │                 rate limiter (default 10/hr)
-       ├─ Self-improve   corrections → 30-day cluster → rule candidates →
-       │                 user approval → DB-backed rules surfaced to agents
-       └─ Safety floor   manifest-baseline tamper check at boot;
-                         multi-session registry; refusals audit table
-       │
-       ▼
-   Embedded SurrealDB v3   (rocksdb:// at <package_root>/user-data/db/)
-       events · entities · episodes · 6 edge tables ·
-       knowledge · patterns · profile · threads ·
-       rule_candidates · rules · recall_events · runtime_* (sessions,
-       tamper_state, auto_recall_telemetry, scheduler, embedder)
+stop_hook fires after agent turn
+        │
+        ▼
+ new events  ──►  biographer  ──►  1 LLM call per event
+                                          │
+              ┌───────────────────────────┼───────────────────────────┐
+              ▼                           ▼                           ▼
+          entities                      edges                     episodes
+       resolve / upsert            mentions, about,            open / extend /
+       via 3-stage cascade         works_on, precedes,         close on 30-min
+       (exact → embedding          co_occurs_with,             quiet window
+        → disambig)                participates_in
 ```
 
-### Why it's shaped this way
+**Dream — long-term memory, nightly 5-step consolidation:**
 
-- **Single write primitive.** Every capture — CLI, sync integration, Discord, manual `remember` — lands as a row in the `events` table. Content-hash dedupe; embeddings cached on hash; PII guard runs at the entry point.
-- **Schema is the source of truth.** Hand-written `.surql` migrations under `src/schema/migrations/` (currently 0001–0010), applied by a v3-aware runner with a pre-migration tar backup.
-- **The daemon owns the DB.** Embedded RocksDB is single-process. The `robin-mcp` daemon is the only writer; CLI commands route through it when running, otherwise take a cooperative file lock.
-- **Multi-host, no direct API calls.** The biographer and dream pipelines invoke the LLM through your host's CLI subprocess (Claude Code or Gemini CLI), with `cache_control` annotations on cacheable layers. No Anthropic / Google API key required for memory operations.
-- **Three integration kinds:**
-  - `sync` — heartbeat-driven pulls (gmail, calendar, drive, youtube, lunch_money, weather, ebird, nhl, linear, whoop, ga, chrome, lrc, github, spotify, letterboxd)
-  - `gateway` — long-lived in-process (discord)
-  - `tool-only` — write surfaces invoked by the agent (github_write, spotify_write)
-- **Safety floor (alpha.9):** host-side hooks installed into `~/.claude/settings.json` (Bash policy, auto-recall on prompt, session-start registry, biographer Stop hook) plus an in-MCP PII guard on every memory write, daemon-boot tamper check, and a standalone pre-commit privacy hook for personal repos.
+```
+events WHERE dreamed_at IS NONE
+        │
+        ▼
+┌───────────────── Dream pipeline (nightly, 4 AM) ──────────────────┐
+│                                                                    │
+│  1. knowledge    →  durable facts                  →  knowledge    │
+│  2. patterns     →  recurring shapes               →  patterns     │
+│  3. reflection   →  cluster ≥3, cos ≥0.85, 30 day  →  rule_cand.   │
+│  4. profile      →  long-running user model        →  profile      │
+│  5. threads      →  ongoing arcs                   →  threads      │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+UPDATE events SET dreamed_at = time::now()   (re-runs are idempotent)
+```
 
-### A typical agent turn
+**Reflection — corrections become rules:**
 
-1. **SessionStart hook** registers the session in `runtime_sessions` (with `transcript_path` so other hooks can read prior turns). If a previous tamper check found drift, the warnings surface in stderr at session start.
-2. **You type a message.** UserPromptSubmit hook reads the last 8 KB of the transcript, extracts the previous assistant message, POSTs `{query, prior_assistant, k:6, recency_days:30}` to the daemon's `/internal/auto-recall`. The daemon runs the recall pipeline and returns a `<!-- relevant memory -->` block formatted under a 1500-token budget. The host injects it into the model's context. Fail-soft on every error.
-3. **The agent reads its instructions** in `~/.claude/CLAUDE.md` (and the regenerable `<!-- robin -->` block inside it), calls `recall` / `find_entity` / `gmail_search` / etc. via MCP over SSE.
-4. **If the agent runs Bash**, the PreToolUse hook checks the command against 7 deny rules (secrets-read, env-dump, destructive-rm, low-level-fs, git-expose-userdata, eval-injection, db-direct-access). Match → exit 2, command refused. Static — no daemon round-trip.
-5. **If the agent calls `remember` / `record_correction`**, the in-MCP PII guard checks the content against credential / secret / private-key / JWT / password-assignment patterns. Match → refused, logged to `outbound_refusals(direction='inbound')`, agent sees a structured error.
-6. **Stop hook** spawns a detached `robin biographer process-pending` subprocess. The biographer reads new events, makes one LLM call per event through `host.invokeLLM`, and UPSERTs entities + edges + episodes.
-7. **Heartbeat** ticks every 60s — runs due integration syncs, drains the biographer queue, marks stale sessions, advances quiet-window cursors.
-8. **Nightly at 4 AM** (`process.env.TZ`), Dream runs the 5-step pipeline and produces knowledge / patterns / profile / threads / rule candidates. Corrections that cluster (cosine ≥ 0.85, min 3, 30-day window) become `rule_candidates`.
-9. **You approve or reject candidates** with `robin rules approve <id>` (or via the `update_rule` MCP tool). Approved rules surface in CLAUDE.md/GEMINI.md on the next session.
+```
+record_correction(...)  ──┐
+record_correction(...)  ──┤   n correction events with embeddings
+record_correction(...)  ──┘
+                          │
+                          ▼   dream nightly, step 3
+              cluster: ≥3 events, cosine ≥ 0.85, within 30 days
+                          │
+                          ▼
+                    rule_candidates
+                          │
+                          │   robin rules approve <id>
+                          ▼
+                        rules
+                          │
+                          ▼
+         merged into the <!-- robin --> block of
+         ~/.claude/CLAUDE.md on next session start
+```
 
-## Installation
-
-### Prerequisites
-
-- **Node.js ≥ 22**
-- **macOS** (launchd) or **Linux** (systemd user services). Windows daemon supervision is not yet supported.
-- **Claude Code** and/or **Gemini CLI** on PATH for auto-registration.
-- Provider credentials for whatever integrations you want (Google OAuth, Spotify, Linear API key, etc.) — set later, not at install time.
-
-### Step 1 — Clone and install dependencies
+## Quickstart
 
 ```sh
 git clone git@github.com:kevinkiklee/robin-assistant.git robin-v2
 cd robin-v2
 npm install
+node bin/robin install            # interactive — picks embedder profile, runs migrations, installs hooks, starts daemon
 ```
 
-### Step 2 — Run `robin install`
+Then **restart your Claude Code / Gemini CLI session** so it picks up the new MCP server and hooks. Verify with `robin doctor`.
 
-One command sets up everything Robin needs.
-
-```sh
-node bin/robin install
-```
-
-Interactively prompts for an embedder profile:
-
-| Profile | Cost | Tradeoff |
-|---|---|---|
-| `mxbai-1024` *(default)* | Free, ~1.3 GB local model | In-process, no external dependency. Recommended unless you have a reason. |
-| `qwen3-4096` | Free, ~16 GB local model | Best retrieval quality. Requires Ollama running and `qwen3-embedding:8b` pulled. |
-| `gemini-3072` | Google AI Studio API | Cloud-hosted. Free tier trains on input — paid tier or AI Studio opt-out does not. Requires `GEMINI_API_KEY` and an `--i-understand` acknowledgement. |
-
-Non-interactive form:
-
-```sh
-node bin/robin install --profile mxbai-1024
-```
-
-What it does (in order):
-
-1. **Embedder profile validation** — checks Ollama is reachable / Gemini key is present where required.
-2. **Persists config** to `<package_root>/user-data/config.json`.
-3. **Runs migrations** (`runMigrations`) against `<package_root>/user-data/db/` — applies any pending `.surql` files, including the profile-specific `0008-embedder-<profile>.surql`.
-4. **Writes the tamper baseline** to `<package_root>/user-data/manifest.json` — content hashes of key handler files, permission bits on the secrets/db directories, supervisor file checksum. The daemon checks against this on boot.
-5. **Installs host-side hooks** into `~/.claude/settings.json` and `~/.gemini/settings.json` — Bash policy, UserPromptSubmit auto-recall, SessionStart registry, Stop hook. Hooks invoke `<package_root>/bin/robin-hook.sh`, a POSIX shim that finds `node` even under nvm/asdf where `/bin/sh` may not have it on PATH. Foreign hook entries in those files are preserved byte-for-byte; the manifest of robin-owned entries lives at `<package_root>/user-data/installed-hooks.json`.
-6. **Installs the daemon supervisor** — writes `~/Library/LaunchAgents/io.robin-assistant.mcp.plist` (macOS) or `~/.config/systemd/user/robin-mcp.service` (Linux) and `launchctl load` / `systemctl --user enable` so the daemon auto-restarts on crash.
-7. **Starts the daemon** and writes the chosen port to `<package_root>/user-data/.daemon.state`.
-8. **Registers with each host CLI** on PATH: `claude mcp add --transport sse robin http://127.0.0.1:<port>/sse` and the Gemini equivalent.
-9. **Merges the `<!-- robin -->` block** into `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md` so agents see the active rules + integration surface on next session start.
-
-**Restart your Claude Code / Gemini CLI session afterward** so it picks up the new MCP server and hooks.
-
-Useful flags:
-
-- `--no-supervise` skip launchd/systemd registration
-- `--no-register` skip `mcp add` calls
-- `--no-agents-md` skip CLAUDE.md/GEMINI.md merge
-- `--no-start` install everything but don't start the daemon yet
-- `--no-hooks` skip host-side hook installation
-- `--hooks-only` only run the hook-install step (use after manual settings.json edits)
-- `--force` re-run even if Robin is already configured
-
-### Step 3 — Add your secrets
-
-v2 keeps a single `<package_root>/user-data/secrets/.env` (mode 0600). If you're coming from v1:
-
-```sh
-robin secrets import --from ~/workspace/robin/robin-assistant/user-data/runtime/secrets/.env
-```
-
-Otherwise, set keys one by one (echo suppressed in interactive mode):
-
-```sh
-robin secrets set GOOGLE_OAUTH_CLIENT_ID
-robin secrets set GOOGLE_OAUTH_CLIENT_SECRET
-robin secrets set SPOTIFY_CLIENT_ID
-# …
-robin secrets list   # prints key names only, never values
-```
-
-Each integration declares the env keys it needs in its manifest (`secrets.env_keys`); the daemon reads them on demand via `requireSecret(key)` and never pollutes `process.env`.
-
-### Step 4 — Authenticate OAuth providers (as needed)
-
-Desktop (browser loopback flow):
-
-```sh
-robin auth google      # gmail, calendar, drive, youtube share GOOGLE_OAUTH_*
-robin auth spotify
-robin auth whoop
-```
-
-Headless / VM / SSH:
-
-```sh
-robin auth google --code            # prints the URL, prompts for the pasted code
-robin auth google --code=<value>    # one-shot
-```
-
-API-key integrations (lunch_money, linear, weather, ebird, nhl, ga, chrome, lrc, letterboxd, github, spotify-read) just need their env keys set. Manifests with optional `preflight()` mark themselves `unavailable` if the key/file is missing — the daemon stays up.
-
-### Step 5 — Discord bot (optional)
-
-```sh
-robin auth discord
-robin integrations discord register-commands
-```
-
-### Step 6 — Pre-commit privacy hook (optional, per-repo)
-
-For personal repos you want Robin to help keep clean of credentials. Run from inside the repo:
-
-```sh
-robin pre-commit install
-```
-
-Writes `.git/hooks/pre-commit` only if no hook is already present. The hook scans staged diffs for `.env`/`secrets/` paths and credential shapes; refuses commit on hit. Idempotent — re-running is a no-op. Remove with `robin pre-commit uninstall`.
-
-### Step 7 — Verify the install
-
-```sh
-robin doctor              # status overview (ROBIN_HOME, manifest, daemon, secrets)
-robin mcp status          # daemon port + tool count
-robin integrations list   # available / unavailable / synced status
-robin integrations status # last-run + cursor + backoff per integration
-robin sessions            # active host sessions
-robin journal             # recent capture
-robin hot                 # hot entities / topics
-robin rules pending       # rule candidates awaiting your approval
-```
-
-### Uninstall
-
-```sh
-robin uninstall
-```
-
-Stops the daemon, removes hook entries from host settings, unregisters from each host CLI, unloads the supervisor, removes the supervisor file. Your `<package_root>/user-data/` (DB, secrets, backups, telemetry) is left in place — remove manually if desired.
+Full walkthrough including secrets, OAuth, Discord, pre-commit hook, and uninstall: [`docs/install.md`](docs/install.md).
 
 ## Daily life
 
 You don't talk to Robin directly — your agent does. After install, just use Claude Code or Gemini CLI normally. Robin:
 
-- Injects relevant memory at the start of every turn (auto-recall on UserPromptSubmit)
-- Refuses dangerous Bash commands (secrets-read, destructive-rm, `surreal sql` against the local DB, etc.)
-- Refuses memory writes that contain credentials or secrets (via the in-MCP PII guard)
+- Injects relevant memory at the start of every turn (intuition on UserPromptSubmit)
+- Refuses dangerous Bash commands (discretion: secrets-read, destructive-rm, `surreal sql` against the local DB, etc.)
+- Refuses memory writes that contain credentials or secrets (inbound discretion)
 - Captures the turn's content into events, biographs them into entities + edges + episodes, and consolidates nightly into long-term knowledge
-- Surfaces rule candidates from your corrections after they cluster
+- Surfaces rule candidates from your corrections after reflection clusters them
 
-Outbound writes (`github_write`, `spotify_write`, discord replies) pass through `src/outbound/policy.js` (PII / secrets / verbatim-untrusted-quote guards) and a per-tool sliding-1h rate limiter (default 10/hr).
+Outbound writes (`github_write`, `spotify_write`, discord replies) pass through `src/outbound/policy.js` (outbound discretion: PII / secrets / verbatim-untrusted-quote guards) and a per-tool sliding-1h rate limiter (default 10/hr).
+
+## Documentation
+
+| Topic | Where |
+|---|---|
+| Architecture, big-picture diagram, agent-turn walkthrough, DB schema + example queries | [`docs/architecture.md`](docs/architecture.md) |
+| Per-faculty deep dive (intuition, biographer, heartbeat, discretion, dream, reflection, introspection) | [`docs/faculties.md`](docs/faculties.md) |
+| Full install + integration catalog + OAuth + Discord + pre-commit | [`docs/install.md`](docs/install.md) |
+| Common problems and fixes | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
+| Adding an MCP tool, integration, hook handler, migration | [`docs/development.md`](docs/development.md) |
+| What AI agents should know when they connect | [`AGENTS.md`](AGENTS.md) |
+| Per-phase design docs | [`docs/superpowers/specs/`](docs/superpowers/specs/) |
 
 ## Command reference
 
@@ -239,7 +144,7 @@ robin doctor [--rebaseline|--purge-stale-sessions|--lint-hooks]
 ### Memory
 
 ```
-robin remember [--force] <content>       # CLI memory write; --force bypasses inbound PII guard
+robin remember [--force] <content>       # CLI memory write; --force bypasses inbound discretion
 robin journal                            # recent capture
 robin hot                                # hot entities / topics
 robin rules pending                      # rule candidates awaiting approval
@@ -259,7 +164,7 @@ robin embedder switch <profile>          # switch + resumable re-embed
 ```
 robin sessions [--stale]                 # list active sessions, or purge stale
 robin refusals list                      # recent in/outbound refusal audit
-robin hooks <disable|enable> <phase>     # kill-switch a single hook (bash-policy, auto-recall, session-start, stop)
+robin hooks <disable|enable> <phase>     # kill-switch a single hook (discretion, intuition, session-start, stop)
 robin pre-commit <install|uninstall>     # per-repo privacy hook
 robin hook <phase>                       # internal — invoked by host hook entries; not for direct use
 ```
@@ -284,40 +189,7 @@ npm run lint              # biome check
 npm run format            # biome format --write
 ```
 
-### Layout
-
-```
-src/
-  schema/migrations/    .surql migrations (0001–0010)
-  db/                   SurrealDB connection + migration runner
-  embed/                pluggable embedder factory (mxbai / qwen3 / gemini)
-  capture/              recordEvent + errors
-  recall/               HNSW search + auto-recall endpoint
-  graph/                cascade.js, edges, episodes, Stage 1–3 resolvers
-  dream/                5-step nightly pipeline + prompts
-  rules/                heuristic correction loop
-  memory/               knowledge / patterns / profile / threads readers
-  hosts/                Claude Code + Gemini CLI subprocess adapters
-  daemon/               server, scheduler, biographer queue, sessions,
-                        tamper-check, idle embedder, locks, port file
-  mcp/                  MCP tool definitions
-  hooks/                bash-patterns, pii-patterns, inbound-guard,
-                        cli dispatcher, disabled.txt reader,
-                        handlers/ (bash-policy, auto-recall,
-                                   session-start, stop-hook)
-  integrations/<name>/  manifest + sync + tool factories + auth helpers
-  outbound/             policy + rate limiter + patterns
-  secrets/              .env layer + atomic writes
-  install/              launchd plist, systemd unit, AGENTS.md generator,
-                        hook-shim, hooks-settings, manifest, pre-commit
-  cli/commands/         CLI surface
-  runtime/              ROBIN_HOME bootstrap, paths, runtime config
-
-bin/                    robin (the executable) + robin-hook.sh (PATH shim)
-scripts/                dev-recall.js, gen-fixtures.js, bench-embedder.js
-tests/                  unit/ · integration/ · fixtures/
-docs/superpowers/specs/ per-phase design docs
-```
+Full development guide — adding tools, integrations, hooks, migrations: [`docs/development.md`](docs/development.md).
 
 ## License
 

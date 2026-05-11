@@ -1,7 +1,7 @@
 // src/cli/commands/predictions-list.js
 import { close, connect } from '../../db/client.js';
 import { listAllPredictions as defaultList } from '../../jobs/predictions.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 function fmt(d) { return d ? new Date(d).toISOString() : '—'; }
 
@@ -15,8 +15,7 @@ export async function predictionsList(argv = [], deps = {}) {
   }
   const list = deps.listAllPredictions ?? (async () => {
     await ensureHome();
-    const p = paths();
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try { return await defaultList(db, { kind, resolved }); } finally { await close(db); }
   });
   const rows = await list({ kind, resolved });

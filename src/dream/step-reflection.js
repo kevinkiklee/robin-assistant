@@ -49,7 +49,7 @@ function clusterEvents(events, threshold) {
   return clusters;
 }
 
-export async function dreamStepCorrections(
+export async function dreamStepReflection(
   db,
   host,
   {

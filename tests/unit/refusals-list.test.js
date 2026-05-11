@@ -28,7 +28,7 @@ async function fresh() {
 
 async function seed(db, rows) {
   for (const r of rows) {
-    await db.query(surql`CREATE outbound_refusals CONTENT ${r}`).collect();
+    await db.query(surql`CREATE refusals CONTENT ${r}`).collect();
     // Ensure ordering by created_at is deterministic across rows.
     await new Promise((res) => setTimeout(res, 5));
   }

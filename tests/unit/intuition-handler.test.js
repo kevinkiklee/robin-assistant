@@ -12,7 +12,7 @@ const __robinTestHome = join(
 mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
-const { autoRecallHandler } = await import('../../src/hooks/handlers/auto-recall.js');
+const { intuitionHandler } = await import('../../src/hooks/handlers/intuition.js');
 
 function startStubServer(handler) {
   return new Promise((resolve) => {
@@ -67,7 +67,7 @@ function clearProjectDir() {
   delete process.env.CLAUDE_PROJECT_DIR;
 }
 
-test('handler POSTs payload to /internal/auto-recall and writes block to stdout', async () => {
+test('handler POSTs payload to /internal/intuition and writes block to stdout', async () => {
   clearProjectDir();
   let received = null;
   const { server, port } = await startStubServer(({ req, res, body }) => {
@@ -87,14 +87,14 @@ test('handler POSTs payload to /internal/auto-recall and writes block to stdout'
 
   const out = [];
   const errs = [];
-  await autoRecallHandler({
+  await intuitionHandler({
     stdin: { prompt: 'hello', transcript_path: '' },
     stdout: (s) => out.push(s),
     stderr: (s) => errs.push(s),
   });
 
   assert.ok(received, 'stub server received a request');
-  assert.equal(received.url, '/internal/auto-recall');
+  assert.equal(received.url, '/internal/intuition');
   assert.equal(received.method, 'POST');
   assert.equal(received.body.query, 'hello');
   assert.equal(received.body.prior_assistant, '');
@@ -121,7 +121,7 @@ test('handler is fail-soft when daemon returns 500 — no stdout', async () => {
   const out = [];
   const errs = [];
   await assert.doesNotReject(() =>
-    autoRecallHandler({
+    intuitionHandler({
       stdin: { prompt: 'hello', transcript_path: '' },
       stdout: (s) => out.push(s),
       stderr: (s) => errs.push(s),
@@ -140,7 +140,7 @@ test('handler exits silently when no .daemon.state is present', async () => {
   const out = [];
   const errs = [];
   await assert.doesNotReject(() =>
-    autoRecallHandler({
+    intuitionHandler({
       stdin: { prompt: 'hello', transcript_path: '' },
       stdout: (s) => out.push(s),
       stderr: (s) => errs.push(s),
@@ -170,7 +170,7 @@ test('handler suppresses injection when v1 hooks are active in CLAUDE_PROJECT_DI
 
   const out = [];
   const errs = [];
-  await autoRecallHandler({
+  await intuitionHandler({
     stdin: { prompt: 'hello', transcript_path: '' },
     stdout: (s) => out.push(s),
     stderr: (s) => errs.push(s),
@@ -179,7 +179,7 @@ test('handler suppresses injection when v1 hooks are active in CLAUDE_PROJECT_DI
   assert.equal(received, null, 'daemon should not have been contacted during cutover');
   assert.deepEqual(out, []);
   assert.equal(errs.length, 1);
-  assert.match(errs[0], /v1 hooks active.*v2 auto-recall yielding/);
+  assert.match(errs[0], /v1 hooks active.*v2 intuition yielding/);
 
   server.close();
   clearDaemonStateFile();
@@ -216,7 +216,7 @@ test('handler reads prior assistant message from JSONL transcript tail', async (
   });
   writeDaemonStateFile(port);
 
-  await autoRecallHandler({
+  await intuitionHandler({
     stdin: { prompt: 'tell me more', transcript_path: transcriptPath },
     stdout: () => {},
     stderr: () => {},
@@ -240,7 +240,7 @@ test('handler writes nothing to stdout when daemon returns empty block', async (
   writeDaemonStateFile(port);
 
   const out = [];
-  await autoRecallHandler({
+  await intuitionHandler({
     stdin: { prompt: 'x', transcript_path: '' },
     stdout: (s) => out.push(s),
     stderr: () => {},

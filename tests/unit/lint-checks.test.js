@@ -153,6 +153,10 @@ test('orphan_entity — entity reachable via mentions edge is NOT flagged', asyn
   await db.query(`RELATE ${evtId}->mentions->${entId}`).collect();
   const issues = await runLintChecks(db);
   const orphans = issues.filter((i) => i.kind === 'orphan_entity' && i.ref === String(entId));
-  assert.equal(orphans.length, 0, 'Linked entity has an inbound mentions edge; should not be orphan');
+  assert.equal(
+    orphans.length,
+    0,
+    'Linked entity has an inbound mentions edge; should not be orphan',
+  );
   await close(db);
 });

@@ -1,7 +1,7 @@
 // src/cli/commands/actions-list.js
 import { close, connect } from '../../db/client.js';
 import { listActionTrust as defaultList } from '../../jobs/action-trust.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 function fmt(d) {
   return d ? new Date(d).toISOString() : '—';
@@ -13,8 +13,7 @@ export async function actionsList(_argv = [], deps = {}) {
     deps.listActionTrust ??
     (async () => {
       await ensureHome();
-      const p = paths();
-      const db = await connect({ engine: `rocksdb://${p.db}` });
+      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
       try {
         return await defaultList(db);
       } finally {

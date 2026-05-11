@@ -455,19 +455,19 @@ export async function install(argv = [], deps = {}) {
 
   // 9. Tamper baseline. Written after migrations + config so the manifest
   // captures the just-installed package version + supervisor file path.
-  // Tamper-check on daemon boot compares against this baseline.
+  // Introspection on daemon boot compares against this baseline.
   try {
     const manifest = await computeManifest();
     await writeManifest(manifest);
-    console.log(`tamper baseline written (${manifest.files.length} files)`);
+    console.log(`introspection baseline written (${manifest.files.length} files)`);
   } catch (e) {
-    console.warn(`tamper baseline failed (non-fatal): ${e.message}`);
+    console.warn(`introspection baseline failed (non-fatal): ${e.message}`);
   }
 
   // 10. Hook install — wire PreToolUse/UserPromptSubmit/SessionStart/Stop
   // entries into ~/.claude/settings.json + ~/.gemini/settings.json. Skipped
-  // by --no-hooks. Failure here aborts the install (exit 1), since v2's
-  // safety floor depends on these hooks firing.
+  // by --no-hooks. Failure here aborts the install (exit 1), since the
+  // discretion / intuition / introspection faculties depend on these hooks.
   await installHooksStep({ skipHooks });
 
   // 11. Daemon supervision wire-up.

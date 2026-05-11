@@ -5,6 +5,8 @@ USAGE
   robin migrate           run pending schema migrations
   robin biographer-catchup [--retry-failed]
                           biograph all unprocessed events (or retry failures)
+  robin db browse         open the local DB browser in your default browser
+                          (requires the daemon to be running)
   robin --version | -v
   robin --help    | -h
 

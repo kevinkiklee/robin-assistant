@@ -11,7 +11,7 @@ import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
   __robinTmpdir(),
-  `robin-tamper-${process.pid}-${Math.random().toString(36).slice(2)}`,
+  `robin-introspection-${process.pid}-${Math.random().toString(36).slice(2)}`,
 );
 __robinMkdirSync(__robinTestHome, { recursive: true });
 __robinMkdirSync(__robinJoin(__robinTestHome, 'db'), { recursive: true });
@@ -25,10 +25,10 @@ async function fresh() {
   return db;
 }
 
-test('runTamperCheck without baseline returns no_baseline finding, baselined=false', async () => {
+test('runIntrospection without baseline returns no_baseline finding, baselined=false', async () => {
   const db = await fresh();
-  const { runTamperCheck } = await import(`../../src/daemon/tamper-check.js?cb=${Date.now()}`);
-  const r = await runTamperCheck(db, { includeSupervisor: false });
+  const { runIntrospection } = await import(`../../src/daemon/introspection.js?cb=${Date.now()}`);
+  const r = await runIntrospection(db, { includeSupervisor: false });
   assert.equal(r.ok, true);
   assert.equal(r.baselined, false);
   assert.equal(r.findings.length, 1);
@@ -37,26 +37,26 @@ test('runTamperCheck without baseline returns no_baseline finding, baselined=fal
   await close(db);
 });
 
-test('runTamperCheck with fresh baseline returns ok=true, no findings, baselined=true', async () => {
+test('runIntrospection with fresh baseline returns ok=true, no findings, baselined=true', async () => {
   const db = await fresh();
   const { computeManifest, writeManifest } = await import(
     `../../src/install/manifest.js?cb=${Date.now()}`
   );
-  const { runTamperCheck, readLastTamperCheck } = await import(
-    `../../src/daemon/tamper-check.js?cb=${Date.now()}`
+  const { runIntrospection, readLastIntrospection } = await import(
+    `../../src/daemon/introspection.js?cb=${Date.now()}`
   );
 
   const baseline = await computeManifest({ includeSupervisor: false });
   await writeManifest(baseline);
 
-  const r = await runTamperCheck(db, { includeSupervisor: false });
+  const r = await runIntrospection(db, { includeSupervisor: false });
   assert.equal(r.ok, true);
   assert.equal(r.baselined, true);
   assert.deepEqual(r.findings, []);
 
-  // Persisted runtime_tamper_state row.
-  const last = await readLastTamperCheck(db);
-  assert.ok(last, 'tamper-state row written');
+  // Persisted runtime_introspection_state row.
+  const last = await readLastIntrospection(db);
+  assert.ok(last, 'introspection state row written');
   assert.equal(last.ok, true);
   assert.deepEqual(last.findings, []);
   assert.ok(last.checked_at, 'checked_at present');
@@ -64,12 +64,12 @@ test('runTamperCheck with fresh baseline returns ok=true, no findings, baselined
   await close(db);
 });
 
-test('runTamperCheck reports hash_drift when baseline file hash mutated', async () => {
+test('runIntrospection reports hash_drift when baseline file hash mutated', async () => {
   const db = await fresh();
   const { computeManifest, writeManifest } = await import(
     `../../src/install/manifest.js?cb=${Date.now()}`
   );
-  const { runTamperCheck } = await import(`../../src/daemon/tamper-check.js?cb=${Date.now()}`);
+  const { runIntrospection } = await import(`../../src/daemon/introspection.js?cb=${Date.now()}`);
 
   const baseline = await computeManifest({ includeSupervisor: false });
   // Mutate the bin/robin entry's hash so live recompute disagrees.
@@ -80,7 +80,7 @@ test('runTamperCheck reports hash_drift when baseline file hash mutated', async 
   target.sha256 = expectedHash;
   await writeManifest(tampered);
 
-  const r = await runTamperCheck(db, { includeSupervisor: false });
+  const r = await runIntrospection(db, { includeSupervisor: false });
   assert.equal(r.ok, false);
   assert.equal(r.baselined, true);
   const drift = r.findings.find((f) => f.kind === 'hash_drift' && f.path === 'bin/robin');
@@ -92,30 +92,32 @@ test('runTamperCheck reports hash_drift when baseline file hash mutated', async 
   await close(db);
 });
 
-test('readLastTamperCheck returns persisted state after a run', async () => {
+test('readLastIntrospection returns persisted state after a run', async () => {
   const db = await fresh();
   const { computeManifest, writeManifest } = await import(
     `../../src/install/manifest.js?cb=${Date.now()}`
   );
-  const { runTamperCheck, readLastTamperCheck } = await import(
-    `../../src/daemon/tamper-check.js?cb=${Date.now()}`
+  const { runIntrospection, readLastIntrospection } = await import(
+    `../../src/daemon/introspection.js?cb=${Date.now()}`
   );
 
   const baseline = await computeManifest({ includeSupervisor: false });
   await writeManifest(baseline);
-  await runTamperCheck(db, { includeSupervisor: false });
+  await runIntrospection(db, { includeSupervisor: false });
 
-  const last = await readLastTamperCheck(db);
+  const last = await readLastIntrospection(db);
   assert.ok(last);
   assert.equal(last.ok, true);
   assert.ok(last.checked_at, 'has checked_at');
   await close(db);
 });
 
-test('readLastTamperCheck returns null when no row exists', async () => {
+test('readLastIntrospection returns null when no row exists', async () => {
   const db = await fresh();
-  const { readLastTamperCheck } = await import(`../../src/daemon/tamper-check.js?cb=${Date.now()}`);
-  const last = await readLastTamperCheck(db);
+  const { readLastIntrospection } = await import(
+    `../../src/daemon/introspection.js?cb=${Date.now()}`
+  );
+  const last = await readLastIntrospection(db);
   assert.equal(last, null);
   await close(db);
 });

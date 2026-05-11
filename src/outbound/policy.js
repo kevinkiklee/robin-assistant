@@ -23,9 +23,7 @@ function containsVerbatim(replyText, sourceText, minWords = MIN_QUOTE_WORDS) {
 
 async function logRefusal(db, destination, reason, payload) {
   const payload_hash = createHash('sha256').update(payload).digest('hex').slice(0, 16);
-  await db
-    .query(surql`CREATE outbound_refusals CONTENT ${{ destination, reason, payload_hash }}`)
-    .collect();
+  await db.query(surql`CREATE refusals CONTENT ${{ destination, reason, payload_hash }}`).collect();
 }
 
 export async function checkOutbound(db, { destination, text }) {

@@ -7,9 +7,9 @@
 //                            ~/.claude/settings.json + ~/.gemini/settings.json
 //
 // With NO flags: print a one-fact-per-line status overview that includes
-// tamper baseline, daemon, secrets, config, native bindings (better-sqlite3),
-// port reachability, supervisor (launchctl/systemctl), recent biographer.log
-// errors, and integration freshness rollup.
+// introspection baseline, daemon, secrets, config, native bindings
+// (better-sqlite3), port reachability, supervisor (launchctl/systemctl),
+// recent biographer.log errors, and integration freshness rollup.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -72,7 +72,7 @@ async function doRebaseline(out) {
   await ensureHome();
   const m = await computeManifest();
   await writeManifest(m);
-  out(`tamper baseline rewritten (${m.files.length} files)`);
+  out(`introspection baseline rewritten (${m.files.length} files)`);
 }
 
 async function doPurgeStaleSessions(out, err, deps = {}) {

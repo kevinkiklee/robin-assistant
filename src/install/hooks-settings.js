@@ -17,25 +17,24 @@ import {
 } from '../runtime/data-store.js';
 
 /**
- * Per spec §10:
  * - Claude Code: PreToolUse (Bash), UserPromptSubmit, SessionStart, Stop.
  * - Gemini CLI: PreToolUse (Bash), SessionStart, Stop. (No UserPromptSubmit.)
  *
  * Hook-phase shapes (no matcher unless noted):
- *   PreToolUse Bash → matcher='Bash', subcommand='bash-policy'
- *   UserPromptSubmit → no matcher,    subcommand='auto-recall'
- *   SessionStart     → no matcher,    subcommand='session-start'
- *   Stop             → no matcher,    subcommand='stop'
+ *   PreToolUse Bash  → matcher='Bash', subcommand='discretion'
+ *   UserPromptSubmit → no matcher,     subcommand='intuition'
+ *   SessionStart     → no matcher,     subcommand='session-start'
+ *   Stop             → no matcher,     subcommand='stop'
  */
 const CLAUDE_PHASES = [
-  { phase: 'PreToolUse', matcher: 'Bash', subcommand: 'bash-policy' },
-  { phase: 'UserPromptSubmit', matcher: null, subcommand: 'auto-recall' },
+  { phase: 'PreToolUse', matcher: 'Bash', subcommand: 'discretion' },
+  { phase: 'UserPromptSubmit', matcher: null, subcommand: 'intuition' },
   { phase: 'SessionStart', matcher: null, subcommand: 'session-start' },
   { phase: 'Stop', matcher: null, subcommand: 'stop' },
 ];
 
 const GEMINI_PHASES = [
-  { phase: 'PreToolUse', matcher: 'Bash', subcommand: 'bash-policy' },
+  { phase: 'PreToolUse', matcher: 'Bash', subcommand: 'discretion' },
   { phase: 'SessionStart', matcher: null, subcommand: 'session-start' },
   { phase: 'Stop', matcher: null, subcommand: 'stop' },
 ];

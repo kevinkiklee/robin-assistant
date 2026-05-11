@@ -8,7 +8,7 @@ import { recordEvent } from '../../src/capture/record-event.js';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { autoRecallEndpoint } from '../../src/recall/auto-recall.js';
+import { intuitionEndpoint } from '../../src/recall/intuition.js';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -26,14 +26,14 @@ async function fresh() {
   return db;
 }
 
-test('autoRecallEndpoint returns formatted block with markers and writes telemetry', async () => {
+test('intuitionEndpoint returns formatted block with markers and writes telemetry', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'discussed sourdough hydration ratio (62%)' });
   await recordEvent(db, e, { source: 'cli', content: 'planted tomatoes with Karen this weekend' });
   await recordEvent(db, e, { source: 'cli', content: 'wrote up the kettlebell program for May' });
 
-  const result = await autoRecallEndpoint({
+  const result = await intuitionEndpoint({
     db,
     embedder: e,
     detector: null,
@@ -54,7 +54,7 @@ test('autoRecallEndpoint returns formatted block with markers and writes telemet
   // Each event line should look like `[event YYYY-MM-DD] ...`
   assert.match(result.block, /\[event \d{4}-\d{2}-\d{2}\] /);
 
-  const [rows] = await db.query(surql`SELECT * FROM runtime_auto_recall_telemetry`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM runtime_intuition_telemetry`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].query_chars, 'sourdough'.length);
   assert.equal(rows[0].hits, result.hits);
@@ -64,7 +64,7 @@ test('autoRecallEndpoint returns formatted block with markers and writes telemet
   await close(db);
 });
 
-test('autoRecallEndpoint tags episode_summary hits as [episode YYYY-MM-DD]', async () => {
+test('intuitionEndpoint tags episode_summary hits as [episode YYYY-MM-DD]', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, {
@@ -73,7 +73,7 @@ test('autoRecallEndpoint tags episode_summary hits as [episode YYYY-MM-DD]', asy
     meta: { kind: 'episode_summary' },
   });
 
-  const result = await autoRecallEndpoint({
+  const result = await intuitionEndpoint({
     db,
     embedder: e,
     detector: null,
@@ -90,7 +90,7 @@ test('autoRecallEndpoint tags episode_summary hits as [episode YYYY-MM-DD]', asy
   await close(db);
 });
 
-test('autoRecallEndpoint truncates when token budget is too small', async () => {
+test('intuitionEndpoint truncates when token budget is too small', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   // Insert several events with long content. Each line will be ~120 chars
@@ -102,7 +102,7 @@ test('autoRecallEndpoint truncates when token budget is too small', async () => 
     });
   }
 
-  const tight = await autoRecallEndpoint({
+  const tight = await intuitionEndpoint({
     db,
     embedder: e,
     detector: null,
@@ -115,7 +115,7 @@ test('autoRecallEndpoint truncates when token budget is too small', async () => 
 
   assert.equal(tight.truncated, true);
 
-  const loose = await autoRecallEndpoint({
+  const loose = await intuitionEndpoint({
     db,
     embedder: e,
     detector: null,
@@ -132,11 +132,11 @@ test('autoRecallEndpoint truncates when token budget is too small', async () => 
   await close(db);
 });
 
-test('autoRecallEndpoint returns empty block when there are no events', async () => {
+test('intuitionEndpoint returns empty block when there are no events', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
 
-  const result = await autoRecallEndpoint({
+  const result = await intuitionEndpoint({
     db,
     embedder: e,
     detector: null,
@@ -153,20 +153,20 @@ test('autoRecallEndpoint returns empty block when there are no events', async ()
   assert.equal(result.truncated, false);
 
   // Telemetry still recorded (with hits=0).
-  const [rows] = await db.query(surql`SELECT * FROM runtime_auto_recall_telemetry`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM runtime_intuition_telemetry`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].hits, 0);
 
   await close(db);
 });
 
-test('autoRecallEndpoint includes prior assistant tail in the recall query', async () => {
+test('intuitionEndpoint includes prior assistant tail in the recall query', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'kettlebell program for May' });
 
   // Empty current query, but the prior assistant turn is informative.
-  const result = await autoRecallEndpoint({
+  const result = await intuitionEndpoint({
     db,
     embedder: e,
     detector: null,
@@ -180,7 +180,7 @@ test('autoRecallEndpoint includes prior assistant tail in the recall query', asy
   // Recall ran (hits may be 0 with the stub embedder, but telemetry must
   // have a row and the call returns cleanly).
   assert.ok(typeof result.latency_ms === 'number');
-  const [rows] = await db.query(surql`SELECT * FROM runtime_auto_recall_telemetry`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM runtime_intuition_telemetry`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].query_chars, 0);
 

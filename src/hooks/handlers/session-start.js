@@ -4,16 +4,9 @@
 //   stdin JSON has shape { session_id, transcript_path, ... }
 //
 // We POST to the daemon at /internal/session/register so the registry +
-// any cached tamper-state warnings can be returned. The daemon endpoint
-// itself is added by another agent in this wave; until it lands the
-// handler exits 0 silently because every failure path here is fail-soft.
-//
-// Responsibilities:
-//   - Detect host from environment (Claude Code sets CLAUDECODE=1, Gemini
-//     CLI surfaces GEMINI_CLI; otherwise we report 'unknown').
-//   - POST to the daemon with a 1s hard timeout.
-//   - On success, surface any session_count > 1 message and tamper warnings.
-//   - On any failure (no daemon state, daemon down, timeout, non-2xx), exit 0.
+// any cached introspection-state warnings can be returned. Every failure
+// path here is fail-soft so the host's session starts even if Robin is
+// unavailable.
 
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
@@ -107,11 +100,13 @@ export async function sessionStartHandler({ stdin, stderr, readState, fetchFn } 
   if (count > 1) {
     writeErr(`Robin: session ${count} of ${count}`);
   }
-  const findings = Array.isArray(payload.tamper_findings) ? payload.tamper_findings : [];
+  const findings = Array.isArray(payload.introspection_findings)
+    ? payload.introspection_findings
+    : [];
   for (const f of findings) {
     if (!f || typeof f !== 'object') continue;
     const kind = typeof f.kind === 'string' ? f.kind : 'unknown';
     const path = typeof f.path === 'string' ? f.path : '?';
-    writeErr(`Robin: tamper warning — ${kind}: ${path}`);
+    writeErr(`Robin: introspection warning — ${kind}: ${path}`);
   }
 }

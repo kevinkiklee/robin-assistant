@@ -43,7 +43,7 @@ test('recordEvent without guard ignores PII (back-compat)', async () => {
   });
   assert.ok(r.id);
   assert.equal(await rowCount(db, 'events'), 1);
-  assert.equal(await rowCount(db, 'outbound_refusals'), 0);
+  assert.equal(await rowCount(db, 'refusals'), 0);
   await close(db);
 });
 
@@ -66,9 +66,9 @@ test('recordEvent with guard refuses an OpenAI key and writes inbound refusal on
     },
   );
   assert.equal(await rowCount(db, 'events'), 0);
-  assert.equal(await rowCount(db, 'outbound_refusals'), 1);
+  assert.equal(await rowCount(db, 'refusals'), 1);
   const [rows] = await db
-    .query(surql`SELECT direction, reason, destination FROM outbound_refusals LIMIT 1`)
+    .query(surql`SELECT direction, reason, destination FROM refusals LIMIT 1`)
     .collect();
   assert.equal(rows[0].direction, 'inbound');
   assert.equal(rows[0].destination, 'memory');
@@ -86,6 +86,6 @@ test('recordEvent with guard passes clean content', async () => {
   });
   assert.ok(r.id);
   assert.equal(await rowCount(db, 'events'), 1);
-  assert.equal(await rowCount(db, 'outbound_refusals'), 0);
+  assert.equal(await rowCount(db, 'refusals'), 0);
   await close(db);
 });

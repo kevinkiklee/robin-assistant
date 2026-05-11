@@ -27,9 +27,7 @@ async function fresh() {
 }
 
 async function refusalCount(db) {
-  const [rows] = await db
-    .query(surql`SELECT count() AS n FROM outbound_refusals GROUP ALL`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT count() AS n FROM refusals GROUP ALL`).collect();
   return rows && rows.length > 0 ? rows[0].n : 0;
 }
 
@@ -48,9 +46,7 @@ test('guardInboundContent blocks an OpenAI key and records inbound refusal', asy
   assert.equal(r.reason, 'secret:openai_key');
   assert.equal(await refusalCount(db), 1);
   const [rows] = await db
-    .query(
-      surql`SELECT direction, destination, reason, payload_hash FROM outbound_refusals LIMIT 1`,
-    )
+    .query(surql`SELECT direction, destination, reason, payload_hash FROM refusals LIMIT 1`)
     .collect();
   assert.equal(rows[0].direction, 'inbound');
   assert.equal(rows[0].destination, 'memory');

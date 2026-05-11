@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { isHookDisabled } from './disabled.js';
 
 export const DISPATCH = {
-  'bash-policy': { module: './handlers/bash-policy.js', exportName: 'bashPolicyHandler' },
-  'auto-recall': { module: './handlers/auto-recall.js', exportName: 'autoRecallHandler' },
+  discretion: { module: './handlers/discretion.js', exportName: 'discretionHandler' },
+  intuition: { module: './handlers/intuition.js', exportName: 'intuitionHandler' },
   'session-start': { module: './handlers/session-start.js', exportName: 'sessionStartHandler' },
   stop: { module: './handlers/stop-hook.js', exportName: 'stopHookHandler' },
 };

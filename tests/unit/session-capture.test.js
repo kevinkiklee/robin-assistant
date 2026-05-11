@@ -206,7 +206,7 @@ test('PII guard refuses inbound content with credential shape', async () => {
     assert.equal(result.captured, false);
     assert.equal(result.skippedReason, 'pii_refused');
     const [refusals] = await db
-      .query(surql`SELECT * FROM outbound_refusals WHERE direction = 'inbound'`)
+      .query(surql`SELECT * FROM refusals WHERE direction = 'inbound'`)
       .collect();
     assert.ok(refusals.length >= 1);
   } finally {

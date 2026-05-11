@@ -1,13 +1,6 @@
-// PreToolUse Bash policy handler. Static pattern match — no daemon round
-// trip, no network, no DB. Intended to be invoked by `robin hook
-// PreToolUse` from Claude Code / Gemini settings.
-//
-// Hook contract (Claude Code, current shape):
-//   stdin JSON has shape { tool_name, tool_input: { command, ... }, ... }
-//
-// We tolerate field-name drift across Claude Code versions by trying
-// multiple accessor paths in priority order. If no command is found we
-// exit 0 (fail-soft) so the host's tool call proceeds — bash policy is
+// PreToolUse Bash discretion handler. Static pattern match — no daemon
+// round trip, no network, no DB. If no command is found we exit 0
+// (fail-soft) so the host's tool call proceeds — bash discretion is
 // defense-in-depth, not the only line.
 
 import { checkBashCommand } from '../bash-patterns.js';
@@ -26,7 +19,7 @@ function extractCommand(stdin) {
 }
 
 /**
- * Run the Bash policy check.
+ * Run the Bash discretion check.
  *
  * @param {object} args
  * @param {object} [args.stdin]   Parsed hook payload (JSON object).
@@ -35,7 +28,7 @@ function extractCommand(stdin) {
  *   process.stderr. Each call writes a single line; the handler appends
  *   the trailing newline itself.
  */
-export async function bashPolicyHandler({ stdin, exit, stderr } = {}) {
+export async function discretionHandler({ stdin, exit, stderr } = {}) {
   const doExit = typeof exit === 'function' ? exit : (code) => process.exit(code);
   const writeErr = typeof stderr === 'function' ? stderr : (s) => process.stderr.write(`${s}\n`);
 

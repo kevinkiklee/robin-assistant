@@ -7,8 +7,8 @@ import { ensureHome, paths } from '../../runtime/data-store.js';
 
 const HEADER = 'created_at | direction | destination | reason | hash';
 
-// `robin refusals list` — recent rows from outbound_refusals (both inbound
-// PII-guard refusals and outbound write refusals). Plain text columns.
+// `robin refusals list` — recent rows from the refusals table (both inbound
+// discretion refusals and outbound write refusals). Plain text columns.
 export async function refusalsList(_argv, { out = console.log, err = console.error } = {}) {
   await ensureHome();
   const daemonState = await readDaemonState(paths.data.daemonState());
@@ -35,7 +35,7 @@ export async function printRefusals(db, out = console.log) {
   const [rows] = await db
     .query(
       surql`SELECT created_at, direction, destination, reason, payload_hash
-              FROM outbound_refusals ORDER BY created_at DESC LIMIT 20`,
+              FROM refusals ORDER BY created_at DESC LIMIT 20`,
     )
     .collect();
   if (!rows || rows.length === 0) {

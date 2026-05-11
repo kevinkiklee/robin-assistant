@@ -1,13 +1,5 @@
-// Auto-recall endpoint (Phase 4a §5.D).
-//
-// Wires the existing `recall(db, embedder, query, opts)` to the daemon's
-// /internal/auto-recall HTTP endpoint. Builds a prompt-shaped query
-// (current user message + tail of prior assistant turn), formats hits as
-// a `<!-- relevant memory -->` block, enforces a token budget, and writes
-// per-fire telemetry to `runtime_auto_recall_telemetry`.
-//
-// The detector arg is currently unused — kept in the signature for the
-// future repeat-query suppression knob (Phase 4b).
+// The detector arg is currently unused — reserved for future
+// repeat-query suppression.
 
 import { surql } from 'surrealdb';
 import { recall } from './index.js';
@@ -50,8 +42,7 @@ const CLOSE = '<!-- /relevant memory -->';
 const FRAME_TOKENS = estimateTokens(`${OPEN}\n${CLOSE}\n`);
 
 /**
- * Build the auto-recall response: vector-search recent memory and format
- * the hits into a single injection block.
+ * Vector-search recent memory and format hits into an injection block.
  *
  * @param {object} args
  * @param {import('surrealdb').Surreal} args.db
@@ -64,7 +55,7 @@ const FRAME_TOKENS = estimateTokens(`${OPEN}\n${CLOSE}\n`);
  * @param {number} [args.tokenBudget]     Total token cap for the block (default 1500).
  * @returns {Promise<{block:string, hits:number, tokens:number, latency_ms:number, truncated:boolean}>}
  */
-export async function autoRecallEndpoint({
+export async function intuitionEndpoint({
   db,
   embedder,
   // detector — intentionally unused in 4a; see header comment.
@@ -131,7 +122,7 @@ export async function autoRecallEndpoint({
   try {
     await db
       .query(
-        surql`CREATE runtime_auto_recall_telemetry CONTENT ${{
+        surql`CREATE runtime_intuition_telemetry CONTENT ${{
           query_chars: safeQuery.length,
           hits: hits.length,
           tokens_injected: tokens,

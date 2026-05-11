@@ -1,4 +1,4 @@
--- Phase 2b: self-improvement feedback table
+-- Phase 2b: reflection feedback table (recall events)
 
 DEFINE TABLE recall_events SCHEMAFULL TYPE NORMAL;
 DEFINE FIELD query_text     ON recall_events TYPE string;

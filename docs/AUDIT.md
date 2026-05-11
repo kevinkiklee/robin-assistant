@@ -12,7 +12,7 @@ robin migrate-from-v1 --show-failures --phase capture
 
 ## DB query primer
 
-Open a SurrealQL session against the daemon (or use a future db-browser). Common audits:
+Open a SurrealQL session against the daemon or launch the local DB browser with `robin db browse` (requires `robin mcp start` first). The browser exposes a sidebar of saved queries, a schema explorer, and dashboards at `http://127.0.0.1:<daemon-port>/db/`. Common audits:
 
 ```surql
 -- Everything that came from v1, by table

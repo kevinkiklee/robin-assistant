@@ -40,9 +40,7 @@ test('checkOutbound blocks credit-card-shaped string', async () => {
   const r = await checkOutbound(db, { destination: 'discord', text: 'card 4111 1111 1111 1111' });
   assert.equal(r.ok, false);
   assert.match(r.reason, /pii/i);
-  const [rows] = await db
-    .query(surql`SELECT count() AS n FROM outbound_refusals GROUP ALL`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT count() AS n FROM refusals GROUP ALL`).collect();
   assert.equal(rows[0].n, 1);
   await close(db);
 });

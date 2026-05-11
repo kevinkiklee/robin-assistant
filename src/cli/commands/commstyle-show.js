@@ -1,7 +1,7 @@
 // src/cli/commands/commstyle-show.js
 import { close, connect } from '../../db/client.js';
 import { getCommStyle as defaultGet } from '../../jobs/comm-style.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function commstyleShow(_argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));
@@ -9,8 +9,7 @@ export async function commstyleShow(_argv = [], deps = {}) {
     deps.getCommStyle ??
     (async () => {
       await ensureHome();
-      const p = paths();
-      const db = await connect({ engine: `rocksdb://${p.db}` });
+      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
       try {
         return await defaultGet(db);
       } finally {

@@ -1,5 +1,80 @@
 # Changelog
 
+## [6.0.0-alpha.11] — 2026-05-11
+
+Phase-4 progress bundle: 4d (job runner) + 4c (knowledge ops) + 4b.1 (action policy) + 4b.2 (comm-style) + 4b.3 (predictions + calibration). Five sub-phases shipped together; combined +130 tests; full suite at 1067/0.
+
+### Phase 4d — Daemon-internal job runner
+
+- **Migration `0011-jobs.surql`** — `runtime_jobs` table tracks per-job state (schedule, enabled, runtime, catch_up, notify, in_flight, success/failure counts, last/next-run timestamps, manually_runnable). UNIQUE index on `name`.
+- **Markdown-defined jobs** at `<robinHome>/jobs/*.md` + built-ins at `src/jobs/builtin/*.md`. Loader globs both directories on every heartbeat tick; user copy wins by name. No copy-on-boot step — avoids re-copy-of-deleted-builtin and stale-after-`npm update` pitfalls.
+- **In-tree cron parser** (`src/jobs/cron.js`) — 5-field + `@`-aliases (`@daily`, `@hourly`, `@weekly`, `@monthly`, `@yearly`). Brute-force forward minute-scan capped at 5,000,000 iterations (≈10 years) to support yearly without false unreachability. TZ via `process.env.TZ`.
+- **Heartbeat integration** — Dream pipeline's existing 60s tick gains a 3rd surface alongside integrations and dream. Dispatch order: integrations → dream → jobs. Catch-up matrix: `last_run_at IS NONE + catch_up:true` → fire next tick; `last_run_at IS NONE + catch_up:false` → schedule to nextFire; `behind by 1.5× cadence + catch_up:true` → single catch-up fire.
+- **Two runtimes** — `agent` (LLM-driven, body is the prompt, `host.invokeLLM` with `tier:'deep'`, 15min timeout) and `internal` (dynamic-import `src/jobs/internal/<name>.js`).
+- **Notify dispatch** — `discord_dm` / `capture` / `both` / `none`. Empty allowlist throws `'no discord notify target'`. Over-2000-char content truncated to 1996+`…` (vs agent-driven discord_send which refuses). Failure path uses `source: 'job_notification'`.
+- **CLI**: `robin jobs <list|status|run|enable|disable|reload>`. **MCP tools**: `list_jobs`, `run_job` with `manually_runnable: false` gate so destructive maintenance jobs (future: db-backup, prune) can't be agent-fired.
+- **`/internal/jobs/run`** and **`/internal/jobs/reload`** daemon endpoints. Both call `planNextRunAt` after a job fires so the manual-trigger path stays consistent with the scheduler path.
+- **Built-in `daily-briefing.md`** ships disabled — opt-in via `robin jobs enable daily-briefing` once Discord + integrations are configured.
+- **AGENTS.md** `<!-- robin-jobs:start -->` block lists known jobs (enabled + disabled).
+
+### Phase 4c — Knowledge ops (Ingest + Lint + Audit)
+
+Three agent-callable MCP tools for memory hygiene. User-triggered only (AGENTS.md enforces by prose); skipped Save Conversation + Deep-ripple (4f overlap, defer).
+
+- **`ingest({content?, url?, file_path?})`** — write a source document into events + entities + edges + knowledge in one shot. 1 MB cap on all input types. URL: `Content-Type` check (`text/*` or `application/json`); binary refused. file_path: any absolute path the daemon can read. Content-hash dedup returns `{ok:true, deduped:true, event_id}` BEFORE recordEvent (no phantom rows). Inbound PII guard. LLM-driven extraction (NEW prompt, NOT biographer's — biographer is conversation-shaped). New `resolveOrCreateEntity` helper (name + alias-as-name matching against `entities_name_lower` composite index; aliases preserved in `entity.meta`). Edge RELATE source branches by kind (events→entities vs entities→entities per migration 0003 FROM types). Writes through `createKnowledge` from `src/memory/knowledge.js`.
+- **`lint({limit})`** — read-only mechanical sweep. Five checks, severity-sorted: `dead_edge` (5), `orphan_entity` (4 — counts inbound edges across all 6 edge tables), `duplicate_entity` (3 — same `name_lower + type`), `near_duplicate_knowledge` (2 — pairwise JS cosine since SurrealDB v3 doesn't allow combining HNSW with `vector::similarity::cosine()` in the same query), `stale_knowledge` (1 — `confidence < 0.3 AND updated_at < now - 30d`). Symmetric pairs deduped via canonical `[low, high]` ordering. `runLintChecks(db, {cutoffDate?})` for testability.
+- **`audit({pair_count})`** — read-only LLM contradiction-pair scan. Recent (30d) candidates → pure-JS cosine NN → cosine > 0.7 → canonical pair ordering. ~8 LLM calls per invocation (`tier:'balanced'`). Malformed JSON output treated as `{contradict:false}` — single bad pair doesn't fail the audit.
+- **CLI**: `robin ingest <content|--url|--file>`, `robin lint [--limit N]`, `robin audit [--pairs N]`.
+- **Daemon endpoints**: `/internal/knowledge/{ingest,lint,audit}`.
+- **AGENTS.md** `<!-- robin-knowledge-ops:start -->` block. "User-triggered, never autonomous" rule.
+
+### Phase 4b.1 — Action policy + action-trust ledger
+
+Per-(tool, action_template) AUTO/ASK/NEVER state. Defaults to ASK; auto-demotes AUTO→ASK when the agent calls `record_correction({tool, action, ...})`.
+
+- **Migration `0012-action-trust.surql`** — `action_trust` table keyed by `class` (e.g. `discord_send:send_dm`). Tracks `state`, `set_by` (user/correction/default), `success_count`, `correction_count`, `last_used_at`, `last_state_change_at`. UNIQUE index on `class`.
+- **Helpers** (`src/jobs/action-trust.js`) — `checkActionTrust(db, tool, action)` (auto-creates with state='ASK' on first sight), `setActionTrust`, `recordOutcome` (auto-demotes AUTO→ASK on correction), `demoteOnCorrection`, `getActionTrust`, `listActionTrust`, `resetActionTrust`.
+- **MCP tools** — `check_action({tool, action})` (read-only peek), `update_action_policy({class, state})` (agent-facing flip when user gives standing permission).
+- **Three outbound tools wrapped** — `discord_send`, `github_write`, `spotify_write` all gain a pre-check at handler entry. AUTO proceeds, ASK refuses with `{ok:false, reason:'requires_permission', class, last_state_change_at}` unless `args.force === true`. NEVER refuses regardless of force. On success, `recordOutcome(db, cls, 'success')`. Pre-existing unit tests pre-seed AUTO in their setup helpers.
+- **`record_correction` demote wiring** — optional `tool` + `action` args trigger auto-demotion of the matching class. Returns `demoted_class` field.
+- **CLI**: `robin actions <list|show|set|reset>`. Set/reset go through daemon endpoints (`/internal/actions/{set,reset}`) so the DB stays single-writer.
+- **AGENTS.md** `<!-- robin-actions:start -->` block describes the AUTO/ASK/NEVER protocol + `force: true` escape hatch.
+- **Deferred to 4b.1b**: Dream-driven auto-promotion proposals, 7-day probation, 90-day decay.
+
+### Phase 4b.2 — Comm-style profile inference
+
+Nightly LLM synthesis of the user's communication-style preferences from correction events.
+
+- **Migration `0013-comm-style.surql`** — extends `profile` with `comm_style` (FLEXIBLE option<object>). Seeds `profile:singleton` so `setCommStyle` UPSERTs have a deterministic target.
+- **Inferred fields** — `tone` (terse/balanced/verbose), `formality` (casual/balanced/formal), `emoji_ok`, `direct_feedback_ok`, `code_comment_density` (minimal/moderate/verbose), `summary_style` (bullets/prose/mixed), plus `evidence` (event IDs), `confidence` (0..1), `last_synthesized_at`.
+- **Threshold guard** — <3 signals → persist defaults with `confidence: 0` without invoking the LLM. Avoids noisy synthesis on sparse data.
+- **Synthesis** — `synthesizeCommStyle(db, host)`. Queries `events WHERE meta.kind = 'correction' AND ts > now - 30d` (production source value is `'manual'` with `meta.kind: 'correction'`, not `source: 'correction'` — discovered at implementation time). LLM call (`tier:'balanced'`) with numbered corrections. Malformed JSON or invalid shape preserves prior `comm_style` (don't overwrite valid with bad).
+- **Dream step-comm-style** runs nightly as a 6th step in the pipeline. Fail-soft.
+- **MCP tool `get_comm_style()`** returns populated defaults with `synthesized: false` when null (agent doesn't need to handle null).
+- **CLI**: `robin commstyle <show|refresh>`.
+- **AGENTS.md** `<!-- robin-comm-style:start -->` block surfaces inferred preferences at session start. Static fallback when not yet synthesized.
+
+### Phase 4b.3 — Predictions + calibration
+
+Per-(prediction kind) accuracy tracking, fed back to the agent so it knows how much to trust its own future claims.
+
+- **Migration `0014-predictions.surql`** — `predictions` table with `statement`, `kind`, `confidence`, `predicted_at` (READONLY default), `expected_resolution_at?`, `resolved_at?`, `correct?`, `actual_outcome?`. Also adds `calibration` field to `profile`.
+- **Three MCP tools** — `predict({statement, kind, confidence, expected_resolution_at?})`, `resolve_prediction({id, correct, actual_outcome?})`, `list_open_predictions({kind?, older_than_days?})`. `kind` is free-form (`duration`, `fact_recall`, `preference_guess`, `event_timing`, etc.) — agent picks the taxonomy.
+- **`computeCalibration(db)`** — per-kind accuracy + total_open/total_resolved counts. Resolved-only predictions enter `by_kind`; open ones contribute to `total_open` only.
+- **Dream step-calibration** runs nightly as a 7th step (pure math, no LLM). Stores in `profile.calibration`.
+- **CLI**: `robin predictions <list|resolve>`, `robin calibration`.
+- **`/internal/predictions/resolve`** and **`/internal/calibration/refresh`** daemon endpoints.
+- **AGENTS.md** `<!-- robin-calibration:start -->` block. Static fallback ("no calibration data yet") when empty. Populated form surfaces per-kind accuracy + open count + the instruction to call `predict()` on falsifiable claims.
+
+### Cross-phase
+
+- **Polish batch (commit `0f8103e`)** — bootstrap-empty-db now uses `/applied \d+ migrations/` regex (no more brittleness on each new migration); added missing `dead_edge` + `near_duplicate_knowledge` lint coverage; added `behind-by-1.5×-cadence` catch-up tests for the scheduler.
+- **Single-pass DB read** for AGENTS.md generation (`readDbDataForAgentsMd` in `mcp-install.js`) fetches jobs + commStyle + calibration in one rocksdb open/close cycle, avoiding the v3.0.3 close-hang on sequential reads.
+- **Coordination pattern** for parallel subagent dispatch — Wave 1 sequential (so dependent waves see the initial commit), subsequent waves parallel where files don't overlap.
+- **Test count**: 1067/0 with all 14 migrations applying cleanly. Pre-existing 4f `biographer-process-pending-captures.test.js` still hangs (~88s); the documented workaround excludes it from autonomous suite runs (`find tests -name '*.test.js' | grep -v biographer-process-pending-captures`).
+
+Phase 4 envelope status: 4a + 4b.1 + 4b.2 + 4b.3 + 4c + 4d + 4f all shipped. Remaining: 4e.1 (trained reranker — needs `recall_events` accumulation), 4e.2 (knowledge-promotion classifier — needs labeled data), 4c leftovers (Save Conversation, Deep-ripple — overlap with 4f, revisit once 4f stable).
+
 ## [6.0.0-alpha.10] — 2026-05-10
 
 Phase 4f: conversation capture. Replaces v1's `migrate-auto-memory` job with a host-agnostic Stop-hook capture step. Closes the last accidental gap from the v1→v2 audit (`migrate-auto-memory` is now formally **replaced**, not deferred or dropped).
