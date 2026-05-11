@@ -5,9 +5,11 @@ export const rememberRoutes = [
   {
     method: 'POST',
     path: '/internal/remember',
+    schema: { content: 'string', source: 'string?', meta: 'object?', force: 'boolean?' },
     async handler({ ctx, body }) {
-      if (typeof body.content !== 'string' || body.content.length === 0) {
-        return { _status: 400, _body: { error: 'content required' } };
+      // content non-empty is the only check left; type+presence done by schema.
+      if (body.content.length === 0) {
+        return { _status: 400, _body: { ok: false, error: 'content required' } };
       }
       try {
         const result = await recordEvent(ctx.db, ctx.embedder.wrap, {
