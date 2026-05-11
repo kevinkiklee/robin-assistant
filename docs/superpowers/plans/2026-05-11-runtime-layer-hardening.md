@@ -487,7 +487,7 @@ test('forces exit even if shutdown hangs', async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test system/tests/unit/runtime/daemon/fatal.test.js`
+Run: `node --test system/tests/unit/fatal.test.js`
 
 Expected: FAIL with "Cannot find module ... fatal.js".
 
@@ -566,14 +566,14 @@ export function installFatalHandlers(handler) {
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `node --test system/tests/unit/runtime/daemon/fatal.test.js`
+Run: `node --test system/tests/unit/fatal.test.js`
 
 Expected: all 3 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/runtime/daemon/fatal.js system/tests/unit/runtime/daemon/fatal.test.js
+git add system/runtime/daemon/fatal.js system/tests/unit/fatal.test.js
 git commit -m "$(cat <<'EOF'
 refactor(runtime): R-1 — process-level fatal handlers
 
