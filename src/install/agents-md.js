@@ -80,6 +80,36 @@ ${renderJobsList(jobs)}
 <!-- robin-jobs:end -->`;
 }
 
+export function actionsSection() {
+  return `<!-- robin-actions:start (auto-generated, do not hand-edit) -->
+## Action policy (AUTO / ASK / NEVER)
+
+Outbound tools (\`discord_send\`, \`github_write\`, \`spotify_write\`, and
+future writes) have a per-action trust state. Each (tool, action) is its
+own class — e.g. \`discord_send:send_dm\`, \`github_write:create-issue\`.
+
+- **AUTO** — proceed without asking.
+- **ASK** — the tool refuses with \`{ ok: false, reason: 'requires_permission', class }\`.
+  Surface this to the user. If the user authorizes, retry with
+  \`{ ...args, force: true }\` THIS TURN ONLY. Don't auto-force; the user has
+  to actually say yes.
+- **NEVER** — the tool refuses regardless of \`force\`. To resume use,
+  the user must run \`robin actions set <class> ASK\` (or you can call
+  \`update_action_policy({class, state: 'ASK'})\` on their explicit behalf).
+
+Default for any new (tool, action) class is **ASK**. State auto-demotes
+AUTO → ASK when you call \`record_correction({tool, action, ...})\` —
+one correction is enough.
+
+When the user gives **standing** permission ("you can always queue songs
+for me"), call \`update_action_policy({class: 'spotify_write:queue', state: 'AUTO'})\`.
+When they revoke ("don't ever do that again"), set state to 'NEVER'.
+
+Use \`check_action({tool, action})\` to peek the state before planning
+a multi-step action.
+<!-- robin-actions:end -->`;
+}
+
 export function knowledgeOpsSection() {
   return `<!-- robin-knowledge-ops:start (auto-generated, do not hand-edit) -->
 ## Knowledge ops
@@ -152,7 +182,79 @@ ${renderIntegrationsList(integrations)}
 <!-- robin-integrations:end -->`;
 }
 
-export function agentsMdContent({ integrations = [], jobs } = {}) {
+export function commStyleSection(commStyle) {
+  if (commStyle?.tone) {
+    const ts = commStyle.last_synthesized_at
+      ? new Date(commStyle.last_synthesized_at).toISOString()
+      : 'unknown';
+    return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
+## Communication style
+
+Inferred preferences (synthesized nightly from your corrections):
+{
+  tone: "${commStyle.tone}",
+  formality: "${commStyle.formality}",
+  emoji_ok: ${commStyle.emoji_ok},
+  direct_feedback_ok: ${commStyle.direct_feedback_ok},
+  code_comment_density: "${commStyle.code_comment_density}",
+  summary_style: "${commStyle.summary_style}",
+  confidence: ${commStyle.confidence},
+  synthesized: ${ts}
+}
+
+If \`confidence\` is low (<0.4), treat these as soft hints; honor explicit
+instructions in the current turn first. Use \`get_comm_style()\` to re-read
+if something might have updated mid-session.
+<!-- robin-comm-style:end -->`;
+  }
+  return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
+## Communication style
+
+No comm-style inferred yet — too few corrections, or Dream hasn't run.
+Use balanced defaults. Use \`get_comm_style()\` once a session has produced
+corrections to check whether enough signal has accumulated.
+<!-- robin-comm-style:end -->`;
+}
+
+export function calibrationSection(calibration) {
+  if (calibration?.by_kind && Object.keys(calibration.by_kind).length > 0) {
+    const lines = Object.entries(calibration.by_kind).map(([k, v]) => {
+      const pct = (v.accuracy * 100).toFixed(0);
+      return `- ${k}: ${pct}% accurate (n=${v.resolved})`;
+    });
+    const ts = calibration.last_computed_at
+      ? new Date(calibration.last_computed_at).toISOString()
+      : 'unknown';
+    return `<!-- robin-calibration:start (auto-generated, do not hand-edit) -->
+## Calibration
+
+Your past predictions (synthesized nightly):
+${lines.join('\n')}
+- total_open: ${calibration.total_open ?? 0} predictions awaiting resolution
+- last_computed: ${ts}
+
+When you make a falsifiable claim — "this will take 30 min", "you usually prefer X",
+"the meeting is at 3pm" — call \`predict({statement, kind, confidence})\` so
+calibration can improve. When the outcome becomes known, call
+\`resolve_prediction({id, correct, actual_outcome})\`. You can call
+\`list_open_predictions()\` to find unresolved claims.
+
+If accuracy < 50% for a kind, treat new predictions in that kind with
+low confidence (≤ 0.5).
+<!-- robin-calibration:end -->`;
+  }
+  return `<!-- robin-calibration:start (auto-generated, do not hand-edit) -->
+## Calibration
+
+No calibration data yet — make some predictions and resolve them. Call
+\`predict({statement, kind, confidence})\` when you make a falsifiable
+claim, then \`resolve_prediction({id, correct, ...})\` when you find out.
+Common kinds: \`duration\`, \`fact_recall\`, \`preference_guess\`,
+\`identity\`, \`event_timing\`.
+<!-- robin-calibration:end -->`;
+}
+
+export function agentsMdContent({ integrations = [], jobs, commStyle, calibration } = {}) {
   return `# Robin
 
 You're talking to a user through Robin. Robin gives you a memory layer
@@ -241,6 +343,12 @@ ${integrationsSection(integrations)}
 ${jobsSection(jobs)}
 
 ${knowledgeOpsSection()}
+
+${actionsSection()}
+
+${commStyleSection(commStyle)}
+
+${calibrationSection(calibration)}
 
 ${buildSecurityBlock()}
 `;

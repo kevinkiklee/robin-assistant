@@ -25,27 +25,35 @@ async function readOrEmpty(path) {
   }
 }
 
-async function readJobsForAgentsMd() {
+// Single-pass DB read for all AGENTS.md inputs. Combined to avoid sequential
+// rocksdb open+close cycles, which can deadlock under the @surrealdb/node v3
+// close-hang. Fail-soft: any error returns the per-field "unavailable" value.
+async function readDbDataForAgentsMd() {
   try {
     const { ensureHome, paths } = await import('../../runtime/data-store.js');
     const { connect, close } = await import('../../db/client.js');
     const { listAllJobs } = await import('../../jobs/db.js');
+    const { getCommStyle } = await import('../../jobs/comm-style.js');
+    const { getCalibration } = await import('../../jobs/predictions.js');
     await ensureHome();
     const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
-      return await listAllJobs(db);
+      const jobs = await listAllJobs(db);
+      const commStyle = await getCommStyle(db);
+      const calibration = await getCalibration(db);
+      return { jobs, commStyle, calibration };
     } finally {
       await close(db);
     }
   } catch {
-    return undefined; // triggers "jobs surface unavailable"
+    return { jobs: undefined, commStyle: null, calibration: null };
   }
 }
 
-async function writeMergedAgentsMd(path, jobs) {
+async function writeMergedAgentsMd(path, jobs, commStyle, calibration) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
-  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs }));
+  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs, commStyle, calibration }));
   await writeFile(path, merged, 'utf8');
   console.log(`updated ${path}`);
 }
@@ -184,9 +192,9 @@ export async function mcpInstall(argv) {
   if (!noAgentsMd) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
-    const jobs = await readJobsForAgentsMd();
-    await writeMergedAgentsMd(claudePath, jobs);
-    await writeMergedAgentsMd(geminiPath, jobs);
+    const { jobs, commStyle, calibration } = await readDbDataForAgentsMd();
+    await writeMergedAgentsMd(claudePath, jobs, commStyle, calibration);
+    await writeMergedAgentsMd(geminiPath, jobs, commStyle, calibration);
   }
 
   // 7. Print summary.

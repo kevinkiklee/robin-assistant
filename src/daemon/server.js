@@ -15,13 +15,18 @@ import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
 import { createCapture } from '../integrations/_framework/capture.js';
 import { loadManifests } from '../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../integrations/_framework/run-sync.js';
+import { resetActionTrust, setActionTrust } from '../jobs/action-trust.js';
+import { synthesizeCommStyle } from '../jobs/comm-style.js';
 import { garbageCollect, getJob, upsertFromDiscovered } from '../jobs/db.js';
 import { discoverJobs } from '../jobs/loader.js';
+import { computeCalibration, resolvePrediction, setCalibration } from '../jobs/predictions.js';
 import { runOneJob } from '../jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
 import { createAuditTool } from '../mcp/tools/audit.js';
+import { createCheckActionTool } from '../mcp/tools/check-action.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
+import { createGetCommStyleTool } from '../mcp/tools/get-comm-style.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
 import { createGetHotTool } from '../mcp/tools/get-hot.js';
 import { createGetKnowledgeTool } from '../mcp/tools/get-knowledge.js';
@@ -34,17 +39,21 @@ import { createLintTool } from '../mcp/tools/lint.js';
 import { createListEpisodesTool } from '../mcp/tools/list-episodes.js';
 import { createListJobsTool } from '../mcp/tools/list-jobs.js';
 import { createListJournalTool } from '../mcp/tools/list-journal.js';
+import { createListOpenPredictionsTool } from '../mcp/tools/list-open-predictions.js';
 import { createListPatternsTool } from '../mcp/tools/list-patterns.js';
 import { createListRulesTool } from '../mcp/tools/list-rules.js';
 import { createListThreadsTool } from '../mcp/tools/list-threads.js';
 import { createMarkRecallUsedTool } from '../mcp/tools/mark-recall-used.js';
+import { createPredictTool } from '../mcp/tools/predict.js';
 import { createRecallTool } from '../mcp/tools/recall.js';
 import { createRecordCorrectionTool } from '../mcp/tools/record-correction.js';
 import { createRelatedEntitiesTool } from '../mcp/tools/related-entities.js';
 import { createRememberTool } from '../mcp/tools/remember.js';
+import { createResolvePredictionTool } from '../mcp/tools/resolve-prediction.js';
 import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
 import { createRunDreamTool } from '../mcp/tools/run-dream.js';
 import { createRunJobTool } from '../mcp/tools/run-job.js';
+import { createUpdateActionPolicyTool } from '../mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
 import { readConfig } from '../runtime/config.js';
 import { ensureHome, paths } from '../runtime/data-store.js';
@@ -440,6 +449,12 @@ export async function startDaemon() {
     tools.push(createIngestTool({ db: dbHandle, embedder: embedderWrap, host }));
     tools.push(createLintTool({ db: dbHandle }));
     tools.push(createAuditTool({ db: dbHandle, host }));
+    tools.push(createCheckActionTool({ db: dbHandle }));
+    tools.push(createUpdateActionPolicyTool({ db: dbHandle }));
+    tools.push(createGetCommStyleTool({ db: dbHandle }));
+    tools.push(createPredictTool({ db: dbHandle }));
+    tools.push(createResolvePredictionTool({ db: dbHandle }));
+    tools.push(createListOpenPredictionsTool({ db: dbHandle }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
@@ -745,6 +760,50 @@ export async function startDaemon() {
           const result = await tool.handler(body);
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/actions/set') {
+          const body = await readJsonBody(req);
+          if (!body?.class || !['AUTO', 'ASK', 'NEVER'].includes(body?.state)) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'invalid_input' }));
+            return;
+          }
+          await setActionTrust(dbHandle, body.class, body.state, 'user');
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, class: body.class, state: body.state }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/actions/reset') {
+          const body = await readJsonBody(req);
+          if (!body?.class) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'missing_class' }));
+            return;
+          }
+          await resetActionTrust(dbHandle, body.class);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, class: body.class, state: 'ASK' }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/comm-style/refresh') {
+          const result = await synthesizeCommStyle(dbHandle, host);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/predictions/resolve') {
+          const body = await readJsonBody(req);
+          const result = await resolvePrediction(dbHandle, body);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/calibration/refresh') {
+          const c = await computeCalibration(dbHandle);
+          await setCalibration(dbHandle, c);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(c));
           return;
         }
         if (req.method === 'POST' && req.url === '/internal/intuition') {

@@ -127,6 +127,57 @@ export async function main(argv) {
     const { auditCmd } = await import('./commands/audit.js');
     return auditCmd(argv.slice(1));
   }
+  if (cmd === 'actions') {
+    const sub = argv[1];
+    if (sub === 'list') {
+      const { actionsList } = await import('./commands/actions-list.js');
+      return actionsList(argv.slice(2));
+    }
+    if (sub === 'show') {
+      const { actionsShow } = await import('./commands/actions-show.js');
+      return actionsShow(argv.slice(2));
+    }
+    if (sub === 'set') {
+      const { actionsSet } = await import('./commands/actions-set.js');
+      return actionsSet(argv.slice(2));
+    }
+    if (sub === 'reset') {
+      const { actionsReset } = await import('./commands/actions-reset.js');
+      return actionsReset(argv.slice(2));
+    }
+    console.error('usage: robin actions <list|show|set|reset>');
+    process.exit(1);
+  }
+  if (cmd === 'commstyle') {
+    const sub = argv[1];
+    if (sub === 'show') {
+      const { commstyleShow } = await import('./commands/commstyle-show.js');
+      return commstyleShow(argv.slice(2));
+    }
+    if (sub === 'refresh') {
+      const { commstyleRefresh } = await import('./commands/commstyle-refresh.js');
+      return commstyleRefresh(argv.slice(2));
+    }
+    console.error('usage: robin commstyle <show|refresh>');
+    process.exit(1);
+  }
+  if (cmd === 'predictions') {
+    const sub = argv[1];
+    if (sub === 'list') {
+      const { predictionsList } = await import('./commands/predictions-list.js');
+      return predictionsList(argv.slice(2));
+    }
+    if (sub === 'resolve') {
+      const { predictionsResolve } = await import('./commands/predictions-resolve.js');
+      return predictionsResolve(argv.slice(2));
+    }
+    console.error('usage: robin predictions <list|resolve>');
+    process.exit(1);
+  }
+  if (cmd === 'calibration') {
+    const { calibrationShow } = await import('./commands/calibration-show.js');
+    return calibrationShow(argv.slice(1));
+  }
   if (cmd === 'integrations') {
     const sub = argv[1];
     if (sub === 'list') {

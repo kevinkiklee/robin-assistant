@@ -12,6 +12,8 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         content: { type: 'string', minLength: 1, maxLength: 10000 },
         prior_response: { type: 'string' },
         meta: { type: 'object' },
+        tool: { type: 'string' },
+        action: { type: 'string' },
       },
       required: ['content'],
     },
@@ -32,7 +34,14 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
       } catch (e) {
         console.error(`record_correction biographer failed: ${e.message}`);
       }
-      return { id: String(result.id) };
+      let demoted_class = null;
+      if (args.tool && args.action) {
+        const cls = `${args.tool}:${args.action}`;
+        const { demoteOnCorrection } = await import('../../jobs/action-trust.js');
+        const r = await demoteOnCorrection(db, cls);
+        if (r.demoted) demoted_class = cls;
+      }
+      return { id: String(result.id), demoted_class };
     },
   };
 }

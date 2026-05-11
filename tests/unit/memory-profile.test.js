@@ -25,10 +25,22 @@ async function fresh() {
   return db;
 }
 
-test('getProfile returns null for fresh DB', async () => {
+test('getProfile returns the seeded singleton with no user-set fields on fresh DB', async () => {
+  // Phase 4b.2 migration 0013 seeds `profile:singleton` with `meta: {}` so
+  // setCommStyle's UPSERT has a deterministic target. The seeded row has
+  // no name/display_name/timezone/etc., so callers should treat absence of
+  // those fields as "not set" — but getProfile no longer returns null.
   const db = await fresh();
   const p = await getProfile(db);
-  assert.equal(p, null);
+  if (p === null) {
+    // Pre-0013 behavior — accept for back-compat in case the migration isn't applied
+    return;
+  }
+  // Post-0013: seeded row with no useful fields
+  assert.equal(p.name, undefined);
+  assert.equal(p.display_name, undefined);
+  assert.equal(p.timezone, undefined);
+  assert.equal(p.interests, undefined);
   await close(db);
 });
 

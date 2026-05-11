@@ -1,3 +1,4 @@
+import { checkActionTrust, recordOutcome } from '../../../jobs/action-trust.js';
 import { checkOutbound } from '../../../outbound/policy.js';
 import { checkRateLimit } from '../../../outbound/rate-limit.js';
 import { getSecret } from '../../../secrets/dotenv-io.js';
@@ -52,6 +53,20 @@ export function createDiscordSendTool({ db, capture, getGatewayClient }) {
         return { ok: false, reason: 'unknown_action', action };
       }
 
+      const cls = `discord_send:${action}`;
+      const trust = await checkActionTrust(db, 'discord_send', action);
+      if (trust.state === 'NEVER') {
+        return { ok: false, reason: 'action_not_allowed', class: cls };
+      }
+      if (trust.state === 'ASK' && args?.force !== true) {
+        return {
+          ok: false,
+          reason: 'requires_permission',
+          class: cls,
+          last_state_change_at: trust.last_state_change_at,
+        };
+      }
+
       const content = args?.content;
       if (typeof content !== 'string' || content.length === 0) {
         return { ok: false, reason: 'missing_arg', arg: 'content' };
@@ -90,6 +105,7 @@ export function createDiscordSendTool({ db, capture, getGatewayClient }) {
               meta: { action, target: { user_id }, length: content.length },
             },
           ]);
+          await recordOutcome(db, cls, 'success');
           return { ok: true, message_id: message.id, channel_id: message.channelId ?? null };
         }
 
@@ -119,6 +135,7 @@ export function createDiscordSendTool({ db, capture, getGatewayClient }) {
             meta: { action, target: { channel_id, guild_id }, length: content.length },
           },
         ]);
+        await recordOutcome(db, cls, 'success');
         return { ok: true, message_id: message.id, channel_id };
       } catch (e) {
         return mapDiscordError(e);

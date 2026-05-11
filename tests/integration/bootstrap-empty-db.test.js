@@ -18,8 +18,11 @@ test('robin migrate bootstraps ROBIN_HOME and applies the seed migrations', () =
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  // Phase 4d: 0001..0007 + active 0008-embedder-<profile> + 0009-migrator-v1 + 0010-safety-floor + 0011-jobs = 11.
-  assert.match(result.stdout, /applied 11 migrations/);
+  // Count is intentionally regex-matched, not pinned — every new migration
+  // would otherwise tax this assertion. The currently-applied set is:
+  // 0001..0007 + active 0008-embedder-<profile> + 0009-migrator-v1 +
+  // 0010-safety-floor + 0011-jobs + 0012-action-trust + any newer ones.
+  assert.match(result.stdout, /applied \d+ migrations/);
   assert.ok(existsSync(join(tmp, 'db')));
   assert.ok(existsSync(join(tmp, 'cache')));
 

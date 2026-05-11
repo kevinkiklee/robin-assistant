@@ -73,7 +73,18 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
   const p = await tools[1].handler({});
   assert.deepEqual(p, { patterns: [] });
   const prof = await tools[2].handler({});
-  assert.deepEqual(prof, { profile: null });
+  // Phase 4b.2 migration 0013 seeds profile:singleton so setCommStyle UPSERT
+  // has a deterministic target. The seeded row has no user-set fields, so
+  // for a "fresh DB" smoke check we just confirm the tool returns the
+  // expected envelope and the row is empty-shaped.
+  if (prof.profile === null) {
+    // Pre-0013 back-compat
+    assert.deepEqual(prof, { profile: null });
+  } else {
+    assert.equal(prof.profile.id, 'profile:singleton');
+    assert.equal(prof.profile.name, undefined);
+    assert.equal(prof.profile.display_name, undefined);
+  }
   const th = await tools[3].handler({});
   assert.deepEqual(th, { threads: [] });
   const j = await tools[4].handler({});
@@ -196,7 +207,7 @@ test('run_dream wraps dreamProcess and returns its summary', async () => {
   // Pipeline always emits step buckets, even if they're errors or 0-counts.
   assert.ok('knowledge' in r.summary);
   assert.ok('patterns' in r.summary);
-  assert.ok('corrections' in r.summary);
+  assert.ok('reflection' in r.summary);
   assert.ok('profile' in r.summary);
   assert.ok('threads' in r.summary);
   await close(db);

@@ -48,6 +48,12 @@ async function setup() {
     embed: true,
     mode: 'insert-or-skip',
   });
+  // Phase 4b.1 — pre-seed AUTO for all github_write actions so this
+  // roundtrip exercises the existing behavior, not the trust gate.
+  const { setActionTrust } = await import('../../src/jobs/action-trust.js');
+  for (const action of ['create-issue', 'comment', 'label', 'mark-read']) {
+    await setActionTrust(db, `github_write:${action}`, 'AUTO', 'user');
+  }
   return { db, capture };
 }
 
@@ -77,7 +83,7 @@ test('create-issue clean text → events row', async () => {
   }
 });
 
-test('comment with PII → outbound_refusals row, no events row', async () => {
+test('comment with PII → refusals row, no events row', async () => {
   const { db, capture } = await setup();
   const t = createGitHubWriteTool({ db, capture });
   const r = await t.handler({
@@ -86,9 +92,7 @@ test('comment with PII → outbound_refusals row, no events row', async () => {
   });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'outbound_blocked');
-  const [refusals] = await db
-    .query(surql`SELECT count() AS n FROM outbound_refusals GROUP ALL`)
-    .collect();
+  const [refusals] = await db.query(surql`SELECT count() AS n FROM refusals GROUP ALL`).collect();
   assert.equal(refusals[0].n, 1);
   const [events] = await db
     .query(surql`SELECT count() AS n FROM events WHERE source = 'github_write' GROUP ALL`)
@@ -116,9 +120,7 @@ test('label action → no events row, no policy refusal', async () => {
       .query(surql`SELECT count() AS n FROM events WHERE source = 'github_write' GROUP ALL`)
       .collect();
     assert.equal(events[0]?.n ?? 0, 0);
-    const [refusals] = await db
-      .query(surql`SELECT count() AS n FROM outbound_refusals GROUP ALL`)
-      .collect();
+    const [refusals] = await db.query(surql`SELECT count() AS n FROM refusals GROUP ALL`).collect();
     assert.equal(refusals[0]?.n ?? 0, 0);
   } finally {
     fakeFetch.mock.restore();

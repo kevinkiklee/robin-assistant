@@ -1,3 +1,4 @@
+import { checkActionTrust, recordOutcome } from '../../../jobs/action-trust.js';
 import { checkOutbound } from '../../../outbound/policy.js';
 import { checkRateLimit } from '../../../outbound/rate-limit.js';
 import { addToPlaylist, queueTrack, skipTrack } from '../client.js';
@@ -33,6 +34,24 @@ export function createSpotifyWriteTool({ db, capture }) {
       const rate = await checkRateLimit(db, 'spotify_write');
       if (!rate.ok) return rate;
 
+      if (action !== 'queue' && action !== 'skip' && action !== 'playlist-add') {
+        return { ok: false, reason: 'unknown_action', action };
+      }
+
+      const cls = `spotify_write:${action}`;
+      const trust = await checkActionTrust(db, 'spotify_write', action);
+      if (trust.state === 'NEVER') {
+        return { ok: false, reason: 'action_not_allowed', class: cls };
+      }
+      if (trust.state === 'ASK' && args?.force !== true) {
+        return {
+          ok: false,
+          reason: 'requires_permission',
+          class: cls,
+          last_state_change_at: trust.last_state_change_at,
+        };
+      }
+
       try {
         switch (action) {
           case 'queue': {
@@ -45,11 +64,13 @@ export function createSpotifyWriteTool({ db, capture }) {
               return { ok: false, reason: 'outbound_blocked', blocked_by: policy.reason };
             await queueTrack(args);
             console.log(`[spotify_write] queued ${args.track_uri}`);
+            await recordOutcome(db, cls, 'success');
             return { ok: true, queued: args.track_uri };
           }
           case 'skip': {
             await skipTrack({});
             console.log('[spotify_write] skipped');
+            await recordOutcome(db, cls, 'success');
             return { ok: true };
           }
           case 'playlist-add': {
@@ -86,6 +107,7 @@ export function createSpotifyWriteTool({ db, capture }) {
                 },
               },
             ]);
+            await recordOutcome(db, cls, 'success');
             return { ok: true, snapshot_id: r?.snapshot_id, count: args.track_uris.length };
           }
           default:

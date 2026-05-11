@@ -8,6 +8,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { createDiscordSendTool } from '../../src/integrations/discord/tools/discord-send.js';
+import { setActionTrust } from '../../src/jobs/action-trust.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
@@ -41,6 +42,9 @@ async function freshSetup({ allowedUsers = '', allowedGuilds = '' } = {}) {
   if (allowedGuilds) saveSecret('DISCORD_ALLOWED_GUILD_IDS', allowedGuilds);
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  // Seed AUTO for both actions so existing tests bypass the trust gate.
+  await setActionTrust(db, 'discord_send:send_dm', 'AUTO', 'user');
+  await setActionTrust(db, 'discord_send:send_channel', 'AUTO', 'user');
   const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
@@ -283,7 +287,7 @@ test('outbound policy refusal → outbound_blocked, refusal logged', async () =>
   assert.match(r.blocked_by, /^pii:/);
   // Refusal row written
   const [rows] = await db
-    .query("SELECT * FROM outbound_refusals WHERE destination = 'discord_send'")
+    .query("SELECT * FROM refusals WHERE destination = 'discord_send'")
     .collect();
   assert.equal(rows.length, 1);
   await close(db);
