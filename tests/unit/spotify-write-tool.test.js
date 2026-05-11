@@ -9,6 +9,7 @@ import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { createSpotifyWriteTool } from '../../src/integrations/spotify_write/tools/spotify-write.js';
+import { setActionTrust } from '../../src/jobs/action-trust.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
@@ -51,6 +52,10 @@ async function freshSetup() {
     embed: true,
     mode: 'insert-or-skip',
   });
+  // Pre-seed all 3 actions to AUTO so existing tests bypass the trust gate.
+  await setActionTrust(db, 'spotify_write:queue', 'AUTO', 'user');
+  await setActionTrust(db, 'spotify_write:skip', 'AUTO', 'user');
+  await setActionTrust(db, 'spotify_write:playlist-add', 'AUTO', 'user');
   return { db, capture };
 }
 
@@ -225,6 +230,8 @@ test('missing secret → not_authenticated', async () => {
     embed: true,
     mode: 'insert-or-skip',
   });
+  // Pre-seed AUTO so the trust gate passes before reaching the secret check.
+  await setActionTrust(db, 'spotify_write:skip', 'AUTO', 'user');
   const t = createSpotifyWriteTool({ db, capture });
   const r = await t.handler({ action: 'skip', args: {} });
   assert.equal(r.ok, false);
