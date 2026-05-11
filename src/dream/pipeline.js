@@ -1,6 +1,7 @@
 import { surql } from 'surrealdb';
 import { dreamStepCalibration } from './step-calibration.js';
 import { dreamStepCommStyle } from './step-comm-style.js';
+import { dreamStepConfidenceRecompute } from './step-confidence-recompute.js';
 import { dreamStepKnowledge } from './step-knowledge.js';
 import { dreamStepPatterns } from './step-patterns.js';
 import { dreamStepProfile } from './step-profile.js';
@@ -37,6 +38,11 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.reflection = await dreamStepReflection(db, host, opts.reflection);
   } catch (e) {
     summary.reflection = { error: e.message };
+  }
+  try {
+    summary.confidence = await dreamStepConfidenceRecompute(db);
+  } catch (e) {
+    summary.confidence = { error: e.message };
   }
   try {
     summary.profile = await dreamStepProfile(db, host, opts.profile);
