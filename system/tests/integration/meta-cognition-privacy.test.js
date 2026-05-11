@@ -144,3 +144,82 @@ test('P3 — private_scope_action=fail aborts the run', async () => {
   assert.equal(tel?.[0]?.error, 'private_scope_contamination');
   await close(db);
 });
+
+test('P4 — closure property: when private rows are dropped, the written memo has no recall_log_ids pointing at private-touching rows', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'x', type: 'project', scope: 'global' }`)
+    .collect();
+  const entId = ent[0][0].id;
+  const mClean = await note(db, e, 'knowledge', {
+    content: 'clean',
+    derived_by: 'agent',
+    scope: 'global',
+    subjects: [entId],
+  });
+  const mPriv = await note(db, e, 'knowledge', {
+    content: 'private',
+    derived_by: 'agent',
+    scope: 'private',
+    subjects: [entId],
+  });
+
+  const cleanRowIds = [];
+  for (let i = 0; i < 5; i++) {
+    const [created] = await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`c${i}`}, query: 'q', k: 5,
+        ranked_hits: [{ record: ${mClean.id}, kind: 'memo' }], outcome: 'corrected',
+      } RETURN id`,
+      )
+      .collect();
+    cleanRowIds.push(String(created[0].id));
+  }
+  // 1 private-touching row should be dropped.
+  const [privateCreated] = await db
+    .query(
+      surql`CREATE recall_log CONTENT {
+      ts: time::now() - 1d,
+      session_id: 'p', query: 'q', k: 5,
+      ranked_hits: [{ record: ${mPriv.id}, kind: 'memo' }], outcome: 'corrected',
+    } RETURN id`,
+    )
+    .collect();
+  const privateRowId = String(privateCreated[0].id);
+
+  const resp = JSON.stringify({
+    narrative: 'n',
+    clusters: [
+      {
+        cluster_id: String(entId),
+        error_pattern: 'p',
+        suggested_rules: ['r'],
+        rule_confidence: [0.7],
+      },
+    ],
+  });
+  const host = {
+    invokeLLM: async () => ({ content: resp, usage: { input_tokens: 0, output_tokens: 0 } }),
+  };
+
+  const result = await runMetaRecallNarrative({ db, embedder: e, host });
+  const summary = JSON.parse(result);
+  assert.equal(summary.ran, true);
+
+  const [memoRows] = await db.query("SELECT meta FROM memos WHERE kind = 'reasoning'").collect();
+  assert.equal(memoRows.length, 1);
+  const ids = memoRows[0].meta.recall_log_ids ?? [];
+  assert.ok(
+    !ids.includes(privateRowId),
+    'the dropped private row must not appear in recall_log_ids',
+  );
+  for (const cid of cleanRowIds) {
+    assert.ok(ids.includes(cid), `clean row ${cid} should appear in recall_log_ids`);
+  }
+  await close(db);
+});
