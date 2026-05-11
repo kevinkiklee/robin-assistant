@@ -4,6 +4,6 @@ user-data/
 .claude/
 *.log
 .DS_Store
-tests/fixtures/synthetic-events.json
-tests/fixtures/seed-recall-pairs.json
+system/tests/fixtures/synthetic-events.json
+system/tests/fixtures/seed-recall-pairs.json
 .robin-home

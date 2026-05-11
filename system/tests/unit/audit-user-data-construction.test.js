@@ -10,7 +10,6 @@ const ALLOW_FILES = new Set([
   join(ROOT, 'config/data-store.js'),
   join(ROOT, 'runtime/cli/commands/install.js'),
   join(ROOT, 'runtime/install/postinstall.js'),
-  join(ROOT, 'migrate-v1/v1-client.js'),
   join(ROOT, 'cognition/discretion/bash-patterns.js'),
 ]);
 
