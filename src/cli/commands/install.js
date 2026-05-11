@@ -68,11 +68,18 @@ async function chooseHome({ prompt, interactive, args, homeFlag }) {
   if (homeFlag) {
     return { home: resolve(homeFlag), action: 'picked' };
   }
+  // --yes: accept default (option 1) without prompting.
+  if (args.flags.yes === true) {
+    return { home: join(packageRoot, 'user-data'), action: 'picked-default' };
+  }
   if (!interactive) {
     return { home: join(packageRoot, 'user-data'), action: 'picked-default' };
   }
-  // Reinstall discovery: scan known locations.
-  const found = discoverExistingHomes();
+  // Reinstall discovery: scan known locations. When --existing is provided,
+  // use it as the sole candidate instead of the default scan.
+  const existingFlag = typeof args.flags.existing === 'string' ? args.flags.existing : undefined;
+  const discoveryOpts = existingFlag ? { candidates: [resolve(existingFlag)] } : undefined;
+  const found = discoverExistingHomes(discoveryOpts);
   if (!pointerExists() && found.length > 0) {
     const reinstallOptions = found.map((f) => ({
       value: f.path,
@@ -326,6 +333,91 @@ export async function repair() {
   console.log('Re-applied hook entries. For plist/systemd drift, run: robin install');
 }
 
+/**
+ * Determine the Robin home path and optional migration plan without executing
+ * any side-effects. Extracted for testability.
+ *
+ * Returns one of:
+ *   { home, action, migrationPlan: undefined }
+ *   { home, action, migrationPlan: { from, mode } }
+ *   { home, action, migrationPlan: { abort: true, reason } }
+ */
+export async function planInstallHome({
+  args,
+  interactive,
+  prompt,
+  packageRoot,
+  homedir: homeDir,
+  discoverFn,
+}) {
+  const homeFlag = typeof args.flags.home === 'string' ? args.flags.home : null;
+  const yesFlag = args.flags.yes === true;
+  const existingFlag = typeof args.flags.existing === 'string' ? args.flags.existing : null;
+  const onExistingFlag =
+    typeof args.flags['on-existing'] === 'string' ? args.flags['on-existing'] : null;
+  const discover = discoverFn ?? discoverExistingHomes;
+
+  // Resolve home.
+  let home;
+  let action;
+
+  if (homeFlag) {
+    home = resolve(homeFlag);
+    action = 'picked';
+  } else if (yesFlag || !interactive) {
+    home = join(packageRoot, 'user-data');
+    action = 'picked-default';
+  } else {
+    // Interactive picker — outside the scope of planInstallHome; callers that
+    // need the picker should call chooseHome directly. This branch is only
+    // reached if someone calls planInstallHome in an interactive context
+    // without --home or --yes, which is valid when --existing is the point.
+    home = join(packageRoot, 'user-data');
+    action = 'picked-default';
+  }
+
+  // Discover existing data (honoring --existing).
+  const discoveryOpts = existingFlag ? { candidates: [resolve(existingFlag)] } : undefined;
+  const found = discover(discoveryOpts).filter((f) => f.path !== home);
+
+  if (found.length === 0) {
+    return { home, action, migrationPlan: undefined };
+  }
+
+  // Non-interactive or --yes: use --on-existing to decide. Default is 'abort'.
+  const mode = onExistingFlag ?? 'abort';
+  const VALID_MODES = ['move', 'copy', 'ignore', 'abort'];
+  if (!VALID_MODES.includes(mode)) {
+    return {
+      home,
+      action,
+      migrationPlan: {
+        abort: true,
+        reason: `invalid --on-existing value: ${mode}. Valid: move, copy, ignore, abort`,
+      },
+    };
+  }
+
+  if (mode === 'abort') {
+    const foundPaths = found.map((f) => f.path).join(', ');
+    return {
+      home,
+      action,
+      migrationPlan: {
+        abort: true,
+        reason: `existing data found at ${foundPaths}; aborting (pass --on-existing=ignore|move|copy)`,
+      },
+    };
+  }
+
+  if (mode === 'ignore') {
+    return { home, action, migrationPlan: { ignore: true } };
+  }
+
+  // mode === 'move' | 'copy': use the first found candidate as source.
+  return { home, action, migrationPlan: { from: found[0].path, mode } };
+}
+
 export async function install(argv = [], deps = {}) {
   const args = parseArgs(argv);
   const force = args.flags.force === true;
@@ -335,6 +427,9 @@ export async function install(argv = [], deps = {}) {
   const skipMigrate = args.flags['no-migrate'] === true;
   const skipHooks = args.flags['no-hooks'] === true;
   const hooksOnly = args.flags['hooks-only'] === true;
+  const onExistingFlag =
+    typeof args.flags['on-existing'] === 'string' ? args.flags['on-existing'] : null;
+  const yesFlag = args.flags.yes === true;
 
   const prompt = deps.prompt ?? defaultPrompt;
   const fetchFn = deps.fetch ?? globalThis.fetch;
@@ -386,9 +481,18 @@ export async function install(argv = [], deps = {}) {
     }
   }
 
-  // 3. Existing-data migration (only if we picked a new home that differs from known sources).
-  if (action === 'picked' && interactive) {
-    const found = discoverExistingHomes().filter((f) => f.path !== home);
+  // 3. Existing-data migration.
+  //    - Interactive path: prompt for source and mode.
+  //    - Non-interactive / --yes path: use --on-existing flag (default: abort).
+  const nonInteractiveMigration = !interactive || yesFlag;
+
+  if ((action === 'picked' || action === 'picked-default') && interactive && !yesFlag) {
+    // Interactive branch: discover using --existing candidate if provided,
+    // otherwise default scan.
+    const existingFlag =
+      typeof args.flags.existing === 'string' ? resolve(args.flags.existing) : null;
+    const discoveryOpts = existingFlag ? { candidates: [existingFlag] } : undefined;
+    const found = discoverExistingHomes(discoveryOpts).filter((f) => f.path !== home);
     if (found.length > 0) {
       const sources = found.map((f) => ({
         value: f.path,
@@ -423,6 +527,48 @@ export async function install(argv = [], deps = {}) {
           process.exit(1);
         }
         await migrateHome({ from: sourcePick, to: home, mode: modePick });
+      }
+    }
+  } else if ((action === 'picked' || action === 'picked-default') && nonInteractiveMigration) {
+    // Non-interactive / --yes branch: use --on-existing.
+    const existingFlagVal =
+      typeof args.flags.existing === 'string' ? resolve(args.flags.existing) : null;
+    const discoveryOpts = existingFlagVal ? { candidates: [existingFlagVal] } : undefined;
+    const found = discoverExistingHomes(discoveryOpts).filter((f) => f.path !== home);
+    if (found.length > 0) {
+      const mode = onExistingFlag ?? 'abort';
+      if (mode === 'abort') {
+        const foundPaths = found.map((f) => f.path).join(', ');
+        console.error(
+          `existing data found at ${foundPaths}; aborting (pass --on-existing=ignore|move|copy)`,
+        );
+        process.exit(1);
+      } else if (mode === 'ignore') {
+        // Silently skip migration; continue to install at chosen home.
+        // --force is required when target exists and has no Robin marker.
+        if (existsSync(home) && !force) {
+          const isRobin =
+            existsSync(join(home, '.robin-data')) ||
+            existsSync(join(home, 'db', 'CURRENT')) ||
+            existsSync(join(home, 'secrets', '.env'));
+          if (!isRobin) {
+            console.error(
+              `target ${home} already exists and has no Robin marker; pass --force --on-existing=ignore to overwrite.`,
+            );
+            process.exit(1);
+          }
+        }
+      } else if (mode === 'move' || mode === 'copy') {
+        if (existsSync(home)) {
+          console.error(
+            `target ${home} already exists; refusing to overwrite. Move it aside and re-run.`,
+          );
+          process.exit(1);
+        }
+        await migrateHome({ from: found[0].path, to: home, mode });
+      } else {
+        console.error(`invalid --on-existing value: ${mode}. Valid: move, copy, ignore, abort`);
+        process.exit(1);
       }
     }
   }
