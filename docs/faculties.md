@@ -187,19 +187,39 @@ Jaccard similarity. Manual MCP access via `list_arcs` and `get_arc`.
   structurally cannot reach archive (no FTS / vector index).
 - Restore via `restoreMemo(db, archived_id)` round-trips content + edges.
 
+### state-inference (cognition D1)
+
+**What:** One-line "what is the user currently working on?" inference, per agent source. Heartbeat-paced (default 5 min); LLM-gated by a SHA-256 signal-hash change detector over `(entities, arc_id, last_event_id)`.
+
+**Data:** `memos.kind = 'state_inference'` (already in `kind-registry.js`). `meta.dimension = 'current_focus'` (v1 fixes this; other dimensions are deferred). `meta.source` carries the agent-host identity. Half-life: 6h.
+
+**Code:**
+- `system/cognition/memory/state_inference.js` — lens (`noteStateInference`, `latestForSource`, `listRecent`).
+- `system/cognition/jobs/internal/state-inference.js` — heartbeat job (`evaluateStateInference`, `composeForSource`).
+- `system/cognition/jobs/builtin/state-inference.md` — manifest.
+
+**Surfacing:** Privileged `<!-- current focus -->` block above `<!-- relevant memory -->` in `system/cognition/intuition/inject.js`, gated by 7 suppression rules (disabled flag, no memo, low confidence, stale, supersedes leak, pivot, private scope) and a 200-token cap.
+
+**Calibration:** Each new inference compares against the prior via entity-set Jaccard + arc match; emits one `evidence_ledger` row per pivot or hold (`reason ∈ {state_inference_held, state_inference_pivoted}`). Dedup via reason filter on rows newer than `prior.derived_at`.
+
+**Rollout flag:** `runtime:state_inference.config.enabled` is three-valued: `false` | `'shadow'` | `true`. Shadow runs the pipeline (including the LLM) but suppresses the memo write and the intuition block.
+
+**Introspection MCP tool:** `explain_state_inference` (read-only) — returns `{ current, history (up to 10 supersedes hops), evidence_replay }`. Private-scope memos return only `{ private: true, id, derived_at }`.
+
 ### introspection (alpha.16, Theme 4)
-**Seven read-only MCP tools** for "why did Robin do X?":
+**Eight read-only MCP tools** for "why did Robin do X?":
 - `explain_recall` — recall_log + score components + sources (private redacted).
 - `explain_belief` — evidence_ledger replay + derivation formula.
 - `explain_action_trust` — current state + full ledger history.
+- `explain_state_inference` — Latest state_inference memo for a source, supersedes chain, calibration replay.
 - `show_pending_triggers` — queue depth.
 - `show_step_health` — cadence_telemetry rollup per step.
 - `recent_refusals` — discretion refusals listing.
 - `archive_history` — archive_log filtered by memo.
 
 Plus `robin doctor --health` — status rollups (token budget, pending
-triggers, dream freshness, faculty errors). Exit codes 0/1/2 for cron
-monitoring. `--json` for machine-readable output.
+triggers, dream freshness, faculty errors, state-inference activity).
+Exit codes 0/1/2 for cron monitoring. `--json` for machine-readable output.
 
 ## See also
 
