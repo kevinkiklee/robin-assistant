@@ -245,18 +245,33 @@ export async function startDaemon() {
     let lastBiographerRunAt = null;
     const queueWrap = {
       enqueue: (id) => {
-        const promise = queue.enqueue(id);
-        promise
-          .then(() => {
-            lastBiographerRunAt = new Date().toISOString();
-          })
-          .catch((e) =>
-            console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
-          );
-        return promise;
+        const ret = queue.enqueue(id);
+        // Queue may return { skipped: true } when at maxPending cap — not a promise.
+        // Wrap it as a resolved promise so callers' .catch() / .then() chains
+        // continue to work transparently.
+        if (ret && typeof ret.then === 'function') {
+          ret
+            .then(() => {
+              lastBiographerRunAt = new Date().toISOString();
+            })
+            .catch((e) =>
+              console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
+            );
+          return ret;
+        }
+        return Promise.resolve(ret);
       },
       get lastRunAt() {
         return lastBiographerRunAt;
+      },
+      get pendingDepth() {
+        return queue.pendingDepth;
+      },
+      get skippedSinceBoot() {
+        return queue.skippedSinceBoot;
+      },
+      get lastSkippedAt() {
+        return queue.lastSkippedAt;
       },
     };
     const detector = createRepeatQueryDetector({});
