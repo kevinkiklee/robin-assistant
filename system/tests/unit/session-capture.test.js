@@ -49,7 +49,7 @@ test('captures normal turn → writes one events row with source=conversation', 
     const result = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's1',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(result.captured, true);
     const [rows] = await db
@@ -59,7 +59,7 @@ test('captures normal turn → writes one events row with source=conversation', 
     assert.ok(rows[0].content.startsWith('USER: drop the watches feature'));
     assert.ok(rows[0].content.includes('ASSISTANT: Removed the watches table'));
     assert.equal(rows[0].meta.session_id, 's1');
-    assert.equal(rows[0].meta.host, 'claude_code');
+    assert.equal(rows[0].meta.host, 'claude-code');
   } finally {
     await close(db);
   }
@@ -71,7 +71,7 @@ test('skips on missing transcript_path', async () => {
     const result = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: null,
       sessionId: 's1',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(result.captured, false);
     assert.equal(result.skippedReason, 'no_transcript_path');
@@ -88,7 +88,7 @@ test('skips single-word ack (yes / ok / thanks)', async () => {
       const result = await captureFromTranscript(db, createStubEmbedder(), {
         transcriptPath: path,
         sessionId: 's',
-        host: 'claude_code',
+        host: 'claude-code',
       });
       assert.equal(result.captured, false, `should skip ack="${ack}"`);
       assert.equal(result.skippedReason, 'single_word_ack');
@@ -117,7 +117,7 @@ test('skips pure-tool turn (hasToolCalls + combined < 30 chars)', async () => {
     const result = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(result.captured, false);
     assert.equal(result.skippedReason, 'pure_tool_turn');
@@ -133,7 +133,7 @@ test('skips empty/near-empty turn (< 8 chars combined)', async () => {
     const result = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(result.captured, false);
     assert.equal(result.skippedReason, 'empty_turn');
@@ -150,7 +150,7 @@ test('does NOT skip short-but-meaningful turn ("drop it", "no, don\'t do that")'
       const result = await captureFromTranscript(db, createStubEmbedder(), {
         transcriptPath: path,
         sessionId: 's',
-        host: 'claude_code',
+        host: 'claude-code',
       });
       assert.equal(result.captured, true, `should capture user="${userMsg}"`);
     }
@@ -166,13 +166,13 @@ test('dedup probe short-circuits when same content_hash already exists', async (
     const r1 = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(r1.captured, true);
     const r2 = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(r2.captured, false);
     assert.equal(r2.skippedReason, 'dedup_hit');
@@ -196,7 +196,7 @@ test('PII guard refuses inbound content with credential shape', async () => {
     const result = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(result.captured, false);
     assert.equal(result.skippedReason, 'pii_refused');
@@ -217,7 +217,7 @@ test('truncates very long content to 16 KB total', async () => {
     const result = await captureFromTranscript(db, createStubEmbedder(), {
       transcriptPath: path,
       sessionId: 's',
-      host: 'claude_code',
+      host: 'claude-code',
     });
     assert.equal(result.captured, true);
     const [rows] = await db

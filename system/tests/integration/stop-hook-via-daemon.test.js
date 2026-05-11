@@ -32,7 +32,7 @@ test('Stop hook routes through daemon when running', async () => {
   });
   await new Promise((resolve) => m.on('exit', resolve));
   const daemon = spawn(process.execPath, [join(root, 'system/runtime/daemon/server.js')], {
-    env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude_code' },
+    env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude-code' },
     stdio: 'pipe',
   });
   try {

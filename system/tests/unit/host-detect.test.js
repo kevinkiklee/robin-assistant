@@ -8,28 +8,28 @@ function clearHostEnv() {
   Reflect.deleteProperty(process.env, 'ROBIN_HOST');
 }
 
-test('detectHost returns claude_code when CLAUDE_PROJECT_DIR is set', async () => {
+test('detectHost returns claude-code when CLAUDE_PROJECT_DIR is set', async () => {
   clearHostEnv();
   process.env.CLAUDE_PROJECT_DIR = '/tmp/test';
   const host = await detectHost({ skipAvailabilityCheck: true });
-  assert.equal(host.name, 'claude_code');
+  assert.equal(host.name, 'claude-code');
   clearHostEnv();
 });
 
-test('detectHost honors ROBIN_HOST=gemini_cli override', async () => {
+test('detectHost honors ROBIN_HOST=gemini-cli override', async () => {
   clearHostEnv();
-  process.env.ROBIN_HOST = 'gemini_cli';
+  process.env.ROBIN_HOST = 'gemini-cli';
   const host = await detectHost({ skipAvailabilityCheck: true });
-  assert.equal(host.name, 'gemini_cli');
+  assert.equal(host.name, 'gemini-cli');
   clearHostEnv();
 });
 
-test('detectHost honors ROBIN_HOST=claude_code override (even when GEMINI_API_KEY set)', async () => {
+test('detectHost honors ROBIN_HOST=claude-code override (even when GEMINI_API_KEY set)', async () => {
   clearHostEnv();
   process.env.GEMINI_API_KEY = 'test';
-  process.env.ROBIN_HOST = 'claude_code';
+  process.env.ROBIN_HOST = 'claude-code';
   const host = await detectHost({ skipAvailabilityCheck: true });
-  assert.equal(host.name, 'claude_code');
+  assert.equal(host.name, 'claude-code');
   clearHostEnv();
 });
 
@@ -43,6 +43,6 @@ test('detectHost ignores unknown ROBIN_HOST and falls through to heuristics', as
   process.env.ROBIN_HOST = 'totally_made_up';
   process.env.CLAUDE_PROJECT_DIR = '/tmp/test';
   const host = await detectHost({ skipAvailabilityCheck: true });
-  assert.equal(host.name, 'claude_code');
+  assert.equal(host.name, 'claude-code');
   clearHostEnv();
 });

@@ -1,4 +1,3 @@
-import { surql } from 'surrealdb';
 import { biographerProcess } from '../../../cognition/biographer/pipeline.js';
 import { ensureHome, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
@@ -40,10 +39,8 @@ export async function biographerProcessPending(argv) {
 
       // Find pending events (avoids loading embedder when there's nothing to do
       // AND the capture pre-step didn't already load one).
-      const query = since
-        ? surql`SELECT id, ts FROM events WHERE biographed_at IS NONE AND ts >= ${since} ORDER BY ts ASC LIMIT 50`
-        : surql`SELECT id, ts FROM events WHERE biographed_at IS NONE ORDER BY ts ASC LIMIT 50`;
-      const [pending] = await db.query(query).collect();
+      const { listPendingEvents } = await import('../../../cognition/biographer/pending-events.js');
+      const pending = await listPendingEvents(db, { since, limit: 50 });
 
       if (pending.length === 0) {
         console.log('process-pending: 0 events');

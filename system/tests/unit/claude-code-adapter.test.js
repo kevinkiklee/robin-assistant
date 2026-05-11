@@ -94,8 +94,8 @@ test('claudeCodeAdapter.isAvailable returns false when claude is not on PATH', a
   assert.equal(ok, false);
 });
 
-test('claudeCodeAdapter.name is claude_code', async () => {
+test('claudeCodeAdapter.name is claude-code', async () => {
   const fakeSpawn = makeFakeSpawn('', 0);
   const adapter = createClaudeCodeAdapter({ spawn: fakeSpawn });
-  assert.equal(adapter.name, 'claude_code');
+  assert.equal(adapter.name, 'claude-code');
 });

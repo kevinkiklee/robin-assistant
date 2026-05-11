@@ -23,7 +23,7 @@ test('robin biographer-catchup runs without error against an empty DB', () => {
     process.execPath,
     [join(root, 'system/bin/robin'), 'biographer-catchup'],
     {
-      env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude_code' },
+      env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude-code' },
       encoding: 'utf8',
     },
   );
@@ -44,7 +44,7 @@ test('robin biographer-catchup --retry-failed reports nothing-to-retry on empty 
     'node',
     [join(root, 'system/bin/robin'), 'biographer-catchup', '--retry-failed'],
     {
-      env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude_code' },
+      env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude-code' },
       encoding: 'utf8',
     },
   );

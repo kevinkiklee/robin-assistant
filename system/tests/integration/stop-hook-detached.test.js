@@ -22,7 +22,10 @@ test('stopHookHandler returns within 100ms (fire-and-forget)', async () => {
   } finally {
     if (orig) process.env.ROBIN_HOME = orig;
     else Reflect.deleteProperty(process.env, 'ROBIN_HOME');
-    rmSync(tmp, { recursive: true });
+    // The detached subprocess can still be writing when the test finishes
+    // (that's the point of "fire-and-forget"). Retry the rmdir a few times
+    // to absorb ENOTEMPTY races without slowing the happy path.
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
@@ -40,6 +43,9 @@ test('stopHookHandler works without --since', async () => {
   } finally {
     if (orig) process.env.ROBIN_HOME = orig;
     else Reflect.deleteProperty(process.env, 'ROBIN_HOME');
-    rmSync(tmp, { recursive: true });
+    // The detached subprocess can still be writing when the test finishes
+    // (that's the point of "fire-and-forget"). Retry the rmdir a few times
+    // to absorb ENOTEMPTY races without slowing the happy path.
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

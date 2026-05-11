@@ -82,7 +82,7 @@ export function createGeminiAdapter(deps = {}) {
   const spawnFn = deps.spawn ?? nodeSpawn;
 
   return {
-    name: 'gemini_cli',
+    name: 'gemini-cli',
 
     async isAvailable() {
       try {

@@ -132,50 +132,29 @@ Outbound writes (`github_write`, `spotify_write`, discord replies) pass through 
 
 ## Command reference
 
-### Daemon
+For the full, always-current list of commands and subcommands, run:
 
-```
-robin install [--profile P] [--no-hooks] [--hooks-only] [--no-supervise] [--no-register] [--no-agents-md] [--no-start] [--force]
-robin uninstall
-robin mcp <start|stop|status|restart|ensure-running|install|uninstall>
-robin doctor [--rebaseline|--purge-stale-sessions|--lint-hooks]
+```sh
+robin --help
 ```
 
-### Memory
+Help output is generated from the declarative registry at
+[`system/runtime/cli/commands.js`](system/runtime/cli/commands.js) — every
+leaf command's import, export, and help string lives there.
+
+The most commonly used commands:
 
 ```
-robin remember [--force] <content>       # CLI memory write; --force bypasses inbound discretion
+robin install                            # install hooks, MCP, daemon
+robin uninstall                          # uninstall everything
+robin doctor                             # health check
+robin mcp <start|stop|status|restart>    # daemon control
+robin remember <content>                 # CLI memory write
 robin journal                            # recent capture
-robin hot                                # hot entities / topics
-robin rules pending                      # rule candidates awaiting approval
-robin rules approve <id>
-robin rules reject <id>
-robin rules list
-robin rules deactivate <id>
 robin dream run                          # trigger nightly consolidation now
-robin biographer-catchup [--retry-failed]
-robin migrate                            # apply pending schema migrations
-robin migrate-from-v1                    # one-shot import from v1
-robin embedder switch <profile>          # switch + resumable re-embed
-```
-
-### Safety / sessions
-
-```
-robin sessions [--stale]                 # list active sessions, or purge stale
-robin refusals list                      # recent in/outbound refusal audit
-robin hooks <disable|enable> <phase>     # kill-switch a single hook (discretion, intuition, session-start, stop)
-robin pre-commit <install|uninstall>     # per-repo privacy hook
-robin hook <phase>                       # internal — invoked by host hook entries; not for direct use
-```
-
-### Integrations
-
-```
+robin rules <pending|approve|reject|list|deactivate>
 robin integrations <list|status|run>
-robin integrations discord register-commands
-robin auth <google|spotify|whoop> [--code [<VALUE>]]
-robin secrets <import --from <path>|list|set <KEY>>
+robin secrets <import|list|set>
 ```
 
 ## Develop

@@ -1,7 +1,10 @@
 import { surql } from 'surrealdb';
+import { countPendingEvents } from '../../cognition/biographer/pending-events.js';
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { runOneJob } from '../../cognition/jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
+import { embedBackfillTick } from '../../data/embed/backfill.js';
+import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 
 /**
@@ -36,8 +39,6 @@ export function createDispatcherTick(ctx, tools) {
     }
     if (name === '__embed_backfill__') {
       const e = await ctx.embedder.idle.get();
-      // Kept dynamic: backfill is only invoked from this single site.
-      const { embedBackfillTick } = await import('../../data/embed/backfill.js');
       return await embedBackfillTick({
         db: ctx.db,
         embedder: e,
@@ -88,7 +89,6 @@ export function createDispatcherTick(ctx, tools) {
       due.push({ name: '__dream__', kind: 'dream' });
     }
     try {
-      const { activeProfile, embeddingTable } = await import('../../data/embed/profile-router.js');
       const profile = await activeProfile(ctx.db);
       const eventsEmbTbl = embeddingTable(profile, 'events');
       const [pending] = await ctx.db
@@ -117,10 +117,7 @@ export function createDispatcherTick(ctx, tools) {
     }
     // Overflow fallback: if nothing else dispatched and biographer backlog ≥ 500, kick dream.
     if (inFlight.size === 0) {
-      const [overflowRows] = await ctx.db
-        .query(surql`SELECT count() AS n FROM events WHERE biographed_at IS NONE GROUP ALL`)
-        .collect();
-      if ((overflowRows[0]?.n ?? 0) >= 500) {
+      if ((await countPendingEvents(ctx.db)) >= 500) {
         inFlight.add('__dream__');
         runOneItem('__dream__')
           .catch((e) => console.warn(`[scheduler] __dream__ failed: ${e.message}`))

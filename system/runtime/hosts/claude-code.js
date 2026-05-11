@@ -63,7 +63,7 @@ export function createClaudeCodeAdapter(deps = {}) {
   const spawnFn = deps.spawn ?? nodeSpawn;
 
   return {
-    name: 'claude_code',
+    name: 'claude-code',
 
     async isAvailable() {
       try {

@@ -107,9 +107,9 @@ test('geminiAdapter.isAvailable returns false when gemini is not on PATH', async
   assert.equal(await adapter.isAvailable(), false);
 });
 
-test('geminiAdapter.name is gemini_cli', async () => {
+test('geminiAdapter.name is gemini-cli', async () => {
   const adapter = createGeminiAdapter({ spawn: fakeSpawnFactory({}) });
-  assert.equal(adapter.name, 'gemini_cli');
+  assert.equal(adapter.name, 'gemini-cli');
 });
 
 test('geminiAdapter spawns with neutral cwd to avoid v1 hooks', async () => {

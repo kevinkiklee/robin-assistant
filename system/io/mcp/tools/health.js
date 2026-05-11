@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { countPendingEvents } from '../../../cognition/biographer/pending-events.js';
 
 export function createHealthTool({ version, startedAt, db, embedder, biographerQueue, sessions }) {
   return {
@@ -9,10 +10,7 @@ export function createHealthTool({ version, startedAt, db, embedder, biographerQ
       let pending = 0;
       let failed = 0;
       try {
-        const [pendingRows] = await db
-          .query(surql`SELECT count() AS n FROM events WHERE biographed_at IS NONE GROUP ALL`)
-          .collect();
-        pending = pendingRows[0]?.n ?? 0;
+        pending = await countPendingEvents(db);
         const [bRows] = await db
           .query(surql`SELECT * FROM type::record('runtime', 'biographer') LIMIT 1`)
           .collect();
