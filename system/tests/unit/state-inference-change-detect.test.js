@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  buildPrompt,
+  clampConfidence,
   computeSignalHash,
   detectChange,
+  validateLLMOutput,
 } from '../../cognition/jobs/internal/state-inference.js';
 
 test('computeSignalHash is stable across entity ordering', () => {
@@ -141,4 +144,49 @@ test('detectChange: entities + arc + last_event_id all unchanged + time threshol
   });
   assert.equal(r.materially_changed, true);
   assert.equal(r.reason, 'refresh_window');
+});
+
+test('buildPrompt includes arc summary, entities, events, prior content', () => {
+  const out = buildPrompt({
+    arc: { summary: 'Refactor cognition layer' },
+    entities: [{ name: 'state_inference', type: 'topic' }],
+    events: [{ ts: '2026-05-11T18:00:00Z', content: 'wrote design spec' }],
+    prior: { content: 'iterating on cognition refactor' },
+  });
+  assert.match(out, /Refactor cognition layer/);
+  assert.match(out, /state_inference/);
+  assert.match(out, /wrote design spec/);
+  assert.match(out, /iterating on cognition refactor/);
+  assert.match(out, /Respond JSON only:/);
+});
+
+test('buildPrompt handles null arc + empty prior gracefully', () => {
+  const out = buildPrompt({
+    arc: null,
+    entities: [],
+    events: [{ ts: '2026-05-11T18:00:00Z', content: 'noop' }],
+    prior: null,
+  });
+  assert.match(out, /Active arc: none/);
+  assert.match(out, /Prior inference \(for context, may be stale\): none/);
+});
+
+test('clampConfidence respects [0.05, 0.95] bounds and ambiguous shrink', () => {
+  assert.equal(clampConfidence(1.5, false), 0.95);
+  assert.equal(clampConfidence(-0.3, false), 0.05);
+  assert.equal(clampConfidence(0.8, true), 0.4);
+  assert.equal(clampConfidence(0.5, false), 0.5);
+});
+
+test('validateLLMOutput rejects non-JSON or missing fields', () => {
+  assert.equal(validateLLMOutput(null).ok, false);
+  assert.equal(validateLLMOutput({ focus_statement: 'x' }).ok, false); // missing confidence
+  const v = validateLLMOutput({
+    focus_statement: 'x',
+    confidence: 0.7,
+    evidence_snippet: 's',
+    ambiguous: false,
+    drop: false,
+  });
+  assert.equal(v.ok, true);
 });
