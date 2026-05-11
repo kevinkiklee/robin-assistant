@@ -40,7 +40,7 @@ test('migrations resolves to source tree even when ROBIN_HOME is set elsewhere',
   assert.equal(paths.source.migrations(), join(packageRootDir(), 'src', 'schema', 'migrations'));
 });
 
-import { ensureHome, packageRootDir, paths, robinHome } from '../../src/runtime/data-store.js';
+import { ensureHome, packageRootDir, paths, resolveHomeStrict, POINTER_VERSION, robinHome } from '../../src/runtime/data-store.js';
 
 test('paths.data is under robinHome()', () => {
   const home = robinHome();
@@ -82,6 +82,9 @@ test('paths.data and paths.source roots do not overlap', () => {
   );
 });
 
+// ── Task 1.4 imports ─────────────────────────────────────────────────────────
+import { writeFileSync as fsWriteSync } from 'node:fs';
+
 // ── Task 1.3: .robin-data marker ──────────────────────────────────────────────
 
 test('ensureHome() writes .robin-data marker with version', async () => {
@@ -118,5 +121,92 @@ test('ensureHome() is idempotent and preserves an existing marker', async () => 
     if (prev) process.env.ROBIN_HOME = prev;
     else delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// ── Task 1.4: strict resolver + .robin-home pointer ──────────────────────────
+
+test('strict resolver: $ROBIN_HOME wins when set and target exists', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
+  const prev = process.env.ROBIN_HOME;
+  process.env.ROBIN_HOME = home;
+  try {
+    const resolved = resolveHomeStrict();
+    assert.strictEqual(resolved, home);
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+    else delete process.env.ROBIN_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('strict resolver: throws "Robin is not installed" when neither set', () => {
+  const prev = process.env.ROBIN_HOME;
+  delete process.env.ROBIN_HOME;
+  try {
+    assert.throws(
+      () => resolveHomeStrict({ pointerPath: '/tmp/does-not-exist-robin-home.json' }),
+      /Robin is not installed.*robin install/,
+    );
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+  }
+});
+
+test('strict resolver: pointer file with valid target resolves to it', () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
+  const pkg = mkdtempSync(join(tmpdir(), 'robin-pkg-'));
+  const pointerPath = join(pkg, '.robin-home');
+  fsWriteSync(pointerPath, JSON.stringify({
+    version: 1, home, installedAt: '2026-05-10T00:00:00Z', installedBy: 'test',
+  }));
+  const prev = process.env.ROBIN_HOME;
+  delete process.env.ROBIN_HOME;
+  try {
+    const resolved = resolveHomeStrict({ pointerPath });
+    assert.strictEqual(resolved, home);
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+    rmSync(home, { recursive: true, force: true });
+    rmSync(pkg, { recursive: true, force: true });
+  }
+});
+
+test('strict resolver: pointer target missing throws --relocate hint', () => {
+  const pkg = mkdtempSync(join(tmpdir(), 'robin-pkg-'));
+  const pointerPath = join(pkg, '.robin-home');
+  fsWriteSync(pointerPath, JSON.stringify({
+    version: 1, home: '/tmp/this-path-does-not-exist-robin-xyz',
+    installedAt: '2026-05-10T00:00:00Z', installedBy: 'test',
+  }));
+  const prev = process.env.ROBIN_HOME;
+  delete process.env.ROBIN_HOME;
+  try {
+    assert.throws(
+      () => resolveHomeStrict({ pointerPath }),
+      /recorded in \.robin-home is missing.*--relocate/s,
+    );
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+    rmSync(pkg, { recursive: true, force: true });
+  }
+});
+
+test('strict resolver: pointer with unknown version throws', () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
+  const pkg = mkdtempSync(join(tmpdir(), 'robin-pkg-'));
+  const pointerPath = join(pkg, '.robin-home');
+  fsWriteSync(pointerPath, JSON.stringify({ version: 999, home, installedAt: '', installedBy: '' }));
+  const prev = process.env.ROBIN_HOME;
+  delete process.env.ROBIN_HOME;
+  try {
+    assert.throws(
+      () => resolveHomeStrict({ pointerPath }),
+      /\.robin-home version 999 is not supported/,
+    );
+  } finally {
+    if (prev) process.env.ROBIN_HOME = prev;
+    rmSync(home, { recursive: true, force: true });
+    rmSync(pkg, { recursive: true, force: true });
   }
 });
