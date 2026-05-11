@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { acquireDaemonLock, isPidAlive, releaseDaemonLock } from '../../src/daemon/lock.js';
+import { acquireDaemonLock, isPidAlive, releaseDaemonLock } from '../../runtime/daemon/lock.js';
 
 test('acquireDaemonLock writes pid; release deletes file', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-daemon-lock-'));

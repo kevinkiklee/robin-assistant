@@ -1,5 +1,5 @@
 import { BoundQuery } from 'surrealdb';
-import { activeProfile, embeddingTable } from '../embed/profile-router.js';
+import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
 
 /**
  * Cascade Stage 2: embedding similarity via HNSW.

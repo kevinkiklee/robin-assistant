@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { snapshot } from '../../src/db/backup.js';
+import { snapshot } from '../../data/db/backup.js';
 
 function makeTar(dir, name, mtimeSec) {
   const path = join(dir, name);

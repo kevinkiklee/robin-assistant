@@ -4,8 +4,8 @@ import {
   buildScheduleEvents,
   buildStandingsEvent,
   buildSummaryEvent,
-} from '../../src/integrations/nhl/client.js';
-import { sync } from '../../src/integrations/nhl/sync.js';
+} from '../../io/integrations/nhl/client.js';
+import { sync } from '../../io/integrations/nhl/sync.js';
 
 const sampleGames = [
   {

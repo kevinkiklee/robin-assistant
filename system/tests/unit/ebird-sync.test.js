@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { buildEventFromObservation } from '../../src/integrations/ebird/client.js';
-import { sync } from '../../src/integrations/ebird/sync.js';
+import { buildEventFromObservation } from '../../io/integrations/ebird/client.js';
+import { sync } from '../../io/integrations/ebird/sync.js';
 
 test('buildEventFromObservation shapes content + meta', () => {
   const obs = {

@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { loadManifests } from '../../src/integrations/_framework/manifest-loader.js';
+import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
 
 let tmpDir;
 

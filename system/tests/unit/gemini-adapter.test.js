@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { createGeminiAdapter } from '../../src/hosts/gemini.js';
+import { createGeminiAdapter } from '../../runtime/hosts/gemini.js';
 
 // Note on test technique: same dependency-injection factory pattern as the
 // Claude Code adapter — `createGeminiAdapter({ spawn })` accepts a fake

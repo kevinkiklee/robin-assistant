@@ -4,12 +4,12 @@ import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
 import { surql } from 'surrealdb';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { createCapture } from '../../src/integrations/_framework/capture.js';
-import { createGitHubWriteTool } from '../../src/integrations/github_write/tools/github-write.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { createCapture } from '../../io/integrations/_framework/capture.js';
+import { createGitHubWriteTool } from '../../io/integrations/github_write/tools/github-write.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
@@ -46,7 +46,7 @@ async function setup() {
   });
   // Phase 4b.1 — pre-seed AUTO for all github_write actions so this
   // roundtrip exercises the existing behavior, not the trust gate.
-  const { setActionTrust } = await import('../../src/jobs/action-trust.js');
+  const { setActionTrust } = await import('../../cognition/jobs/action-trust.js');
   for (const action of ['create-issue', 'comment', 'label', 'mark-read']) {
     await setActionTrust(db, `github_write:${action}`, 'AUTO', 'user');
   }

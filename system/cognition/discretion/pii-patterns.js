@@ -9,7 +9,7 @@
 //
 // Outbound separately blocks SSN / credit cards / SIN against egress writers.
 
-import { SECRET_PATTERNS } from '../outbound/patterns.js';
+import { SECRET_PATTERNS } from '../../io/outbound/patterns.js';
 
 // Re-use the canonical secret list from the outbound module so they cannot
 // drift apart (DRY). Inbound adds a few more credential-shape rules.

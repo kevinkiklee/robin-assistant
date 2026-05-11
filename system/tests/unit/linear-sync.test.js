@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { buildEventFromIssue, priorityLabelFor } from '../../src/integrations/linear/client.js';
-import { sync } from '../../src/integrations/linear/sync.js';
+import { buildEventFromIssue, priorityLabelFor } from '../../io/integrations/linear/client.js';
+import { sync } from '../../io/integrations/linear/sync.js';
 
 test('priorityLabelFor maps numeric Linear priorities', () => {
   assert.equal(priorityLabelFor(1), 'Urgent');

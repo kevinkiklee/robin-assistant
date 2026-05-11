@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createGmailGetThreadTool } from '../../src/integrations/gmail/tools/gmail-get-thread.js';
-import { createGmailSearchTool } from '../../src/integrations/gmail/tools/gmail-search.js';
+import { createGmailGetThreadTool } from '../../io/integrations/gmail/tools/gmail-get-thread.js';
+import { createGmailSearchTool } from '../../io/integrations/gmail/tools/gmail-search.js';
 
 test('gmail_search has correct shape', () => {
   const t = createGmailSearchTool();

@@ -7,7 +7,7 @@ import {
   generatePKCE,
   PROVIDERS,
   refreshAccessToken,
-} from '../../src/integrations/_auth/oauth2.js';
+} from '../../io/integrations/_auth/oauth2.js';
 
 test('PROVIDERS registry has google, spotify, whoop', () => {
   assert.ok(PROVIDERS.google);

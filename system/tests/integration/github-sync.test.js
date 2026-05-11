@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
-import { sync } from '../../src/integrations/github/sync.js';
+import { sync } from '../../io/integrations/github/sync.js';
 
 function makeFetch(routes) {
   // Sort by descending pattern length so more-specific routes match before

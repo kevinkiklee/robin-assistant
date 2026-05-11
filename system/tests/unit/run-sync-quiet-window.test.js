@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adjustForQuietWindow } from '../../src/integrations/_framework/run-sync.js';
+import { adjustForQuietWindow } from '../../io/integrations/_framework/run-sync.js';
 
 const tz = 'America/New_York';
 const ACTIVE = [4, 5, 6, 7, 8];

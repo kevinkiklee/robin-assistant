@@ -1,6 +1,6 @@
 // explain-belief.js — Theme 4. Why does Robin believe this memo at this confidence?
 import { BoundQuery, RecordId } from 'surrealdb';
-import { isOutboundBlocked } from '../../memory/scope-registry.js';
+import { isOutboundBlocked } from '../../../cognition/memory/scope-registry.js';
 
 export function createExplainBeliefTool({ db }) {
   return {

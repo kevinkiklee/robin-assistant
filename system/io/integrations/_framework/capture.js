@@ -1,6 +1,6 @@
 import { BoundQuery, surql } from 'surrealdb';
-import { sha256 } from '../../embed/hash.js';
-import { activeProfile, embeddingTable } from '../../embed/profile-router.js';
+import { sha256 } from '../../../data/embed/hash.js';
+import { activeProfile, embeddingTable } from '../../../data/embed/profile-router.js';
 
 function sanitizeIdPart(s) {
   return /^[a-zA-Z0-9_-]+$/.test(s) ? s : `h_${Buffer.from(s).toString('hex').slice(0, 16)}`;

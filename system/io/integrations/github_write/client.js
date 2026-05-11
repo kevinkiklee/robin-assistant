@@ -1,4 +1,4 @@
-import { requireSecret } from '../../secrets/dotenv-io.js';
+import { requireSecret } from '../../../config/secrets.js';
 
 /**
  * Low-level GitHub REST fetch used by both github_write (mutations) and

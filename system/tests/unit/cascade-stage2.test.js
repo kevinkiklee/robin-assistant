@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { BoundQuery, surql } from 'surrealdb';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { activeProfile, embeddingTable } from '../../src/embed/profile-router.js';
-import { stage2Resolve } from '../../src/graph/stage2-embedding.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
+import { stage2Resolve } from '../../cognition/biographer/stage2-embedding.js';
 
 // stage2 reads from the per-profile embeddings_<profile>_entities surface,
 // not from an inline `entities.embedding` column (gone in the redesign).
@@ -31,7 +31,7 @@ async function seedEntity(db, embedder, { name, type }) {
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin } from 'node:path';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

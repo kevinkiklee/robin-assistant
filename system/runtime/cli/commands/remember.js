@@ -5,7 +5,7 @@
 
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
-import { paths } from '../../runtime/data-store.js';
+import { paths } from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function remember(argv = []) {

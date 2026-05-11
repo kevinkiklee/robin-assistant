@@ -11,8 +11,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { parseArgs } from '../../src/cli/args.js';
-import { planInstallHome } from '../../src/cli/commands/install.js';
+import { parseArgs } from '../../runtime/cli/args.js';
+import { planInstallHome } from '../../runtime/cli/commands/install.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

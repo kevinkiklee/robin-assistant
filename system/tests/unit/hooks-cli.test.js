@@ -11,7 +11,7 @@ const __robinTestHome = join(
 mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
-const { DISPATCH, runHook } = await import('../../src/hooks/cli.js');
+const { DISPATCH, runHook } = await import('../../io/hooks/dispatcher.js');
 
 const configFile = join(__robinTestHome, 'config.json');
 

@@ -2,9 +2,9 @@
 // in <robinHome>/config.json.hooks.disabled. Inverse of `robin hooks disable`.
 // Per-phase: enabling one phase leaves the others untouched.
 
-import { DISPATCH } from '../../hooks/cli.js';
-import { removeDisabled } from '../../hooks/disabled.js';
-import { ensureHome } from '../../runtime/data-store.js';
+import { DISPATCH } from '../../../io/hooks/dispatcher.js';
+import { removeDisabled } from '../../../io/hooks/disabled.js';
+import { ensureHome } from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function hooksEnable(argv = [], deps = {}) {

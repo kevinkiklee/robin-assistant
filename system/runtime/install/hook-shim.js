@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { packageRootDir } from '../runtime/data-store.js';
+import { packageRootDir } from '../../config/data-store.js';
 
 /**
  * Verify the shipped `bin/robin-hook.sh` shim exists and is mode 755 (or at

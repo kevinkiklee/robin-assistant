@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildBiographerPrompt } from '../../src/capture/biographer-prompt.js';
+import { buildBiographerPrompt } from '../../cognition/biographer/prompt.js';
 
 test('buildBiographerPrompt returns system + user messages', () => {
   const r = buildBiographerPrompt({

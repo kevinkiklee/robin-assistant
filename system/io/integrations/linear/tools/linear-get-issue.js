@@ -1,4 +1,4 @@
-import { requireSecret } from '../../../secrets/dotenv-io.js';
+import { requireSecret } from '../../../../config/secrets.js';
 import { graphql } from '../client.js';
 
 const ISSUE_QUERY = `

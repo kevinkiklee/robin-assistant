@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { generateLaunchdPlist } from '../../src/install/launchd-plist.js';
+import { generateLaunchdPlist } from '../../runtime/install/launchd-plist.js';
 
 test('generateLaunchdPlist produces a valid plist with ROBIN_HOME, KeepAlive=true, and correct log path', () => {
   const xml = generateLaunchdPlist({

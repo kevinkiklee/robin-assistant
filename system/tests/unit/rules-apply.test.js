@@ -3,18 +3,18 @@ import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { getProfile } from '../../src/memory/persona.js';
-import { createCandidate, listCandidates } from '../../src/rules/candidates.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { getProfile } from '../../cognition/memory/persona.js';
+import { createCandidate, listCandidates } from '../../cognition/dream/candidates.js';
 import {
   approveCandidate,
   deactivateRule,
   listRules,
   rejectCandidate,
   setRulePriority,
-} from '../../src/rules/rules.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+} from '../../cognition/memory/rules.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

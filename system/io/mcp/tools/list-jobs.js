@@ -1,4 +1,4 @@
-import { listAllJobs } from '../../jobs/db.js';
+import { listAllJobs } from '../../../cognition/jobs/db.js';
 
 const FIELDS = [
   'name',

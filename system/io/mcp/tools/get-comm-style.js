@@ -1,5 +1,5 @@
 // src/mcp/tools/get-comm-style.js
-import { DEFAULTS, getCommStyle } from '../../jobs/comm-style.js';
+import { DEFAULTS, getCommStyle } from '../../../cognition/jobs/comm-style.js';
 
 export function createGetCommStyleTool({ db }) {
   return {

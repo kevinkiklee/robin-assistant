@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
+import { close, connect } from '../../data/db/client.js';
 
 test('connect returns a usable Surreal handle on mem://', async () => {
   const db = await connect({ engine: 'mem://' });

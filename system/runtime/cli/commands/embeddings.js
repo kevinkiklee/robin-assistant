@@ -16,8 +16,8 @@
 // `list` connects to the DB directly.
 
 import readline from 'node:readline/promises';
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { tableNameSafeProfile } from '../../embed/profile-router.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { tableNameSafeProfile } from '../../../data/embed/profile-router.js';
 import { daemonRequest as defaultRequest } from '../daemon-request.js';
 
 const VALID_PROFILE_RX = /^[a-z0-9-]+$/;

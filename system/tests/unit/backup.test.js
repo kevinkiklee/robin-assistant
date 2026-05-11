@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { snapshot } from '../../src/db/backup.js';
+import { snapshot } from '../../data/db/backup.js';
 
 test('snapshot writes a tar archive named with a timestamp', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-backup-'));

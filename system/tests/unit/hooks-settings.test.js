@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { readHostIntegrations } from '../../src/runtime/data-store.js';
+import { readHostIntegrations } from '../../config/data-store.js';
 
 function makeFreshEnv() {
   const root = join(

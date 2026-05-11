@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentsMdContent, buildSecurityBlock } from '../../src/install/agents-md.js';
+import { agentsMdContent, buildSecurityBlock } from '../../runtime/install/agents-md.js';
 
 test('AGENTS.md includes Security posture block', () => {
   const md = agentsMdContent();

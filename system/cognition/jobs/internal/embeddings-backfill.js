@@ -16,8 +16,8 @@
 // `embeddings-ops.js` dispatcher passes `profile` directly.
 
 import { BoundQuery, surql } from 'surrealdb';
-import { createEmbedder } from '../../embed/factory.js';
-import { embeddingTable, tableNameSafeProfile } from '../../embed/profile-router.js';
+import { createEmbedder } from '../../../data/embed/factory.js';
+import { embeddingTable, tableNameSafeProfile } from '../../../data/embed/profile-router.js';
 
 const CHUNK = 200;
 const SURFACES = ['events', 'memos', 'entities'];
@@ -71,9 +71,9 @@ async function loadEmbedderFor(profile, override) {
   // backfill targeting a *non-active* profile we go around it via the static
   // loader map keyed by profile name.
   const LOADERS = {
-    'mxbai-1024': async () => (await import('../../embed/in-process.js')).createInProcessEmbedder(),
-    'qwen3-4096': async () => (await import('../../embed/ollama.js')).createOllamaEmbedder(),
-    'gemini-3072': async () => (await import('../../embed/gemini.js')).createGeminiEmbedder(),
+    'mxbai-1024': async () => (await import('../../../data/embed/in-process.js')).createInProcessEmbedder(),
+    'qwen3-4096': async () => (await import('../../../data/embed/ollama.js')).createOllamaEmbedder(),
+    'gemini-3072': async () => (await import('../../../data/embed/gemini.js')).createGeminiEmbedder(),
   };
   const loader = LOADERS[profile];
   if (loader) return loader();

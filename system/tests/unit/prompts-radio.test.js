@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { radio } from '../../src/cli/prompts.js';
+import { radio } from '../../runtime/cli/prompts.js';
 
 function fakeInput(answers) {
   let i = 0;

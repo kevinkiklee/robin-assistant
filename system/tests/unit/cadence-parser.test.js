@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseCadence } from '../../src/integrations/_framework/cadence.js';
+import { parseCadence } from '../../io/integrations/_framework/cadence.js';
 
 test('parseCadence "15m" → 900_000', () => assert.equal(parseCadence('15m'), 900_000));
 test('parseCadence "1h" → 3_600_000', () => assert.equal(parseCadence('1h'), 3_600_000));

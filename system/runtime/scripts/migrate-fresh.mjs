@@ -16,9 +16,9 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { close, connect, defaultDbUrl } from '../src/db/client.js';
-import { runMigrations } from '../src/db/migrate.js';
-import { robinHome } from '../src/runtime/data-store.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { robinHome } from '../../config/data-store.js';
 
 const ROBIN_HOME = robinHome();
 const CONFIG_PATH = join(ROBIN_HOME, 'config.json');

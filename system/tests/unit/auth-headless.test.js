@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { runHeadlessAuth } from '../../src/integrations/_auth/oauth2.js';
+import { runHeadlessAuth } from '../../io/integrations/_auth/oauth2.js';
 
 test('runHeadlessAuth prints URL with scopes and exchanges code', async () => {
   const prompts = [];

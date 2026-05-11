@@ -10,10 +10,10 @@ import {
   markStaleSessions,
   purgeStaleSessions,
   registerSession,
-} from '../../src/daemon/sessions.js';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { writeConfig } from '../../src/runtime/config.js';
+} from '../../runtime/daemon/sessions.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { writeConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = join(

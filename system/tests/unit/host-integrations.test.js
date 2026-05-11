@@ -8,7 +8,7 @@ import {
   forgetHostTouchpoint,
   readHostIntegrations,
   recordHostTouchpoint,
-} from '../../src/runtime/data-store.js';
+} from '../../config/data-store.js';
 
 function withHome(_t, fn) {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));

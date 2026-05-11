@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
-import { sync } from '../../src/integrations/whoop/sync.js';
+import { _resetCache } from '../../io/integrations/_auth/token-cache.js';
+import { sync } from '../../io/integrations/whoop/sync.js';
 
 function ok(json) {
   return { ok: true, json: async () => json };

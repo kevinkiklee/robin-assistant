@@ -7,8 +7,8 @@
 // The copy becomes daemon.log.1 (one historical archive; no compression).
 import { copyFileSync, existsSync, statSync, truncateSync } from 'node:fs';
 import { join } from 'node:path';
-import { readConfig } from '../../runtime/config.js';
-import { paths } from '../../runtime/data-store.js';
+import { readConfig } from '../../../config/paths.js';
+import { paths } from '../../../config/data-store.js';
 
 const DEFAULT_THRESHOLD_BYTES = 10 * 1024 * 1024; // 10 MB
 

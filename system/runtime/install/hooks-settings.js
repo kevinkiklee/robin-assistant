@@ -14,7 +14,7 @@ import {
   forgetHostTouchpoint,
   readHostIntegrations,
   recordHostTouchpoint,
-} from '../runtime/data-store.js';
+} from '../../config/data-store.js';
 
 /**
  * - Claude Code: PreToolUse (Bash), UserPromptSubmit, SessionStart, Stop.

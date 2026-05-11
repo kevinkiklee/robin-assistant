@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createScheduler } from '../../src/daemon/scheduler.js';
+import { createScheduler } from '../../runtime/daemon/heartbeat.js';
 
 test('scheduler fires runOne for due items', async () => {
   let calls = 0;

@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { predictionsList } = await import('../../src/cli/commands/predictions-list.js');
-const { predictionsResolve } = await import('../../src/cli/commands/predictions-resolve.js');
+const { predictionsList } = await import('../../runtime/cli/commands/predictions-list.js');
+const { predictionsResolve } = await import('../../runtime/cli/commands/predictions-resolve.js');
 
 function capture() {
   const lines = [];

@@ -1,4 +1,4 @@
-import { resolvePrediction } from '../../jobs/predictions.js';
+import { resolvePrediction } from '../../../cognition/jobs/predictions.js';
 
 export function createResolvePredictionTool({ db }) {
   return {

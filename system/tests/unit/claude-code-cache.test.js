@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { createClaudeCodeAdapter } from '../../src/hosts/claude-code.js';
+import { createClaudeCodeAdapter } from '../../runtime/hosts/claude-code.js';
 
 // The Claude Code CLI takes a single positional prompt under `-p`. Unlike
 // the v1 SDK call, `cache_control: { type: 'ephemeral' }` is not a CLI

@@ -5,7 +5,7 @@ import {
   buildEventFromMessage,
   classifyMessage,
   isAllowed,
-} from '../../src/integrations/discord/dispatcher.js';
+} from '../../io/integrations/discord/dispatcher.js';
 import { makeInteraction, makeMessage } from '../fixtures/discord-events.js';
 
 const allowlist = { user_ids: ['u1'], guild_ids: ['g1'], dm_user_ids: ['u1'] };

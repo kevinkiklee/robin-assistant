@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
-import { updateProfileFields } from '../memory/persona.js';
-import { updateCandidateStatus } from './candidates.js';
+import { updateProfileFields } from './persona.js';
+import { updateCandidateStatus } from '../dream/candidates.js';
 
 /**
  * rules — durable instructions Robin should follow, derived from approved

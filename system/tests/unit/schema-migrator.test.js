@@ -3,9 +3,9 @@ import { mkdirSync as __robinMkdirSync, mkdtempSync, rmSync, writeFileSync } fro
 import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

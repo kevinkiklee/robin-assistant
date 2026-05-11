@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { paths } from '../../runtime/data-store.js';
+import { paths } from '../../../config/data-store.js';
 import { sync } from './sync.js';
 import { createLetterboxdRecentTool } from './tools/letterboxd-recent.js';
 

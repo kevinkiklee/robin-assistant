@@ -3,12 +3,12 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { getActionTrust } from '../../src/jobs/action-trust.js';
-import { createUpdateActionPolicyTool } from '../../src/mcp/tools/update-action-policy.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { getActionTrust } from '../../cognition/jobs/action-trust.js';
+import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
 
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });

@@ -1,4 +1,4 @@
-import { getSecret } from '../../secrets/dotenv-io.js';
+import { getSecret } from '../../../config/secrets.js';
 import { sync } from './sync.js';
 import { createWhoopRecentTool } from './tools/whoop-recent.js';
 import { createWhoopTodayTool } from './tools/whoop-today.js';

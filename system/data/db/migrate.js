@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
-import { readConfig } from '../runtime/config.js';
+import { readConfig } from '../../config/paths.js';
 
 async function migrationsTableExists(db) {
   const [info] = await db.query('INFO FOR DB').collect();

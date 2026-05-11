@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import { envFilePath, listKeys } from '../../secrets/dotenv-io.js';
+import { envFilePath, listKeys } from '../../../config/secrets.js';
 
 export async function secretsList() {
   const path = envFilePath();

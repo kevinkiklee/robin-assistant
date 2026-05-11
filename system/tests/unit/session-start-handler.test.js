@@ -12,7 +12,7 @@ const __robinTestHome = join(
 mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
-const { sessionStartHandler } = await import('../../src/hooks/handlers/session-start.js');
+const { sessionStartHandler } = await import('../../io/hooks/session-start.js');
 
 function startStubServer(handler) {
   return new Promise((resolve) => {

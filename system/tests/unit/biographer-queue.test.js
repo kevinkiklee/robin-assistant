@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createBiographerQueue } from '../../src/daemon/biographer-queue.js';
+import { createBiographerQueue } from '../../cognition/biographer/queue.js';
 
 test('queue processes events sequentially with single worker', async () => {
   const order = [];

@@ -387,7 +387,7 @@ async function gateReinforceCountBucket(_db) {
   // module so a future refactor can't silently collapse signal increments.
 
   // Lazy-import to avoid coupling the verify script to runtime config.
-  const { writeConfig } = await import('../src/runtime/config.js');
+  const { writeConfig } = await import('../../config/paths.js');
   const { mkdirSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -398,9 +398,9 @@ async function gateReinforceCountBucket(_db) {
 
   // Fresh DB with full migration applied so the reinforcement module finds
   // the tables it expects (memos, events, recall_log, edges, etc.).
-  const { connect: appConnect, close: appClose } = await import('../src/db/client.js');
-  const { runMigrations } = await import('../src/db/migrate.js');
-  const { paths } = await import('../src/runtime/data-store.js');
+  const { connect: appConnect, close: appClose } = await import('../../data/db/client.js');
+  const { runMigrations } = await import('../../data/db/migrate.js');
+  const { paths } = await import('../../config/data-store.js');
   const verifyDb = await appConnect({ engine: 'mem://' });
   try {
     await runMigrations(verifyDb, paths.source.migrations());
@@ -426,7 +426,7 @@ async function gateReinforceCountBucket(_db) {
         .collect();
     }
 
-    const { evaluatePending } = await import('../src/recall/reinforcement.js');
+    const { evaluatePending } = await import('../../cognition/intuition/reinforcement.js');
     const summary = await evaluatePending(verifyDb);
     if (summary.reinforced !== 3) {
       fail(`expected summary.reinforced=3, got ${summary.reinforced}`);

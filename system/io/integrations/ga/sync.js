@@ -1,4 +1,4 @@
-import { getSecret } from '../../secrets/dotenv-io.js';
+import { getSecret } from '../../../config/secrets.js';
 import { getAccessToken } from '../_auth/token-cache.js';
 import { buildEventFromGaRow, isScopeError, runReport } from './client.js';
 

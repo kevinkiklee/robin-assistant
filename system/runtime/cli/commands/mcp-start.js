@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { ensureHome, paths } from '../../../config/data-store.js';
 
 export async function mcpStart() {
   await ensureHome();

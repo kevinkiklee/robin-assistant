@@ -76,7 +76,7 @@ import {
   paths,
   resolveHomeStrict,
   robinHome,
-} from '../../src/runtime/data-store.js';
+} from '../../config/data-store.js';
 
 test('paths.data is under robinHome()', () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-ds-struct-'));

@@ -1,4 +1,4 @@
-import { setActionTrust } from '../../jobs/action-trust.js';
+import { setActionTrust } from '../../../cognition/jobs/action-trust.js';
 
 const VALID_STATES = new Set(['AUTO', 'ASK', 'NEVER']);
 const CLASS_PATTERN = /^[a-z_]+:[a-z_-]+$/;

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BoundQuery, surql } from 'surrealdb';
 import { isOutboundBlocked } from '../memory/scope-registry.js';
-import { PII_PATTERNS, SECRET_PATTERNS } from './patterns.js';
+import { PII_PATTERNS, SECRET_PATTERNS } from '../../io/outbound/patterns.js';
 
 const UNTRUSTED_LOOKBACK_DAYS = 7;
 const MIN_QUOTE_WORDS = 10;

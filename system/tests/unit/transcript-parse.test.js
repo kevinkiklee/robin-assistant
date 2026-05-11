@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { extractTurns } from '../../src/capture/transcript.js';
+import { extractTurns } from '../../io/capture/transcript.js';
 
 function tmpJsonl(lines) {
   const dir = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);

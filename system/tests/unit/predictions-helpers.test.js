@@ -4,8 +4,8 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 import {
   computeCalibration,
   getCalibration,
@@ -14,8 +14,8 @@ import {
   recordPrediction,
   resolvePrediction,
   setCalibration,
-} from '../../src/jobs/predictions.js';
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+} from '../../cognition/jobs/predictions.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });

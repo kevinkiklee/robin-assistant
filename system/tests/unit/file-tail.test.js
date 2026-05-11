@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { readFileTail } from '../../src/runtime/file-tail.js';
+import { readFileTail } from '../../config/file-tail.js';
 
 function tmpFile(content) {
   const dir = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);

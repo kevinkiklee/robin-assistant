@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { _resetCache, getAccessToken } from '../../src/integrations/_auth/token-cache.js';
+import { _resetCache, getAccessToken } from '../../io/integrations/_auth/token-cache.js';
 
 test('Spotify refresh rotation calls injected saveSecret with the new refresh_token', async () => {
   _resetCache('spotify');

@@ -4,11 +4,11 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { createGetEntityTool } from '../../src/mcp/tools/get-entity.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { createGetEntityTool } from '../../io/mcp/tools/get-entity.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
@@ -45,7 +45,7 @@ test('get_entity throws on unknown id', async () => {
 });
 
 test('get_entity path_to returns the shortest path through chained occurs_with', async () => {
-  const { writeCoOccursWith } = await import('../../src/graph/edges.js');
+  const { writeCoOccursWith } = await import('../../cognition/biographer/edges.js');
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
   const e = createStubEmbedder({ dimension: 1024 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expectedIntervalMs, nextFire, parseCron, prevFire } from '../../src/jobs/cron.js';
+import { expectedIntervalMs, nextFire, parseCron, prevFire } from '../../cognition/jobs/cron.js';
 
 test('parseCron — 5-field hourly', () => {
   const p = parseCron('0 * * * *');

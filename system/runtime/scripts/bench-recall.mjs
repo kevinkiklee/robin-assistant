@@ -27,12 +27,12 @@
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { close, connect } from '../src/db/client.js';
-import { runMigrations } from '../src/db/migrate.js';
-import { createStubEmbedder, createTransformersEmbedder } from '../src/embed/embedder.js';
-import * as store from '../src/memory/store.js';
-import { writeConfig } from '../src/runtime/config.js';
-import { paths } from '../src/runtime/data-store.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { createStubEmbedder, createTransformersEmbedder } from '../../data/embed/embedder.js';
+import * as store from '../../cognition/memory/store.js';
+import { writeConfig } from '../../config/paths.js';
+import { paths } from '../../config/data-store.js';
 
 const useReal = process.argv.includes('--real');
 

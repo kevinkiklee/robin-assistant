@@ -1,4 +1,4 @@
-import { listKnowledge, searchKnowledge } from '../../memory/knowledge.js';
+import { listKnowledge, searchKnowledge } from '../../../cognition/memory/knowledge.js';
 
 export function createGetKnowledgeTool({ db, embedder }) {
   return {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { batchEmbed } from '../../src/embed/embedder.js';
+import { batchEmbed } from '../../data/embed/embedder.js';
 
 test('batchEmbed with all-success calls inner once at full size', async () => {
   let calls = 0;

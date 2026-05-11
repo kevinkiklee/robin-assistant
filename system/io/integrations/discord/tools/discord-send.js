@@ -1,7 +1,7 @@
-import { checkActionTrust, recordOutcome } from '../../../jobs/action-trust.js';
-import { checkOutbound } from '../../../outbound/policy.js';
+import { checkActionTrust, recordOutcome } from '../../../../cognition/jobs/action-trust.js';
+import { checkOutbound } from '../../../../cognition/discretion/outbound-policy.js';
 import { checkRateLimit } from '../../../outbound/rate-limit.js';
-import { getSecret } from '../../../secrets/dotenv-io.js';
+import { getSecret } from '../../../../config/secrets.js';
 
 const MAX_CONTENT = 2000;
 

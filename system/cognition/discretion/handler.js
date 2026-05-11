@@ -3,7 +3,7 @@
 // (fail-soft) so the host's tool call proceeds — bash discretion is
 // defense-in-depth, not the only line.
 
-import { checkBashCommand } from '../bash-patterns.js';
+import { checkBashCommand } from './bash-patterns.js';
 
 function extractCommand(stdin) {
   if (!stdin || typeof stdin !== 'object') return undefined;

@@ -12,7 +12,7 @@ import {
   paths,
   recordHostTouchpoint,
   robinHome,
-} from '../../runtime/data-store.js';
+} from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 import { mcpEnsureRunning } from './mcp-ensure-running.js';
 
@@ -30,11 +30,11 @@ async function readOrEmpty(path) {
 // close-hang. Fail-soft: any error returns the per-field "unavailable" value.
 async function readDbDataForAgentsMd() {
   try {
-    const { ensureHome } = await import('../../runtime/data-store.js');
-    const { connect, close, defaultDbUrl } = await import('../../db/client.js');
-    const { listAllJobs } = await import('../../jobs/db.js');
-    const { getCommStyle } = await import('../../jobs/comm-style.js');
-    const { getCalibration } = await import('../../jobs/predictions.js');
+    const { ensureHome } = await import('../../../config/data-store.js');
+    const { connect, close, defaultDbUrl } = await import('../../../data/db/client.js');
+    const { listAllJobs } = await import('../../../cognition/jobs/db.js');
+    const { getCommStyle } = await import('../../../cognition/jobs/comm-style.js');
+    const { getCalibration } = await import('../../../cognition/jobs/predictions.js');
     await ensureHome();
     const db = await connect({ engine: await defaultDbUrl() });
     try {

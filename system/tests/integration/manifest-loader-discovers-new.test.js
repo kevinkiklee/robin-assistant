@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { loadManifests } from '../../src/integrations/_framework/manifest-loader.js';
+import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
 
 const integrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/integrations');
 

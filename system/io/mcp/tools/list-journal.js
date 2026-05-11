@@ -1,4 +1,4 @@
-import { listJournalEntries } from '../../memory/chronicle.js';
+import { listJournalEntries } from '../../../cognition/memory/chronicle.js';
 
 export function createListJournalTool({ db }) {
   return {

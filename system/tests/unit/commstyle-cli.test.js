@@ -4,15 +4,15 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
 process.env.ROBIN_HOME = __h;
 await __wc({ embedder_profile: 'mxbai-1024' });
 
-const { commstyleShow } = await import('../../src/cli/commands/commstyle-show.js');
-const { commstyleRefresh } = await import('../../src/cli/commands/commstyle-refresh.js');
+const { commstyleShow } = await import('../../runtime/cli/commands/commstyle-show.js');
+const { commstyleRefresh } = await import('../../runtime/cli/commands/commstyle-refresh.js');
 
 function capture() {
   const lines = [];

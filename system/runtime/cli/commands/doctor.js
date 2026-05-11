@@ -20,8 +20,8 @@ import { surql } from 'surrealdb';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
 import { readDaemonState } from '../../daemon/state.js';
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { acquire } from '../../db/lock.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { acquire } from '../../../data/db/lock.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import {
   ensureHome,
@@ -30,7 +30,7 @@ import {
   readHostIntegrations,
   readPointer,
   robinHome,
-} from '../../runtime/data-store.js';
+} from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 
 function shimPrefix() {

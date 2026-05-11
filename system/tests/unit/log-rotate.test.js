@@ -13,7 +13,7 @@ const __h = join(
 mkdirSync(join(__h, 'cache', 'logs'), { recursive: true });
 process.env.ROBIN_HOME = __h;
 
-const { default: logRotate } = await import('../../src/jobs/internal/log-rotate.js');
+const { default: logRotate } = await import('../../cognition/jobs/internal/log-rotate.js');
 
 const LOGS_DIR = join(__h, 'cache', 'logs');
 const DAEMON_LOG = join(LOGS_DIR, 'daemon.log');

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { discoverExistingHomes } from '../../src/runtime/data-store.js';
+import { discoverExistingHomes } from '../../config/data-store.js';
 
 test('discovery finds multiple candidates when both home locations have layouts', () => {
   const a = mkdtempSync(join(tmpdir(), 'robin-a-'));

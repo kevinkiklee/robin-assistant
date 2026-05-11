@@ -1,4 +1,4 @@
-import { readFileTail } from '../runtime/file-tail.js';
+import { readFileTail } from '../../config/file-tail.js';
 
 const DEFAULT_TAIL_BYTES = 32 * 1024;
 

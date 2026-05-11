@@ -1,5 +1,5 @@
 import { surql } from 'surrealdb';
-import { requireSecret, saveSecret } from '../../secrets/dotenv-io.js';
+import { requireSecret, saveSecret } from '../../../config/secrets.js';
 
 const BACKOFF_THRESHOLD = 3;
 const BACKOFF_MAX_MS = 24 * 3_600_000;

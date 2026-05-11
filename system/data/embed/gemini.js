@@ -1,4 +1,4 @@
-import { requireSecret } from '../secrets/dotenv-io.js';
+import { requireSecret } from '../../config/secrets.js';
 
 const SINGLE_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';

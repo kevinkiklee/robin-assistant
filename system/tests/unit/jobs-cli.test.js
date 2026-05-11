@@ -4,15 +4,15 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
 process.env.ROBIN_HOME = __h;
 await __wc({ embedder_profile: 'mxbai-1024' });
 
-const { jobsList } = await import('../../src/cli/commands/jobs-list.js');
-const { jobsStatus } = await import('../../src/cli/commands/jobs-status.js');
+const { jobsList } = await import('../../runtime/cli/commands/jobs-list.js');
+const { jobsStatus } = await import('../../runtime/cli/commands/jobs-status.js');
 
 function capture() {
   const lines = [];
@@ -87,10 +87,10 @@ test('jobs status — unknown job', async () => {
   process.exitCode = 0; // reset — jobsStatus sets exitCode=1 for unknown jobs
 });
 
-import { jobsDisable } from '../../src/cli/commands/jobs-disable.js';
-import { jobsEnable } from '../../src/cli/commands/jobs-enable.js';
-import { jobsReload } from '../../src/cli/commands/jobs-reload.js';
-import { jobsRun } from '../../src/cli/commands/jobs-run.js';
+import { jobsDisable } from '../../runtime/cli/commands/jobs-disable.js';
+import { jobsEnable } from '../../runtime/cli/commands/jobs-enable.js';
+import { jobsReload } from '../../runtime/cli/commands/jobs-reload.js';
+import { jobsRun } from '../../runtime/cli/commands/jobs-run.js';
 
 test('jobs run — POSTs to /internal/jobs/run', async () => {
   const out = capture();

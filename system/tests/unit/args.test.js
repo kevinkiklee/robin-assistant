@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseArgs } from '../../src/cli/args.js';
+import { parseArgs } from '../../runtime/cli/args.js';
 
 test('parseArgs: positional command', () => {
   assert.deepEqual(parseArgs(['migrate']), { _: ['migrate'], flags: {} });

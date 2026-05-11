@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { importFrom } from '../../secrets/dotenv-io.js';
+import { importFrom } from '../../../config/secrets.js';
 
 export async function secretsImport(argv) {
   const fromIdx = argv.indexOf('--from');

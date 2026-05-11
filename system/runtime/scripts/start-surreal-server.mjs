@@ -21,7 +21,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { paths } from '../src/runtime/data-store.js';
+import { paths } from '../../config/data-store.js';
 
 function parseArgs(argv) {
   const args = {

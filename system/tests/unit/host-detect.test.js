@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { detectHost } from '../../src/hosts/detect.js';
+import { detectHost } from '../../runtime/hosts/detect.js';
 
 function clearHostEnv() {
   Reflect.deleteProperty(process.env, 'CLAUDE_PROJECT_DIR');

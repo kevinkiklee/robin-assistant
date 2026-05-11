@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { stopHookHandler } from '../../src/hooks/handlers/stop-hook.js';
+import { stopHookHandler } from '../../io/hooks/stop-hook.js';
 
 function seedConfig(home) {
   writeFileSync(join(home, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));

@@ -16,8 +16,8 @@
 //      any DB write; failures throw with a structured error message.
 
 import { BoundQuery, surql } from 'surrealdb';
-import { sha256 } from '../embed/hash.js';
-import { activeProfile, embeddingTable } from '../embed/profile-router.js';
+import { sha256 } from '../../data/embed/hash.js';
+import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
 import {
   canonicalEndpoints,
   EDGE_KIND_REGISTRY,
@@ -515,7 +515,7 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
     ),
   );
   const ef = Math.max(64, knnK * 4);
-  const { readProfile } = await import('../embed/profile-router.js');
+  const { readProfile } = await import('../../data/embed/profile-router.js');
   const readProf = await readProfile(db);
   const embeddingTbl = embeddingTable(readProf, surface);
   const qvec = Array.from(await embedder.embed(query));
@@ -602,7 +602,7 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
 
   // Phase 4: build kNN- and BM25-ranked lists from the hydrated rows, then
   // RRF-fuse them. BM25-only hits get distance=0.5 in fusion.padDistances.
-  const { rrfFuse, padDistances } = await import('../recall/fusion.js');
+  const { rrfFuse, padDistances } = await import('../intuition/fusion.js');
   const rowById = new Map(rows.map((r) => [recordStringId(r.id), r]));
 
   // kNN-ordered hydrated hits (only those that survived post-filters).
@@ -743,7 +743,7 @@ export async function neighbors(db, recordId, kind, opts = {}) {
  */
 export async function upsertEntity(db, embedder, input) {
   if (input?.scope !== undefined) validateScope(input.scope);
-  const { upsertEntityCascade } = await import('../graph/upsert-entity.js');
+  const { upsertEntityCascade } = await import('../biographer/upsert-entity.js');
   const result = await upsertEntityCascade(db, embedder, input);
   // Write embedding into the active profile's entities surface.
   if (result.id && result.embedding_source) {

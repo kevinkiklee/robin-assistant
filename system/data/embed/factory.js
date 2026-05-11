@@ -1,4 +1,4 @@
-import { readConfig } from '../runtime/config.js';
+import { readConfig } from '../../config/paths.js';
 
 export async function createEmbedder() {
   const cfg = await readConfig();

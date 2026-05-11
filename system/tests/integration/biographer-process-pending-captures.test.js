@@ -4,10 +4,10 @@ import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { biographerProcessPending } from '../../src/cli/commands/biographer-process-pending.js';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { biographerProcessPending } from '../../runtime/cli/commands/biographer-process-pending.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 const __robinTestHome = __robinJoin(
   __robinTmpdir(),

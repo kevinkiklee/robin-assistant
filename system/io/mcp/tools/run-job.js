@@ -1,5 +1,5 @@
-import { getJob } from '../../jobs/db.js';
-import { runOneJob } from '../../jobs/runner.js';
+import { getJob } from '../../../cognition/jobs/db.js';
+import { runOneJob } from '../../../cognition/jobs/runner.js';
 
 export function createRunJobTool({ db, capture, host, tools, getJobs }) {
   return {

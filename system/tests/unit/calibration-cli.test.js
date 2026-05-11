@@ -4,14 +4,14 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
 process.env.ROBIN_HOME = __h;
 await __wc({ embedder_profile: 'mxbai-1024' });
 
-const { calibrationShow } = await import('../../src/cli/commands/calibration-show.js');
+const { calibrationShow } = await import('../../runtime/cli/commands/calibration-show.js');
 
 function capture() {
   const lines = [];

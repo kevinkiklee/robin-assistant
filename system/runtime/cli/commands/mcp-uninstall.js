@@ -1,7 +1,7 @@
 import { unlink } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
-import { forgetHostTouchpoint } from '../../runtime/data-store.js';
+import { forgetHostTouchpoint } from '../../../config/data-store.js';
 
 export async function mcpUninstall() {
   const home = homedir();

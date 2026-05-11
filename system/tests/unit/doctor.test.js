@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { writeConfig } from '../../src/runtime/config.js';
+import { writeConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = join(
@@ -15,10 +15,10 @@ mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
 
-const { doctor } = await import('../../src/cli/commands/doctor.js');
-const { packageRootDir } = await import('../../src/runtime/data-store.js');
-const { close: __close, connect: __connect } = await import('../../src/db/client.js');
-const { runMigrations: __runMigrations } = await import('../../src/db/migrate.js');
+const { doctor } = await import('../../runtime/cli/commands/doctor.js');
+const { packageRootDir } = await import('../../config/data-store.js');
+const { close: __close, connect: __connect } = await import('../../data/db/client.js');
+const { runMigrations: __runMigrations } = await import('../../data/db/migrate.js');
 
 async function __openMemDbWithMigrations() {
   const db = await __connect({ engine: 'mem://' });

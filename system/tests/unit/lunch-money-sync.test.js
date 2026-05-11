@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { rollingStartDate, transactionToEvent } from '../../src/integrations/lunch_money/client.js';
-import { sync } from '../../src/integrations/lunch_money/sync.js';
+import { rollingStartDate, transactionToEvent } from '../../io/integrations/lunch_money/client.js';
+import { sync } from '../../io/integrations/lunch_money/sync.js';
 
 test('rollingStartDate returns saved cursor when within 14d', () => {
   const today = new Date('2026-05-09T00:00:00Z');

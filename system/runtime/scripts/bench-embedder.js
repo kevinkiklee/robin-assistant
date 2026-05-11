@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { createTransformersEmbedder } from '../src/embed/embedder.js';
+import { createTransformersEmbedder } from '../../data/embed/embedder.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(here, '../tests/fixtures');

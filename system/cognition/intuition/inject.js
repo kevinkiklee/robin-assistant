@@ -3,7 +3,7 @@
 
 import { surql } from 'surrealdb';
 import * as store from '../memory/store.js';
-import { recall } from './index.js';
+import { recall } from './engine.js';
 import { mmrLite, score } from './rank.js';
 
 const PRIOR_TAIL_CHARS = 500;

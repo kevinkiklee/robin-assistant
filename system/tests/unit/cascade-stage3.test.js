@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stage3Disambig } from '../../src/graph/stage3-disambig.js';
+import { stage3Disambig } from '../../cognition/biographer/stage3-disambig.js';
 
 function fakeHost(content) {
   return {

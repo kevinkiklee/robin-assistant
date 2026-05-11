@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { parseDiaryCsv } from '../../src/integrations/letterboxd/csv.js';
-import { sync } from '../../src/integrations/letterboxd/sync.js';
+import { parseDiaryCsv } from '../../io/integrations/letterboxd/csv.js';
+import { sync } from '../../io/integrations/letterboxd/sync.js';
 
 test('parseDiaryCsv handles standard Letterboxd Diary export', () => {
   const csv = `Date,Name,Year,Letterboxd URI,Rating,Rewatch,Tags,Watched Date

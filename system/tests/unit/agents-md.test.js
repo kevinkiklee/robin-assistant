@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentsMdContent, mergeAgentsMdContent } from '../../src/install/agents-md.js';
+import { agentsMdContent, mergeAgentsMdContent } from '../../runtime/install/agents-md.js';
 
 test('agentsMdContent mentions all 9 tools', () => {
   const md = agentsMdContent();

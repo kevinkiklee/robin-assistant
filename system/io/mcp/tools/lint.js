@@ -1,4 +1,4 @@
-import { runLintChecks } from '../../jobs/lint-checks.js';
+import { runLintChecks } from '../../../cognition/jobs/lint-checks.js';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 200;

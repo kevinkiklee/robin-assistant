@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { createClaudeCodeAdapter } from '../../src/hosts/claude-code.js';
+import { createClaudeCodeAdapter } from '../../runtime/hosts/claude-code.js';
 
 function captureSpawn(stdout) {
   const calls = [];

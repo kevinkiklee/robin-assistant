@@ -9,7 +9,7 @@
 //     consumers (lint MCP tool, dashboards) don't need updates.
 
 import { surql } from 'surrealdb';
-import { embeddingTable, readProfile } from '../embed/profile-router.js';
+import { embeddingTable, readProfile } from '../../data/embed/profile-router.js';
 
 const SEVERITY = {
   dead_edge: 5,

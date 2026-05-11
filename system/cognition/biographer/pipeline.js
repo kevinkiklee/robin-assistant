@@ -12,11 +12,11 @@
 //   - `events.biographed_at = time::now()` is still set on the processed event.
 
 import { surql } from 'surrealdb';
-import { closeEpisode, createEpisode, findActiveEpisode } from '../graph/episodes.js';
+import { closeEpisode, createEpisode, findActiveEpisode } from '../memory/episodes.js';
 import * as store from '../memory/store.js';
 import { withTxRetry } from '../memory/tx.js';
-import { validateBiographerOutput } from './biographer-output.js';
-import { buildBiographerPrompt } from './biographer-prompt.js';
+import { validateBiographerOutput } from './output.js';
+import { buildBiographerPrompt } from './prompt.js';
 
 // Edge kinds the biographer is allowed to emit, normalized to the registry.
 const ENTITY_EDGE_KINDS = new Set(['works_on', 'participates_in']);

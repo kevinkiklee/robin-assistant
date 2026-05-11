@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
-import { embeddingTable, readProfile } from '../embed/profile-router.js';
-import { createCandidate, findOverlappingPendingCandidate } from '../rules/candidates.js';
+import { embeddingTable, readProfile } from '../../data/embed/profile-router.js';
+import { createCandidate, findOverlappingPendingCandidate } from './candidates.js';
 import { CORRECTION_RULE_SYSTEM } from './prompts.js';
 
 const DEFAULT_LOOKBACK_DAYS = 30;

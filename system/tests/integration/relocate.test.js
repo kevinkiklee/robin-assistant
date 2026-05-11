@@ -3,14 +3,14 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { relocate } from '../../src/cli/commands/install.js';
+import { relocate } from '../../runtime/cli/commands/install.js';
 import {
   ensureHome,
   readHostIntegrations,
   readPointer,
   recordHostTouchpoint,
   writePointer,
-} from '../../src/runtime/data-store.js';
+} from '../../config/data-store.js';
 
 test('relocate: moves home + refreshes expectedHome on plist/systemd entries', async () => {
   const A = mkdtempSync(join(tmpdir(), 'robin-A-'));

@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { surql } from 'surrealdb';
-import { getSecret, requireSecret } from '../../secrets/dotenv-io.js';
+import { getSecret, requireSecret } from '../../../config/secrets.js';
 import { registerSlashCommands } from './commands.js';
 import {
   buildEventFromInteraction,

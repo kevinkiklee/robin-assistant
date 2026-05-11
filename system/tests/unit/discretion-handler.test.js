@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { discretionHandler } from '../../src/hooks/handlers/discretion.js';
+import { discretionHandler } from '../../cognition/discretion/handler.js';
 
 function makeHarness() {
   const exitCalls = [];

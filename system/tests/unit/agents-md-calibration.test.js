@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentsMdContent, calibrationSection } from '../../src/install/agents-md.js';
+import { agentsMdContent, calibrationSection } from '../../runtime/install/agents-md.js';
 
 test('robin-calibration block exists in agentsMdContent', () => {
   const md = agentsMdContent({});

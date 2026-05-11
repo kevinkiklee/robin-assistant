@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BASH_DENY_PATTERNS, checkBashCommand } from '../../src/hooks/bash-patterns.js';
+import { BASH_DENY_PATTERNS, checkBashCommand } from '../../cognition/discretion/bash-patterns.js';
 
 // Sanity: 7 rules total per Phase 4a §5.A.
 test('BASH_DENY_PATTERNS has the expected 7 rules', () => {

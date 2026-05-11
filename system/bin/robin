@@ -7,7 +7,7 @@
 // would appear to succeed but never release the user's terminal. Exiting here
 // makes every command snappy and is harmless for commands that never opened
 // the DB. The test suite passes `--test-force-exit` for the same reason.
-import('../src/cli/index.js')
+import('../runtime/cli/index.js')
   .then((m) => m.main(process.argv.slice(2)))
   .then(() => process.exit(0))
   .catch((e) => {

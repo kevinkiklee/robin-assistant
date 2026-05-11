@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { validateBotToken } from '../../src/integrations/_auth/discord-bot.js';
+import { validateBotToken } from '../../io/integrations/_auth/discord-bot.js';
 
 test('validateBotToken hits /users/@me with Bot prefix', async () => {
   const calls = [];

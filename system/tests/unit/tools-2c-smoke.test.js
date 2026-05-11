@@ -4,20 +4,20 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { dreamProcess } from '../../src/dream/pipeline.js';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { createGetHotTool } from '../../src/mcp/tools/get-hot.js';
-import { createGetKnowledgeTool } from '../../src/mcp/tools/get-knowledge.js';
-import { createGetProfileTool } from '../../src/mcp/tools/get-profile.js';
-import { createListJournalTool } from '../../src/mcp/tools/list-journal.js';
-import { createListPatternsTool } from '../../src/mcp/tools/list-patterns.js';
-import { createListRulesTool } from '../../src/mcp/tools/list-rules.js';
-import { createRunDreamTool } from '../../src/mcp/tools/run-dream.js';
-import { createUpdateRuleTool } from '../../src/mcp/tools/update-rule.js';
-import { createCandidate } from '../../src/rules/candidates.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { dreamProcess } from '../../cognition/dream/pipeline.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { createGetHotTool } from '../../io/mcp/tools/get-hot.js';
+import { createGetKnowledgeTool } from '../../io/mcp/tools/get-knowledge.js';
+import { createGetProfileTool } from '../../io/mcp/tools/get-profile.js';
+import { createListJournalTool } from '../../io/mcp/tools/list-journal.js';
+import { createListPatternsTool } from '../../io/mcp/tools/list-patterns.js';
+import { createListRulesTool } from '../../io/mcp/tools/list-rules.js';
+import { createRunDreamTool } from '../../io/mcp/tools/run-dream.js';
+import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
+import { createCandidate } from '../../cognition/dream/candidates.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

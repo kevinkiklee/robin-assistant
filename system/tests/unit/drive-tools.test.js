@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createDriveGetFileTool } from '../../src/integrations/google_drive/tools/drive-get-file.js';
-import { createDriveSearchTool } from '../../src/integrations/google_drive/tools/drive-search.js';
+import { createDriveGetFileTool } from '../../io/integrations/google_drive/tools/drive-get-file.js';
+import { createDriveSearchTool } from '../../io/integrations/google_drive/tools/drive-search.js';
 
 test('drive_search has correct schema', () => {
   const t = createDriveSearchTool();

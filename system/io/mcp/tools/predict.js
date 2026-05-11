@@ -1,4 +1,4 @@
-import { recordPrediction } from '../../jobs/predictions.js';
+import { recordPrediction } from '../../../cognition/jobs/predictions.js';
 
 export function createPredictTool({ db }) {
   return {

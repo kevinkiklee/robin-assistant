@@ -12,7 +12,7 @@ const __robinTestHome = join(
 mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
-const { intuitionHandler } = await import('../../src/hooks/handlers/intuition.js');
+const { intuitionHandler } = await import('../../cognition/intuition/handler.js');
 
 function startStubServer(handler) {
   return new Promise((resolve) => {

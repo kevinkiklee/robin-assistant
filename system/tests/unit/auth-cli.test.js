@@ -3,8 +3,8 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
-import { authGoogle, parseCodeArg } from '../../src/cli/commands/auth-google.js';
-import { requireSecret, saveSecret } from '../../src/secrets/dotenv-io.js';
+import { authGoogle, parseCodeArg } from '../../runtime/cli/commands/auth-google.js';
+import { requireSecret, saveSecret } from '../../config/secrets.js';
 
 let tmpHome;
 test.beforeEach(() => {

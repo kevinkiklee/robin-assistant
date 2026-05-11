@@ -36,7 +36,7 @@ import {
   pointerExists,
   readPointer,
   writePointer,
-} from '../../src/runtime/data-store.js';
+} from '../../config/data-store.js';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

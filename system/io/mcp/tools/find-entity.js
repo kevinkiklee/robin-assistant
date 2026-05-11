@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
-import { stage1Resolve } from '../../graph/stage1-exact.js';
-import { stage2Resolve } from '../../graph/stage2-embedding.js';
+import { stage1Resolve } from '../../../cognition/biographer/stage1-exact.js';
+import { stage2Resolve } from '../../../cognition/biographer/stage2-embedding.js';
 
 export function createFindEntityTool({ db, embedder }) {
   return {

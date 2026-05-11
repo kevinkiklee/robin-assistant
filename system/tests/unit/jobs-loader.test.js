@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { discoverJobs, parseJobFile, validateJob } from '../../src/jobs/loader.js';
+import { discoverJobs, parseJobFile, validateJob } from '../../cognition/jobs/loader.js';
 
 let tmp;
 test.beforeEach(() => {
@@ -127,7 +127,7 @@ test('discoverJobs — defaults filled in', () => {
 });
 
 test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
-  const { discoverJobs } = await import('../../src/jobs/loader.js');
+  const { discoverJobs } = await import('../../cognition/jobs/loader.js');
   const { fileURLToPath } = await import('node:url');
   const { dirname, join } = await import('node:path');
   const builtinDir = join(

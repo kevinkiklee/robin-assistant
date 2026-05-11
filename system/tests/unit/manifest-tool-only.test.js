@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { validateManifest } from '../../src/integrations/_framework/manifest-loader.js';
+import { validateManifest } from '../../io/integrations/_framework/manifest-loader.js';
 
 test('tool-only manifest validates with kind=tool-only', () => {
   const m = validateManifest({

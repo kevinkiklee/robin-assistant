@@ -1,4 +1,4 @@
-import { saveSecret } from '../../secrets/dotenv-io.js';
+import { saveSecret } from '../../../config/secrets.js';
 
 export async function secretsSet(argv) {
   if (!argv[0]) {

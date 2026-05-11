@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { generateSystemdUnit } from '../../src/install/systemd-unit.js';
+import { generateSystemdUnit } from '../../runtime/install/systemd-unit.js';
 
 test('generateSystemdUnit produces a user unit with ROBIN_HOME, Restart=on-failure, and correct log path', () => {
   const txt = generateSystemdUnit({

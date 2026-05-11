@@ -4,17 +4,17 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
 process.env.ROBIN_HOME = __h;
 await __wc({ embedder_profile: 'mxbai-1024' });
 
-const { actionsList } = await import('../../src/cli/commands/actions-list.js');
-const { actionsShow } = await import('../../src/cli/commands/actions-show.js');
-const { actionsSet } = await import('../../src/cli/commands/actions-set.js');
-const { actionsReset } = await import('../../src/cli/commands/actions-reset.js');
+const { actionsList } = await import('../../runtime/cli/commands/actions-list.js');
+const { actionsShow } = await import('../../runtime/cli/commands/actions-show.js');
+const { actionsSet } = await import('../../runtime/cli/commands/actions-set.js');
+const { actionsReset } = await import('../../runtime/cli/commands/actions-reset.js');
 
 function capture() {
   const lines = [];

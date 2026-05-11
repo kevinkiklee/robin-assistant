@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
-import { stopHookHandler } from '../../src/hooks/handlers/stop-hook.js';
+import { stopHookHandler } from '../../io/hooks/stop-hook.js';
 
 test('stopHookHandler returns within 100ms (fire-and-forget)', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-stop-hook-'));

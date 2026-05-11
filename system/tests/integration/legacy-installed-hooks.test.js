@@ -7,7 +7,7 @@ import {
   ensureHome,
   readHostIntegrations,
   recordHostTouchpoint,
-} from '../../src/runtime/data-store.js';
+} from '../../config/data-store.js';
 
 test('legacy installed-hooks.json is migrated on first manifest write and then deleted', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));

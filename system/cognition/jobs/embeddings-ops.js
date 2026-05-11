@@ -9,7 +9,7 @@
 // server.js stays compact.
 
 import { surql } from 'surrealdb';
-import { invalidateProfileCache, tableNameSafeProfile } from '../embed/profile-router.js';
+import { invalidateProfileCache, tableNameSafeProfile } from '../../data/embed/profile-router.js';
 import runBackfill from './internal/embeddings-backfill.js';
 
 const VALID_PROFILE_RX = /^[a-z0-9-]+$/;

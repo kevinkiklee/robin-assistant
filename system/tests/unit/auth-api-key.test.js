@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { validateApiKey } from '../../src/integrations/_auth/api-key.js';
+import { validateApiKey } from '../../io/integrations/_auth/api-key.js';
 
 test('validateApiKey hits test endpoint with header', async () => {
   const calls = [];

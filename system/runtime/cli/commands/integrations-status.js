@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { ensureHome } from '../../runtime/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { ensureHome } from '../../../config/data-store.js';
 
 export async function integrationsStatus(argv) {
   if (!argv[0]) {

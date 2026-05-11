@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { sha256 } from '../../src/embed/hash.js';
+import { sha256 } from '../../data/embed/hash.js';
 
 test('sha256 returns a 64-char hex string', () => {
   const h = sha256('hello');

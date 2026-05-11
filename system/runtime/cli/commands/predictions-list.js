@@ -1,7 +1,7 @@
 // src/cli/commands/predictions-list.js
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { listAllPredictions as defaultList } from '../../jobs/predictions.js';
-import { ensureHome } from '../../runtime/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { listAllPredictions as defaultList } from '../../../cognition/jobs/predictions.js';
+import { ensureHome } from '../../../config/data-store.js';
 
 function _fmt(d) {
   return d ? new Date(d).toISOString() : '—';

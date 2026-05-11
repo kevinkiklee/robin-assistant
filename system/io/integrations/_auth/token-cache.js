@@ -1,4 +1,4 @@
-import { saveSecret as saveSecretFn } from '../../secrets/dotenv-io.js';
+import { saveSecret as saveSecretFn } from '../../../config/secrets.js';
 import { ensureFreshToken, PROVIDERS } from './oauth2.js';
 
 const caches = new Map(); // provider -> { access_token, expires_at }

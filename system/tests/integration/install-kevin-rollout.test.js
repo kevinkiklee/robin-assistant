@@ -11,7 +11,7 @@ import {
   readPointer,
   recordHostTouchpoint,
   writePointer,
-} from '../../src/runtime/data-store.js';
+} from '../../config/data-store.js';
 
 test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-kevin-'));

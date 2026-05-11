@@ -29,7 +29,7 @@ export async function createKnowledge(db, embedder, input) {
  * Look up a knowledge memo by content hash (dedup helper).
  */
 export async function getKnowledgeByContentHash(db, content) {
-  const { sha256 } = await import('../embed/hash.js');
+  const { sha256 } = await import('../../data/embed/hash.js');
   const hash = sha256(content);
   const [rows] = await db
     .query(

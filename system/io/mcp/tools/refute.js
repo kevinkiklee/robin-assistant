@@ -1,7 +1,7 @@
 // refute.js — manual refutation ledger row. Theme 2a.
 
 import { RecordId } from 'surrealdb';
-import { addEvidence, readEvidenceConfig } from '../../memory/evidence.js';
+import { addEvidence, readEvidenceConfig } from '../../../cognition/memory/evidence.js';
 
 export function createRefuteTool({ db }) {
   return {

@@ -9,8 +9,8 @@
 //     the lint-checks job hits — pair count is bounded so O(N²) is fine).
 
 import { surql } from 'surrealdb';
-import { embeddingTable, readProfile } from '../../embed/profile-router.js';
-import { buildAuditPrompt } from '../../jobs/audit-prompt.js';
+import { embeddingTable, readProfile } from '../../../data/embed/profile-router.js';
+import { buildAuditPrompt } from '../../../cognition/jobs/audit-prompt.js';
 
 const DEFAULT_PAIR_COUNT = 8;
 const MAX_PAIR_COUNT = 32;

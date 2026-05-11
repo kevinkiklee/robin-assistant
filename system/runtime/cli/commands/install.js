@@ -2,12 +2,12 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import readline from 'node:readline/promises';
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { runMigrations } from '../../db/migrate.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { runMigrations } from '../../../data/db/migrate.js';
 import { ensureHookShim } from '../../install/hook-shim.js';
 import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
-import { readConfig, writeConfig } from '../../runtime/config.js';
+import { readConfig, writeConfig } from '../../../config/paths.js';
 import {
   discoverExistingHomes,
   ensureHome,
@@ -18,9 +18,9 @@ import {
   readPointer,
   recordHostTouchpoint,
   writePointer,
-} from '../../runtime/data-store.js';
-import { migrateHome } from '../../runtime/migrate-home.js';
-import { getSecret, saveSecret } from '../../secrets/dotenv-io.js';
+} from '../../../config/data-store.js';
+import { migrateHome } from '../../install/migrate-home.js';
+import { getSecret, saveSecret } from '../../../config/secrets.js';
 import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
 import { doctorData } from './doctor.js';

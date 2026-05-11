@@ -3,13 +3,13 @@ import { mkdirSync as __robinMkdirSync, mkdirSync, rmSync, writeFileSync } from 
 import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
 import { join as __robinJoin, join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { createCapture } from '../../src/integrations/_framework/capture.js';
-import { createDiscordSendTool } from '../../src/integrations/discord/tools/discord-send.js';
-import { setActionTrust } from '../../src/jobs/action-trust.js';
-import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { createCapture } from '../../io/integrations/_framework/capture.js';
+import { createDiscordSendTool } from '../../io/integrations/discord/tools/discord-send.js';
+import { setActionTrust } from '../../cognition/jobs/action-trust.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

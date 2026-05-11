@@ -1,4 +1,4 @@
-import { requireSecret, saveSecret } from '../../../secrets/dotenv-io.js';
+import { requireSecret, saveSecret } from '../../../../config/secrets.js';
 import { getAccessToken } from '../../_auth/token-cache.js';
 import { listMessages } from '../client.js';
 

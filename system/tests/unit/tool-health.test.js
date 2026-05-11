@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createHealthTool } from '../../src/mcp/tools/health.js';
+import { createHealthTool } from '../../io/mcp/tools/health.js';
 
 test('health returns ok when all subsystems are up', async () => {
   const tool = createHealthTool({

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
-import { sync } from '../../src/integrations/lrc/sync.js';
+import { sync } from '../../io/integrations/lrc/sync.js';
 
 let tmpHome;
 let catalogPath;

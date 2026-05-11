@@ -1,7 +1,7 @@
 // src/cli/health.js — Theme 4. Lazy rollups for `robin doctor --health`.
 
 import { surql } from 'surrealdb';
-import { currentBudget, readCadenceConfig } from '../dream/budget.js';
+import { currentBudget, readCadenceConfig } from '../../cognition/dream/budget.js';
 
 async function readDoctorConfig(db) {
   try {

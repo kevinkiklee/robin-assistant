@@ -19,7 +19,7 @@ const {
   checkStagedDiffForSecrets,
   runPreCommit,
   _internals,
-} = await import('../../src/install/pre-commit.js');
+} = await import('../../runtime/install/pre-commit.js');
 
 function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-precommit-'));

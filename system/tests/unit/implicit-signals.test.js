@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createRepeatQueryDetector } from '../../src/mcp/implicit-signals.js';
+import { createRepeatQueryDetector } from '../../io/mcp/implicit-signals.js';
 
 function vec(seed) {
   const v = new Float32Array(1024);

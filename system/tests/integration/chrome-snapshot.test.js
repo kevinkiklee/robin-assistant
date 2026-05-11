@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
-import { sync } from '../../src/integrations/chrome/sync.js';
+import { sync } from '../../io/integrations/chrome/sync.js';
 
 let tmpHome;
 let historyPath;

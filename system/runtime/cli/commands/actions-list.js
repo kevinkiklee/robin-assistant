@@ -1,7 +1,7 @@
 // src/cli/commands/actions-list.js
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { listActionTrust as defaultList } from '../../jobs/action-trust.js';
-import { ensureHome } from '../../runtime/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { listActionTrust as defaultList } from '../../../cognition/jobs/action-trust.js';
+import { ensureHome } from '../../../config/data-store.js';
 
 function fmt(d) {
   return d ? new Date(d).toISOString() : '—';

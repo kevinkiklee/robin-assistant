@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createInProcessEmbedder } from '../../src/embed/in-process.js';
+import { createInProcessEmbedder } from '../../data/embed/in-process.js';
 
 test('createInProcessEmbedder returns Embedder shape', async () => {
   const e = await createInProcessEmbedder();

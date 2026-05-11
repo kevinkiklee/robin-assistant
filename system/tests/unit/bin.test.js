@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, statSync } from 'node:fs';
 import { test } from 'node:test';
-import { resolveBinPath } from '../../src/runtime/bin.js';
+import { resolveBinPath } from '../../runtime/cli/bin.js';
 
 test('resolveBinPath returns an absolute path that exists', () => {
   const p = resolveBinPath();

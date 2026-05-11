@@ -1,5 +1,5 @@
-import { registerSlashCommands } from '../../integrations/discord/commands.js';
-import { getSecret, requireSecret } from '../../secrets/dotenv-io.js';
+import { registerSlashCommands } from '../../../io/integrations/discord/commands.js';
+import { getSecret, requireSecret } from '../../../config/secrets.js';
 
 export async function integrationsDiscordRegister() {
   let bot_token;

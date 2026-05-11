@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isTxConflict, withTxRetry } from '../../src/memory/tx.js';
+import { isTxConflict, withTxRetry } from '../../cognition/memory/tx.js';
 
 test('isTxConflict matches SurrealDB transaction-conflict error text', () => {
   assert.equal(isTxConflict(new Error('Transaction conflict: Write conflict')), true);

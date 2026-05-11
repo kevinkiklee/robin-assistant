@@ -1,5 +1,5 @@
 import { surql } from 'surrealdb';
-import { recall as internalRecall } from '../../recall/index.js';
+import { recall as internalRecall } from '../../../cognition/intuition/engine.js';
 
 export function createRecallTool({ db, embedder, detector, getSessionId }) {
   return {

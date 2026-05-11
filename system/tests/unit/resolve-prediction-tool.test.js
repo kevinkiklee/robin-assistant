@@ -4,11 +4,11 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { recordPrediction } from '../../src/jobs/predictions.js';
-import { createResolvePredictionTool } from '../../src/mcp/tools/resolve-prediction.js';
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { recordPrediction } from '../../cognition/jobs/predictions.js';
+import { createResolvePredictionTool } from '../../io/mcp/tools/resolve-prediction.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
@@ -36,7 +36,7 @@ test('resolve_prediction happy path sets resolved_at', async () => {
   assert.deepEqual(result, { ok: true });
 
   // Verify DB row has resolved_at
-  const { getPrediction } = await import('../../src/jobs/predictions.js');
+  const { getPrediction } = await import('../../cognition/jobs/predictions.js');
   const row = await getPrediction(db, id);
   assert.ok(row.resolved_at, 'resolved_at should be set');
   assert.equal(row.correct, true);

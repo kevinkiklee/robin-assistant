@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createIdleEmbedder } from '../../src/daemon/idle-embedder.js';
+import { createIdleEmbedder } from '../../runtime/daemon/idle-embedder.js';
 
 test('idle embedder loads on first use; unloads after timeout', async () => {
   let loadCount = 0;

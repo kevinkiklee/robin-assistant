@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
-import { sync } from '../../src/integrations/spotify/sync.js';
+import { sync } from '../../io/integrations/spotify/sync.js';
 
 function makeClient({ played = [], top = {} }) {
   return {

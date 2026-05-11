@@ -3,13 +3,13 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
-import { synthesizeCommStyle } from '../../src/jobs/comm-style.js';
-import { createGetCommStyleTool } from '../../src/mcp/tools/get-comm-style.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { synthesizeCommStyle } from '../../cognition/jobs/comm-style.js';
+import { createGetCommStyleTool } from '../../io/mcp/tools/get-comm-style.js';
 
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
@@ -26,7 +26,7 @@ test('comm-style roundtrip: seed 5 corrections → synthesize → MCP tool reads
   // (record_correction MCP tool writes this exact shape.)
   // The embedding column was removed in the redesign — recordEvent writes the
   // embedding into the per-profile surface table for us.
-  const { recordEvent } = await import('../../src/capture/record-event.js');
+  const { recordEvent } = await import('../../io/capture/record-event.js');
   for (let i = 0; i < 5; i++) {
     await recordEvent(db, embedder, {
       source: 'manual',

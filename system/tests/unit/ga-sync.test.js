@@ -3,7 +3,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
-import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
+import { _resetCache } from '../../io/integrations/_auth/token-cache.js';
 
 let tmpHome;
 test.beforeEach(() => {

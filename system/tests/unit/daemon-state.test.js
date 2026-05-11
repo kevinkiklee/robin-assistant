@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { clearDaemonState, readDaemonState, writeDaemonState } from '../../src/daemon/state.js';
+import { clearDaemonState, readDaemonState, writeDaemonState } from '../../runtime/daemon/state.js';
 
 test('writeDaemonState + readDaemonState round-trip', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-daemon-state-'));

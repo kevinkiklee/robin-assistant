@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import {
   loadManifests,
   validateManifest,
-} from '../../src/integrations/_framework/manifest-loader.js';
+} from '../../io/integrations/_framework/manifest-loader.js';
 
 test('validateManifest accepts valid scheduled manifest', () => {
   const m = {

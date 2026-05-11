@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { createGeminiAdapter } from '../../src/hosts/gemini.js';
+import { createGeminiAdapter } from '../../runtime/hosts/gemini.js';
 
 function fakeSpawnWithStats(stats) {
   const envelope = JSON.stringify({ session_id: 's', response: 'ok', stats });

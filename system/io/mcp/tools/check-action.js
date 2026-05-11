@@ -1,5 +1,5 @@
 // src/mcp/tools/check-action.js
-import { checkActionTrust } from '../../jobs/action-trust.js';
+import { checkActionTrust } from '../../../cognition/jobs/action-trust.js';
 
 export function createCheckActionTool({ db }) {
   return {

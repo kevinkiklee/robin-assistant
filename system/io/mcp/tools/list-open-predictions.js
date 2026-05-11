@@ -1,4 +1,4 @@
-import { listOpenPredictions } from '../../jobs/predictions.js';
+import { listOpenPredictions } from '../../../cognition/jobs/predictions.js';
 
 export function createListOpenPredictionsTool({ db }) {
   return {

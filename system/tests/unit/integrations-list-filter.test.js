@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseFilter } from '../../src/cli/commands/integrations-list.js';
+import { parseFilter } from '../../runtime/cli/commands/integrations-list.js';
 
 test('parseFilter returns null when no args', () => {
   assert.equal(parseFilter([]), null);

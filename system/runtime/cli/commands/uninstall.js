@@ -8,7 +8,7 @@ import {
   forgetHostTouchpoint,
   readHostIntegrations,
   robinHome,
-} from '../../runtime/data-store.js';
+} from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 import { input } from '../prompts.js';
 

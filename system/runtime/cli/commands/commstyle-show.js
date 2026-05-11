@@ -1,7 +1,7 @@
 // src/cli/commands/commstyle-show.js
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { getCommStyle as defaultGet } from '../../jobs/comm-style.js';
-import { ensureHome } from '../../runtime/data-store.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { getCommStyle as defaultGet } from '../../../cognition/jobs/comm-style.js';
+import { ensureHome } from '../../../config/data-store.js';
 
 export async function commstyleShow(_argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));

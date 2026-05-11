@@ -6,73 +6,73 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { surql } from 'surrealdb';
-import { biographerProcess } from '../capture/biographer.js';
-import { close, connect, defaultDbUrl } from '../db/client.js';
-import { dreamProcess } from '../dream/pipeline.js';
-import { createEmbedder } from '../embed/factory.js';
+import { biographerProcess } from '../../cognition/biographer/pipeline.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
+import { dreamProcess } from '../../cognition/dream/pipeline.js';
+import { createEmbedder } from '../../data/embed/factory.js';
 import { detectHost } from '../hosts/detect.js';
-import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
-import { createCapture } from '../integrations/_framework/capture.js';
-import { loadManifests } from '../integrations/_framework/manifest-loader.js';
-import { runIntegrationSync } from '../integrations/_framework/run-sync.js';
-import { resetActionTrust, setActionTrust } from '../jobs/action-trust.js';
-import { synthesizeCommStyle } from '../jobs/comm-style.js';
-import { garbageCollect, getJob, upsertFromDiscovered } from '../jobs/db.js';
-import { discoverJobs } from '../jobs/loader.js';
-import { computeCalibration, resolvePrediction, setCalibration } from '../jobs/predictions.js';
-import { runOneJob } from '../jobs/runner.js';
-import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
-import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
-import { createArchiveHistoryTool } from '../mcp/tools/archive-history.js';
-import { createAuditTool } from '../mcp/tools/audit.js';
-import { createCheckActionTool } from '../mcp/tools/check-action.js';
-import { createEndorseTool } from '../mcp/tools/endorse.js';
-import { createExplainActionTrustTool } from '../mcp/tools/explain-action-trust.js';
-import { createExplainBeliefTool } from '../mcp/tools/explain-belief.js';
-import { createExplainRecallTool } from '../mcp/tools/explain-recall.js';
-import { createFindEntityTool } from '../mcp/tools/find-entity.js';
-import { createGetArcTool } from '../mcp/tools/get-arc.js';
-import { createGetCommStyleTool } from '../mcp/tools/get-comm-style.js';
-import { createGetEntityTool } from '../mcp/tools/get-entity.js';
-import { createGetHotTool } from '../mcp/tools/get-hot.js';
-import { createGetKnowledgeTool } from '../mcp/tools/get-knowledge.js';
-import { createGetProfileTool } from '../mcp/tools/get-profile.js';
-import { createHealthTool } from '../mcp/tools/health.js';
-import { createIngestTool } from '../mcp/tools/ingest.js';
-import { createIntegrationRunTool } from '../mcp/tools/integration-run.js';
-import { createIntegrationStatusTool } from '../mcp/tools/integration-status.js';
-import { createLintTool } from '../mcp/tools/lint.js';
-import { createListArcsTool } from '../mcp/tools/list-arcs.js';
-import { createListEpisodesTool } from '../mcp/tools/list-episodes.js';
-import { createListJobsTool } from '../mcp/tools/list-jobs.js';
-import { createListJournalTool } from '../mcp/tools/list-journal.js';
-import { createListOpenPredictionsTool } from '../mcp/tools/list-open-predictions.js';
-import { createListPatternsTool } from '../mcp/tools/list-patterns.js';
-import { createListRulesTool } from '../mcp/tools/list-rules.js';
-import { createPredictTool } from '../mcp/tools/predict.js';
-import { createRecallTool } from '../mcp/tools/recall.js';
-import { createRecentRefusalsTool } from '../mcp/tools/recent-refusals.js';
-import { createRecordCorrectionTool } from '../mcp/tools/record-correction.js';
-import { createRefuteTool } from '../mcp/tools/refute.js';
-import { createRelatedEntitiesTool } from '../mcp/tools/related-entities.js';
-import { createRememberTool } from '../mcp/tools/remember.js';
-import { createResolvePredictionTool } from '../mcp/tools/resolve-prediction.js';
-import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
-import { createRunDreamTool } from '../mcp/tools/run-dream.js';
-import { createRunJobTool } from '../mcp/tools/run-job.js';
-import { createShowPendingTriggersTool } from '../mcp/tools/show-pending-triggers.js';
-import { createShowStepHealthTool } from '../mcp/tools/show-step-health.js';
-import { createUpdateActionPolicyTool } from '../mcp/tools/update-action-policy.js';
-import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
-import { readConfig } from '../runtime/config.js';
-import { ensureHome, paths } from '../runtime/data-store.js';
-import { envFilePath } from '../secrets/dotenv-io.js';
-import { createBiographerQueue } from './biographer-queue.js';
+import { resetInFlightFlags } from '../../io/integrations/_framework/boot-cleanup.js';
+import { createCapture } from '../../io/integrations/_framework/capture.js';
+import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
+import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
+import { resetActionTrust, setActionTrust } from '../../cognition/jobs/action-trust.js';
+import { synthesizeCommStyle } from '../../cognition/jobs/comm-style.js';
+import { garbageCollect, getJob, upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import { discoverJobs } from '../../cognition/jobs/loader.js';
+import { computeCalibration, resolvePrediction, setCalibration } from '../../cognition/jobs/predictions.js';
+import { runOneJob } from '../../cognition/jobs/runner.js';
+import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
+import { createRepeatQueryDetector } from '../../io/mcp/implicit-signals.js';
+import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
+import { createAuditTool } from '../../io/mcp/tools/audit.js';
+import { createCheckActionTool } from '../../io/mcp/tools/check-action.js';
+import { createEndorseTool } from '../../io/mcp/tools/endorse.js';
+import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
+import { createExplainBeliefTool } from '../../io/mcp/tools/explain-belief.js';
+import { createExplainRecallTool } from '../../io/mcp/tools/explain-recall.js';
+import { createFindEntityTool } from '../../io/mcp/tools/find-entity.js';
+import { createGetArcTool } from '../../io/mcp/tools/get-arc.js';
+import { createGetCommStyleTool } from '../../io/mcp/tools/get-comm-style.js';
+import { createGetEntityTool } from '../../io/mcp/tools/get-entity.js';
+import { createGetHotTool } from '../../io/mcp/tools/get-hot.js';
+import { createGetKnowledgeTool } from '../../io/mcp/tools/get-knowledge.js';
+import { createGetProfileTool } from '../../io/mcp/tools/get-profile.js';
+import { createHealthTool } from '../../io/mcp/tools/health.js';
+import { createIngestTool } from '../../io/mcp/tools/ingest.js';
+import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
+import { createIntegrationStatusTool } from '../../io/mcp/tools/integration-status.js';
+import { createLintTool } from '../../io/mcp/tools/lint.js';
+import { createListArcsTool } from '../../io/mcp/tools/list-arcs.js';
+import { createListEpisodesTool } from '../../io/mcp/tools/list-episodes.js';
+import { createListJobsTool } from '../../io/mcp/tools/list-jobs.js';
+import { createListJournalTool } from '../../io/mcp/tools/list-journal.js';
+import { createListOpenPredictionsTool } from '../../io/mcp/tools/list-open-predictions.js';
+import { createListPatternsTool } from '../../io/mcp/tools/list-patterns.js';
+import { createListRulesTool } from '../../io/mcp/tools/list-rules.js';
+import { createPredictTool } from '../../io/mcp/tools/predict.js';
+import { createRecallTool } from '../../io/mcp/tools/recall.js';
+import { createRecentRefusalsTool } from '../../io/mcp/tools/recent-refusals.js';
+import { createRecordCorrectionTool } from '../../io/mcp/tools/record-correction.js';
+import { createRefuteTool } from '../../io/mcp/tools/refute.js';
+import { createRelatedEntitiesTool } from '../../io/mcp/tools/related-entities.js';
+import { createRememberTool } from '../../io/mcp/tools/remember.js';
+import { createResolvePredictionTool } from '../../io/mcp/tools/resolve-prediction.js';
+import { createRunBiographerTool } from '../../io/mcp/tools/run-biographer.js';
+import { createRunDreamTool } from '../../io/mcp/tools/run-dream.js';
+import { createRunJobTool } from '../../io/mcp/tools/run-job.js';
+import { createShowPendingTriggersTool } from '../../io/mcp/tools/show-pending-triggers.js';
+import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js';
+import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
+import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
+import { readConfig } from '../../config/paths.js';
+import { ensureHome, paths } from '../../config/data-store.js';
+import { envFilePath } from '../../config/secrets.js';
+import { createBiographerQueue } from '../../cognition/biographer/queue.js';
 import { createIdleEmbedder } from './idle-embedder.js';
 import { runIntrospection } from './introspection.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
 import { bindFreePort } from './port.js';
-import { createScheduler } from './scheduler.js';
+import { createScheduler } from './heartbeat.js';
 import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
 import { clearDaemonState, writeDaemonState } from './state.js';
 import { getCliVersion } from './version-handshake.js';
@@ -499,7 +499,7 @@ export async function startDaemon() {
         // embed_backfill is always-due if any event is missing an embedding
         // row in the active profile's events surface.
         try {
-          const { activeProfile, embeddingTable } = await import('../embed/profile-router.js');
+          const { activeProfile, embeddingTable } = await import('../../data/embed/profile-router.js');
           const profile = await activeProfile(dbHandle);
           const eventsEmbTbl = embeddingTable(profile, 'events');
           const [pending] = await dbHandle
@@ -521,7 +521,7 @@ export async function startDaemon() {
       const baseRunOne = async (name) => {
         if (name === '__embed_backfill__') {
           const e = await idleEmbedder.get();
-          const { embedBackfillTick } = await import('../embed/backfill.js');
+          const { embedBackfillTick } = await import('../../data/embed/backfill.js');
           return await embedBackfillTick({
             db: dbHandle,
             embedder: e,
@@ -602,7 +602,7 @@ export async function startDaemon() {
     // last_event_at past per-source idle threshold get ended_at.
     let staleEpisodeTicker = null;
     {
-      const { closeStaleEpisodes } = await import('../jobs/internal/close-stale-episodes.js');
+      const { closeStaleEpisodes } = await import('../../cognition/jobs/internal/close-stale-episodes.js');
       staleEpisodeTicker = setInterval(() => {
         closeStaleEpisodes(dbHandle).catch((e) => {
           console.warn(`[close-stale-episodes] ${e.message}`);
@@ -615,7 +615,7 @@ export async function startDaemon() {
     // for decay_days get demoted to ASK.
     let actionTrustDecayTicker = null;
     {
-      const { runActionTrustDecay } = await import('../jobs/action-trust.js');
+      const { runActionTrustDecay } = await import('../../cognition/jobs/action-trust.js');
       actionTrustDecayTicker = setInterval(
         () => {
           runActionTrustDecay(dbHandle).catch((e) => {
@@ -657,7 +657,7 @@ export async function startDaemon() {
           // alongside any other pending rows.
           if (body && typeof body.transcript_path === 'string' && body.transcript_path.length > 0) {
             try {
-              const { captureFromTranscript } = await import('../capture/session-capture.js');
+              const { captureFromTranscript } = await import('../../io/capture/session-capture.js');
               await captureFromTranscript(dbHandle, embedderWrap, {
                 transcriptPath: body.transcript_path,
                 sessionId: body.session_id ?? body.sessionId ?? null,
@@ -688,8 +688,8 @@ export async function startDaemon() {
             return;
           }
           try {
-            const { recordEvent } = await import('../capture/record-event.js');
-            const { guardInboundContent } = await import('../hooks/inbound-guard.js');
+            const { recordEvent } = await import('../../io/capture/record-event.js');
+            const { guardInboundContent } = await import('../../cognition/discretion/inbound-guard.js');
             const result = await recordEvent(dbHandle, embedderWrap, {
               source: body.source ?? 'cli',
               content: body.content,
@@ -876,7 +876,7 @@ export async function startDaemon() {
         }
         if (req.method === 'POST' && req.url === '/internal/embeddings/op') {
           const body = await readJsonBody(req);
-          const { dispatch: dispatchEmbeddingsOp } = await import('../jobs/embeddings-ops.js');
+          const { dispatch: dispatchEmbeddingsOp } = await import('../../cognition/jobs/embeddings-ops.js');
           const result = await dispatchEmbeddingsOp(dbHandle, body);
           res.writeHead(result?.ok ? 200 : 400, { 'content-type': 'application/json' });
           res.end(JSON.stringify(result));
@@ -884,7 +884,7 @@ export async function startDaemon() {
         }
         if (req.method === 'POST' && req.url === '/internal/intuition') {
           const body = await readJsonBody(req);
-          const { intuitionEndpoint } = await import('../recall/intuition.js').catch(() => ({}));
+          const { intuitionEndpoint } = await import('../../cognition/intuition/inject.js').catch(() => ({}));
           if (typeof intuitionEndpoint === 'function') {
             const result = await intuitionEndpoint({
               db: dbHandle,

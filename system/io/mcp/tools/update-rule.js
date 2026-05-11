@@ -3,7 +3,7 @@ import {
   deactivateRule,
   rejectCandidate,
   setRulePriority,
-} from '../../rules/rules.js';
+} from '../../../cognition/memory/rules.js';
 
 export function createUpdateRuleTool({ db }) {
   return {

@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { paths } from '../runtime/data-store.js';
+import { paths } from './data-store.js';
 
 function envPath() {
   return join(paths.data.secrets(), '.env');

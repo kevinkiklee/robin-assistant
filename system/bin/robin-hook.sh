@@ -7,7 +7,7 @@ set -u
 
 SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PKG_ROOT=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
-DISPATCHER="$PKG_ROOT/src/hooks/cli.js"
+DISPATCHER="$PKG_ROOT/io/hooks/dispatcher.js"
 
 try_exec() {
   if [ -n "${1:-}" ] && [ -x "$1" ]; then

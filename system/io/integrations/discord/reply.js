@@ -1,4 +1,4 @@
-import { checkOutbound } from '../../outbound/policy.js';
+import { checkOutbound } from '../../../cognition/discretion/outbound-policy.js';
 
 export async function generateAndSendReply({ db, host, message, prompt }) {
   if (!host) {

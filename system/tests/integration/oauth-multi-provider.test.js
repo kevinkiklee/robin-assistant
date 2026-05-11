@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { _resetCache, getAccessToken } from '../../src/integrations/_auth/token-cache.js';
+import { _resetCache, getAccessToken } from '../../io/integrations/_auth/token-cache.js';
 
 test('parallel calls to different providers hit separate token endpoints (per-provider lock)', async () => {
   // Reset both provider caches so neither has a warm entry.

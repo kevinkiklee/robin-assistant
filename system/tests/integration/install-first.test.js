@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { pickHome } from '../../src/cli/commands/install.js';
+import { pickHome } from '../../runtime/cli/commands/install.js';
 
 test('pickHome: numeric selection of option 3 returns ~/Documents/Robin', async () => {
   const fakeHomedir = mkdtempSync(join(tmpdir(), 'robin-fake-home-'));

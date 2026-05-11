@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
-import { sync } from '../../src/integrations/gmail/sync.js';
+import { _resetCache } from '../../io/integrations/_auth/token-cache.js';
+import { sync } from '../../io/integrations/gmail/sync.js';
 
 function fakeProfile() {
   return { historyId: 'h-100', emailAddress: 'me@example.com' };

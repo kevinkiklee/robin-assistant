@@ -1,5 +1,5 @@
 import { recordEvent } from '../../capture/record-event.js';
-import { guardInboundContent } from '../../hooks/inbound-guard.js';
+import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 
 export function createRecordCorrectionTool({ db, embedder, processor }) {
   return {
@@ -37,7 +37,7 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
       let demoted_class = null;
       if (args.tool && args.action) {
         const cls = `${args.tool}:${args.action}`;
-        const { demoteOnCorrection } = await import('../../jobs/action-trust.js');
+        const { demoteOnCorrection } = await import('../../../cognition/jobs/action-trust.js');
         const r = await demoteOnCorrection(db, cls);
         if (r.demoted) demoted_class = cls;
       }

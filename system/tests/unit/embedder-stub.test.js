@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createStubEmbedder } from '../../src/embed/embedder.js';
+import { createStubEmbedder } from '../../data/embed/embedder.js';
 
 test('stub embedder produces vectors of the configured dimension', async () => {
   const e = createStubEmbedder({ dimension: 1024 });

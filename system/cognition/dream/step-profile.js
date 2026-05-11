@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
 import { getProfile } from '../memory/persona.js';
-import { createCandidate, findIdenticalProfileCandidate } from '../rules/candidates.js';
+import { createCandidate, findIdenticalProfileCandidate } from './candidates.js';
 import { PROFILE_INFERENCE_SYSTEM } from './prompts.js';
 
 const DEFAULT_MIN_CONFIDENCE = 0.8;

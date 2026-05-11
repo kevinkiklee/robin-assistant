@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentsMdContent } from '../../src/install/agents-md.js';
+import { agentsMdContent } from '../../runtime/install/agents-md.js';
 
 test('agentsMdContent — knowledge-ops block present', () => {
   const md = agentsMdContent({});

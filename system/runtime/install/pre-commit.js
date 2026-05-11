@@ -20,12 +20,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { SECRET_PATTERNS } from '../outbound/patterns.js';
+import { SECRET_PATTERNS } from '../../io/outbound/patterns.js';
 import {
   forgetHostTouchpoint,
   packageRootDir,
   recordHostTouchpoint,
-} from '../runtime/data-store.js';
+} from '../../config/data-store.js';
 
 // Identity marker — any hook file containing this token (also implicitly via
 // the absolute path to our run script) is owned by robin.

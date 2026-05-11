@@ -4,8 +4,8 @@ import {
   buildEventFromForecast,
   parseLocation,
   wmoLabel,
-} from '../../src/integrations/weather/client.js';
-import { sync } from '../../src/integrations/weather/sync.js';
+} from '../../io/integrations/weather/client.js';
+import { sync } from '../../io/integrations/weather/sync.js';
 
 const fakeForecast = {
   daily: {

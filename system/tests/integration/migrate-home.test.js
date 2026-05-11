@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { migrateHome } from '../../src/runtime/migrate-home.js';
+import { migrateHome } from '../../runtime/install/migrate-home.js';
 
 test('migrateHome: copies tree and preserves 0600 secrets mode, then deletes source on move', async () => {
   const src = mkdtempSync(join(tmpdir(), 'robin-src-'));

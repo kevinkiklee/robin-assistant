@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { test } from 'node:test';
-import { bindFreePort, getServerAddress } from '../../src/daemon/port.js';
+import { bindFreePort, getServerAddress } from '../../runtime/daemon/port.js';
 
 test('bindFreePort binds 127.0.0.1:0 and returns server + port', async () => {
   const { server, port } = await bindFreePort();

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ensureHome, readMarker, writePointer } from '../../src/runtime/data-store.js';
+import { ensureHome, readMarker, writePointer } from '../../config/data-store.js';
 
 test('interrupt between ensureHome and writePointer: re-running both is idempotent', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-interrupt-'));

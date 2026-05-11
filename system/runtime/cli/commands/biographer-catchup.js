@@ -1,10 +1,10 @@
 import { surql } from 'surrealdb';
-import { biographerProcess } from '../../capture/biographer.js';
-import { close, connect, defaultDbUrl } from '../../db/client.js';
-import { acquire } from '../../db/lock.js';
-import { createEmbedder } from '../../embed/factory.js';
+import { biographerProcess } from '../../../cognition/biographer/pipeline.js';
+import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { acquire } from '../../../data/db/lock.js';
+import { createEmbedder } from '../../../data/embed/factory.js';
 import { detectHost } from '../../hosts/detect.js';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { ensureHome, paths } from '../../../config/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function biographerCatchup(argv) {

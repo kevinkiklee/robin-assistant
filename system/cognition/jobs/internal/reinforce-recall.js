@@ -4,7 +4,7 @@
 // Walks recall_log rows whose outcome='pending' and ts < now - 5min; checks
 // for correction events in the session window; reinforces or marks corrected.
 
-import { evaluatePending } from '../../recall/reinforcement.js';
+import { evaluatePending } from '../../intuition/reinforcement.js';
 
 export default async function reinforceRecall({ db }) {
   const summary = await evaluatePending(db);

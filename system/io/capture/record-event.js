@@ -1,6 +1,6 @@
 import { BoundQuery, surql } from 'surrealdb';
-import { sha256 } from '../embed/hash.js';
-import { activeProfile, embeddingTable } from '../embed/profile-router.js';
+import { sha256 } from '../../data/embed/hash.js';
+import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
 import { RobinPiiRefusedError } from './errors.js';
 
 const VALID_SOURCES = new Set([

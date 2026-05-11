@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { validateBiographerOutput } from '../../src/capture/biographer-output.js';
+import { validateBiographerOutput } from '../../cognition/biographer/output.js';
 
 test('valid output passes', () => {
   const ok = validateBiographerOutput({

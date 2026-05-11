@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { acquire } from '../../src/db/lock.js';
+import { acquire } from '../../data/db/lock.js';
 
 test('acquire returns a release function', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-lock-'));

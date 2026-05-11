@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { readHostIntegrations } from '../../src/runtime/data-store.js';
+import { readHostIntegrations } from '../../config/data-store.js';
 
 function setup() {
   const root = join(

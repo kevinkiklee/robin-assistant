@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkVersionMatch, getCliVersion } from '../../src/daemon/version-handshake.js';
+import { checkVersionMatch, getCliVersion } from '../../runtime/daemon/version-handshake.js';
 
 test('matching versions pass', () => {
   const r = checkVersionMatch('6.0.0-alpha.2', '6.0.0-alpha.2');

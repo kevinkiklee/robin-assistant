@@ -4,14 +4,14 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { close, connect } from '../../src/db/client.js';
-import { runMigrations } from '../../src/db/migrate.js';
-import { computeCalibration, getCalibration, setCalibration } from '../../src/jobs/predictions.js';
-import { createListOpenPredictionsTool } from '../../src/mcp/tools/list-open-predictions.js';
-import { createPredictTool } from '../../src/mcp/tools/predict.js';
-import { createResolvePredictionTool } from '../../src/mcp/tools/resolve-prediction.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { computeCalibration, getCalibration, setCalibration } from '../../cognition/jobs/predictions.js';
+import { createListOpenPredictionsTool } from '../../io/mcp/tools/list-open-predictions.js';
+import { createPredictTool } from '../../io/mcp/tools/predict.js';
+import { createResolvePredictionTool } from '../../io/mcp/tools/resolve-prediction.js';
 
-import { writeConfig as __wc } from '../../src/runtime/config.js';
+import { writeConfig as __wc } from '../../config/paths.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });

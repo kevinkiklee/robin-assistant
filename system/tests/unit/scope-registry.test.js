@@ -10,7 +10,7 @@ import {
   scopeMatches,
   ttlDays,
   validateScope,
-} from '../../src/memory/scope-registry.js';
+} from '../../cognition/memory/scope-registry.js';
 
 test('policyFor: exact matches', () => {
   assert.equal(policyFor('global').outbound, 'allow');

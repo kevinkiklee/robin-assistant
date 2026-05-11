@@ -12,9 +12,9 @@ const __robinTestHome = join(
 mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
-const { hooksDisable } = await import('../../src/cli/commands/hooks-disable.js');
-const { hooksEnable } = await import('../../src/cli/commands/hooks-enable.js');
-const { isHookDisabled } = await import('../../src/hooks/disabled.js');
+const { hooksDisable } = await import('../../runtime/cli/commands/hooks-disable.js');
+const { hooksEnable } = await import('../../runtime/cli/commands/hooks-enable.js');
+const { isHookDisabled } = await import('../../io/hooks/disabled.js');
 
 const configFile = join(__robinTestHome, 'config.json');
 

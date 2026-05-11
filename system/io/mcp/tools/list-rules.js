@@ -1,5 +1,5 @@
-import { listCandidates } from '../../rules/candidates.js';
-import { listRules } from '../../rules/rules.js';
+import { listCandidates } from '../../../cognition/dream/candidates.js';
+import { listRules } from '../../../cognition/memory/rules.js';
 
 export function createListRulesTool({ db }) {
   return {
