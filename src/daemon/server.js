@@ -15,12 +15,14 @@ import { resetInFlightFlags } from '../integrations/_framework/boot-cleanup.js';
 import { createCapture } from '../integrations/_framework/capture.js';
 import { loadManifests } from '../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../integrations/_framework/run-sync.js';
+import { resetActionTrust, setActionTrust } from '../jobs/action-trust.js';
 import { garbageCollect, getJob, upsertFromDiscovered } from '../jobs/db.js';
 import { discoverJobs } from '../jobs/loader.js';
 import { runOneJob } from '../jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
 import { createAuditTool } from '../mcp/tools/audit.js';
+import { createCheckActionTool } from '../mcp/tools/check-action.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
 import { createGetHotTool } from '../mcp/tools/get-hot.js';
@@ -45,6 +47,7 @@ import { createRememberTool } from '../mcp/tools/remember.js';
 import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
 import { createRunDreamTool } from '../mcp/tools/run-dream.js';
 import { createRunJobTool } from '../mcp/tools/run-job.js';
+import { createUpdateActionPolicyTool } from '../mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
 import { readConfig } from '../runtime/config.js';
 import { ensureHome, paths } from '../runtime/home.js';
@@ -441,6 +444,8 @@ export async function startDaemon() {
     tools.push(createIngestTool({ db: dbHandle, embedder: embedderWrap, host }));
     tools.push(createLintTool({ db: dbHandle }));
     tools.push(createAuditTool({ db: dbHandle, host }));
+    tools.push(createCheckActionTool({ db: dbHandle }));
+    tools.push(createUpdateActionPolicyTool({ db: dbHandle }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
@@ -746,6 +751,30 @@ export async function startDaemon() {
           const result = await tool.handler(body);
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/actions/set') {
+          const body = await readJsonBody(req);
+          if (!body?.class || !['AUTO', 'ASK', 'NEVER'].includes(body?.state)) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'invalid_input' }));
+            return;
+          }
+          await setActionTrust(dbHandle, body.class, body.state, 'user');
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, class: body.class, state: body.state }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/actions/reset') {
+          const body = await readJsonBody(req);
+          if (!body?.class) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'missing_class' }));
+            return;
+          }
+          await resetActionTrust(dbHandle, body.class);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, class: body.class, state: 'ASK' }));
           return;
         }
         if (req.method === 'POST' && req.url === '/internal/intuition') {

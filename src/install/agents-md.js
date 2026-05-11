@@ -80,6 +80,36 @@ ${renderJobsList(jobs)}
 <!-- robin-jobs:end -->`;
 }
 
+export function actionsSection() {
+  return `<!-- robin-actions:start (auto-generated, do not hand-edit) -->
+## Action policy (AUTO / ASK / NEVER)
+
+Outbound tools (\`discord_send\`, \`github_write\`, \`spotify_write\`, and
+future writes) have a per-action trust state. Each (tool, action) is its
+own class — e.g. \`discord_send:send_dm\`, \`github_write:create-issue\`.
+
+- **AUTO** — proceed without asking.
+- **ASK** — the tool refuses with \`{ ok: false, reason: 'requires_permission', class }\`.
+  Surface this to the user. If the user authorizes, retry with
+  \`{ ...args, force: true }\` THIS TURN ONLY. Don't auto-force; the user has
+  to actually say yes.
+- **NEVER** — the tool refuses regardless of \`force\`. To resume use,
+  the user must run \`robin actions set <class> ASK\` (or you can call
+  \`update_action_policy({class, state: 'ASK'})\` on their explicit behalf).
+
+Default for any new (tool, action) class is **ASK**. State auto-demotes
+AUTO → ASK when you call \`record_correction({tool, action, ...})\` —
+one correction is enough.
+
+When the user gives **standing** permission ("you can always queue songs
+for me"), call \`update_action_policy({class: 'spotify_write:queue', state: 'AUTO'})\`.
+When they revoke ("don't ever do that again"), set state to 'NEVER'.
+
+Use \`check_action({tool, action})\` to peek the state before planning
+a multi-step action.
+<!-- robin-actions:end -->`;
+}
+
 export function knowledgeOpsSection() {
   return `<!-- robin-knowledge-ops:start (auto-generated, do not hand-edit) -->
 ## Knowledge ops
@@ -241,6 +271,8 @@ ${integrationsSection(integrations)}
 ${jobsSection(jobs)}
 
 ${knowledgeOpsSection()}
+
+${actionsSection()}
 
 ${buildSecurityBlock()}
 `;
