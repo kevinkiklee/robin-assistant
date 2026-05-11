@@ -80,16 +80,26 @@ export async function matchPriorTailEntities(db, sessionId, opts = {}) {
   const limit = opts.priorTailLimit ?? 3;
   if (!sessionId) return [];
   try {
+    // SurrealDB v3 requires the ORDER BY column to be in the SELECT
+    // projection, so we run the inner query first (id + ts), then feed the
+    // resulting ids into the edges query. Two round-trips, but small N.
+    const [evtRows] = await db
+      .query(
+        new BoundQuery(
+          `SELECT id, ts FROM events
+           WHERE meta.session_id = $sid AND biographed_at IS NOT NONE
+           ORDER BY ts DESC LIMIT $n`,
+          { sid: sessionId, n: limit },
+        ),
+      )
+      .collect();
+    const eventIds = (evtRows ?? []).map((r) => r.id).filter(Boolean);
+    if (eventIds.length === 0) return [];
     const [rows] = await db
       .query(
         new BoundQuery(
-          `SELECT out AS entity FROM edges
-           WHERE kind = 'mentions' AND in IN (
-             SELECT id FROM events
-             WHERE meta.session_id = $sid AND biographed_at IS NOT NONE
-             ORDER BY ts DESC LIMIT $n
-           )`,
-          { sid: sessionId, n: limit },
+          `SELECT out AS entity FROM edges WHERE kind = 'mentions' AND in IN $ids`,
+          { ids: eventIds },
         ),
       )
       .collect();
