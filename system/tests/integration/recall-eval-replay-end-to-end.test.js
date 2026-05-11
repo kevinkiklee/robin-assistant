@@ -136,9 +136,7 @@ test('runEval replay reproduces precision@k against seeded recall_log rows', asy
       Math.abs(result.metrics.mean_rank_of_negatives_at_10 - 1.1667) < 0.001,
     `mean_rank_of_negatives_at_10 = ${result.metrics.mean_rank_of_negatives_at_10}`,
   );
-  assert.ok(
-    typeof result.replay_kendall_mean === 'number' || result.replay_kendall_mean === null,
-  );
+  assert.ok(typeof result.replay_kendall_mean === 'number' || result.replay_kendall_mean === null);
 
   await close(db);
 });

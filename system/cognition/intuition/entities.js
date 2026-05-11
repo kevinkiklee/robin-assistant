@@ -97,10 +97,9 @@ export async function matchPriorTailEntities(db, sessionId, opts = {}) {
     if (eventIds.length === 0) return [];
     const [rows] = await db
       .query(
-        new BoundQuery(
-          `SELECT out AS entity FROM edges WHERE kind = 'mentions' AND in IN $ids`,
-          { ids: eventIds },
-        ),
+        new BoundQuery(`SELECT out AS entity FROM edges WHERE kind = 'mentions' AND in IN $ids`, {
+          ids: eventIds,
+        }),
       )
       .collect();
     const out = [];
@@ -161,11 +160,7 @@ export async function readEntityCatalog(db, cfg = {}) {
   } catch {
     profile = null;
   }
-  if (
-    _catalogCache &&
-    Date.now() - _catalogCachedAt < ttlMs &&
-    _catalogCachedProfile === profile
-  ) {
+  if (_catalogCache && Date.now() - _catalogCachedAt < ttlMs && _catalogCachedProfile === profile) {
     return _catalogCache;
   }
   try {

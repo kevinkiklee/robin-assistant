@@ -48,11 +48,10 @@ test('entityBoostFromAboutIds: zero overlap → 1.0', () => {
 });
 
 test('entityBoostFromAboutIds: one overlap → 1.10', () => {
-  const out = entityBoostFromAboutIds(
-    new Set(['entities:a']),
-    new Set(['entities:a']),
-    { entity_boost_per_overlap: 0.1, entity_boost_max: 1.25 },
-  );
+  const out = entityBoostFromAboutIds(new Set(['entities:a']), new Set(['entities:a']), {
+    entity_boost_per_overlap: 0.1,
+    entity_boost_max: 1.25,
+  });
   assert.ok(Math.abs(out.boost - 1.1) < 1e-6);
   assert.equal(out.count, 1);
 });

@@ -1,8 +1,8 @@
-import { writeFileSync } from 'node:fs';
 import * as child from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { surql } from 'surrealdb';
-import { ensureHome } from '../../../config/data-store.js';
 import { runEval } from '../../../cognition/intuition/eval.js';
+import { ensureHome } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { createEmbedder } from '../../../data/embed/factory.js';
 import { readProfile } from '../../../data/embed/profile-router.js';

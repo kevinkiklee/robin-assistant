@@ -5,6 +5,7 @@ import { surql } from 'surrealdb';
 import { recordStringId } from '../memory/edge-registry.js';
 import * as store from '../memory/store.js';
 import { getRecallConfig } from '../memory/store.js';
+import { recall } from './engine.js';
 import {
   aboutEntitiesForMemos,
   entityBoostFromAboutIds,
@@ -13,7 +14,6 @@ import {
   readEntityCatalog,
   tokensOf,
 } from './entities.js';
-import { recall } from './engine.js';
 import { mmrLite, score } from './rank.js';
 import { cosineSim, loadVectorsForHits } from './vectors.js';
 

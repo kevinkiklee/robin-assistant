@@ -25,7 +25,11 @@ test('robin recall-eval --json exits 1 when rows_scored < min_rows', () => {
     [join(root, 'system/bin/robin'), 'recall-eval', '--json', '--limit', '10'],
     { env: { ...process.env, ROBIN_HOME: tmp }, encoding: 'utf8' },
   );
-  assert.equal(result.status, 1, `expected exit 1, got ${result.status}. stdout: ${result.stdout} stderr: ${result.stderr}`);
+  assert.equal(
+    result.status,
+    1,
+    `expected exit 1, got ${result.status}. stdout: ${result.stdout} stderr: ${result.stderr}`,
+  );
   const json = JSON.parse(result.stdout);
   assert.equal(json.rows_scored, 0);
   rmSync(tmp, { recursive: true });
@@ -54,11 +58,7 @@ test('robin recall-eval --replay --profile=<inactive> exits 3 with active profil
     ],
     { env: { ...process.env, ROBIN_HOME: tmp }, encoding: 'utf8' },
   );
-  assert.equal(
-    result.status,
-    3,
-    `expected exit 3, got ${result.status}. stderr: ${result.stderr}`,
-  );
+  assert.equal(result.status, 3, `expected exit 3, got ${result.status}. stderr: ${result.stderr}`);
   assert.ok(
     result.stderr.includes('mxbai-1024'),
     `stderr should mention active profile 'mxbai-1024'; got: ${result.stderr}`,

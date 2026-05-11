@@ -96,7 +96,9 @@ function kendallTau(originalOrder, replayedOrder) {
   const n = originalOrder.length;
   if (n < 2) return 1;
   const rank = new Map();
-  replayedOrder.forEach((id, i) => rank.set(id, i));
+  for (let i = 0; i < replayedOrder.length; i++) {
+    rank.set(replayedOrder[i], i);
+  }
   let concordant = 0;
   let discordant = 0;
   for (let i = 0; i < n - 1; i++) {
@@ -325,7 +327,8 @@ export async function runEval(args) {
             }),
           )
           .collect();
-        for (const v of vr ?? []) vectors.set(recordStringId(v.record), Float32Array.from(v.vector));
+        for (const v of vr ?? [])
+          vectors.set(recordStringId(v.record), Float32Array.from(v.vector));
       }
       if (memoIds.length > 0) {
         const tbl = embeddingTable(profile, 'memos');
@@ -336,7 +339,8 @@ export async function runEval(args) {
             }),
           )
           .collect();
-        for (const v of vr ?? []) vectors.set(recordStringId(v.record), Float32Array.from(v.vector));
+        for (const v of vr ?? [])
+          vectors.set(recordStringId(v.record), Float32Array.from(v.vector));
       }
 
       // Intuition-source rows replay with A2 enabled; MCP-recall rows
