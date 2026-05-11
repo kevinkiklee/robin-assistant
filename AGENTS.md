@@ -21,7 +21,7 @@ You interact with Robin in three ways during a session:
 - **`recall(query, k?, recency_days?, since?, source?)`** — HNSW vector search over events. Returns `{hits: [{id, content, ts, source, meta, score}, ...]}`. Use this first when you need to know what happened recently.
 - **`find_entity(name)`** — 3-stage entity resolution (exact → embedding → disambiguation). Returns the `entities` row or `null`.
 - **`get_entity(id)`** — fetch by id with edges.
-- **`related_entities(entity_id, edge_kind?, limit?)`** — graph traversal: returns adjacent entities by edge type (`mentions`, `works_on`, `participates_in`, `co_occurs_with`, etc.).
+- **`related_entities(entity_id, edge_kind?, limit?)`** — graph traversal: returns adjacent entities by edge type (`mentions`, `works_on`, `participates_in`, `occurs_with`, etc.).
 - **`get_knowledge(query?, limit?)`** — dreamed-up durable facts. Vector search if `query` is provided.
 - **`get_profile()`** — the long-running user model (preferences, role, recurring topics).
 - **`get_hot(limit?)`** — top entities by recent mention weight.

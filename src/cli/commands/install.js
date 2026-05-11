@@ -468,6 +468,13 @@ export async function install(argv = [], deps = {}) {
   const homeFlag = typeof args.flags.home === 'string' ? args.flags.home : null;
   const { home, action } = await chooseHome({ prompt, interactive, args, homeFlag });
   process.env.ROBIN_HOME = home; // resolve subsequent steps to it
+  if (action === 'reuse') {
+    console.log(`Using existing Robin home: ${home}`);
+  } else if (action === 'env') {
+    console.log(`Using ROBIN_HOME from environment: ${home}`);
+  } else if (action === 'recovered') {
+    console.log(`Recovered Robin home from prior install: ${home}`);
+  }
 
   // 2. Reinstall short-circuit.
   // Applies when the home was reused from pointer, env var, or already configured.

@@ -33,5 +33,20 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kevinkiklee/robin-assistant.git"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/kevinkiklee/robin-assistant/issues"
+  },
+  "homepage": "https://github.com/kevinkiklee/robin-assistant#readme",
+  "keywords": [
+    "ai",
+    "ai-assistant",
+    "memory",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "gemini-cli",
+    "surrealdb",
+    "personal-ai"
+  ]
 }

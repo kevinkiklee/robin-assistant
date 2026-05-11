@@ -270,6 +270,10 @@ export function readMarker() {
 
 const MANIFEST_VERSION = 1;
 const LOCK_TIMEOUT_MS = 5000;
+// Polling interval while another writer holds the manifest lock. Kept short
+// because the critical section is a read-modify-write of a small JSON file
+// (<10ms typical), so 25ms balances responsiveness against busy-spinning.
+const LOCK_POLL_MS = 25;
 
 async function acquireManifestLock() {
   const lockPath = paths.data.manifestLock();
@@ -280,7 +284,7 @@ async function acquireManifestLock() {
       return { fd, lockPath };
     } catch (e) {
       if (e.code === 'EEXIST') {
-        await new Promise((r) => setTimeout(r, 25));
+        await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
         continue;
       }
       throw e;
