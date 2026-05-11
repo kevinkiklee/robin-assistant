@@ -15,6 +15,8 @@ import { surql } from 'surrealdb';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../memory/episodes.js';
 import * as store from '../memory/store.js';
 import { withTxRetry } from '../memory/tx.js';
+import { validateBiographerBatchOutput } from './batch-output.js';
+import { buildBiographerBatchPrompt } from './batch-prompt.js';
 import { validateBiographerOutput } from './output.js';
 import { buildBiographerPrompt } from './prompt.js';
 
@@ -28,6 +30,32 @@ const DEFAULT_CONFIG = {
   catalog_size: 100,
   cooccur_cap: 8,
 };
+
+export const DEFAULT_BATCH_CONFIG = {
+  max_batch_size: 8,
+  debounce_ms: 750,
+  max_wait_ms: 3000,
+  disable: false,
+};
+
+// Per-db cache for readBatchConfig. Using a WeakMap keyed on the db handle
+// scopes the 5s TTL cache per-connection so concurrent test databases
+// don't share stale snapshots.
+const _batchConfigCache = new WeakMap();
+const BATCH_CONFIG_TTL_MS = 5000;
+
+export async function readBatchConfig(db) {
+  const cached = _batchConfigCache.get(db);
+  const now = Date.now();
+  if (cached && now - cached.at < BATCH_CONFIG_TTL_MS) {
+    return cached.value;
+  }
+  const runtime = await loadRuntime(db);
+  const stored = runtime?.batch_config ?? {};
+  const cfg = { ...DEFAULT_BATCH_CONFIG, ...stored };
+  _batchConfigCache.set(db, { value: cfg, at: now });
+  return cfg;
+}
 
 async function getCatalog(db, size) {
   const [rows] = await db
@@ -47,16 +75,27 @@ async function loadRuntime(db) {
 
 async function ensureRuntime(db) {
   const existing = await loadRuntime(db);
-  if (existing?.config) return existing;
-  const initial = { config: DEFAULT_CONFIG, entity_catalog_version: 0 };
+  if (existing?.config && existing?.batch_config) return existing;
   await withTxRetry(async () => {
     const current = await loadRuntime(db);
-    if (current?.config) return;
+    if (current?.config && current?.batch_config) return;
+    const merged = {
+      ...(current ?? {}),
+      config: current?.config ?? DEFAULT_CONFIG,
+      batch_config: current?.batch_config ?? DEFAULT_BATCH_CONFIG,
+      entity_catalog_version: current?.entity_catalog_version ?? 0,
+    };
     await db
-      .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${initial}`)
+      .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${merged}`)
       .collect();
   });
-  return (await loadRuntime(db)) ?? initial;
+  return (
+    (await loadRuntime(db)) ?? {
+      config: DEFAULT_CONFIG,
+      batch_config: DEFAULT_BATCH_CONFIG,
+      entity_catalog_version: 0,
+    }
+  );
 }
 
 async function invokeWithRetry(host, messages, opts, retries = 3, baseDelayMs = 1000) {

@@ -106,3 +106,30 @@ test('biographerProcess is now a wrapper that delegates to biographerProcessBatc
   assert.equal(r.entitiesCount, 1);
   await close(db);
 });
+
+test('readBatchConfig returns DEFAULT_BATCH_CONFIG on an empty runtime row', async () => {
+  const { readBatchConfig, DEFAULT_BATCH_CONFIG } = await import(
+    '../../cognition/biographer/pipeline.js'
+  );
+  const db = await fresh();
+  const cfg = await readBatchConfig(db);
+  assert.equal(cfg.max_batch_size, DEFAULT_BATCH_CONFIG.max_batch_size);
+  assert.equal(cfg.debounce_ms, DEFAULT_BATCH_CONFIG.debounce_ms);
+  assert.equal(cfg.max_wait_ms, DEFAULT_BATCH_CONFIG.max_wait_ms);
+  await close(db);
+});
+
+test('readBatchConfig merges stored values over defaults', async () => {
+  const { readBatchConfig } = await import('../../cognition/biographer/pipeline.js');
+  const db = await fresh();
+  await db
+    .query(
+      surql`UPSERT type::record('runtime', 'biographer') SET value.batch_config = ${{ max_batch_size: 16 }}`,
+    )
+    .collect();
+  const cfg = await readBatchConfig(db);
+  assert.equal(cfg.max_batch_size, 16);
+  assert.equal(cfg.debounce_ms, 750);
+  assert.equal(cfg.max_wait_ms, 3000);
+  await close(db);
+});
