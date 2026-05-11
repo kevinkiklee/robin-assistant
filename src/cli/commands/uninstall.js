@@ -6,7 +6,6 @@ import { uninstallPreCommit } from '../../install/pre-commit.js';
 import {
   deletePointer,
   forgetHostTouchpoint,
-  paths,
   readHostIntegrations,
   robinHome,
 } from '../../runtime/data-store.js';
