@@ -169,10 +169,11 @@ export async function readEntityCatalog(db, cfg = {}) {
     return _catalogCache;
   }
   try {
+    // SurrealDB v3 requires the ORDER BY column to be in the projection.
     const [rows] = await db
       .query(
         new BoundQuery(
-          `SELECT id, name, type FROM entities ORDER BY created_at DESC LIMIT $n`,
+          `SELECT id, name, type, created_at FROM entities ORDER BY created_at DESC LIMIT $n`,
           { n: size },
         ),
       )
