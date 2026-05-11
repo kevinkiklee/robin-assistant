@@ -1,6 +1,6 @@
 import { close, connect } from '../../db/client.js';
 import { getJob } from '../../jobs/db.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function jobsStatus(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));

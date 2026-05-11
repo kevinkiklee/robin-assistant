@@ -1,7 +1,7 @@
 import { surql } from 'surrealdb';
 import { close, connect } from '../../db/client.js';
 import { loadManifests } from '../../integrations/_framework/manifest-loader.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 function formatCadence(m) {
   if (m.kind === 'gateway') return 'gateway';

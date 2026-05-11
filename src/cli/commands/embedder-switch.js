@@ -2,7 +2,7 @@ import { surql } from 'surrealdb';
 import { close, connect } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
 import { readConfig, writeConfig } from '../../runtime/config.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 const VALID_PROFILES = new Set(['mxbai-1024', 'qwen3-4096', 'gemini-3072']);
 const USAGE = 'usage: robin embedder switch <mxbai-1024|qwen3-4096|gemini-3072>';

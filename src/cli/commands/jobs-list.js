@@ -1,6 +1,6 @@
 import { close, connect } from '../../db/client.js';
 import { listAllJobs } from '../../jobs/db.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 function fmt(d) {
   return d ? new Date(d).toISOString() : '—';

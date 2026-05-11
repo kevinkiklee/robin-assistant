@@ -17,7 +17,7 @@
 
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
-import { paths } from '../../runtime/home.js';
+import { paths } from '../../runtime/data-store.js';
 
 function detectHost() {
   if (process.env.CLAUDECODE === '1') return 'claude-code';

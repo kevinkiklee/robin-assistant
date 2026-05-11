@@ -10,7 +10,7 @@ import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promise
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { sha256 } from '../embed/hash.js';
-import { packageRootDir, paths } from '../runtime/home.js';
+import { packageRootDir, paths } from '../runtime/data-store.js';
 
 // Files whose contents should be pinned. Paths relative to the package root.
 // Files that don't exist at compute time are silently omitted from the manifest.

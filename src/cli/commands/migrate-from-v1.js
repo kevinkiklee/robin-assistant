@@ -13,7 +13,7 @@ import { buildPlan, renderPlan } from '../../migrate-v1/plan.js';
 import { runReset } from '../../migrate-v1/reset.js';
 import { printStatus } from '../../migrate-v1/status.js';
 import { openV1 } from '../../migrate-v1/v1-client.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export function parseArgs(argv) {
   let mode = 'migrate';

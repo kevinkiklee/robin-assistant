@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
 import { resolveBinPath } from '../../runtime/bin.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 async function tryDaemonRoute(state, body, fetchFn) {
   try {

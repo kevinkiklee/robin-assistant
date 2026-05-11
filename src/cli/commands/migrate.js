@@ -4,7 +4,7 @@ import { snapshot } from '../../db/backup.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { runMigrations } from '../../db/migrate.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function migrate() {
   await ensureHome();

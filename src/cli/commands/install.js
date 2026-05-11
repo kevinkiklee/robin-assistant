@@ -8,7 +8,7 @@ import { ensureHookShim } from '../../install/hook-shim.js';
 import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { readConfig, writeConfig } from '../../runtime/config.js';
-import { ensureHome, packageRootDir, paths } from '../../runtime/home.js';
+import { ensureHome, packageRootDir, paths } from '../../runtime/data-store.js';
 import { getSecret, saveSecret } from '../../secrets/dotenv-io.js';
 import { parseArgs } from '../args.js';
 import { mcpInstall } from './mcp-install.js';

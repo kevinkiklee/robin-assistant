@@ -17,8 +17,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readDaemonState } from '../../daemon/state.js';
+import { paths } from '../../runtime/data-store.js';
 import { readFileTail } from '../../runtime/file-tail.js';
-import { paths } from '../../runtime/home.js';
 
 const TRANSCRIPT_TAIL_BYTES = 8 * 1024;
 const PRIOR_ASSISTANT_CAP = 2000;

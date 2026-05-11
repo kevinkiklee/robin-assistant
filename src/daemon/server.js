@@ -47,7 +47,7 @@ import { createRunDreamTool } from '../mcp/tools/run-dream.js';
 import { createRunJobTool } from '../mcp/tools/run-job.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
 import { readConfig } from '../runtime/config.js';
-import { ensureHome, paths } from '../runtime/home.js';
+import { ensureHome, paths } from '../runtime/data-store.js';
 import { envFilePath } from '../secrets/dotenv-io.js';
 import { createBiographerQueue } from './biographer-queue.js';
 import { createIdleEmbedder } from './idle-embedder.js';

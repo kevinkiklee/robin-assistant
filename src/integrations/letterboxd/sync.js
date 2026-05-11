@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { paths } from '../../runtime/home.js';
+import { paths } from '../../runtime/data-store.js';
 import { isDiaryCsv, parseDiaryCsv } from './csv.js';
 
 function uploadDir() {

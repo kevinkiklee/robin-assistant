@@ -3,7 +3,7 @@
 
 import { DISPATCH } from '../../hooks/cli.js';
 import { removeDisabled } from '../../hooks/disabled.js';
-import { ensureHome } from '../../runtime/home.js';
+import { ensureHome } from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function hooksEnable(argv = [], deps = {}) {

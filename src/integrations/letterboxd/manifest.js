@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { paths } from '../../runtime/home.js';
+import { paths } from '../../runtime/data-store.js';
 import { sync } from './sync.js';
 import { createLetterboxdRecentTool } from './tools/letterboxd-recent.js';
 

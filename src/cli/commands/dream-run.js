@@ -5,7 +5,7 @@ import { acquire } from '../../db/lock.js';
 import { dreamProcess } from '../../dream/pipeline.js';
 import { createEmbedder } from '../../embed/factory.js';
 import { detectHost } from '../../hosts/detect.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function dreamRun() {
   await ensureHome();

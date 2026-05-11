@@ -5,7 +5,7 @@
 import { close, connect } from '../src/db/client.js';
 import { createTransformersEmbedder } from '../src/embed/embedder.js';
 import { recall } from '../src/recall/index.js';
-import { ensureHome, paths } from '../src/runtime/home.js';
+import { ensureHome, paths } from '../src/runtime/data-store.js';
 
 const query = process.argv.slice(2).join(' ');
 if (!query) {

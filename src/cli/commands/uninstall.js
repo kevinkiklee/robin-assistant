@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { uninstallHooksFromSettings } from '../../install/hooks-settings.js';
-import { packageRootDir } from '../../runtime/home.js';
+import { packageRootDir } from '../../runtime/data-store.js';
 import { mcpStop } from './mcp-stop.js';
 import { mcpUninstall } from './mcp-uninstall.js';
 

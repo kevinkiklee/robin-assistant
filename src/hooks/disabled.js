@@ -1,6 +1,6 @@
 import { closeSync, openSync, readFileSync, renameSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { paths } from '../runtime/home.js';
+import { paths } from '../runtime/data-store.js';
 
 function disabledPath() {
   return join(paths().home, 'hooks-disabled.txt');

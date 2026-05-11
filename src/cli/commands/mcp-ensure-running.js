@@ -1,6 +1,6 @@
 import { isPidAlive } from '../../daemon/lock.js';
 import { clearDaemonState, readDaemonState } from '../../daemon/state.js';
-import { paths } from '../../runtime/home.js';
+import { paths } from '../../runtime/data-store.js';
 import { mcpStart } from './mcp-start.js';
 
 export async function mcpEnsureRunning() {

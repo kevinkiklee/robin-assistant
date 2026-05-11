@@ -10,7 +10,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { exportMappings } from '../../src/migrate-v1/export-mappings.js';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
-import { paths } from '../../src/runtime/home.js';
+import { paths } from '../../src/runtime/data-store.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

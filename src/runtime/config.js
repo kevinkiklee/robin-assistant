@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { paths } from './home.js';
+import { paths } from './data-store.js';
 
 export async function readConfig() {
   const p = paths().config;

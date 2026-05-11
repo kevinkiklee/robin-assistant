@@ -7,7 +7,7 @@ import { readDaemonState } from '../../daemon/state.js';
 import { agentsMdContent, mergeAgentsMdContent } from '../../install/agents-md.js';
 import { generateLaunchdPlist } from '../../install/launchd-plist.js';
 import { generateSystemdUnit } from '../../install/systemd-unit.js';
-import { paths } from '../../runtime/home.js';
+import { paths } from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 import { mcpEnsureRunning } from './mcp-ensure-running.js';
 
@@ -22,7 +22,7 @@ async function readOrEmpty(path) {
 
 async function readJobsForAgentsMd() {
   try {
-    const { ensureHome, paths } = await import('../../runtime/home.js');
+    const { ensureHome, paths } = await import('../../runtime/data-store.js');
     const { connect, close } = await import('../../db/client.js');
     const { listAllJobs } = await import('../../jobs/db.js');
     await ensureHome();

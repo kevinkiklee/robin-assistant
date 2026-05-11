@@ -16,7 +16,7 @@ process.env.ROBIN_HOME = __robinTestHome;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
 
 const { doctor } = await import('../../src/cli/commands/doctor.js');
-const { packageRootDir } = await import('../../src/runtime/home.js');
+const { packageRootDir } = await import('../../src/runtime/data-store.js');
 const { close: __close, connect: __connect } = await import('../../src/db/client.js');
 const { runMigrations: __runMigrations } = await import('../../src/db/migrate.js');
 

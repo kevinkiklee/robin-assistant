@@ -8,7 +8,7 @@ import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { runMigration } from '../../src/migrate-v1/index.js';
-import { paths } from '../../src/runtime/home.js';
+import { paths } from '../../src/runtime/data-store.js';
 
 // NOTE: We do NOT seed v1 via rocksdb and then re-open it in the same process.
 // The rocksdb engine does not release its file lock synchronously on close, so

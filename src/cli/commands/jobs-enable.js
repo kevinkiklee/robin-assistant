@@ -1,7 +1,7 @@
 // src/cli/commands/jobs-enable.js
 import { close, connect } from '../../db/client.js';
 import { setEnabled } from '../../jobs/db.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function jobsEnable(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));

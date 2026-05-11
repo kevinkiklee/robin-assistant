@@ -8,7 +8,7 @@ function packageRoot() {
     if (existsSync(join(dir, 'package.json'))) return dir;
     dir = dirname(dir);
   }
-  throw new Error('cannot resolve package root from src/runtime/home.js');
+  throw new Error('cannot resolve package root from src/runtime/data-store.js');
 }
 
 export function robinHome() {

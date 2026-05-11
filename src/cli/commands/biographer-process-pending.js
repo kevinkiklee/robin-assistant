@@ -5,7 +5,7 @@ import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { createEmbedder } from '../../embed/factory.js';
 import { detectHost } from '../../hosts/detect.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function biographerProcessPending(argv) {

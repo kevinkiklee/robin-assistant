@@ -4,20 +4,22 @@ import { test } from 'node:test';
 
 test('paths().home defaults to <package_root>/user-data when ROBIN_HOME unset', async () => {
   Reflect.deleteProperty(process.env, 'ROBIN_HOME');
-  const { paths, packageRootDir } = await import(`../../src/runtime/home.js?cb=${Date.now()}`);
+  const { paths, packageRootDir } = await import(
+    `../../src/runtime/data-store.js?cb=${Date.now()}`
+  );
   const root = packageRootDir();
   assert.equal(paths().home, join(root, 'user-data'));
 });
 
 test('ROBIN_HOME env var overrides default', async () => {
   process.env.ROBIN_HOME = '/tmp/robin-test-override';
-  const { paths } = await import(`../../src/runtime/home.js?cb=${Date.now()}`);
+  const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
   assert.equal(paths().home, '/tmp/robin-test-override');
 });
 
 test('paths() includes db, secrets, cache, config, backup, daemonState, daemonLock, migrationsDir', async () => {
   process.env.ROBIN_HOME = '/tmp/robin-test-paths';
-  const { paths } = await import(`../../src/runtime/home.js?cb=${Date.now()}`);
+  const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
   const p = paths();
   assert.equal(p.db, '/tmp/robin-test-paths/db');
   assert.equal(p.secrets, '/tmp/robin-test-paths/secrets');
@@ -31,6 +33,8 @@ test('paths() includes db, secrets, cache, config, backup, daemonState, daemonLo
 
 test('migrationsDir resolves to source tree even when ROBIN_HOME is set elsewhere', async () => {
   process.env.ROBIN_HOME = '/tmp/something';
-  const { paths, packageRootDir } = await import(`../../src/runtime/home.js?cb=${Date.now()}`);
+  const { paths, packageRootDir } = await import(
+    `../../src/runtime/data-store.js?cb=${Date.now()}`
+  );
   assert.equal(paths().migrationsDir, join(packageRootDir(), 'src', 'schema', 'migrations'));
 });

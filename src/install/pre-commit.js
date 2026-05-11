@@ -21,7 +21,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { SECRET_PATTERNS } from '../outbound/patterns.js';
-import { packageRootDir } from '../runtime/home.js';
+import { packageRootDir } from '../runtime/data-store.js';
 
 // Identity marker — any hook file containing this token (also implicitly via
 // the absolute path to our run script) is owned by robin.

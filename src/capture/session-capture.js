@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
 import { guardInboundContent } from '../hooks/inbound-guard.js';
-import { paths } from '../runtime/home.js';
+import { paths } from '../runtime/data-store.js';
 import { RobinPiiRefusedError } from './errors.js';
 import { recordEvent } from './record-event.js';
 import { extractTurns } from './transcript.js';

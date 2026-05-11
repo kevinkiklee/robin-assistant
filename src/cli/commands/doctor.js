@@ -23,7 +23,7 @@ import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
-import { ensureHome, packageRootDir, paths } from '../../runtime/home.js';
+import { ensureHome, packageRootDir, paths } from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 
 function shimPrefix() {

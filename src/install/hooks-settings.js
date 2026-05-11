@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { paths } from '../runtime/home.js';
+import { paths } from '../runtime/data-store.js';
 
 /**
  * Per spec §10:

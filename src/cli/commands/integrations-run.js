@@ -7,7 +7,7 @@ import { createEmbedder } from '../../embed/factory.js';
 import { createCapture } from '../../integrations/_framework/capture.js';
 import { loadManifests } from '../../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../../integrations/_framework/run-sync.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function integrationsRun(argv) {
   if (!argv[0]) {

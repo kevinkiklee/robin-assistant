@@ -3,7 +3,7 @@ import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { getHotContext } from '../../memory/hot.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function hotCmd() {
   await ensureHome();

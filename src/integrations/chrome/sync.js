@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { paths } from '../../runtime/home.js';
+import { paths } from '../../runtime/data-store.js';
 import { readSqliteSnapshot } from '../_local/sqlite.js';
 import { chromeHistoryPath } from './manifest.js';
 

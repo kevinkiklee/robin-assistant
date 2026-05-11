@@ -8,7 +8,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { runReset } from '../../src/migrate-v1/reset.js';
 import { writeConfig } from '../../src/runtime/config.js';
-import { paths } from '../../src/runtime/home.js';
+import { paths } from '../../src/runtime/data-store.js';
 
 test.beforeEach(() => {
   const tmpHome = join(tmpdir(), `robin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

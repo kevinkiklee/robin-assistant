@@ -3,7 +3,7 @@ import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { listJournalEntries } from '../../memory/journal.js';
-import { ensureHome, paths } from '../../runtime/home.js';
+import { ensureHome, paths } from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 
 export async function journalCmd(argv) {

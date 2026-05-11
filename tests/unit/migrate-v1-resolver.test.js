@@ -7,7 +7,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createResolver } from '../../src/migrate-v1/resolver.js';
 import { writeConfig } from '../../src/runtime/config.js';
-import { paths } from '../../src/runtime/home.js';
+import { paths } from '../../src/runtime/data-store.js';
 
 test('resolver round-trips entity + episode mappings', async () => {
   const tmpHome = join(tmpdir(), `robin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

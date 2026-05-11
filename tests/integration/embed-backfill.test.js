@@ -8,7 +8,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { embedBackfillTick } from '../../src/embed/backfill.js';
 import { writeConfig } from '../../src/runtime/config.js';
-import { paths } from '../../src/runtime/home.js';
+import { paths } from '../../src/runtime/data-store.js';
 
 function stubEmbedder({ dim = 1024 } = {}) {
   return {
