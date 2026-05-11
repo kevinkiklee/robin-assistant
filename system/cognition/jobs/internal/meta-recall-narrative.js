@@ -148,20 +148,98 @@ export default async function runMetaRecallNarrative({ db, embedder, host }) {
     });
   }
 
-  // §3.3 LLM + §3.4 writes wired in Task 5.5.
+  // §3.3 LLM call.
+  const weekStarting = new Date(Date.now() - config.lookback_days * 86400_000)
+    .toISOString()
+    .slice(0, 10);
+  const promptCtx = { memoById: hydrated.memoById };
+  const promptMeta = {
+    week_starting: weekStarting,
+    n_corrected: correctedRows.length,
+    n_unused: unusedRows.length,
+    top_k_clusters: config.top_k_clusters,
+  };
+  const userPrompt = buildUserPrompt(clusters, promptMeta, config, promptCtx);
+
+  let llmResp;
+  try {
+    llmResp = await host.invokeLLM([{ role: 'user', content: userPrompt.text }], {
+      tier: config.tier,
+      json: true,
+      system: [
+        {
+          role: 'system',
+          content: META_COGNITION_SYSTEM,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+    });
+  } catch (err) {
+    await emitTelemetry(db, {
+      outcome: 'error',
+      corrected_count: correctedCount,
+      unused_count: unusedRows.length,
+      rows_after_privacy: cleanRows.length,
+      dropped_private: droppedPrivate,
+      clusters: clusters.length,
+      error: String(err?.message ?? err),
+      duration_ms: Date.now() - startedAt,
+    });
+    return JSON.stringify({ ran: false, reason: 'llm_error' });
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(llmResp?.content ?? 'null');
+  } catch {
+    parsed = null;
+  }
+  const validated = validateMetaCognitionOutput(parsed, config);
+  if (!validated.ok) {
+    await emitTelemetry(db, {
+      outcome: 'llm_parse_error',
+      corrected_count: correctedCount,
+      unused_count: unusedRows.length,
+      rows_after_privacy: cleanRows.length,
+      dropped_private: droppedPrivate,
+      clusters: clusters.length,
+      tokens_in: llmResp?.usage?.input_tokens,
+      tokens_out: llmResp?.usage?.output_tokens,
+      error: validated.errors.join('; ').slice(0, 500),
+      duration_ms: Date.now() - startedAt,
+    });
+    return JSON.stringify({ ran: false, reason: 'llm_parse_error' });
+  }
+
+  // §3.4 writes.
+  const writeResult = await writeOutputs(db, embedder, {
+    parsed: validated.parsed,
+    cleanRows,
+    clusters,
+    config,
+    weekStarting,
+  });
+
   await emitTelemetry(db, {
-    outcome: 'shadow_complete', // placeholder until 5.5 lands
+    outcome: 'complete',
     corrected_count: correctedCount,
     unused_count: unusedRows.length,
     rows_after_privacy: cleanRows.length,
     dropped_private: droppedPrivate,
     clusters: clusters.length,
+    rules_proposed: writeResult.rules_proposed,
+    rules_dropped_over_cap: writeResult.rules_dropped_over_cap,
+    tokens_in: llmResp?.usage?.input_tokens,
+    tokens_out: llmResp?.usage?.output_tokens,
+    week_starting: weekStarting,
+    reasoning_memo_id: writeResult.reasoning_memo_id,
     duration_ms: Date.now() - startedAt,
   });
+
   return JSON.stringify({
-    ran: false,
-    reason: 'shadow_mode',
-    cluster_count: clusters.length,
+    ran: true,
+    reasoning_memo_id: String(writeResult.reasoning_memo_id),
+    rules: writeResult.rules_proposed,
   });
 }
 
@@ -256,6 +334,80 @@ async function emitTelemetry(db, fields) {
   } catch {
     // Best-effort — telemetry must not break the job.
   }
+}
+
+async function writeOutputs(db, embedder, { parsed, cleanRows, clusters, config, weekStarting }) {
+  const clusterEntityIds = clusters
+    .filter((c) => c.entity_id)
+    .map((c) => {
+      const [tbl, key] = c.entity_id.split(':');
+      return new RecordId(tbl, key);
+    });
+
+  const memoMeta = {
+    dimension: 'recall_failures',
+    from_signal: 'meta_cognition',
+    period: 'weekly',
+    signal_count: cleanRows.length,
+    week_starting: weekStarting,
+    clusters: parsed.clusters.length,
+    recall_log_ids: cleanRows.map((r) => String(r.id)),
+  };
+
+  const memoResult = await note(db, embedder, 'reasoning', {
+    content: parsed.narrative,
+    scope: config.reasoning_memo_scope,
+    derived_by: 'meta_cognition',
+    subjects: clusterEntityIds, // about-edges to cluster entities
+    lineage: [], // no derived_from edges to recall_log (telemetry, not substrate)
+    meta: memoMeta,
+  });
+
+  // Rank suggested rules across all clusters by descending confidence;
+  // emit up to config.max_rules_per_run.
+  const allRules = [];
+  for (const cluster of parsed.clusters) {
+    const rules = cluster.suggested_rules ?? [];
+    const confs = cluster.rule_confidence ?? [];
+    for (let i = 0; i < rules.length; i++) {
+      allRules.push({
+        cluster_id: cluster.cluster_id,
+        content: rules[i],
+        confidence: confs[i] ?? 0.7,
+      });
+    }
+  }
+  allRules.sort((a, b) => b.confidence - a.confidence);
+  const kept = allRules.slice(0, config.max_rules_per_run);
+  const droppedOverCap = Math.max(0, allRules.length - kept.length);
+
+  for (const rule of kept) {
+    await createCandidate(db, {
+      content: rule.content,
+      kind: 'behavior',
+      signal_events: [],
+      confidence: clamp01(rule.confidence),
+      payload: {
+        source: 'meta_cognition',
+        cluster_id: rule.cluster_id,
+        reasoning_memo_id: String(memoResult.id),
+        week_starting: weekStarting,
+      },
+    });
+  }
+
+  return {
+    reasoning_memo_id: memoResult.id,
+    rules_proposed: kept.length,
+    rules_dropped_over_cap: droppedOverCap,
+  };
+}
+
+function clamp01(n) {
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 1) return 1;
+  return n;
 }
 
 async function hydrateRetrievedMemos(db, rows) {

@@ -178,3 +178,219 @@ test('T4 — shadow mode: clusters formed, no LLM call, no memo write', async ()
   assert.ok(tel?.[0]?.clusters >= 1);
   await close(db);
 });
+
+test('T5 — happy path: writes reasoning memo + rule_candidates', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'photo-tools', type: 'project', scope: 'global' }`)
+    .collect();
+  const entityId = ent[0][0].id;
+
+  const memos = [];
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `mem ${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entityId],
+    });
+    memos.push(m.id);
+  }
+  for (let i = 0; i < 5; i++) {
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`},
+        query: ${`q${i}`},
+        k: 5,
+        ranked_hits: [{ record: ${memos[i]}, kind: 'memo' }],
+        outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+
+  const llmResponse = JSON.stringify({
+    narrative:
+      'Across this week, recall about photo-tools surfaced a stale memo about a different toolkit.',
+    clusters: [
+      {
+        cluster_id: String(entityId),
+        error_pattern: 'Stale memo about a different photography toolkit kept surfacing.',
+        suggested_rules: [
+          'When asked about photo-tools, do not cite memos older than 60 days.',
+          'Disambiguate photo-tools from other photography toolkits before citing memos.',
+        ],
+        rule_confidence: [0.8, 0.6],
+      },
+    ],
+  });
+
+  const result = await runMetaRecallNarrative({ db, embedder: e, host: fakeHost(llmResponse) });
+  const summary = JSON.parse(result);
+  assert.equal(summary.ran, true);
+  assert.equal(summary.rules, 2);
+  assert.ok(summary.reasoning_memo_id);
+
+  const [memoRows] = await db
+    .query("SELECT id, meta, derived_by FROM memos WHERE kind = 'reasoning'")
+    .collect();
+  assert.equal(memoRows.length, 1);
+  assert.equal(memoRows[0].derived_by, 'meta_cognition');
+  assert.equal(memoRows[0].meta.dimension, 'recall_failures');
+  assert.equal(memoRows[0].meta.from_signal, 'meta_cognition');
+  assert.equal(memoRows[0].meta.period, 'weekly');
+  assert.equal(memoRows[0].meta.signal_count, 5);
+  assert.equal(memoRows[0].meta.recall_log_ids.length, 5);
+  assert.ok(memoRows[0].meta.week_starting?.match(/^\d{4}-\d{2}-\d{2}$/));
+
+  const [candRows] = await db
+    .query(
+      "SELECT kind, payload, content FROM rule_candidates WHERE payload.source = 'meta_cognition'",
+    )
+    .collect();
+  assert.equal(candRows.length, 2);
+  for (const c of candRows) {
+    assert.equal(c.kind, 'behavior');
+    assert.equal(c.payload.source, 'meta_cognition');
+    assert.equal(String(c.payload.reasoning_memo_id), String(memoRows[0].id));
+  }
+
+  // about-edge from the reasoning memo to the entity.
+  const [aboutEdges] = await db
+    .query(surql`SELECT out FROM edges WHERE kind = 'about' AND in = ${memoRows[0].id}`)
+    .collect();
+  const outIds = aboutEdges.map((r) => String(r.out));
+  assert.ok(outIds.includes(String(entityId)));
+
+  const [tel] = await db
+    .query(
+      'SELECT outcome, clusters, rules_proposed, ts FROM meta_cognition_telemetry ORDER BY ts DESC LIMIT 1',
+    )
+    .collect();
+  assert.equal(tel?.[0]?.outcome, 'complete');
+  assert.equal(tel?.[0]?.clusters, 1);
+  assert.equal(tel?.[0]?.rules_proposed, 2);
+  await close(db);
+});
+
+test('T6 — max_rules_per_run cap drops over-limit suggestions', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  await db
+    .query(
+      'UPDATE runtime:`meta_cognition.config` SET value.enabled = true, value.max_rules_per_run = 2',
+    )
+    .collect();
+
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'x', type: 'project', scope: 'global' }`)
+    .collect();
+  const entId = ent[0][0].id;
+  const memos = [];
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `m${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entId],
+    });
+    memos.push(m.id);
+  }
+  for (let i = 0; i < 5; i++) {
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`}, query: 'q', k: 5,
+        ranked_hits: [{ record: ${memos[i]}, kind: 'memo' }], outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+
+  const llmResponse = JSON.stringify({
+    narrative: 'x',
+    clusters: [
+      {
+        cluster_id: String(entId),
+        error_pattern: 'p',
+        suggested_rules: ['r1', 'r2', 'r3', 'r4', 'r5'],
+        rule_confidence: [0.9, 0.8, 0.7, 0.6, 0.5],
+      },
+    ],
+  });
+
+  await runMetaRecallNarrative({ db, embedder: e, host: fakeHost(llmResponse) });
+  const [candRows] = await db
+    .query("SELECT content FROM rule_candidates WHERE payload.source = 'meta_cognition'")
+    .collect();
+  assert.equal(candRows.length, 2);
+  const contents = candRows.map((r) => r.content).sort();
+  assert.deepEqual(contents, ['r1', 'r2']);
+  const [tel] = await db
+    .query(
+      'SELECT rules_dropped_over_cap, ts FROM meta_cognition_telemetry ORDER BY ts DESC LIMIT 1',
+    )
+    .collect();
+  assert.equal(tel?.[0]?.rules_dropped_over_cap, 3);
+  await close(db);
+});
+
+test('T7 — llm_parse_error: no memo, no candidates, telemetry only', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'x', type: 'project', scope: 'global' }`)
+    .collect();
+  const entId = ent[0][0].id;
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `m${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entId],
+    });
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`}, query: 'q', k: 5,
+        ranked_hits: [{ record: ${m.id}, kind: 'memo' }], outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+
+  const result = await runMetaRecallNarrative({
+    db,
+    embedder: e,
+    host: fakeHost('not valid json {'),
+  });
+  const summary = JSON.parse(result);
+  assert.equal(summary.ran, false);
+  assert.equal(summary.reason, 'llm_parse_error');
+  const [memoRows] = await db
+    .query("SELECT count() AS n FROM memos WHERE kind = 'reasoning' GROUP ALL")
+    .collect();
+  assert.equal(memoRows?.[0]?.n ?? 0, 0);
+  const [candRows] = await db
+    .query(
+      "SELECT count() AS n FROM rule_candidates WHERE payload.source = 'meta_cognition' GROUP ALL",
+    )
+    .collect();
+  assert.equal(candRows?.[0]?.n ?? 0, 0);
+  const [tel] = await db
+    .query('SELECT outcome, ts FROM meta_cognition_telemetry ORDER BY ts DESC LIMIT 1')
+    .collect();
+  assert.equal(tel?.[0]?.outcome, 'llm_parse_error');
+  await close(db);
+});
