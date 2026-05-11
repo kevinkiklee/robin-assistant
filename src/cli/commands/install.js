@@ -306,10 +306,7 @@ export async function relocate({ target, mode, stopDaemon, rewriteLaunchd, rewri
   const m = await readHostIntegrations();
   for (const e of m.entries) {
     if (e.expectedHome) {
-      await recordHostTouchpoint(
-        { ...e, expectedHome: target },
-        () => {},
-      );
+      await recordHostTouchpoint({ ...e, expectedHome: target }, () => {});
     }
   }
   if (rewriteLaunchd) await rewriteLaunchd({ home: target });
