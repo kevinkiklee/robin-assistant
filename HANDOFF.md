@@ -120,9 +120,37 @@ node scripts/test-reinforcement-smoke.mjs
 
 All three of these scripts ran clean as of the last commit on this branch.
 
-## Commits on this branch
+## Commits on this branch (15)
 
 ```
-$ git log --oneline main..HEAD
+c15673e fix(stale-refs): profile:singleton → persona:singleton; recall_events → recall_log
+a499231 chore(scripts): explicit process.exit so smoke scripts return clean exit codes
+1bf13f3 chore(db-browse): mark UI stale pending rewrite for new schema
+b38b4ce chore: bump to 6.0.0-alpha.12 + changelog entry for redesign
+3b493b8 feat(wave-3): jobs (lint-checks, predictions, ingest-prompt) route through new schema
+46e08c7 feat(wave-3): MCP tools (ingest/get_entity/related_entities/audit) route through new schema
+3b1d6c1 feat(wave-3): dream/step-knowledge routes through store.note + supersede
+3d99c84 feat(wave-3): biographer + edges route through new generic edges table
+2963827 docs: rewrite architecture + faculties + new HANDOFF for redesign branch
+1cf0a07 feat(wave-4): recall rank pipeline + reinforcement loop
+b8812fd feat(wave-2): faculty-named memory lenses
+6307715 feat(wave-1): foundation — new schema + memory primitives
+8ecac21 feat(verify): scratch script + spec corrections from gate run
+0e11184 docs: implementation plan for v2 db + memory redesign
+ac77d7e docs: spec for v2 db + memory redesign (last big schema change)
 ```
-The expected sequence: spec → plan → verify gate → Wave 1 foundation → Wave 2 lenses → Wave 4 recall + reinforcement → (subagent's Wave 3 commits if landed) → this handoff.
+
+Branch is unpushed (not merged into main, not pushed to remote — review before either).
+
+## What still needs doing (concrete follow-up checklist)
+
+Wave 3 is done in production code paths. What's left:
+
+- [ ] Test suite rewrite (`tests/unit/memory-*.test.js`, `tests/integration/*`): old function signatures (`createPattern(db, input)` vs new `add(db, embedder, input)`). Most failures will be `Cannot destructure 'X' of undefined` from the embedder-position shift. ~30 test files to update.
+- [ ] Audit-grep tests: add `tests/unit/audit-no-old-tables.test.js` per spec §14 — production source must not reference deleted table names.
+- [ ] `src/db/browse/*.js`: marked stale; rewrite when next opening the DB browser UI for the new schema.
+- [ ] CLI: `robin embeddings prepare|backfill|activate|list|drop` subcommands (spec §6.1).
+- [ ] State-inference writer in `dream/step-comm-style` (schema-ready; spec §6.5).
+- [ ] Code-edit / reasoning / session-outcome event writers (all schema-ready).
+- [ ] v1→v2 migrator rewrite (separate spec; explicitly out of scope here).
+- [ ] `docs/development.md` + `docs/troubleshooting.md` (architecture.md + faculties.md already rewritten).
