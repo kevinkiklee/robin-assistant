@@ -2,6 +2,9 @@
 // repeat-query suppression.
 
 import { surql } from 'surrealdb';
+import { readStateInferenceConfig } from '../jobs/internal/state-inference.js';
+import { isOutboundBlocked } from '../memory/scope-registry.js';
+import { latestForSource } from '../memory/state_inference.js';
 import * as store from '../memory/store.js';
 import { recall } from './engine.js';
 import { mmrLite, score } from './rank.js';
@@ -57,6 +60,69 @@ const CLOSE = '<!-- /relevant memory -->';
 // Both markers + the two newlines between them and the body.
 const FRAME_TOKENS = estimateTokens(`${OPEN}\n${CLOSE}\n`);
 
+// Cognition D1: privileged "what is the user currently working on" block.
+const FOCUS_OPEN = '<!-- current focus -->';
+const FOCUS_CLOSE = '<!-- /current focus -->';
+const FOCUS_TOKEN_BUDGET = 200;
+
+export function humaniseDuration(ms) {
+  const m = Math.max(0, Math.floor(ms / 60_000));
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d`;
+}
+
+export function buildFocusBlock(memo, { now = new Date() } = {}) {
+  const ts = memo?.meta?.last_active_at;
+  const lastActive = ts instanceof Date ? ts : new Date(ts);
+  const dur = humaniseDuration(now.getTime() - lastActive.getTime());
+  const conf = (memo?.confidence ?? 0).toFixed(2);
+  const arcId = memo?.meta?.arc_id;
+  const arcTag = arcId ? ` — arc:${String(arcId)}` : '';
+  const body = `[focus, last active ${dur} ago, conf ${conf}] ${memo.content}${arcTag}`;
+  return `${FOCUS_OPEN}\n${body}\n${FOCUS_CLOSE}`;
+}
+
+function keywordTokens(s) {
+  return new Set(
+    (typeof s === 'string' ? s : '')
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((w) => w.length > 3),
+  );
+}
+
+export function evaluateFocusSuppression({ cfg, memo, query, now = new Date() }) {
+  if (cfg?.enabled !== true) return { suppressed: 'disabled' };
+  if (!memo) return { suppressed: 'no_memo' };
+  if (memo.scope && isOutboundBlocked(memo.scope)) return { suppressed: 'private' };
+  const minConf = cfg.min_confidence_to_surface ?? 0.5;
+  if ((memo.confidence ?? 0) < minConf) return { suppressed: 'low_confidence' };
+  const lastActive = memo?.meta?.last_active_at
+    ? new Date(memo.meta.last_active_at)
+    : new Date(0);
+  const ageMin = (now.getTime() - lastActive.getTime()) / 60_000;
+  const staleMin = cfg.stale_after_minutes ?? 120;
+  if (ageMin > staleMin) return { suppressed: 'stale' };
+  // Defensive supersedes-leak check (rule 5): caller already filters via
+  // latestForSource; if a `_superseded_count` was hydrated and > 0, suppress.
+  if ((memo._superseded_count ?? 0) > 0) return { suppressed: 'superseded' };
+  // Pivot detection (rule 6): zero keyword overlap with entities OR content.
+  const qTokens = keywordTokens(query);
+  if (qTokens.size === 0) return { suppressed: null };
+  const cTokens = keywordTokens(memo.content);
+  const entTokens = new Set();
+  for (const e of memo?.meta?.entities ?? []) {
+    for (const t of keywordTokens(String(e).split(':').slice(1).join('_'))) entTokens.add(t);
+  }
+  let intersect = 0;
+  for (const t of qTokens) if (cTokens.has(t) || entTokens.has(t)) intersect++;
+  if (intersect === 0) return { suppressed: 'pivot' };
+  return { suppressed: null };
+}
+
 /**
  * Vector-search recent memory and format hits into an injection block.
  *
@@ -77,6 +143,7 @@ export async function intuitionEndpoint({
   // detector — intentionally unused in 4a; see header comment.
   query,
   sessionId,
+  source = null,
   priorAssistant = '',
   k = 6,
   recencyDays = 30,
@@ -85,6 +152,56 @@ export async function intuitionEndpoint({
   const start = Date.now();
   const safeQuery = typeof query === 'string' ? query : '';
   const safePrior = typeof priorAssistant === 'string' ? priorAssistant : '';
+
+  // Cognition D1: focus block (computed at the prologue so it sits above the
+  // relevant-memory block in the returned wire format). Always defined even
+  // when suppressed so the wire shape stays consistent.
+  let focus_block = '';
+  let focus_tokens = 0;
+  let focus_suppressed_reason = null;
+  try {
+    const cfg = await readStateInferenceConfig(db);
+    if (cfg.enabled !== true) {
+      focus_suppressed_reason = 'disabled';
+    } else if (!source) {
+      focus_suppressed_reason = 'no_memo';
+    } else {
+      const memo = await latestForSource(db, source);
+      const sup = evaluateFocusSuppression({ cfg, memo, query: safeQuery, now: new Date() });
+      if (sup.suppressed) {
+        focus_suppressed_reason = sup.suppressed;
+        // Defensive supersedes-leak log (rule 5) — should never fire because
+        // latestForSource already filters out superseded rows.
+        if (sup.suppressed === 'superseded') {
+          try {
+            await db
+              .query(
+                surql`CREATE state_inference_telemetry CONTENT ${{
+                  source,
+                  outcome: 'error',
+                  reason: 'supersedes_leak',
+                }}`,
+              )
+              .collect();
+          } catch {
+            /* advisory */
+          }
+        }
+      } else {
+        const candidate = buildFocusBlock(memo);
+        const candidateTokens = estimateTokens(candidate);
+        if (candidateTokens <= FOCUS_TOKEN_BUDGET) {
+          focus_block = candidate;
+          focus_tokens = candidateTokens;
+        } else {
+          focus_suppressed_reason = 'over_budget';
+        }
+      }
+    }
+  } catch {
+    // Fail-soft: never break the recall response.
+    focus_suppressed_reason = 'error';
+  }
 
   // Combine current prompt with the tail of the prior assistant turn so
   // recall can latch onto the in-flight thread of conversation.
@@ -185,6 +302,8 @@ export async function intuitionEndpoint({
           tokens_injected: tokens,
           latency_ms,
           truncated,
+          focus_tokens,
+          focus_suppressed_reason,
         }}`,
       )
       .collect();
@@ -208,7 +327,12 @@ export async function intuitionEndpoint({
           k,
           ranked_hits: rankedHits,
           outcome: 'pending',
-          meta: { latency_ms, truncated },
+          meta: {
+            latency_ms,
+            truncated,
+            focus_block_present: focus_block.length > 0,
+            focus_block_tokens: focus_tokens,
+          },
         }}`,
       )
       .collect();
@@ -216,5 +340,14 @@ export async function intuitionEndpoint({
     /* fail-soft */
   }
 
-  return { block, hits: hits.length, tokens, latency_ms, truncated };
+  return {
+    block,
+    hits: hits.length,
+    tokens,
+    latency_ms,
+    truncated,
+    focus_block,
+    focus_tokens,
+    focus_suppressed_reason,
+  };
 }

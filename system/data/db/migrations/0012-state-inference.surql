@@ -33,6 +33,13 @@ DEFINE FIELD reason      ON state_inference_telemetry TYPE option<string>;
 DEFINE INDEX si_tel_ts        ON state_inference_telemetry FIELDS ts;
 DEFINE INDEX si_tel_source_ts ON state_inference_telemetry FIELDS source, ts;
 
+-- Extend intuition_telemetry with focus-block fields (additive, optional).
+-- A3's eval harness reads `recall_log.meta.focus_block_present` /
+-- `focus_block_tokens` (those land via FLEXIBLE meta); these columns mirror
+-- the same signal at the intuition-telemetry layer for operator dashboards.
+DEFINE FIELD focus_tokens            ON intuition_telemetry TYPE option<int>;
+DEFINE FIELD focus_suppressed_reason ON intuition_telemetry TYPE option<string>;
+
 UPSERT runtime:`state_inference.config` SET value = {
   enabled: false,
   tick_ms: 300000,
