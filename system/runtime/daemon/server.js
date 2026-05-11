@@ -78,7 +78,7 @@ import { runIntrospection } from './introspection.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
 import { bindFreePort } from './port.js';
 import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
-import { clearDaemonState, writeDaemonState } from './state.js';
+import { clearDaemonState, writeDaemonState } from '../../config/daemon-state.js';
 import { getCliVersion } from './version-handshake.js';
 
 const BUILTIN_JOBS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'builtin');

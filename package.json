@@ -21,9 +21,9 @@
   ],
   "scripts": {
     "setup": "node system/bin/robin install",
-    "test": "node --test --test-force-exit 'system/tests/**/*.test.js'",
-    "test:unit": "node --test --test-force-exit 'system/tests/unit/**/*.test.js'",
-    "test:integration": "node --test --test-force-exit 'system/tests/integration/**/*.test.js'",
+    "test": "node --test --test-force-exit --test-timeout=20000 'system/tests/**/*.test.js'",
+    "test:unit": "node --test --test-force-exit --test-timeout=20000 'system/tests/unit/**/*.test.js'",
+    "test:integration": "node --test --test-force-exit --test-timeout=20000 'system/tests/integration/**/*.test.js'",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
