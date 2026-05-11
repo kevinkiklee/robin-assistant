@@ -52,6 +52,9 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 - File: `system/cognition/memory/foresight.js`
 - API: `predict(db, embedder, { statement, statement_kind, confidence, expected_resolution_at? })` / `resolve(db, id, { correct, actual_outcome? })` / `listOpen(db, opts)` / `computeCalibration(db)`
 - New consolidation of prediction logic previously scattered.
+- Calibration output (resolved-prediction stats per `statement_kind`)
+  is consumed by `belief()` (Cognition D3) as the day-1 drift source and
+  feeds the weekly meta-calibration narrative writer.
 
 ## Process faculties
 
@@ -138,6 +141,54 @@ accumulated evidence to compute a current value in [0, 1].
   `biographer_weight` (0.5), `manual_weight` (2.0).
 - Inspect via Theme 4 MCP tool `explain_belief({memo_id})` — returns the
   ledger replay + derivation formula.
+
+### belief (alpha.17, Cognition D3)
+**Read-only "should I assert this?" gate.** The `belief({query, domain?, k?})`
+MCP tool aggregates evidence-backed confidence over recalled `kind='knowledge'`
+memos and returns a recommendation: `assert | soften | unknown`. Pure
+aggregation — zero new LLM tokens, zero extra embeds beyond the recall.
+- Input schema (`additionalProperties: false`): `query` (required, ≤500 chars),
+  `domain` (optional, ≤80 chars), `k` (optional integer 1–20, default 8).
+- Output: `aggregate_confidence`, `calibrated_confidence`, `evidence[]`
+  (`memo_id`, `content_snippet`, `derived_confidence`, `last_observed`,
+  `weight`), `calibration` (when applied), `recommendation`, `meta`
+  (k_requested/k_returned, dropped counters, elapsed_ms, fallback_path,
+  shadow flag).
+- Pipeline: recall (kind='knowledge', overfetched) → privacy filter (direct
+  + transitive `derived_from` to private memos) → batched structural weights
+  (`signal_count × decay`, supersedes → 0) → `fn::derived_confidence` → pure
+  `aggregateBelief` (weighted average; weight = `signal_count × decay ×
+  relevance`, NO confidence multiplier) → `readCalibration` (meta-narrative
+  memo wins over `persona:singleton.calibration`) → `calibrateAdjust` (linear
+  with clamp) → threshold gate.
+- Privacy: stricter than `recall` — drops hits whose scope is private OR
+  whose lineage touches a private memo. No `refusals` row per drop;
+  aggregate `meta.hits_dropped_private` is the right granularity.
+- Telemetry: writes `cadence_telemetry` rows with `step='belief.call'` and
+  `meta.sample_rate` (1.0 in shadow, 0.1 after flip). Sampled deterministically
+  on `hash(query)`. The C3 hot-bridge rolls up `step LIKE 'belief.%'`.
+- Shadow rollout: ships behind `runtime:belief.config.value.shadow_mode=true`.
+  In shadow the gate is computed and logged via
+  `meta.shadow_recommendation_would_have_been` but the public
+  `recommendation` is forced `'unknown'`. Flip to active by setting
+  `shadow_mode = false`.
+- Tunables in `runtime:belief.config.value` (5s-cached): `default_threshold`
+  (0.6), `soften_floor` (0.4), `domain_thresholds`, `relevance_threshold`
+  (0.30), `confidence_floor` (0.05), `belief_overfetch_factor` (2.0),
+  `min_calibration_samples` (5), `calibration_adjustment_gain` (1.0),
+  `expected_accuracy_baseline` (0.75), `shadow_mode`, `telemetry_sample_rate`.
+- Pairs with the **weekly meta-calibration narrative writer** (`30 5 * * 0`,
+  Sunday 05:30 local, staggered 30 min after D2). Produces one
+  `kind='reasoning'`, `meta.dimension='calibration'`, `meta.domain=…` memo
+  per domain summarising brier + drift + trend over the past 7 days, prior
+  7 days for trend, and prior 21 days for sustained-drift detection.
+  Idempotent on `(meta.dimension, meta.domain, meta.week_starting)`. When
+  drift sign is large (`>= meta_narrative_rule_threshold`, default 0.15) and
+  sustained over `meta_narrative_rule_min_weeks` consecutive weeks (default
+  2), emits a `rule_candidates` row with `kind='behavior'` and
+  `payload.source='meta_cognition_calibration'` (discriminator lives on
+  `payload`, not `meta` — `rule_candidates` is SCHEMAFULL and undeclared
+  `meta` is silently dropped).
 
 ### cadence (alpha.16, Theme 3)
 **Triggered cognition with cost-budget enforcement.** Three steps —
