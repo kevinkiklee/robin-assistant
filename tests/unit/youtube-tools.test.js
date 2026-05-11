@@ -35,7 +35,6 @@ test('youtube_list_subscriptions filters by kind', async () => {
         source: 'youtube',
         content: 'sub: A',
         ts: new Date('2026-05-09'),
-        external_id: 'sub:c1',
         meta: { kind: 'subscription' },
       }}`,
     )
@@ -46,7 +45,6 @@ test('youtube_list_subscriptions filters by kind', async () => {
         source: 'youtube',
         content: 'liked: V',
         ts: new Date('2026-05-09'),
-        external_id: 'liked:v1',
         meta: { kind: 'liked_video' },
       }}`,
     )
@@ -65,7 +63,6 @@ test('youtube_list_liked filters by kind', async () => {
         source: 'youtube',
         content: 'liked: V',
         ts: new Date('2026-05-09'),
-        external_id: 'liked:v1',
         meta: { kind: 'liked_video' },
       }}`,
     )

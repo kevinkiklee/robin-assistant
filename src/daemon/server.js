@@ -806,6 +806,14 @@ export async function startDaemon() {
           res.end(JSON.stringify(c));
           return;
         }
+        if (req.method === 'POST' && req.url === '/internal/embeddings/op') {
+          const body = await readJsonBody(req);
+          const { dispatch: dispatchEmbeddingsOp } = await import('../jobs/embeddings-ops.js');
+          const result = await dispatchEmbeddingsOp(dbHandle, body);
+          res.writeHead(result?.ok ? 200 : 400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
         if (req.method === 'POST' && req.url === '/internal/intuition') {
           const body = await readJsonBody(req);
           const { intuitionEndpoint } = await import('../recall/intuition.js').catch(() => ({}));

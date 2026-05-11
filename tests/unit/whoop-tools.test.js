@@ -34,8 +34,7 @@ async function seedWhoopEvent(db, { kind, ts, content, external_id }) {
         source: 'whoop',
         content,
         ts: new Date(ts),
-        external_id,
-        meta: { kind },
+        meta: { kind, ...(external_id ? { external_id } : {}) },
       }}`,
     )
     .collect();
@@ -47,13 +46,11 @@ test('whoop_recent filters to source=whoop, ordered by ts desc', async () => {
     kind: 'recovery',
     ts: '2026-05-09T08:00:00Z',
     content: 'recovery: 60% old',
-    external_id: 'whoop:recovery:old',
   });
   await seedWhoopEvent(db, {
     kind: 'recovery',
     ts: '2026-05-10T08:00:00Z',
     content: 'recovery: 80% new',
-    external_id: 'whoop:recovery:new',
   });
   // Foreign source should not appear.
   await db
@@ -62,7 +59,6 @@ test('whoop_recent filters to source=whoop, ordered by ts desc', async () => {
         source: 'gmail',
         content: 'unrelated',
         ts: new Date('2026-05-10T09:00:00Z'),
-        external_id: 'm1',
         meta: { kind: 'message' },
       }}`,
     )
@@ -81,13 +77,11 @@ test('whoop_recent filters by kind', async () => {
     kind: 'recovery',
     ts: '2026-05-10T08:00:00Z',
     content: 'recovery x',
-    external_id: 'whoop:recovery:1',
   });
   await seedWhoopEvent(db, {
     kind: 'sleep',
     ts: '2026-05-10T07:00:00Z',
     content: 'sleep x',
-    external_id: 'whoop:sleep:1',
   });
   const t = createWhoopRecentTool({ db });
   const r = await t.handler({ kind: 'sleep' });
@@ -118,25 +112,21 @@ test('whoop_today returns latest record per kind', async () => {
     kind: 'recovery',
     ts: '2026-05-09T08:00:00Z',
     content: 'rec old',
-    external_id: 'r1',
   });
   await seedWhoopEvent(db, {
     kind: 'recovery',
     ts: '2026-05-10T08:00:00Z',
     content: 'rec new',
-    external_id: 'r2',
   });
   await seedWhoopEvent(db, {
     kind: 'sleep',
     ts: '2026-05-10T03:00:00Z',
     content: 'sleep new',
-    external_id: 's1',
   });
   await seedWhoopEvent(db, {
     kind: 'workout',
     ts: '2026-05-09T17:00:00Z',
     content: 'workout new',
-    external_id: 'w1',
   });
   const t = createWhoopTodayTool({ db });
   const r = await t.handler({});

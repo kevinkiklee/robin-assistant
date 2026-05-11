@@ -35,7 +35,6 @@ test('nhl_recent returns games filtered by team', async () => {
         source: 'nhl',
         content: 'NYR @ BOS · 2026-05-09 · 4-2 FINAL',
         ts: new Date('2026-05-09T23:00:00Z'),
-        external_id: 'nhl:game:1',
         meta: { kind: 'game', team: 'NYR', away: 'NYR', home: 'BOS' },
       }}`,
     )
@@ -46,7 +45,6 @@ test('nhl_recent returns games filtered by team', async () => {
         source: 'nhl',
         content: 'TOR @ MTL · 2026-05-09 · 3-1 FINAL',
         ts: new Date('2026-05-09T23:00:00Z'),
-        external_id: 'nhl:game:2',
         meta: { kind: 'game', team: 'TOR', away: 'TOR', home: 'MTL' },
       }}`,
     )
@@ -66,7 +64,6 @@ test('nhl_standings returns the most recent standings event', async () => {
         source: 'nhl',
         content: 'NHL standings (2026-05-09): Metropolitan: NYR (100p)',
         ts: new Date('2026-05-09T00:00:00Z'),
-        external_id: 'nhl:standings:2026-05-09',
         meta: { kind: 'standings', date: '2026-05-09', divisions: [] },
       }}`,
     )
