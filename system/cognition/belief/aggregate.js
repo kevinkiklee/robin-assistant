@@ -54,7 +54,12 @@ export function aggregateBelief(hits, cfg) {
       continue;
     }
     // Confidence multiplier is NOT in the weight (spec §2.3).
-    const weight_raw = (h.structural ?? 0) * relevance;
+    // Clamp relevance to a small positive floor for weight purposes —
+    // a hit that survived the relevance threshold should not contribute
+    // a negative or zero weight just because the cosine was marginally
+    // below the floor. (Distance can exceed 1 for near-orthogonal vectors.)
+    const w_relevance = Math.max(relevance, 1e-6);
+    const weight_raw = (h.structural ?? 0) * w_relevance;
     keep.push({ id: h.id, weight_raw, relevance, derived: h.derived ?? 0 });
   }
 
