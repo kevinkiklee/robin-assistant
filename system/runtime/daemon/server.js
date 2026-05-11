@@ -9,9 +9,14 @@ import { surql } from 'surrealdb';
 import { biographerProcess } from '../../cognition/biographer/pipeline.js';
 import { createBiographerQueue } from '../../cognition/biographer/queue.js';
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
-import { resetActionTrust, setActionTrust } from '../../cognition/jobs/action-trust.js';
+import {
+  resetActionTrust,
+  runActionTrustDecay,
+  setActionTrust,
+} from '../../cognition/jobs/action-trust.js';
 import { synthesizeCommStyle } from '../../cognition/jobs/comm-style.js';
 import { garbageCollect, getJob, upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
 import { discoverJobs } from '../../cognition/jobs/loader.js';
 import {
   computeCalibration,
@@ -73,6 +78,7 @@ import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js
 import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
 import { detectHost } from '../hosts/detect.js';
+import { consumePendingTriggers } from './cadence-consumer.js';
 import { createFatalHandler, installFatalHandlers } from './fatal.js';
 import { createScheduler } from './heartbeat.js';
 import { createIdleEmbedder } from './idle-embedder.js';
@@ -103,8 +109,6 @@ export async function startDaemon() {
   let dbHandle = null;
   let httpServer = null;
   let scheduler = null;
-  let sessionSweeper = null;
-  let hostWatchdog = null;
   let shuttingDown = false;
   const gatewayClients = new Map();
   const registry = new Map();
@@ -123,8 +127,6 @@ export async function startDaemon() {
     if (shuttingDown) return;
     shuttingDown = true;
     if (signal) console.log(`daemon: received ${signal}, shutting down`);
-    if (sessionSweeper) clearInterval(sessionSweeper);
-    if (hostWatchdog) clearInterval(hostWatchdog);
     if (scheduler) {
       console.log('scheduler stopping (in-flight dream may continue briefly)');
       scheduler.stop();
@@ -267,29 +269,10 @@ export async function startDaemon() {
       return host;
     }
 
-    // Host reactivation watchdog. When boot-time detection failed, retry
-    // every 5 minutes. Once a host appears, log and stop the watchdog.
-    // (R-2 folds this into the bucket scheduler; for R-1 it's a standalone
-    // setInterval. Activation of host-dependent subsystems happens in R-2.)
+    // Host reactivation is handled by a 'host-watchdog' bucket below — it
+    // gates on `!host` and self-cancels once a host appears.
     if (!host) {
-      console.warn('[daemon] host-watchdog armed (5 min retries)');
-      hostWatchdog = setInterval(() => {
-        detectHost()
-          .then((h) => {
-            if (h) {
-              host = h;
-              clearInterval(hostWatchdog);
-              hostWatchdog = null;
-              console.log(
-                '[daemon] host detected by watchdog — restart daemon to fully enable scheduler',
-              );
-            }
-          })
-          .catch(() => {
-            /* still no host, keep trying */
-          });
-      }, 5 * 60_000);
-      hostWatchdog.unref?.();
+      console.warn('[daemon] host-watchdog armed (5 min retries via scheduler bucket)');
     }
     const queue = createBiographerQueue({
       worker: async (eventId) => {
@@ -549,163 +532,167 @@ export async function startDaemon() {
     tools.push(createRecentRefusalsTool({ db: dbHandle }));
     tools.push(createArchiveHistoryTool({ db: dbHandle }));
 
-    // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
-    // dispatches via runOne. Falls back to dream when nothing is due and the
-    // un-biographed event queue overflows. Skipped without a host since dream
-    // and biographer both need one.
-    if (host) {
-      const baseListDue = async () => {
-        const due = [];
-        const [rows] = await dbHandle
-          .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-          .collect();
-        const value = rows[0]?.value ?? {};
-        const integrations = value.integrations ?? {};
-        const now = new Date();
-        for (const [name, row] of Object.entries(integrations)) {
-          if (!row?.next_run_at) continue;
-          if (new Date(row.next_run_at) <= now && !row.in_flight) {
-            due.push({ name, kind: 'integration' });
-          }
-        }
-        const dreamCursor = value.dream;
-        if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
-          due.push({ name: '__dream__', kind: 'dream' });
-        }
-        // embed_backfill is always-due if any event is missing an embedding
-        // row in the active profile's events surface.
+    // Tiered heartbeat scheduler. Each subsystem runs as a named bucket
+    // with its own interval and (optional) gate. The dispatcher bucket
+    // surveys due integrations + dream cursor + embed-backfill + jobs
+    // each tick and fans out via runOneItem.
+    const inFlight = new Set();
+    async function runOneItem(name) {
+      const job = jobsCache.current.find((j) => j.name === name);
+      if (job) {
+        await runOneJob({
+          db: dbHandle,
+          capture: captureForJobs,
+          host,
+          jobs: jobsCache.current,
+          tools,
+          name,
+        });
+        await planNextRunAt(dbHandle, jobsCache.current);
+        return;
+      }
+      if (name === '__embed_backfill__') {
+        const e = await idleEmbedder.get();
+        const { embedBackfillTick } = await import('../../data/embed/backfill.js');
+        return await embedBackfillTick({ db: dbHandle, embedder: e, batch: 64, log: console.log });
+      }
+      if (name === '__dream__') {
+        const e = await idleEmbedder.get();
+        const h = await getHost();
         try {
-          const { activeProfile, embeddingTable } = await import(
-            '../../data/embed/profile-router.js'
-          );
-          const profile = await activeProfile(dbHandle);
-          const eventsEmbTbl = embeddingTable(profile, 'events');
-          const [pending] = await dbHandle
+          return await dreamProcess(dbHandle, h, e);
+        } finally {
+          const next = new Date();
+          next.setHours(4, 0, 0, 0);
+          if (next <= new Date()) next.setDate(next.getDate() + 1);
+          const [drows] = await dbHandle
+            .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+            .collect();
+          const dvalue = drows[0]?.value ?? {};
+          const dream = { ...(dvalue.dream ?? {}), next_run_at: next, last_run_at: new Date() };
+          await dbHandle
             .query(
-              `SELECT count() AS n FROM events
-               WHERE meta.embed_failed IS NOT true
-                 AND id NOT IN (SELECT VALUE record FROM ${eventsEmbTbl})
-               GROUP ALL`,
+              surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...dvalue, dream }}`,
             )
             .collect();
-          if ((pending[0]?.n ?? 0) > 0) {
-            due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
-          }
-        } catch {
-          // No active profile yet (fresh DB) — backfill simply isn't due.
         }
-        return due;
-      };
-      const baseRunOne = async (name) => {
-        if (name === '__embed_backfill__') {
-          const e = await idleEmbedder.get();
-          const { embedBackfillTick } = await import('../../data/embed/backfill.js');
-          return await embedBackfillTick({
-            db: dbHandle,
-            embedder: e,
-            batch: 64,
-            log: console.log,
-          });
-        }
-        if (name === '__dream__') {
-          const e = await idleEmbedder.get();
-          const h = await getHost();
-          try {
-            return await dreamProcess(dbHandle, h, e);
-          } finally {
-            const next = new Date();
-            next.setHours(4, 0, 0, 0);
-            if (next <= new Date()) next.setDate(next.getDate() + 1);
-            const [rows] = await dbHandle
-              .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-              .collect();
-            const value = rows[0]?.value ?? {};
-            const dream = { ...(value.dream ?? {}), next_run_at: next, last_run_at: new Date() };
-            await dbHandle
-              .query(
-                surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, dream }}`,
-              )
-              .collect();
-          }
-        }
-        return await runIntegrationSync(dbHandle, registry, name);
-      };
-      scheduler = createScheduler({
-        listDue: async () => {
-          // Refresh jobs from disk so drop-in markdown is picked up.
-          await refreshJobs();
-          const baseDue = await baseListDue();
-          const jobsDue = await listDueJobs(dbHandle, new Date());
-          return [...baseDue, ...jobsDue]; // integrations + dream first, then jobs
-        },
-        runOne: async (name) => {
-          const job = jobsCache.current.find((j) => j.name === name);
-          if (job) {
-            await runOneJob({
-              db: dbHandle,
-              capture: captureForJobs,
-              host,
-              jobs: jobsCache.current,
-              tools,
-              name,
-            });
-            await planNextRunAt(dbHandle, jobsCache.current);
-            return;
-          }
-          return baseRunOne(name);
-        },
-        isOverflow: async () => {
-          const [rows] = await dbHandle
-            .query(surql`SELECT count() AS n FROM events WHERE biographed_at IS NONE GROUP ALL`)
-            .collect();
-          return (rows[0]?.n ?? 0) >= 500;
-        },
-      });
-      scheduler.start();
+      }
+      return await runIntegrationSync(dbHandle, registry, name);
     }
 
-    // Theme 3: cadence consumer. Drains dream_triggers each minute.
-    let cadenceTicker = null;
-    if (host) {
-      const { consumePendingTriggers } = await import('./cadence-consumer.js');
-      cadenceTicker = setInterval(() => {
-        consumePendingTriggers(dbHandle, host).catch((e) => {
-          console.warn(`[cadence-consumer] ${e.message}`);
-        });
-      }, 60_000);
-      cadenceTicker.unref?.();
+    async function dispatcherTick() {
+      // Refresh jobs from disk so drop-in markdown is picked up.
+      await refreshJobs();
+      const due = [];
+      const [rows] = await dbHandle
+        .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+        .collect();
+      const value = rows[0]?.value ?? {};
+      const integrations = value.integrations ?? {};
+      const now = new Date();
+      for (const [name, row] of Object.entries(integrations)) {
+        if (!row?.next_run_at) continue;
+        if (new Date(row.next_run_at) <= now && !row.in_flight) {
+          due.push({ name, kind: 'integration' });
+        }
+      }
+      const dreamCursor = value.dream;
+      if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
+        due.push({ name: '__dream__', kind: 'dream' });
+      }
+      try {
+        const { activeProfile, embeddingTable } = await import(
+          '../../data/embed/profile-router.js'
+        );
+        const profile = await activeProfile(dbHandle);
+        const eventsEmbTbl = embeddingTable(profile, 'events');
+        const [pending] = await dbHandle
+          .query(
+            `SELECT count() AS n FROM events
+             WHERE meta.embed_failed IS NOT true
+               AND id NOT IN (SELECT VALUE record FROM ${eventsEmbTbl})
+             GROUP ALL`,
+          )
+          .collect();
+        if ((pending[0]?.n ?? 0) > 0) {
+          due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
+        }
+      } catch {
+        // No active profile yet (fresh DB) — backfill simply isn't due.
+      }
+      const jobsDue = await listDueJobs(dbHandle, new Date());
+      const all = [...due, ...jobsDue];
+
+      for (const item of all) {
+        if (inFlight.has(item.name)) continue;
+        inFlight.add(item.name);
+        runOneItem(item.name)
+          .catch((e) => console.warn(`[scheduler] ${item.name} failed: ${e.message}`))
+          .finally(() => inFlight.delete(item.name));
+      }
+      // Overflow fallback: if nothing else dispatched and biographer backlog is huge, kick dream.
+      if (inFlight.size === 0) {
+        const [overflowRows] = await dbHandle
+          .query(surql`SELECT count() AS n FROM events WHERE biographed_at IS NONE GROUP ALL`)
+          .collect();
+        if ((overflowRows[0]?.n ?? 0) >= 500) {
+          inFlight.add('__dream__');
+          runOneItem('__dream__')
+            .catch((e) => console.warn(`[scheduler] __dream__ failed: ${e.message}`))
+            .finally(() => inFlight.delete('__dream__'));
+        }
+      }
     }
 
-    // Theme 1b: stale-episode sweeper. Every 10 minutes — episodes with
-    // last_event_at past per-source idle threshold get ended_at.
-    let staleEpisodeTicker = null;
-    {
-      const { closeStaleEpisodes } = await import(
-        '../../cognition/jobs/internal/close-stale-episodes.js'
-      );
-      staleEpisodeTicker = setInterval(() => {
-        closeStaleEpisodes(dbHandle).catch((e) => {
-          console.warn(`[close-stale-episodes] ${e.message}`);
-        });
-      }, 600_000);
-      staleEpisodeTicker.unref?.();
-    }
-
-    // Theme 2b: action-trust decay sweep. Every 6h — AUTO classes unused
-    // for decay_days get demoted to ASK.
-    let actionTrustDecayTicker = null;
-    {
-      const { runActionTrustDecay } = await import('../../cognition/jobs/action-trust.js');
-      actionTrustDecayTicker = setInterval(
-        () => {
-          runActionTrustDecay(dbHandle).catch((e) => {
-            console.warn(`[action-trust-decay] ${e.message}`);
-          });
+    scheduler = createScheduler({
+      buckets: [
+        {
+          name: 'dispatcher',
+          intervalMs: 60_000,
+          gate: () => !!host,
+          tick: dispatcherTick,
+          fireImmediately: true,
         },
-        6 * 60 * 60_000,
-      );
-      actionTrustDecayTicker.unref?.();
-    }
+        {
+          name: 'cadence',
+          intervalMs: 60_000,
+          gate: () => !!host,
+          tick: () => consumePendingTriggers(dbHandle, host),
+        },
+        {
+          name: 'stale-sessions',
+          intervalMs: 60_000,
+          tick: () => markStaleSessions(dbHandle),
+        },
+        {
+          name: 'stale-episodes',
+          intervalMs: 600_000,
+          tick: () => closeStaleEpisodes(dbHandle),
+        },
+        {
+          name: 'action-decay',
+          intervalMs: 6 * 60 * 60_000,
+          tick: () => runActionTrustDecay(dbHandle),
+        },
+        {
+          name: 'host-watchdog',
+          intervalMs: 5 * 60_000,
+          gate: () => !host,
+          tick: async () => {
+            try {
+              const h = await detectHost();
+              if (h) {
+                host = h;
+                console.log('[daemon] host detected by watchdog — dispatcher + cadence active');
+              }
+            } catch {
+              /* still no host, keep trying */
+            }
+          },
+        },
+      ],
+    });
+    scheduler.start();
 
     const { server: probe, port } = await bindFreePort();
     probe.close();
@@ -1040,12 +1027,7 @@ export async function startDaemon() {
       tool_count: tools.length,
     });
 
-    // Stale-session sweeper: every 60s mark sessions whose last_seen_at is
-    // older than 5 minutes as 'stale'. Cleanup-only — purge is opt-in via CLI.
-    sessionSweeper = setInterval(() => {
-      markStaleSessions(dbHandle).catch(() => {});
-    }, 60_000);
-    sessionSweeper.unref?.();
+    // Stale-session sweeper is the 'stale-sessions' bucket above.
 
     console.log(`robin-mcp daemon ready on 127.0.0.1:${port}`);
 
