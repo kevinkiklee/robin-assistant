@@ -19,8 +19,8 @@ import {
 } from '../../runtime/data-store.js';
 import { migrateHome } from '../../runtime/migrate-home.js';
 import { getSecret, saveSecret } from '../../secrets/dotenv-io.js';
-import { radio } from '../prompts.js';
 import { parseArgs } from '../args.js';
+import { radio } from '../prompts.js';
 import { mcpInstall } from './mcp-install.js';
 
 const VALID_PROFILES = ['mxbai-1024', 'qwen3-4096', 'gemini-3072'];
@@ -48,27 +48,51 @@ function isInteractive() {
   return Boolean(process.stdin.isTTY);
 }
 
-async function detectLegacyHome({ prompt, interactive, force }) {
-  const legacy = join(homedir(), '.robin');
-  if (!existsSync(legacy)) return;
-  console.log('! Detected legacy ~/.robin/ data from v1.');
-  console.log('! Robin v2 stores data inside the package at <package_root>/user-data/.');
-  console.log('! Migrate manually: see docs (or wait for `robin migrate-v1` in Phase 3b).');
+async function chooseHome({ prompt, interactive, args, homeFlag }) {
+  // If ROBIN_HOME is set in the environment, honour it directly (test mode, CI,
+  // or user has pre-specified the location via env var). Mark as 'env' so the
+  // install flow skips migration prompts and pointer writes.
+  if (process.env.ROBIN_HOME) {
+    return { home: resolve(process.env.ROBIN_HOME), action: 'env' };
+  }
+  // If already installed and not relocating/repairing, reuse.
+  if (pointerExists() && !args.flags.relocate && !args.flags.repair) {
+    const p = readPointer();
+    return { home: p.home, action: 'reuse' };
+  }
+  const packageRoot = packageRootDir();
+  const homeDir = homedir();
+  if (homeFlag) {
+    return { home: resolve(homeFlag), action: 'picked' };
+  }
   if (!interactive) {
-    if (force) {
-      console.log('! Continuing anyway (--force).');
-      return;
+    return { home: join(packageRoot, 'user-data'), action: 'picked-default' };
+  }
+  // Reinstall discovery: scan known locations.
+  const found = discoverExistingHomes();
+  if (!pointerExists() && found.length > 0) {
+    const reinstallOptions = found.map((f) => ({
+      value: f.path,
+      label: f.path,
+      description: `${f.kind === 'marker' ? 'Robin data' : 'legacy v2 layout'}, last used ${f.lastUsed ?? 'unknown'}`,
+    }));
+    reinstallOptions.push({
+      value: '__fresh__',
+      label: 'Set up fresh (show picker)',
+    });
+    const choice = await radio({
+      question:
+        'This Robin install has no recorded data location. Scanning known locations…\n\nFound:',
+      options: reinstallOptions,
+      defaultIndex: 0,
+      inputFn: prompt,
+    });
+    if (choice !== '__fresh__') {
+      return { home: choice, action: 'recovered' };
     }
-    console.error(
-      'aborting: legacy ~/.robin/ detected and not running interactively. Pass --force to ignore.',
-    );
-    process.exit(1);
   }
-  const answer = (await prompt('! Continue installing v2 anyway? (y/N) ')).trim().toLowerCase();
-  if (answer !== 'y' && answer !== 'yes') {
-    console.error('aborting: user declined to continue.');
-    process.exit(1);
-  }
+  const chosen = await pickHome({ packageRoot, homedir: homeDir, inputFn: prompt });
+  return { home: chosen, action: 'picked' };
 }
 
 async function pickProfile({ prompt, interactive, profileFlag }) {
@@ -290,22 +314,71 @@ export async function install(argv = [], deps = {}) {
     return;
   }
 
-  // 1. Detect legacy ~/.robin/.
-  await detectLegacyHome({ prompt, interactive, force });
+  // 1. Choose / recover / reuse the home.
+  const homeFlag = typeof args.flags.home === 'string' ? args.flags.home : null;
+  const { home, action } = await chooseHome({ prompt, interactive, args, homeFlag });
+  process.env.ROBIN_HOME = home; // resolve subsequent steps to it
 
   // 2. Reinstall short-circuit.
-  const existing = await readConfig();
-  if (existing?.embedder_profile && !force) {
-    console.log(
-      `Robin is already configured for profile ${existing.embedder_profile}; pass --force to reconfigure.`,
-    );
-    return;
+  // Applies when the home was reused from pointer, env var, or already configured.
+  if (action === 'reuse' || action === 'env' || action === 'recovered') {
+    const existing = await readConfig();
+    if (existing?.embedder_profile && !force) {
+      console.log(
+        `Robin is already configured for profile ${existing.embedder_profile}; pass --force to reconfigure.`,
+      );
+      return;
+    }
   }
 
-  // 3. Pick profile.
+  // 3. Existing-data migration (only if we picked a new home that differs from known sources).
+  if (action === 'picked' && interactive) {
+    const found = discoverExistingHomes().filter((f) => f.path !== home);
+    if (found.length > 0) {
+      const sources = found.map((f) => ({
+        value: f.path,
+        label: `${f.path} (${f.kind}, last used ${f.lastUsed ?? 'unknown'})`,
+      }));
+      sources.push({ value: '__skip__', label: 'Ignore — start fresh; existing left untouched' });
+      const sourcePick = await radio({
+        question: 'Existing Robin data found:',
+        options: sources,
+        defaultIndex: 0,
+        inputFn: prompt,
+      });
+      if (sourcePick !== '__skip__') {
+        const modePick = await radio({
+          question: 'What should we do with it?',
+          options: [
+            { value: 'move', label: `Move to ${home}` },
+            { value: 'copy', label: `Copy to ${home} (original kept)` },
+            { value: 'abort', label: 'Abort install' },
+          ],
+          defaultIndex: 0,
+          inputFn: prompt,
+        });
+        if (modePick === 'abort') {
+          console.error('install aborted by user');
+          process.exit(1);
+        }
+        if (existsSync(home)) {
+          console.error(
+            `target ${home} already exists; refusing to overwrite. Move it aside and re-run.`,
+          );
+          process.exit(1);
+        }
+        await migrateHome({ from: sourcePick, to: home, mode: modePick });
+      }
+    }
+  }
+
+  // 4. Ensure home tree + marker (idempotent).
+  await ensureHome();
+
+  // 5. Pick profile.
   const profile = await pickProfile({ prompt, interactive, profileFlag });
 
-  // 4. Per-profile validation.
+  // 6. Per-profile validation.
   if (profile === 'qwen3-4096') {
     await validateOllama({ fetchFn });
   } else if (profile === 'gemini-3072') {
@@ -313,20 +386,19 @@ export async function install(argv = [], deps = {}) {
   }
   // mxbai-1024: nothing to validate (model downloads on first use).
 
-  // 5. Persist config.
-  await ensureHome();
+  // 7. Persist config.
   await writeConfig({
     embedder_profile: profile,
     installed_at: new Date().toISOString(),
   });
   console.log(`config: profile = ${profile}`);
 
-  // 6. Run migrations.
+  // 8. Run migrations.
   if (!skipMigrate) {
     await applyMigrations({ connectFn, closeFn, onDbReady });
   }
 
-  // 7. Tamper baseline. Written after migrations + config so the manifest
+  // 9. Tamper baseline. Written after migrations + config so the manifest
   // captures the just-installed package version + supervisor file path.
   // Tamper-check on daemon boot compares against this baseline.
   try {
@@ -337,20 +409,31 @@ export async function install(argv = [], deps = {}) {
     console.warn(`tamper baseline failed (non-fatal): ${e.message}`);
   }
 
-  // 8. Hook install — wire PreToolUse/UserPromptSubmit/SessionStart/Stop
+  // 10. Hook install — wire PreToolUse/UserPromptSubmit/SessionStart/Stop
   // entries into ~/.claude/settings.json + ~/.gemini/settings.json. Skipped
   // by --no-hooks. Failure here aborts the install (exit 1), since v2's
   // safety floor depends on these hooks firing.
   await installHooksStep({ skipHooks });
 
-  // 9. Daemon supervision wire-up.
+  // 11. Daemon supervision wire-up.
   if (!skipMcp) {
     console.log('');
     console.log('Installing MCP daemon supervision and host registration...');
     await supervise(argv);
   }
 
-  // 10. Next-step guidance.
+  // 12. Write the pointer last, so partial failures don't leave a half-pointed install.
+  // Skip if home came from env var — env var IS the pointer in that mode
+  // (tests, CI, user pre-specified $ROBIN_HOME).
+  if (action !== 'env') {
+    writePointer({
+      home,
+      installedBy: `robin install ${process.env.npm_package_version ?? 'unknown'}`,
+    });
+  }
+  console.log(`Robin home is at: ${home}`);
+
+  // 13. Next-step guidance.
   console.log('');
   console.log(`Robin installed (profile: ${profile}).`);
   console.log('Restart your Claude Code / Gemini CLI session to pick up the new MCP server.');

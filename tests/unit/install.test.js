@@ -129,32 +129,17 @@ test('install --profile invalid-name exits 1', async () => {
   }
 });
 
-// ---------- Legacy ~/.robin/ detection ----------
+// ---------- Legacy ~/.robin/ detection (v4.4: replaced by chooseHome) ----------
+// detectLegacyHome is gone; an empty ~/.robin/ is no longer treated as blocking.
+// Only directories containing db/CURRENT or secrets/.env are detected as legacy.
 
-test('detects legacy ~/.robin/ and aborts in non-interactive mode without --force', async () => {
+test('empty ~/.robin/ no longer aborts install (proceeds without prompt)', async () => {
   setup();
   try {
     mkdirSync(join(tmpFakeHomedir, '.robin'), { recursive: true });
     const { install } = await importInstall();
-    const exitCode = await captureExit(() =>
-      install(['--profile', 'mxbai-1024', '--no-mcp'], {
-        supervise: noopSupervise(),
-        interactive: false,
-      }),
-    );
-    assert.equal(exitCode, 1);
-    assert.ok(!existsSync(join(tmpHome, 'config.json')));
-  } finally {
-    cleanup();
-  }
-});
-
-test('legacy ~/.robin/ with --force proceeds non-interactively', async () => {
-  setup();
-  try {
-    mkdirSync(join(tmpFakeHomedir, '.robin'), { recursive: true });
-    const { install } = await importInstall();
-    await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
+    // Empty ~/.robin/ is not a recognised legacy home; install proceeds normally.
+    await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
       interactive: false,
     });
@@ -165,22 +150,36 @@ test('legacy ~/.robin/ with --force proceeds non-interactively', async () => {
   }
 });
 
-test('legacy ~/.robin/ in interactive mode prompts and proceeds on "y"', async () => {
+test('empty ~/.robin/ with --force proceeds non-interactively', async () => {
   setup();
   try {
     mkdirSync(join(tmpFakeHomedir, '.robin'), { recursive: true });
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--force', '--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+      interactive: false,
+    });
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'mxbai-1024');
+  } finally {
+    cleanup();
+  }
+});
+
+test('install interactive: profile flag respected, config written', async () => {
+  setup();
+  try {
     const prompts = [];
     const promptFn = async (q) => {
       prompts.push(q);
-      return 'y';
+      return '';
     };
     const { install } = await importInstall();
-    await install(['--profile', 'mxbai-1024', '--no-mcp'], {
+    await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
       interactive: true,
       prompt: promptFn,
     });
-    assert.ok(prompts.some((q) => /Continue installing v2/.test(q)));
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
   } finally {
