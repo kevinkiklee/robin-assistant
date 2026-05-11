@@ -33,7 +33,7 @@ export async function archiveMemo(db, id, reason) {
   // (SurrealDB v3 transactions roll back on any error within them).
   const [memoRows] = await db.query(new BoundQuery('SELECT * FROM ONLY $id', { id })).collect();
   const memo = memoRows?.[0] ?? memoRows;
-  if (!memo || !memo.id) return { archived: null };
+  if (!memo?.id) return { archived: null };
 
   const [edgesIn] = await db
     .query(new BoundQuery('SELECT * FROM edges WHERE in = $id OR out = $id', { id }))
@@ -84,7 +84,7 @@ export async function restoreMemo(db, archivedId) {
     .query(new BoundQuery('SELECT * FROM ONLY $id', { id: archivedId }))
     .collect();
   const arch = rows?.[0] ?? rows;
-  if (!arch || !arch.id) return { restored: null };
+  if (!arch?.id) return { restored: null };
 
   const [edgesIn] = await db
     .query(

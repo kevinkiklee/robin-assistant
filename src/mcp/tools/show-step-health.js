@@ -1,5 +1,5 @@
 // show-step-health.js — Theme 4. Aggregates cadence_telemetry per step.
-import { BoundQuery, surql } from 'surrealdb';
+import { BoundQuery } from 'surrealdb';
 
 export function createShowStepHealthTool({ db }) {
   return {

@@ -365,16 +365,56 @@ These corrections came out of the v2 redesign verification gates and have bitten
 - **`FLEXIBLE` comes after `TYPE`** in `DEFINE FIELD`: write `TYPE object FLEXIBLE`, not `FLEXIBLE TYPE object`.
 - **`array<object>` doesn't accept `FLEXIBLE` on the parent.** Use `array` (untyped) plus `array[*] TYPE object FLEXIBLE` for nested object arrays.
 
+## Failure modes added in alpha.16
+
+- **`Cannot execute UPSERT statement using value: NONE`** — when seeding a
+  `runtime:*` row whose key contains a `.`, wrap in backticks:
+  `UPSERT runtime:\`evidence.config\` SET value = {...}`. Affects all
+  alpha.16 config rows.
+- **`Found 'DENY' for field state ... must conform to ['AUTO','ASK','NEVER']`** —
+  `action_trust.state` enum was widened to include `DENY`. Pre-existing
+  DBs without `0001-init.surql` reapplied will reject writes from the new
+  code. Destructive reset required.
+- **`The field 'in' already exists`** — `TYPE RELATION` tables auto-define
+  `in` and `out` as `record`. Don't redefine them in your own DDL.
+- **`Cannot perform subtraction with '<datetime>' and 'NONE'`** — SurrealDB
+  v3 doesn't short-circuit OR conditions cleanly. If a WHERE clause is
+  `last_used_at IS NONE OR last_used_at < cutoff`, split into two queries
+  and union the results in JS. See `runActionTrustDecay`.
+- **`SELECT kind FROM action_trust_ledger` → "Idiom missing here"** —
+  field-name choice matters. We renamed `action` to `kind` because
+  `action` is reserved in `SELECT` projection contexts.
+- **`outcome='private_scope'` refusals appearing where they didn't before** —
+  Theme 1c fixed an unenforced spec promise. Outbound tools now refuse
+  payloads that reference private memos directly or transitively. If a
+  legitimate flow refuses, mark the source memo's scope to `global` or
+  `project:*` explicitly.
+
 ## When in doubt
 
 ```sh
 robin doctor                         # status overview
+robin doctor --health                # alpha.16 — token budget, pending triggers,
+                                     # dream freshness, faculty errors. Exit 0/1/2.
+robin doctor --health --json         # machine-readable for cron
 robin doctor --lint-hooks            # hook entries by host
 robin doctor --purge-stale-sessions  # clean runtime_sessions
 robin doctor --rebaseline            # rewrite introspection manifest
 robin sessions --stale               # active vs stale sessions
 robin refusals list                  # recent in/outbound refusal audit
 robin embeddings list                # active/read profile + tables + counts
+```
+
+Via the MCP introspection tools (alpha.16):
+
+```
+explain_recall {query_id?, last_n?}    # why did Robin rank these hits?
+explain_belief {memo_id}               # how did confidence get to its value?
+explain_action_trust {class}           # full ledger history for tool:action
+show_pending_triggers {step?}          # cadence queue depth
+show_step_health {since?}              # per-step success rate + cost
+recent_refusals {direction?, since?}   # outbound block audit
+archive_history {memo_id?}             # archive / restore trail
 ```
 
 If a faculty is misbehaving and the audit doesn't explain it, the per-faculty deep dive in [`faculties.md`](faculties.md) lists the relevant files, tables, and disable knobs.

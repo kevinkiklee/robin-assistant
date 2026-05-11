@@ -600,6 +600,35 @@ export async function startDaemon() {
       cadenceTicker.unref?.();
     }
 
+    // Theme 1b: stale-episode sweeper. Every 10 minutes — episodes with
+    // last_event_at past per-source idle threshold get ended_at.
+    let staleEpisodeTicker = null;
+    {
+      const { closeStaleEpisodes } = await import('../jobs/internal/close-stale-episodes.js');
+      staleEpisodeTicker = setInterval(() => {
+        closeStaleEpisodes(dbHandle).catch((e) => {
+          console.warn(`[close-stale-episodes] ${e.message}`);
+        });
+      }, 600_000);
+      staleEpisodeTicker.unref?.();
+    }
+
+    // Theme 2b: action-trust decay sweep. Every 6h — AUTO classes unused
+    // for decay_days get demoted to ASK.
+    let actionTrustDecayTicker = null;
+    {
+      const { runActionTrustDecay } = await import('../jobs/action-trust.js');
+      actionTrustDecayTicker = setInterval(
+        () => {
+          runActionTrustDecay(dbHandle).catch((e) => {
+            console.warn(`[action-trust-decay] ${e.message}`);
+          });
+        },
+        6 * 60 * 60_000,
+      );
+      actionTrustDecayTicker.unref?.();
+    }
+
     const { server: probe, port } = await bindFreePort();
     probe.close();
 

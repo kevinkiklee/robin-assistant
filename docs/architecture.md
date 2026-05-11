@@ -1,6 +1,8 @@
 # Architecture
 
-How Robin v2 is structured after the database + memory redesign.
+How Robin v2 is structured after the database + memory redesign, the
+surrealdb-improvements pass, and the seven-theme evolution roadmap
+(alpha.16).
 
 ## The big picture
 
@@ -53,6 +55,15 @@ Claude Code / Gemini CLI session
          episodes, persona (singleton), runtime (KV), runtime_sessions,
          runtime_jobs, intuition_telemetry, recall_log, refusals,
          action_trust, rule_candidates, rules, _migrations
+       Evolution layer (alpha.16):
+         arcs              · multi-episode containers (active/paused/closed)
+         evidence_ledger   · append-only corroborate/refute rows;
+                             fn::derived_confidence computes from these
+         action_trust_ledger · audit history for action-trust state changes
+         dream_triggers    · queue for trigger-eligible dream steps
+         cadence_telemetry · per-step cost; basis for daily token budget
+         archive_memos/_edges/_log · cold tier (out of hot recall, audited)
+         compaction_telemetry · per-run summary of step-compaction
 ```
 
 ## Why it's shaped this way
@@ -64,6 +75,47 @@ Claude Code / Gemini CLI session
 - **Recall closes the loop.** Every recall hit is evaluated 5 min later; if no correction landed, `signal_count++` and `decay_anchor=now`. Useful memos sharpen with use. `recall_log` becomes labeled-ish training data for a future reranker.
 - **Belief evolution without deletion.** `supersedes` and `contradicts` edges annotate; old memos remain queryable. `fn::freshness` returns 0 for any memo with an inbound `supersedes` edge.
 - **The daemon owns the DB.** Embedded RocksDB is single-process. `robin-mcp` is the only writer; CLI commands route through it.
+
+## Evolution layer (alpha.16)
+
+Seven themes layered on top of the substrate:
+
+- **Theme 1c — Scope rework.** `src/memory/scope-registry.js` is the single
+  source of truth for scope policy: `policyFor`, `validateScope`,
+  `scopeMatches`, `persistentScopesSqlFilter`. Hierarchical scopes via `/`
+  path notation (`project:robin/v2` matches descendants). `private` scope
+  now actually enforced — `checkOutboundScope` refuses payloads referencing
+  private memos directly or transitively via `<-derived_from<-memos[WHERE scope='private']`.
+- **Theme 2a — Evidence ledger.** Confidence is derivable, not frozen.
+  `fn::derived_confidence($memo)` = `(initial × prior_weight + Σcor)/(prior_weight + Σcor + Σref)`.
+  Reinforcement loop writes corroborates on reinforce AND refutes on
+  correction (the missing symmetric path). Stored `memos.confidence`
+  updated lazily by `step-confidence-recompute` (nightly dream step).
+- **Theme 2b — Action-trust ledger.** Every state change of `action_trust`
+  mirrors to `action_trust_ledger`. Decay sweep (6h heartbeat) demotes
+  stale `AUTO` classes. Three consecutive corrections → state escalates
+  to `DENY` automatically.
+- **Theme 3 — Cognition cadence.** Trigger queue (`dream_triggers`) +
+  heartbeat consumer (60s). Three steps are trigger-eligible (`reflection`,
+  `comm-style`, `calibration`). Cost-budget enforced via 7-day rolling
+  median of `cadence_telemetry` × safety margin (default 20%). Live
+  decrement halts the loop within one tick of budget exhaustion.
+- **Theme 1a — Compaction.** `step-compaction` (nightly, after
+  step-scope-cleanup): dedup via `supersedes` (canonical from each
+  content_hash cluster) + archive tier (per-kind eligibility moves stale
+  memos to `archive_memos`+`archive_edges` with audit in `archive_log`).
+  Recall structurally cannot reach archive (no FTS / vector index).
+- **Theme 1b — Arcs.** First-class multi-episode containers. `step-arcs`
+  (nightly) clusters episodes by shared participating entities, dedups
+  against existing arcs via Jaccard ≥ 0.7. State machine
+  active→paused→closed by idle time. `closeStaleEpisodes` heartbeat (10
+  min) closes episodes whose `last_event_at` exceeds per-source idle.
+- **Theme 4 — Introspection.** Seven read-only MCP tools (`explain_recall`,
+  `explain_belief`, `explain_action_trust`, `show_pending_triggers`,
+  `show_step_health`, `recent_refusals`, `archive_history`) plus
+  `robin doctor --health` (status rollups + exit codes 0/1/2 for cron
+  monitoring). Audit test (`audit-introspection-readonly.test.js`)
+  enforces zero write keywords in introspection tool source.
 
 ## A typical agent turn
 

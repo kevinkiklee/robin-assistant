@@ -1,5 +1,135 @@
 # Changelog
 
+## [6.0.0-alpha.16] — 2026-05-11 — Robin v2 evolution (7 themes)
+
+Lands the seven-theme umbrella spec from `docs/superpowers/specs/2026-05-11-robin-v2-evolution-roadmap.md`. Each theme adds a layer of cognitive lifecycle above the schema substrate.
+
+### Theme 1c — Scope rework + private-block bug fix
+
+- **The headline bug fix.** Outbound discretion now refuses to forward
+  payloads referencing private-scoped memos/events/entities (direct + via
+  `<-derived_from<-memos[WHERE scope='private']`). Closes the redesign-spec
+  promise that was previously unenforced. `refusals` rows logged with
+  `reason='private_scope'`.
+- `src/memory/scope-registry.js` is the new single source of truth for scope
+  policy: `policyFor`, `validateScope`, `scopeMatches`, `persistentScopesSqlFilter`,
+  `ephemeralEntries`. Replaces hardcoded SQL prefix lists in `store.js`
+  (`_surfaceSearch` filter) and `step-scope-cleanup.js`.
+- Hierarchical scopes via `/` path notation: `project:robin` matches
+  `project:robin/v2/theme-1c` but not `project:robin-other`. New
+  `scope_descends_from` option on `store.searchMemos/Events/Entities` and
+  on the recall MCP tool.
+- Writes validate scope against the registry (unknown patterns rejected).
+
+### Theme 2a — Evidence ledger + derived confidence
+
+- New `evidence_ledger` table (append-only) + `fn::derived_confidence`
+  SurrealQL function. Confidence becomes derivable from accumulated
+  corroborations / refutations via pseudocount-prior Beta-ish blend:
+  `(initial × prior_weight + Σcor)/(prior_weight + Σcor + Σref)`.
+- Producers:
+  - `reinforcement.js` writes `corroborates` on reinforce **and `refutes`
+    on correction** (the missing symmetric path).
+  - `store.relate(..., 'contradicts')` auto-emits two refute rows.
+  - Biographer optional `evidence_signals[]` output — `addEvidence` invoked
+    per signal at `biographer_weight` (default 0.5).
+- New `step-confidence-recompute` dream step: lazy refresh of stored
+  `memos.confidence` for memos with recent ledger activity.
+- New MCP tools: `endorse`, `refute` (manual evidence at `manual_weight=2.0`).
+- Schema: `0003-evidence-ledger.surql` + `runtime:evidence.config`.
+
+### Theme 2b — Action-trust ledger + decay + DENY escalation
+
+- New `action_trust_ledger` table; every state change emits a row.
+- **Time-based decay sweep** (heartbeat every 6h): `AUTO` classes unused
+  for `decay_days` (default 90) → demoted to `ASK`.
+- **Consecutive-correction escalation**: N corrections in a row (default 3)
+  with no `success` between → state → `DENY` automatically.
+- `update_action_policy` MCP gains optional `reason` (propagates to ledger).
+- Schema: `0004-action-trust-ledger.surql` + `runtime:action_trust.config`.
+  `0001-init.surql` action_trust enums widened (DENY state; correction_loop
+  + decay_sweep set_by) — requires destructive DB reset.
+
+### Theme 3 — Cognition cadence (trigger queue + budget)
+
+- New `dream_triggers` queue (append-only) + `cadence_telemetry` (per-run
+  cost) + per-step processing cursors.
+- Heartbeat consumer (every 60s) drains the queue: enforces debounce,
+  hourly cap, daily cap, and **daily token budget**. Live budget decrement
+  inside the loop ensures the consumer halts within one tick of exhausting.
+- Trigger-eligible steps: `reflection`, `comm-style`, `calibration` (others
+  remain nightly-only).
+- Producers: `reinforcement.js` (correction landed → reflection trigger),
+  `foresight.resolve` (prediction resolved → calibration trigger).
+- Budget derivation: 7-day rolling median of daily `cadence_telemetry`
+  token sum, with safety margin (default 20%).
+- Schema: `0005-cadence.surql` + `runtime:cadence.config` + `.cursors`.
+
+### Theme 1a — Compaction + archive tier
+
+- New `step-compaction` dream step (after `step-scope-cleanup`).
+- **Dedup** via existing `supersedes` machinery: groups `kind='knowledge'`
+  memos by `content_hash`, picks canonical (highest signal_count × confidence,
+  earliest tiebreak), emits supersedes to rest. `fn::freshness` already
+  returns 0 for superseded → they vanish from recall but stay queryable.
+- **Archive tier**: per-kind eligibility (age + signal_max + meta.resolved_at)
+  moves stale memos to `archive_memos` + incident edges to `archive_edges`
+  + audit row to `archive_log`. `archiveMemo` / `restoreMemo` round-trip
+  preserves content + scope + tags + edges.
+- Recall structurally cannot reach archive tables (no FTS / vector index).
+- Schema: `0006-compaction.surql` + `runtime:compaction.config`.
+
+### Theme 1b — Episodes + arcs (multi-episode containers)
+
+- New `arcs` table — first-class multi-episode containers with status
+  (active / paused / closed), `last_activity_at`, FTS on name + summary.
+- `src/memory/arcs.js`: `createArc`, `getArc`, `listArcs`, `extendArc`
+  (Jaccard-based dedup), `jaccard` helper.
+- `src/dream/step-arcs.js`: nightly clustering of recent episodes by
+  shared participating entities (≥ `min_shared_entities` overlap →
+  cluster; cluster size ≥ `min_episodes` → arc). Dedup against existing
+  active/paused arcs by Jaccard ≥ `dedup_jaccard_threshold` (default 0.7).
+  Auto-state-transition: idle > `pause_after_idle_days` → paused;
+  idle > `close_after_idle_days` → closed.
+- `closeStaleEpisodes` heartbeat sweep (every 10 min): episodes whose
+  `last_event_at` exceeds per-source idle threshold → `ended_at` set.
+- Episode schema additions: `last_event_at`, `summary_log` (bounded
+  array of recent event previews).
+- New MCP tools: `list_arcs`, `get_arc`.
+- Schema: `0007-arcs.surql` + `runtime:arc.config` + `runtime:episode.config`.
+
+### Theme 4 — Observability + introspection
+
+- Seven new MCP introspection tools (read-only, audit-gated):
+  - `explain_recall` — recall_log rows with ranked_hits + score components
+    + sources (private-scope hits stripped before return).
+  - `explain_belief` — memo + `evidence_ledger` replay +
+    `supersedes`/`contradicts` edges + `fn::derived_confidence` value
+    + the derivation formula (private-scope content redacted).
+  - `explain_action_trust` — current state + full `action_trust_ledger`
+    history.
+  - `show_pending_triggers` — unprocessed `dream_triggers`.
+  - `show_step_health` — per-step `cadence_telemetry` rollup over a window.
+  - `recent_refusals` — filterable refusals listing.
+  - `archive_history` — `archive_log` filtered by memo_id.
+- New `robin doctor --health` CLI mode with status rollups (token budget,
+  pending triggers, dream freshness, faculty error rate). Exit codes 0/1/2
+  enable cron-based monitoring. `--json` flag for machine-readable output.
+- Schema: `0008-doctor.surql` (config row only — read layer is code).
+
+### Cross-cutting
+
+- New `audit-introspection-readonly.test.js`: introspection tool files must
+  not contain `CREATE`/`UPDATE`/`DELETE`/`UPSERT`/`INSERT`/`RELATE`.
+- `audit-no-old-tables.test.js` extended with a `kind: 'thread'` tripwire
+  (deprecated in favor of arcs table).
+- Three new heartbeat phases wired into the daemon: cadence consumer (60s),
+  close-stale-episodes (10 min), action-trust-decay (6h). All `.unref?.()`'d
+  so they don't keep the process alive on shutdown.
+- `0001-init.surql` checksum changed (action_trust enum widening). Existing
+  instances need a destructive DB reset — same playbook as the prior
+  redesigns.
+
 ## [6.0.0-alpha.15] — 2026-05-11 — SurrealDB improvements (4 phases)
 
 Corrects the prior redesign's TYPE NORMAL premise and lands four orthogonal

@@ -48,5 +48,20 @@ export function validateBiographerOutput(o) {
   if (typeof o.episode_continues_previous !== 'boolean') {
     return { ok: false, error: 'episode_continues_previous must be boolean' };
   }
+  // Theme 2a: optional evidence_signals[]. Biographer LLM may judge that the
+  // new event corroborates or refutes an existing memo.
+  if (o.evidence_signals !== undefined) {
+    if (!Array.isArray(o.evidence_signals)) {
+      return { ok: false, error: 'evidence_signals must be an array' };
+    }
+    for (const s of o.evidence_signals) {
+      if (typeof s?.memo_id !== 'string' || s.memo_id.length === 0) {
+        return { ok: false, error: 'evidence_signal.memo_id must be non-empty string' };
+      }
+      if (s.polarity !== 'corroborates' && s.polarity !== 'refutes') {
+        return { ok: false, error: `evidence_signal.polarity must be corroborates|refutes` };
+      }
+    }
+  }
   return { ok: true };
 }

@@ -216,6 +216,34 @@ export async function biographerProcess(db, embedder, host, eventId, opts = {}) 
     await withTxRetry(() => store.relateAll(db, edgeRows));
   }
 
+  // Theme 2a: process optional evidence_signals from biographer LLM output.
+  // Each signal asserts that the new event corroborates / refutes an existing
+  // memo. We emit a ledger row with weight from config (default 0.5).
+  if (Array.isArray(output.evidence_signals) && output.evidence_signals.length > 0) {
+    try {
+      const { addEvidence, readEvidenceConfig } = await import('../memory/evidence.js');
+      const { RecordId } = await import('surrealdb');
+      const evCfg = await readEvidenceConfig(db);
+      for (const sig of output.evidence_signals) {
+        try {
+          const idStr = String(sig.memo_id);
+          const key = idStr.startsWith('memos:') ? idStr.slice('memos:'.length) : idStr;
+          await addEvidence(db, {
+            memo_id: new RecordId('memos', key),
+            polarity: sig.polarity,
+            reason: 'biographer',
+            weight: evCfg.biographer_weight ?? 0.5,
+            source_event: eventId,
+          });
+        } catch (e) {
+          console.warn(`[biographer evidence_signal] ${sig?.memo_id}: ${e.message}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[biographer evidence_signals] ${e.message}`);
+    }
+  }
+
   // 8. Mark event biographed
   const updated = await withTxRetry(async () => {
     const [rows] = await db

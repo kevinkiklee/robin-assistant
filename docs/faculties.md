@@ -100,6 +100,84 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 - Tunables in `runtime:recall.value` (5s-cached): `rrf_k`, `knn_overfetch_base`, `knn_overfetch_per_filter`, `mmr_threshold`. Tweak without code change.
 - BM25 fails-soft: if FULLTEXT indexes aren't available (e.g., upgraded engine), vector-only recall keeps working.
 
+### evidence (alpha.16, Theme 2a)
+**Confidence as a derivable signal.** `evidence_ledger` accumulates
+corroboration / refutation rows per memo. `fn::derived_confidence` blends
+the initial confidence as a prior (`prior_weight` votes) with the
+accumulated evidence to compute a current value in [0, 1].
+- Producers: reinforcement loop (corroborate on `reinforced`, refute on
+  `corrected`), `store.relate(..., 'contradicts')` auto-emits two refutes,
+  biographer optional `evidence_signals[]` output, MCP `endorse`/`refute`.
+- Update path: `step-confidence-recompute` (nightly) recomputes
+  `memos.confidence` for memos with ledger activity since the last
+  `meta.evidence_recomputed_at` marker.
+- Tunables in `runtime:evidence.config`: `prior_weight` (default 3.0),
+  `biographer_weight` (0.5), `manual_weight` (2.0).
+- Inspect via Theme 4 MCP tool `explain_belief({memo_id})` — returns the
+  ledger replay + derivation formula.
+
+### cadence (alpha.16, Theme 3)
+**Triggered cognition with cost-budget enforcement.** Three steps —
+`reflection`, `comm-style`, `calibration` — can fire on triggers, drastically
+cutting latency from the next-night dream run to the next 60s heartbeat.
+- Files: `src/dream/{cursors,budget,dispatch}.js`,
+  `src/daemon/cadence-consumer.js`.
+- Producers: `reinforcement.js` (on `corrected` → reflection trigger),
+  `foresight.resolve` (prediction resolved → calibration trigger).
+- Consumer: heartbeat 60s tick drains `dream_triggers`, enforces debounce
+  / hourly cap / daily cap / daily token budget (with live decrement).
+  Marks each trigger with `outcome` (ran|debounced|capped|budget_exceeded|error|expired).
+- Budget: 7-day rolling median of daily `cadence_telemetry` token sums
+  × `(1 - safety_margin)`. Per-step cost estimated from median of last 10
+  successful runs.
+- Tunables in `runtime:cadence.config`: per-step `trigger_eligible`,
+  `debounce_minutes`, `max_per_hour`, `max_per_day`, plus global
+  `daily_token_budget`, `budget_safety_margin`, `trigger_ttl_days`,
+  `consume_batch_size`.
+
+### action-trust (audit + decay + escalation, alpha.16, Theme 2b)
+**Every state change leaves an audit trail.** `action_trust_ledger` rows
+emitted by `setActionTrust`, `recordOutcome`, `runActionTrustDecay`, and
+the auto-block path. Decay sweep (6h heartbeat) demotes stale `AUTO`
+classes. Three consecutive corrections with no `success` between → state
+escalates to `DENY` automatically.
+- Files: `src/jobs/action-trust.js`.
+- Inspect via Theme 4 MCP tool `explain_action_trust({class})`.
+
+### arcs (alpha.16, Theme 1b)
+**Multi-episode containers.** Activity arcs cluster related episodes by
+shared participating entities. State machine: active → paused (idle
+14d) → closed (idle 60d). Created automatically by `step-arcs`
+(nightly), deduped against existing active|paused arcs by entity-set
+Jaccard similarity. Manual MCP access via `list_arcs` and `get_arc`.
+- Files: `src/memory/arcs.js`, `src/dream/step-arcs.js`,
+  `src/jobs/internal/close-stale-episodes.js`.
+
+### compaction (alpha.16, Theme 1a)
+**Hot/archive two-tier memory.** `step-compaction` runs nightly after
+`step-scope-cleanup`:
+- **Dedup pass** groups `kind='knowledge'` memos by `content_hash` and
+  emits `supersedes` edges from the canonical to the rest (existing
+  `fn::freshness` returns 0 for superseded).
+- **Archive pass** moves aged-out, low-signal memos to `archive_memos` +
+  incident edges to `archive_edges` + audit to `archive_log`. Recall
+  structurally cannot reach archive (no FTS / vector index).
+- Restore via `restoreMemo(db, archived_id)` round-trips content + edges.
+
+### introspection (alpha.16, Theme 4)
+**Seven read-only MCP tools** for "why did Robin do X?":
+- `explain_recall` — recall_log + score components + sources (private redacted).
+- `explain_belief` — evidence_ledger replay + derivation formula.
+- `explain_action_trust` — current state + full ledger history.
+- `show_pending_triggers` — queue depth.
+- `show_step_health` — cadence_telemetry rollup per step.
+- `recent_refusals` — discretion refusals listing.
+- `archive_history` — archive_log filtered by memo.
+
+Plus `robin doctor --health` — status rollups (token budget, pending
+triggers, dream freshness, faculty errors). Exit codes 0/1/2 for cron
+monitoring. `--json` for machine-readable output.
+
 ## See also
 
 - [`architecture.md`](architecture.md) — how faculties fit into the request lifecycle

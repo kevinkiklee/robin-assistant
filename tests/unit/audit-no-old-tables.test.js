@@ -49,6 +49,11 @@ const FORBIDDEN = [
   { token: 'VALUE from FROM edges', desc: 'edges.from renamed to edges.in' },
   { token: 'VALUE to FROM edges', desc: 'edges.to renamed to edges.out' },
   { token: 'DEFINE TABLE edges SCHEMAFULL TYPE NORMAL', desc: 'edges is TYPE RELATION now' },
+  // Theme 2a: confidence is derivable via evidence_ledger + fn::derived_confidence.
+  // The legacy `signal_count += 1` pattern is still allowed (cached counter),
+  // but writing a literal `confidence = ...` directly to a memo from outside
+  // store.js / evidence.js is suspicious — flag with a fixed-string check.
+  { token: "kind: 'thread'", desc: "kind='thread' deprecated; use arcs table" },
 ];
 
 const ALLOWED_PATHS = [

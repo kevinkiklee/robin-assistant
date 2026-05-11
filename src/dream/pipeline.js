@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { dreamStepArcs } from './step-arcs.js';
 import { dreamStepCalibration } from './step-calibration.js';
 import { dreamStepCommStyle } from './step-comm-style.js';
 import { dreamStepCompaction } from './step-compaction.js';
@@ -54,6 +55,11 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.threads = await dreamStepThreads(db, opts.threads);
   } catch (e) {
     summary.threads = { error: e.message };
+  }
+  try {
+    summary.arcs = await dreamStepArcs(db, opts.arcs);
+  } catch (e) {
+    summary.arcs = { error: e.message };
   }
   try {
     summary.commStyle = await dreamStepCommStyle(db, host);
