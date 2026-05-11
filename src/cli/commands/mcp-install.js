@@ -20,39 +20,27 @@ async function readOrEmpty(path) {
   }
 }
 
-async function readJobsForAgentsMd() {
+// Single-pass DB read for all AGENTS.md inputs. Combined to avoid sequential
+// rocksdb open+close cycles, which can deadlock under the @surrealdb/node v3
+// close-hang. Fail-soft: any error returns the per-field "unavailable" value.
+async function readDbDataForAgentsMd() {
   try {
     const { ensureHome, paths } = await import('../../runtime/home.js');
     const { connect, close } = await import('../../db/client.js');
     const { listAllJobs } = await import('../../jobs/db.js');
-    await ensureHome();
-    const p = paths();
-    const db = await connect({ engine: `rocksdb://${p.db}` });
-    try {
-      return await listAllJobs(db);
-    } finally {
-      await close(db);
-    }
-  } catch {
-    return undefined; // triggers "jobs surface unavailable"
-  }
-}
-
-async function readCommStyleForAgentsMd() {
-  try {
-    const { ensureHome, paths } = await import('../../runtime/home.js');
-    const { connect, close } = await import('../../db/client.js');
     const { getCommStyle } = await import('../../jobs/comm-style.js');
     await ensureHome();
     const p = paths();
     const db = await connect({ engine: `rocksdb://${p.db}` });
     try {
-      return await getCommStyle(db);
+      const jobs = await listAllJobs(db);
+      const commStyle = await getCommStyle(db);
+      return { jobs, commStyle };
     } finally {
       await close(db);
     }
   } catch {
-    return null;
+    return { jobs: undefined, commStyle: null };
   }
 }
 
@@ -189,8 +177,7 @@ export async function mcpInstall(argv) {
   if (!noAgentsMd) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
-    const jobs = await readJobsForAgentsMd();
-    const commStyle = await readCommStyleForAgentsMd();
+    const { jobs, commStyle } = await readDbDataForAgentsMd();
     await writeMergedAgentsMd(claudePath, jobs, commStyle);
     await writeMergedAgentsMd(geminiPath, jobs, commStyle);
   }
