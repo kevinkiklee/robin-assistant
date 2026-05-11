@@ -27,6 +27,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         since: { type: 'string', format: 'date-time' },
         until: { type: 'string', format: 'date-time' },
         explain: { type: 'boolean', default: false },
+        scope_descends_from: { type: 'string', minLength: 1, maxLength: 200 },
       },
       required: ['query'],
     },
@@ -43,6 +44,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         since: args.since,
         until: args.until,
         explain: args.explain,
+        scope_descends_from: args.scope_descends_from,
       });
 
       // Batch mention + entity-detail lookups across all hits using the
