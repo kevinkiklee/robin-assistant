@@ -118,6 +118,21 @@ Seven themes layered on top of the substrate:
   `robin doctor --health` (status rollups + exit codes 0/1/2 for cron
   monitoring). Audit test (`audit-introspection-readonly.test.js`)
   enforces zero write keywords in introspection tool source.
+- **Cognition C3 — Telemetry umbrella.** `telemetry_hourly` is an hourly
+  rollup of hot-tier telemetry — `intuition_telemetry`, `recall_log`
+  (via the `evaluated_at` cursor, B1-aware), the hot prefixes of
+  `cadence_telemetry` (`belief.%`, `dream.%`), and
+  `meta_cognition_telemetry`. The aggregator
+  (`system/cognition/jobs/internal/telemetry-rollup.js`) runs hourly at :05,
+  UPSERTs `telemetry_hourly:{dimensions_hash}` rows over `[$cursor, $cutoff)`,
+  advances per-source cursors stored on `runtime:telemetry.cursor`, and
+  prunes raw rows past 7d / hourly rows past 90d. Pending recall_log rows
+  past 30d are force-pruned; doctor's `pending_recall_log` probe warns at
+  >100 pending older than 7d. Cold tables (`compaction_telemetry`,
+  `state_inference_telemetry`, `recall_eval_runs`, non-hot
+  `cadence_telemetry`) stay raw. `show_telemetry_rollup` MCP tool reads
+  rolled-up rows; shipped with `shadow_mode=true` for a one-week soak.
+  See `docs/superpowers/specs/2026-05-11-cognition-c3-telemetry-umbrella-design.md`.
 
 ## A typical agent turn
 
