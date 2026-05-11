@@ -21,7 +21,11 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { SECRET_PATTERNS } from '../outbound/patterns.js';
-import { packageRootDir } from '../runtime/data-store.js';
+import {
+  forgetHostTouchpoint,
+  packageRootDir,
+  recordHostTouchpoint,
+} from '../runtime/data-store.js';
 
 // Identity marker — any hook file containing this token (also implicitly via
 // the absolute path to our run script) is owned by robin.
@@ -92,11 +96,21 @@ export async function installPreCommit({ cwd } = {}) {
     };
   }
 
-  // Atomic-ish write: tmp + rename, then chmod.
-  const tmp = `${hookPath}.tmp`;
-  writeFileSync(tmp, hookContent(), { mode: 0o755 });
-  renameSync(tmp, hookPath);
-  chmodSync(hookPath, 0o755);
+  // Atomic-ish write: tmp + rename, then chmod. Record in unified manifest.
+  await recordHostTouchpoint(
+    {
+      kind: 'git-precommit-hook',
+      path: hookPath,
+      marker: HOOK_MARKER,
+      installedAt: new Date().toISOString(),
+    },
+    () => {
+      const tmp = `${hookPath}.tmp`;
+      writeFileSync(tmp, hookContent(), { mode: 0o755 });
+      renameSync(tmp, hookPath);
+      chmodSync(hookPath, 0o755);
+    },
+  );
   return { installed: true, path: hookPath };
 }
 
@@ -133,6 +147,7 @@ export async function uninstallPreCommit({ cwd } = {}) {
     };
   }
   unlinkSync(hookPath);
+  await forgetHostTouchpoint({ kind: 'git-precommit-hook', path: hookPath });
   return { uninstalled: true, path: hookPath };
 }
 
