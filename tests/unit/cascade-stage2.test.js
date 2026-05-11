@@ -12,9 +12,7 @@ import { stage2Resolve } from '../../src/graph/stage2-embedding.js';
 // not from an inline `entities.embedding` column (gone in the redesign).
 // Seed both the entity row and its embedding row.
 async function seedEntity(db, embedder, { name, type }) {
-  const [created] = await db
-    .query(surql`CREATE entities CONTENT ${{ name, type }}`)
-    .collect();
+  const [created] = await db.query(surql`CREATE entities CONTENT ${{ name, type }}`).collect();
   const id = (Array.isArray(created) ? created[0] : created).id;
   const profile = await activeProfile(db);
   const tbl = embeddingTable(profile, 'entities');

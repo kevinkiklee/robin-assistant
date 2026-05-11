@@ -30,7 +30,7 @@ test('related_entities returns co_occurs_with neighbors', async () => {
   for (const n of ['Alice', 'Bob', 'Charlie']) {
     const v = Array.from(await e.embed(`person: ${n}`));
     const [c] = await db
-      .query(surql`CREATE entities CONTENT ${{ name: n, type: 'person'}}`)
+      .query(surql`CREATE entities CONTENT ${{ name: n, type: 'person' }}`)
       .collect();
     ids.push((Array.isArray(c) ? c[0] : c).id);
   }
@@ -47,7 +47,7 @@ test('related_entities returns empty for entity with no edges', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   const v = Array.from(await e.embed('person: Solo'));
   const [c] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Solo', type: 'person'}}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Solo', type: 'person' }}`)
     .collect();
   const id = (Array.isArray(c) ? c[0] : c).id;
   const tool = createRelatedEntitiesTool({ db });

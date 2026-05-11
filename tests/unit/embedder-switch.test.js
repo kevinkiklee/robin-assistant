@@ -106,7 +106,6 @@ test('embedder switch changes profile, rewrites schema, and re-embeds rows', asy
             source: 'cli',
             content: text,
             content_hash: text,
-            embedding: vec,
           }}`,
         )
         .collect();
@@ -121,7 +120,6 @@ test('embedder switch changes profile, rewrites schema, and re-embeds rows', asy
             confidence: 0.5,
             source_events: [],
             source_episodes: [],
-            embedding: vec,
           }}`,
         )
         .collect();
@@ -133,7 +131,6 @@ test('embedder switch changes profile, rewrites schema, and re-embeds rows', asy
           surql`CREATE entities CONTENT ${{
             name,
             type: 'thing',
-            embedding: vec,
           }}`,
         )
         .collect();
@@ -168,7 +165,6 @@ test('embedder switch changes profile, rewrites schema, and re-embeds rows', asy
           source: 'cli',
           content: 'roundtrip',
           content_hash: 'roundtrip-h',
-          embedding: okVec,
         }}`,
       )
       .collect();
@@ -180,7 +176,6 @@ test('embedder switch changes profile, rewrites schema, and re-embeds rows', asy
             source: 'cli',
             content: 'bad',
             content_hash: 'bad-h',
-            embedding: badVec,
           }}`,
         )
         .collect(),
@@ -232,7 +227,6 @@ test('embedder switch is resumable: re-runs survive a stale switch_progress row'
             source: 'cli',
             content: text,
             content_hash: text,
-            embedding: vec,
           }}`,
         )
         .collect();

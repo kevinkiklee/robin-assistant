@@ -42,7 +42,6 @@ async function createEvent(db, content) {
         source: 'cli',
         content,
         content_hash: content,
-        embedding: DUMMY_EMBEDDING,
       }}`,
     )
     .collect();

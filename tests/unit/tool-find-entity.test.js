@@ -31,9 +31,7 @@ test('find_entity exact (fuzzy=false) matches by case-insensitive name', async (
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   const v = Array.from(await e.embed('person: Alice'));
-  await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person'}}`)
-    .collect();
+  await db.query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person' }}`).collect();
   const tool = createFindEntityTool({ db, embedder: e });
   const r = await tool.handler({ name: 'alice', type: 'person', fuzzy: false });
   assert.equal(r.entities.length, 1);

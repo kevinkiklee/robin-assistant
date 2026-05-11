@@ -7,9 +7,9 @@
 // - Comment lines (containing the table name in a comment)
 // - 0001-init.surql itself, which contains the rename comments
 
+import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import { describe, it } from 'node:test';
-import { strict as assert } from 'node:assert';
 
 const FORBIDDEN = [
   // Old per-kind memo tables
@@ -85,8 +85,7 @@ describe('audit: no old table or singleton names in production source', () => {
       assert.deepStrictEqual(
         violations,
         [],
-        `Found ${violations.length} disallowed reference(s) to "${token}":\n` +
-          violations.map((v) => `  ${v.path}:${v.lineNo}  ${v.text.trim()}`).join('\n'),
+        `Found ${violations.length} disallowed reference(s) to "${token}":\n${violations.map((v) => `  ${v.path}:${v.lineNo}  ${v.text.trim()}`).join('\n')}`,
       );
     });
   }

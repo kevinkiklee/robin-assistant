@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { activeProfile, embeddingTable } from '../../src/embed/profile-router.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
+import { activeProfile, embeddingTable } from '../../src/embed/profile-router.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';

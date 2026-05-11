@@ -31,7 +31,6 @@ test('exportMappings writes JSON keyed by entities/episodes/events', async () =>
         surql`CREATE entities CONTENT ${{
           name: 'Eric',
           type: 'person',
-          embedding: new Array(1024).fill(0),
           meta: { from_v1: { v1_table: 'entity', v1_id: 'entity:e1', source_hash: 'h' } },
         }}`,
       )

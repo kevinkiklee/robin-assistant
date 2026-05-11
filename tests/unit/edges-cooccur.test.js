@@ -49,9 +49,7 @@ test('writeCoOccursWith creates one symmetric edge per pair', async () => {
   const db = await fresh();
   const [a, b] = await makeEntities(db, ['Alice', 'Bob']);
   await writeCoOccursWith(db, [a, b]);
-  const [rows] = await db
-    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].weight, 1);
   await close(db);
@@ -62,9 +60,7 @@ test('writeCoOccursWith increments weight on repeat', async () => {
   const [a, b] = await makeEntities(db, ['Alice', 'Bob']);
   await writeCoOccursWith(db, [a, b]);
   await writeCoOccursWith(db, [a, b]);
-  const [rows] = await db
-    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].weight, 2);
   await close(db);
@@ -75,9 +71,7 @@ test('writeCoOccursWith caps at top N entities (cap=4 → 4 entities → 6 edges
   const ids = await makeEntities(db, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
   // 10 entities, cap=4 → top 4 only → C(4,2) = 6 symmetric edges
   await writeCoOccursWith(db, ids, { cap: 4 });
-  const [rows] = await db
-    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
   assert.equal(rows.length, 6);
   await close(db);
 });
@@ -86,9 +80,7 @@ test('writeCoOccursWith with single entity creates no edges (no pair)', async ()
   const db = await fresh();
   const ids = await makeEntities(db, ['Solo']);
   await writeCoOccursWith(db, ids);
-  const [rows] = await db
-    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
   assert.equal(rows.length, 0);
   await close(db);
 });
@@ -97,9 +89,7 @@ test('writeCoOccursWith default cap is 8', async () => {
   const db = await fresh();
   const ids = await makeEntities(db, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
   await writeCoOccursWith(db, ids); // default cap=8
-  const [rows] = await db
-    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
   // 8 entities → C(8,2) = 28 symmetric edges
   assert.equal(rows.length, 28);
   await close(db);

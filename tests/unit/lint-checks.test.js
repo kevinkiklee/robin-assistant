@@ -30,9 +30,7 @@ async function fresh() {
 
 test('orphan_entity — entity with no inbound edges is flagged', async () => {
   const { db } = await fresh();
-  await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Orphan', type: 'thing' }}`)
-    .collect();
+  await db.query(surql`CREATE entities CONTENT ${{ name: 'Orphan', type: 'thing' }}`).collect();
   const issues = await runLintChecks(db);
   assert.ok(issues.some((i) => i.kind === 'orphan_entity'));
   await close(db);
@@ -40,12 +38,8 @@ test('orphan_entity — entity with no inbound edges is flagged', async () => {
 
 test('duplicate_entity — same name+type creates a duplicate issue', async () => {
   const { db } = await fresh();
-  await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'X', type: 'thing' }}`)
-    .collect();
-  await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'x', type: 'thing' }}`)
-    .collect();
+  await db.query(surql`CREATE entities CONTENT ${{ name: 'X', type: 'thing' }}`).collect();
+  await db.query(surql`CREATE entities CONTENT ${{ name: 'x', type: 'thing' }}`).collect();
   const issues = await runLintChecks(db);
   assert.ok(issues.some((i) => i.kind === 'duplicate_entity'));
   await close(db);

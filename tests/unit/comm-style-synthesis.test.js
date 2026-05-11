@@ -34,7 +34,6 @@ async function seedCorrection(db, embedder, content) {
         source: 'manual',
         content,
         content_hash: `h-${Math.random().toString(36).slice(2)}`,
-        embedding: emb,
         meta: { kind: 'correction' },
       }}`,
     )
