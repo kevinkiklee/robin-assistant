@@ -19,9 +19,7 @@ import { createHash } from 'node:crypto';
  * @returns {string}             24-char hex.
  */
 export function dimensionsHash(faculty, event_kind, hour, dimensions) {
-  const sortedEntries = Object.entries(dimensions ?? {}).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  const sortedEntries = Object.entries(dimensions ?? {}).sort(([a], [b]) => a.localeCompare(b));
   const sorted = Object.fromEntries(sortedEntries);
   const hourIso = hour instanceof Date ? hour.toISOString() : String(hour);
   const key = `${faculty}|${event_kind}|${hourIso}|${JSON.stringify(sorted)}`;

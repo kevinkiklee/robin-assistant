@@ -11,9 +11,7 @@ const DEFAULT_CUTOFF_SAFETY_SECONDS = 60;
 
 async function readCursors(db) {
   try {
-    const [rows] = await db
-      .query('SELECT VALUE value FROM runtime:`telemetry.cursor`')
-      .collect();
+    const [rows] = await db.query('SELECT VALUE value FROM runtime:`telemetry.cursor`').collect();
     return rows?.[0] ?? {};
   } catch {
     return {};
@@ -60,10 +58,7 @@ async function rollupOne({ db, entry, cfg, cursors, cutoff, results }) {
           metric_buckets: fam.metric_buckets,
         };
         await db
-          .query(
-            `UPSERT type::record('telemetry_hourly', $id) CONTENT $payload`,
-            { id, payload },
-          )
+          .query(`UPSERT type::record('telemetry_hourly', $id) CONTENT $payload`, { id, payload })
           .collect();
         upserts += 1;
       }

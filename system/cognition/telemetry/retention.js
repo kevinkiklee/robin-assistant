@@ -10,13 +10,7 @@
  * @param {string} [args.where]            optional extra WHERE clause (raw SurrealQL fragment)
  * @returns {Promise<{ count: number }>}
  */
-export async function pruneRawTelemetry({
-  db,
-  table,
-  before,
-  timestampField = 'ts',
-  where,
-}) {
+export async function pruneRawTelemetry({ db, table, before, timestampField = 'ts', where }) {
   const whereExtra = where ? ` AND (${where})` : '';
   // table is a non-bound identifier; the caller MUST pass a hardcoded
   // string. The function is internal-only.

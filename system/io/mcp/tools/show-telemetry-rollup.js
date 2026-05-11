@@ -84,11 +84,7 @@ export function createShowTelemetryRollupTool({ db }) {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(
-              { window: args.window ?? 'PT24H', rows: rows ?? [] },
-              null,
-              2,
-            ),
+            text: JSON.stringify({ window: args.window ?? 'PT24H', rows: rows ?? [] }, null, 2),
           },
         ],
       };

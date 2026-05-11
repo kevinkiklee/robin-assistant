@@ -32,12 +32,7 @@ test('dimensionsHash distinguishes different event_kinds', () => {
 
 test('dimensionsHash distinguishes different hours', () => {
   const a = dimensionsHash('intuition', 'recall', HOUR, {});
-  const b = dimensionsHash(
-    'intuition',
-    'recall',
-    new Date(HOUR.getTime() + 3_600_000),
-    {},
-  );
+  const b = dimensionsHash('intuition', 'recall', new Date(HOUR.getTime() + 3_600_000), {});
   assert.notEqual(a, b);
 });
 

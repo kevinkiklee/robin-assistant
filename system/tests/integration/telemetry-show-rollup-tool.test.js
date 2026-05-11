@@ -41,9 +41,7 @@ test('show_telemetry_rollup returns shadow-mode error when shadow_mode=true', as
 
 test('show_telemetry_rollup default window (PT24H) returns recent rows', async () => {
   const db = await fresh();
-  await db
-    .query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false')
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false').collect();
   const now = new Date();
   await db
     .query(
@@ -65,9 +63,7 @@ test('show_telemetry_rollup default window (PT24H) returns recent rows', async (
 
 test('show_telemetry_rollup filters by faculty', async () => {
   const db = await fresh();
-  await db
-    .query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false')
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false').collect();
   const now = new Date();
   await db
     .query(
@@ -95,9 +91,7 @@ test('show_telemetry_rollup filters by faculty', async () => {
 
 test('show_telemetry_rollup filters by event_kind', async () => {
   const db = await fresh();
-  await db
-    .query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false')
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false').collect();
   const now = new Date();
   await db
     .query(
@@ -125,9 +119,7 @@ test('show_telemetry_rollup filters by event_kind', async () => {
 
 test('show_telemetry_rollup window outside range returns no rows', async () => {
   const db = await fresh();
-  await db
-    .query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false')
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false').collect();
   // Row 30 days in the past — PT24H window won't catch it.
   const old = new Date(Date.now() - 30 * 86_400_000);
   await db
@@ -151,9 +143,7 @@ test('show_telemetry_rollup window outside range returns no rows', async () => {
 
 test('show_telemetry_rollup respects limit', async () => {
   const db = await fresh();
-  await db
-    .query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false')
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.shadow_mode = false').collect();
   const now = new Date();
   for (let i = 0; i < 5; i++) {
     await db

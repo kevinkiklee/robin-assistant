@@ -7,8 +7,8 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import telemetryRollup from '../../cognition/jobs/internal/telemetry-rollup.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
@@ -48,9 +48,7 @@ test('telemetry-rollup runs rollup + retention stages and returns JSON', async (
 
 test('telemetry-rollup no-ops when enabled=false', async () => {
   const db = await fresh();
-  await db
-    .query("UPDATE runtime:`telemetry.config` SET value.enabled = false")
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.enabled = false').collect();
   const result = JSON.parse(await telemetryRollup({ db }));
   assert.equal(result.skipped, 'disabled');
   await close(db);

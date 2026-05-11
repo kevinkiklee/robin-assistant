@@ -134,9 +134,7 @@ function cadenceTelemetryHotEntry() {
     event_kinds: ['call', '<dream sub-steps>'],
     select: ({ cursor, cutoff, cfg }) => {
       const prefixes = cfg?.cadence_hot_steps ?? DEFAULT_HOT_CADENCE_PREFIXES;
-      const orClauses = prefixes
-        .map((_, i) => `string::starts_with(step, $p${i})`)
-        .join(' OR ');
+      const orClauses = prefixes.map((_, i) => `string::starts_with(step, $p${i})`).join(' OR ');
       const params = { cursor, cutoff };
       prefixes.forEach((p, i) => {
         params[`p${i}`] = p;
@@ -233,17 +231,10 @@ const NAME_TO_FACULTIES = {
 };
 
 export function buildRegistry() {
-  return [
-    intuitionEntry(),
-    recallLogEvalEntry(),
-    cadenceTelemetryHotEntry(),
-    metaCognitionEntry(),
-  ];
+  return [intuitionEntry(), recallLogEvalEntry(), cadenceTelemetryHotEntry(), metaCognitionEntry()];
 }
 
 export function getEnabledEntries(reg, cfg) {
   const enabled = new Set(cfg?.faculties_enabled ?? []);
-  return reg.filter((e) =>
-    (NAME_TO_FACULTIES[e.name] ?? []).some((f) => enabled.has(f)),
-  );
+  return reg.filter((e) => (NAME_TO_FACULTIES[e.name] ?? []).some((f) => enabled.has(f)));
 }

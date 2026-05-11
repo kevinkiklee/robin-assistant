@@ -155,9 +155,7 @@ test('recordTelemetry fans out object-shaped metrics into scalar entries', async
 
 test('recordTelemetry rejects object-shaped metrics with > 16 keys', async () => {
   const db = stubDb();
-  const big = Object.fromEntries(
-    Array.from({ length: 17 }, (_, i) => [`rule_${i}`, i]),
-  );
+  const big = Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`rule_${i}`, i]));
   await assert.rejects(
     recordTelemetry({
       db,
@@ -212,12 +210,6 @@ test('recordTelemetry honours targetTable override', async () => {
 
 test('recordTelemetry requires faculty + event_kind', async () => {
   const db = stubDb();
-  await assert.rejects(
-    recordTelemetry({ db, event_kind: 'recall' }),
-    /faculty required/,
-  );
-  await assert.rejects(
-    recordTelemetry({ db, faculty: 'intuition' }),
-    /event_kind required/,
-  );
+  await assert.rejects(recordTelemetry({ db, event_kind: 'recall' }), /faculty required/);
+  await assert.rejects(recordTelemetry({ db, faculty: 'intuition' }), /event_kind required/);
 });

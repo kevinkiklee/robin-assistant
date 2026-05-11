@@ -7,9 +7,9 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { readTelemetryConfig } from '../../cognition/telemetry/config.js';
 import { rollupHotTelemetry } from '../../cognition/telemetry/rollup.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
@@ -92,18 +92,14 @@ test('cursor advances after a successful tick; second tick stays at the same cut
   const cfg = await readTelemetryConfig(db);
   const now = new Date(hour.getTime() + 65 * 60_000);
   await rollupHotTelemetry({ db, cfg, nowFn: () => now });
-  const [c1] = await db
-    .query('SELECT VALUE value FROM runtime:`telemetry.cursor`')
-    .collect();
+  const [c1] = await db.query('SELECT VALUE value FROM runtime:`telemetry.cursor`').collect();
   assert.ok(c1?.[0]?.intuition_telemetry, 'cursor populated');
   const cur1Date = new Date(c1[0].intuition_telemetry);
   // Cursor should be at most `now - cutoff_safety_seconds`.
   assert.ok(cur1Date.getTime() <= now.getTime() - 30_000);
 
   await rollupHotTelemetry({ db, cfg, nowFn: () => now });
-  const [c2] = await db
-    .query('SELECT VALUE value FROM runtime:`telemetry.cursor`')
-    .collect();
+  const [c2] = await db.query('SELECT VALUE value FROM runtime:`telemetry.cursor`').collect();
   const cur2Date = new Date(c2[0].intuition_telemetry);
   assert.equal(cur1Date.toISOString(), cur2Date.toISOString());
   await close(db);
@@ -115,9 +111,7 @@ test('cursor fallback when row is missing → uses now - cursor_fallback_window_
   await db.query('DELETE runtime:`telemetry.cursor`').collect();
   const cfg = await readTelemetryConfig(db);
   await rollupHotTelemetry({ db, cfg });
-  const [c] = await db
-    .query('SELECT VALUE value FROM runtime:`telemetry.cursor`')
-    .collect();
+  const [c] = await db.query('SELECT VALUE value FROM runtime:`telemetry.cursor`').collect();
   // Row recreated, cursor populated.
   assert.ok(c?.[0]?.intuition_telemetry);
   await close(db);
@@ -158,14 +152,10 @@ test('pending recall_log is NOT rolled up; rolls up after evaluated_at is set', 
   // Now evaluate the row.
   const evaluated = new Date(hour.getTime() + 6 * 60_000);
   await db
-    .query(
-      surql`UPDATE recall_log SET outcome='reinforced', evaluated_at=${evaluated}`,
-    )
+    .query(surql`UPDATE recall_log SET outcome='reinforced', evaluated_at=${evaluated}`)
     .collect();
   // Reset the cursor so the next tick re-scans.
-  await db
-    .query('UPSERT runtime:`telemetry.cursor` SET value = {}')
-    .collect();
+  await db.query('UPSERT runtime:`telemetry.cursor` SET value = {}').collect();
   await rollupHotTelemetry({
     db,
     cfg,
@@ -203,9 +193,7 @@ test('per-entry fail-soft: a missing meta_cognition_telemetry table does not blo
   assert.equal(res.per_entry.intuition_telemetry.ok, true);
   assert.equal(res.per_entry.meta_cognition_telemetry.ok, false);
   // Intuition cursor still advances even though meta_cognition failed.
-  const [cur] = await db
-    .query('SELECT VALUE value FROM runtime:`telemetry.cursor`')
-    .collect();
+  const [cur] = await db.query('SELECT VALUE value FROM runtime:`telemetry.cursor`').collect();
   assert.ok(cur?.[0]?.intuition_telemetry, 'intuition cursor advanced');
   await close(db);
 });

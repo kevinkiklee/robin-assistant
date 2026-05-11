@@ -2,10 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  buildRegistry,
-  getEnabledEntries,
-} from '../../cognition/telemetry/rollup-registry.js';
+import { buildRegistry, getEnabledEntries } from '../../cognition/telemetry/rollup-registry.js';
 
 test('buildRegistry returns the four built-in entries', () => {
   const reg = buildRegistry();

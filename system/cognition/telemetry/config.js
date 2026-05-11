@@ -25,9 +25,7 @@
 export async function readTelemetryConfig(db) {
   let v = {};
   try {
-    const [rows] = await db
-      .query('SELECT VALUE value FROM runtime:`telemetry.config`')
-      .collect();
+    const [rows] = await db.query('SELECT VALUE value FROM runtime:`telemetry.config`').collect();
     v = rows?.[0] ?? {};
   } catch {
     v = {};

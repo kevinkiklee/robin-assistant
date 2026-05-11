@@ -31,16 +31,12 @@ function validateDimensions(dimensions) {
     if (t === 'boolean') continue;
     if (t === 'number') {
       if (!Number.isInteger(v)) {
-        throw new Error(
-          `dimension value type: ${k} is float (only string|bool|int allowed)`,
-        );
+        throw new Error(`dimension value type: ${k} is float (only string|bool|int allowed)`);
       }
       continue;
     }
     if (t !== 'string') {
-      throw new Error(
-        `dimension value type: ${k} is ${t} (only string|bool|int allowed)`,
-      );
+      throw new Error(`dimension value type: ${k} is ${t} (only string|bool|int allowed)`);
     }
     if (v.length > DIM_MAX_LEN) {
       throw new Error(`dimension value exceeds 64 chars: ${k}`);

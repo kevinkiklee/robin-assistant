@@ -29,9 +29,7 @@ async function fresh() {
 
 test('0017 seeds runtime:telemetry.config with shadow_mode=true and expected defaults', async () => {
   const db = await fresh();
-  const [rows] = await db
-    .query('SELECT VALUE value FROM runtime:`telemetry.config`')
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`telemetry.config`').collect();
   const cfg = rows?.[0];
   assert.ok(cfg, 'runtime:telemetry.config row missing');
   assert.equal(cfg.enabled, true);
@@ -55,9 +53,7 @@ test('0017 seeds runtime:telemetry.config with shadow_mode=true and expected def
 
 test('0017 initializes runtime:telemetry.cursor with empty value object', async () => {
   const db = await fresh();
-  const [rows] = await db
-    .query('SELECT VALUE value FROM runtime:`telemetry.cursor`')
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`telemetry.cursor`').collect();
   const cur = rows?.[0];
   assert.deepEqual(cur, {});
   await close(db);
@@ -123,10 +119,7 @@ test('0017 backfill stamps legacy recall_log rows with evaluated_at=ts; pending 
 
   // Reinforced row: stamped with evaluated_at = ts.
   assert.ok(byQuery['legacy-reinforced'].evaluated_at, 'reinforced row should have evaluated_at');
-  assert.equal(
-    new Date(byQuery['legacy-reinforced'].evaluated_at).toISOString(),
-    ts.toISOString(),
-  );
+  assert.equal(new Date(byQuery['legacy-reinforced'].evaluated_at).toISOString(), ts.toISOString());
   // Pending row: untouched (no evaluated_at — undefined or null both acceptable).
   assert.ok(
     byQuery['legacy-pending'].evaluated_at == null,

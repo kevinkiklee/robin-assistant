@@ -7,8 +7,8 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { pruneRawTelemetry } from '../../cognition/telemetry/retention.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
@@ -71,12 +71,8 @@ test('prune respects timestampField: telemetry_hourly uses hour; intuition_telem
   });
   await pruneRawTelemetry({ db, table: 'intuition_telemetry', before: cutoff });
 
-  const [a] = await db
-    .query('SELECT count() AS n FROM telemetry_hourly GROUP ALL')
-    .collect();
-  const [b] = await db
-    .query('SELECT count() AS n FROM intuition_telemetry GROUP ALL')
-    .collect();
+  const [a] = await db.query('SELECT count() AS n FROM telemetry_hourly GROUP ALL').collect();
+  const [b] = await db.query('SELECT count() AS n FROM intuition_telemetry GROUP ALL').collect();
   assert.equal(a?.[0]?.n, 1);
   assert.equal(b?.[0]?.n, 1);
   await close(db);
@@ -148,9 +144,7 @@ test('pending hard ceiling: outcome=pending AND old → deleted with explicit wh
     where: 'outcome = "pending"',
   });
   assert.equal(out.count, 1);
-  const [rows] = await db
-    .query('SELECT count() AS n FROM recall_log GROUP ALL')
-    .collect();
+  const [rows] = await db.query('SELECT count() AS n FROM recall_log GROUP ALL').collect();
   assert.equal(rows?.[0]?.n ?? 0, 0);
   await close(db);
 });

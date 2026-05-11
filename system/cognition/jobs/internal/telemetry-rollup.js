@@ -38,9 +38,7 @@ export default async function telemetryRollup({ db }) {
 
   // Stage 2b — pending hard ceiling.
   try {
-    const cutoff = new Date(
-      Date.now() - cfg.pending_recall_log_hard_ceiling_days * 86_400_000,
-    );
+    const cutoff = new Date(Date.now() - cfg.pending_recall_log_hard_ceiling_days * 86_400_000);
     const deleted = await pruneRawTelemetry({
       db,
       table: 'recall_log',

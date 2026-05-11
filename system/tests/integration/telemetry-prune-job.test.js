@@ -6,8 +6,8 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import telemetryPrune from '../../cognition/jobs/internal/telemetry-prune.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
@@ -67,9 +67,7 @@ test('telemetry-prune deletes raw past 7d AND hourly past 90d', async () => {
   const [iCount] = await db
     .query('SELECT count() AS n FROM intuition_telemetry GROUP ALL')
     .collect();
-  const [hCount] = await db
-    .query('SELECT count() AS n FROM telemetry_hourly GROUP ALL')
-    .collect();
+  const [hCount] = await db.query('SELECT count() AS n FROM telemetry_hourly GROUP ALL').collect();
   assert.equal(iCount?.[0]?.n, 1);
   assert.equal(hCount?.[0]?.n, 1);
   await close(db);
@@ -94,9 +92,7 @@ test('telemetry-prune hard ceiling deletes >30d pending recall_log + emits warni
   // not pre-defined as a SCHEMAFULL table — CREATE on an undefined table
   // is allowed in SurrealDB but creates the table SCHEMALESS implicitly.
   // For now, the test just verifies the prune completed.
-  const [rows] = await db
-    .query('SELECT count() AS n FROM recall_log GROUP ALL')
-    .collect();
+  const [rows] = await db.query('SELECT count() AS n FROM recall_log GROUP ALL').collect();
   assert.equal(rows?.[0]?.n ?? 0, 0);
   await close(db);
 });
@@ -125,9 +121,7 @@ test('telemetry-prune default-path pending exclusion (Stage 2): aged pending row
 
 test('telemetry-prune no-ops when enabled=false', async () => {
   const db = await fresh();
-  await db
-    .query("UPDATE runtime:`telemetry.config` SET value.enabled = false")
-    .collect();
+  await db.query('UPDATE runtime:`telemetry.config` SET value.enabled = false').collect();
   const eightDays = new Date(Date.now() - 8 * 86_400_000);
   await db
     .query(
@@ -139,9 +133,7 @@ test('telemetry-prune no-ops when enabled=false', async () => {
   const res = JSON.parse(await telemetryPrune({ db }));
   assert.equal(res.skipped, 'disabled');
   // Row should still be present (no prune ran).
-  const [rows] = await db
-    .query('SELECT count() AS n FROM intuition_telemetry GROUP ALL')
-    .collect();
+  const [rows] = await db.query('SELECT count() AS n FROM intuition_telemetry GROUP ALL').collect();
   assert.equal(rows?.[0]?.n, 1);
   await close(db);
 });

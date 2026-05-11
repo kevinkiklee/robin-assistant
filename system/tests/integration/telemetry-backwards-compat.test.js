@@ -9,9 +9,9 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { readTelemetryConfig } from '../../cognition/telemetry/config.js';
 import { rollupHotTelemetry } from '../../cognition/telemetry/rollup.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
@@ -202,9 +202,7 @@ test('D3 query handling: cadence belief.call rollup dimensions do not include qu
     nowFn: () => new Date(hour.getTime() + 65 * 60_000),
   });
   const [rows] = await db
-    .query(
-      "SELECT dimensions FROM telemetry_hourly WHERE faculty='belief' AND event_kind='call'",
-    )
+    .query("SELECT dimensions FROM telemetry_hourly WHERE faculty='belief' AND event_kind='call'")
     .collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].dimensions.query, undefined);
@@ -275,9 +273,7 @@ test('rollup does not modify recall_log (read-only against raw)', async () => {
     cfg,
     nowFn: () => new Date(hour.getTime() + 65 * 60_000),
   });
-  const [rows] = await db
-    .query('SELECT query, outcome FROM recall_log')
-    .collect();
+  const [rows] = await db.query('SELECT query, outcome FROM recall_log').collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].query, 'sourdough');
   assert.equal(rows[0].outcome, 'reinforced');
