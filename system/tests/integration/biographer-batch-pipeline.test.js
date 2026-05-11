@@ -134,6 +134,147 @@ test('readBatchConfig merges stored values over defaults', async () => {
   await close(db);
 });
 
+test('per-event failure isolation: malformed event #3 of 5 → 4 biographed, 1 in failed_event_ids', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
+  const ev2 = await recordEvent(db, e, { source: 'cli', content: 'two' });
+  const ev3 = await recordEvent(db, e, { source: 'cli', content: 'three' });
+  const ev4 = await recordEvent(db, e, { source: 'cli', content: 'four' });
+  const ev5 = await recordEvent(db, e, { source: 'cli', content: 'five' });
+  const host = fakeHost([
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(ev1.id),
+          entities: [{ name: 'A', type: 'person' }],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev2.id),
+          entities: [{ name: 'B', type: 'person' }],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        // ev3 malformed: bogus entity type.
+        {
+          event_id: String(ev3.id),
+          entities: [{ name: 'C', type: 'unicorn' }],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev4.id),
+          entities: [{ name: 'D', type: 'person' }],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev5.id),
+          entities: [{ name: 'E', type: 'person' }],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+      ],
+    }),
+  ]);
+  await biographerProcessBatch(db, e, host, [ev1.id, ev2.id, ev3.id, ev4.id, ev5.id]);
+
+  const [rows] = await db
+    .query('SELECT id, biographed_at, ts FROM events ORDER BY ts ASC')
+    .collect();
+  const marked = rows.filter((r) => r.biographed_at);
+  assert.equal(marked.length, 4);
+  assert.equal(String(rows[2].id), String(ev3.id));
+  assert.ok(!rows[2].biographed_at, 'ev3 must not be biographed');
+
+  const [rt] = await db
+    .query("SELECT * FROM type::record('runtime', 'biographer') LIMIT 1")
+    .collect();
+  const failed = rt[0]?.value?.failed_event_ids ?? [];
+  assert.ok(
+    failed.some((id) => String(id) === String(ev3.id)),
+    `failed_event_ids should contain ${ev3.id}; got ${JSON.stringify(failed)}`,
+  );
+  const lastError = rt[0]?.value?.last_error;
+  assert.match(
+    lastError ?? '',
+    /^batch_malformed:/,
+    `expected last_error prefixed with 'batch_malformed:', got ${JSON.stringify(lastError)}`,
+  );
+
+  // Failure-isolation assertions: the malformed entity ("C", type "unicorn")
+  // and any edges originating from event #3 must NOT be present.
+  const [unicornRows] = await db
+    .query("SELECT count() AS n FROM entities WHERE name = 'C' GROUP ALL")
+    .collect();
+  assert.equal(unicornRows?.[0]?.n ?? 0, 0, 'entity "C" must not exist');
+
+  // No mentions / about / works_on / participates_in edges originate from ev3.
+  for (const kind of ['mentions', 'about', 'works_on', 'participates_in']) {
+    const [edgeRows] = await db
+      .query(surql`SELECT count() AS n FROM edges WHERE kind = ${kind} AND in = ${ev3.id} GROUP ALL`)
+      .collect();
+    assert.equal(
+      edgeRows?.[0]?.n ?? 0,
+      0,
+      `expected 0 ${kind} edges originating from ${ev3.id}, found ${edgeRows?.[0]?.n}`,
+    );
+  }
+
+  await close(db);
+});
+
+test('outer JSON parse failure triggers single-event fallback', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
+  const ev2 = await recordEvent(db, e, { source: 'cli', content: 'two' });
+  let i = 0;
+  const host = {
+    name: 'fake',
+    isAvailable: async () => true,
+    invokeLLM: async () => {
+      i++;
+      if (i === 1) {
+        // Batch call: not JSON.
+        return { content: 'this is not JSON', usage: {} };
+      }
+      // Fallback per-event calls succeed.
+      return {
+        content: JSON.stringify({
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        }),
+        usage: {},
+      };
+    },
+  };
+  await biographerProcessBatch(db, e, host, [ev1.id, ev2.id], { retryBaseDelayMs: 0 });
+  assert.equal(i, 3, 'expected 1 batch attempt + 2 per-event fallback attempts');
+
+  const [rt] = await db
+    .query("SELECT * FROM type::record('runtime', 'biographer') LIMIT 1")
+    .collect();
+  assert.equal(rt[0]?.value?.last_fallback_reason, 'outer_json');
+  assert.ok((rt[0]?.value?.batches_fallback ?? 0) >= 1);
+  await close(db);
+});
+
 test('cross-event entity dedup: 3 events × "Atlas" → 1 entity row + 3 mentions', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
