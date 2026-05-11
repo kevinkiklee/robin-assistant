@@ -378,6 +378,73 @@ async function gateComputedIsOverdue(db) {
   if (allOk) ok('is_overdue COMPUTED returned expected booleans across 5 cases');
 }
 
+async function gateReinforceCountBucket(_db) {
+  console.log('\nG12 — bucket-by-count reinforcement preserves N-per-memo semantics');
+  // A memo recalled in N distinct pending recall_log rows must get
+  // signal_count += N, not +1. The bucket-by-count optimization in
+  // src/recall/reinforcement.js groups updates by distinct count value.
+  // This gate exercises the multi-recall path against the real reinforcement
+  // module so a future refactor can't silently collapse signal increments.
+
+  // Lazy-import to avoid coupling the verify script to runtime config.
+  const { writeConfig } = await import('../src/runtime/config.js');
+  const { mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const testHome = join(tmpdir(), `robin-verify-g12-${process.pid}`);
+  mkdirSync(testHome, { recursive: true });
+  process.env.ROBIN_HOME = testHome;
+  await writeConfig({ embedder_profile: 'mxbai-1024' });
+
+  // Fresh DB with full migration applied so the reinforcement module finds
+  // the tables it expects (memos, events, recall_log, edges, etc.).
+  const { connect: appConnect, close: appClose } = await import('../src/db/client.js');
+  const { runMigrations } = await import('../src/db/migrate.js');
+  const { paths } = await import('../src/runtime/data-store.js');
+  const verifyDb = await appConnect({ engine: 'mem://' });
+  try {
+    await runMigrations(verifyDb, paths.source.migrations());
+
+    // Seed one memo, three pending recall_log rows each referencing it.
+    const [mc] = await verifyDb
+      .query(
+        `CREATE memos CONTENT { kind: 'knowledge', content: 'shared fact', derived_by: 'manual', signal_count: 1 }`,
+      )
+      .collect();
+    const memoId = (Array.isArray(mc) ? mc[0] : mc).id;
+    const oldTs = new Date(Date.now() - 10 * 60 * 1000);
+    for (let i = 0; i < 3; i++) {
+      await verifyDb
+        .query(
+          `CREATE recall_log CONTENT {
+             ts: $ts, session_id: $sid, query: 'q', k: 1,
+             ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+             outcome: 'pending'
+           }`,
+          { ts: oldTs, sid: `s${i}`, rid: String(memoId) },
+        )
+        .collect();
+    }
+
+    const { evaluatePending } = await import('../src/recall/reinforcement.js');
+    const summary = await evaluatePending(verifyDb);
+    if (summary.reinforced !== 3) {
+      fail(`expected summary.reinforced=3, got ${summary.reinforced}`);
+      return;
+    }
+    const [after] = await verifyDb.query(`SELECT signal_count FROM ${memoId}`).collect();
+    const finalCount = after?.[0]?.signal_count;
+    if (finalCount === 4) {
+      // initial 1 + 3 reinforcements = 4
+      ok(`signal_count: 1 → 4 after 3 pending-recall rows for the same memo`);
+    } else {
+      fail(`expected signal_count=4 (1 base + 3 increments), got ${finalCount}`);
+    }
+  } finally {
+    await appClose(verifyDb);
+  }
+}
+
 async function gateNameLowerIndexStillSelected(db) {
   console.log('\nG18 — entities_name_lower index still selected by planner');
   await db
@@ -416,6 +483,7 @@ async function main() {
     await gateReferenceBackRef(db);
     await gateOnDeleteUnset(db);
     await gateComputedIsOverdue(db);
+    await gateReinforceCountBucket(db);
     await gateNameLowerIndexStillSelected(db);
   } finally {
     try {

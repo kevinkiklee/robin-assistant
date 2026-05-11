@@ -1,8 +1,8 @@
 // edges.js — thin wrapper over `store.relate` for legacy call sites.
 //
-// In the redesigned schema all edges live in a single `edges` table with the
-// kind as a discriminator (composite IDs `edges:[kind, from, to]`). The old
-// per-relation tables (`mentions`, `about`, `precedes`, `works_on`,
+// In the redesigned schema all edges live in a single `edges` TYPE RELATION
+// table with the kind as a discriminator (composite IDs `edges:[kind, in, out]`).
+// The old per-relation tables (`mentions`, `about`, `precedes`, `works_on`,
 // `participates_in`, `co_occurs_with`) are gone.
 //
 // New callers should prefer `store.relate` / `store.relateAll` directly. The

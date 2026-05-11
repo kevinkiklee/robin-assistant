@@ -279,6 +279,26 @@ async function doStatus(out, deps = {}) {
   const configExists = existsSync(paths.data.config());
   out(`config: ${configExists ? 'present' : 'missing'}`);
 
+  // Engine check: surface mismatch between config and on-disk DB so a daemon
+  // configured for `surrealkv` doesn't quietly open a stale `rocksdb` store.
+  // (Detects the migration footgun: switching engines requires `rm -rf db/`.)
+  try {
+    const dbUrl = await defaultDbUrl();
+    const engine = dbUrl.split('://')[0];
+    const dbDir = paths.data.db();
+    let onDisk = null;
+    if (existsSync(join(dbDir, 'CURRENT'))) onDisk = 'rocksdb';
+    else if (existsSync(join(dbDir, 'rev')) || existsSync(join(dbDir, 'lock')))
+      onDisk = 'surrealkv';
+    if (onDisk && onDisk !== engine) {
+      out(`engine: ${engine} (config) ≠ ${onDisk} (on-disk) — destructive reset required`);
+    } else {
+      out(`engine: ${engine}${onDisk ? '' : ' (no on-disk DB yet)'}`);
+    }
+  } catch (e) {
+    out(`engine: error resolving (${e.message})`);
+  }
+
   // Native bindings — the failure that bit us at chrome/lrc test load.
   const sqlite = await (deps.probeBetterSqlite3 ?? probeBetterSqlite3)();
   out(sqlite.message);

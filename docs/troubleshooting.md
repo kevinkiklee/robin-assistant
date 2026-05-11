@@ -2,6 +2,30 @@
 
 Common problems and how to diagnose them under the v2 substrate. The first step in every case is `robin doctor` — it prints a one-fact-per-line health overview.
 
+## After upgrading to alpha.15 (SurrealDB improvements)
+
+### "checksum mismatch for migration 0001-init"
+
+The schema rewrite changed the checksum of `0001-init.surql`. The migration runner refuses to boot when the recorded checksum (in `_migrations`) doesn't match the file. **There is no automatic migrator** (per spec; no v2 users / data).
+
+```sh
+# 1. Stop the daemon
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.mcp.plist
+# 2. (safety) backup
+cp -R <robinHome>/db <robinHome>/db.pre-alpha15
+# 3. Reset
+rm -rf <robinHome>/db/*
+# 4. Restart — new schema applies on boot
+```
+
+### "engine: <X> (config) ≠ <Y> (on-disk)"
+
+`robin doctor` detected that `config.json.db.engine` doesn't match the on-disk store format. Embedded stores can't switch engines in place — same destructive-reset playbook applies. After the reset, the daemon opens the configured engine and applies migrations.
+
+### `surrealkv+versioned://` hangs on connect
+
+Known upstream issue in `@surrealdb/node` 3.0.3: the versioned engine variant doesn't connect (silent hang on `db.connect()`). Workaround: leave `config.json.db.engine` at `surrealkv` (or `rocksdb`) until upstream is fixed. Time-travel reads via `SELECT ... VERSION d'...'` come back online with a one-line config change once the connect bug is resolved.
+
 ## The daemon
 
 ### `robin doctor` says the daemon is not running
