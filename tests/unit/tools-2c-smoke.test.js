@@ -14,7 +14,6 @@ import { createGetProfileTool } from '../../src/mcp/tools/get-profile.js';
 import { createListJournalTool } from '../../src/mcp/tools/list-journal.js';
 import { createListPatternsTool } from '../../src/mcp/tools/list-patterns.js';
 import { createListRulesTool } from '../../src/mcp/tools/list-rules.js';
-import { createListThreadsTool } from '../../src/mcp/tools/list-threads.js';
 import { createRunDreamTool } from '../../src/mcp/tools/run-dream.js';
 import { createUpdateRuleTool } from '../../src/mcp/tools/update-rule.js';
 import { createCandidate } from '../../src/rules/candidates.js';
@@ -42,7 +41,6 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
     createGetKnowledgeTool({ db, embedder: e }),
     createListPatternsTool({ db }),
     createGetProfileTool({ db }),
-    createListThreadsTool({ db }),
     createListJournalTool({ db }),
     createGetHotTool({ db }),
     createListRulesTool({ db }),
@@ -52,7 +50,6 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
     'get_knowledge',
     'list_patterns',
     'get_profile',
-    'list_threads',
     'list_journal',
     'get_hot',
     'list_rules',
@@ -80,17 +77,15 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
     assert.equal(prof.profile.name, undefined);
     assert.equal(prof.profile.display_name, undefined);
   }
-  const th = await tools[3].handler({});
-  assert.deepEqual(th, { threads: [] });
-  const j = await tools[4].handler({});
+  const j = await tools[3].handler({});
   assert.deepEqual(j, { entries: [] });
-  const h = await tools[5].handler({});
+  const h = await tools[4].handler({});
   assert.deepEqual(h, { episodes: [], recent_events: [], entities: [] });
-  const r = await tools[6].handler({});
+  const r = await tools[5].handler({});
   assert.deepEqual(r, { active: [] });
 
   // update_rule on a missing candidate must fail (approve reads first).
-  await assert.rejects(tools[7].handler({ id: 'nope', action: 'approve' }));
+  await assert.rejects(tools[6].handler({ id: 'nope', action: 'approve' }));
   await close(db);
 });
 
@@ -204,6 +199,6 @@ test('run_dream wraps dreamProcess and returns its summary', async () => {
   assert.ok('patterns' in r.summary);
   assert.ok('reflection' in r.summary);
   assert.ok('profile' in r.summary);
-  assert.ok('threads' in r.summary);
+  assert.ok('arcs' in r.summary);
   await close(db);
 });

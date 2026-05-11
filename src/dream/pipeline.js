@@ -9,7 +9,6 @@ import { dreamStepPatterns } from './step-patterns.js';
 import { dreamStepProfile } from './step-profile.js';
 import { dreamStepReflection } from './step-reflection.js';
 import { dreamStepScopeCleanup } from './step-scope-cleanup.js';
-import { dreamStepThreads } from './step-threads.js';
 
 /**
  * Dream pipeline orchestrator.
@@ -50,11 +49,6 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.profile = await dreamStepProfile(db, host, opts.profile);
   } catch (e) {
     summary.profile = { error: e.message };
-  }
-  try {
-    summary.threads = await dreamStepThreads(db, opts.threads);
-  } catch (e) {
-    summary.threads = { error: e.message };
   }
   try {
     summary.arcs = await dreamStepArcs(db, opts.arcs);

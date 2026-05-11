@@ -18,15 +18,6 @@ export const MEMO_KIND_REGISTRY = {
       strength: 'number?',
     },
   },
-  thread: {
-    required: ['content', 'derived_by'],
-    meta_schema: {
-      title: 'string?',
-      summary: 'string?',
-      episode_ids: 'array?',
-      entity_ids: 'array?',
-    },
-  },
   prediction: {
     required: ['content', 'derived_by'],
     meta_schema: {

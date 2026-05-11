@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { connect } from '../../src/db/client.js';
+import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import * as store from '../../src/memory/store.js';
 import { checkOutboundScope } from '../../src/outbound/policy.js';
@@ -28,34 +28,46 @@ const embedder = { embed: async () => new Float32Array(1024) };
 
 test('checkOutboundScope blocks direct private-scope ref', async () => {
   const db = await fresh();
-  const m = await store.note(db, embedder, 'knowledge', {
-    content: 'secret',
-    derived_by: 'manual',
-    scope: 'private',
-  });
-  const r = await checkOutboundScope(db, { tool: 'discord_send', refs: [m.id] });
-  assert.equal(r.ok, false);
-  assert.match(r.reason, /private/);
+  try {
+    const m = await store.note(db, embedder, 'knowledge', {
+      content: 'secret',
+      derived_by: 'manual',
+      scope: 'private',
+    });
+    const r = await checkOutboundScope(db, { tool: 'discord_send', refs: [m.id] });
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /private/);
 
-  const [refusals] = await db
-    .query(`SELECT reason FROM refusals WHERE reason = 'private_scope'`)
-    .collect();
-  assert.equal(refusals.length, 1);
+    const [refusals] = await db
+      .query(`SELECT reason FROM refusals WHERE reason = 'private_scope'`)
+      .collect();
+    assert.equal(refusals.length, 1);
+  } finally {
+    await close(db);
+  }
 });
 
 test('checkOutboundScope allows non-blocked scopes', async () => {
   const db = await fresh();
-  const m = await store.note(db, embedder, 'knowledge', {
-    content: 'public',
-    derived_by: 'manual',
-    scope: 'global',
-  });
-  const r = await checkOutboundScope(db, { tool: 'discord_send', refs: [m.id] });
-  assert.equal(r.ok, true);
+  try {
+    const m = await store.note(db, embedder, 'knowledge', {
+      content: 'public',
+      derived_by: 'manual',
+      scope: 'global',
+    });
+    const r = await checkOutboundScope(db, { tool: 'discord_send', refs: [m.id] });
+    assert.equal(r.ok, true);
+  } finally {
+    await close(db);
+  }
 });
 
 test('checkOutboundScope handles empty refs', async () => {
   const db = await fresh();
-  const r = await checkOutboundScope(db, { tool: 'x', refs: [] });
-  assert.equal(r.ok, true);
+  try {
+    const r = await checkOutboundScope(db, { tool: 'x', refs: [] });
+    assert.equal(r.ok, true);
+  } finally {
+    await close(db);
+  }
 });

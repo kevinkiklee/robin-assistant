@@ -49,7 +49,6 @@ import { createListJournalTool } from '../mcp/tools/list-journal.js';
 import { createListOpenPredictionsTool } from '../mcp/tools/list-open-predictions.js';
 import { createListPatternsTool } from '../mcp/tools/list-patterns.js';
 import { createListRulesTool } from '../mcp/tools/list-rules.js';
-import { createListThreadsTool } from '../mcp/tools/list-threads.js';
 import { createPredictTool } from '../mcp/tools/predict.js';
 import { createRecallTool } from '../mcp/tools/recall.js';
 import { createRecentRefusalsTool } from '../mcp/tools/recent-refusals.js';
@@ -402,7 +401,6 @@ export async function startDaemon() {
       createGetKnowledgeTool({ db: dbHandle, embedder: embedderWrap }),
       createListPatternsTool({ db: dbHandle }),
       createGetProfileTool({ db: dbHandle }),
-      createListThreadsTool({ db: dbHandle }),
       createListJournalTool({ db: dbHandle }),
       createGetHotTool({ db: dbHandle }),
       createListRulesTool({ db: dbHandle }),
