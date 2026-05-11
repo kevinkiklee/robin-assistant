@@ -65,9 +65,35 @@ export default async function runMetaRecallNarrative({ db, embedder, host }) {
   const unusedRows = await selectUnusedRows(db, config);
   const inputRows = mergeAndDedupRows(correctedRows, unusedRows);
 
-  // Privacy filter wired in Task 5.3 — for now, pass-through.
-  const cleanRows = inputRows;
-  const droppedPrivate = 0;
+  // §3.1 / §7 privacy filter — direct + one-hop transitive.
+  let cleanRows;
+  let droppedPrivate;
+  try {
+    const filtered = await filterPrivateScopeRows(db, inputRows);
+    cleanRows = filtered.cleanRows;
+    droppedPrivate = filtered.dropped;
+    if (droppedPrivate > 0 && config.private_scope_action === 'fail') {
+      await emitTelemetry(db, {
+        outcome: 'error',
+        corrected_count: correctedCount,
+        unused_count: unusedRows.length,
+        rows_after_privacy: cleanRows.length,
+        dropped_private: droppedPrivate,
+        error: 'private_scope_contamination',
+        duration_ms: Date.now() - startedAt,
+      });
+      return JSON.stringify({ ran: false, reason: 'private_scope_contamination' });
+    }
+  } catch (err) {
+    await emitTelemetry(db, {
+      outcome: 'error',
+      corrected_count: correctedCount,
+      unused_count: unusedRows.length,
+      error: String(err?.message ?? err),
+      duration_ms: Date.now() - startedAt,
+    });
+    return JSON.stringify({ ran: false, reason: 'privacy_filter_error' });
+  }
 
   if (cleanRows.length === 0) {
     await emitTelemetry(db, {
@@ -184,4 +210,72 @@ async function emitTelemetry(db, fields) {
   } catch {
     // Best-effort — telemetry must not break the job.
   }
+}
+
+async function filterPrivateScopeRows(db, rows) {
+  if (rows.length === 0) return { cleanRows: [], dropped: 0 };
+
+  // Gather all memo ids referenced by ranked_hits.
+  const allMemoIds = new Set();
+  for (const row of rows) {
+    for (const hit of row.ranked_hits ?? []) {
+      const ref = String(hit?.record ?? '');
+      if (ref.startsWith('memos:')) allMemoIds.add(ref);
+    }
+  }
+  if (allMemoIds.size === 0) return { cleanRows: rows, dropped: 0 };
+
+  const memoIdList = [...allMemoIds].map((s) => {
+    const [tbl, key] = s.split(':');
+    return new RecordId(tbl, key);
+  });
+
+  // Direct private-scope memos.
+  const [direct] = await db
+    .query(
+      new BoundQuery('SELECT id FROM memos WHERE id IN $ids AND scope = "private"', {
+        ids: memoIdList,
+      }),
+    )
+    .collect();
+  const blockedDirect = new Set((direct ?? []).map((r) => String(r.id)));
+
+  // Transitive: memos whose `->edges[kind=derived_from]->memos[scope=private]` is non-empty.
+  // `edges` is a TYPE RELATION table with the kind as a discriminator field
+  // (open-enum). Arrow traversal threads through the edges table; the
+  // [WHERE kind=...] selects only the derived_from variant.
+  let blockedTransitive = new Set();
+  try {
+    const [trans] = await db
+      .query(
+        new BoundQuery(
+          `SELECT id FROM memos
+            WHERE id IN $ids
+              AND count(->edges[WHERE kind = 'derived_from']->memos[WHERE scope = 'private']) > 0`,
+          { ids: memoIdList },
+        ),
+      )
+      .collect();
+    blockedTransitive = new Set((trans ?? []).map((r) => String(r.id)));
+  } catch {
+    // Older engine without arrow traversal — fall back to direct only.
+  }
+
+  const allBlocked = new Set([...blockedDirect, ...blockedTransitive]);
+  if (allBlocked.size === 0) return { cleanRows: rows, dropped: 0 };
+
+  const cleanRows = [];
+  let dropped = 0;
+  for (const row of rows) {
+    const refs = (row.ranked_hits ?? [])
+      .map((h) => String(h?.record ?? ''))
+      .filter((ref) => ref.startsWith('memos:'));
+    const isBlocked = refs.some((ref) => allBlocked.has(ref));
+    if (isBlocked) {
+      dropped += 1;
+    } else {
+      cleanRows.push(row);
+    }
+  }
+  return { cleanRows, dropped };
 }
