@@ -1,6 +1,7 @@
 import { unlink } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
+import { forgetHostTouchpoint } from '../../runtime/data-store.js';
 
 export async function mcpUninstall() {
   const home = homedir();
@@ -8,6 +9,7 @@ export async function mcpUninstall() {
     const plistPath = join(home, 'Library/LaunchAgents/io.robin-assistant.mcp.plist');
     try {
       await unlink(plistPath);
+      await forgetHostTouchpoint({ kind: 'launchd-plist', path: plistPath });
       console.log(`removed: ${plistPath}`);
     } catch {
       console.log('plist not present');
@@ -16,6 +18,7 @@ export async function mcpUninstall() {
     const unitPath = join(home, '.config/systemd/user/robin-mcp.service');
     try {
       await unlink(unitPath);
+      await forgetHostTouchpoint({ kind: 'systemd-unit', path: unitPath });
       console.log(`removed: ${unitPath}`);
     } catch {
       console.log('unit not present');

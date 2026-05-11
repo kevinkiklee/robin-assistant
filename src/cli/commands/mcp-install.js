@@ -1,13 +1,18 @@
 import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { readDaemonState } from '../../daemon/state.js';
 import { agentsMdContent, mergeAgentsMdContent } from '../../install/agents-md.js';
 import { generateLaunchdPlist } from '../../install/launchd-plist.js';
 import { generateSystemdUnit } from '../../install/systemd-unit.js';
-import { paths } from '../../runtime/data-store.js';
+import {
+  packageRootDir,
+  paths,
+  recordHostTouchpoint,
+  robinHome,
+} from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 import { mcpEnsureRunning } from './mcp-ensure-running.js';
 
@@ -99,10 +104,9 @@ export async function mcpInstall(argv) {
   const noSupervise = args.flags['no-supervise'] === true;
   const noRegister = args.flags['no-register'] === true;
   const noStart = args.flags['no-start'] === true;
-  const here = dirname(fileURLToPath(import.meta.url));
-  const serverPath = resolve(here, '../../daemon/server.js');
-  const nodeBin = process.execPath;
   const home = homedir();
+  const packageRoot = packageRootDir();
+  const currentRobinHome = robinHome();
 
   let plistPath = null;
   let unitPath = null;
@@ -112,20 +116,31 @@ export async function mcpInstall(argv) {
     const plistDir = join(home, 'Library/LaunchAgents');
     await mkdir(plistDir, { recursive: true });
     plistPath = join(plistDir, 'io.robin-assistant.mcp.plist');
-    const xml = generateLaunchdPlist({
-      label: 'io.robin-assistant.mcp',
-      nodeBin,
-      serverPath,
-      home,
-    });
-    await writeFile(plistPath, xml, 'utf8');
+    const xml = generateLaunchdPlist({ packageRoot, robinHome: currentRobinHome });
+    await recordHostTouchpoint(
+      {
+        kind: 'launchd-plist',
+        path: plistPath,
+        expectedHome: currentRobinHome,
+        label: 'io.robin-assistant.mcp',
+      },
+      () => writeFileSync(plistPath, xml, { mode: 0o644 }),
+    );
     console.log(`installed launchd plist: ${plistPath}`);
   } else if (platform() === 'linux') {
     const unitDir = join(home, '.config/systemd/user');
     await mkdir(unitDir, { recursive: true });
     unitPath = join(unitDir, 'robin-mcp.service');
-    const txt = generateSystemdUnit({ nodeBin, serverPath });
-    await writeFile(unitPath, txt, 'utf8');
+    const txt = generateSystemdUnit({ packageRoot, robinHome: currentRobinHome });
+    await recordHostTouchpoint(
+      {
+        kind: 'systemd-unit',
+        path: unitPath,
+        expectedHome: currentRobinHome,
+        label: 'robin-mcp.service',
+      },
+      () => writeFileSync(unitPath, txt, { mode: 0o644 }),
+    );
     console.log(`installed systemd user unit: ${unitPath}`);
   } else {
     console.error(`platform ${platform()} not supported in 2b; daemon supervision unavailable`);
