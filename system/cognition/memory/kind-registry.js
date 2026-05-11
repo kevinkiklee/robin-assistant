@@ -35,23 +35,32 @@ export const MEMO_KIND_REGISTRY = {
       from_signal: 'array?',
     },
   },
-  // Schema-ready (writer deferred):
+  // Reserved `meta.dimension` values for `reasoning` memos:
+  //   - 'recall_failures' — D2 meta-cognition (weekly recall-failure summaries).
+  //   - 'calibration'     — D3 meta-cognition-calibration (post-revision).
+  // New dimensions extend this comment; the field itself is open-enum.
   reasoning: {
     required: ['content', 'derived_by'],
     meta_schema: {
+      // Legacy keys (pre-D2 producers may write these):
       session_id: 'string?',
       step: 'string?',
-      // D2 + D3 meta-cognition writers (coordinated):
-      dimension: 'string?', // 'calibration' (D3) | 'recall_failures' (D2)
-      from_signal: 'string?', // 'meta_cognition' (shared family tag)
-      domain: 'string?',
-      brier: 'number?',
-      drift: 'number?',
-      accuracy: 'number?',
-      mean_confidence: 'number?',
-      samples: 'number?',
-      trend: 'string?', // 'new' | 'improving' | 'flat' | 'worsening'
-      week_starting: 'string?', // ISO date of Sunday 00:00 local
+      // D2 + D3 meta-cognition writers (coordinated; reserved meta.dimension
+      // values are 'recall_failures' (D2-owned) and 'calibration' (D3-owned)):
+      dimension: 'string?',
+      from_signal: 'string?', // string for reasoning kind (D1's state_inference uses 'array?')
+      domain: 'string?', // D3
+      brier: 'number?', // D3
+      drift: 'number?', // D3
+      accuracy: 'number?', // D3
+      mean_confidence: 'number?', // D3
+      samples: 'number?', // D3
+      trend: 'string?', // D3 — 'new' | 'improving' | 'flat' | 'worsening'
+      period: 'string?', // D2
+      signal_count: 'number?', // D2
+      week_starting: 'string?', // D2 + D3 — ISO date of Sunday 00:00 local
+      clusters: 'number?', // D2
+      recall_log_ids: 'array?', // D2 — lineage (string IDs, NOT derived_from edges)
     },
   },
   session_outcome: {

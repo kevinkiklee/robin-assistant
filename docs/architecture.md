@@ -141,6 +141,14 @@ Seven themes layered on top of the substrate:
   `<!-- current focus -->` block when the latest inference is fresh,
   confident, and not pivoted away from the user's current prompt. Gated by
   `runtime:state_inference.config.enabled` (`false` | `'shadow'` | `true`).
+- **Cognition D2 — Recall-failures meta-cognition.** Weekly Sunday-05:00 LOCAL
+  internal job in `cognition/jobs/internal/meta-recall-narrative.js`. Pure-JS
+  clustering by `about`-edge endpoints; one tier:'fast' LLM call per run;
+  writes a `kind='reasoning'`, `meta.dimension='recall_failures'` memo plus
+  0–3 `rule_candidates` (`kind='behavior'`, `payload.source='meta_cognition'`,
+  distinct from `step-reflection.js`). Gated by
+  `runtime:meta_cognition.config.enabled` (`false` | `'shadow'` | `true`).
+  Telemetry: `meta_cognition_telemetry` (rollup deferred to C3).
 - **Cognition D3 — `belief()` gating + calibration meta-narrative.**
   `belief({query, domain?, k?})` aggregates evidence-backed confidence over
   recalled knowledge memos and returns `assert | soften | unknown`. Pure
@@ -165,7 +173,7 @@ Seven themes layered on top of the substrate:
 7. **Heartbeat** (60s) runs integration syncs, drains biographer queue, marks stale sessions, advances quiet-window cursors, and dispatches due internal jobs (notably `reinforce-recall` every 5 min).
 8. **Nightly at 4 AM**, dream runs a layered DAG (`runDag` over `DREAM_DAG_DEPS`): three layers, fan-out across each. **L1** (`knowledge, patterns, reflection, profile, arcs, commStyle, confidence`) → **L2** (`scopeCleanup, calibration`) → **L3** (`compaction`). Each step is fail-soft (`summary.<step>.error`). The unified `UPDATE events SET dreamed_at = time::now() WHERE dreamed_at IS NONE` mark is a post-layer barrier — it runs once, after every step settles. Parallelism is flag-gated by `runtime:\`dream.config\`.value.parallelism_enabled` (default `false`); budget is enforced between layers against the unified 24-h `cadence_telemetry` sum. Step-knowledge emits `supersedes` when promoting contradicting facts. See also: R-2's `runtime:\`scheduler.config\`` bucket-scheduler runs *periodic tickers* at the daemon level (`system/runtime/daemon/dispatcher-tick.js`); C2's `runDag` orchestrates step concurrency *within one dream tick* (`system/cognition/dream/scheduler.js`).
 9. **Reinforce-recall** (every 5 min) walks `recall_log` rows with `outcome='pending'` and `ts < now - 5min`. For each row: if a `meta.kind='correction'` event landed in the session window -> mark `outcome='corrected'` and refute every memo hit in the ledger. Otherwise -> attribute hits per the `attribute()` pipeline (explicit -> citation -> similarity, with fallback-on-no-reply), and for every hit with `used=true` bump `signal_count += 1`, refresh `decay_anchor`, and emit a corroborate ledger row weighted by use-count. Outcome is `reinforced` when any hit was used, `evaluated_no_used` when attribution matched zero hits with fallback off, `evaluated_no_signal` for empty `ranked_hits`. The labeled output (per-hit `used`/`used_via`) feeds a future reranker.
-10. **Weekly Sunday 05:30 local**, `meta-calibration-narrative` (internal job) summarises per-domain calibration drift over the past 7 days into one `kind='reasoning'`, `meta.dimension='calibration'` memo per domain. When drift is sustained-large (≥ `meta_narrative_rule_threshold` over `meta_narrative_rule_min_weeks` consecutive weeks, default 0.15 / 2 weeks), it emits a `rule_candidates` row with `kind='behavior'` and `payload.source='meta_cognition_calibration'`. Idempotent on `(meta.dimension, meta.domain, meta.week_starting)`. Staggered 30 minutes after D2's recall-failures-narrative (05:00 local).
+10. **Meta-cognition (weekly).** Sunday 05:00 LOCAL: `meta-recall-narrative` (D2) walks `recall_log` for the trailing 7 days of failure patterns and emits a `kind='reasoning'` memo (`meta.dimension='recall_failures'`) plus 0-3 `rule_candidates` (`kind='behavior'`, `payload.source='meta_cognition'`). Skipped when corrections < 5/week. Sunday 05:30 LOCAL (staggered 30 min): `meta-calibration-narrative` (D3) summarises per-domain calibration drift into one `kind='reasoning'` memo per domain (`meta.dimension='calibration'`); when drift is sustained-large (≥ `meta_narrative_rule_threshold` over `meta_narrative_rule_min_weeks` consecutive weeks, default 0.15 / 2 weeks), emits a `rule_candidates` row with `payload.source='meta_cognition_calibration'`. Idempotent on `(meta.dimension, meta.domain, meta.week_starting)`. Subsequent recalls about a cluster's entity can surface either reasoning memo via the widened intuition fan-out (`kind: ['knowledge','reasoning']`).
 
 ## Database shape and example queries
 

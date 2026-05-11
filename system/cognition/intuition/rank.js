@@ -17,6 +17,7 @@ const TRUST_FACTOR = {
   biographer: 0.95,
   dream: 0.9,
   reflection: 0.9,
+  meta_cognition: 0.9, // D2 — weekly meta-cognition over recall failures.
   ingest: 0.95,
   derived: 0.85,
   action_outcome: 0.85,
