@@ -6,3 +6,4 @@ user-data/
 .DS_Store
 tests/fixtures/synthetic-events.json
 tests/fixtures/seed-recall-pairs.json
+.robin-home
