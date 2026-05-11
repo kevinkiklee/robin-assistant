@@ -40,6 +40,19 @@ export async function resolve(db, id, { correct, actual_outcome }) {
   const patch = { resolved_at: new Date(), correct };
   if (actual_outcome) patch.actual_outcome = actual_outcome;
   await store.updateMemoMeta(db, id, patch);
+  // Theme 3: trigger calibration step on resolution.
+  try {
+    await db
+      .query(
+        new BoundQuery(
+          `CREATE dream_triggers CONTENT { step: 'calibration', reason: 'prediction_resolved', source_id: $sid }`,
+          { sid: id },
+        ),
+      )
+      .collect();
+  } catch (e) {
+    console.warn(`[foresight.resolve] cadence trigger failed: ${e.message}`);
+  }
 }
 
 /**

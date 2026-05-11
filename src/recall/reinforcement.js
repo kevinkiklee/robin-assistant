@@ -109,14 +109,31 @@ export async function evaluatePending(db) {
   }
 
   // Theme 2a: emit refute ledger rows for memos in corrected rows.
+  // Theme 3: emit a reflection trigger for each corrected row.
   const correctedMemoIds = new Set();
+  const correctedRowIds = [];
   for (const row of pending) {
     const ob = outcomesByRow.find((o) => String(o.id) === String(row.id));
     if (ob?.outcome !== 'corrected') continue;
+    correctedRowIds.push(row.id);
     for (const hit of row.ranked_hits ?? []) {
       const id = hitRecordId(hit);
       if (!id?.startsWith('memos:')) continue;
       correctedMemoIds.add(id);
+    }
+  }
+  for (const rid of correctedRowIds) {
+    try {
+      await db
+        .query(
+          new BoundQuery(
+            `CREATE dream_triggers CONTENT { step: 'reflection', reason: 'correction_landed', source_id: $sid }`,
+            { sid: rid },
+          ),
+        )
+        .collect();
+    } catch (e) {
+      console.warn(`[reinforce] trigger emit failed: ${e.message}`);
     }
   }
   for (const idStr of correctedMemoIds) {
