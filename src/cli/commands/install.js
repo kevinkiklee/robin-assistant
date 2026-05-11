@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import readline from 'node:readline/promises';
 import { close, connect } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
@@ -8,8 +8,18 @@ import { ensureHookShim } from '../../install/hook-shim.js';
 import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { readConfig, writeConfig } from '../../runtime/config.js';
-import { ensureHome, packageRootDir, paths } from '../../runtime/data-store.js';
+import {
+  discoverExistingHomes,
+  ensureHome,
+  packageRootDir,
+  paths,
+  pointerExists,
+  readPointer,
+  writePointer,
+} from '../../runtime/data-store.js';
+import { migrateHome } from '../../runtime/migrate-home.js';
 import { getSecret, saveSecret } from '../../secrets/dotenv-io.js';
+import { radio } from '../prompts.js';
 import { parseArgs } from '../args.js';
 import { mcpInstall } from './mcp-install.js';
 
@@ -207,6 +217,52 @@ async function installHooksStep({ skipHooks }) {
     const settingsPath = host === 'claude' ? '~/.claude/settings.json' : `~/.${host}/settings.json`;
     console.log(`installed ${count} robin hook entries to ${settingsPath}`);
   }
+}
+
+export async function pickHome({ packageRoot, homedir: homeDir, inputFn }) {
+  const options = [
+    {
+      value: join(packageRoot, 'user-data'),
+      label: 'Inside the package',
+      description: `${join(packageRoot, 'user-data')} (moves with the package directory)`,
+    },
+    {
+      value: join(homeDir, '.robin'),
+      label: 'Hidden in your home dir',
+      description: join(homeDir, '.robin'),
+    },
+    {
+      value: join(homeDir, 'Documents', 'Robin'),
+      label: 'Visible in Documents',
+      description: join(homeDir, 'Documents', 'Robin'),
+    },
+    {
+      value: '__custom__',
+      label: 'Custom path…',
+      customFn: async () => {
+        for (;;) {
+          const raw = (await inputFn('Custom path: ')).trim();
+          if (!raw) {
+            console.error('Empty path; try again.');
+            continue;
+          }
+          const resolved = resolve(raw);
+          const parent = dirname(resolved);
+          if (!existsSync(parent)) {
+            console.error(`Parent directory does not exist: ${parent}. Create it first.`);
+            continue;
+          }
+          return resolved;
+        }
+      },
+    },
+  ];
+  return await radio({
+    question: 'Welcome to Robin. Where should Robin store your data?',
+    options,
+    defaultIndex: 0,
+    inputFn,
+  });
 }
 
 export async function install(argv = [], deps = {}) {
