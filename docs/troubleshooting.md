@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common problems and how to diagnose them. The first step in every case is `robin doctor` — it prints a one-fact-per-line health overview.
+Common problems and how to diagnose them under the v2 substrate. The first step in every case is `robin doctor` — it prints a one-fact-per-line health overview.
 
 ## The daemon
 
@@ -19,7 +19,7 @@ If `mcp start` exits immediately:
 
 ### Daemon crashes immediately after start
 
-Most common cause is profile drift between `config.json` and the DB:
+Most common cause is profile drift between `config.json` and `runtime:embedder`:
 
 ```
 [daemon] config drift detected:
@@ -30,9 +30,11 @@ Most common cause is profile drift between `config.json` and the DB:
 Fix one of two ways:
 
 ```sh
-robin embedder switch <profile-in-config-json>   # migrate schema to match config
+robin embeddings activate <profile-in-config-json>
 # OR edit user-data/config.json back to the runtime profile
 ```
+
+For a full profile swap (DDL the new profile + backfill + flip) use `robin embeddings prepare/backfill/activate`. The legacy `robin embedder switch` still exists but does an in-place re-embed against the same table set; the new flow is preferred.
 
 ### Daemon's supervisor (launchctl / systemctl) isn't auto-restarting
 
@@ -61,18 +63,19 @@ After re-installing hooks, **restart the host session** — Claude Code and Gemi
 
 - Verify the daemon is running: `robin mcp status`.
 - Verify the hook is wired: `robin doctor --lint-hooks` should list a `UserPromptSubmit → intuition` entry.
-- Verify hooks aren't globally disabled: check `hooks.disabled` in `<robinHome>/config.json`. Re-enable with `robin hooks enable intuition` (re-enabling any phase clears the global kill-switch).
-- Telemetry: `SELECT * FROM runtime_intuition_telemetry ORDER BY ts DESC LIMIT 10` — confirms recent fires, hits, latency.
-- v1 cutover suppression: if you have v1 hooks (`$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js`) still installed, v2 intuition yields. The hook prints a one-line stderr notice when this happens.
+- Verify hooks aren't globally disabled: check `hooks.disabled` in `<robinHome>/config.json`. Re-enable with `robin hooks enable intuition`.
+- Telemetry (note the renamed table — drop the `runtime_` prefix):
+
+  ```surql
+  SELECT * FROM intuition_telemetry ORDER BY ts DESC LIMIT 10;
+  ```
 
 ### `discretion` (bash refusal) blocking commands you want to run
 
-Two options:
+1. Disable the hook: `robin hooks disable discretion` (affects the agent too).
+2. Run the command outside the agent's Bash tool.
 
-1. Disable the hook entirely: `robin hooks disable discretion` (also affects the agent — be aware).
-2. Run the command outside the agent's Bash tool (paste into your terminal directly).
-
-To see *why* a command was refused, look at the stderr line Robin prints: `Robin: blocked Bash — <rule-name>: <why>`. The 7 rules are in `src/hooks/bash-patterns.js`.
+To see *why* a command was refused, look at the stderr line: `Robin: blocked Bash — <rule-name>: <why>`. Rules live in `src/hooks/bash-patterns.js`.
 
 ### `discretion` (memory write) refusing content that doesn't actually contain PII
 
@@ -82,30 +85,107 @@ Force the write from the CLI:
 robin remember --force "the content..."
 ```
 
-Agents have no override path — they must escalate. Check the audit:
-
-```sh
-robin refusals list
-```
-
-If the pattern is wrong, file an issue. Patterns live in `src/hooks/pii-patterns.js` and `src/outbound/patterns.js`.
+Agents have no override path — they must escalate. Check the audit: `robin refusals list`. Patterns live in `src/hooks/pii-patterns.js` and `src/outbound/patterns.js`.
 
 ## Memory
+
+### Recall returns no hits
+
+Three checks, in order:
+
+1. **Active profile is set and the right tables exist:**
+
+   ```sh
+   robin embeddings list
+   ```
+
+   `active_profile` should be set, and `embeddings_<profile>_events|memos|entities` should all be present with non-zero row counts. If a backfill is in-flight the counts will lag — `runtime:embedder_backfill` carries the cursor.
+
+2. **Embeddings actually populated for the active profile:**
+
+   ```surql
+   SELECT count() AS n FROM embeddings_mxbai_1024_events GROUP ALL;
+   SELECT count() AS n FROM embeddings_mxbai_1024_memos  GROUP ALL;
+   SELECT count() AS n FROM embeddings_mxbai_1024_entities GROUP ALL;
+   ```
+
+   If a table is empty but the substrate has rows, run `robin embeddings backfill <profile>`.
+
+3. **HNSW index is actually being used by the planner:**
+
+   ```surql
+   EXPLAIN FULL SELECT record, vector::distance::knn() AS dist
+     FROM embeddings_mxbai_1024_events
+     WHERE vector <|6, 64|> $qvec
+     ORDER BY dist LIMIT 6;
+   ```
+
+   Look for `Iterate Index` referencing `embeddings_mxbai_1024_events_vec`. If you see `Iterate Table` instead, the index is missing or the query shape didn't match — re-prepare the profile.
+
+For a quick ad-hoc recall: `node scripts/dev-recall.js "your query"`.
+
+### Reinforcement loop not running
+
+The `reinforce-recall` internal job runs every 5 minutes. If `recall_log` rows pile up with `outcome='pending'`, the loop is stalled.
+
+```surql
+-- Is the job present + enabled + not stuck in_flight?
+SELECT name, enabled, schedule, in_flight, last_run_at, last_run_at_success, last_error
+FROM runtime_jobs WHERE name = 'reinforce-recall';
+
+-- Pending rows older than the eval window:
+SELECT count() AS pending FROM recall_log WHERE outcome = 'pending' AND ts < time::now() - 5m GROUP ALL;
+
+-- Outcome distribution over the last day:
+SELECT outcome, count() AS n FROM recall_log WHERE ts > time::now() - 1d GROUP BY outcome;
+```
+
+Common causes:
+
+- `in_flight = true` but daemon was killed mid-run → reset:
+
+  ```sh
+  robin jobs run reinforce-recall --force
+  ```
+
+- Job disabled in `runtime_jobs`: `robin jobs enable reinforce-recall`.
+- Job missing entirely: `robin jobs reload` re-syncs from `src/jobs/builtin/`.
+
+### A memo isn't surfacing in recall
+
+The substrate keeps superseded and contradicted memos; ranking suppresses them. Check the three usual suspects:
+
+```surql
+-- Was it superseded? (inbound supersedes edge → fn::freshness returns 0)
+SELECT * FROM edges WHERE kind = 'supersedes' AND to = $memo_id;
+
+-- What is its current freshness?
+SELECT id, content, fn::freshness(id) AS fresh FROM $memo_id;
+
+-- Is it under an ephemeral scope (filtered by default)?
+SELECT id, scope FROM $memo_id;
+-- scope:'session:*' / 'temp:*' is excluded from default recall;
+-- pass { scopes: ['*'] } for admin queries.
+
+-- How many contradictions does it carry?
+SELECT count() AS n FROM edges
+WHERE kind = 'contradicts' AND (from = $memo_id OR to = $memo_id) GROUP ALL;
+```
+
+A memo with `fresh = 0` has been superseded. To see what replaced it:
+
+```surql
+SELECT id, content, derived_at FROM memos
+WHERE id IN (SELECT VALUE from FROM edges WHERE kind = 'supersedes' AND to = $memo_id);
+```
 
 ### `robin journal` is empty after a session
 
 Possible causes:
 
-- Biographer never ran. Check `<robinHome>/cache/logs/biographer.log` for the most recent invocation. Manually run `robin biographer-catchup` to drain pending events.
-- The Stop hook didn't fire. Verify with `robin doctor --lint-hooks` — should list a `Stop → stop` entry.
+- Biographer never ran. Check `<robinHome>/cache/logs/biographer.log`. Manually drain: `robin biographer-catchup`.
+- Stop hook didn't fire. `robin doctor --lint-hooks` should list a `Stop → stop` entry.
 - The conversation-capture pipeline skipped the turn. Skip log lines are in `biographer.log` with a `skip_reason` field: `no_transcript_path`, `no_assistant_turn`, `single_word_ack`, `pure_tool_turn`, `empty_turn`, `dedup_hit`, `pii_refused`.
-
-### Recall returns nothing relevant
-
-- Verify there are events to recall: `SELECT count() FROM events GROUP ALL`.
-- Verify embeddings exist: `SELECT count(IF embedding IS NOT NONE THEN 1 END) AS embedded, count() AS total FROM events GROUP ALL`.
-- Verify your embedder profile matches what's in the DB: `robin doctor` prints both.
-- For a one-off ad-hoc query: `node scripts/dev-recall.js "your query"`.
 
 ### Biographer keeps failing on the same event
 
@@ -125,13 +205,14 @@ If it fails again, inspect the event's content for an unusual shape (very long, 
 
 ### Rule candidates aren't appearing
 
-Reflection requires ≥ 3 correction events clustering (cosine ≥ 0.85, within 30 days). To inspect:
+Reflection requires ≥ 3 correction events clustering (cosine ≥ 0.85, within 30 days):
 
 ```surql
-SELECT count() AS n FROM events WHERE meta.kind = 'correction' AND ts >= time::now() - 30d;
+SELECT count() AS n FROM events
+WHERE meta.kind = 'correction' AND ts >= time::now() - 30d;
 ```
 
-If `n < 3`, you simply don't have enough correction signal yet. Use `record_correction` (via the MCP tool or `robin remember`-with-correction-meta) to accumulate.
+If `n < 3`, you simply don't have enough correction signal yet.
 
 ## Introspection warnings
 
@@ -145,10 +226,12 @@ Boot output like:
 means the live filesystem diverged from the manifest baseline. Two cases:
 
 - **Intentional change** (you upgraded the package, edited code on a dev clone, rotated `.env` permissions): rebaseline.
+
   ```sh
   robin doctor --rebaseline
   ```
-- **Unintentional change** (you don't know why a tracked file changed): investigate before rebaseling. The finding includes `expected` and `actual` sha256s; `git status` and `git diff` against the tracked file will usually explain.
+
+- **Unintentional change**: investigate before rebaselining. The finding includes `expected` and `actual` sha256s; `git status` and `git diff` against the tracked file will usually explain.
 
 The `no_baseline` finding (`baselined=false`) means `<robinHome>/manifest.json` is missing — run `robin install` to write one. The daemon still runs without it.
 
@@ -156,29 +239,24 @@ The `no_baseline` finding (`baselined=false`) means `<robinHome>/manifest.json` 
 
 ### `robin integrations list` shows an integration as `unavailable`
 
-Each integration's manifest declares the env keys it needs. Missing keys → `unavailable`. The daemon stays up; only that integration is dormant. Check what it wants:
+Each integration's manifest declares the env keys it needs. Missing keys → `unavailable`. Check what it wants:
 
 ```sh
-robin secrets list                 # what's set
-cat src/integrations/<name>/manifest.json   # what's needed
-```
-
-Set the missing key:
-
-```sh
+robin secrets list
+cat src/integrations/<name>/manifest.json
 robin secrets set <KEY_NAME>
 ```
 
-### An integration's `next_run_at` keeps slipping into the future
+### `next_run_at` keeps slipping into the future
 
-Backoff is active — the integration is failing repeatedly. Check `consecutive_failures`:
+Backoff is active — the integration is failing repeatedly:
 
 ```surql
 SELECT name, consecutive_failures, last_error, next_run_at
-FROM type::record('runtime', 'integrations')
+FROM type::record('runtime', 'integrations');
 ```
 
-The error message lives in `last_error`. Fix and reset:
+Fix and reset:
 
 ```sh
 robin integrations run <name>    # one manual run (clears backoff on success)
@@ -188,25 +266,20 @@ robin integrations run <name>    # one manual run (clears backoff on success)
 
 ```sh
 robin auth <google|spotify|whoop>     # re-runs the loopback flow
-```
-
-For headless boxes, use `--code`:
-
-```sh
-robin auth google --code
+robin auth google --code              # headless box variant
 ```
 
 ## Schema migrations
 
 ### `robin migrate` claims pending migrations but the DB looks current
 
-The `_migrations` table tracks applied versions. Re-check:
+The `_migrations` table tracks applied versions. After v2 there are far fewer files — `0001-init.surql` plus one `0002-embeddings-<profile>.surql` matching the configured profile:
 
 ```surql
-SELECT version, name, applied_at FROM _migrations ORDER BY version;
+SELECT version, name, applied_at, checksum FROM _migrations ORDER BY version;
 ```
 
-If a migration was applied manually (via `surreal sql`) without recording, the runner will re-apply. Either delete the manual changes and re-run, or insert the matching `_migrations` row manually.
+The runner refuses on checksum mismatch — already-applied migrations must never be edited. Create a new migration instead.
 
 ### Migration runner crashes with "Transaction conflict"
 
@@ -217,6 +290,34 @@ robin mcp stop
 robin migrate
 ```
 
+### DB migration failed mid-flight
+
+The migration runner tars `<robinHome>/db/` into `<robinHome>/backup/<timestamp>.tar` before applying each migration. If a migration aborts and leaves the DB in a weird state:
+
+```sh
+robin mcp stop
+ls <robinHome>/backup/          # find the pre-migration archive
+rm -rf <robinHome>/db/*
+tar -xf <robinHome>/backup/<timestamp>.tar -C <robinHome>/db/
+# inspect / fix the migration .surql, then:
+robin migrate
+```
+
+## Common SurrealQL footguns
+
+These corrections came out of the v2 redesign verification gates and have bitten people in production:
+
+- **`type::thing` was renamed to `type::record`** in SurrealDB v3.
+- **`math::log(x, 2)` is the two-arg form** for log_2; the one-arg variant is rejected.
+- **`math::min([a, b])` takes an array**, not multiple args.
+- **`SET field += 1` is the canonical UPSERT counter idiom.** `weight = (weight ?? 0) + 1` doesn't increment on existing rows under MERGE.
+- **`RecordId.table` returns a `Table` object**, not a string — coerce with `String(rec.table)` in JS.
+- **JS `null` binds as SurrealDB `NULL`**, not `NONE` — optional fields should be omitted from SET clauses, not bound as null.
+- **`value` is a SurrealQL keyword.** Use `SELECT VALUE value FROM …` (the flattener consumes the keyword in the projection position).
+- **`TYPE NORMAL` is incompatible with graph arrows** (`->edges->entities`). The v2 schema uses `TYPE NORMAL` on `edges` for composite-ID idempotent UPSERT; therefore traversals use explicit `SELECT … FROM edges WHERE kind = X AND from = $id`, not arrow syntax.
+- **`FLEXIBLE` comes after `TYPE`** in `DEFINE FIELD`: write `TYPE object FLEXIBLE`, not `FLEXIBLE TYPE object`.
+- **`array<object>` doesn't accept `FLEXIBLE` on the parent.** Use `array` (untyped) plus `array[*] TYPE object FLEXIBLE` for nested object arrays.
+
 ## When in doubt
 
 ```sh
@@ -226,6 +327,7 @@ robin doctor --purge-stale-sessions  # clean runtime_sessions
 robin doctor --rebaseline            # rewrite introspection manifest
 robin sessions --stale               # active vs stale sessions
 robin refusals list                  # recent in/outbound refusal audit
+robin embeddings list                # active/read profile + tables + counts
 ```
 
 If a faculty is misbehaving and the audit doesn't explain it, the per-faculty deep dive in [`faculties.md`](faculties.md) lists the relevant files, tables, and disable knobs.
