@@ -104,7 +104,11 @@ export async function intuitionEndpoint({
     const [eventResult, memoResult] = await Promise.all([
       recall(db, embedder, combined, { limit: k, since }),
       store
-        .searchMemos(db, embedder, combined, { kind: 'knowledge', limit: k, since })
+        .searchMemos(db, embedder, combined, {
+          kind: ['knowledge', 'reasoning'],
+          limit: k,
+          since,
+        })
         .catch(() => ({ hits: [] })),
     ]);
 
