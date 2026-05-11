@@ -133,3 +133,56 @@ test('readBatchConfig merges stored values over defaults', async () => {
   assert.equal(cfg.max_wait_ms, 3000);
   await close(db);
 });
+
+test('cross-event entity dedup: 3 events × "Atlas" → 1 entity row + 3 mentions', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const evt1 = await recordEvent(db, e, { source: 'cli', content: 'Atlas planning' });
+  const evt2 = await recordEvent(db, e, { source: 'cli', content: 'Atlas update' });
+  const evt3 = await recordEvent(db, e, { source: 'cli', content: 'Atlas review' });
+  const host = fakeHost([
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(evt1.id),
+          entities: [{ name: 'Atlas', type: 'project' }],
+          edges: [],
+          about: ['Atlas'],
+          episode_continues_previous: false,
+          episode_summary: null,
+        },
+        {
+          event_id: String(evt2.id),
+          entities: [{ name: 'Atlas', type: 'project' }],
+          edges: [],
+          about: ['Atlas'],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        {
+          event_id: String(evt3.id),
+          entities: [{ name: 'Atlas', type: 'project' }],
+          edges: [],
+          about: ['Atlas'],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+      ],
+    }),
+  ]);
+  await biographerProcessBatch(db, e, host, [evt1.id, evt2.id, evt3.id]);
+
+  const [entRows] = await db.query('SELECT count() AS n FROM entities GROUP ALL').collect();
+  assert.equal(entRows[0].n, 1, 'expected 1 Atlas entity');
+
+  const [mentRows] = await db
+    .query("SELECT count() AS n FROM edges WHERE kind = 'mentions' GROUP ALL")
+    .collect();
+  assert.equal(mentRows[0].n, 3, 'expected 3 mentions edges (one per event)');
+
+  const [aboutRows] = await db
+    .query("SELECT count() AS n FROM edges WHERE kind = 'about' GROUP ALL")
+    .collect();
+  assert.equal(aboutRows[0].n, 3);
+  await close(db);
+});
