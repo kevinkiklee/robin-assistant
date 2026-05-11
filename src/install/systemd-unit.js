@@ -1,13 +1,21 @@
-export function generateSystemdUnit({ nodeBin, serverPath }) {
+/**
+ * Generate a systemd --user unit file for the Robin daemon.
+ *
+ * @param {{ packageRoot: string, robinHome: string }} args
+ * @returns {string} unit file content
+ */
+export function generateSystemdUnit({ packageRoot, robinHome }) {
   return `[Unit]
-Description=Robin v2 MCP daemon
-After=network.target
+Description=Robin MCP daemon
+After=default.target
 
 [Service]
 Type=simple
-ExecStart=${nodeBin} ${serverPath}
+Environment=ROBIN_HOME=${robinHome}
+ExecStart=${packageRoot}/bin/robin mcp start --foreground
 Restart=on-failure
-RestartSec=5
+StandardOutput=append:${robinHome}/cache/logs/daemon.log
+StandardError=append:${robinHome}/cache/logs/daemon.log
 
 [Install]
 WantedBy=default.target
