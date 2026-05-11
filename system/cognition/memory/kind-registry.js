@@ -41,6 +41,17 @@ export const MEMO_KIND_REGISTRY = {
     meta_schema: {
       session_id: 'string?',
       step: 'string?',
+      // D2 + D3 meta-cognition writers (coordinated):
+      dimension: 'string?', // 'calibration' (D3) | 'recall_failures' (D2)
+      from_signal: 'string?', // 'meta_cognition' (shared family tag)
+      domain: 'string?',
+      brier: 'number?',
+      drift: 'number?',
+      accuracy: 'number?',
+      mean_confidence: 'number?',
+      samples: 'number?',
+      trend: 'string?', // 'new' | 'improving' | 'flat' | 'worsening'
+      week_starting: 'string?', // ISO date of Sunday 00:00 local
     },
   },
   session_outcome: {
