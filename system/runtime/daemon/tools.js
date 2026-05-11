@@ -67,7 +67,11 @@ export function buildTools(ctx) {
       db: ctx.db,
       embedder: ctx.embedder.wrap,
       detector: ctx.detector,
-      getSessionId: () => null,
+      // B1.0: read from the live sessions context. When future work populates
+      // sessions.active during a hook-bound MCP call, recall_log rows from
+      // MCP recall pick up the session_id. Until then this remains null —
+      // identical to the prior stub — but the wiring is in place.
+      getSessionId: () => ctx.sessions?.active?.session_id ?? null,
     }),
     createRememberTool({ db: ctx.db, embedder: ctx.embedder.wrap, queue: ctx.queue }),
     createRunBiographerTool({ db: ctx.db, processor: ctx.queue.enqueue }),

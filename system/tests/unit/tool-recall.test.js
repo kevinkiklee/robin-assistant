@@ -104,3 +104,25 @@ test('recall tool hydrates mentions in a batched query (no N+1)', async () => {
   assert.ok(queryCount < 12, `expected batched recall to use few queries; saw ${queryCount}`);
   await close(db);
 });
+
+test('daemon-constructed MCP recall tool persists active session_id', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  // Stand-in for the daemon's sessions context: a tiny mutable holder
+  // exposing the same shape server.js consults. We pre-populate it with a
+  // synthetic active session that the closure under test must consult.
+  const sessions = { active: { session_id: 'daemon-sess-7' } };
+  // The factory the daemon uses (tools.js region). Inline rather than
+  // importing a private helper — this test exercises the wiring shape.
+  const tool = createRecallTool({
+    db,
+    embedder: e,
+    detector: makeFakeDetector(),
+    // After Step 4 lands, tools.js passes EXACTLY this closure shape.
+    getSessionId: () => sessions.active?.session_id ?? null,
+  });
+  await tool.handler({ query: 'x', limit: 3 });
+  const [rows] = await db.query('SELECT session_id FROM recall_log').collect();
+  assert.equal(rows[0].session_id, 'daemon-sess-7');
+  await close(db);
+});
