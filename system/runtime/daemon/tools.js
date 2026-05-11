@@ -39,6 +39,7 @@ import { createRunDreamTool } from '../../io/mcp/tools/run-dream.js';
 import { createRunJobTool } from '../../io/mcp/tools/run-job.js';
 import { createShowPendingTriggersTool } from '../../io/mcp/tools/show-pending-triggers.js';
 import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js';
+import { createShowTelemetryRollupTool } from '../../io/mcp/tools/show-telemetry-rollup.js';
 import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
 
@@ -148,6 +149,7 @@ export function buildTools(ctx) {
     createExplainActionTrustTool({ db: ctx.db }),
     createShowPendingTriggersTool({ db: ctx.db }),
     createShowStepHealthTool({ db: ctx.db }),
+    createShowTelemetryRollupTool({ db: ctx.db }),
     createRecentRefusalsTool({ db: ctx.db }),
     createArchiveHistoryTool({ db: ctx.db }),
   );

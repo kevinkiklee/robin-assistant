@@ -15,6 +15,7 @@ const INTROSPECTION_TOOLS = [
   'system/io/mcp/tools/explain-action-trust.js',
   'system/io/mcp/tools/show-pending-triggers.js',
   'system/io/mcp/tools/show-step-health.js',
+  'system/io/mcp/tools/show-telemetry-rollup.js',
   'system/io/mcp/tools/recent-refusals.js',
   'system/io/mcp/tools/archive-history.js',
 ];
