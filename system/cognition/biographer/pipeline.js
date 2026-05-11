@@ -88,6 +88,28 @@ async function recordFailure(db, eventId, error) {
 }
 
 export async function biographerProcess(db, embedder, host, eventId, opts = {}) {
+  const r = await biographerProcessBatch(db, embedder, host, [eventId], opts);
+  return r.perEvent.get(String(eventId)) ?? { skipped: true, reason: 'unknown' };
+}
+
+export async function biographerProcessBatch(db, embedder, host, eventIds, opts = {}) {
+  const perEvent = new Map();
+  if (!Array.isArray(eventIds) || eventIds.length === 0) {
+    return { perEvent };
+  }
+  for (const eventId of eventIds) {
+    try {
+      const r = await _processOne(db, embedder, host, eventId, opts);
+      perEvent.set(String(eventId), r);
+    } catch (e) {
+      perEvent.set(String(eventId), { failed: true, error: e.message });
+      throw e;
+    }
+  }
+  return { perEvent };
+}
+
+async function _processOne(db, embedder, host, eventId, opts = {}) {
   const retryBaseDelayMs = opts.retryBaseDelayMs ?? 1000;
   // 1. Read event; skip if already biographed
   const [eventRows] = await db.query(surql`SELECT * FROM ${eventId}`).collect();
