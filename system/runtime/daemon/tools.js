@@ -2,6 +2,7 @@ import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';
+import { createBeliefTool } from '../../io/mcp/tools/belief.js';
 import { createCheckActionTool } from '../../io/mcp/tools/check-action.js';
 import { createEndorseTool } from '../../io/mcp/tools/endorse.js';
 import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
@@ -145,6 +146,11 @@ export function buildTools(ctx) {
     createGetArcTool({ db: ctx.db }),
     createExplainRecallTool({ db: ctx.db }),
     createExplainBeliefTool({ db: ctx.db }),
+    createBeliefTool({
+      db: ctx.db,
+      embedder: ctx.embedder.wrap,
+      catalog: ctx.catalog,
+    }),
     createExplainActionTrustTool({ db: ctx.db }),
     createShowPendingTriggersTool({ db: ctx.db }),
     createShowStepHealthTool({ db: ctx.db }),
