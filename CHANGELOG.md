@@ -21,12 +21,33 @@ Nine post-alpha.16 cognition features landed in two parallel waves:
 - **C2: Dream DAG + persona refactor.** Layered concurrent scheduler in `system/cognition/dream/{dag,scheduler,step-registry,telemetry,dream-budget}.js`. Three layers L1 (`knowledge, patterns, reflection, profile, arcs, commStyle, confidence`) → L2 (`scopeCleanup, calibration`) → L3 (`compaction`). `updatePersonaFields` refactored from `UPSERT MERGE` to field-scoped `UPDATE SET` (fixes cross-process MERGE race). 80/20 dream/cadence budget split. Migration `0020-dream-dag.surql`. Flag-gated via `runtime:dream.config.parallelism_enabled`.
 - **C3: Telemetry umbrella.** New `telemetry_hourly` table + per-faculty `rollup-registry.js`. Hourly aggregator (`telemetry-rollup.js`) + retention (`telemetry-prune.js`). Privacy/cardinality contract on dimensions (string|bool|int only, ≤64 chars, ASCII, ≤16 keys for object fan-out). New MCP tool `show_telemetry_rollup` (shadow_mode for first week). New indexes on `recall_log.evaluated_at`. Doctor probe for pending recall_log > 7d. Migration `0017-telemetry-umbrella.surql`.
 
+### Cognition wave default-on flip (migration `0021-cognition-wave-enable.surql`)
+
+Operator default. After this migration every cognition-wave feature is live:
+
+| Feature | Runtime config | New default |
+|---|---|---|
+| B1 per-hit reinforcement | `runtime:`reinforcement.config`.value.attribution_mode` | `'hybrid'` |
+| B2 contradiction surfacing | `runtime:recall.value.conflict_surfacing_enabled` | `true` |
+| C2 dream DAG parallelism | `runtime:`dream.config`.value.parallelism_enabled` | `true` |
+| C3 telemetry umbrella | `runtime:`telemetry.config`.value.shadow_mode` | `false` |
+| D2 recall-failures meta-cognition | `runtime:`meta_cognition.config`.value.enabled` | `true` |
+| D3 belief() gating | `runtime:`belief.config`.value.shadow_mode` | `false` |
+
+Already-on (no flip needed): A1 cosine MMR, A2 entity boost, C1 biographer batching (default), D1 state_inference (flipped to `true` by 0014). Operators can revert any flag via a one-line `UPDATE runtime:`<key>` SET value.<field> = <old>;` — the 5-second config cache picks up the flip on the next call.
+
+### Follow-up cleanups
+
+- **Batched CLI catchup.** `robin biographer-process-pending` and `robin biographer-catchup` now group pending events by source and call `biographerProcessBatch` in chunks of 8 (matching the daemon's accumulator default), with per-event fallback if the batch call fails. Closes C1's "CLIs still loop single-event" follow-up.
+- **C1 Gate #7 verification.** New integration test in `biographer-batch-pipeline.test.js` makes the host throw 3 times on the batch call, asserts retry budget is exhausted, fallback runs per-event, and `runtime:biographer.value.last_fallback_reason='network'` lands. Closes the deferred C1 verification gate.
+- **Lint warnings cleared.** Two pre-existing optional-chain warnings in `system/cognition/belief/calibration.js` resolved; lint now reports 0 warnings.
+
 ### Test coverage delta
 
 - Unit tests: 1060 → **1369** (+309)
-- Integration tests: 124 → **258** passing (+134; 1 pre-existing skip)
-- Lint clean (Biome, 755 files)
-- All 9 features ship behind explicit runtime flags (`enabled` three-valued for D1/D2; `conflict_surfacing_enabled`/`entity_boost_enabled`/`mmr_use_cosine` for B2/A2/A1; `parallelism_enabled` for C2; `shadow_mode` for C3/D3). Initial rollout state for every feature is conservative (off, shadow, or pre-B1 default), so the merge is behaviorally a no-op until operators flip flags.
+- Integration tests: 124 → **259** passing (+135; 1 pre-existing skip)
+- Lint: **clean** (Biome, 755 files, 0 warnings)
+- All 9 features ship with operator-controlled flags. Migration 0021 flips them to live defaults; tests that exercise the off/shadow path now set their precondition inline so they remain meaningful post-flip.
 
 
 
