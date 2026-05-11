@@ -27,6 +27,7 @@ import { createAuditTool } from '../mcp/tools/audit.js';
 import { createCheckActionTool } from '../mcp/tools/check-action.js';
 import { createEndorseTool } from '../mcp/tools/endorse.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
+import { createGetArcTool } from '../mcp/tools/get-arc.js';
 import { createGetCommStyleTool } from '../mcp/tools/get-comm-style.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
 import { createGetHotTool } from '../mcp/tools/get-hot.js';
@@ -37,6 +38,7 @@ import { createIngestTool } from '../mcp/tools/ingest.js';
 import { createIntegrationRunTool } from '../mcp/tools/integration-run.js';
 import { createIntegrationStatusTool } from '../mcp/tools/integration-status.js';
 import { createLintTool } from '../mcp/tools/lint.js';
+import { createListArcsTool } from '../mcp/tools/list-arcs.js';
 import { createListEpisodesTool } from '../mcp/tools/list-episodes.js';
 import { createListJobsTool } from '../mcp/tools/list-jobs.js';
 import { createListJournalTool } from '../mcp/tools/list-journal.js';
@@ -456,6 +458,8 @@ export async function startDaemon() {
     tools.push(createListOpenPredictionsTool({ db: dbHandle }));
     tools.push(createEndorseTool({ db: dbHandle }));
     tools.push(createRefuteTool({ db: dbHandle }));
+    tools.push(createListArcsTool({ db: dbHandle }));
+    tools.push(createGetArcTool({ db: dbHandle }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
