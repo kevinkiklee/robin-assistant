@@ -1,15 +1,21 @@
-const ENTITY_EDGES = ['works_on', 'participates_in', 'co_occurs_with'];
+// related_entities — neighbor lookup over the unified edges table.
+//
+// Replaces the old `->edge_table->entities` graph traversal syntax (per-table
+// edges are gone). Selects from `edges` directly, filtering by `kind` and
+// returning the "other" endpoint for each row.
+
+const ENTITY_EDGE_KINDS = ['works_on', 'participates_in', 'occurs_with'];
 
 export function createRelatedEntitiesTool({ db }) {
   return {
     name: 'related_entities',
     description:
-      'Find entities connected to a given entity via graph edges (works_on, co_occurs_with, etc.). Depth 1 or 2.',
+      'Find entities connected to a given entity via graph edges (works_on, occurs_with, etc.). Depth 1 or 2.',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
-        edge_types: { type: 'array', items: { type: 'string', enum: ENTITY_EDGES } },
+        edge_types: { type: 'array', items: { type: 'string', enum: ENTITY_EDGE_KINDS } },
         depth: { type: 'integer', enum: [1, 2], default: 1 },
         limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
       },
@@ -17,28 +23,45 @@ export function createRelatedEntitiesTool({ db }) {
     },
     handler: async (args) => {
       const idRef = args.id.startsWith('entities:') ? args.id : `entities:${args.id}`;
-      const edgeTypes = args.edge_types ?? ENTITY_EDGES;
+      // Accept the legacy alias `co_occurs_with` from older callers.
+      const requested = (args.edge_types ?? ENTITY_EDGE_KINDS).map((k) =>
+        k === 'co_occurs_with' ? 'occurs_with' : k,
+      );
       const limit = args.limit ?? 20;
 
       const related = [];
-      for (const et of edgeTypes) {
-        const [rows] = await db
-          .query(`SELECT ->${et}->entities.* AS neighbors, ->${et}.* AS edges FROM ${idRef}`)
+      for (const kind of requested) {
+        if (related.length >= limit) break;
+        // `IF from = $self THEN to ELSE from END` collapses direction so
+        // symmetric kinds (occurs_with) return the other endpoint regardless
+        // of which side this entity sits on after canonical ordering.
+        const sql = `SELECT
+            IF from = ${idRef} THEN to ELSE from END AS other,
+            weight
+          FROM edges
+          WHERE kind = '${kind}' AND (from = ${idRef} OR to = ${idRef})
+          ORDER BY weight DESC NULLS LAST
+          LIMIT ${limit}`;
+        const [rows] = await db.query(sql).collect();
+        const others = rows ?? [];
+        if (others.length === 0) continue;
+        const [entRows] = await db
+          .query(`SELECT id, name, type FROM entities WHERE id IN $ids`, {
+            ids: others.map((r) => r.other),
+          })
           .collect();
-        const neighbors = rows[0]?.neighbors ?? [];
-        const edges = rows[0]?.edges ?? [];
-        for (let i = 0; i < neighbors.length; i++) {
+        const entById = new Map((entRows ?? []).map((e) => [String(e.id), e]));
+        for (const r of others) {
           if (related.length >= limit) break;
-          const n = neighbors[i];
-          const eRow = edges[i];
+          const n = entById.get(String(r.other));
+          if (!n) continue;
           related.push({
             entity: { id: String(n.id), name: n.name, type: n.type },
-            edge_type: et,
-            ...(eRow?.strength != null ? { strength: eRow.strength } : {}),
+            edge_type: kind,
+            ...(r.weight != null ? { strength: r.weight } : {}),
             distance: 1,
           });
         }
-        if (related.length >= limit) break;
       }
       return { related: related.slice(0, limit) };
     },
