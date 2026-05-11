@@ -16,9 +16,13 @@ test('robin-comm-style — null shape shows "no comm-style inferred yet" fallbac
 test('robin-comm-style — populated shape shows fields', () => {
   const md = agentsMdContent({
     commStyle: {
-      tone: 'terse', formality: 'casual', emoji_ok: false,
-      direct_feedback_ok: true, code_comment_density: 'minimal',
-      summary_style: 'bullets', confidence: 0.7,
+      tone: 'terse',
+      formality: 'casual',
+      emoji_ok: false,
+      direct_feedback_ok: true,
+      code_comment_density: 'minimal',
+      summary_style: 'bullets',
+      confidence: 0.7,
       last_synthesized_at: new Date('2026-05-10T04:00:00Z'),
     },
   });

@@ -104,17 +104,20 @@ export async function synthesizeCommStyle(db, host) {
 
   if (corrections.length < MIN_SIGNALS) {
     await setCommStyle(db, { ...DEFAULTS, evidence: [], confidence: 0 });
-    return { ok: true, comm_style: { ...DEFAULTS, confidence: 0 }, signals_used: corrections.length };
+    return {
+      ok: true,
+      comm_style: { ...DEFAULTS, confidence: 0 },
+      signals_used: corrections.length,
+    };
   }
 
   if (!host?.invokeLLM) return { ok: false, reason: 'no_host' };
 
   let parsed;
   try {
-    const llm = await host.invokeLLM(
-      [{ role: 'user', content: buildPrompt(corrections) }],
-      { tier: 'balanced' },
-    );
+    const llm = await host.invokeLLM([{ role: 'user', content: buildPrompt(corrections) }], {
+      tier: 'balanced',
+    });
     parsed = JSON.parse(llm?.content ?? '');
   } catch (e) {
     return { ok: false, reason: 'parse_failed', detail: e.message };

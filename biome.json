@@ -3,5 +3,5 @@
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "javascript": { "formatter": { "quoteStyle": "single", "semicolons": "always" } },
   "linter": { "enabled": true, "rules": { "recommended": true } },
-  "files": { "ignore": ["node_modules", ".robin", "tests/fixtures/*.json"] }
+  "files": { "ignore": ["node_modules", ".robin", "user-data", "tests/fixtures/*.json"] }
 }

@@ -98,11 +98,21 @@ test('synthesis — malformed LLM output leaves previous shape', async () => {
     await seedCorrection(db, embedder, `correction ${i}`);
   }
   // First, persist a valid shape via a good LLM
-  await synthesizeCommStyle(db, stubLLM(JSON.stringify({
-    tone: 'verbose', formality: 'formal', emoji_ok: true,
-    direct_feedback_ok: true, code_comment_density: 'moderate',
-    summary_style: 'prose', confidence: 0.6, evidence_indices: [],
-  })));
+  await synthesizeCommStyle(
+    db,
+    stubLLM(
+      JSON.stringify({
+        tone: 'verbose',
+        formality: 'formal',
+        emoji_ok: true,
+        direct_feedback_ok: true,
+        code_comment_density: 'moderate',
+        summary_style: 'prose',
+        confidence: 0.6,
+        evidence_indices: [],
+      }),
+    ),
+  );
   // Now, malformed LLM
   const r = await synthesizeCommStyle(db, stubLLM('not json'));
   assert.equal(r.ok, false);
@@ -119,18 +129,37 @@ test('synthesis — invalid LLM shape rejected, previous preserved', async () =>
     await seedCorrection(db, embedder, `correction ${i}`);
   }
   // Seed valid
-  await synthesizeCommStyle(db, stubLLM(JSON.stringify({
-    tone: 'terse', formality: 'casual', emoji_ok: false,
-    direct_feedback_ok: true, code_comment_density: 'minimal',
-    summary_style: 'bullets', confidence: 0.5, evidence_indices: [],
-  })));
+  await synthesizeCommStyle(
+    db,
+    stubLLM(
+      JSON.stringify({
+        tone: 'terse',
+        formality: 'casual',
+        emoji_ok: false,
+        direct_feedback_ok: true,
+        code_comment_density: 'minimal',
+        summary_style: 'bullets',
+        confidence: 0.5,
+        evidence_indices: [],
+      }),
+    ),
+  );
   // Now bad enum
-  const r = await synthesizeCommStyle(db, stubLLM(JSON.stringify({
-    tone: 'shouty',    // invalid
-    formality: 'casual', emoji_ok: false, direct_feedback_ok: true,
-    code_comment_density: 'minimal', summary_style: 'bullets',
-    confidence: 0.5, evidence_indices: [],
-  })));
+  const r = await synthesizeCommStyle(
+    db,
+    stubLLM(
+      JSON.stringify({
+        tone: 'shouty', // invalid
+        formality: 'casual',
+        emoji_ok: false,
+        direct_feedback_ok: true,
+        code_comment_density: 'minimal',
+        summary_style: 'bullets',
+        confidence: 0.5,
+        evidence_indices: [],
+      }),
+    ),
+  );
   assert.equal(r.ok, false);
   const persisted = await getCommStyle(db);
   assert.equal(persisted.tone, 'terse');

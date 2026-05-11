@@ -5,11 +5,17 @@ import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function calibrationShow(_argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));
-  const fetch = deps.getCalibration ?? (async () => {
-    await ensureHome();
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
-    try { return await defaultGet(db); } finally { await close(db); }
-  });
+  const fetch =
+    deps.getCalibration ??
+    (async () => {
+      await ensureHome();
+      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+      try {
+        return await defaultGet(db);
+      } finally {
+        await close(db);
+      }
+    });
   const c = await fetch();
   if (!c) {
     out('(no calibration data yet — make some predictions and resolve them)');
