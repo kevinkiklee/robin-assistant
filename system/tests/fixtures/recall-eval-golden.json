@@ -1,0 +1,81 @@
+{
+  "rows": [
+    {
+      "id": "recall_log:g1",
+      "ts": "2026-05-01T12:00:00Z",
+      "session_id": "s1",
+      "query": "sourdough",
+      "outcome": "reinforced",
+      "ranked_hits": [
+        { "record": "memos:m1", "kind": "memo", "rank": 0 },
+        { "record": "memos:m2", "kind": "memo", "rank": 1 },
+        { "record": "events:e1", "kind": "event", "rank": 2 }
+      ],
+      "meta": { "latency_ms": 60, "from": "intuition", "focus_block_present": false, "focus_block_tokens": 0 }
+    },
+    {
+      "id": "recall_log:g2",
+      "ts": "2026-05-01T13:00:00Z",
+      "session_id": "s2",
+      "query": "kettlebell",
+      "outcome": "corrected",
+      "ranked_hits": [
+        { "record": "memos:m3", "kind": "memo", "rank": 0 },
+        { "record": "memos:m4", "kind": "memo", "rank": 1 }
+      ],
+      "meta": { "latency_ms": 80, "from": "intuition", "focus_block_present": true, "focus_block_tokens": 120 }
+    },
+    {
+      "id": "recall_log:g3",
+      "ts": "2026-05-01T14:00:00Z",
+      "session_id": "s3",
+      "query": "tomatoes",
+      "outcome": "evaluated_no_signal",
+      "ranked_hits": [],
+      "meta": { "latency_ms": 30, "from": "intuition", "focus_block_present": false, "focus_block_tokens": 0 }
+    },
+    {
+      "id": "recall_log:g4",
+      "ts": "2026-05-01T15:00:00Z",
+      "session_id": "s4",
+      "query": "calendar",
+      "outcome": "reinforced",
+      "ranked_hits": [
+        { "record": "memos:m5", "kind": "memo", "rank": 0 },
+        { "record": "events:e2", "kind": "event", "rank": 1 }
+      ],
+      "meta": { "latency_ms": 50, "from": "mcp_recall", "focus_block_present": false, "focus_block_tokens": 0 }
+    },
+    {
+      "id": "recall_log:g5",
+      "ts": "2026-05-01T16:00:00Z",
+      "session_id": "s5",
+      "query": "garden",
+      "outcome": "pending",
+      "ranked_hits": [
+        { "record": "memos:m6", "kind": "memo", "rank": 0 }
+      ],
+      "meta": { "latency_ms": 70, "from": "intuition", "focus_block_present": false, "focus_block_tokens": 0 }
+    },
+    {
+      "id": "recall_log:g6",
+      "ts": "2026-05-01T17:00:00Z",
+      "session_id": "s6",
+      "query": "books",
+      "outcome": "corrected",
+      "ranked_hits": [
+        { "record": "events:e3", "kind": "event", "rank": 0 }
+      ],
+      "meta": { "latency_ms": 40, "from": "intuition", "focus_block_present": true, "focus_block_tokens": 80 }
+    }
+  ],
+  "expected": {
+    "rows_scored": 5,
+    "rows_pending": 1,
+    "rows_skipped": 0,
+    "no_signal_rate": 0.2,
+    "precision_at_3": 0.2,
+    "recall_at_3": 0.4,
+    "mean_rank_of_negatives_at_10": 1.5
+  }
+}
