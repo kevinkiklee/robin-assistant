@@ -39,6 +39,16 @@ const FORBIDDEN = [
   { token: 'profile:singleton', desc: 'renamed to persona:singleton' },
   { token: 'recall_events', desc: 'renamed to recall_log' },
   { token: 'runtime_intuition_telemetry', desc: 'renamed to intuition_telemetry' },
+  // Edges TYPE NORMAL → RELATION rename (alpha.15). Catches stale field names
+  // in edge SQL. These are fixed-string substring checks — they won't catch
+  // every variant, but they trip on the common SELECT/WHERE patterns.
+  { token: 'WHERE from = ', desc: 'edges.from renamed to edges.in' },
+  { token: 'WHERE to = ', desc: 'edges.to renamed to edges.out' },
+  { token: 'AND from = ', desc: 'edges.from renamed to edges.in' },
+  { token: 'AND to = ', desc: 'edges.to renamed to edges.out' },
+  { token: 'VALUE from FROM edges', desc: 'edges.from renamed to edges.in' },
+  { token: 'VALUE to FROM edges', desc: 'edges.to renamed to edges.out' },
+  { token: 'DEFINE TABLE edges SCHEMAFULL TYPE NORMAL', desc: 'edges is TYPE RELATION now' },
 ];
 
 const ALLOWED_PATHS = [

@@ -126,16 +126,55 @@ The schema's `memos.kind` is an OPEN string; the registry is the in-code source 
 1. **Register the kind.** Add an entry to `EDGE_KIND_REGISTRY` in `src/memory/edge-registry.js`:
 
    ```js
-   caused_by: { from: ['events', 'memos'], to: ['events', 'memos'] },
+   caused_by: { in: ['events', 'memos'], out: ['events', 'memos'] },
    // or:
-   sibling_of: { from: ['entities'], to: ['entities'], symmetric: true },
-   // counter edges accumulate `weight` on UPSERT:
-   appeared_with: { from: ['entities'], to: ['entities'], symmetric: true, counter: true },
+   sibling_of: { in: ['entities'], out: ['entities'], symmetric: true },
+   // counter edges accumulate `weight` on INSERT RELATION ... ON DUPLICATE KEY UPDATE:
+   appeared_with: { in: ['entities'], out: ['entities'], symmetric: true, counter: true },
    ```
+
+   Note: registry keys are `in`/`out` (matching the schema's RELATION-magic fields). Public function parameters on `store.relate` / `validateEdge` keep the `from`/`to` names for caller readability and map internally.
 
 2. **Call `store.relate` from the producer.** Biographer, dream steps, and capture surfaces all go through `store.relate(db, from, to, kind, { fields? })`. Validation happens inside `relate` — invalid endpoints throw.
 
 3. **Add a test.** `tests/unit/edge-registry.test.js` (extend the existing) — assert valid endpoints accepted, invalid rejected, self-loops rejected, symmetric kinds canonicalised.
+
+## Graph traversal patterns
+
+The edges table is `TYPE RELATION` (alpha.15+). Three idiomatic ways to walk it, in order of preference for new code:
+
+1. **Arrow traversal with mid-edge filter** — cleanest for single-hop reads, supports recursion natively:
+   ```surql
+   -- Knowledge memos about an entity:
+   SELECT VALUE <-edges[WHERE kind='about']<-memos FROM ONLY entities:alice;
+
+   -- Co-occurring entities within 2 hops:
+   SELECT VALUE @ FROM entities:alice.{1..2}->edges[WHERE kind='occurs_with']->entities;
+   ```
+
+2. **Indexed `WHERE kind = ... AND in = $id`** — when you also want a non-traversal projection (e.g., `in.name`, `out.ts`):
+   ```surql
+   SELECT in.name AS a, out.name AS b, weight
+   FROM edges WHERE kind = 'occurs_with' AND last_seen >= $cutoff
+   ORDER BY weight DESC LIMIT 10;
+   ```
+
+3. **Shortest path via JS BFS** — `src/mcp/tools/get-entity.js` shows the pattern. SurrealDB v3 has native `{..+shortest=$target}` but it operates on per-table edges; with our single polymorphic table + mid-edge kind filter, BFS in JS is more predictable.
+
+**Writes always go through `store.relate` / `store.relateAll`** — those use `INSERT RELATION ... ON DUPLICATE KEY UPDATE` for idempotent counters. Never write raw `INSERT RELATION` outside `store.js`; the registry validation lives there.
+
+## Time-travel reads (when surrealkv+versioned works)
+
+`@surrealdb/node` 3.0.3 hangs on connect for the versioned engine variant; once upstream fixes that, switching `config.json.db.engine` to `'surrealkv+versioned'` unlocks `SELECT ... VERSION d'<iso>'`. The schema already supports it; no migration needed.
+
+```surql
+-- What did Robin believe about $entity on 2026-04-01?
+SELECT * FROM memos
+WHERE id IN (SELECT VALUE in FROM edges WHERE kind='about' AND out=$entity)
+VERSION d'2026-04-01T00:00:00Z';
+```
+
+The `supersedes` edges + `fn::freshness` belief-evolution pattern stays useful for *forward recall ranking* even when version-reads are available; the two are complementary (version-reads = audit, supersedes = ranking).
 
 ## Adding a new integration
 

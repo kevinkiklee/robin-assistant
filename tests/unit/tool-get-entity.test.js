@@ -43,3 +43,54 @@ test('get_entity throws on unknown id', async () => {
   await assert.rejects(tool.handler({ id: 'entities:nonexistent' }), /not found/i);
   await close(db);
 });
+
+test('get_entity path_to returns the shortest path through chained occurs_with', async () => {
+  const { writeCoOccursWith } = await import('../../src/graph/edges.js');
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  const e = createStubEmbedder({ dimension: 1024 });
+  const ids = [];
+  for (const n of ['A', 'B', 'C']) {
+    const _v = Array.from(await e.embed(`person: ${n}`));
+    const [c] = await db
+      .query(surql`CREATE entities CONTENT ${{ name: n, type: 'person' }}`)
+      .collect();
+    ids.push((Array.isArray(c) ? c[0] : c).id);
+  }
+  // Chain: A — B — C
+  await writeCoOccursWith(db, [ids[0], ids[1]]);
+  await writeCoOccursWith(db, [ids[1], ids[2]]);
+
+  const tool = createGetEntityTool({ db });
+  const r = await tool.handler({
+    id: String(ids[0]),
+    path_to: String(ids[2]),
+    path_kinds: ['occurs_with'],
+    path_max_depth: 4,
+  });
+  assert.ok(r.path?.found, 'expected a path');
+  assert.equal(r.path.distance, 2);
+  assert.equal(r.path.path[0], String(ids[0]));
+  assert.equal(r.path.path[r.path.path.length - 1], String(ids[2]));
+  await close(db);
+});
+
+test('get_entity path_to returns null when no path exists', async () => {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  const e = createStubEmbedder({ dimension: 1024 });
+  const _v = Array.from(await e.embed('person: lonely'));
+  const [c1] = await db
+    .query(surql`CREATE entities CONTENT ${{ name: 'A', type: 'person' }}`)
+    .collect();
+  const [c2] = await db
+    .query(surql`CREATE entities CONTENT ${{ name: 'B', type: 'person' }}`)
+    .collect();
+  const a = (Array.isArray(c1) ? c1[0] : c1).id;
+  const b = (Array.isArray(c2) ? c2[0] : c2).id;
+  const tool = createGetEntityTool({ db });
+  const r = await tool.handler({ id: String(a), path_to: String(b), path_kinds: ['occurs_with'] });
+  assert.equal(r.path?.found, false);
+  assert.equal(r.path?.path, null);
+  await close(db);
+});
