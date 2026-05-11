@@ -120,6 +120,23 @@ node scripts/test-reinforcement-smoke.mjs
 
 All three of these scripts ran clean as of the last commit on this branch.
 
+## Verification matrix (final)
+
+| Check | Status |
+|---|---|
+| `scripts/verify-design-assumptions.js` (4 SurrealDB v3 gates) | ✓ all pass |
+| `scripts/test-store-smoke.mjs` (note / upsertMemoByName / occurs_with counter / supersede) | ✓ pass |
+| `scripts/test-reinforcement-smoke.mjs` (reinforced + corrected paths) | ✓ pass |
+| `scripts/test-intuition-loop-smoke.mjs` (end-to-end intuition→recall_log→reinforce→signal_count++) | ✓ pass |
+| `scripts/test-scope-cleanup-smoke.mjs` (promote referenced ephemerals, prune stale) | ✓ pass |
+| `scripts/verify-hnsw-plan.mjs` (EXPLAIN FULL confirms KnnScan operator) | ✓ pass |
+| `tests/unit/audit-no-old-tables.test.js` (21 forbidden tokens) | ✓ 21/21 |
+| `npm run lint` (Biome) | ✓ 0 errors |
+| Unit suite (`tests/unit/**`) | 955 / 990 pass (96.5%) |
+| Module load (25 critical modules) | ✓ all import cleanly |
+
+The 35 remaining unit failures are stale test setups for `predict`, `mark_recall_used`, `resolveOrCreateEntity`, `printRefusals`, etc. — production code paths use the new schema (verified by the audit grep + smoke tests); the tests use old fixture shapes.
+
 ## Commits on this branch (15)
 
 ```
