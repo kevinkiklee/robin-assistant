@@ -80,6 +80,26 @@ ${renderJobsList(jobs)}
 <!-- robin-jobs:end -->`;
 }
 
+export function knowledgeOpsSection() {
+  return `<!-- robin-knowledge-ops:start (auto-generated, do not hand-edit) -->
+## Knowledge ops
+
+Three tools for memory hygiene. ALL are user-triggered — never autonomous,
+never called on a loop.
+
+- \`ingest({content|url|file_path})\` — write a source document into
+  events + entities + edges + knowledge in one shot. Call only when the
+  user says "ingest this", "add this to memory", "process this document",
+  or pastes a file/URL.
+- \`lint({limit})\` — read-only mechanical sweep (orphans, dead edges,
+  duplicates, near-dupes, stale). Cheap, no LLM calls. Call when the user
+  says "check memory", "memory health", "lint memory".
+- \`audit({pair_count})\` — read-only LLM scan for contradictions across
+  recent knowledge. ~8 LLM calls per invocation (balanced tier). Call when
+  the user says "audit memory" — never on a loop.
+<!-- robin-knowledge-ops:end -->`;
+}
+
 export function integrationsSection(integrations = []) {
   return `<!-- robin-integrations:start (auto-generated, do not hand-edit) -->
 ## Integration data freshness
@@ -219,6 +239,8 @@ recall..."). Just do the work and answer.
 ${integrationsSection(integrations)}
 
 ${jobsSection(jobs)}
+
+${knowledgeOpsSection()}
 
 ${buildSecurityBlock()}
 `;
