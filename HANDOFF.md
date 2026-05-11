@@ -1,84 +1,128 @@
-# User-data isolation — handoff
+# DB + Memory Redesign — handoff
 
-**Branch:** `feat/user-data-isolation` (this worktree)
-**Base:** `main` at `190bb1d`
-**Spec:** `docs/superpowers/specs/2026-05-10-robin-v2-user-data-isolation-design.md` (`6bcdf96`)
-**Plan:** `docs/superpowers/plans/2026-05-10-robin-v2-user-data-isolation.md` (`57dd8db`)
+**Branch:** `feat/db-and-memory-redesign`
+**Worktree:** `/Users/iser/workspace/robin/robin-assistant-v2-worktrees/redesign`
+**Base:** `main` at `4472327`
+**Spec:** `docs/superpowers/specs/2026-05-11-robin-v2-database-and-memory-redesign-design.md`
+**Plan:** `docs/superpowers/plans/2026-05-11-robin-v2-database-and-memory-redesign.md`
 
-## Status
+## What this is
 
-All 32 plan tasks complete across 36 commits. 166 files changed (+2,438 / -8,104 net — the larger deletion count reflects consolidation of `installed-hooks.json`, `hooks-disabled.txt`, and stale `~/.robin` code paths into the unified `host-integrations.json` manifest).
+A destructive reset of Robin's schema and memory layer. Replaces 14 hand-written `.surql` migrations (`0001-init` … `0014-predictions` plus three `0008-*` embedder variants) with a single `0001-init.surql` plus per-profile `0002-embeddings-<profile>.surql`. The memory layer is renamed to a faculty register (`attention`, `chronicle`, `knowledge`, `habits`, `persona`, `narrative`, `foresight`) and routed through one `store.js` module.
 
-- 37/37 isolation-specific tests pass (data-store, manifest, install-first/existing/legacy/kevin-rollout, interrupt-safety, reinstall-discovery, migrate-home, legacy-installed-hooks, relocate, doctor-drift, uninstall-best-effort, audit-no-tilde-robin, audit-user-data-construction).
-- 806/816 in the broader unit suite — the 10 failures are all pre-existing `ERR_MODULE_NOT_FOUND` errors (`bash-policy.js`, `tamper-check.js`, `step-corrections.js`, `intuition` handlers) confirmed present on `main` before this work began.
-- Lint: 0 errors in code paths touched by this work.
+Premise: no v2 user, no v2 data, no migration concern. The v1→v2 migrator (`src/migrate-v1/`) is left in tree but **not** rebuilt — it targets the old v2 schema and is stale.
 
-## What got built
+## What landed (verified working)
 
-1. **`src/runtime/data-store.js`** — sole resolver. `paths.data.*` (under `<robin-home>/`) and `paths.source.*` (under package root). Strict `robinHome()` with no silent fallback. `.robin-data` marker. `.robin-home` pointer (in package root). `recordHostTouchpoint` / `readHostIntegrations` / `forgetHostTouchpoint` with `.manifest.lock` flock and replace-by-`(kind, path)` semantics. Legacy `installed-hooks.json` migrated read-side on first manifest write.
+### Wave 0 — Verification gates
+- `scripts/verify-design-assumptions.js` passes all 4 gates against SurrealDB 3.0.5 + `@surrealdb/node` 3.0.3:
+  - DEFINE EVENT cascade fires inside the deleting transaction
+  - Composite-ID UPSERT idempotent (`SET field += 1`)
+  - Field-path indexes on `meta.*` selected by planner
+  - `fn::freshness` returns 0 after inbound `supersedes`
 
-2. **Interactive picker** in `robin install` — four options (package_root/user-data, `~/.robin`, `~/Documents/Robin`, custom). Discovery scans known locations on reinstall. Existing-data migration prompt with copy-verify-delete (never `fs.rename`). `--home`, `--relocate`, `--repair` flags.
+### Wave 1 — Foundation
+- New schema: `src/schema/migrations/0001-init.surql` (substrate + edges + ops tables + fn::freshness + cascade events) and three `0002-embeddings-<profile>.surql` (mxbai-1024 / qwen3-4096 / gemini-3072), each with three per-surface HNSW tables.
+- `src/memory/store.js`: only writer to memos/edges/embeddings. Primitives: `remember`, `note`, `upsertEntity`, `upsertMemoByName`, `relate`, `relateAll`, `supersede`, `flagContradiction`, `updateMemoMeta`, `getMemo`, `searchMemos`, `searchEvents`, `searchEntities`, `listMemos`, `neighbors`.
+- `src/memory/kind-registry.js`: `MEMO_KIND_REGISTRY` + `ATTACHMENT_KIND_REGISTRY` + `validateMemoKind`.
+- `src/memory/edge-registry.js`: `EDGE_KIND_REGISTRY` + `validateEdge` (registry-validated endpoints, self-loop reject, symmetric canonicalization, composite-ID helper).
+- `src/memory/decay.js`: JS `freshness()` mirror of `fn::freshness`.
+- `src/memory/scopes.js`: `SCOPE` constants + `isEphemeralScope`.
+- `src/embed/profile-router.js`: `activeProfile` / `readProfile` / `embeddingTable(profile, surface)` with regex-validated names; cached for 5s.
 
-3. **`bin/robin-hook.sh`** — unchanged (pure passthrough; no resolver in shell).
+Smoke-verified: `scripts/test-store-smoke.mjs` covers note dedup, upsertMemoByName signal_count++, occurs_with counter, supersede → freshness=0.
 
-4. **launchd plist + systemd unit** — bake `ROBIN_HOME=<home>` and log path `<home>/cache/logs/daemon.log`. Recorded in the manifest with `expectedHome`.
+### Wave 2 — Faculty lenses
+- `src/memory/{attention,chronicle,knowledge,habits,persona,narrative,foresight}.js` written; the five renamed files (`hot.js`, `journal.js`, `patterns.js`, `profile.js`, `threads.js`) deleted.
+- Legacy function names re-exported from new files (`getHotContext`, `listJournalEntries`, `createPattern`, `upsertPatternByName`, `listPatterns`, `getProfile`, `updateProfileFields`, `createThread`, `listThreads`) so the 18 consumer-file import paths could be updated with a single sed pass.
 
-5. **Hook installers (Claude/Gemini settings, git pre-commit, MCP plist/systemd)** — all route writes through `recordHostTouchpoint`. The legacy `installed-hooks.json` and `hooks-disabled.txt` flag file are folded into the unified manifest / `config.json.hooks.disabled`.
+### Wave 4 — Recall pipeline + reinforcement loop (the keystone fix)
+- `src/recall/rank.js`: composite `score()` (cosine × freshness × contradiction-penalty × trust-factor × scope-boost) + MMR-lite diversity.
+- `src/recall/reinforcement.js`: 5-min-delayed evaluator. Pending `recall_log` rows → `signal_count++` on hits if no correction landed; `outcome='corrected'` if one did.
+- `src/jobs/internal/reinforce-recall.js` + `src/jobs/builtin/reinforce-recall.md`: `*/5 * * * *` cadence built-in.
+- `src/recall/index.js`: rewritten as a thin adapter over `store.searchEvents` (queries the active profile's `embeddings_<profile>_events` HNSW table).
+- `src/recall/intuition.js`: writes `intuition_telemetry` (renamed from `runtime_intuition_telemetry`) and `recall_log` rows with `outcome='pending'` per recall.
 
-6. **`robin uninstall`** — manifest-driven, best-effort by default, `--strict` aborts on first failure, `--purge` removes home dir. OS-aware daemon stop via `launchctl bootout` / `systemctl stop` from the manifest.
+Smoke-verified: `scripts/test-reinforcement-smoke.mjs` covers reinforced path + corrected path end-to-end.
 
-7. **`robin doctor`** — new `Data section` reports home resolution, env/pointer mismatch, manifest health, and drift on host-integration entries (missing files, missing commands, `expectedHome` divergence).
+### Wave 3 (partial) — Dream steps
+- `src/dream/step-patterns.js`: queries `edges WHERE kind='occurs_with'` (was `co_occurs_with` table); emits via `habits.upsert`.
+- `src/dream/step-threads.js`: queries `edges WHERE kind='mentions'` (was `mentions` table); emits via `narrative.add`.
 
-8. **Audit tests** — `tests/unit/audit-no-tilde-robin.test.js` and `audit-user-data-construction.test.js` enforce no source file references `~/.robin` or constructs `user-data` paths outside the allow-list.
+## What's deferred to a follow-up session
 
-## Rollout (operator work — when you're ready)
+None of these blocks the design — they're remaining mechanical/test work.
 
-Per spec §14, this is a one-merge / one-install cutover. **Do this in order**:
+1. **Biographer rewrite** (`src/capture/biographer*.js`) — a subagent was dispatched at end-of-session for this; check `git log` first to see if it landed commits.
+2. **MCP tool handlers** — `src/mcp/tools/{ingest,get-entity,related-entities,audit}.js` still query old table names. (May have been picked up by the subagent.)
+3. **`src/jobs/{lint-checks,predictions,ingest-prompt}.js`** — same.
+4. **`src/graph/{edges,cascade}.js`** — cascade.js can be deleted (replaced by DEFINE EVENT triggers in schema). edges.js should become a thin wrapper over `store.relate`.
+5. **CLI commands** — `src/cli/commands/{predictions,lint,audit,embedder-switch}.js` may reference old shapes. The legacy lens aliases cover most cases.
+6. **Test suite** — most `tests/unit/memory-*.test.js` and integration tests use old function signatures (the lens API signature changed: `add(db, embedder, input)` vs old `createPattern(db, input)`). All call sites need an embedder pass-through. Audit grep tests (forbid old table names) need writing.
+7. **Doc rewrites** — `docs/architecture.md`, `docs/faculties.md`, `docs/development.md`, `docs/troubleshooting.md` still describe the v1 shape.
+8. **CLI: `robin embeddings prepare/backfill/activate/list/drop`** — not yet built; spec'd in §6.1 of the plan.
+9. **State-inference + action-outcome event writers** — schema-ready (`kind='state_inference'`, `source='action_outcome'`); writers spec'd in §6.5 of the spec; not yet wired.
+
+## Rollout (destructive reset; no migrator yet)
 
 ```bash
-# 1. Stop the running daemon (so it doesn't hook-loop against the new strict CLI during the install window).
+# 1. Stop the daemon
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.mcp.plist
 #   (or on Linux: systemctl --user stop robin-mcp.service)
 
-# 2. Merge the feature branch.
-cd /Users/iser/workspace/robin/robin-assistant-v2
-git merge feat/user-data-isolation
-#   (or: open a PR with `gh pr create` if you want a review surface first)
+# 2. Backup the current DB if you want a rollback option
+cp -R <robinHome>/db <robinHome>/db.pre-redesign
 
-# 3. After merge: the next `robin <anything>` will fail with
-#    "Robin is not installed. Run: robin install"
-#    Run install once.
-robin install
+# 3. Merge or PR
+git checkout main && git merge feat/db-and-memory-redesign
+#   (or: gh pr create from feat/db-and-memory-redesign)
 
-#    The picker scans known locations. <package_root>/user-data/ is discovered as a
-#    legacy v2 layout (it has db/CURRENT and secrets/.env from your current state).
-#    Pick option 1 to keep data in place, or option 3 to move to ~/Documents/Robin.
-#    Install drops the marker, writes .robin-home, rewrites the plist with the baked
-#    ROBIN_HOME, populates host-integrations.json from your installed-hooks.json
-#    via the read-side migration.
+# 4. Nuke the old DB (no v1→v2 migrator yet; that's a separate phase)
+rm -rf <robinHome>/db/*
 
-# 4. Verify.
-robin doctor   # should report no drift; daemon back up; logs at <home>/cache/logs/daemon.log
+# 5. Restart the daemon. 0001-init.surql + 0002-embeddings-<your_profile>.surql
+#    apply automatically. The migration runner picks the right 0002 based on
+#    your `embedder_profile` in <robinHome>/config.json.
 ```
 
-## What I did NOT do (deliberately)
+## Known footguns surfaced during this work
 
-- **Did not push** to remote.
-- **Did not merge** into main.
-- **Did not stop your running daemon** — that would have killed your live system while you slept.
-- **Did not touch the `package-lock.json` modification** in the main worktree (it's a version-string sync from `npm install`; unrelated to this work).
-- **Did not delete the worktree** — it's clean and ready for you to inspect.
+These corrections came out of the verification gates and smoke tests; baked into the spec already but worth flagging.
 
-## Worktree
+- **`type::thing` → `type::record`** in SurrealDB v3 (renamed).
+- **`math::log(x, 2)`** is the two-arg form for log_2; one-arg variant rejected.
+- **`math::min([a, b])`** takes an array, not multiple args.
+- **`SET field += 1`** is the canonical UPSERT counter idiom; `weight = (weight ?? 0) + 1` doesn't increment on existing rows.
+- **SurrealDB JS SDK `RecordId.table` returns a `Table` object**, not a string — coerce with `String()`.
+- **JS `null` binds as SurrealDB `NULL`**, not `NONE` — optional fields should be omitted from SET clauses, not bound as null.
+- **`value` is a SurrealQL keyword** — use `SELECT VALUE value FROM …` flattener.
+- **TYPE NORMAL is incompatible with graph arrows** (`->edges->entities`); composite-ID idempotent UPSERT requires TYPE NORMAL → composite IDs were chosen; explicit `SELECT ... WHERE kind=X AND from=$id` used everywhere.
+- **`FLEXIBLE` must come after `TYPE`** in DEFINE FIELD; e.g. `TYPE object FLEXIBLE`, not `FLEXIBLE TYPE object`.
+- **`array<object>` doesn't accept FLEXIBLE on the parent**; use `array` (untyped) plus `array[*] TYPE object FLEXIBLE` for nested object arrays.
 
-`/Users/iser/workspace/robin/robin-assistant-v2-worktrees/isolation` on branch `feat/user-data-isolation`. Remove with `git worktree remove` once you've merged or decided to discard.
+## How to verify what landed
 
-## Known concerns flagged during execution
+```bash
+cd /Users/iser/workspace/robin/robin-assistant-v2-worktrees/redesign
 
-- **Per-phase hooks-disabled → global boolean** (Task 6.2): the previous `hooks-disabled.txt` could selectively disable a single phase (e.g. just `bash-policy`); the new `config.json.hooks.disabled` is all-or-nothing. The spec was explicit about this (`hooks.disabled === true`), but it's a real behavior change. If per-phase disable matters, it's a follow-up.
+# 1. All four design-assumption gates
+node scripts/verify-design-assumptions.js
 
-- **`renameSync` invariant** in `data-store.js`: count is exactly 2 (`writePointer` and `writeManifestAtomic`, both single-file atomic replaces). The audit test asserts this; future additions of `fs.rename` will fail loudly.
+# 2. End-to-end store primitives
+node scripts/test-store-smoke.mjs
 
-- **Pre-existing test failures**: 10 `ERR_MODULE_NOT_FOUND` failures in the unit suite are unrelated to this work — they reference modules that don't exist in `main` either (`bash-policy.js`, `tamper-check.js`, `step-corrections.js`, `intuition` handlers). Worth a separate cleanup pass.
+# 3. Reinforcement loop (the keystone effectiveness fix)
+node scripts/test-reinforcement-smoke.mjs
 
-- **One pre-existing integration test is flaky** (`multi-instance.test.js`, "daemon did not start" timing issue) — also unrelated.
+# 4. Migrations apply cleanly on a fresh DB
+# (handled implicitly by scripts above; both spin up mem://)
+```
+
+All three of these scripts ran clean as of the last commit on this branch.
+
+## Commits on this branch
+
+```
+$ git log --oneline main..HEAD
+```
+The expected sequence: spec → plan → verify gate → Wave 1 foundation → Wave 2 lenses → Wave 4 recall + reinforcement → (subagent's Wave 3 commits if landed) → this handoff.
