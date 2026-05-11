@@ -6,7 +6,10 @@
 // (evaluateStateInference), and two pure helpers (computeSignalHash,
 // detectChange) that are unit-tested in isolation.
 
+import { BoundQuery } from 'surrealdb';
 import { sha256 } from '../../../data/embed/hash.js';
+import { getAttention } from '../../memory/attention.js';
+import { isOutboundBlocked } from '../../memory/scope-registry.js';
 
 /**
  * Stable hash over the inputs that define "what is the user working on?":
@@ -110,4 +113,116 @@ export function validateLLMOutput(o) {
   if (typeof o.ambiguous !== 'boolean') return { ok: false, error: 'missing_ambiguous' };
   if (typeof o.drop !== 'boolean') return { ok: false, error: 'missing_drop' };
   return { ok: true };
+}
+
+/**
+ * Read all inputs needed for one source's inference: attention lens + top
+ * active arc that overlaps the attention entity set + up to 5 most-recent
+ * biographed events whose mentions intersect that entity set.
+ *
+ * Spec §1.3 steps 2–4.
+ *
+ * Also computes a `privateScopeDetected` flag (§6.1): true if any candidate
+ * entity, arc, or event has `scope` in the outbound-blocked set.
+ */
+export async function readInputsForSource(db, embedder, { source, windowMinutes }) {
+  const attention = await getAttention(db, { source, windowMinutes });
+  const entityIds = (attention.entities ?? []).map((e) => e.id);
+  const entityIdStrs = entityIds.map((id) => String(id));
+
+  let arc = null;
+  if (entityIds.length > 0) {
+    let arcRows = [];
+    try {
+      const [rows] = await db
+        .query(
+          new BoundQuery(
+            `SELECT id, name, summary, entity_ids, scope, last_activity_at FROM arcs
+             WHERE status = 'active'
+               AND last_activity_at >= time::now() - 24h
+               AND entity_ids ANYINSIDE $eids
+             ORDER BY last_activity_at DESC
+             LIMIT 10`,
+            { eids: entityIds },
+          ),
+        )
+        .collect();
+      arcRows = rows ?? [];
+    } catch {
+      arcRows = [];
+    }
+    let best = null;
+    let bestOverlap = -1;
+    for (const a of arcRows) {
+      const arcEntities = new Set((a.entity_ids ?? []).map((x) => String(x)));
+      let overlap = 0;
+      for (const s of entityIdStrs) if (arcEntities.has(s)) overlap++;
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        best = a;
+      }
+    }
+    arc = best;
+  }
+
+  const recentEventIds = (attention.recent_events ?? []).map((e) => e.id);
+  let events = [];
+  if (recentEventIds.length > 0 && entityIds.length > 0) {
+    try {
+      const [rows] = await db
+        .query(
+          new BoundQuery(
+            `SELECT id, content, ts, scope FROM events
+             WHERE id IN $eids
+               AND biographed_at IS NOT NONE
+               AND count(->mentions WHERE out IN $entIds) > 0
+             ORDER BY ts DESC
+             LIMIT 5`,
+            { eids: recentEventIds, entIds: entityIds },
+          ),
+        )
+        .collect();
+      events = rows ?? [];
+    } catch {
+      events = [];
+    }
+  }
+
+  // Scope inheritance check (spec §6.1). Hydrate scope for candidate
+  // entities + chosen events + arc. We do not (v1) walk transitive
+  // derived_from chains — see spec §6.3.
+  let privateScopeDetected = false;
+  try {
+    if (entityIds.length > 0) {
+      const [entRows] = await db
+        .query(
+          new BoundQuery('SELECT id, scope FROM entities WHERE id IN $ids', { ids: entityIds }),
+        )
+        .collect();
+      for (const r of entRows ?? []) {
+        if (r?.scope && isOutboundBlocked(r.scope)) {
+          privateScopeDetected = true;
+          break;
+        }
+      }
+    }
+    if (!privateScopeDetected) {
+      for (const ev of events) {
+        if (ev?.scope && isOutboundBlocked(ev.scope)) {
+          privateScopeDetected = true;
+          break;
+        }
+      }
+    }
+    if (!privateScopeDetected && arc?.scope && isOutboundBlocked(arc.scope)) {
+      privateScopeDetected = true;
+    }
+  } catch {
+    // Scope lookup failures fail-open to private to avoid leaking; tests
+    // assert against the "no rows" path, so this branch only fires on
+    // engine error which is rare and conservative.
+    privateScopeDetected = true;
+  }
+
+  return { attention, arc, events, privateScopeDetected };
 }
