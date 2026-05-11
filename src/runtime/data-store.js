@@ -31,7 +31,10 @@ export function packageRootDir() {
 export const POINTER_VERSION = 1;
 
 function pointerFilePath() {
-  return join(_packageRoot, '.robin-home');
+  // $ROBIN_POINTER_PATH is a test-only override so integration tests never
+  // write to the real <packageRoot>/.robin-home and race with each other.
+  // Production never sets it.
+  return process.env.ROBIN_POINTER_PATH ?? join(_packageRoot, '.robin-home');
 }
 
 export function resolveHomeStrict({ pointerPath = pointerFilePath() } = {}) {

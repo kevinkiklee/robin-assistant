@@ -7,7 +7,11 @@ import { ensureHome, readMarker, writePointer } from '../../src/runtime/data-sto
 
 test('interrupt between ensureHome and writePointer: re-running both is idempotent', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-interrupt-'));
+  const pointerDir = mkdtempSync(join(tmpdir(), 'robin-ptr-'));
+  const prevHome = process.env.ROBIN_HOME;
+  const prevPtr = process.env.ROBIN_POINTER_PATH;
   process.env.ROBIN_HOME = home;
+  process.env.ROBIN_POINTER_PATH = join(pointerDir, '.robin-home');
   try {
     // First call: creates dirs + marker.
     await ensureHome();
@@ -25,8 +29,13 @@ test('interrupt between ensureHome and writePointer: re-running both is idempote
     const thirdMarker = readMarker();
     assert.deepStrictEqual(firstMarker, thirdMarker, 'marker is unchanged by writePointer');
   } finally {
+    if (prevHome) process.env.ROBIN_HOME = prevHome;
     // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
-    delete process.env.ROBIN_HOME;
+    else delete process.env.ROBIN_HOME;
+    if (prevPtr) process.env.ROBIN_POINTER_PATH = prevPtr;
+    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
+    else delete process.env.ROBIN_POINTER_PATH;
     rmSync(home, { recursive: true, force: true });
+    rmSync(pointerDir, { recursive: true, force: true });
   }
 });

@@ -19,7 +19,11 @@ test('relocate: moves home + refreshes expectedHome on plist/systemd entries', a
   const fakePlistDir = mkdtempSync(join(tmpdir(), 'fake-plist-'));
   const fakePlist = join(fakePlistDir, 'io.robin-assistant.mcp.plist');
   writeFileSync(fakePlist, '<plist/>');
+  const pointerDir = mkdtempSync(join(tmpdir(), 'robin-ptr-'));
+  const prevHome = process.env.ROBIN_HOME;
+  const prevPtr = process.env.ROBIN_POINTER_PATH;
   process.env.ROBIN_HOME = A;
+  process.env.ROBIN_POINTER_PATH = join(pointerDir, '.robin-home');
   try {
     await ensureHome();
     writePointer({ home: A, installedBy: 'test' });
@@ -27,7 +31,8 @@ test('relocate: moves home + refreshes expectedHome on plist/systemd entries', a
       { kind: 'launchd-plist', path: fakePlist, expectedHome: A, label: 'io.robin-assistant.mcp' },
       () => {},
     );
-    process.env.ROBIN_HOME = undefined;
+    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
+    delete process.env.ROBIN_HOME;
     await relocate({
       target: B,
       mode: 'move',
@@ -43,8 +48,14 @@ test('relocate: moves home + refreshes expectedHome on plist/systemd entries', a
     const plist = m.entries.find((e) => e.kind === 'launchd-plist');
     assert.strictEqual(plist.expectedHome, B);
   } finally {
-    process.env.ROBIN_HOME = undefined;
+    if (prevHome) process.env.ROBIN_HOME = prevHome;
+    // biome-ignore lint/performance/noDelete: env vars must be deleted, not set undefined
+    else delete process.env.ROBIN_HOME;
+    if (prevPtr) process.env.ROBIN_POINTER_PATH = prevPtr;
+    // biome-ignore lint/performance/noDelete: env vars must be deleted, not set undefined
+    else delete process.env.ROBIN_POINTER_PATH;
     rmSync(Bparent, { recursive: true, force: true });
     rmSync(fakePlistDir, { recursive: true, force: true });
+    rmSync(pointerDir, { recursive: true, force: true });
   }
 });
