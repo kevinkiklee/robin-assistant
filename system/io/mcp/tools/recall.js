@@ -32,6 +32,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
       required: ['query'],
     },
     handler: async (args) => {
+      const t0 = Date.now();
       const sessionId = getSessionId() ?? null;
       const queryVec = Array.from(await embedder.embed(args.query));
 
@@ -109,7 +110,9 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         dist: h.dist,
         rank: i,
       }));
-      const meta = repeat ? { repeat_query_within_5min: true } : undefined;
+      const latency_ms = Date.now() - t0;
+      const baseMeta = { from: 'mcp_recall', latency_ms };
+      const meta = repeat ? { ...baseMeta, repeat_query_within_5min: true } : baseMeta;
       try {
         await db
           .query(
