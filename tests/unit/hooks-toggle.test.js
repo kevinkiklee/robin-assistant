@@ -35,18 +35,18 @@ function harness() {
 test('hooksDisable: disables a known phase (global kill-switch)', async () => {
   rmSync(configFile, { force: true });
   const h = harness();
-  await hooksDisable(['bash-policy'], h);
-  assert.equal(await isHookDisabled('bash-policy'), true);
+  await hooksDisable(['discretion'], h);
+  assert.equal(await isHookDisabled('discretion'), true);
   assert.deepEqual(h.exitCalls, []);
-  assert.match(h.outLines.join('\n'), /disabled hook: bash-policy/);
+  assert.match(h.outLines.join('\n'), /disabled hook: discretion/);
 });
 
 test('hooksEnable: enables a previously disabled phase (global kill-switch)', async () => {
   const h = harness();
-  await hooksEnable(['bash-policy'], h);
-  assert.equal(await isHookDisabled('bash-policy'), false);
+  await hooksEnable(['discretion'], h);
+  assert.equal(await isHookDisabled('discretion'), false);
   assert.deepEqual(h.exitCalls, []);
-  assert.match(h.outLines.join('\n'), /enabled hook: bash-policy/);
+  assert.match(h.outLines.join('\n'), /enabled hook: discretion/);
 });
 
 test('hooksDisable: unknown phase exits 1 with stderr', async () => {
@@ -91,11 +91,11 @@ test('hooksDisable: idempotent — disabling twice stays disabled', async () => 
 test('hooksDisable + hooksEnable: round-trip (global switch)', async () => {
   rmSync(configFile, { force: true });
   const h = harness();
-  await hooksDisable(['auto-recall'], h);
-  assert.equal(await isHookDisabled('auto-recall'), true);
+  await hooksDisable(['intuition'], h);
+  assert.equal(await isHookDisabled('intuition'), true);
   // Global: all phases disabled simultaneously
   assert.equal(await isHookDisabled('session-start'), true);
-  await hooksEnable(['auto-recall'], h);
-  assert.equal(await isHookDisabled('auto-recall'), false);
+  await hooksEnable(['intuition'], h);
+  assert.equal(await isHookDisabled('intuition'), false);
   assert.equal(await isHookDisabled('session-start'), false);
 });
