@@ -107,16 +107,62 @@ export default async function runMetaRecallNarrative({ db, embedder, host }) {
     return JSON.stringify({ ran: false, reason: 'no_clusters' });
   }
 
-  // Hydration + clustering + LLM + writes wired in Tasks 5.4–5.5.
+  // §3.1c hydration.
+  const hydrated = await hydrateRetrievedMemos(db, cleanRows);
+
+  // §3.2 clustering with surface fallback.
+  let clusters = clusterByAboutEndpoints(hydrated, config).map((c) => ({
+    ...c,
+    cluster_id: c.entity_id,
+  }));
+  if (clusters.length === 0) {
+    clusters = surfaceFallbackClusters(cleanRows, config);
+  }
+
+  if (clusters.length === 0) {
+    await emitTelemetry(db, {
+      outcome: 'no_clusters',
+      corrected_count: correctedCount,
+      unused_count: unusedRows.length,
+      rows_after_privacy: cleanRows.length,
+      dropped_private: droppedPrivate,
+      duration_ms: Date.now() - startedAt,
+    });
+    return JSON.stringify({ ran: false, reason: 'no_clusters' });
+  }
+
+  if (config.enabled === 'shadow') {
+    await emitTelemetry(db, {
+      outcome: 'shadow_complete',
+      corrected_count: correctedCount,
+      unused_count: unusedRows.length,
+      rows_after_privacy: cleanRows.length,
+      dropped_private: droppedPrivate,
+      clusters: clusters.length,
+      duration_ms: Date.now() - startedAt,
+    });
+    return JSON.stringify({
+      ran: false,
+      reason: 'shadow_mode',
+      cluster_count: clusters.length,
+    });
+  }
+
+  // §3.3 LLM + §3.4 writes wired in Task 5.5.
   await emitTelemetry(db, {
-    outcome: 'no_clusters',
+    outcome: 'shadow_complete', // placeholder until 5.5 lands
     corrected_count: correctedCount,
     unused_count: unusedRows.length,
     rows_after_privacy: cleanRows.length,
     dropped_private: droppedPrivate,
+    clusters: clusters.length,
     duration_ms: Date.now() - startedAt,
   });
-  return JSON.stringify({ ran: false, reason: 'no_clusters' });
+  return JSON.stringify({
+    ran: false,
+    reason: 'shadow_mode',
+    cluster_count: clusters.length,
+  });
 }
 
 async function selectCorrectedRows(db, config) {
@@ -210,6 +256,109 @@ async function emitTelemetry(db, fields) {
   } catch {
     // Best-effort — telemetry must not break the job.
   }
+}
+
+async function hydrateRetrievedMemos(db, rows) {
+  const memoIds = new Set();
+  for (const row of rows) {
+    for (const hit of row.ranked_hits ?? []) {
+      const ref = String(hit?.record ?? '');
+      if (ref.startsWith('memos:')) memoIds.add(ref);
+    }
+  }
+  const memoIdList = [...memoIds].map((s) => {
+    const [tbl, key] = s.split(':');
+    return new RecordId(tbl, key);
+  });
+
+  if (memoIdList.length === 0) {
+    return {
+      rows,
+      aboutByMemoId: new Map(),
+      entityNameById: new Map(),
+      memoById: new Map(),
+    };
+  }
+
+  // Memo content + meta.
+  const [memoRows] = await db
+    .query(
+      new BoundQuery(
+        'SELECT id, content, kind, scope, meta, derived_at FROM memos WHERE id IN $ids',
+        { ids: memoIdList },
+      ),
+    )
+    .collect();
+  const memoById = new Map((memoRows ?? []).map((m) => [String(m.id), m]));
+
+  // about-edges: edges where kind='about' and in IN memoIds.
+  const [edgeRows] = await db
+    .query(
+      new BoundQuery("SELECT in, out FROM edges WHERE kind = 'about' AND in IN $ids", {
+        ids: memoIdList,
+      }),
+    )
+    .collect();
+  const aboutByMemoId = new Map();
+  for (const e of edgeRows ?? []) {
+    const key = String(e.in);
+    if (!aboutByMemoId.has(key)) aboutByMemoId.set(key, []);
+    aboutByMemoId.get(key).push(String(e.out));
+  }
+
+  // Entity names for cluster labelling — only for the entities actually touched.
+  const entityIds = [...new Set([...aboutByMemoId.values()].flat())];
+  const entityRefs = entityIds.map((s) => {
+    const [tbl, key] = s.split(':');
+    return new RecordId(tbl, key);
+  });
+  let entityNameById = new Map();
+  if (entityRefs.length > 0) {
+    const [entRows] = await db
+      .query(new BoundQuery('SELECT id, name FROM entities WHERE id IN $ids', { ids: entityRefs }))
+      .collect();
+    entityNameById = new Map((entRows ?? []).map((r) => [String(r.id), r.name]));
+  }
+
+  return { rows, aboutByMemoId, entityNameById, memoById };
+}
+
+function surfaceFallbackClusters(rows, config) {
+  // Group by row.meta?.from (intuition vs mcp_recall vs unknown). Each
+  // resulting "cluster" carries `surface` instead of `entity_id` so the
+  // prompt builder phrases the question correctly. Rows with no memo hits
+  // are skipped — they carry no signal for D2 to reason about.
+  const bySurface = new Map();
+  for (const row of rows) {
+    const memoHits = (row.ranked_hits ?? []).filter((h) => {
+      const ref = String(h?.record ?? '');
+      return h?.kind === 'memo' || ref.startsWith('memos:');
+    });
+    if (memoHits.length === 0) continue;
+    const surface = row.meta?.from ?? 'unknown';
+    if (!bySurface.has(surface)) bySurface.set(surface, []);
+    bySurface.get(surface).push(row);
+  }
+  const out = [];
+  for (const [surface, member] of bySurface.entries()) {
+    if (member.length < config.min_cluster_size) continue;
+    out.push({
+      cluster_id: `surface:${surface}`,
+      surface,
+      score: member.length,
+      rows: member.slice(0, 10),
+      memo_ids: [
+        ...new Set(
+          member.flatMap((r) =>
+            (r.ranked_hits ?? [])
+              .map((h) => String(h?.record ?? ''))
+              .filter((ref) => ref.startsWith('memos:')),
+          ),
+        ),
+      ],
+    });
+  }
+  return out.slice(0, config.top_k_clusters);
 }
 
 async function filterPrivateScopeRows(db, rows) {

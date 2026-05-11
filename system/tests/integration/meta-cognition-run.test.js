@@ -122,3 +122,59 @@ test('T3 — corrected rows fetched within lookback_days', async () => {
   assert.ok((tel?.[0]?.rows_after_privacy ?? 0) <= 5);
   await close(db);
 });
+
+test('T4 — shadow mode: clusters formed, no LLM call, no memo write', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'photo-tools', type: 'project', scope: 'global' }`)
+    .collect();
+  const entityId = ent[0][0].id;
+
+  // 5 memos all "about" the same entity.
+  const memos = [];
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `mem ${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entityId],
+    });
+    memos.push(m.id);
+  }
+  // 5 corrected recall_log rows each hitting one of the memos.
+  for (let i = 0; i < 5; i++) {
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`},
+        query: ${`q${i}`},
+        k: 5,
+        ranked_hits: [{ record: ${memos[i]}, kind: 'memo' }],
+        outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+  await db.query("UPDATE runtime:`meta_cognition.config` SET value.enabled = 'shadow'").collect();
+
+  const host = fakeHost('{}');
+  const result = await runMetaRecallNarrative({ db, embedder: e, host });
+  const summary = JSON.parse(result);
+  assert.equal(summary.ran, false);
+  assert.equal(summary.reason, 'shadow_mode');
+  assert.ok(summary.cluster_count >= 1);
+  assert.equal(host.calls, 0, 'shadow mode must not call the LLM');
+  const [memoRows] = await db
+    .query("SELECT count() AS n FROM memos WHERE kind = 'reasoning' GROUP ALL")
+    .collect();
+  assert.equal(memoRows?.[0]?.n ?? 0, 0);
+  const [tel] = await db
+    .query('SELECT outcome, clusters, ts FROM meta_cognition_telemetry ORDER BY ts DESC LIMIT 1')
+    .collect();
+  assert.equal(tel?.[0]?.outcome, 'shadow_complete');
+  assert.ok(tel?.[0]?.clusters >= 1);
+  await close(db);
+});
