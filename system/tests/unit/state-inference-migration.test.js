@@ -21,7 +21,13 @@ test('0012 migration applies cleanly and seeds runtime:state_inference.config', 
       .collect();
     const cfg = rows?.[0];
     assert.ok(cfg, 'expected runtime:state_inference.config row');
-    assert.equal(cfg.enabled, false);
+    // 0012 seeds enabled=false; subsequent rollout migrations (0013-shadow,
+    // 0014-default-on) flip the value but preserve the rest of the config.
+    // Accept any of the three valid rollout states.
+    assert.ok(
+      cfg.enabled === false || cfg.enabled === 'shadow' || cfg.enabled === true,
+      `expected enabled in {false, 'shadow', true}; got ${cfg.enabled}`,
+    );
     assert.equal(cfg.tick_ms, 300000);
     assert.equal(cfg.attention_window_min, 90);
     assert.equal(cfg.refresh_after_minutes, 30);

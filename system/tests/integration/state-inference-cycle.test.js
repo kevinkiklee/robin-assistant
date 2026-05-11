@@ -333,7 +333,10 @@ test('I7 — calibration emits pivot refute (integration variant)', async () => 
 test('I8 — cfg.enabled=false → evaluate skips, intuition skips block', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  // default seed has enabled=false
+  // Explicit false: the rollout migrations 0013/0014 (also in this branch)
+  // pre-flip the seed to 'shadow'/true, so we set the value back to test the
+  // disabled gate path.
+  await setEnabled(db, false);
   await seedSource(db, e);
   const host = makeHost('should never write');
   const r1 = await evaluateStateInference({ db, host, embedder: e });

@@ -20,8 +20,12 @@ async function fresh() {
   return db;
 }
 
-test('evaluateStateInference returns skipped_disabled when cfg.enabled=false (default seed)', async () => {
+test('evaluateStateInference returns skipped_disabled when cfg.enabled=false', async () => {
   const db = await fresh();
+  // Rollout migrations 0013/0014 may pre-flip the seed; force false here.
+  await db
+    .query(`UPDATE runtime:\`state_inference.config\` SET value.enabled = false`)
+    .collect();
   const e = createStubEmbedder({ dimension: 1024 });
   const host = { invokeLLM: async () => ({ content: '{}', tokens_in: 0, tokens_out: 0 }) };
   const r = await evaluateStateInference({ db, host, embedder: e });
