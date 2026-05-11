@@ -187,6 +187,56 @@ test('intuitionEndpoint writes session_id onto recall_log', async () => {
   await close(db);
 });
 
+test('intuitionEndpoint with conflict flag off produces no <!-- conflicts --> markers', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, { source: 'cli', content: 'discussed sourdough hydration ratio (62%)' });
+  // Default seed: conflict_surfacing_enabled = false.
+  const result = await intuitionEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'sourdough',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+    conflictTokenBudget: 0,
+  });
+  assert.ok(!result.block.includes('<!-- conflicts -->'));
+  assert.ok(!result.block.includes('<!-- /conflicts -->'));
+  // Telemetry row carries zero/false (not absent) — keeps row shape consistent.
+  const [rows] = await db.query('SELECT * FROM intuition_telemetry').collect();
+  // With flag off we should write NO B2 fields (per spec §10 'do not emit B2
+  // fields to telemetry or recall_log.meta — keeps row shape
+  // backwards-compatible'). Asserting absence:
+  assert.equal(rows[0].conflicts_surfaced, undefined);
+  await close(db);
+});
+
+test('intuitionEndpoint default conflictTokenBudget=0 -> no conflicts block even with surfacing flag on', async () => {
+  // Sanity-check the function-default boundary. The daemon route is
+  // responsible for passing conflictTokenBudget=300 when the flag is on;
+  // intuitionEndpoint called with no arg defaults to 0 (off).
+  const db = await fresh();
+  const e2 = createStubEmbedder({ dimension: 1024 });
+  await db.query('UPDATE runtime:recall SET value.conflict_surfacing_enabled = true').collect();
+  await recordEvent(db, e2, { source: 'cli', content: 'a fact about birds' });
+  const result = await intuitionEndpoint({
+    db,
+    embedder: e2,
+    detector: null,
+    query: 'birds',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+    // conflictTokenBudget omitted -> default 0
+  });
+  assert.ok(!result.block.includes('<!-- conflicts -->'));
+  await close(db);
+});
+
 test('intuitionEndpoint includes prior assistant tail in the recall query', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
