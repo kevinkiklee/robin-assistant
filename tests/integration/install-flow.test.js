@@ -15,7 +15,7 @@ test('robin mcp install with --no-supervise --no-register --no-start writes supe
   seedConfig(tmpRobin);
   const root = resolve(import.meta.dirname, '../..');
   // Migrate first so daemon-running check has migrations applied.
-  spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
+  spawnSync(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmpRobin },
     stdio: 'pipe',
   });
@@ -68,7 +68,7 @@ test('install merges fenced section into existing CLAUDE.md', () => {
   mkdirSync(claudeDir, { recursive: true });
   writeFileSync(join(claudeDir, 'CLAUDE.md'), '# My personal notes\nSomething about me.\n', 'utf8');
 
-  spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
+  spawnSync(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmpRobin },
     stdio: 'pipe',
   });

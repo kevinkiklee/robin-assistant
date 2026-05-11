@@ -14,12 +14,12 @@ test('robin biographer-catchup runs without error against an empty DB', () => {
   seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
   // Migrate first
-  spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
+  spawnSync(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     encoding: 'utf8',
   });
   // Run catchup with no events
-  const result = spawnSync('node', [join(root, 'bin/robin'), 'biographer-catchup'], {
+  const result = spawnSync(process.execPath, [join(root, 'bin/robin'), 'biographer-catchup'], {
     env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude_code' },
     encoding: 'utf8',
   });
@@ -32,7 +32,7 @@ test('robin biographer-catchup --retry-failed reports nothing-to-retry on empty 
   const tmp = mkdtempSync(join(tmpdir(), 'robin-catchup-rf-'));
   seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
-  spawnSync('node', [join(root, 'bin/robin'), 'migrate'], {
+  spawnSync(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     encoding: 'utf8',
   });

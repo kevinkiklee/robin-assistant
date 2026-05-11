@@ -25,12 +25,12 @@ test('multiple parallel HTTP requests to the daemon do not corrupt the DB', asyn
   const tmp = mkdtempSync(join(tmpdir(), 'robin-multi-'));
   seedConfig(tmp);
   const root = resolve(import.meta.dirname, '../..');
-  const m = spawn('node', [join(root, 'bin/robin'), 'migrate'], {
+  const m = spawn(process.execPath, [join(root, 'bin/robin'), 'migrate'], {
     env: { ...process.env, ROBIN_HOME: tmp },
     stdio: 'inherit',
   });
   await new Promise((resolve) => m.on('exit', resolve));
-  const daemon = spawn('node', [join(root, 'src/daemon/server.js')], {
+  const daemon = spawn(process.execPath, [join(root, 'src/daemon/server.js')], {
     env: { ...process.env, ROBIN_HOME: tmp, ROBIN_HOST: 'claude_code' },
     stdio: 'pipe',
   });
