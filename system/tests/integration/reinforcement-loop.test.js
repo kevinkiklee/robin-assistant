@@ -533,6 +533,35 @@ test('B1 section 10: explain_recall surfaces used/used_via/attribution/reply_eve
   await close(db);
 });
 
+test('B1: pre-B1 recall_log rows (no used field) work under mode=off', async () => {
+  const db = await fresh();
+  // Seeded mode is 'off' — no UPDATE needed.
+  const m = await store.note(db, fakeEmbedder, 'knowledge', {
+    content: 'pre-B1 row',
+    derived_by: 'manual',
+  });
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  // Recall_log row WITHOUT the new used/used_via keys (the old shape).
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 's', query: 'q', k: 1,
+         ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(m.id) },
+    )
+    .collect();
+  const summary = await evaluatePending(db);
+  assert.equal(summary.reinforced, 1, 'mode=off treats every memo hit as used (legacy)');
+  const [after] = await db.query(`SELECT signal_count FROM ${m.id}`).collect();
+  // DEFAULT signal_count=1 + 1 bump = 2.
+  assert.equal(after[0].signal_count, 2);
+  const [rows] = await db.query('SELECT attribution FROM recall_log').collect();
+  assert.equal(rows[0].attribution.mode, 'off');
+  await close(db);
+});
+
 test('reinforcement: rows newer than the window are not evaluated', async () => {
   const db = await fresh();
   const m = await store.note(db, fakeEmbedder, 'knowledge', {
