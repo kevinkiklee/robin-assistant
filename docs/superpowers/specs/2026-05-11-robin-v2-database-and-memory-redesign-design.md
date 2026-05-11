@@ -162,6 +162,8 @@ DEFINE INDEX edges_kind_valid  ON edges FIELDS kind, valid_from, valid_until;
 
 Record IDs are deterministic composites: `edges:[kind, from_id, to_id]`. UPSERTs are idempotent. For symmetric kinds (`occurs_with`, `contradicts`), the registry tells `store.relate()` to canonicalize `from_id < to_id` before computing the ID.
 
+**Why `TYPE NORMAL` with `from`/`to` fields, not `TYPE RELATION` with `in`/`out`:** SurrealDB v3 rejects composite-ID `CREATE` against `TYPE RELATION` tables ("expected a RELATION"); composite IDs require `TYPE NORMAL`. Composite IDs are load-bearing (idempotent `occurs_with` counter UPSERTs, deterministic re-runs from biographer). The cost: graph-arrow traversal (`->edges->entities`) is unavailable. Mitigation: every query path uses explicit indexed `SELECT ... WHERE kind = X AND from = $id` or `WHERE kind = X AND to = $id` — the `edges_kind_from` / `edges_kind_to` indexes match. Verified empirically against SurrealDB v3.0.5 (see `scripts/test-edge-relation.mjs`, removed after verification).
+
 **Initial edge kinds (registry):**
 
 | Kind | From | To | Properties | Semantics |
