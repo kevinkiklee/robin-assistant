@@ -35,12 +35,24 @@ export const MEMO_KIND_REGISTRY = {
       from_signal: 'array?',
     },
   },
-  // Schema-ready (writer deferred):
+  // Reserved `meta.dimension` values for `reasoning` memos:
+  //   - 'recall_failures' — D2 meta-cognition (weekly recall-failure summaries).
+  //   - 'calibration'     — D3 meta-cognition-calibration (post-revision).
+  // New dimensions extend this comment; the field itself is open-enum.
   reasoning: {
     required: ['content', 'derived_by'],
     meta_schema: {
+      // Legacy keys (pre-D2 producers may write these):
       session_id: 'string?',
       step: 'string?',
+      // D2 producer:
+      dimension: 'string?',
+      from_signal: 'string?', // string for reasoning kind (D1's state_inference uses 'array?')
+      period: 'string?',
+      signal_count: 'number?',
+      week_starting: 'string?',
+      clusters: 'number?',
+      recall_log_ids: 'array?',
     },
   },
   session_outcome: {
