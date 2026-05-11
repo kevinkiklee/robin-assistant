@@ -45,31 +45,60 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         explain: args.explain,
       });
 
+      // Batch mention + entity-detail lookups across all hits using the
+      // generic `edges` table (post-redesign schema; arrow-graph syntax
+      // `->mentions->entities` does NOT traverse TYPE NORMAL tables). Two
+      // queries total instead of 2N: one SELECT against edges keyed by hit
+      // IDs, one SELECT to hydrate the distinct entity rows.
+      const hitIds = r.hits.map((h) => h.id);
       const enrichedHits = [];
-      for (const hit of r.hits) {
-        const [mentions] = await db
-          .query(surql`SELECT ->mentions->entities AS m FROM ${hit.id}`)
+      if (hitIds.length > 0) {
+        const [edgeRows] = await db
+          .query(surql`SELECT from, to FROM edges WHERE kind = 'mentions' AND from IN ${hitIds}`)
           .collect();
-        const m = mentions[0]?.m ?? [];
-        let details = [];
-        if (m.length > 0) {
-          const [d] = await db
-            .query(surql`SELECT id, name, type FROM entities WHERE id IN ${m}`)
-            .collect();
-          details = d;
+        // mentionsByHit keys are stringified record IDs (we look up by
+        // String(hit.id)); but for the second SELECT we keep the raw record
+        // IDs because SurrealDB compares `id IN $x` by record type, not by
+        // string equality.
+        const mentionsByHit = new Map();
+        const entityIdSet = new Set(); // for de-duping
+        const entityIdList = []; // raw RecordIds for the IN query
+        for (const e of edgeRows ?? []) {
+          const fromId = String(e.from);
+          const toIdStr = String(e.to);
+          if (!mentionsByHit.has(fromId)) mentionsByHit.set(fromId, []);
+          mentionsByHit.get(fromId).push(toIdStr);
+          if (!entityIdSet.has(toIdStr)) {
+            entityIdSet.add(toIdStr);
+            entityIdList.push(e.to);
+          }
         }
-        enrichedHits.push({
-          id: String(hit.id),
-          source: hit.source,
-          content: hit.content,
-          ts: hit.ts,
-          dist: hit.dist,
-          mentions: details.map((d) => ({
-            entity_id: String(d.id),
-            entity_name: d.name,
-            entity_type: d.type,
-          })),
-        });
+        let entityById = new Map();
+        if (entityIdList.length > 0) {
+          const [details] = await db
+            .query(surql`SELECT id, name, type FROM entities WHERE id IN ${entityIdList}`)
+            .collect();
+          entityById = new Map((details ?? []).map((d) => [String(d.id), d]));
+        }
+        for (const hit of r.hits) {
+          const mIds = mentionsByHit.get(String(hit.id)) ?? [];
+          const mentions = mIds
+            .map((eid) => entityById.get(eid))
+            .filter(Boolean)
+            .map((d) => ({
+              entity_id: String(d.id),
+              entity_name: d.name,
+              entity_type: d.type,
+            }));
+          enrichedHits.push({
+            id: String(hit.id),
+            source: hit.source,
+            content: hit.content,
+            ts: hit.ts,
+            dist: hit.dist,
+            mentions,
+          });
+        }
       }
 
       const rankedHits = enrichedHits.map((h, i) => ({
