@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { getProfile } from '../../src/memory/profile.js';
+import { getProfile } from '../../src/memory/persona.js';
 import { createCandidate } from '../../src/rules/candidates.js';
 import { approveCandidate } from '../../src/rules/rules.js';
 

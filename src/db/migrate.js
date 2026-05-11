@@ -31,16 +31,16 @@ export async function runMigrations(db, migrationsDir) {
       'cannot run migrations: no embedder profile configured. Run `robin install` first.',
     );
   }
-  const activeEmbedderFile = `0008-embedder-${cfg.embedder_profile}.surql`;
+  const activeEmbeddingsFile = `0002-embeddings-${cfg.embedder_profile}.surql`;
 
   const all = (await readdir(migrationsDir)).filter((f) => f.endsWith('.surql')).sort();
   const applied = await loadApplied(db);
   const newlyApplied = [];
 
   for (const file of all) {
-    // 0008-embedder-<profile>.surql migrations are profile-specific. Apply only the
+    // 0002-embeddings-<profile>.surql migrations are profile-specific. Apply only the
     // file matching the active profile; skip the others.
-    if (file.startsWith('0008-embedder-') && file !== activeEmbedderFile) {
+    if (file.startsWith('0002-embeddings-') && file !== activeEmbeddingsFile) {
       continue;
     }
     const version = parseVersion(file);

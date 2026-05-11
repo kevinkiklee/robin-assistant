@@ -1,5 +1,5 @@
 import { surql } from 'surrealdb';
-import { updateProfileFields } from '../memory/profile.js';
+import { updateProfileFields } from '../memory/persona.js';
 import { updateCandidateStatus } from './candidates.js';
 
 /**

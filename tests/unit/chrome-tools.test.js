@@ -35,7 +35,6 @@ test('chrome_recent_visits filters by meta.kind = visit', async () => {
         source: 'chrome',
         content: 'visit: foo',
         ts: new Date('2026-05-10T12:00:00Z'),
-        external_id: 'chrome:visit:1',
         meta: { kind: 'visit' },
       }}`,
     )
@@ -46,7 +45,6 @@ test('chrome_recent_visits filters by meta.kind = visit', async () => {
         source: 'chrome',
         content: 'top domains today: a (1)',
         ts: new Date('2026-05-10T12:00:00Z'),
-        external_id: 'chrome:top_domains:2026-05-10',
         meta: { kind: 'top_domains', date: '2026-05-10' },
       }}`,
     )
@@ -66,7 +64,6 @@ test('chrome_top_domains returns only aggregation events', async () => {
         source: 'chrome',
         content: 'visit: bar',
         ts: new Date('2026-05-10T12:00:00Z'),
-        external_id: 'chrome:visit:42',
         meta: { kind: 'visit' },
       }}`,
     )
@@ -77,7 +74,6 @@ test('chrome_top_domains returns only aggregation events', async () => {
         source: 'chrome',
         content: 'top domains today: a, b',
         ts: new Date('2026-05-10T12:00:00Z'),
-        external_id: 'chrome:top_domains:2026-05-10',
         meta: {
           kind: 'top_domains',
           date: '2026-05-10',
@@ -103,7 +99,6 @@ test('chrome_recent_visits respects limit argument', async () => {
           source: 'chrome',
           content: `visit ${i}`,
           ts: new Date(`2026-05-10T12:00:0${i}Z`),
-          external_id: `chrome:visit:${i}`,
           meta: { kind: 'visit' },
         }}`,
       )

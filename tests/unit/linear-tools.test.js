@@ -35,7 +35,6 @@ test('linear_active_issues filters by team', async () => {
         source: 'linear',
         content: 'In Progress · High · Issue A',
         ts: new Date('2026-05-09T15:00:00Z'),
-        external_id: 'linear:ENG-1',
         meta: { identifier: 'ENG-1', team: 'ENG', state: 'In Progress' },
       }}`,
     )
@@ -46,7 +45,6 @@ test('linear_active_issues filters by team', async () => {
         source: 'linear',
         content: 'Todo · Medium · Issue B',
         ts: new Date('2026-05-08T15:00:00Z'),
-        external_id: 'linear:DESIGN-2',
         meta: { identifier: 'DESIGN-2', team: 'DESIGN', state: 'Todo' },
       }}`,
     )
@@ -66,7 +64,6 @@ test('linear_active_issues filters by assignee', async () => {
         source: 'linear',
         content: 'a',
         ts: new Date(),
-        external_id: 'linear:A-1',
         meta: { identifier: 'A-1', assignee: 'Kevin' },
       }}`,
     )
@@ -77,7 +74,6 @@ test('linear_active_issues filters by assignee', async () => {
         source: 'linear',
         content: 'b',
         ts: new Date(),
-        external_id: 'linear:A-2',
         meta: { identifier: 'A-2', assignee: 'Other' },
       }}`,
     )

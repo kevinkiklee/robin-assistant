@@ -34,7 +34,6 @@ test('calendar_list_events filters by source', async () => {
         source: 'google_calendar',
         content: 'Meeting · 2026-05-09',
         ts: new Date('2026-05-09T10:00:00Z'),
-        external_id: 'e1',
         meta: { event_id: 'e1' },
       }}`,
     )
@@ -45,7 +44,6 @@ test('calendar_list_events filters by source', async () => {
         source: 'gmail',
         content: 'unrelated',
         ts: new Date(),
-        external_id: 'm1',
         meta: {},
       }}`,
     )
@@ -65,7 +63,6 @@ test('calendar_list_events filters by since/until', async () => {
         source: 'google_calendar',
         content: 'past',
         ts: new Date('2026-04-01T00:00:00Z'),
-        external_id: 'e1',
         meta: {},
       }}`,
     )
@@ -76,7 +73,6 @@ test('calendar_list_events filters by since/until', async () => {
         source: 'google_calendar',
         content: 'recent',
         ts: new Date('2026-05-09T00:00:00Z'),
-        external_id: 'e2',
         meta: {},
       }}`,
     )

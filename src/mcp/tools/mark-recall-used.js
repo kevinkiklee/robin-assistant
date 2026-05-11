@@ -14,11 +14,11 @@ export function createMarkRecallUsedTool({ db }) {
       required: ['recall_event_id', 'used_hit_ids'],
     },
     handler: async (args) => {
-      const key = args.recall_event_id.startsWith('recall_events:')
-        ? args.recall_event_id.slice('recall_events:'.length)
+      const key = args.recall_event_id.startsWith('recall_log:')
+        ? args.recall_event_id.slice('recall_log:'.length)
         : args.recall_event_id;
       const [rows] = await db
-        .query(surql`SELECT hit_ids, hit_used FROM type::record('recall_events', ${key})`)
+        .query(surql`SELECT hit_ids, hit_used FROM type::record('recall_log', ${key})`)
         .collect();
       if (!rows || rows.length === 0) {
         throw new Error(`recall_event not found: ${args.recall_event_id}`);
@@ -34,7 +34,7 @@ export function createMarkRecallUsedTool({ db }) {
         if (newUsed[i] && !hit_used[i]) updated++;
       }
       await db
-        .query(surql`UPDATE type::record('recall_events', ${key}) SET hit_used = ${newUsed}`)
+        .query(surql`UPDATE type::record('recall_log', ${key}) SET hit_used = ${newUsed}`)
         .collect();
       return { updated };
     },

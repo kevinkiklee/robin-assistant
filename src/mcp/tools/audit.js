@@ -1,5 +1,15 @@
-// src/mcp/tools/audit.js
+// src/mcp/tools/audit.js — LLM-driven contradiction-pair scan over recent knowledge.
+//
+// Redesigned for the new schema:
+//   - Knowledge rows now live in the unified `memos` table with `kind='knowledge'`.
+//   - Embeddings live in the per-profile `embeddings_<profile>_memos` table;
+//     we JOIN them back to the candidate rows by record id.
+//   - Cosine still computed in JS because SurrealDB v3 cannot mix HNSW kNN
+//     with `vector::similarity::cosine()` in the same SELECT (same constraint
+//     the lint-checks job hits — pair count is bounded so O(N²) is fine).
+
 import { surql } from 'surrealdb';
+import { embeddingTable, readProfile } from '../../embed/profile-router.js';
 import { buildAuditPrompt } from '../../jobs/audit-prompt.js';
 
 const DEFAULT_PAIR_COUNT = 8;
@@ -7,10 +17,6 @@ const MAX_PAIR_COUNT = 32;
 const COSINE_THRESHOLD = 0.7;
 const RECENCY_MS = 30 * 86_400_000;
 
-// Pure-JS cosine — SurrealDB v3 doesn't support combining HNSW (<|K|>) with
-// vector::similarity::cosine() in the same query (Wave 1 lint-checks hit this
-// constraint and used the same fallback). For audit pair count is bounded
-// (max 32 candidates × 1 NN lookup) so O(N²) over recent knowledge is fine.
 function cosine(a, b) {
   let dot = 0;
   let na = 0;
@@ -26,10 +32,28 @@ function cosine(a, b) {
 
 async function selectPairs(db, pairCount) {
   const cutoff = new Date(Date.now() - RECENCY_MS);
-  const [candidates] = await db
-    .query(surql`SELECT id, content, embedding FROM knowledge WHERE updated_at > ${cutoff}`)
+  const [memoRows] = await db
+    .query(
+      surql`SELECT id, content FROM memos
+            WHERE kind = 'knowledge' AND updated_at > ${cutoff}`,
+    )
     .collect();
-  if (!candidates || candidates.length < 2) return [];
+  const memos = memoRows ?? [];
+  if (memos.length < 2) return [];
+
+  // Hydrate embedding vectors from the active read profile's memos surface.
+  const profile = await readProfile(db);
+  const memoEmbTbl = embeddingTable(profile, 'memos');
+  const ids = memos.map((m) => m.id);
+  const [embRows] = await db
+    .query(`SELECT record, vector FROM ${memoEmbTbl} WHERE record IN $ids`, { ids })
+    .collect();
+  const vecById = new Map((embRows ?? []).map((r) => [String(r.record), r.vector]));
+  const candidates = memos
+    .map((m) => ({ id: m.id, content: m.content, embedding: vecById.get(String(m.id)) }))
+    .filter((c) => Array.isArray(c.embedding) || ArrayBuffer.isView(c.embedding));
+  if (candidates.length < 2) return [];
+
   const seenPairs = new Set();
   const pairs = [];
   for (const c of candidates) {

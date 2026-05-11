@@ -34,7 +34,6 @@ test('ga_recent returns latest captured ga events', async () => {
         source: 'ga',
         content: 'GA4 · 2026-05-09',
         ts: new Date('2026-05-09T00:00:00Z'),
-        external_id: 'ga:12345:2026-05-09',
         meta: { date: '2026-05-09', users: 100 },
       }}`,
     )
@@ -45,7 +44,6 @@ test('ga_recent returns latest captured ga events', async () => {
         source: 'ga',
         content: 'GA4 · 2026-05-10',
         ts: new Date('2026-05-10T00:00:00Z'),
-        external_id: 'ga:12345:2026-05-10',
         meta: { date: '2026-05-10', users: 200 },
       }}`,
     )
@@ -65,7 +63,6 @@ test('ga_recent only returns ga-source events', async () => {
         source: 'ga',
         content: 'GA4 · 2026-05-09',
         ts: new Date('2026-05-09T00:00:00Z'),
-        external_id: 'ga:1:2026-05-09',
         meta: { date: '2026-05-09' },
       }}`,
     )
@@ -76,7 +73,6 @@ test('ga_recent only returns ga-source events', async () => {
         source: 'youtube',
         content: 'sub: A',
         ts: new Date('2026-05-09T00:00:00Z'),
-        external_id: 'sub:c1',
         meta: { kind: 'subscription' },
       }}`,
     )

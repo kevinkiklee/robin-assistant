@@ -1,16 +1,24 @@
+// biographer.js — turns raw events into graph + memo emissions.
+//
+// Redesigned for the new schema (spec §11):
+//   - Edges go through `store.relateAll([{ from, to, kind }])` against the
+//     generic `edges` table. Registry validation is automatic.
+//   - Entities go through `store.upsertEntity` (delegates to the 3-stage
+//     cascade in `src/graph/upsert-entity.js`).
+//   - Edge-kind renames applied: `co_occurs_with` → `occurs_with`,
+//     `precedes` → `before`.
+//   - When the biographer ever creates a memo (rare today), `derived_from`
+//     edges back to the source event are emitted via `store.note`'s lineage.
+//   - `events.biographed_at = time::now()` is still set on the processed event.
+
 import { surql } from 'surrealdb';
-import { resolveEntity } from '../graph/cascade.js';
-import {
-  writeAboutEdge,
-  writeCoOccursWith,
-  writeMentionsEdge,
-  writeTypedEntityEdge,
-} from '../graph/edges.js';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../graph/episodes.js';
+import * as store from '../memory/store.js';
 import { validateBiographerOutput } from './biographer-output.js';
 import { buildBiographerPrompt } from './biographer-prompt.js';
 
-const ENTITY_EDGE_TYPES = new Set(['works_on', 'participates_in']);
+// Edge kinds the biographer is allowed to emit, normalized to the registry.
+const ENTITY_EDGE_KINDS = new Set(['works_on', 'participates_in']);
 
 const DEFAULT_CONFIG = {
   stage2_high_threshold: 0.92,
@@ -145,33 +153,20 @@ export async function biographerProcess(db, embedder, host, eventId, opts = {}) 
     throw new Error(`biographer LLM returned malformed JSON: ${e.message}`);
   }
 
-  // 4-5. Resolve / create entities. Creation uses a deterministic record id
-  // keyed by (type, name_lower) and UPSERT, so two parallel biographer runs
-  // on the same event converge to a single row instead of racing past Stage 1
-  // and producing duplicates. Mirrors the stable-id pattern in writeCoOccursWith.
+  // 4-5. Resolve / create entities through store.upsertEntity, which delegates
+  // to the 3-stage cascade in src/graph/upsert-entity.js. Embedding rows land
+  // in embeddings_<profile>_entities for the active profile.
   const nameToId = new Map();
   for (const ent of output.entities) {
-    const r = await resolveEntity(db, embedder, host, {
-      name: ent.name,
-      type: ent.type,
-      config,
-    });
-    if (r.action === 'resolve') {
-      nameToId.set(ent.name, r.entityId);
-    } else {
-      const vec = Array.from(await embedder.embed(`${ent.type}: ${ent.name}`));
-      const stableKey = `${ent.type}__${ent.name.toLowerCase()}`;
-      const row = await withTxRetry(async () => {
-        const [upserted] = await db
-          .query(
-            surql`UPSERT type::record('entities', ${stableKey})
-              SET name = ${ent.name}, type = ${ent.type}, embedding = ${vec}`,
-          )
-          .collect();
-        return Array.isArray(upserted) ? upserted[0] : upserted;
-      });
-      nameToId.set(ent.name, row.id);
-    }
+    const r = await withTxRetry(() =>
+      store.upsertEntity(db, embedder, {
+        name: ent.name,
+        type: ent.type,
+        host,
+        config,
+      }),
+    );
+    nameToId.set(ent.name, r.id);
   }
 
   // 6. Episode determination
@@ -198,27 +193,52 @@ export async function biographerProcess(db, embedder, host, eventId, opts = {}) 
     episodeId = newEp.id;
   }
 
-  // 7. Write graph
+  // 7. Emit edges via store.relateAll. One batched call holds all kinds.
   const contextSnippet = (event.content ?? '').slice(0, 200);
+  const edgeRows = [];
+  // mentions: event → entity, one per resolved entity (plus context).
   for (const entity of output.entities) {
     const eid = nameToId.get(entity.name);
     if (!eid) continue;
-    await writeMentionsEdge(db, eventId, eid, { context: contextSnippet });
+    edgeRows.push({ from: eventId, to: eid, kind: 'mentions', context: contextSnippet });
   }
+  // about: event → entity, for entities the LLM tagged as the subject.
   for (const aboutName of output.about) {
     const eid = nameToId.get(aboutName);
-    if (eid) await writeAboutEdge(db, eventId, eid);
+    if (eid) edgeRows.push({ from: eventId, to: eid, kind: 'about' });
   }
+  // works_on / participates_in (entity → entity). The LLM emits edge.type
+  // using the legacy name; we map it to the new registry name when needed.
   for (const edge of output.edges) {
-    if (ENTITY_EDGE_TYPES.has(edge.type)) {
-      const fromId = nameToId.get(edge.from);
-      const toId = nameToId.get(edge.to);
-      if (fromId && toId) await writeTypedEntityEdge(db, fromId, edge.type, toId);
+    const kind = normalizeEdgeKind(edge.type);
+    if (!kind) continue;
+    const fromId = nameToId.get(edge.from);
+    const toId = nameToId.get(edge.to);
+    if (!fromId || !toId) continue;
+    if (ENTITY_EDGE_KINDS.has(kind)) {
+      edgeRows.push({ from: fromId, to: toId, kind });
     }
   }
-  const entityIds = Array.from(nameToId.values());
-  if (entityIds.length >= 2) {
-    await writeCoOccursWith(db, entityIds, { cap: config.cooccur_cap });
+  // occurs_with: every ordered pair among the entities (symmetric counter).
+  // The registry canonicalizes endpoint order; store.relate UPSERTs by
+  // composite ID and increments `weight` per call.
+  const entityIds = Array.from(nameToId.values()).slice(0, config.cooccur_cap);
+  for (let i = 0; i < entityIds.length; i++) {
+    for (let j = i + 1; j < entityIds.length; j++) {
+      edgeRows.push({ from: entityIds[i], to: entityIds[j], kind: 'occurs_with' });
+    }
+  }
+  // before: optional event→event linkage (renamed from `precedes`).
+  for (const edge of output.edges) {
+    if (normalizeEdgeKind(edge.type) === 'before') {
+      // `before` is event→event; biographer only sees a single event today,
+      // so this is a no-op for now. Left here so future multi-event payloads
+      // route through the same code path.
+    }
+  }
+
+  if (edgeRows.length > 0) {
+    await withTxRetry(() => store.relateAll(db, edgeRows));
   }
 
   // 8. Mark event biographed
@@ -234,8 +254,8 @@ export async function biographerProcess(db, embedder, host, eventId, opts = {}) 
   });
   if (!updated || updated.length === 0) {
     // Lost the race — the other process biographed first.
-    // Phase 2a: log and let the redundant writes stand (they're effectively idempotent
-    // for entities thanks to stable record ids on entities and co_occurs_with).
+    // Edges and entity upserts are idempotent (composite-ID UPSERT + stable
+    // entity record IDs in the cascade), so the redundant writes are safe.
     console.warn(`biographer race detected on ${eventId}; this run's writes may be redundant`);
   }
 
@@ -252,4 +272,22 @@ export async function biographerProcess(db, embedder, host, eventId, opts = {}) 
   });
 
   return { processed: true, episodeId, entitiesCount: nameToId.size };
+}
+
+// Maps the LLM-facing edge type vocabulary to the EDGE_KIND_REGISTRY kind.
+// Returns null for unknown/unsupported types so the caller can skip them.
+function normalizeEdgeKind(t) {
+  switch (t) {
+    case 'mentions':
+    case 'about':
+    case 'works_on':
+    case 'participates_in':
+      return t;
+    case 'co_occurs_with':
+      return 'occurs_with';
+    case 'precedes':
+      return 'before';
+    default:
+      return null;
+  }
 }

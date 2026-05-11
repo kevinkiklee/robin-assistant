@@ -51,7 +51,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
       const meta = repeat ? { repeat_query_within_5min: true } : undefined;
       const [created] = await db
         .query(
-          surql`CREATE recall_events CONTENT ${{
+          surql`CREATE recall_log CONTENT ${{
             query_text: args.query,
             query_vec: queryVec,
             hit_ids: hitIds,

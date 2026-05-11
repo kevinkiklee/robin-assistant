@@ -34,7 +34,6 @@ test('lrc_summary returns latest captured snapshot', async () => {
         source: 'lrc',
         content: 'lightroom catalog: 200 photos',
         ts: new Date(),
-        external_id: 'lrc:2026-05-10',
         meta: { total_photos: 200 },
       }}`,
     )

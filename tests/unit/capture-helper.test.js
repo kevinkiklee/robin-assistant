@@ -5,6 +5,7 @@ import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
+import { activeProfile, embeddingTable } from '../../src/embed/profile-router.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
@@ -41,10 +42,11 @@ test('capture inserts new rows with deterministic IDs', async () => {
     { source: 'gmail', content: 'Subject: hi', external_id: 'abc123', meta: { thread_id: 't1' } },
   ]);
   assert.equal(r.inserted, 1);
-  const [rows] = await db.query(surql`SELECT id, external_id FROM events`).collect();
+  // External id moved into meta.external_id in the new schema.
+  const [rows] = await db.query(surql`SELECT id, meta FROM events`).collect();
   assert.equal(rows.length, 1);
   assert.equal(String(rows[0].id), 'events:gmail__abc123');
-  assert.equal(rows[0].external_id, 'abc123');
+  assert.equal(rows[0].meta.external_id, 'abc123');
   await close(db);
 });
 
@@ -78,14 +80,14 @@ test('capture upsert updates existing row', async () => {
   await capture([{ source: 'lunch_money', content: 'orig', external_id: 'lm1' }]);
   await capture([{ source: 'lunch_money', content: 'edited', external_id: 'lm1' }]);
   const [rows] = await db
-    .query(surql`SELECT content FROM events WHERE external_id = 'lm1'`)
+    .query(surql`SELECT content FROM events WHERE meta.external_id = 'lm1'`)
     .collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].content, 'edited');
   await close(db);
 });
 
-test('capture with embed:false writes NULL embedding', async () => {
+test('capture with embed:false does not write an embedding row', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
@@ -96,11 +98,12 @@ test('capture with embed:false writes NULL embedding', async () => {
     mode: 'insert-or-skip',
   });
   await capture([{ source: 'discord', content: 'msg', external_id: 'd1' }]);
-  const [rows] = await db
-    .query(surql`SELECT embedding FROM events WHERE external_id = 'd1'`)
-    .collect();
-  // SurrealDB serialises an absent option<> field as undefined; coalesce to null.
-  assert.equal(rows[0].embedding ?? null, null);
+  // Per-surface embeddings table — no row should exist when embed:false.
+  const profile = await activeProfile(db);
+  const tbl = embeddingTable(profile, 'events');
+  const [embRows] = await db.query(`SELECT count() AS n FROM ${tbl} GROUP ALL`).collect();
+  const n = embRows[0]?.n ?? 0;
+  assert.equal(n, 0);
   await close(db);
 });
 

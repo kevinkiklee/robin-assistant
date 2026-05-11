@@ -1,4 +1,4 @@
-import { listThreads } from '../../memory/threads.js';
+import { listThreads } from '../../memory/narrative.js';
 
 export function createListThreadsTool({ db }) {
   return {

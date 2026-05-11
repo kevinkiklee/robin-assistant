@@ -1,14 +1,18 @@
 // tests/unit/audit.test.js
+// After the redesign, `knowledge` rows live in `memos` with kind='knowledge'
+// and have no inline embedding column. We seed via store.note which writes
+// both the memo row and its embedding into embeddings_<profile>_memos.
+
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { createAuditTool } from '../../src/mcp/tools/audit.js';
+import * as store from '../../src/memory/store.js';
 
 import { writeConfig as __wc } from '../../src/runtime/config.js';
 
@@ -37,18 +41,16 @@ test('audit — empty knowledge → 0 pairs checked', async () => {
 
 test('audit — stub LLM returns no contradiction → empty result', async () => {
   const { db, embedder } = await fresh();
-  const emb1 = Array.from(await embedder.embed('first claim'));
-  const emb2 = Array.from(await embedder.embed('second claim'));
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{ content: 'a', content_hash: 'h1', confidence: 0.8, source_events: [], source_episodes: [], embedding: emb1 }}`,
-    )
-    .collect();
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{ content: 'b', content_hash: 'h2', confidence: 0.8, source_events: [], source_episodes: [], embedding: emb2 }}`,
-    )
-    .collect();
+  await store.note(db, embedder, 'knowledge', {
+    content: 'a',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
+  await store.note(db, embedder, 'knowledge', {
+    content: 'b',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
   const t = createAuditTool({
     db,
     host: stubLLM('{"contradict":false,"summary":"different topics"}'),
@@ -61,17 +63,16 @@ test('audit — stub LLM returns no contradiction → empty result', async () =>
 
 test('audit — malformed LLM output treated as no contradiction', async () => {
   const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('claim a'));
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{ content: 'a', content_hash: 'h1', confidence: 0.8, source_events: [], source_episodes: [], embedding: emb }}`,
-    )
-    .collect();
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{ content: 'b', content_hash: 'h2', confidence: 0.8, source_events: [], source_episodes: [], embedding: emb }}`,
-    )
-    .collect();
+  await store.note(db, embedder, 'knowledge', {
+    content: 'a',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
+  await store.note(db, embedder, 'knowledge', {
+    content: 'b',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
   const t = createAuditTool({ db, host: stubLLM('not json at all') });
   const r = await t.handler({});
   assert.equal(r.ok, true);
@@ -81,17 +82,24 @@ test('audit — malformed LLM output treated as no contradiction', async () => {
 
 test('audit — stub LLM marks contradiction → reported', async () => {
   const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('shared'));
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{ content: 'X is alive', content_hash: 'h1', confidence: 0.8, source_events: [], source_episodes: [], embedding: emb }}`,
-    )
-    .collect();
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{ content: 'X is dead', content_hash: 'h2', confidence: 0.8, source_events: [], source_episodes: [], embedding: emb }}`,
-    )
-    .collect();
+  // Use a constant-vector embedder so both memos are HNSW-near each other.
+  const sharedVec = await embedder.embed('shared');
+  const constEmb = {
+    dimension: 1024,
+    modelId: 'const',
+    embed: async () => sharedVec,
+    embedBatch: async (xs) => xs.map(() => sharedVec),
+  };
+  await store.note(db, constEmb, 'knowledge', {
+    content: 'X is alive',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
+  await store.note(db, constEmb, 'knowledge', {
+    content: 'X is dead',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
   const t = createAuditTool({ db, host: stubLLM('{"contradict":true,"summary":"alive vs dead"}') });
   const r = await t.handler({});
   assert.ok(r.contradictions.length > 0);

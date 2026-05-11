@@ -5,6 +5,7 @@ import { dreamStepKnowledge } from './step-knowledge.js';
 import { dreamStepPatterns } from './step-patterns.js';
 import { dreamStepProfile } from './step-profile.js';
 import { dreamStepReflection } from './step-reflection.js';
+import { dreamStepScopeCleanup } from './step-scope-cleanup.js';
 import { dreamStepThreads } from './step-threads.js';
 
 /**
@@ -56,6 +57,11 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.calibration = await dreamStepCalibration(db);
   } catch (e) {
     summary.calibration = { error: e.message };
+  }
+  try {
+    summary.scopeCleanup = await dreamStepScopeCleanup(db, host, opts.scopeCleanup);
+  } catch (e) {
+    summary.scopeCleanup = { error: e.message };
   }
 
   await db

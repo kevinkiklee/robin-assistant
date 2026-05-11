@@ -22,8 +22,19 @@ function containsVerbatim(replyText, sourceText, minWords = MIN_QUOTE_WORDS) {
 }
 
 async function logRefusal(db, destination, reason, payload) {
+  // refusals is SCHEMAFULL post-redesign: {content, reason, direction, tool,
+  // meta}. Destination/payload_hash fold into meta.
   const payload_hash = createHash('sha256').update(payload).digest('hex').slice(0, 16);
-  await db.query(surql`CREATE refusals CONTENT ${{ destination, reason, payload_hash }}`).collect();
+  await db
+    .query(
+      surql`CREATE refusals CONTENT ${{
+        content: payload,
+        reason,
+        direction: 'outbound',
+        meta: { destination, payload_hash },
+      }}`,
+    )
+    .collect();
 }
 
 export async function checkOutbound(db, { destination, text }) {

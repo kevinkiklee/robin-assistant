@@ -1,10 +1,12 @@
 import { BoundQuery } from 'surrealdb';
+import { activeProfile, embeddingTable } from '../embed/profile-router.js';
 
 /**
  * Cascade Stage 2: embedding similarity via HNSW.
  *
- * Embeds `<type>: <name>` and runs KNN over the `entities_vec` HNSW index,
- * scoped to the requested type. Returns one of:
+ * Embeds `<type>: <name>` and runs KNN over the per-profile
+ * `embeddings_<profile>_entities` HNSW index, then joins back to entities
+ * filtering by the requested type. Returns one of:
  *   - { action: 'resolve', entityId, similarity } when best ≥ highThreshold
  *   - { action: 'escalate', candidates }          when some ≥ lowThreshold
  *   - { action: 'none' }                          otherwise
@@ -19,21 +21,38 @@ import { BoundQuery } from 'surrealdb';
  * @param {{name:string, type:string, highThreshold:number, lowThreshold:number}} opts
  */
 const TOP_K = 5;
+const EF = 64;
 
 export async function stage2Resolve(db, embedder, { name, type, highThreshold, lowThreshold }) {
   const qvec = Array.from(await embedder.embed(`${type}: ${name}`));
 
-  // K (=TOP_K) is a validated integer constant, so interpolating it is safe.
-  // qvec and type are parameterized via BoundQuery.
-  const sql = `
-    SELECT id, name, vector::distance::knn() AS dist
-    FROM entities
-    WHERE embedding <|${TOP_K}, 64|> $qvec
-      AND type = $type
+  // 1. HNSW over the per-(profile) entities embedding surface.
+  const profile = await activeProfile(db);
+  const embTbl = embeddingTable(profile, 'entities');
+  const knnSql = `
+    SELECT record, vector::distance::knn() AS dist
+    FROM ${embTbl}
+    WHERE vector <|${TOP_K}, ${EF}|> $qvec
     ORDER BY dist
-    LIMIT ${TOP_K};
+    LIMIT ${TOP_K}
   `;
-  const [rows] = await db.query(new BoundQuery(sql, { qvec, type })).collect();
+  const [knnRows] = await db.query(new BoundQuery(knnSql, { qvec })).collect();
+  if (!knnRows || knnRows.length === 0) return { action: 'none' };
+
+  // 2. Hydrate + filter by type. Keep KNN order.
+  const ids = knnRows.map((r) => r.record);
+  const idDist = new Map(knnRows.map((r) => [String(r.record), r.dist]));
+  const [hydrated] = await db
+    .query(
+      new BoundQuery('SELECT id, name FROM entities WHERE id IN $ids AND type = $type', {
+        ids,
+        type,
+      }),
+    )
+    .collect();
+  const rows = hydrated
+    .map((r) => ({ id: r.id, name: r.name, dist: idDist.get(String(r.id)) ?? 1 }))
+    .sort((a, b) => a.dist - b.dist);
   if (!rows || rows.length === 0) return { action: 'none' };
 
   // dist is cosine distance (0 = identical); similarity = 1 - dist.

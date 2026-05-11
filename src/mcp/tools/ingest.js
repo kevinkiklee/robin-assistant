@@ -1,4 +1,16 @@
 // src/mcp/tools/ingest.js
+//
+// Redesigned for the new schema:
+//   - Edge writes go through `store.relateAll` against the unified edges table.
+//   - Entity upserts go through `store.upsertEntity` (3-stage cascade in
+//     src/graph/upsert-entity.js); legacy ingest-resolver retired in favor of
+//     the central primitive.
+//   - Knowledge memos are created via `store.note('knowledge', …)` with the
+//     spec-shaped lineage `[{id, kind: 'event'}]`; createKnowledge thin lens
+//     also delegates to store.note.
+//   - Edge-kind vocabulary maps the LLM's legacy aliases to EDGE_KIND_REGISTRY
+//     kinds (co_occurs_with → occurs_with, precedes → before).
+
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { surql } from 'surrealdb';
 import { RobinPiiRefusedError } from '../../capture/errors.js';
@@ -6,19 +18,26 @@ import { recordEvent } from '../../capture/record-event.js';
 import { sha256 } from '../../embed/hash.js';
 import { guardInboundContent } from '../../hooks/inbound-guard.js';
 import { buildIngestPrompt } from '../../jobs/ingest-prompt.js';
-import { resolveOrCreateEntity } from '../../jobs/ingest-resolver.js';
-import { createKnowledge } from '../../memory/knowledge.js';
+import * as store from '../../memory/store.js';
 
 const MAX_BYTES = 1_048_576;
 const URL_FETCH_TIMEOUT_MS = 30_000;
 const ALLOWED_CONTENT_TYPES = /^(text\/|application\/json)/;
-const VALID_EDGE_KINDS = new Set([
-  'mentions',
-  'about',
-  'works_on',
-  'participates_in',
-  'co_occurs_with',
-]);
+
+// Edge kinds accepted from the ingest LLM. Legacy aliases map onto the new
+// EDGE_KIND_REGISTRY kinds; `before` is event→event only (`from` is the new
+// event for any edge whose source is an event).
+const EDGE_KIND_MAP = {
+  mentions: 'mentions',
+  about: 'about',
+  works_on: 'works_on',
+  participates_in: 'participates_in',
+  occurs_with: 'occurs_with',
+  co_occurs_with: 'occurs_with',
+  before: 'before',
+  precedes: 'before',
+};
+const EVENT_SOURCED_KINDS = new Set(['mentions', 'about', 'before']);
 
 async function acquireContent({ content, url, file_path }) {
   if (content !== undefined) {
@@ -95,7 +114,7 @@ export function createIngestTool({ db, embedder, host }) {
         throw e;
       }
 
-      const event_id = eventResult.id; // raw SurrealDB RecordId — needed for RELATE + source_events
+      const event_id = eventResult.id;
       const event_id_str = String(event_id);
 
       if (!host?.invokeLLM) return { ok: false, reason: 'no_host' };
@@ -116,35 +135,41 @@ export function createIngestTool({ db, embedder, host }) {
       const entityIds = {};
       for (const e of parsed.entities ?? []) {
         if (!e?.name || !e?.type) continue;
-        const id = await resolveOrCreateEntity(db, embedder, e);
-        entityIds[e.name.toLowerCase()] = id;
+        const r = await store.upsertEntity(db, embedder, {
+          name: e.name,
+          type: e.type,
+          host,
+          meta: e.aliases?.length ? { aliases: e.aliases } : undefined,
+        });
+        entityIds[e.name.toLowerCase()] = r.id;
       }
       const entitiesCreatedAfter =
         (await db.query(surql`SELECT count() AS n FROM entities GROUP ALL`).collect())[0]?.[0]?.n ??
         0;
       const entities_created = entitiesCreatedAfter - entitiesCreatedBefore;
 
-      let edges_created = 0;
+      // Collect edges, then emit via relateAll in one pass.
+      const edgeRows = [];
       for (const edge of parsed.edges ?? []) {
-        if (!edge?.kind || !VALID_EDGE_KINDS.has(edge.kind)) {
+        const kind = EDGE_KIND_MAP[edge?.kind];
+        if (!kind) {
           console.warn(`[ingest] skipping unknown edge kind: ${edge?.kind}`);
           continue;
         }
         const src = entityIds[edge.src_name?.toLowerCase?.()];
         const dst = entityIds[edge.dst_name?.toLowerCase?.()];
-        if (!src || !dst) continue;
+        if (!dst) continue;
+        // For event-sourced kinds (mentions / about / before), `from` is the
+        // new event; for entity↔entity kinds, `from` is the src entity.
+        const fromRec = EVENT_SOURCED_KINDS.has(kind) ? event_id : src;
+        if (!fromRec) continue;
+        edgeRows.push({ from: fromRec, to: dst, kind, meta: edge.meta });
+      }
+      let edges_created = 0;
+      if (edgeRows.length > 0) {
         try {
-          // Pick source based on kind — migration 0003 declares FROM types:
-          //   mentions, about: FROM events TO entities  → source = event_id
-          //   works_on, participates_in, co_occurs_with: FROM entities TO entities → source = src entity
-          const edgeSourceIsEvent = edge.kind === 'mentions' || edge.kind === 'about';
-          const edgeSrc = edgeSourceIsEvent ? event_id_str : String(src);
-          await db
-            .query(
-              `RELATE ${edgeSrc}->${edge.kind}->${String(dst)} CONTENT ${JSON.stringify(edge.meta ?? {})}`,
-            )
-            .collect();
-          edges_created += 1;
+          const { ids } = await store.relateAll(db, edgeRows);
+          edges_created = ids.length;
         } catch (e) {
           console.warn(`[ingest] edge create failed: ${e.message}`);
         }
@@ -153,13 +178,13 @@ export function createIngestTool({ db, embedder, host }) {
       let knowledge_created = 0;
       for (const k of parsed.knowledge ?? []) {
         if (!k?.content) continue;
-        const subject_id = k.subject_name ? entityIds[k.subject_name.toLowerCase()] : null;
-        const result = await createKnowledge(db, embedder, {
+        const subjectId = k.subject_name ? entityIds[k.subject_name.toLowerCase()] : null;
+        const result = await store.note(db, embedder, 'knowledge', {
           content: k.content,
-          subject_id: subject_id ?? null,
+          derived_by: 'ingest',
           confidence: typeof k.confidence === 'number' ? k.confidence : 0.5,
-          source_events: [event_id], // raw RecordId — SurrealDB expects record<events>
-          source_episodes: [],
+          subjects: subjectId ? [subjectId] : [],
+          lineage: [{ id: event_id, kind: 'event' }],
         });
         if (result?.id) knowledge_created += 1;
       }

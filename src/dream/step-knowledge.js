@@ -1,20 +1,21 @@
+// step-knowledge.js — dream-pipeline knowledge promotion.
+//
+// Rewritten for the new schema:
+//   - Mention counts now come from the unified `edges` table
+//     (WHERE kind = 'mentions') instead of the per-relation `mentions` table.
+//   - New knowledge memos are written through `store.note('knowledge', …)`;
+//     `lineage` is passed in the spec shape `[{id, kind: 'event'}]` so
+//     `store.note` emits `derived_from` edges to each source event.
+//   - When the LLM marks a prior knowledge memo as superseded by the new
+//     promotion, we call `store.supersede(oldId, newId)` so `fn::freshness`
+//     returns 0 for the old memo thereafter.
+
 import { surql } from 'surrealdb';
-import { createKnowledge } from '../memory/knowledge.js';
+import * as store from '../memory/store.js';
 import { KNOWLEDGE_SYNTHESIS_SYSTEM } from './prompts.js';
 
 const DEFAULT_MIN_SIGNALS = 3;
 
-/**
- * Knowledge synthesis step of the dream pipeline.
- *
- * Finds entities with ≥ `minSignals` un-dreamed mentions and asks the LLM
- * whether to promote a fact about each into the `knowledge` table.
- *
- * Uses a two-step query (collect un-dreamed event ids first, then group
- * mentions by entity) for predictable behaviour across SurrealDB engines —
- * traversal-via-`in.dreamed_at` works inline but the two-step form is more
- * robust against query-planner edge cases on the in-memory engine.
- */
 export async function dreamStepKnowledge(
   db,
   host,
@@ -24,26 +25,33 @@ export async function dreamStepKnowledge(
   const [undreamed] = await db
     .query(surql`SELECT VALUE id FROM events WHERE dreamed_at IS NONE`)
     .collect();
-  if (!undreamed || undreamed.length === 0) return { eligible: 0, promoted: 0 };
+  if (!undreamed || undreamed.length === 0) {
+    return { eligible: 0, promoted: 0, superseded: 0 };
+  }
 
+  // Count un-dreamed mentions per entity via the unified edges table.
   const [counts] = await db
     .query(
-      surql`SELECT out AS entity_id, count() AS mention_count
-            FROM mentions
-            WHERE in IN ${undreamed}
+      surql`SELECT to AS entity_id, count() AS mention_count
+            FROM edges
+            WHERE kind = 'mentions'
+              AND from IN ${undreamed}
             GROUP BY entity_id`,
     )
     .collect();
 
   const eligible = (counts ?? []).filter((c) => (c.mention_count ?? 0) >= minSignals);
   let promoted = 0;
+  let superseded = 0;
 
   for (const c of eligible) {
     const entityId = c.entity_id;
+    // Pull recent un-dreamed events that mention this entity.
     const [evRows] = await db
       .query(
         surql`SELECT id, content, ts FROM events
-              WHERE id IN (SELECT VALUE in FROM mentions WHERE out = ${entityId})
+              WHERE id IN (SELECT VALUE from FROM edges
+                           WHERE kind = 'mentions' AND to = ${entityId})
                 AND dreamed_at IS NONE
               LIMIT 20`,
       )
@@ -53,12 +61,34 @@ export async function dreamStepKnowledge(
     if (!entRows[0]) continue;
     const ent = entRows[0];
 
+    // Show the LLM any existing knowledge memos about this entity so it can
+    // flag which ones (if any) the new fact supersedes.
+    // derived_at must appear in the projection for ORDER BY to bind it in
+    // SurrealDB v3's parser.
+    const [existingMemos] = await db
+      .query(
+        surql`SELECT id, content, confidence, derived_at FROM memos
+              WHERE kind = 'knowledge'
+                AND id IN (SELECT VALUE from FROM edges
+                           WHERE kind = 'about' AND to = ${entityId})
+              ORDER BY derived_at DESC LIMIT 10`,
+      )
+      .collect();
+    const existingList = (existingMemos ?? []).map(
+      (m, i) => `[${i}] (${(m.confidence ?? 0).toFixed(2)}) ${m.content}`,
+    );
+
     const userPrompt = `Entity: ${ent.type}/${ent.name}
 
 Recent observations:
 ${evRows.map((e) => `- ${e.content}`).join('\n')}
 
-Decide whether to promote knowledge.`;
+${existingList.length > 0 ? `Existing knowledge about this entity:\n${existingList.join('\n')}\n` : ''}
+Decide whether to promote knowledge.
+If the new fact contradicts or refines any "Existing knowledge" entry with lower confidence than the new one, also return its index in "supersedes_indices".
+
+Respond JSON only:
+{ "promote": boolean, "knowledge_text": string | null, "confidence": number, "supersedes_indices": number[] }`;
 
     let result;
     try {
@@ -79,16 +109,31 @@ Decide whether to promote knowledge.`;
     }
 
     if (result?.promote && result.knowledge_text) {
-      await createKnowledge(db, embedder, {
+      const newConfidence = Math.min(1, Math.max(0, result.confidence ?? 0.7));
+      const lineage = evRows.map((e) => ({ id: e.id, kind: 'event' }));
+      const created = await store.note(db, embedder, 'knowledge', {
         content: result.knowledge_text,
-        subject_id: entityId,
-        confidence: Math.min(1, Math.max(0, result.confidence ?? 0.7)),
-        source_events: evRows.map((e) => e.id),
-        source_episodes: [],
+        confidence: newConfidence,
+        derived_by: 'dream',
+        subjects: [entityId],
+        lineage,
       });
       promoted++;
+
+      // Supersede any contradicted prior memos whose confidence is below
+      // the new one. Index validity and confidence guard prevent the LLM
+      // from collapsing unrelated facts.
+      const idxs = Array.isArray(result.supersedes_indices) ? result.supersedes_indices : [];
+      for (const idx of idxs) {
+        const prior = existingMemos?.[idx];
+        if (!prior) continue;
+        if ((prior.confidence ?? 0) >= newConfidence) continue;
+        if (String(prior.id) === String(created.id)) continue;
+        await store.supersede(db, prior.id, created.id);
+        superseded++;
+      }
     }
   }
 
-  return { eligible: eligible.length, promoted };
+  return { eligible: eligible.length, promoted, superseded };
 }

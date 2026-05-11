@@ -1,3 +1,9 @@
+// STALE — references the pre-redesign schema (per-relation edge tables like
+// `mentions`, `works_on`; per-kind memo tables like `knowledge`, `patterns`,
+// `threads`, `predictions`). The new schema uses one `edges` table and one
+// `memos` table (kind discriminator). This file will be rewritten in a later
+// wave once the DB browser UI is updated to the unified shape.
+//
 // Human-readable descriptions of every table in Robin's memory (v2 schema).
 //
 // Layers — mirrors src/schema/migrations:

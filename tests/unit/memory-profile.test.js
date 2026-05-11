@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { getProfile, updateProfileFields } from '../../src/memory/profile.js';
+import { getProfile, updateProfileFields } from '../../src/memory/persona.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';

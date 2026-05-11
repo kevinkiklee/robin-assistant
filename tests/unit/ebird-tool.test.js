@@ -34,7 +34,6 @@ test('ebird_recent returns rows ordered by ts desc', async () => {
         source: 'ebird',
         content: 'American Robin at Central Park · 2026-05-09 10:00',
         ts: new Date('2026-05-09T10:00:00Z'),
-        external_id: 'ebird:S111',
         meta: { common_name: 'American Robin', location_id: 'L191106' },
       }}`,
     )
@@ -45,7 +44,6 @@ test('ebird_recent returns rows ordered by ts desc', async () => {
         source: 'ebird',
         content: 'Northern Cardinal at Prospect Park · 2026-05-08 09:00',
         ts: new Date('2026-05-08T09:00:00Z'),
-        external_id: 'ebird:S222',
         meta: { common_name: 'Northern Cardinal', location_id: 'L92485' },
       }}`,
     )
@@ -64,7 +62,6 @@ test('ebird_recent filters by location_id', async () => {
         source: 'ebird',
         content: 'a',
         ts: new Date(),
-        external_id: 'ebird:a',
         meta: { location_id: 'L191106' },
       }}`,
     )
@@ -75,7 +72,6 @@ test('ebird_recent filters by location_id', async () => {
         source: 'ebird',
         content: 'b',
         ts: new Date(),
-        external_id: 'ebird:b',
         meta: { location_id: 'L92485' },
       }}`,
     )

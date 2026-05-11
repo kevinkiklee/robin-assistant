@@ -7,7 +7,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { closeEpisode, createEpisode } from '../../src/graph/episodes.js';
-import { getHotContext } from '../../src/memory/hot.js';
+import { getHotContext } from '../../src/memory/attention.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';

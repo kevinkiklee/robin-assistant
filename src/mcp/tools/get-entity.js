@@ -1,6 +1,10 @@
-import { surql } from 'surrealdb';
+// get_entity — fetch a single entity with edge summary.
+//
+// Redesigned for the unified `edges` table. The per-relation edge tables are
+// gone; counts are computed per-kind by grouping on the `edges.kind` field.
+// `co_occurs_with` renamed to `occurs_with` in the registry.
 
-const EDGE_TABLES = ['mentions', 'about', 'works_on', 'participates_in', 'co_occurs_with'];
+const ENTITY_EDGE_KINDS = ['mentions', 'about', 'works_on', 'participates_in', 'occurs_with'];
 
 export function createGetEntityTool({ db }) {
   return {
@@ -22,19 +26,38 @@ export function createGetEntityTool({ db }) {
       }
       const entity = rows[0];
 
-      const edgeSummary = {};
-      for (const tbl of EDGE_TABLES) {
-        const [c] = await db
-          .query(`SELECT count() AS n FROM ${tbl} WHERE in = ${idRef} OR out = ${idRef} GROUP ALL`)
-          .collect();
-        edgeSummary[tbl] = c[0]?.n ?? 0;
+      // One grouped query covers all edge kinds. `from = entity OR to = entity`
+      // captures both directions; the registry's symmetric kinds canonicalize
+      // endpoint order so there are no double-counted rows.
+      const [summary] = await db
+        .query(
+          `SELECT kind, count() AS n FROM edges
+           WHERE from = ${idRef} OR to = ${idRef}
+           GROUP BY kind`,
+        )
+        .collect();
+      const edgeSummary = Object.fromEntries(ENTITY_EDGE_KINDS.map((k) => [k, 0]));
+      for (const row of summary ?? []) {
+        if (row.kind in edgeSummary) edgeSummary[row.kind] = row.n ?? 0;
+        else edgeSummary[row.kind] = row.n ?? 0;
       }
 
       const [mentionCount] = await db
-        .query(`SELECT count() AS n FROM mentions WHERE out = ${idRef} GROUP ALL`)
+        .query(
+          `SELECT count() AS n FROM edges
+           WHERE kind = 'mentions' AND to = ${idRef} GROUP ALL`,
+        )
         .collect();
+
+      // Last mention: pull the most recent inbound mentions edge, then read
+      // the source event's timestamp. Field-path traversal `from.ts` works on
+      // SurrealDB v3 across `record<>` fields.
       const [lastMention] = await db
-        .query(`SELECT in.ts AS ts FROM mentions WHERE out = ${idRef} ORDER BY in.ts DESC LIMIT 1`)
+        .query(
+          `SELECT from.ts AS ts FROM edges
+           WHERE kind = 'mentions' AND to = ${idRef}
+           ORDER BY from.ts DESC LIMIT 1`,
+        )
         .collect();
 
       return {

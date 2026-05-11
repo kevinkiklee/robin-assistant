@@ -228,6 +228,10 @@ export async function main(argv) {
     console.error('usage: robin embedder switch <mxbai-1024|qwen3-4096|gemini-3072>');
     process.exit(1);
   }
+  if (cmd === 'embeddings') {
+    const { embeddings } = await import('./commands/embeddings.js');
+    return embeddings(argv.slice(1));
+  }
   if (cmd === 'secrets') {
     const sub = argv[1];
     if (sub === 'import') {

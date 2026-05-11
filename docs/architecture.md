@@ -1,6 +1,6 @@
 # Architecture
 
-How Robin is structured, why it's structured that way, and what happens during a typical agent turn.
+How Robin v2 is structured after the database + memory redesign.
 
 ## The big picture
 
@@ -15,127 +15,113 @@ Claude Code / Gemini CLI session
        │
        ▼
    robin-mcp daemon  (single owner of the embedded DB)
-       ├─ Capture        recordEvent → embed → events table
-       │                 (HNSW vector index — dim depends on embedder profile)
-       │                 + inbound discretion refuses credential-shaped writes
-       ├─ Recall         HNSW kNN + recency window + source/trust filters
-       ├─ Biographer     1 LLM call per event → entities, edges, episodes
-       ├─ Dream          nightly 5-step batch → knowledge / patterns /
-       │                 profile / threads / rule candidates
+       ├─ Capture        store.remember → events table + embeddings
+       │                 (inbound discretion refuses credential-shaped writes)
+       ├─ Recall         HNSW kNN on per-surface embeddings → rank.score
+       │                 (cosine × freshness × contradiction × trust × scope)
+       │                 → MMR-lite diversity → recall_log{outcome:pending}
+       ├─ Reinforcement  5-min internal job: pending recall_log + no correction
+       │                 → signal_count++/decay_anchor=now on hits
+       │                 (the keystone effectiveness fix; closes the loop)
+       ├─ Biographer     per-event LLM call → entities + edges + memos
+       │                 (writes through store.relateAll for batched edges)
+       ├─ Dream          nightly 5-step pipeline → knowledge / habits /
+       │                 narrative / persona / rule candidates / scope cleanup
        ├─ Heartbeat      60s tick: integration syncs, biographer queue,
-       │                 stale-session sweeper
+       │                 stale-session sweeper, internal jobs (reinforce-recall)
        ├─ Discretion     outbound: PII / secret / verbatim-quote guards +
        │                 sliding-1h rate limiter (default 10/hr)
-       ├─ Reflection     corrections → 30-day cluster → rule candidates →
-       │                 user approval → DB-backed rules surfaced to agents
-       └─ Introspection  manifest-baseline integrity check at boot;
-                         multi-session registry; refusals audit table
+       ├─ Reflection     corrections + reinforcements → rule_candidates
+       └─ Introspection  manifest-baseline integrity check at boot
        │
        ▼
-   Embedded SurrealDB v3   (rocksdb:// at <robinHome>/db/)
-       events · entities · episodes · 6 edge tables ·
-       knowledge · patterns · profile · threads ·
-       rule_candidates · rules · recall_events · refusals · runtime_*
-       (sessions, introspection_state, intuition_telemetry, scheduler,
-       embedder)
+   Embedded SurrealDB v3   (rocksdb:// at <robin-home>/db/)
+       Substrate (3 tables):
+         events    · raw firehose; biographed_at/dreamed_at flags
+         memos     · distilled cognition; kind ∈ {knowledge, habit, thread,
+                     prediction, state_inference, reasoning, session_outcome}
+         entities  · graph nouns; open `type` enum
+       Edges (1 generic table, composite-ID `edges:[kind, from, to]`):
+         kind ∈ {mentions, about, before, works_on, participates_in,
+                 occurs_with, derived_from, supersedes, contradicts}
+       Embeddings (per-(profile, surface)):
+         embeddings_<profile>_{events,memos,entities}
+         (HNSW; profile swap = new tables + reindex; data tables untouched)
+       Operational:
+         episodes, persona (singleton), runtime (KV), runtime_sessions,
+         runtime_jobs, intuition_telemetry, recall_log, refusals,
+         action_trust, rule_candidates, rules, _migrations
 ```
 
 ## Why it's shaped this way
 
-- **Single write primitive.** Every capture — CLI, sync integration, Discord, manual `remember` — lands as a row in the `events` table. Content-hash dedupe; embeddings cached on hash; inbound discretion runs at the entry point.
-- **Schema is the source of truth.** Hand-written `.surql` migrations under `src/schema/migrations/` (0001–0012), applied by a v3-aware runner with a pre-migration tar backup.
-- **The daemon owns the DB.** Embedded RocksDB is single-process. The `robin-mcp` daemon is the only writer; CLI commands route through it when running, otherwise take a cooperative file lock.
-- **Multi-host, no direct API calls.** The biographer and dream pipelines invoke the LLM through your host's CLI subprocess (Claude Code or Gemini CLI), with `cache_control` annotations on cacheable layers. No Anthropic / Google API key required for memory operations.
-- **Three integration kinds:**
-  - `sync` — heartbeat-driven pulls (gmail, calendar, drive, youtube, lunch_money, weather, ebird, nhl, linear, whoop, ga, chrome, lrc, github, spotify, letterboxd)
-  - `gateway` — long-lived in-process (discord)
-  - `tool-only` — write surfaces invoked by the agent (github_write, spotify_write)
-- **Safety faculties:** host-side hooks installed into `~/.claude/settings.json` (discretion on bash, intuition on prompt, session-start registry, biographer Stop hook) plus inbound discretion on every memory write, daemon-boot introspection, and a standalone pre-commit privacy hook for personal repos.
+- **One substrate, three tables.** Events (raw), memos (distilled, kind-discriminated), entities (graph nouns). Anything memorable maps to a `memo` kind — adding a new kind is a code change (validator + lens), not a schema migration.
+- **One edges table.** Composite IDs `edges:[kind, from, to]` give idempotent UPSERT. Registry (`EDGE_KIND_REGISTRY`) enforces endpoint types, self-loop rejection, and symmetric canonicalization at write time.
+- **Embeddings separable from data.** Per-(profile, surface) tables (`embeddings_<profile>_{events,memos,entities}`). Swapping embedders never touches the data tables; just create a new profile's tables, backfill, flip `runtime:embedder.active_profile`.
+- **Open enums throughout.** `memos.kind`, `entities.type`, `events.source`, `events.trust`, `edges.kind` are unconstrained strings. Code-side registries enforce shape.
+- **Recall closes the loop.** Every recall hit is evaluated 5 min later; if no correction landed, `signal_count++` and `decay_anchor=now`. Useful memos sharpen with use. `recall_log` becomes labeled-ish training data for a future reranker.
+- **Belief evolution without deletion.** `supersedes` and `contradicts` edges annotate; old memos remain queryable. `fn::freshness` returns 0 for any memo with an inbound `supersedes` edge.
+- **The daemon owns the DB.** Embedded RocksDB is single-process. `robin-mcp` is the only writer; CLI commands route through it.
 
 ## A typical agent turn
 
-1. **SessionStart hook** registers the session in `runtime_sessions` (with `transcript_path` so other hooks can read prior turns). If introspection found drift at the last daemon boot, the warnings surface in stderr at session start.
-2. **You type a message.** UserPromptSubmit hook (intuition) reads the last 8 KB of the transcript, extracts the previous assistant message, POSTs `{query, prior_assistant, k:6, recency_days:30}` to the daemon's `/internal/intuition`. The daemon runs the recall pipeline and returns a `<!-- relevant memory -->` block formatted under a 1500-token budget. The host injects it into the model's context. Fail-soft on every error.
-3. **The agent reads its instructions** in `~/.claude/CLAUDE.md` (and the regenerable `<!-- robin -->` block inside it), calls `recall` / `find_entity` / `gmail_search` / etc. via MCP over SSE.
-4. **If the agent runs Bash**, the PreToolUse hook (discretion) checks the command against 7 deny rules (secrets-read, env-dump, destructive-rm, low-level-fs, git-expose-userdata, eval-injection, db-direct-access). Match → exit 2, command refused. Static — no daemon round-trip.
-5. **If the agent calls `remember` / `record_correction`**, inbound discretion checks the content against credential / secret / private-key / JWT / password-assignment patterns. Match → refused, logged to `refusals(direction='inbound')`, agent sees a structured error.
-6. **Stop hook** spawns a detached `robin biographer process-pending` subprocess. The biographer reads new events, makes one LLM call per event through `host.invokeLLM`, and UPSERTs entities + edges + episodes.
-7. **Heartbeat** ticks every 60s — runs due integration syncs, drains the biographer queue, marks stale sessions, advances quiet-window cursors.
-8. **Nightly at 4 AM** (`process.env.TZ`), Dream runs the 5-step pipeline and produces knowledge / patterns / profile / threads / rule candidates. Inside that pipeline, **reflection** clusters correction events (cosine ≥ 0.85, min 3, 30-day window) into `rule_candidates`.
-9. **You approve or reject candidates** with `robin rules approve <id>` (or via the `update_rule` MCP tool). Approved rules surface in CLAUDE.md/GEMINI.md on the next session.
+1. **SessionStart hook** registers the session in `runtime_sessions` (with `transcript_path`).
+2. **You type a message.** UserPromptSubmit (intuition) reads the transcript tail, POSTs `{query, prior_assistant, k:6, recency_days:30}` to the daemon. Intuition pipeline: `store.searchEvents` + `store.searchMemos(kind='knowledge')` → `rank.score` → MMR-lite → format as `<!-- relevant memory -->` block under a 1500-token budget. Writes `recall_log{outcome:pending}` and `intuition_telemetry` rows. Fail-soft on every error.
+3. **The agent reads its instructions** and calls MCP tools (`recall`, `remember`, `note`, `find_entity`, `ingest`, `predict`, `update_action_policy`, etc.).
+4. **Bash PreToolUse hook (discretion)** statically checks the command against 7 deny rules. Match → exit 2.
+5. **`store.remember` / `store.note`** validates against registries, writes the row + embedding, optionally relates subjects (`about` edges) and lineage (`derived_from` edges).
+6. **Stop hook** spawns biographer in detached subprocess. Reads new events, makes one LLM call per event, UPSERTs entities + emits `edges` via `store.relateAll(...)`, sets `events.biographed_at`.
+7. **Heartbeat** (60s) runs integration syncs, drains biographer queue, marks stale sessions, advances quiet-window cursors, and dispatches due internal jobs (notably `reinforce-recall` every 5 min).
+8. **Nightly at 4 AM**, dream runs the pipeline: step-knowledge → step-habits → step-narrative → step-persona → step-reflection → step-scope-cleanup. Each step is fail-soft. Step-knowledge emits `supersedes` when promoting contradicting facts.
+9. **Reinforce-recall** (every 5 min) walks `recall_log` rows with `outcome='pending'` and `ts < now - 5min`. If a `meta.kind='correction'` event landed in the session window → mark `outcome='corrected'`. Otherwise → for each hit memo, `signal_count += 1` and `decay_anchor = time::now()`; mark `outcome='reinforced'`. The labeled-ish output feeds a future reranker.
 
 ## Database shape and example queries
 
-The graph edges, document tables, vector indexes, and runtime/KV rows live in one SurrealDB v3 instance, addressable through one query language. Recall, biographer, and dream all rely on composing graph traversal with vector kNN inside a single statement rather than stitching results across stores.
+The substrate + edges + per-surface embeddings live in one SurrealDB v3 instance. Recall, biographer, and dream all compose explicit `SELECT` over `edges` indexed by `(kind, from)` and `(kind, to)` — graph-arrow traversal is unavailable (TYPE NORMAL trade-off for composite-ID idempotence).
 
-| Layer | Tables |
-|---|---|
-| Capture | `events` (768-dim HNSW), `episodes`, `recall_events` |
-| Entities + graph | `entities` (384-dim HNSW), `mentions`, `about`, `precedes`, `works_on`, `participates_in`, `co_occurs_with` |
-| Long-term memory | `knowledge` (384-dim HNSW), `patterns`, `profile`, `threads` |
-| Reflection | `rule_candidates`, `rules` |
-| Runtime / safety | `runtime_*` (sessions, introspection_state, intuition_telemetry, scheduler, embedder), `refusals` |
-
-A small slice of the graph the biographer builds from a single event:
-
-```
-                       ┌──── event:e1 ─────┐
-                       │ "talked to bob    │
-                       │  about auth for   │
-                       │  project-x"       │
-                       └─────────┬─────────┘
-                                 │ mentions
-              ┌──────────────────┼──────────────────┐
-              ▼                  ▼                  ▼
-         entity:bob        entity:auth        entity:project-x
-          (person)            (topic)            (project)
-              │                                     ▲
-              │             works_on                │
-              └─────────────────────────────────────┘
-
-  entity:project-x ── co_occurs_with (strength = 4.2) ──► entity:robin
-
-  Vector index events_vec  (HNSW, dim 768)  ── used by recall (`<|K, EF|>`)
-  Vector index entities_vec (HNSW, dim 384)  ── used by find_entity stage 2
-```
-
-Example SurrealQL — these mirror the shapes Robin's own pipelines run:
+Example SurrealQL — mirroring shapes Robin's pipelines run:
 
 ```surql
--- HNSW vector recall: 6 nearest events to a query embedding.
--- The KNN operator `<|K, EF|>` uses the events_vec HNSW index;
--- `vector::distance::knn()` reads back the per-row distance.
-SELECT content, ts, vector::distance::knn() AS dist
-FROM events WHERE embedding <|6, 64|> $qvec;
+-- HNSW vector recall against the active profile's events surface.
+SELECT record, vector::distance::knn() AS dist
+FROM embeddings_mxbai_1024_events
+WHERE vector <|6, 64|> $qvec
+ORDER BY dist
+LIMIT 6;
 
--- Graph traversal: every event that mentioned an entity named "robin".
-SELECT <-mentions<-events.{content, ts} AS occurrences
-FROM entities WHERE name_lower = 'robin';
+-- Memos about a given entity (the new shape of subject lookup).
+SELECT id, content, confidence FROM memos
+WHERE kind = 'knowledge'
+  AND id IN (SELECT VALUE from FROM edges WHERE kind = 'about' AND to = $entity_id)
+ORDER BY derived_at DESC LIMIT 10;
 
--- Co-occurrence: top 10 entities most often seen alongside a given one.
-SELECT out.name AS entity, strength
-FROM co_occurs_with
-WHERE in = $entity
-ORDER BY strength DESC LIMIT 10;
+-- All entities that co-occur with $entity, sorted by counter weight.
+SELECT IF from = $entity THEN to ELSE from END AS other, weight
+FROM edges
+WHERE kind = 'occurs_with' AND (from = $entity OR to = $entity)
+ORDER BY weight DESC LIMIT 10;
 
--- Two-hop: projects worked on by entities that appear in a given episode.
-SELECT ->works_on->entities.name AS projects
-FROM entities WHERE id IN (
-  SELECT VALUE out FROM about WHERE in IN (
-    SELECT VALUE id FROM events WHERE episode_id = $episode
-  )
-);
+-- Server-side freshness ranking for distilled memos in the last 7d.
+SELECT id, content, fn::freshness(id) AS fresh
+FROM memos
+WHERE kind = 'knowledge' AND derived_at > time::now() - 7d
+ORDER BY fresh DESC LIMIT 10;
 
--- Hybrid (vector + filter): dreamed knowledge most similar to a query,
--- restricted to the last 7 days.
-SELECT content, created_at, vector::distance::knn() AS dist
-FROM knowledge
-WHERE embedding <|5, 64|> $qvec
-  AND created_at > time::now() - 7d;
+-- "What did Robin believe about $entity at time $t?" — supersedes-aware.
+SELECT * FROM memos
+WHERE id IN (SELECT VALUE from FROM edges WHERE kind = 'about' AND to = $entity)
+  AND derived_at <= $t
+  AND id NOT IN (SELECT VALUE to FROM edges WHERE kind = 'supersedes' AND created_at <= $t)
+ORDER BY derived_at DESC;
+
+-- Reinforcement pending rows ready for evaluation.
+SELECT id, session_id, ranked_hits FROM recall_log
+WHERE outcome = 'pending' AND ts < time::now() - 5m;
 ```
 
 ## See also
 
-- [`faculties.md`](faculties.md) — per-faculty deep dive
-- [`development.md`](development.md) — extending Robin (new MCP tools, integrations, hooks, migrations)
-- [`troubleshooting.md`](troubleshooting.md) — common problems
+- [`faculties.md`](faculties.md) — per-faculty deep dive (attention, chronicle, knowledge, habits, persona, narrative, foresight, biographer, dream, intuition, discretion, reflection, introspection).
+- [`development.md`](development.md) — extending Robin (new memo kind = registry entry + lens; new edge kind = registry entry; no migration).
+- [`troubleshooting.md`](troubleshooting.md) — common problems.
+- `docs/superpowers/specs/2026-05-11-robin-v2-database-and-memory-redesign-design.md` — design rationale.

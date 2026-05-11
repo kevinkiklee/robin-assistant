@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { createPattern, listPatterns, upsertPatternByName } from '../../src/memory/patterns.js';
+import { createStubEmbedder } from '../../src/embed/embedder.js';
+import { createPattern, listPatterns, upsertPatternByName } from '../../src/memory/habits.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
@@ -28,7 +29,8 @@ async function fresh() {
 
 test('createPattern writes a row', async () => {
   const db = await fresh();
-  const r = await createPattern(db, {
+  const e = createStubEmbedder({ dimension: 1024 });
+  const r = await createPattern(db, e, {
     name: 'morning-atlas-work',
     description: 'User works on Atlas in the morning',
     source_events: [],
@@ -39,12 +41,13 @@ test('createPattern writes a row', async () => {
 
 test('upsertPatternByName updates existing', async () => {
   const db = await fresh();
-  const r1 = await upsertPatternByName(db, {
+  const e = createStubEmbedder({ dimension: 1024 });
+  const r1 = await upsertPatternByName(db, e, {
     name: 'p1',
     description: 'first',
     source_events: [],
   });
-  const r2 = await upsertPatternByName(db, {
+  const r2 = await upsertPatternByName(db, e, {
     name: 'p1',
     description: 'updated',
     source_events: [],
@@ -57,8 +60,9 @@ test('upsertPatternByName updates existing', async () => {
 
 test('listPatterns returns recent patterns', async () => {
   const db = await fresh();
-  await createPattern(db, { name: 'a', description: 'a', source_events: [] });
-  await createPattern(db, { name: 'b', description: 'b', source_events: [] });
+  const e = createStubEmbedder({ dimension: 1024 });
+  await createPattern(db, e, { name: 'a', description: 'a', source_events: [] });
+  await createPattern(db, e, { name: 'b', description: 'b', source_events: [] });
   const list = await listPatterns(db);
   assert.ok(list.length >= 2);
   await close(db);

@@ -34,7 +34,6 @@ test('weather_today returns latest weather event', async () => {
         source: 'weather',
         content: 'NYC · 70°F / 50°F · Clear',
         ts: new Date('2026-05-10T12:00:00Z'),
-        external_id: 'weather:2026-05-10',
         meta: { location_name: 'NYC' },
       }}`,
     )
@@ -45,7 +44,6 @@ test('weather_today returns latest weather event', async () => {
         source: 'weather',
         content: 'NYC · 65°F / 48°F · Rain',
         ts: new Date('2026-05-09T12:00:00Z'),
-        external_id: 'weather:2026-05-09',
         meta: { location_name: 'NYC' },
       }}`,
     )

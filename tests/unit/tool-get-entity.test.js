@@ -27,7 +27,7 @@ test('get_entity returns the entity record', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   const v = Array.from(await e.embed('person: Alice'));
   const [created] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: v }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person' }}`)
     .collect();
   const id = (Array.isArray(created) ? created[0] : created).id;
   const tool = createGetEntityTool({ db });

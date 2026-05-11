@@ -2,7 +2,7 @@ import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
-import { listJournalEntries } from '../../memory/journal.js';
+import { listJournalEntries } from '../../memory/chronicle.js';
 import { ensureHome, paths } from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 

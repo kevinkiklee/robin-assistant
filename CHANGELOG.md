@@ -1,5 +1,62 @@
 # Changelog
 
+## [6.0.0-alpha.13] — 2026-05-11 — DB + memory layer redesign (last big schema reshape)
+
+Destructive reset of the schema and memory layer. Spec at `docs/superpowers/specs/2026-05-11-robin-v2-database-and-memory-redesign-design.md`; plan at `docs/superpowers/plans/2026-05-11-robin-v2-database-and-memory-redesign.md`; handoff at `HANDOFF.md`.
+
+### Schema
+
+- **One init migration replaces 14.** `0001-init.surql` defines events / memos / entities / episodes / edges / persona / runtime tables + `fn::freshness` + cascade events. Per-profile embedding tables in `0002-embeddings-<profile>.surql` (3 surfaces per active profile; profile swap is non-destructive).
+- **3 substrate tables, 1 edges table.** `memos` is kind-discriminated; the open kind enum + `MEMO_KIND_REGISTRY` mean adding a new kind is a code change, never a migration. Edges use composite IDs `edges:[kind, from, to]` with registry-validated endpoints + symmetric canonicalization + counter (`SET weight += 1`) semantics for `occurs_with`.
+- **Open enums throughout.** `memos.kind`, `entities.type`, `events.source`, `events.trust`, `edges.kind` unconstrained; in-code registries enforce shape.
+- **Embeddings separable from data.** `embeddings_<profile>_{events,memos,entities}` tables; data tables carry no embedding columns.
+
+### Memory layer (`src/memory/`)
+
+- **`store.js`**: only writer to memos / edges / embeddings.
+- **Faculty renames**: `hot.js` → `attention.js`; `journal.js` → `chronicle.js`; `patterns.js` → `habits.js`; `profile.js` → `persona.js` (table renamed too); `threads.js` → `narrative.js`. `knowledge.js` kept name. `foresight.js` is new — consolidates predictions.
+- **`kind-registry.js`** + **`edge-registry.js`** + **`scopes.js`** + **`decay.js`** + **`embed/profile-router.js`**: in-code validation, scope constants, JS freshness mirror, active-profile resolution.
+
+### Recall pipeline (`src/recall/`)
+
+- **`rank.js`**: composite score = `cosine × freshness × contradiction-penalty × trust-factor × scope-boost` + MMR-lite.
+- **`reinforcement.js`** + **`jobs/internal/reinforce-recall.js`** (every 5 min): the keystone effectiveness fix — useful memos sharpen with use, noisy memos that lead to corrections don't.
+- **`recall/index.js`** rewritten as adapter over `store.searchEvents`; legacy `{ hits: [...] }` shape preserved.
+- **`recall/intuition.js`** writes `intuition_telemetry` + `recall_log{outcome:pending}` rows.
+
+### Dream
+
+- `step-patterns` queries `edges WHERE kind='occurs_with'`; emits via `habits.upsert`.
+- `step-threads` queries `edges WHERE kind='mentions'`; emits via `narrative.add`.
+- New `step-scope-cleanup` promotes referenced ephemerals to global; prunes stale ephemerals (session: 7d, temp: 24h).
+
+### Naming sweep
+
+| Old | New |
+|---|---|
+| Edge `co_occurs_with` | `occurs_with` |
+| Edge `precedes` | `before` |
+| Memo kind `pattern` | `habit` |
+| Table `profile` | `persona` |
+| Table `runtime_intuition_telemetry` | `intuition_telemetry` |
+| Table `recall_events` | `recall_log` |
+| Module `hot.js` | `attention.js` |
+| Module `journal.js` | `chronicle.js` |
+| Module `patterns.js` | `habits.js` |
+| Module `profile.js` | `persona.js` |
+| Module `threads.js` | `narrative.js` |
+
+### Verification
+
+`scripts/verify-design-assumptions.js` covers 4 gates against SurrealDB 3.0.5. `scripts/test-store-smoke.mjs`, `scripts/test-reinforcement-smoke.mjs`, `scripts/test-intuition-loop-smoke.mjs`, `scripts/test-scope-cleanup-smoke.mjs`, and `scripts/verify-hnsw-plan.mjs` cover end-to-end primitives + the reinforcement loop + scope cleanup + HNSW operator selection. `tests/unit/audit-no-old-tables.test.js` asserts production source contains zero references to the old table/edge names. Lint clean. Unit suite 955/990 (96.5%); 35 remaining failures are stale test fixtures (deferred follow-up).
+
+### What's NOT in this release
+
+- v1→v2 migrator rewrite (out of scope; `src/migrate-v1/` left stale).
+- Reasoning-trace / code-edit / session-outcome event writers (schema-ready; writers deferred).
+- Reranker training (uses `recall_log` reinforcement outcomes; arrives later).
+- Full test-suite update (~35 unit tests remain on stale fixtures; deferred).
+
 ## [6.0.0-alpha.12] — 2026-05-11
 
 Post-alpha.11 follow-on bundle: user-data isolation cutover, faculty renames, DB browser ship, long-form docs, non-interactive install, log rotation, and restored per-phase hooks-disable. 14 commits + ~984 unit tests passing.

@@ -2,7 +2,9 @@
 // repeat-query suppression.
 
 import { surql } from 'surrealdb';
+import * as store from '../memory/store.js';
 import { recall } from './index.js';
+import { mmrLite, score } from './rank.js';
 
 const PRIOR_TAIL_CHARS = 500;
 const LINE_CONTENT_CHARS = 120;
@@ -34,6 +36,20 @@ function formatHit(hit) {
 // existing biographer prompt sizing.
 function estimateTokens(s) {
   return Math.ceil((typeof s === 'string' ? s.length : 0) / 4);
+}
+
+// Cheap substring-overlap proxy for cosine similarity. Used by MMR-lite when
+// we don't have embedding vectors in hand. Returns ∈ [0, 1].
+function substringOverlap(a, b) {
+  const sa = (typeof a === 'string' ? a : '').toLowerCase();
+  const sb = (typeof b === 'string' ? b : '').toLowerCase();
+  if (!sa || !sb) return 0;
+  const tokensA = new Set(sa.split(/\W+/).filter((w) => w.length > 3));
+  const tokensB = new Set(sb.split(/\W+/).filter((w) => w.length > 3));
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let intersect = 0;
+  for (const t of tokensA) if (tokensB.has(t)) intersect++;
+  return intersect / Math.min(tokensA.size, tokensB.size);
 }
 
 const OPEN = '<!-- relevant memory -->';
@@ -80,12 +96,52 @@ export async function intuitionEndpoint({
   let hits = [];
   if (combined.trim().length > 0) {
     const since = new Date(Date.now() - recencyDays * 86400_000);
-    const result = await recall(db, embedder, combined, {
-      limit: k,
-      since,
-      explain: false,
-    });
-    hits = Array.isArray(result?.hits) ? result.hits : [];
+    // Fan out: events (recall pipeline) + distilled knowledge memos. The
+    // reinforcement loop only acts on memo:* hits, so fetching knowledge
+    // here is what closes the loop. Both halves are bounded to k; we merge
+    // and re-rank via score() then MMR-lite.
+    const [eventResult, memoResult] = await Promise.all([
+      recall(db, embedder, combined, { limit: k, since }),
+      store
+        .searchMemos(db, embedder, combined, { kind: 'knowledge', limit: k, since })
+        .catch(() => ({ hits: [] })),
+    ]);
+
+    const eventHits = (eventResult?.hits ?? []).map((h) => ({
+      record: h,
+      distance: h.dist ?? 0,
+      _kind: 'event',
+    }));
+    const memoHits = (memoResult?.hits ?? []).map((h) => ({
+      record: h.record,
+      distance: h.distance ?? 0,
+      _kind: 'memo',
+    }));
+
+    const merged = [...eventHits, ...memoHits].map((h) => ({
+      ...h,
+      _scored: score(h, { session_id: undefined }),
+    }));
+    merged.sort((a, b) => (b._scored.score ?? 0) - (a._scored.score ?? 0));
+
+    // MMR-lite: drop near-duplicates without re-embedding. Since we don't
+    // have inline embeddings here, fall back to substring overlap as a
+    // cheap proxy for cosine.
+    const deduped = mmrLite(
+      merged,
+      (a, b) => substringOverlap(a.record.content, b.record.content),
+      0.85,
+    ).slice(0, k);
+
+    hits = deduped.map((h) => ({
+      id: h.record.id,
+      source: h.record.source ?? (h._kind === 'memo' ? `memo:${h.record.kind}` : 'event'),
+      content: h.record.content,
+      ts: h.record.ts ?? h.record.derived_at,
+      meta: h.record.meta ?? { kind: h._kind === 'memo' ? h.record.kind : undefined },
+      dist: h.distance,
+      _kind: h._kind,
+    }));
   }
 
   let block = '';
@@ -122,7 +178,7 @@ export async function intuitionEndpoint({
   try {
     await db
       .query(
-        surql`CREATE runtime_intuition_telemetry CONTENT ${{
+        surql`CREATE intuition_telemetry CONTENT ${{
           query_chars: safeQuery.length,
           hits: hits.length,
           tokens_injected: tokens,
@@ -133,6 +189,29 @@ export async function intuitionEndpoint({
       .collect();
   } catch {
     // Swallow — telemetry is advisory.
+  }
+
+  // recall_log: feeds the reinforcement loop. Best-effort.
+  try {
+    const rankedHits = hits.map((h, i) => ({
+      record: h.id,
+      kind: h._kind,
+      score_components: score({ record: h, distance: h.dist ?? 0 }).components,
+      rank: i,
+    }));
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT ${{
+          query: safeQuery,
+          k,
+          ranked_hits: rankedHits,
+          outcome: 'pending',
+          meta: { latency_ms, truncated },
+        }}`,
+      )
+      .collect();
+  } catch {
+    /* fail-soft */
   }
 
   return { block, hits: hits.length, tokens, latency_ms, truncated };

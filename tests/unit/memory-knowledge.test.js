@@ -42,7 +42,9 @@ test('createKnowledge writes a row with content_hash', async () => {
     source_episodes: [],
   });
   assert.ok(r.id);
-  const [rows] = await db.query(surql`SELECT count() AS n FROM knowledge GROUP ALL`).collect();
+  const [rows] = await db
+    .query(surql`SELECT count() AS n FROM memos WHERE kind = 'knowledge' GROUP ALL`)
+    .collect();
   assert.equal(rows[0].n, 1);
   await close(db);
 });
@@ -87,9 +89,8 @@ test('searchKnowledge returns vector-similar results', async () => {
 test('listKnowledge filters by subject_id when provided', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const v = Array.from(await e.embed('person: Alice'));
   const [created] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: v }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person' }}`)
     .collect();
   const aliceId = (Array.isArray(created) ? created[0] : created).id;
   await createKnowledge(db, e, {

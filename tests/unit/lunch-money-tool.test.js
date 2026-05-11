@@ -34,7 +34,6 @@ test('lunch_money_query returns rows filtered by payee', async () => {
         source: 'lunch_money',
         content: 'Coffee · -$5 · Food',
         ts: new Date('2026-05-09'),
-        external_id: '1',
         meta: { payee: 'Coffee Co', amount: 5, date: '2026-05-09', category: 'Food' },
       }}`,
     )
@@ -45,7 +44,6 @@ test('lunch_money_query returns rows filtered by payee', async () => {
         source: 'lunch_money',
         content: 'Gas · -$30 · Auto',
         ts: new Date('2026-05-08'),
-        external_id: '2',
         meta: { payee: 'Shell', amount: 30, date: '2026-05-08', category: 'Auto' },
       }}`,
     )
@@ -65,7 +63,6 @@ test('lunch_money_query filters by min_amount', async () => {
         source: 'lunch_money',
         content: 'a',
         ts: new Date(),
-        external_id: 'a',
         meta: { amount: 5 },
       }}`,
     )
@@ -76,7 +73,6 @@ test('lunch_money_query filters by min_amount', async () => {
         source: 'lunch_money',
         content: 'b',
         ts: new Date(),
-        external_id: 'b',
         meta: { amount: 50 },
       }}`,
     )

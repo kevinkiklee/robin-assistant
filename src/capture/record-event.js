@@ -1,5 +1,6 @@
-import { surql } from 'surrealdb';
+import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
+import { activeProfile, embeddingTable } from '../embed/profile-router.js';
 import { RobinPiiRefusedError } from './errors.js';
 
 const VALID_SOURCES = new Set([
@@ -34,30 +35,34 @@ export async function recordEvent(db, embedder, input) {
   }
 
   const content_hash = sha256(content);
-
-  // Cache lookup: if we already embedded this exact content, reuse the vector.
-  const [hit] = await db
-    .query(surql`SELECT VALUE embedding FROM events WHERE content_hash = ${content_hash} LIMIT 1`)
-    .collect();
-  let embedding;
-  if (hit && hit.length > 0) {
-    embedding = hit[0];
-  } else {
-    embedding = Array.from(await embedder.embed(content));
-  }
-
   const tsValue = ts ? new Date(ts) : undefined;
 
   const set = {
     source,
     content,
     content_hash,
-    embedding,
     ...(tsValue ? { ts: tsValue } : {}),
     ...(meta ? { meta } : {}),
   };
 
   const [created] = await db.query(surql`CREATE events CONTENT ${set}`).collect();
   const row = Array.isArray(created) ? created[0] : created;
-  return { id: row.id };
+  const eventId = row.id;
+
+  // Write embedding into the active profile's per-surface embeddings table.
+  // Embedding lookups go through embeddings_<profile>_events; record-event
+  // remains the only writer for the events firehose.
+  const profile = await activeProfile(db);
+  const table = embeddingTable(profile, 'events');
+  const vec = Array.from(await embedder.embed(content));
+  await db
+    .query(
+      new BoundQuery(
+        'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()',
+        { tb: table, rec: eventId, vec },
+      ),
+    )
+    .collect();
+
+  return { id: eventId };
 }

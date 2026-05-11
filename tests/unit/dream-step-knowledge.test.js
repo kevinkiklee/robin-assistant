@@ -7,6 +7,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { dreamStepKnowledge } from '../../src/dream/step-knowledge.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
+import * as store from '../../src/memory/store.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
@@ -44,9 +45,8 @@ test('dreamStepKnowledge returns 0 promoted when no eligible entities', async ()
 test('dreamStepKnowledge promotes when LLM says promote', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const v = Array.from(await e.embed('person: Alice'));
   const [created] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: v }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person' }}`)
     .collect();
   const aliceId = (Array.isArray(created) ? created[0] : created).id;
   for (let i = 0; i < 3; i++) {
@@ -54,7 +54,7 @@ test('dreamStepKnowledge promotes when LLM says promote', async () => {
       source: 'cli',
       content: `event mentioning Alice ${i}`,
     });
-    await db.query(surql`RELATE ${evt.id}->mentions->${aliceId}`).collect();
+    await store.relate(db, evt.id, aliceId, 'mentions');
   }
   const host = fakeHost(
     JSON.stringify({ promote: true, knowledge_text: 'Alice is a colleague', confidence: 0.9 }),

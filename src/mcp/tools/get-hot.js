@@ -1,4 +1,4 @@
-import { getHotContext } from '../../memory/hot.js';
+import { getHotContext } from '../../memory/attention.js';
 
 export function createGetHotTool({ db }) {
   return {

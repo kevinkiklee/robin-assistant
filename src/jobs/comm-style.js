@@ -33,7 +33,7 @@ export function validateCommStyleShape(obj) {
 }
 
 export async function getCommStyle(db) {
-  const [rows] = await db.query(surql`SELECT comm_style FROM profile:singleton`).collect();
+  const [rows] = await db.query(surql`SELECT comm_style FROM persona:singleton`).collect();
   const cs = rows?.[0]?.comm_style ?? null;
   if (!cs) return null;
   // SurrealDB returns datetimes as objects with toDate(); normalize.
@@ -57,7 +57,7 @@ export async function setCommStyle(db, fields) {
     confidence: typeof fields.confidence === 'number' ? fields.confidence : 0,
     last_synthesized_at: new Date(),
   };
-  await db.query(surql`UPSERT profile:singleton MERGE ${{ comm_style: persisted }}`).collect();
+  await db.query(surql`UPSERT persona:singleton MERGE ${{ comm_style: persisted }}`).collect();
 }
 
 // ---------------------------------------------------------------------------
