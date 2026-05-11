@@ -85,9 +85,32 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 
 ### reinforcement (NEW)
 **The recall feedback loop — the keystone effectiveness fix.**
-- Files: `system/cognition/intuition/reinforcement.js`, `system/cognition/jobs/internal/reinforce-recall.js`, `system/cognition/jobs/builtin/reinforce-recall.md`.
-- Behavior: every 5 minutes, walks `recall_log` rows whose `outcome='pending'` and `ts < now - 5min`. For each: looks for `meta.kind='correction'` events in the same session within the 5-min window. If a correction landed → mark `outcome='corrected'`. Else for each hit memo → `signal_count += 1`, `decay_anchor = time::now()`; mark `outcome='reinforced'`. Useful memos sharpen with use.
-- Inspect: `SELECT outcome, count() FROM recall_log GROUP BY outcome`.
+- Files: `system/cognition/intuition/reinforcement.js`, `system/cognition/intuition/attribute.js`, `system/cognition/intuition/reinforcement-config.js`, `system/cognition/jobs/internal/reinforce-recall.js`, `system/cognition/jobs/builtin/reinforce-recall.md`.
+- Behavior: every 5 minutes, walks `recall_log` rows whose `outcome='pending'` and `ts < now - 5min`. For each row:
+  1. If a `meta.kind='correction'` event landed in the session window -> `outcome='corrected'`, refute every memo hit in `evidence_ledger` (Theme 2a).
+  2. Else, attribute hits via `attribute(hits, replyBody, config)` — explicit `<!-- recall_used: ... -->` marker -> `[event|episode YYYY-MM-DD]` citation -> asymmetric Jaccard similarity. Hits matched get `used=true, used_via=<pass>`.
+  3. If the conversation event capturing the next reply is missing -> fallback governed by `runtime:reinforcement.config.fallback_when_no_reply`.
+  4. If attribution matched zero hits -> fallback governed by `fallback_when_zero_used`. Without fallback, `outcome='evaluated_no_used'`.
+  5. For every hit with `used=true`, `signal_count += 1` and `decay_anchor = time::now()`. A `corroborates` ledger row is emitted weighted by the count of used-this-batch occurrences.
+- Config knobs (`runtime:reinforcement.config`, single UPDATE to retune):
+  - `attribution_mode`: `'hybrid'` (default once rolled out) or `'off'` (kill switch, every hit force-used).
+  - `similarity_threshold` (default 0.35): asymmetric Jaccard cutoff.
+  - `jaccard_min_overlap_tokens` (default 2): absolute floor on intersection size.
+  - `citation_date_window_days` (default 2): tolerance for `[event YYYY-MM-DD]` date match.
+  - `fallback_when_no_reply` / `fallback_when_zero_used` (default both true): preserve legacy reinforce-all when attribution can't run / matched nothing.
+  - `reply_lookup_window_ms` (default 600_000): how long after recall we wait for the reply event.
+- Inspect: `SELECT outcome, count() FROM recall_log GROUP BY outcome`; `explain_recall({last_n:5})` returns per-hit `used`/`used_via`/`used_score` plus the row's `attribution.mode`.
+- **Mode-rate distribution (interim telemetry, until `show_attribution_health` ships).** Until the `show_attribution_health` MCP rollup lands as a follow-up (spec §9.2 step 3), this query is the only way for an operator to verify the "watch for one week" check in rollout step 4:
+
+  ```surql
+  SELECT attribution.mode, count() AS n
+  FROM recall_log
+  WHERE ts > time::now() - 7d
+  GROUP BY attribution.mode;
+  ```
+
+  Expected healthy distribution after a week of `'hybrid'`: bulk of rows in `citation` + `similarity`, low single-digit-% in `fallback_no_reply` / `fallback_zero_used`, near-zero `hit_missing`-dominated rows. Spikes in `fallback_no_reply` indicate transcript-capture regressions (see §7.1); spikes in `hit_missing` indicate aggressive compaction (see §7.7).
+- **Rollback (operational).** ``UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'off';`` is the **fast** rollback — instant, no migration. The `evaluated_no_used` enum value persists on `recall_log.outcome`'s `ASSERT` list either way; rolling back the schema *enum* requires a new migration (you cannot `REMOVE` an enum value if any row holds it), so the runtime-flag rollback is the only one operators should reach for in practice.
 
 ### introspection
 **Daemon-boot integrity check against the install-time manifest baseline.** Unchanged from v1.
