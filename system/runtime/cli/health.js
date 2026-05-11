@@ -90,6 +90,40 @@ export async function rollupStaleDream(db) {
   return { hours_since: hours, status: hours >= cfg.stale_dream_warn_hours ? 'warn' : 'ok' };
 }
 
+const PENDING_RECALL_LOG_WARN_THRESHOLD = 100;
+const PENDING_RECALL_LOG_AGE_DAYS = 7;
+
+export async function rollupPendingRecallLog(db) {
+  const cutoff = new Date(Date.now() - PENDING_RECALL_LOG_AGE_DAYS * 86_400_000);
+  try {
+    const [rows] = await db
+      .query(
+        surql`SELECT count() AS n
+              FROM recall_log
+              WHERE outcome = 'pending' AND ts < ${cutoff}
+              GROUP ALL`,
+      )
+      .collect();
+    const count = rows?.[0]?.n ?? 0;
+    return {
+      step: 'pending_recall_log',
+      count,
+      threshold: PENDING_RECALL_LOG_WARN_THRESHOLD,
+      age_days: PENDING_RECALL_LOG_AGE_DAYS,
+      status: count > PENDING_RECALL_LOG_WARN_THRESHOLD ? 'warn' : 'ok',
+    };
+  } catch (e) {
+    return {
+      step: 'pending_recall_log',
+      count: 0,
+      threshold: PENDING_RECALL_LOG_WARN_THRESHOLD,
+      age_days: PENDING_RECALL_LOG_AGE_DAYS,
+      status: 'fail',
+      error: e.message,
+    };
+  }
+}
+
 export function aggregateExitCode(rollups) {
   for (const r of rollups) {
     if (r?.status === 'fail') return 2;
@@ -103,13 +137,14 @@ export function aggregateExitCode(rollups) {
 const GLYPH = { ok: '✓', warn: '⚠', fail: '✗' };
 
 export async function runHealth(db, { json = false } = {}) {
-  const [budget, faculties, pending, dream] = await Promise.all([
+  const [budget, faculties, pending, dream, pendingRecallLog] = await Promise.all([
     rollupTokenBudget(db),
     rollupFacultyErrors(db),
     rollupPendingTriggers(db),
     rollupStaleDream(db),
+    rollupPendingRecallLog(db),
   ]);
-  const all = [budget, ...faculties, pending, dream];
+  const all = [budget, ...faculties, pending, dream, pendingRecallLog];
   const exitCode = aggregateExitCode(all);
   if (json) {
     return {
@@ -120,6 +155,7 @@ export async function runHealth(db, { json = false } = {}) {
           faculties,
           pending,
           dream,
+          pending_recall_log: pendingRecallLog,
           exit_code: exitCode,
         },
         null,
@@ -134,6 +170,9 @@ export async function runHealth(db, { json = false } = {}) {
     `Token budget:        ${GLYPH[budget.status]} ${Math.round((budget.consumed ?? 0) / 1000)}k / ${Math.round((budget.daily ?? 0) / 1000)}k used (${Math.round((budget.pct ?? 0) * 100)}%)`,
   );
   lines.push(`Pending triggers:    ${GLYPH[pending.status]} ${pending.count}`);
+  lines.push(
+    `Pending recall_log >7d: ${GLYPH[pendingRecallLog.status]} ${pendingRecallLog.count} (>${pendingRecallLog.threshold} indicates stuck reinforcement)`,
+  );
   lines.push(
     `Dream nightly:       ${GLYPH[dream.status]} ${dream.hours_since == null ? 'never' : `${Math.round(dream.hours_since)}h ago`}`,
   );
