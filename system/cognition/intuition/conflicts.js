@@ -129,10 +129,12 @@ export async function fetchContradictors(db, memoIds, cfg) {
       return { pairs: [], pairs_precap: 0 };
     }
     const cap = cfg.conflict_max_pairs_hydrated ?? 24;
-    const [result] = await db.query(new BoundQuery(FETCH_QUERY, { hits: memoIds })).collect();
-    // SurrealDB multi-statement: the final RETURN payload is the last entry
-    // when an array; some SDK shapes return the payload directly. Tolerate both.
-    const payload = Array.isArray(result) ? result[result.length - 1] : result;
+    // SurrealDB multi-statement returns an array of per-statement results.
+    // LET statements return null; the final RETURN payload sits at the tail.
+    const results = await db.query(new BoundQuery(FETCH_QUERY, { hits: memoIds })).collect();
+    const payload = Array.isArray(results) ? results[results.length - 1] : results;
+    // Each row in payload.pairs is { pair: { side, other } } from the SELECT
+    // projection — unwrap once.
     const rawRows = (payload?.pairs ?? []).map((r) => r.pair ?? r);
     const hydratedMemos = payload?.memos ?? [];
 
