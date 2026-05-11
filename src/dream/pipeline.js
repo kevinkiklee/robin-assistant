@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { dreamStepCalibration } from './step-calibration.js';
 import { dreamStepCommStyle } from './step-comm-style.js';
 import { dreamStepKnowledge } from './step-knowledge.js';
 import { dreamStepPatterns } from './step-patterns.js';
@@ -50,6 +51,11 @@ export async function dreamProcess(db, host, embedder, opts = {}) {
     summary.commStyle = await dreamStepCommStyle(db, host);
   } catch (e) {
     summary.commStyle = { error: e.message };
+  }
+  try {
+    summary.calibration = await dreamStepCalibration(db);
+  } catch (e) {
+    summary.calibration = { error: e.message };
   }
 
   await db
