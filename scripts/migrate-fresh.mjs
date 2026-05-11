@@ -13,10 +13,10 @@
 // running, this script would refuse (the rocksdb engine is single-process).
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { connect, close } from '../src/db/client.js';
+import { close, connect } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { robinHome } from '../src/runtime/data-store.js';
 
@@ -77,10 +77,22 @@ async function main() {
     const tables = Object.keys(info?.tables ?? {});
     console.log(`migrate: ${tables.length} tables present`);
     const expected = [
-      'events', 'memos', 'entities', 'episodes', 'edges',
-      'persona', 'runtime', 'runtime_sessions', 'runtime_jobs',
-      'intuition_telemetry', 'recall_log', 'refusals', 'action_trust',
-      'rule_candidates', 'rules', '_migrations',
+      'events',
+      'memos',
+      'entities',
+      'episodes',
+      'edges',
+      'persona',
+      'runtime',
+      'runtime_sessions',
+      'runtime_jobs',
+      'intuition_telemetry',
+      'recall_log',
+      'refusals',
+      'action_trust',
+      'rule_candidates',
+      'rules',
+      '_migrations',
       `embeddings_${cfg.embedder_profile.replace(/-/g, '_')}_events`,
       `embeddings_${cfg.embedder_profile.replace(/-/g, '_')}_memos`,
       `embeddings_${cfg.embedder_profile.replace(/-/g, '_')}_entities`,

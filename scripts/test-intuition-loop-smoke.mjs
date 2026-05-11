@@ -55,7 +55,7 @@ const result = await intuitionEndpoint({
 console.log('intuition hits:', result.hits, 'tokens:', result.tokens);
 
 // Inspect recall_log to confirm the memo was logged
-const [logs] = await db.query(`SELECT id, ranked_hits, outcome FROM recall_log`).collect();
+const [logs] = await db.query('SELECT id, ranked_hits, outcome FROM recall_log').collect();
 console.log('recall_log rows:', logs.length);
 const intuitionHit = logs[0]?.ranked_hits?.[0];
 console.log('ranked_hits[0]:', JSON.stringify(intuitionHit));

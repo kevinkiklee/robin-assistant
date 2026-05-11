@@ -28,18 +28,12 @@ export async function dreamStepPatterns(db, host, opts = {}) {
     ORDER BY weight DESC
     LIMIT ${limit}
   `;
-  const [strong] = await db
-    .query(new BoundQuery(sql, { cutoff, min: minStrength }))
-    .collect();
+  const [strong] = await db.query(new BoundQuery(sql, { cutoff, min: minStrength })).collect();
 
   let upserted = 0;
   for (const edge of strong ?? []) {
-    const [a] = await db
-      .query(new BoundQuery('SELECT name FROM $id', { id: edge.from }))
-      .collect();
-    const [b] = await db
-      .query(new BoundQuery('SELECT name FROM $id', { id: edge.to }))
-      .collect();
+    const [a] = await db.query(new BoundQuery('SELECT name FROM $id', { id: edge.from })).collect();
+    const [b] = await db.query(new BoundQuery('SELECT name FROM $id', { id: edge.to })).collect();
     if (!a[0]?.name || !b[0]?.name) continue;
 
     const name = `co-occur-${a[0].name}-${b[0].name}`;

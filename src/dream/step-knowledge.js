@@ -63,9 +63,11 @@ export async function dreamStepKnowledge(
 
     // Show the LLM any existing knowledge memos about this entity so it can
     // flag which ones (if any) the new fact supersedes.
+    // derived_at must appear in the projection for ORDER BY to bind it in
+    // SurrealDB v3's parser.
     const [existingMemos] = await db
       .query(
-        surql`SELECT id, content, confidence FROM memos
+        surql`SELECT id, content, confidence, derived_at FROM memos
               WHERE kind = 'knowledge'
                 AND id IN (SELECT VALUE from FROM edges
                            WHERE kind = 'about' AND to = ${entityId})

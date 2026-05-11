@@ -43,7 +43,7 @@ export function freshness(memo, opts = {}) {
       : new Date(memo.decay_anchor ?? Date.now());
   const now = opts.now instanceof Date ? opts.now : new Date();
   const ageMs = Math.max(0, now.getTime() - anchor.getTime());
-  const decay = Math.pow(0.5, ageMs / halfLifeMs);
+  const decay = 0.5 ** (ageMs / halfLifeMs);
   const reinforced = Math.log2(1 + signalCount);
   return Math.min(1, confidence * decay * reinforced);
 }

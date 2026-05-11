@@ -41,7 +41,12 @@ export function score(hit, callerCtx = {}) {
 
   const cosineSim = Math.max(0, Math.min(1, 1 - (distance ?? 0)));
   const fresh = freshness(
-    { kind: record.kind, confidence: record.confidence, signal_count: record.signal_count, decay_anchor: record.decay_anchor },
+    {
+      kind: record.kind,
+      confidence: record.confidence,
+      signal_count: record.signal_count,
+      decay_anchor: record.decay_anchor,
+    },
     { supersededCount },
   );
   const contraPenalty = Math.max(0.1, 1 - 0.3 * contradictionCount);

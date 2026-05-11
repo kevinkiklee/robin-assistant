@@ -21,15 +21,7 @@ const DEFAULT_HIGH = 0.92;
 const DEFAULT_LOW = 0.8;
 
 export async function upsertEntityCascade(db, embedder, input) {
-  const {
-    name,
-    type,
-    scope = 'global',
-    tags = [],
-    meta,
-    host,
-    config = {},
-  } = input;
+  const { name, type, scope = 'global', tags = [], meta, host, config = {} } = input;
   if (!name) throw new Error('upsertEntityCascade: name required');
   if (!type) throw new Error('upsertEntityCascade: type required');
 

@@ -100,9 +100,7 @@ export async function prepareProfile(db, { profile }) {
     available_profiles: [...available],
   };
   await db
-    .query(
-      surql`UPSERT type::record('runtime', 'embedder') MERGE { value: ${merged} }`,
-    )
+    .query(surql`UPSERT type::record('runtime', 'embedder') MERGE { value: ${merged} }`)
     .collect();
   invalidateProfileCache();
   return { ok: true, tables: names };

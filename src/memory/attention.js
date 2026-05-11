@@ -50,9 +50,7 @@ export async function getAttention(db, { source, windowMinutes = DEFAULT_WINDOW_
     ORDER BY ts DESC
     LIMIT 30
   `;
-  const [recent_events] = await db
-    .query(new BoundQuery(eventsSql, { epIds, cutoff }))
-    .collect();
+  const [recent_events] = await db.query(new BoundQuery(eventsSql, { epIds, cutoff })).collect();
 
   // 3. Entities mentioned in those recent events (via mentions/about edges).
   const eventIds = recent_events.map((e) => e.id);

@@ -8,8 +8,7 @@ import * as store from './store.js';
  * Create a knowledge memo. Content-hash dedup is applied by `store.note`.
  */
 export async function createKnowledge(db, embedder, input) {
-  const { content, subject_id, confidence, source_events = [], source_episodes = [], meta } =
-    input;
+  const { content, subject_id, confidence, source_events = [], source_episodes = [], meta } = input;
   // Merge legacy source_events + source_episodes into the new `lineage` shape
   // (`derived_from` edges emitted by store.note).
   const lineage = [
@@ -56,9 +55,7 @@ export async function listKnowledge(db, { subject_id, limit = 50 } = {}) {
         AND id IN (SELECT VALUE from FROM edges WHERE kind = 'about' AND to = $sid)
       ORDER BY derived_at DESC LIMIT ${limit}
     `;
-    const [rows] = await db
-      .query(new BoundQuery(sql, { sid: subject_id }))
-      .collect();
+    const [rows] = await db.query(new BoundQuery(sql, { sid: subject_id })).collect();
     return rows;
   }
   const sql = `

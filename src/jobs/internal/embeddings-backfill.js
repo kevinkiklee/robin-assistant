@@ -17,10 +17,7 @@
 
 import { BoundQuery, surql } from 'surrealdb';
 import { createEmbedder } from '../../embed/factory.js';
-import {
-  embeddingTable,
-  tableNameSafeProfile,
-} from '../../embed/profile-router.js';
+import { embeddingTable, tableNameSafeProfile } from '../../embed/profile-router.js';
 
 const CHUNK = 200;
 const SURFACES = ['events', 'memos', 'entities'];
@@ -38,8 +35,7 @@ const SURFACE_SPECS = {
     seed: (r) => r.content,
   },
   entities: {
-    select:
-      'SELECT id, name, meta FROM entities WHERE id > $cursor ORDER BY id LIMIT $limit',
+    select: 'SELECT id, name, meta FROM entities WHERE id > $cursor ORDER BY id LIMIT $limit',
     selectFirst: 'SELECT id, name, meta FROM entities ORDER BY id LIMIT $limit',
     seed: (r) => {
       const aliases = Array.isArray(r.meta?.aliases) ? r.meta.aliases : [];
@@ -49,17 +45,13 @@ const SURFACE_SPECS = {
 };
 
 async function readState(db) {
-  const [rows] = await db
-    .query('SELECT VALUE value FROM runtime:embedder_backfill')
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:embedder_backfill').collect();
   return rows?.[0] ?? null;
 }
 
 async function writeState(db, value) {
   await db
-    .query(
-      surql`UPSERT type::record('runtime', 'embedder_backfill') MERGE { value: ${value} }`,
-    )
+    .query(surql`UPSERT type::record('runtime', 'embedder_backfill') MERGE { value: ${value} }`)
     .collect();
 }
 
@@ -79,12 +71,9 @@ async function loadEmbedderFor(profile, override) {
   // backfill targeting a *non-active* profile we go around it via the static
   // loader map keyed by profile name.
   const LOADERS = {
-    'mxbai-1024': async () =>
-      (await import('../../embed/in-process.js')).createInProcessEmbedder(),
-    'qwen3-4096': async () =>
-      (await import('../../embed/ollama.js')).createOllamaEmbedder(),
-    'gemini-3072': async () =>
-      (await import('../../embed/gemini.js')).createGeminiEmbedder(),
+    'mxbai-1024': async () => (await import('../../embed/in-process.js')).createInProcessEmbedder(),
+    'qwen3-4096': async () => (await import('../../embed/ollama.js')).createOllamaEmbedder(),
+    'gemini-3072': async () => (await import('../../embed/gemini.js')).createGeminiEmbedder(),
   };
   const loader = LOADERS[profile];
   if (loader) return loader();
@@ -151,20 +140,14 @@ async function backfillSurface(db, embedder, profile, surface, state) {
  *                                              profile, or active profile)
  * @param {(p: string) => Promise<object>} [args.createEmbedderFor] Test seam.
  */
-export default async function embeddingsBackfill({
-  db,
-  profile,
-  createEmbedderFor,
-} = {}) {
+export default async function embeddingsBackfill({ db, profile, createEmbedderFor } = {}) {
   let state = await readState(db);
   if (!state || !state.profile) {
     // Default: bootstrap state. If no profile was passed, fall back to the
     // active profile (the rare scheduled-resume case).
     let target = profile;
     if (!target) {
-      const [rows] = await db
-        .query('SELECT VALUE value FROM runtime:embedder')
-        .collect();
+      const [rows] = await db.query('SELECT VALUE value FROM runtime:embedder').collect();
       target = rows?.[0]?.active_profile;
     }
     if (!target) throw new Error('embeddings-backfill: no target profile');

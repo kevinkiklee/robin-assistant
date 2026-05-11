@@ -27,13 +27,11 @@ export async function dreamStepThreads(db, opts = {}) {
     SELECT from, to FROM edges
     WHERE kind = 'mentions' AND from IN $eids
   `;
-  const [edges] = await db
-    .query(new BoundQuery(sql, { eids: eventIds }))
-    .collect();
+  const [edges] = await db.query(new BoundQuery(sql, { eids: eventIds })).collect();
   if (!edges || edges.length === 0) return { created: 0 };
 
   // 3. Hydrate episode_id per event (single batched query).
-  const evSql = `SELECT id, episode_id FROM events WHERE id IN $eids`;
+  const evSql = 'SELECT id, episode_id FROM events WHERE id IN $eids';
   const [evRows] = await db.query(new BoundQuery(evSql, { eids: eventIds })).collect();
   const episodeByEvent = new Map();
   for (const r of evRows ?? []) {

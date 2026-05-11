@@ -149,10 +149,7 @@ async function gateUpsertIdempotence(db) {
   if (rows.length === 1 && rows[0].weight === 2) {
     ok(`single row with weight=2 after two UPSERTs (id=${rows[0].id})`);
   } else {
-    fail(
-      `expected 1 row with weight=2, got ${rows.length} rows`,
-      JSON.stringify(rows),
-    );
+    fail(`expected 1 row with weight=2, got ${rows.length} rows`, JSON.stringify(rows));
   }
 }
 
@@ -170,12 +167,10 @@ async function gateFieldPathIndex(db) {
 
   // EXPLAIN to inspect the plan; we just want a 1-row result.
   const [rows] = await db
-    .query(
-      "SELECT id, content FROM memos WHERE kind = 'habit' AND meta.name = 'morning-routine'",
-    )
+    .query("SELECT id, content FROM memos WHERE kind = 'habit' AND meta.name = 'morning-routine'")
     .collect();
   if (rows.length === 1 && rows[0].content === 'X') {
-    ok(`field-path query returned the expected row`);
+    ok('field-path query returned the expected row');
   } else {
     fail(`expected 1 row (content=X), got ${rows.length}`, JSON.stringify(rows));
   }

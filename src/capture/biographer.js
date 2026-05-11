@@ -12,8 +12,8 @@
 //   - `events.biographed_at = time::now()` is still set on the processed event.
 
 import { surql } from 'surrealdb';
-import * as store from '../memory/store.js';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../graph/episodes.js';
+import * as store from '../memory/store.js';
 import { validateBiographerOutput } from './biographer-output.js';
 import { buildBiographerPrompt } from './biographer-prompt.js';
 

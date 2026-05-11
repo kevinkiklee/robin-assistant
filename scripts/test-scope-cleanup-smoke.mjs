@@ -62,14 +62,13 @@ const summary = await dreamStepScopeCleanup(db, null);
 console.log('cleanup summary:', summary);
 
 // Inspect final state
-const [rows] = await db
-  .query(`SELECT id, content, scope FROM memos ORDER BY id`)
-  .collect();
+const [rows] = await db.query('SELECT id, content, scope FROM memos ORDER BY id').collect();
 console.log('final memos:');
 for (const r of rows) console.log(' ', String(r.id), r.scope, '-', r.content);
 
 const aGone = !rows.find((r) => String(r.id) === String(A.id));
-const bEphemPromoted = rows.find((r) => String(r.id) === String(B_ephemeral.id))?.scope === 'global';
+const bEphemPromoted =
+  rows.find((r) => String(r.id) === String(B_ephemeral.id))?.scope === 'global';
 const cKept = !!rows.find((r) => String(r.id) === String(C.id));
 const bGlobalKept = !!rows.find((r) => String(r.id) === String(B_global.id));
 

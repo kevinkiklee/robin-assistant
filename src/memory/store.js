@@ -17,7 +17,7 @@
 
 import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
-import { embeddingTable, activeProfile } from '../embed/profile-router.js';
+import { activeProfile, embeddingTable } from '../embed/profile-router.js';
 import {
   EDGE_KIND_REGISTRY,
   canonicalEndpoints,
@@ -165,17 +165,11 @@ export async function upsertMemoByName(db, embedder, kind, input) {
   const { name } = input;
   if (!name) throw new Error('upsertMemoByName: meta.name required (passed as input.name)');
   const [existing] = await db
-    .query(
-      surql`SELECT id FROM memos WHERE kind = ${kind} AND meta.name = ${name} LIMIT 1`,
-    )
+    .query(surql`SELECT id FROM memos WHERE kind = ${kind} AND meta.name = ${name} LIMIT 1`)
     .collect();
   if (existing[0]) {
     const id = existing[0].id;
-    await db
-      .query(
-        surql`UPDATE ${id} SET signal_count += 1, last_active = time::now()`,
-      )
-      .collect();
+    await db.query(surql`UPDATE ${id} SET signal_count += 1, last_active = time::now()`).collect();
     // Also merge any new lineage as derived_from edges.
     if (input.lineage?.length > 0) {
       const rows = input.lineage.map((l) => ({
@@ -286,11 +280,7 @@ export async function flagContradiction(db, idA, idB, opts = {}) {
  * record prediction resolution (resolved_at / correct / actual_outcome).
  */
 export async function updateMemoMeta(db, id, patch) {
-  await db
-    .query(
-      surql`UPDATE ${id} MERGE { meta: ${patch} }`,
-    )
-    .collect();
+  await db.query(surql`UPDATE ${id} MERGE { meta: ${patch} }`).collect();
 }
 
 // ============================================================================
@@ -309,7 +299,7 @@ async function writeEmbedding(db, embedder, surface, recordId, text) {
   const profile = await activeProfile(db);
   const table = embeddingTable(profile, surface);
   const vec = Array.from(await embedder.embed(text));
-  const sql = `UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()`;
+  const sql = 'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()';
   await db
     .query(
       new BoundQuery(sql, {
@@ -330,21 +320,15 @@ async function writeEmbedding(db, embedder, surface, recordId, text) {
  */
 export async function getMemo(db, id) {
   const [rows] = await db
-    .query(
-      surql`SELECT *, fn::freshness(id) AS freshness FROM ${id}`,
-    )
+    .query(surql`SELECT *, fn::freshness(id) AS freshness FROM ${id}`)
     .collect();
   const memo = rows[0];
   if (!memo) return null;
   const [subjects] = await db
-    .query(
-      surql`SELECT VALUE to FROM edges WHERE kind = 'about' AND from = ${id}`,
-    )
+    .query(surql`SELECT VALUE to FROM edges WHERE kind = 'about' AND from = ${id}`)
     .collect();
   const [lineage] = await db
-    .query(
-      surql`SELECT VALUE to FROM edges WHERE kind = 'derived_from' AND from = ${id}`,
-    )
+    .query(surql`SELECT VALUE to FROM edges WHERE kind = 'derived_from' AND from = ${id}`)
     .collect();
   const [contraRows] = await db
     .query(
@@ -407,31 +391,33 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   const ids = knnRows.map((r) => r.record);
   const idDist = new Map(knnRows.map((r) => [recordStringId(r.record), r.dist]));
 
-  const filters = [`id IN $ids`];
+  const filters = ['id IN $ids'];
   const bindings = { ids };
   if (surface === 'memos' && opts.kind) {
     bindings.kind = opts.kind;
-    filters.push(`kind = $kind`);
+    filters.push('kind = $kind');
   }
   if (surface === 'events' && opts.source) {
     bindings.source = opts.source;
-    filters.push(`source = $source`);
+    filters.push('source = $source');
   }
   if (surface === 'entities' && opts.type) {
     bindings.entitytype = opts.type;
-    filters.push(`type = $entitytype`);
+    filters.push('type = $entitytype');
   }
   const scopes = opts.scopes;
   if (scopes === undefined && !opts.includeEphemeral) {
     // default: exclude ephemerals
-    filters.push(`(scope = 'global' OR string::starts_with(scope, 'project:') OR string::starts_with(scope, 'integration:') OR scope = 'private')`);
+    filters.push(
+      `(scope = 'global' OR string::starts_with(scope, 'project:') OR string::starts_with(scope, 'integration:') OR scope = 'private')`,
+    );
   } else if (Array.isArray(scopes) && !scopes.includes('*')) {
     bindings.scopes = scopes;
-    filters.push(`scope IN $scopes`);
+    filters.push('scope IN $scopes');
   }
   if (opts.tags && opts.tags.length > 0) {
     bindings.tags = opts.tags;
-    filters.push(`tags CONTAINSANY $tags`);
+    filters.push('tags CONTAINSANY $tags');
   }
   if (opts.since) {
     bindings.since = new Date(opts.since);
@@ -497,13 +483,13 @@ export async function neighbors(db, recordId, kind, opts = {}) {
   if (!spec) throw new Error(`neighbors: unknown kind ${kind}`);
   let whereClause;
   if (spec.symmetric) {
-    whereClause = `(from = $e OR to = $e)`;
+    whereClause = '(from = $e OR to = $e)';
   } else if (direction === 'out') {
-    whereClause = `from = $e`;
+    whereClause = 'from = $e';
   } else if (direction === 'in') {
-    whereClause = `to = $e`;
+    whereClause = 'to = $e';
   } else {
-    whereClause = `(from = $e OR to = $e)`;
+    whereClause = '(from = $e OR to = $e)';
   }
   const sql = `SELECT
     IF from = $e THEN to ELSE from END AS other,
@@ -512,9 +498,7 @@ export async function neighbors(db, recordId, kind, opts = {}) {
     WHERE kind = $k AND ${whereClause}
     ORDER BY weight DESC
     LIMIT ${limit}`;
-  const [rows] = await db
-    .query(new BoundQuery(sql, { e: recordId, k: kind }))
-    .collect();
+  const [rows] = await db.query(new BoundQuery(sql, { e: recordId, k: kind })).collect();
   return rows;
 }
 

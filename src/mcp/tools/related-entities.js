@@ -46,7 +46,7 @@ export function createRelatedEntitiesTool({ db }) {
         const others = rows ?? [];
         if (others.length === 0) continue;
         const [entRows] = await db
-          .query(`SELECT id, name, type FROM entities WHERE id IN $ids`, {
+          .query('SELECT id, name, type FROM entities WHERE id IN $ids', {
             ids: others.map((r) => r.other),
           })
           .collect();

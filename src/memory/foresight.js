@@ -8,14 +8,14 @@ import * as store from './store.js';
 /**
  * Record an agent-emitted prediction.
  */
-export async function predict(db, embedder, { statement, statement_kind, confidence, expected_resolution_at }) {
+export async function predict(
+  db,
+  embedder,
+  { statement, statement_kind, confidence, expected_resolution_at },
+) {
   if (!statement) throw new Error('foresight.predict: statement required');
   if (!statement_kind) throw new Error('foresight.predict: statement_kind required');
-  if (
-    typeof confidence !== 'number' ||
-    confidence < 0 ||
-    confidence > 1
-  ) {
+  if (typeof confidence !== 'number' || confidence < 0 || confidence > 1) {
     throw new Error('foresight.predict: confidence must be a number in [0,1]');
   }
   const meta = { statement_kind };

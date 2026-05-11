@@ -27,15 +27,27 @@ console.log('  isEphemeralScope("global") =', scopes.isEphemeralScope('global'))
 
 // --- 3. Registry validation
 console.log('\nregistry validation:');
-const v1 = kindReg.validateMemoKind('habit', { content: 'X', derived_by: 'dream', meta: { name: 'rt' } });
+const v1 = kindReg.validateMemoKind('habit', {
+  content: 'X',
+  derived_by: 'dream',
+  meta: { name: 'rt' },
+});
 console.log('  valid habit memo:', v1);
 const v2 = kindReg.validateMemoKind('habit', { content: 'X', derived_by: 'dream', meta: {} });
 console.log('  invalid habit (no name):', v2);
-const v3 = edgeReg.validateEdge({ tb: 'events', id: 'e1' }, { tb: 'entities', id: 'a' }, 'mentions');
+const v3 = edgeReg.validateEdge(
+  { tb: 'events', id: 'e1' },
+  { tb: 'entities', id: 'a' },
+  'mentions',
+);
 console.log('  valid edge events→entities mentions:', v3);
 const v4 = edgeReg.validateEdge({ tb: 'memos', id: 'm1' }, { tb: 'events', id: 'e1' }, 'mentions');
 console.log('  invalid edge memos→events mentions:', v4);
-const v5 = edgeReg.validateEdge({ tb: 'entities', id: 'a' }, { tb: 'entities', id: 'a' }, 'occurs_with');
+const v5 = edgeReg.validateEdge(
+  { tb: 'entities', id: 'a' },
+  { tb: 'entities', id: 'a' },
+  'occurs_with',
+);
 console.log('  self-loop rejected:', v5);
 
 // --- 4. Decay
@@ -47,10 +59,7 @@ const fresh = decay.freshness({
   decay_anchor: new Date(),
 });
 console.log('  freshness(new knowledge, 3 signals) =', fresh.toFixed(3));
-const superseded = decay.freshness(
-  { kind: 'knowledge', confidence: 0.9 },
-  { supersededCount: 1 },
-);
+const superseded = decay.freshness({ kind: 'knowledge', confidence: 0.9 }, { supersededCount: 1 });
 console.log('  freshness(superseded) =', superseded);
 
 // --- 5. End-to-end: spin up DB, apply migrations, write through store.
@@ -81,7 +90,12 @@ const memo2 = await store.note(db, mockEmbedder, 'knowledge', {
   content: 'The user prefers terse responses', // duplicate content → dedup
   derived_by: 'dream',
 });
-console.log('  note(knowledge, dup) → deduped:', memo2.deduped, 'same id:', String(memo1.id) === String(memo2.id));
+console.log(
+  '  note(knowledge, dup) → deduped:',
+  memo2.deduped,
+  'same id:',
+  String(memo1.id) === String(memo2.id),
+);
 
 const habit1 = await store.upsertMemoByName(db, mockEmbedder, 'habit', {
   name: 'morning-coffee',
@@ -111,9 +125,7 @@ const ent2Id = ent2[0][0].id;
 await store.relate(db, ent1Id, ent2Id, 'occurs_with');
 await store.relate(db, ent1Id, ent2Id, 'occurs_with'); // increment
 await store.relate(db, ent2Id, ent1Id, 'occurs_with'); // canonical → same edge → +1 more
-const [coOcc] = await db
-  .query(`SELECT weight FROM edges WHERE kind = 'occurs_with'`)
-  .collect();
+const [coOcc] = await db.query(`SELECT weight FROM edges WHERE kind = 'occurs_with'`).collect();
 console.log('  occurs_with count after 3 relate calls:', coOcc[0]?.weight);
 
 // Supersede memo1 with a new fact

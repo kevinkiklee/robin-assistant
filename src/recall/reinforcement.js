@@ -49,9 +49,7 @@ export async function evaluatePending(db) {
     `;
     const bindings = { start: tsStart, end: tsEnd };
     if (row.session_id) bindings.sid = row.session_id;
-    const [correctionRows] = await db
-      .query(new BoundQuery(correctionSql, bindings))
-      .collect();
+    const [correctionRows] = await db.query(new BoundQuery(correctionSql, bindings)).collect();
     const correctionCount = correctionRows?.[0]?.n ?? 0;
 
     let outcome;
@@ -86,9 +84,7 @@ export async function evaluatePending(db) {
     }
 
     await db
-      .query(
-        surql`UPDATE ${row.id} SET outcome = ${outcome}, evaluated_at = time::now()`,
-      )
+      .query(surql`UPDATE ${row.id} SET outcome = ${outcome}, evaluated_at = time::now()`)
       .collect();
   }
 
