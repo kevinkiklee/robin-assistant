@@ -24,13 +24,13 @@ Robin's behaviour is organised into seven named faculties. Each maps to a specif
 
 | Faculty | What it does | Lives in |
 |---|---|---|
-| **intuition** | UserPromptSubmit hook injects relevant memory into the next turn | `src/hooks/handlers/intuition.js`, `src/recall/intuition.js` |
-| **biographer** | Per-turn: normalises new events into entities, edges, episodes | `src/capture/biographer.js`, `src/graph/` |
-| **heartbeat** | 60s tick: integration syncs, biographer queue, stale-session sweep | `src/daemon/scheduler.js` |
-| **discretion** | Refuses inappropriate writes (inbound), commands (bash), and outbound payloads | `src/hooks/handlers/discretion.js`, `src/hooks/inbound-guard.js`, `src/outbound/policy.js` |
-| **dream** | Nightly 5-step consolidation into knowledge, patterns, profile, threads, rule candidates | `src/dream/pipeline.js` |
-| **reflection** | Step 3 of dream — clusters correction events into rule candidates | `src/dream/step-reflection.js` |
-| **introspection** | Daemon-boot integrity check against the install manifest baseline | `src/daemon/introspection.js`, `runtime_introspection_state` |
+| **intuition** | UserPromptSubmit hook injects relevant memory into the next turn | `system/cognition/intuition/` |
+| **biographer** | Per-turn: normalises new events into entities, edges, episodes | `system/cognition/biographer/` (incl. graph pipeline) |
+| **heartbeat** | 60s tick: integration syncs, biographer queue, stale-session sweep | `system/runtime/daemon/heartbeat.js` |
+| **discretion** | Refuses inappropriate writes (inbound), commands (bash), and outbound payloads | `system/cognition/discretion/` |
+| **dream** | Nightly 5-step consolidation into knowledge, patterns, profile, threads, rule candidates | `system/cognition/dream/pipeline.js` |
+| **reflection** | Step 3 of dream — clusters correction events into rule candidates | `system/cognition/dream/step-reflection.js` |
+| **introspection** | Daemon-boot integrity check against the install manifest baseline | `system/runtime/daemon/introspection.js`, `runtime_introspection_state` |
 
 ## How the memory pipeline looks
 
@@ -99,7 +99,7 @@ record_correction(...)  ──┘
 git clone git@github.com:kevinkiklee/robin-assistant.git robin-v2
 cd robin-v2
 npm install
-node bin/robin install            # interactive — picks embedder profile, runs migrations, installs hooks, starts daemon
+node system/bin/robin install     # interactive — picks embedder profile, runs migrations, installs hooks, starts daemon
 ```
 
 Then **restart your Claude Code / Gemini CLI session** so it picks up the new MCP server and hooks. Verify with `robin doctor`.
@@ -116,7 +116,7 @@ You don't talk to Robin directly — your agent does. After install, just use Cl
 - Captures the turn's content into events, biographs them into entities + edges + episodes, and consolidates nightly into long-term knowledge
 - Surfaces rule candidates from your corrections after reflection clusters them
 
-Outbound writes (`github_write`, `spotify_write`, discord replies) pass through `src/outbound/policy.js` (outbound discretion: PII / secrets / verbatim-untrusted-quote guards) and a per-tool sliding-1h rate limiter (default 10/hr).
+Outbound writes (`github_write`, `spotify_write`, discord replies) pass through `system/cognition/discretion/outbound-policy.js` (outbound discretion: PII / secrets / verbatim-untrusted-quote guards) and a per-tool sliding-1h rate limiter (default 10/hr).
 
 ## Documentation
 
@@ -182,7 +182,7 @@ robin secrets <import --from <path>|list|set <KEY>>
 
 ```sh
 npm install
-npm test                  # node --test on tests/**/*.test.js
+npm test                  # node --test on system/tests/**/*.test.js
 npm run test:unit
 npm run test:integration
 npm run lint              # biome check

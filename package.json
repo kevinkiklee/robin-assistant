@@ -1,30 +1,29 @@
 {
   "name": "robin-assistant",
-  "version": "6.0.0-alpha.16",
+  "version": "6.0.0-alpha.17",
   "description": "SurrealDB-first personal AI assistant (v2 rebuild)",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
   },
   "bin": {
-    "robin": "bin/robin"
+    "robin": "system/bin/robin"
   },
   "files": [
     "AGENTS.md",
     "CHANGELOG.md",
-    "bin/",
     "docs/architecture.md",
     "docs/development.md",
     "docs/faculties.md",
     "docs/install.md",
     "docs/troubleshooting.md",
-    "src/"
+    "system/"
   ],
   "scripts": {
-    "setup": "node bin/robin install",
-    "test": "node --test --test-force-exit 'tests/**/*.test.js'",
-    "test:unit": "node --test --test-force-exit 'tests/unit/**/*.test.js'",
-    "test:integration": "node --test --test-force-exit 'tests/integration/**/*.test.js'",
+    "setup": "node system/bin/robin install",
+    "test": "node --test --test-force-exit 'system/tests/**/*.test.js'",
+    "test:unit": "node --test --test-force-exit 'system/tests/unit/**/*.test.js'",
+    "test:integration": "node --test --test-force-exit 'system/tests/integration/**/*.test.js'",
     "lint": "biome check .",
     "format": "biome format --write ."
   },

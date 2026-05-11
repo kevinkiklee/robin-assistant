@@ -7,49 +7,49 @@ Robin's behavior is organized into named faculties. Two categories:
 
 The two-name convention: **modules are named for cognitive function; memo kinds are named for data shape**. `habits.js` writes `kind='habit'` memos; `foresight.js` writes `kind='prediction'` memos; `narrative.js` writes `kind='thread'` memos. Code does, data is.
 
-## Substrate lenses (`src/memory/*.js`)
+## Substrate lenses (`system/cognition/memory/*.js`)
 
 All lenses read/write through `store.js` — the only writer to events/memos/edges/embeddings. Each lens is a thin file (~30–80 LOC) baking in `kind` and exposing legacy function names alongside the new ones during the migration.
 
 ### attention
 **What Robin is currently attending to.** Active episodes + recent events + entities mentioned across them.
-- File: `src/memory/attention.js`
+- File: `system/cognition/memory/attention.js`
 - API: `getAttention(db, { source?, windowMinutes? })` → `{ episodes, recent_events, entities }`
 - Replaces v1's `hot.js` (which hardcoded `entities: []`).
 
 ### chronicle
 **Chronological list of significant biographed events.**
-- File: `src/memory/chronicle.js`
+- File: `system/cognition/memory/chronicle.js`
 - API: `listChronicleEntries(db, { since?, until?, limit?, minContentLen? })`
 - Replaces v1's `journal.js`.
 
 ### knowledge
 **Distilled facts about the world** (memos kind='knowledge').
-- File: `src/memory/knowledge.js`
+- File: `system/cognition/memory/knowledge.js`
 - API: `createKnowledge(db, embedder, input)` / `searchKnowledge(db, embedder, q)` / `listKnowledge(db, opts)` / `getKnowledgeByContentHash(db, content)`
 - Subject linkage moved from `subject_id` scalar to `about` edges; lineage moved from `source_events` arrays to `derived_from` edges.
 
 ### habits
 **Recurring observations** (memos kind='habit'). Dedup by `meta.name`; re-observations increment `signal_count`.
-- File: `src/memory/habits.js`
+- File: `system/cognition/memory/habits.js`
 - API: `upsert(db, embedder, { name, description, lineage?, strength? })` / `list(db, opts)`
 - Replaces v1's `patterns.js`.
 
 ### persona
 **The singleton model of Robin's user.** Stored as a `persona:singleton` row.
-- File: `src/memory/persona.js`
+- File: `system/cognition/memory/persona.js`
 - API: `getPersona(db)` / `updatePersonaFields(db, fields)` / `updateCommStyle(db, fields)` / `updateCalibration(db, fields)`
 - Replaces v1's `profile.js` (table renamed from `profile` to `persona`).
 
 ### narrative
 **Multi-episode arcs** (memos kind='thread').
-- File: `src/memory/narrative.js`
+- File: `system/cognition/memory/narrative.js`
 - API: `add(db, embedder, { title?, summary?, episode_ids?, entity_ids? })` / `list(db, opts)`
 - Replaces v1's `threads.js`.
 
 ### foresight
 **Predictions and calibration** (memos kind='prediction').
-- File: `src/memory/foresight.js`
+- File: `system/cognition/memory/foresight.js`
 - API: `predict(db, embedder, { statement, statement_kind, confidence, expected_resolution_at? })` / `resolve(db, id, { correct, actual_outcome? })` / `listOpen(db, opts)` / `computeCalibration(db)`
 - New consolidation of prediction logic previously scattered.
 
@@ -58,13 +58,13 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 ### intuition
 **The UserPromptSubmit hook that injects relevant memory into the next turn.**
 - Trigger: Claude Code or Gemini CLI fires `UserPromptSubmit` with `{prompt, transcript_path, session_id}`.
-- Files: `src/hooks/handlers/intuition.js` (hook entry), `src/recall/intuition.js` (daemon endpoint), `src/recall/rank.js`.
+- Files: `system/cognition/intuition/handler.js` (hook entry), `system/cognition/intuition/inject.js` (daemon endpoint), `system/cognition/intuition/rank.js`.
 - Behavior: Composes events + memos[kind=knowledge] recall via `store.searchEvents` + `store.searchMemos`. Ranks via `rank.score` (cosine × freshness × contradiction × trust × scope). MMR-lite diversity pass. Writes `intuition_telemetry` + `recall_log{outcome:pending}` rows. Returns a `<!-- relevant memory -->` block under a 1500-token budget.
 - Inspect: `SELECT * FROM intuition_telemetry ORDER BY ts DESC LIMIT 20`.
 
 ### biographer
 **Per-turn consolidation: turns raw events into structured entities, edges, and (rarely) memos.**
-- Files: `src/capture/biographer.js`, `src/capture/biographer-prompt.js`, `src/capture/biographer-output.js`, `src/graph/`.
+- Files: `system/cognition/biographer/pipeline.js`, `system/cognition/biographer/prompt.js`, `system/cognition/biographer/output.js`, `system/cognition/biographer/` (edges/stage1-exact/stage2-embedding/stage3-disambig/upsert-entity).
 - Writes: `entities` (upserted via 3-stage cascade), `edges` (mentions/about/works_on/participates_in/occurs_with/before via `store.relateAll`), `events.biographed_at = time::now()`.
 
 ### heartbeat
@@ -85,7 +85,7 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 
 ### reinforcement (NEW)
 **The recall feedback loop — the keystone effectiveness fix.**
-- Files: `src/recall/reinforcement.js`, `src/jobs/internal/reinforce-recall.js`, `src/jobs/builtin/reinforce-recall.md`.
+- Files: `system/cognition/intuition/reinforcement.js`, `system/cognition/jobs/internal/reinforce-recall.js`, `system/cognition/jobs/builtin/reinforce-recall.md`.
 - Behavior: every 5 minutes, walks `recall_log` rows whose `outcome='pending'` and `ts < now - 5min`. For each: looks for `meta.kind='correction'` events in the same session within the 5-min window. If a correction landed → mark `outcome='corrected'`. Else for each hit memo → `signal_count += 1`, `decay_anchor = time::now()`; mark `outcome='reinforced'`. Useful memos sharpen with use.
 - Inspect: `SELECT outcome, count() FROM recall_log GROUP BY outcome`.
 
@@ -94,7 +94,7 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 
 ### recall (hybrid retrieval — alpha.15+)
 **Two retrievers, RRF-fused.** Vector kNN over the active embedder's per-surface HNSW index runs in parallel with BM25 over the `*_content_fts` / `*_name_fts` FULLTEXT indexes; reciprocal rank fusion combines the rankings.
-- Files: `src/memory/store.js` (`_surfaceSearch`, `_bm25Retrieve`), `src/recall/fusion.js` (`rrfFuse`, `padDistances`), `src/recall/rank.js` (composite score).
+- Files: `system/cognition/memory/store.js` (`_surfaceSearch`, `_bm25Retrieve`), `system/cognition/intuition/fusion.js` (`rrfFuse`, `padDistances`), `system/cognition/intuition/rank.js` (composite score).
 - Adaptive over-fetch on the kNN side: `knnK = limit × (base + filters × per_filter)`. Mitigates post-filter shrinkage when callers narrow by `kind`/`scope`/`tags`/`since`.
 - BM25-only hits get a neutral cosine distance (`0.5`) so `rank.score()` doesn't underrank them. Re-embedding would cost an extra embed call per recall on the intuition path (every UserPromptSubmit); the pad is the cheap, defensible choice. `recall_log` records `_sources: ['knn', 'bm25']` per hit so we can see how often the BM25 lane carries weight.
 - Tunables in `runtime:recall.value` (5s-cached): `rrf_k`, `knn_overfetch_base`, `knn_overfetch_per_filter`, `mmr_threshold`. Tweak without code change.
@@ -120,8 +120,8 @@ accumulated evidence to compute a current value in [0, 1].
 **Triggered cognition with cost-budget enforcement.** Three steps —
 `reflection`, `comm-style`, `calibration` — can fire on triggers, drastically
 cutting latency from the next-night dream run to the next 60s heartbeat.
-- Files: `src/dream/{cursors,budget,dispatch}.js`,
-  `src/daemon/cadence-consumer.js`.
+- Files: `system/cognition/dream/{cursors,budget,dispatch}.js`,
+  `system/runtime/daemon/cadence-consumer.js`.
 - Producers: `reinforcement.js` (on `corrected` → reflection trigger),
   `foresight.resolve` (prediction resolved → calibration trigger).
 - Consumer: heartbeat 60s tick drains `dream_triggers`, enforces debounce
@@ -141,7 +141,7 @@ emitted by `setActionTrust`, `recordOutcome`, `runActionTrustDecay`, and
 the auto-block path. Decay sweep (6h heartbeat) demotes stale `AUTO`
 classes. Three consecutive corrections with no `success` between → state
 escalates to `DENY` automatically.
-- Files: `src/jobs/action-trust.js`.
+- Files: `system/cognition/jobs/action-trust.js`.
 - Inspect via Theme 4 MCP tool `explain_action_trust({class})`.
 
 ### arcs (alpha.16, Theme 1b)
@@ -150,8 +150,8 @@ shared participating entities. State machine: active → paused (idle
 14d) → closed (idle 60d). Created automatically by `step-arcs`
 (nightly), deduped against existing active|paused arcs by entity-set
 Jaccard similarity. Manual MCP access via `list_arcs` and `get_arc`.
-- Files: `src/memory/arcs.js`, `src/dream/step-arcs.js`,
-  `src/jobs/internal/close-stale-episodes.js`.
+- Files: `system/cognition/memory/arcs.js`, `system/cognition/dream/step-arcs.js`,
+  `system/cognition/jobs/internal/close-stale-episodes.js`.
 
 ### compaction (alpha.16, Theme 1a)
 **Hot/archive two-tier memory.** `step-compaction` runs nightly after

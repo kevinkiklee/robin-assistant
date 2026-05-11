@@ -22,7 +22,7 @@ npm install
 One command sets up everything Robin needs.
 
 ```sh
-node bin/robin install
+node system/bin/robin install
 ```
 
 Interactively prompts for an embedder profile:
@@ -36,7 +36,7 @@ Interactively prompts for an embedder profile:
 Non-interactive form:
 
 ```sh
-node bin/robin install --profile mxbai-1024
+node system/bin/robin install --profile mxbai-1024
 ```
 
 ### Home directory
@@ -57,7 +57,7 @@ The chosen location is written to `<package_root>/.robin-home` (a pointer file) 
 3. **Persists config** to `<robinHome>/config.json`.
 4. **Runs migrations** (`runMigrations`) against `<robinHome>/db/` — applies any pending `.surql` files, including the profile-specific `0008-embedder-<profile>.surql`.
 5. **Writes the introspection baseline** to `<robinHome>/manifest.json` — content hashes of key handler files, permission bits on the secrets/db directories, supervisor file checksum. The daemon checks against this on boot.
-6. **Installs host-side hooks** into `~/.claude/settings.json` and `~/.gemini/settings.json` — discretion (Bash), intuition (UserPromptSubmit), SessionStart registry, Stop hook. Hooks invoke `<package_root>/bin/robin-hook.sh`, a POSIX shim that finds `node` even under nvm/asdf where `/bin/sh` may not have it on PATH. Foreign hook entries in those files are preserved byte-for-byte; the manifest of robin-owned touchpoints (hook entries, plists, supervisor units) lives at `<robinHome>/host-integrations.json`.
+6. **Installs host-side hooks** into `~/.claude/settings.json` and `~/.gemini/settings.json` — discretion (Bash), intuition (UserPromptSubmit), SessionStart registry, Stop hook. Hooks invoke `<package_root>/system/bin/robin-hook.sh`, a POSIX shim that finds `node` even under nvm/asdf where `/bin/sh` may not have it on PATH. Foreign hook entries in those files are preserved byte-for-byte; the manifest of robin-owned touchpoints (hook entries, plists, supervisor units) lives at `<robinHome>/host-integrations.json`.
 7. **Installs the daemon supervisor** — writes `~/Library/LaunchAgents/io.robin-assistant.mcp.plist` (macOS) or `~/.config/systemd/user/robin-mcp.service` (Linux) with `ROBIN_HOME` baked in, and `launchctl load` / `systemctl --user enable` so the daemon auto-restarts on crash.
 8. **Starts the daemon** and writes the chosen port to `<robinHome>/.daemon.state`.
 9. **Registers with each host CLI** on PATH: `claude mcp add --transport sse robin http://127.0.0.1:<port>/sse` and the Gemini equivalent.
