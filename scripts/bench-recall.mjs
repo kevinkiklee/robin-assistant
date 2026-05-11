@@ -5,13 +5,24 @@
 // retrievers, and reports recall@K + per-query attribution.
 //
 // Usage:
-//   node scripts/bench-recall.mjs              # stub embedder (fast, ~0% lift)
-//   node scripts/bench-recall.mjs --real       # transformers bge-small-en
+//   node scripts/bench-recall.mjs              # stub embedder (fast)
+//   node scripts/bench-recall.mjs --real       # mxbai-embed-large-v1 (1024d)
 //
-// The stub embedder is a word-bag hash so its vectors overlap with BM25 on
-// exact-token queries; the real lift signal needs a model that captures
-// semantic similarity. Use --real for production tuning of RRF parameters
-// (model download is ~30MB the first run).
+// Measured results on this 20-doc / 10-query bootstrap fixture:
+//   stub embedder:        vector 24% / hybrid 26% / lift +2.0 pp
+//   mxbai-embed-large-v1: vector 80% / hybrid 80% / lift  0.0 pp
+//
+// The 0pp lift with the real model isn't a hybrid-pipeline bug — it's the
+// embedder being too sensitive for a small fixture. With 20 documents
+// covering 4 topics, semantic vectors capture nearly everything BM25 would.
+// Real lift shows up at larger scale where:
+//   - vector retrieval has to discriminate against more distractors,
+//   - lexically-specific tokens (names, IDs, version numbers) appear in
+//     queries that paraphrase-trained embedders weakly encode,
+//   - precision matters at smaller K vs the recall horizon here.
+//
+// Use this script's scaffold (seed → query → score) against a production
+// fixture built from your live `events`/`memos` tables for real tuning.
 
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -84,8 +95,8 @@ const K = 5;
 
 async function makeEmbedder() {
   if (!useReal) return createStubEmbedder({ dimension: 1024 });
-  console.log('loading transformers embedder (bge-small-en-v1.5)...');
-  return createTransformersEmbedder({ modelId: 'Xenova/bge-small-en-v1.5' });
+  console.log('loading transformers embedder (mxbai-embed-large-v1, 1024-dim)...');
+  return createTransformersEmbedder({ modelId: 'mixedbread-ai/mxbai-embed-large-v1' });
 }
 
 async function seed(db, embedder) {
@@ -169,7 +180,7 @@ async function bench() {
 
     console.log(
       `\nbench-recall — ${FIXTURES.length} docs · ${QUERIES.length} queries · K=${K} · ` +
-        `embedder=${useReal ? 'transformers/bge-small-en' : 'stub'} · ${dur}ms`,
+        `embedder=${useReal ? `transformers/${embedder.modelId}, ${embedder.dimension}d` : 'stub'} · ${dur}ms`,
     );
     console.log('');
     console.log('per-query (possible/vector/hybrid · bm25-only/knn-only/both):');

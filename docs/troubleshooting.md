@@ -22,9 +22,32 @@ rm -rf <robinHome>/db/*
 
 `robin doctor` detected that `config.json.db.engine` doesn't match the on-disk store format. Embedded stores can't switch engines in place — same destructive-reset playbook applies. After the reset, the daemon opens the configured engine and applies migrations.
 
-### `surrealkv+versioned://` hangs on connect
+### `surrealkv+versioned://` hangs on connect (embedded engine)
 
-Known upstream issue in `@surrealdb/node` 3.0.3: the versioned engine variant doesn't connect (silent hang on `db.connect()`). Workaround: leave `config.json.db.engine` at `surrealkv` (or `rocksdb`) until upstream is fixed. Time-travel reads via `SELECT ... VERSION d'...'` come back online with a one-line config change once the connect bug is resolved.
+Known upstream issue in `@surrealdb/node` 3.0.3: the versioned engine variant doesn't connect (silent hang on `db.connect()`). The local `connect()` helper has a 10s timeout so the daemon fails fast with an actionable error.
+
+**Workaround — run a standalone SurrealDB server and connect over WebSocket:**
+
+```bash
+# 1. Install the server (one-time)
+brew install surrealdb/tap/surreal
+# or:
+curl -sSf https://install.surrealdb.com | sh
+
+# 2. Start it with versioned storage
+node scripts/start-surreal-server.mjs --storage surrealkv+versioned
+# (the helper script reads ROBIN_HOME and writes to <home>/db)
+
+# 3. Point Robin at the server. Edit <robinHome>/config.json:
+#    {
+#      "db": { "url": "ws://127.0.0.1:8000" }
+#    }
+#
+# 4. Restart the daemon. `robin doctor` will now print:
+#    engine: ws (no on-disk DB yet — embedded path doesn't apply)
+```
+
+The SDK's remote engines (`ws`, `wss`, `http`, `https`) are registered alongside the embedded ones, so config can switch between embedded and server-mode without code changes. Time-travel reads via `SELECT ... VERSION d'...'` work against the server immediately. Once the embedded `surrealkv+versioned://` upstream bug is fixed, you can drop the standalone server and switch back to `db.engine: "surrealkv+versioned"`.
 
 ## The daemon
 
