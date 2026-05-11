@@ -60,8 +60,94 @@ export default async function runMetaRecallNarrative({ db, embedder, host }) {
     });
   }
 
-  // The rest of the pipeline is wired in subsequent tasks.
-  return JSON.stringify({ ran: false, reason: 'not_yet_implemented' });
+  // §3.1 input gathering.
+  const correctedRows = await selectCorrectedRows(db, config);
+  const unusedRows = await selectUnusedRows(db, config);
+  const inputRows = mergeAndDedupRows(correctedRows, unusedRows);
+
+  // Privacy filter wired in Task 5.3 — for now, pass-through.
+  const cleanRows = inputRows;
+  const droppedPrivate = 0;
+
+  if (cleanRows.length === 0) {
+    await emitTelemetry(db, {
+      outcome: 'no_clusters',
+      corrected_count: correctedCount,
+      unused_count: unusedRows.length,
+      rows_after_privacy: 0,
+      dropped_private: droppedPrivate,
+      duration_ms: Date.now() - startedAt,
+    });
+    return JSON.stringify({ ran: false, reason: 'no_clusters' });
+  }
+
+  // Hydration + clustering + LLM + writes wired in Tasks 5.4–5.5.
+  await emitTelemetry(db, {
+    outcome: 'no_clusters',
+    corrected_count: correctedCount,
+    unused_count: unusedRows.length,
+    rows_after_privacy: cleanRows.length,
+    dropped_private: droppedPrivate,
+    duration_ms: Date.now() - startedAt,
+  });
+  return JSON.stringify({ ran: false, reason: 'no_clusters' });
+}
+
+async function selectCorrectedRows(db, config) {
+  const days =
+    Number.isInteger(config.lookback_days) && config.lookback_days > 0 ? config.lookback_days : 7;
+  const [rows] = await db
+    .query(
+      new BoundQuery(
+        `SELECT id, ts, session_id, query, ranked_hits, attribution, meta
+         FROM recall_log
+         WHERE outcome = 'corrected'
+           AND ts > time::now() - ${days}d
+         ORDER BY ts DESC
+         LIMIT $cap`,
+        { cap: config.max_corrected_rows },
+      ),
+    )
+    .collect();
+  return (rows ?? []).map((r) => ({ ...r, outcome: 'corrected' }));
+}
+
+async function selectUnusedRows(db, config) {
+  // `ranked_hits[*].used CONTAINS false` only matches when B1 has populated
+  // the `used` field. Pre-B1 the projection yields an empty list and the
+  // CONTAINS is false — secondary query is empty by construction.
+  const days =
+    Number.isInteger(config.lookback_days) && config.lookback_days > 0 ? config.lookback_days : 7;
+  try {
+    const [rows] = await db
+      .query(
+        new BoundQuery(
+          `SELECT id, ts, session_id, query, ranked_hits, attribution, meta
+           FROM recall_log
+           WHERE ts > time::now() - ${days}d
+             AND attribution.mode != 'corrected'
+             AND attribution.mode != 'off'
+             AND ranked_hits[*].used CONTAINS false
+           ORDER BY ts DESC
+           LIMIT $cap`,
+          { cap: config.max_unused_rows },
+        ),
+      )
+      .collect();
+    return (rows ?? []).map((r) => ({ ...r, outcome: SECONDARY_OUTCOME }));
+  } catch {
+    // Older engine without array projection — return empty. D2 still runs
+    // on corrected-only signal.
+    return [];
+  }
+}
+
+function mergeAndDedupRows(corrected, unused) {
+  // Corrected wins on dedup so weight stays at 1.0.
+  const byId = new Map();
+  for (const r of corrected) byId.set(String(r.id), r);
+  for (const r of unused) if (!byId.has(String(r.id))) byId.set(String(r.id), r);
+  return [...byId.values()];
 }
 
 async function readConfig(db) {
@@ -99,4 +185,3 @@ async function emitTelemetry(db, fields) {
     // Best-effort — telemetry must not break the job.
   }
 }
-

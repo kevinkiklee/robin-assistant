@@ -85,3 +85,40 @@ test('T2 — below-threshold short-circuits even when enabled', async () => {
   assert.equal(tel?.[0]?.corrected_count, 3);
   await close(db);
 });
+
+test('T3 — corrected rows fetched within lookback_days', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+  // 5 within the window.
+  await seedCorrected(db, 5);
+  // 2 outside the window (8 days ago).
+  for (let i = 0; i < 2; i++) {
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 8d,
+        session_id: ${`old${i}`},
+        query: ${`oq${i}`},
+        k: 5,
+        ranked_hits: [],
+        outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+  const result = await runMetaRecallNarrative({ db, embedder: e, host: fakeHost('{}') });
+  const summary = JSON.parse(result);
+  // No clusters because seedCorrected uses empty ranked_hits.
+  assert.equal(summary.reason, 'no_clusters');
+  const [tel] = await db
+    .query(
+      'SELECT outcome, corrected_count, rows_after_privacy, ts FROM meta_cognition_telemetry ORDER BY ts DESC LIMIT 1',
+    )
+    .collect();
+  assert.equal(tel?.[0]?.outcome, 'no_clusters');
+  // corrected_count from gate (5 within 7d), rows_after_privacy ≤ 5.
+  assert.equal(tel?.[0]?.corrected_count, 5);
+  assert.ok((tel?.[0]?.rows_after_privacy ?? 0) <= 5);
+  await close(db);
+});
