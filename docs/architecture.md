@@ -118,6 +118,7 @@ Seven themes layered on top of the substrate:
   `robin doctor --health` (status rollups + exit codes 0/1/2 for cron
   monitoring). Audit test (`audit-introspection-readonly.test.js`)
   enforces zero write keywords in introspection tool source.
+- **Cognition D2 (recall-failures meta-cognition).** Weekly Sunday-05:00 internal job in `cognition/jobs/internal/meta-recall-narrative.js`. Pure-JS clustering by `about`-edge endpoints; one tier:'fast' LLM call per run; writes a `kind='reasoning'` memo + rule_candidates with `payload.source='meta_cognition'` (distinct from `step-reflection.js`). Gated by `runtime:meta_cognition.config.enabled` (`false` | `'shadow'` | `true`). Telemetry: `meta_cognition_telemetry` (rollup deferred to C3).
 
 ## A typical agent turn
 
@@ -130,6 +131,7 @@ Seven themes layered on top of the substrate:
 7. **Heartbeat** (60s) runs integration syncs, drains biographer queue, marks stale sessions, advances quiet-window cursors, and dispatches due internal jobs (notably `reinforce-recall` every 5 min).
 8. **Nightly at 4 AM**, dream runs the pipeline: step-knowledge → step-habits → step-narrative → step-persona → step-reflection → step-scope-cleanup. Each step is fail-soft. Step-knowledge emits `supersedes` when promoting contradicting facts.
 9. **Reinforce-recall** (every 5 min) walks `recall_log` rows with `outcome='pending'` and `ts < now - 5min`. For each row: if a `meta.kind='correction'` event landed in the session window -> mark `outcome='corrected'` and refute every memo hit in the ledger. Otherwise -> attribute hits per the `attribute()` pipeline (explicit -> citation -> similarity, with fallback-on-no-reply), and for every hit with `used=true` bump `signal_count += 1`, refresh `decay_anchor`, and emit a corroborate ledger row weighted by use-count. Outcome is `reinforced` when any hit was used, `evaluated_no_used` when attribution matched zero hits with fallback off, `evaluated_no_signal` for empty `ranked_hits`. The labeled output (per-hit `used`/`used_via`) feeds a future reranker.
+10. **Meta-cognition (weekly).** Every Sunday at 05:00 local time, an internal job (`meta-recall-narrative`) walks `recall_log` for the trailing 7 days of failure patterns and emits a `kind='reasoning'` memo (`meta.dimension='recall_failures'`) plus 0-3 `rule_candidates` (`kind='behavior'`, `payload.source='meta_cognition'`). Skipped when corrections < 5/week. Subsequent recalls about the cluster's entity can surface the reasoning memo via the widened intuition fan-out (`kind: ['knowledge','reasoning']`).
 
 ## Database shape and example queries
 
