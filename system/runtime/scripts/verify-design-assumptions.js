@@ -405,6 +405,12 @@ async function gateReinforceCountBucket(_db) {
   try {
     await runMigrations(verifyDb, paths.source.migrations());
 
+    // G12 asserts legacy-equivalent semantics under the kill-switch mode.
+    // B1's hybrid pipeline is covered by G12b.
+    await verifyDb
+      .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'off'")
+      .collect();
+
     // Seed one memo, three pending recall_log rows each referencing it.
     const [mc] = await verifyDb
       .query(
@@ -440,6 +446,179 @@ async function gateReinforceCountBucket(_db) {
     } else {
       fail(`expected signal_count=4 (1 base + 3 increments), got ${finalCount}`);
     }
+  } finally {
+    await appClose(verifyDb);
+  }
+}
+
+async function gateReinforceCountBucketHybrid() {
+  console.log(
+    '\nG12b — per-hit attribution preserves N-per-memo on similarity match (and zero on miss)',
+  );
+  const { writeConfig } = await import('../../config/paths.js');
+  const { mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const testHome = join(tmpdir(), `robin-verify-g12b-${process.pid}`);
+  mkdirSync(testHome, { recursive: true });
+  process.env.ROBIN_HOME = testHome;
+  await writeConfig({ embedder_profile: 'mxbai-1024' });
+
+  const { connect: appConnect, close: appClose } = await import('../../data/db/client.js');
+  const { runMigrations } = await import('../../data/db/migrate.js');
+  const { paths } = await import('../../config/data-store.js');
+  const { evaluatePending } = await import('../../cognition/intuition/reinforcement.js');
+  const verifyDb = await appConnect({ engine: 'mem://' });
+
+  try {
+    await runMigrations(verifyDb, paths.source.migrations());
+
+    // ----- Variant A: hybrid + similarity matches across 3 distinct sessions -----
+    await verifyDb
+      .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+      .collect();
+
+    // Seed memo with content tokens that will survive the /\W+/ length>3 tokenizer.
+    const MEMO_CONTENT = 'specific keyword anchors hydration sourdough ratio';
+    const [mc] = await verifyDb
+      .query(
+        `CREATE memos CONTENT { kind: 'knowledge', content: $c, derived_by: 'manual', signal_count: 1 }`,
+        { c: MEMO_CONTENT },
+      )
+      .collect();
+    const memoId = (Array.isArray(mc) ? mc[0] : mc).id;
+
+    const recallTs = new Date(Date.now() - 10 * 60 * 1000);
+    const REPLY_TEMPLATE =
+      'USER: q\n\nASSISTANT: yes the specific keyword anchors hydration sourdough ratio matches.';
+    const sessions = ['s0', 's1', 's2'];
+    for (const sid of sessions) {
+      await verifyDb
+        .query(
+          `CREATE events CONTENT {
+             source: 'conversation',
+             content: $c,
+             ts: $ts,
+             meta: { session_id: $sid }
+           }`,
+          { c: REPLY_TEMPLATE, ts: new Date(recallTs.getTime() + 60_000), sid },
+        )
+        .collect();
+      await verifyDb
+        .query(
+          `CREATE recall_log CONTENT {
+             ts: $ts, session_id: $sid, query: 'q', k: 1,
+             ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+             outcome: 'pending'
+           }`,
+          { ts: recallTs, sid, rid: String(memoId) },
+        )
+        .collect();
+    }
+
+    const sumA = await evaluatePending(verifyDb);
+    if (sumA.reinforced !== 3) {
+      fail(`G12b variant A: expected reinforced=3, got ${sumA.reinforced}`);
+      return;
+    }
+    const [afterA] = await verifyDb.query(`SELECT signal_count FROM ${memoId}`).collect();
+    if (afterA?.[0]?.signal_count !== 4) {
+      fail(
+        `G12b variant A: expected signal_count=4 (1 base + 3), got ${afterA?.[0]?.signal_count}`,
+      );
+      return;
+    }
+
+    // Confirm every row landed mode=similarity, used_count=1, full attribution shape.
+    const [rowsA] = await verifyDb
+      .query('SELECT attribution, session_id FROM recall_log WHERE outcome = "reinforced"')
+      .collect();
+    const sidsA = new Set(rowsA.map((r) => r.session_id));
+    if (rowsA.length !== 3 || sidsA.size !== 3) {
+      fail(
+        `G12b variant A: expected 3 reinforced rows across 3 sessions, got ${rowsA.length}/${sidsA.size}`,
+      );
+      return;
+    }
+    for (const r of rowsA) {
+      const a = r.attribution;
+      if (!a || a.mode !== 'similarity' || a.used_count !== 1 || a.total !== 1) {
+        fail(
+          `G12b variant A: bad attribution shape on session ${r.session_id}: ${JSON.stringify(a)}`,
+        );
+        return;
+      }
+      if (typeof a.elapsed_ms !== 'number' || typeof a.similarity_threshold !== 'number') {
+        fail(`G12b variant A: missing attribution fields: ${JSON.stringify(a)}`);
+        return;
+      }
+    }
+    ok('G12b variant A: 3 distinct sessions, mode=similarity, signal_count 1 → 4');
+
+    // ----- Variant B: hybrid + unrelated reply + fallback_when_zero_used=false -----
+    await verifyDb.query('DELETE recall_log').collect();
+    await verifyDb.query("DELETE events WHERE source = 'conversation'").collect();
+    await verifyDb.query('DELETE evidence_ledger').collect();
+    await verifyDb
+      .query('UPDATE runtime:`reinforcement.config` SET value.fallback_when_zero_used = false')
+      .collect();
+
+    const baselineCount = 4;
+    const UNRELATED = 'USER: q\n\nASSISTANT: the weather seems pleasant today thanks.';
+    for (const sid of sessions) {
+      await verifyDb
+        .query(
+          `CREATE events CONTENT {
+             source: 'conversation',
+             content: $c,
+             ts: $ts,
+             meta: { session_id: $sid }
+           }`,
+          { c: UNRELATED, ts: new Date(recallTs.getTime() + 60_000), sid },
+        )
+        .collect();
+      await verifyDb
+        .query(
+          `CREATE recall_log CONTENT {
+             ts: $ts, session_id: $sid, query: 'q', k: 1,
+             ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+             outcome: 'pending'
+           }`,
+          { ts: recallTs, sid, rid: String(memoId) },
+        )
+        .collect();
+    }
+
+    const sumB = await evaluatePending(verifyDb);
+    if (sumB.reinforced !== 0) {
+      fail(`G12b variant B: expected reinforced=0, got ${sumB.reinforced}`);
+      return;
+    }
+    if ((sumB.no_used ?? 0) !== 3) {
+      fail(`G12b variant B: expected no_used=3, got ${sumB.no_used}`);
+      return;
+    }
+    const [afterB] = await verifyDb.query(`SELECT signal_count FROM ${memoId}`).collect();
+    if (afterB?.[0]?.signal_count !== baselineCount) {
+      fail(
+        `G12b variant B: expected signal_count unchanged at ${baselineCount}, got ${afterB?.[0]?.signal_count}`,
+      );
+      return;
+    }
+    const [rowsB] = await verifyDb.query('SELECT attribution FROM recall_log').collect();
+    const bucketCounts = { fallback_zero_used: 0 };
+    for (const r of rowsB) {
+      bucketCounts[r.attribution?.mode] = (bucketCounts[r.attribution?.mode] ?? 0) + 1;
+    }
+    if (bucketCounts.fallback_zero_used !== 3) {
+      fail(
+        `G12b variant B: expected 3 fallback_zero_used rows, got ${JSON.stringify(bucketCounts)}`,
+      );
+      return;
+    }
+    ok(
+      'G12b variant B: 3 unrelated replies + fallback_off → signal_count unchanged, all rows fallback_zero_used',
+    );
   } finally {
     await appClose(verifyDb);
   }
@@ -484,6 +663,7 @@ async function main() {
     await gateOnDeleteUnset(db);
     await gateComputedIsOverdue(db);
     await gateReinforceCountBucket(db);
+    await gateReinforceCountBucketHybrid();
     await gateNameLowerIndexStillSelected(db);
   } finally {
     try {
