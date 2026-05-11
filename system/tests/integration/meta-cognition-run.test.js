@@ -502,3 +502,67 @@ test('T9 — B1 absent: secondary query yields zero unused rows; corrected-only 
   assert.equal(tel?.[0]?.rows_after_privacy, 5);
   await close(db);
 });
+
+test('T10 — telemetry metric aggregates resolve to expected shape', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const { note } = await import('../../cognition/memory/store.js');
+  await db.query('UPDATE runtime:`meta_cognition.config` SET value.enabled = true').collect();
+  const ent = await db
+    .query(surql`CREATE entities CONTENT { name: 'x', type: 'project', scope: 'global' }`)
+    .collect();
+  const entId = ent[0][0].id;
+  for (let i = 0; i < 5; i++) {
+    const m = await note(db, e, 'knowledge', {
+      content: `m${i}`,
+      derived_by: 'agent',
+      scope: 'global',
+      subjects: [entId],
+    });
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT {
+        ts: time::now() - 1d,
+        session_id: ${`s${i}`}, query: 'q', k: 5,
+        ranked_hits: [{ record: ${m.id}, kind: 'memo' }], outcome: 'corrected',
+      }`,
+      )
+      .collect();
+  }
+  const resp = JSON.stringify({
+    narrative: 'n',
+    clusters: [
+      {
+        cluster_id: String(entId),
+        error_pattern: 'p',
+        suggested_rules: ['r1', 'r2'],
+        rule_confidence: [0.8, 0.6],
+      },
+    ],
+  });
+  await runMetaRecallNarrative({ db, embedder: e, host: fakeHost(resp) });
+
+  // analysis_runs
+  const [aRows] = await db
+    .query('SELECT count() AS n FROM meta_cognition_telemetry GROUP ALL')
+    .collect();
+  assert.equal(aRows?.[0]?.n, 1);
+  // clusters_emitted
+  const [cRows] = await db
+    .query('SELECT math::sum(clusters) AS n FROM meta_cognition_telemetry GROUP ALL')
+    .collect();
+  assert.equal(cRows?.[0]?.n, 1);
+  // suggested_rules_count (complete runs only)
+  const [sRows] = await db
+    .query(
+      "SELECT math::sum(rules_proposed) AS n FROM meta_cognition_telemetry WHERE outcome = 'complete' GROUP ALL",
+    )
+    .collect();
+  assert.equal(sRows?.[0]?.n, 2);
+  // tokens_used = tokens_in + tokens_out
+  const [tRows] = await db
+    .query('SELECT math::sum(tokens_in + tokens_out) AS n FROM meta_cognition_telemetry GROUP ALL')
+    .collect();
+  assert.equal(tRows?.[0]?.n, 300, 'fakeHost reports 100 in + 200 out');
+  await close(db);
+});
