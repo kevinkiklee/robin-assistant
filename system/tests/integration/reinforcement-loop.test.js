@@ -400,6 +400,95 @@ test('B1 §8.2 #16: episode-tagged memo + [episode YYYY-MM-DD] reply → attribu
   await close(db);
 });
 
+test('B1 section 6: corroborate weight reflects per-hit used count, not row count', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  const m = await store.note(db, fakeEmbedder, 'knowledge', {
+    content: 'eclipse tuesday striking',
+    derived_by: 'manual',
+  });
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  // Two pending rows for the SAME memo, in two sessions; each session has its
+  // own reply event whose body matches via similarity.
+  for (const sid of ['s1', 's2']) {
+    await db
+      .query(
+        `CREATE events CONTENT {
+           source: 'conversation',
+           content: 'USER: q\n\nASSISTANT: eclipse tuesday striking observation here.',
+           ts: $ts,
+           meta: { session_id: $sid }
+         }`,
+        { ts: new Date(pastTs.getTime() + 60_000), sid },
+      )
+      .collect();
+    await db
+      .query(
+        `CREATE recall_log CONTENT {
+           ts: $ts, session_id: $sid, query: 'q', k: 1,
+           ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+           outcome: 'pending'
+         }`,
+        { ts: pastTs, sid, rid: String(m.id) },
+      )
+      .collect();
+  }
+  await evaluatePending(db);
+  const [ledger] = await db
+    .query('SELECT polarity, weight FROM evidence_ledger WHERE memo_id = $id', { id: m.id })
+    .collect();
+  assert.equal(ledger.length, 1, 'one corroborate row for the memo');
+  assert.equal(ledger[0].polarity, 'corroborates');
+  assert.equal(ledger[0].weight, 2, 'weight=2 (used in both rows)');
+  await close(db);
+});
+
+test('B1 §7.10: duplicate hit in ranked_hits dedups in memoHitCount → signal_count bumps by 1, not 2', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  const m = await store.note(db, fakeEmbedder, 'knowledge', {
+    content: 'sourdough hydration ratio sixty percent',
+    derived_by: 'manual',
+  });
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .query(
+      `CREATE events CONTENT {
+         source: 'conversation',
+         content: 'USER: q\n\nASSISTANT: yes the sourdough hydration ratio sixty percent is right.',
+         ts: $ts,
+         meta: { session_id: 'sess-dup' }
+       }`,
+      { ts: new Date(pastTs.getTime() + 60_000) },
+    )
+    .collect();
+  // Same memo appears twice in ranked_hits — possible via the MCP recall.js path.
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 'sess-dup', query: 'q', k: 2,
+         ranked_hits: [
+           { record: $rid, kind: 'memo', rank: 0 },
+           { record: $rid, kind: 'memo', rank: 1 }
+         ],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(m.id) },
+    )
+    .collect();
+  await evaluatePending(db);
+  const [after] = await db.query(`SELECT signal_count FROM ${m.id}`).collect();
+  // Initial signal_count is 1 (from store.note default). Memo appears in 1
+  // pending row, regardless of the duplicate within ranked_hits, so the
+  // bump is +1, not +2 -> 2 total.
+  assert.equal(after[0].signal_count, 1 + 1, 'duplicate ranked_hits collapsed by memoHitCount');
+  await close(db);
+});
+
 test('reinforcement: rows newer than the window are not evaluated', async () => {
   const db = await fresh();
   const m = await store.note(db, fakeEmbedder, 'knowledge', {
