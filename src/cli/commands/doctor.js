@@ -23,7 +23,14 @@ import { readDaemonState } from '../../daemon/state.js';
 import { close, connect } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
-import { ensureHome, packageRootDir, paths } from '../../runtime/data-store.js';
+import {
+  ensureHome,
+  packageRootDir,
+  paths,
+  readHostIntegrations,
+  readPointer,
+  robinHome,
+} from '../../runtime/data-store.js';
 import { parseArgs } from '../args.js';
 
 function shimPrefix() {
@@ -330,6 +337,83 @@ async function doStatus(out, deps = {}) {
   } else {
     out('integrations: skipped (daemon not running)');
   }
+
+  // Data section — host-integrations manifest drift detection.
+  const data = await doctorData();
+  out('');
+  out('── Data section ──────────────────────────');
+  out(`home: ${data.home ?? '(not resolved)'}`);
+  if (data.drift.length === 0) {
+    out('no drift');
+  } else {
+    out(`drift (${data.drift.length}):`);
+    for (const d of data.drift) {
+      out(`  • ${d.path ?? '(home)'}: ${d.reason}`);
+    }
+  }
+}
+
+export async function doctorData() {
+  const drift = [];
+  let homeResolved = null;
+  try {
+    homeResolved = robinHome();
+  } catch (e) {
+    drift.push({ path: null, reason: `home resolution: ${e.message}` });
+    return { home: null, drift };
+  }
+  const pointer = readPointer();
+  const envOverride = process.env.ROBIN_HOME;
+  if (envOverride && pointer?.home && envOverride !== pointer.home) {
+    drift.push({
+      path: null,
+      reason: `$ROBIN_HOME (${envOverride}) does not match .robin-home (${pointer.home})`,
+    });
+  }
+  let manifest;
+  try {
+    manifest = await readHostIntegrations();
+  } catch (e) {
+    drift.push({ path: paths.data.hostIntegrations(), reason: `manifest read: ${e.message}` });
+    return { home: homeResolved, drift };
+  }
+  for (const e of manifest.entries) {
+    if (!existsSync(e.path)) {
+      drift.push({ path: e.path, reason: 'target file missing' });
+      continue;
+    }
+    if (e.kind === 'claude-hooks' || e.kind === 'gemini-hooks') {
+      let parsed;
+      try {
+        parsed = JSON.parse(readFileSync(e.path, 'utf8'));
+      } catch (err) {
+        drift.push({ path: e.path, reason: `target file malformed: ${err.message}` });
+        continue;
+      }
+      for (const own of e.owned ?? []) {
+        const phaseArr = parsed?.hooks?.[own.phase];
+        const present =
+          Array.isArray(phaseArr) &&
+          phaseArr.some(
+            (entry) =>
+              Array.isArray(entry?.hooks) &&
+              entry.hooks.some((h) => h?.command === own.command),
+          );
+        if (!present) {
+          drift.push({ path: e.path, reason: `command not present: ${own.command}` });
+        }
+      }
+    }
+    if ((e.kind === 'launchd-plist' || e.kind === 'systemd-unit') && e.expectedHome) {
+      if (e.expectedHome !== homeResolved) {
+        drift.push({
+          path: e.path,
+          reason: `expectedHome (${e.expectedHome}) ≠ resolved home (${homeResolved})`,
+        });
+      }
+    }
+  }
+  return { home: homeResolved, drift };
 }
 
 export async function doctor(argv = [], deps = {}) {
