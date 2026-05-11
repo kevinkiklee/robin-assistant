@@ -29,7 +29,7 @@ export async function calibrationShow(_argv = [], deps = {}) {
   for (const k of kinds) {
     const v = c.by_kind[k];
     const pct = (v.accuracy * 100).toFixed(0);
-    out(`${k.padEnd(20)} ${(pct + '%').padEnd(10)} ${v.resolved}`);
+    out(`${k.padEnd(20)} ${(`${pct}%`).padEnd(10)} ${v.resolved}`);
   }
   if (kinds.length === 0) out('(no resolved predictions yet)');
 }

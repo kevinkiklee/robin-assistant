@@ -9,7 +9,8 @@ function fmt(d) {
 
 export async function predictionsList(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));
-  let kind, resolved;
+  let kind;
+  let resolved;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--kind') kind = argv[++i];
     if (argv[i] === '--open') resolved = false;
@@ -31,7 +32,7 @@ export async function predictionsList(argv = [], deps = {}) {
     out('(no predictions)');
     return;
   }
-  out(`id                                  kind             status       confidence  statement`);
+  out('id                                  kind             status       confidence  statement');
   for (const r of rows) {
     const status = r.resolved_at ? (r.correct ? 'CORRECT' : 'WRONG') : 'OPEN';
     const id = String(r.id).slice(0, 36);

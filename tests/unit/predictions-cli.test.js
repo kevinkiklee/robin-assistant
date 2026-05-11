@@ -71,7 +71,8 @@ test('predictions list --resolved passes {resolved: true}', async () => {
 test('predictions resolve POSTs correct payload to /internal/predictions/resolve', async () => {
   const out = capture();
   const err = capture();
-  let postedPath, postedBody;
+  let postedPath;
+  let postedBody;
   await predictionsResolve(['foo', 'correct', 'took', '2h'], {
     out: out.fn,
     err: err.fn,
