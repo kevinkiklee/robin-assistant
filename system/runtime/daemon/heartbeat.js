@@ -1,57 +1,66 @@
 /**
- * Heartbeat-based scheduler for integrations + dream pipeline.
+ * Bucket-based heartbeat scheduler.
  *
- * Ticks every `heartbeatMs` (default 60s). Each tick:
- *   1. `listDue()` returns `[{ name, kind }]` for items whose `next_run_at`
- *      has passed (integrations with kind='integration', dream with
- *      kind='dream' and name='__dream__').
- *   2. For each due item, dispatch via `runOne(name)`. Per-name in-flight
- *      tracking prevents the same integration from running twice but lets
- *      different integrations run concurrently.
- *   3. If nothing else is in flight and `isOverflow()` is true, kick the
- *      dream pipeline via `runOne('__dream__')`.
+ * Each bucket has its own interval and its own per-bucket running flag.
+ * If a bucket's tick is still running when the interval fires, the next
+ * tick is coalesced (skipped, not queued).
  *
- * Heartbeat polling is sleep-resilient: when the laptop wakes, the next tick
- * fires within `heartbeatMs` and catches up missed runs. setTimeout-based
- * scheduling, by contrast, can fire far past its target or never fire at all
- * after a long sleep.
+ * Bucket shape: { name, intervalMs, tick, gate?, fireImmediately? }
+ *   - tick: async function. Throws are caught + logged.
+ *   - gate: optional sync/async predicate. Returning falsy skips the tick.
+ *     Gate throws are caught + treated as skip.
+ *   - fireImmediately: optional boolean (default false). When true, fires
+ *     once at start() in addition to the interval cadence.
  *
- * Pure module — no DB access here. Inject `listDue`, `runOne`, `isOverflow`
- * as deps. Daemon wiring in Task 12 maps these to DB-backed implementations.
+ * Heartbeat polling is sleep-resilient: setInterval-based ticks fire
+ * within `intervalMs` of laptop wake — no missed-tick queue burst.
+ *
+ * Pure module — no DB access here. Daemon wiring builds the buckets.
  */
-export function createScheduler({ listDue, runOne, isOverflow, heartbeatMs = 60_000 }) {
-  let timer = null;
-  const inFlight = new Set();
+export function createScheduler({ buckets } = {}) {
+  if (!Array.isArray(buckets) || buckets.length === 0) {
+    throw new Error('createScheduler: buckets[] is required');
+  }
+  const timers = new Map();
+  const running = new Map();
 
-  async function tick() {
-    const due = (await listDue?.()) ?? [];
-    for (const item of due) {
-      if (inFlight.has(item.name)) continue;
-      inFlight.add(item.name);
-      runOne(item.name)
-        .catch((e) => console.warn(`[scheduler] ${item.name} failed: ${e.message}`))
-        .finally(() => inFlight.delete(item.name));
-    }
-    if (inFlight.size === 0 && (await isOverflow?.())) {
-      inFlight.add('__dream__');
-      runOne('__dream__')
-        .catch((e) => console.warn(`[scheduler] __dream__ failed: ${e.message}`))
-        .finally(() => inFlight.delete('__dream__'));
+  async function fire(b) {
+    if (running.get(b.name)) return;
+    try {
+      if (typeof b.gate === 'function') {
+        let ok = false;
+        try {
+          ok = await b.gate();
+        } catch (e) {
+          console.warn(`[scheduler/${b.name}] gate failed: ${e.message}`);
+          return;
+        }
+        if (!ok) return;
+      }
+      running.set(b.name, true);
+      await b.tick();
+    } catch (e) {
+      console.warn(`[scheduler/${b.name}] tick failed: ${e.message}`);
+    } finally {
+      running.set(b.name, false);
     }
   }
 
   function start() {
-    if (timer) clearInterval(timer);
-    timer = setInterval(() => {
-      tick().catch((e) => console.warn(`[scheduler] tick failed: ${e.message}`));
-    }, heartbeatMs);
-    timer.unref();
-    tick().catch((e) => console.warn(`[scheduler] initial tick failed: ${e.message}`));
+    stop();
+    for (const b of buckets) {
+      const t = setInterval(() => {
+        fire(b);
+      }, b.intervalMs);
+      t.unref?.();
+      timers.set(b.name, t);
+      if (b.fireImmediately) fire(b);
+    }
   }
 
   function stop() {
-    if (timer) clearInterval(timer);
-    timer = null;
+    for (const t of timers.values()) clearInterval(t);
+    timers.clear();
   }
 
   return { start, stop };
