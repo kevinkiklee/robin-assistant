@@ -28,50 +28,57 @@ async function fresh() {
 }
 
 async function makeEntities(db, names) {
-  const e = createStubEmbedder({ dimension: 1024 });
   const ids = [];
   for (const n of names) {
-    const v = Array.from(await e.embed(`person: ${n}`));
     const [c] = await db
-      .query(surql`CREATE entities CONTENT ${{ name: n, type: 'person', embedding: v }}`)
+      .query(surql`CREATE entities CONTENT ${{ name: n, type: 'person' }}`)
       .collect();
     ids.push(Array.isArray(c) ? c[0].id : c.id);
   }
   return ids;
 }
 
-test('writeCoOccursWith creates two directional edges per pair', async () => {
+// Old schema had a `co_occurs_with` table with directional rows (two per pair).
+// The redesign collapsed all relations into the `edges` table with a `kind`
+// discriminator. The symmetric kind 'occurs_with' canonicalises endpoint order
+// inside store.relate, so each unordered pair produces exactly ONE row whose
+// `weight` increments on repeat. Tests assert the new counts (1 per pair,
+// not 2 per pair).
+
+test('writeCoOccursWith creates one symmetric edge per pair', async () => {
   const db = await fresh();
   const [a, b] = await makeEntities(db, ['Alice', 'Bob']);
   await writeCoOccursWith(db, [a, b]);
-  const [rows] = await db.query(surql`SELECT * FROM co_occurs_with`).collect();
-  assert.equal(rows.length, 2); // A→B and B→A
-  for (const r of rows) {
-    assert.equal(r.strength, 1);
-  }
+  const [rows] = await db
+    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
+    .collect();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].weight, 1);
   await close(db);
 });
 
-test('writeCoOccursWith increments strength on repeat', async () => {
+test('writeCoOccursWith increments weight on repeat', async () => {
   const db = await fresh();
   const [a, b] = await makeEntities(db, ['Alice', 'Bob']);
   await writeCoOccursWith(db, [a, b]);
   await writeCoOccursWith(db, [a, b]);
-  const [rows] = await db.query(surql`SELECT * FROM co_occurs_with`).collect();
-  assert.equal(rows.length, 2);
-  for (const r of rows) {
-    assert.equal(r.strength, 2);
-  }
+  const [rows] = await db
+    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
+    .collect();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].weight, 2);
   await close(db);
 });
 
-test('writeCoOccursWith caps at top N entities (cap=4 → 4 entities → 12 edges)', async () => {
+test('writeCoOccursWith caps at top N entities (cap=4 → 4 entities → 6 edges)', async () => {
   const db = await fresh();
   const ids = await makeEntities(db, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
-  // 10 entities, cap=4 → top 4 only → 4×3 = 12 edges
+  // 10 entities, cap=4 → top 4 only → C(4,2) = 6 symmetric edges
   await writeCoOccursWith(db, ids, { cap: 4 });
-  const [rows] = await db.query(surql`SELECT * FROM co_occurs_with`).collect();
-  assert.equal(rows.length, 12);
+  const [rows] = await db
+    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
+    .collect();
+  assert.equal(rows.length, 6);
   await close(db);
 });
 
@@ -79,7 +86,9 @@ test('writeCoOccursWith with single entity creates no edges (no pair)', async ()
   const db = await fresh();
   const ids = await makeEntities(db, ['Solo']);
   await writeCoOccursWith(db, ids);
-  const [rows] = await db.query(surql`SELECT * FROM co_occurs_with`).collect();
+  const [rows] = await db
+    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
+    .collect();
   assert.equal(rows.length, 0);
   await close(db);
 });
@@ -88,7 +97,10 @@ test('writeCoOccursWith default cap is 8', async () => {
   const db = await fresh();
   const ids = await makeEntities(db, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
   await writeCoOccursWith(db, ids); // default cap=8
-  const [rows] = await db.query(surql`SELECT * FROM co_occurs_with`).collect();
-  assert.equal(rows.length, 8 * 7); // 8 entities → 56 edges
+  const [rows] = await db
+    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
+    .collect();
+  // 8 entities → C(8,2) = 28 symmetric edges
+  assert.equal(rows.length, 28);
   await close(db);
 });

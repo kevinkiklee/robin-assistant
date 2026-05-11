@@ -1,3 +1,7 @@
+// Edges tests for the new schema: per-relation tables (mentions/about/
+// works_on) were collapsed into a single `edges` table with a `kind`
+// discriminator. Assertions now select FROM edges WHERE kind = '<kind>'.
+
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
@@ -31,19 +35,14 @@ async function fresh() {
 async function seed(db) {
   const e = createStubEmbedder({ dimension: 1024 });
   const evt = await recordEvent(db, e, { source: 'cli', content: 'Alice met Bob about Atlas.' });
-  const aliceVec = Array.from(await e.embed('person: Alice'));
-  const bobVec = Array.from(await e.embed('person: Bob'));
-  const atlasVec = Array.from(await e.embed('project: Atlas'));
   const [aliceCreated] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: aliceVec }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person' }}`)
     .collect();
   const [bobCreated] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Bob', type: 'person', embedding: bobVec }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Bob', type: 'person' }}`)
     .collect();
   const [atlasCreated] = await db
-    .query(
-      surql`CREATE entities CONTENT ${{ name: 'Atlas', type: 'project', embedding: atlasVec }}`,
-    )
+    .query(surql`CREATE entities CONTENT ${{ name: 'Atlas', type: 'project' }}`)
     .collect();
   return {
     eventId: evt.id,
@@ -57,7 +56,7 @@ test('writeMentionsEdge creates an event→entity edge with weight + context', a
   const db = await fresh();
   const { eventId, aliceId } = await seed(db);
   await writeMentionsEdge(db, eventId, aliceId, { weight: 0.9, context: 'Alice met...' });
-  const [rows] = await db.query(surql`SELECT * FROM mentions`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'mentions'`).collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].weight, 0.9);
   assert.equal(rows[0].context, 'Alice met...');
@@ -68,7 +67,7 @@ test('writeMentionsEdge works without optional fields', async () => {
   const db = await fresh();
   const { eventId, aliceId } = await seed(db);
   await writeMentionsEdge(db, eventId, aliceId);
-  const [rows] = await db.query(surql`SELECT * FROM mentions`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'mentions'`).collect();
   assert.equal(rows.length, 1);
   await close(db);
 });
@@ -77,7 +76,7 @@ test('writeAboutEdge creates an event→entity edge', async () => {
   const db = await fresh();
   const { eventId, atlasId } = await seed(db);
   await writeAboutEdge(db, eventId, atlasId);
-  const [rows] = await db.query(surql`SELECT * FROM about`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'about'`).collect();
   assert.equal(rows.length, 1);
   await close(db);
 });
@@ -86,7 +85,7 @@ test('writeTypedEntityEdge creates a works_on edge between entities', async () =
   const db = await fresh();
   const { aliceId, atlasId } = await seed(db);
   await writeTypedEntityEdge(db, aliceId, 'works_on', atlasId);
-  const [rows] = await db.query(surql`SELECT * FROM works_on`).collect();
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'works_on'`).collect();
   assert.equal(rows.length, 1);
   await close(db);
 });

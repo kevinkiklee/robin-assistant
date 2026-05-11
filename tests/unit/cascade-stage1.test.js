@@ -30,7 +30,7 @@ test('stage1Resolve finds existing entity by exact case-insensitive name + type'
   const db = await fresh();
   const dummyVec = Array.from({ length: 1024 }, (_, i) => i / 1024);
   await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person', embedding: dummyVec }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person'}}`)
     .collect();
   const id = await stage1Resolve(db, { name: 'alice', type: 'person' });
   assert.ok(id);
@@ -49,7 +49,7 @@ test('stage1Resolve does not cross types', async () => {
   const dummyVec = Array.from({ length: 1024 }, () => 0.1);
   await db
     .query(
-      surql`CREATE entities CONTENT ${{ name: 'Atlas', type: 'project', embedding: dummyVec }}`,
+      surql`CREATE entities CONTENT ${{ name: 'Atlas', type: 'project'}}`,
     )
     .collect();
   const id = await stage1Resolve(db, { name: 'atlas', type: 'place' });
@@ -61,7 +61,7 @@ test('stage1Resolve matches mixed-case lookup against differently-cased stored n
   const db = await fresh();
   const dummyVec = Array.from({ length: 1024 }, () => 0.2);
   await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'BOB', type: 'person', embedding: dummyVec }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'BOB', type: 'person'}}`)
     .collect();
   const id = await stage1Resolve(db, { name: 'bOb', type: 'person' });
   assert.ok(id);
