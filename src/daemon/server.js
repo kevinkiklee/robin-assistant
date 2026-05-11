@@ -20,14 +20,17 @@ import { discoverJobs } from '../jobs/loader.js';
 import { runOneJob } from '../jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
+import { createAuditTool } from '../mcp/tools/audit.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
 import { createGetHotTool } from '../mcp/tools/get-hot.js';
 import { createGetKnowledgeTool } from '../mcp/tools/get-knowledge.js';
 import { createGetProfileTool } from '../mcp/tools/get-profile.js';
 import { createHealthTool } from '../mcp/tools/health.js';
+import { createIngestTool } from '../mcp/tools/ingest.js';
 import { createIntegrationRunTool } from '../mcp/tools/integration-run.js';
 import { createIntegrationStatusTool } from '../mcp/tools/integration-status.js';
+import { createLintTool } from '../mcp/tools/lint.js';
 import { createListEpisodesTool } from '../mcp/tools/list-episodes.js';
 import { createListJobsTool } from '../mcp/tools/list-jobs.js';
 import { createListJournalTool } from '../mcp/tools/list-journal.js';
@@ -48,12 +51,12 @@ import { ensureHome, paths } from '../runtime/home.js';
 import { envFilePath } from '../secrets/dotenv-io.js';
 import { createBiographerQueue } from './biographer-queue.js';
 import { createIdleEmbedder } from './idle-embedder.js';
+import { runIntrospection } from './introspection.js';
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
 import { bindFreePort } from './port.js';
 import { createScheduler } from './scheduler.js';
 import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
 import { clearDaemonState, writeDaemonState } from './state.js';
-import { runTamperCheck } from './tamper-check.js';
 import { getCliVersion } from './version-handshake.js';
 
 const BUILTIN_JOBS_DIR = _jobsJoin(
@@ -179,20 +182,20 @@ export async function startDaemon() {
       }
       process.exit(1);
     }
-    // Daemon-boot tamper check (4a). Result persists to runtime_tamper_state;
+    // Daemon-boot introspection. Result persists to runtime_introspection_state;
     // SessionStart hook reads it without recomputing. Fail-soft: errors here
     // do not block daemon boot — they surface as a finding row.
     try {
-      const tamper = await runTamperCheck(dbHandle);
-      if (!tamper.ok && tamper.findings.length > 0) {
-        for (const f of tamper.findings) {
+      const introspection = await runIntrospection(dbHandle);
+      if (!introspection.ok && introspection.findings.length > 0) {
+        for (const f of introspection.findings) {
           console.warn(
-            `[daemon] tamper warning — ${f.kind}${f.path ? `: ${f.path}` : ''}${f.detail ? ` (${f.detail})` : ''}`,
+            `[daemon] introspection warning — ${f.kind}${f.path ? `: ${f.path}` : ''}${f.detail ? ` (${f.detail})` : ''}`,
           );
         }
       }
     } catch (e) {
-      console.warn(`[daemon] tamper-check failed (non-fatal): ${e.message}`);
+      console.warn(`[daemon] introspection failed (non-fatal): ${e.message}`);
     }
 
     // Eagerly resolve the host so the scheduler + run_dream tool can use a
@@ -435,6 +438,9 @@ export async function startDaemon() {
         getJobs: () => jobsCache.current,
       }),
     );
+    tools.push(createIngestTool({ db: dbHandle, embedder: embedderWrap, host }));
+    tools.push(createLintTool({ db: dbHandle }));
+    tools.push(createAuditTool({ db: dbHandle, host }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
@@ -541,6 +547,9 @@ export async function startDaemon() {
     const { server: probe, port } = await bindFreePort();
     probe.close();
 
+    const { createBrowserHandler } = await import('../db/browse/server.js');
+    const browserHandler = createBrowserHandler({ db: dbHandle, expectedPort: port });
+
     async function readJsonBody(req) {
       return await new Promise((resolveBody) => {
         const chunks = [];
@@ -560,6 +569,8 @@ export async function startDaemon() {
 
     httpServer = createServer(async (req, res) => {
       try {
+        // DB browser routes (loopback-only, namespaced under /db/).
+        if (await browserHandler(req, res)) return;
         if (req.method === 'POST' && req.url === '/internal/biographer/process-pending') {
           const body = await readJsonBody(req);
           // Capture pre-step (fail-soft). When the Stop hook forwards
@@ -625,17 +636,17 @@ export async function startDaemon() {
             transcriptPath: body.transcript_path ?? body.transcriptPath ?? null,
           });
           const active = await listActiveSessions(dbHandle);
-          let tamper_findings = [];
+          let introspection_findings = [];
           try {
             const [rows] = await dbHandle
-              .query("SELECT * FROM type::record('runtime_tamper_state', 'current')")
+              .query("SELECT * FROM type::record('runtime_introspection_state', 'current')")
               .collect();
-            tamper_findings = rows?.[0]?.findings ?? [];
+            introspection_findings = rows?.[0]?.findings ?? [];
           } catch {
-            tamper_findings = [];
+            introspection_findings = [];
           }
           res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ session_count: active.length, tamper_findings }));
+          res.end(JSON.stringify({ session_count: active.length, introspection_findings }));
           return;
         }
         if (req.method === 'POST' && req.url === '/internal/session/end') {
@@ -698,11 +709,50 @@ export async function startDaemon() {
           res.end(JSON.stringify({ ok: true, count: jobsCache.current.length }));
           return;
         }
-        if (req.method === 'POST' && req.url === '/internal/auto-recall') {
+        if (req.method === 'POST' && req.url === '/internal/knowledge/ingest') {
           const body = await readJsonBody(req);
-          const { autoRecallEndpoint } = await import('../recall/auto-recall.js').catch(() => ({}));
-          if (typeof autoRecallEndpoint === 'function') {
-            const result = await autoRecallEndpoint({
+          const tool = tools.find((t) => t.name === 'ingest');
+          if (!tool) {
+            res.writeHead(500, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'ingest_tool_not_registered' }));
+            return;
+          }
+          const result = await tool.handler(body);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/knowledge/lint') {
+          const body = await readJsonBody(req);
+          const tool = tools.find((t) => t.name === 'lint');
+          if (!tool) {
+            res.writeHead(500, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'lint_tool_not_registered' }));
+            return;
+          }
+          const result = await tool.handler(body);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/knowledge/audit') {
+          const body = await readJsonBody(req);
+          const tool = tools.find((t) => t.name === 'audit');
+          if (!tool) {
+            res.writeHead(500, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, reason: 'audit_tool_not_registered' }));
+            return;
+          }
+          const result = await tool.handler(body);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/intuition') {
+          const body = await readJsonBody(req);
+          const { intuitionEndpoint } = await import('../recall/intuition.js').catch(() => ({}));
+          if (typeof intuitionEndpoint === 'function') {
+            const result = await intuitionEndpoint({
               db: dbHandle,
               embedder: embedderWrap,
               detector,

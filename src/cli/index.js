@@ -115,6 +115,18 @@ export async function main(argv) {
     console.error('usage: robin jobs <list|status|run|enable|disable|reload>');
     process.exit(1);
   }
+  if (cmd === 'ingest') {
+    const { ingestCmd } = await import('./commands/ingest.js');
+    return ingestCmd(argv.slice(1));
+  }
+  if (cmd === 'lint') {
+    const { lintCmd } = await import('./commands/lint.js');
+    return lintCmd(argv.slice(1));
+  }
+  if (cmd === 'audit') {
+    const { auditCmd } = await import('./commands/audit.js');
+    return auditCmd(argv.slice(1));
+  }
   if (cmd === 'integrations') {
     const sub = argv[1];
     if (sub === 'list') {
@@ -200,6 +212,14 @@ export async function main(argv) {
       return refusalsList(argv.slice(2));
     }
     console.error('usage: robin refusals list');
+    process.exit(1);
+  }
+  if (cmd === 'db') {
+    if (argv[1] === 'browse') {
+      const { dbBrowse } = await import('./commands/db-browse.js');
+      return dbBrowse(argv.slice(2));
+    }
+    console.error('usage: robin db browse');
     process.exit(1);
   }
   if (cmd === 'pre-commit') {
