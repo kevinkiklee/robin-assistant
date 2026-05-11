@@ -34,7 +34,7 @@ const TRUST_FACTOR = {
  *   supersededCount?: number,
  *   contradictionCount?: number,
  * }} hit
- * @param {{ scope?: string, session_id?: string }} [callerCtx]
+ * @param {{ scope?: string, session_id?: string, entityBoost?: number, entityBoostCount?: number }} [callerCtx]
  */
 export function score(hit, callerCtx = {}) {
   const { record, distance, supersededCount = 0, contradictionCount = 0 } = hit;
@@ -53,11 +53,22 @@ export function score(hit, callerCtx = {}) {
   const trustKey = record.derived_by ?? record.source ?? 'manual';
   const trustFactor = TRUST_FACTOR[trustKey] ?? 0.9;
   const scopeBoost = _scopeBoost(record.scope, callerCtx);
+  const entityBoost = typeof callerCtx.entityBoost === 'number' ? callerCtx.entityBoost : 1.0;
+  const entityBoostCount =
+    typeof callerCtx.entityBoostCount === 'number' ? callerCtx.entityBoostCount : 0;
 
-  const total = cosineSim * fresh * contraPenalty * trustFactor * scopeBoost;
+  const total = cosineSim * fresh * contraPenalty * trustFactor * scopeBoost * entityBoost;
   return {
     score: total,
-    components: { cosineSim, fresh, contraPenalty, trustFactor, scopeBoost },
+    components: {
+      cosineSim,
+      fresh,
+      contraPenalty,
+      trustFactor,
+      scopeBoost,
+      entityBoost,
+      entityBoostCount,
+    },
   };
 }
 
