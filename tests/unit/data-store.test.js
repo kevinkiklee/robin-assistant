@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 test('paths.data.home() defaults to <package_root>/user-data when ROBIN_HOME unset', async () => {
   Reflect.deleteProperty(process.env, 'ROBIN_HOME');
@@ -209,4 +210,21 @@ test('strict resolver: pointer with unknown version throws', () => {
     rmSync(home, { recursive: true, force: true });
     rmSync(pkg, { recursive: true, force: true });
   }
+});
+
+// ── Task 1.5: no-fs.rename invariant ─────────────────────────────────────────
+
+test('data-store.js never calls fs.rename — move uses copy+verify+delete', () => {
+  const src = readFileSync(
+    fileURLToPath(new URL('../../src/runtime/data-store.js', import.meta.url)),
+    'utf8',
+  );
+  // Allowed: writePointer uses renameSync for atomic pointer write — that's a
+  // single-file atomic replace, not a directory move. Whitelist that one call.
+  const renameCalls = (src.match(/\brename(Sync)?\s*\(/g) ?? []).length;
+  assert.strictEqual(
+    renameCalls,
+    1,
+    `expected exactly 1 renameSync call (in writePointer); found ${renameCalls}`,
+  );
 });
