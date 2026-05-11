@@ -1,16 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
+import { join as __robinJoin, join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -34,7 +30,6 @@ test.beforeEach(() => {
 
 test.afterEach(() => {
   rmSync(tmpHome, { recursive: true, force: true });
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
 });
 

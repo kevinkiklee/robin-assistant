@@ -12,7 +12,7 @@ function truncateForDiscord(text) {
   return `${text.slice(0, DISCORD_MAX - 1)}…`;
 }
 
-export async function dispatchNotify({ db, capture, name, notify, output, tools, kind }) {
+export async function dispatchNotify({ capture, name, notify, output, tools, kind }) {
   const externalIdPrefix = `${name}:${new Date().toISOString()}`;
   const sendDiscord = notify === 'discord_dm' || notify === 'both';
   const sendCapture = notify === 'capture' || notify === 'both';

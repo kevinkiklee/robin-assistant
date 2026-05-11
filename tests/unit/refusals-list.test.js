@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { printRefusals } from '../../src/cli/commands/refusals-list.js';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -46,28 +44,28 @@ test('printRefusals lists header + 4 rows (2 inbound + 2 outbound)', async () =>
   const db = await fresh();
   await seed(db, [
     {
-      destination: 'memory',
+      content: 'sk-redacted',
       reason: 'secret:openai_key',
-      payload_hash: 'aaaaaaaaaaaaaaaa',
       direction: 'inbound',
+      meta: { destination: 'memory', payload_hash: 'aaaaaaaaaaaaaaaa' },
     },
     {
-      destination: 'discord',
+      content: '4111-1111-1111-1111',
       reason: 'pii:credit_card',
-      payload_hash: 'bbbbbbbbbbbbbbbb',
       direction: 'outbound',
+      meta: { destination: 'discord', payload_hash: 'bbbbbbbbbbbbbbbb' },
     },
     {
-      destination: 'memory',
+      content: 'eyJ.redacted',
       reason: 'secret:jwt',
-      payload_hash: 'cccccccccccccccc',
       direction: 'inbound',
+      meta: { destination: 'memory', payload_hash: 'cccccccccccccccc' },
     },
     {
-      destination: 'discord',
+      content: '123-45-6789',
       reason: 'pii:ssn',
-      payload_hash: 'dddddddddddddddd',
       direction: 'outbound',
+      meta: { destination: 'discord', payload_hash: 'dddddddddddddddd' },
     },
   ]);
 

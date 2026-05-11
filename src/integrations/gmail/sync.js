@@ -1,7 +1,7 @@
 import { getAccessToken } from '../_auth/token-cache.js';
 import {
-  FIRST_SYNC_CAP,
   buildEventFromMessage,
+  FIRST_SYNC_CAP,
   getMessage,
   getProfile,
   listHistory,

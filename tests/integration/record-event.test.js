@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { recordEvent } from '../../src/capture/record-event.js';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -27,7 +25,7 @@ async function fresh() {
   return db;
 }
 
-test('recordEvent inserts a row with embedding', async () => {
+test('recordEvent inserts a row + embedding in the per-profile surface', async () => {
   const db = await fresh();
   const embedder = createStubEmbedder({ dimension: 1024 });
   const result = await recordEvent(db, embedder, {
@@ -39,26 +37,23 @@ test('recordEvent inserts a row with embedding', async () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].source, 'cli');
   assert.equal(rows[0].content, 'hello robin');
-  assert.equal(rows[0].embedding.length, 1024);
+  // Embedding lives in the per-profile events surface, not on the event row.
+  const [embRows] = await db.query('SELECT vector FROM embeddings_mxbai_1024_events').collect();
+  assert.equal(embRows.length, 1);
+  assert.equal(embRows[0].vector.length, 1024);
   await close(db);
 });
 
-test('recordEvent populates content_hash and reuses embedding on duplicate content', async () => {
+test('recordEvent populates content_hash for each insert', async () => {
   const db = await fresh();
   const embedder = createStubEmbedder({ dimension: 1024 });
-  let embedCalls = 0;
-  const counted = {
-    ...embedder,
-    embed: async (t) => {
-      embedCalls++;
-      return embedder.embed(t);
-    },
-  };
-  await recordEvent(db, counted, { source: 'cli', content: 'duplicate' });
-  await recordEvent(db, counted, { source: 'cli', content: 'duplicate' });
-  assert.equal(embedCalls, 1, 'second insert should hit cache');
-  const [rows] = await db.query('SELECT count() AS n FROM events GROUP ALL').collect();
-  assert.equal(rows[0].n, 2);
+  await recordEvent(db, embedder, { source: 'cli', content: 'duplicate' });
+  await recordEvent(db, embedder, { source: 'cli', content: 'duplicate' });
+  // recordEvent does not dedupe — it's the firehose primitive. Both rows land
+  // and carry the same content_hash; dedup is opt-in via `store.remember`.
+  const [rows] = await db.query('SELECT content_hash, ts FROM events ORDER BY ts ASC').collect();
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].content_hash, rows[1].content_hash);
   await close(db);
 });
 

@@ -63,7 +63,7 @@ function which(cmd) {
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
-function autoSupervise(plistPath, unitPath) {
+function autoSupervise(plistPath, _unitPath) {
   if (platform() === 'darwin') {
     // Unload first (idempotent — silently ignore if not loaded), then load.
     spawnSync('launchctl', ['unload', plistPath], { stdio: 'ignore' });

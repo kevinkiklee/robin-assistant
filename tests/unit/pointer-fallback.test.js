@@ -30,9 +30,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
-  POINTER_VERSION,
   deletePointer,
   osConfigPointerPath,
+  POINTER_VERSION,
   pointerExists,
   readPointer,
   writePointer,
@@ -61,25 +61,19 @@ function withPointerEnv({ pkgRoot, fallback }, fn) {
   const prevHome = process.env.ROBIN_HOME;
 
   if (pkgRoot !== undefined) process.env.ROBIN_PACKAGE_ROOT_OVERRIDE = pkgRoot;
-  // biome-ignore lint/performance/noDelete: intentional env-var clearing
   else delete process.env.ROBIN_PACKAGE_ROOT_OVERRIDE;
   if (fallback !== undefined) process.env.ROBIN_POINTER_FALLBACK_PATH = fallback;
-  // biome-ignore lint/performance/noDelete: intentional env-var clearing
   else delete process.env.ROBIN_POINTER_FALLBACK_PATH;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
 
   try {
     return fn();
   } finally {
     if (prevPkgRoot !== undefined) process.env.ROBIN_PACKAGE_ROOT_OVERRIDE = prevPkgRoot;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_PACKAGE_ROOT_OVERRIDE;
     if (prevFallback !== undefined) process.env.ROBIN_POINTER_FALLBACK_PATH = prevFallback;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_POINTER_FALLBACK_PATH;
     if (prevHome !== undefined) process.env.ROBIN_HOME = prevHome;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
   }
 }

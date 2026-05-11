@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import * as store from '../memory/store.js';
 
 async function findByNameLower(db, name, type) {
   const [rows] = await db
@@ -21,17 +22,8 @@ export async function resolveOrCreateEntity(db, embedder, { name, type, aliases 
     if (hit) return hit.id;
   }
 
-  // 3. Create new entity. Aliases preserved in meta for future passes.
-  const embedding = Array.from(await embedder.embed(name));
-  const [rows] = await db
-    .query(
-      surql`CREATE entities CONTENT ${{
-        name,
-        type,
-        embedding,
-        meta: { aliases: aliases.filter((a) => a && a !== name) },
-      }}`,
-    )
-    .collect();
-  return rows[0].id;
+  // 3. Create via the store primitive — entity row + per-profile embedding row.
+  const meta = { aliases: aliases.filter((a) => a && a !== name) };
+  const result = await store.upsertEntity(db, embedder, { name, type, meta });
+  return result.id;
 }

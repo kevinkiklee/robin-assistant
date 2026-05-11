@@ -18,9 +18,7 @@ for (const f of ['0001-init.surql', '0002-embeddings-mxbai-1024.surql']) {
 }
 
 const store = await import(`${ROOT}/src/memory/store.js`);
-const { evaluatePending, REINFORCE_WINDOW_MS } = await import(
-  `${ROOT}/src/recall/reinforcement.js`
-);
+const { evaluatePending } = await import(`${ROOT}/src/recall/reinforcement.js`);
 
 const mockEmbedder = { embed: async () => new Float32Array(1024) };
 

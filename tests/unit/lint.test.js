@@ -35,7 +35,7 @@ test('lint — empty DB → no issues', async () => {
 
 test('lint — orphan entity is reported', async () => {
   const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('orph'));
+  const _emb = Array.from(await embedder.embed('orph'));
   await db.query(surql`CREATE entities CONTENT ${{ name: 'Orph', type: 'thing' }}`).collect();
   const t = createLintTool({ db });
   const r = await t.handler({});
@@ -47,7 +47,7 @@ test('lint — orphan entity is reported', async () => {
 test('lint — limit caps issues', async () => {
   const { db, embedder } = await fresh();
   for (let i = 0; i < 5; i++) {
-    const emb = Array.from(await embedder.embed(`x${i}`));
+    const _emb = Array.from(await embedder.embed(`x${i}`));
     await db.query(surql`CREATE entities CONTENT ${{ name: `X${i}`, type: 'thing' }}`).collect();
   }
   const t = createLintTool({ db });

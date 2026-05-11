@@ -109,7 +109,7 @@ test('orphan_entity — entity reachable via mentions edge is NOT flagged', asyn
   // Positive case for the orphan check — entity with an inbound mentions edge
   // from an event should not be reported. mentions now lives on the unified
   // `edges` table with kind='mentions'; we route through store.relate.
-  const { db, embedder } = await fresh();
+  const { db } = await fresh();
   const [createdEnts] = await db
     .query(surql`CREATE entities CONTENT ${{ name: 'Linked', type: 'thing' }}`)
     .collect();

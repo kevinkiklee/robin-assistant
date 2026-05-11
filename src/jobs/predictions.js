@@ -10,7 +10,7 @@
 // Calibration storage migrated from `profile:singleton` → `persona:singleton`
 // (table renamed in the redesign; `persona.js` is the canonical writer).
 
-import { BoundQuery, surql } from 'surrealdb';
+import { BoundQuery, RecordId, surql } from 'surrealdb';
 import * as foresight from '../memory/foresight.js';
 import { updateCalibration } from '../memory/persona.js';
 
@@ -163,19 +163,14 @@ function projectPrediction(row) {
 }
 
 // Accept legacy `predictions:<id>` refs, raw memo refs, or string ids. Strip
-// any obsolete `predictions:` prefix and try to find the matching memo row.
+// any obsolete `predictions:` prefix and resolve to the matching memo RecordId.
 async function coerceMemoId(db, id) {
   if (!id) return null;
   if (typeof id !== 'string') return id; // already a RecordId object
-  if (id.startsWith('memos:')) return id;
   const bare = id.replace(/^predictions:/, '').replace(/^memos:/, '');
-  // Look up by raw id or by content_hash as a fallback.
+  const recId = new RecordId('memos', bare);
   const [rows] = await db
-    .query(
-      surql`SELECT id FROM memos
-            WHERE kind = 'prediction' AND id = type::record('memos', ${bare})
-            LIMIT 1`,
-    )
+    .query(surql`SELECT id FROM memos WHERE kind = 'prediction' AND id = ${recId} LIMIT 1`)
     .collect();
   return rows?.[0]?.id ?? null;
 }

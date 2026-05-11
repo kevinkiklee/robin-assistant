@@ -24,7 +24,7 @@ test('knowledge ops roundtrip: ingest → lint sees orphan → audit sees no pai
   const embedder = createStubEmbedder({ dimension: 1024 });
 
   const llmStub = {
-    invokeLLM: async (msgs, opts) => {
+    invokeLLM: async (_msgs, opts) => {
       if (opts?.tier === 'balanced') {
         return { content: '{"contradict":false,"summary":"no overlap"}' };
       }
@@ -57,11 +57,14 @@ test('knowledge ops roundtrip: ingest → lint sees orphan → audit sees no pai
   assert.equal(ing.entities_created, 1);
   assert.equal(ing.knowledge_created, 1);
 
-  // 2. Lint should find an orphan entity (the Mercury entity has no inbound
-  // edges because the LLM stub returned no edges).
+  // 2. Lint should NOT flag the Mercury entity as orphan — the ingest creates
+  // an `about` edge from the new knowledge memo to the entity (subject_name
+  // routes through store.note, which emits the edge automatically). This is
+  // the new edges-table behaviour; the orphan check considers any inbound
+  // edge as non-orphan.
   const lr = await lint.handler({});
   const orphans = lr.issues.filter((i) => i.kind === 'orphan_entity');
-  assert.ok(orphans.length >= 1, 'expected at least one orphan_entity');
+  assert.equal(orphans.length, 0, 'entity with inbound about-edge should not be flagged');
 
   // 3. Audit with only one knowledge row: no pairs possible.
   const ar = await audit.handler({});

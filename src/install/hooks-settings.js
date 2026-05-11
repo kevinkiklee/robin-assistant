@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import {
-  constants,
   accessSync,
   chmodSync,
+  constants,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -286,7 +286,6 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
 
     // Drop hooks key entirely if it's now empty.
     if (settings.hooks && Object.keys(settings.hooks).length === 0) {
-      // biome-ignore lint/performance/noDelete: must remove the key, not set to undefined (JSON-serialized output diverges)
       delete settings.hooks;
     }
     atomicWriteJson(settingsPath, settings);

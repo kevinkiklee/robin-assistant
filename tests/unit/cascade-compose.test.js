@@ -3,16 +3,14 @@
 // src/graph/cascade.js). Confirms stage short-circuits and host wiring.
 
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { upsertEntityCascade } from '../../src/graph/upsert-entity.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__

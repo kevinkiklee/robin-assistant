@@ -1,8 +1,8 @@
 import { getAccessToken } from '../_auth/token-cache.js';
 import {
+  buildEventFromFile,
   FIRST_SYNC_CAP,
   FIRST_SYNC_DAYS,
-  buildEventFromFile,
   getStartPageToken,
   listChanges,
   listFiles,

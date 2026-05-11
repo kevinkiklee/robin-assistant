@@ -37,7 +37,7 @@ test('recordPrediction creates row and returns string id', async () => {
     confidence: 0.8,
   });
   assert.equal(typeof result.id, 'string');
-  assert.match(result.id, /^predictions:/);
+  assert.match(result.id, /^memos:/);
   await close(db);
 });
 

@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
   ensureHome,
   forgetHostTouchpoint,
-  paths,
   readHostIntegrations,
   recordHostTouchpoint,
 } from '../../src/runtime/data-store.js';
 
-function withHome(t, fn) {
+function withHome(_t, fn) {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
   const prev = process.env.ROBIN_HOME;
   process.env.ROBIN_HOME = home;

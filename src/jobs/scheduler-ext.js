@@ -7,7 +7,7 @@ const CATCHUP_FACTOR = 1.5;
 export async function planNextRunAt(db, jobs, now = new Date()) {
   for (const j of jobs) {
     const row = await getJob(db, j.name);
-    if (!row || !row.enabled) continue;
+    if (!row?.enabled) continue;
     let parsed;
     try {
       parsed = parseCron(j.schedule);

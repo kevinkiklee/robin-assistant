@@ -289,10 +289,10 @@ immediate effect.
 
 ## Feedback (helps Robin learn)
 
-After you use results from \`recall(...)\` to answer a question, call
-\`mark_recall_used(recall_event_id=..., used_hit_ids=[...])\` with the IDs
-of the hits that informed your answer. Hits that didn't help shouldn't be
-in \`used_hit_ids\` — that's a negative signal Robin uses to improve.
+Robin learns from recalls automatically: every \`recall(...)\` logs a row that
+the reinforcement evaluator checks 5 minutes later. If no correction landed
+in the meantime, hits get reinforced; if one did, the recall is marked
+corrected. You don't need to mark hits manually.
 
 When the user corrects you — "no, that's wrong", "I actually prefer X",
 "the answer is Y not Z" — call \`record_correction(content=..., prior_response=...)\`.

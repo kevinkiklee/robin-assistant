@@ -14,10 +14,6 @@ export async function listTransactions({ apiKey, startDate, endDate, fetchFn, si
   return await lmFetch(`/v1/transactions?${params}`, { apiKey, fetchFn, signal });
 }
 
-export async function getMe({ apiKey, fetchFn, signal }) {
-  return await lmFetch('/v1/me', { apiKey, fetchFn, signal });
-}
-
 export function transactionToEvent(t) {
   const amount = Number.parseFloat(t.amount);
   const sign = t.is_income ? '+' : '-';

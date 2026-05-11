@@ -20,10 +20,6 @@ export async function fetchStandings({ fetchFn, signal }) {
   return await nhlFetch('/standings/now', { fetchFn, signal });
 }
 
-export async function fetchClubStats({ team, fetchFn, signal }) {
-  return await nhlFetch(`/club-stats/${encodeURIComponent(team)}/now`, { fetchFn, signal });
-}
-
 function teamAbbrev(side) {
   return side?.abbrev || side?.placeholder || '';
 }

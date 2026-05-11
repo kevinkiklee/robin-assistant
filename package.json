@@ -1,6 +1,6 @@
 {
   "name": "robin-assistant",
-  "version": "6.0.0-alpha.13",
+  "version": "6.0.0-alpha.14",
   "description": "SurrealDB-first personal AI assistant (v2 rebuild)",
   "type": "module",
   "engines": {
@@ -21,12 +21,12 @@
     "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@surrealdb/node": "^3.0.3",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^12.9.0",
     "discord.js": "^14.26.4",
     "surrealdb": "^2.0.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4"
+    "@biomejs/biome": "^2.4.15"
   },
   "license": "MIT",
   "author": "Kevin K Lee",

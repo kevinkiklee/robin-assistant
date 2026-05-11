@@ -379,7 +379,7 @@ test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtim
     // runtime:embedder row exists with the right profile + dimension
     assert.ok(Array.isArray(runtimeEmbedderRow));
     assert.ok(runtimeEmbedderRow.length >= 1);
-    assert.equal(runtimeEmbedderRow[0].value.profile, 'mxbai-1024');
+    assert.equal(runtimeEmbedderRow[0].value.active_profile, 'mxbai-1024');
     assert.equal(runtimeEmbedderRow[0].value.dimension, 1024);
   } finally {
     cleanup();

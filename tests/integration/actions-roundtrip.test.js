@@ -9,12 +9,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { createDiscordSendTool } from '../../src/integrations/discord/tools/discord-send.js';
-import {
-  checkActionTrust,
-  demoteOnCorrection,
-  getActionTrust,
-  setActionTrust,
-} from '../../src/jobs/action-trust.js';
+import { demoteOnCorrection, getActionTrust, setActionTrust } from '../../src/jobs/action-trust.js';
 import { writeConfig as __wc } from '../../src/runtime/config.js';
 import { saveSecret } from '../../src/secrets/dotenv-io.js';
 

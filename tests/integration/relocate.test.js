@@ -31,7 +31,6 @@ test('relocate: moves home + refreshes expectedHome on plist/systemd entries', a
       { kind: 'launchd-plist', path: fakePlist, expectedHome: A, label: 'io.robin-assistant.mcp' },
       () => {},
     );
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     await relocate({
       target: B,
@@ -49,10 +48,8 @@ test('relocate: moves home + refreshes expectedHome on plist/systemd entries', a
     assert.strictEqual(plist.expectedHome, B);
   } finally {
     if (prevHome) process.env.ROBIN_HOME = prevHome;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not set undefined
     else delete process.env.ROBIN_HOME;
     if (prevPtr) process.env.ROBIN_POINTER_PATH = prevPtr;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not set undefined
     else delete process.env.ROBIN_POINTER_PATH;
     rmSync(Bparent, { recursive: true, force: true });
     rmSync(fakePlistDir, { recursive: true, force: true });

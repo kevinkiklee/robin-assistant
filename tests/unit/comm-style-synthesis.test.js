@@ -27,7 +27,7 @@ async function fresh() {
 // source='manual', meta.kind='correction'. The synthesis query filters on
 // meta.kind = 'correction' (not source = 'correction').
 async function seedCorrection(db, embedder, content) {
-  const emb = Array.from(await embedder.embed(content));
+  const _emb = Array.from(await embedder.embed(content));
   const [rows] = await db
     .query(
       surql`CREATE events CONTENT ${{

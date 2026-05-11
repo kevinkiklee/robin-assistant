@@ -80,9 +80,7 @@ test.beforeEach(() => {
 
 test.afterEach(() => {
   rmSync(tmpHome, { recursive: true, force: true });
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.CHROME_HISTORY_PATH;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
 });
 

@@ -27,7 +27,7 @@ export function createGithubRecentActivityTool({ db }) {
         bindings.repo = args.repo;
       }
 
-      const sql = `SELECT id, external_id, content, ts, meta FROM events WHERE ${filters.join(' AND ')} ORDER BY ts DESC LIMIT ${limit}`;
+      const sql = `SELECT id, meta.external_id AS external_id, content, ts, meta FROM events WHERE ${filters.join(' AND ')} ORDER BY ts DESC LIMIT ${limit}`;
       const [rows] = await db.query(new BoundQuery(sql, bindings)).collect();
       return { events: rows.map((r) => ({ ...r, id: String(r.id) })) };
     },

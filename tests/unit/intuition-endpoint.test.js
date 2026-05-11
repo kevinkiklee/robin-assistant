@@ -93,13 +93,20 @@ test('intuitionEndpoint tags episode_summary hits as [episode YYYY-MM-DD]', asyn
 test('intuitionEndpoint truncates when token budget is too small', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  // Insert several events with long content. Each line will be ~120 chars
-  // after trimming → ~30 tokens; with a budget of 50 we should fit at most one.
-  for (let i = 0; i < 5; i++) {
-    await recordEvent(db, e, {
-      source: 'cli',
-      content: `event number ${i}: ${'lorem ipsum dolor sit amet '.repeat(20)}`,
-    });
+  // Insert several distinct events with long content. MMR-lite uses
+  // substring-overlap to dedup near-duplicates at 0.85, so the contents
+  // must NOT share enough tokens to be collapsed. Each line will be ~120
+  // chars after trimming → ~30 tokens; with a budget of 50 we should fit
+  // at most one.
+  const fillers = [
+    'alpha tangerine quietly skipped over rusted gears finding patient solace beneath maple shadows',
+    'beta watermelon firmly clutches yellow ribbons while drifting peacefully near old harbor lights',
+    'gamma blueberry abruptly whispers towards crimson clouds while echoing distant melancholic flutes',
+    'delta papaya gently encircles violet kites soaring above an emerald valley with murmuring streams',
+    'epsilon kiwi steadily rotates around bronze lanterns near a slate path lined with crooked pines',
+  ];
+  for (let i = 0; i < fillers.length; i++) {
+    await recordEvent(db, e, { source: 'cli', content: `${i}: ${fillers[i]}` });
   }
 
   const tight = await intuitionEndpoint({

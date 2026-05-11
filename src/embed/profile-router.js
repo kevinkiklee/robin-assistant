@@ -9,8 +9,6 @@
 // `active_profile` (writes + reads) and `read_profile` (reads only, used
 // during a dual-read verification window) live in `runtime:embedder`.
 
-import { surql } from 'surrealdb';
-
 const VALID_PROFILE_RX = /^[a-z0-9-]+$/;
 const VALID_SURFACE_RX = /^(events|memos|entities)$/;
 

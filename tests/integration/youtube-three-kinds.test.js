@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { mock, test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
@@ -8,10 +10,6 @@ import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { _resetCache } from '../../src/integrations/_auth/token-cache.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { sync } from '../../src/integrations/youtube/sync.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -110,7 +108,7 @@ test('youtube sync produces three event kinds in events table', async () => {
 
   const [rows] = await db
     .query(
-      surql`SELECT external_id, meta FROM events WHERE source = 'youtube' ORDER BY external_id ASC`,
+      surql`SELECT meta.external_id AS external_id, meta FROM events WHERE source = 'youtube' ORDER BY external_id ASC`,
     )
     .collect();
   assert.equal(rows.length, 3);

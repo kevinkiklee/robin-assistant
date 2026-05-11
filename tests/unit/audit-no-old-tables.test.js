@@ -2,8 +2,6 @@
 // table names or per-relation edge tables outside the documented exceptions.
 //
 // Spec §15 task 7.1. Exceptions:
-// - src/migrate-v1/* — explicitly stale; targets v1 schema
-// - src/db/browse/* — marked stale; deferred UI rewrite
 // - Comment lines (containing the table name in a comment)
 // - 0001-init.surql itself, which contains the rename comments
 
@@ -40,8 +38,6 @@ const FORBIDDEN = [
 ];
 
 const ALLOWED_PATHS = [
-  /^src\/migrate-v1\//,
-  /^src\/db\/browse\//,
   /^src\/schema\/migrations\/0001-init\.surql$/, // comments + rename notes
 ];
 

@@ -1,6 +1,6 @@
 import { requireSecret, saveSecret } from '../../../secrets/dotenv-io.js';
 import { getAccessToken } from '../../_auth/token-cache.js';
-import { WORKSPACE_DOC, getFileBody, getFileMetadata } from '../client.js';
+import { getFileBody, getFileMetadata, WORKSPACE_DOC } from '../client.js';
 
 function buildSecrets() {
   return {

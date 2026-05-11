@@ -3,10 +3,11 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { surql } from 'surrealdb';
+import { BoundQuery, surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { embedBackfillTick } from '../../src/embed/backfill.js';
+import { activeProfile, embeddingTable } from '../../src/embed/profile-router.js';
 import { writeConfig } from '../../src/runtime/config.js';
 import { paths } from '../../src/runtime/data-store.js';
 
@@ -18,17 +19,31 @@ function stubEmbedder({ dim = 1024 } = {}) {
   };
 }
 
-async function insertEvent(db, content, { embedding, embedFailed = false } = {}) {
-  // ts has READONLY DEFAULT — omit it. embedding must be omitted (not null) for NONE.
+async function insertEvent(db, content, { preEmbed = false, embedFailed = false } = {}) {
+  // ts has READONLY DEFAULT — omit it. The events.embedding column was
+  // removed in the redesign; embeddings now live in embeddings_<profile>_events.
   const doc = {
     content,
     source: 'migration',
-    content_hash: 'h',
+    content_hash: content,
     trust: 'trusted',
     meta: embedFailed ? { embed_failed: true } : {},
   };
-  if (embedding !== undefined) doc.embedding = embedding;
-  await db.query(surql`CREATE events CONTENT ${doc}`).collect();
+  const [created] = await db.query(surql`CREATE events CONTENT ${doc}`).collect();
+  const row = Array.isArray(created) ? created[0] : created;
+  if (preEmbed) {
+    const profile = await activeProfile(db);
+    const tbl = embeddingTable(profile, 'events');
+    await db
+      .query(
+        new BoundQuery(
+          'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()',
+          { tb: tbl, rec: row.id, vec: Array(1024).fill(0.5) },
+        ),
+      )
+      .collect();
+  }
+  return row.id;
 }
 
 test.beforeEach(async () => {
@@ -88,7 +103,7 @@ test('backfill is idempotent on already-embedded rows', async () => {
   try {
     await runMigrations(db, paths.source.migrations());
     const embedder = stubEmbedder();
-    await insertEvent(db, 'pre-embedded', { embedding: Array(1024).fill(0.5) });
+    await insertEvent(db, 'pre-embedded', { preEmbed: true });
     const r = await embedBackfillTick({ db, embedder, batch: 10 });
     assert.equal(r.embedded, 0);
   } finally {

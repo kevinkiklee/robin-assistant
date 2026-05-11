@@ -23,7 +23,7 @@ export function createGithubNotificationsTool({ db }) {
         bindings.unread = args.unread;
       }
 
-      const sql = `SELECT id, external_id, content, ts, meta FROM events WHERE ${filters.join(' AND ')} ORDER BY ts DESC LIMIT ${limit}`;
+      const sql = `SELECT id, meta.external_id AS external_id, content, ts, meta FROM events WHERE ${filters.join(' AND ')} ORDER BY ts DESC LIMIT ${limit}`;
       const [rows] = await db.query(new BoundQuery(sql, bindings)).collect();
       return { notifications: rows.map((r) => ({ ...r, id: String(r.id) })) };
     },

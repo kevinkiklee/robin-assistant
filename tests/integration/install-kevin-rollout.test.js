@@ -56,10 +56,8 @@ test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly
     assert.strictEqual(statSync(join(home, 'secrets', '.env')).mode & 0o777, 0o600);
   } finally {
     if (prevHome) process.env.ROBIN_HOME = prevHome;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not set undefined
     else delete process.env.ROBIN_HOME;
     if (prevPtr) process.env.ROBIN_POINTER_PATH = prevPtr;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not set undefined
     else delete process.env.ROBIN_POINTER_PATH;
     rmSync(home, { recursive: true, force: true });
     rmSync(fakePlistDir, { recursive: true, force: true });

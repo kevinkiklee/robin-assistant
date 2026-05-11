@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { biographerProcess } from '../../src/capture/biographer.js';
@@ -7,10 +9,6 @@ import { recordEvent } from '../../src/capture/record-event.js';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -72,13 +70,21 @@ test('biographer processes a single event end-to-end', async () => {
   const [entRows] = await db.query('SELECT count() AS n FROM entities GROUP ALL').collect();
   assert.equal(entRows[0].n, 3);
 
-  const [mentRows] = await db.query('SELECT count() AS n FROM mentions GROUP ALL').collect();
+  // The redesign collapsed per-relation edge tables into the unified `edges`
+  // table; counts now route through `kind` filters.
+  const [mentRows] = await db
+    .query("SELECT count() AS n FROM edges WHERE kind = 'mentions' GROUP ALL")
+    .collect();
   assert.equal(mentRows[0].n, 3);
 
-  const [aboutRows] = await db.query('SELECT count() AS n FROM about GROUP ALL').collect();
+  const [aboutRows] = await db
+    .query("SELECT count() AS n FROM edges WHERE kind = 'about' GROUP ALL")
+    .collect();
   assert.equal(aboutRows[0].n, 1);
 
-  const [worksRows] = await db.query('SELECT count() AS n FROM works_on GROUP ALL').collect();
+  const [worksRows] = await db
+    .query("SELECT count() AS n FROM edges WHERE kind = 'works_on' GROUP ALL")
+    .collect();
   assert.equal(worksRows[0].n, 2);
 
   await close(db);

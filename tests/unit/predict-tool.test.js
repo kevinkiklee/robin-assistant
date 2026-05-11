@@ -32,7 +32,7 @@ test('predict tool happy path: returns {ok: true, id} and row in DB', async () =
   });
   assert.equal(result.ok, true);
   assert.equal(typeof result.id, 'string');
-  assert.match(result.id, /^predictions:/);
+  assert.match(result.id, /^memos:/);
 
   const row = await getPrediction(db, result.id);
   assert.ok(row, 'row should exist in DB');

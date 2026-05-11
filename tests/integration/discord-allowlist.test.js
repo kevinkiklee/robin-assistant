@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
@@ -11,12 +13,8 @@ import {
   classifyMessage,
   isAllowed,
 } from '../../src/integrations/discord/dispatcher.js';
-import { makeMessage } from '../fixtures/discord-events.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
+import { makeMessage } from '../fixtures/discord-events.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
@@ -62,7 +60,9 @@ test('allowlist drops non-allowlisted messages from capture path', async () => {
   }
 
   const [rows] = await db
-    .query(surql`SELECT external_id FROM events WHERE source = 'discord' ORDER BY external_id`)
+    .query(
+      surql`SELECT meta.external_id AS external_id FROM events WHERE source = 'discord' ORDER BY external_id`,
+    )
     .collect();
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((r) => r.external_id).sort(), ['m1', 'm3']);

@@ -5,7 +5,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
   return {
     name: 'recall',
     description:
-      "Search the user's memory by semantic similarity. Returns events that match the query, with mention-edge enrichment. Call mark_recall_used afterwards with the IDs of hits that informed your answer.",
+      "Search the user's memory by semantic similarity. Returns events that match the query, with mention-edge enrichment.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -45,25 +45,6 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         explain: args.explain,
       });
 
-      const hitIds = r.hits.map((h) => h.id);
-      const hitDists = r.hits.map((h) => h.dist);
-
-      const meta = repeat ? { repeat_query_within_5min: true } : undefined;
-      const [created] = await db
-        .query(
-          surql`CREATE recall_log CONTENT ${{
-            query_text: args.query,
-            query_vec: queryVec,
-            hit_ids: hitIds,
-            hit_dists: hitDists,
-            hit_used: hitIds.map(() => false),
-            session_id: sessionId,
-            meta,
-          }}`,
-        )
-        .collect();
-      const recallEventId = (Array.isArray(created) ? created[0] : created).id;
-
       const enrichedHits = [];
       for (const hit of r.hits) {
         const [mentions] = await db
@@ -91,8 +72,30 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         });
       }
 
+      const rankedHits = enrichedHits.map((h, i) => ({
+        record: h.id,
+        kind: 'event',
+        dist: h.dist,
+        rank: i,
+      }));
+      const meta = repeat ? { repeat_query_within_5min: true } : undefined;
+      try {
+        await db
+          .query(
+            surql`CREATE recall_log CONTENT ${{
+              query: args.query,
+              k: args.limit ?? 10,
+              ranked_hits: rankedHits,
+              session_id: sessionId,
+              meta,
+            }}`,
+          )
+          .collect();
+      } catch {
+        // recall_log write is advisory — never fail the recall on telemetry errors.
+      }
+
       return {
-        recall_event_id: String(recallEventId),
         hits: enrichedHits,
         ...(r.explain ? { explain: r.explain } : {}),
       };

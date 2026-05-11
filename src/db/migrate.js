@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
@@ -7,7 +7,7 @@ import { readConfig } from '../runtime/config.js';
 async function migrationsTableExists(db) {
   const [info] = await db.query('INFO FOR DB').collect();
   const tables = info?.tables ?? {};
-  return Object.prototype.hasOwnProperty.call(tables, '_migrations');
+  return Object.hasOwn(tables, '_migrations');
 }
 
 async function loadApplied(db) {

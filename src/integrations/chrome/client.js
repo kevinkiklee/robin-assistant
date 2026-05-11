@@ -16,15 +16,3 @@ const CHROME_EPOCH_OFFSET_US = 11_644_473_600_000_000;
 export function chromeTimeToDate(visit_time) {
   return new Date((visit_time - CHROME_EPOCH_OFFSET_US) / 1000);
 }
-
-export function dateToChromeTime(date) {
-  return date.getTime() * 1000 + CHROME_EPOCH_OFFSET_US;
-}
-
-export function urlToHost(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return null;
-  }
-}

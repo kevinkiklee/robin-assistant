@@ -156,7 +156,7 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
   } catch {
     return;
   }
-  if (!res || !res.ok) return;
+  if (!res?.ok) return;
 
   let payload;
   try {

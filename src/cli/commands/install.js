@@ -345,9 +345,9 @@ export async function repair() {
 export async function planInstallHome({
   args,
   interactive,
-  prompt,
+  prompt: _prompt,
   packageRoot,
-  homedir: homeDir,
+  homedir: _homeDir,
   discoverFn,
 }) {
   const homeFlag = typeof args.flags.home === 'string' ? args.flags.home : null;

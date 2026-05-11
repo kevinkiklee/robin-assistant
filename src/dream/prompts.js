@@ -10,17 +10,6 @@ Rules:
 - If existing knowledge already covers this, return promote=false.
 `;
 
-export const PATTERN_CONFIRM_SYSTEM = `You confirm whether a candidate pattern in the user's data is a real recurring observation worth tracking.
-
-Output JSON only:
-{ "confirm": boolean, "name": string, "description": string }
-
-Rules:
-- Confirm only if the pattern reflects a meaningful recurring user behavior or relationship.
-- name is a short slug-like identifier (e.g., "morning-atlas-work").
-- description is one sentence.
-`;
-
 export const CORRECTION_RULE_SYSTEM = `You distill a cluster of related user corrections into a single behavioral rule.
 
 Output JSON only:

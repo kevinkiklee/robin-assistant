@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createLinearActiveIssuesTool } from '../../src/integrations/linear/tools/linear-active-issues.js';
 import { createLinearGetIssueTool } from '../../src/integrations/linear/tools/linear-get-issue.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -97,7 +95,6 @@ test('linear_get_issue surfaces a clear error when secret missing', async () => 
     await assert.rejects(() => t.handler({ identifier: 'ENG-1' }), /linear not configured/);
   } finally {
     if (prev !== undefined) process.env.ROBIN_HOME = prev;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     _rm(home, { recursive: true, force: true });
   }

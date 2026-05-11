@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir as __robinTmpdir, tmpdir } from 'node:os';
+import { join as __robinJoin, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
@@ -9,10 +9,6 @@ import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { createDiscordSendTool } from '../../src/integrations/discord/tools/discord-send.js';
 import { setActionTrust } from '../../src/jobs/action-trust.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -169,7 +165,7 @@ test('send_dm happy path captures event', async () => {
   // Verify capture event written
   const [rows] = await db.query("SELECT * FROM events WHERE source = 'discord_send'").collect();
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].external_id, 'msg-dm-1');
+  assert.equal(rows[0].meta.external_id, 'msg-dm-1');
   assert.equal(rows[0].meta.action, 'send_dm');
   assert.equal(rows[0].meta.target.user_id, 'u1');
   assert.equal(rows[0].meta.length, 'hello there'.length);
@@ -287,7 +283,7 @@ test('outbound policy refusal → outbound_blocked, refusal logged', async () =>
   assert.match(r.blocked_by, /^pii:/);
   // Refusal row written
   const [rows] = await db
-    .query("SELECT * FROM refusals WHERE destination = 'discord_send'")
+    .query("SELECT * FROM refusals WHERE meta.destination = 'discord_send'")
     .collect();
   assert.equal(rows.length, 1);
   await close(db);

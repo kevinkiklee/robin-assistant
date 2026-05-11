@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { RobinPiiRefusedError } from '../../src/capture/errors.js';
@@ -8,10 +10,6 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { guardInboundContent } from '../../src/hooks/inbound-guard.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -68,10 +66,10 @@ test('recordEvent with guard refuses an OpenAI key and writes inbound refusal on
   assert.equal(await rowCount(db, 'events'), 0);
   assert.equal(await rowCount(db, 'refusals'), 1);
   const [rows] = await db
-    .query(surql`SELECT direction, reason, destination FROM refusals LIMIT 1`)
+    .query(surql`SELECT direction, reason, meta FROM refusals LIMIT 1`)
     .collect();
   assert.equal(rows[0].direction, 'inbound');
-  assert.equal(rows[0].destination, 'memory');
+  assert.equal(rows[0].meta?.destination, 'memory');
   assert.equal(rows[0].reason, 'secret:openai_key');
   await close(db);
 });

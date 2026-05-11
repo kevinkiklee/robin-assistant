@@ -19,7 +19,6 @@ test('paths.data.home() resolves $ROBIN_HOME when set and path exists', async ()
     const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
     assert.equal(paths.data.home(), home);
   } finally {
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -32,7 +31,6 @@ test('ROBIN_HOME env var overrides default', async () => {
     const { paths } = await import(`../../src/runtime/data-store.js?cb=${Date.now()}`);
     assert.equal(paths.data.home(), home);
   } finally {
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -52,7 +50,6 @@ test('paths.data includes db, secrets, cache, config, backup, daemonState, daemo
     assert.equal(paths.data.daemonLock(), join(home, '.daemon.lock'));
     assert.match(paths.source.migrations(), /\/src\/schema\/migrations$/);
   } finally {
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -67,14 +64,12 @@ test('migrations resolves to source tree even when ROBIN_HOME is set elsewhere',
     );
     assert.equal(paths.source.migrations(), join(packageRootDir(), 'src', 'schema', 'migrations'));
   } finally {
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
 });
 
 import {
-  POINTER_VERSION,
   discoverExistingHomes,
   ensureHome,
   packageRootDir,
@@ -111,7 +106,6 @@ test('paths.data is under robinHome()', () => {
     }
   } finally {
     if (prev) process.env.ROBIN_HOME = prev;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -140,7 +134,6 @@ test('paths.data and paths.source roots do not overlap', () => {
     );
   } finally {
     if (prev) process.env.ROBIN_HOME = prev;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -162,7 +155,6 @@ test('ensureHome() writes .robin-data marker with version', async () => {
     assert.ok(new Date(parsed.createdAt).toISOString() === parsed.createdAt);
   } finally {
     if (prev) process.env.ROBIN_HOME = prev;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -181,7 +173,6 @@ test('ensureHome() is idempotent and preserves an existing marker', async () => 
     assert.strictEqual(firstRaw, secondRaw);
   } finally {
     if (prev) process.env.ROBIN_HOME = prev;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -198,7 +189,6 @@ test('strict resolver: $ROBIN_HOME wins when set and target exists', async () =>
     assert.strictEqual(resolved, home);
   } finally {
     if (prev) process.env.ROBIN_HOME = prev;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }
@@ -206,7 +196,6 @@ test('strict resolver: $ROBIN_HOME wins when set and target exists', async () =>
 
 test('strict resolver: throws "Robin is not installed" when neither set', () => {
   const prev = process.env.ROBIN_HOME;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
   try {
     assert.throws(
@@ -232,7 +221,6 @@ test('strict resolver: pointer file with valid target resolves to it', () => {
     }),
   );
   const prev = process.env.ROBIN_HOME;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
   try {
     const resolved = resolveHomeStrict({ pointerPath });
@@ -257,7 +245,6 @@ test('strict resolver: pointer target missing throws --relocate hint', () => {
     }),
   );
   const prev = process.env.ROBIN_HOME;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
   try {
     assert.throws(
@@ -279,7 +266,6 @@ test('strict resolver: pointer with unknown version throws', () => {
     JSON.stringify({ version: 999, home, installedAt: '', installedBy: '' }),
   );
   const prev = process.env.ROBIN_HOME;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
   try {
     assert.throws(

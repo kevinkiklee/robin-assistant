@@ -16,7 +16,7 @@ const VALID_SOURCES = new Set([
 ]);
 
 export async function recordEvent(db, embedder, input) {
-  const { source, content, ts, meta, guard } = input;
+  const { source, content, ts, meta, external_id, guard } = input;
   if (!VALID_SOURCES.has(source)) {
     throw new Error(`recordEvent: unknown source "${source}"`);
   }
@@ -37,12 +37,17 @@ export async function recordEvent(db, embedder, input) {
   const content_hash = sha256(content);
   const tsValue = ts ? new Date(ts) : undefined;
 
+  // The events schema dropped its top-level `external_id` column; integration
+  // callers may still pass it at the top level for ergonomics — normalize into
+  // `meta.external_id` so downstream queries (and dedupe) keep working.
+  const normalizedMeta = external_id != null ? { ...(meta ?? {}), external_id } : meta;
+
   const set = {
     source,
     content,
     content_hash,
     ...(tsValue ? { ts: tsValue } : {}),
-    ...(meta ? { meta } : {}),
+    ...(normalizedMeta ? { meta: normalizedMeta } : {}),
   };
 
   const [created] = await db.query(surql`CREATE events CONTENT ${set}`).collect();

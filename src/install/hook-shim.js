@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { constants, accessSync, chmodSync, existsSync, statSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { packageRootDir } from '../runtime/data-store.js';
 

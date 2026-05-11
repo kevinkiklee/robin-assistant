@@ -3,7 +3,6 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
@@ -24,23 +23,16 @@ test('comm-style roundtrip: seed 5 corrections → synthesize → MCP tool reads
 
   // Seed 5 correction events using the production shape:
   //   source: 'manual', meta: { kind: 'correction' }
-  // (record_correction MCP tool writes this exact shape — verified in
-  //  src/mcp/tools/record-correction.js line 27)
-  // ts is READONLY/DEFAULT time::now() so we do not set it; the synthesis
-  // cutoff is 30 days ago so freshly-created records will pass the WHERE clause.
+  // (record_correction MCP tool writes this exact shape.)
+  // The embedding column was removed in the redesign — recordEvent writes the
+  // embedding into the per-profile surface table for us.
+  const { recordEvent } = await import('../../src/capture/record-event.js');
   for (let i = 0; i < 5; i++) {
-    const emb = Array.from(await embedder.embed(`be more terse ${i}`));
-    await db
-      .query(
-        surql`CREATE events CONTENT ${{
-          source: 'manual',
-          content: `Be more terse on point ${i}. Skip preamble.`,
-          content_hash: `c${i}`,
-          meta: { kind: 'correction' },
-          embedding: emb,
-        }}`,
-      )
-      .collect();
+    await recordEvent(db, embedder, {
+      source: 'manual',
+      content: `Be more terse on point ${i}. Skip preamble.`,
+      meta: { kind: 'correction' },
+    });
   }
 
   // Stub LLM — returns the synthesized comm style as strict JSON.

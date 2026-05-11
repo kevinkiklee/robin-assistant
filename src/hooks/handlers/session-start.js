@@ -86,7 +86,7 @@ export async function sessionStartHandler({ stdin, stderr, readState, fetchFn } 
   } catch {
     return;
   }
-  if (!res || !res.ok) return;
+  if (!res?.ok) return;
 
   let payload;
   try {

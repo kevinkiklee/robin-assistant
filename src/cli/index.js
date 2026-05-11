@@ -9,10 +9,6 @@ export async function main(argv) {
     const { migrate } = await import('./commands/migrate.js');
     return migrate();
   }
-  if (cmd === 'migrate-from-v1') {
-    const { migrateFromV1 } = await import('./commands/migrate-from-v1.js');
-    return migrateFromV1(argv.slice(1));
-  }
   if (cmd === 'install') {
     const { install } = await import('./commands/install.js');
     return install(argv.slice(1));
@@ -220,14 +216,6 @@ export async function main(argv) {
     console.error('usage: robin auth <google|spotify|whoop> [--code [<VALUE>]]');
     process.exit(1);
   }
-  if (cmd === 'embedder') {
-    if (argv[1] === 'switch') {
-      const { embedderSwitch } = await import('./commands/embedder-switch.js');
-      return embedderSwitch(argv.slice(2));
-    }
-    console.error('usage: robin embedder switch <mxbai-1024|qwen3-4096|gemini-3072>');
-    process.exit(1);
-  }
   if (cmd === 'embeddings') {
     const { embeddings } = await import('./commands/embeddings.js');
     return embeddings(argv.slice(1));
@@ -267,14 +255,6 @@ export async function main(argv) {
       return refusalsList(argv.slice(2));
     }
     console.error('usage: robin refusals list');
-    process.exit(1);
-  }
-  if (cmd === 'db') {
-    if (argv[1] === 'browse') {
-      const { dbBrowse } = await import('./commands/db-browse.js');
-      return dbBrowse(argv.slice(2));
-    }
-    console.error('usage: robin db browse');
     process.exit(1);
   }
   if (cmd === 'pre-commit') {

@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { guardInboundContent } from '../../src/hooks/inbound-guard.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -46,13 +44,13 @@ test('guardInboundContent blocks an OpenAI key and records inbound refusal', asy
   assert.equal(r.reason, 'secret:openai_key');
   assert.equal(await refusalCount(db), 1);
   const [rows] = await db
-    .query(surql`SELECT direction, destination, reason, payload_hash FROM refusals LIMIT 1`)
+    .query(surql`SELECT direction, reason, meta FROM refusals LIMIT 1`)
     .collect();
   assert.equal(rows[0].direction, 'inbound');
-  assert.equal(rows[0].destination, 'memory');
+  assert.equal(rows[0].meta?.destination, 'memory');
   assert.equal(rows[0].reason, 'secret:openai_key');
-  assert.equal(typeof rows[0].payload_hash, 'string');
-  assert.equal(rows[0].payload_hash.length, 16);
+  assert.equal(typeof rows[0].meta?.payload_hash, 'string');
+  assert.equal(rows[0].meta.payload_hash.length, 16);
   await close(db);
 });
 

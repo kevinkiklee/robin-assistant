@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import {
-  PROVIDERS,
   buildAuthUrl,
   ensureFreshToken,
   exchangeCode,
   generatePKCE,
+  PROVIDERS,
   refreshAccessToken,
 } from '../../src/integrations/_auth/oauth2.js';
 

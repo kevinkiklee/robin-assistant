@@ -44,9 +44,7 @@ test.beforeEach(() => {
 
 test.afterEach(() => {
   rmSync(tmpHome, { recursive: true, force: true });
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.LRC_CATALOG_PATH;
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.ROBIN_HOME;
 });
 
@@ -68,7 +66,6 @@ test('lrc sync produces summary event', async () => {
 });
 
 test('lrc sync throws when LRC_CATALOG_PATH unset', async () => {
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.LRC_CATALOG_PATH;
   await assert.rejects(
     () =>

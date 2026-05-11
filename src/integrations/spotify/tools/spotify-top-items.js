@@ -51,7 +51,7 @@ export function createSpotifyTopItemsTool({ db }) {
       const month = args.month ?? currentMonthBucket();
       const limit = Math.min(args.limit ?? 50, 200);
 
-      const sql = `SELECT id, external_id, content, ts, meta FROM events WHERE source = 'spotify' AND meta.kind = $kind AND meta.window = $window AND meta.month = $month ORDER BY ts DESC LIMIT ${limit}`;
+      const sql = `SELECT id, meta.external_id AS external_id, content, ts, meta FROM events WHERE source = 'spotify' AND meta.kind = $kind AND meta.window = $window AND meta.month = $month ORDER BY ts DESC LIMIT ${limit}`;
       const [rows] = await db
         .query(new BoundQuery(sql, { kind: metaKind, window: args.window, month }))
         .collect();

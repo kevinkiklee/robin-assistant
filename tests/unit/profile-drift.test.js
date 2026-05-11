@@ -31,11 +31,11 @@ test('drift check passes when config + runtime row match', async () => {
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'embedder')`)
       .collect();
-    assert.equal(rows[0].value.profile, 'mxbai-1024');
+    assert.equal(rows[0].value.active_profile, 'mxbai-1024');
 
     // The drift check itself: profiles match → no error.
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
-    assert.equal(cfg.embedder_profile, rows[0].value.profile);
+    assert.equal(cfg.embedder_profile, rows[0].value.active_profile);
   } finally {
     await close(db);
   }
@@ -56,7 +56,7 @@ test('drift check detects mismatch', async () => {
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'embedder')`)
       .collect();
-    const runtimeProfile = rows[0]?.value?.profile;
+    const runtimeProfile = rows[0]?.value?.active_profile;
 
     // Drift detected: config says one thing, runtime row says another.
     assert.equal(cfg.embedder_profile, 'mxbai-1024');

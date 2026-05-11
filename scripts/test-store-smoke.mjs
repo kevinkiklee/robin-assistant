@@ -11,19 +11,11 @@ const ROOT = '/Users/iser/workspace/robin/robin-assistant-v2';
 // --- 1. Load modules
 console.log('loading modules...');
 const decay = await import(`${ROOT}/src/memory/decay.js`);
-const scopes = await import(`${ROOT}/src/memory/scopes.js`);
 const kindReg = await import(`${ROOT}/src/memory/kind-registry.js`);
 const edgeReg = await import(`${ROOT}/src/memory/edge-registry.js`);
-const profileRouter = await import(`${ROOT}/src/embed/profile-router.js`);
+const _profileRouter = await import(`${ROOT}/src/embed/profile-router.js`);
 const store = await import(`${ROOT}/src/memory/store.js`);
 console.log('  all modules loaded');
-
-// --- 2. Constants sanity
-console.log('\nconstants:');
-console.log('  SCOPE.GLOBAL =', scopes.SCOPE.GLOBAL);
-console.log('  SCOPE.project("X") =', scopes.SCOPE.project('X'));
-console.log('  isEphemeralScope("session:abc") =', scopes.isEphemeralScope('session:abc'));
-console.log('  isEphemeralScope("global") =', scopes.isEphemeralScope('global'));
 
 // --- 3. Registry validation
 console.log('\nregistry validation:');

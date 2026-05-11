@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { createFindEntityTool } from '../../src/mcp/tools/find-entity.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -30,7 +28,7 @@ async function fresh() {
 test('find_entity exact (fuzzy=false) matches by case-insensitive name', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const v = Array.from(await e.embed('person: Alice'));
+  const _v = Array.from(await e.embed('person: Alice'));
   await db.query(surql`CREATE entities CONTENT ${{ name: 'Alice', type: 'person' }}`).collect();
   const tool = createFindEntityTool({ db, embedder: e });
   const r = await tool.handler({ name: 'alice', type: 'person', fuzzy: false });

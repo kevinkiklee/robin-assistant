@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { agentsMdContent, mergeAgentsMdContent } from '../../src/install/agents-md.js';
 
-test('agentsMdContent mentions all 10 tools', () => {
+test('agentsMdContent mentions all 9 tools', () => {
   const md = agentsMdContent();
   for (const tool of [
     'recall',
@@ -13,7 +13,6 @@ test('agentsMdContent mentions all 10 tools', () => {
     'related_entities',
     'list_episodes',
     'health',
-    'mark_recall_used',
     'record_correction',
   ]) {
     assert.match(md, new RegExp(tool), `expected AGENTS.md to mention ${tool}`);

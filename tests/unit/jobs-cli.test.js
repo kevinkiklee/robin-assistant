@@ -111,7 +111,7 @@ test('jobs run --force passes force=true', async () => {
   let posted;
   await jobsRun(['foo', '--force'], {
     out: () => {},
-    daemonRequest: async (path, body) => {
+    daemonRequest: async (_path, body) => {
       posted = body;
       return { ok: true };
     },

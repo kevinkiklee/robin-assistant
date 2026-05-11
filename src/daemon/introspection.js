@@ -125,9 +125,16 @@ export async function runIntrospection(db, opts = {}) {
 }
 
 export async function readLastIntrospection(db) {
-  const [rows] = await db
-    .query(surql`SELECT * FROM type::record('runtime_introspection_state', 'current')`)
-    .collect();
-  if (!rows || rows.length === 0) return null;
-  return rows[0];
+  // Table is schemaless and lazily-created by the first write — SurrealDB v3
+  // raises NotFoundError on SELECT until then. Treat that as "no row".
+  try {
+    const [rows] = await db
+      .query(surql`SELECT * FROM type::record('runtime_introspection_state', 'current')`)
+      .collect();
+    if (!rows || rows.length === 0) return null;
+    return rows[0];
+  } catch (e) {
+    if (/does not exist/i.test(e?.message ?? '')) return null;
+    throw e;
+  }
 }

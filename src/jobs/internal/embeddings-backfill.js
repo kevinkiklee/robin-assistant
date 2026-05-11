@@ -142,7 +142,7 @@ async function backfillSurface(db, embedder, profile, surface, state) {
  */
 export default async function embeddingsBackfill({ db, profile, createEmbedderFor } = {}) {
   let state = await readState(db);
-  if (!state || !state.profile) {
+  if (!state?.profile) {
     // Default: bootstrap state. If no profile was passed, fall back to the
     // active profile (the rare scheduled-resume case).
     let target = profile;

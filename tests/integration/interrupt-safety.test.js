@@ -30,10 +30,8 @@ test('interrupt between ensureHome and writePointer: re-running both is idempote
     assert.deepStrictEqual(firstMarker, thirdMarker, 'marker is unchanged by writePointer');
   } finally {
     if (prevHome) process.env.ROBIN_HOME = prevHome;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     if (prevPtr) process.env.ROBIN_POINTER_PATH = prevPtr;
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_POINTER_PATH;
     rmSync(home, { recursive: true, force: true });
     rmSync(pointerDir, { recursive: true, force: true });

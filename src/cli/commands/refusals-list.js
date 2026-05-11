@@ -31,10 +31,12 @@ export async function refusalsList(_argv, { out = console.log, err = console.err
 
 // Exported for direct test use against an in-memory db; mirrors the
 // daemon-aware command body without the home/lock plumbing.
+// Schema moved destination/payload_hash into `meta`; project them via aliases.
 export async function printRefusals(db, out = console.log) {
   const [rows] = await db
     .query(
-      surql`SELECT created_at, direction, destination, reason, payload_hash
+      surql`SELECT created_at, direction, meta.destination AS destination,
+                   reason, meta.payload_hash AS payload_hash
               FROM refusals ORDER BY created_at DESC LIMIT 20`,
     )
     .collect();
@@ -45,6 +47,6 @@ export async function printRefusals(db, out = console.log) {
   out(HEADER);
   for (const r of rows) {
     const ts = r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at);
-    out(`${ts} | ${r.direction} | ${r.destination} | ${r.reason} | ${r.payload_hash}`);
+    out(`${ts} | ${r.direction} | ${r.destination ?? ''} | ${r.reason} | ${r.payload_hash ?? ''}`);
   }
 }

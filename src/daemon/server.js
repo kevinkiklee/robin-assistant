@@ -43,7 +43,6 @@ import { createListOpenPredictionsTool } from '../mcp/tools/list-open-prediction
 import { createListPatternsTool } from '../mcp/tools/list-patterns.js';
 import { createListRulesTool } from '../mcp/tools/list-rules.js';
 import { createListThreadsTool } from '../mcp/tools/list-threads.js';
-import { createMarkRecallUsedTool } from '../mcp/tools/mark-recall-used.js';
 import { createPredictTool } from '../mcp/tools/predict.js';
 import { createRecallTool } from '../mcp/tools/recall.js';
 import { createRecordCorrectionTool } from '../mcp/tools/record-correction.js';
@@ -384,7 +383,6 @@ export async function startDaemon() {
       createGetEntityTool({ db: dbHandle }),
       createRelatedEntitiesTool({ db: dbHandle }),
       createListEpisodesTool({ db: dbHandle }),
-      createMarkRecallUsedTool({ db: dbHandle }),
       createRecordCorrectionTool({
         db: dbHandle,
         embedder: embedderWrap,
@@ -479,14 +477,25 @@ export async function startDaemon() {
         if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
           due.push({ name: '__dream__', kind: 'dream' });
         }
-        // embed_backfill is always-due if there's any pending row
-        const [pending] = await dbHandle
-          .query(
-            'SELECT count() AS n FROM events WHERE embedding IS NONE AND meta.embed_failed IS NOT true GROUP ALL',
-          )
-          .collect();
-        if ((pending[0]?.n ?? 0) > 0) {
-          due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
+        // embed_backfill is always-due if any event is missing an embedding
+        // row in the active profile's events surface.
+        try {
+          const { activeProfile, embeddingTable } = await import('../embed/profile-router.js');
+          const profile = await activeProfile(dbHandle);
+          const eventsEmbTbl = embeddingTable(profile, 'events');
+          const [pending] = await dbHandle
+            .query(
+              `SELECT count() AS n FROM events
+               WHERE meta.embed_failed IS NOT true
+                 AND id NOT IN (SELECT VALUE record FROM ${eventsEmbTbl})
+               GROUP ALL`,
+            )
+            .collect();
+          if ((pending[0]?.n ?? 0) > 0) {
+            due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
+          }
+        } catch {
+          // No active profile yet (fresh DB) — backfill simply isn't due.
         }
         return due;
       };
@@ -561,9 +570,6 @@ export async function startDaemon() {
     const { server: probe, port } = await bindFreePort();
     probe.close();
 
-    const { createBrowserHandler } = await import('../db/browse/server.js');
-    const browserHandler = createBrowserHandler({ db: dbHandle, expectedPort: port });
-
     async function readJsonBody(req) {
       return await new Promise((resolveBody) => {
         const chunks = [];
@@ -583,8 +589,6 @@ export async function startDaemon() {
 
     httpServer = createServer(async (req, res) => {
       try {
-        // DB browser routes (loopback-only, namespaced under /db/).
-        if (await browserHandler(req, res)) return;
         if (req.method === 'POST' && req.url === '/internal/biographer/process-pending') {
           const body = await readJsonBody(req);
           // Capture pre-step (fail-soft). When the Stop hook forwards

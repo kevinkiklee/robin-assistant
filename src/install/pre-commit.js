@@ -19,7 +19,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { SECRET_PATTERNS } from '../outbound/patterns.js';
 import {
   forgetHostTouchpoint,

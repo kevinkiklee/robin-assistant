@@ -63,7 +63,6 @@ function clearDaemonStateFile() {
 }
 
 function clearProjectDir() {
-  // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
   delete process.env.CLAUDE_PROJECT_DIR;
 }
 

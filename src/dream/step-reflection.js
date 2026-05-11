@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { embeddingTable, readProfile } from '../embed/profile-router.js';
 import { createCandidate, findOverlappingPendingCandidate } from '../rules/candidates.js';
 import { CORRECTION_RULE_SYSTEM } from './prompts.js';
 
@@ -7,9 +8,8 @@ const DEFAULT_MIN_CLUSTER = 3;
 const DEFAULT_SIM_THRESHOLD = 0.85;
 const DEFAULT_OVERLAP_THRESHOLD = 0.5;
 
-// Cosine similarity over embeddings that are already L2-normalised. The
-// `events.embedding` field is normalised at write time by the embedder, so
-// dot product is sufficient.
+// Cosine similarity over embeddings that are already L2-normalised at write
+// time by the embedder, so dot product is sufficient.
 function cosine(a, b) {
   let dot = 0;
   for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
@@ -62,13 +62,27 @@ export async function dreamStepReflection(
   const cutoff = new Date(Date.now() - lookbackDays * 86400_000);
   const [rows] = await db
     .query(
-      surql`SELECT id, content, embedding FROM events
+      surql`SELECT id, content FROM events
             WHERE meta.kind = 'correction' AND ts >= ${cutoff}`,
     )
     .collect();
   if (!rows || rows.length < minCluster) return { clusters: 0, proposed: 0 };
 
-  const clusters = clusterEvents(rows, similarityThreshold).filter(
+  // Join-back to the active read profile's events embedding surface.
+  const profile = await readProfile(db);
+  const eventsEmbTbl = embeddingTable(profile, 'events');
+  const [embRows] = await db
+    .query(`SELECT record, vector FROM ${eventsEmbTbl} WHERE record IN $ids`, {
+      ids: rows.map((r) => r.id),
+    })
+    .collect();
+  const vecById = new Map((embRows ?? []).map((r) => [String(r.record), r.vector]));
+  const hydrated = rows
+    .map((r) => ({ id: r.id, content: r.content, embedding: vecById.get(String(r.id)) }))
+    .filter((r) => Array.isArray(r.embedding) || ArrayBuffer.isView(r.embedding));
+  if (hydrated.length < minCluster) return { clusters: 0, proposed: 0 };
+
+  const clusters = clusterEvents(hydrated, similarityThreshold).filter(
     (c) => c.ids.length >= minCluster,
   );
   let proposed = 0;

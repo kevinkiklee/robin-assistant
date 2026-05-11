@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { close, connect } from '../../src/db/client.js';
@@ -16,10 +18,6 @@ import { createListThreadsTool } from '../../src/mcp/tools/list-threads.js';
 import { createRunDreamTool } from '../../src/mcp/tools/run-dream.js';
 import { createUpdateRuleTool } from '../../src/mcp/tools/update-rule.js';
 import { createCandidate } from '../../src/rules/candidates.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -73,15 +71,12 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
   const p = await tools[1].handler({});
   assert.deepEqual(p, { patterns: [] });
   const prof = await tools[2].handler({});
-  // Phase 4b.2 migration 0013 seeds profile:singleton so setCommStyle UPSERT
-  // has a deterministic target. The seeded row has no user-set fields, so
-  // for a "fresh DB" smoke check we just confirm the tool returns the
-  // expected envelope and the row is empty-shaped.
+  // The schema seeds persona:singleton so commstyle reads have a deterministic
+  // target. Empty-shaped on a fresh DB.
   if (prof.profile === null) {
-    // Pre-0013 back-compat
     assert.deepEqual(prof, { profile: null });
   } else {
-    assert.equal(prof.profile.id, 'profile:singleton');
+    assert.equal(prof.profile.id, 'persona:singleton');
     assert.equal(prof.profile.name, undefined);
     assert.equal(prof.profile.display_name, undefined);
   }

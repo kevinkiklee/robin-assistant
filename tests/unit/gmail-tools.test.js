@@ -29,7 +29,6 @@ test('gmail_search throws when not authenticated', async () => {
     const t = factory();
     await assert.rejects(() => t.handler({ query: 'x' }), /not authenticated/);
   } finally {
-    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
   }

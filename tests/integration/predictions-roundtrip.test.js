@@ -6,13 +6,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import {
-  computeCalibration,
-  getCalibration,
-  recordPrediction,
-  resolvePrediction,
-  setCalibration,
-} from '../../src/jobs/predictions.js';
+import { computeCalibration, getCalibration, setCalibration } from '../../src/jobs/predictions.js';
 import { createListOpenPredictionsTool } from '../../src/mcp/tools/list-open-predictions.js';
 import { createPredictTool } from '../../src/mcp/tools/predict.js';
 import { createResolvePredictionTool } from '../../src/mcp/tools/resolve-prediction.js';

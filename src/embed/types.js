@@ -10,5 +10,4 @@
  * @property {() => Promise<void>} healthCheck
  * @property {(() => Promise<void>) | undefined} unload
  */
-
-export const PROFILES = ['mxbai-1024', 'qwen3-4096', 'gemini-3072'];
+export {};

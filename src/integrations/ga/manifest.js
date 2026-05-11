@@ -20,7 +20,7 @@ export const manifest = {
   // that don't use GA don't surface a tool that always errors.
   preflight: async () => {
     const props = getSecret('GA_PROPERTIES');
-    if (!props || !props.trim()) {
+    if (!props?.trim()) {
       throw new Error('GA_PROPERTIES env var required (comma-separated property IDs)');
     }
   },

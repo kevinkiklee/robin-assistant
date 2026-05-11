@@ -3,7 +3,7 @@ import { close, connect } from '../../db/client.js';
 import { listAllPredictions as defaultList } from '../../jobs/predictions.js';
 import { ensureHome, paths } from '../../runtime/data-store.js';
 
-function fmt(d) {
+function _fmt(d) {
   return d ? new Date(d).toISOString() : '—';
 }
 

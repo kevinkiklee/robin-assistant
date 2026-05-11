@@ -28,7 +28,7 @@ async function readStdin(timeoutMs = 1000) {
 }
 
 function parseJson(raw) {
-  if (!raw || !raw.trim()) return {};
+  if (!raw?.trim()) return {};
   try {
     return JSON.parse(raw);
   } catch {

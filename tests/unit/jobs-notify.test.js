@@ -56,7 +56,7 @@ test('notify: capture — writes job_output event', async () => {
   });
   const [rows] = await db.query("SELECT * FROM events WHERE source = 'job_output'").collect();
   assert.equal(rows.length, 1);
-  assert.match(rows[0].external_id, /^foo:/);
+  assert.match(rows[0].meta.external_id, /^foo:/);
   await close(db);
 });
 

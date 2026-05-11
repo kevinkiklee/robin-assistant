@@ -8,8 +8,7 @@
 // All five paths share one daemon endpoint (`/internal/embeddings/op`) so
 // server.js stays compact.
 
-import { BoundQuery, surql } from 'surrealdb';
-import { createEmbedder } from '../embed/factory.js';
+import { surql } from 'surrealdb';
 import { invalidateProfileCache, tableNameSafeProfile } from '../embed/profile-router.js';
 import runBackfill from './internal/embeddings-backfill.js';
 
@@ -282,4 +281,4 @@ export async function dispatch(db, body) {
 
 // Re-exports for tests that want to override how an embedder is constructed
 // inside the backfill job. Kept here so the test surface is concentrated.
-export { PROFILE_LOADERS, PROFILE_DIMENSIONS, profileDim };
+export { PROFILE_DIMENSIONS, PROFILE_LOADERS, profileDim };

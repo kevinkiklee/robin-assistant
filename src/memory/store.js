@@ -19,11 +19,10 @@ import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../embed/hash.js';
 import { activeProfile, embeddingTable } from '../embed/profile-router.js';
 import {
-  EDGE_KIND_REGISTRY,
   canonicalEndpoints,
+  EDGE_KIND_REGISTRY,
   isCounterKind,
   recordStringId,
-  recordTable,
   validateEdge,
 } from './edge-registry.js';
 import { MEMO_KIND_REGISTRY, validateAttachment, validateMemoKind } from './kind-registry.js';
@@ -50,6 +49,7 @@ export async function remember(db, embedder, input) {
     tags = [],
     attachments = [],
     meta,
+    external_id,
   } = input;
   if (!source) throw new Error('remember: source required');
   if (!content || content.length === 0) throw new Error('remember: content required');
@@ -70,6 +70,10 @@ export async function remember(db, embedder, input) {
     .collect();
   if (existing[0]) return { id: existing[0].id, deduped: true };
 
+  // Normalize top-level `external_id` (sync convenience) into meta.external_id
+  // — the events schema dropped the top-level column in the redesign.
+  const normalizedMeta = external_id != null ? { ...(meta ?? {}), external_id } : meta;
+
   const fields = {
     source,
     content,
@@ -78,7 +82,7 @@ export async function remember(db, embedder, input) {
     scope,
     tags,
     attachments,
-    ...(meta ? { meta } : {}),
+    ...(normalizedMeta ? { meta: normalizedMeta } : {}),
   };
   const [created] = await db.query(surql`CREATE events CONTENT ${fields}`).collect();
   const row = Array.isArray(created) ? created[0] : created;
@@ -368,7 +372,7 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
     throw new Error(`searchMemos: limit out of range [1,100]: ${limit}`);
   }
   const ef = Math.max(64, limit * 8);
-  const profile = (await import('../embed/profile-router.js')).then; // tree-shake guard
+  const _profile = (await import('../embed/profile-router.js')).then; // tree-shake guard
   const { readProfile } = await import('../embed/profile-router.js');
   const readProf = await readProfile(db);
   const embeddingTbl = embeddingTable(readProf, surface);

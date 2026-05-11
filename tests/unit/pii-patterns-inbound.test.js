@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { INBOUND_DENY_PATTERNS, checkInbound } from '../../src/hooks/pii-patterns.js';
+import { checkInbound, INBOUND_DENY_PATTERNS } from '../../src/hooks/pii-patterns.js';
 
 // Sanity: the inbound list is the SECRET_PATTERNS set + 3 extras.
 test('INBOUND_DENY_PATTERNS contains expected rule names', () => {

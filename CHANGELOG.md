@@ -1,5 +1,51 @@
 # Changelog
 
+## [6.0.0-alpha.14] — 2026-05-11 — Post-redesign cleanup
+
+Audit pass on top of `alpha.13`. No new features.
+
+### Removed (dead code that targeted the pre-redesign schema)
+
+- `src/migrate-v1/` — broken v1→v2 migrator targeting the old v2 schema. The eventual v1→v2 migrator will be written from a fresh spec.
+- `src/db/browse/` — DB browser UI hard-coded to old `knowledge` / `patterns` / `threads` / `recall_events` tables; the rewrite is deferred.
+- `src/cli/commands/embedder-switch.js` + the `robin embedder switch` CLI — superseded by `robin embeddings prepare|backfill|activate|drop`.
+- `src/cli/commands/migrate-from-v1.js`, `src/cli/commands/db-browse.js` — wrappers for the removed modules.
+- `src/mcp/tools/mark-recall-used.js` — the reinforcement loop (`src/recall/reinforcement.js`) makes manual marking unnecessary.
+- `src/memory/scopes.js` — spec'd but no consumer wired up.
+- 20+ `tests/unit/migrate-v1-*.test.js`, `tests/unit/db-browse-utils.test.js`, and integration tests for the removed modules.
+- `tests/integration/migration-0009.test.js`, `tests/integration/cascade-end-to-end.test.js` — both target deleted migrations / modules.
+- Misc unused exports: `embed/types.js#PROFILES`, `dream/prompts.js#PATTERN_CONFIRM_SYSTEM`, `chrome/client.js#{dateToChromeTime,urlToHost}`, `lunch_money/client.js#getMe`, `nhl/client.js#fetchClubStats`.
+
+### Fixed (production bugs surfaced by the redesign)
+
+- `src/mcp/tools/recall.js` — rewrote against the canonical `recall_log` schema (`query`, `k`, `ranked_hits`); the old shape (`hit_ids`, `hit_used`, `query_text`) was rejected on every invocation.
+- `src/jobs/ingest-resolver.js` — `resolveOrCreateEntity` was writing `embedding` inline on `entities`; now delegates to `store.upsertEntity`, which routes through the per-profile embedding surface.
+- `src/dream/step-reflection.js` — was selecting `events.embedding`; now joins back from `embeddings_<profile>_events`.
+- `src/embed/backfill.js` + the daemon's backfill-due check — same fix: anti-join against the per-profile embedding table instead of the removed `embedding` column.
+- `src/daemon/introspection.js#readLastIntrospection` — tolerate `runtime_introspection_state` not yet existing on a fresh DB.
+- `src/capture/record-event.js` + `src/memory/store.js#remember` — normalize a top-level `external_id` argument into `meta.external_id` so integration writers don't drop the field.
+- `src/jobs/predictions.js#coerceMemoId` — switched from string-id interpolation to a `RecordId` binding; the string form returned no row under some seed orderings.
+
+### Toolchain
+
+- `@biomejs/biome` `1.9.4 → 2.4.15` (ran `biome migrate`; auto-fixed 288 files; added `.claude/` to `files.ignore`).
+- `better-sqlite3` `11.10.0 → 12.9.0`.
+
+### Verification (this branch)
+
+| Check | Status |
+|---|---|
+| `npm run lint` | 0 errors, 0 warnings, 567 files |
+| Unit suite (`tests/unit/**`) | 969 / 969 pass |
+| `scripts/verify-design-assumptions.js` | 4/4 gates pass |
+| `scripts/test-store-smoke.mjs` | pass |
+| `scripts/test-reinforcement-smoke.mjs` | pass |
+| `scripts/test-intuition-loop-smoke.mjs` | pass |
+| `scripts/test-scope-cleanup-smoke.mjs` | pass |
+| `scripts/verify-hnsw-plan.mjs` | pass |
+
+Integration suite has a handful of remaining fixtures still on the pre-redesign shape (events.embedding column reads, ENFORCED schema rejects) — not blocking; they fail loudly when run.
+
 ## [6.0.0-alpha.13] — 2026-05-11 — DB + memory layer redesign (last big schema reshape)
 
 Destructive reset of the schema and memory layer. Spec at `docs/superpowers/specs/2026-05-11-robin-v2-database-and-memory-redesign-design.md`; plan at `docs/superpowers/plans/2026-05-11-robin-v2-database-and-memory-redesign.md`; handoff at `HANDOFF.md`.

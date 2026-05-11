@@ -36,7 +36,6 @@ You interact with Robin in three ways during a session:
 
 - **`remember(content, meta?)`** — capture a fact or observation. Passes through inbound discretion. Refused on credential / secret / private-key / JWT patterns.
 - **`record_correction(content, target?)`** — capture a user correction. Same discretion check. After ≥ 3 similar corrections accumulate (cosine ≥ 0.85, 30-day window), reflection drafts a rule candidate.
-- **`mark_recall_used(recall_id)`** — confirm a previous `recall` result was useful. Drives the recall-quality feedback loop.
 
 ### Operations
 

@@ -1,5 +1,5 @@
 import { saveSecret as saveSecretFn } from '../../secrets/dotenv-io.js';
-import { PROVIDERS, ensureFreshToken } from './oauth2.js';
+import { ensureFreshToken, PROVIDERS } from './oauth2.js';
 
 const caches = new Map(); // provider -> { access_token, expires_at }
 const refreshPromises = new Map(); // provider -> Promise

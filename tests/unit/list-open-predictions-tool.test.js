@@ -35,7 +35,7 @@ test('list_open_predictions excludes resolved predictions', async () => {
   const db = await fresh();
   const tool = createListOpenPredictionsTool({ db });
 
-  const { id: id1 } = await recordPrediction(db, {
+  await recordPrediction(db, {
     statement: 'Open prediction A',
     kind: 'duration',
     confidence: 0.8,

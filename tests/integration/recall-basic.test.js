@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { recordEvent } from '../../src/capture/record-event.js';
 import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { recall } from '../../src/recall/index.js';
-
-import { mkdirSync as __robinMkdirSync } from 'node:fs';
-import { tmpdir as __robinTmpdir } from 'node:os';
-import { join as __robinJoin } from 'node:path';
 import { writeConfig as __robinWriteConfig } from '../../src/runtime/config.js';
 
 // __robin_test_home_setup__
@@ -69,14 +67,5 @@ test('recall since/until filter excludes events outside time window', async () =
     limit: 10,
   });
   for (const h of r.hits) assert.notEqual(h.content, 'old');
-  await close(db);
-});
-
-test('recall opts.explain attaches EXPLAIN FULL output', async () => {
-  const db = await fresh();
-  const e = createStubEmbedder({ dimension: 1024 });
-  await recordEvent(db, e, { source: 'cli', content: 'x' });
-  const r = await recall(db, e, 'x', { explain: true });
-  assert.ok(typeof r.explain === 'string' && r.explain.length > 0);
   await close(db);
 });

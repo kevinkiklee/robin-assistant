@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { stopHookHandler } from '../../src/hooks/handlers/stop-hook.js';
-
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin } from 'node:path';
+import { test } from 'node:test';
+import { stopHookHandler } from '../../src/hooks/handlers/stop-hook.js';
 
 const __robinTestHome = __robinJoin(
   __robinTmpdir(),
