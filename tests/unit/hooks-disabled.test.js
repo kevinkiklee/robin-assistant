@@ -17,41 +17,41 @@ const configFile = join(__robinTestHome, 'config.json');
 
 test('isHookDisabled returns false when config is missing', async () => {
   rmSync(configFile, { force: true });
-  assert.equal(await isHookDisabled('bash-policy'), false);
+  assert.equal(await isHookDisabled('discretion'), false);
 });
 
 test('isHookDisabled returns false when hooks.disabled is false', async () => {
   writeFileSync(configFile, JSON.stringify({ hooks: { disabled: false } }));
-  assert.equal(await isHookDisabled('bash-policy'), false);
+  assert.equal(await isHookDisabled('discretion'), false);
 });
 
 test('isHookDisabled returns true when hooks.disabled is true (global kill-switch)', async () => {
   writeFileSync(configFile, JSON.stringify({ hooks: { disabled: true } }));
-  assert.equal(await isHookDisabled('bash-policy'), true);
+  assert.equal(await isHookDisabled('discretion'), true);
   assert.equal(await isHookDisabled('stop'), true);
   assert.equal(await isHookDisabled('session-start'), true);
 });
 
 test('addDisabled then removeDisabled round-trips via config.json', async () => {
   rmSync(configFile, { force: true });
-  assert.equal(await isHookDisabled('bash-policy'), false);
-  await addDisabled('bash-policy');
-  assert.equal(await isHookDisabled('bash-policy'), true);
-  await removeDisabled('bash-policy');
-  assert.equal(await isHookDisabled('bash-policy'), false);
+  assert.equal(await isHookDisabled('discretion'), false);
+  await addDisabled('discretion');
+  assert.equal(await isHookDisabled('discretion'), true);
+  await removeDisabled('discretion');
+  assert.equal(await isHookDisabled('discretion'), false);
 });
 
 test('addDisabled is idempotent', async () => {
   rmSync(configFile, { force: true });
-  await addDisabled('bash-policy');
-  await addDisabled('bash-policy');
-  assert.equal(await isHookDisabled('bash-policy'), true);
-  await removeDisabled('bash-policy');
+  await addDisabled('discretion');
+  await addDisabled('discretion');
+  assert.equal(await isHookDisabled('discretion'), true);
+  await removeDisabled('discretion');
 });
 
 test('addDisabled creates config.json when missing', async () => {
   rmSync(configFile, { force: true });
-  await addDisabled('auto-recall');
-  assert.equal(await isHookDisabled('auto-recall'), true);
-  await removeDisabled('auto-recall');
+  await addDisabled('intuition');
+  assert.equal(await isHookDisabled('intuition'), true);
+  await removeDisabled('intuition');
 });
