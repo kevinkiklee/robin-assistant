@@ -529,3 +529,96 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
     latency_ms: Date.now() - startedAt,
   };
 }
+
+const DEFAULTS = {
+  enabled: false,
+  tick_ms: 300000,
+  attention_window_min: 90,
+  refresh_after_minutes: 30,
+  min_events_for_inference: 2,
+  max_sources_per_tick: 4,
+  min_confidence_to_surface: 0.5,
+  stale_after_minutes: 120,
+  pivot_weight: 1.0,
+  corroborate_weight: 1.0,
+};
+
+let _cfgCache = { value: null, expiresAt: 0 };
+const CFG_TTL_MS = 5_000;
+
+export async function readStateInferenceConfig(db, { now = Date.now() } = {}) {
+  if (_cfgCache.value && _cfgCache.expiresAt > now) return _cfgCache.value;
+  let cfg = DEFAULTS;
+  try {
+    const [rows] = await db
+      .query('SELECT VALUE value FROM runtime:`state_inference.config`')
+      .collect();
+    if (rows?.[0]) cfg = { ...DEFAULTS, ...rows[0] };
+  } catch {
+    /* defaults */
+  }
+  _cfgCache = { value: cfg, expiresAt: now + CFG_TTL_MS };
+  return cfg;
+}
+
+// Exposed for tests.
+export function _clearStateInferenceConfigCache() {
+  _cfgCache = { value: null, expiresAt: 0 };
+}
+
+async function listActiveSources(db) {
+  // Active source = any episode with ended_at IS NONE AND started_at >= now-24h.
+  const [rows] = await db
+    .query(
+      surql`SELECT VALUE source FROM episodes
+            WHERE ended_at IS NONE
+              AND started_at >= time::now() - 24h
+            GROUP BY source`,
+    )
+    .collect();
+  const seen = new Set();
+  const out = [];
+  for (const s of rows ?? []) {
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+/**
+ * Heartbeat-paced entry point (spec §1.1). Reads config, lists active
+ * sources, runs composeForSource for up to cfg.max_sources_per_tick.
+ *
+ * @returns {Promise<{
+ *   outcome: 'skipped_disabled' | 'no_active_sources' | 'ran',
+ *   sources_evaluated?: number,
+ *   per_source?: Array<{ source: string, outcome: string }>
+ * }>}
+ */
+export async function evaluateStateInference({ db, host, embedder, now = new Date() } = {}) {
+  // Cache invalidation is per-tick to pick up flag flips without restart.
+  _clearStateInferenceConfigCache();
+  const cfg = await readStateInferenceConfig(db);
+  if (cfg.enabled === false) {
+    return { outcome: 'skipped_disabled' };
+  }
+  const sources = await listActiveSources(db);
+  if (sources.length === 0) {
+    return { outcome: 'no_active_sources' };
+  }
+  const cap = Math.max(1, cfg.max_sources_per_tick ?? DEFAULTS.max_sources_per_tick);
+  const selected = sources.slice(0, cap);
+  const per_source = [];
+  for (const source of selected) {
+    try {
+      const r = await composeForSource({ db, embedder, host, source, cfg, now });
+      per_source.push({ source, outcome: r.outcome });
+    } catch (e) {
+      per_source.push({ source, outcome: 'error' });
+      console.warn(`[state-inference ${source}] ${e.message}`);
+    }
+  }
+  return { outcome: 'ran', sources_evaluated: per_source.length, per_source };
+}
