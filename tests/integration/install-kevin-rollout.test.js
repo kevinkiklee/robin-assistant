@@ -30,7 +30,7 @@ test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly
   process.env.ROBIN_HOME = home;
   // Stash any existing .robin-home pointer so this test does not corrupt it.
   const pointerPath = join(packageRootDir(), '.robin-home');
-  const stash = `${pointerPath}.test-stash`;
+  const stash = `${pointerPath}.stash-${process.pid}-${Math.random().toString(36).slice(2)}`;
   const hadPointer = existsSync(pointerPath);
   if (hadPointer) renameSync(pointerPath, stash);
   try {

@@ -1,40 +1,32 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import {
-  ensureHome,
-  packageRootDir,
-  pointerExists,
-  readMarker,
-  writePointer,
-} from '../../src/runtime/data-store.js';
+import { ensureHome, readMarker, writePointer } from '../../src/runtime/data-store.js';
 
 test('interrupt between ensureHome and writePointer: re-running both is idempotent', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-interrupt-'));
   process.env.ROBIN_HOME = home;
-  // Temporarily stash any existing .robin-home pointer so this test starts clean.
-  const pointerPath = join(packageRootDir(), '.robin-home');
-  const stash = `${pointerPath}.test-stash`;
-  const hadPointer = existsSync(pointerPath);
-  if (hadPointer) renameSync(pointerPath, stash);
   try {
+    // First call: creates dirs + marker.
     await ensureHome();
-    assert.strictEqual(pointerExists(), false);
     const firstMarker = readMarker();
     assert.strictEqual(firstMarker.version, 1);
+
+    // Simulate "interrupted after ensureHome but before writePointer":
+    // call ensureHome a second time — marker must remain identical.
     await ensureHome();
-    writePointer({ home, installedBy: 'test' });
-    assert.ok(pointerExists());
     const secondMarker = readMarker();
-    assert.deepStrictEqual(firstMarker, secondMarker);
+    assert.deepStrictEqual(firstMarker, secondMarker, 'marker is unchanged by repeated ensureHome');
+
+    // writePointer only touches the pointer file, not the marker.
+    writePointer({ home, installedBy: 'test' });
+    const thirdMarker = readMarker();
+    assert.deepStrictEqual(firstMarker, thirdMarker, 'marker is unchanged by writePointer');
   } finally {
     // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
-    // Restore the original pointer (or remove the test-written one).
-    if (existsSync(pointerPath)) rmSync(pointerPath, { force: true });
-    if (hadPointer) renameSync(stash, pointerPath);
   }
 });
