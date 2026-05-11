@@ -108,6 +108,62 @@ export async function evaluatePending(db) {
     }
   }
 
+  // Theme 2a: emit refute ledger rows for memos in corrected rows.
+  const correctedMemoIds = new Set();
+  for (const row of pending) {
+    const ob = outcomesByRow.find((o) => String(o.id) === String(row.id));
+    if (ob?.outcome !== 'corrected') continue;
+    for (const hit of row.ranked_hits ?? []) {
+      const id = hitRecordId(hit);
+      if (!id?.startsWith('memos:')) continue;
+      correctedMemoIds.add(id);
+    }
+  }
+  for (const idStr of correctedMemoIds) {
+    try {
+      await db
+        .query(
+          new BoundQuery(
+            `CREATE evidence_ledger CONTENT {
+              memo_id: type::record('memos', $key),
+              polarity: 'refutes',
+              reason: 'correction',
+              weight: 1.0
+            }`,
+            { key: idStr.slice('memos:'.length) },
+          ),
+        )
+        .collect();
+    } catch (e) {
+      if (!String(e?.message ?? '').includes('does not exist')) {
+        console.warn(`[reinforce] evidence-refute failed for ${idStr}: ${e.message}`);
+      }
+    }
+  }
+
+  // Theme 2a: emit corroborates ledger rows (one per hit, weight=N).
+  for (const [idStr, n] of memoHitCount.entries()) {
+    try {
+      await db
+        .query(
+          new BoundQuery(
+            `CREATE evidence_ledger CONTENT {
+              memo_id: type::record('memos', $key),
+              polarity: 'corroborates',
+              reason: 'reinforcement',
+              weight: $w
+            }`,
+            { key: idStr.slice('memos:'.length), w: n },
+          ),
+        )
+        .collect();
+    } catch (e) {
+      if (!String(e?.message ?? '').includes('does not exist')) {
+        console.warn(`[reinforce] evidence-corroborate failed for ${idStr}: ${e.message}`);
+      }
+    }
+  }
+
   // Phase 3 step 2: bucket memo updates by count. One UPDATE per distinct count.
   // Memos recalled in N pending rows get signal_count += N (regression guard
   // gate 12 in scripts/verify-design-assumptions.js).

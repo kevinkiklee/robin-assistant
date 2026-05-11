@@ -25,6 +25,7 @@ import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
 import { createAuditTool } from '../mcp/tools/audit.js';
 import { createCheckActionTool } from '../mcp/tools/check-action.js';
+import { createEndorseTool } from '../mcp/tools/endorse.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetCommStyleTool } from '../mcp/tools/get-comm-style.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
@@ -46,6 +47,7 @@ import { createListThreadsTool } from '../mcp/tools/list-threads.js';
 import { createPredictTool } from '../mcp/tools/predict.js';
 import { createRecallTool } from '../mcp/tools/recall.js';
 import { createRecordCorrectionTool } from '../mcp/tools/record-correction.js';
+import { createRefuteTool } from '../mcp/tools/refute.js';
 import { createRelatedEntitiesTool } from '../mcp/tools/related-entities.js';
 import { createRememberTool } from '../mcp/tools/remember.js';
 import { createResolvePredictionTool } from '../mcp/tools/resolve-prediction.js';
@@ -452,6 +454,8 @@ export async function startDaemon() {
     tools.push(createPredictTool({ db: dbHandle }));
     tools.push(createResolvePredictionTool({ db: dbHandle }));
     tools.push(createListOpenPredictionsTool({ db: dbHandle }));
+    tools.push(createEndorseTool({ db: dbHandle }));
+    tools.push(createRefuteTool({ db: dbHandle }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
