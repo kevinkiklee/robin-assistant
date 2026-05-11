@@ -139,6 +139,34 @@ accumulated evidence to compute a current value in [0, 1].
 - Inspect via Theme 4 MCP tool `explain_belief({memo_id})` — returns the
   ledger replay + derivation formula.
 
+### meta-cognition (cognition D2)
+
+**What:** Weekly LLM analysis of recall failures. Reads `recall_log` rows from the trailing 7 days where the user corrected the agent (and, post-B1, rows whose retrieved memos went unused). Clusters retrieved memos by shared `about` endpoints in-Node, then asks one `tier:'fast'` LLM to name the error patterns and suggest behavior rules.
+
+**Cadence:** Sunday 05:00 **local** time, gated by a min-corrections threshold (default 5/week). Runs *outside* the trigger queue — this is pattern-level analysis at a weekly cadence, not a per-event reflection.
+
+**Data:**
+- Reads: `recall_log` (corrected + unused-hit rows), `memos` (retrieved hits), `edges` (`about` endpoints + `derived_from` for privacy filter), `entities` (cluster labels).
+- Writes: one `kind='reasoning'` memo per run with `meta.dimension='recall_failures'`, `derived_by='meta_cognition'`, scope from config (default `'global'`); 0-3 `rule_candidates` of `kind='behavior'` with `payload.source='meta_cognition'`.
+- Lineage: provenance to source `recall_log` rows is encoded as `meta.recall_log_ids` (array of stringified record refs) — **not** `derived_from` edges (the edge registry restricts `derived_from` to substrate endpoints).
+
+**Code:**
+- `system/cognition/meta_cognition/cluster.js` — pure clustering by `about` endpoints.
+- `system/cognition/meta_cognition/prompt.js` — system + user prompt construction.
+- `system/cognition/meta_cognition/output.js` — JSON response validator.
+- `system/cognition/jobs/internal/meta-recall-narrative.js` — orchestrator (config → gate → pull → privacy → hydrate → cluster → LLM → write → telemetry).
+- `system/cognition/jobs/builtin/meta-recall-narrative.md` — manifest.
+
+**Privacy:** Rows whose retrieved memos transitively reach `scope='private'` memos are dropped before clustering (mirrors `outbound-policy.js:checkOutboundScope`, with forward-arrow traversal through the `edges` relation table). Default `private_scope_action='drop'`; `'fail'` aborts the run instead.
+
+**Surfacing:** The resulting reasoning memo is recall-eligible — `inject.js` widens its `searchMemos` filter to `kind: ['knowledge', 'reasoning']`. `rank.js` `TRUST_FACTOR` lists `meta_cognition: 0.9` explicitly.
+
+**Rollout flag:** `runtime:meta_cognition.config.enabled` is three-valued: `false` (default; job exits at the first guard) | `'shadow'` (runs clustering + telemetry, suppresses LLM and writes) | `true` (full path).
+
+**Reserved `meta.dimension` values for `kind='reasoning'`:**
+- `'recall_failures'` — this faculty (D2).
+- `'calibration'` — D3 sibling.
+
 ### cadence (alpha.16, Theme 3)
 **Triggered cognition with cost-budget enforcement.** Three steps —
 `reflection`, `comm-style`, `calibration` — can fire on triggers, drastically
