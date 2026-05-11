@@ -167,6 +167,26 @@ test('intuitionEndpoint returns empty block when there are no events', async () 
   await close(db);
 });
 
+test('intuitionEndpoint writes session_id onto recall_log', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, { source: 'cli', content: 'a fact about birds' });
+  await intuitionEndpoint({
+    db,
+    embedder: e,
+    detector: null,
+    query: 'birds',
+    sessionId: 'sess-xyz',
+    priorAssistant: '',
+    k: 6,
+    recencyDays: 30,
+    tokenBudget: 1500,
+  });
+  const [rows] = await db.query('SELECT session_id FROM recall_log').collect();
+  assert.equal(rows[0].session_id, 'sess-xyz');
+  await close(db);
+});
+
 test('intuitionEndpoint includes prior assistant tail in the recall query', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });

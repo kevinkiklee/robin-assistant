@@ -14,6 +14,7 @@ export const intuitionRoutes = [
           embedder: ctx.embedder.wrap,
           detector: ctx.detector,
           query: body.query ?? '',
+          sessionId: body.session_id ?? body.sessionId ?? null,
           priorAssistant: body.prior_assistant ?? body.priorAssistant ?? '',
           k: body.k ?? 6,
           recencyDays: body.recency_days ?? body.recencyDays ?? 30,

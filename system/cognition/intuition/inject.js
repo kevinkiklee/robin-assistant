@@ -76,6 +76,7 @@ export async function intuitionEndpoint({
   embedder,
   // detector — intentionally unused in 4a; see header comment.
   query,
+  sessionId,
   priorAssistant = '',
   k = 6,
   recencyDays = 30,
@@ -203,6 +204,7 @@ export async function intuitionEndpoint({
       .query(
         surql`CREATE recall_log CONTENT ${{
           query: safeQuery,
+          session_id: sessionId ?? null,
           k,
           ranked_hits: rankedHits,
           outcome: 'pending',
