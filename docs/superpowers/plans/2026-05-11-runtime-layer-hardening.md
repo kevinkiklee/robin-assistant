@@ -108,11 +108,11 @@ system/tests/integration/
 
 **Files:**
 - Modify: `system/runtime/daemon/lock.js`
-- Create: `system/tests/unit/runtime/daemon/lock.test.js`
+- Create: `system/tests/unit/lock.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/lock.test.js`:
+Create `system/tests/unit/lock.test.js`:
 
 ```js
 import { test } from 'node:test';
@@ -120,7 +120,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { acquireDaemonLock, releaseDaemonLock } from '../../../../runtime/daemon/lock.js';
+import { acquireDaemonLock, releaseDaemonLock } from '../../runtime/daemon/lock.js';
 
 async function tempLockPath() {
   const dir = await mkdtemp(join(tmpdir(), 'robin-lock-'));
@@ -172,7 +172,7 @@ test('releaseDaemonLock is idempotent', async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test system/tests/unit/runtime/daemon/lock.test.js`
+Run: `node --test system/tests/unit/lock.test.js`
 
 Expected: at least the "rejects when an alive pid holds the lock" test fails because the current implementation has a TOCTOU window — running tests in parallel might pass, but the algorithm is unsafe. The "reclaims a dead pid" test currently passes via the existing fallback.
 
@@ -245,7 +245,7 @@ export async function releaseDaemonLock(path) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test system/tests/unit/runtime/daemon/lock.test.js`
+Run: `node --test system/tests/unit/lock.test.js`
 
 Expected: all 5 tests pass.
 
@@ -258,7 +258,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add system/runtime/daemon/lock.js system/tests/unit/runtime/daemon/lock.test.js
+git add system/runtime/daemon/lock.js system/tests/unit/lock.test.js
 git commit -m "$(cat <<'EOF'
 refactor(runtime): R-1 — atomic daemon lock via wx flag
 
@@ -275,16 +275,16 @@ EOF
 
 **Files:**
 - Create: `system/runtime/daemon/retry.js`
-- Create: `system/tests/unit/runtime/daemon/retry.test.js`
+- Create: `system/tests/unit/retry.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/retry.test.js`:
+Create `system/tests/unit/retry.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { retryWithBackoff } from '../../../../runtime/daemon/retry.js';
+import { retryWithBackoff } from '../../runtime/daemon/retry.js';
 
 test('returns immediately on first-attempt success', async () => {
   let calls = 0;
@@ -347,7 +347,7 @@ test('invokes onRetry between attempts', async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test system/tests/unit/runtime/daemon/retry.test.js`
+Run: `node --test system/tests/unit/retry.test.js`
 
 Expected: FAIL with "Cannot find module ... retry.js".
 
@@ -404,14 +404,14 @@ async function withTimeout(fn, ms) {
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `node --test system/tests/unit/runtime/daemon/retry.test.js`
+Run: `node --test system/tests/unit/retry.test.js`
 
 Expected: all 5 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/runtime/daemon/retry.js system/tests/unit/runtime/daemon/retry.test.js
+git add system/runtime/daemon/retry.js system/tests/unit/retry.test.js
 git commit -m "refactor(runtime): R-1 — add retryWithBackoff util for embedder health"
 ```
 
@@ -421,11 +421,11 @@ git commit -m "refactor(runtime): R-1 — add retryWithBackoff util for embedder
 
 **Files:**
 - Create: `system/runtime/daemon/fatal.js`
-- Create: `system/tests/unit/runtime/daemon/fatal.test.js`
+- Create: `system/tests/unit/fatal.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/fatal.test.js`:
+Create `system/tests/unit/fatal.test.js`:
 
 ```js
 import { test } from 'node:test';
@@ -433,7 +433,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createFatalHandler } from '../../../../runtime/daemon/fatal.js';
+import { createFatalHandler } from '../../runtime/daemon/fatal.js';
 
 async function tempLogDir() {
   return await mkdtemp(join(tmpdir(), 'robin-fatal-'));
