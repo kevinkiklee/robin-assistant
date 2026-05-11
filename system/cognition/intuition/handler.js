@@ -27,6 +27,12 @@ function pickTranscriptPath(stdin) {
   return typeof a === 'string' ? a : '';
 }
 
+function pickSessionId(stdin) {
+  if (!stdin || typeof stdin !== 'object') return undefined;
+  const a = stdin.session_id ?? stdin.sessionId;
+  return typeof a === 'string' && a.length > 0 ? a : undefined;
+}
+
 // Concatenate the textual portions of an assistant message's `content`
 // field. Claude Code transcripts use either a bare string or an array of
 // `{type:'text', text:...}` blocks (mixed with tool_use / tool_result).
@@ -124,6 +130,7 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
   }
 
   const query = pickQuery(stdin);
+  const sessionId = pickSessionId(stdin);
   const transcriptPath = pickTranscriptPath(stdin);
   const priorAssistant = readPriorAssistant(transcriptPath);
 
@@ -146,6 +153,7 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         query,
+        session_id: sessionId,
         prior_assistant: priorAssistant,
         k: 6,
         recency_days: 30,

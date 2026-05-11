@@ -230,6 +230,23 @@ test('handler reads prior assistant message from JSONL transcript tail', async (
   clearDaemonStateFile();
 });
 
+test('intuitionHandler forwards session_id from stdin in POST body', async () => {
+  clearProjectDir();
+  let captured = null;
+  const fetchFn = async (_url, init) => {
+    captured = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ block: '' }) };
+  };
+  await intuitionHandler({
+    stdin: { prompt: 'hi', session_id: 'sess-abc' },
+    stdout: () => {},
+    stderr: () => {},
+    readState: async () => ({ port: 9999 }),
+    fetchFn,
+  });
+  assert.equal(captured?.session_id, 'sess-abc');
+});
+
 test('handler writes nothing to stdout when daemon returns empty block', async () => {
   clearProjectDir();
   const { server, port } = await startStubServer(({ res }) => {
