@@ -37,10 +37,10 @@ export async function secretsSet(argv) {
             process.stdout.write('\n');
             return resolve(buf);
           }
-          if (ch === '') {
+          if (ch === '\x03') {
             process.exit(1);
           }
-          if (ch === '' || ch === '\b') {
+          if (ch === '\x7f' || ch === '\b') {
             buf = buf.slice(0, -1);
           } else {
             buf += ch;

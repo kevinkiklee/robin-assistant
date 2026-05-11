@@ -20,12 +20,6 @@ const PROFILE_DIMENSIONS = {
   'gemini-3072': 3072,
 };
 
-const PROFILE_LOADERS = {
-  'mxbai-1024': async () => (await import('../embed/in-process.js')).createInProcessEmbedder(),
-  'qwen3-4096': async () => (await import('../embed/ollama.js')).createOllamaEmbedder(),
-  'gemini-3072': async () => (await import('../embed/gemini.js')).createGeminiEmbedder(),
-};
-
 const SURFACES = ['events', 'memos', 'entities'];
 
 function validateProfile(profile) {
@@ -65,7 +59,7 @@ async function tablesExist(db, names) {
 // Refuses if any of the three already exist.
 // ----------------------------------------------------------------------------
 
-export async function prepareProfile(db, { profile }) {
+async function prepareProfile(db, { profile }) {
   const v = validateProfile(profile);
   if (!v.ok) return v;
   const names = tableNames(profile);
@@ -110,7 +104,7 @@ export async function prepareProfile(db, { profile }) {
 // Sets read_profile = active_profile by default (the converged steady state).
 // ----------------------------------------------------------------------------
 
-export async function activateProfile(db, { profile }) {
+async function activateProfile(db, { profile }) {
   const v = validateProfile(profile);
   if (!v.ok) return v;
   const names = tableNames(profile);
@@ -153,7 +147,7 @@ export async function activateProfile(db, { profile }) {
 // active profile.
 // ----------------------------------------------------------------------------
 
-export async function setDualRead(db, { state, profile }) {
+async function setDualRead(db, { state, profile }) {
   const current = (await readEmbedderState(db)) ?? {};
   if (!current.active_profile) {
     return { ok: false, reason: 'no_active_profile' };
@@ -200,7 +194,7 @@ export async function setDualRead(db, { state, profile }) {
 // want it gone.)
 // ----------------------------------------------------------------------------
 
-export async function dropProfile(db, { profile }) {
+async function dropProfile(db, { profile }) {
   const v = validateProfile(profile);
   if (!v.ok) return v;
   const state = (await readEmbedderState(db)) ?? {};
@@ -237,7 +231,7 @@ export async function dropProfile(db, { profile }) {
 // idempotent; safe to interrupt and rerun.
 // ----------------------------------------------------------------------------
 
-export async function startBackfill(db, { profile }) {
+async function startBackfill(db, { profile }) {
   const v = validateProfile(profile);
   if (!v.ok) return v;
   const state = (await readEmbedderState(db)) ?? {};
@@ -278,7 +272,3 @@ export async function dispatch(db, body) {
       return { ok: false, reason: `unknown_op: ${op}` };
   }
 }
-
-// Re-exports for tests that want to override how an embedder is constructed
-// inside the backfill job. Kept here so the test surface is concentrated.
-export { PROFILE_DIMENSIONS, PROFILE_LOADERS, profileDim };

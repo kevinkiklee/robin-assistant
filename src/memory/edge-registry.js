@@ -101,24 +101,6 @@ export function canonicalEndpoints(from, to, kind) {
   return fromId <= toId ? [from, to] : [to, from];
 }
 
-/**
- * Compose the deterministic record ID for an edge.
- * Returns a SurrealQL literal: `edges:[<kind>, <in>, <out>]`.
- * For symmetric kinds, callers should pass canonicalized endpoints first.
- * Parameter names kept as `from`/`to` for caller readability; mapped to
- * the schema's `in`/`out` magic fields.
- */
-export function compositeEdgeId(kind, from, to) {
-  const f = recordStringId(from);
-  const t = recordStringId(to);
-  if (!f || !t) throw new Error('compositeEdgeId: invalid record refs');
-  return { kind, in: f, out: t };
-}
-
 export function isCounterKind(kind) {
   return EDGE_KIND_REGISTRY[kind]?.counter === true;
-}
-
-export function isSymmetricKind(kind) {
-  return EDGE_KIND_REGISTRY[kind]?.symmetric === true;
 }

@@ -26,7 +26,7 @@ const DEFAULT_SCOPES = {
   whoop: ['read:recovery', 'read:cycles', 'read:sleep', 'read:workout', 'read:profile', 'offline'],
 };
 
-export function openUrl(url) {
+function openUrl(url) {
   return new Promise((resolve, reject) => {
     const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
     const p = spawn(cmd, [url], { stdio: 'ignore', detached: true });
@@ -59,7 +59,7 @@ export function parseCodeArg(argv) {
   return { mode: 'loopback' };
 }
 
-export async function unionScopes(provider) {
+async function unionScopes(provider) {
   const dir = new URL('../../integrations/', import.meta.url).pathname;
   const { loaded: manifests } = await loadManifests(dir);
   const all = new Set();
@@ -73,7 +73,7 @@ export async function unionScopes(provider) {
   return DEFAULT_SCOPES[provider] ?? [];
 }
 
-export function buildSecretsFor(envKeys) {
+function buildSecretsFor(envKeys) {
   const out = {};
   for (const k of envKeys) {
     try {

@@ -9,6 +9,17 @@
   "bin": {
     "robin": "bin/robin"
   },
+  "files": [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "bin/",
+    "docs/architecture.md",
+    "docs/development.md",
+    "docs/faculties.md",
+    "docs/install.md",
+    "docs/troubleshooting.md",
+    "src/"
+  ],
   "scripts": {
     "setup": "node bin/robin install",
     "test": "node --test --test-force-exit 'tests/**/*.test.js'",

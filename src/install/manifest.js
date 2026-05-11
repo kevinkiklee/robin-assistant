@@ -121,5 +121,3 @@ export async function readManifest() {
     return null;
   }
 }
-
-export { manifestPath as _manifestPathForTests, supervisorPath as _supervisorPathForTests };

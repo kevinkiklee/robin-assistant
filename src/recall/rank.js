@@ -11,7 +11,7 @@
 
 import { freshness } from '../memory/decay.js';
 
-export const TRUST_FACTOR = {
+const TRUST_FACTOR = {
   manual: 1.0,
   trusted: 1.0,
   biographer: 0.95,
@@ -89,22 +89,4 @@ export function mmrLite(rankedHits, cosineFn, threshold = 0.92) {
     if (!tooSimilar) kept.push(hit);
   }
   return kept;
-}
-
-/**
- * Pairwise cosine similarity from two embedding vectors. Used by the MMR pass
- * when the embeddings are already in hand (e.g. from a recent kNN result).
- */
-export function cosineSimilarity(a, b) {
-  if (!a || !b || a.length !== b.length) return 0;
-  let dot = 0;
-  let aMag = 0;
-  let bMag = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    aMag += a[i] * a[i];
-    bMag += b[i] * b[i];
-  }
-  if (aMag === 0 || bMag === 0) return 0;
-  return dot / (Math.sqrt(aMag) * Math.sqrt(bMag));
 }

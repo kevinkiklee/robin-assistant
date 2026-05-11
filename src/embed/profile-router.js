@@ -47,7 +47,7 @@ export function embeddingTable(profile, surface) {
  *
  * Returns `{ active, read }` — both are profile name strings.
  */
-export async function resolveProfiles(db, { force = false } = {}) {
+async function resolveProfiles(db, { force = false } = {}) {
   const now = Date.now();
   if (!force && cache && now - cacheLoadedAt < CACHE_TTL_MS) return cache;
   const [rows] = await db.query('SELECT VALUE value FROM runtime:embedder').collect();

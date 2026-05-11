@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname as _jobsDirname, join as _jobsJoin } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -67,12 +67,7 @@ import { endSession, listActiveSessions, markStaleSessions, registerSession } fr
 import { clearDaemonState, writeDaemonState } from './state.js';
 import { getCliVersion } from './version-handshake.js';
 
-const BUILTIN_JOBS_DIR = _jobsJoin(
-  _jobsDirname(fileURLToPath(import.meta.url)),
-  '..',
-  'jobs',
-  'builtin',
-);
+const BUILTIN_JOBS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'builtin');
 
 export async function startDaemon() {
   const version = await getCliVersion();
@@ -92,6 +87,7 @@ export async function startDaemon() {
   let dbHandle = null;
   let httpServer = null;
   let scheduler = null;
+  let sessionSweeper = null;
   let shuttingDown = false;
   const gatewayClients = new Map();
   const registry = new Map();
@@ -100,6 +96,7 @@ export async function startDaemon() {
     if (shuttingDown) return;
     shuttingDown = true;
     if (signal) console.log(`daemon: received ${signal}, shutting down`);
+    if (sessionSweeper) clearInterval(sessionSweeper);
     if (scheduler) {
       console.log('scheduler stopping (in-flight dream may continue briefly)');
       scheduler.stop();
@@ -353,7 +350,7 @@ export async function startDaemon() {
     // Phase 4d — discover jobs (built-in + user) and UPSERT into runtime_jobs.
     const jobsCache = { current: [] };
     const refreshJobs = async () => {
-      const userJobsDir = _jobsJoin(paths.data.home(), 'jobs');
+      const userJobsDir = join(paths.data.home(), 'jobs');
       jobsCache.current = discoverJobs({
         builtinDir: BUILTIN_JOBS_DIR,
         userDir: userJobsDir,
@@ -898,7 +895,7 @@ export async function startDaemon() {
 
     // Stale-session sweeper: every 60s mark sessions whose last_seen_at is
     // older than 5 minutes as 'stale'. Cleanup-only — purge is opt-in via CLI.
-    const sessionSweeper = setInterval(() => {
+    sessionSweeper = setInterval(() => {
       markStaleSessions(dbHandle).catch(() => {});
     }, 60_000);
     sessionSweeper.unref?.();

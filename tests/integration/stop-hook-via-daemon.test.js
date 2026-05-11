@@ -48,7 +48,7 @@ test('Stop hook routes through daemon when running', async () => {
     assert.ok(true);
   } finally {
     daemon.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => daemon.once('exit', r));
     rmSync(tmp, { recursive: true });
   }
 });

@@ -49,8 +49,8 @@ src/
 
 bin/                    robin (the executable) + robin-hook.sh (PATH shim)
 scripts/                dev-recall, gen-fixtures, bench-embedder,
-                        verify-design-assumptions, test-store-smoke,
-                        test-reinforcement-smoke
+                        bench-recall, migrate-fresh,
+                        verify-design-assumptions
 tests/                  unit/ · integration/ · fixtures/
 docs/                   architecture, faculties, install, troubleshooting,
                         development, superpowers/specs (per-phase design)

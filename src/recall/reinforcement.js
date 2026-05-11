@@ -9,7 +9,7 @@
 
 import { BoundQuery, surql } from 'surrealdb';
 
-export const REINFORCE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const REINFORCE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 function hitRecordId(hit) {
   // Tolerate legacy field names; the canonical field is `record`.

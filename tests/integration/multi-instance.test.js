@@ -49,7 +49,7 @@ test('multiple parallel HTTP requests to the daemon do not corrupt the DB', asyn
     assert.ok(ok >= 5, `expected at least 5 successful responses, got ${ok}`);
   } finally {
     daemon.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => daemon.once('exit', r));
     rmSync(tmp, { recursive: true });
   }
 });

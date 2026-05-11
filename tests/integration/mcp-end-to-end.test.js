@@ -58,7 +58,7 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
     assert.ok(res, 'fetch returned something');
   } finally {
     daemon.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => daemon.once('exit', r));
     rmSync(tmp, { recursive: true });
   }
 });
