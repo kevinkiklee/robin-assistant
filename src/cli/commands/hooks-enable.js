@@ -26,6 +26,6 @@ export async function hooksEnable(argv = [], deps = {}) {
     return;
   }
   await ensureHome();
-  removeDisabled(phase);
+  await removeDisabled(phase);
   out(`enabled hook: ${phase}`);
 }

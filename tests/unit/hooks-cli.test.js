@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -12,6 +12,8 @@ mkdirSync(__robinTestHome, { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
 const { DISPATCH, runHook } = await import('../../src/hooks/cli.js');
+
+const configFile = join(__robinTestHome, 'config.json');
 
 test('DISPATCH map exposes the four expected phases', () => {
   assert.deepEqual(
@@ -32,9 +34,8 @@ test('runHook with disabled phase short-circuits before dynamic import', async (
   // bash-policy handler module does not exist yet in this agent's tree;
   // if the dispatcher tried to import it, runHook would catch the error
   // (fail-soft) but we want to assert short-circuit behavior. We do this
-  // by populating hooks-disabled.txt and asserting no throw + fast return.
-  const disabledFile = join(__robinTestHome, 'hooks-disabled.txt');
-  writeFileSync(disabledFile, 'bash-policy\n');
+  // by setting hooks.disabled = true in config.json.
+  writeFileSync(configFile, JSON.stringify({ hooks: { disabled: true } }));
   const t0 = Date.now();
   await runHook('bash-policy', { rawStdin: '{}' });
   // No assertion on timing; the meaningful guarantee is no throw.
@@ -42,15 +43,14 @@ test('runHook with disabled phase short-circuits before dynamic import', async (
 });
 
 test('runHook is fail-soft when handler module is missing', async () => {
-  const disabledFile = join(__robinTestHome, 'hooks-disabled.txt');
-  writeFileSync(disabledFile, '');
+  // Ensure hooks are not disabled so the dispatcher tries to import.
+  writeFileSync(configFile, JSON.stringify({ hooks: { disabled: false } }));
   // bash-policy handler module is owned by another agent and not present.
   // runHook should swallow the import error and resolve.
   await assert.doesNotReject(runHook('bash-policy', { rawStdin: '{}' }));
 });
 
 test('runHook tolerates malformed JSON stdin (fail-soft)', async () => {
-  const disabledFile = join(__robinTestHome, 'hooks-disabled.txt');
-  writeFileSync(disabledFile, '');
+  writeFileSync(configFile, JSON.stringify({ hooks: { disabled: false } }));
   await assert.doesNotReject(runHook('bash-policy', { rawStdin: 'not-json{' }));
 });

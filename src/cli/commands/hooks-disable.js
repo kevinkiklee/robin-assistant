@@ -27,6 +27,6 @@ export async function hooksDisable(argv = [], deps = {}) {
     return;
   }
   await ensureHome();
-  addDisabled(phase);
+  await addDisabled(phase);
   out(`disabled hook: ${phase}`);
 }

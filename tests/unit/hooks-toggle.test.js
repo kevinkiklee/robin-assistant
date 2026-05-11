@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -16,6 +16,8 @@ const { hooksDisable } = await import('../../src/cli/commands/hooks-disable.js')
 const { hooksEnable } = await import('../../src/cli/commands/hooks-enable.js');
 const { isHookDisabled } = await import('../../src/hooks/disabled.js');
 
+const configFile = join(__robinTestHome, 'config.json');
+
 function harness() {
   const out = [];
   const err = [];
@@ -30,18 +32,19 @@ function harness() {
   };
 }
 
-test('hooksDisable: disables a known phase', async () => {
+test('hooksDisable: disables a known phase (global kill-switch)', async () => {
+  rmSync(configFile, { force: true });
   const h = harness();
   await hooksDisable(['bash-policy'], h);
-  assert.equal(isHookDisabled('bash-policy'), true);
+  assert.equal(await isHookDisabled('bash-policy'), true);
   assert.deepEqual(h.exitCalls, []);
   assert.match(h.outLines.join('\n'), /disabled hook: bash-policy/);
 });
 
-test('hooksEnable: enables a previously disabled phase', async () => {
+test('hooksEnable: enables a previously disabled phase (global kill-switch)', async () => {
   const h = harness();
   await hooksEnable(['bash-policy'], h);
-  assert.equal(isHookDisabled('bash-policy'), false);
+  assert.equal(await isHookDisabled('bash-policy'), false);
   assert.deepEqual(h.exitCalls, []);
   assert.match(h.outLines.join('\n'), /enabled hook: bash-policy/);
 });
@@ -74,25 +77,25 @@ test('hooksEnable: missing arg prints usage and exits 1', async () => {
   assert.ok(h.errLines.some((l) => /usage:/.test(l)));
 });
 
-test('hooksDisable: idempotent — same phase twice still disabled', async () => {
+test('hooksDisable: idempotent — disabling twice stays disabled', async () => {
+  rmSync(configFile, { force: true });
   const h = harness();
   await hooksDisable(['stop'], h);
   await hooksDisable(['stop'], h);
-  assert.equal(isHookDisabled('stop'), true);
-  // Cleanup so the file does not leak between tests
+  assert.equal(await isHookDisabled('stop'), true);
+  // Cleanup
   await hooksEnable(['stop'], h);
-  assert.equal(isHookDisabled('stop'), false);
+  assert.equal(await isHookDisabled('stop'), false);
 });
 
-test('hooksDisable + hooksEnable: round-trip across phases', async () => {
+test('hooksDisable + hooksEnable: round-trip (global switch)', async () => {
+  rmSync(configFile, { force: true });
   const h = harness();
   await hooksDisable(['auto-recall'], h);
-  await hooksDisable(['session-start'], h);
-  assert.equal(isHookDisabled('auto-recall'), true);
-  assert.equal(isHookDisabled('session-start'), true);
+  assert.equal(await isHookDisabled('auto-recall'), true);
+  // Global: all phases disabled simultaneously
+  assert.equal(await isHookDisabled('session-start'), true);
   await hooksEnable(['auto-recall'], h);
-  assert.equal(isHookDisabled('auto-recall'), false);
-  assert.equal(isHookDisabled('session-start'), true);
-  await hooksEnable(['session-start'], h);
-  assert.equal(isHookDisabled('session-start'), false);
+  assert.equal(await isHookDisabled('auto-recall'), false);
+  assert.equal(await isHookDisabled('session-start'), false);
 });

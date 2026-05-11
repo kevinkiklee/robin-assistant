@@ -39,7 +39,7 @@ function parseJson(raw) {
 export async function runHook(phase, opts = {}) {
   const entry = DISPATCH[phase];
   if (!entry) return;
-  if (isHookDisabled(phase)) return;
+  if (await isHookDisabled(phase)) return;
   const raw = opts.rawStdin ?? (await readStdin());
   const stdin = parseJson(raw);
   try {

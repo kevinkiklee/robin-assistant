@@ -154,6 +154,22 @@ export async function ensureHome() {
     const payload = { version: MARKER_VERSION, createdAt: new Date().toISOString() };
     writeFileSync(markerPath, JSON.stringify(payload, null, 2), { mode: 0o644 });
   }
+  // Migrate hooks-disabled.txt → config.json.hooks.disabled.
+  const flagPath = join(home, 'hooks-disabled.txt');
+  if (existsSync(flagPath)) {
+    const cfgPath = paths.data.config();
+    let cfg = {};
+    if (existsSync(cfgPath)) {
+      try {
+        cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+      } catch {
+        cfg = {};
+      }
+    }
+    cfg.hooks = { ...(cfg.hooks ?? {}), disabled: true };
+    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), { mode: 0o644 });
+    unlinkSync(flagPath);
+  }
 }
 
 export function readMarker() {

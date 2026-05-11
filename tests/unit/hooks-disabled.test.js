@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -13,49 +13,45 @@ process.env.ROBIN_HOME = __robinTestHome;
 
 const { isHookDisabled, addDisabled, removeDisabled } = await import('../../src/hooks/disabled.js');
 
-const disabledFile = join(__robinTestHome, 'hooks-disabled.txt');
+const configFile = join(__robinTestHome, 'config.json');
 
-test('isHookDisabled returns false when file is missing', () => {
-  // ensure absent
-  try {
-    writeFileSync(disabledFile, '', { flag: 'wx' });
-  } catch {
-    // ignore
-  }
-  // ensure clean state by removing
-  writeFileSync(disabledFile, '');
-  assert.equal(isHookDisabled('bash-policy'), false);
+test('isHookDisabled returns false when config is missing', async () => {
+  rmSync(configFile, { force: true });
+  assert.equal(await isHookDisabled('bash-policy'), false);
 });
 
-test('isHookDisabled true when phase listed; respects comments and blanks', () => {
-  writeFileSync(disabledFile, '# kill switch\n\nbash-policy\n# auto-recall\nstop\n');
-  assert.equal(isHookDisabled('bash-policy'), true);
-  assert.equal(isHookDisabled('stop'), true);
-  assert.equal(isHookDisabled('auto-recall'), false);
-  assert.equal(isHookDisabled('session-start'), false);
+test('isHookDisabled returns false when hooks.disabled is false', async () => {
+  writeFileSync(configFile, JSON.stringify({ hooks: { disabled: false } }));
+  assert.equal(await isHookDisabled('bash-policy'), false);
 });
 
-test('inline comment after phase is stripped', () => {
-  writeFileSync(disabledFile, 'bash-policy # noisy false positives\n');
-  assert.equal(isHookDisabled('bash-policy'), true);
+test('isHookDisabled returns true when hooks.disabled is true (global kill-switch)', async () => {
+  writeFileSync(configFile, JSON.stringify({ hooks: { disabled: true } }));
+  assert.equal(await isHookDisabled('bash-policy'), true);
+  assert.equal(await isHookDisabled('stop'), true);
+  assert.equal(await isHookDisabled('session-start'), true);
 });
 
-test('addDisabled then removeDisabled round-trips', () => {
-  writeFileSync(disabledFile, '');
-  assert.equal(isHookDisabled('bash-policy'), false);
-  addDisabled('bash-policy');
-  assert.equal(isHookDisabled('bash-policy'), true);
-  // idempotent
-  addDisabled('bash-policy');
-  const after = readFileSync(disabledFile, 'utf8');
-  const occurrences = after.split('\n').filter((l) => l.trim() === 'bash-policy').length;
-  assert.equal(occurrences, 1);
-  removeDisabled('bash-policy');
-  assert.equal(isHookDisabled('bash-policy'), false);
+test('addDisabled then removeDisabled round-trips via config.json', async () => {
+  rmSync(configFile, { force: true });
+  assert.equal(await isHookDisabled('bash-policy'), false);
+  await addDisabled('bash-policy');
+  assert.equal(await isHookDisabled('bash-policy'), true);
+  await removeDisabled('bash-policy');
+  assert.equal(await isHookDisabled('bash-policy'), false);
 });
 
-test('addDisabled creates file when missing', () => {
-  rmSync(disabledFile, { force: true });
-  addDisabled('auto-recall');
-  assert.equal(isHookDisabled('auto-recall'), true);
+test('addDisabled is idempotent', async () => {
+  rmSync(configFile, { force: true });
+  await addDisabled('bash-policy');
+  await addDisabled('bash-policy');
+  assert.equal(await isHookDisabled('bash-policy'), true);
+  await removeDisabled('bash-policy');
+});
+
+test('addDisabled creates config.json when missing', async () => {
+  rmSync(configFile, { force: true });
+  await addDisabled('auto-recall');
+  assert.equal(await isHookDisabled('auto-recall'), true);
+  await removeDisabled('auto-recall');
 });
