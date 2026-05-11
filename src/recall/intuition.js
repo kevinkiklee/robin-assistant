@@ -3,6 +3,7 @@
 
 import { surql } from 'surrealdb';
 import { recall } from './index.js';
+import { score } from './rank.js';
 
 const PRIOR_TAIL_CHARS = 500;
 const LINE_CONTENT_CHARS = 120;
@@ -122,7 +123,7 @@ export async function intuitionEndpoint({
   try {
     await db
       .query(
-        surql`CREATE runtime_intuition_telemetry CONTENT ${{
+        surql`CREATE intuition_telemetry CONTENT ${{
           query_chars: safeQuery.length,
           hits: hits.length,
           tokens_injected: tokens,
@@ -133,6 +134,28 @@ export async function intuitionEndpoint({
       .collect();
   } catch {
     // Swallow — telemetry is advisory.
+  }
+
+  // recall_log: feeds the reinforcement loop. Best-effort.
+  try {
+    const rankedHits = hits.map((h, i) => ({
+      record: h.id,
+      score_components: score({ record: h, distance: h.dist ?? 0 }).components,
+      rank: i,
+    }));
+    await db
+      .query(
+        surql`CREATE recall_log CONTENT ${{
+          query: safeQuery,
+          k,
+          ranked_hits: rankedHits,
+          outcome: 'pending',
+          meta: { latency_ms, truncated },
+        }}`,
+      )
+      .collect();
+  } catch {
+    /* fail-soft */
   }
 
   return { block, hits: hits.length, tokens, latency_ms, truncated };

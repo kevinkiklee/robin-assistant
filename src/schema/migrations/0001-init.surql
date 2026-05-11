@@ -250,7 +250,8 @@ DEFINE FIELD ts            ON recall_log TYPE datetime DEFAULT time::now() READO
 DEFINE FIELD session_id    ON recall_log TYPE option<string>;
 DEFINE FIELD query         ON recall_log TYPE string;
 DEFINE FIELD k             ON recall_log TYPE int;
-DEFINE FIELD ranked_hits   ON recall_log TYPE array<object>;
+DEFINE FIELD ranked_hits    ON recall_log TYPE array;
+DEFINE FIELD ranked_hits[*] ON recall_log TYPE object FLEXIBLE;
 DEFINE FIELD outcome       ON recall_log TYPE string DEFAULT 'pending'
   ASSERT $value IN ['pending', 'reinforced', 'corrected', 'evaluated_no_signal'];
 DEFINE FIELD evaluated_at  ON recall_log TYPE option<datetime>;

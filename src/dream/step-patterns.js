@@ -1,39 +1,58 @@
-import { surql } from 'surrealdb';
-import { upsertPatternByName } from '../memory/habits.js';
+// step-patterns.js — habit discovery from edges[kind='occurs_with'].
+//
+// Writes memos[kind='habit'] via habits.upsert. Co-occurrence pairs whose
+// `weight >= minStrength` within `lookbackDays` become habits named
+// `co-occur-<a>-<b>`.
+
+import { BoundQuery } from 'surrealdb';
+import { upsert as habitsUpsert } from '../memory/habits.js';
 
 const DEFAULT_LOOKBACK_DAYS = 7;
 const DEFAULT_MIN_STRENGTH = 5;
 const DEFAULT_LIMIT = 10;
 
-/**
- * Heuristic pattern detection — no LLM in this version.
- *
- * Looks at `co_occurs_with` edges with `last_seen` within the lookback
- * window and `strength ≥ minStrength`, then upserts a `co-occur-A-B`
- * pattern row per qualifying pair. Idempotent via `upsertPatternByName`:
- * repeated runs increment `signal_count` instead of creating duplicates.
- */
-export async function dreamStepPatterns(_db, _host) {
-  const db = _db;
-  const cutoff = new Date(Date.now() - DEFAULT_LOOKBACK_DAYS * 86400_000);
+export async function dreamStepPatterns(db, host, opts = {}) {
+  const {
+    lookbackDays = DEFAULT_LOOKBACK_DAYS,
+    minStrength = DEFAULT_MIN_STRENGTH,
+    limit = DEFAULT_LIMIT,
+    embedder = null,
+  } = opts;
+  void host;
+
+  const cutoff = new Date(Date.now() - lookbackDays * 86400_000);
+  const sql = `
+    SELECT from, to, weight
+    FROM edges
+    WHERE kind = 'occurs_with' AND last_seen >= $cutoff AND weight >= $min
+    ORDER BY weight DESC
+    LIMIT ${limit}
+  `;
   const [strong] = await db
-    .query(
-      surql`SELECT in, out, strength FROM co_occurs_with
-            WHERE last_seen >= ${cutoff} AND strength >= ${DEFAULT_MIN_STRENGTH}
-            LIMIT ${DEFAULT_LIMIT}`,
-    )
+    .query(new BoundQuery(sql, { cutoff, min: minStrength }))
     .collect();
+
   let upserted = 0;
   for (const edge of strong ?? []) {
-    const [a] = await db.query(surql`SELECT name FROM ${edge.in}`).collect();
-    const [b] = await db.query(surql`SELECT name FROM ${edge.out}`).collect();
-    if (!a[0] || !b[0]) continue;
-    await upsertPatternByName(db, {
-      name: `co-occur-${a[0].name}-${b[0].name}`,
-      description: `${a[0].name} and ${b[0].name} co-occur frequently (strength ${edge.strength})`,
-      source_events: [],
-    });
-    upserted++;
+    const [a] = await db
+      .query(new BoundQuery('SELECT name FROM $id', { id: edge.from }))
+      .collect();
+    const [b] = await db
+      .query(new BoundQuery('SELECT name FROM $id', { id: edge.to }))
+      .collect();
+    if (!a[0]?.name || !b[0]?.name) continue;
+
+    const name = `co-occur-${a[0].name}-${b[0].name}`;
+    const description = `${a[0].name} and ${b[0].name} co-occur frequently (weight=${edge.weight}).`;
+    if (embedder) {
+      await habitsUpsert(db, embedder, {
+        name,
+        description,
+        lineage: [],
+        strength: Number(edge.weight) || 1.0,
+      });
+      upserted += 1;
+    }
   }
   return { upserted };
 }
