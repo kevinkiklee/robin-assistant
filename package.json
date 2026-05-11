@@ -17,7 +17,15 @@
     "docs/faculties.md",
     "docs/install.md",
     "docs/troubleshooting.md",
-    "system/"
+    "system/bin/",
+    "system/cognition/",
+    "system/config/",
+    "system/data/",
+    "system/io/",
+    "system/runtime/cli/",
+    "system/runtime/daemon/",
+    "system/runtime/hosts/",
+    "system/runtime/install/"
   ],
   "scripts": {
     "setup": "node system/bin/robin install",

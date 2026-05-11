@@ -1,7 +1,7 @@
 // Inbound PII / secret patterns — applied inside MCP memory-write handlers
 // (recordEvent, remember, record_correction, update_rule).
 //
-// Inbound is intentionally NARROWER than outbound (`io/outbound/patterns.js`).
+// Inbound is intentionally NARROWER than outbound (`cognition/discretion/outbound-patterns.js`).
 // Rationale (per Phase 4a §5.B): medical/financial history can legitimately
 // *enter* memory (e.g. "I had surgery in 2024", "card ending in 4242 is my
 // preferred"); the inbound list catches only credential / secret shapes that
