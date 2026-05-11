@@ -301,14 +301,14 @@ test('data-store.js never calls fs.rename — move uses copy+verify+delete', () 
     'utf8',
   );
   // Allowed single-file atomic replaces (tmp→final):
-  //   1. writePointer   (pointer file)
+  //   1. writePointerAtomic (pointer file)
   //   2. writeManifestAtomic (host-integrations.json)
   // Directory moves must use copy+verify+delete, never rename.
   const renameCalls = (src.match(/\brename(Sync)?\s*\(/g) ?? []).length;
   assert.strictEqual(
     renameCalls,
     2,
-    `expected exactly 2 renameSync calls (writePointer + writeManifestAtomic); found ${renameCalls}`,
+    `expected exactly 2 renameSync calls (writePointerAtomic + writeManifestAtomic); found ${renameCalls}`,
   );
 });
 

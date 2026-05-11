@@ -31,14 +31,71 @@ export function packageRootDir() {
 
 export const POINTER_VERSION = 1;
 
-function pointerFilePath() {
-  // $ROBIN_POINTER_PATH is a test-only override so integration tests never
-  // write to the real <packageRoot>/.robin-home and race with each other.
-  // Production never sets it.
-  return process.env.ROBIN_POINTER_PATH ?? join(_packageRoot, '.robin-home');
+/**
+ * Compute the OS-native user-config pointer path (XDG on Linux, Library on macOS).
+ *
+ * Accepts optional overrides so the pure path-computation logic can be unit-tested
+ * without touching the real filesystem or process globals.
+ *
+ * @param {{ platform?: string, home?: string, xdgConfigHome?: string }} [opts]
+ */
+export function osConfigPointerPath({
+  platform = process.platform,
+  home = homedir(),
+  xdgConfigHome = process.env.XDG_CONFIG_HOME,
+} = {}) {
+  if (platform === 'darwin') {
+    return join(home, 'Library', 'Application Support', 'Robin', 'install.json');
+  }
+  // Linux / other Unix.
+  if (xdgConfigHome) return join(xdgConfigHome, 'robin', 'install.json');
+  return join(home, '.config', 'robin', 'install.json');
 }
 
-export function resolveHomeStrict({ pointerPath = pointerFilePath() } = {}) {
+/**
+ * Resolve the pointer location(s) for read and write.
+ *
+ * Resolution chain:
+ *   1. $ROBIN_POINTER_PATH — test override, maps everything to one path.
+ *   2. <packageRoot>/.robin-home — writable-checkout (production default).
+ *   3. OS-native user-config path — read-only-package-root fallback (§18).
+ *
+ * Test-only overrides:
+ *   $ROBIN_POINTER_FALLBACK_PATH — overrides the OS-config path so tests can
+ *     exercise the fallback without touching real OS config directories.
+ *   $ROBIN_PACKAGE_ROOT_OVERRIDE — overrides `_packageRoot` so tests can point
+ *     the primary pointer at a controlled (possibly read-only) directory without
+ *     interfering with other tests that use $ROBIN_POINTER_PATH.
+ *
+ * @returns {{ read: string[], write: string | { primary: string, fallback: string } }}
+ */
+function pointerLocation() {
+  if (process.env.ROBIN_POINTER_PATH) {
+    return {
+      read: [process.env.ROBIN_POINTER_PATH],
+      write: process.env.ROBIN_POINTER_PATH,
+    };
+  }
+  const pkgRoot = process.env.ROBIN_PACKAGE_ROOT_OVERRIDE ?? _packageRoot;
+  const packageRootPath = join(pkgRoot, '.robin-home');
+  const fallbackPath = process.env.ROBIN_POINTER_FALLBACK_PATH ?? osConfigPointerPath();
+  return {
+    read: [packageRootPath, fallbackPath],
+    write: { primary: packageRootPath, fallback: fallbackPath },
+  };
+}
+
+/**
+ * Atomically write `payload` to path `p` via a tmp-then-rename sequence.
+ * This is the single `renameSync` call for the pointer file.
+ */
+function writePointerAtomic(p, payload) {
+  const tmp = `${p}.tmp`;
+  writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o644 });
+  renameSync(tmp, p);
+}
+
+export function resolveHomeStrict({ pointerPath } = {}) {
   if (process.env.ROBIN_HOME) {
     const p = resolve(process.env.ROBIN_HOME);
     if (!existsSync(p)) {
@@ -48,14 +105,21 @@ export function resolveHomeStrict({ pointerPath = pointerFilePath() } = {}) {
     }
     return p;
   }
-  if (!existsSync(pointerPath)) {
+
+  // Determine which pointer paths to search.
+  const searchPaths = pointerPath != null ? [pointerPath] : pointerLocation().read;
+
+  // Find the first existing pointer file.
+  const found = searchPaths.find((p) => existsSync(p));
+  if (!found) {
     throw new Error('Robin is not installed. Run: robin install');
   }
+
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(pointerPath, 'utf8'));
+    parsed = JSON.parse(readFileSync(found, 'utf8'));
   } catch (e) {
-    throw new Error(`malformed ${pointerPath}: ${e.message}`);
+    throw new Error(`malformed ${found}: ${e.message}`);
   }
   if (parsed?.version !== POINTER_VERSION) {
     throw new Error(
@@ -78,29 +142,50 @@ export function writePointer({ home, installedBy }) {
     installedAt: new Date().toISOString(),
     installedBy: installedBy ?? 'unknown',
   };
-  const p = pointerFilePath();
-  const tmp = `${p}.tmp`;
-  writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o644 });
-  renameSync(tmp, p);
+  const loc = pointerLocation();
+  const target = typeof loc.write === 'string' ? loc.write : loc.write.primary;
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    writePointerAtomic(target, payload);
+  } catch (e) {
+    if (
+      typeof loc.write === 'object' &&
+      (e.code === 'EACCES' || e.code === 'EROFS' || e.code === 'ENOENT')
+    ) {
+      // Package root is not writable (e.g. npm i -g into a system path).
+      // Fall back to the OS-native user-config location.
+      mkdirSync(dirname(loc.write.fallback), { recursive: true });
+      writePointerAtomic(loc.write.fallback, payload);
+      return;
+    }
+    throw e;
+  }
 }
 
 export function deletePointer() {
-  const p = pointerFilePath();
-  if (existsSync(p)) unlinkSync(p);
+  const loc = pointerLocation();
+  // Delete from ALL known locations so no stale pointer is left behind.
+  const paths =
+    typeof loc.write === 'string' ? [loc.write] : [loc.write.primary, loc.write.fallback];
+  for (const p of paths) {
+    if (existsSync(p)) unlinkSync(p);
+  }
 }
 
 export function pointerExists() {
-  return existsSync(pointerFilePath());
+  return pointerLocation().read.some((p) => existsSync(p));
 }
 
 export function readPointer() {
-  const p = pointerFilePath();
-  if (!existsSync(p)) return null;
-  try {
-    return JSON.parse(readFileSync(p, 'utf8'));
-  } catch {
-    return null;
+  for (const p of pointerLocation().read) {
+    if (!existsSync(p)) continue;
+    try {
+      return JSON.parse(readFileSync(p, 'utf8'));
+    } catch {
+      // Corrupted file — try the next location.
+    }
   }
+  return null;
 }
 
 export function robinHome() {
