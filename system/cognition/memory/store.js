@@ -485,12 +485,16 @@ let _recallConfigCachedAt = 0;
 /**
  * Reset the recall-config cache. For tests that need to bust the 5-s TTL
  * (e.g., after toggling `runtime:recall.value.conflict_surfacing_enabled`
- * mid-suite). Production callers should never need this.
+ * or `runtime:recall.value.entity_boost_enabled` mid-suite). Production
+ * callers should never need this. Exported under both names for test
+ * compatibility across rounds.
  */
 export function _resetRecallConfigCache() {
   _recallConfigCache = null;
   _recallConfigCachedAt = 0;
 }
+export const __resetRecallConfigCacheForTests = _resetRecallConfigCache;
+
 
 export async function getRecallConfig(db) {
   // 5-second cache; runtime:recall is read on every search call.
@@ -498,10 +502,15 @@ export async function getRecallConfig(db) {
     return _recallConfigCache;
   }
   try {
-    // SurrealDB v3 treats `value` as a reserved keyword in projection lists;
-    // escape with backticks. `FROM runtime:recall` directly fetches the row.
-    const [rows] = await db.query('SELECT `value` FROM runtime:recall').collect();
-    const value = rows?.[0]?.value ?? {};
+    // SurrealDB v3 treats both `runtime` (the table name) and `value`
+    // (the column name) as parse-sensitive: `runtime` because the
+    // schema-level keyword shadows it in certain contexts, `value` because
+    // it's reserved in projection lists. Use the raw-record syntax for
+    // the FROM target and `SELECT VALUE value` to project the column
+    // directly. The original `'SELECT value FROM runtime:recall'` was
+    // silently throwing, masking config drift behind HYBRID_DEFAULTS.
+    const [rows] = await db.query('SELECT VALUE value FROM r"runtime:recall"').collect();
+    const value = rows?.[0] ?? {};
     _recallConfigCache = { ...HYBRID_DEFAULTS, ...value };
   } catch {
     _recallConfigCache = HYBRID_DEFAULTS;

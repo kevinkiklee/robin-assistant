@@ -344,6 +344,31 @@ Substrate migrations are rare after v2. Most extensions go through registries, `
 - **`meta.*` over new columns.** Substrate tables have `meta: option<object> FLEXIBLE`. Extend through `meta.*` (indexable via field-path indexes) instead of adding columns.
 - **Cache-aware LLM prompts.** Biographer and dream prompts use `cache_control` annotations on the system-prompt + catalog layers so multi-event batches reuse the cached prefix.
 
+## Recall evaluation
+
+Score historical recall behavior:
+
+```bash
+# Default: 30-day window, all sources, no replay
+robin recall-eval
+
+# JSON for CI/cron consumption
+robin recall-eval --window 7d --json --limit 5000
+
+# Re-score under the current rank.score + MMR + entity-boost
+robin recall-eval --replay --window 30d --json
+```
+
+Exit codes:
+
+- `0` — `rows_scored ≥ min_rows`, no metric breached.
+- `1` — `rows_scored < min_rows` (inconclusive; do not page).
+- `2` — at least one metric breached `runtime:recall_eval.thresholds`. Page.
+- `3` — harness error (DB open, profile inactive, invalid args). Page.
+
+Threshold defaults are seeded by migration `0010-recall-eval-and-mmr.surql`;
+tune in `runtime:recall_eval.thresholds.value` after the first baseline run.
+
 ## See also
 
 - [`architecture.md`](architecture.md) — how the pieces fit together

@@ -3,13 +3,23 @@
 
 import { surql } from 'surrealdb';
 import { readStateInferenceConfig } from '../jobs/internal/state-inference.js';
+import { recordStringId } from '../memory/edge-registry.js';
 import { isOutboundBlocked } from '../memory/scope-registry.js';
 import { latestForSource } from '../memory/state_inference.js';
 import * as store from '../memory/store.js';
 import { getRecallConfig } from '../memory/store.js';
 import { buildConflictBlock, fetchContradictors } from './conflicts.js';
 import { recall } from './engine.js';
+import {
+  aboutEntitiesForMemos,
+  entityBoostFromAboutIds,
+  matchCatalogEntities,
+  matchPriorTailEntities,
+  readEntityCatalog,
+  tokensOf,
+} from './entities.js';
 import { mmrLite, score } from './rank.js';
+import { cosineSim, loadVectorsForHits } from './vectors.js';
 
 const PRIOR_TAIL_CHARS = 500;
 const LINE_CONTENT_CHARS = 120;
@@ -222,6 +232,15 @@ export async function intuitionEndpoint({
       : safePrior;
   const combined = priorTail.length > 0 ? `${safeQuery}\n\n${priorTail}` : safeQuery;
 
+  // Telemetry variables (declared in outer scope so the telemetry write below
+  // can pick them up regardless of which path the merge/MMR block took).
+  let mmrDropsOut = 0;
+  let mmrPathOut = 'cosine';
+  let mmrVecCoverageOut = 0;
+  let entityBoostAppliedOut = false;
+  let entityBoostCountOut = 0;
+  let queryEntitiesMatchedOut = 0;
+
   let hits = [];
   // B2 — declared here so it's available below the if-block for
   // buildConflictBlock + telemetry. Default to empty when surfacing is off
@@ -268,27 +287,102 @@ export async function intuitionEndpoint({
       contraByHit.set(ok, (contraByHit.get(ok) ?? 0) + 1);
     }
 
-    const merged = [...eventHits, ...memoHits].map((h) => ({
-      ...h,
-      _scored: score(
-        {
-          record: h.record,
-          distance: h.distance,
-          contradictionCount: contraByHit.get(String(h.record.id)) ?? 0,
-        },
-        { session_id: undefined },
-      ),
-    }));
+    // A2: entity boost. Gated by cfg.entity_boost_enabled. Boosts memos
+    // whose `about` edges point at entities matched by (a) the query
+    // tokens against the catalog, unioned with (b) entities mentioned in
+    // recent prior-tail biographed events (spec §3.1 candidates 1+2).
+    let matchedEntityIds = new Set();
+    let aboutByMemo = new Map();
+    if (cfg.entity_boost_enabled !== false) {
+      try {
+        const catalog = await readEntityCatalog(db, cfg);
+        const queryTokens = tokensOf(combined);
+        const matched = matchCatalogEntities(catalog, queryTokens);
+        const priorTailEnts = await matchPriorTailEntities(db, sessionId).catch(() => []);
+        matchedEntityIds = new Set(matched.map((m) => String(m.id)));
+        for (const e of priorTailEnts) matchedEntityIds.add(String(e.id));
+        queryEntitiesMatchedOut = matchedEntityIds.size;
+        const memoIdRefs = memoHits.map((h) => h.record.id);
+        if (memoIdRefs.length > 0 && matchedEntityIds.size > 0) {
+          aboutByMemo = await aboutEntitiesForMemos(db, memoIdRefs);
+        }
+      } catch {
+        // Fail-soft: no boost applied.
+      }
+    }
+
+    const merged = [...eventHits, ...memoHits].map((h) => {
+      let entityBoost = 1.0;
+      let entityBoostCount = 0;
+      if (h._kind === 'memo' && matchedEntityIds.size > 0) {
+        const memoKey = recordStringId(h.record.id);
+        const aboutIds = aboutByMemo.get(memoKey) ?? new Set();
+        const r = entityBoostFromAboutIds(aboutIds, matchedEntityIds, cfg);
+        entityBoost = r.boost;
+        entityBoostCount = r.count;
+      }
+      return {
+        ...h,
+        _scored: score(
+          {
+            record: h.record,
+            distance: h.distance,
+            contradictionCount: contraByHit.get(String(h.record.id)) ?? 0,
+          },
+          { session_id: undefined, entityBoost, entityBoostCount },
+        ),
+      };
+    });
     merged.sort((a, b) => (b._scored.score ?? 0) - (a._scored.score ?? 0));
 
-    // MMR-lite: drop near-duplicates without re-embedding. Since we don't
-    // have inline embeddings here, fall back to substring overlap as a
-    // cheap proxy for cosine.
-    const deduped = mmrLite(
-      merged,
-      (a, b) => substringOverlap(a.record.content, b.record.content),
-      0.85,
-    ).slice(0, k);
+    // Capture A2 telemetry.
+    for (const m of merged) {
+      const eb = m._scored?.components?.entityBoost ?? 1.0;
+      if (eb > 1.0) {
+        entityBoostAppliedOut = true;
+        entityBoostCountOut += 1;
+      }
+    }
+
+    // A1: cosine-based MMR with batched vector hydration. Falls back to
+    // substring overlap when vectors are unavailable or disabled.
+    const eventIds = merged.filter((h) => h._kind === 'event').map((h) => h.record.id);
+    const memoIds = merged.filter((h) => h._kind === 'memo').map((h) => h.record.id);
+
+    let vectors = new Map();
+    if (cfg.mmr_use_cosine !== false && merged.length >= 2) {
+      try {
+        vectors = await loadVectorsForHits(db, { eventIds, memoIds });
+      } catch {
+        vectors = new Map();
+      }
+    }
+    const vecCoverage = merged.length === 0 ? 0 : vectors.size / merged.length;
+    const useCosine = cfg.mmr_use_cosine !== false && vectors.size >= 2;
+    let cosineFn;
+    let threshold;
+    let mmrPath;
+    if (useCosine) {
+      const vecAt = (h) => vectors.get(recordStringId(h.record.id));
+      cosineFn = (a, b) => {
+        const va = vecAt(a);
+        const vb = vecAt(b);
+        return va && vb ? cosineSim(va, vb) : 0;
+      };
+      threshold = cfg.mmr_threshold ?? 0.92;
+      mmrPath = 'cosine';
+    } else {
+      cosineFn = (a, b) => substringOverlap(a.record.content, b.record.content);
+      threshold = cfg.mmr_threshold_legacy_substring ?? 0.85;
+      mmrPath = 'substring';
+    }
+    const dedupedAll = mmrLite(merged, cosineFn, threshold);
+    const mmrDrops = merged.length - dedupedAll.length;
+    const deduped = dedupedAll.slice(0, k);
+
+    mmrDropsOut = mmrDrops;
+    mmrPathOut = mmrPath;
+    mmrVecCoverageOut = vecCoverage;
 
     hits = deduped.map((h) => ({
       id: h.record.id,
@@ -299,9 +393,10 @@ export async function intuitionEndpoint({
       dist: h.distance,
       _kind: h._kind,
       // B2 — carry the already-computed score components (with the wired
-      // contradictionCount) so the recall_log rebuild doesn't re-invoke
-      // score() with a stale {contradictionCount: 0}.
+      // contradictionCount and A2 entityBoost) so the recall_log rebuild
+      // doesn't re-invoke score() with stale args.
       _scoreComponents: h._scored?.components,
+      _scored: h._scored,
     }));
   }
 
@@ -381,6 +476,14 @@ export async function intuitionEndpoint({
       truncated,
       focus_tokens,
       focus_suppressed_reason,
+      meta: {
+        mmr_drops: mmrDropsOut,
+        mmr_path: mmrPathOut,
+        mmr_vec_coverage: mmrVecCoverageOut,
+        entity_boost_applied: entityBoostAppliedOut,
+        entity_boost_count: entityBoostCountOut,
+        query_entities_matched: queryEntitiesMatchedOut,
+      },
     };
     // B2 fields emitted only when the feature is on — keeps row shape
     // backwards-compatible for flag-off installs per spec §10.
@@ -406,14 +509,18 @@ export async function intuitionEndpoint({
       record: h.id,
       kind: h._kind,
       // Prefer the already-computed components (wired with the correct
-      // contradictionCount); fall back to a fresh score() call for safety.
+      // contradictionCount AND A2 entityBoost); fall back to a fresh
+      // score() call for safety.
       score_components:
-        h._scoreComponents ?? score({ record: h, distance: h.dist ?? 0 }).components,
+        h._scoreComponents ??
+        h._scored?.components ??
+        score({ record: h, distance: h.dist ?? 0 }).components,
       rank: i,
     }));
     const recallMeta = {
       latency_ms,
       truncated,
+      from: 'intuition',
       focus_block_present: focus_block.length > 0,
       focus_block_tokens: focus_tokens,
     };

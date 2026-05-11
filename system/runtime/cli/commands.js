@@ -14,6 +14,11 @@ export const commands = {
     help: 'apply schema migrations',
   },
   doctor: { import: './commands/doctor.js', export: 'doctor', help: 'health check' },
+  'recall-eval': {
+    import: './commands/recall-eval.js',
+    export: 'recallEval',
+    help: 'recall eval harness (A3)',
+  },
   remember: { import: './commands/remember.js', export: 'remember', help: 'CLI memory write' },
   journal: { import: './commands/journal.js', export: 'journalCmd', help: 'recent capture' },
   hot: { import: './commands/hot.js', export: 'hotCmd', help: 'hot entities/topics' },

@@ -3,6 +3,7 @@ import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
+import { surql } from 'surrealdb';
 import * as store from '../../cognition/memory/store.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
@@ -124,5 +125,23 @@ test('daemon-constructed MCP recall tool persists active session_id', async () =
   await tool.handler({ query: 'x', limit: 3 });
   const [rows] = await db.query('SELECT session_id FROM recall_log').collect();
   assert.equal(rows[0].session_id, 'daemon-sess-7');
+  await close(db);
+});
+
+test('mcp recall tool writes meta.from=mcp_recall and meta.latency_ms on recall_log', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, { source: 'cli', content: 'sourdough recipe' });
+  const detector = { check: () => ({ repeat: false }), observe: () => {} };
+  const tool = createRecallTool({
+    db,
+    embedder: e,
+    detector,
+    getSessionId: () => 'sess-x',
+  });
+  await tool.handler({ query: 'sourdough', limit: 3 });
+  const [rows] = await db.query(surql`SELECT meta FROM recall_log`).collect();
+  assert.equal(rows[0].meta?.from, 'mcp_recall');
+  assert.ok(typeof rows[0].meta?.latency_ms === 'number');
   await close(db);
 });
