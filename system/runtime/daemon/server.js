@@ -1,688 +1,85 @@
-import { existsSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { surql } from 'surrealdb';
-import { biographerProcess } from '../../cognition/biographer/pipeline.js';
-import { createBiographerQueue } from '../../cognition/biographer/queue.js';
-import { dreamProcess } from '../../cognition/dream/pipeline.js';
-import {
-  resetActionTrust,
-  runActionTrustDecay,
-  setActionTrust,
-} from '../../cognition/jobs/action-trust.js';
-import { synthesizeCommStyle } from '../../cognition/jobs/comm-style.js';
-import { garbageCollect, getJob, upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
-import { discoverJobs } from '../../cognition/jobs/loader.js';
-import {
-  computeCalibration,
-  resolvePrediction,
-  setCalibration,
-} from '../../cognition/jobs/predictions.js';
-import { runOneJob } from '../../cognition/jobs/runner.js';
-import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
-import { clearDaemonState, writeDaemonState } from '../../config/daemon-state.js';
-import { ensureHome, paths } from '../../config/data-store.js';
-import { readConfig } from '../../config/paths.js';
-import { envFilePath } from '../../config/secrets.js';
-import { close, connect, defaultDbUrl } from '../../data/db/client.js';
-import { createEmbedder } from '../../data/embed/factory.js';
-import { resetInFlightFlags } from '../../io/integrations/_framework/boot-cleanup.js';
-import { createCapture } from '../../io/integrations/_framework/capture.js';
-import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
-import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
-import { createRepeatQueryDetector } from '../../io/mcp/implicit-signals.js';
-import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
-import { createAuditTool } from '../../io/mcp/tools/audit.js';
-import { createCheckActionTool } from '../../io/mcp/tools/check-action.js';
-import { createEndorseTool } from '../../io/mcp/tools/endorse.js';
-import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
-import { createExplainBeliefTool } from '../../io/mcp/tools/explain-belief.js';
-import { createExplainRecallTool } from '../../io/mcp/tools/explain-recall.js';
-import { createFindEntityTool } from '../../io/mcp/tools/find-entity.js';
-import { createGetArcTool } from '../../io/mcp/tools/get-arc.js';
-import { createGetCommStyleTool } from '../../io/mcp/tools/get-comm-style.js';
-import { createGetEntityTool } from '../../io/mcp/tools/get-entity.js';
-import { createGetHotTool } from '../../io/mcp/tools/get-hot.js';
-import { createGetKnowledgeTool } from '../../io/mcp/tools/get-knowledge.js';
-import { createGetProfileTool } from '../../io/mcp/tools/get-profile.js';
-import { createHealthTool } from '../../io/mcp/tools/health.js';
-import { createIngestTool } from '../../io/mcp/tools/ingest.js';
-import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
-import { createIntegrationStatusTool } from '../../io/mcp/tools/integration-status.js';
-import { createLintTool } from '../../io/mcp/tools/lint.js';
-import { createListArcsTool } from '../../io/mcp/tools/list-arcs.js';
-import { createListEpisodesTool } from '../../io/mcp/tools/list-episodes.js';
-import { createListJobsTool } from '../../io/mcp/tools/list-jobs.js';
-import { createListJournalTool } from '../../io/mcp/tools/list-journal.js';
-import { createListOpenPredictionsTool } from '../../io/mcp/tools/list-open-predictions.js';
-import { createListPatternsTool } from '../../io/mcp/tools/list-patterns.js';
-import { createListRulesTool } from '../../io/mcp/tools/list-rules.js';
-import { createPredictTool } from '../../io/mcp/tools/predict.js';
-import { createRecallTool } from '../../io/mcp/tools/recall.js';
-import { createRecentRefusalsTool } from '../../io/mcp/tools/recent-refusals.js';
-import { createRecordCorrectionTool } from '../../io/mcp/tools/record-correction.js';
-import { createRefuteTool } from '../../io/mcp/tools/refute.js';
-import { createRelatedEntitiesTool } from '../../io/mcp/tools/related-entities.js';
-import { createRememberTool } from '../../io/mcp/tools/remember.js';
-import { createResolvePredictionTool } from '../../io/mcp/tools/resolve-prediction.js';
-import { createRunBiographerTool } from '../../io/mcp/tools/run-biographer.js';
-import { createRunDreamTool } from '../../io/mcp/tools/run-dream.js';
-import { createRunJobTool } from '../../io/mcp/tools/run-job.js';
-import { createShowPendingTriggersTool } from '../../io/mcp/tools/show-pending-triggers.js';
-import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js';
-import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
-import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
+import { paths } from '../../config/data-store.js';
 import { detectHost } from '../hosts/detect.js';
+import { boot } from './boot.js';
 import { consumePendingTriggers } from './cadence-consumer.js';
-import { createFatalHandler, installFatalHandlers } from './fatal.js';
+import { createDispatcherTick } from './dispatcher-tick.js';
 import { createScheduler } from './heartbeat.js';
-import { createIdleEmbedder } from './idle-embedder.js';
-import { runIntrospection } from './introspection.js';
-import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
+import { startHttp } from './http.js';
+import { createLifecycle } from './lifecycle.js';
 import { bindFreePort } from './port.js';
-import { retryWithBackoff } from './retry.js';
-import { endSession, listActiveSessions, markStaleSessions, registerSession } from './sessions.js';
-import { getCliVersion } from './version-handshake.js';
+import { buildRoutes } from './routes/index.js';
+import { markStaleSessions } from './sessions.js';
+import { buildTools } from './tools.js';
 
-const BUILTIN_JOBS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'builtin');
-
+/**
+ * The daemon's thin compose. Each subsystem owns its own concerns:
+ *
+ *   lifecycle.js     lock, shutdown, fatal handlers, state file, signals
+ *   boot.js          DB, embedder, introspection, host, integrations, jobs
+ *   tools.js         pure ctx → MCP Tool[]
+ *   routes/          per-domain /internal/* route table
+ *   http.js          route dispatcher + 404 + 500 + /sse special case
+ *   mcp-sse.js       SSE transport wiring
+ *   heartbeat.js     bucket-based scheduler
+ *   dispatcher-tick.js  the 'dispatcher' bucket's tick body
+ */
 export async function startDaemon() {
-  const version = await getCliVersion();
-  await ensureHome();
-  if (!existsSync(envFilePath())) {
-    console.warn(`[daemon] no secrets file at ${envFilePath()} — integrations will fail.`);
-    console.warn(
-      '         Run: robin secrets import --from <v1-user-data>  (or: robin secrets set <KEY>)',
-    );
-  }
-  const lockPath = paths.data.daemonLock();
-  const statePath = paths.data.daemonState();
-
-  await acquireDaemonLock(lockPath);
-
-  const startedAt = new Date();
-  let dbHandle = null;
-  let httpServer = null;
-  let scheduler = null;
-  let shuttingDown = false;
-  const gatewayClients = new Map();
-  const registry = new Map();
-
-  // Install fatal handlers as early as possible (post-lock, pre-DB). Boot
-  // crashes get logged to <robin-home>/logs/fatal.log; force-exit timer
-  // guarantees the process dies even if shutdown hangs.
-  const fatalLogDir = `${paths.data.home()}/logs`;
-  const fatalHandler = createFatalHandler({
-    logDir: fatalLogDir,
-    shutdown: () => shutdown('fatal'),
+  const lifecycle = createLifecycle({
+    lockPath: paths.data.daemonLock(),
+    statePath: paths.data.daemonState(),
+    logDir: `${paths.data.home()}/logs`,
   });
-  const uninstallFatal = installFatalHandlers(fatalHandler);
-
-  async function shutdown(signal) {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    if (signal) console.log(`daemon: received ${signal}, shutting down`);
-    if (scheduler) {
-      console.log('scheduler stopping (in-flight dream may continue briefly)');
-      scheduler.stop();
-    }
-    const grace = setTimeout(() => {
-      console.warn('daemon: shutdown grace expired, forcing exit');
-      process.exit(1);
-    }, 10_000);
-    grace.unref?.();
-    for (const [name, client] of gatewayClients) {
-      const m = registry.get(name);
-      if (m?.stop) {
-        try {
-          await m.stop({ log: console.log }, client);
-          console.log(`integration ${name}: stopped`);
-        } catch (e) {
-          console.warn(`integration ${name}: stop failed: ${e.message}`);
-        }
-      }
-    }
-    if (httpServer) httpServer.close();
-    if (dbHandle) await close(dbHandle).catch(() => {});
-    await clearDaemonState(statePath).catch(() => {});
-    await releaseDaemonLock(lockPath).catch(() => {});
-    if (uninstallFatal) uninstallFatal();
-    clearTimeout(grace);
-  }
-
-  process.on('SIGTERM', () => {
-    shutdown('SIGTERM').finally(() => process.exit(0));
-  });
-  process.on('SIGINT', () => {
-    shutdown('SIGINT').finally(() => process.exit(0));
-  });
+  await lifecycle.acquireLock();
 
   try {
-    dbHandle = await connect({ engine: await defaultDbUrl() });
+    const ctx = await boot();
+    const tools = buildTools(ctx);
+    const routes = buildRoutes();
+    const { server: probe, port } = await bindFreePort();
+    probe.close();
 
-    // Profile-drift detection. config.json is filesystem state; runtime:embedder
-    // is set by whichever 0008-embedder-<profile>.surql migration last ran.
-    // If a user hand-edits config.json without running `robin embedder switch`,
-    // the HNSW index dimension and the new embedder dim disagree — first insert
-    // would fail an array-length assertion. Refuse to start with explicit
-    // remediation steps instead.
-    const cfg = await readConfig();
-    if (!cfg?.embedder_profile) {
-      console.error('[daemon] no embedder profile configured. Run `robin install` first.');
-      process.exit(1);
-    }
-    {
-      const [rows] = await dbHandle
-        .query(surql`SELECT * FROM type::record('runtime', 'embedder')`)
-        .collect();
-      const runtimeProfile = rows?.[0]?.value?.profile;
-      if (runtimeProfile && runtimeProfile !== cfg.embedder_profile) {
-        console.error(
-          `[daemon] config drift detected:\n  config.json says: ${cfg.embedder_profile}\n  runtime:embedder says: ${runtimeProfile}\nRun \`robin embedder switch ${cfg.embedder_profile}\` to migrate the schema, or revert config.json.`,
-        );
-        process.exit(1);
-      }
-    }
-
-    const idleEmbedder = createIdleEmbedder({
-      factory: createEmbedder,
-      idleMs: 600_000,
-    });
-
-    // Embedder health check. The IdleEmbedder wrapper is just a lifecycle
-    // shell; .get() lazily resolves the inner embedder via createEmbedder().
-    // Each profile's healthCheck is cheap: mxbai is a no-op, qwen3 hits
-    // /api/tags, gemini just verifies GEMINI_API_KEY is set.
-    //
-    // Retry up to 3 attempts (~35s worst case) to tolerate cold Ollama starts
-    // or transient network blips. On final failure print profile-specific
-    // guidance and exit.
-    try {
-      await retryWithBackoff(
-        async () => {
-          const embedder = await idleEmbedder.get();
-          await embedder.healthCheck();
-        },
-        {
-          attempts: 3,
-          perAttemptTimeoutMs: 10_000,
-          backoffMs: [1000, 4000, 0],
-          onRetry: (err, attempt) => {
-            console.warn(
-              `[daemon] embedder health attempt ${attempt} failed: ${err.message}; retrying`,
-            );
-          },
-        },
-      );
-    } catch (e) {
-      const profile = cfg.embedder_profile;
-      console.error(`[daemon] embedder health check failed: ${e.message}`);
-      if (profile === 'qwen3-4096') {
-        const host = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
-        console.error(
-          `  Verify Ollama is reachable at ${host} and that qwen3-embedding:8b is installed.\n  Install: brew install ollama && ollama pull qwen3-embedding:8b`,
-        );
-      } else if (profile === 'gemini-3072') {
-        console.error(
-          '  Missing or invalid GEMINI_API_KEY. Run `robin secret set GEMINI_API_KEY <your_key>`.',
-        );
-      }
-      process.exit(1);
-    }
-    // Daemon-boot introspection. Result persists to runtime_introspection_state;
-    // SessionStart hook reads it without recomputing. Fail-soft: errors here
-    // do not block daemon boot — they surface as a finding row.
-    try {
-      const introspection = await runIntrospection(dbHandle);
-      if (!introspection.ok && introspection.findings.length > 0) {
-        for (const f of introspection.findings) {
-          console.warn(
-            `[daemon] introspection warning — ${f.kind}${f.path ? `: ${f.path}` : ''}${f.detail ? ` (${f.detail})` : ''}`,
-          );
-        }
-      }
-    } catch (e) {
-      console.warn(`[daemon] introspection failed (non-fatal): ${e.message}`);
-    }
-
-    // Eagerly resolve the host so the scheduler + run_dream tool can use a
-    // stable reference. If detection throws (no host CLI on PATH and no
-    // ROBIN_HOST override), keep `host` null and fall back to the original
-    // lazy-detect path inside the biographer worker — that preserves Phase
-    // 2b semantics where a daemon without a host CLI still boots fine for
-    // recall/remember tools.
-    let host = null;
-    try {
-      host = await detectHost();
-    } catch (e) {
-      console.warn(
-        `[daemon] no host detected at startup: ${e.message}; scheduler disabled, run_dream will fail until a host is available`,
-      );
-    }
-    async function getHost() {
-      if (!host) host = await detectHost();
-      return host;
-    }
-
-    // Host reactivation is handled by a 'host-watchdog' bucket below — it
-    // gates on `!host` and self-cancels once a host appears.
-    if (!host) {
-      console.warn('[daemon] host-watchdog armed (5 min retries via scheduler bucket)');
-    }
-    const queue = createBiographerQueue({
-      worker: async (eventId) => {
-        const e = await idleEmbedder.get();
-        const h = await getHost();
-        await biographerProcess(dbHandle, e, h, eventId);
-      },
-      dedupe: true,
-    });
-    let lastBiographerRunAt = null;
-    const queueWrap = {
-      enqueue: (id) => {
-        const ret = queue.enqueue(id);
-        // Queue may return { skipped: true } when at maxPending cap — not a promise.
-        // Wrap it as a resolved promise so callers' .catch() / .then() chains
-        // continue to work transparently.
-        if (ret && typeof ret.then === 'function') {
-          ret
-            .then(() => {
-              lastBiographerRunAt = new Date().toISOString();
-            })
-            .catch((e) =>
-              console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
-            );
-          return ret;
-        }
-        return Promise.resolve(ret);
-      },
-      get lastRunAt() {
-        return lastBiographerRunAt;
-      },
-      get pendingDepth() {
-        return queue.pendingDepth;
-      },
-      get skippedSinceBoot() {
-        return queue.skippedSinceBoot;
-      },
-      get lastSkippedAt() {
-        return queue.lastSkippedAt;
-      },
-    };
-    const detector = createRepeatQueryDetector({});
-
-    const sessions = { count: 0 };
-    const dbWrap = {
-      isOpen: () => true,
-      query: (...a) => dbHandle.query(...a),
-    };
-    const embedderWrap = {
-      isLoaded: () => false,
-      embed: async (text) => (await idleEmbedder.get()).embed(text),
-    };
-
-    // Boot integrations: clear stale in_flight flags, load manifests, build
-    // registry entries with secrets + per-integration capture helper, seed
-    // scheduler cursor rows for scheduled syncs, and boot gateway integrations.
-    await resetInFlightFlags(dbHandle);
-
-    const integrationsDir = new URL('../integrations/', import.meta.url).pathname;
-    const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
-    if (unavailable.length > 0) {
-      for (const u of unavailable) {
-        console.warn(`[daemon] integration ${u.name} unavailable: ${u.error}`);
-      }
-    }
-
-    for (const m of manifests) {
-      const capture = createCapture({
-        db: dbHandle,
-        embedder: embedderWrap,
-        source: m.name,
-        embed: m.embed,
-        mode: m.capture_mode,
-      });
-      registry.set(m.name, { ...m, capture });
-
-      if (m.cadence_ms !== null && m.sync) {
-        // Sync integration: seed scheduler cursor.
-        // (Note: dream cursor is seeded once below after the loop.)
-        const [rows] = await dbHandle
-          .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-          .collect();
-        const value = rows[0]?.value ?? {};
-        const integrations = value.integrations ?? {};
-        if (!integrations[m.name]) {
-          integrations[m.name] = {
-            cadence_ms: m.cadence_ms,
-            next_run_at: new Date(),
-            consecutive_failures: 0,
-          };
-          await dbHandle
-            .query(
-              surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, integrations }}`,
-            )
-            .collect();
-        }
-      } else if (m.cadence_ms === null && m.start) {
-        // Gateway integration: boot via start fn.
-        // Secrets are pulled directly from dotenv inside the integration's
-        // start fn (e.g. discord), so the daemon no longer needs to fetch
-        // them ahead of time. A missing required secret throws inside start
-        // and we log + continue.
-        try {
-          const ctx = {
-            db: dbHandle,
-            host,
-            log: (...a) => console.log(`[${m.name}]`, ...a),
-            capture,
-          };
-          const client = await m.start(ctx);
-          gatewayClients.set(m.name, client);
-          console.log(`integration ${m.name}: gateway started`);
-        } catch (e) {
-          console.warn(`integration ${m.name}: gateway start failed: ${e.message}`);
-        }
-      } else if (m.cadence_ms === null && !m.start && (m.tools?.length ?? 0) > 0) {
-        // Tool-only integration: no scheduler cursor, no gateway boot. Tools
-        // register below; the integration is invoked exclusively via MCP.
-        console.log(`integration ${m.name}: tool-only (no sync, no gateway)`);
-      } else {
-        console.warn(`integration ${m.name}: invalid kind (no sync, start, or tools)`);
-      }
-    }
-
-    // Seed dream cursor (next 4am) once at boot if absent.
-    {
-      const [rows] = await dbHandle
-        .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-        .collect();
-      const value = rows[0]?.value ?? {};
-      if (!value.dream?.next_run_at) {
-        const next = new Date();
-        next.setHours(4, 0, 0, 0);
-        if (next <= new Date()) next.setDate(next.getDate() + 1);
-        const dream = { ...(value.dream ?? {}), next_run_at: next };
-        await dbHandle
-          .query(
-            surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, dream }}`,
-          )
-          .collect();
-      }
-    }
-
-    // Phase 4d — discover jobs (built-in + user) and UPSERT into runtime_jobs.
-    const jobsCache = { current: [] };
-    const refreshJobs = async () => {
-      const userJobsDir = join(paths.data.home(), 'jobs');
-      jobsCache.current = discoverJobs({
-        builtinDir: BUILTIN_JOBS_DIR,
-        userDir: userJobsDir,
-      });
-      await upsertFromDiscovered(dbHandle, jobsCache.current);
-      await garbageCollect(dbHandle, new Set(jobsCache.current.map((j) => j.name)));
-      await planNextRunAt(dbHandle, jobsCache.current);
-    };
-    await refreshJobs();
-
-    const tools = [
-      createHealthTool({
-        version,
-        startedAt,
-        db: dbWrap,
-        embedder: embedderWrap,
-        biographerQueue: queueWrap,
-        sessions,
-      }),
-      createRecallTool({
-        db: dbHandle,
-        embedder: embedderWrap,
-        detector,
-        getSessionId: () => null,
-      }),
-      createRememberTool({ db: dbHandle, embedder: embedderWrap, queue: queueWrap }),
-      createRunBiographerTool({ db: dbHandle, processor: queueWrap.enqueue }),
-      createFindEntityTool({ db: dbHandle, embedder: embedderWrap }),
-      createGetEntityTool({ db: dbHandle }),
-      createRelatedEntitiesTool({ db: dbHandle }),
-      createListEpisodesTool({ db: dbHandle }),
-      createRecordCorrectionTool({
-        db: dbHandle,
-        embedder: embedderWrap,
-        processor: queueWrap.enqueue,
-      }),
-      // Phase 2c read/update tools
-      createGetKnowledgeTool({ db: dbHandle, embedder: embedderWrap }),
-      createListPatternsTool({ db: dbHandle }),
-      createGetProfileTool({ db: dbHandle }),
-      createListJournalTool({ db: dbHandle }),
-      createGetHotTool({ db: dbHandle }),
-      createListRulesTool({ db: dbHandle }),
-      createUpdateRuleTool({ db: dbHandle }),
-      createRunDreamTool({
-        db: dbHandle,
-        host,
-        embedder: embedderWrap,
-        dreamProcess,
-      }),
-    ];
-
-    // Integration MCP tools: status + manual run + per-manifest factories.
-    tools.push(createIntegrationStatusTool({ db: dbHandle }));
-    tools.push(createIntegrationRunTool({ db: dbHandle, registry, runIntegrationSync }));
-    const getGatewayClient = (name) => gatewayClients.get(name) ?? null;
-    for (const m of manifests) {
-      for (const factory of m.tools ?? []) {
-        try {
-          const reg = registry.get(m.name);
-          const tool = factory({
-            db: dbHandle,
-            embedder: embedderWrap,
-            capture: reg?.capture,
-            getGatewayClient,
-          });
-          tools.push(tool);
-        } catch (e) {
-          console.warn(`integration ${m.name}: tool factory failed: ${e.message}`);
-        }
-      }
-    }
-
-    // Phase 4d — job runner MCP tools.
-    const captureForJobs = createCapture({
-      db: dbHandle,
-      embedder: embedderWrap,
-      source: 'job_output',
-      embed: false,
-      mode: 'insert-or-skip',
-    });
-    tools.push(createListJobsTool({ db: dbHandle }));
-    tools.push(
-      createRunJobTool({
-        db: dbHandle,
-        capture: captureForJobs,
-        host,
-        tools: () => tools,
-        getJobs: () => jobsCache.current,
-      }),
-    );
-    tools.push(createIngestTool({ db: dbHandle, embedder: embedderWrap, host }));
-    tools.push(createLintTool({ db: dbHandle }));
-    tools.push(createAuditTool({ db: dbHandle, host }));
-    tools.push(createCheckActionTool({ db: dbHandle }));
-    tools.push(createUpdateActionPolicyTool({ db: dbHandle }));
-    tools.push(createGetCommStyleTool({ db: dbHandle }));
-    tools.push(createPredictTool({ db: dbHandle }));
-    tools.push(createResolvePredictionTool({ db: dbHandle }));
-    tools.push(createListOpenPredictionsTool({ db: dbHandle }));
-    tools.push(createEndorseTool({ db: dbHandle }));
-    tools.push(createRefuteTool({ db: dbHandle }));
-    tools.push(createListArcsTool({ db: dbHandle }));
-    tools.push(createGetArcTool({ db: dbHandle }));
-    tools.push(createExplainRecallTool({ db: dbHandle }));
-    tools.push(createExplainBeliefTool({ db: dbHandle }));
-    tools.push(createExplainActionTrustTool({ db: dbHandle }));
-    tools.push(createShowPendingTriggersTool({ db: dbHandle }));
-    tools.push(createShowStepHealthTool({ db: dbHandle }));
-    tools.push(createRecentRefusalsTool({ db: dbHandle }));
-    tools.push(createArchiveHistoryTool({ db: dbHandle }));
-
-    // Tiered heartbeat scheduler. Each subsystem runs as a named bucket
-    // with its own interval and (optional) gate. The dispatcher bucket
-    // surveys due integrations + dream cursor + embed-backfill + jobs
-    // each tick and fans out via runOneItem.
-    const inFlight = new Set();
-    async function runOneItem(name) {
-      const job = jobsCache.current.find((j) => j.name === name);
-      if (job) {
-        await runOneJob({
-          db: dbHandle,
-          capture: captureForJobs,
-          host,
-          jobs: jobsCache.current,
-          tools,
-          name,
-        });
-        await planNextRunAt(dbHandle, jobsCache.current);
-        return;
-      }
-      if (name === '__embed_backfill__') {
-        const e = await idleEmbedder.get();
-        const { embedBackfillTick } = await import('../../data/embed/backfill.js');
-        return await embedBackfillTick({ db: dbHandle, embedder: e, batch: 64, log: console.log });
-      }
-      if (name === '__dream__') {
-        const e = await idleEmbedder.get();
-        const h = await getHost();
-        try {
-          return await dreamProcess(dbHandle, h, e);
-        } finally {
-          const next = new Date();
-          next.setHours(4, 0, 0, 0);
-          if (next <= new Date()) next.setDate(next.getDate() + 1);
-          const [drows] = await dbHandle
-            .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-            .collect();
-          const dvalue = drows[0]?.value ?? {};
-          const dream = { ...(dvalue.dream ?? {}), next_run_at: next, last_run_at: new Date() };
-          await dbHandle
-            .query(
-              surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...dvalue, dream }}`,
-            )
-            .collect();
-        }
-      }
-      return await runIntegrationSync(dbHandle, registry, name);
-    }
-
-    async function dispatcherTick() {
-      // Refresh jobs from disk so drop-in markdown is picked up.
-      await refreshJobs();
-      const due = [];
-      const [rows] = await dbHandle
-        .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
-        .collect();
-      const value = rows[0]?.value ?? {};
-      const integrations = value.integrations ?? {};
-      const now = new Date();
-      for (const [name, row] of Object.entries(integrations)) {
-        if (!row?.next_run_at) continue;
-        if (new Date(row.next_run_at) <= now && !row.in_flight) {
-          due.push({ name, kind: 'integration' });
-        }
-      }
-      const dreamCursor = value.dream;
-      if (dreamCursor?.next_run_at && new Date(dreamCursor.next_run_at) <= now) {
-        due.push({ name: '__dream__', kind: 'dream' });
-      }
-      try {
-        const { activeProfile, embeddingTable } = await import(
-          '../../data/embed/profile-router.js'
-        );
-        const profile = await activeProfile(dbHandle);
-        const eventsEmbTbl = embeddingTable(profile, 'events');
-        const [pending] = await dbHandle
-          .query(
-            `SELECT count() AS n FROM events
-             WHERE meta.embed_failed IS NOT true
-               AND id NOT IN (SELECT VALUE record FROM ${eventsEmbTbl})
-             GROUP ALL`,
-          )
-          .collect();
-        if ((pending[0]?.n ?? 0) > 0) {
-          due.push({ name: '__embed_backfill__', kind: 'embed_backfill' });
-        }
-      } catch {
-        // No active profile yet (fresh DB) — backfill simply isn't due.
-      }
-      const jobsDue = await listDueJobs(dbHandle, new Date());
-      const all = [...due, ...jobsDue];
-
-      for (const item of all) {
-        if (inFlight.has(item.name)) continue;
-        inFlight.add(item.name);
-        runOneItem(item.name)
-          .catch((e) => console.warn(`[scheduler] ${item.name} failed: ${e.message}`))
-          .finally(() => inFlight.delete(item.name));
-      }
-      // Overflow fallback: if nothing else dispatched and biographer backlog is huge, kick dream.
-      if (inFlight.size === 0) {
-        const [overflowRows] = await dbHandle
-          .query(surql`SELECT count() AS n FROM events WHERE biographed_at IS NONE GROUP ALL`)
-          .collect();
-        if ((overflowRows[0]?.n ?? 0) >= 500) {
-          inFlight.add('__dream__');
-          runOneItem('__dream__')
-            .catch((e) => console.warn(`[scheduler] __dream__ failed: ${e.message}`))
-            .finally(() => inFlight.delete('__dream__'));
-        }
-      }
-    }
-
-    scheduler = createScheduler({
+    const dispatcherTick = createDispatcherTick(ctx, tools);
+    const scheduler = createScheduler({
       buckets: [
         {
           name: 'dispatcher',
           intervalMs: 60_000,
-          gate: () => !!host,
+          gate: () => !!ctx.host,
           tick: dispatcherTick,
           fireImmediately: true,
         },
         {
           name: 'cadence',
           intervalMs: 60_000,
-          gate: () => !!host,
-          tick: () => consumePendingTriggers(dbHandle, host),
+          gate: () => !!ctx.host,
+          tick: () => consumePendingTriggers(ctx.db, ctx.host),
         },
         {
           name: 'stale-sessions',
           intervalMs: 60_000,
-          tick: () => markStaleSessions(dbHandle),
+          tick: () => markStaleSessions(ctx.db),
         },
         {
           name: 'stale-episodes',
           intervalMs: 600_000,
-          tick: () => closeStaleEpisodes(dbHandle),
+          tick: () => closeStaleEpisodes(ctx.db),
         },
         {
           name: 'action-decay',
           intervalMs: 6 * 60 * 60_000,
-          tick: () => runActionTrustDecay(dbHandle),
+          tick: () => runActionTrustDecay(ctx.db),
         },
         {
           name: 'host-watchdog',
           intervalMs: 5 * 60_000,
-          gate: () => !host,
+          gate: () => !ctx.host,
           tick: async () => {
             try {
               const h = await detectHost();
               if (h) {
-                host = h;
+                ctx.setHost(h);
                 console.log('[daemon] host detected by watchdog — dispatcher + cadence active');
               }
             } catch {
@@ -694,347 +91,40 @@ export async function startDaemon() {
     });
     scheduler.start();
 
-    const { server: probe, port } = await bindFreePort();
-    probe.close();
+    const httpServer = startHttp({ ctx, tools, routes, port });
 
-    async function readJsonBody(req) {
-      return await new Promise((resolveBody) => {
-        const chunks = [];
-        req.on('data', (c) => chunks.push(c));
-        req.on('end', () => {
-          const raw = Buffer.concat(chunks).toString('utf8');
-          if (!raw) return resolveBody({});
-          try {
-            resolveBody(JSON.parse(raw));
-          } catch {
-            resolveBody({});
-          }
-        });
-        req.on('error', () => resolveBody({}));
-      });
-    }
-
-    httpServer = createServer(async (req, res) => {
-      try {
-        if (req.method === 'POST' && req.url === '/internal/biographer/process-pending') {
-          const body = await readJsonBody(req);
-          // Capture pre-step (fail-soft). When the Stop hook forwards
-          // transcript_path, read the latest turn and write a conversation
-          // event before draining pending — biographer then processes it
-          // alongside any other pending rows.
-          if (body && typeof body.transcript_path === 'string' && body.transcript_path.length > 0) {
-            try {
-              const { captureFromTranscript } = await import('../../io/capture/session-capture.js');
-              await captureFromTranscript(dbHandle, embedderWrap, {
-                transcriptPath: body.transcript_path,
-                sessionId: body.session_id ?? body.sessionId ?? null,
-                host: host?.name ?? null,
-              });
-            } catch (e) {
-              console.error(`daemon capture pre-step failed: ${e.message}`);
+    lifecycle.ready({
+      scheduler,
+      httpServer,
+      integrations: {
+        stop: async () => {
+          for (const [name, client] of ctx.gatewayClients) {
+            const m = ctx.registry.get(name);
+            if (m?.stop) {
+              try {
+                await m.stop({ log: console.log }, client);
+                console.log(`integration ${name}: stopped`);
+              } catch (e) {
+                console.warn(`integration ${name}: stop failed: ${e.message}`);
+              }
             }
           }
-
-          const [pendingRows] = await dbHandle
-            .query('SELECT id, ts FROM events WHERE biographed_at IS NONE ORDER BY ts ASC LIMIT 50')
-            .collect();
-          for (const row of pendingRows) {
-            queueWrap.enqueue(String(row.id)).catch(() => {
-              // queueWrap already logs; swallow here to keep loop going.
-            });
-          }
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ enqueued: pendingRows.length }));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/remember') {
-          const body = await readJsonBody(req);
-          if (typeof body.content !== 'string' || body.content.length === 0) {
-            res.writeHead(400, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ error: 'content required' }));
-            return;
-          }
-          try {
-            const { recordEvent } = await import('../../io/capture/record-event.js');
-            const { guardInboundContent } = await import(
-              '../../cognition/discretion/inbound-guard.js'
-            );
-            const result = await recordEvent(dbHandle, embedderWrap, {
-              source: body.source ?? 'cli',
-              content: body.content,
-              meta: body.meta ?? undefined,
-              guard: body.force === true ? undefined : guardInboundContent,
-            });
-            queueWrap.enqueue(String(result.id)).catch(() => {
-              // queueWrap already logs.
-            });
-            res.writeHead(200, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ id: String(result.id) }));
-          } catch (e) {
-            const code = e?.name === 'RobinPiiRefusedError' ? 422 : 500;
-            res.writeHead(code, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ error: e.message, name: e?.name }));
-          }
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/session/register') {
-          const body = await readJsonBody(req);
-          await markStaleSessions(dbHandle).catch(() => {});
-          await registerSession(dbHandle, {
-            sessionId: body.session_id ?? body.sessionId ?? `pid-${body.pid ?? 'unknown'}`,
-            host: body.host ?? 'unknown',
-            pid: typeof body.pid === 'number' ? body.pid : null,
-            transcriptPath: body.transcript_path ?? body.transcriptPath ?? null,
-          });
-          const active = await listActiveSessions(dbHandle);
-          let introspection_findings = [];
-          try {
-            const [rows] = await dbHandle
-              .query("SELECT * FROM type::record('runtime_introspection_state', 'current')")
-              .collect();
-            introspection_findings = rows?.[0]?.findings ?? [];
-          } catch {
-            introspection_findings = [];
-          }
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ session_count: active.length, introspection_findings }));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/session/end') {
-          const body = await readJsonBody(req);
-          await endSession(
-            dbHandle,
-            body.session_id ?? body.sessionId ?? `pid-${body.pid ?? 'unknown'}`,
-          );
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ ok: true }));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/jobs/run') {
-          const body = await readJsonBody(req);
-          const name = body?.name;
-          const force = body?.force === true;
-          if (!name) {
-            res.writeHead(400, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'missing name' }));
-            return;
-          }
-          const row = await getJob(dbHandle, name);
-          if (!row) {
-            res.writeHead(404, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'job not found' }));
-            return;
-          }
-          if (row.in_flight && !force) {
-            res.writeHead(409, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'in_flight' }));
-            return;
-          }
-          if (row.manually_runnable === false && !force) {
-            res.writeHead(403, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'not_manually_runnable' }));
-            return;
-          }
-          await runOneJob({
-            db: dbHandle,
-            capture: captureForJobs,
-            host,
-            jobs: jobsCache.current,
-            tools,
-            name,
-          });
-          await planNextRunAt(dbHandle, jobsCache.current);
-          const after = await getJob(dbHandle, name);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              ok: after.last_run_ok === true,
-              last_error: after.last_error ?? null,
-            }),
-          );
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/jobs/reload') {
-          await refreshJobs();
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, count: jobsCache.current.length }));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/knowledge/ingest') {
-          const body = await readJsonBody(req);
-          const tool = tools.find((t) => t.name === 'ingest');
-          if (!tool) {
-            res.writeHead(500, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'ingest_tool_not_registered' }));
-            return;
-          }
-          const result = await tool.handler(body);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(result));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/knowledge/lint') {
-          const body = await readJsonBody(req);
-          const tool = tools.find((t) => t.name === 'lint');
-          if (!tool) {
-            res.writeHead(500, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'lint_tool_not_registered' }));
-            return;
-          }
-          const result = await tool.handler(body);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(result));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/knowledge/audit') {
-          const body = await readJsonBody(req);
-          const tool = tools.find((t) => t.name === 'audit');
-          if (!tool) {
-            res.writeHead(500, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'audit_tool_not_registered' }));
-            return;
-          }
-          const result = await tool.handler(body);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(result));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/actions/set') {
-          const body = await readJsonBody(req);
-          if (!body?.class || !['AUTO', 'ASK', 'NEVER'].includes(body?.state)) {
-            res.writeHead(400, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'invalid_input' }));
-            return;
-          }
-          await setActionTrust(dbHandle, body.class, body.state, 'user');
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, class: body.class, state: body.state }));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/actions/reset') {
-          const body = await readJsonBody(req);
-          if (!body?.class) {
-            res.writeHead(400, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, reason: 'missing_class' }));
-            return;
-          }
-          await resetActionTrust(dbHandle, body.class);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, class: body.class, state: 'ASK' }));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/comm-style/refresh') {
-          const result = await synthesizeCommStyle(dbHandle, host);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(result));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/predictions/resolve') {
-          const body = await readJsonBody(req);
-          const result = await resolvePrediction(dbHandle, body);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(result));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/calibration/refresh') {
-          const c = await computeCalibration(dbHandle);
-          await setCalibration(dbHandle, c);
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(c));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/embeddings/op') {
-          const body = await readJsonBody(req);
-          const { dispatch: dispatchEmbeddingsOp } = await import(
-            '../../cognition/jobs/embeddings-ops.js'
-          );
-          const result = await dispatchEmbeddingsOp(dbHandle, body);
-          res.writeHead(result?.ok ? 200 : 400, { 'content-type': 'application/json' });
-          res.end(JSON.stringify(result));
-          return;
-        }
-        if (req.method === 'POST' && req.url === '/internal/intuition') {
-          const body = await readJsonBody(req);
-          const { intuitionEndpoint } = await import('../../cognition/intuition/inject.js').catch(
-            () => ({}),
-          );
-          if (typeof intuitionEndpoint === 'function') {
-            const result = await intuitionEndpoint({
-              db: dbHandle,
-              embedder: embedderWrap,
-              detector,
-              query: body.query ?? '',
-              priorAssistant: body.prior_assistant ?? body.priorAssistant ?? '',
-              k: body.k ?? 6,
-              recencyDays: body.recency_days ?? body.recencyDays ?? 30,
-              tokenBudget: body.token_budget ?? body.tokenBudget ?? 1500,
-            }).catch(() => ({ block: '', hits: 0, tokens: 0, latency_ms: 0 }));
-            res.writeHead(200, { 'content-type': 'application/json' });
-            res.end(JSON.stringify(result));
-            return;
-          }
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ block: '', hits: 0, tokens: 0, latency_ms: 0 }));
-          return;
-        }
-        if (req.method === 'GET' && req.url.startsWith('/sse')) {
-          sessions.count++;
-          const transport = new SSEServerTransport('/messages', res);
-          const mcpServer = new Server({ name: 'robin', version }, { capabilities: { tools: {} } });
-          mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-            tools: tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: t.inputSchema,
-            })),
-          }));
-          mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-            const { name, arguments: args } = request.params;
-            const tool = tools.find((t) => t.name === name);
-            if (!tool) {
-              return { isError: true, content: [{ type: 'text', text: `unknown tool: ${name}` }] };
-            }
-            try {
-              const result = await tool.handler(args ?? {});
-              return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-            } catch (e) {
-              return { isError: true, content: [{ type: 'text', text: e.message }] };
-            }
-          });
-          await mcpServer.connect(transport);
-          req.on('close', () => {
-            sessions.count = Math.max(0, sessions.count - 1);
-          });
-          return;
-        }
-        res.writeHead(404).end();
-      } catch (e) {
-        try {
-          res.writeHead(500, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message }));
-        } catch {
-          /* response already sent */
-        }
-      }
+        },
+      },
+      db: { close: ctx.closeDb },
     });
-    httpServer.listen(port, '127.0.0.1');
-
-    await writeDaemonState(statePath, {
+    await lifecycle.writeReady({
       port,
       pid: process.pid,
-      version,
-      started_at: startedAt.toISOString(),
-      tool_count: tools.length,
+      version: ctx.version,
+      startedAt: ctx.startedAt.toISOString(),
+      toolCount: tools.length,
     });
 
-    // Stale-session sweeper is the 'stale-sessions' bucket above.
-
     console.log(`robin-mcp daemon ready on 127.0.0.1:${port}`);
-
-    await new Promise(() => {});
+    await lifecycle.wait();
   } catch (e) {
-    console.error(`daemon failed: ${e.message}`);
-    await shutdown();
+    await lifecycle.fail(e);
     process.exit(1);
   }
 }
