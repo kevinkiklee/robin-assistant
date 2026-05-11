@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { createGmailGetThreadTool } from '../../src/integrations/gmail/tools/gmail-get-thread.js';
 import { createGmailSearchTool } from '../../src/integrations/gmail/tools/gmail-search.js';
@@ -17,10 +20,16 @@ test('gmail_get_thread has correct shape', () => {
 });
 
 test('gmail_search throws when not authenticated', async () => {
-  process.env.ROBIN_HOME = `/tmp/robin-no-auth-${Date.now()}`;
-  const { createGmailSearchTool: factory } = await import(
-    `../../src/integrations/gmail/tools/gmail-search.js?cb=${Date.now()}`
-  );
-  const t = factory();
-  await assert.rejects(() => t.handler({ query: 'x' }), /not authenticated/);
+  const home = mkdtempSync(join(tmpdir(), 'robin-no-auth-'));
+  process.env.ROBIN_HOME = home;
+  try {
+    const { createGmailSearchTool: factory } = await import(
+      `../../src/integrations/gmail/tools/gmail-search.js?cb=${Date.now()}`
+    );
+    const t = factory();
+    await assert.rejects(() => t.handler({ query: 'x' }), /not authenticated/);
+  } finally {
+    delete process.env.ROBIN_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
 });

@@ -100,15 +100,7 @@ export function readPointer() {
 }
 
 export function robinHome() {
-  // LEGACY: this fallback is removed in Task 12.1 once install writes .robin-home.
-  // Keeping it here so the test suite (which calls into commands that need a
-  // home) keeps working while we layer in the new pieces.
-  try {
-    return resolveHomeStrict();
-  } catch {
-    if (process.env.ROBIN_HOME) return resolve(process.env.ROBIN_HOME);
-    return join(_packageRoot, 'user-data');
-  }
+  return resolveHomeStrict();
 }
 
 export const paths = {

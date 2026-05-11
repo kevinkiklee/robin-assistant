@@ -89,18 +89,19 @@ test('linear_active_issues filters by assignee', async () => {
 });
 
 test('linear_get_issue surfaces a clear error when secret missing', async () => {
+  const { mkdtempSync: _mkdtemp, rmSync: _rm } = await import('node:fs');
+  const { tmpdir: _tmpdir } = await import('node:os');
+  const { join: _join } = await import('node:path');
   const t = createLinearGetIssueTool();
-  // Use a deterministic ROBIN_HOME so requireSecret can resolve a path that
-  // doesn't have LINEAR_API_KEY set.
+  // Use a fresh tmpdir so robinHome() resolves but LINEAR_API_KEY is absent.
+  const home = _mkdtemp(_join(_tmpdir(), 'robin-linear-nokey-'));
   const prev = process.env.ROBIN_HOME;
-  process.env.ROBIN_HOME = '/tmp/robin-linear-test-nokey';
+  process.env.ROBIN_HOME = home;
   try {
     await assert.rejects(() => t.handler({ identifier: 'ENG-1' }), /linear not configured/);
   } finally {
-    if (prev === undefined) {
-      process.env.ROBIN_HOME = undefined;
-    } else {
-      process.env.ROBIN_HOME = prev;
-    }
+    if (prev !== undefined) process.env.ROBIN_HOME = prev;
+    else delete process.env.ROBIN_HOME;
+    _rm(home, { recursive: true, force: true });
   }
 });
