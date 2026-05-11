@@ -9,11 +9,7 @@ test('DREAM_DAG_DEPS keys match step-registry byName keys (bidirectional)', () =
   const missingFromDeps = [...a].filter((k) => !b.has(k));
   const missingFromRegistry = [...b].filter((k) => !a.has(k));
   assert.deepEqual(missingFromDeps, [], `keys in byName not in deps: ${missingFromDeps}`);
-  assert.deepEqual(
-    missingFromRegistry,
-    [],
-    `keys in deps not in byName: ${missingFromRegistry}`,
-  );
+  assert.deepEqual(missingFromRegistry, [], `keys in deps not in byName: ${missingFromRegistry}`);
 });
 
 test('expected camelCase keys are present', () => {
@@ -47,10 +43,15 @@ test('topoLayers(byName, DREAM_DAG_DEPS) returns three layers with expected memb
   const layers = topoLayers(byName, DREAM_DAG_DEPS);
   assert.equal(layers.length, 3);
   // Layer 1: knowledge, patterns, reflection, profile, arcs, commStyle, confidence
-  assert.deepEqual(
-    [...layers[0]].sort(),
-    ['arcs', 'commStyle', 'confidence', 'knowledge', 'patterns', 'profile', 'reflection'],
-  );
+  assert.deepEqual([...layers[0]].sort(), [
+    'arcs',
+    'commStyle',
+    'confidence',
+    'knowledge',
+    'patterns',
+    'profile',
+    'reflection',
+  ]);
   // Layer 2: scopeCleanup, calibration
   assert.deepEqual([...layers[1]].sort(), ['calibration', 'scopeCleanup']);
   // Layer 3: compaction

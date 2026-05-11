@@ -31,9 +31,7 @@ async function fresh() {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   // Flip parallelism on for these tests.
-  await db
-    .query('UPDATE runtime:`dream.config` SET value.parallelism_enabled = true')
-    .collect();
+  await db.query('UPDATE runtime:`dream.config` SET value.parallelism_enabled = true').collect();
   return db;
 }
 
@@ -226,11 +224,7 @@ test('budget variant A: cadence_telemetry seeded above the floor before run → 
     'calibration',
     'compaction',
   ]) {
-    assert.deepEqual(
-      summary[key],
-      { skipped: 'budget_exhausted' },
-      `${key} should be skipped`,
-    );
+    assert.deepEqual(summary[key], { skipped: 'budget_exhausted' }, `${key} should be skipped`);
   }
   // runtime:dream.last_halted recorded.
   const [drows] = await db
@@ -309,11 +303,7 @@ test('budget variant B: layer 1 runs, layer 2/3 skipped after the boundary check
     'confidence',
   ]) {
     const v = summary[key];
-    assert.notDeepEqual(
-      v,
-      { skipped: 'budget_exhausted' },
-      `layer-1 ${key} should have run`,
-    );
+    assert.notDeepEqual(v, { skipped: 'budget_exhausted' }, `layer-1 ${key} should have run`);
   }
   // Layer 2 + 3 skipped.
   assert.deepEqual(summary.scopeCleanup, { skipped: 'budget_exhausted' });

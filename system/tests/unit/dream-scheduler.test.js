@@ -98,16 +98,8 @@ test('step throw is captured into summary.<name>.error; sibling and downstream s
 });
 
 test('step throws non-Error → summary.<name>.error stringifies the value', async () => {
-  const r = await runDag(
-    {
-      // biome-ignore lint/suspicious/useAwait: deliberate non-Error throw test
-      a: async () => {
-        // biome-ignore lint/correctness/noUnreachable: deliberate non-Error throw
-        throw 'just a string';
-      },
-    },
-    { a: [] },
-  );
+  const stringThrower = () => Promise.reject('just a string');
+  const r = await runDag({ a: stringThrower }, { a: [] });
   assert.deepEqual(r.summary.a, { error: 'just a string' });
 });
 
@@ -167,11 +159,7 @@ test('maxConcurrent caps in-layer parallelism', async () => {
 
 test('cycle detection throws a clear error', async () => {
   await assert.rejects(
-    () =>
-      runDag(
-        { a: async () => 'A', b: async () => 'B' },
-        { a: ['b'], b: ['a'] },
-      ),
+    () => runDag({ a: async () => 'A', b: async () => 'B' }, { a: ['b'], b: ['a'] }),
     /cycle/i,
   );
 });

@@ -3,7 +3,6 @@ import { readCadenceConfig } from './budget.js';
 import { DREAM_DAG_DEPS } from './dag.js';
 import { readDreamConfig, shouldHalt } from './dream-budget.js';
 import { runDag } from './scheduler.js';
-import { byName as stepRegistry } from './step-registry.js';
 import { dreamStepArcs } from './step-arcs.js';
 import { dreamStepCalibration } from './step-calibration.js';
 import { dreamStepCommStyle } from './step-comm-style.js';
@@ -13,6 +12,7 @@ import { dreamStepKnowledge } from './step-knowledge.js';
 import { dreamStepPatterns } from './step-patterns.js';
 import { dreamStepProfile } from './step-profile.js';
 import { dreamStepReflection } from './step-reflection.js';
+import { byName as stepRegistry } from './step-registry.js';
 import { dreamStepScopeCleanup } from './step-scope-cleanup.js';
 import { recordStepTelemetry } from './telemetry.js';
 

@@ -3,8 +3,8 @@ import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { defaultFloor, readDreamConfig, shouldHalt } from '../../cognition/dream/dream-budget.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
