@@ -470,7 +470,7 @@ const HYBRID_DEFAULTS = {
 
 let _recallConfigCache = null;
 let _recallConfigCachedAt = 0;
-async function getRecallConfig(db) {
+export async function getRecallConfig(db) {
   // 5-second cache; runtime:recall is read on every search call.
   if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
     return _recallConfigCache;
