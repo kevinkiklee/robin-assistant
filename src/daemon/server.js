@@ -23,9 +23,13 @@ import { computeCalibration, resolvePrediction, setCalibration } from '../jobs/p
 import { runOneJob } from '../jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
+import { createArchiveHistoryTool } from '../mcp/tools/archive-history.js';
 import { createAuditTool } from '../mcp/tools/audit.js';
 import { createCheckActionTool } from '../mcp/tools/check-action.js';
 import { createEndorseTool } from '../mcp/tools/endorse.js';
+import { createExplainActionTrustTool } from '../mcp/tools/explain-action-trust.js';
+import { createExplainBeliefTool } from '../mcp/tools/explain-belief.js';
+import { createExplainRecallTool } from '../mcp/tools/explain-recall.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetArcTool } from '../mcp/tools/get-arc.js';
 import { createGetCommStyleTool } from '../mcp/tools/get-comm-style.js';
@@ -48,6 +52,7 @@ import { createListRulesTool } from '../mcp/tools/list-rules.js';
 import { createListThreadsTool } from '../mcp/tools/list-threads.js';
 import { createPredictTool } from '../mcp/tools/predict.js';
 import { createRecallTool } from '../mcp/tools/recall.js';
+import { createRecentRefusalsTool } from '../mcp/tools/recent-refusals.js';
 import { createRecordCorrectionTool } from '../mcp/tools/record-correction.js';
 import { createRefuteTool } from '../mcp/tools/refute.js';
 import { createRelatedEntitiesTool } from '../mcp/tools/related-entities.js';
@@ -56,6 +61,8 @@ import { createResolvePredictionTool } from '../mcp/tools/resolve-prediction.js'
 import { createRunBiographerTool } from '../mcp/tools/run-biographer.js';
 import { createRunDreamTool } from '../mcp/tools/run-dream.js';
 import { createRunJobTool } from '../mcp/tools/run-job.js';
+import { createShowPendingTriggersTool } from '../mcp/tools/show-pending-triggers.js';
+import { createShowStepHealthTool } from '../mcp/tools/show-step-health.js';
 import { createUpdateActionPolicyTool } from '../mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../mcp/tools/update-rule.js';
 import { readConfig } from '../runtime/config.js';
@@ -460,6 +467,13 @@ export async function startDaemon() {
     tools.push(createRefuteTool({ db: dbHandle }));
     tools.push(createListArcsTool({ db: dbHandle }));
     tools.push(createGetArcTool({ db: dbHandle }));
+    tools.push(createExplainRecallTool({ db: dbHandle }));
+    tools.push(createExplainBeliefTool({ db: dbHandle }));
+    tools.push(createExplainActionTrustTool({ db: dbHandle }));
+    tools.push(createShowPendingTriggersTool({ db: dbHandle }));
+    tools.push(createShowStepHealthTool({ db: dbHandle }));
+    tools.push(createRecentRefusalsTool({ db: dbHandle }));
+    tools.push(createArchiveHistoryTool({ db: dbHandle }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the

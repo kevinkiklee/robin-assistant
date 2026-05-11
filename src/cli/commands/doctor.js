@@ -443,6 +443,23 @@ export async function doctor(argv = [], deps = {}) {
   const wantRebaseline = args.flags.rebaseline === true;
   const wantPurge = args.flags['purge-stale-sessions'] === true;
   const wantLint = args.flags['lint-hooks'] === true;
+  const wantHealth = args.flags.health === true;
+
+  if (wantHealth) {
+    const wantJson = args.flags.json === true;
+    const { runHealth } = await import('../health.js');
+    const openDb = deps.openDb ?? (async () => connect({ engine: await defaultDbUrl() }));
+    const closeDb = deps.closeDb ?? ((d) => close(d));
+    const db = await openDb();
+    try {
+      const result = await runHealth(db, { json: wantJson });
+      out(result.output);
+      if (typeof process !== 'undefined') process.exitCode = result.exitCode;
+    } finally {
+      await closeDb(db).catch(() => {});
+    }
+    return;
+  }
 
   if (!wantRebaseline && !wantPurge && !wantLint) {
     await doStatus(out, deps);
