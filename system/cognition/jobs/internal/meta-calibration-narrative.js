@@ -6,7 +6,7 @@
 // a rule_candidates row with kind='behavior',
 // payload.source='meta_cognition_calibration'.
 
-import { BoundQuery, surql } from 'surrealdb';
+import { BoundQuery } from 'surrealdb';
 import { createStubEmbedder } from '../../../data/embed/embedder.js';
 import { readBeliefConfig } from '../../belief/config.js';
 import { createCandidate } from '../../dream/candidates.js';
