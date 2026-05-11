@@ -462,21 +462,45 @@ export async function searchEntities(db, embedder, query, opts = {}) {
 // kind/scope/tags/since.
 
 const HYBRID_DEFAULTS = {
+  // Legacy hybrid-recall tunables (0001-init seed).
   rrf_k: 60,
   knn_overfetch_base: 1.5,
   knn_overfetch_per_filter: 1.5,
   mmr_threshold: 0.92,
+  // B2 conflict-surfacing tunables (0015 seed). Defaults match the seed so
+  // partial config rows (e.g., dev installs that didn't run 0015 yet) still
+  // resolve to a working shape.
+  conflict_surfacing_enabled: false,
+  conflict_min_confidence: 0.4,
+  conflict_max_age_days: 30,
+  conflict_max_pairs_surfaced: 3,
+  conflict_max_pairs_hydrated: 24,
+  conflict_block_token_budget: 300,
+  relevant_memory_token_budget: 1500,
 };
 
 let _recallConfigCache = null;
 let _recallConfigCachedAt = 0;
-async function getRecallConfig(db) {
+
+/**
+ * Reset the recall-config cache. For tests that need to bust the 5-s TTL
+ * (e.g., after toggling `runtime:recall.value.conflict_surfacing_enabled`
+ * mid-suite). Production callers should never need this.
+ */
+export function _resetRecallConfigCache() {
+  _recallConfigCache = null;
+  _recallConfigCachedAt = 0;
+}
+
+export async function getRecallConfig(db) {
   // 5-second cache; runtime:recall is read on every search call.
   if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
     return _recallConfigCache;
   }
   try {
-    const [rows] = await db.query('SELECT value FROM runtime:recall').collect();
+    // SurrealDB v3 treats `value` as a reserved keyword in projection lists;
+    // escape with backticks. `FROM runtime:recall` directly fetches the row.
+    const [rows] = await db.query('SELECT `value` FROM runtime:recall').collect();
     const value = rows?.[0]?.value ?? {};
     _recallConfigCache = { ...HYBRID_DEFAULTS, ...value };
   } catch {

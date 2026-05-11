@@ -149,7 +149,7 @@ Seven themes layered on top of the substrate:
 ## A typical agent turn
 
 1. **SessionStart hook** registers the session in `runtime_sessions` (with `transcript_path`).
-2. **You type a message.** UserPromptSubmit (intuition) reads the transcript tail, POSTs `{query, prior_assistant, k:6, recency_days:30}` to the daemon. Intuition pipeline: `store.searchEvents` + `store.searchMemos(kind='knowledge')` → `rank.score` → MMR-lite → format as `<!-- relevant memory -->` block under a 1500-token budget. Writes `recall_log{outcome:pending}` and `intuition_telemetry` rows. Fail-soft on every error.
+2. **You type a message.** UserPromptSubmit (intuition) reads the transcript tail, POSTs `{query, prior_assistant, k:6, recency_days:30}` to the daemon. Intuition pipeline: `store.searchEvents` + `store.searchMemos(kind='knowledge')` → batched `conflicts.fetchContradictors` (when `runtime:recall.value.conflict_surfacing_enabled` is `true`) → `rank.score` (now passing `contradictionCount` from the hydrated pairs) → MMR-lite → format as `<!-- conflicts -->` (cap 300 tok, only when pairs survive suppression) + `<!-- relevant memory -->` (cap 1500 tok). Writes `recall_log{outcome:pending}` and `intuition_telemetry` rows. Fail-soft on every error.
 3. **The agent reads its instructions** and calls MCP tools (`recall`, `remember`, `note`, `find_entity`, `ingest`, `predict`, `update_action_policy`, etc.).
 4. **Bash PreToolUse hook (discretion)** statically checks the command against 7 deny rules. Match → exit 2.
 5. **`store.remember` / `store.note`** validates against registries, writes the row + embedding, optionally relates subjects (`about` edges) and lineage (`derived_from` edges).

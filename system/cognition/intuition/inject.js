@@ -3,6 +3,8 @@
 
 import { surql } from 'surrealdb';
 import * as store from '../memory/store.js';
+import { getRecallConfig } from '../memory/store.js';
+import { buildConflictBlock, fetchContradictors } from './conflicts.js';
 import { recall } from './engine.js';
 import { mmrLite, score } from './rank.js';
 
@@ -81,10 +83,16 @@ export async function intuitionEndpoint({
   k = 6,
   recencyDays = 30,
   tokenBudget = 1500,
+  conflictTokenBudget = 0,
 }) {
   const start = Date.now();
   const safeQuery = typeof query === 'string' ? query : '';
   const safePrior = typeof priorAssistant === 'string' ? priorAssistant : '';
+
+  // B2 — read recall config + resolve surfacing flag. Surfacing requires both
+  // the runtime:recall flag AND a non-zero budget from the caller.
+  const cfg = await getRecallConfig(db).catch(() => ({}));
+  const surfacingOn = cfg.conflict_surfacing_enabled === true && conflictTokenBudget > 0;
 
   // Combine current prompt with the tail of the prior assistant turn so
   // recall can latch onto the in-flight thread of conversation.
@@ -95,6 +103,10 @@ export async function intuitionEndpoint({
   const combined = priorTail.length > 0 ? `${safeQuery}\n\n${priorTail}` : safeQuery;
 
   let hits = [];
+  // B2 — declared here so it's available below the if-block for
+  // buildConflictBlock + telemetry. Default to empty when surfacing is off
+  // or there are no hits.
+  let conflictsHydration = { pairs: [], pairs_precap: 0 };
   if (combined.trim().length > 0) {
     const since = new Date(Date.now() - recencyDays * 86400_000);
     // Fan out: events (recall pipeline) + distilled knowledge memos. The
@@ -119,9 +131,33 @@ export async function intuitionEndpoint({
       _kind: 'memo',
     }));
 
+    // B2 — hydrate contradicting-memo pairs before the first score() call so
+    // contradictionCount can be wired. Gated on surfacingOn + non-empty memos.
+    if (surfacingOn && memoHits.length > 0) {
+      const memoIds = memoHits.map((h) => h.record.id);
+      conflictsHydration = await fetchContradictors(db, memoIds, cfg);
+    }
+    // contradicts is a symmetric relation — each pair contributes +1 to BOTH
+    // endpoints' contradictionCount so contraPenalty fires on either memo if
+    // it ranks into the agent's view.
+    const contraByHit = new Map();
+    for (const p of conflictsHydration.pairs) {
+      const hk = String(p.hitSide.id);
+      const ok = String(p.otherSide.id);
+      contraByHit.set(hk, (contraByHit.get(hk) ?? 0) + 1);
+      contraByHit.set(ok, (contraByHit.get(ok) ?? 0) + 1);
+    }
+
     const merged = [...eventHits, ...memoHits].map((h) => ({
       ...h,
-      _scored: score(h, { session_id: undefined }),
+      _scored: score(
+        {
+          record: h.record,
+          distance: h.distance,
+          contradictionCount: contraByHit.get(String(h.record.id)) ?? 0,
+        },
+        { session_id: undefined },
+      ),
     }));
     merged.sort((a, b) => (b._scored.score ?? 0) - (a._scored.score ?? 0));
 
@@ -142,6 +178,10 @@ export async function intuitionEndpoint({
       meta: h.record.meta ?? { kind: h._kind === 'memo' ? h.record.kind : undefined },
       dist: h.distance,
       _kind: h._kind,
+      // B2 — carry the already-computed score components (with the wired
+      // contradictionCount) so the recall_log rebuild doesn't re-invoke
+      // score() with a stale {contradictionCount: 0}.
+      _scoreComponents: h._scored?.components,
     }));
   }
 
@@ -173,21 +213,67 @@ export async function intuitionEndpoint({
     }
   }
 
+  // B2 — assemble the conflicts block from the hydrated pairs and the
+  // greedy-packed in-view hit set. Fail-soft via buildConflictBlock's pure
+  // return shape; an empty pairs list yields an empty block.
+  let conflictBlock = '';
+  let conflictTokens = 0;
+  let conflictSurfaced = 0;
+  let conflictSuppressedByRule = {
+    low_confidence: 0,
+    superseded: 0,
+    both_blocked: 0,
+    stale: 0,
+    capped: 0,
+  };
+  let conflictRedactedOneSide = 0;
+  let conflictBlockTruncated = false;
+  if (surfacingOn && conflictsHydration.pairs.length > 0) {
+    // The §1.1 filter: hitSide must be in greedy-packed `hits` (the agent
+    // will actually see these memos in <!-- relevant memory -->).
+    const visibleHitIds = new Set();
+    for (const h of hits) {
+      if (h._kind === 'memo') visibleHitIds.add(String(h.id));
+    }
+    const built = buildConflictBlock(conflictsHydration.pairs, visibleHitIds, new Date(), {
+      conflict_min_confidence: cfg.conflict_min_confidence,
+      conflict_max_age_days: cfg.conflict_max_age_days,
+      conflict_max_pairs_surfaced: cfg.conflict_max_pairs_surfaced,
+      conflict_block_token_budget: conflictTokenBudget,
+    });
+    conflictBlock = built.block;
+    conflictTokens = built.tokens;
+    conflictSurfaced = built.surfaced;
+    conflictSuppressedByRule = built.suppressed_by_rule;
+    conflictRedactedOneSide = built.redacted_one_side;
+    conflictBlockTruncated = built.truncated;
+  }
+
   const latency_ms = Date.now() - start;
 
   // Telemetry write — must never break the response.
   try {
-    await db
-      .query(
-        surql`CREATE intuition_telemetry CONTENT ${{
-          query_chars: safeQuery.length,
-          hits: hits.length,
-          tokens_injected: tokens,
-          latency_ms,
-          truncated,
-        }}`,
-      )
-      .collect();
+    const telemetryContent = {
+      query_chars: safeQuery.length,
+      hits: hits.length,
+      tokens_injected: tokens,
+      latency_ms,
+      truncated,
+    };
+    // B2 fields emitted only when the feature is on — keeps row shape
+    // backwards-compatible for flag-off installs per spec §10.
+    if (surfacingOn) {
+      telemetryContent.conflicts_surfaced = conflictSurfaced;
+      telemetryContent.conflicts_block_tokens = conflictTokens;
+      telemetryContent.conflicts_hydrated_precap = conflictsHydration.pairs_precap;
+      telemetryContent.conflicts_hydrated_postcap = conflictsHydration.pairs.length;
+      telemetryContent.conflicts_hydration_capped =
+        conflictsHydration.pairs_precap > conflictsHydration.pairs.length;
+      telemetryContent.conflicts_suppressed_by_rule = conflictSuppressedByRule;
+      telemetryContent.conflicts_redacted_one_side = conflictRedactedOneSide;
+      telemetryContent.conflicts_block_truncated = conflictBlockTruncated;
+    }
+    await db.query(surql`CREATE intuition_telemetry CONTENT ${telemetryContent}`).collect();
   } catch {
     // Swallow — telemetry is advisory.
   }
@@ -197,24 +283,47 @@ export async function intuitionEndpoint({
     const rankedHits = hits.map((h, i) => ({
       record: h.id,
       kind: h._kind,
-      score_components: score({ record: h, distance: h.dist ?? 0 }).components,
+      // Prefer the already-computed components (wired with the correct
+      // contradictionCount); fall back to a fresh score() call for safety.
+      score_components:
+        h._scoreComponents ?? score({ record: h, distance: h.dist ?? 0 }).components,
       rank: i,
     }));
-    await db
-      .query(
-        surql`CREATE recall_log CONTENT ${{
-          query: safeQuery,
-          session_id: sessionId ?? null,
-          k,
-          ranked_hits: rankedHits,
-          outcome: 'pending',
-          meta: { latency_ms, truncated },
-        }}`,
-      )
-      .collect();
+    const recallMeta = { latency_ms, truncated };
+    if (surfacingOn) recallMeta.conflicts_surfaced = conflictSurfaced;
+    // session_id is option<string> — omit the key when absent so the schema
+    // doesn't reject a NULL coercion (option<string> means string-or-missing,
+    // not string-or-null).
+    const recallContent = {
+      query: safeQuery,
+      k,
+      ranked_hits: rankedHits,
+      outcome: 'pending',
+      meta: recallMeta,
+    };
+    if (typeof sessionId === 'string' && sessionId.length > 0) {
+      recallContent.session_id = sessionId;
+    }
+    await db.query(surql`CREATE recall_log CONTENT ${recallContent}`).collect();
   } catch {
     /* fail-soft */
   }
 
-  return { block, hits: hits.length, tokens, latency_ms, truncated };
+  const combined_block = conflictBlock ? `${conflictBlock}\n${block}` : block;
+  return {
+    block: combined_block,
+    hits: hits.length,
+    tokens: tokens + conflictTokens,
+    latency_ms,
+    truncated: truncated || conflictBlockTruncated,
+    // Optional surface so the handler / D1 ordering can introspect.
+    conflict_block: conflictBlock,
+    conflict_tokens: conflictTokens,
+    conflict_suppressed_count:
+      conflictSuppressedByRule.low_confidence +
+      conflictSuppressedByRule.superseded +
+      conflictSuppressedByRule.both_blocked +
+      conflictSuppressedByRule.stale +
+      conflictSuppressedByRule.capped,
+  };
 }

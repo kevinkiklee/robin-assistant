@@ -61,8 +61,8 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 ### intuition
 **The UserPromptSubmit hook that injects relevant memory into the next turn.**
 - Trigger: Claude Code or Gemini CLI fires `UserPromptSubmit` with `{prompt, transcript_path, session_id}`.
-- Files: `system/cognition/intuition/handler.js` (hook entry), `system/cognition/intuition/inject.js` (daemon endpoint), `system/cognition/intuition/rank.js`.
-- Behavior: Composes events + memos[kind=knowledge] recall via `store.searchEvents` + `store.searchMemos`. Ranks via `rank.score` (cosine × freshness × contradiction × trust × scope). MMR-lite diversity pass. Writes `intuition_telemetry` + `recall_log{outcome:pending}` rows. Returns a `<!-- relevant memory -->` block under a 1500-token budget.
+- Files: `system/cognition/intuition/handler.js` (hook entry), `system/cognition/intuition/inject.js` (daemon endpoint), `system/cognition/intuition/rank.js`, `system/cognition/intuition/conflicts.js`.
+- Behavior: Composes events + memos[kind=knowledge] recall via `store.searchEvents` + `store.searchMemos`. Ranks via `rank.score` (cosine × freshness × contradiction × trust × scope). MMR-lite diversity pass. When the substrate has a live `contradicts` edge among the in-view memo hits and `runtime:recall.value.conflict_surfacing_enabled` is `true`, `conflicts.fetchContradictors` hydrates the other side of each pair in one batched roundtrip and `conflicts.buildConflictBlock` emits a `<!-- conflicts -->` block above `<!-- relevant memory -->`. The same hydration step populates `contradictionCount` on the rank score so `contraPenalty` finally fires (defaulted to `0` and dormant pre-B2). Suppression rules: low confidence (<0.4), superseded (freshness 0), both sides outbound-blocked, stale (>30 days), per-turn cap (3 pairs). Writes `intuition_telemetry` + `recall_log{outcome:pending}` rows.
 - Inspect: `SELECT * FROM intuition_telemetry ORDER BY ts DESC LIMIT 20`.
 
 ### biographer
