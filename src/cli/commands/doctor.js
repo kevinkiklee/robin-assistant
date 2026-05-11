@@ -20,7 +20,7 @@ import { surql } from 'surrealdb';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
 import { readDaemonState } from '../../daemon/state.js';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import {
@@ -96,7 +96,7 @@ async function doPurgeStaleSessions(out, err, deps = {}) {
   }
   const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    const db = await connect({ engine: await defaultDbUrl() });
     try {
       const n = await purgeStaleSessions(db);
       out(`purged ${n} stale sessions`);
@@ -231,7 +231,7 @@ function probeBiographerLog() {
 async function probeIntegrationFreshness() {
   let db;
   try {
-    db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    db = await connect({ engine: await defaultDbUrl() });
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
       .collect();
@@ -278,6 +278,26 @@ async function doStatus(out, deps = {}) {
   out(`secrets file: ${existsSync(secretsEnv) ? 'present' : 'missing'}`);
   const configExists = existsSync(paths.data.config());
   out(`config: ${configExists ? 'present' : 'missing'}`);
+
+  // Engine check: surface mismatch between config and on-disk DB so a daemon
+  // configured for `surrealkv` doesn't quietly open a stale `rocksdb` store.
+  // (Detects the migration footgun: switching engines requires `rm -rf db/`.)
+  try {
+    const dbUrl = await defaultDbUrl();
+    const engine = dbUrl.split('://')[0];
+    const dbDir = paths.data.db();
+    let onDisk = null;
+    if (existsSync(join(dbDir, 'CURRENT'))) onDisk = 'rocksdb';
+    else if (existsSync(join(dbDir, 'rev')) || existsSync(join(dbDir, 'lock')))
+      onDisk = 'surrealkv';
+    if (onDisk && onDisk !== engine) {
+      out(`engine: ${engine} (config) ≠ ${onDisk} (on-disk) — destructive reset required`);
+    } else {
+      out(`engine: ${engine}${onDisk ? '' : ' (no on-disk DB yet)'}`);
+    }
+  } catch (e) {
+    out(`engine: error resolving (${e.message})`);
+  }
 
   // Native bindings — the failure that bit us at chrome/lrc test load.
   const sqlite = await (deps.probeBetterSqlite3 ?? probeBetterSqlite3)();

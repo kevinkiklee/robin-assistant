@@ -1,7 +1,7 @@
 // src/cli/commands/actions-show.js
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { getActionTrust as defaultGet } from '../../jobs/action-trust.js';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { ensureHome } from '../../runtime/data-store.js';
 
 export async function actionsShow(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));
@@ -16,7 +16,7 @@ export async function actionsShow(argv = [], deps = {}) {
     deps.getActionTrust ??
     (async (c) => {
       await ensureHome();
-      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+      const db = await connect({ engine: await defaultDbUrl() });
       try {
         return await defaultGet(db, c);
       } finally {

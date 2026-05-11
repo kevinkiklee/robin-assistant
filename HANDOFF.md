@@ -1,4 +1,53 @@
-# DB + Memory Redesign — handoff
+# SurrealDB Improvements — rollout addendum (2026-05-11, alpha.15)
+
+The four-phase work on branch `feat/surrealdb-improvements` corrects the
+`TYPE NORMAL` premise from the prior redesign and lands hybrid retrieval +
+hot-path batching. Spec:
+`docs/superpowers/specs/2026-05-11-surrealdb-improvements-design.md`.
+
+> ⚠️ **Load-bearing constraint:** `0001-init.surql` checksum changed.
+> Existing dev DBs MUST be reset before the daemon boots, or the migration
+> runner throws "checksum mismatch" in `src/db/migrate.js`.
+
+## Rollout
+
+```bash
+# 1. Stop the daemon
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.mcp.plist
+# (Linux: systemctl --user stop robin-mcp.service)
+
+# 2. Backup (safety; recoverable until you confirm alpha.15 is healthy)
+cp -R <robinHome>/db <robinHome>/db.pre-alpha15
+
+# 3. Destructive reset
+rm -rf <robinHome>/db/*
+
+# 4. (optional) Switch engine in config.json
+#    The default is now surrealkv://; flip via:
+#    jq '.db.engine = "surrealkv"' <robinHome>/config.json | sponge ...
+#    Note: surrealkv+versioned:// hangs on connect in @surrealdb/node 3.0.3;
+#    leave on surrealkv (or rocksdb) until that's fixed upstream.
+
+# 5. Restart daemon — schema + recall.config seed apply on boot
+robin mcp ensure-running   # or restart via launchd/systemd
+robin doctor                # verify engine + tables match config
+```
+
+Operator time: ~30 seconds. No data migrator (per spec; no v2 users).
+
+## Verifying
+
+```bash
+node scripts/verify-design-assumptions.js   # 10 gates including G5/G12/G15-G18
+npm run test:unit                            # 976/976
+npm run test:integration                     # 112/112 (1 skipped)
+npm run lint                                 # clean
+robin doctor                                 # engine matches config
+```
+
+---
+
+# DB + Memory Redesign — handoff (prior, alpha.13/14)
 
 **Branch:** `feat/db-and-memory-redesign`
 **Worktree:** `/Users/iser/workspace/robin/robin-assistant-v2-worktrees/redesign`

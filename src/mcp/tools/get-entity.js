@@ -32,7 +32,7 @@ export function createGetEntityTool({ db }) {
       const [summary] = await db
         .query(
           `SELECT kind, count() AS n FROM edges
-           WHERE from = ${idRef} OR to = ${idRef}
+           WHERE from = ${idRef} OR out = ${idRef}
            GROUP BY kind`,
         )
         .collect();
@@ -45,7 +45,7 @@ export function createGetEntityTool({ db }) {
       const [mentionCount] = await db
         .query(
           `SELECT count() AS n FROM edges
-           WHERE kind = 'mentions' AND to = ${idRef} GROUP ALL`,
+           WHERE kind = 'mentions' AND out = ${idRef} GROUP ALL`,
         )
         .collect();
 
@@ -54,9 +54,9 @@ export function createGetEntityTool({ db }) {
       // SurrealDB v3 across `record<>` fields.
       const [lastMention] = await db
         .query(
-          `SELECT from.ts AS ts FROM edges
-           WHERE kind = 'mentions' AND to = ${idRef}
-           ORDER BY from.ts DESC LIMIT 1`,
+          `SELECT in.ts AS ts FROM edges
+           WHERE kind = 'mentions' AND out = ${idRef}
+           ORDER BY in.ts DESC LIMIT 1`,
         )
         .collect();
 

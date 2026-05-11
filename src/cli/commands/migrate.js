@@ -1,7 +1,7 @@
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
 import { snapshot } from '../../db/backup.js';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { runMigrations } from '../../db/migrate.js';
 import { ensureHome, paths } from '../../runtime/data-store.js';
@@ -19,7 +19,7 @@ export async function migrate() {
     const archive = await snapshot(paths.data.db(), paths.data.backup());
     if (archive) console.log(`backup: ${archive}`);
 
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    const db = await connect({ engine: await defaultDbUrl() });
     try {
       const applied = await runMigrations(db, paths.source.migrations());
       const suffix = applied.length ? `: ${applied.join(', ')}` : '';

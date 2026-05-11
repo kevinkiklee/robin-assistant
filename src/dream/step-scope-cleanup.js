@@ -28,9 +28,9 @@ export async function dreamStepScopeCleanup(db, host, opts = {}) {
     UPDATE memos SET scope = 'global'
     WHERE (string::starts_with(scope, 'session:') OR string::starts_with(scope, 'temp:'))
       AND id IN (
-        SELECT VALUE to FROM edges
+        SELECT VALUE out FROM edges
         WHERE kind = 'derived_from'
-          AND from IN (
+          AND in IN (
             SELECT VALUE id FROM memos
             WHERE scope = 'global'
                OR scope = 'private'

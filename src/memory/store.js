@@ -217,16 +217,21 @@ export async function relate(db, from, to, kind, opts = {}) {
   const toIdStr = recordStringId(cTo);
 
   if (counter) {
-    const sql = `UPSERT type::record('edges', [$kind, $from, $to]) SET
-      kind = $kind, from = $from, to = $to,
-      weight += 1,
-      last_seen = time::now()`;
+    // TYPE RELATION tables don't accept UPSERT/CREATE for new rows; use
+    // INSERT RELATION ... ON DUPLICATE KEY UPDATE for idempotent counter
+    // increments. Bind params are $inRec/$outRec to avoid $in/$out clashing
+    // with SurrealQL field-name parsing.
+    const sql = `INSERT RELATION INTO edges {
+      id: [$kind, $inRec, $outRec],
+      in: $inRec, out: $outRec, kind: $kind, weight: 1, last_seen: time::now()
+    } ON DUPLICATE KEY UPDATE
+      weight += 1, last_seen = time::now()`;
     const [ret] = await db
       .query(
         new BoundQuery(sql, {
           kind,
-          from: cFrom,
-          to: cTo,
+          inRec: cFrom,
+          outRec: cTo,
         }),
       )
       .collect();
@@ -234,8 +239,17 @@ export async function relate(db, from, to, kind, opts = {}) {
     return { id: row?.id };
   }
 
-  const bindings = { kind, from: cFrom, to: cTo };
-  const setExprs = ['kind = $kind', 'from = $from', 'to = $to', 'last_seen = time::now()'];
+  const bindings = { kind, inRec: cFrom, outRec: cTo };
+  // Build the insert-content map and the on-duplicate update set in parallel,
+  // so optional fields like weight/valid_from/etc. apply on both code paths.
+  const insertFields = [
+    'id: [$kind, $inRec, $outRec]',
+    'in: $inRec',
+    'out: $outRec',
+    'kind: $kind',
+    'last_seen: time::now()',
+  ];
+  const updateExprs = ['kind = $kind', 'last_seen = time::now()'];
   for (const [field, val] of [
     ['weight', opts.weight],
     ['valid_from', opts.valid_from],
@@ -245,27 +259,68 @@ export async function relate(db, from, to, kind, opts = {}) {
   ]) {
     if (val !== undefined && val !== null) {
       bindings[field] = val;
-      setExprs.push(`${field} = $${field}`);
+      insertFields.push(`${field}: $${field}`);
+      updateExprs.push(`${field} = $${field}`);
     }
   }
-  const sql = `UPSERT type::record('edges', [$kind, $from, $to]) SET ${setExprs.join(', ')}`;
+  const sql = `INSERT RELATION INTO edges { ${insertFields.join(', ')} }
+    ON DUPLICATE KEY UPDATE ${updateExprs.join(', ')}`;
   const [ret] = await db.query(new BoundQuery(sql, bindings)).collect();
   const row = Array.isArray(ret) ? ret[0] : ret;
   return { id: row?.id, fromId: fromIdStr, toId: toIdStr };
 }
 
 /**
- * Bulk relate. Same semantics as `relate` but batched into one statement —
- * used by biographer to emit 8-20 edges per processed event.
+ * Bulk relate. Builds one multi-statement query so a 20-edge biographer fan-out
+ * costs 1 round-trip instead of 20. Chunks at 50 to avoid pathological parser
+ * limits. Wrapped in BEGIN/COMMIT so a malformed edge doesn't leave partial state.
  */
+const RELATE_CHUNK = 50;
 export async function relateAll(db, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { ids: [] };
   const ids = [];
-  // SurrealDB doesn't have a multi-row UPSERT primitive for arbitrary IDs;
-  // batch into one BEGIN/COMMIT block for atomicity.
-  for (const row of rows) {
-    const { id } = await relate(db, row.from, row.to, row.kind, row);
-    ids.push(id);
+  for (let off = 0; off < rows.length; off += RELATE_CHUNK) {
+    const slice = rows.slice(off, off + RELATE_CHUNK);
+    const stmts = ['BEGIN TRANSACTION'];
+    const bindings = {};
+    slice.forEach((row, i) => {
+      const v = validateEdge(row.from, row.to, row.kind);
+      if (!v.ok) throw new Error(`relateAll[${off + i}]: ${v.errors.join('; ')}`);
+      const [cIn, cOut] = canonicalEndpoints(row.from, row.to, row.kind);
+      bindings[`k${i}`] = row.kind;
+      bindings[`i${i}`] = cIn;
+      bindings[`o${i}`] = cOut;
+      const insertFields = [
+        `id: [$k${i}, $i${i}, $o${i}]`,
+        `in: $i${i}`,
+        `out: $o${i}`,
+        `kind: $k${i}`,
+        `last_seen: time::now()`,
+      ];
+      const updateExprs = [`kind = $k${i}`, `last_seen = time::now()`];
+      if (isCounterKind(row.kind)) {
+        insertFields.push(`weight: 1`);
+        updateExprs.push(`weight += 1`);
+      } else {
+        for (const f of ['weight', 'valid_from', 'valid_until', 'context', 'meta']) {
+          if (row[f] != null) {
+            bindings[`${f}${i}`] = row[f];
+            insertFields.push(`${f}: $${f}${i}`);
+            updateExprs.push(`${f} = $${f}${i}`);
+          }
+        }
+      }
+      stmts.push(
+        `INSERT RELATION INTO edges { ${insertFields.join(', ')} } ON DUPLICATE KEY UPDATE ${updateExprs.join(', ')}`,
+      );
+    });
+    stmts.push('COMMIT TRANSACTION');
+    const results = await db.query(new BoundQuery(stmts.join(';\n'), bindings)).collect();
+    // Each INSERT RELATION returns the (now-existing) row. Flatten and collect ids.
+    for (const r of results) {
+      const row = Array.isArray(r) ? r[0] : r;
+      if (row?.id) ids.push(row.id);
+    }
   }
   return { ids };
 }
@@ -329,29 +384,33 @@ async function writeEmbedding(db, embedder, surface, recordId, text) {
 
 /**
  * Read a memo with hydrated subjects, lineage, contradictions count.
+ * Phase 3 batching: 4 sequential queries collapse to one multi-statement
+ * query (one round-trip) via LET blocks.
  */
 export async function getMemo(db, id) {
-  const [rows] = await db
-    .query(surql`SELECT *, fn::freshness(id) AS freshness FROM ${id}`)
-    .collect();
-  const memo = rows[0];
+  const sql = `
+    LET $m = (SELECT *, fn::freshness(id) AS freshness FROM $id);
+    LET $subj = (SELECT VALUE out FROM edges WHERE kind = 'about' AND in = $id);
+    LET $line = (SELECT VALUE out FROM edges WHERE kind = 'derived_from' AND in = $id);
+    LET $contra = (SELECT count() AS n FROM edges
+                   WHERE kind = 'contradicts' AND (in = $id OR out = $id) GROUP ALL);
+    RETURN {
+      memo: $m[0] ?? NONE,
+      subjects: $subj,
+      lineage: $line,
+      contradictions: $contra[0].n ?? 0
+    };
+  `;
+  const results = await db.query(new BoundQuery(sql, { id })).collect();
+  const result = results[results.length - 1];
+  const payload = Array.isArray(result) ? result[0] : result;
+  const memo = payload?.memo;
   if (!memo) return null;
-  const [subjects] = await db
-    .query(surql`SELECT VALUE to FROM edges WHERE kind = 'about' AND from = ${id}`)
-    .collect();
-  const [lineage] = await db
-    .query(surql`SELECT VALUE to FROM edges WHERE kind = 'derived_from' AND from = ${id}`)
-    .collect();
-  const [contraRows] = await db
-    .query(
-      surql`SELECT count() AS n FROM edges WHERE kind = 'contradicts' AND (from = ${id} OR to = ${id}) GROUP ALL`,
-    )
-    .collect();
   return {
     ...memo,
-    subjects,
-    lineage,
-    contradictions: contraRows?.[0]?.n ?? 0,
+    subjects: payload.subjects ?? [],
+    lineage: payload.lineage ?? [],
+    contradictions: payload.contradictions ?? 0,
   };
 }
 
@@ -374,12 +433,65 @@ export async function searchEntities(db, embedder, query, opts = {}) {
   return _surfaceSearch(db, embedder, 'entities', query, opts);
 }
 
+// Hybrid retrieval (Phase 4 — section 2 of the surrealdb-improvements spec)
+// runs vector + BM25 in parallel and fuses with RRF. Adaptive over-fetch on
+// the kNN side mitigates post-filter shrinkage when callers narrow by
+// kind/scope/tags/since.
+
+const HYBRID_DEFAULTS = {
+  rrf_k: 60,
+  knn_overfetch_base: 1.5,
+  knn_overfetch_per_filter: 1.5,
+  mmr_threshold: 0.92,
+};
+
+let _recallConfigCache = null;
+let _recallConfigCachedAt = 0;
+async function getRecallConfig(db) {
+  // 5-second cache; runtime:recall is read on every search call.
+  if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
+    return _recallConfigCache;
+  }
+  try {
+    const [rows] = await db.query('SELECT value FROM runtime:recall').collect();
+    const value = rows?.[0]?.value ?? {};
+    _recallConfigCache = { ...HYBRID_DEFAULTS, ...value };
+  } catch {
+    _recallConfigCache = HYBRID_DEFAULTS;
+  }
+  _recallConfigCachedAt = Date.now();
+  return _recallConfigCache;
+}
+
+function countActiveFilters(opts, surface) {
+  let n = 0;
+  if (surface === 'memos' && opts.kind) n += 1;
+  if (surface === 'events' && opts.source) n += 1;
+  if (surface === 'entities' && opts.type) n += 1;
+  if (Array.isArray(opts.scopes) && !opts.scopes.includes('*')) n += 1;
+  if (opts.tags && opts.tags.length > 0) n += 1;
+  if (opts.since) n += 1;
+  return n;
+}
+
 async function _surfaceSearch(db, embedder, surface, query, opts) {
   const limit = Number.isInteger(opts.limit) ? opts.limit : 10;
   if (limit < 1 || limit > 100) {
     throw new Error(`searchMemos: limit out of range [1,100]: ${limit}`);
   }
-  const ef = Math.max(64, limit * 8);
+
+  // Hybrid retrieval can be disabled per-call (e.g. for explainability tests)
+  // via opts.disableBm25 — vector-only path remains the legacy semantics.
+  const cfg = await getRecallConfig(db);
+  const filterCount = countActiveFilters(opts, surface);
+  const knnK = Math.min(
+    100,
+    Math.max(
+      limit,
+      Math.ceil(limit * (cfg.knn_overfetch_base + filterCount * cfg.knn_overfetch_per_filter)),
+    ),
+  );
+  const ef = Math.max(64, knnK * 4);
   const { readProfile } = await import('../embed/profile-router.js');
   const readProf = await readProfile(db);
   const embeddingTbl = embeddingTable(readProf, surface);
@@ -391,16 +503,41 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   // a timeout produces an empty hit list rather than crashing the turn.
   const knnSql = `SELECT record, vector::distance::knn() AS dist
                   FROM ${embeddingTbl}
-                  WHERE vector <|${limit}, ${ef}|> $qvec
+                  WHERE vector <|${knnK}, ${ef}|> $qvec
                   ORDER BY dist
-                  LIMIT ${limit}
+                  LIMIT ${knnK}
                   TIMEOUT 2s`;
   const [knnRows] = await db.query(new BoundQuery(knnSql, { qvec })).collect();
-  if (knnRows.length === 0) return { hits: [] };
+
+  // Step 1b (Phase 4): BM25 keyword retrieval. Fail-soft — FULLTEXT indexes
+  // were added in Phase 1 but if the engine version doesn't support the
+  // index variant, vector-only recall still works.
+  let bm25Rows = [];
+  if (!opts.disableBm25 && query && query.length > 0) {
+    bm25Rows = await _bm25Retrieve(db, surface, query, knnK).catch(() => []);
+  }
+
+  if (knnRows.length === 0 && bm25Rows.length === 0) return { hits: [] };
 
   // Step 2: fetch records and apply scope/kind/tags filter.
-  const ids = knnRows.map((r) => r.record);
+  // We hydrate the union of kNN and BM25 candidates in a single SELECT.
   const idDist = new Map(knnRows.map((r) => [recordStringId(r.record), r.dist]));
+  const candidateIdSet = new Set();
+  const ids = [];
+  for (const r of knnRows) {
+    const k = recordStringId(r.record);
+    if (!candidateIdSet.has(k)) {
+      candidateIdSet.add(k);
+      ids.push(r.record);
+    }
+  }
+  for (const r of bm25Rows) {
+    const k = recordStringId(r.id);
+    if (!candidateIdSet.has(k)) {
+      candidateIdSet.add(k);
+      ids.push(r.id);
+    }
+  }
 
   const filters = ['id IN $ids'];
   const bindings = { ids };
@@ -439,11 +576,68 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   const fetchSql = `SELECT * FROM ${surface} WHERE ${filters.join(' AND ')}`;
   const [rows] = await db.query(new BoundQuery(fetchSql, bindings)).collect();
 
-  const hits = rows
-    .map((row) => ({ record: row, distance: idDist.get(recordStringId(row.id)) ?? 1 }))
-    .sort((a, b) => a.distance - b.distance);
+  // Phase 4: build kNN- and BM25-ranked lists from the hydrated rows, then
+  // RRF-fuse them. BM25-only hits get distance=0.5 in fusion.padDistances.
+  const { rrfFuse, padDistances } = await import('../recall/fusion.js');
+  const rowById = new Map(rows.map((r) => [recordStringId(r.id), r]));
 
-  return { hits };
+  // kNN-ordered hydrated hits (only those that survived post-filters).
+  const knnHits = [];
+  for (const k of knnRows) {
+    const key = recordStringId(k.record);
+    const row = rowById.get(key);
+    if (!row) continue;
+    knnHits.push({ id: row.id, ...row, distance: k.dist, _source: 'knn' });
+  }
+  // BM25-ordered hydrated hits.
+  const bm25Hits = [];
+  for (const b of bm25Rows) {
+    const key = recordStringId(b.id);
+    const row = rowById.get(key);
+    if (!row) continue;
+    bm25Hits.push({ id: row.id, ...row, distance: undefined, _source: 'bm25' });
+  }
+
+  const fused = padDistances(rrfFuse([knnHits, bm25Hits], { k: cfg.rrf_k }));
+  const final = fused.slice(0, limit);
+
+  // Keep RRF order (do NOT re-sort by distance — that would undo the fusion).
+  const hits = final.map((row) => ({
+    record: row,
+    distance: row.distance ?? idDist.get(recordStringId(row.id)) ?? 1,
+    _sources: row._sources ?? [],
+    _rrf: row._rrf ?? 0,
+  }));
+
+  return {
+    hits,
+    debug: { knn_n: knnHits.length, bm25_n: bm25Hits.length, fused_n: fused.length },
+  };
+}
+
+/**
+ * BM25 keyword retrieval helper. Fails-soft on missing FULLTEXT indexes so
+ * vector-only recall keeps working on engines that don't support BM25.
+ */
+async function _bm25Retrieve(db, surface, query, k) {
+  const indexName =
+    surface === 'memos'
+      ? 'memos_content_fts'
+      : surface === 'events'
+        ? 'events_content_fts'
+        : surface === 'entities'
+          ? 'entities_name_fts'
+          : null;
+  if (!indexName) return [];
+  const field = surface === 'entities' ? 'name' : 'content';
+  const sql = `SELECT id, search::score(0) AS bm25_score
+               FROM ${surface} WITH INDEX ${indexName}
+               WHERE ${field} @0@ $q
+               ORDER BY bm25_score DESC
+               LIMIT ${k}
+               TIMEOUT 2s`;
+  const [rows] = await db.query(new BoundQuery(sql, { q: query })).collect();
+  return rows ?? [];
 }
 
 /**
@@ -494,16 +688,16 @@ export async function neighbors(db, recordId, kind, opts = {}) {
   if (!spec) throw new Error(`neighbors: unknown kind ${kind}`);
   let whereClause;
   if (spec.symmetric) {
-    whereClause = '(from = $e OR to = $e)';
+    whereClause = '(in = $e OR out = $e)';
   } else if (direction === 'out') {
-    whereClause = 'from = $e';
+    whereClause = 'in = $e';
   } else if (direction === 'in') {
-    whereClause = 'to = $e';
+    whereClause = 'out = $e';
   } else {
-    whereClause = '(from = $e OR to = $e)';
+    whereClause = '(in = $e OR out = $e)';
   }
   const sql = `SELECT
-    IF from = $e THEN to ELSE from END AS other,
+    IF in = $e THEN out ELSE in END AS other,
     weight, last_seen, valid_from, valid_until
     FROM edges
     WHERE kind = $k AND ${whereClause}

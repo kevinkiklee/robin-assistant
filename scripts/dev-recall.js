@@ -2,10 +2,10 @@
 // Manual smoke: open Robin's DB (via $ROBIN_HOME or .robin-home pointer), run a recall query, print results.
 // Not a public CLI. Phase 3 will build the real agent interface.
 
-import { close, connect } from '../src/db/client.js';
+import { close, connect, defaultDbUrl } from '../src/db/client.js';
 import { createTransformersEmbedder } from '../src/embed/embedder.js';
 import { recall } from '../src/recall/index.js';
-import { ensureHome, paths } from '../src/runtime/data-store.js';
+import { ensureHome } from '../src/runtime/data-store.js';
 
 const query = process.argv.slice(2).join(' ');
 if (!query) {
@@ -14,7 +14,7 @@ if (!query) {
 }
 
 await ensureHome();
-const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+const db = await connect({ engine: await defaultDbUrl() });
 try {
   const embedder = await createTransformersEmbedder();
   const r = await recall(db, embedder, query, { limit: 10 });

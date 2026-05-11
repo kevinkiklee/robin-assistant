@@ -54,7 +54,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
       const enrichedHits = [];
       if (hitIds.length > 0) {
         const [edgeRows] = await db
-          .query(surql`SELECT from, to FROM edges WHERE kind = 'mentions' AND from IN ${hitIds}`)
+          .query(surql`SELECT in, out FROM edges WHERE kind = 'mentions' AND in IN ${hitIds}`)
           .collect();
         // mentionsByHit keys are stringified record IDs (we look up by
         // String(hit.id)); but for the second SELECT we keep the raw record
@@ -64,13 +64,13 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         const entityIdSet = new Set(); // for de-duping
         const entityIdList = []; // raw RecordIds for the IN query
         for (const e of edgeRows ?? []) {
-          const fromId = String(e.from);
-          const toIdStr = String(e.to);
+          const fromId = String(e.in);
+          const toIdStr = String(e.out);
           if (!mentionsByHit.has(fromId)) mentionsByHit.set(fromId, []);
           mentionsByHit.get(fromId).push(toIdStr);
           if (!entityIdSet.has(toIdStr)) {
             entityIdSet.add(toIdStr);
-            entityIdList.push(e.to);
+            entityIdList.push(e.out);
           }
         }
         let entityById = new Map();

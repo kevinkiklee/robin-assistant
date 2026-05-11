@@ -1,6 +1,6 @@
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { listAllJobs } from '../../jobs/db.js';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { ensureHome } from '../../runtime/data-store.js';
 
 function fmt(d) {
   return d ? new Date(d).toISOString() : '—';
@@ -12,7 +12,7 @@ export async function jobsList(_argv = [], deps = {}) {
     deps.listJobs ??
     (async () => {
       await ensureHome();
-      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+      const db = await connect({ engine: await defaultDbUrl() });
       try {
         return await listAllJobs(db);
       } finally {

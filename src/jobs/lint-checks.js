@@ -26,8 +26,8 @@ async function checkOrphanEntities(db) {
   // Build the set of entity ids that appear on either side of any edge.
   const [edgeRefs] = await db
     .query(
-      `SELECT VALUE to FROM edges
-       WHERE to IN $ids
+      `SELECT VALUE out FROM edges
+       WHERE out IN $ids
        LIMIT 100000`,
       { ids: entities.map((e) => e.id) },
     )
@@ -93,7 +93,7 @@ async function checkDeadEdges(db) {
   // DEFINE EVENT cascade_edges_* triggers prune edges on endpoint delete, so
   // dead edges should be rare in steady state. Test-injected or pre-cascade
   // rows can still exist; surface them here.
-  const [edges] = await db.query(surql`SELECT id, kind, from, to FROM edges`).collect();
+  const [edges] = await db.query(surql`SELECT id, kind, in, out FROM edges`).collect();
   const issues = [];
   // Group endpoint refs per source table to batch existence checks. Endpoints
   // can be from any of {events, memos, entities, episodes}; we look up each
@@ -107,8 +107,8 @@ async function checkDeadEdges(db) {
     byTable.get(tb).add(ref);
   };
   for (const e of edges ?? []) {
-    enqueue(e.from);
-    enqueue(e.to);
+    enqueue(e.in);
+    enqueue(e.out);
   }
   const alive = new Set();
   for (const [tb, refs] of byTable.entries()) {
@@ -123,8 +123,8 @@ async function checkDeadEdges(db) {
     }
   }
   for (const e of edges ?? []) {
-    const fromAlive = alive.has(String(e.from));
-    const toAlive = alive.has(String(e.to));
+    const fromAlive = alive.has(String(e.in));
+    const toAlive = alive.has(String(e.out));
     if (!fromAlive || !toAlive) {
       issues.push({
         kind: 'dead_edge',

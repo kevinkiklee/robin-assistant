@@ -92,6 +92,14 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 ### introspection
 **Daemon-boot integrity check against the install-time manifest baseline.** Unchanged from v1.
 
+### recall (hybrid retrieval — alpha.15+)
+**Two retrievers, RRF-fused.** Vector kNN over the active embedder's per-surface HNSW index runs in parallel with BM25 over the `*_content_fts` / `*_name_fts` FULLTEXT indexes; reciprocal rank fusion combines the rankings.
+- Files: `src/memory/store.js` (`_surfaceSearch`, `_bm25Retrieve`), `src/recall/fusion.js` (`rrfFuse`, `padDistances`), `src/recall/rank.js` (composite score).
+- Adaptive over-fetch on the kNN side: `knnK = limit × (base + filters × per_filter)`. Mitigates post-filter shrinkage when callers narrow by `kind`/`scope`/`tags`/`since`.
+- BM25-only hits get a neutral cosine distance (`0.5`) so `rank.score()` doesn't underrank them. Re-embedding would cost an extra embed call per recall on the intuition path (every UserPromptSubmit); the pad is the cheap, defensible choice. `recall_log` records `_sources: ['knn', 'bm25']` per hit so we can see how often the BM25 lane carries weight.
+- Tunables in `runtime:recall.value` (5s-cached): `rrf_k`, `knn_overfetch_base`, `knn_overfetch_per_filter`, `mmr_threshold`. Tweak without code change.
+- BM25 fails-soft: if FULLTEXT indexes aren't available (e.g., upgraded engine), vector-only recall keeps working.
+
 ## See also
 
 - [`architecture.md`](architecture.md) — how faculties fit into the request lifecycle

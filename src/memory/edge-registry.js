@@ -1,29 +1,35 @@
 // edge-registry.js — EDGE_KIND_REGISTRY + endpoint validation + canonical
 // ordering + composite-ID helpers.
 //
-// Spec §5.3 + §6.1. The `edges.kind` schema field is OPEN; this registry is
-// the in-code source of truth. Endpoint-type safety, self-loop rejection, and
-// symmetric-edge canonicalization all happen here so callers of `store.relate`
-// can't forget.
+// Spec: 2026-05-11-surrealdb-improvements-design.md (section 1) — edges live
+// in a SurrealDB v3 TYPE RELATION table with `in`/`out` magic fields; the
+// `edges.kind` discriminator stays open-enum. Registry-side validation gives
+// us endpoint-type safety, self-loop rejection, and symmetric-edge
+// canonicalization without forcing per-kind RELATION tables (the open-enum
+// trade-off).
+//
+// Public function signatures (validateEdge/canonicalEndpoints) keep the
+// `from`/`to` names for caller readability; the schema-level fields are
+// `in`/`out` (and registry keys mirror that).
 
 export const EDGE_KIND_REGISTRY = {
-  mentions: { from: ['events', 'memos'], to: ['entities'] },
-  about: { from: ['events', 'memos'], to: ['entities'] },
-  before: { from: ['events'], to: ['events'] },
-  works_on: { from: ['entities'], to: ['entities'] },
-  participates_in: { from: ['entities'], to: ['entities', 'episodes'] },
+  mentions: { in: ['events', 'memos'], out: ['entities'] },
+  about: { in: ['events', 'memos'], out: ['entities'] },
+  before: { in: ['events'], out: ['events'] },
+  works_on: { in: ['entities'], out: ['entities'] },
+  participates_in: { in: ['entities'], out: ['entities', 'episodes'] },
   occurs_with: {
-    from: ['entities'],
-    to: ['entities'],
+    in: ['entities'],
+    out: ['entities'],
     symmetric: true,
     counter: true,
   },
   derived_from: {
-    from: ['memos'],
-    to: ['events', 'episodes', 'memos', 'entities'],
+    in: ['memos'],
+    out: ['events', 'episodes', 'memos', 'entities'],
   },
-  supersedes: { from: ['memos'], to: ['memos'] },
-  contradicts: { from: ['memos'], to: ['memos'], symmetric: true },
+  supersedes: { in: ['memos'], out: ['memos'] },
+  contradicts: { in: ['memos'], out: ['memos'], symmetric: true },
 };
 
 /**
@@ -68,11 +74,11 @@ export function validateEdge(from, to, kind) {
   const toTb = recordTable(to);
   if (!fromTb) errors.push('from: missing or invalid record ref');
   if (!toTb) errors.push('to: missing or invalid record ref');
-  if (fromTb && !spec.from.includes(fromTb)) {
-    errors.push(`kind '${kind}' from must be one of [${spec.from.join(', ')}], got ${fromTb}`);
+  if (fromTb && !spec.in.includes(fromTb)) {
+    errors.push(`kind '${kind}' from must be one of [${spec.in.join(', ')}], got ${fromTb}`);
   }
-  if (toTb && !spec.to.includes(toTb)) {
-    errors.push(`kind '${kind}' to must be one of [${spec.to.join(', ')}], got ${toTb}`);
+  if (toTb && !spec.out.includes(toTb)) {
+    errors.push(`kind '${kind}' to must be one of [${spec.out.join(', ')}], got ${toTb}`);
   }
   // Self-loop rejection: same record on both sides for any kind.
   const fromId = recordStringId(from);
@@ -97,14 +103,16 @@ export function canonicalEndpoints(from, to, kind) {
 
 /**
  * Compose the deterministic record ID for an edge.
- * Returns a SurrealQL literal: `edges:[<kind>, <from>, <to>]`.
+ * Returns a SurrealQL literal: `edges:[<kind>, <in>, <out>]`.
  * For symmetric kinds, callers should pass canonicalized endpoints first.
+ * Parameter names kept as `from`/`to` for caller readability; mapped to
+ * the schema's `in`/`out` magic fields.
  */
 export function compositeEdgeId(kind, from, to) {
   const f = recordStringId(from);
   const t = recordStringId(to);
   if (!f || !t) throw new Error('compositeEdgeId: invalid record refs');
-  return { kind, from: f, to: t };
+  return { kind, in: f, out: t };
 }
 
 export function isCounterKind(kind) {

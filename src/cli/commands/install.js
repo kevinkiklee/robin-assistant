@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import readline from 'node:readline/promises';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
 import { ensureHookShim } from '../../install/hook-shim.js';
 import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
@@ -210,7 +210,7 @@ async function validateGemini({ prompt, interactive, iUnderstand }) {
 
 async function applyMigrations({ connectFn, closeFn, onDbReady }) {
   await ensureHome();
-  const db = await connectFn({ engine: `rocksdb://${paths.data.db()}` });
+  const db = await connectFn({ engine: await defaultDbUrl() });
   try {
     const applied = await runMigrations(db, paths.source.migrations());
     const noun = applied.length === 1 ? 'migration' : 'migrations';

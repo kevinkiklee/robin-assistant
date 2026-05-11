@@ -1,5 +1,98 @@
 # Changelog
 
+## [6.0.0-alpha.15] — 2026-05-11 — SurrealDB improvements (4 phases)
+
+Corrects the prior redesign's TYPE NORMAL premise and lands four orthogonal
+improvements. See `docs/superpowers/specs/2026-05-11-surrealdb-improvements-design.md`
+for the full spec.
+
+### Schema
+
+- **Edges: `TYPE NORMAL` → `TYPE RELATION`** (no FROM/TO clause, preserves
+  open-enum kinds). Composite array IDs `edges:[kind, in, out]` keep idempotent
+  counter semantics via `INSERT RELATION ... ON DUPLICATE KEY UPDATE`. Arrow
+  traversal (`<-edges[WHERE kind=X]<-source`, recursive `{1..N}`, `+shortest`,
+  `+collect`) now works across the codebase. The HANDOFF.md assertion
+  "TYPE NORMAL is incompatible with graph arrows; composite-ID UPSERT requires
+  TYPE NORMAL" was wrong — both can coexist on `TYPE RELATION` tables.
+- **Field rename `from`/`to` → `in`/`out`** across schema + ~20 src files +
+  ~14 test files. Public JS signatures (`store.relate(db, from, to, kind)`,
+  `validateEdge(from, to, kind)`) preserve `from`/`to` parameter names for
+  caller readability; mapped to `in`/`out` internally.
+- **FULLTEXT BM25 indexes** on `events.content`, `memos.content`,
+  `entities.name` with a shared `english` snowball analyzer.
+- **`REFERENCE ON DELETE UNSET`** on `events.episode_id` with COMPUTED
+  `episodes.member_events` back-ref.
+- **`REFERENCE ON DELETE IGNORE`** on `rule_candidates.signal_events` and
+  `rules.source_candidate` (preserves audit history when source rows are
+  deleted).
+- **COMPUTED `runtime_jobs.is_overdue`** — pure same-row predicate for the
+  heartbeat dispatcher.
+- **`events_meta_kind` field-path index** for the reinforcement correction
+  scan.
+- **`runtime:recall` config row** seeded with RRF k, kNN over-fetch
+  multipliers, MMR threshold.
+
+### Engine
+
+- New default: `surrealkv://` (the v3 successor to rocksdb). Configurable via
+  `<robinHome>/config.json.db.engine`. `surrealkv+versioned` (time-travel
+  reads) currently hangs in @surrealdb/node 3.0.3 — flipping is a one-line
+  config change once that's resolved upstream.
+- All 30+ CLI/daemon/script call sites route through `defaultDbUrl()` in
+  `src/db/client.js`.
+
+### Hot-path batching
+
+- `store.relateAll`: N sequential UPSERTs → one multi-statement
+  `INSERT RELATION ... ON DUPLICATE KEY UPDATE` wrapped in BEGIN/COMMIT,
+  chunked at 50. ~10-20× latency drop on biographer per-event commit.
+- `store.getMemo`: 4 sequential SELECTs → one multi-statement query with LET
+  blocks (single round-trip).
+- `reinforcement.evaluatePending`: ~1200 queries / 200 pending rows → ~7
+  queries via pre-fetched correction window, bucket-by-count memo updates
+  (preserves the "memo recalled in N pending rows → signal_count += N"
+  semantics), and one UPDATE per outcome bucket on `recall_log`.
+
+### Hybrid retrieval (BM25 + vector + RRF)
+
+- New `src/recall/fusion.js`: `rrfFuse` (`1 / (k + rank)`) + `padDistances`
+  (BM25-only hits get neutral cosine=0.5).
+- `_surfaceSearch`: runs HNSW kNN and BM25 in parallel, fuses via RRF.
+  Adaptive over-fetch on the kNN side scales with active filter count,
+  mitigating post-filter shrinkage. BM25 fails-soft if FULLTEXT indexes are
+  unavailable.
+- Tunables in `runtime:recall` (5s-cached): `rrf_k`, `knn_overfetch_base`,
+  `knn_overfetch_per_filter`, `mmr_threshold`.
+- `hits[].record._sources` (`['knn', 'bm25']`) surfaces retrieval-lane
+  contribution per hit; written to `recall_log`, stripped from agent-facing
+  MCP payloads.
+
+### Verification
+
+`scripts/verify-design-assumptions.js` extended from 4 gates to 9:
+- G5 arrow traversal on TYPE RELATION + mid-edge kind filter.
+- G15 REFERENCE back-ref `<~events` equals `WHERE episode_id = $X`.
+- G16 ON DELETE UNSET clears scalar pointer.
+- G17 COMPUTED `is_overdue` across the (next_run_at × in_flight × enabled) matrix.
+- G18 `entities_name_lower` index still selected by the planner.
+
+All gates green. Unit suite 976/976 + integration 112/112 (1 skipped, 0 fail).
+
+### Migration
+
+Destructive reset required — `0001-init.surql` checksum changed; the
+migration runner throws on mismatch. No data migrator (per spec; v2 had no
+users / no data).
+
+```bash
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.mcp.plist
+cp -R <robinHome>/db <robinHome>/db.pre-alpha15  # safety
+rm -rf <robinHome>/db/*
+# update config.json db.engine if migrating from rocksdb
+# restart daemon
+```
+
 ## [6.0.0-alpha.14] — 2026-05-11 — Post-redesign cleanup
 
 Audit pass on top of `alpha.13`. No new features.

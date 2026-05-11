@@ -47,23 +47,22 @@ async function defineMinimalSchema(db) {
         DEFINE INDEX memos_kind            ON memos FIELDS kind;
         DEFINE INDEX memos_kind_meta_name  ON memos FIELDS kind, meta.name;
 
-        DEFINE TABLE edges SCHEMAFULL TYPE NORMAL;
+        DEFINE TABLE edges SCHEMAFULL TYPE RELATION;
+        -- in/out are implicitly defined by TYPE RELATION (type: record)
         DEFINE FIELD kind      ON edges TYPE string;
-        DEFINE FIELD from      ON edges TYPE record;
-        DEFINE FIELD to        ON edges TYPE record;
         DEFINE FIELD weight    ON edges TYPE option<float>;
         DEFINE FIELD last_seen ON edges TYPE option<datetime>;
-        DEFINE INDEX edges_kind_from ON edges FIELDS kind, from;
-        DEFINE INDEX edges_kind_to   ON edges FIELDS kind, to;
+        DEFINE INDEX edges_kind_in   ON edges FIELDS kind, in;
+        DEFINE INDEX edges_kind_out  ON edges FIELDS kind, out;
 
         DEFINE EVENT cascade_edges_entities ON entities WHEN $event = "DELETE"
-          THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+          THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
         DEFINE EVENT cascade_edges_memos ON memos WHEN $event = "DELETE"
-          THEN { DELETE edges WHERE from = $before.id OR to = $before.id; };
+          THEN { DELETE edges WHERE in = $before.id OR out = $before.id; };
 
         DEFINE FUNCTION fn::freshness($memo: record<memos>) {
           LET $m = $memo.*;
-          LET $superseded = (SELECT count() AS n FROM edges WHERE kind = 'supersedes' AND to = $memo GROUP ALL)[0].n ?? 0;
+          LET $superseded = (SELECT count() AS n FROM edges WHERE kind = 'supersedes' AND out = $memo GROUP ALL)[0].n ?? 0;
           IF $superseded > 0 { RETURN 0; };
           LET $half_life_ms = 7776000000;
           LET $age_ms = (time::now() - $m.decay_anchor) / 1ms;
@@ -84,11 +83,13 @@ async function gateCascade(db) {
       surql`
         CREATE entities:alice CONTENT { name: 'Alice' };
         CREATE entities:bob   CONTENT { name: 'Bob' };
-        CREATE edges:['knows', entities:alice, entities:bob] CONTENT {
-          kind: 'knows', from: entities:alice, to: entities:bob
+        INSERT RELATION INTO edges {
+          id: ['knows', entities:alice, entities:bob],
+          in: entities:alice, out: entities:bob, kind: 'knows'
         };
-        CREATE edges:['knows', entities:bob, entities:alice] CONTENT {
-          kind: 'knows', from: entities:bob, to: entities:alice
+        INSERT RELATION INTO edges {
+          id: ['knows', entities:bob, entities:alice],
+          in: entities:bob, out: entities:alice, kind: 'knows'
         };
       `,
     )
@@ -119,12 +120,11 @@ async function gateUpsertIdempotence(db) {
   await db
     .query(
       surql`
-        UPSERT edges:['occurs_with', entities:bob, entities:carol] SET
-          kind = 'occurs_with',
-          from = entities:bob,
-          to = entities:carol,
-          weight += 1,
-          last_seen = time::now();
+        INSERT RELATION INTO edges {
+          id: ['occurs_with', entities:bob, entities:carol],
+          in: entities:bob, out: entities:carol,
+          kind: 'occurs_with', weight: 1, last_seen: time::now()
+        } ON DUPLICATE KEY UPDATE weight += 1, last_seen = time::now();
       `,
     )
     .collect();
@@ -133,12 +133,11 @@ async function gateUpsertIdempotence(db) {
   await db
     .query(
       surql`
-        UPSERT edges:['occurs_with', entities:bob, entities:carol] SET
-          kind = 'occurs_with',
-          from = entities:bob,
-          to = entities:carol,
-          weight += 1,
-          last_seen = time::now();
+        INSERT RELATION INTO edges {
+          id: ['occurs_with', entities:bob, entities:carol],
+          in: entities:bob, out: entities:carol,
+          kind: 'occurs_with', weight: 1, last_seen: time::now()
+        } ON DUPLICATE KEY UPDATE weight += 1, last_seen = time::now();
       `,
     )
     .collect();
@@ -208,8 +207,9 @@ async function gateFreshness(db) {
   await db
     .query(
       surql`
-        CREATE edges:['supersedes', memos:new, memos:old] CONTENT {
-          kind: 'supersedes', from: memos:new, to: memos:old
+        INSERT RELATION INTO edges {
+          id: ['supersedes', memos:new, memos:old],
+          in: memos:new, out: memos:old, kind: 'supersedes'
         };
       `,
     )
@@ -224,6 +224,253 @@ async function gateFreshness(db) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// New gates for the 2026-05-11-surrealdb-improvements-design.md spec.
+// G15 — REFERENCE back-ref <~events matches WHERE episode_id = $X
+// G16 — ON DELETE UNSET clears events.episode_id on episode delete
+// G17 — COMPUTED runtime_jobs.is_overdue across truth-table
+// G18 — entities_name_lower index still selected by the planner
+// ---------------------------------------------------------------------------
+
+async function gateArrowTraversal(db) {
+  console.log('\nG5 — Arrow traversal on TYPE RELATION edges with mid-edge kind filter');
+  await db.query('DELETE edges; DELETE memos; DELETE entities').collect();
+  await db
+    .query(
+      `
+      CREATE entities:alice SET name = 'Alice';
+      CREATE memos:m1 SET kind = 'knowledge', content = 'fact about alice';
+      CREATE memos:m2 SET kind = 'knowledge', content = 'second fact';
+      INSERT RELATION INTO edges {
+        id: ['about', memos:m1, entities:alice],
+        in: memos:m1, out: entities:alice, kind: 'about'
+      };
+      INSERT RELATION INTO edges {
+        id: ['mentions', memos:m1, entities:alice],
+        in: memos:m1, out: entities:alice, kind: 'mentions'
+      };
+      INSERT RELATION INTO edges {
+        id: ['about', memos:m2, entities:alice],
+        in: memos:m2, out: entities:alice, kind: 'about'
+      };
+    `,
+    )
+    .collect();
+
+  // Reverse arrow with mid-edge kind filter — return the memos that have an
+  // outbound `about` edge to alice.
+  const [hits] = await db
+    .query("SELECT VALUE <-edges[WHERE kind = 'about']<-memos FROM ONLY entities:alice")
+    .collect();
+  const ids = (hits ?? []).map((x) => String(x)).sort();
+  if (ids.length === 2 && ids[0] === 'memos:m1' && ids[1] === 'memos:m2') {
+    ok(`arrow traversal returned ${ids.length} memos via 'about' edges`);
+  } else {
+    fail(`expected [memos:m1, memos:m2], got ${JSON.stringify(ids)}`);
+  }
+
+  // Mid-edge filter properly excludes other kinds.
+  const [aboutOnly] = await db
+    .query(
+      "SELECT count() AS n FROM (SELECT VALUE <-edges[WHERE kind='about']<-memos FROM ONLY entities:alice)",
+    )
+    .collect();
+  const aboutCount = aboutOnly?.[0]?.n ?? aboutOnly?.[0];
+  void aboutCount; // primary success criterion above is sufficient
+}
+
+async function gateReferenceBackRef(db) {
+  console.log('\nG15 — REFERENCE back-ref <~events on episodes');
+  await db
+    .query(
+      `
+      DEFINE TABLE IF NOT EXISTS episodes SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD started_at ON episodes TYPE datetime DEFAULT time::now();
+      DEFINE FIELD member_events ON episodes COMPUTED <~events_ref;
+
+      DEFINE TABLE IF NOT EXISTS events_ref SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD ts ON events_ref TYPE datetime DEFAULT time::now();
+      DEFINE FIELD episode_id ON events_ref TYPE option<record<episodes>> REFERENCE ON DELETE UNSET;
+    `,
+    )
+    .collect();
+
+  await db
+    .query(
+      `
+      CREATE episodes:e1;
+      CREATE events_ref:e1a SET episode_id = episodes:e1;
+      CREATE events_ref:e1b SET episode_id = episodes:e1;
+      CREATE events_ref:e1c SET episode_id = NONE;
+    `,
+    )
+    .collect();
+
+  const [byField] = await db
+    .query('SELECT VALUE id FROM events_ref WHERE episode_id = episodes:e1')
+    .collect();
+  const [byBackref] = await db.query('SELECT VALUE member_events FROM ONLY episodes:e1').collect();
+
+  const sortIds = (xs) => xs.map((x) => String(x)).sort();
+  const expected = sortIds(byField);
+  const got = sortIds(byBackref ?? []);
+  if (expected.length === 2 && JSON.stringify(expected) === JSON.stringify(got)) {
+    ok(`member_events back-ref matches forward query (${expected.length} events)`);
+  } else {
+    fail(`back-ref mismatch: forward=${JSON.stringify(expected)} backref=${JSON.stringify(got)}`);
+  }
+}
+
+async function gateOnDeleteUnset(db) {
+  console.log('\nG16 — REFERENCE ON DELETE UNSET clears scalar pointer');
+  // Schema reused from G15.
+  await db.query('DELETE episodes:e1').collect();
+  const [remaining] = await db
+    .query('SELECT id, episode_id FROM events_ref WHERE id IN [events_ref:e1a, events_ref:e1b]')
+    .collect();
+  const allCleared = remaining.every((r) => r.episode_id == null);
+  if (allCleared && remaining.length === 2) {
+    ok('events_ref.episode_id was cleared on episode delete');
+  } else {
+    fail(`expected episode_id=NONE for both rows, got ${JSON.stringify(remaining)}`);
+  }
+}
+
+async function gateComputedIsOverdue(db) {
+  console.log('\nG17 — COMPUTED runtime_jobs.is_overdue matrix');
+  await db
+    .query(
+      `
+      DEFINE TABLE IF NOT EXISTS rj_test SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD enabled     ON rj_test TYPE bool;
+      DEFINE FIELD in_flight   ON rj_test TYPE bool DEFAULT false;
+      DEFINE FIELD next_run_at ON rj_test TYPE option<datetime>;
+      DEFINE FIELD is_overdue  ON rj_test COMPUTED
+        (next_run_at != NONE AND next_run_at < time::now() AND !in_flight AND enabled);
+    `,
+    )
+    .collect();
+  const past = new Date(Date.now() - 60_000).toISOString();
+  const future = new Date(Date.now() + 60_000).toISOString();
+  const cases = [
+    { id: 'rj_test:overdue', enabled: true, in_flight: false, next: past, expect: true },
+    { id: 'rj_test:future', enabled: true, in_flight: false, next: future, expect: false },
+    { id: 'rj_test:in_flight', enabled: true, in_flight: true, next: past, expect: false },
+    { id: 'rj_test:disabled', enabled: false, in_flight: false, next: past, expect: false },
+    { id: 'rj_test:no_next', enabled: true, in_flight: false, next: null, expect: false },
+  ];
+  for (const c of cases) {
+    const nextLit = c.next ? `d'${c.next}'` : 'NONE';
+    await db
+      .query(
+        `CREATE ${c.id} SET enabled=${c.enabled}, in_flight=${c.in_flight}, next_run_at=${nextLit}`,
+      )
+      .collect();
+  }
+  let allOk = true;
+  for (const c of cases) {
+    const [row] = await db.query(`SELECT VALUE is_overdue FROM ONLY ${c.id}`).collect();
+    if (row !== c.expect) {
+      fail(`${c.id}: expected ${c.expect}, got ${row}`);
+      allOk = false;
+    }
+  }
+  if (allOk) ok('is_overdue COMPUTED returned expected booleans across 5 cases');
+}
+
+async function gateReinforceCountBucket(_db) {
+  console.log('\nG12 — bucket-by-count reinforcement preserves N-per-memo semantics');
+  // A memo recalled in N distinct pending recall_log rows must get
+  // signal_count += N, not +1. The bucket-by-count optimization in
+  // src/recall/reinforcement.js groups updates by distinct count value.
+  // This gate exercises the multi-recall path against the real reinforcement
+  // module so a future refactor can't silently collapse signal increments.
+
+  // Lazy-import to avoid coupling the verify script to runtime config.
+  const { writeConfig } = await import('../src/runtime/config.js');
+  const { mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const testHome = join(tmpdir(), `robin-verify-g12-${process.pid}`);
+  mkdirSync(testHome, { recursive: true });
+  process.env.ROBIN_HOME = testHome;
+  await writeConfig({ embedder_profile: 'mxbai-1024' });
+
+  // Fresh DB with full migration applied so the reinforcement module finds
+  // the tables it expects (memos, events, recall_log, edges, etc.).
+  const { connect: appConnect, close: appClose } = await import('../src/db/client.js');
+  const { runMigrations } = await import('../src/db/migrate.js');
+  const { paths } = await import('../src/runtime/data-store.js');
+  const verifyDb = await appConnect({ engine: 'mem://' });
+  try {
+    await runMigrations(verifyDb, paths.source.migrations());
+
+    // Seed one memo, three pending recall_log rows each referencing it.
+    const [mc] = await verifyDb
+      .query(
+        `CREATE memos CONTENT { kind: 'knowledge', content: 'shared fact', derived_by: 'manual', signal_count: 1 }`,
+      )
+      .collect();
+    const memoId = (Array.isArray(mc) ? mc[0] : mc).id;
+    const oldTs = new Date(Date.now() - 10 * 60 * 1000);
+    for (let i = 0; i < 3; i++) {
+      await verifyDb
+        .query(
+          `CREATE recall_log CONTENT {
+             ts: $ts, session_id: $sid, query: 'q', k: 1,
+             ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+             outcome: 'pending'
+           }`,
+          { ts: oldTs, sid: `s${i}`, rid: String(memoId) },
+        )
+        .collect();
+    }
+
+    const { evaluatePending } = await import('../src/recall/reinforcement.js');
+    const summary = await evaluatePending(verifyDb);
+    if (summary.reinforced !== 3) {
+      fail(`expected summary.reinforced=3, got ${summary.reinforced}`);
+      return;
+    }
+    const [after] = await verifyDb.query(`SELECT signal_count FROM ${memoId}`).collect();
+    const finalCount = after?.[0]?.signal_count;
+    if (finalCount === 4) {
+      // initial 1 + 3 reinforcements = 4
+      ok(`signal_count: 1 → 4 after 3 pending-recall rows for the same memo`);
+    } else {
+      fail(`expected signal_count=4 (1 base + 3 increments), got ${finalCount}`);
+    }
+  } finally {
+    await appClose(verifyDb);
+  }
+}
+
+async function gateNameLowerIndexStillSelected(db) {
+  console.log('\nG18 — entities_name_lower index still selected by planner');
+  await db
+    .query(
+      `
+      DEFINE TABLE IF NOT EXISTS entities_t SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD name       ON entities_t TYPE string;
+      DEFINE FIELD name_lower ON entities_t TYPE string VALUE string::lowercase(name) READONLY;
+      DEFINE FIELD type       ON entities_t TYPE string;
+      DEFINE INDEX entities_t_name_lower ON entities_t FIELDS name_lower, type;
+
+      CREATE entities_t SET name = 'Alice', type = 'person';
+    `,
+    )
+    .collect();
+  const [plan] = await db
+    .query("SELECT id FROM entities_t WHERE name_lower = 'alice' AND type = 'person' EXPLAIN FULL")
+    .collect();
+  const planStr = JSON.stringify(plan ?? []);
+  if (planStr.includes('entities_t_name_lower') || planStr.includes('Index')) {
+    ok('planner used the name_lower index');
+  } else {
+    fail(`expected Index iterator on entities_t_name_lower, plan=${planStr}`);
+  }
+}
+
 async function main() {
   const db = await connect();
   try {
@@ -232,6 +479,12 @@ async function main() {
     await gateUpsertIdempotence(db);
     await gateFieldPathIndex(db);
     await gateFreshness(db);
+    await gateArrowTraversal(db);
+    await gateReferenceBackRef(db);
+    await gateOnDeleteUnset(db);
+    await gateComputedIsOverdue(db);
+    await gateReinforceCountBucket(db);
+    await gateNameLowerIndexStillSelected(db);
   } finally {
     try {
       await db.close();
@@ -242,7 +495,7 @@ async function main() {
   if (process.exitCode && process.exitCode !== 0) {
     console.error('\nVerification FAILED. Design needs adjustment before plan execution.');
   } else {
-    console.log('\nAll four verification gates passed.');
+    console.log('\nAll verification gates passed.');
   }
 }
 

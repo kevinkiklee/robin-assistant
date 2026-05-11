@@ -52,7 +52,7 @@ export async function listKnowledge(db, { subject_id, limit = 50 } = {}) {
       SELECT id, content, confidence, derived_at AS created_at
       FROM memos
       WHERE kind = 'knowledge'
-        AND id IN (SELECT VALUE from FROM edges WHERE kind = 'about' AND to = $sid)
+        AND id IN (SELECT VALUE in FROM edges WHERE kind = 'about' AND out = $sid)
       ORDER BY derived_at DESC LIMIT ${limit}
     `;
     const [rows] = await db.query(new BoundQuery(sql, { sid: subject_id })).collect();

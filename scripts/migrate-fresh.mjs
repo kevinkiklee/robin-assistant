@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { close, connect } from '../src/db/client.js';
+import { close, connect, defaultDbUrl } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { robinHome } from '../src/runtime/data-store.js';
 
@@ -67,7 +67,7 @@ async function main() {
 
   // Step 4: open + apply migrations
   console.log('migrate: connecting to fresh DB');
-  const db = await connect({ engine: `rocksdb://${DB_DIR}` });
+  const db = await connect({ engine: await defaultDbUrl() });
   try {
     const applied = await runMigrations(db, MIGRATIONS_DIR);
     console.log(`migrate: applied ${applied.length} migrations (versions: ${applied.join(', ')})`);

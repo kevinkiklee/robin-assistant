@@ -24,8 +24,8 @@ export async function dreamStepThreads(db, opts = {}) {
   // 2. Mentions edges from those events to entities.
   // edges.kind = 'mentions'; from = events; to = entities
   const sql = `
-    SELECT from, to FROM edges
-    WHERE kind = 'mentions' AND from IN $eids
+    SELECT in, out FROM edges
+    WHERE kind = 'mentions' AND in IN $eids
   `;
   const [edges] = await db.query(new BoundQuery(sql, { eids: eventIds })).collect();
   if (!edges || edges.length === 0) return { created: 0 };
@@ -41,11 +41,11 @@ export async function dreamStepThreads(db, opts = {}) {
   // 4. Group by entity → set of distinct episode IDs.
   const byEntity = new Map();
   for (const edge of edges) {
-    const evId = String(edge.from);
+    const evId = String(edge.in);
     const epId = episodeByEvent.get(evId);
     if (!epId) continue;
-    const key = String(edge.to);
-    if (!byEntity.has(key)) byEntity.set(key, { entity: edge.to, episodes: new Set() });
+    const key = String(edge.out);
+    if (!byEntity.has(key)) byEntity.set(key, { entity: edge.out, episodes: new Set() });
     byEntity.get(key).episodes.add(String(epId));
   }
 
