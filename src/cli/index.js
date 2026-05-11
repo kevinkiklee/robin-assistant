@@ -148,6 +148,19 @@ export async function main(argv) {
     console.error('usage: robin actions <list|show|set|reset>');
     process.exit(1);
   }
+  if (cmd === 'commstyle') {
+    const sub = argv[1];
+    if (sub === 'show') {
+      const { commstyleShow } = await import('./commands/commstyle-show.js');
+      return commstyleShow(argv.slice(2));
+    }
+    if (sub === 'refresh') {
+      const { commstyleRefresh } = await import('./commands/commstyle-refresh.js');
+      return commstyleRefresh(argv.slice(2));
+    }
+    console.error('usage: robin commstyle <show|refresh>');
+    process.exit(1);
+  }
   if (cmd === 'integrations') {
     const sub = argv[1];
     if (sub === 'list') {
