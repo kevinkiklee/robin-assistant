@@ -1,16 +1,15 @@
-// Mechanical health checks over knowledge/entities/edges. No LLM.
-// IMPORTANT: when a new edge table is added to the schema, also add it to
-// EDGE_TABLES below — orphan + dead-edge checks walk this list.
-import { surql } from 'surrealdb';
+// lint-checks.js — mechanical health checks over the knowledge graph.
+//
+// Redesigned for the unified `edges` table and `memos` table:
+//   - Orphan + dead-edge checks: a single grouped query over `edges` replaces
+//     the per-table fan-out.
+//   - near_duplicate_knowledge + stale_knowledge: read from `memos` filtered
+//     to `kind = 'knowledge'`. Embeddings come from `embeddings_<profile>_memos`.
+//   - Output shape (kind / severity / ref / message) is preserved so existing
+//     consumers (lint MCP tool, dashboards) don't need updates.
 
-const EDGE_TABLES = [
-  'mentions',
-  'about',
-  'precedes',
-  'works_on',
-  'participates_in',
-  'co_occurs_with',
-];
+import { surql } from 'surrealdb';
+import { embeddingTable, readProfile } from '../embed/profile-router.js';
 
 const SEVERITY = {
   dead_edge: 5,
@@ -21,20 +20,22 @@ const SEVERITY = {
 };
 
 async function checkOrphanEntities(db) {
-  const issues = [];
+  // An entity is an "orphan" if no edge of any kind points at it.
   const [entities] = await db.query(surql`SELECT id, name, type FROM entities`).collect();
-  for (const ent of entities ?? []) {
-    let hasInbound = false;
-    for (const edgeTable of EDGE_TABLES) {
-      const [[row]] = await db
-        .query(`SELECT count() AS n FROM ${edgeTable} WHERE out = ${String(ent.id)} GROUP ALL`)
-        .collect();
-      if ((row?.n ?? 0) > 0) {
-        hasInbound = true;
-        break;
-      }
-    }
-    if (!hasInbound) {
+  if (!entities || entities.length === 0) return [];
+  // Build the set of entity ids that appear on either side of any edge.
+  const [edgeRefs] = await db
+    .query(
+      `SELECT VALUE to FROM edges
+       WHERE to IN $ids
+       LIMIT 100000`,
+      { ids: entities.map((e) => e.id) },
+    )
+    .collect();
+  const referenced = new Set((edgeRefs ?? []).map((r) => String(r)));
+  const issues = [];
+  for (const ent of entities) {
+    if (!referenced.has(String(ent.id))) {
       issues.push({
         kind: 'orphan_entity',
         severity: SEVERITY.orphan_entity,
@@ -47,7 +48,7 @@ async function checkOrphanEntities(db) {
 }
 
 async function checkDuplicateEntities(db) {
-  // SurrealDB v3 does not support HAVING. Group in JS instead.
+  // SurrealDB v3 has no HAVING; group in JS.
   const [rows] = await db.query(surql`SELECT id, name_lower, type FROM entities`).collect();
   const groups = new Map();
   for (const r of rows ?? []) {
@@ -69,16 +70,15 @@ async function checkDuplicateEntities(db) {
 }
 
 async function checkStaleKnowledge(db, { cutoffDate } = {}) {
-  // NOTE: knowledge.updated_at uses VALUE time::now() in the schema, which means
-  // SurrealDB re-triggers it to time::now() on every UPDATE. Direct backdating via
-  // UPDATE SET updated_at = <past> is therefore not reliable. The cutoffDate option
-  // allows callers (and tests) to pass a reference date — rows with
-  // updated_at < cutoffDate AND confidence < 0.3 are flagged as stale.
-  // In production, omit cutoffDate to use the default 30-day lookback.
+  // `memos.updated_at` uses VALUE time::now() — direct backdating via UPDATE
+  // is not reliable, hence the cutoffDate override hook used by tests.
   const cutoff = cutoffDate ?? new Date(Date.now() - 30 * 86_400_000);
   const [rows] = await db
     .query(
-      surql`SELECT id, content FROM knowledge WHERE confidence < 0.3 AND updated_at < ${cutoff}`,
+      surql`SELECT id, content FROM memos
+            WHERE kind = 'knowledge'
+              AND confidence < 0.3
+              AND updated_at < ${cutoff}`,
     )
     .collect();
   return (rows ?? []).map((r) => ({
@@ -90,29 +90,54 @@ async function checkStaleKnowledge(db, { cutoffDate } = {}) {
 }
 
 async function checkDeadEdges(db) {
-  // TYPE RELATION ENFORCED means SurrealDB rejects edge creates with missing
-  // targets. Still scan for historical or test-injected ones.
+  // DEFINE EVENT cascade_edges_* triggers prune edges on endpoint delete, so
+  // dead edges should be rare in steady state. Test-injected or pre-cascade
+  // rows can still exist; surface them here.
+  const [edges] = await db.query(surql`SELECT id, kind, from, to FROM edges`).collect();
   const issues = [];
-  for (const edgeTable of EDGE_TABLES) {
-    const [edges] = await db.query(`SELECT id, in, out FROM ${edgeTable}`).collect();
-    for (const e of edges ?? []) {
-      const [[inExists]] = await db.query(`SELECT count() AS n FROM ${e.in} GROUP ALL`).collect();
-      const [[outExists]] = await db.query(`SELECT count() AS n FROM ${e.out} GROUP ALL`).collect();
-      if ((inExists?.n ?? 0) === 0 || (outExists?.n ?? 0) === 0) {
-        issues.push({
-          kind: 'dead_edge',
-          severity: SEVERITY.dead_edge,
-          ref: String(e.id),
-          message: `edge ${edgeTable} points to missing record(s)`,
-        });
-      }
+  // Group endpoint refs per source table to batch existence checks. Endpoints
+  // can be from any of {events, memos, entities, episodes}; we look up each
+  // referenced table once.
+  const byTable = new Map();
+  const enqueue = (ref) => {
+    if (!ref) return;
+    const tb = typeof ref === 'string' ? ref.split(':')[0] : (ref.table ?? ref.tb);
+    if (!tb) return;
+    if (!byTable.has(tb)) byTable.set(tb, new Set());
+    byTable.get(tb).add(ref);
+  };
+  for (const e of edges ?? []) {
+    enqueue(e.from);
+    enqueue(e.to);
+  }
+  const alive = new Set();
+  for (const [tb, refs] of byTable.entries()) {
+    if (refs.size === 0) continue;
+    try {
+      const [rows] = await db
+        .query(`SELECT VALUE id FROM ${tb} WHERE id IN $refs`, { refs: Array.from(refs) })
+        .collect();
+      for (const r of rows ?? []) alive.add(String(r));
+    } catch {
+      // If the table doesn't exist any more, treat all its refs as dead.
+    }
+  }
+  for (const e of edges ?? []) {
+    const fromAlive = alive.has(String(e.from));
+    const toAlive = alive.has(String(e.to));
+    if (!fromAlive || !toAlive) {
+      issues.push({
+        kind: 'dead_edge',
+        severity: SEVERITY.dead_edge,
+        ref: String(e.id),
+        message: `edge ${e.kind} points to missing record(s)`,
+      });
     }
   }
   return issues;
 }
 
 function cosineSim(a, b) {
-  // a and b may be Float32Array or plain array — both are indexable
   let dot = 0;
   let magA = 0;
   let magB = 0;
@@ -126,12 +151,26 @@ function cosineSim(a, b) {
 }
 
 async function checkNearDuplicateKnowledge(db) {
-  // Fetch all knowledge rows and compute pairwise cosine similarity in JS.
-  // HNSW KNN syntax (WHERE embedding <|K, EF|> $vec) cannot be combined with
-  // vector::similarity::cosine() in the same SELECT in SurrealDB v3. For the
-  // number of knowledge rows expected in practice (<<10k) the JS scan is fine.
-  const [rows] = await db.query(surql`SELECT id, content, embedding FROM knowledge`).collect();
-  const items = rows ?? [];
+  // Read all knowledge memos and join-back to the active read profile's
+  // embedding table. HNSW kNN cannot be combined with vector::similarity in
+  // a single SELECT on SurrealDB v3; for the expected row count (<<10k) the
+  // JS pairwise scan is fast enough.
+  const [memoRows] = await db
+    .query(surql`SELECT id, content FROM memos WHERE kind = 'knowledge'`)
+    .collect();
+  const memos = memoRows ?? [];
+  if (memos.length < 2) return [];
+  const profile = await readProfile(db);
+  const tbl = embeddingTable(profile, 'memos');
+  const [embRows] = await db
+    .query(`SELECT record, vector FROM ${tbl} WHERE record IN $ids`, {
+      ids: memos.map((m) => m.id),
+    })
+    .collect();
+  const vecById = new Map((embRows ?? []).map((r) => [String(r.record), r.vector]));
+  const items = memos
+    .map((m) => ({ id: m.id, content: m.content, embedding: vecById.get(String(m.id)) }))
+    .filter((c) => Array.isArray(c.embedding) || ArrayBuffer.isView(c.embedding));
   const issues = [];
   const seen = new Set();
   for (let i = 0; i < items.length; i++) {
@@ -158,9 +197,9 @@ async function checkNearDuplicateKnowledge(db) {
  * @param {import('surrealdb').Surreal} db
  * @param {object} [opts]
  * @param {Date} [opts.cutoffDate] - Override the staleness cutoff date.
- *   Defaults to 30 days ago. Pass a future date in tests to force all rows
- *   to appear stale (needed because knowledge.updated_at VALUE time::now()
- *   prevents reliable backdating via UPDATE).
+ *   Defaults to 30 days ago. Tests pass a future date to force all rows
+ *   to appear stale (memos.updated_at uses VALUE time::now() so direct
+ *   backdating via UPDATE is not reliable).
  * @returns {Promise<Array<{kind: string, severity: number, ref: string, message: string}>>}
  */
 export async function runLintChecks(db, { cutoffDate } = {}) {
