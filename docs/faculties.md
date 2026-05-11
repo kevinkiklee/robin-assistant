@@ -63,9 +63,12 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 - Inspect: `SELECT * FROM intuition_telemetry ORDER BY ts DESC LIMIT 20`.
 
 ### biographer
-**Per-turn consolidation: turns raw events into structured entities, edges, and (rarely) memos.**
-- Files: `system/cognition/biographer/pipeline.js`, `system/cognition/biographer/prompt.js`, `system/cognition/biographer/output.js`, `system/cognition/biographer/` (edges/stage1-exact/stage2-embedding/stage3-disambig/upsert-entity).
-- Writes: `entities` (upserted via 3-stage cascade), `edges` (mentions/about/works_on/participates_in/occurs_with/before via `store.relateAll`), `events.biographed_at = time::now()`.
+**Per-turn consolidation: turns raw events into structured entities, edges, and (rarely) memos. Batched across consecutive events from the same source.**
+- Files: `system/cognition/biographer/pipeline.js`, `system/cognition/biographer/batch-prompt.js`, `system/cognition/biographer/batch-output.js`, `system/cognition/biographer/accumulator.js`, `system/cognition/biographer/queue.js`, `system/cognition/biographer/output.js`, `system/cognition/biographer/prompt.js`, `system/cognition/biographer/` (edges/stage1-exact/stage2-embedding/stage3-disambig/upsert-entity).
+- Trigger: `createBatchAccumulator` (source-bucketed) fires when `max_batch_size` (default 8), `debounce_ms` (default 750ms), or `max_wait_ms` (default 3000ms) hits — whichever first. Tunables live in `runtime:biographer.value.batch_config` and are re-read per flush. Rollback: set `batch_config.disable = true` to short-circuit the accumulator and route every event through the pre-C1 single-event path.
+- One LLM call per batch via `biographerProcessBatch`. Per-event validation isolates failures: a malformed entry for one event does not poison the others.
+- Fallback: outer-envelope JSON parse failure, batch-validation failure, or retries-exhausted on the LLM call all fall back to looping the original single-event `biographerProcess` — never worse than today's baseline. Telemetry: `runtime:biographer.value.{batches_total, batches_fallback, last_fallback_reason, events_biographed_via_batch, events_biographed_via_fallback, batch_input_tokens_total, batch_output_tokens_total, last_batch_size, last_batch_input_tokens, last_batch_output_tokens}`.
+- Writes: `entities` (upserted via 3-stage cascade, deduped by `(type, name_lower)` across the batch), `edges` (mentions/about/works_on/participates_in/occurs_with/before via one `store.relateAll` call), `events.biographed_at = time::now()` and `events.episode_id` (one gated UPDATE per episode group, `WHERE biographed_at IS NONE`).
 
 ### heartbeat
 **The 60-second scheduler tick.**
