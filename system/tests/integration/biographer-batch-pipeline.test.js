@@ -224,7 +224,9 @@ test('per-event failure isolation: malformed event #3 of 5 → 4 biographed, 1 i
   // No mentions / about / works_on / participates_in edges originate from ev3.
   for (const kind of ['mentions', 'about', 'works_on', 'participates_in']) {
     const [edgeRows] = await db
-      .query(surql`SELECT count() AS n FROM edges WHERE kind = ${kind} AND in = ${ev3.id} GROUP ALL`)
+      .query(
+        surql`SELECT count() AS n FROM edges WHERE kind = ${kind} AND in = ${ev3.id} GROUP ALL`,
+      )
       .collect();
     assert.equal(
       edgeRows?.[0]?.n ?? 0,
