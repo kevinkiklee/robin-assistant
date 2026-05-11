@@ -1,5 +1,9 @@
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
+import {
+  evaluateStateInference,
+  readStateInferenceConfig,
+} from '../../cognition/jobs/internal/state-inference.js';
 import { paths } from '../../config/data-store.js';
 import { detectHost } from '../hosts/detect.js';
 import { boot } from './boot.js';
@@ -41,6 +45,17 @@ export async function startDaemon() {
     probe.close();
 
     const dispatcherTick = createDispatcherTick(ctx, tools);
+
+    // Cognition D1: per-source state_inference cadence. Read tick_ms once at
+    // boot; defaults to 5 minutes. Subsequent flag flips are picked up by
+    // evaluateStateInference's own 5-second config cache (no restart needed).
+    const stateInferenceCfg = await readStateInferenceConfig(ctx.db).catch(() => ({
+      tick_ms: 300_000,
+    }));
+    const stateInferenceTickMs = Number.isInteger(stateInferenceCfg?.tick_ms)
+      ? stateInferenceCfg.tick_ms
+      : 300_000;
+
     const scheduler = createScheduler({
       buckets: [
         {
@@ -70,6 +85,21 @@ export async function startDaemon() {
           name: 'action-decay',
           intervalMs: 6 * 60 * 60_000,
           tick: () => runActionTrustDecay(ctx.db),
+        },
+        {
+          // Cognition D1 — heartbeat-paced state-inference faculty. Gated on
+          // host presence (needs invokeLLM) and on cfg.enabled internally;
+          // false→no-op, 'shadow'→runs the pipeline without writing memos,
+          // true→full path.
+          name: 'state-inference',
+          intervalMs: stateInferenceTickMs,
+          gate: () => !!ctx.host,
+          tick: () =>
+            evaluateStateInference({
+              db: ctx.db,
+              host: ctx.host,
+              embedder: ctx.embedder.wrap,
+            }),
         },
         {
           name: 'host-watchdog',
