@@ -274,12 +274,13 @@ Used by `show_step_health` introspection (§7) and by the rollout decision (§9)
 
 ### 3.4 Migration
 
-A single new migration file `system/data/db/migrations/0009-state-inference.surql` (the next available number; existing migrations go through `0008-doctor.surql`) adds:
-- The `state_inference_telemetry` table.
-- The `memos_state_inference_source` index.
-- The `runtime:state_inference.config` seed row (with `enabled: false`).
+Three migrations land in series:
 
-No changes to `memos` itself — `state_inference` is already a valid kind by registry (`kind-registry.js` lines 31–37).
+- `system/data/db/migrations/0012-state-inference.surql` (D1-initial-off) adds the `state_inference_telemetry` table, the `memos_state_inference_source` index, and the `runtime:state_inference.config` seed row with `enabled: false`.
+- `system/data/db/migrations/0013-state-inference-shadow.surql` (D1-shadow-flip) flips `value.enabled` to `'shadow'` after the schema migration has soaked.
+- `system/data/db/migrations/0014-state-inference-enable.surql` (D1-default-on) flips `value.enabled` to `true` after clean shadow telemetry per §9.4.
+
+`0012` is the next available number above `0011` (the D-series umbrella reserves the immediately-preceding slots for cross-cutting prerequisites; check `ls system/data/db/migrations/` before landing). No DDL changes to `memos` — `state_inference` is already a valid kind by registry (`kind-registry.js` lines 31–37).
 
 **`fn::freshness` interplay.** The server-side `fn::freshness` (defined in `0001-init.surql`) has a kind→half-life table. Adding `state_inference: 6h` there would let server-side `ORDER BY fn::freshness(id)` correctly decay this kind. **However**, the recall pipeline never calls `searchMemos` with `kind='state_inference'` (state inferences don't participate in vector recall, §4.6). The only freshness-aware reads of state_inference go through `decay.js` on the client side via `rank.score`, but only if the introspection tool sorts by freshness — and that tool sorts by `derived_at`. **Conclusion:** v1 ships the client-side half-life only (`decay.js` change). The DB-side mirror is deferred until a path emerges that needs it. Add a TODO comment to `0001-init.surql` so the constants stay paired.
 
@@ -343,6 +344,13 @@ This makes the handler→daemon source signal a soft chain (env → request body
 ```
 
 The handler (handler.js lines 168–172) concatenates `payload.focus_block + payload.block` (focus first) and writes the result to stdout. Both halves are independently optional. Old daemons returning only `{ block, … }` continue to work (`focus_block` is `undefined` → coerce to `''`).
+
+**`recall_log.meta` contract.** `inject.js` extends the existing `recall_log` CREATE block (today at `inject.js:204-210`) so its `meta` object additionally carries:
+
+- `focus_block_present: boolean` — `focus_block.length > 0`.
+- `focus_block_tokens: number` — equal to `focus_tokens` (zero when suppressed).
+
+A3's eval harness reads these fields to stratify recall-quality metrics by whether the focus block was surfaced. Field names match A3's golden-fixture keys exactly; do not rename.
 
 ### 4.5 Suppression rules
 
@@ -477,7 +485,7 @@ Add a sibling unit test `system/tests/unit/state-inference-privacy.test.js`:
 
 ### 9.1 Phase 0 — schema + dark-launch
 
-1. Land migration `0009-state-inference.surql`: new index, new telemetry table, seeded `runtime:state_inference.config` with `enabled: false`. Half-life entry in `decay.js`.
+1. Land migration `0012-state-inference.surql` (D1-initial-off): new index, new telemetry table, seeded `runtime:state_inference.config` with `enabled: false`. Half-life entry in `decay.js`.
 2. Land faculty code (`jobs/internal/state-inference.js`, `memory/state_inference.js`). Heartbeat ticker registered in `server.js` — on each fire it reads `cfg.enabled`; if `false`, returns immediately.
 3. Land intuition modification (focus block emission, response wire-format change). Suppression rule 1 (`cfg.enabled !== true`) gates the focus block.
 4. Land MCP introspection tool (`explain_state_inference`).
@@ -530,7 +538,9 @@ Within the cadence-budget framework (`runtime:cadence.config.daily_token_budget`
 - `system/cognition/jobs/internal/state-inference.js` — heartbeat job entry (`evaluateStateInference`, `composeForSource`).
 - `system/cognition/jobs/builtin/state-inference.md` — operator-facing description (mirrors `reinforce-recall.md`).
 - `system/io/mcp/tools/explain-state-inference.js` — Theme-4 read-only tool.
-- `system/data/db/migrations/0009-state-inference.surql` — new index + telemetry table + config seed (the next available migration number; existing migrations run through `0008-doctor.surql`).
+- `system/data/db/migrations/0012-state-inference.surql` — D1-initial-off: new index + telemetry table + config seed (`enabled: false`).
+- `system/data/db/migrations/0013-state-inference-shadow.surql` — D1-shadow-flip: `UPSERT runtime:\`state_inference.config\` SET value.enabled = 'shadow';` (lands after the initial migration soaks).
+- `system/data/db/migrations/0014-state-inference-enable.surql` — D1-default-on: `UPSERT runtime:\`state_inference.config\` SET value.enabled = true;` (lands after clean shadow telemetry per §9.4).
 - `system/tests/unit/state-inference-compose.test.js`
 - `system/tests/unit/state-inference-privacy.test.js`
 - `system/tests/integration/state-inference-cycle.test.js` — includes the end-to-end scenarios E1/E2 (the test tree has only `unit/` and `integration/`; full-pipeline tests live in `integration/`).
@@ -540,10 +550,10 @@ Within the cadence-budget framework (`runtime:cadence.config.daily_token_budget`
 - `system/cognition/memory/decay.js` — add `state_inference: 6h` to `HALF_LIFE_BY_KIND_MS`.
 - `system/cognition/intuition/inject.js` — prepend `<!-- current focus -->` block per §4.1; consume `source` from the request; widen the response per §4.4 wire format; apply §4.5 suppression rules.
 - `system/cognition/intuition/handler.js` — resolve `source` via `process.env.ROBIN_SOURCE` → CLAUDE_PROJECT_DIR heuristic → null (§4.2); include in the POST body; concatenate `payload.focus_block + payload.block` and write to stdout.
-- `system/runtime/daemon/server.js`:
-  - Register the heartbeat ticker (default 5 min) gated by the runtime flag; mirror the existing `closeStaleEpisodes`-style block at lines 607–636.
-  - Import `createExplainStateInferenceTool` and call `tools.push(createExplainStateInferenceTool({ db: dbHandle }))` alongside other Theme-4 tools near line 472 (verified pattern via `createExplainRecallTool`, server.js lines 39 + 472). There is no separate `mcp/registry.js`; tools wire directly here.
-  - On `/internal/intuition` (server.js line 897), forward `body.source` (and fall back to `host?.name` / episode-source lookup per §4.2) into the `intuitionEndpoint` call.
+- `system/runtime/daemon/server.js` (or its R-3 successor; see below):
+  - Register the heartbeat ticker (default 5 min) gated by the runtime flag. If R-2 of `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md` has shipped (look for `createScheduler({ buckets: [...] })` in `system/runtime/daemon/boot.js` or `system/runtime/daemon/heartbeat-scheduler.js`), register `state-inference` as a bucket entry alongside `actionTrustDecay` instead of adding a fifth inline `setInterval`. Otherwise mirror the existing `closeStaleEpisodes`-style block at lines 607–636.
+  - Import `createExplainStateInferenceTool` and call `tools.push(createExplainStateInferenceTool({ db: dbHandle }))` alongside other Theme-4 tools near line 472 (verified pattern via `createExplainRecallTool`, server.js lines 39 + 472). If R-3 has shipped, edit the per-domain tool registration file instead. There is no separate `mcp/registry.js`; tools wire directly here.
+  - On `/internal/intuition` (server.js line 897 — or `system/runtime/daemon/routes/intuition.js` if R-3 has shipped), forward `body.source` (and fall back to `host?.name` / episode-source lookup per §4.2) into the `intuitionEndpoint` call.
 - `system/runtime/cli/health.js` — add `state_inference` rollup per §7.
 - `system/tests/unit/audit-introspection-readonly.test.js` — add `'system/io/mcp/tools/explain-state-inference.js'` to the `INTROSPECTION_TOOLS` array (lines 12–20).
 - `docs/architecture.md` — mention `state_inference` in the faculty list; note the new ticker in the heartbeat description.

@@ -18,7 +18,9 @@
 
 | File | Status | Responsibility |
 |---|---|---|
-| `system/data/db/migrations/0009-state-inference.surql` | new | `state_inference_telemetry` table + indexes, `memos_state_inference_source` index on `memos`, `runtime:state_inference.config` seed (`enabled: false`) |
+| `system/data/db/migrations/0012-state-inference.surql` | new | D1-initial-off: `state_inference_telemetry` table + indexes, `memos_state_inference_source` index on `memos`, `runtime:state_inference.config` seed (`enabled: false`) |
+| `system/data/db/migrations/0013-state-inference-shadow.surql` | new (Phase 12) | D1-shadow-flip: `UPSERT runtime:\`state_inference.config\` SET value.enabled = 'shadow'` |
+| `system/data/db/migrations/0014-state-inference-enable.surql` | new (Phase 12) | D1-default-on: `UPSERT runtime:\`state_inference.config\` SET value.enabled = true` |
 | `system/cognition/memory/decay.js` | modify | Add `state_inference: 6h` to `HALF_LIFE_BY_KIND_MS` |
 | `system/cognition/memory/state_inference.js` | new | Lens: `noteStateInference`, `latestForSource`, `listRecent` |
 | `system/cognition/jobs/internal/state-inference.js` | new | Heartbeat-paced job: `evaluateStateInference(db, host, embedder)` and `composeForSource(...)` (active-source loop, change-detect gate, calibration sub-step, LLM call, write, supersede, telemetry) |
@@ -111,25 +113,25 @@ git add system/cognition/memory/decay.js system/tests/unit/state-inference-decay
 git commit -m "feat(decay): add state_inference half-life (6h)"
 ```
 
-### Task 1.2: Migration `0009-state-inference.surql`
+### Task 1.2: Migration `0012-state-inference.surql` (D1-initial-off)
 
-**Files:** `system/data/db/migrations/0009-state-inference.surql` (new)
+**Files:** `system/data/db/migrations/0012-state-inference.surql` (new)
 
-- [ ] **Step 1: Verify `0009` is free.**
+- [ ] **Step 1: Verify `0012` is free.**
 
 ```bash
 ls system/data/db/migrations/
 ```
 
-Expected: highest existing version is `0008-doctor.surql`. No `0009-*` file.
+Expected: no `0012-*` file. If a higher-numbered migration has shipped between plan-write and plan-execute, bump the D1 trio (initial-off, shadow-flip, default-on) to the next three sequential numbers and update every reference in this plan + spec §3.4 + spec §9.1 + spec §11 in the same commit. The cross-cutting decisions section at the top of the review log names the trio as D1-initial-off / D1-shadow-flip / D1-default-on — those labels are stable; the digits are not.
 
 - [ ] **Step 2: Write the migration file.**
 
-Create `system/data/db/migrations/0009-state-inference.surql`:
+Create `system/data/db/migrations/0012-state-inference.surql`:
 
 ```surql
 -- ============================================================================
--- Cognition D1: state_inference activation
+-- Cognition D1-initial-off: state_inference activation (schema + dark-launch)
 --
 -- Adds:
 --   1. memos_state_inference_source — composite index for `latestForSource` lookups
@@ -196,7 +198,7 @@ __mk(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
 
-test('0009 migration applies cleanly and seeds runtime:state_inference.config', async () => {
+test('0012 migration applies cleanly and seeds runtime:state_inference.config', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
     await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
@@ -221,8 +223,11 @@ test('state_inference_telemetry table is defined', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
     await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
-    const [info] = await db.query('INFO FOR DB').collect();
-    assert.ok(info?.tables?.state_inference_telemetry, 'table missing');
+    // SurrealDB 3.x: `INFO FOR DB` returns tables under the `tb` key.
+    // Rather than dig into the engine-specific shape (which can shift
+    // between releases), assert the table is queryable: a SELECT against a
+    // missing table throws. LIMIT 0 keeps it free.
+    await db.query('SELECT 1 FROM state_inference_telemetry LIMIT 0').collect();
   } finally {
     await close(db);
   }
@@ -232,7 +237,7 @@ test('state_inference_telemetry table is defined', async () => {
 - [ ] **Step 4: Run the migration test — expect pass.**
 
 ```bash
-npm run test:unit -- --test-name-pattern='0009 migration|state_inference_telemetry'
+npm run test:unit -- --test-name-pattern='0012 migration|state_inference_telemetry'
 ```
 
 Expected: both tests pass.
@@ -240,8 +245,8 @@ Expected: both tests pass.
 - [ ] **Step 5: Commit.**
 
 ```bash
-git add system/data/db/migrations/0009-state-inference.surql system/tests/unit/state-inference-migration.test.js
-git commit -m "feat(schema): 0009 state_inference index + telemetry table + config seed"
+git add system/data/db/migrations/0012-state-inference.surql system/tests/unit/state-inference-migration.test.js
+git commit -m "feat(schema): 0012 state_inference index + telemetry table + config seed"
 ```
 
 ---
@@ -615,6 +620,70 @@ test('detectChange: prior older than refresh window → materially_changed=true,
   assert.equal(r.materially_changed, true);
   assert.equal(r.reason, 'refresh_window');
 });
+
+// Spec §1.3 step 5 enumerates three "change detected" inputs: hash differs
+// (entities or arc or last_event_id flipped) OR the refresh window crossed.
+// The hash already mixes entities + arc + last_event_id; these three cases
+// pin each component independently so that no future hash change accidentally
+// collapses one axis into another.
+
+test('detectChange: entities unchanged + arc changed only → materially_changed=true', () => {
+  const priorHash = computeSignalHash({ entities: ['entities:a'], arc_id: 'arcs:x', last_event_id: null });
+  const prior = {
+    meta: { signal_hash: priorHash, last_active_at: new Date().toISOString() },
+  };
+  const r = detectChange({
+    prior,
+    current: { entities: ['entities:a'], arc_id: 'arcs:y', last_event_id: null },
+    now: new Date(),
+    refreshAfterMinutes: 30,
+  });
+  assert.equal(r.materially_changed, true);
+  assert.equal(r.reason, 'hash_differs');
+});
+
+test('detectChange: entities unchanged + last_event_id changed only → materially_changed=true', () => {
+  const priorHash = computeSignalHash({
+    entities: ['entities:a'],
+    arc_id: null,
+    last_event_id: 'events:1',
+  });
+  const prior = {
+    meta: { signal_hash: priorHash, last_active_at: new Date().toISOString() },
+  };
+  const r = detectChange({
+    prior,
+    current: { entities: ['entities:a'], arc_id: null, last_event_id: 'events:2' },
+    now: new Date(),
+    refreshAfterMinutes: 30,
+  });
+  assert.equal(r.materially_changed, true);
+  assert.equal(r.reason, 'hash_differs');
+});
+
+test('detectChange: entities + arc + last_event_id all unchanged + time threshold crossed → materially_changed=true', () => {
+  const sig = computeSignalHash({
+    entities: ['entities:a'],
+    arc_id: 'arcs:x',
+    last_event_id: 'events:1',
+  });
+  // 31 min ago, with refreshAfterMinutes=30 — only the time threshold has
+  // crossed; every other input is identical.
+  const prior = {
+    meta: {
+      signal_hash: sig,
+      last_active_at: new Date(Date.now() - 31 * 60_000).toISOString(),
+    },
+  };
+  const r = detectChange({
+    prior,
+    current: { entities: ['entities:a'], arc_id: 'arcs:x', last_event_id: 'events:1' },
+    now: new Date(),
+    refreshAfterMinutes: 30,
+  });
+  assert.equal(r.materially_changed, true);
+  assert.equal(r.reason, 'refresh_window');
+});
 ```
 
 - [ ] **Step 2: Run the tests — expect failure.**
@@ -871,12 +940,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { readInputsForSource } from '../../cognition/jobs/internal/state-inference.js';
-import * as store from '../../cognition/memory/store.js';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { recordEvent } from '../../io/capture/record-event.js';
 
 const HOME = join(tmpdir(), `robin-ri-${process.pid}-${Math.random().toString(36).slice(2)}`);
 __mk(HOME, { recursive: true });
@@ -892,7 +959,7 @@ async function fresh() {
 test('readInputsForSource returns empty shape when no episodes exist', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const r = await readInputsForSource(db, e, { source: 'agent:claude-code', windowMinutes: 90 });
+  const r = await readInputsForSource(db, e, { source: 'conversation', windowMinutes: 90 });
   assert.deepEqual(r.attention.episodes, []);
   assert.equal(r.arc, null);
   assert.deepEqual(r.events, []);
@@ -1047,6 +1114,7 @@ import { mkdirSync as __mk } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { surql } from 'surrealdb';
 import { composeForSource } from '../../cognition/jobs/internal/state-inference.js';
 import { noteStateInference } from '../../cognition/memory/state_inference.js';
 import * as store from '../../cognition/memory/store.js';
@@ -1054,7 +1122,6 @@ import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { recordEvent } from '../../io/capture/record-event.js';
 
 const HOME = join(tmpdir(), `robin-cmp-${process.pid}-${Math.random().toString(36).slice(2)}`);
 __mk(HOME, { recursive: true });
@@ -1067,18 +1134,87 @@ async function fresh() {
   return db;
 }
 
+/**
+ * Shared fixture helper — seeds a biographed event with mentions edges and an
+ * optional episode link. `record-event.js`'s VALID_SOURCES set only accepts
+ * a small enum (`'conversation'` is the closest match for an agent-transcript
+ * event); it also drops `episode_id`, `entity_refs`, and `biographed_at` from
+ * the input, so this helper bypasses it with raw SurrealQL.
+ *
+ * Reuse this helper across U2/U3/U4/U6, I7, A2, E2 — every test that needs
+ * the production code path (attention lens → mentions edges → biographed_at)
+ * to exercise the change-detect gate end-to-end.
+ *
+ * @param {object} args
+ * @param {string} args.source          — episode + event source (use 'conversation' in tests)
+ * @param {string} args.content
+ * @param {RecordId[]} [args.entities]  — entity refs to wire via RELATE mentions
+ * @param {RecordId|null} [args.episodeId]  — link the event to an episode
+ * @returns {Promise<{ id: RecordId }>}
+ */
+async function seedBiographedEvent(db, embedder, {
+  source = 'conversation',
+  content,
+  entities = [],
+  episodeId = null,
+}) {
+  const [created] = await db
+    .query(
+      surql`CREATE events CONTENT ${{
+        source,
+        content,
+        biographed_at: new Date(),
+      }}`,
+    )
+    .collect();
+  const row = Array.isArray(created) ? created[0] : created;
+  const eventId = row.id;
+  if (episodeId) {
+    await db
+      .query(surql`UPDATE ${eventId} SET episode_id = ${episodeId}`)
+      .collect();
+  }
+  for (const entId of entities) {
+    await db
+      .query(surql`RELATE ${eventId}->mentions->${entId} CONTENT { kind: 'mentions' }`)
+      .collect();
+  }
+  return { id: eventId };
+}
+
+async function seedEpisode(db, source = 'conversation') {
+  await db
+    .query(
+      surql`CREATE episodes CONTENT ${{
+        source,
+        started_at: new Date(Date.now() - 5 * 60_000),
+        last_event_at: new Date(),
+      }}`,
+    )
+    .collect();
+  const [epRows] = await db
+    .query(surql`SELECT id FROM episodes WHERE source = ${source} LIMIT 1`)
+    .collect();
+  return epRows[0].id;
+}
+
 function makeLLMMock(response) {
   let calls = 0;
   return {
     invokeLLM: async () => {
       calls++;
-      return { content: JSON.stringify(response), tokens_in: 200, tokens_out: 60 };
+      return {
+        content: JSON.stringify(response),
+        usage: { input_tokens: 200, output_tokens: 60 },
+      };
     },
     get calls() {
       return calls;
     },
   };
 }
+
+const TEST_SOURCE = 'conversation';
 
 const CFG = {
   enabled: 'shadow', // 'shadow' runs the pipeline but suppresses the memo write
@@ -1101,7 +1237,7 @@ test('U1 — empty attention → no write', async () => {
     db,
     embedder: e,
     host: llm,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { ...CFG, enabled: true },
     now: new Date(),
   });
@@ -1113,52 +1249,30 @@ test('U1 — empty attention → no write', async () => {
 test('U2 — no change → no LLM call, no write', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  // Seed an episode + event + entity, then a prior inference whose
-  // signal_hash matches the next computation (no entities → hash over [])
-  // and last_active_at recent.
-  // The simplest fixture: empty inputs (no entities). U2 here exercises the
-  // hash-match path with the "no inputs" snapshot. To produce a non-trivial
-  // prior whose hash matches the empty input, seed prior with signal_hash
-  // computed from the same empty inputs via the helper.
-  const { computeSignalHash } = await import('../../cognition/jobs/internal/state-inference.js');
-  const sig = computeSignalHash({ entities: [], arc_id: null, last_event_id: null });
-  // But U1 already established empty attention → 'dropped_thin' before
-  // hashing. To trigger 'skipped_unchanged' we need ≥1 entity present.
-  // Seed an episode + an event tied to one entity.
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
-  const epId = epRows[0].id;
+  // Seed: one episode, one entity, one biographed event linking the two via
+  // the production mentions edge, then a prior inference whose signal_hash
+  // matches the upcoming computation (entities=[ent.id], arc_id=null,
+  // last_event_id=<the event we just created>).
+  const epId = await seedEpisode(db);
   const ent = await store.upsertEntity(db, e, { type: 'topic', name: 'cognition' });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  const { id: evId } = await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'iterating',
-    episode_id: epId,
-    entity_refs: [ent.id],
-    biographed_at: new Date(),
+    entities: [ent.id],
+    episodeId: epId,
   });
-  // Now seed prior inference whose signal_hash matches the new computation
-  // (entities=[ent.id], arc_id=null, last_event_id=<latest event id>).
-  const [evRows] = await db
-    .query(`SELECT id FROM events WHERE source = 'agent:claude-code' ORDER BY ts DESC LIMIT 1`)
-    .collect();
-  const latestEventId = evRows[0].id;
+  const { computeSignalHash } = await import('../../cognition/jobs/internal/state-inference.js');
   const priorSig = computeSignalHash({
     entities: [ent.id],
     arc_id: null,
-    last_event_id: latestEventId,
+    last_event_id: evId,
   });
   await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'prior',
     confidence: 0.7,
     entities: [ent.id],
-    last_event_id: latestEventId,
+    last_event_id: evId,
     last_active_at: new Date(),
     signal_hash: priorSig,
   });
@@ -1167,32 +1281,24 @@ test('U2 — no change → no LLM call, no write', async () => {
     db,
     embedder: e,
     host: llm,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { ...CFG, enabled: true },
     now: new Date(),
   });
   assert.equal(r.outcome, 'skipped_unchanged');
-  assert.equal(llm.calls, 0);
+  assert.equal(llm.calls, 0, 'steady state: zero LLM invocations');
   await close(db);
 });
 
 test('U3 — entity-set change → LLM call, new memo, supersedes edge', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
-  const epId = epRows[0].id;
+  const epId = await seedEpisode(db);
   const entA = await store.upsertEntity(db, e, { type: 'topic', name: 'A' });
   const entB = await store.upsertEntity(db, e, { type: 'topic', name: 'B' });
-  // Prior inference with entities=[A]
+  // Prior inference with entities=[A], stale signal_hash.
   await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'about A',
     confidence: 0.7,
     entities: [entA.id],
@@ -1200,12 +1306,11 @@ test('U3 — entity-set change → LLM call, new memo, supersedes edge', async (
     signal_hash: 'stale-hash',
   });
   // Current event tied to entB → entity set changes.
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'now B',
-    episode_id: epId,
-    entity_refs: [entB.id],
-    biographed_at: new Date(),
+    entities: [entB.id],
+    episodeId: epId,
   });
   const llm = makeLLMMock({
     focus_statement: 'Working on B',
@@ -1218,7 +1323,7 @@ test('U3 — entity-set change → LLM call, new memo, supersedes edge', async (
     db,
     embedder: e,
     host: llm,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { ...CFG, enabled: true },
     now: new Date(),
   });
@@ -1235,21 +1340,13 @@ test('U3 — entity-set change → LLM call, new memo, supersedes edge', async (
 test('U4 — LLM drop=true → no write, telemetry dropped_thin', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
+  const epId = await seedEpisode(db);
   const ent = await store.upsertEntity(db, e, { type: 'topic', name: 'x' });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'something',
-    episode_id: epRows[0].id,
-    entity_refs: [ent.id],
-    biographed_at: new Date(),
+    entities: [ent.id],
+    episodeId: epId,
   });
   const llm = makeLLMMock({
     focus_statement: '',
@@ -1262,7 +1359,7 @@ test('U4 — LLM drop=true → no write, telemetry dropped_thin', async () => {
     db,
     embedder: e,
     host: llm,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { ...CFG, enabled: true },
     now: new Date(),
   });
@@ -1284,21 +1381,13 @@ test('U5 — confidence clamping (1.5 → 0.95; -0.3 → 0.05; ambiguous 0.8 →
 test('U6 — entity scope=private → new memo inherits scope=private', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
+  const epId = await seedEpisode(db);
   const ent = await store.upsertEntity(db, e, { type: 'topic', name: 'secret', scope: 'private' });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'hush',
-    episode_id: epRows[0].id,
-    entity_refs: [ent.id],
-    biographed_at: new Date(),
+    entities: [ent.id],
+    episodeId: epId,
   });
   const llm = makeLLMMock({
     focus_statement: 'Working on secret',
@@ -1311,7 +1400,7 @@ test('U6 — entity scope=private → new memo inherits scope=private', async ()
     db,
     embedder: e,
     host: llm,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { ...CFG, enabled: true },
     now: new Date(),
   });
@@ -1350,7 +1439,11 @@ async function recordTelemetry(db, row) {
   }
 }
 
-async function priorHasCalibrationRow(db, priorId) {
+async function priorHasCalibrationRow(db, prior) {
+  // Per spec §5.1 — skip calibration emission only when an evidence_ledger
+  // row exists for this prior with `ts > prior.derived_at` (i.e., a
+  // post-derived calibration). Rows older than the prior would belong to a
+  // prior generation and must not block the new emission.
   try {
     const [rows] = await db
       .query(
@@ -1358,8 +1451,9 @@ async function priorHasCalibrationRow(db, priorId) {
           `SELECT count() AS n FROM evidence_ledger
            WHERE memo_id = $id
              AND reason IN ['state_inference_held','state_inference_pivoted']
+             AND ts > $prior_derived_at
            GROUP ALL`,
-          { id: priorId },
+          { id: prior?.id, prior_derived_at: prior?.derived_at },
         ),
       )
       .collect();
@@ -1459,7 +1553,7 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
   if (prior && !shadow) {
     const cls = classifyPriorVsCurrent(prior, current);
     if (cls !== 'ambiguous') {
-      const dedup = await priorHasCalibrationRow(db, prior.id);
+      const dedup = await priorHasCalibrationRow(db, prior);
       if (!dedup) {
         try {
           await addEvidence(db, {
@@ -1500,8 +1594,12 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
       ],
     });
     llmResult = JSON.parse(r.content);
-    llmResult._tokens_in = r.tokens_in ?? null;
-    llmResult._tokens_out = r.tokens_out ?? null;
+    // `host.invokeLLM` returns `{ content, usage: { input_tokens,
+    // output_tokens, cache_read_tokens } }` per
+    // `system/runtime/hosts/claude-code.js:77-94`. There is no top-level
+    // `r.tokens_in` / `r.tokens_out` — those keys are always undefined.
+    llmResult._tokens_in = r.usage?.input_tokens ?? null;
+    llmResult._tokens_out = r.usage?.output_tokens ?? null;
   } catch (e) {
     await recordTelemetry(db, {
       source,
@@ -1852,9 +1950,28 @@ grep -n "closeStaleEpisodes\|action-trust-decay\|setInterval" system/runtime/dae
 
 Expected: confirms the `setInterval(... 600_000)` block at lines ~607–620 and the `actionTrustDecay` block at ~624–636.
 
-- [ ] **Step 2: Insert the state-inference ticker after the `actionTrustDecay` block (line ~636).**
+- [ ] **Step 2: Register the state-inference ticker.**
 
-Edit `system/runtime/daemon/server.js`. Locate the closing of the `actionTrustDecayTicker` block (the line `actionTrustDecayTicker.unref?.();` followed by `}`). Append immediately after:
+**Branch A — R-2 of `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md` has shipped.** If `createScheduler({ buckets: [...] })` is in place (look for the definition in `system/runtime/daemon/boot.js` or `system/runtime/daemon/heartbeat-scheduler.js`), register `state-inference` as a bucket entry alongside the `actionTrustDecay` bucket. The shape (verify against the existing `actionTrustDecay` registration in that file):
+
+```js
+{
+  name: 'state-inference',
+  intervalMs: tickMs,
+  tick: async () => {
+    if (!ctx.host) return; // requires invokeLLM
+    await evaluateStateInference({
+      db: ctx.db,
+      host: ctx.host,
+      embedder: ctx.embedder,
+    });
+  },
+}
+```
+
+Import `evaluateStateInference` and `readStateInferenceConfig` at the top of the boot module; resolve `tickMs` from `readStateInferenceConfig(ctx.db)` before constructing the bucket (fallback to `300_000`). Do NOT add an inline `setInterval` — that would be a fifth ticker R-2 just removed.
+
+**Branch B — R-2 has not shipped.** Edit `system/runtime/daemon/server.js`. Locate the closing of the `actionTrustDecayTicker` block (the line `actionTrustDecayTicker.unref?.();` followed by `}` — around line 635). Append immediately after:
 
 ```js
     // Cognition D1: state-inference ticker. Default 5 min; tunable via
@@ -1878,13 +1995,15 @@ Edit `system/runtime/daemon/server.js`. Locate the closing of the `actionTrustDe
     }
 ```
 
-Also register the ticker in `shutdown()` — find the existing `if (sessionSweeper) clearInterval(sessionSweeper);` line and add after the existing `actionTrustDecayTicker`-style cleanup (search for `clearInterval` calls in `shutdown`):
+Register the ticker in `shutdown()` — find the existing `if (sessionSweeper) clearInterval(sessionSweeper);` line and add alongside the other `clearInterval` calls inside `shutdown`:
 
 ```js
     if (stateInferenceTicker) clearInterval(stateInferenceTicker);
 ```
 
-(Place the line alongside the other `clearInterval` calls inside `shutdown` so the ticker stops cleanly. If the existing shutdown only relies on `.unref?.()` and does not clear other tickers explicitly, then the `unref` is sufficient — verify by reading lines 109–135 of `server.js` first.)
+(If the existing shutdown only relies on `.unref?.()` and does not clear other tickers explicitly, the `unref` is sufficient — verify by reading lines 109–135 of `server.js` first.)
+
+Detect which branch applies with `grep -l 'createScheduler' system/runtime/daemon/*.js` before editing.
 
 - [ ] **Step 3: Write an integration test that starts the daemon and asserts the ticker registers.**
 
@@ -2310,9 +2429,11 @@ export function evaluateFocusSuppression({ cfg, memo, query, now = new Date() })
 }
 ```
 
-(d) Extend `intuitionEndpoint`'s signature to accept `source`:
+(d) Extend `intuitionEndpoint`'s signature to accept `source`.
 
-Locate the function signature `export async function intuitionEndpoint({ db, embedder, query, priorAssistant = '', k = 6, recencyDays = 30, tokenBudget = 1500 })`. Replace with:
+Coordinate with A3 (`docs/superpowers/plans/2026-05-11-cognition-a3-recall-eval-and-mmr.md`): A3 introduces `sessionId` to the same destructure (snake_case `session_id` in the POST body, destructured to `sessionId` locally). The merge order is A3 → B1 (which reuses A3's plumbing) → D1, so by the time this task lands, `sessionId` may already be present.
+
+**If A3 has shipped** (look for `sessionId` in the current destructure), the block becomes:
 
 ```js
 export async function intuitionEndpoint({
@@ -2320,12 +2441,33 @@ export async function intuitionEndpoint({
   embedder,
   query,
   priorAssistant = '',
+  sessionId = null,
+  source = null,
   k = 6,
   recencyDays = 30,
   tokenBudget = 1500,
-  source = null,
 }) {
 ```
+
+Add only `source = null`; leave `sessionId` untouched.
+
+**If A3 has not shipped**, add both fields together:
+
+```js
+export async function intuitionEndpoint({
+  db,
+  embedder,
+  query,
+  priorAssistant = '',
+  sessionId = null,
+  source = null,
+  k = 6,
+  recencyDays = 30,
+  tokenBudget = 1500,
+}) {
+```
+
+…and document in the commit message that B1 + A3 coordinate via `session_id` (snake_case body field, destructured to `sessionId` locally). The original signature `{ db, embedder, query, priorAssistant = '', k = 6, recencyDays = 30, tokenBudget = 1500 }` is replaced wholesale.
 
 (e) After the existing `block`/`tokens`/`truncated` computation (around line ~173) but before the telemetry write, compute the focus block:
 
@@ -2379,9 +2521,9 @@ export async function intuitionEndpoint({
   }
 ```
 
-(f) Extend the telemetry CREATE for `intuition_telemetry` to record focus stats (additive, advisory):
+(f) Extend telemetry — two surfaces:
 
-Modify the existing `CREATE intuition_telemetry CONTENT ${{...}}` block to include:
+**`intuition_telemetry`** (additive, advisory). Modify the existing `CREATE intuition_telemetry CONTENT ${{...}}` block to include:
 
 ```js
             focus_tokens,
@@ -2389,6 +2531,31 @@ Modify the existing `CREATE intuition_telemetry CONTENT ${{...}}` block to inclu
 ```
 
 …inside the content object.
+
+**`recall_log.meta`** (contract with A3). A3's eval harness stratifies recall metrics on `recall_log.meta.focus_block_present` (bool) and `recall_log.meta.focus_block_tokens` (number). Today `inject.js` writes (at lines 204–210 in current source — or wherever the `CREATE recall_log CONTENT` block has migrated to):
+
+```js
+        surql`CREATE recall_log CONTENT ${{
+          query: safeQuery,
+          k,
+          ranked_hits: rankedHits,
+          outcome: 'pending',
+          meta: { latency_ms, truncated },
+        }}`,
+```
+
+Extend the `meta` object inline so its keys match A3's golden-fixture field names exactly:
+
+```js
+          meta: {
+            latency_ms,
+            truncated,
+            focus_block_present: focus_block.length > 0,
+            focus_block_tokens: focus_tokens,
+          },
+```
+
+A3 is the read side of this contract — do not rename either key without bumping A3's plan in lockstep.
 
 (g) Extend the return value:
 
@@ -2421,11 +2588,13 @@ git commit -m "feat(intuition): current-focus block + 7-rule suppression layer"
 
 ### Task 6.3: Daemon forwards `source` to `intuitionEndpoint`
 
-**Files:** `system/runtime/daemon/server.js`
+**Files:** `system/runtime/daemon/server.js` — OR `system/runtime/daemon/routes/intuition.js` if R-3 of `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md` has shipped.
 
-- [ ] **Step 1: Locate the existing `/internal/intuition` handler (line ~897) and extend it to read `body.source` with a host fallback.**
+Detect with `grep -l intuition system/runtime/daemon/routes/*.js 2>/dev/null` — if a file exists, edit it; otherwise edit server.js around line 897.
 
-Edit the `if (req.method === 'POST' && req.url === '/internal/intuition')` block. Replace the `intuitionEndpoint(...)` call's argument object:
+- [ ] **Step 1: Locate the existing `/internal/intuition` handler and extend it to read `body.source` with a host fallback.**
+
+Edit the `if (req.method === 'POST' && req.url === '/internal/intuition')` block (server.js) or the equivalent `intuitionRoutes` entry (routes/intuition.js). Replace the `intuitionEndpoint(...)` call's argument object:
 
 ```js
             const result = await intuitionEndpoint({
@@ -2531,6 +2700,7 @@ import { mkdirSync as __mk } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { surql } from 'surrealdb';
 import { composeForSource } from '../../cognition/jobs/internal/state-inference.js';
 import { noteStateInference } from '../../cognition/memory/state_inference.js';
 import * as store from '../../cognition/memory/store.js';
@@ -2538,7 +2708,6 @@ import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { recordEvent } from '../../io/capture/record-event.js';
 
 const HOME = join(tmpdir(), `robin-cal-${process.pid}-${Math.random().toString(36).slice(2)}`);
 __mk(HOME, { recursive: true });
@@ -2550,6 +2719,52 @@ async function fresh() {
   await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   return db;
 }
+
+// Inlined copy of the fixture helper from
+// `state-inference-compose.test.js` (Task 4.3). Keep these helpers in sync
+// across the test suite. recordEvent's VALID_SOURCES enum cannot accommodate
+// agent transcripts, and the function ignores episode_id / entity_refs /
+// biographed_at — so tests that need biographed events with mentions edges
+// build them with raw SurrealQL.
+async function seedBiographedEvent(db, embedder, {
+  source = 'conversation',
+  content,
+  entities = [],
+  episodeId = null,
+}) {
+  const [created] = await db
+    .query(surql`CREATE events CONTENT ${{ source, content, biographed_at: new Date() }}`)
+    .collect();
+  const row = Array.isArray(created) ? created[0] : created;
+  const eventId = row.id;
+  if (episodeId) {
+    await db.query(surql`UPDATE ${eventId} SET episode_id = ${episodeId}`).collect();
+  }
+  for (const entId of entities) {
+    await db
+      .query(surql`RELATE ${eventId}->mentions->${entId} CONTENT { kind: 'mentions' }`)
+      .collect();
+  }
+  return { id: eventId };
+}
+
+async function seedEpisode(db, source = 'conversation') {
+  await db
+    .query(
+      surql`CREATE episodes CONTENT ${{
+        source,
+        started_at: new Date(Date.now() - 5 * 60_000),
+        last_event_at: new Date(),
+      }}`,
+    )
+    .collect();
+  const [epRows] = await db
+    .query(surql`SELECT id FROM episodes WHERE source = ${source} LIMIT 1`)
+    .collect();
+  return epRows[0].id;
+}
+
+const TEST_SOURCE = 'conversation';
 
 const CFG = {
   enabled: true,
@@ -2567,18 +2782,11 @@ const CFG = {
 test('I7 — pivot emits state_inference_pivoted refute row', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
+  const epId = await seedEpisode(db);
   const entA = await store.upsertEntity(db, e, { type: 'topic', name: 'A' });
   const entB = await store.upsertEntity(db, e, { type: 'topic', name: 'B' });
   const prior = await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'about A',
     confidence: 0.8,
     entities: [entA.id],
@@ -2586,12 +2794,11 @@ test('I7 — pivot emits state_inference_pivoted refute row', async () => {
     last_active_at: new Date(),
     signal_hash: 'old',
   });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'new B',
-    episode_id: epRows[0].id,
-    entity_refs: [entB.id],
-    biographed_at: new Date(),
+    entities: [entB.id],
+    episodeId: epId,
   });
   const host = {
     invokeLLM: async () => ({
@@ -2602,11 +2809,10 @@ test('I7 — pivot emits state_inference_pivoted refute row', async () => {
         ambiguous: false,
         drop: false,
       }),
-      tokens_in: 200,
-      tokens_out: 60,
+      usage: { input_tokens: 200, output_tokens: 60 },
     }),
   };
-  await composeForSource({ db, embedder: e, host, source: 'agent:claude-code', cfg: CFG });
+  await composeForSource({ db, embedder: e, host, source: TEST_SOURCE, cfg: CFG });
   const [rows] = await db
     .query(`SELECT polarity, reason FROM evidence_ledger WHERE memo_id = $id`, {
       id: prior.id,
@@ -2622,18 +2828,11 @@ test('I7 — pivot emits state_inference_pivoted refute row', async () => {
 test('calibration is deduped — running composeForSource twice does not double-emit', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
+  const epId = await seedEpisode(db);
   const entA = await store.upsertEntity(db, e, { type: 'topic', name: 'A' });
   const entB = await store.upsertEntity(db, e, { type: 'topic', name: 'B' });
   const prior = await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'about A',
     confidence: 0.8,
     entities: [entA.id],
@@ -2641,12 +2840,11 @@ test('calibration is deduped — running composeForSource twice does not double-
     last_active_at: new Date(),
     signal_hash: 'old',
   });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'new B',
-    episode_id: epRows[0].id,
-    entity_refs: [entB.id],
-    biographed_at: new Date(),
+    entities: [entB.id],
+    episodeId: epId,
   });
   // First tick: LLM drops → no write, but calibration row should still fire.
   const dropHost = {
@@ -2660,18 +2858,19 @@ test('calibration is deduped — running composeForSource twice does not double-
       }),
     }),
   };
-  await composeForSource({ db, embedder: e, host: dropHost, source: 'agent:claude-code', cfg: CFG });
+  await composeForSource({ db, embedder: e, host: dropHost, source: TEST_SOURCE, cfg: CFG });
   // Second tick: also drop. Dedup guard must prevent a second ledger row.
-  await composeForSource({ db, embedder: e, host: dropHost, source: 'agent:claude-code', cfg: CFG });
+  await composeForSource({ db, embedder: e, host: dropHost, source: TEST_SOURCE, cfg: CFG });
   const [rows] = await db
     .query(
       `SELECT count() AS n FROM evidence_ledger
        WHERE memo_id = $id AND reason IN ['state_inference_pivoted','state_inference_held']
+         AND ts > $prior_derived_at
        GROUP ALL`,
-      { id: prior.id },
+      { id: prior.id, prior_derived_at: prior.derived_at },
     )
     .collect();
-  assert.equal(rows?.[0]?.n ?? 0, 1, 'expected exactly one calibration row');
+  assert.equal(rows?.[0]?.n ?? 0, 1, 'expected exactly one post-derived calibration row');
   await close(db);
 });
 ```
@@ -2709,6 +2908,7 @@ import { mkdirSync as __mk } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { surql } from 'surrealdb';
 import { composeForSource } from '../../cognition/jobs/internal/state-inference.js';
 import { noteStateInference } from '../../cognition/memory/state_inference.js';
 import * as store from '../../cognition/memory/store.js';
@@ -2716,7 +2916,6 @@ import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { recordEvent } from '../../io/capture/record-event.js';
 import { createExplainStateInferenceTool } from '../../io/mcp/tools/explain-state-inference.js';
 
 const HOME = join(tmpdir(), `robin-priv-${process.pid}-${Math.random().toString(36).slice(2)}`);
@@ -2729,6 +2928,49 @@ async function fresh() {
   await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   return db;
 }
+
+// Inlined copy of the fixture helpers from
+// `state-inference-compose.test.js` (Task 4.3). Keep these helpers in sync
+// across the test suite.
+async function seedBiographedEvent(db, embedder, {
+  source = 'conversation',
+  content,
+  entities = [],
+  episodeId = null,
+}) {
+  const [created] = await db
+    .query(surql`CREATE events CONTENT ${{ source, content, biographed_at: new Date() }}`)
+    .collect();
+  const row = Array.isArray(created) ? created[0] : created;
+  const eventId = row.id;
+  if (episodeId) {
+    await db.query(surql`UPDATE ${eventId} SET episode_id = ${episodeId}`).collect();
+  }
+  for (const entId of entities) {
+    await db
+      .query(surql`RELATE ${eventId}->mentions->${entId} CONTENT { kind: 'mentions' }`)
+      .collect();
+  }
+  return { id: eventId };
+}
+
+async function seedEpisode(db, source = 'conversation') {
+  await db
+    .query(
+      surql`CREATE episodes CONTENT ${{
+        source,
+        started_at: new Date(Date.now() - 5 * 60_000),
+        last_event_at: new Date(),
+      }}`,
+    )
+    .collect();
+  const [epRows] = await db
+    .query(surql`SELECT id FROM episodes WHERE source = ${source} LIMIT 1`)
+    .collect();
+  return epRows[0].id;
+}
+
+const TEST_SOURCE = 'conversation';
 
 const CFG = {
   enabled: true,
@@ -2747,7 +2989,7 @@ test('A1 — private state_inference memo redacted by explain_state_inference', 
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   const { id } = await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'SENSITIVE: ...',
     confidence: 0.9,
     entities: [],
@@ -2756,7 +2998,7 @@ test('A1 — private state_inference memo redacted by explain_state_inference', 
     scope: 'private',
   });
   const tool = createExplainStateInferenceTool({ db });
-  const r = await tool.handler({ source: 'agent:claude-code' });
+  const r = await tool.handler({ source: TEST_SOURCE });
   assert.equal(r.current.private, true);
   assert.equal(typeof r.current.derived_at, 'string');
   assert.equal(r.current.content, undefined);
@@ -2766,21 +3008,13 @@ test('A1 — private state_inference memo redacted by explain_state_inference', 
 test('A2 — entity scope=private causes new state_inference memo to inherit private', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  await db
-    .query(
-      `CREATE episodes CONTENT { source: 'agent:claude-code', started_at: time::now() - 5m, last_event_at: time::now() }`,
-    )
-    .collect();
-  const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = 'agent:claude-code' LIMIT 1`)
-    .collect();
+  const epId = await seedEpisode(db);
   const ent = await store.upsertEntity(db, e, { type: 'topic', name: 'secret', scope: 'private' });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'hush',
-    episode_id: epRows[0].id,
-    entity_refs: [ent.id],
-    biographed_at: new Date(),
+    entities: [ent.id],
+    episodeId: epId,
   });
   const host = {
     invokeLLM: async () => ({
@@ -2793,7 +3027,7 @@ test('A2 — entity scope=private causes new state_inference memo to inherit pri
       }),
     }),
   };
-  await composeForSource({ db, embedder: e, host, source: 'agent:claude-code', cfg: CFG });
+  await composeForSource({ db, embedder: e, host, source: TEST_SOURCE, cfg: CFG });
   const [rows] = await db
     .query(`SELECT scope FROM memos WHERE kind = 'state_inference' LIMIT 1`)
     .collect();
@@ -2964,9 +3198,13 @@ const INTROSPECTION_TOOLS = [
 ];
 ```
 
-- [ ] **Step 4: Register the tool in `server.js`.**
+- [ ] **Step 4: Register the tool.**
 
-Edit `system/runtime/daemon/server.js`. Add an import near the other tool imports (alphabetical order — between `createExplainRecallTool` line 39 and `createFindEntityTool` line 40):
+The tool-registration site moves to its own module under R-3 of `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md` (`system/runtime/daemon/tools.js`). Detect with `grep -l 'createExplainRecallTool' system/runtime/daemon/{server.js,tools.js,boot.js} 2>/dev/null` and edit whichever file contains the existing registrations.
+
+**If R-3 has shipped** (`tools.js` exists with the other registrations), add the import + `tools.push(...)` line there.
+
+**Otherwise** edit `system/runtime/daemon/server.js`. Add an import near the other tool imports (alphabetical order — between `createExplainRecallTool` line 39 and `createFindEntityTool` line 40):
 
 ```js
 import { createExplainStateInferenceTool } from '../../io/mcp/tools/explain-state-inference.js';
@@ -3158,6 +3396,7 @@ import { mkdirSync as __mk } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { surql } from 'surrealdb';
 import { intuitionEndpoint } from '../../cognition/intuition/inject.js';
 import {
   composeForSource,
@@ -3169,7 +3408,6 @@ import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { recordEvent } from '../../io/capture/record-event.js';
 
 const HOME = join(tmpdir(), `robin-int-${process.pid}-${Math.random().toString(36).slice(2)}`);
 __mk(HOME, { recursive: true });
@@ -3188,27 +3426,55 @@ async function setEnabled(db, value) {
     .collect();
 }
 
-async function seedSource(db, e, { source = 'agent:claude-code', entities = ['cognition'] } = {}) {
+const TEST_SOURCE = 'conversation';
+
+// Inlined fixture helper — see Task 4.3 for the canonical definition. Keep
+// in sync across compose/calibration/privacy/integration test files.
+async function seedBiographedEvent(db, embedder, {
+  source = TEST_SOURCE,
+  content,
+  entities = [],
+  episodeId = null,
+}) {
+  const [created] = await db
+    .query(surql`CREATE events CONTENT ${{ source, content, biographed_at: new Date() }}`)
+    .collect();
+  const row = Array.isArray(created) ? created[0] : created;
+  const eventId = row.id;
+  if (episodeId) {
+    await db.query(surql`UPDATE ${eventId} SET episode_id = ${episodeId}`).collect();
+  }
+  for (const entId of entities) {
+    await db
+      .query(surql`RELATE ${eventId}->mentions->${entId} CONTENT { kind: 'mentions' }`)
+      .collect();
+  }
+  return { id: eventId };
+}
+
+async function seedSource(db, e, { source = TEST_SOURCE, entities = ['cognition'] } = {}) {
   await db
     .query(
-      `CREATE episodes CONTENT { source: $s, started_at: time::now() - 5m, last_event_at: time::now() }`,
-      { s: source },
+      surql`CREATE episodes CONTENT ${{
+        source,
+        started_at: new Date(Date.now() - 5 * 60_000),
+        last_event_at: new Date(),
+      }}`,
     )
     .collect();
   const [epRows] = await db
-    .query(`SELECT id FROM episodes WHERE source = $s LIMIT 1`, { s: source })
+    .query(surql`SELECT id FROM episodes WHERE source = ${source} LIMIT 1`)
     .collect();
   const entRefs = [];
   for (const name of entities) {
     const ent = await store.upsertEntity(db, e, { type: 'topic', name });
     entRefs.push(ent.id);
   }
-  await recordEvent(db, e, {
+  await seedBiographedEvent(db, e, {
     source,
     content: 'event content',
-    episode_id: epRows[0].id,
-    entity_refs: entRefs,
-    biographed_at: new Date(),
+    entities: entRefs,
+    episodeId: epRows[0].id,
   });
   return { epId: epRows[0].id, entRefs };
 }
@@ -3223,9 +3489,28 @@ function makeHost(focusStatement, confidence = 0.8, drop = false) {
         ambiguous: false,
         drop,
       }),
-      tokens_in: 200,
-      tokens_out: 60,
+      usage: { input_tokens: 200, output_tokens: 60 },
     }),
+  };
+}
+
+/**
+ * Counter mock — wraps `makeHost` and exposes `.calls`. Used by E2 to assert
+ * the steady-state "zero LLM calls on no-change tick" invariant at the
+ * integration level (the unit test U2 already pins the contract; E2 makes it
+ * a regression guard against the full request → telemetry → write loop).
+ */
+function makeCountingHost(focusStatement, confidence = 0.8, drop = false) {
+  const inner = makeHost(focusStatement, confidence, drop);
+  let calls = 0;
+  return {
+    invokeLLM: async (...args) => {
+      calls++;
+      return inner.invokeLLM(...args);
+    },
+    get calls() {
+      return calls;
+    },
   };
 }
 
@@ -3240,7 +3525,7 @@ test('I1 — write → recall surfaces the focus block', async () => {
     db,
     embedder: e,
     host: makeHost('Kevin is refactoring the cognition layer'),
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: {
       enabled: true,
       attention_window_min: 90,
@@ -3255,7 +3540,7 @@ test('I1 — write → recall surfaces the focus block', async () => {
     db,
     embedder: e,
     query: QUERY,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.match(r.focus_block, /<!-- current focus -->/);
   assert.match(r.focus_block, /Kevin is refactoring the cognition layer/);
@@ -3269,7 +3554,7 @@ test('I2 — low confidence → suppressed', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
   await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'low conf focus',
     confidence: 0.3,
     entities: [],
@@ -3280,7 +3565,7 @@ test('I2 — low confidence → suppressed', async () => {
     db,
     embedder: e,
     query: QUERY,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.equal(r.focus_block, '');
   assert.equal(r.focus_suppressed_reason, 'low_confidence');
@@ -3292,7 +3577,7 @@ test('I3 — stale → suppressed', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
   await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'stale focus',
     confidence: 0.8,
     entities: [],
@@ -3303,7 +3588,7 @@ test('I3 — stale → suppressed', async () => {
     db,
     embedder: e,
     query: QUERY,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.equal(r.focus_suppressed_reason, 'stale');
   await close(db);
@@ -3314,7 +3599,7 @@ test('I4 — pivot (zero keyword overlap) → suppressed', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
   await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'Kevin is refactoring cognition',
     confidence: 0.8,
     entities: ['entities:cognition_refactor'],
@@ -3325,7 +3610,7 @@ test('I4 — pivot (zero keyword overlap) → suppressed', async () => {
     db,
     embedder: e,
     query: 'lunch plans tomorrow',
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.equal(r.focus_suppressed_reason, 'pivot');
   await close(db);
@@ -3336,7 +3621,7 @@ test('I5 — superseded chain: latestForSource returns B, not A', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
   const a = await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'A',
     confidence: 0.8,
     entities: ['entities:x'],
@@ -3344,7 +3629,7 @@ test('I5 — superseded chain: latestForSource returns B, not A', async () => {
     signal_hash: 'h1',
   });
   const b = await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'B',
     confidence: 0.8,
     entities: ['entities:x'],
@@ -3356,7 +3641,7 @@ test('I5 — superseded chain: latestForSource returns B, not A', async () => {
     db,
     embedder: e,
     query: 'something x related',
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.match(r.focus_block, /B/);
   assert.doesNotMatch(r.focus_block, /\] A —|\] A\n/);
@@ -3368,7 +3653,7 @@ test('I6 — private memo → suppressed', async () => {
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
   await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'secret',
     confidence: 0.9,
     entities: ['entities:secret'],
@@ -3380,7 +3665,7 @@ test('I6 — private memo → suppressed', async () => {
     db,
     embedder: e,
     query: 'something secret related',
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.equal(r.focus_suppressed_reason, 'private');
   await close(db);
@@ -3392,10 +3677,10 @@ test('I7 — calibration emits pivot refute (integration variant)', async () => 
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
-  const { entRefs: [entA] } = await seedSource(db, e, { entities: ['A'] });
+  const { epId, entRefs: [entA] } = await seedSource(db, e, { entities: ['A'] });
   const entB = (await store.upsertEntity(db, e, { type: 'topic', name: 'B' })).id;
   const prior = await noteStateInference(db, e, {
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     content: 'about A',
     confidence: 0.8,
     entities: [entA],
@@ -3403,18 +3688,17 @@ test('I7 — calibration emits pivot refute (integration variant)', async () => 
     last_active_at: new Date(),
     signal_hash: 'old',
   });
-  await recordEvent(db, e, {
-    source: 'agent:claude-code',
+  await seedBiographedEvent(db, e, {
+    source: TEST_SOURCE,
     content: 'B happens',
-    episode_id: (await db.query('SELECT id FROM episodes LIMIT 1').collect())[0][0].id,
-    entity_refs: [entB],
-    biographed_at: new Date(),
+    entities: [entB],
+    episodeId: epId,
   });
   await composeForSource({
     db,
     embedder: e,
     host: makeHost('Working on B'),
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { enabled: true, attention_window_min: 90, refresh_after_minutes: 30, min_events_for_inference: 1, max_sources_per_tick: 4, min_confidence_to_surface: 0.5, stale_after_minutes: 120, pivot_weight: 1.0, corroborate_weight: 1.0 },
   });
   const [rows] = await db
@@ -3437,7 +3721,7 @@ test('I8 — cfg.enabled=false → evaluate skips, intuition skips block', async
     db,
     embedder: e,
     query: QUERY,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.equal(r2.focus_suppressed_reason, 'disabled');
   await close(db);
@@ -3465,7 +3749,7 @@ test('I9 — shadow mode: pipeline runs, no memo written, focus block suppressed
     db,
     embedder: e,
     query: QUERY,
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.equal(r.focus_suppressed_reason, 'disabled');
   await close(db);
@@ -3480,42 +3764,48 @@ test('E1 — end-to-end: event → compose → recall surfaces; token count unde
     db,
     embedder: e,
     host: makeHost('Kevin is iterating on the cognition layer refactor'),
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
     cfg: { enabled: true, attention_window_min: 90, refresh_after_minutes: 30, min_events_for_inference: 1, max_sources_per_tick: 4, min_confidence_to_surface: 0.5, stale_after_minutes: 120 },
   });
   const r = await intuitionEndpoint({
     db,
     embedder: e,
     query: 'cognition work',
-    source: 'agent:claude-code',
+    source: TEST_SOURCE,
   });
   assert.match(r.focus_block, /Kevin is iterating on the cognition layer refactor/);
   assert.ok(r.focus_tokens <= 200, `expected focus_tokens ≤ 200, got ${r.focus_tokens}`);
   await close(db);
 });
 
-test('E2 — concurrent ticks within the same window are idempotent', async () => {
+test('E2 — concurrent ticks within the same window are idempotent (zero LLM calls on rerun)', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await setEnabled(db, true);
   await seedSource(db, e, { entities: ['cognition'] });
   const cfg = { enabled: true, attention_window_min: 90, refresh_after_minutes: 30, min_events_for_inference: 1, max_sources_per_tick: 4, min_confidence_to_surface: 0.5, stale_after_minutes: 120 };
+  // First tick: counting host wraps the LLM call; we expect exactly one call.
+  const firstHost = makeCountingHost('first');
   await composeForSource({
     db,
     embedder: e,
-    host: makeHost('first'),
-    source: 'agent:claude-code',
+    host: firstHost,
+    source: TEST_SOURCE,
     cfg,
   });
-  // Same inputs ⇒ same signal_hash ⇒ skipped_unchanged.
+  assert.equal(firstHost.calls, 1, 'first tick: one LLM call');
+  // Second tick: same inputs ⇒ same signal_hash ⇒ skipped_unchanged ⇒
+  // the steady-state-no-LLM-call invariant requires zero invocations.
+  const secondHost = makeCountingHost('would-be-second');
   const r = await composeForSource({
     db,
     embedder: e,
-    host: makeHost('would-be-second'),
-    source: 'agent:claude-code',
+    host: secondHost,
+    source: TEST_SOURCE,
     cfg,
   });
   assert.equal(r.outcome, 'skipped_unchanged');
+  assert.equal(secondHost.calls, 0, 'second tick: zero LLM calls when nothing changed');
   const [memos] = await db
     .query(`SELECT count() AS n FROM memos WHERE kind = 'state_inference' GROUP ALL`)
     .collect();
@@ -3642,7 +3932,7 @@ These are three separate tasks staged behind real telemetry. Plan them as discre
 - [ ] **Step 1: Confirm the migration seed is `false`.**
 
 ```bash
-grep -n "enabled:" system/data/db/migrations/0009-state-inference.surql
+grep -n "enabled:" system/data/db/migrations/0012-state-inference.surql
 ```
 
 Expected: `enabled: false,`.
@@ -3657,16 +3947,16 @@ Expected: clean. The faculty is dark.
 
 - [ ] **Step 3: No code change; no commit. Document in the PR that "Phase 12.2 — shadow" follows in a separate PR after this lands."**
 
-### Task 12.2: Flip to shadow (after Phase 0 lands cleanly)
+### Task 12.2: Flip to shadow — D1-shadow-flip (after D1-initial-off lands cleanly)
 
-**Files:** `system/data/db/migrations/0010-state-inference-shadow.surql` (new) — a one-line follow-up migration
+**Files:** `system/data/db/migrations/0013-state-inference-shadow.surql` (new) — a one-line follow-up migration
 
 - [ ] **Step 1: Create the migration.**
 
-Write `system/data/db/migrations/0010-state-inference-shadow.surql`:
+Write `system/data/db/migrations/0013-state-inference-shadow.surql`:
 
 ```surql
--- Cognition D1 rollout: flip state_inference flag from false → 'shadow'.
+-- Cognition D1-shadow-flip: state_inference flag from false → 'shadow'.
 -- After this migration, the faculty runs end-to-end (including LLM calls)
 -- but does not write memos; telemetry rows are still emitted. The intuition
 -- path continues to suppress the focus block until enabled === true.
@@ -3677,7 +3967,7 @@ UPSERT runtime:`state_inference.config` SET value.enabled = 'shadow';
 - [ ] **Step 2: Run the migration test against the new file.**
 
 ```bash
-npm run test:unit -- --test-name-pattern='0009 migration|state_inference_telemetry'
+npm run test:unit -- --test-name-pattern='0012 migration|state_inference_telemetry'
 ```
 
 Expected: still passes (the test reads the cfg after running every migration in order; this one only mutates a single field).
@@ -3689,13 +3979,13 @@ Expected: still passes (the test reads the cfg after running every migration in 
 - [ ] **Step 4: Commit.**
 
 ```bash
-git add system/data/db/migrations/0010-state-inference-shadow.surql
+git add system/data/db/migrations/0013-state-inference-shadow.surql
 git commit -m "feat(rollout): state-inference shadow mode (telemetry-only)"
 ```
 
-### Task 12.3: Flip to default-on (after ~3 days of clean shadow telemetry)
+### Task 12.3: Flip to default-on — D1-default-on (after ~3 days of clean shadow telemetry)
 
-**Files:** `system/data/db/migrations/0011-state-inference-enable.surql` (new)
+**Files:** `system/data/db/migrations/0014-state-inference-enable.surql` (new)
 
 - [ ] **Step 1: Verify the cost target from telemetry — should match spec §9.2: `skipped_unchanged / wrote ≥ 4:1`, `tokens_in` median ≤ 500, no errors in last 24h.**
 
@@ -3705,10 +3995,10 @@ git commit -m "feat(rollout): state-inference shadow mode (telemetry-only)"
 
 - [ ] **Step 2: Create the migration.**
 
-Write `system/data/db/migrations/0011-state-inference-enable.surql`:
+Write `system/data/db/migrations/0014-state-inference-enable.surql`:
 
 ```surql
--- Cognition D1 rollout: flip state_inference flag from 'shadow' → true.
+-- Cognition D1-default-on: state_inference flag from 'shadow' → true.
 -- After this migration, the focus block surfaces in the intuition path.
 -- Operators can disable per-host via:
 --   UPDATE runtime:`state_inference.config` SET value.enabled = false;
@@ -3728,7 +4018,7 @@ Expected: clean.
 - [ ] **Step 4: Commit.**
 
 ```bash
-git add system/data/db/migrations/0011-state-inference-enable.surql
+git add system/data/db/migrations/0014-state-inference-enable.surql
 git commit -m "feat(rollout): state-inference default-on (focus block surfaces)"
 ```
 
@@ -3743,7 +4033,7 @@ Run before opening the PR:
 - [ ] `npm run test:integration` — all green; the 11 new integration assertions all pass.
 - [ ] `node --check system/runtime/daemon/server.js` — clean.
 - [ ] Manually inspect: `grep -rn "state_inference" docs/` shows entries in `faculties.md` + `architecture.md` only.
-- [ ] Manually inspect: `ls system/data/db/migrations/` shows `0009-state-inference.surql` and (after Phase 12) `0010-state-inference-shadow.surql` + `0011-state-inference-enable.surql`.
+- [ ] Manually inspect: `ls system/data/db/migrations/` shows `0012-state-inference.surql` and (after Phase 12) `0013-state-inference-shadow.surql` + `0014-state-inference-enable.surql`.
 
 ## Open items (deferred follow-ups)
 

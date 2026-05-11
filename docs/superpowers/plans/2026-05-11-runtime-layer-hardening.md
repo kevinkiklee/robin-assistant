@@ -586,23 +586,25 @@ EOF
 
 ---
 
-### Task 1.4: Host-name normalization
+### Task 1.4: HOSTS enum + ROBIN_HOST normalization (narrow scope)
+
+**Scope:** Add a `HOSTS` enum exporting the hyphenated canonical strings already used by `sessions.js`. Normalize `ROBIN_HOST` env var input (accept both underscored and hyphenated; warn on underscored). **Do not** rename `adapter.name`, `ADAPTERS` keys, or any of the 43 places that read `host.name` — those changes pull in `install/hooks-settings.js` settings.json migration and `events.meta.host` historical-data concerns that belong in a separate cleanup PR.
 
 **Files:**
 - Create: `system/runtime/hosts/index.js`
-- Modify: `system/runtime/hosts/detect.js`
-- Modify: `system/runtime/daemon/sessions.js`
-- Create: `system/tests/unit/runtime/hosts/host-naming.test.js`
+- Modify: `system/runtime/hosts/detect.js` (normalize `ROBIN_HOST` only — keys stay underscored)
+- Modify: `system/runtime/daemon/sessions.js` (import `HOST_VALUES`)
+- Create: `system/tests/unit/host-naming.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/hosts/host-naming.test.js`:
+Create `system/tests/unit/host-naming.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOSTS, HOST_VALUES } from '../../../../runtime/hosts/index.js';
-import { detectHost } from '../../../../runtime/hosts/detect.js';
+import { HOSTS, HOST_VALUES } from '../../runtime/hosts/index.js';
+import { detectHost } from '../../runtime/hosts/detect.js';
 
 test('HOSTS exposes hyphenated canonical names', () => {
   assert.equal(HOSTS.CLAUDE_CODE, 'claude-code');
@@ -610,8 +612,8 @@ test('HOSTS exposes hyphenated canonical names', () => {
   assert.equal(HOSTS.UNKNOWN, 'unknown');
 });
 
-test('HOST_VALUES is the frozen list', () => {
-  assert.deepEqual(HOST_VALUES, ['claude-code', 'gemini-cli', 'unknown']);
+test('HOST_VALUES contains the three canonical values', () => {
+  assert.deepEqual([...HOST_VALUES].sort(), ['claude-code', 'gemini-cli', 'unknown']);
 });
 
 test('ROBIN_HOST=claude-code resolves the claude-code adapter', async () => {
@@ -619,14 +621,15 @@ test('ROBIN_HOST=claude-code resolves the claude-code adapter', async () => {
   process.env.ROBIN_HOST = 'claude-code';
   try {
     const host = await detectHost({ skipAvailabilityCheck: true });
-    assert.equal(host.name, 'claude-code');
+    // Adapter.name remains underscored in R-1; this assertion documents that.
+    assert.equal(host.name, 'claude_code');
   } finally {
     if (prev === undefined) delete process.env.ROBIN_HOST;
     else process.env.ROBIN_HOST = prev;
   }
 });
 
-test('ROBIN_HOST=claude_code (underscored) warns and resolves', async () => {
+test('ROBIN_HOST=claude_code (underscored) still works and warns once', async () => {
   const prev = process.env.ROBIN_HOST;
   process.env.ROBIN_HOST = 'claude_code';
   const warnings = [];
@@ -634,27 +637,36 @@ test('ROBIN_HOST=claude_code (underscored) warns and resolves', async () => {
   console.warn = (...a) => warnings.push(a.join(' '));
   try {
     const host = await detectHost({ skipAvailabilityCheck: true });
-    assert.equal(host.name, 'claude-code');
-    assert.ok(warnings.some((w) => w.includes('deprecated') || w.includes('hyphen')), `expected deprecation warning, got: ${warnings.join('; ')}`);
+    assert.equal(host.name, 'claude_code');
+    assert.ok(
+      warnings.some((w) => /deprecated|hyphen/i.test(w)),
+      `expected deprecation warning, got: ${warnings.join('; ')}`,
+    );
   } finally {
     console.warn = origWarn;
     if (prev === undefined) delete process.env.ROBIN_HOST;
     else process.env.ROBIN_HOST = prev;
   }
 });
+
+test('sessions.js HOST_VALUES matches what registerSession accepts', () => {
+  // Documents the contract: HOST_VALUES is the list registerSession will accept.
+  assert.ok(HOST_VALUES.includes('claude-code'));
+  assert.ok(HOST_VALUES.includes('gemini-cli'));
+  assert.ok(HOST_VALUES.includes('unknown'));
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test system/tests/unit/runtime/hosts/host-naming.test.js`
+Run: `node --test system/tests/unit/host-naming.test.js`
 
-Expected: FAIL — `hosts/index.js` doesn't exist; `detect.js` uses underscored keys.
+Expected: FAIL — `hosts/index.js` doesn't exist; underscored `ROBIN_HOST` doesn't warn.
 
 - [ ] **Step 3: Create `hosts/index.js`**
 
-Create `system/runtime/hosts/index.js`:
-
 ```js
+// system/runtime/hosts/index.js
 export const HOSTS = Object.freeze({
   CLAUDE_CODE: 'claude-code',
   GEMINI_CLI: 'gemini-cli',
@@ -664,37 +676,45 @@ export const HOSTS = Object.freeze({
 export const HOST_VALUES = Object.freeze(Object.values(HOSTS));
 ```
 
-- [ ] **Step 4: Update `detect.js` to hyphenated keys + back-compat**
+- [ ] **Step 4: Update `detect.js` — normalize ROBIN_HOST input only**
 
-Read the current `system/runtime/hosts/detect.js` and replace its contents:
+Replace the contents of `system/runtime/hosts/detect.js`. The `ADAPTERS` keys stay underscored (matches `adapter.name` and the 43 call sites). Only the user-visible `ROBIN_HOST` env var is normalized.
 
 ```js
 import { claudeCodeAdapter } from './claude-code.js';
 import { geminiAdapter } from './gemini.js';
-import { HOSTS } from './index.js';
 
+// Keys remain underscored — they match adapter.name and many existing call sites.
 const ADAPTERS = {
-  [HOSTS.CLAUDE_CODE]: claudeCodeAdapter,
-  [HOSTS.GEMINI_CLI]: geminiAdapter,
+  claude_code: claudeCodeAdapter,
+  gemini_cli: geminiAdapter,
 };
 
-// One-shot deprecation warning for legacy underscored ROBIN_HOST values.
+// Accept both hyphenated (canonical going forward) and underscored (legacy) forms
+// of ROBIN_HOST. Internally we still look up by underscored key.
+const ROBIN_HOST_ALIASES = {
+  'claude-code': 'claude_code',
+  'gemini-cli': 'gemini_cli',
+  // identity aliases for legacy callers
+  claude_code: 'claude_code',
+  gemini_cli: 'gemini_cli',
+};
+
 let warnedUnderscoreOverride = false;
 
 export async function detectHost(opts = {}) {
-  let override = process.env.ROBIN_HOST;
-  if (override) {
-    // Back-compat: claude_code → claude-code, gemini_cli → gemini-cli
-    if (override === 'claude_code' || override === 'gemini_cli') {
-      if (!warnedUnderscoreOverride) {
+  const raw = process.env.ROBIN_HOST;
+  if (raw) {
+    const internal = ROBIN_HOST_ALIASES[raw];
+    if (internal) {
+      if ((raw === 'claude_code' || raw === 'gemini_cli') && !warnedUnderscoreOverride) {
         console.warn(
-          `[hosts] ROBIN_HOST=${override} is deprecated; use the hyphenated form (${override.replace('_', '-')}) instead.`,
+          `[hosts] ROBIN_HOST=${raw} is deprecated; use the hyphenated form '${raw.replace('_', '-')}' instead.`,
         );
         warnedUnderscoreOverride = true;
       }
-      override = override.replace('_', '-');
+      return ADAPTERS[internal];
     }
-    if (ADAPTERS[override]) return ADAPTERS[override];
   }
 
   if (process.env.CLAUDE_PROJECT_DIR) return claudeCodeAdapter;
@@ -706,68 +726,60 @@ export async function detectHost(opts = {}) {
   }
 
   throw new Error(
-    'no host detected: set ROBIN_HOST=claude-code|gemini-cli or install one of the host CLIs',
+    "no host detected: set ROBIN_HOST=claude-code|gemini-cli or install one of the host CLIs",
   );
 }
 ```
 
-- [ ] **Step 5: Verify adapter `name` fields are hyphenated**
+- [ ] **Step 5: Update `daemon/sessions.js` to import HOST_VALUES**
 
-Read `system/runtime/hosts/claude-code.js` and `system/runtime/hosts/gemini.js`. Each adapter likely exports `name`. If they're underscored (`claude_code`/`gemini_cli`), update them to hyphenated. If already hyphenated, no change.
+In `system/runtime/daemon/sessions.js`, add the import:
 
-Use `grep` to confirm:
-```bash
-grep -n "name:" system/runtime/hosts/claude-code.js system/runtime/hosts/gemini.js
+```js
+import { HOST_VALUES } from '../hosts/index.js';
 ```
 
-If the `name:` values are not `'claude-code'` / `'gemini-cli'`, edit them so the host test passes.
-
-- [ ] **Step 6: Update `daemon/sessions.js` to import HOST_VALUES**
-
-In `system/runtime/daemon/sessions.js`, replace the inline triplet check.
-
-Find this block:
+Replace this block:
 ```js
 if (host !== 'claude-code' && host !== 'gemini-cli' && host !== 'unknown') {
   throw new Error(`registerSession: invalid host ${host}`);
 }
 ```
 
-Add an import at the top of the file:
-```js
-import { HOST_VALUES } from '../hosts/index.js';
-```
-
-Replace the check with:
+With:
 ```js
 if (!HOST_VALUES.includes(host)) {
   throw new Error(`registerSession: invalid host ${host}`);
 }
 ```
 
-- [ ] **Step 7: Run the new test**
+(This is pure internal cleanup — `sessions.js` already validates against the hyphenated set. The import makes the list a single source of truth.)
 
-Run: `node --test system/tests/unit/runtime/hosts/host-naming.test.js`
+- [ ] **Step 6: Run the new test**
 
-Expected: all 4 tests pass.
+Run: `node --test system/tests/unit/host-naming.test.js`
 
-- [ ] **Step 8: Run full suite**
+Expected: all 5 tests pass.
+
+- [ ] **Step 7: Run full suite**
 
 Run: `npm test`
 
-Expected: all pass. If any tests fail because they expected `claude_code`/`gemini_cli` keys, update them to hyphenated form. Common locations: `system/tests/unit/runtime/hosts/*.test.js`, integration tests that set `ROBIN_HOST`.
+Expected: all pass. Pre-existing tests like `system/tests/unit/host-detect.test.js` and `system/tests/unit/session-capture.test.js` use underscored `'claude_code'` literals — they should still pass unchanged because adapter.name didn't change.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add system/runtime/hosts/index.js system/runtime/hosts/detect.js system/runtime/hosts/claude-code.js system/runtime/hosts/gemini.js system/runtime/daemon/sessions.js system/tests/unit/runtime/hosts/host-naming.test.js
+git add system/runtime/hosts/index.js system/runtime/hosts/detect.js system/runtime/daemon/sessions.js system/tests/unit/host-naming.test.js
 git commit -m "$(cat <<'EOF'
-refactor(runtime): R-1 — canonicalize host names to hyphenated form
+refactor(runtime): R-1 — HOSTS enum + ROBIN_HOST input normalization
 
-Adapter keys, ROBIN_HOST values, and adapter.name fields are now all
-hyphenated ('claude-code', 'gemini-cli', 'unknown'). Adds HOSTS enum in
-new hosts/index.js. Underscored ROBIN_HOST keeps working with a one-shot
-deprecation warning.
+Add hosts/index.js exporting HOSTS / HOST_VALUES (the hyphenated set
+sessions.js already validates against). Normalize ROBIN_HOST env input
+to accept both hyphenated (canonical) and underscored (legacy) forms;
+warn once on underscored. sessions.js imports HOST_VALUES instead of
+hardcoding the triplet. adapter.name stays underscored — full rename
+deferred to a separate cleanup PR with settings.json migration.
 EOF
 )"
 ```
@@ -778,23 +790,19 @@ EOF
 
 **Files:**
 - Modify: `system/cognition/biographer/queue.js`
-- Create or Modify: `system/tests/unit/cognition/biographer/queue.test.js`
+- Extend: `system/tests/unit/biographer-queue.test.js` (existing — add cap tests)
 
-- [ ] **Step 1: Read current queue shape**
+**Existing queue shape (verified — do not introduce new data structures):**
+- `queue`: Array of `{ id, resolve, reject }`. Holds events not yet handed to the worker.
+- `inflight`: Map of `id → promise`. Only populated when `dedupe: true`.
+- `running`: Boolean. True while `drain()` is iterating the queue.
+- Depth at any moment = `queue.length + (running ? 1 : 0)`.
 
-Run: `cat system/cognition/biographer/queue.js`
+- [ ] **Step 1: Add cap tests to the existing test file**
 
-Note the existing exports (e.g., `createBiographerQueue`), the worker invocation, the dedupe logic, and any pendingDepth/length accessors.
-
-- [ ] **Step 2: Write the failing test**
-
-Create or extend `system/tests/unit/cognition/biographer/queue.test.js`:
+Append to `system/tests/unit/biographer-queue.test.js` (this file already exists with sequential / dedupe / error-propagation tests — extend it, do not overwrite):
 
 ```js
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { createBiographerQueue } from '../../../../cognition/biographer/queue.js';
-
 test('enqueue returns { skipped: true } when at maxPending cap', async () => {
   // Worker that never resolves, so the queue stays full.
   const block = new Promise(() => {});
@@ -804,89 +812,128 @@ test('enqueue returns { skipped: true } when at maxPending cap', async () => {
     maxPending: 2,
   });
 
-  const r1 = q.enqueue('event-1');
-  const r2 = q.enqueue('event-2');
-  // Both r1 and r2 are now waiting on `block`. Queue is at depth 2.
+  q.enqueue('event-1');  // becomes in-flight; running = true
+  q.enqueue('event-2');  // sits in queue array; depth now = 2
+  // Depth equals maxPending — next enqueue must be skipped.
 
   const r3 = q.enqueue('event-3');
-  // r3 should be skipped, not enqueued.
-  assert.deepEqual(await r3, { skipped: true });
+  assert.deepEqual(r3, { skipped: true });
 });
 
-test('skippedSinceBoot and lastSkippedAt are exposed', async () => {
+test('cap path bumps skippedSinceBoot and lastSkippedAt', async () => {
   const block = new Promise(() => {});
   const q = createBiographerQueue({
     worker: async () => block,
     dedupe: true,
     maxPending: 1,
   });
-  q.enqueue('event-1');
+  q.enqueue('a');
   assert.equal(q.skippedSinceBoot, 0);
-  await q.enqueue('event-2');
+  assert.equal(q.lastSkippedAt, null);
+  const r = q.enqueue('b');
+  assert.deepEqual(r, { skipped: true });
   assert.equal(q.skippedSinceBoot, 1);
-  assert.ok(q.lastSkippedAt instanceof Date || typeof q.lastSkippedAt === 'string');
+  assert.ok(q.lastSkippedAt instanceof Date);
 });
 
-test('pendingDepth reports current depth', async () => {
+test('pendingDepth reflects queue + running', async () => {
+  const block = new Promise(() => {});
+  const q = createBiographerQueue({ worker: async () => block, maxPending: 10 });
+  assert.equal(q.pendingDepth, 0);
+  q.enqueue('a');  // in-flight
+  q.enqueue('b');  // in queue
+  q.enqueue('c');  // in queue
+  assert.equal(q.pendingDepth, 3);
+});
+
+test('dedupe still returns the in-flight promise when at cap with duplicate id', async () => {
   const block = new Promise(() => {});
   const q = createBiographerQueue({
     worker: async () => block,
     dedupe: true,
-    maxPending: 10,
+    maxPending: 1,
   });
-  assert.equal(q.pendingDepth, 0);
-  q.enqueue('event-1');
-  q.enqueue('event-2');
-  assert.equal(q.pendingDepth, 2);
+  const r1 = q.enqueue('same');
+  const r2 = q.enqueue('same');  // dedupe hits BEFORE the cap check
+  assert.equal(r1, r2);
 });
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [ ] **Step 2: Run tests to verify the new ones fail**
 
-Run: `node --test system/tests/unit/cognition/biographer/queue.test.js`
+Run: `node --test system/tests/unit/biographer-queue.test.js`
 
-Expected: FAIL — `maxPending` not honored; `skippedSinceBoot`/`pendingDepth` missing.
+Expected: new tests FAIL; existing tests still pass.
 
-- [ ] **Step 4: Update `createBiographerQueue`**
+- [ ] **Step 3: Update `createBiographerQueue` to match its real shape**
 
-Modify `system/cognition/biographer/queue.js`. Add `maxPending` to the options and expose the new accessors. The exact shape depends on the existing implementation; the additions are:
+Edit `system/cognition/biographer/queue.js`. The full updated file:
 
 ```js
-// At the top of createBiographerQueue:
-const maxPending = opts.maxPending ?? 1000;
-const pending = new Set();           // or Map, depending on existing structure
-let skippedSinceBoot = 0;
-let lastSkippedAt = null;
+export function createBiographerQueue({ worker, dedupe = false, maxPending = 1000 } = {}) {
+  const queue = [];
+  const inflight = new Map();
+  let running = false;
+  let skippedSinceBoot = 0;
+  let lastSkippedAt = null;
 
-// In the enqueue function, before any work begins:
-if (pending.size >= maxPending) {
-  skippedSinceBoot++;
-  lastSkippedAt = new Date();
-  console.warn(`[biographer] queue at cap (${maxPending}), skipping ${id} (will be picked up on next process-pending)`);
-  return { skipped: true };
+  function depth() {
+    return queue.length + (running ? 1 : 0);
+  }
+
+  async function drain() {
+    if (running) return;
+    running = true;
+    while (queue.length > 0) {
+      const { id, resolve, reject } = queue.shift();
+      try {
+        const result = await worker(id);
+        resolve(result);
+      } catch (e) {
+        reject(e);
+      }
+      if (dedupe) inflight.delete(id);
+    }
+    running = false;
+  }
+
+  function enqueue(id) {
+    // Dedupe check FIRST — returning an existing in-flight promise must
+    // never count against the cap.
+    if (dedupe && inflight.has(id)) return inflight.get(id);
+
+    if (depth() >= maxPending) {
+      skippedSinceBoot++;
+      lastSkippedAt = new Date();
+      console.warn(
+        `[biographer] queue at cap (${maxPending}), skipping ${id} ` +
+        '(will be picked up on next /internal/biographer/process-pending)',
+      );
+      return { skipped: true };
+    }
+
+    const promise = new Promise((resolve, reject) => {
+      queue.push({ id, resolve, reject });
+    });
+    if (dedupe) inflight.set(id, promise);
+    drain();
+    return promise;
+  }
+
+  return {
+    enqueue,
+    get pendingDepth() { return depth(); },
+    get skippedSinceBoot() { return skippedSinceBoot; },
+    get lastSkippedAt() { return lastSkippedAt; },
+  };
 }
-pending.add(id);  // (only if not already tracked via dedupe)
-
-// In the worker dispatch's finally:
-pending.delete(id);
-
-// In the returned object:
-return {
-  enqueue,
-  get pendingDepth() { return pending.size; },
-  get skippedSinceBoot() { return skippedSinceBoot; },
-  get lastSkippedAt() { return lastSkippedAt; },
-  // ...existing accessors like lastRunAt
-};
 ```
 
-If the existing implementation already tracks pending in a different structure, adapt the cap check to use that structure's size.
+- [ ] **Step 4: Run tests to verify pass**
 
-- [ ] **Step 5: Run test to verify pass**
+Run: `node --test system/tests/unit/biographer-queue.test.js`
 
-Run: `node --test system/tests/unit/cognition/biographer/queue.test.js`
-
-Expected: all pass.
+Expected: all (existing + new) pass.
 
 - [ ] **Step 6: Wire `pendingDepth`, `skippedSinceBoot`, `lastSkippedAt` into `health` MCP tool**
 
@@ -910,7 +957,7 @@ Expected: all pass. The `queueWrap` wrapper in `server.js` may need a passthroug
 - [ ] **Step 8: Commit**
 
 ```bash
-git add system/cognition/biographer/queue.js system/io/mcp/tools/health.js system/runtime/daemon/server.js system/tests/unit/cognition/biographer/queue.test.js
+git add system/cognition/biographer/queue.js system/io/mcp/tools/health.js system/runtime/daemon/server.js system/tests/unit/biographer-queue.test.js
 git commit -m "$(cat <<'EOF'
 refactor(runtime): R-1 — biographer queue depth canary
 
@@ -1023,7 +1070,7 @@ Expected: all pass. The daemon boot integration test should still succeed.
 
 - [ ] **Step 6: Add an integration test for the watchdog**
 
-Create `system/tests/integration/daemon/host-watchdog.test.js`:
+Create `system/tests/integration/host-watchdog.test.js`:
 
 ```js
 import { test } from 'node:test';
@@ -1072,7 +1119,7 @@ Expected: PASS within 30s.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add system/runtime/daemon/server.js system/tests/integration/daemon/host-watchdog.test.js
+git add system/runtime/daemon/server.js system/tests/integration/host-watchdog.test.js
 git commit -m "$(cat <<'EOF'
 refactor(runtime): R-1 — embedder retry, fatal handlers, host watchdog
 
@@ -1111,10 +1158,12 @@ gh pr create --title "refactor(runtime): R-1 — reliability hardening" --body "
 ## Summary
 - Atomic daemon lock (closes TOCTOU window via wx flag)
 - Process-level fatal handlers with structured log + force-exit guarantee
-- Host-name normalization to hyphenated canonical form
+- HOSTS enum + ROBIN_HOST input normalization (accepts both hyphenated and legacy underscored; warns on legacy)
 - Embedder health-check retry (3 attempts, ~35s worst-case)
 - Biographer queue depth canary (events never lost; surfaced via health tool)
 - Host-detection reactivation watchdog (5 min retry when no host at boot)
+
+Note: adapter.name remains underscored. The full repo-wide rename (43 references including settings.json keys and historical event metadata) is deferred to a separate cleanup PR.
 
 ## Test plan
 - [x] `npm test` green
@@ -1138,10 +1187,12 @@ EOF
 system/runtime/daemon/
 ├── heartbeat.js               REWRITE (bucket model)
 └── server.js                  MODIFY (replace inline setIntervals with buckets)
-system/tests/unit/runtime/daemon/
-└── heartbeat.test.js          MODIFY (adapt to bucket shape)
+system/tests/unit/
+├── heartbeat.test.js          MODIFY (adapt to bucket shape; flat path)
 └── heartbeat-buckets.test.js  CREATE (new bucket-specific tests)
 ```
+
+**Note on static-import promotion (carried through R-2):** R-2 promotes `cadence-consumer.js`, `close-stale-episodes.js`, and `action-trust.js` from dynamic `await import(...)` to top-of-file static imports. `embed_backfill.js` (referenced inside `dispatcherTick`'s `runOneItem`) and the per-route dynamic imports inside `/internal/intuition` (`cognition/intuition/inject.js`) and `/internal/embeddings/op` (`cognition/jobs/embeddings-ops.js`) stay dynamic in R-2 — those move with their consumers in R-3. The intuition import keeps its defensive `.catch(() => ({}))` shape because the inject module may not exist in every install.
 
 ### Task 2.1: Create R-2 branch
 
@@ -1159,16 +1210,16 @@ git checkout -b feat/runtime-r2-heartbeat-buckets
 
 **Files:**
 - Rewrite: `system/runtime/daemon/heartbeat.js`
-- Create: `system/tests/unit/runtime/daemon/heartbeat-buckets.test.js`
+- Create: `system/tests/unit/heartbeat-buckets.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/heartbeat-buckets.test.js`:
+Create `system/tests/unit/heartbeat-buckets.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createScheduler } from '../../../../runtime/daemon/heartbeat.js';
+import { createScheduler } from '../../runtime/daemon/heartbeat.js';
 
 function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -1309,7 +1360,7 @@ test('stop clears every bucket', async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test system/tests/unit/runtime/daemon/heartbeat-buckets.test.js`
+Run: `node --test system/tests/unit/heartbeat-buckets.test.js`
 
 Expected: FAIL — the existing `createScheduler` signature takes `{listDue, runOne, isOverflow}`, not `{buckets}`.
 
@@ -1385,13 +1436,13 @@ export function createScheduler({ buckets } = {}) {
 
 - [ ] **Step 4: Run new tests**
 
-Run: `node --test system/tests/unit/runtime/daemon/heartbeat-buckets.test.js`
+Run: `node --test system/tests/unit/heartbeat-buckets.test.js`
 
 Expected: all 8 tests pass.
 
 - [ ] **Step 5: Update existing `heartbeat.test.js`**
 
-Read `system/tests/unit/runtime/daemon/heartbeat.test.js`. The old `createScheduler({listDue, runOne, isOverflow})` signature is gone. The dispatcher's per-name in-flight logic now lives inside `dispatcherTick` (which the daemon constructs). Either:
+Read `system/tests/unit/heartbeat.test.js`. The old `createScheduler({listDue, runOne, isOverflow})` signature is gone. The dispatcher's per-name in-flight logic now lives inside `dispatcherTick` (which the daemon constructs). Either:
 
 (a) **If the existing test asserts on the old shape**: rewrite it to wrap the dispatcher logic in a single `tick` bucket and assert against that.
 
@@ -1402,7 +1453,7 @@ The minimum viable rewrite of `heartbeat.test.js`:
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createScheduler } from '../../../../runtime/daemon/heartbeat.js';
+import { createScheduler } from '../../runtime/daemon/heartbeat.js';
 
 function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -1434,7 +1485,7 @@ Expected: all pass. If `server.js` still references the old `createScheduler({li
 - [ ] **Step 7: Commit**
 
 ```bash
-git add system/runtime/daemon/heartbeat.js system/tests/unit/runtime/daemon/heartbeat.test.js system/tests/unit/runtime/daemon/heartbeat-buckets.test.js
+git add system/runtime/daemon/heartbeat.js system/tests/unit/heartbeat.test.js system/tests/unit/heartbeat-buckets.test.js
 git commit -m "$(cat <<'EOF'
 refactor(runtime): R-2 — bucket-based scheduler
 
@@ -1637,7 +1688,7 @@ Expected: all pass. Adjust any failures by re-reading the relevant block in `ser
 
 - [ ] **Step 5: Add an integration assertion for buckets**
 
-Extend `system/tests/integration/daemon/host-watchdog.test.js` (from Task 1.6) so it asserts the daemon now starts cleanly *with* the host-watchdog bucket logging at boot. The existing test should already pass; verify it explicitly.
+Extend `system/tests/integration/host-watchdog.test.js` (from Task 1.6) so it asserts the daemon now starts cleanly *with* the host-watchdog bucket logging at boot. The existing test should already pass; verify it explicitly.
 
 Run: `npm run test:integration -- --test-name-pattern='watchdog'`
 
@@ -1726,12 +1777,12 @@ system/runtime/daemon/
     ├── embeddings.js           CREATE
     └── intuition.js            CREATE
 
-system/tests/unit/runtime/daemon/
+system/tests/unit/
 ├── tools.test.js          CREATE
 ├── route-dispatch.test.js CREATE
 └── lifecycle.test.js      CREATE
 
-system/tests/integration/daemon/
+system/tests/integration/
 └── boot.test.js           CREATE (real test DB + stub embedder)
 ```
 
@@ -1752,11 +1803,11 @@ git checkout -b feat/runtime-r3-decompose-server
 **Files:**
 - Create: `system/runtime/daemon/lifecycle.js`
 - Modify: `system/runtime/daemon/server.js`
-- Create: `system/tests/unit/runtime/daemon/lifecycle.test.js`
+- Create: `system/tests/unit/lifecycle.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/lifecycle.test.js`:
+Create `system/tests/unit/lifecycle.test.js`:
 
 ```js
 import { test } from 'node:test';
@@ -1764,7 +1815,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createLifecycle } from '../../../../runtime/daemon/lifecycle.js';
+import { createLifecycle } from '../../runtime/daemon/lifecycle.js';
 
 async function tempLockPath() {
   const dir = await mkdtemp(join(tmpdir(), 'robin-lc-'));
@@ -1819,17 +1870,17 @@ test('shutdown is safe before ready (null-guarded)', async () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `node --test system/tests/unit/runtime/daemon/lifecycle.test.js`
+Run: `node --test system/tests/unit/lifecycle.test.js`
 
 Expected: FAIL — `lifecycle.js` doesn't exist.
 
 - [ ] **Step 3: Implement `lifecycle.js`**
 
-Create `system/runtime/daemon/lifecycle.js`:
+Create `system/runtime/daemon/lifecycle.js`. Note the daemon-state import path: it's at `system/config/daemon-state.js` (the file was moved there during the restructure; `server.js` imports it on the post-restructure baseline).
 
 ```js
 import { acquireDaemonLock, releaseDaemonLock } from './lock.js';
-import { clearDaemonState, writeDaemonState } from './state.js';
+import { clearDaemonState, writeDaemonState } from '../../config/daemon-state.js';
 import { createFatalHandler, installFatalHandlers } from './fatal.js';
 
 /**
@@ -1921,7 +1972,7 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
 
 - [ ] **Step 4: Run new test**
 
-Run: `node --test system/tests/unit/runtime/daemon/lifecycle.test.js`
+Run: `node --test system/tests/unit/lifecycle.test.js`
 
 Expected: all 4 tests pass. (If the integrations.stop expectation needs a wrapper around per-gateway clients, the daemon-side wrapper goes in boot.js — Task 3.3 wires this.)
 
@@ -1980,7 +2031,7 @@ Expected: all pass. Boot integration test should succeed.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add system/runtime/daemon/lifecycle.js system/runtime/daemon/server.js system/tests/unit/runtime/daemon/lifecycle.test.js
+git add system/runtime/daemon/lifecycle.js system/runtime/daemon/server.js system/tests/unit/lifecycle.test.js
 git commit -m "refactor(runtime): R-3 commit 1/5 — extract lifecycle.js"
 ```
 
@@ -1991,7 +2042,7 @@ git commit -m "refactor(runtime): R-3 commit 1/5 — extract lifecycle.js"
 **Files:**
 - Create: `system/runtime/daemon/boot.js`
 - Modify: `system/runtime/daemon/server.js`
-- Create: `system/tests/integration/daemon/boot.test.js`
+- Create: `system/tests/integration/boot.test.js`
 
 - [ ] **Step 1: Implement `boot.js`**
 
@@ -2251,7 +2302,7 @@ The scheduler buckets that closed over `host` need updating to close over `ctx.h
 
 - [ ] **Step 3: Write boot integration test**
 
-Create `system/tests/integration/daemon/boot.test.js`:
+Create `system/tests/integration/boot.test.js`:
 
 ```js
 import { test } from 'node:test';
@@ -2259,7 +2310,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { boot } from '../../../runtime/daemon/boot.js';
+import { boot } from '../../runtime/daemon/boot.js';
 
 // This test requires a configured ROBIN_HOME with config.json + a fresh DB.
 // Use the project's test fixture / migrate-fresh script if available.
@@ -2302,7 +2353,7 @@ Expected: all pass; boot.test may skip in CI without a configured home.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/runtime/daemon/boot.js system/runtime/daemon/server.js system/tests/integration/daemon/boot.test.js
+git add system/runtime/daemon/boot.js system/runtime/daemon/server.js system/tests/integration/boot.test.js
 git commit -m "refactor(runtime): R-3 commit 2/5 — extract boot.js, return ctx"
 ```
 
@@ -2313,7 +2364,7 @@ git commit -m "refactor(runtime): R-3 commit 2/5 — extract boot.js, return ctx
 **Files:**
 - Create: `system/runtime/daemon/tools.js`
 - Modify: `system/runtime/daemon/server.js`
-- Create: `system/tests/unit/runtime/daemon/tools.test.js`
+- Create: `system/tests/unit/tools.test.js`
 
 - [ ] **Step 1: Create `tools.js`**
 
@@ -2453,12 +2504,12 @@ export function buildTools(ctx) {
 
 - [ ] **Step 2: Test `buildTools` purity**
 
-Create `system/tests/unit/runtime/daemon/tools.test.js`:
+Create `system/tests/unit/tools.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTools } from '../../../../runtime/daemon/tools.js';
+import { buildTools } from '../../runtime/daemon/tools.js';
 
 function stubCtx() {
   return {
@@ -2508,7 +2559,7 @@ test('buildTools is pure (two calls produce independent arrays)', () => {
 - [ ] **Step 3: Run tests**
 
 ```bash
-node --test system/tests/unit/runtime/daemon/tools.test.js
+node --test system/tests/unit/tools.test.js
 ```
 
 Expected: all 3 pass.
@@ -2532,7 +2583,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add system/runtime/daemon/tools.js system/runtime/daemon/server.js system/tests/unit/runtime/daemon/tools.test.js
+git add system/runtime/daemon/tools.js system/runtime/daemon/server.js system/tests/unit/tools.test.js
 git commit -m "refactor(runtime): R-3 commit 3/5 — extract tools.js (pure buildTools)"
 ```
 
@@ -2545,7 +2596,7 @@ git commit -m "refactor(runtime): R-3 commit 3/5 — extract tools.js (pure buil
 - Create: `system/runtime/daemon/mcp-sse.js`
 - Create: `system/runtime/daemon/routes/*.js` (11 files + index)
 - Modify: `system/runtime/daemon/server.js`
-- Create: `system/tests/unit/runtime/daemon/route-dispatch.test.js`
+- Create: `system/tests/unit/route-dispatch.test.js`
 
 - [ ] **Step 1: Create `http.js`**
 
@@ -2768,19 +2819,19 @@ export function buildRoutes() {
 
 - [ ] **Step 5: Test the dispatcher**
 
-Create `system/tests/unit/runtime/daemon/route-dispatch.test.js`:
+Create `system/tests/unit/route-dispatch.test.js`. The project is `"type": "module"`, so use ESM imports for `node:http`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import http from 'node:http';
 import { once } from 'node:events';
-import { startHttp } from '../../../../runtime/daemon/http.js';
+import { startHttp } from '../../runtime/daemon/http.js';
 
 function postJson(port, path, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
-    const req = require('node:http').request({
+    const req = http.request({
       host: '127.0.0.1', port, path, method: 'POST',
       headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) },
     }, (res) => {
@@ -2845,8 +2896,6 @@ test('thrown handler returns 500 with name + message', async () => {
 });
 ```
 
-Note: the `require('node:http')` inside the test is a workaround for ESM — replace with a top-level `import http from 'node:http'` and use `http.request`. Adjust per project style.
-
 - [ ] **Step 6: Update `server.js` to use http.js**
 
 Delete the entire `httpServer = createServer(async (req, res) => { ... })` block from `server.js` — it's ~280 lines. Replace with:
@@ -2872,7 +2921,7 @@ Expected: all pass. The daemon boot test, hook integration tests, and CLI integr
 - [ ] **Step 8: Commit**
 
 ```bash
-git add system/runtime/daemon/http.js system/runtime/daemon/mcp-sse.js system/runtime/daemon/routes/ system/runtime/daemon/server.js system/tests/unit/runtime/daemon/route-dispatch.test.js
+git add system/runtime/daemon/http.js system/runtime/daemon/mcp-sse.js system/runtime/daemon/routes/ system/runtime/daemon/server.js system/tests/unit/route-dispatch.test.js
 git commit -m "$(cat <<'EOF'
 refactor(runtime): R-3 commit 4/5 — extract routes table + http.js + mcp-sse
 
@@ -3166,7 +3215,7 @@ system/runtime/cli/commands/
 ├── actions-reset.js             MODIFY (drop body.ok read)
 └── jobs-run.js                  MODIFY (read body.succeeded instead of body.ok)
 
-system/tests/unit/runtime/daemon/
+system/tests/unit/
 ├── schema.test.js               CREATE
 └── envelope.test.js             CREATE
 ```
@@ -3260,16 +3309,16 @@ EOF
 
 **Files:**
 - Create: `system/runtime/daemon/schema.js`
-- Create: `system/tests/unit/runtime/daemon/schema.test.js`
+- Create: `system/tests/unit/schema.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/schema.test.js`:
+Create `system/tests/unit/schema.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validate } from '../../../../runtime/daemon/schema.js';
+import { validate } from '../../runtime/daemon/schema.js';
 
 test('accepts a body matching the schema', () => {
   const r = validate({ name: 'x', force: true }, { name: 'string', force: 'boolean?' });
@@ -3337,7 +3386,7 @@ test('vocabulary tabulation — accepts every documented type', () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `node --test system/tests/unit/runtime/daemon/schema.test.js`
+Run: `node --test system/tests/unit/schema.test.js`
 
 Expected: FAIL — `schema.js` doesn't exist.
 
@@ -3402,14 +3451,14 @@ export function validate(body, schema) {
 
 - [ ] **Step 4: Run new test**
 
-Run: `node --test system/tests/unit/runtime/daemon/schema.test.js`
+Run: `node --test system/tests/unit/schema.test.js`
 
 Expected: all 10 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/runtime/daemon/schema.js system/tests/unit/runtime/daemon/schema.test.js
+git add system/runtime/daemon/schema.js system/tests/unit/schema.test.js
 git commit -m "refactor(runtime): R-4 — schema validator (50-line strict validator)"
 ```
 
@@ -3508,18 +3557,18 @@ git commit -m "refactor(runtime): R-4 — declare schemas on validating routes"
 
 **Files:**
 - Modify: `system/runtime/daemon/http.js`
-- Create: `system/tests/unit/runtime/daemon/envelope.test.js`
+- Create: `system/tests/unit/envelope.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/daemon/envelope.test.js`:
+Create `system/tests/unit/envelope.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import http from 'node:http';
-import { startHttp } from '../../../../runtime/daemon/http.js';
+import { startHttp } from '../../runtime/daemon/http.js';
 
 function postJson(port, path, body) {
   return new Promise((resolve, reject) => {
@@ -3735,7 +3784,7 @@ export function startHttp({ ctx, tools, routes, port }) {
 - [ ] **Step 3: Run new test**
 
 ```bash
-node --test system/tests/unit/runtime/daemon/envelope.test.js
+node --test system/tests/unit/envelope.test.js
 ```
 
 Expected: all 6 tests pass.
@@ -3755,7 +3804,7 @@ Expected: all pass. Update any in-tree callers that compared `body.error` as a s
 - [ ] **Step 6: Commit**
 
 ```bash
-git add system/runtime/daemon/http.js system/tests/unit/runtime/daemon/envelope.test.js system/tests/
+git add system/runtime/daemon/http.js system/tests/unit/envelope.test.js system/tests/
 git commit -m "$(cat <<'EOF'
 feat(runtime): R-4 — schema validation + response envelope on /internal/*
 
@@ -3810,10 +3859,10 @@ system/runtime/cli/
 └── commands/
     └── help.js              REWRITE (walks registry)
 
-system/tests/unit/runtime/cli/
-├── commands.test.js         CREATE (registry coverage)
-├── dispatch.test.js         CREATE (dispatcher behavior)
-└── help.test.js             CREATE (snapshot)
+system/tests/unit/
+├── cli-commands.test.js     CREATE (registry coverage)
+├── cli-dispatch.test.js     CREATE (dispatcher behavior)
+└── cli-help.test.js         CREATE (snapshot)
 ```
 
 ### Task 5.1: Create R-5 branch
@@ -3866,16 +3915,16 @@ Verify each export name matches the file's actual export by reading the file.
 
 **Files:**
 - Create: `system/runtime/cli/commands.js`
-- Create: `system/tests/unit/runtime/cli/commands.test.js`
+- Create: `system/tests/unit/cli-commands.test.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `system/tests/unit/runtime/cli/commands.test.js`:
+Create `system/tests/unit/cli-commands.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { commands } from '../../../../runtime/cli/commands.js';
+import { commands } from '../../runtime/cli/commands.js';
 
 function walk(node, prefix = '') {
   const leaves = [];
@@ -3900,7 +3949,8 @@ test('every leaf module imports and exports the named function', async () => {
   const failures = [];
   for (const leaf of walk(commands)) {
     try {
-      const mod = await import(`../../../../runtime/cli/${leaf.entry.import.replace(/^\.\//, '')}`);
+      // Resolve the import path relative to system/runtime/cli/
+      const mod = await import(`../../runtime/cli/${leaf.entry.import.replace(/^\.\//, '')}`);
       if (typeof mod[leaf.entry.export] !== 'function') {
         failures.push(`${leaf.name}: ${leaf.entry.import} has no function export ${leaf.entry.export}`);
       }
@@ -3925,7 +3975,7 @@ test('no duplicate keys within any group', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `node --test system/tests/unit/runtime/cli/commands.test.js`
+Run: `node --test system/tests/unit/cli-commands.test.js`
 
 Expected: FAIL — `commands.js` doesn't exist.
 
@@ -4079,7 +4129,7 @@ For each entry whose `export` doesn't match (e.g., the source file's actual expo
 - [ ] **Step 4: Run registry test**
 
 ```bash
-node --test system/tests/unit/runtime/cli/commands.test.js
+node --test system/tests/unit/cli-commands.test.js
 ```
 
 Expected: all 3 pass. The "every leaf imports and exports" test will surface any mismatched export names — fix them in the registry until the test is green.
@@ -4087,7 +4137,7 @@ Expected: all 3 pass. The "every leaf imports and exports" test will surface any
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/runtime/cli/commands.js system/tests/unit/runtime/cli/commands.test.js
+git add system/runtime/cli/commands.js system/tests/unit/cli-commands.test.js
 git commit -m "feat(runtime): R-5 — declarative CLI commands registry"
 ```
 
@@ -4098,17 +4148,17 @@ git commit -m "feat(runtime): R-5 — declarative CLI commands registry"
 **Files:**
 - Rewrite: `system/runtime/cli/index.js`
 - Rewrite: `system/runtime/cli/commands/help.js`
-- Create: `system/tests/unit/runtime/cli/dispatch.test.js`
-- Create: `system/tests/unit/runtime/cli/help.test.js`
+- Create: `system/tests/unit/cli-dispatch.test.js`
+- Create: `system/tests/unit/cli-help.test.js`
 
 - [ ] **Step 1: Write the dispatch test**
 
-Create `system/tests/unit/runtime/cli/dispatch.test.js`:
+Create `system/tests/unit/cli-dispatch.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dispatchFor } from '../../../../runtime/cli/index.js';
+import { dispatchFor } from '../../runtime/cli/index.js';
 
 test('leaf dispatch invokes the right export with argv.slice(N)', async () => {
   const calls = [];
@@ -4178,13 +4228,13 @@ The `fn` field is a test-only escape hatch that bypasses the import.
 
 - [ ] **Step 2: Write the help snapshot test**
 
-Create `system/tests/unit/runtime/cli/help.test.js`:
+Create `system/tests/unit/cli-help.test.js`:
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderHelp } from '../../../../runtime/cli/commands/help.js';
-import { commands } from '../../../../runtime/cli/commands.js';
+import { renderHelp } from '../../runtime/cli/commands/help.js';
+import { commands } from '../../runtime/cli/commands.js';
 
 test('renderHelp produces a non-empty string with expected sections', () => {
   const out = renderHelp(commands);
@@ -4291,7 +4341,7 @@ export function help() {
 - [ ] **Step 5: Run all new tests**
 
 ```bash
-node --test system/tests/unit/runtime/cli/
+node --test 'system/tests/unit/cli-*.test.js'
 ```
 
 Expected: all pass.
@@ -4307,7 +4357,7 @@ Expected: all pass. CLI integration tests should succeed unchanged because the e
 - [ ] **Step 7: Commit**
 
 ```bash
-git add system/runtime/cli/index.js system/runtime/cli/commands/help.js system/tests/unit/runtime/cli/dispatch.test.js system/tests/unit/runtime/cli/help.test.js
+git add system/runtime/cli/index.js system/runtime/cli/commands/help.js system/tests/unit/cli-dispatch.test.js system/tests/unit/cli-help.test.js
 git commit -m "$(cat <<'EOF'
 feat(runtime): R-5 — declarative CLI dispatcher + auto-generated help
 
@@ -4337,9 +4387,9 @@ gh pr create --title "feat(runtime): R-5 — declarative CLI router" --body "$(c
 Every `robin <cmd>` and `robin <cmd> <sub>` invocation works identically. Help text shape is data-driven (no test depends on the exact string).
 
 ## Test plan
-- [x] commands.test.js: every leaf module resolves; every declared export exists; no duplicate keys.
-- [x] dispatch.test.js: leaf dispatch, group + missing subcommand, recursive group, unknown command.
-- [x] help.test.js: spot-check key strings present.
+- [x] cli-commands.test.js: every leaf module resolves; every declared export exists; no duplicate keys.
+- [x] cli-dispatch.test.js: leaf dispatch, group + missing subcommand, recursive group, unknown command.
+- [x] cli-help.test.js: spot-check key strings present.
 - [x] `npm test` green.
 EOF
 )"

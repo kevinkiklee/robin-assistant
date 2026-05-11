@@ -14,8 +14,10 @@
 - Theme 2a (evidence ledger) shipped — `reinforcement.js` already emits per-hit refute rows.
 - Theme 4 (observability) shipped — `explain_recall` reads `recall_log.ranked_hits[*].score_components`; A2's new keys flow through additively.
 - `feat/surrealdb-improvements` — hybrid retrieval + `runtime:recall.value` config row + per-surface embedding tables.
-- **Coordination note:** the design spec section 4 names migration file `0009-recall-eval-and-mmr.surql`, but `0009-per-hit-reinforcement.surql` is owned by the parallel B1 plan (`docs/superpowers/specs/2026-05-11-cognition-b1-per-hit-reinforcement-design.md:94`). **This plan uses `0010-recall-eval-and-mmr.surql`.** If B1 has not landed when this plan begins, swap the number back to `0009` and update Phase 1 Task 2 accordingly.
-- **Pre-req coordination (session_id wiring):** the spec's §"Why session_id must be plumbed" pre-req (handler.js → daemon → inject.js) is also relevant to B1's `reply_event_id` correlation. Phase 0 below ships it once; B1 reuses the wired plumbing. If B1 ships first, skip Phase 0 here and verify the wiring still matches the field names in this plan.
+- **Migration number coordination.** B1 owns `0009-per-hit-reinforcement.surql` (`docs/superpowers/specs/2026-05-11-cognition-b1-per-hit-reinforcement-design.md:94`); A3 owns `0010-recall-eval-and-mmr.surql`; C1 owns `0011`; D1 owns `0012`/`0013`/`0014`. If any plan lands out of order, bump. Every reference to this plan's migration filename uses `0010-recall-eval-and-mmr.surql`.
+- **Pre-req coordination (session_id wiring):** the spec's §"Why session_id must be plumbed" pre-req (handler.js → daemon → inject.js) is also relevant to B1's `reply_event_id` correlation. Phase 0 below ships it once; B1 reuses the wired plumbing. If B1's Phase 0 has already shipped, A3's Phase 0 verifies and proceeds as a no-op. The daemon body field is `session_id` (snake_case, matches the `recall_log.session_id` column); locally we destructure to `sessionId`.
+- **Daemon route location.** Where this plan instructs `system/runtime/daemon/server.js` (around line 897-919): if `system/runtime/daemon/routes/intuition.js` exists (R-3 has shipped — see `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`), edit there. Otherwise edit the inline handler at the cited server.js line range.
+- **`recall_log.meta` field-ownership contract.** A3 reads `focus_block_present` (bool) and `focus_block_tokens` (int) on `recall_log.meta` (defaults `false`/`0` written by A3 Phase 11; D1 flips them to real values when it lands). B1 puts `reply_event_id` and `attribution` at top level of `recall_log`, not under `.meta` — non-colliding.
 
 ---
 
@@ -33,7 +35,7 @@
 | `system/runtime/cli/index.js` | modify | Register `recall-eval` subcommand |
 | `system/cognition/intuition/inject.js` | modify | Accept `sessionId`; write `session_id` + `meta.from='intuition'` on `recall_log`; rewire MMR to cosine path (fallback to substring); thread `entityBoost` through `rank.score` callerCtx; emit new telemetry keys |
 | `system/cognition/intuition/handler.js` | modify | Pull `session_id` from hook stdin; forward in POST body |
-| `system/runtime/daemon/server.js` | modify | Extract `body.session_id`/`body.sessionId`; pass `sessionId` into `intuitionEndpoint` |
+| `system/runtime/daemon/server.js` (or `system/runtime/daemon/routes/intuition.js` if R-3 has shipped) | modify | Extract `body.session_id`/`body.sessionId`; pass `sessionId` into `intuitionEndpoint` |
 | `system/cognition/intuition/rank.js` | modify | `score()` reads `entityBoost`/`entityBoostCount` from `callerCtx`; includes them in returned `components`; multiplicatively combined into total |
 | `system/cognition/memory/store.js` | modify | Export `getRecallConfig` (currently module-local) so `inject.js` reuses the cache |
 | `system/io/mcp/tools/recall.js` | modify | Add `meta.from='mcp_recall'` and `meta.latency_ms` to recall_log write |
@@ -58,15 +60,43 @@
 
 ---
 
-## Phase 0 — Pre-req: plumb `session_id` end-to-end
+## Phase 0 — Pre-req: verify (or ship) `session_id` end-to-end plumbing
 
 > **Why first:** A3's labels join `recall_log.session_id` to `events.meta.session_id` in a 5-minute window (`reinforcement.js:31,54,70-81`). `inject.js` currently writes `recall_log` rows without `session_id` (lines 202-212) because `intuitionEndpoint` never receives one. Without this fix, intuition-source rows fall into the `__null__` bucket and A3's labels collapse to a near-no-op.
+>
+> **Coordination with B1:** B1 (`docs/superpowers/plans/2026-05-11-cognition-b1-per-hit-reinforcement.md`) needs the same plumbing for `reply_event_id` correlation, and B1's Phase 0 ships it. If B1 has already landed by the time A3 starts, this entire phase is a no-op — verify and proceed. Otherwise, ship the plumbing here verbatim; B1's later Phase 0 will be the no-op.
 
-### Task 0.1 — Handler forwards `session_id` from hook stdin
+### Task 0 — Verify or fallback-implement the `session_id` plumbing
 
-**Files:** `system/cognition/intuition/handler.js`, `system/tests/unit/intuition-handler.test.js`
+**Files (verification only):** none.
+**Files (fallback implementation):** `system/cognition/intuition/handler.js`, `system/runtime/daemon/server.js` (or `system/runtime/daemon/routes/intuition.js` if R-3 has shipped), `system/cognition/intuition/inject.js`, plus their unit tests.
 
-- [ ] **Step 1: Failing test**
+- [ ] **Step 1: Verify B1 plumbing has landed**
+
+```bash
+git log --all --oneline --grep='forward session_id' | head -5
+grep -n 'session_id' system/cognition/intuition/handler.js | head -3
+grep -n 'sessionId' system/cognition/intuition/inject.js | head -3
+```
+
+If the grep shows `session_id` flowing through `handler.js` into the POST
+body and `sessionId` is accepted in `intuitionEndpoint`'s args
+destructuring, **and** a `recall_log` write line includes
+`session_id: sessionId`, this phase is a no-op. Run:
+
+```bash
+npm run test:unit -- --test-name-pattern 'session_id|sessionId'
+```
+
+If those tests pass, **skip to Phase 1**. Otherwise proceed to Step 2.
+
+#### Step 2 (fallback): Handler forwards `session_id` from hook stdin
+
+> Ship the plumbing verbatim from B1's plan. Steps 2a–2e below are
+> identical to B1 Phase 0 — landing them here lets A3 proceed without
+> waiting for B1.
+
+- [ ] **Step 2a: Failing test**
 
 Append to `system/tests/unit/intuition-handler.test.js`:
 
@@ -92,7 +122,7 @@ test('intuitionHandler forwards session_id from stdin to /internal/intuition bod
 });
 ```
 
-- [ ] **Step 2: Run → fail**
+- [ ] **Step 2b: Run → fail**
 
 ```bash
 npm run test:unit -- --test-name-pattern 'forwards session_id'
@@ -100,7 +130,7 @@ npm run test:unit -- --test-name-pattern 'forwards session_id'
 
 Expected: failing assertion `expected 'sess-abc', got undefined`.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 2c: Implement**
 
 Add to `handler.js` after `pickTranscriptPath`:
 
@@ -131,29 +161,32 @@ body: JSON.stringify({
 }),
 ```
 
-- [ ] **Step 4: Run → pass**
+- [ ] **Step 2d: Run → pass**
 
 ```bash
 npm run test:unit -- --test-name-pattern 'forwards session_id'
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 2e: Commit**
 
 ```bash
 git commit -m "feat(intuition): forward session_id from UserPromptSubmit hook"
 ```
 
-### Task 0.2 — Daemon extracts `session_id` and passes to endpoint
+#### Step 3 (fallback): Daemon extracts `session_id` and passes to endpoint
 
-**Files:** `system/runtime/daemon/server.js`
+**Files:** `system/runtime/daemon/server.js` (or `system/runtime/daemon/routes/intuition.js` if R-3 has shipped — see `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`).
 
-- [ ] **Step 1: Read context**
+- [ ] **Step 3a: Read context**
 
-Open `system/runtime/daemon/server.js` and locate the intuition handler (lines 897-919). The existing pattern at lines 671, 725, 748 uses `body.session_id ?? body.sessionId ?? null`.
+If `system/runtime/daemon/routes/intuition.js` exists (R-3 has shipped),
+edit there. Otherwise open `system/runtime/daemon/server.js` and locate
+the intuition handler (lines 897-919). The existing pattern at lines 671,
+725, 748 uses `body.session_id ?? body.sessionId ?? null`.
 
-- [ ] **Step 2: Edit the endpoint dispatch (line 903 region)**
+- [ ] **Step 3b: Edit the endpoint dispatch (line 903 region of server.js, or the equivalent block in `routes/intuition.js` post-R-3)**
 
-Replace the `intuitionEndpoint({...}).catch(...)` block (starting at line 903) with:
+Replace the `intuitionEndpoint({...}).catch(...)` block with:
 
 ```js
 const result = await intuitionEndpoint({
@@ -169,17 +202,17 @@ const result = await intuitionEndpoint({
 }).catch(() => ({ block: '', hits: 0, tokens: 0, latency_ms: 0 }));
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3c: Commit**
 
 ```bash
 git commit -m "feat(daemon): pass session_id into intuitionEndpoint"
 ```
 
-### Task 0.3 — Endpoint writes `session_id` onto `recall_log`
+#### Step 4 (fallback): Endpoint writes `session_id` onto `recall_log`
 
 **Files:** `system/cognition/intuition/inject.js`, `system/tests/unit/intuition-endpoint.test.js`
 
-- [ ] **Step 1: Failing test**
+- [ ] **Step 4a: Failing test**
 
 Append to `system/tests/unit/intuition-endpoint.test.js`:
 
@@ -200,13 +233,13 @@ test('intuitionEndpoint writes session_id onto recall_log when provided', async 
 });
 ```
 
-- [ ] **Step 2: Run → fail**
+- [ ] **Step 4b: Run → fail**
 
 ```bash
 npm run test:unit -- --test-name-pattern 'writes session_id onto recall_log'
 ```
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 4c: Implement**
 
 In `inject.js` `intuitionEndpoint`'s args destructuring (lines 74-83), add `sessionId`:
 
@@ -240,13 +273,13 @@ await db
   .collect();
 ```
 
-- [ ] **Step 4: Run → pass**
+- [ ] **Step 4d: Run → pass**
 
 ```bash
 npm run test:unit -- --test-name-pattern 'writes session_id onto recall_log'
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4e: Commit**
 
 ```bash
 git commit -m "feat(intuition): persist session_id on recall_log writes"
@@ -266,7 +299,11 @@ git commit -m "feat(intuition): persist session_id on recall_log writes"
 ls system/data/db/migrations/
 ```
 
-Expected output ends with `0008-doctor.surql`, `0009-per-hit-reinforcement.surql` (or only `0008-doctor.surql` if B1 has not landed). Pick `0010` if both 0008 and 0009 exist; pick `0009` if only 0008 exists, and update the file references in this plan accordingly.
+This plan claims `0010-recall-eval-and-mmr.surql` (B1 owns `0009`, C1 owns
+`0011`, D1 owns `0012`/`0013`/`0014`). The listing should not already
+contain `0010-recall-eval-and-mmr.surql`. If a different `0010-*.surql`
+already exists, escalate to the umbrella roadmap — do not silently
+re-number.
 
 - [ ] **Step 2: Create the migration file**
 
@@ -276,6 +313,14 @@ Expected output ends with `0008-doctor.surql`, `0009-per-hit-reinforcement.surql
 -- ============================================================================
 
 -- A3: per-run rollup table.
+--
+-- Schema choice: SCHEMAFULL for the top-level identifying/window/count
+-- columns + INDEX coverage; `metrics` and `per_source` are object
+-- FLEXIBLE so new per-k or per-bucket keys land without DDL. The
+-- per-focus-block stratification, replay_kendall_mean, and
+-- rows_with_null_session_* counters are nested under `metrics` rather
+-- than declared as top-level fields — SCHEMAFULL would otherwise
+-- reject them.
 DEFINE TABLE recall_eval_runs SCHEMAFULL TYPE NORMAL;
 DEFINE FIELD ts            ON recall_eval_runs TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD profile       ON recall_eval_runs TYPE string;
@@ -288,8 +333,6 @@ DEFINE FIELD rows_pending  ON recall_eval_runs TYPE int;
 DEFINE FIELD rows_skipped  ON recall_eval_runs TYPE int;
 DEFINE FIELD metrics       ON recall_eval_runs TYPE object FLEXIBLE;
 DEFINE FIELD per_source    ON recall_eval_runs TYPE option<object> FLEXIBLE;
-DEFINE FIELD per_entity    ON recall_eval_runs TYPE option<array>;
-DEFINE FIELD per_entity[*] ON recall_eval_runs TYPE object FLEXIBLE;
 DEFINE FIELD config_digest ON recall_eval_runs TYPE option<object> FLEXIBLE;
 DEFINE FIELD git_sha       ON recall_eval_runs TYPE option<string>;
 DEFINE INDEX recall_eval_runs_ts      ON recall_eval_runs FIELDS ts;
@@ -318,6 +361,14 @@ UPSERT runtime:`recall_eval.thresholds` CONTENT {
 -- preserves the existing rrf_k / knn_overfetch_* / mmr_threshold keys set by
 -- the hybrid-retrieval migration. The `?? <default>` form is idempotent on
 -- re-run.
+--
+-- We reuse the existing `mmr_threshold` key for both paths. Substring
+-- and cosine treat `0.92` as different distributions (substring is a
+-- Jaccard-style overlap; cosine is a vector similarity). Only one path
+-- fires per call; `mmr_use_cosine` picks the path. Splitting into
+-- `mmr_threshold_cosine`/`mmr_threshold_substring` is a future task,
+-- gated on telemetry showing distinct optimal defaults — until then the
+-- single key plus `_legacy_substring` fallback is the contract.
 UPDATE runtime:recall SET
   value.mmr_threshold = value.mmr_threshold ?? 0.92,
   value.mmr_threshold_legacy_substring = value.mmr_threshold_legacy_substring ?? 0.85,
@@ -1041,6 +1092,10 @@ function stubEmbedder() {
   };
 }
 
+function fixedEmbedder(vector) {
+  return { async embed() { return new Float32Array(vector); } };
+}
+
 test('replayRow re-scores hits using current embeddings + rank.score', async () => {
   const row = {
     id: 'recall_log:r1',
@@ -1055,21 +1110,68 @@ test('replayRow re-scores hits using current embeddings + rank.score', async () 
     ['memos:m1', { id: 'memos:m1', content: 'sourdough recipe', kind: 'knowledge', confidence: 0.8 }],
     ['memos:m2', { id: 'memos:m2', content: 'kettlebell program', kind: 'knowledge', confidence: 0.7 }],
   ]);
+  // Deterministic vectors so we can assert on ordering and tau band:
+  //   query vec = m1 vec (perfect match) → distance(m1)=0
+  //   m2 vec orthogonal → distance(m2)=1
+  // → m1 outranks m2 → original order preserved → tau == 1
   const currentVectors = new Map([
     ['memos:m1', new Float32Array([1, 0, 0, 0])],
     ['memos:m2', new Float32Array([0, 1, 0, 0])],
   ]);
   const out = await replayRow({
     row,
-    embedder: stubEmbedder(),
+    embedder: fixedEmbedder([1, 0, 0, 0]),
     hydratedRecords,
     currentVectors,
     config: { mmr_threshold: 0.92, mmr_use_cosine: true, entity_boost_enabled: false },
   });
   assert.equal(out.skipped, false);
   assert.equal(out.replayed_hits.length, 2);
-  assert.ok(typeof out.replayed_hits[0].score === 'number');
-  assert.ok(typeof out.kendall_tau === 'number');
+  assert.equal(out.replayed_hits[0].id, 'memos:m1');     // higher score
+  assert.ok(out.replayed_hits[0].score > out.replayed_hits[1].score);
+  assert.ok(Math.abs(out.kendall_tau - 1.0) < 1e-9);     // identical ordering
+});
+
+test('replayRow A2 enabled vs disabled produces different scores on overlapping entity', async () => {
+  const row = {
+    id: 'recall_log:r3',
+    query: 'karen',
+    ranked_hits: [
+      { record: 'memos:m1', kind: 'memo', rank: 0 },
+      { record: 'memos:m2', kind: 'memo', rank: 1 },
+    ],
+    meta: { from: 'intuition' },
+  };
+  const hydratedRecords = new Map([
+    ['memos:m1', { id: 'memos:m1', content: 'karen prefers tomatoes', kind: 'knowledge', confidence: 0.8 }],
+    ['memos:m2', { id: 'memos:m2', content: 'kettlebell program', kind: 'knowledge', confidence: 0.8 }],
+  ]);
+  const currentVectors = new Map([
+    ['memos:m1', new Float32Array([1, 0, 0, 0])],
+    ['memos:m2', new Float32Array([1, 0, 0, 0])],
+  ]);
+  const baseArgs = {
+    row, embedder: fixedEmbedder([1, 0, 0, 0]),
+    hydratedRecords, currentVectors,
+  };
+  const off = await replayRow({
+    ...baseArgs,
+    config: { mmr_use_cosine: true, entity_boost_enabled: false },
+  });
+  const on = await replayRow({
+    ...baseArgs,
+    config: {
+      mmr_use_cosine: true, entity_boost_enabled: true,
+      entity_boost_per_overlap: 0.10, entity_boost_max: 1.25,
+    },
+    matchedEntityIds: new Set(['entities:karen']),
+    aboutByMemo: new Map([['memos:m1', new Set(['entities:karen'])]]),
+  });
+  const m1Off = off.replayed_hits.find((h) => h.id === 'memos:m1');
+  const m1On = on.replayed_hits.find((h) => h.id === 'memos:m1');
+  assert.ok(m1On.score > m1Off.score, 'A2-on score must exceed A2-off for boosted memo');
+  assert.equal(m1On.components.entityBoost, 1.10);
+  assert.equal(m1Off.components.entityBoost, 1.0);
 });
 
 test('replayRow returns skipped=true when any record is missing', async () => {
@@ -1142,9 +1244,30 @@ function kendallTau(originalOrder, replayedOrder) {
  *     kendall_tau: number }    otherwise.
  *
  * MCP-recall rows (meta.from='mcp_recall') skip A2 entity boost; A1 cosine
- * MMR still applies (spec §3.5).
+ * MMR still applies (spec §3.5). When `config.entity_boost_enabled` is
+ * true, the caller passes `matchedEntityIds` (a Set<string>) and
+ * `aboutByMemo` (a Map<string, Set<string>>) so this function can
+ * compute the boost per hit without re-fetching the catalog.
+ *
+ * NOTE: the live `inject.js` path normalizes hit items to
+ *   `{ record: <Record>, _kind: 'memo'|'event', distance: number }`
+ * before calling `mmrLite(..., cosineFn, threshold)` where `cosineFn`
+ * dereferences `a.record.id` / `b.record.id`. The replay shape below
+ * (`{ id, score, components }`) is deliberately flatter — `cosineFn`
+ * here closes over `currentVectors` and reads `a.id` directly. The two
+ * paths intentionally diverge; reusing the live `cosineFn` would
+ * require carrying the full hydrated record through replay, which is
+ * unnecessary for the rank-correlation we want.
  */
-export async function replayRow({ row, embedder, hydratedRecords, currentVectors, config }) {
+export async function replayRow({
+  row,
+  embedder,
+  hydratedRecords,
+  currentVectors,
+  config,
+  matchedEntityIds = null,
+  aboutByMemo = null,
+}) {
   const hits = Array.isArray(row?.ranked_hits) ? row.ranked_hits : [];
   if (hits.length === 0) return { skipped: true, reason: 'no_hits' };
 
@@ -1159,15 +1282,29 @@ export async function replayRow({ row, embedder, hydratedRecords, currentVectors
 
   const qvec = await embedder.embed(row.query ?? '');
 
+  const entityBoostOn =
+    config?.entity_boost_enabled !== false && matchedEntityIds && matchedEntityIds.size > 0;
+
   const scored = [];
   for (const hit of hits) {
     const id = hitRecordIdString(hit);
     const rec = hydratedRecords.get(id);
     const vec = currentVectors.get(id);
     const distance = vec ? 1 - cosineSim(qvec, vec) : (hit.dist ?? 1);
+    let entityBoost = 1.0;
+    let entityBoostCount = 0;
+    if (entityBoostOn && id?.startsWith('memos:')) {
+      const aboutIds = aboutByMemo?.get(id) ?? new Set();
+      let overlap = 0;
+      for (const eid of aboutIds) if (matchedEntityIds.has(eid)) overlap++;
+      const per = config.entity_boost_per_overlap ?? 0.10;
+      const max = config.entity_boost_max ?? 1.25;
+      entityBoost = overlap === 0 ? 1.0 : Math.min(max, 1.0 + per * overlap);
+      entityBoostCount = overlap;
+    }
     const s = score(
       { record: rec, distance, supersededCount: 0, contradictionCount: 0 },
-      { entityBoost: 1.0 },
+      { entityBoost, entityBoostCount },
     );
     scored.push({ id, score: s.score, components: s.components });
   }
@@ -1236,7 +1373,8 @@ const REINFORCE_WINDOW_MS = 5 * 60 * 1000;
  * @param {number[]} [args.ks]
  * @returns {Promise<{
  *   rows_scored: number, rows_pending: number, rows_skipped: number,
- *   rows_with_null_session: number,
+ *   rows_with_null_session_total: number,
+ *   rows_with_null_session_evaluated: number,
  *   metrics: object, metrics_by_focus_block: object,
  *   replay_kendall_mean?: number|null,
  *   per_source: object,
@@ -1286,7 +1424,13 @@ export async function runEval(args) {
   }
 
   const result = scoreRows({ rows: rows ?? [], corrections, ks });
-  result.rows_with_null_session = (rows ?? []).filter((r) => r.session_id == null).length;
+  // Report both counts: total (all rows in window) and evaluated-only
+  // (excludes pending). Total measures how much of the corpus uses the
+  // session_id-NONE fallback; evaluated-only measures how much that
+  // fallback contributes to the scored metric.
+  result.rows_with_null_session_total = (rows ?? []).filter((r) => r.session_id == null).length;
+  result.rows_with_null_session_evaluated = (rows ?? [])
+    .filter((r) => r.session_id == null && r.outcome !== 'pending').length;
 
   // per_source breakdown over `_sources` arrays on ranked_hits[*].
   const perSource = { knn: { hits: 0 }, bm25: { hits: 0 }, knn_bm25: { hits: 0 } };
@@ -1344,12 +1488,45 @@ export async function runEval(args) {
         for (const v of vr ?? []) vectors.set(recordStringId(v.record), Float32Array.from(v.vector));
       }
 
+      // Intuition-source rows replay with A2 enabled; MCP-recall rows
+      // skip A2 because the live MCP path never applied it (spec §3.5).
+      // The source decision uses meta.from with the same session_id
+      // fallback as the row-fetch query.
+      const effectiveFrom =
+        row?.meta?.from ?? (row?.session_id == null ? 'intuition' : 'mcp_recall');
+      const replayConfig = {
+        mmr_threshold: 0.92,
+        mmr_use_cosine: true,
+        entity_boost_enabled: effectiveFrom !== 'mcp_recall',
+        entity_boost_per_overlap: 0.10,
+        entity_boost_max: 1.25,
+      };
+
+      // When A2 is on, compute the same matched-entity context the
+      // live inject.js path would. This is the only way the replay's
+      // score(...) reflects A2.
+      let matchedEntityIds = null;
+      let aboutByMemo = null;
+      if (replayConfig.entity_boost_enabled) {
+        const { readEntityCatalog, matchCatalogEntities, tokensOf, aboutEntitiesForMemos } =
+          await import('./entities.js');
+        const catalog = await readEntityCatalog(db, replayConfig).catch(() => []);
+        const tokens = tokensOf(row.query ?? '');
+        const matched = matchCatalogEntities(catalog, tokens);
+        matchedEntityIds = new Set(matched.map((m) => String(m.id)));
+        if (memoIds.length > 0 && matchedEntityIds.size > 0) {
+          aboutByMemo = await aboutEntitiesForMemos(db, memoIds).catch(() => new Map());
+        }
+      }
+
       const replayOut = await replayRow({
         row,
         embedder,
         hydratedRecords: hydrated,
         currentVectors: vectors,
-        config: { mmr_threshold: 0.92, mmr_use_cosine: true, entity_boost_enabled: false },
+        config: replayConfig,
+        matchedEntityIds,
+        aboutByMemo,
       });
       if (replayOut.skipped) {
         skipped += 1;
@@ -1430,6 +1607,29 @@ test('robin recall-eval --json exits 1 when rows_scored < min_rows', async () =>
   const json = JSON.parse(stdout);
   assert.equal(json.rows_scored, 0);
 });
+
+test('robin recall-eval --replay --profile=<inactive> exits 3 with active profile in stderr', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-cli-profile-'));
+  process.env.ROBIN_HOME = home;
+  await writeConfig({ embedder_profile: 'mxbai-1024' });
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
+  await db.query(surql`UPSERT runtime:embedder SET value = { active_profile: 'mxbai-1024' }`).collect();
+  await close(db);
+
+  const child = spawn(
+    'node',
+    [resolve(import.meta.dirname, '../../bin/robin'), 'recall-eval', '--replay',
+     '--profile=nonexistent', '--json', '--limit', '10'],
+    { env: { ...process.env, ROBIN_HOME: home, ROBIN_DB_URL: 'mem://' } },
+  );
+  let stderr = '';
+  child.stderr.on('data', (d) => { stderr += d.toString(); });
+  const code = await new Promise((res) => child.on('exit', res));
+  assert.equal(code, 3, `expected exit 3, got ${code}. stderr: ${stderr}`);
+  assert.ok(stderr.includes('mxbai-1024'),
+    `stderr should mention active profile 'mxbai-1024'; got: ${stderr}`);
+});
 ```
 
 - [ ] **Step 2: Implement the command**
@@ -1485,8 +1685,8 @@ function fmtK(metrics, prefix) {
 function printText(out, run) {
   out(`Recall eval — profile=${run.profile} window=${run.window_start.toISOString().slice(0,10)}..${run.window_end.toISOString().slice(0,10)} source=${run.source_filter}`);
   out(`  rows_scored=${run.rows_scored}  rows_pending=${run.rows_pending}  rows_skipped=${run.rows_skipped}`);
-  if (run.rows_with_null_session > 0) {
-    out(`  warning: ${run.rows_with_null_session} rows used session_id=NONE fallback (post-migration heuristic).`);
+  if ((run.rows_with_null_session_total ?? 0) > 0) {
+    out(`  warning: ${run.rows_with_null_session_total} rows used session_id=NONE fallback (${run.rows_with_null_session_evaluated ?? 0} of those evaluated).`);
   }
   out('');
   out(`  metric              k=1     k=3     k=6     k=10`);
@@ -1562,6 +1762,16 @@ export async function recallEval(argv) {
       ks,
     });
 
+    // Fold non-SCHEMAFULL fields into `metrics` (FLEXIBLE) so the
+    // persist roundtrips through SurrealDB without rejection. Top-level
+    // keys are limited to the columns declared in the migration.
+    const enrichedMetrics = {
+      ...result.metrics,
+      by_focus_block: result.metrics_by_focus_block,
+      replay_kendall_mean: result.replay_kendall_mean,
+      rows_with_null_session_total: result.rows_with_null_session_total,
+      rows_with_null_session_evaluated: result.rows_with_null_session_evaluated,
+    };
     const runRow = {
       profile,
       window_start: windowStart,
@@ -1571,14 +1781,10 @@ export async function recallEval(argv) {
       rows_scored: result.rows_scored,
       rows_pending: result.rows_pending,
       rows_skipped: result.rows_skipped,
-      metrics: result.metrics,
+      metrics: enrichedMetrics,
       per_source: result.per_source,
-      per_entity: null,
       config_digest: { ks, limit, thresholds },
       git_sha: gitSha(),
-      metrics_by_focus_block: result.metrics_by_focus_block,
-      rows_with_null_session: result.rows_with_null_session,
-      replay_kendall_mean: result.replay_kendall_mean,
     };
 
     // Persist (best-effort).
@@ -1594,7 +1800,7 @@ export async function recallEval(argv) {
             rows_scored: result.rows_scored,
             rows_pending: result.rows_pending,
             rows_skipped: result.rows_skipped,
-            metrics: result.metrics,
+            metrics: enrichedMetrics,
             per_source: result.per_source,
             config_digest: runRow.config_digest,
             git_sha: runRow.git_sha,
@@ -1654,6 +1860,20 @@ In `system/runtime/cli/index.js`, after the `doctor` block (lines 275-278), add:
   }
 ```
 
+- [ ] **Step 3b: Verify `system/bin/robin` dispatches through `cli/index.js`**
+
+```bash
+grep -n 'runtime/cli/index' system/bin/robin
+```
+
+Expected output: a line importing or invoking `system/runtime/cli/index.js`
+(or its export). If it does not exist (e.g., `bin/robin` is a thin shell
+stub that imports the index lazily), the integration test in Step 1 will
+fail-fast and tell you the wiring is missing — at that point, add a stub
+that calls `await import('../runtime/cli/index.js').then((m) => m.default(process.argv.slice(2)))`
+(or the existing entrypoint name). Do not introduce a new dispatch
+pattern just for `recall-eval`.
+
 - [ ] **Step 4: Run → pass**
 
 ```bash
@@ -1704,27 +1924,40 @@ test('runEval replay reproduces precision@k against seeded recall_log rows', asy
   const e = createStubEmbedder({ dimension: 1024 });
 
   const ev1 = await recordEvent(db, e, { source: 'cli', content: 'sourdough hydration 62%' });
-  const memo1 = await store.note(db, e, 'knowledge', { content: 'kevin loves sourdough', derived_by: 'manual' });
-  const memo2 = await store.note(db, e, 'knowledge', { content: 'tomatoes planted with karen', derived_by: 'manual' });
 
-  await db.query(surql`CREATE recall_log CONTENT ${{
-    ts: new Date(Date.now() - 3600_000),
-    session_id: 's1',
-    query: 'sourdough',
-    k: 6,
-    ranked_hits: [{ record: memo1.id, kind: 'memo', rank: 0 }, { record: ev1.id, kind: 'event', rank: 1 }],
-    outcome: 'reinforced',
-    meta: { latency_ms: 50, from: 'intuition', focus_block_present: false, focus_block_tokens: 0 },
-  }}`).collect();
-  await db.query(surql`CREATE recall_log CONTENT ${{
-    ts: new Date(Date.now() - 1800_000),
-    session_id: 's2',
-    query: 'tomatoes',
-    k: 6,
-    ranked_hits: [{ record: memo2.id, kind: 'memo', rank: 0 }],
-    outcome: 'corrected',
-    meta: { latency_ms: 60, from: 'intuition', focus_block_present: false, focus_block_tokens: 0 },
-  }}`).collect();
+  // Seed 8 memos so we can produce 8 recall_log rows with mixed outcomes
+  // (3× reinforced, 3× corrected, 2× evaluated_no_signal) — matches the
+  // ≥8-row fixture target in spec §8.6.
+  const memos = [];
+  for (let i = 0; i < 8; i++) {
+    memos.push(await store.note(db, e, 'knowledge', {
+      content: `memo content for row ${i}`,
+      derived_by: 'manual',
+    }));
+  }
+
+  const rows = [
+    { outcome: 'reinforced',         hits: [{ kind: 'memo',  rec: memos[0].id }, { kind: 'event', rec: ev1.id }] },
+    { outcome: 'reinforced',         hits: [{ kind: 'memo',  rec: memos[1].id }] },
+    { outcome: 'reinforced',         hits: [{ kind: 'memo',  rec: memos[2].id }, { kind: 'memo',  rec: memos[3].id }] },
+    { outcome: 'corrected',          hits: [{ kind: 'memo',  rec: memos[4].id }] },
+    { outcome: 'corrected',          hits: [{ kind: 'memo',  rec: memos[5].id }, { kind: 'memo',  rec: memos[6].id }] },
+    { outcome: 'corrected',          hits: [{ kind: 'memo',  rec: memos[7].id }] },
+    { outcome: 'evaluated_no_signal',hits: [] },
+    { outcome: 'evaluated_no_signal',hits: [] },
+  ];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    await db.query(surql`CREATE recall_log CONTENT ${{
+      ts: new Date(Date.now() - (60 - i * 5) * 60_000),
+      session_id: `s${i}`,
+      query: `query ${i}`,
+      k: 6,
+      ranked_hits: r.hits.map((h, j) => ({ record: h.rec, kind: h.kind, rank: j })),
+      outcome: r.outcome,
+      meta: { latency_ms: 50 + i, from: 'intuition', focus_block_present: false, focus_block_tokens: 0 },
+    }}`).collect();
+  }
 
   const result = await runEval({
     db, embedder: e,
@@ -1737,11 +1970,30 @@ test('runEval replay reproduces precision@k against seeded recall_log rows', asy
     ks: [1, 3, 6, 10],
   });
 
-  assert.equal(result.rows_scored, 2);
+  assert.equal(result.rows_scored, 8);
   assert.equal(result.rows_pending, 0);
-  // First row contributes precision@3 = 1/3; second contributes 0/3 → avg ≈ 0.1667
+  // Hand derivation @3 (evaluated rows only; pending excluded):
+  //   reinforced[0]: 1 sp in top-3 → 1/3
+  //   reinforced[1]: 1/3
+  //   reinforced[2]: 2/3
+  //   corrected[0..2]: 0
+  //   evaluated_no_signal × 2: 0
+  // avg = (1/3 + 1/3 + 2/3 + 0 + 0 + 0 + 0 + 0) / 8 = (4/3)/8 ≈ 0.1667
   assert.ok(Math.abs(result.metrics.precision_at_3 - 0.1667) < 0.001,
     `precision_at_3 = ${result.metrics.precision_at_3}`);
+  // recall@3: each reinforced row has full coverage of its sp set in top-3.
+  //   3 of 8 rows contribute 1.0; the rest contribute 0 → avg 3/8 = 0.375
+  assert.ok(Math.abs(result.metrics.recall_at_3 - 0.375) < 0.001,
+    `recall_at_3 = ${result.metrics.recall_at_3}`);
+  // no_signal_rate: 2 / 8 evaluated = 0.25
+  assert.ok(Math.abs(result.metrics.no_signal_rate - 0.25) < 0.001,
+    `no_signal_rate = ${result.metrics.no_signal_rate}`);
+  // mean_rank_of_negatives@10: corrected[0] → rank 1; corrected[1] → mean(1,2)=1.5; corrected[2] → 1; mean=(1+1.5+1)/3≈1.1667
+  assert.ok(
+    result.metrics.mean_rank_of_negatives_at_10 != null &&
+      Math.abs(result.metrics.mean_rank_of_negatives_at_10 - 1.1667) < 0.001,
+    `mean_rank_of_negatives_at_10 = ${result.metrics.mean_rank_of_negatives_at_10}`,
+  );
   assert.ok(typeof result.replay_kendall_mean === 'number' || result.replay_kendall_mean === null);
 
   await close(db);
@@ -2007,6 +2259,18 @@ test('intuitionEndpoint records mmr_path=cosine when vectors are available', asy
   assert.equal(recallRows[0].meta?.from, 'intuition');
   assert.ok(typeof recallRows[0].meta?.latency_ms === 'number');
 
+  // Spec §7 regression guard (not a budget): the new vector-hydration
+  // round-trip must not blow the endpoint past 200 ms on the embedded
+  // engine. Large jumps indicate a second round-trip or an unintended
+  // network call.
+  assert.ok(recallRows[0].meta.latency_ms < 200,
+    `latency_ms = ${recallRows[0].meta.latency_ms}; expected < 200 (regression guard)`);
+
+  // Phase 11 contract: D1 has not shipped yet → focus_block_present
+  // must default to false on the recall_log row.
+  assert.equal(recallRows[0].meta?.focus_block_present, false);
+  assert.equal(recallRows[0].meta?.focus_block_tokens, 0);
+
   await close(db);
 });
 ```
@@ -2151,7 +2415,7 @@ import { loadVectorsForHits, cosineSim } from './vectors.js';
   }
 ```
 
-5. **Extend the recall_log write** to set `meta.from` (`session_id` was added in Task 0.3):
+5. **Extend the recall_log write** to set `meta.from` (`session_id` was added in Phase 0 Step 4c — either verified from a prior B1 landing or shipped via the fallback):
 
 ```js
       await db
@@ -2418,6 +2682,50 @@ export function entityBoostFromAboutIds(aboutIds, matchedEntityIds, cfg = {}) {
 }
 
 /**
+ * Harvest entities mentioned in the last N biographed events of the
+ * given session. Covers entities that exist in the in-flight thread but
+ * haven't yet propagated into the top-N catalog (catalog is ordered by
+ * `created_at DESC` and capped, so very recent entities can fall off
+ * the cap until the next biographer run). See spec §3.1 candidate (2).
+ *
+ * @param {import('surrealdb').Surreal} db
+ * @param {string|null} sessionId
+ * @param {{ priorTailLimit?: number }} [opts]
+ * @returns {Promise<Array<{ id: any, name?: string, type?: string }>>}
+ */
+export async function matchPriorTailEntities(db, sessionId, opts = {}) {
+  const limit = opts.priorTailLimit ?? 3;
+  if (!sessionId) return [];
+  try {
+    const [rows] = await db
+      .query(
+        new BoundQuery(
+          `SELECT out AS entity FROM edges
+           WHERE kind = 'mentions' AND in IN (
+             SELECT id FROM events
+             WHERE meta.session_id = $sid AND biographed_at IS NOT NONE
+             ORDER BY ts DESC LIMIT $n
+           )`,
+          { sid: sessionId, n: limit },
+        ),
+      )
+      .collect();
+    const out = [];
+    const seen = new Set();
+    for (const r of rows ?? []) {
+      const id = r.entity;
+      const key = recordStringId(id);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ id });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * One batched `SELECT in, out FROM edges WHERE kind='about' AND in IN $ids`.
  * Returns `Map<memoIdString, Set<entityIdString>>`.
  */
@@ -2573,6 +2881,81 @@ npm run test:unit -- --test-name-pattern 'readEntityCatalog caches within TTL'
 git commit -m "test(intuition): entity catalog TTL cache behavior"
 ```
 
+### Task 8.3 — Prior-tail biographed entities (spec §3.1 candidate 2)
+
+**Files:** `system/cognition/intuition/entities.js` (already contains the `matchPriorTailEntities` export from Task 8.1), `system/tests/unit/intuition-entities.test.js`
+
+> The spec specifies the entity source is the **union** of (1) catalog
+> tokens-match against query+priorTail and (2) prior-assistant-tail
+> biographed entities sourced from `mentions` edges. Task 8.1 already
+> ships the helper. This task adds the unit test and wires the helper
+> into the inject.js call site (Task 9.2 picks up the wiring).
+
+- [ ] **Step 1: Failing test (entities-not-yet-in-catalog case)**
+
+Append to `system/tests/unit/intuition-entities.test.js`:
+
+```js
+import { matchPriorTailEntities } from '../../cognition/intuition/entities.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { surql } from 'surrealdb';
+import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+
+async function fresh() {
+  const home = mkdtempSync(join(tmpdir(), 'robin-priortail-'));
+  process.env.ROBIN_HOME = home;
+  await writeConfig({ embedder_profile: 'mxbai-1024' });
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
+  await db.query(surql`UPSERT runtime:embedder SET value = { active_profile: 'mxbai-1024' }`).collect();
+  return db;
+}
+
+test('matchPriorTailEntities harvests mentions edges off recent biographed events', async () => {
+  const db = await fresh();
+  await db.query(surql`CREATE entities CONTENT ${{
+    id: 'entities:nora', name: 'Nora', name_lower: 'nora', type: 'person',
+  }}`).collect();
+  const [evtRows] = await db.query(surql`CREATE events CONTENT ${{
+    content: 'discussed pipeline with nora',
+    meta: { session_id: 's-pt' },
+    biographed_at: new Date(),
+  }}`).collect();
+  const evtId = evtRows[0].id;
+  await db.query(surql`CREATE edges CONTENT ${{
+    in: evtId, out: 'entities:nora', kind: 'mentions',
+  }}`).collect();
+
+  const out = await matchPriorTailEntities(db, 's-pt', { priorTailLimit: 3 });
+  assert.equal(out.length, 1);
+  assert.equal(String(out[0].id), 'entities:nora');
+  await close(db);
+});
+
+test('matchPriorTailEntities returns [] when sessionId is null', async () => {
+  const db = await fresh();
+  const out = await matchPriorTailEntities(db, null);
+  assert.deepEqual(out, []);
+  await close(db);
+});
+```
+
+- [ ] **Step 2: Run → pass**
+
+```bash
+npm run test:unit -- --test-name-pattern 'matchPriorTailEntities'
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git commit -m "test(intuition): prior-tail biographed entity harvest"
+```
+
 ---
 
 ## Phase 9 — A2 score-formula change
@@ -2580,6 +2963,15 @@ git commit -m "test(intuition): entity catalog TTL cache behavior"
 ### Task 9.1 — `rank.score` accepts `entityBoost` via callerCtx
 
 **Files:** `system/cognition/intuition/rank.js`, `system/tests/unit/rank-score-entity-boost.test.js`
+
+> **Naming convention (intentional, audited).** Per-hit `score_components`
+> uses JS-camelCase (`entityBoost`, `entityBoostCount`) to match the
+> existing `cosineSim`/`scopeBoost`/`contraPenalty`/`trustFactor` keys on
+> the same object. Aggregate telemetry on `intuition_telemetry.meta` uses
+> snake_case (`entity_boost_applied`, `entity_boost_count`, `mmr_drops`,
+> `mmr_vec_coverage`, `query_entities_matched`) to match existing
+> telemetry conventions (`latency_ms`, `tokens_injected`, `query_chars`).
+> Both layers are audited; do not normalize either to the other.
 
 - [ ] **Step 1: Failing test**
 
@@ -2712,6 +3104,7 @@ import {
   aboutEntitiesForMemos,
   entityBoostFromAboutIds,
   matchCatalogEntities,
+  matchPriorTailEntities,
   readEntityCatalog,
   tokensOf,
 } from './entities.js';
@@ -2733,7 +3126,9 @@ Replace the merge-and-score block (currently `const merged = [...eventHits, ...m
 
 ```js
     // A2: entity boost. Gated by cfg.entity_boost_enabled. Boosts memos
-    // whose `about` edges point at entities matched by the query tokens.
+    // whose `about` edges point at entities matched by (a) the query
+    // tokens against the catalog, unioned with (b) entities mentioned in
+    // recent prior-tail biographed events (spec §3.1 candidates 1+2).
     let matchedEntityIds = new Set();
     let aboutByMemo = new Map();
     let queryEntitiesMatched = 0;
@@ -2742,8 +3137,10 @@ Replace the merge-and-score block (currently `const merged = [...eventHits, ...m
         const catalog = await readEntityCatalog(db, cfg);
         const queryTokens = tokensOf(combined);
         const matched = matchCatalogEntities(catalog, queryTokens);
+        const priorTail = await matchPriorTailEntities(db, sessionId).catch(() => []);
         matchedEntityIds = new Set(matched.map((m) => String(m.id)));
-        queryEntitiesMatched = matched.length;
+        for (const e of priorTail) matchedEntityIds.add(String(e.id));
+        queryEntitiesMatched = matchedEntityIds.size;
         const memoIdRefs = memoHits.map((h) => h.record.id);
         if (memoIdRefs.length > 0 && matchedEntityIds.size > 0) {
           aboutByMemo = await aboutEntitiesForMemos(db, memoIdRefs);
@@ -3018,7 +3415,18 @@ npm run test:unit -- --test-name-pattern 'scoreRows stratifies metrics by focus_
 
 Task 4.1's test asserts both `focus_block` and `no_focus_block` buckets exist. New recall_log rows populate the `no_focus_block` bucket pre-D1 — the correct baseline.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Verify the live recall_log write asserts the defaults**
+
+The cosine end-to-end test (Phase 6 Task 6.2) already asserts
+`recall_log.meta.focus_block_present === false` and
+`recall_log.meta.focus_block_tokens === 0` on the row written during the
+test. Re-run that test to confirm no regression:
+
+```bash
+npm run test:integration -- --test-name-pattern 'mmr_path=cosine'
+```
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(intuition): record focus_block_present + focus_block_tokens on recall_log"

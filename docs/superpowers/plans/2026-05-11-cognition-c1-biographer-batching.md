@@ -25,8 +25,8 @@
 | `system/cognition/biographer/batch-prompt.js` | Create | `buildBiographerBatchPrompt({ events, catalog, activeEpisode })` (parallel to `prompt.js`). |
 | `system/cognition/biographer/batch-output.js` | Create | `validateBiographerBatchOutput(o, expectedIds)` wrapping `validateBiographerOutput`. |
 | `system/cognition/biographer/accumulator.js` | Create | `createBatchAccumulator({ config, fire })` — source-bucketed, three-trigger flush. |
-| `system/cognition/biographer/queue.js` | Modify | Dedupe key falls back to `payload.__queueKey` when payload is an object. |
-| `system/runtime/daemon/server.js` | Modify | Worker branches on payload shape; SELECT `source`; accumulator wired between enqueue sites and queue; `queueWrap.enqueue` accepts object payloads. |
+| `system/cognition/biographer/queue.js` | Modify (additive) | Dedupe key falls back to `payload.__queueKey` when payload is an object. Coordinate with R-1: preserve `maxPending` + `skippedSinceBoot` if already present. |
+| `system/runtime/daemon/server.js` (pre-R-3) OR `boot.js` + `routes/biographer.js` + `routes/remember.js` (post-R-3) | Modify | Worker branches on payload shape; SELECT `source`; accumulator wired between enqueue sites and queue; `queueWrap.enqueue` accepts object payloads. Detect layout via `test -f system/runtime/daemon/routes/biographer.js`. |
 | `system/tests/unit/biographer-batch-prompt.test.js` | Create | Unit tests for `buildBiographerBatchPrompt` (shape, catalog cache control, truncation at 2000 chars). |
 | `system/tests/unit/biographer-batch-validate.test.js` | Create | Unit tests for `validateBiographerBatchOutput`. |
 | `system/tests/unit/biographer-batch-accumulator.test.js` | Create | Unit tests for the accumulator (count, debounce, hard-cap, source separation, sealed buckets). |
@@ -86,7 +86,8 @@ UPSERT type::record('runtime', 'biographer')
     batch_config: {
       max_batch_size: 8,
       debounce_ms: 750,
-      max_wait_ms: 3000
+      max_wait_ms: 3000,
+      disable: false
     }
   }
   WHERE value IS NONE;
@@ -106,6 +107,10 @@ UPDATE type::record('runtime', 'biographer')
 UPDATE type::record('runtime', 'biographer')
    SET value.batch_config.max_wait_ms = 3000
  WHERE value.batch_config.max_wait_ms IS NONE;
+
+UPDATE type::record('runtime', 'biographer')
+   SET value.batch_config.disable = false
+ WHERE value.batch_config.disable IS NONE;
 ```
 
 - [ ] **Step 3: Run lint and existing tests**
@@ -557,7 +562,7 @@ import { test } from 'node:test';
 import { createBatchAccumulator } from '../../cognition/biographer/accumulator.js';
 
 function makeConfig(overrides = {}) {
-  return () => ({ max_batch_size: 8, debounce_ms: 50, max_wait_ms: 300, ...overrides });
+  return () => ({ max_batch_size: 8, debounce_ms: 50, max_wait_ms: 300, disable: false, ...overrides });
 }
 
 function sleep(ms) {
@@ -660,7 +665,7 @@ test('reads config callback on every flush (operator-tunable at runtime)', async
   const fires = [];
   let cap = 2;
   const acc = createBatchAccumulator({
-    config: () => ({ max_batch_size: cap, debounce_ms: 200, max_wait_ms: 500 }),
+    config: () => ({ max_batch_size: cap, debounce_ms: 200, max_wait_ms: 500, disable: false }),
     fire: async (ids) => fires.push([...ids]),
   });
   acc.add('a', 'cli');
@@ -679,12 +684,27 @@ test('reads config callback on every flush (operator-tunable at runtime)', async
   assert.equal(fires.length, 2);
   assert.deepEqual(fires[1], ['c', 'd', 'e', 'f']);
 });
+
+test('disable: true short-circuits buckets — each add fires a single-id batch immediately', async () => {
+  const fires = [];
+  const acc = createBatchAccumulator({
+    config: () => ({ max_batch_size: 8, debounce_ms: 200, max_wait_ms: 500, disable: true }),
+    fire: async (ids, source) => fires.push({ ids: [...ids], source }),
+  });
+  acc.add('a', 'cli');
+  acc.add('b', 'cli');
+  acc.add('c', 'cli');
+  await sleep(10);
+  // No bucket batching; each event fires on its own.
+  assert.equal(fires.length, 3);
+  assert.deepEqual(fires.map((f) => f.ids), [['a'], ['b'], ['c']]);
+});
 ```
 
 - [ ] **Step 2: Run the test (expect module-not-found)**
 
 ```bash
-npm run test:unit -- --test-name-pattern 'count threshold fires|debounce fires|hard cap fires|source separation|in-flight bucket|reads config callback'
+npm run test:unit -- --test-name-pattern 'count threshold fires|debounce fires|hard cap fires|source separation|in-flight bucket|reads config callback|disable: true short-circuits'
 ```
 
 Expected: failure with `Cannot find module '.../biographer/accumulator.js'`.
@@ -746,6 +766,18 @@ export function createBatchAccumulator({ config, fire }) {
     const debounceMs = cfg.debounce_ms ?? 750;
     const maxWaitMs = cfg.max_wait_ms ?? 3000;
 
+    // Disable bypass (spec §9): short-circuit the bucket/timer entirely so
+    // events flow straight to fire() one at a time. Used as the operator
+    // rollback lever — restores pre-C1 behaviour byte-for-byte.
+    if (cfg.disable === true) {
+      Promise.resolve()
+        .then(() => fire([String(eventId)], source))
+        .catch((e) => {
+          console.warn(`[biographer accumulator] fire (disabled mode) failed: ${e.message}`);
+        });
+      return;
+    }
+
     let b = buckets.get(source);
     if (!b) {
       b = { ids: [], firstEnqueuedAt: Date.now(), debounceTimer: null, capTimer: null };
@@ -767,17 +799,17 @@ export function createBatchAccumulator({ config, fire }) {
 - [ ] **Step 4: Run the test (expect pass)**
 
 ```bash
-npm run test:unit -- --test-name-pattern 'count threshold fires|debounce fires|hard cap fires|source separation|in-flight bucket|reads config callback'
+npm run test:unit -- --test-name-pattern 'count threshold fires|debounce fires|hard cap fires|source separation|in-flight bucket|reads config callback|disable: true short-circuits'
 ```
 
-Expected: 6 passing assertions.
+Expected: 7 passing assertions.
 
 - [ ] **Step 5: Lint + commit**
 
 ```bash
 npm run lint
 git add system/cognition/biographer/accumulator.js system/tests/unit/biographer-batch-accumulator.test.js
-git commit -m "feat(c1): createBatchAccumulator (count/debounce/cap, source-scoped buckets)"
+git commit -m "feat(c1): createBatchAccumulator (count/debounce/cap, source-scoped buckets, disable bypass)"
 ```
 
 ---
@@ -832,19 +864,39 @@ npm run test:unit -- --test-name-pattern 'payload object with __queueKey|payload
 
 Expected: failure (dedupe map keys on the object reference today, so two separate object literals never dedupe).
 
-- [ ] **Step 3: Update `system/cognition/biographer/queue.js`**
+- [ ] **Step 3: Apply additive edits to `system/cognition/biographer/queue.js`**
 
-Replace the contents of `system/cognition/biographer/queue.js` with:
+**This step is intentionally ADDITIVE, not a wholesale replacement.** The
+runtime-layer-hardening plan (R-1, see
+`docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`) adds
+`maxPending` canary + `skippedSinceBoot` accessors to the same file
+on a parallel branch. Read the current file first; if R-1 has already
+landed, preserve those accessors and overlay the per-source dedupe-key
+change on top. If R-1 has not yet landed, the same additive edits still
+apply (no R-1 fields exist to preserve).
+
+Read the file:
+
+```bash
+sed -n '1,80p' system/cognition/biographer/queue.js
+```
+
+Then apply the two Edit-tool patches below. They modify only the
+dedupe-key derivation and leave queue concurrency / maxPending /
+`skippedSinceBoot` (if present from R-1) untouched.
+
+**Edit 1 — introduce `dedupeKey` helper above `createBiographerQueue`.**
+
+Find the line just before `export function createBiographerQueue(` and
+insert the helper. Use the Edit tool with:
 
 ```js
-// queue.js — single-FIFO worker queue for biographer batches.
-//
-// Backward-compat: when enqueued with a string id, the dedupe map keys on the
-// string itself (existing tests + MCP-tool callers). When enqueued with a
-// payload object, the dedupe map keys on `payload.__queueKey` if present,
-// otherwise on the object reference (preserves "two object literals don't
-// dedupe" semantics for non-keyed objects).
+// old_string (anchor before the existing export):
+export function createBiographerQueue({
+```
 
+```js
+// new_string:
 function dedupeKey(payload) {
   if (payload && typeof payload === 'object' && typeof payload.__queueKey === 'string') {
     return payload.__queueKey;
@@ -852,41 +904,33 @@ function dedupeKey(payload) {
   return payload;
 }
 
-export function createBiographerQueue({ worker, dedupe = false }) {
-  const queue = [];
-  const inflight = new Map();
-  let running = false;
-
-  async function drain() {
-    if (running) return;
-    running = true;
-    while (queue.length > 0) {
-      const { payload, key, resolve, reject } = queue.shift();
-      try {
-        const result = await worker(payload);
-        resolve(result);
-      } catch (e) {
-        reject(e);
-      }
-      if (dedupe && key !== undefined) inflight.delete(key);
-    }
-    running = false;
-  }
-
-  function enqueue(payload) {
-    const key = dedupe ? dedupeKey(payload) : undefined;
-    if (dedupe && inflight.has(key)) return inflight.get(key);
-    const promise = new Promise((resolve, reject) => {
-      queue.push({ payload, key, resolve, reject });
-    });
-    if (dedupe) inflight.set(key, promise);
-    drain();
-    return promise;
-  }
-
-  return { enqueue };
-}
+export function createBiographerQueue({
 ```
+
+**Edit 2 — route the dedupe map through `dedupeKey(payload)`.**
+
+The existing single-id key derivation looks like
+`const key = dedupe ? String(payload) : undefined;` (or similar — adapt
+to whatever the current code shows). Replace it with the helper call:
+
+```js
+// old_string (exact current text, e.g.):
+    const key = dedupe ? String(payload) : undefined;
+```
+
+```js
+// new_string:
+    const key = dedupe ? dedupeKey(payload) : undefined;
+```
+
+If R-1's `maxPending` canary adds an early-return inflate path **before**
+the key derivation, leave the canary code intact — the `dedupeKey`
+helper just changes the *value* placed into the inflight map.
+
+If the existing code computes the key inline at multiple call sites
+(very unlikely on `queue.js` today), repeat Edit 2 at each site or
+hoist the derivation into a single `const key = ...` near the top of
+`enqueue`.
 
 - [ ] **Step 4: Run full unit tests (expect all biographer-queue tests pass)**
 
@@ -1048,9 +1092,33 @@ Edit `system/cognition/biographer/pipeline.js`:
 2. Replace exported `biographerProcess` with a wrapper that forwards to `biographerProcessBatch`.
 3. Add a new exported `biographerProcessBatch` that loops `_processOne` over each id, gathering per-event results into a Map.
 
+**Explicit `_processOne` signature**: `async function _processOne(db, embedder, host, eventId, opts)`. The body is the current `biographerProcess` body **verbatim**, lines 90–278 of `system/cognition/biographer/pipeline.js`. Only the function name (declaration line) changes; nothing else inside.
+
+**Verification step**: after the rename, diff the new `_processOne` body against the original to confirm it is byte-identical except for the function-name line:
+
+```bash
+# Compare the new _processOne body against the original biographerProcess.
+git show HEAD:system/cognition/biographer/pipeline.js | sed -n '90,278p' > /tmp/c1-original-body.txt
+# Strip the declaration line from both versions and diff (declaration line is
+# "export async function biographerProcess(..." in the original and
+# "async function _processOne(..." in the new). Lines 2..end must match.
+sed -n '91,278p' /tmp/c1-original-body.txt > /tmp/c1-original-rest.txt
+sed -n '91,278p' system/cognition/biographer/pipeline.js > /tmp/c1-new-rest.txt
+diff /tmp/c1-original-rest.txt /tmp/c1-new-rest.txt
+```
+
+Expected: empty diff (only the declaration line at L90 differs).
+
 The final shape of the new exports (the loop-only stage; Phase 7 swaps in a real batched LLM call):
 
 ```js
+async function _processOne(db, embedder, host, eventId, opts = {}) {
+  // Body copied verbatim from the previous `biographerProcess` body
+  // (lines 90–278 of system/cognition/biographer/pipeline.js, original).
+  // Only the function declaration changed.
+  // ... full body here ...
+}
+
 export async function biographerProcess(db, embedder, host, eventId, opts = {}) {
   const r = await biographerProcessBatch(db, embedder, host, [eventId], opts);
   return r.perEvent.get(String(eventId)) ?? { skipped: true, reason: 'unknown' };
@@ -1071,15 +1139,19 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
 }
 ```
 
-The `_processOne` body is the existing `biographerProcess` body verbatim (renamed function declaration only).
-
 - [ ] **Step 4: Run the new test + the legacy tests (expect all pass)**
 
+Run by explicit file path — `--test-name-pattern 'biographer'` can miss tests whose names don't contain the literal word "biographer":
+
 ```bash
-npm run test:integration -- --test-name-pattern 'biographer'
+node --test \
+  system/tests/integration/biographer-pipeline.test.js \
+  system/tests/integration/biographer-failure.test.js \
+  system/tests/integration/biographer-dedupe.test.js \
+  system/tests/integration/biographer-batch-pipeline.test.js
 ```
 
-Expected: existing `biographer-pipeline`, `biographer-failure`, `biographer-dedupe`, `biographer-catchup`, `biographer-process-pending-captures` tests pass unchanged plus the two new equivalence tests.
+Expected: existing `biographer-pipeline`, `biographer-failure`, `biographer-dedupe` tests pass unchanged plus the two new equivalence tests in `biographer-batch-pipeline.test.js`. Also rerun the daemon-touching integration suites (`biographer-catchup`, `biographer-process-pending-captures`) if they exist in your tree.
 
 - [ ] **Step 5: Lint + commit**
 
@@ -1311,21 +1383,30 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   const config = runtime.config ?? DEFAULT_CONFIG;
 
   // 2. Load events; filter out already-biographed.
+  //    The IN-clause SELECT is the fast path. We catch the SurrealQL error
+  //    rather than inferring failure from an empty result set — `length === 0`
+  //    could legitimately mean "all events are biographed and were filtered
+  //    out at the SELECT level" depending on the WHERE clause, which would
+  //    spuriously trigger the per-id cold path. `.catch(...)` is the only
+  //    accurate failure signal.
   const idList = eventIds.map(String);
-  const [eventRows] = await db
-    .query(surql`SELECT * FROM events WHERE id IN ${idList.map((id) => ({ tb: 'events', id: id.split(':')[1] ?? id }))}`)
-    .collect()
-    .catch(() => [[]]);
-  // Defensive: if the IN clause shape above is unsupported, fall back to one
-  // SELECT per id (still one round-trip per missing id, but only on the cold
-  // path). Most installs return the rows directly.
   let events;
-  if (Array.isArray(eventRows) && eventRows.length > 0) {
-    events = eventRows;
-  } else {
+  try {
+    const [eventRows] = await db
+      .query(
+        surql`SELECT * FROM events WHERE id IN ${idList.map((id) => ({ tb: 'events', id: id.split(':')[1] ?? id }))}`,
+      )
+      .collect();
+    events = Array.isArray(eventRows) ? eventRows : [];
+  } catch {
+    // Defensive: if the IN-clause shape above is unsupported by this SurrealDB
+    // build, fall back to one SELECT per id (still one round-trip per id,
+    // but only on the cold path).
     events = [];
     for (const id of idList) {
-      const [rows] = await db.query(surql`SELECT * FROM type::thing('events', ${id.split(':')[1] ?? id})`).collect();
+      const [rows] = await db
+        .query(surql`SELECT * FROM type::thing('events', ${id.split(':')[1] ?? id})`)
+        .collect();
       if (rows.length > 0) events.push(rows[0]);
     }
   }
@@ -1381,16 +1462,22 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     return _fallbackPerEvent(db, embedder, host, expectedIds, perEvent, opts, new Error(validation.error));
   }
 
-  // 5. Per-entry failure handling — record missing/malformed via recordFailure;
-  //    do NOT include them in the valid subset below.
+  // 5. Per-entry failure handling — record missing/malformed via recordFailure
+  //    with kind-prefixed messages so `value.last_error` retains the cause
+  //    (recordFailure writes error.message verbatim to value.last_error;
+  //    without a prefix, missing vs malformed are indistinguishable from
+  //    network/JSON errors written by the single-event path). Do NOT include
+  //    these events in the valid subset below.
   for (const id of validation.missing) {
-    await recordFailure(db, id, new Error('missing_in_batch_output'));
-    perEvent.set(id, { failed: true, error: 'missing_in_batch_output' });
+    const msg = `missing_in_batch_output: ${id}`;
+    await recordFailure(db, id, new Error(msg));
+    perEvent.set(id, { failed: true, error: msg });
   }
   for (const { event_id, error } of validation.malformed) {
     if (event_id !== '<missing event_id>') {
-      await recordFailure(db, event_id, new Error(error));
-      perEvent.set(event_id, { failed: true, error });
+      const msg = `batch_malformed: ${error}`;
+      await recordFailure(db, event_id, new Error(msg));
+      perEvent.set(event_id, { failed: true, error: msg });
     }
   }
 
@@ -1510,13 +1597,67 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     await withTxRetry(() => store.relateAll(db, edgeRows));
   }
 
-  // 10. Evidence signals (Theme 2a) — per-event, after edges land.
+  // 10. (Evidence signals run AFTER the mark — see step 12 below. Putting
+  //     them before the mark would double-count the ledger on retry.)
+
+  // 11. Per-episode-group gated mark step (spec §3, §7 invariant).
+  //     For each distinct episode in the batch, one UPDATE with
+  //     WHERE id IN $idsForEpisode AND biographed_at IS NONE.
+  //     Typical batches yield one group; mid-batch episode breaks yield two.
+  //     The `IS NONE` guard makes each UPDATE idempotent under withTxRetry.
+  const validIdStrs = validEvents.map((ev) => String(ev.id));
+  const idsByEpisode = new Map(); // episodeId -> string[] (event ids)
+  for (const ev of validEvents) {
+    const epId = episodeIdForEvent.get(String(ev.id));
+    if (!idsByEpisode.has(epId)) idsByEpisode.set(epId, []);
+    idsByEpisode.get(epId).push(ev.id);
+  }
+  const markedSet = new Set();
+  await withTxRetry(async () => {
+    for (const [epId, idsForEpisode] of idsByEpisode) {
+      const [rows] = await db
+        .query(surql`
+          UPDATE events
+            SET biographed_at = time::now(), episode_id = ${epId}
+            WHERE id IN ${idsForEpisode} AND biographed_at IS NONE
+        `)
+        .collect();
+      // SurrealDB returns the updated rows; pull their ids into markedSet.
+      for (const r of rows) markedSet.add(String(r.id));
+    }
+  });
+  const racedCount = validIdStrs.length - markedSet.size;
+  const batchKey = opts.__queueKey ?? `${source}:${[...validIdStrs].sort().join(',')}`;
+  if (racedCount > 0) {
+    console.warn(
+      `biographer race detected on ${racedCount}/${validIdStrs.length} events in batch ${batchKey}`,
+    );
+  }
+  for (const ev of validEvents) {
+    perEvent.set(String(ev.id), {
+      processed: true,
+      episodeId: episodeIdForEvent.get(String(ev.id)),
+      entitiesCount: keyToId.size,
+    });
+  }
+
+  // 12. Evidence signals (Theme 2a) — AFTER the gated mark UPDATE succeeds.
+  //     Running addEvidence BEFORE the mark would double-count the ledger on
+  //     retry: a terminal mark failure leaves events unmarked, the re-drain
+  //     re-runs the batched pipeline, and the second addEvidence call appends
+  //     a fresh row per signal (addEvidence is not idempotent on
+  //     (memo_id, source_event, reason) today). Ordering this after the mark
+  //     keeps `evidence_signals` consistent with every other batched write.
+  //     Limit to events whose mark actually landed (markedSet) — for raced
+  //     events the other path already biographed them and may have already
+  //     written their signals.
   if (evidenceJobs.length > 0) {
     try {
       const { addEvidence, readEvidenceConfig } = await import('../memory/evidence.js');
       const { RecordId } = await import('surrealdb');
       const evCfg = await readEvidenceConfig(db);
       for (const { ev, signals } of evidenceJobs) {
+        if (!markedSet.has(String(ev.id))) continue;
         for (const sig of signals) {
           try {
             const idStr = String(sig.memo_id);
@@ -1538,56 +1679,42 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     }
   }
 
-  // 11. Single gated mark step for the whole valid subset (spec §7).
-  //     `WHERE biographed_at IS NONE` keeps the write idempotent against
-  //     concurrent runs; the returned set is the rows we actually marked.
-  const validIdStrs = validEvents.map((ev) => String(ev.id));
-  const marked = await withTxRetry(async () => {
-    const out = [];
-    for (const ev of validEvents) {
-      const epId = episodeIdForEvent.get(String(ev.id));
-      const [rows] = await db
-        .query(surql`
-          UPDATE ${ev.id}
-            SET biographed_at = time::now(), episode_id = ${epId}
-            WHERE biographed_at IS NONE
-        `)
-        .collect();
-      if (rows.length > 0) out.push(String(ev.id));
-    }
-    return out;
+  // 13. Runtime row: telemetry + last_run housekeeping. Capture the LLM
+  //     usage object from `response.usage` (shape is provider-uniform:
+  //     `input_tokens` / `output_tokens` — see
+  //     system/runtime/hosts/claude-code.js:77-94 and pipeline.js:109-115).
+  const inputTokens = Number(response?.usage?.input_tokens ?? 0);
+  const outputTokens = Number(response?.usage?.output_tokens ?? 0);
+  await _recordBatchTelemetry(db, {
+    batches_total_delta: 1,
+    batch_size: validEvents.length,
+    events_biographed_via_batch_delta: markedSet.size,
+    batch_input_tokens_delta: inputTokens,
+    batch_output_tokens_delta: outputTokens,
+    last_batch_input_tokens: inputTokens,
+    last_batch_output_tokens: outputTokens,
   });
-  const racedCount = validIdStrs.length - marked.length;
-  if (racedCount > 0) {
-    console.warn(
-      `biographer race detected on ${racedCount}/${validIdStrs.length} events in batch source=${source}`,
-    );
-  }
-  for (const ev of validEvents) {
-    perEvent.set(String(ev.id), {
-      processed: true,
-      episodeId: episodeIdForEvent.get(String(ev.id)),
-      entitiesCount: keyToId.size,
-    });
-  }
-
-  // 12. Runtime row: telemetry + last_run housekeeping.
-  await _recordBatchTelemetry(db, { batches_total_delta: 1, batch_size: validEvents.length });
 
   return { perEvent };
 }
 
 async function _fallbackPerEvent(db, embedder, host, eventIds, perEvent, opts, batchError) {
   // Single-event fallback. Spec §8: never worse than today's baseline.
+  let successCount = 0;
   for (const id of eventIds) {
     try {
       const r = await _processOne(db, embedder, host, id, opts);
       perEvent.set(String(id), r);
+      if (r?.processed) successCount++;
     } catch (e) {
       perEvent.set(String(id), { failed: true, error: e.message });
     }
   }
-  await _recordBatchTelemetry(db, { batches_total_delta: 1, batches_fallback_delta: 1 });
+  await _recordBatchTelemetry(db, {
+    batches_total_delta: 1,
+    batches_fallback_delta: 1,
+    events_biographed_via_fallback_delta: successCount,
+  });
   return { perEvent };
 }
 
@@ -1603,14 +1730,33 @@ async function _recordBatchFallback(db, reason) {
   });
 }
 
-async function _recordBatchTelemetry(db, { batches_total_delta = 0, batches_fallback_delta = 0, batch_size }) {
+async function _recordBatchTelemetry(
+  db,
+  {
+    batches_total_delta = 0,
+    batches_fallback_delta = 0,
+    events_biographed_via_batch_delta = 0,
+    events_biographed_via_fallback_delta = 0,
+    batch_input_tokens_delta = 0,
+    batch_output_tokens_delta = 0,
+    last_batch_input_tokens,
+    last_batch_output_tokens,
+    batch_size,
+  },
+) {
   await withTxRetry(async () => {
     await db
       .query(surql`
         UPSERT type::record('runtime', 'biographer')
-        SET value.batches_total    = (value.batches_total    ?? 0) + ${batches_total_delta},
-            value.batches_fallback = (value.batches_fallback ?? 0) + ${batches_fallback_delta},
-            value.last_batch_size  = ${batch_size ?? null}
+        SET value.batches_total                  = (value.batches_total                  ?? 0) + ${batches_total_delta},
+            value.batches_fallback               = (value.batches_fallback               ?? 0) + ${batches_fallback_delta},
+            value.events_biographed_via_batch    = (value.events_biographed_via_batch    ?? 0) + ${events_biographed_via_batch_delta},
+            value.events_biographed_via_fallback = (value.events_biographed_via_fallback ?? 0) + ${events_biographed_via_fallback_delta},
+            value.batch_input_tokens_total       = (value.batch_input_tokens_total       ?? 0) + ${batch_input_tokens_delta},
+            value.batch_output_tokens_total      = (value.batch_output_tokens_total      ?? 0) + ${batch_output_tokens_delta},
+            value.last_batch_size                = ${batch_size ?? null},
+            value.last_batch_input_tokens        = ${last_batch_input_tokens ?? null},
+            value.last_batch_output_tokens       = ${last_batch_output_tokens ?? null}
       `)
       .collect();
   });
@@ -1619,10 +1765,14 @@ async function _recordBatchTelemetry(db, { batches_total_delta = 0, batches_fall
 
 Rename the original 297-line body wrapped at lines 90–278 of `pipeline.js` to `_processOne(db, embedder, host, eventId, opts)` (signature unchanged); leave its internals byte-for-byte identical so the fallback path and the N=1 fast-path keep current semantics.
 
-- [ ] **Step 4: Run all biographer integration tests**
+- [ ] **Step 4: Run all biographer integration tests by file path**
 
 ```bash
-npm run test:integration -- --test-name-pattern 'biographer'
+node --test \
+  system/tests/integration/biographer-pipeline.test.js \
+  system/tests/integration/biographer-failure.test.js \
+  system/tests/integration/biographer-dedupe.test.js \
+  system/tests/integration/biographer-batch-pipeline.test.js
 ```
 
 Expected: all existing tests pass + new `cross-event entity dedup` test passes.
@@ -1715,6 +1865,49 @@ test('per-event failure isolation: malformed event #3 of 5 → 4 biographed, 1 i
     failed.some((id) => String(id) === String(ev3.id)),
     `failed_event_ids should contain ${ev3.id}; got ${JSON.stringify(failed)}`,
   );
+  // Last error must be kind-prefixed (spec §3 reconciliation) so it can be
+  // distinguished from single-event network/JSON failures.
+  const lastError = rt[0]?.value?.last_error;
+  assert.match(
+    lastError ?? '',
+    /^batch_malformed:/,
+    `expected last_error prefixed with 'batch_malformed:', got ${JSON.stringify(lastError)}`,
+  );
+
+  // Failure-isolation assertions: the malformed entity ("C", type "unicorn")
+  // and any edges originating from event #3 must NOT be present.
+  const [unicornRows] = await db
+    .query("SELECT count() AS n FROM entities WHERE name = 'C' GROUP ALL")
+    .collect();
+  assert.equal(unicornRows?.[0]?.n ?? 0, 0, 'entity "C" must not exist');
+
+  // No mentions / about / works_on / participates_in edges originate from ev3.
+  for (const kind of ['mentions', 'about', 'works_on', 'participates_in']) {
+    const [edgeRows] = await db
+      .query(
+        `SELECT count() AS n FROM edges WHERE kind = '${kind}' AND in = $eid GROUP ALL`,
+        { eid: ev3.id },
+      )
+      .collect();
+    assert.equal(
+      edgeRows?.[0]?.n ?? 0,
+      0,
+      `expected 0 ${kind} edges originating from ${ev3.id}, found ${edgeRows?.[0]?.n}`,
+    );
+  }
+
+  // occurs_with edges: any entity referenced only by ev3 must not appear at
+  // either endpoint. The only entity referenced solely by ev3 was "C"
+  // (already asserted absent above), so any (X, "C") occurs_with row would
+  // also be evidence of leakage. Direct check:
+  const [leakedOcw] = await db
+    .query(
+      "SELECT count() AS n FROM edges WHERE kind = 'occurs_with' AND " +
+        "(in.name = 'C' OR out.name = 'C') GROUP ALL",
+    )
+    .collect();
+  assert.equal(leakedOcw?.[0]?.n ?? 0, 0, 'no occurs_with edge may reference "C"');
+
   await close(db);
 });
 
@@ -1830,6 +2023,7 @@ test('episode break mid-batch: event #3 with continues_previous=false opens new 
       ],
     }),
   ]);
+  const tBeforeBatch = Date.now();
   await biographerProcessBatch(db, e, host, [ev1.id, ev2.id, ev3.id]);
   const [rows] = await db
     .query('SELECT id, episode_id FROM events ORDER BY ts ASC')
@@ -1839,6 +2033,29 @@ test('episode break mid-batch: event #3 with continues_previous=false opens new 
 
   const [epRows] = await db.query('SELECT count() AS n FROM episodes GROUP ALL').collect();
   assert.equal(epRows[0].n, 2);
+
+  // Pin the accepted `started_at` divergence (spec §4 "Accepted divergence"):
+  // the new episode's `started_at` is DB-side time::now(), NOT ev3.ts. This
+  // regression test guards against an accidental change that wired
+  // `lastEpisodeStart = eventTs` into a `createEpisode` override.
+  const [newEpRows] = await db
+    .query(
+      `SELECT started_at FROM episodes WHERE id = $epId LIMIT 1`,
+      { epId: rows[2].episode_id },
+    )
+    .collect();
+  const newEpStartedAt = new Date(newEpRows[0].started_at).getTime();
+  const ev3Ts = new Date(baseTs + 45 * 60_000).getTime();
+  // started_at should be wall-clock-near-now, not 45 min in the past.
+  assert.ok(
+    newEpStartedAt >= tBeforeBatch,
+    `new episode started_at (${newEpRows[0].started_at}) should be >= test wall-clock at batch start (${new Date(tBeforeBatch).toISOString()}); divergence from ev3.ts (${new Date(ev3Ts).toISOString()}) is the accepted behaviour`,
+  );
+  assert.ok(
+    newEpStartedAt - ev3Ts > 60_000,
+    'new episode.started_at must NOT equal ev3.ts — confirms accepted DB-side time::now() divergence',
+  );
+
   await close(db);
 });
 ```
@@ -1849,19 +2066,76 @@ Note: `recordEvent` may not accept a `ts` override — check `system/io/capture/
 await db.query(surql`UPDATE ${ev1.id} SET ts = ${new Date(baseTs)}`).collect();
 ```
 
-- [ ] **Step 2: Run the test**
+- [ ] **Step 2: Add the per-episode-group mark-UPDATE assertion**
 
-```bash
-npm run test:integration -- --test-name-pattern 'episode break mid-batch'
+The spec §3 / §7 invariant requires **exactly one UPDATE per distinct episode in the batch**. A batch spanning two episodes (this test's setup: ev1+ev2 in one episode, ev3 in another) must land exactly two `UPDATE events SET biographed_at … WHERE id IN …` statements. Add a sibling test that wraps `db.query` to count UPDATEs:
+
+```js
+test('mark step issues exactly one UPDATE per episode group (2 episodes → 2 UPDATEs)', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const baseTs = Date.now();
+  const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
+  const ev2 = await recordEvent(db, e, { source: 'cli', content: 'two' });
+  const ev3 = await recordEvent(db, e, { source: 'cli', content: 'three' });
+  // Force episode break: ev3 is 45 min after ev1; default window is 30 min.
+  await db.query(surql`UPDATE ${ev1.id} SET ts = ${new Date(baseTs)}`).collect();
+  await db.query(surql`UPDATE ${ev2.id} SET ts = ${new Date(baseTs + 5 * 60_000)}`).collect();
+  await db.query(surql`UPDATE ${ev3.id} SET ts = ${new Date(baseTs + 45 * 60_000)}`).collect();
+
+  // Wrap db.query to capture every UPDATE-mark statement issued.
+  const origQuery = db.query.bind(db);
+  const markUpdates = [];
+  db.query = (q, ...rest) => {
+    // The mark step uses a tagged-template with the literal string fragment
+    // `UPDATE events\n            SET biographed_at = time::now()` — check
+    // the rendered SQL (passing through surql tags exposes a `query` string
+    // on the QueryFuture; the cleanest match is on the raw substring).
+    const text = String(q?.text ?? q ?? '');
+    if (/UPDATE\s+events[\s\S]*biographed_at\s*=\s*time::now\(\)/i.test(text)) {
+      markUpdates.push(text);
+    }
+    return origQuery(q, ...rest);
+  };
+
+  const host = fakeHost([
+    JSON.stringify({
+      events: [
+        { event_id: String(ev1.id), entities: [], edges: [], about: [], episode_continues_previous: false, episode_summary: null },
+        { event_id: String(ev2.id), entities: [], edges: [], about: [], episode_continues_previous: true,  episode_summary: null },
+        { event_id: String(ev3.id), entities: [], edges: [], about: [], episode_continues_previous: false, episode_summary: 'closed' },
+      ],
+    }),
+  ]);
+  await biographerProcessBatch(db, e, host, [ev1.id, ev2.id, ev3.id]);
+
+  // Restore db.query so cleanup doesn't double-count.
+  db.query = origQuery;
+
+  assert.equal(
+    markUpdates.length,
+    2,
+    `expected 2 mark UPDATEs (one per episode group), got ${markUpdates.length}`,
+  );
+  await close(db);
+});
 ```
 
-If it fails because of `ts` override semantics, apply the SurrealQL fix above and re-run.
+Note: the exact mechanism to capture rendered SQL depends on the SurrealDB client's `surql` tag implementation. If `q.text` is not exposed by the JS SDK, instrument inside `_recordBatchTelemetry` callers or add a temporary counter export on `pipeline.js`. The assertion target — "exactly two UPDATEs" — is what matters; the capture mechanism is secondary.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Run the tests**
+
+```bash
+npm run test:integration -- --test-name-pattern 'episode break mid-batch|mark step issues exactly one UPDATE per episode group'
+```
+
+If the first fails because of `ts` override semantics, apply the SurrealQL fix above and re-run. If the second fails because `q.text` is not the right field on `QueryFuture`, switch to instrumenting the production code with a counter and asserting on that.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add system/tests/integration/biographer-batch-pipeline.test.js
-git commit -m "test(c1): episode break mid-batch — close+open transition without re-querying"
+git commit -m "test(c1): episode break mid-batch + per-episode-group mark UPDATE invariant"
 ```
 
 ---
@@ -2077,14 +2351,36 @@ git commit -m "test(c1): within-batch before edges chain consecutive same-episod
 
 Covers spec §1 (accumulator placement), §9 (daemon wiring change at server.js around 237–261 + 660–720), MCP-tool path preserved.
 
+**R-3 coordination.** The runtime-layer-hardening plan (R-3, see
+`docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`) splits
+`system/runtime/daemon/server.js` into per-route modules. If R-3 has
+shipped before this Phase runs, the regions cited below have moved:
+
+- Lines 237–261 (queue wiring + `queueWrap`) move to `system/runtime/daemon/boot.js` (the boot module that constructs the queue + accumulator at daemon start).
+- Lines 679–686 (Stop-hook `pendingRows` drain inside `/internal/biographer/process-pending`) move to `system/runtime/daemon/routes/biographer.js`. Edit there using the equivalent `handler({ ctx, body })` signature that R-3 introduces.
+- Lines 691–711 (`/internal/remember` handler) move to `system/runtime/daemon/routes/remember.js`. Same `handler({ ctx, body })` form.
+
+Detect R-3's presence by checking for `system/runtime/daemon/routes/biographer.js`. If the file exists, edit each piece in its new home; otherwise apply the inline edits at the line ranges cited below in `server.js`. The conceptual change is identical in both layouts — only the file paths differ.
+
 ### Task 9.1: Daemon worker accepts both payload shapes; SELECT includes `source`; accumulator wired in
 
-**Files:** `system/runtime/daemon/server.js`
+**Files:** `system/runtime/daemon/server.js` (pre-R-3), OR `system/runtime/daemon/boot.js` + `system/runtime/daemon/routes/biographer.js` + `system/runtime/daemon/routes/remember.js` (post-R-3).
 
-- [ ] **Step 1: Read the file to confirm current line numbers**
+- [ ] **Step 0: Detect R-3 layout**
 
 ```bash
+test -f system/runtime/daemon/routes/biographer.js && echo "R-3 has shipped" || echo "pre-R-3"
+```
+
+- [ ] **Step 1: Read the file(s) to confirm current line numbers**
+
+```bash
+# Pre-R-3: everything is in server.js.
 grep -n "createBiographerQueue\|queueWrap\|biographerProcess\|process-pending\|/internal/remember" system/runtime/daemon/server.js | head -20
+# Post-R-3: split across boot.js + routes/biographer.js + routes/remember.js.
+grep -n "createBiographerQueue\|queueWrap" system/runtime/daemon/boot.js 2>/dev/null | head -10
+grep -n "biographerProcess\|process-pending" system/runtime/daemon/routes/biographer.js 2>/dev/null | head -10
+grep -n "biographerProcess\|remember" system/runtime/daemon/routes/remember.js 2>/dev/null | head -10
 ```
 
 Note the line numbers — they may have drifted from the spec's `679-686`. The plan below uses **`pendingRows` SELECT site** and **`/internal/remember` enqueue site** as anchors instead of fixed line numbers so it remains correct under drift.
@@ -2142,7 +2438,11 @@ const queue = createBiographerQueue({
     const e = await idleEmbedder.get();
     const h = await getHost();
     if (payload && typeof payload === 'object' && Array.isArray(payload.eventIds)) {
-      await biographerProcessBatch(dbHandle, e, h, payload.eventIds);
+      // Pass __queueKey through opts so the race-warn log can quote the
+      // batch identity (spec §7).
+      await biographerProcessBatch(dbHandle, e, h, payload.eventIds, {
+        __queueKey: payload.__queueKey,
+      });
     } else {
       // Single-id payload (MCP-tool callers + single-event fast path).
       await biographerProcess(dbHandle, e, h, payload);
@@ -2255,17 +2555,30 @@ At server.js:394 (`createRunBiographerTool({ ... processor: queueWrap.enqueue })
 
 - [ ] **Step 7: Run existing daemon-touching integration tests**
 
+Run by file path (the `--test-name-pattern 'biographer'` filter would miss `process-pending-captures` and `conversation-capture` tests whose names don't include "biographer"):
+
 ```bash
-npm run test:integration -- --test-name-pattern 'biographer|process-pending|conversation-capture'
+node --test \
+  system/tests/integration/biographer-pipeline.test.js \
+  system/tests/integration/biographer-failure.test.js \
+  system/tests/integration/biographer-dedupe.test.js \
+  system/tests/integration/biographer-batch-pipeline.test.js
+# Then any process-pending / conversation-capture tests that exist in your tree:
+node --test $(ls system/tests/integration/*process-pending* system/tests/integration/*conversation-capture* 2>/dev/null)
 ```
 
 Expected: all pass. The `process-pending` capture and biographer-catchup tests exercise the daemon wiring end-to-end.
 
 - [ ] **Step 8: Lint + commit**
 
+Adapt the `git add` target to the layout R-3 leaves behind (one file pre-R-3, three files post-R-3):
+
 ```bash
 npm run lint
+# Pre-R-3:
 git add system/runtime/daemon/server.js
+# Post-R-3:
+# git add system/runtime/daemon/boot.js system/runtime/daemon/routes/biographer.js system/runtime/daemon/routes/remember.js
 git commit -m "feat(c1): wire batch accumulator between enqueue sites and biographer queue"
 ```
 
@@ -2275,9 +2588,18 @@ git commit -m "feat(c1): wire batch accumulator between enqueue sites and biogra
 
 Covers spec §7 (race), §12 verification gate #10.
 
-### Task 10.1: Two-batch same-source serialisation
+### Task 10.1: Two-batch same-source serialisation through the queue
 
 **Files:** `system/tests/integration/biographer-batch-race.test.js` (new)
+
+The production "per source, at most one batch in-flight at a time"
+invariant is enforced by `createBiographerQueue`, **not** by
+`biographerProcessBatch` itself. Calling `biographerProcessBatch`
+directly via `Promise.all` would only exercise SurrealDB's row-level
+concurrency and the gated mark — it would silently bypass the queue
+serialisation guarantee under test. This test instead instantiates
+`createBiographerQueue` with an instrumented worker that asserts no
+two `worker()` invocations overlap.
 
 - [ ] **Step 1: Write the test**
 
@@ -2290,6 +2612,7 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { biographerProcessBatch } from '../../cognition/biographer/pipeline.js';
+import { createBiographerQueue } from '../../cognition/biographer/queue.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
@@ -2319,7 +2642,7 @@ function hostFor(seqContents) {
   };
 }
 
-test('two batches for the same source run serially via the underlying FIFO; both fully biographed', async () => {
+test('queue serialises two same-source batches: no overlapping worker() calls; second waits for first', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
@@ -2340,15 +2663,54 @@ test('two batches for the same source run serially via the underlying FIFO; both
   });
   const h = hostFor([batchAResp, batchBResp]);
 
-  // Run both batches as concurrent promises — Promise.all does not serialise.
-  // We're verifying that even when called concurrently, the resulting state is
-  // exactly: 1 entity per name, 4 mentions, 4 occurs_with weight on (A, B),
-  // every event biographed exactly once.
-  await Promise.all([
-    biographerProcessBatch(db, e, h, [ev1.id, ev2.id]),
-    biographerProcessBatch(db, e, h, [ev3.id, ev4.id]),
-  ]);
+  // Instrumented worker: tracks the number of in-flight worker() calls.
+  // The invariant the queue is supposed to enforce is `inflight <= 1` at all
+  // times. We add a small setTimeout inside each worker() call to give a
+  // would-be parallel invocation a chance to violate the invariant if the
+  // queue is broken.
+  let inflight = 0;
+  let peakInflight = 0;
+  const workerCallOrder = [];
+  const worker = async (payload) => {
+    inflight++;
+    peakInflight = Math.max(peakInflight, inflight);
+    workerCallOrder.push(payload.__queueKey ?? String(payload));
+    try {
+      await new Promise((r) => setTimeout(r, 30));
+      await biographerProcessBatch(db, e, h, payload.eventIds);
+    } finally {
+      inflight--;
+    }
+  };
+  const queue = createBiographerQueue({ worker, dedupe: true });
 
+  // Enqueue two batch payloads through the production dedupe shape (__queueKey
+  // per spec §7 / §9). Calling enqueue twice in a row mirrors the daemon's
+  // accumulator.fire() flow.
+  const p1 = queue.enqueue({
+    kind: 'batch',
+    source: 'cli',
+    eventIds: [ev1.id, ev2.id],
+    __queueKey: `cli:${[ev1.id, ev2.id].map(String).sort().join(',')}`,
+  });
+  const p2 = queue.enqueue({
+    kind: 'batch',
+    source: 'cli',
+    eventIds: [ev3.id, ev4.id],
+    __queueKey: `cli:${[ev3.id, ev4.id].map(String).sort().join(',')}`,
+  });
+  await Promise.all([p1, p2]);
+
+  // Serialisation assertions (the keystone of this test):
+  assert.equal(
+    peakInflight,
+    1,
+    `queue must serialise worker() invocations; observed peak inflight = ${peakInflight}`,
+  );
+  assert.equal(workerCallOrder.length, 2, 'expected exactly 2 worker() invocations');
+
+  // Convergence assertions (the second-order properties that justify the
+  // serialisation invariant in production).
   const [evRows] = await db
     .query('SELECT id, biographed_at FROM events ORDER BY ts ASC')
     .collect();
@@ -2369,10 +2731,10 @@ test('two batches for the same source run serially via the underlying FIFO; both
 - [ ] **Step 2: Run the test**
 
 ```bash
-npm run test:integration -- --test-name-pattern 'two batches for the same source run serially'
+npm run test:integration -- --test-name-pattern 'queue serialises two same-source batches'
 ```
 
-Expected: passing. If `occurs_with` weight is `<4`, the entity-cascade dedup or the per-event edge emission is dropping mentions — debug `keyToId` resolution.
+Expected: passing. The keystone assertion is `peakInflight === 1` — if it observes `2`, the queue is allowing parallel `worker()` calls and the production "one-batch-per-source-in-flight" invariant is broken. If `occurs_with` weight is `<4`, the entity-cascade dedup or the per-event edge emission is dropping mentions — debug `keyToId` resolution.
 
 - [ ] **Step 3: Commit**
 
@@ -2405,9 +2767,9 @@ Replace lines 65–69 (current `### biographer` block) with:
 ### biographer
 **Per-turn consolidation: turns raw events into structured entities, edges, and (rarely) memos. Batched across consecutive events from the same source.**
 - Files: `system/cognition/biographer/pipeline.js`, `system/cognition/biographer/batch-prompt.js`, `system/cognition/biographer/batch-output.js`, `system/cognition/biographer/accumulator.js`, `system/cognition/biographer/queue.js`, `system/cognition/biographer/output.js`, `system/cognition/biographer/prompt.js`, `system/cognition/biographer/` (edges/stage1-exact/stage2-embedding/stage3-disambig/upsert-entity).
-- Trigger: `createBatchAccumulator` (source-bucketed) fires when `max_batch_size` (default 8), `debounce_ms` (default 750ms), or `max_wait_ms` (default 3000ms) hits — whichever first. Tunables live in `runtime:biographer.value.batch_config` and are re-read per flush.
+- Trigger: `createBatchAccumulator` (source-bucketed) fires when `max_batch_size` (default 8), `debounce_ms` (default 750ms), or `max_wait_ms` (default 3000ms) hits — whichever first. Tunables live in `runtime:biographer.value.batch_config` and are re-read per flush. Rollback: set `batch_config.disable = true` to short-circuit the accumulator and route every event through the pre-C1 single-event path.
 - One LLM call per batch via `biographerProcessBatch`. Per-event validation isolates failures: a malformed entry for one event does not poison the others.
-- Fallback: outer-envelope JSON parse failure, batch-validation failure, or retries-exhausted on the LLM call all fall back to looping the original single-event `biographerProcess` — never worse than today's baseline. Telemetry: `runtime:biographer.value.batches_total`, `batches_fallback`, `last_fallback_reason`.
+- Fallback: outer-envelope JSON parse failure, batch-validation failure, or retries-exhausted on the LLM call all fall back to looping the original single-event `biographerProcess` — never worse than today's baseline. Telemetry: `runtime:biographer.value.{batches_total, batches_fallback, last_fallback_reason, events_biographed_via_batch, events_biographed_via_fallback, batch_input_tokens_total, batch_output_tokens_total}`.
 - Writes: `entities` (upserted via 3-stage cascade, deduped by `(type, name_lower)` across the batch), `edges` (mentions/about/works_on/participates_in/occurs_with/before via one `store.relateAll` call), `events.biographed_at = time::now()` and `events.episode_id` (gated by `WHERE biographed_at IS NONE`).
 ```
 
@@ -2433,7 +2795,7 @@ Replace line 127:
 with:
 
 ```md
-6. **Stop hook** spawns biographer in detached subprocess. Pending events flow into a source-bucketed accumulator (defaults: `max_batch_size=8`, `debounce_ms=750`, `max_wait_ms=3000`). One LLM call per batch resolves entities + edges + per-event episode boundaries; the underlying queue serialises batches across sources. UPSERTs entities (deduped per `(type, name_lower)` per batch) + emits `edges` via `store.relateAll(...)`, sets `events.biographed_at` + `events.episode_id` per event under a gated UPDATE.
+6. **Stop hook** spawns biographer in detached subprocess. Pending events flow into a source-bucketed accumulator (defaults: `max_batch_size=8`, `debounce_ms=750`, `max_wait_ms=3000`; `disable=false`). One LLM call per batch resolves entities + edges + per-event episode boundaries; the underlying queue serialises batches across sources. UPSERTs entities (deduped per `(type, name_lower)` per batch) + emits `edges` via `store.relateAll(...)`, sets `events.biographed_at` + `events.episode_id` per event under one gated UPDATE *per episode group* in the batch (typically one group; two on mid-batch episode break). Rollback knob: `batch_config.disable=true` reverts the daemon to the per-event path.
 ```
 
 - [ ] **Step 2: Commit**
@@ -2475,6 +2837,19 @@ Expected: every existing test still passes plus four new files:
 npm run test:integration
 ```
 
+Plus explicit backwards-compat run by file path (in case `npm run test:integration` skips files whose names don't match an internal filter):
+
+```bash
+node --test \
+  system/tests/integration/biographer-pipeline.test.js \
+  system/tests/integration/biographer-failure.test.js \
+  system/tests/integration/biographer-dedupe.test.js \
+  system/tests/integration/biographer-batch-pipeline.test.js \
+  system/tests/integration/biographer-batch-occurs-with.test.js \
+  system/tests/integration/biographer-batch-before-edges.test.js \
+  system/tests/integration/biographer-batch-race.test.js
+```
+
 Expected: every existing test still passes (specifically `biographer-pipeline`, `biographer-failure`, `biographer-dedupe`, `biographer-catchup`, `biographer-process-pending-captures`) plus four new files:
 - `biographer-batch-pipeline.test.js`
 - `biographer-batch-occurs-with.test.js`
@@ -2509,15 +2884,26 @@ Verify each gate has a corresponding test or runtime check:
 1. Equivalence at N=1 → `biographerProcessBatch with [evt.id] matches single-event end-to-end behaviour` (Phase 6)
 2. Cross-event entity dedup → `cross-event entity dedup: 3 events × "Atlas"` (Phase 7)
 3. Per-event output isolation → `per-event failure isolation: malformed event #3 of 5` (Phase 7)
-4. Episode break mid-batch → `episode break mid-batch: event #3 with continues_previous=false opens new episode` (Phase 7)
+4. Episode break mid-batch → `episode break mid-batch: event #3 with continues_previous=false opens new episode` AND `mark step issues exactly one UPDATE per episode group (2 episodes → 2 UPDATEs)` (Phase 7)
 5. Source separation → `source separation: cli and discord events produce two fires` (Phase 4 accumulator)
 6. Fallback on outer JSON parse → `outer JSON parse failure triggers single-event fallback` (Phase 7)
 7. Fallback on retries exhausted → covered by the same fallback path; add a follow-up test if telemetry shows insufficient confidence (open item below)
 8. `occurs_with` per-event semantics preserved → `per-event occurs_with: 3 events each mentioning {Alice, Bob}` (Phase 8)
 9. Idempotent batch retry → covered by gated UPDATE in mark step + composite-id UPSERTs in `relateAll`; documented cost on `occurs_with` (open item below)
-10. Race serialisation → `two batches for the same source run serially via the underlying FIFO` (Phase 10)
+10. Race serialisation → `queue serialises two same-source batches: no overlapping worker() calls; second waits for first` (Phase 10)
 11. `before` edges within batch → `within-batch before edges chain` + `do not cross episode boundaries` (Phase 8)
-12. Tunable disables batching → covered by `readBatchConfig` + accumulator `config()` callback re-reading per flush; verify by setting `max_batch_size=1` in a manual sanity run
+12. Tunable disables batching → covered by `readBatchConfig` + accumulator `config()` callback re-reading per flush. **Rollback procedure**: set `batch_config.disable = true` on `runtime:biographer` (not `max_batch_size = 1`). The `disable: true` knob is the true bypass — it short-circuits the bucket/timer in `accumulator.add(id, source)` so events flow straight to `queue.enqueue(id)`, and the worker's `Array.isArray(payload?.eventIds)` check routes them through the pre-C1 `biographerProcess` path. `max_batch_size = 1` only collapses batches to size 1 — events still pay the accumulator round-trip (bucket open, debounce/cap timer, flush) and the worker still goes through `biographerProcessBatch`. Sanity rollback command (against a running daemon's DB):
+
+```surql
+-- Disable batching at runtime; takes effect within the 5s readBatchConfig
+-- cache TTL.
+UPDATE type::record('runtime', 'biographer')
+   SET value.batch_config.disable = true;
+
+-- To re-enable:
+UPDATE type::record('runtime', 'biographer')
+   SET value.batch_config.disable = false;
+```
 
 - [ ] **Step 6: Final commit if any docs/tests changed during the sweep**
 

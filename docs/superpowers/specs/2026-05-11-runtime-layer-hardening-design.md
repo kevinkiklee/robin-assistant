@@ -205,7 +205,8 @@ daemon/
 ├── heartbeat.js           from R-2
 ├── cadence-consumer.js
 ├── sessions.js
-├── lock.js, fatal.js, port.js, state.js, idle-embedder.js, introspection.js, version-handshake.js
+├── lock.js, fatal.js, port.js, idle-embedder.js, introspection.js, version-handshake.js
+│   (daemon-state lives at system/config/daemon-state.js — imported from there)
 ```
 
 ### 5.2 `ctx` shape
@@ -267,7 +268,7 @@ export const biographerRoutes = [
 
 - Lock acquire/release (from R-1).
 - Fatal handler wiring (from R-1) — installed before `acquireLock()`. `shutdown` is null-guarded so a fatal during boot doesn't crash trying to stop things that don't exist yet.
-- `state.js` write/clear.
+- Daemon-state write/clear (from `config/daemon-state.js`).
 - Signal handlers (`SIGTERM`, `SIGINT`).
 - `shutdown(signal)`: stop scheduler → stop integrations (await each `m.stop`) → close http → close db → clear state → release lock. 10s hard timer is independent of R-1's 5s fatal-path timer.
 

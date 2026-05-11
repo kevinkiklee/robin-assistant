@@ -93,6 +93,8 @@ DEFINE INDEX recall_log_reply ON recall_log FIELDS reply_event_id;
 
 No table-level migration is required for the `ranked_hits[*]` keys because that field is already `TYPE object FLEXIBLE` (`system/data/db/migrations/0001-init.surql:298`). The two new top-level fields (`reply_event_id`, `attribution`) are added in a new migration `system/data/db/migrations/0009-per-hit-reinforcement.surql`.
 
+**Cross-design note (D1 — focus-block recall):** B1 places `reply_event_id` and `attribution` at the *top level* of `recall_log`. D1 (`docs/superpowers/specs/2026-05-11-cognition-d1-focus-block-design.md`, when it lands) will place `focus_block_present` and `focus_block_tokens` under `recall_log.meta`. The two surfaces do not collide; both can co-exist without further migration.
+
 ## Section 2 — `runtime:reinforcement.config`
 
 New singleton runtime row, read once per `evaluatePending` call (no per-row hit):
@@ -129,6 +131,19 @@ Seeded by `0009-per-hit-reinforcement.surql`. Tunable without code change. Cache
 config = readReinforcementConfig(db)                     # one query, cached per tick
 mode = config.attribution_mode                           # 'hybrid' by default
 
+# Helper: every attribution object MUST carry the full §1 shape. We build a
+# common base so every code path populates every field.
+def baseAttribution(modeStr, total, used_count, dropped_hits, elapsed_ms):
+  return {
+    mode: modeStr,
+    used_count: used_count,
+    total: total,
+    similarity_threshold: config.similarity_threshold,
+    jaccard_min_overlap_tokens: config.jaccard_min_overlap_tokens,
+    dropped_hits: dropped_hits,
+    elapsed_ms: elapsed_ms,
+  }
+
 # Short-circuit: corrected rows are evaluated for outcome=corrected without
 # needing a reply lookup. The bucketing path skips them for reinforcement
 # anyway (Theme 2a writes refutes for every memo in the corrected row).
@@ -136,13 +151,13 @@ mode = config.attribution_mode                           # 'hybrid' by default
 # (`reinforcement.js` lines 52-81 + the row-walk at 88-109); the B1 pre-pass
 # runs AFTER it so we can short-circuit here.
 if row.id in correctedRowIds:
-  row.attribution = { mode: 'corrected', total: len(row.ranked_hits),
-                      used_count: 0 }
+  row.attribution = baseAttribution('corrected', len(row.ranked_hits), 0,
+                                    dropped_hits=0, elapsed_ms=0)
   continue
 
 # Empty-hits row: still evaluated_no_signal, just labelled.
 if len(row.ranked_hits) == 0:
-  row.attribution = { mode: 'no_hits', total: 0, used_count: 0 }
+  row.attribution = baseAttribution('no_hits', 0, 0, dropped_hits=0, elapsed_ms=0)
   continue
 
 # Kill switch: legacy bucketing path. Mark every hit used=true, used_via='off'
@@ -150,39 +165,55 @@ if len(row.ranked_hits) == 0:
 # semantics. This is the load-bearing reason `off` must SET used, not omit it.
 if mode == 'off':
   for hit in row.ranked_hits: hit.used = true; hit.used_via = 'off'
-  row.attribution = { mode: 'off', total: len(row.ranked_hits),
-                      used_count: len(row.ranked_hits) }
+  row.attribution = baseAttribution('off', len(row.ranked_hits),
+                                    len(row.ranked_hits),
+                                    dropped_hits=0, elapsed_ms=0)
   continue
 
+t0 = now_ms()                                            # start clock for elapsed_ms
 reply = findReplyEvent(db, row)                          # § 3.1
 if reply is null or extractAssistantBody(reply) == '':
   if config.fallback_when_no_reply:
     for hit in row.ranked_hits: hit.used = true; hit.used_via = 'fallback'
-    row.attribution = { mode: 'fallback_no_reply',
-                        total: len(row.ranked_hits),
-                        used_count: len(row.ranked_hits) }
+    used_count = len(row.ranked_hits)
   else:
     for hit in row.ranked_hits: hit.used = false
-    row.attribution = { mode: 'fallback_no_reply',
-                        total: len(row.ranked_hits), used_count: 0 }
+    used_count = 0
+  row.attribution = baseAttribution('fallback_no_reply',
+                                    len(row.ranked_hits), used_count,
+                                    dropped_hits=0,
+                                    elapsed_ms=now_ms() - t0)
   continue
 
 hits = attribute(row.ranked_hits, reply, config)         # § 3.2 — pure function
 used_count = count(h.used == true for h in hits)
+# `dropped_hits` counts hits annotated `used_via='hit_missing'` by the
+# hydration pre-pass (§3.2) — memos archived/deleted between recall and
+# reinforcement (§7.7). They are always used=false; the counter is for
+# telemetry and is computed BEFORE any mass-mark fallback overrides it.
+dropped_hits = count(h.used_via == 'hit_missing' for h in hits)
+
 if used_count == 0 and config.fallback_when_zero_used:
-  for hit in hits: hit.used = true; hit.used_via = 'fallback'
-  row.attribution = { mode: 'fallback_zero_used',
-                      total: len(hits), used_count: len(hits) }
+  for hit in hits:
+    if hit.used_via == 'hit_missing': continue          # never reinforce missing
+    hit.used = true; hit.used_via = 'fallback'
+  used_count = count(h.used == true for h in hits)
+  row.attribution = baseAttribution('fallback_zero_used', len(hits), used_count,
+                                    dropped_hits, now_ms() - t0)
+elif used_count == 0:
+  # Fallback is off and nothing matched. mode reflects telemetry-only intent.
+  row.attribution = baseAttribution('fallback_zero_used', len(hits), 0,
+                                    dropped_hits, now_ms() - t0)
 else:
-  # dominant_mode: explicit > citation > similarity. When used_count == 0
-  # and fallback is off, the mode reflects which pass last ran (always
-  # 'similarity' since the passes are gated by used-already-set, but they
-  # all ran). Used only for telemetry.
-  row.attribution = { mode: dominant_used_via(hits) ?? 'similarity',
-                      total: len(hits), used_count: used_count }
+  # dominant_mode: explicit > citation > similarity. Used only for telemetry.
+  row.attribution = baseAttribution(dominant_used_via(hits) ?? 'similarity',
+                                    len(hits), used_count,
+                                    dropped_hits, now_ms() - t0)
 row.ranked_hits = hits
 row.reply_event_id = reply.id                            # always set when reply found
 ```
+
+Every attribution object — including short-circuits — carries the same shape: `{mode, used_count, total, similarity_threshold, jaccard_min_overlap_tokens, dropped_hits, elapsed_ms}`. `similarity_threshold` and `jaccard_min_overlap_tokens` are read from `runtime:reinforcement.config` so consumers (`explain_recall`, `show_attribution_health`) can interpret `used_score` without re-querying the runtime row.
 
 The downstream bucketing (memo `signal_count += N`, `evidence_ledger` corroborate) is then driven by `used === true` *only*. Under `attribution_mode='off'`, every hit is marked `used=true, used_via='off'` — so the same filter produces legacy semantics. Under `fallback_*`, every hit is marked `used=true, used_via='fallback'` — same effect for one row.
 
@@ -204,7 +235,7 @@ Parameters: `$sid = row.session_id`; `$row_ts = row.ts`; `$win = config.reply_lo
 
 Edge cases handled by `findReplyEvent`:
 
-- **`row.session_id IS NULL`**: many `recall_log` rows have null `session_id` today because `inject.js` never sets it (see `intuitionEndpoint` lines 202-212 — only `query`, `k`, `ranked_hits`, `outcome`, `meta` are written, and `handler.js` doesn't fetch `session_id` from stdin either). Under B1, for any null-session row we use the **process-bound fallback**: pick the earliest `source='conversation'` event in `[row.ts, row.ts + win]` regardless of `meta.session_id`. This is correct for the dominant case (one active Robin-instrumented host on the box) and degrades — never *incorrectly* attributes — for the multi-host edge case (worst case: similarity threshold rejects the wrong reply's content, falling through to `fallback_zero_used`). A separate work item B1.1 — out of scope for this spec — plumbs `session_id` through the intuition path so the fallback is dead code on new rows. See §11.
+- **`row.session_id IS NULL`**: legacy `recall_log` rows (pre-B1) have null `session_id` because the old `intuitionEndpoint` never wrote it (`query`, `k`, `ranked_hits`, `outcome`, `meta` only). B1's Phase 0 plumbs `session_id` end-to-end (handler → POST body → endpoint → `recall_log` CREATE — see §11), so **new** rows always have it. For any remaining null-session row we still fall back to a **process-bound** lookup: pick the earliest `source='conversation'` event in `[row.ts, row.ts + win]` regardless of `meta.session_id`. This degrades — never *incorrectly* attributes — for the multi-host edge case (worst case: similarity threshold rejects the wrong reply's content, falling through to `fallback_zero_used`).
 - **Multiple replies in the window**: not currently possible because `captureFromTranscript` writes at most one event per Stop-hook invocation, but if it ever does, `LIMIT 1 ORDER BY ts ASC` makes the choice deterministic.
 - **Reply exists but is empty/tool-only**: the captured event content is `"USER: ...\n\nASSISTANT: "` (empty assistant text) for tool-only turns. Treated identically to "no reply" — `extractAssistantBody` (§3.2) returns `''` and attribution falls through to the `fallback_no_reply` branch (per §3 pseudocode).
 
@@ -421,6 +452,8 @@ Same as today: `outcome = 'evaluated_no_signal'`, no attribution work performed 
 
 Can't happen in `inject.js` (the merge + MMR-lite dedupe by content overlap), but `recall.js` MCP tool path is independent. If duplicate occurs, attribution scores each entry independently; `memoHitCount` would over-count by the duplicate factor *for used hits only*. Acceptable, but document in §10 as a follow-up cleanup if telemetry shows it happening at scale.
 
+Covered by unit test §8.1 #11 ("duplicate hits in `ranked_hits`"). Observability: the duplicate count surfaces via `attribution.total` minus distinct `hitRecordId` count over `ranked_hits[]`; an operator running `show_attribution_health` (Theme 4 follow-up) can spot it as `total > distinct(records)`.
+
 ## Section 8 — Test plan
 
 ### 8.1 — Unit tests
@@ -434,36 +467,40 @@ Can't happen in `inject.js` (the merge + MMR-lite dedupe by content overlap), bu
 5. **Similarity threshold floor**: hit with 1 unique token of overlap to reply, ratio = 0.5 (1/2 hit tokens) — fails `jaccard_min_overlap_tokens=2`. `used=false`.
 6. **Combined**: reply has one cited hit, two paraphrased hits, three unrelated. Asserts: `hits.map(h => h.used)` is `[true, true, true, false, false, false]`; `hits.map(h => h.used_via ?? null)` is `['citation', 'similarity', 'similarity', null, null, null]`.
 7. **Empty reply body**: `used=false` for all hits.
+8. **Duplicate hits in `ranked_hits` (§7.10)**: `ranked_hits` contains the same memo twice (e.g., `[{record:'memos:abc',rank:0}, {record:'memos:abc',rank:1}]`) with a reply that matches the content. Assert: both entries get `used=true` (attribution treats them independently); the downstream `memoHitCount` semantics still increment only **once** per pending row per distinct memo id — the existing `Map<id_str, count>` in `reinforcement.js` collapses the duplicate, so the eventual `signal_count` bump is 1, not 2. (B1 must not break this dedup; the integration counterpart asserts the bump count.)
+9. **Citation tiebreaker on rank**: two hits at the same `ts` (zero day-delta to the citation date) and the same `kind`/tag, with `rank: 0` and `rank: 1`. Reply contains the citation marker once. Assert: the rank-0 hit consumes the citation (`used=true, used_via='citation'`); the rank-1 hit stays unmatched by the citation pass.
+10. **`meta.kind = 'episode_summary'` citation**: a memo hit hydrated with `meta.kind = 'episode_summary'` plus a reply containing `[episode 2026-05-10]` (matching ts). Assert: the memo gets `used=true, used_via='citation'`. Same memo hit with `meta.kind = 'knowledge'` and the same reply: `used=false` (episode tag is reserved). The companion integration test in §8.2 creates the memo + recall_log row end-to-end and verifies the row's `attribution.mode === 'citation'`.
 
 `system/tests/unit/reinforcement-config.test.js` (new):
 
-8. Default config used when `runtime:\`reinforcement.config\`` row is missing.
-9. Partial config merges with defaults (only `similarity_threshold` set → other fields default).
-10. `attribution_mode = 'off'` → §3 pipeline skipped (verifies via stub `attribute` is never called).
+11. Default config used when `runtime:\`reinforcement.config\`` row is missing.
+12. Partial config merges with defaults (only `similarity_threshold` set → other fields default).
+13. `attribution_mode = 'off'` → §3 pipeline skipped (verifies via stub `attribute` is never called).
 
 ### 8.2 — Integration tests
 
 Extend `system/tests/integration/reinforcement-loop.test.js`:
 
-11. **Per-hit reinforce**: seed memo M with content "the eclipse on tuesday"; seed `recall_log` with two hits (M and an unrelated memo N) at `ts=now-10min`; seed `events:conversation` with content `"USER: ...\n\nASSISTANT: yeah the eclipse on tuesday was cool"` at `ts=now-9min`. Run `evaluatePending`. Assert: M.signal_count += 1; N.signal_count unchanged; M has one `evidence_ledger` corroborate row; N has zero.
-12. **Citation match**: reply contains literal `[event 2026-05-10]` referencing event E1 (with matching ts). Assert E1 `used=true, used_via='citation'` in the persisted `ranked_hits`. (E1 is an event, so no signal_count change — but the persisted `used` flag must be set.)
-13. **Correction supersedes attribution**: same setup as test 11 plus a `meta.kind='correction'` event landing in the window. Assert: row outcome = `corrected`; both memos get `evidence_ledger` refute (Theme 2a behavior); no corroborate written.
-14. **No reply event, fallback on**: seed pending row but no conversation event. Default config. Assert: row outcome = `reinforced`; M.signal_count += 1; `attribution.mode='fallback_no_reply'`; each hit has `used=true, used_via='fallback'`.
-15. **No reply event, fallback off**: same as 14 but `fallback_when_no_reply=false`. Assert: row outcome = `evaluated_no_used`; M.signal_count unchanged; `attribution.mode='fallback_no_reply'`; each hit has `used=false`.
-16. **Zero used + fallback on**: reply is `"USER: hi\n\nASSISTANT: cool"`; hits are about eclipses. With `fallback_when_zero_used=true`, falls back; `attribution.mode='fallback_zero_used'`. With it `false`, `outcome='evaluated_no_used'`.
-17. **Multiple recalls one session**: two pending rows in same session, two conversation events. Each row attributes against its own reply. Verify pairing by the §7.3 windowing rule.
-18. **Backward compat**: `recall_log` rows pre-dating B1 (with no `attribution_mode` set anywhere) still get processed by today's bucketing when `attribution_mode='off'` is set. Specifically: pre-existing rows with `outcome='pending'` and old `ranked_hits` shape (no `used` field) → with mode `off`, treated exactly as before. (See §9.)
+14. **Per-hit reinforce**: seed memo M with content "the eclipse on tuesday"; seed `recall_log` with two hits (M and an unrelated memo N) at `ts=now-10min`; seed `events:conversation` with content `"USER: ...\n\nASSISTANT: yeah the eclipse on tuesday was cool"` at `ts=now-9min`. Run `evaluatePending`. Assert: M.signal_count += 1; N.signal_count unchanged; M has one `evidence_ledger` corroborate row; N has zero.
+15. **Citation match**: reply contains literal `[event 2026-05-10]` referencing event E1 (with matching ts). Assert E1 `used=true, used_via='citation'` in the persisted `ranked_hits`. (E1 is an event, so no signal_count change — but the persisted `used` flag must be set.)
+16. **Episode-citation integration (§7 cross-cut, mirrors unit #10)**: create a memo with `meta.kind = 'episode_summary'` and a matching `recall_log` row; seed a reply containing `[episode YYYY-MM-DD]` whose date matches the memo's `ts`. Run `evaluatePending`. Assert: `recall_log.attribution.mode === 'citation'`; the memo hit's persisted `used === true` and `used_via === 'citation'`; the memo's `signal_count` was bumped by exactly 1 and one `evidence_ledger` corroborate row exists for it.
+17. **Correction supersedes attribution**: same setup as test 14 plus a `meta.kind='correction'` event landing in the window. Assert: row outcome = `corrected`; both memos get `evidence_ledger` refute (Theme 2a behavior); no corroborate written.
+18. **No reply event, fallback on**: seed pending row but no conversation event. Default config. Assert: row outcome = `reinforced`; M.signal_count += 1; `attribution.mode='fallback_no_reply'`; each hit has `used=true, used_via='fallback'`.
+19. **No reply event, fallback off**: same as 18 but `fallback_when_no_reply=false`. Assert: row outcome = `evaluated_no_used`; M.signal_count unchanged; `attribution.mode='fallback_no_reply'`; each hit has `used=false`.
+20. **Zero used + fallback on**: reply is `"USER: hi\n\nASSISTANT: cool"`; hits are about eclipses. With `fallback_when_zero_used=true`, falls back; `attribution.mode='fallback_zero_used'`. With it `false`, `outcome='evaluated_no_used'`.
+21. **Multiple recalls one session**: two pending rows in same session, two conversation events. Each row attributes against its own reply. Verify pairing by the §7.3 windowing rule.
+22. **Backward compat**: `recall_log` rows pre-dating B1 (with no `attribution_mode` set anywhere) still get processed by today's bucketing when `attribution_mode='off'` is set. Specifically: pre-existing rows with `outcome='pending'` and old `ranked_hits` shape (no `used` field) → with mode `off`, treated exactly as before. (See §9.)
 
 ### 8.3 — Verification gates (mirror Theme 2a §8)
 
-19. **Per-hit corroborate**: with one used memo hit and one unused, exactly one `evidence_ledger` corroborate row is written (the used one).
-20. **Mode telemetry recorded**: every evaluated row has `attribution.mode` set; values in `{explicit, citation, similarity, no_reply, fallback_zero_used, fallback_no_reply, no_hits, corrected, off}`.
-21. **Idempotence**: running `evaluatePending` twice with no new pending rows is a no-op (already guarded by `outcome != 'pending'` filter — verify it still holds).
-22. **Verify-design-assumptions guard 12 carried forward** (`system/runtime/scripts/verify-design-assumptions.js:381-456` — function `gateReinforceCountBucket`): the existing test (3 pending rows referencing the same memo, no reply event) currently expects `signal_count += 3` regardless of B1. To preserve that invariant in `attribution_mode='off'` mode (the default seeded value at land time), the gate is run with the runtime config explicitly set to `'off'`. Add a new gate 12b that runs the same setup under `attribution_mode='hybrid'`, seeds a matching conversation event with reply body containing the memo content (so similarity matches across all three rows), and asserts `signal_count += 3` again. A second variant of 12b seeds an empty reply with `fallback_when_zero_used=false` and asserts `signal_count` is **unchanged**.
+23. **Per-hit corroborate**: with one used memo hit and one unused, exactly one `evidence_ledger` corroborate row is written (the used one).
+24. **Mode telemetry recorded**: every evaluated row has `attribution.mode` set; values in `{explicit, citation, similarity, no_reply, fallback_zero_used, fallback_no_reply, no_hits, corrected, off}`.
+25. **Idempotence**: running `evaluatePending` twice with no new pending rows is a no-op (already guarded by `outcome != 'pending'` filter — verify it still holds).
+26. **Verify-design-assumptions guard 12 carried forward** (`system/runtime/scripts/verify-design-assumptions.js:381-456` — function `gateReinforceCountBucket`): the existing test (3 pending rows referencing the same memo, no reply event) currently expects `signal_count += 3` regardless of B1. To preserve that invariant in `attribution_mode='off'` mode (the default seeded value at land time), the gate is run with the runtime config explicitly set to `'off'`. Add a new gate 12b that runs the same setup under `attribution_mode='hybrid'`, seeds matching conversation events with reply bodies containing the memo content (so similarity matches across all three rows), uses **distinct `session_id`s per pending row** so the §7.3 pairing rule resolves each row to its own reply, and asserts `signal_count += 3` again. A second variant of 12b seeds empty/unrelated replies with `fallback_when_zero_used=false` and asserts `signal_count` is **unchanged** and `summary.no_used === 3`.
 
 ## Section 9 — Rollout / migration
 
-**Two-stage ship.** The migration seeds `attribution_mode = 'off'` (legacy-equivalent — verified by integration test 18). The rollout sequence below then flips the runtime config to `'hybrid'` once telemetry is in place. This split is deliberate: it lets the schema land with zero behavior change, so the code-and-config flip is a single one-line operation reversible by another one-line operation.
+**Two-stage ship.** The migration seeds `attribution_mode = 'off'` (legacy-equivalent — verified by integration test 22). The rollout sequence below then flips the runtime config to `'hybrid'` once telemetry is in place. This split is deliberate: it lets the schema land with zero behavior change, so the code-and-config flip is a single one-line operation reversible by another one-line operation.
 
 The eventual steady-state defaults are `attribution_mode = 'hybrid'`, `fallback_when_no_reply = true`, `fallback_when_zero_used = true`. That combination is a strict subset of today's reinforcement for any row where attribution fails (it falls back to the same all-hits-credited behavior) and a stricter, more accurate version for any row where it succeeds. We accept the asymmetry because gradually narrowing credit is the point of the change.
 
@@ -497,16 +534,16 @@ UPSERT runtime:`reinforcement.config` SET value = {
 };
 ```
 
-No backfill on existing `recall_log` rows. Rows with `outcome='pending'` written before the upgrade get evaluated by the new code path — they will hit "no reply event" almost certainly (the conversation event predates the indexing) and fall back to today's behavior. Net effect: nothing for old rows; new rows get attribution. (Verified by integration test 18.)
+No backfill on existing `recall_log` rows. Rows with `outcome='pending'` written before the upgrade get evaluated by the new code path — they will hit "no reply event" almost certainly (the conversation event predates the indexing) and fall back to today's behavior. Net effect: nothing for old rows; new rows get attribution. (Verified by integration test 22.)
 
 ### 9.2 — Rollout sequence
 
-1. Land migration `0009-per-hit-reinforcement.surql` with seed `attribution_mode='off'` (§9.1). Code path is dormant; existing reinforcement tests pass unchanged. Verified by integration test 18.
-2. Land the attribution pipeline (§3) + `attribute.js` + `reinforcement-config.js`. With `attribution_mode='off'` still in the runtime row, the new code marks every hit `used=true, used_via='off'` and the bucketing logic (§4) reproduces today's behavior bit-for-bit (verified by integration test 18 again, post-pipeline).
+1. Land migration `0009-per-hit-reinforcement.surql` with seed `attribution_mode='off'` (§9.1). Code path is dormant; existing reinforcement tests pass unchanged. Verified by integration test 22.
+2. Land the attribution pipeline (§3) + `attribute.js` + `reinforcement-config.js`. With `attribution_mode='off'` still in the runtime row, the new code marks every hit `used=true, used_via='off'` and the bucketing logic (§4) reproduces today's behavior bit-for-bit (verified by integration test 22 again, post-pipeline).
 3. Land the Theme 4 hook extension: extend `explain_recall` to surface `used`, `used_via`, `attribution.mode` per row. Add `show_attribution_health` introspection rollup (`{mode: count}` over last 24 h) keyed off `recall_log.attribution.mode`.
 4. On Kevin's instance, flip the runtime config: `UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid';`. Watch `show_attribution_health` for one week. Healthy distribution looks like: majority of rows in `citation` + `similarity`, low single-digit-% in `fallback_no_reply` and `fallback_zero_used`, near-zero in `hit_missing`-dominated rows.
 5. After the week, flip the seed value in `0009-per-hit-reinforcement.surql` *for new installs only* — existing installs already have their runtime row written and the migration is checksum-pinned (`migrate.js:51-55` rejects edits to already-applied migrations). Bumping the seed therefore only affects fresh installs.  (Optional: emit a one-off "config drift" migration `0010-reinforcement-mode-default-hybrid.surql` that runs `UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid' WHERE value.attribution_mode = 'off';` if we want existing instances to roll forward too.)
-6. Track B1.1 (`session_id` plumbing — §11) as a separate PR; revisit timing when the `fallback_no_reply` rate stays elevated or when multi-host scenarios become common.
+6. Monitor the `fallback_no_reply` and `'__null__'`-bucket rates. With Phase 0 plumbing landed, only legacy pre-B1 rows should hit the `'__null__'` fallback; if new rows start landing there, investigate (most likely a host that bypasses the canonical hook surface).
 
 ### 9.3 — Rollback path
 
@@ -519,8 +556,8 @@ No backfill on existing `recall_log` rows. Rows with `outcome='pending'` written
 - `system/data/db/migrations/0009-per-hit-reinforcement.surql` — schema + seed (§9.1).
 - `system/cognition/intuition/attribute.js` — pure module exporting `attribute(hits, replyBody, config)`. No DB imports.
 - `system/cognition/intuition/reinforcement-config.js` — `readReinforcementConfig(db)`, cached per tick.
-- `system/tests/unit/reinforcement-attribute.test.js` — §8.1 tests 1-7.
-- `system/tests/unit/reinforcement-config.test.js` — §8.1 tests 8-10.
+- `system/tests/unit/reinforcement-attribute.test.js` — §8.1 tests 1-10 (explicit/citation/similarity passes, combined, empty, duplicate-hit §7.10, citation tiebreaker, episode-tag).
+- `system/tests/unit/reinforcement-config.test.js` — §8.1 tests 11-13.
 - (Integration tests live in the existing `reinforcement-loop.test.js`.)
 
 **Modified:**
@@ -533,11 +570,16 @@ No backfill on existing `recall_log` rows. Rows with `outcome='pending'` written
   - Persist `ranked_hits`, `attribution`, `reply_event_id` in the outcome UPDATE (§3.3).
   - Short-circuit attribution for `corrected` rows (set `attribution.mode='corrected'`).
 - `system/cognition/intuition/inject.js`:
-  - **No behavior change required for B1.** The hit content is still hydrated from `events`/`memos` at reinforcement time (§3.2). Storing `content` in `ranked_hits` at recall time would save the hydration query but inflates `recall_log` row size — defer until telemetry justifies it.
-  - **Recommended ancillary fix (B1.1, separable PR):** pass `session_id` through `intuitionEndpoint` and into the `recall_log` CREATE. Today the CREATE statement (`inject.js` lines 202-212) omits `session_id`, and `intuitionHandler` (`handler.js`) doesn't even fetch it from stdin despite Claude Code providing it (see `system/io/hooks/session-start.js:22-26` for the canonical extraction). Plumbing it through: extract from stdin in `handler.js`, include in the POST body to `/internal/intuition`, accept in the daemon endpoint (`server.js:897-920`), pass into `intuitionEndpoint`, include `session_id` in the recall_log CREATE. Same fix unblocks `getSessionId: () => null` in `server.js:391`. Tracked separately because it touches the hook surface.
+  - Accept a `sessionId` arg on `intuitionEndpoint`; include `session_id: sessionId ?? null` in the `recall_log` CREATE. This is the schema-side half of the session_id plumbing the plan's Phase 0 owns (originally tracked as a separable "B1.1" follow-up in spec §11; the plan promotes it to a Phase 0 pre-req because B1's batched reply lookup degrades without it).
+  - No other behavior change required for B1. Hit content stays hydrated from `events`/`memos` at reinforcement time (§3.2); storing `content` in `ranked_hits` at recall time would save the hydration query but inflates `recall_log` row size — defer until telemetry justifies it.
+- `system/cognition/intuition/handler.js`:
+  - Extract `session_id` from stdin (mirror `system/io/hooks/session-start.js:22-26`) and include in the POST body to `/internal/intuition`. Same Phase 0 pre-req. Closes the surface called out in spec §11 ("B1.1").
+- `system/runtime/daemon/server.js` (or, post-R-3, `system/runtime/daemon/routes/intuition.js` + `routes/recall.js`):
+  - Accept `session_id` from the `/internal/intuition` POST body; forward to `intuitionEndpoint({ sessionId })`.
+  - Replace the stub `getSessionId: () => null` (server.js:391) on the MCP recall tool factory with a closure that reads the active hook session id (`() => sessions.active?.session_id ?? null`).
 - `system/data/db/migrate.js`: no change needed. The runner reads `*.surql` files filtered + sorted alphabetically (`migrate.js:36`), extracts the leading version digits (`parseVersion`, `migrate.js:21-25`), and applies new files in order. Versions `0001..0008` are already taken (`0001-init`, three profile-specific `0002-embeddings-*`, plus `0003`..`0008` for evidence-ledger, action-trust-ledger, cadence, compaction, arcs, doctor). B1's migration must therefore use version `0009` — hence the filename `0009-per-hit-reinforcement.surql`.
 - `system/io/mcp/tools/explain-recall.js`: surface `used`, `used_via`, `used_score`, `attribution`, `reply_event_id` in the response. Continue redacting private hits as today.
-- `system/runtime/scripts/verify-design-assumptions.js`: add gate 12b (per-hit-used invariant, §8.3-22).
+- `system/runtime/scripts/verify-design-assumptions.js`: add gate 12b (per-hit-used invariant, §8.3-26).
 - `docs/architecture.md`: update the §"A typical agent turn" item 9 to mention per-hit attribution. Update the diagram "Reinforcement" line to reference per-hit credit.
 - `docs/faculties.md`: extend §reinforcement to describe the attribution pass and config knobs.
 
@@ -545,8 +587,8 @@ No backfill on existing `recall_log` rows. Rows with `outcome='pending'` written
 
 These are real ambiguities the design *acknowledges and defers*; not gaps the author missed.
 
-- **`recall_log.session_id` plumbing (B1.1).** The intuition hook never sets `session_id` on the `recall_log` row (verified: `inject.js` line 204-210; `handler.js` doesn't fetch it from stdin either, despite Claude Code passing it). This makes §3.1's session-bucketed reply lookup degrade to a global `ts` window scan. Fix is mechanical but touches the hook surface — split into a separate PR (B1.1) so B1 doesn't grow. Until B1.1 lands, attribution still works but is less precise (uses earliest conversation event in the time window regardless of session, which is fine for the typical one-active-session-per-host case).
-- **`getSessionId: () => null` in the MCP recall tool path.** `system/runtime/daemon/server.js:391` passes a stub. Same root cause as B1.1; same fix.
+- **`recall_log.session_id` plumbing.** Originally tracked as the separable "B1.1" follow-up; the implementation plan promotes it to **Phase 0** of B1 itself, because the §3.1 batched reply lookup degenerates to a `'__null__'` bucket without it and the integration tests would ship in a known-to-degrade shape. The mechanical change spans `handler.js` (read stdin), `server.js`/`routes/intuition.js` (forward body field), and `inject.js` (write into `recall_log`). With Phase 0 landed, the `'__null__'` bucket in §3.1 is dead code on new rows and only catches the legacy pre-B1 rows that pre-dated the indexing.
+- **`getSessionId: () => null` in the MCP recall tool path.** `system/runtime/daemon/server.js:391` passes a stub. Same root cause; same Phase 0 fix.
 - **Hit content storage at recall time.** Storing `content` directly in `ranked_hits[]` would eliminate the hydration query in §3.2 but inflate `recall_log` row size (each row caps at `k=6` hits × up to ~600 chars per hit = ~4KB more per row). Defer until either (a) hydration becomes a measurable hot spot, or (b) we want to evaluate against memos that have since been deleted (archived hits are currently lost from attribution per §7.7).
 - **Per-hit refutation on correction.** Theme 2a's open question #2 — same status. B1 deliberately does not narrow refutation.
 - **Per-session reinforcement dedup.** Theme 2a open question #1 carries over: a memo cited twice in one session still gets two corroborates. Validate against telemetry first.
@@ -575,8 +617,8 @@ Short engineering view (the operational rollout sequence lives in §9.2). Land-o
 
 1. Schema migration `0009-per-hit-reinforcement.surql` (additive; seed `attribution_mode='off'`).
 2. `attribute.js` + `reinforcement-config.js` + unit tests (§8.1). No production behavior change.
-3. Wire into `reinforcement.js` behind the `off`/`hybrid` switch. Integration tests (§8.2 #11-18). Production still in `off`.
-4. Verify gate 12b (§8.3-22).
+3. Wire into `reinforcement.js` behind the `off`/`hybrid` switch. Integration tests (§8.2 #14-22). Production still in `off`.
+4. Verify gate 12b (§8.3-26).
 5. `explain_recall` extension + `show_attribution_health` rollup (Theme 4 follow-up).
 6. Runtime config flip on Kevin's instance via `UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid';` (after one week of dogfood under #5). See §9.2 step 5 for the question of whether to ship a follow-up "config drift" migration for existing instances.
 

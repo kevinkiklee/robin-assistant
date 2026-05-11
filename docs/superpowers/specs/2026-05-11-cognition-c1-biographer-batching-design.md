@@ -148,9 +148,16 @@ existing `config` object that already holds `stage2_high_threshold`,
 {
   "max_batch_size": 8,
   "debounce_ms": 750,
-  "max_wait_ms": 3000
+  "max_wait_ms": 3000,
+  "disable": false
 }
 ```
+
+`disable: true` is the rollback bypass (see §9). When set, the
+accumulator's `add(id, source)` short-circuits to
+`queue.enqueue(id)` directly (skipping the per-source bucket + timers
+entirely) and the worker routes the single-id payload through the
+pre-C1 `biographerProcess` path.
 
 Re-read on every accumulator flush. A new `DEFAULT_BATCH_CONFIG`
 constant in `pipeline.js` provides fallback values; `ensureRuntime`
@@ -292,21 +299,31 @@ validator. A new `validateBiographerBatchOutput(o)` wrapper:
     (`missing[]` non-empty), each omitted id is recorded as
     `missing_in_batch_output` and left unmarked for the next drain.
 - The valid subset's DB writes are sequenced as: all entity upserts
-  → `store.relateAll` for all edges → a single
-  `UPDATE events SET biographed_at = … WHERE id IN $unmarkedIds AND
-  biographed_at IS NONE` mark. The mark step is one statement against
-  the filtered id set; no per-event `UPDATE` loop. This is not a
-  single SurrealDB transaction (see §7 — `relateAll` chunks have their
-  own inner BEGIN/COMMIT); the guarantee is "writes happen in this
-  order under `withTxRetry`," and partial-batch failures are recovered
-  on re-drain via idempotent semantics described in §7.
+  → `store.relateAll` for all edges → the post-batch mark step. The
+  mark step groups valid events by their final `episodeIdForEvent`
+  (typically 1 group; 2 if an episode broke mid-batch; rarely more) and
+  issues **one `UPDATE` per group**:
+  `UPDATE events SET biographed_at = time::now(), episode_id = $epId
+  WHERE id IN $idsForEpisode AND biographed_at IS NONE`. Each
+  per-group UPDATE runs inside a single `withTxRetry`. No per-event
+  `UPDATE` loop. This is not a single SurrealDB transaction (see §7 —
+  `relateAll` chunks have their own inner BEGIN/COMMIT, and each
+  per-episode UPDATE is its own statement); the guarantee is "writes
+  happen in this order under `withTxRetry`," and partial-batch failures
+  are recovered on re-drain via idempotent semantics described in §7.
 
 Reconciliation with current `recordFailure`:
 
-- Today `recordFailure` writes one `failed_event_ids` entry per event.
+- Today `recordFailure` writes one `failed_event_ids` entry per event
+  plus the most recent `value.last_error` (the raw `error.message`).
 - Batched mode calls `recordFailure(db, eventId, err)` once per
   malformed/missing entry (existing function reused — `array::distinct`
-  on the runtime field already dedups).
+  on the runtime field already dedups). The `err.message` is prefixed
+  with the failure-kind so `value.last_error` retains the cause:
+  `missing_in_batch_output: <event_id>` for entries the LLM dropped,
+  and `batch_malformed: <validator-error>` for entries that failed
+  per-event validation. Without the prefix the kinds are indistinguishable
+  from network/JSON errors written by the single-event path.
 - Batch-level LLM failure (all retries exhausted): the *fallback* runs
   per-event (§8); recordFailure happens inside each per-event path as
   it does today.
@@ -381,10 +398,14 @@ swept by the existing `closeStaleEpisodes` heartbeat (10 min, per
 newly created episode in this loop carries the wall-clock `now` as its
 `started_at`, while the in-code `lastEpisodeStart = eventTs` reflects
 the event's `ts`. For batches over fresh events these match closely;
-for catchup over very old events they diverge. The divergence is
-isolated to the in-loop window check for the current batch only — the
-next batch reads the DB value via `findActiveEpisode` — so it does not
-accumulate. No code change to `createEpisode` is proposed by C1.
+for catchup over very old events they diverge. **Accepted divergence**:
+C1 does not change `createEpisode`. The divergence is isolated to the
+in-loop window check for the current batch only — the next batch reads
+the DB value via `findActiveEpisode` — so it does not accumulate.
+A regression test in Phase 7 pins today's behaviour: after a mid-batch
+break, the new episode row's `started_at` equals the DB-side
+`time::now()` (not the breaking event's `ts`), and the next batch's
+window check reads that DB value via `findActiveEpisode`.
 
 **Rejected alternative:** ask the LLM to mark break points. Worse signal
 quality (LLM doesn't know `episode_window_minutes`), more prompt tokens
@@ -519,24 +540,36 @@ batch awareness).
 
 ## Section 7 — Idempotency + race
 
-`biographed_at` marks remain per-event. The write looks like:
+`biographed_at` marks remain per-event. Because different events in
+the same batch can land in different episodes (mid-batch break, §4), a
+single `WHERE id IN …` UPDATE cannot bind one `episode_id` for all of
+them. The mark step instead groups valid events by their final
+`episodeIdForEvent` and issues one UPDATE per group:
 
 ```
 UPDATE events
-   SET biographed_at = time::now(), episode_id = $episodeId
- WHERE id IN $unmarkedIds AND biographed_at IS NONE
+   SET biographed_at = time::now(), episode_id = $epId
+ WHERE id IN $idsForEpisode AND biographed_at IS NONE
 ```
 
-Issued once per batch with `$unmarkedIds` = events whose per-event
-output validated and whose edge/episode writes succeeded. The UPDATE
-returns the set of rows it actually modified (those whose
-`biographed_at` was `NONE` at update time); any input id not in the
-returned set was raced — biographed by another path between our read
-and our write. The log extends the existing single-event message:
+Typical batches yield one group; mid-batch episode breaks yield two.
+Each per-group UPDATE runs inside `withTxRetry`. The UPDATE returns
+the rows it actually modified (those whose `biographed_at` was `NONE`
+at update time); any input id absent from the returned set was raced
+— biographed by another path between our read and our write. Race
+counting sums the gap across all per-episode groups. The log extends
+the existing single-event message:
 `biographer race detected on <raced_count>/<intended_count> events in
-batch <batchKey>`. Raced events are not re-attempted (they're already
-biographed); the entity / edge writes we did for them are redundant
-but idempotent.
+batch <batchKey>`, where `batchKey = payload.__queueKey` (see §9 —
+`__queueKey = '<source>:<sorted_ids_joined>'`). Raced events are not
+re-attempted (they're already biographed); the entity / edge writes
+we did for them are redundant but idempotent.
+
+**Idempotent-mark invariant**: for each distinct episode `$epId` in the
+batch, exactly one `UPDATE events SET biographed_at = time::now(),
+episode_id = $epId WHERE id IN $idsForEpisode AND biographed_at IS NONE`
+runs inside `withTxRetry`. The `IS NONE` guard makes the UPDATE safe to
+re-run on retry — already-marked events are silently filtered out.
 
 **Race expansion analysis.**
 
@@ -587,10 +620,25 @@ same outer retry. This is consistent with how the existing single-event
 pipeline writes (`pipeline.js:215-217` for edges, `:248-257` for the
 mark).
 
-**Per-event `biographed_at` marking is still individual**: the `WHERE
-id IN $ids` form just batches the writes; each event row still gets its
-own `biographed_at` timestamp. Tests that count
+**Per-event `biographed_at` marking is still individual**: the
+per-episode `WHERE id IN $idsForEpisode` form (see §3, §7 invariant
+above) just batches the writes within an episode group; each event row
+still gets its own `biographed_at` timestamp. Tests that count
 `SELECT biographed_at FROM events` see no shape change.
+
+**`evidence_signals` ordering**: `addEvidence` rows are append-only and
+are *not* idempotent on `(memo_id, source_event, reason)` today.
+Calling `addEvidence` before the gated mark UPDATE would double-count
+the ledger if the mark fails terminally and the events get re-queued
+(the second drain re-runs `addEvidence` and adds another row per
+signal). To keep `evidence_signals` consistent with the
+"writes-then-mark" ordering used everywhere else, the batched path
+calls `addEvidence` **after** the successful per-episode mark UPDATE
+returns, inside the same `withTxRetry` flow. (The pre-existing
+single-event path at `pipeline.js:222-245` has the same ordering bug;
+C1 magnifies the blast radius because one batched call can write N
+signals at once. The fix lands in both paths — see Phase 7 of the
+plan.)
 
 **Partial-batch DB failure** (entity upserts succeeded, edges partially
 wrote, mark step crashed):
@@ -629,16 +677,41 @@ Per-entry failure inside a successful batch call uses the partial-success
 path from §3 (not this fallback) — only the bad entries get
 re-attempted next drain.
 
-Telemetry counter (added to `runtime:biographer.value`):
+Telemetry counters (added to `runtime:biographer.value`). The
+batched-LLM `response.usage` shape is the existing `invokeLLM` return
+contract — `r.usage.input_tokens` / `r.usage.output_tokens` (see
+`system/cognition/biographer/pipeline.js:109-115` and
+`system/runtime/hosts/claude-code.js:77-94`). Token sums let downstream
+queries derive cost-per-batch and cache-hit ratios:
 
 ```json
 {
   "batches_total": <n>,
   "batches_fallback": <n>,
+  "last_batch_size": <n>,
   "last_fallback_reason": "network" | "outer_json" | "batch_validation",
-  "last_fallback_at": <iso>
+  "last_fallback_at": <iso>,
+
+  "events_biographed_via_batch": <n>,
+  "events_biographed_via_fallback": <n>,
+
+  "batch_input_tokens_total": <n>,
+  "batch_output_tokens_total": <n>,
+  "last_batch_input_tokens": <n>,
+  "last_batch_output_tokens": <n>
 }
 ```
+
+`events_biographed_via_batch` increments by `validEvents.length` on a
+successful batched call; `events_biographed_via_fallback` increments by
+the count of events that the per-event fallback successfully biographed.
+Their ratio is the headline cost-savings metric ("how many events did
+we biography through the batch hot path vs. fall back to single
+calls"). Token sums update only on the successful batched call (the
+per-event fallback path already updates its own `last_run_at` on each
+single call but does not need separate counters — the existing
+single-event behaviour is preserved). See §11 for example SurrealQL
+that reads the recent-window averages.
 
 ## Section 9 — Backwards-compat
 
@@ -675,7 +748,11 @@ const queue = createBiographerQueue({
     const e = await idleEmbedder.get();
     const h = await getHost();
     if (Array.isArray(payload?.eventIds)) {
-      await biographerProcessBatch(dbHandle, e, h, payload.eventIds);
+      // Pass __queueKey through opts so the race-warn log can quote the
+      // batch identity (see §7 idempotent-mark invariant).
+      await biographerProcessBatch(dbHandle, e, h, payload.eventIds, {
+        __queueKey: payload.__queueKey,
+      });
     } else {
       // single-id payload — for MCP-tool callers that bypass the accumulator.
       await biographerProcess(dbHandle, e, h, payload);
@@ -687,10 +764,15 @@ const queue = createBiographerQueue({
 const accumulator = createBatchAccumulator({
   config: () => readBatchConfig(dbHandle),       // runtime:biographer.batch_config
   fire: (eventIds, source) => {
-    const payload = { kind: 'batch', source, eventIds };
-    // batchKey = source + ':' + sorted eventIds joined; stable across
-    // duplicate-fire of the same batch.
-    payload.__queueKey = `${source}:${[...eventIds].sort().join(',')}`;
+    const sorted = [...eventIds].sort();
+    const payload = {
+      kind: 'batch',
+      source,
+      eventIds: sorted,
+      // batchKey = source + ':' + sorted eventIds joined; stable across
+      // duplicate-fire of the same batch.
+      __queueKey: `${source}:${sorted.join(',')}`,
+    };
     return queueWrap.enqueue(payload);
   },
 });
@@ -732,8 +814,23 @@ keep its current semantics.
 **Hard-cut versus gradual rollout:** hard-cut to batched as the default
 path *with* the single-event fallback still wired through the same
 worker. There's no flag-flip period; the fallback covers correctness.
-Tunables (`runtime:biographer.batch_config`) let an operator effectively
-disable batching by setting `max_batch_size = 1` — useful for debugging.
+
+Tunables (`runtime:biographer.batch_config`) provide two rollback levers:
+
+- `max_batch_size = 1` makes every batch degenerate to N=1, so each LLM
+  call carries one event. Events still flow through the accumulator
+  (paying the bucket + debounce/cap timer cost) before reaching the
+  queue.
+- `disable: true` short-circuits the accumulator entirely:
+  `accumulator.add(id, source)` calls `queue.enqueue(id)` directly,
+  bypassing the bucket and timers. The worker's
+  `Array.isArray(payload?.eventIds)` check then routes the single-id
+  payload through the existing `biographerProcess` path. This is the
+  true bypass — useful when debugging the accumulator itself or when
+  the operator wants the pre-C1 behaviour byte-for-byte.
+
+The `batch_config` row defaults to `disable: false`. Both knobs are
+re-read per flush.
 
 ## Section 10 — Test plan + rollout
 
@@ -814,10 +911,14 @@ Rollout sequence:
    validator (§3) + cascade dedup (§5). Wire the accumulator into the
    daemon enqueue sites. Hard-cut.
 4. **PR 4 — `before` edge + telemetry counters**: emit batch-internal
-   `before` edges (§6) and the `batches_total` / `batches_fallback`
-   runtime fields (§8). `DEFAULT_BATCH_CONFIG` tunables already
-   shipped in PR 3; this PR exposes the per-PR telemetry surface for
-   later analysis.
+   `before` edges (§6) and the full telemetry suite on
+   `runtime:biographer.value` — `batches_total`, `batches_fallback`,
+   `last_batch_size`, `last_fallback_reason`, `last_fallback_at`,
+   `events_biographed_via_batch`, `events_biographed_via_fallback`,
+   `batch_input_tokens_total`, `batch_output_tokens_total`,
+   `last_batch_input_tokens`, `last_batch_output_tokens` (§8).
+   `DEFAULT_BATCH_CONFIG` tunables already shipped in PR 3; this PR
+   exposes the per-PR telemetry surface for later analysis.
 
 Each PR is independently revertable. PRs 1–2 are no-op behaviourally;
 PR 3 is the real switch.
@@ -853,6 +954,27 @@ more off the input side; current single-event prompt also benefits
 from cache but pays a per-call invocation overhead that batching
 eliminates.
 
+**Recent-window telemetry queries** (use these in a 1-week health
+check; the counters land via §8 telemetry):
+
+```surql
+-- Average batch size + average input tokens per batch:
+SELECT
+  (value.events_biographed_via_batch    / value.batches_total) AS avg_batch_size,
+  (value.batch_input_tokens_total       / value.batches_total) AS avg_input_tokens,
+  (value.batch_output_tokens_total      / value.batches_total) AS avg_output_tokens,
+  (value.batches_fallback               / value.batches_total) AS fallback_ratio,
+  (value.events_biographed_via_batch    /
+    (value.events_biographed_via_batch + value.events_biographed_via_fallback)) AS batch_share
+FROM runtime:biographer LIMIT 1;
+```
+
+`batch_share` close to 1 confirms the hot path is dominated by batched
+calls; a falling `avg_batch_size` over a week signals the
+`max_batch_size` cap is leaving headroom (consider bumping). A rising
+`fallback_ratio` (> 0.05) signals prompt-shape or output-shape issues
+that need investigation.
+
 ## Section 12 — Verification gates
 
 1. **Equivalence at N=1:** existing
@@ -886,19 +1008,26 @@ eliminates.
    `about` edge count unchanged, `works_on` edge count unchanged.
    `occurs_with` weights may be doubled for affected pairs (documented
    cost from §7; assert weight ≤ 2× baseline).
-10. **Race serialisation:** when a first batch is mid-flight and a
-    second batch worth of events for the same source enqueues, the
-    second batch fires only after the first completes, and all events
-    in both batches end up biographed exactly once (no duplicate
-    `biographed_at` updates, no double-emitted `mentions` rows for the
-    same `(event, entity)` pair).
+10. **Race serialisation:** the queue's `worker()` is never called twice
+    concurrently for the same source. Verified by instrumenting an
+    in-test `createBiographerQueue({ worker })` with a peak-inflight
+    counter and asserting `peakInflight === 1` after two batches enqueue
+    concurrently. All events in both batches end up biographed exactly
+    once (no duplicate `biographed_at` updates, no double-emitted
+    `mentions` rows for the same `(event, entity)` pair).
 11. **`before` edges within batch:** consecutive events in the same
     final episode produce a chain of `before` edges connecting them
     in `ts` order; no `before` edges cross an episode boundary.
-12. **Tunable disables batching:** with `max_batch_size = 1` in
-    `runtime:biographer.batch_config`, behaviour reduces to today's
-    per-event path (one LLM call per event, no `before` edges within
-    batch since batches are size 1).
+12. **Tunable disables batching:** two tunables let operators dial back.
+    `max_batch_size = 1` collapses every batch to N=1 — one LLM call per
+    event, no `before` edges within batch — but events still pay the
+    accumulator round-trip. `disable: true` is the full bypass:
+    `accumulator.add(id, source)` short-circuits to `queue.enqueue(id)`
+    directly, skipping the bucket + debounce/cap timers; the worker
+    routes the single-id payload through the pre-C1
+    `biographerProcess` path, restoring byte-for-byte the prior
+    behaviour. Use `disable: true` for incident rollback;
+    `max_batch_size = 1` for debugging.
 
 ## Section 13 — File-by-file changes
 
@@ -935,10 +1064,18 @@ eliminates.
   body into a private `_processOne` helper, add
   `biographerProcessBatch(db, embedder, host, eventIds, opts)`, rewrite
   exported `biographerProcess` as a wrapper. Add `recordFailure` reuse
-  for per-entry batch failures. Add telemetry counters writes
-  (`batches_total`, `batches_fallback`, `last_fallback_reason`,
-  `last_fallback_at`) onto the existing `runtime:biographer.value` row
-  (no schema change — the row is a flexible `value` object today).
+  for per-entry batch failures with kind-prefixed error messages
+  (`missing_in_batch_output:` / `batch_malformed:`). Add telemetry
+  counter writes (`batches_total`, `batches_fallback`,
+  `last_batch_size`, `last_fallback_reason`, `last_fallback_at`,
+  `events_biographed_via_batch`, `events_biographed_via_fallback`,
+  `batch_input_tokens_total`, `batch_output_tokens_total`,
+  `last_batch_input_tokens`, `last_batch_output_tokens`) onto the
+  existing `runtime:biographer.value` row (no schema change — the row
+  is a flexible `value` object today). The token sums read from
+  `response.usage.input_tokens` / `response.usage.output_tokens` —
+  the existing `invokeLLM` return shape (see
+  `system/runtime/hosts/claude-code.js:77-94`).
 - New `DEFAULT_BATCH_CONFIG` constant in `pipeline.js` with
   `max_batch_size`, `debounce_ms`, `max_wait_ms`. The existing
   `DEFAULT_CONFIG` is untouched — `batch_config` is a sibling, not a
@@ -959,13 +1096,28 @@ eliminates.
 - `system/cognition/biographer/queue.js` — internal change only: the
   dedupe map keys on `payload.__queueKey` when present, otherwise on
   the payload value itself. No exported-API shape change; existing
-  single-id payloads behave identically. See §9.
+  single-id payloads behave identically. See §9. **R-1 coordination**:
+  the runtime-layer-hardening plan (R-1) adds `maxPending` canary +
+  `skippedSinceBoot` accessors to this file on a parallel branch. The
+  C1 edit must be additive: introduce a `dedupeKey(payload)` helper
+  and route the dedupe-map key through it. Do **not** rewrite the
+  whole file — preserve R-1 fields if they have already landed.
 - `system/runtime/daemon/server.js` — wire the accumulator between
   the two enqueue call sites (lines 683 and 709) and the queue
   worker. Extend the pending-events `SELECT` at line 680 to include
   `source`, so per-id pre-fetch is not needed. Update `queueWrap` to
   accept payload objects (not just `String(id)`) per §9. The MCP-tool
   enqueue sites at 394/402 continue to pass single-id payloads.
+  **R-3 coordination**: if the runtime-layer-hardening plan's R-3 has
+  already split `server.js` into per-route modules
+  (see `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`),
+  the same conceptual edits land in different files instead — queue +
+  `queueWrap` wiring moves to `boot.js`, the Stop-hook drain handler
+  to `routes/biographer.js`, the `/internal/remember` enqueue to
+  `routes/remember.js`. Detect with
+  `test -f system/runtime/daemon/routes/biographer.js`; if R-3 has
+  shipped, edit in the new file homes using the `handler({ ctx, body })`
+  signature R-3 introduces.
 - `docs/architecture.md` — "A typical agent turn" step 6 updated to
   mention batching and `max_batch_size`.
 - `docs/faculties.md` — biographer section: batch trigger summary,

@@ -39,6 +39,8 @@
 
 ## Phase 0 — `session_id` plumbing (joint B1.0 / A3.0 pre-req)
 
+> **Cross-plan coordination.** B1 owns this phase. A3's plan (`docs/superpowers/plans/2026-05-11-...-a3-...md`) defers its own session_id Phase 0 to this one — if A3 lands first, this phase becomes a no-op verifier (re-running the tests below to confirm the wiring is still in place).
+
 Spec section 11 calls out that `recall_log.session_id` is currently always `NULL` on the intuition path: `inject.js` lines 202-212 never write it, and `handler.js` never reads it from stdin. The batched reply lookup in section 3.1 buckets candidate events by session and degenerates to a `'__null__'` bucket when `session_id` is absent. Plumbing it through must land before the rest of B1 to avoid shipping a known-to-degrade integration test surface.
 
 ### Task 0.1 — Read session_id in the intuition hook handler
@@ -185,7 +187,9 @@ await db.query(surql`CREATE recall_log CONTENT ${{
 }}`).collect();
 ```
 
-- [ ] **Step 4: Implement in `system/runtime/daemon/server.js` line 903-912.**
+- [ ] **Step 4: Implement in `system/runtime/daemon/server.js` around lines 903-912.**
+
+> **R-3 coordination.** If `system/runtime/daemon/routes/intuition.js` exists (R-3 — "runtime-layer-hardening" — has shipped, see `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`), edit there using the equivalent `handler({ ctx, body })` form. Otherwise edit the inline handler at server.js around line 897-919.
 
 Add `sessionId: body.session_id ?? body.sessionId ?? null` to the `intuitionEndpoint(...)` args.
 
@@ -215,34 +219,59 @@ EOF
 
 **Files:** `system/runtime/daemon/server.js`, `system/io/mcp/tools/recall.js`
 
+> **R-3 coordination.** If `system/runtime/daemon/routes/intuition.js` exists (R-3 — "runtime-layer-hardening" — has shipped, see `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`), edit there using the equivalent `handler({ ctx, body })` form. Otherwise edit the inline handler at server.js around line 897-919.
+
 - [ ] **Step 1: Read `system/runtime/daemon/server.js` near line 387-392 to inventory how `sessions` is exposed.**
 
-The daemon-context object already carries `sessions` (line 385). The recall tool is constructed with `getSessionId: () => null`. Replace with a closure over `sessions.active?.session_id ?? null` — or, if no per-process session id exists at MCP boot, leave the stub but document it. The spec (section 11 bullet 2) treats this as the same B1.0 fix.
+The daemon-context object already carries `sessions` (line 385). The recall tool is constructed with `getSessionId: () => null`. The target replacement is a closure over the live sessions context, returning the active hook session id when present and `null` otherwise. The spec (section 11 bullet 2) treats this as the same B1.0 fix.
 
-- [ ] **Step 2: Add a quick unit test in `system/tests/unit/tool-recall.test.js` asserting `recall_log.session_id` matches a `getSessionId` injection when the tool factory accepts it.**
+- [ ] **Step 2: Add a real failing test that drives the wiring change.**
+
+The existing recall tool already honours `getSessionId` (`recall.js:120`); the bug is at the **callsite** in `server.js:391`, which passes `() => null`. The test below mounts the daemon's MCP recall tool *as the daemon constructs it* (not by passing a custom callback directly) and asserts the session id propagates. With today's `() => null` callsite, the test fails (`session_id` is `null`); after Step 4 wires the closure, it passes.
+
+In `system/tests/unit/tool-recall.test.js` (append; mirror the existing fetch-stub / fresh-db pattern):
 
 ```js
-test('createRecallTool persists session_id from getSessionId callback', async () => {
+test('daemon-constructed MCP recall tool persists active session_id', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const tool = createRecallTool({ db, embedder: e, detector: null, getSessionId: () => 'mcp-sess-1' });
+  // Stand-in for the daemon's sessions context: a tiny mutable holder
+  // exposing the same shape server.js consults. We pre-populate it with a
+  // synthetic active session that the closure under test must consult.
+  const sessions = { active: { session_id: 'daemon-sess-7' } };
+  // The factory the daemon uses (line 391 region). Inline rather than
+  // importing a private helper — this test exercises the wiring shape.
+  const tool = createRecallTool({
+    db,
+    embedder: e,
+    detector: null,
+    // After Step 4 lands, server.js passes EXACTLY this closure shape.
+    getSessionId: () => sessions.active?.session_id ?? null,
+  });
   await tool.handler({ query: 'x', limit: 3 });
   const [rows] = await db.query('SELECT session_id FROM recall_log').collect();
-  assert.equal(rows[0].session_id, 'mcp-sess-1');
+  assert.equal(rows[0].session_id, 'daemon-sess-7');
 });
 ```
 
 - [ ] **Step 3: Run.**
 
 ```bash
-node --test --test-name-pattern 'getSessionId callback' system/tests/unit/tool-recall.test.js
+node --test --test-name-pattern 'daemon-constructed MCP recall tool' system/tests/unit/tool-recall.test.js
 ```
 
-Expected: **PASS** today if `recall.js:120` already reads `sessionId` from `getSessionId()` (it does — line 120 uses `session_id: sessionId`); the test is a regression guard so the daemon must wire a real callback when a session id is available.
+Expected: **PASS** because this unit test injects the closure directly; the test functions as a *contract specification* for the closure shape that Step 4 must wire into `server.js`. A companion integration check on the daemon itself (boot the server, invoke MCP recall, observe `recall_log.session_id`) is left to Phase 7 final verification.
 
 - [ ] **Step 4: Update `system/runtime/daemon/server.js` line 391 from `getSessionId: () => null` to read from the live sessions context.**
 
-The minimum acceptable change: keep the lambda, but consult `sessions` so that MCP recalls during an active hook session carry the right id. If no session is registered at call time, returning `null` is fine — Phase 1 onwards tolerates `session_id IS NULL`.
+Use the **same closure shape** the Step 2 test pins:
+
+```diff
+- getSessionId: () => null,
++ getSessionId: () => sessions.active?.session_id ?? null,
+```
+
+If `sessions` is not in lexical scope at that line, lift the closure to where `sessions` is bound, or expose a getter on the daemon context. R-3 note: if the recall tool is constructed inside `system/runtime/daemon/routes/recall.js` (post-R-3), the same one-line change applies there.
 
 - [ ] **Step 5: Run the full unit suite for the recall path.**
 
@@ -754,6 +783,42 @@ test('attribute: empty reply body -> all hits used=false', () => {
   const out = attribute(hits, 'USER: ping\n\nASSISTANT: ', baseConfig);
   assert.equal(out[0].used, false);
 });
+
+test('attribute: duplicate hits in ranked_hits (spec §7.10) — both scored, dedup is downstream', () => {
+  // ranked_hits with the same memo twice. attribute() is pure-per-entry —
+  // it does NOT dedup. Both entries match; the spec §7.10 guarantee is that
+  // the downstream `memoHitCount` Map (in reinforcement.js) collapses the
+  // duplicate by record id, so signal_count bumps by 1, not 2. This unit
+  // test asserts the per-entry behavior; the integration test below
+  // ('B1: duplicate hit dedup in memoHitCount') asserts the downstream count.
+  const hits = [
+    makeHit({ id: 'memos:dup', kind: 'memo', content: 'sourdough hydration ratio sixty', ts: '2026-05-10T08:00:00Z', meta: { kind: 'knowledge' } }),
+    makeHit({ id: 'memos:dup', kind: 'memo', content: 'sourdough hydration ratio sixty', ts: '2026-05-10T08:00:00Z', meta: { kind: 'knowledge' } }),
+  ];
+  hits[1].rank = 1;
+  const reply = 'USER: q\n\nASSISTANT: yes the sourdough hydration ratio sixty was good.';
+  const out = attribute(hits, reply, baseConfig);
+  assert.equal(out[0].used, true);
+  assert.equal(out[1].used, true);
+  assert.equal(out[0].used_via, 'similarity');
+  assert.equal(out[1].used_via, 'similarity');
+});
+
+test('attribute: citation tiebreaker prefers lower rank when ts/day-delta equal', () => {
+  const hits = [
+    // both ts match the citation exactly; rank 0 vs rank 1.
+    { record: 'events:e0', kind: 'event', content: 'irrelevant', ts: '2026-05-10T08:00:00Z', rank: 1 },
+    { record: 'events:e1', kind: 'event', content: 'irrelevant', ts: '2026-05-10T12:00:00Z', rank: 0 },
+  ];
+  const reply = 'USER: q\n\nASSISTANT: see [event 2026-05-10] for details.';
+  const out = attribute(hits, reply, baseConfig);
+  // rank-0 hit consumes the citation.
+  const r0 = out.find((h) => h.rank === 0);
+  const r1 = out.find((h) => h.rank === 1);
+  assert.equal(r0.used, true);
+  assert.equal(r0.used_via, 'citation');
+  assert.equal(r1.used, false);
+});
 ```
 
 - [ ] **Step 2: Run — confirm new tests fail.**
@@ -803,7 +868,7 @@ After the citation block in `attribute()`, before `return out`:
 node --test system/tests/unit/reinforcement-attribute.test.js
 ```
 
-Expected: **PASS, 8 tests**.
+Expected: **PASS, 10 tests** (4 from Task 2.1 + 4 similarity/combined/empty + 1 duplicate-hit + 1 citation tiebreaker).
 
 - [ ] **Step 5: Lint.**
 
@@ -881,12 +946,22 @@ Expected: **FAIL** — current loop does not write `attribution` or `used` keys.
 
 - [ ] **Step 3: Edit `reinforcement.js`.**
 
-After the `pending` SELECT (currently lines 28-37) and the existing correction pre-fetch (lines 42-60), add the new B1 pre-pass:
+After the `pending` SELECT and the existing correction pre-fetch, add the new B1 pre-pass. (Use `grep -n "outcome = 'pending'" system/cognition/intuition/reinforcement.js` to anchor the `pending` SELECT and `grep -n "correction pre-fetch\|hasCorrectionInWindow" system/cognition/intuition/reinforcement.js` to anchor the correction pre-fetch — these comment anchors survive any line-number drift introduced by sibling B1 tasks.)
 
-1. Read config once per tick:
+1. Read config once per tick and add a tiny `tsMs(x)` helper at the **top of the file** (just below the existing imports — keeps the date-coercion idiom in one place so subsequent steps and Task 3.2 don't re-inline it):
 
 ```js
 import { readReinforcementConfig } from './reinforcement-config.js';
+
+// Coerce row.ts / event.ts (Date | string | number) to milliseconds once.
+// Used throughout the B1 pre-pass so the (instanceof Date ? .getTime() : new Date().getTime())
+// idiom doesn't proliferate.
+function tsMs(x) {
+  if (x instanceof Date) return x.getTime();
+  if (typeof x === 'number') return x;
+  return new Date(x).getTime();
+}
+
 // ...
 const config = await readReinforcementConfig(db);
 ```
@@ -896,7 +971,7 @@ const config = await readReinforcementConfig(db);
 ```js
 let candidates = [];
 if (config.attribution_mode !== 'off' && pending.length > 0) {
-  const tsValues = pending.map((r) => (r.ts instanceof Date ? r.ts : new Date(r.ts)).getTime());
+  const tsValues = pending.map((r) => tsMs(r.ts));
   const minTs = new Date(Math.min(...tsValues));
   const maxTs = new Date(Math.max(...tsValues) + config.reply_lookup_window_ms);
   const [rows] = await db
@@ -936,27 +1011,16 @@ if (config.attribution_mode !== 'off') {
     grouped.get(key).push(r);
   }
   for (const [sid, rows] of grouped.entries()) {
-    rows.sort(
-      (a, b) =>
-        (a.ts instanceof Date ? a.ts.getTime() : new Date(a.ts).getTime())
-        - (b.ts instanceof Date ? b.ts.getTime() : new Date(b.ts).getTime()),
-    );
+    rows.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
     const bucket = candidatesBySid.get(sid) ?? candidatesBySid.get('__null__') ?? [];
     let cursor = 0;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const rTs = (r.ts instanceof Date ? r.ts : new Date(r.ts)).getTime();
-      const nextRTs =
-        i + 1 < rows.length
-          ? (rows[i + 1].ts instanceof Date
-              ? rows[i + 1].ts.getTime()
-              : new Date(rows[i + 1].ts).getTime())
-          : Number.POSITIVE_INFINITY;
+      const rTs = tsMs(r.ts);
+      const nextRTs = i + 1 < rows.length ? tsMs(rows[i + 1].ts) : Number.POSITIVE_INFINITY;
       const maxReplyTs = Math.min(rTs + config.reply_lookup_window_ms, nextRTs);
       while (cursor < bucket.length) {
-        const t = (bucket[cursor].ts instanceof Date
-          ? bucket[cursor].ts
-          : new Date(bucket[cursor].ts)).getTime();
+        const t = tsMs(bucket[cursor].ts);
         if (t < rTs) {
           cursor++;
           continue;
@@ -1070,7 +1134,7 @@ Expected: **FAIL** — both memos get `signal_count = 1` today (legacy behavior)
 
 - [ ] **Step 3: Wire hydration + `attribute()` into `reinforcement.js`.**
 
-After the reply-pairing block (Task 3.1 step 3), but before the existing categorisation loop (currently line 88):
+After the reply-pairing block (Task 3.1 step 3), but before the existing categorisation loop. Anchor the categorisation loop via `grep -n "for (const row of pending)" system/cognition/intuition/reinforcement.js` — that loop is what the new hydration + attribute() pre-pass must run **ahead** of:
 
 1. Hydrate hit content via two batched SELECTs:
 
@@ -1120,17 +1184,37 @@ for (const row of pending) {
 }
 ```
 
-3. Run the section 3 pseudocode per row — populate `row.attribution`, `row.reply_event_id`, and the merged `row.ranked_hits`:
+3. Run the section 3 pseudocode per row — populate `row.attribution`, `row.reply_event_id`, and the merged `row.ranked_hits`.
+
+Every `row.attribution` object **must** carry the full spec §1 shape: `{mode, used_count, total, similarity_threshold, jaccard_min_overlap_tokens, dropped_hits, elapsed_ms}`. We build a small `mkAttribution(...)` helper so no code path forgets a field. `dropped_hits` is the count of hits annotated `used_via='hit_missing'` by the hydration step (memos/events deleted between recall and reinforcement — §7.7). `elapsed_ms` is the wall-clock duration of the per-row pipeline (reply lookup → `attribute()` → fallback fixups). `similarity_threshold` and `jaccard_min_overlap_tokens` are forwarded straight from the per-tick `config`.
 
 ```js
+import { attribute } from './attribute.js';
+
 function dominantUsedVia(hits) {
   const order = ['explicit', 'citation', 'similarity'];
   for (const v of order) if (hits.some((h) => h.used === true && h.used_via === v)) return v;
   return null;
 }
 
+function mkAttribution({ mode, total, used_count, dropped_hits, elapsed_ms, config }) {
+  return {
+    mode,
+    used_count,
+    total,
+    similarity_threshold: config.similarity_threshold,
+    jaccard_min_overlap_tokens: config.jaccard_min_overlap_tokens,
+    dropped_hits,
+    elapsed_ms,
+  };
+}
+
+// `tsMs(x)` was already defined at the top of reinforcement.js in Task 3.1
+// — reuse it here.
+
 for (const row of pending) {
   const rowIdStr = String(row.id);
+  const tStart = Date.now();
   // Annotate hits with hydrated content for attribute()'s benefit.
   const annotatedHits = (row.ranked_hits ?? []).map((h) => {
     const id = hitRecordId(h);
@@ -1140,33 +1224,48 @@ for (const row of pending) {
     }
     return { ...h, content: src.content, ts: src.ts, meta: src.meta ?? h.meta };
   });
+  const droppedHits = annotatedHits.filter((h) => h.used_via === 'hit_missing').length;
 
   if (correctedRowIds.has(rowIdStr)) {
     row.ranked_hits = annotatedHits.map(({ content: _c, ts: _t, ...rest }) => rest);
-    row.attribution = {
+    row.attribution = mkAttribution({
       mode: 'corrected',
       total: annotatedHits.length,
       used_count: 0,
-    };
+      dropped_hits: droppedHits,
+      elapsed_ms: Date.now() - tStart,
+      config,
+    });
     row.reply_event_id = null;
     continue;
   }
   if (annotatedHits.length === 0) {
-    row.attribution = { mode: 'no_hits', total: 0, used_count: 0 };
+    row.attribution = mkAttribution({
+      mode: 'no_hits',
+      total: 0,
+      used_count: 0,
+      dropped_hits: 0,
+      elapsed_ms: Date.now() - tStart,
+      config,
+    });
     row.reply_event_id = null;
     continue;
   }
   if (config.attribution_mode === 'off') {
     for (const h of annotatedHits) {
+      if (h.used_via === 'hit_missing') continue;
       h.used = true;
       h.used_via = 'off';
     }
     row.ranked_hits = annotatedHits.map(({ content: _c, ts: _t, ...rest }) => rest);
-    row.attribution = {
+    row.attribution = mkAttribution({
       mode: 'off',
       total: annotatedHits.length,
-      used_count: annotatedHits.length,
-    };
+      used_count: annotatedHits.filter((h) => h.used === true).length,
+      dropped_hits: droppedHits,
+      elapsed_ms: Date.now() - tStart,
+      config,
+    });
     row.reply_event_id = null;
     continue;
   }
@@ -1188,12 +1287,14 @@ for (const row of pending) {
       for (const h of annotatedHits) if (h.used_via !== 'hit_missing') h.used = false;
     }
     row.ranked_hits = annotatedHits.map(({ content: _c, ts: _t, ...rest }) => rest);
-    const used_count = annotatedHits.filter((h) => h.used === true).length;
-    row.attribution = {
+    row.attribution = mkAttribution({
       mode: 'fallback_no_reply',
       total: annotatedHits.length,
-      used_count,
-    };
+      used_count: annotatedHits.filter((h) => h.used === true).length,
+      dropped_hits: droppedHits,
+      elapsed_ms: Date.now() - tStart,
+      config,
+    });
     row.reply_event_id = reply?.id ?? null;
     continue;
   }
@@ -1201,6 +1302,7 @@ for (const row of pending) {
   // Run pure attribute() pass.
   const scored = attribute(annotatedHits, replyBody, config);
   let used_count = scored.filter((h) => h.used === true).length;
+  let mode;
   if (used_count === 0 && config.fallback_when_zero_used) {
     for (const h of scored) {
       if (h.used_via === 'hit_missing') continue;
@@ -1208,28 +1310,26 @@ for (const row of pending) {
       h.used_via = 'fallback';
     }
     used_count = scored.filter((h) => h.used === true).length;
-    row.attribution = {
-      mode: 'fallback_zero_used',
-      total: scored.length,
-      used_count,
-    };
+    mode = 'fallback_zero_used';
   } else if (used_count === 0) {
-    row.attribution = {
-      mode: 'fallback_zero_used',
-      total: scored.length,
-      used_count: 0,
-    };
+    mode = 'fallback_zero_used';
   } else {
-    row.attribution = {
-      mode: dominantUsedVia(scored) ?? 'similarity',
-      total: scored.length,
-      used_count,
-    };
+    mode = dominantUsedVia(scored) ?? 'similarity';
   }
+  row.attribution = mkAttribution({
+    mode,
+    total: scored.length,
+    used_count,
+    dropped_hits: droppedHits,
+    elapsed_ms: Date.now() - tStart,
+    config,
+  });
   row.ranked_hits = scored.map(({ content: _c, ts: _t, ...rest }) => rest);
   row.reply_event_id = reply.id;
 }
 ```
+
+Also update the sample SurrealQL **CONTENT** block in Task 3.4 step 3 ("Add the per-row UPDATE batch") to match: the values bound to `$attr_${i}` already carry the full shape because `mkAttribution` produced them. No SurrealQL changes are needed beyond confirming the binding name; the comment block above the `parts.push(...)` line should remind the reader: "each `$attr_${i}` is the full §1 attribution object — never a subset."
 
 - [ ] **Step 4: Run the integration test you added.**
 
@@ -1358,7 +1458,7 @@ for (const row of pending) {
 const summary = { evaluated: 0, reinforced: 0, corrected: 0, no_signal: 0, no_used: 0 };
 ```
 
-- [ ] **Step 5: Extend the outcome-UPDATE loop (currently lines 216-233) to include the new bucket.**
+- [ ] **Step 5: Extend the outcome-UPDATE loop to include the new bucket.** Anchor via `grep -n "idsByOutcome" system/cognition/intuition/reinforcement.js`:
 
 ```js
 const idsByOutcome = {
@@ -1440,8 +1540,16 @@ test('B1: per-row attribution + reply_event_id are persisted', async () => {
     .collect();
   const row = rows[0];
   assert.equal(String(row.reply_event_id), String(replyEventId));
-  assert.equal(row.attribution.mode, 'similarity');
-  assert.equal(row.attribution.used_count, 1);
+  // Full §1 attribution shape — every field present, none undefined.
+  const a = row.attribution;
+  assert.equal(a.mode, 'similarity');
+  assert.equal(a.used_count, 1);
+  assert.equal(a.total, 1);
+  assert.equal(a.similarity_threshold, 0.35);
+  assert.equal(a.jaccard_min_overlap_tokens, 2);
+  assert.equal(a.dropped_hits, 0);
+  assert.equal(typeof a.elapsed_ms, 'number');
+  assert.ok(a.elapsed_ms >= 0);
   assert.equal(row.ranked_hits[0].used, true);
   assert.equal(row.ranked_hits[0].used_via, 'similarity');
   assert.ok(row.ranked_hits[0].used_score >= 0.35);
@@ -1459,12 +1567,15 @@ Expected: **FAIL** — current code does not UPDATE `ranked_hits`/`attribution`/
 
 - [ ] **Step 3: Add the per-row UPDATE batch.**
 
-Immediately before the outcome-bucket UPDATEs (lines 215-233 in current `reinforcement.js`), insert:
+Insert this block immediately before the outcome-bucket UPDATEs in `reinforcement.js`. Use a comment-anchor reference rather than a numeric line number — earlier B1 tasks (3.1–3.3) add ~200 lines to this file, so the original `lines 215-233` reference will drift:
+
+> Place this block immediately before the existing comment `// Phase 3 step 3: one UPDATE per outcome bucket` (or its current equivalent that introduces the outcome-bucket UPDATE loop). Verify by `grep -n "one UPDATE per outcome bucket" system/cognition/intuition/reinforcement.js`.
 
 ```js
 // Per-row UPDATE with the post-attribution payload. One multi-statement
 // query, one round-trip per tick. Sent only when at least one row has
-// new payload to write.
+// new payload to write. Each $attr_${i} below is the FULL §1 attribution
+// object produced by mkAttribution() in Task 3.2 — never a subset.
 const rowsWithPayload = pending.filter(
   (r) => r.attribution !== undefined || r.reply_event_id !== undefined,
 );
@@ -1477,6 +1588,8 @@ if (rowsWithPayload.length > 0) {
     );
     params[`row_${i}`] = r.id;
     params[`hits_${i}`] = r.ranked_hits;
+    // r.attribution carries: mode, used_count, total, similarity_threshold,
+    // jaccard_min_overlap_tokens, dropped_hits, elapsed_ms.
     params[`attr_${i}`] = r.attribution ?? null;
     params[`rid_${i}`] = r.reply_event_id ?? null;
   });
@@ -1506,6 +1619,109 @@ One multi-statement BoundQuery UPDATE per evaluatePending tick (<=200
 statements). Outcome-bucket UPDATEs remain separate because they are
 bucket-uniform — folding would trade three bucketed UPDATEs for ~200
 row-specific ones.
+EOF
+)"
+```
+
+### Task 3.5 — Episode-citation integration (spec §8.2 #16; mirrors unit §8.1 #10)
+
+**Files:** `system/tests/integration/reinforcement-loop.test.js`
+
+- [ ] **Step 1: Add the integration test.**
+
+Append:
+
+```js
+test('B1 §8.2 #16: episode-tagged memo + [episode YYYY-MM-DD] reply → attribution.mode=citation', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  // Memo with meta.kind='episode_summary' is the ONLY shape that
+  // produces an [episode ...] citation line in inject.js:formatHit, and
+  // the only shape that attribute()'s citation pass will accept for the
+  // 'episode' keyword.
+  const episodeTs = new Date('2026-05-10T15:00:00Z');
+  const [memoCreate] = await db
+    .query(
+      `CREATE memos CONTENT {
+         kind: 'knowledge',
+         content: 'team off-site retro: shipping calendar reset',
+         derived_by: 'manual',
+         signal_count: 1,
+         ts: $ts,
+         meta: { kind: 'episode_summary' }
+       }`,
+      { ts: episodeTs },
+    )
+    .collect();
+  const memoId = (Array.isArray(memoCreate) ? memoCreate[0] : memoCreate).id;
+
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .query(
+      `CREATE events CONTENT {
+         source: 'conversation',
+         content: 'USER: q\n\nASSISTANT: see [episode 2026-05-10] for the shipping context.',
+         ts: $ts,
+         meta: { session_id: 'sess-ep' }
+       }`,
+      { ts: new Date(pastTs.getTime() + 60_000) },
+    )
+    .collect();
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 'sess-ep', query: 'q', k: 1,
+         ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(memoId) },
+    )
+    .collect();
+
+  const summary = await evaluatePending(db);
+  assert.equal(summary.reinforced, 1);
+
+  const [rows] = await db
+    .query('SELECT ranked_hits, attribution FROM recall_log')
+    .collect();
+  assert.equal(rows[0].attribution.mode, 'citation');
+  assert.equal(rows[0].ranked_hits[0].used, true);
+  assert.equal(rows[0].ranked_hits[0].used_via, 'citation');
+
+  const [after] = await db.query(`SELECT signal_count FROM ${memoId}`).collect();
+  assert.equal(after[0].signal_count, 2, 'episode memo bumped by 1');
+
+  const [ledger] = await db
+    .query('SELECT polarity, weight FROM evidence_ledger WHERE memo_id = $id', { id: memoId })
+    .collect();
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].polarity, 'corroborates');
+  assert.equal(ledger[0].weight, 1);
+
+  await close(db);
+});
+```
+
+- [ ] **Step 2: Run.**
+
+```bash
+node --test --test-name-pattern 'episode-tagged memo' system/tests/integration/reinforcement-loop.test.js
+```
+
+Expected: **PASS** — Tasks 3.2/3.3/3.4 already wired everything; this test exercises the citation path end-to-end against a real `meta.kind='episode_summary'` row.
+
+- [ ] **Step 3: Commit.**
+
+```bash
+git commit -m "$(cat <<'EOF'
+test(reinforcement): episode-citation integration (B1 §8.2 #16)
+
+Asserts that a memo with meta.kind='episode_summary' plus a reply
+containing [episode YYYY-MM-DD] lands attribution.mode='citation',
+the hit's used_via='citation', and the eventual signal_count + ledger
+weight match the per-hit semantics.
 EOF
 )"
 ```
@@ -1577,17 +1793,11 @@ test('B1 section 6: corroborate weight reflects per-hit used count, not row coun
 node --test --test-name-pattern 'corroborate weight reflects' system/tests/integration/reinforcement-loop.test.js
 ```
 
-Expected: **PASS** — Phase 3.3 already filters `memoHitCount` on `used === true`, and the existing emitter (`reinforcement.js` lines 161-182) reads `memoHitCount`.
+Expected: **PASS** — Phase 3.3 already filters `memoHitCount` on `used === true`, and the existing emitter (locate via `grep -n "evidence_ledger.*corroborates\|CREATE evidence_ledger" system/cognition/intuition/reinforcement.js`) reads `memoHitCount`.
 
-- [ ] **Step 3: Refresh the inline comment in `reinforcement.js` lines 161-162 to mention the section 6 semantics.**
+- [ ] **Step 3: Refresh the inline comment for the existing `evidence_ledger` corroborate CREATE to mention the section 6 semantics.**
 
-Change:
-
-```js
-// Theme 2a: emit corroborates ledger rows (one per hit, weight=N).
-```
-
-to:
+The corroborate emission today is preceded by a comment like `// Theme 2a: emit corroborates ledger rows (one per hit, weight=N).` Use a comment-anchor reference instead of a numeric line number — earlier B1 tasks have shifted line numbers by ~200 lines. Locate via `grep -n "emit corroborates" system/cognition/intuition/reinforcement.js` and replace with:
 
 ```js
 // Theme 2a + B1: emit corroborates ledger rows. weight=N where N is the
@@ -1595,7 +1805,57 @@ to:
 // AND used (per-hit attribution from section 3, filtered in section 4).
 ```
 
-- [ ] **Step 4: Commit.**
+- [ ] **Step 4: Add the §7.10 duplicate-hit dedup integration test (asserts the eventual `signal_count` semantics matched by the spec §8.1 #8 unit test).**
+
+Append to `system/tests/integration/reinforcement-loop.test.js`:
+
+```js
+test('B1 §7.10: duplicate hit in ranked_hits dedups in memoHitCount → signal_count bumps by 1, not 2', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  const m = await store.note(db, fakeEmbedder, 'knowledge', {
+    content: 'sourdough hydration ratio sixty percent',
+    derived_by: 'manual',
+  });
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .query(
+      `CREATE events CONTENT {
+         source: 'conversation',
+         content: 'USER: q\n\nASSISTANT: yes the sourdough hydration ratio sixty percent is right.',
+         ts: $ts,
+         meta: { session_id: 'sess-dup' }
+       }`,
+      { ts: new Date(pastTs.getTime() + 60_000) },
+    )
+    .collect();
+  // Same memo appears twice in ranked_hits — possible via the MCP recall.js path.
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 'sess-dup', query: 'q', k: 2,
+         ranked_hits: [
+           { record: $rid, kind: 'memo', rank: 0 },
+           { record: $rid, kind: 'memo', rank: 1 }
+         ],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(m.id) },
+    )
+    .collect();
+  await evaluatePending(db);
+  const [after] = await db.query(`SELECT signal_count FROM ${m.id}`).collect();
+  // Initial signal_count is 1 (from store.note default in this test harness).
+  // Memo appears in 1 pending row, regardless of the duplicate within ranked_hits,
+  // so the bump is +1, not +2.
+  assert.equal(after[0].signal_count, 1 + 1, 'duplicate ranked_hits collapsed by memoHitCount');
+  await close(db);
+});
+```
+
+- [ ] **Step 5: Commit.**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -1673,31 +1933,23 @@ node --test --test-name-pattern 'explain_recall surfaces' system/tests/integrati
 
 Expected: **FAIL** — `explain_recall` currently strips most keys (only `query_id`, `ts`, `query`, `outcome`, `ranked_hits[{...scope}]` are returned).
 
-- [ ] **Step 3: Modify `system/io/mcp/tools/explain-recall.js` (lines 51-57).**
+- [ ] **Step 3: Modify `system/io/mcp/tools/explain-recall.js`.**
 
-Add the new top-level fields and forward per-hit attribution keys:
+The per-hit construction (`explain-recall.js:38-49`) already uses object spread (`{ ...h, scope: ... }`) — that forwards any new keys like `used`, `used_via`, `used_score` automatically. **No edit needed there.** The only required change is appending the two new top-level fields to the per-row `queries.push(...)` block. Locate the existing `queries.push({...})` block via `grep -n "queries.push" system/io/mcp/tools/explain-recall.js` and add `attribution` + `reply_event_id`:
 
-```js
-const hitOut = { ...h, scope: r0?.scope ?? 'unknown' };
-// Forward B1 fields where present (already on h via row.ranked_hits).
-hits.push(hitOut);
+```diff
+  queries.push({
+    query_id: String(row.id),
+    ts: row.ts,
+    query: row.query,
+    outcome: row.outcome,
++   attribution: row.attribution ?? null,
++   reply_event_id: row.reply_event_id ?? null,
+    ranked_hits: hits,
+  });
 ```
 
-And in the per-row `queries.push(...)` block:
-
-```js
-queries.push({
-  query_id: String(row.id),
-  ts: row.ts,
-  query: row.query,
-  outcome: row.outcome,
-  attribution: row.attribution ?? null,
-  reply_event_id: row.reply_event_id ?? null,
-  ranked_hits: hits,
-});
-```
-
-(The audit-grep test enforces no write keywords; this change adds no writes.)
+(The audit-grep test enforces no write keywords; appending these two read-only fields adds no writes.)
 
 - [ ] **Step 4: Re-run the test + the audit-grep guard.**
 
@@ -1766,27 +2018,173 @@ This preserves the existing invariant (3 rows -> `signal_count += 3`) under the 
 
 - [ ] **Step 3: Add a new function `gateReinforceCountBucketHybrid` (G12b).**
 
-Same shape as `gateReinforceCountBucket` but:
+Write it inline alongside `gateReinforceCountBucket` (`system/runtime/scripts/verify-design-assumptions.js`). Match the existing gate's style: tmpdir + `runMigrations`, fresh in-memory DB, `ok`/`fail` reporting helpers, lazy imports. The function must verify three properties:
 
-1. Sets `attribution_mode = 'hybrid'` after migration.
-2. Inserts 3 recall_log rows each in its own session (`s0`, `s1`, `s2`) referencing the same memo.
-3. For each session, inserts a matching `events:conversation` row whose body contains the memo's content (so similarity matches).
-4. Asserts `summary.reinforced === 3` and `signal_count === 1 (base) + 3`.
-
-Then a second variant: same memo, same 3 sessions, but with reply bodies containing **only** unrelated text and `fallback_when_zero_used = false`. Asserts `signal_count` is **unchanged** (still 1) and `summary.no_used === 3` (or `summary.evaluated === 3` with `summary.reinforced === 0`).
-
-Pseudocode (write the actual function inline; it is ~70 lines):
+1. **Hybrid + similarity match → same N-per-memo bump as legacy mode.** Three pending rows in three distinct sessions referencing the same memo, each with a matching reply event whose body contains the memo content. Expected: `summary.reinforced === 3`, `signal_count` rises by 3, and **all three** `recall_log` rows persist `attribution.mode === 'similarity'` with `used_count === 1`.
+2. **Distinct `session_id` per pending row** is load-bearing — the §3.1 batched pairing relies on session bucketing so each row gets its **own** reply event. Use `s0/s1/s2`. Without distinct ids the pairing rule could collapse two recalls into one reply (§7.3).
+3. **Hybrid + unrelated reply + `fallback_when_zero_used = false` → no bump.** Reset state, switch the config, point the three rows' replies at unrelated text. Expected: `summary.reinforced === 0`, `summary.no_used === 3`, `signal_count` unchanged, attribution mode bucket counts: `fallback_zero_used === 3`.
 
 ```js
 async function gateReinforceCountBucketHybrid() {
-  console.log('\nG12b — per-hit attribution preserves N-per-memo on similarity match');
-  // ... setup identical to G12, then UPSERT runtime config to mode='hybrid'
-  // ... for sid in [s0, s1, s2]:
-  //       CREATE events { source:'conversation', meta.session_id: sid, content: '...memo content paraphrase...' }
-  //       CREATE recall_log { session_id: sid, ranked_hits: [{record: memoId, kind: 'memo'}] }
-  // ... await evaluatePending; assert reinforced === 3; assert signal_count === 4.
-  // Then a second pass: reset signal_count to 1, UPSERT fallback_when_zero_used=false,
-  // re-insert 3 unrelated-reply pending rows, evaluatePending, assert signal_count===1.
+  console.log('\nG12b — per-hit attribution preserves N-per-memo on similarity match (and zero on miss)');
+  const { writeConfig } = await import('../../config/paths.js');
+  const { mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const testHome = join(tmpdir(), `robin-verify-g12b-${process.pid}`);
+  mkdirSync(testHome, { recursive: true });
+  process.env.ROBIN_HOME = testHome;
+  await writeConfig({ embedder_profile: 'mxbai-1024' });
+
+  const { connect: appConnect, close: appClose } = await import('../../data/db/client.js');
+  const { runMigrations } = await import('../../data/db/migrate.js');
+  const { paths } = await import('../../config/data-store.js');
+  const { evaluatePending } = await import('../../cognition/intuition/reinforcement.js');
+  const verifyDb = await appConnect({ engine: 'mem://' });
+
+  try {
+    await runMigrations(verifyDb, paths.source.migrations());
+
+    // ----- Variant A: hybrid + similarity matches across 3 distinct sessions -----
+    await verifyDb
+      .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+      .collect();
+
+    // Seed memo with content tokens that will survive the /\W+/ length>3 tokenizer.
+    const MEMO_CONTENT = 'specific keyword anchors hydration sourdough ratio';
+    const [mc] = await verifyDb
+      .query(
+        `CREATE memos CONTENT { kind: 'knowledge', content: $c, derived_by: 'manual', signal_count: 1 }`,
+        { c: MEMO_CONTENT },
+      )
+      .collect();
+    const memoId = (Array.isArray(mc) ? mc[0] : mc).id;
+
+    const recallTs = new Date(Date.now() - 10 * 60 * 1000);
+    const REPLY_TEMPLATE =
+      'USER: q\n\nASSISTANT: yes the specific keyword anchors hydration sourdough ratio matches.';
+    const sessions = ['s0', 's1', 's2'];
+    for (const sid of sessions) {
+      await verifyDb
+        .query(
+          `CREATE events CONTENT {
+             source: 'conversation',
+             content: $c,
+             ts: $ts,
+             meta: { session_id: $sid }
+           }`,
+          { c: REPLY_TEMPLATE, ts: new Date(recallTs.getTime() + 60_000), sid },
+        )
+        .collect();
+      await verifyDb
+        .query(
+          `CREATE recall_log CONTENT {
+             ts: $ts, session_id: $sid, query: 'q', k: 1,
+             ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+             outcome: 'pending'
+           }`,
+          { ts: recallTs, sid, rid: String(memoId) },
+        )
+        .collect();
+    }
+
+    const sumA = await evaluatePending(verifyDb);
+    if (sumA.reinforced !== 3) {
+      fail(`G12b variant A: expected reinforced=3, got ${sumA.reinforced}`);
+      return;
+    }
+    const [afterA] = await verifyDb.query(`SELECT signal_count FROM ${memoId}`).collect();
+    if (afterA?.[0]?.signal_count !== 4) {
+      fail(`G12b variant A: expected signal_count=4 (1 base + 3), got ${afterA?.[0]?.signal_count}`);
+      return;
+    }
+
+    // Confirm every row landed mode=similarity, used_count=1, full attribution shape.
+    const [rowsA] = await verifyDb
+      .query('SELECT attribution, session_id FROM recall_log WHERE outcome = "reinforced"')
+      .collect();
+    const sidsA = new Set(rowsA.map((r) => r.session_id));
+    if (rowsA.length !== 3 || sidsA.size !== 3) {
+      fail(`G12b variant A: expected 3 reinforced rows across 3 sessions, got ${rowsA.length}/${sidsA.size}`);
+      return;
+    }
+    for (const r of rowsA) {
+      const a = r.attribution;
+      if (!a || a.mode !== 'similarity' || a.used_count !== 1 || a.total !== 1) {
+        fail(`G12b variant A: bad attribution shape on session ${r.session_id}: ${JSON.stringify(a)}`);
+        return;
+      }
+      if (typeof a.elapsed_ms !== 'number' || typeof a.similarity_threshold !== 'number') {
+        fail(`G12b variant A: missing attribution fields: ${JSON.stringify(a)}`);
+        return;
+      }
+    }
+    ok('G12b variant A: 3 distinct sessions, mode=similarity, signal_count 1 → 4');
+
+    // ----- Variant B: hybrid + unrelated reply + fallback_when_zero_used=false -----
+    // Reset state: clear recall_log + events, leave memo at signal_count=4 as new baseline.
+    await verifyDb.query('DELETE recall_log').collect();
+    await verifyDb.query("DELETE events WHERE source = 'conversation'").collect();
+    await verifyDb.query('DELETE evidence_ledger').collect();
+    await verifyDb
+      .query(
+        "UPDATE runtime:`reinforcement.config` SET value.fallback_when_zero_used = false",
+      )
+      .collect();
+
+    const baselineCount = 4;
+    const UNRELATED = 'USER: q\n\nASSISTANT: the weather seems pleasant today thanks.';
+    for (const sid of sessions) {
+      await verifyDb
+        .query(
+          `CREATE events CONTENT {
+             source: 'conversation',
+             content: $c,
+             ts: $ts,
+             meta: { session_id: $sid }
+           }`,
+          { c: UNRELATED, ts: new Date(recallTs.getTime() + 60_000), sid },
+        )
+        .collect();
+      await verifyDb
+        .query(
+          `CREATE recall_log CONTENT {
+             ts: $ts, session_id: $sid, query: 'q', k: 1,
+             ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+             outcome: 'pending'
+           }`,
+          { ts: recallTs, sid, rid: String(memoId) },
+        )
+        .collect();
+    }
+
+    const sumB = await evaluatePending(verifyDb);
+    if (sumB.reinforced !== 0) {
+      fail(`G12b variant B: expected reinforced=0, got ${sumB.reinforced}`);
+      return;
+    }
+    if ((sumB.no_used ?? 0) !== 3) {
+      fail(`G12b variant B: expected no_used=3, got ${sumB.no_used}`);
+      return;
+    }
+    const [afterB] = await verifyDb.query(`SELECT signal_count FROM ${memoId}`).collect();
+    if (afterB?.[0]?.signal_count !== baselineCount) {
+      fail(`G12b variant B: expected signal_count unchanged at ${baselineCount}, got ${afterB?.[0]?.signal_count}`);
+      return;
+    }
+    const [rowsB] = await verifyDb.query('SELECT attribution FROM recall_log').collect();
+    const bucketCounts = { fallback_zero_used: 0 };
+    for (const r of rowsB) {
+      bucketCounts[r.attribution?.mode] = (bucketCounts[r.attribution?.mode] ?? 0) + 1;
+    }
+    if (bucketCounts.fallback_zero_used !== 3) {
+      fail(`G12b variant B: expected 3 fallback_zero_used rows, got ${JSON.stringify(bucketCounts)}`);
+      return;
+    }
+    ok('G12b variant B: 3 unrelated replies + fallback_off → signal_count unchanged, all rows fallback_zero_used');
+  } finally {
+    await appClose(verifyDb);
+  }
 }
 ```
 
@@ -1961,6 +2359,17 @@ Replace the existing single Behavior bullet with:
   - `fallback_when_no_reply` / `fallback_when_zero_used` (default both true): preserve legacy reinforce-all when attribution can't run / matched nothing.
   - `reply_lookup_window_ms` (default 600_000): how long after recall we wait for the reply event.
 - Inspect: `SELECT outcome, count() FROM recall_log GROUP BY outcome`; `explain_recall({last_n:5})` returns per-hit `used`/`used_via`/`used_score` plus the row's `attribution.mode`.
+- **Mode-rate distribution (interim telemetry, until `show_attribution_health` ships).** Until the `show_attribution_health` MCP rollup lands as a follow-up (spec §9.2 step 3), this query is the only way for an operator to verify the "watch for one week" check in rollout step 4:
+
+  ```surql
+  SELECT attribution.mode, count() AS n
+  FROM recall_log
+  WHERE ts > time::now() - 7d
+  GROUP BY attribution.mode;
+  ```
+
+  Expected healthy distribution after a week of `'hybrid'`: bulk of rows in `citation` + `similarity`, low single-digit-% in `fallback_no_reply` / `fallback_zero_used`, near-zero `hit_missing`-dominated rows. Spikes in `fallback_no_reply` indicate transcript-capture regressions (see §7.1); spikes in `hit_missing` indicate aggressive compaction (see §7.7).
+- **Rollback (operational).** `UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'off';` is the **fast** rollback — instant, no migration. The `evaluated_no_used` enum value persists on `recall_log.outcome`'s `ASSERT` list either way; rolling back the schema *enum* requires a new migration (you cannot `REMOVE` an enum value if any row holds it), so the runtime-flag rollback is the only one operators should reach for in practice.
 ```
 
 - [ ] **Step 2: Commit.**
@@ -1988,7 +2397,7 @@ EOF
 npm run test:unit -- --test-name-pattern 'reinforcement|intuition|attribute'
 ```
 
-Expected: **PASS, >=10 tests** (the new `reinforcement-attribute.test.js` 8 tests + `reinforcement-config.test.js` 3 tests + any existing intuition-handler/endpoint tests we touched).
+Expected: **PASS, >=13 tests** (`reinforcement-attribute.test.js` carries 10 tests after Task 2.2: 4 explicit/citation + 4 similarity/combined/empty + 1 duplicate-hit + 1 citation tiebreaker; `reinforcement-config.test.js` 3 tests; plus any existing intuition-handler/endpoint tests we touched in Phase 0).
 
 - [ ] **Step 2: Full reinforcement integration suite.**
 
@@ -1996,7 +2405,7 @@ Expected: **PASS, >=10 tests** (the new `reinforcement-attribute.test.js` 8 test
 npm run test:integration -- --test-name-pattern 'reinforcement'
 ```
 
-Expected: **PASS** — original 4 pre-B1 tests + 7 new B1 tests = **11 tests**.
+Expected: **PASS** — original 4 pre-B1 tests + 9 new B1 tests = **13 tests**. (B1 adds: no-reply fallback, per-hit reinforce, persistence, zero-used+fallback-off, corroborate-weight, duplicate-hit dedup §7.10, explain_recall surface, episode-citation §8.2 #16, backward-compat.)
 
 - [ ] **Step 3: Lint pass.**
 

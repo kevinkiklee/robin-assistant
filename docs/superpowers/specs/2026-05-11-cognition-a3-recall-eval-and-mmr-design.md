@@ -110,8 +110,17 @@ behind the read-only harness (A3).
   intuition-hook rows that make up most of the corpus.
 - The fix is end-to-end: pull `session_id` from the UserPromptSubmit
   hook stdin in `handler.js`, pass it through the daemon body in
-  `server.js:897-919`, accept it as a new param in `intuitionEndpoint`,
-  write it onto `recall_log`. Four small edits, all in-scope here.
+  `server.js:897-919` (or `system/runtime/daemon/routes/intuition.js`
+  if R-3 has shipped — see `docs/superpowers/plans/2026-05-11-runtime-layer-hardening.md`),
+  accept it as a new param in `intuitionEndpoint`, write it onto
+  `recall_log`. Four small edits, all in-scope here.
+- **Coordination with B1:** the same plumbing is a pre-req for B1
+  (per-hit reinforcement) which also needs `session_id` for
+  reply-event-correlation. Whichever plan lands first ships the
+  plumbing; the second plan verifies and falls through. The daemon
+  body field uses `session_id` (snake_case) to match the
+  `recall_log.session_id` column; the handler accepts `session_id` or
+  `sessionId` from hook stdin (some Claude Code versions emit either).
 
 ## Section 1 — A3: recall eval harness
 
@@ -205,8 +214,6 @@ DEFINE FIELD rows_pending  ON recall_eval_runs TYPE int;
 DEFINE FIELD rows_skipped  ON recall_eval_runs TYPE int;
 DEFINE FIELD metrics       ON recall_eval_runs TYPE object FLEXIBLE;
 DEFINE FIELD per_source    ON recall_eval_runs TYPE option<object> FLEXIBLE;
-DEFINE FIELD per_entity    ON recall_eval_runs TYPE option<array>;
-DEFINE FIELD per_entity[*]  ON recall_eval_runs TYPE object FLEXIBLE;
 DEFINE FIELD config_digest ON recall_eval_runs TYPE option<object> FLEXIBLE;
 DEFINE FIELD git_sha       ON recall_eval_runs TYPE option<string>;
 DEFINE INDEX recall_eval_runs_ts      ON recall_eval_runs FIELDS ts;
@@ -287,13 +294,10 @@ Recall eval — profile=mxbai-1024 window=2026-04-11..2026-05-11 source=all
   per_source             knn   bm25   knn+bm25
     fraction of top-6   0.71   0.18    0.11
     precision@6         0.255  0.181   0.314
-
-  per_entity (top 10 by hit count) — emitted with --json only
 ```
 
-`--json` returns the full `recall_eval_runs` row payload (including
-`per_entity` rollups) so a CI gate can `jq` on `metrics.precision_at_6 <
-0.20` and exit non-zero.
+`--json` returns the full `recall_eval_runs` row payload so a CI gate
+can `jq` on `metrics.precision_at_6 < 0.20` and exit non-zero.
 
 `--out <path>` writes the JSON to disk in addition to inserting the
 `recall_eval_runs` row.
@@ -430,6 +434,18 @@ Tune-knob in `runtime:recall.value`:
 The legacy key is kept so the fallback path (next section) can use its
 own threshold without retuning when MMR fails over.
 
+**Reused key semantics:** We reuse the existing `mmr_threshold` key
+(default value chosen for the substring-overlap path was already `0.92`
+in `store.js:HYBRID_DEFAULTS` per `rank.js:mmrLite`'s declared default;
+the lower `0.85` lived only in `inject.js`'s call site). The threshold
+semantics differ between paths: substring (Jaccard-style overlap) and
+cosine treat the same numeric `0.92` as different distributions. Only
+one path fires per call; the runtime flag `mmr_use_cosine` decides which.
+A future task may split the keys into `mmr_threshold_cosine` and
+`mmr_threshold_substring` once we have telemetry to support distinct
+defaults; until then the single key plus the `_legacy_substring`
+fallback is the operational contract.
+
 ### 2.4 Fallback path
 
 If `loadVectorsForHits` returns zero vectors (rare: legacy data + the
@@ -501,6 +517,16 @@ Three candidates considered:
 catalog covers the current-turn entities; prior-tail biographed entities
 cover the in-flight thread. The combined set is small (typical N ≤ 5)
 and gets used in §3.3.
+
+Implementation reads the last 3 biographed events in the session and
+harvests their `mentions` edges → entity ids (`matchPriorTailEntities`).
+The result is unioned with `matchCatalogEntities` output before the
+boost computation. This covers entities that exist in the
+prior-assistant tail but have not yet propagated into the catalog
+(catalog is ordered by `created_at DESC` and capped at N — very recent
+entities can fall off the cap until the next read). Unit test
+`intuition-entities.test.js` covers the entities-not-yet-in-catalog
+case.
 
 Catalog size cap: 500 entries (vs. 100 for the biographer prompt — we're
 not feeding an LLM, just doing in-memory lookup). Reads are O(500 × tokens)
@@ -598,6 +624,16 @@ return {
 };
 ```
 
+**Naming convention (audited):** Per-hit `score_components` uses
+JS-camelCase (`entityBoost`, `entityBoostCount`) matching the existing
+`cosineSim`/`scopeBoost`/`contraPenalty`/`trustFactor` keys on the same
+object. Aggregate telemetry on `intuition_telemetry.meta` uses snake_case
+(`entity_boost_applied`, `entity_boost_count`, `mmr_drops`,
+`mmr_vec_coverage`, `query_entities_matched`) matching existing telemetry
+conventions (`latency_ms`, `tokens_injected`, `query_chars`). Both layers
+are intentional — score-components live next to their function-local
+identifiers; telemetry meta lives next to other DB-column-style fields.
+
 Bounds:
 
 - `entityBoost ∈ [1.0, 1.25]` (capped via Math.min).
@@ -653,7 +689,9 @@ This matches prod: A2 is an intuition-injection feature.
 
 ## Section 4 — Shared schema additions
 
-Single migration: `0009-recall-eval-and-mmr.surql`.
+Single migration: `0010-recall-eval-and-mmr.surql`. (B1 owns `0009`, this
+plan owns `0010`, C1 owns `0011`, D1 owns `0012`/`0013`/`0014`; the plan
+header enumerates the full claim list.)
 
 ```surql
 -- A3
@@ -707,10 +745,10 @@ without DDL.
 **Created:**
 
 - `system/cognition/intuition/vectors.js` — `loadVectorsForHits`, `cosineSim`.
-- `system/cognition/intuition/entities.js` — `tokensOf`, `matchCatalogEntities`, `aboutEntitiesForMemos`, `readEntityCatalog` (with TTL cache).
+- `system/cognition/intuition/entities.js` — `tokensOf`, `matchCatalogEntities`, `matchPriorTailEntities`, `aboutEntitiesForMemos`, `readEntityCatalog` (with TTL cache).
 - `system/runtime/cli/commands/recall-eval.js` — CLI entry: parses flags, opens DB, dispatches to eval module.
 - `system/cognition/intuition/eval.js` — eval engine: window scan, label assignment, metric computation, replay loop. Pure data-in / data-out; no CLI concerns.
-- `system/data/db/migrations/0009-recall-eval-and-mmr.surql` — schema + runtime seeds per §4.
+- `system/data/db/migrations/0010-recall-eval-and-mmr.surql` — schema + runtime seeds per §4.
 - `system/tests/unit/intuition-cosine.test.js` — cosine helper unit, MMR with mocked vectors, fallback to substring.
 - `system/tests/unit/intuition-entity-boost.test.js` — match function, boost computation, bounds.
 - `system/tests/unit/rank-score-entity-boost.test.js` — `rank.score` with `entityBoost` in callerCtx; regression on `entityBoost = 1.0` default.
@@ -799,6 +837,14 @@ Total per-recall added latency: ~3-8 ms on the embedded engine. Well
 inside the existing `latency_p50 ≈ 60 ms` envelope; flagged in §6 telemetry
 so we can verify post-rollout.
 
+**Regression guard, not a precise budget.** Phase 6 Task 6.2's
+`intuition-cosine-end-to-end.test.js` asserts a soft upper bound
+(`latency_ms < 200`) on the full endpoint round-trip so a future
+refactor that accidentally adds a second vector-hydration round-trip
+trips a test. The number is a regression guard, not a budget — small
+upward drift on shared CI is acceptable; large jumps (≥3× headroom
+collapse) require investigation.
+
 ## Section 8 — Test plan
 
 **Unit:**
@@ -835,11 +881,14 @@ so we can verify post-rollout.
      `score_components.entityBoost > 1.0` on at least one hit,
      `mmr_path = 'cosine'` recorded.
 6. `recall-eval-replay.test.js`:
-   - Seed 10 `recall_log` rows with known `outcome` values + matching
-     `events` + `embeddings_*` rows.
+   - Seed ≥8 `recall_log` rows with mixed outcomes (`reinforced`,
+     `corrected`, `evaluated_no_signal`) + matching `events` +
+     `embeddings_*` rows.
    - Run the eval module in replay mode.
-   - Assert `rows_scored = 10`, `rows_pending = 0`, `precision_at_6`
-     matches hand-computed value within ±0.001.
+   - Assert `rows_scored`, `rows_pending`, and multiple metric values
+     (`precision_at_3`, `recall_at_3`, `no_signal_rate`,
+     `mean_rank_of_negatives_at_10`) match hand-computed values within
+     ±0.001.
 7. `recall-eval-cli.test.js`:
    - Spawn `node system/bin/robin recall-eval --json --limit 5` against
      a seeded DB.
@@ -914,6 +963,16 @@ changes after step 1's migration; reverting them is code-only.
   entity boost reads `about` edges, which arcs don't touch.
 
 ## Section 11 — Open questions (post-impl review)
+
+- **Per-entity precision rollups.** Earlier drafts proposed a
+  `per_entity` array on `recall_eval_runs` keyed by catalog entity id,
+  reporting precision@k restricted to hits whose memos `about` that
+  entity. Dropped from v1: the join (recall_log → memo → `about` →
+  entity) is non-trivial and the use case ("which entities are recall
+  failing most on?") is not yet validated. If a user pattern emerges
+  where boosts saturate on a small subset of entities, re-introduce
+  this rollup. Schema is forward-compatible — the field can be added
+  later without backfilling old rows.
 
 - **Should A2 boost event hits, or only memo hits?** Currently
   memo-only (§3.3). Events accumulate `mentions` edges, not `about`;
