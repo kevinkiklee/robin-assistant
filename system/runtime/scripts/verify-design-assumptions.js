@@ -650,6 +650,52 @@ async function gateNameLowerIndexStillSelected(db) {
   }
 }
 
+async function gateDagRegistryBidirectional(_db) {
+  console.log('\nG20 — DREAM_DAG_DEPS keys ⇔ step-registry byName keys (bidirectional)');
+  const { byName } = await import('../../cognition/dream/step-registry.js');
+  const { DREAM_DAG_DEPS } = await import('../../cognition/dream/dag.js');
+  const a = new Set(Object.keys(byName));
+  const b = new Set(Object.keys(DREAM_DAG_DEPS));
+  const missingFromDeps = [...a].filter((k) => !b.has(k));
+  const missingFromRegistry = [...b].filter((k) => !a.has(k));
+  if (missingFromDeps.length === 0 && missingFromRegistry.length === 0) {
+    ok(`registry/deps symmetric (${a.size} keys)`);
+  } else {
+    fail(
+      `registry/deps mismatch: missingFromDeps=[${missingFromDeps}] missingFromRegistry=[${missingFromRegistry}]`,
+    );
+  }
+}
+
+async function gateDreamOutputEquivalence(_db) {
+  // G19 — Output equivalence between serial and parallel dream runs.
+  // Heavyweight (boots two SurrealDB instances, runs the full pipeline
+  // twice). Gated on CI: skip outside CI to avoid burning a nightly worth
+  // of dream LLM calls on Kevin's instance.
+  if (!process.env.CI) {
+    console.log('\nG19 — Output equivalence (parallel ≡ serial) [skipped: CI only]');
+    return;
+  }
+  console.log('\nG19 — Output equivalence (parallel ≡ serial)');
+  // The integration test at system/tests/integration/dream-parallel.test.js
+  // is the authoritative assertion. From this gate we shell out to the test
+  // runner with the equivalence pattern so the verify script's exit code
+  // reflects the gate's outcome.
+  const { spawnSync } = await import('node:child_process');
+  const res = spawnSync(
+    'node',
+    [
+      '--test',
+      '--test-name-pattern',
+      'output equivalence: parallel summary equals serial summary',
+      'system/tests/integration/dream-parallel.test.js',
+    ],
+    { stdio: 'inherit' },
+  );
+  if (res.status === 0) ok('parallel summary ≡ serial summary under normalizeSummary');
+  else fail(`equivalence test failed (exit ${res.status})`);
+}
+
 async function main() {
   const db = await connect();
   try {
@@ -665,6 +711,8 @@ async function main() {
     await gateReinforceCountBucket(db);
     await gateReinforceCountBucketHybrid();
     await gateNameLowerIndexStillSelected(db);
+    await gateDagRegistryBidirectional(db);
+    await gateDreamOutputEquivalence(db);
   } finally {
     try {
       await db.close();
