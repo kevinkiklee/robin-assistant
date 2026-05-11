@@ -69,7 +69,7 @@ export async function readCalibration(db, domain, cfg) {
       )
       .collect();
     const memo = memoRows?.[0];
-    if (memo && memo.meta && typeof memo.meta.drift === 'number') {
+    if (memo?.meta && typeof memo.meta.drift === 'number') {
       return {
         domain,
         samples_count: memo.meta.samples ?? cfg.min_calibration_samples ?? 5,
@@ -85,7 +85,7 @@ export async function readCalibration(db, domain, cfg) {
   // §3.2 — day-1 path: persona:singleton.calibration.
   const [personaRows] = await db.query('SELECT calibration FROM persona:singleton').collect();
   const cal = personaRows?.[0]?.calibration;
-  if (!cal || !cal.by_kind) return null;
+  if (!cal?.by_kind) return null;
 
   if (domain) {
     const key = Object.keys(cal.by_kind).find(
