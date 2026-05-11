@@ -57,6 +57,10 @@ $ROBIN_HOME unset AND .robin-home missing?
 
 The pre-existing implicit `<package_root>/user-data/` default is removed at runtime. It survives only as the picker's default radio option (option 1).
 
+**Install is the one resolver bypass.** `robin install` cannot call `robinHome()` at startup — by definition, on a first install, neither `$ROBIN_HOME` nor `.robin-home` is set, and the strict resolver would error with "Robin is not installed." Instead, install drives its picker/discovery first, then writes `.robin-home` (§9.2 step 7), and only then may it (or anything else) call `robinHome()` normally. All other commands take the strict path. The CLI dispatcher in `src/cli/index.js` enforces this: it does not eagerly resolve `robinHome()` before dispatching; commands opt in.
+
+**`ensureHome()` runs on every successful resolve.** After `robinHome()` returns a valid path, the entry-point wrapper calls `ensureHome()`, which idempotently creates any missing `paths.data.*` subdirs and re-writes the `.robin-data` marker if absent. Cheap (a few `mkdir -p` stat calls) and corrects accidental hand-deletions of `cache/` etc. without a re-install.
+
 **`$ROBIN_HOME` escape hatch** applies to the current process only — it does not propagate to the daemon (which uses the home value baked into its plist/systemd unit at install time). `robin doctor` warns when `$ROBIN_HOME` is set in the shell and disagrees with `.robin-home`.
 
 **Invariant: `.robin-home` is the single source of truth.** The launchd plist and systemd unit are denormalized caches of it; every install/relocate rewrites them in sync. Doctor cross-checks.
@@ -303,7 +307,9 @@ Selecting an existing path writes `.robin-home` and re-runs steps 6–9. Migrati
 
 Best-effort by default; `--strict` aborts on the first per-entry failure.
 
-1. **Stop the daemon first** via the OS service tool (same logic as 9.4 step 3). If it can't stop, abort.
+1. **Stop the daemon first** via the OS service tool (same logic as 9.4 step 3). If the daemon won't stop, abort.
+
+   Edge case: `<robin-home>/` is missing (user `rm -rf`'d it before running uninstall). The manifest is gone too, so uninstall can't iterate touch-points. Fallback: uninstall greps the same well-known host paths the install touches (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/Library/LaunchAgents/io.robin-assistant.*`, `~/.config/systemd/user/robin-*`) for the shim-path prefix and removes matches best-effort — the same scan-and-prefix-match the existing `uninstallHooksFromSettings()` already does when its manifest is missing. After the scan, uninstall reports any host paths it touched. Pre-commit hooks in arbitrary repos can't be discovered without the manifest; those are listed as "may still exist" in the final summary so the user can clean them up manually.
 2. Walk `host-integrations.json` entries in **reverse-install order**. For each entry, **do the host work first, then update the manifest**:
 
    ```
@@ -382,9 +388,10 @@ Two cheap regression guards as unit tests; run in CI in under a second.
 
 **One change, one install.** No feature flag, no two-release migration.
 
-1. Land the entire design as a single change set: `data-store.js` rename, marker, manifest, picker, discovery (which accepts both `.robin-data` markers *and* legacy v2 layouts), strict resolution chain, audit tests.
-2. After merge, the next `robin <anything>` invocation hits the new strict resolver and fails with the documented "Robin is not installed. Run: robin install" error. Existing data untouched.
-3. Run `robin install`. Discovery sees `<package_root>/user-data/` as a legacy v2 layout, offers it as a recovery option. Pick it (stay in place) or pick option 3 (move to `~/Documents/Robin`). Install drops the marker, writes `.robin-home`, rewrites plist/systemd, populates `host-integrations.json` from the existing `installed-hooks.json` via the read-side migration.
+1. **Before merging**, stop the running launchd daemon: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.mcp.plist`. (Linux equivalent: `systemctl --user stop robin-mcp.service`.) This prevents the in-flight daemon — running old code — from spawning hook subprocesses that hit the new strict resolver and error in a tight loop while Kevin is mid-install.
+2. Land the entire design as a single change set: `data-store.js` rename, marker, manifest, picker, discovery (which accepts both `.robin-data` markers *and* legacy v2 layouts), strict resolution chain, audit tests.
+3. After merge, the next `robin <anything>` invocation hits the new strict resolver and fails with the documented "Robin is not installed. Run: robin install" error. Existing data untouched. Host CLI hooks (Claude / Gemini) will also error if fired in this window — expected, brief.
+4. Run `robin install`. Discovery sees `<package_root>/user-data/` as a legacy v2 layout, offers it as a recovery option. Pick it (stay in place) or pick option 3 (move to `~/Documents/Robin`). Install drops the marker, writes `.robin-home`, rewrites and reloads plist/systemd, populates `host-integrations.json` from the existing `installed-hooks.json` via the read-side migration. The daemon comes back up under the new code, pointed at the chosen home.
 
 ## 15. File-level change list
 
@@ -392,7 +399,7 @@ Two cheap regression guards as unit tests; run in CI in under a second.
 
 - `src/runtime/data-store.js` — supersedes `home.js`. Exports above.
 - `tests/unit/data-store.test.js`, `tests/unit/manifest.test.js`, `tests/unit/prompts-radio.test.js`, `tests/unit/audit-no-tilde-robin.test.js`, `tests/unit/audit-user-data-construction.test.js`.
-- `tests/integration/install-first.test.js`, `install-existing-data.test.js`, `install-legacy-data-without-marker.test.js`, `install-existing-data-failure.test.js`, `relocate.test.js`, `reinstall-discovery.test.js`, `uninstall-best-effort.test.js`, `doctor-drift.test.js`, `interrupt-safety.test.js`, `legacy-installed-hooks.test.js`.
+- `tests/integration/install-first.test.js`, `install-existing-data.test.js`, `install-legacy-data-without-marker.test.js`, `install-existing-data-failure.test.js`, `install-kevin-rollout.test.js`, `relocate.test.js`, `reinstall-discovery.test.js`, `uninstall-best-effort.test.js`, `doctor-drift.test.js`, `interrupt-safety.test.js`, `legacy-installed-hooks.test.js`.
 
 ### Modified
 
@@ -438,6 +445,7 @@ Two cheap regression guards as unit tests; run in CI in under a second.
 - `doctor-drift.test.js` — hand-edit a host file to remove a Robin hook: doctor reports drift; `install --repair` restores it; foreign hooks untouched.
 - `interrupt-safety.test.js` — kill the process between install steps 5–9; re-running install completes cleanly.
 - `legacy-installed-hooks.test.js` — pre-seed `installed-hooks.json`, no `host-integrations.json`: first read produces unified manifest, legacy file gone.
+- `install-kevin-rollout.test.js` — end-to-end simulation of the Kevin rollout: tmpdir contains a v2 layout at `<package_root>/user-data/` with populated `db/`, `secrets/.env` at 0600, and a populated `installed-hooks.json`; no `.robin-data` marker, no `.robin-home`. Run `robin install`; pick option 1 (stay in place). Verify: marker written, `.robin-home` written, `installed-hooks.json` is gone, `host-integrations.json` contains the migrated Claude/Gemini entries, `secrets/.env` mode preserved, db rows preserved, plist log path is now `<home>/cache/logs/daemon.log`.
 
 ## 17. Decisions locked
 
