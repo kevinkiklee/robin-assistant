@@ -1,5 +1,52 @@
 # Changelog
 
+## [6.0.0-alpha.12] — 2026-05-11
+
+Post-alpha.11 follow-on bundle: user-data isolation cutover, faculty renames, DB browser ship, long-form docs, non-interactive install, log rotation, and restored per-phase hooks-disable. 14 commits + ~984 unit tests passing.
+
+### User-data isolation
+
+- **`src/runtime/data-store.js`** is now the sole path resolver. Strict `robinHome()` with no silent fallback; `paths.data.*` (under `<robinHome>/`) and `paths.source.*` (under package root). `.robin-data` marker + `.robin-home` pointer in package root + `expectedHome` baked into the supervisor unit.
+- **Interactive picker** in `robin install` — four options (package_root/user-data, `~/.robin`, `~/Documents/Robin`, custom). Discovery scans known locations on reinstall; existing-data migration prompt uses copy-verify-delete (never `fs.rename`). New flags: `--home`, `--relocate`, `--repair`.
+- **`robin install` non-interactive flags** (spec §9.5) for unattended runs: `--yes` (default home, no prompts), `--existing <path>` (declare known prior install, bypass discovery scan), `--on-existing=move|copy|ignore|abort` (answer to migration prompt; defaults to `abort`), and `--force` (allow targeting an empty directory without the Robin marker). Adds `planInstallHome()`, a side-effect-free resolver for tests + scripted installs. 10 new tests in `install-noninteractive.test.js`.
+- **`installed-hooks.json` and `hooks-disabled.txt` retired**, folded into the unified `host-integrations.json` manifest and `config.json.hooks.disabled` respectively. Both files migrate on first write.
+- **`bin/robin-hook.sh`** is pure passthrough; no resolver in shell.
+- **launchd plist + systemd unit** bake `ROBIN_HOME=<home>` and the daemon log path; both are recorded in the manifest with `expectedHome`.
+- **`robin uninstall`** is manifest-driven, best-effort by default. `--strict` aborts on first failure, `--purge` removes the home dir. OS-aware daemon stop via `launchctl bootout` / `systemctl stop` from the manifest.
+- **`robin doctor`** gains a Data section reporting home resolution, env/pointer mismatch, manifest health, and drift on host-integration entries.
+- **Audit tests** — `tests/unit/audit-no-tilde-robin.test.js` and `audit-user-data-construction.test.js` enforce no source references `~/.robin` or constructs `user-data` paths outside the allow-list.
+
+### Faculty renames (in-flight from alpha.11)
+
+- `bash-policy` → `discretion`, `auto-recall` → `intuition`, `tamper-check` → `introspection`. Surfaces every long-lived mechanism under a named faculty. AGENTS.md, hooks, daemon endpoints, and tests all renamed in lockstep.
+
+### Per-phase hooks-disable (restored)
+
+- Reverses the alpha.11 regression that collapsed per-phase disable into a single global boolean. Storage shape: `config.json.hooks.disabled` is now a `string[]` of disabled phase names. `disabled === true` (legacy) is read as "all phases disabled"; `disabled === false` / missing reads as "none". Disabling one phase no longer suppresses the others. The `hooks-disabled.txt` → `string[]` migration in `ensureHome()` parses newline-separated phase names with `#` line comments. 15 new tests across `hooks-disabled.test.js` and `hooks-disabled-migration.test.js`.
+
+### DB browser
+
+- **`robin db browse`** — opens an in-daemon SurrealQL workbench at `http://127.0.0.1:<daemon-port>/db/`. Sidebar of saved queries, schema explorer, dashboards (inventory, trends, analysis cards), and a live SurrealQL editor. Loopback-only with Host/Origin checks. Daemon mounts the route lazily on boot; the CLI just opens the URL. Shipped alongside its 1,800 lines of server + static frontend, plus 20 unit + integration tests.
+
+### Job runner additions
+
+- **`log-rotate` internal job** — every 6 h, copy-then-truncates `daemon.log` when it exceeds 10 MB (override via `config.json.logs.rotateAtBytes`). Keeps one archive (`daemon.log.1`). Copy-then-truncate (rather than rename-and-recreate) preserves the daemon's open fd held by launchd's `StandardOutPath`.
+
+### Documentation
+
+- **Five long-form docs** committed under `docs/`: `architecture.md` (big-picture + agent-turn walkthrough), `faculties.md` (per-faculty deep dive), `install.md` (full walkthrough + picker + secrets + OAuth + Discord + pre-commit), `development.md` (adding tools, integrations, hooks, migrations), `troubleshooting.md` (common problems and fixes). Referenced from the README documentation table.
+
+### Cross-phase
+
+- **`ROBIN_POINTER_PATH` test-only env override** in `data-store.js` — lets integration tests that exercise `writePointer` use a per-test tmpdir instead of stashing/restoring the real `<packageRoot>/.robin-home`. Production never sets the env var.
+- **Lint debt cleanup** — biome unsafe fixes (template literals, single-var declarators) applied to six 4b.3 files; biome.json ignores `user-data/`.
+- **Pre-existing `ERR_MODULE_NOT_FOUND` failures cleared** — the 10 module-not-found errors from alpha.11 referenced renamed files (`bash-policy.js`, `tamper-check.js`, `step-corrections.js`, `intuition` handlers) and resolved as the rename pass landed. Full unit suite is now 979/0.
+
+### What did NOT ship in this bundle
+
+- **Phase 4e (trained reranker + knowledge-promotion classifier)** — still blocked on accumulated `recall_events` and labeled data.
+- **Phase 4c leftovers (Save Conversation + Deep-ripple)** — still deferred pending a fresh brainstorm now that 4f session capture is shipped and the biographer queue is settled.
+
 ## [6.0.0-alpha.11] — 2026-05-11
 
 Phase-4 progress bundle: 4d (job runner) + 4c (knowledge ops) + 4b.1 (action policy) + 4b.2 (comm-style) + 4b.3 (predictions + calibration). Five sub-phases shipped together; combined +130 tests; full suite at 1067/0.
