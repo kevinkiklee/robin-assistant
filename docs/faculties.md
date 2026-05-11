@@ -78,10 +78,14 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 **Refuses inappropriate writes (inbound), commands (bash), and outbound payloads.** Unchanged from v1 — three sub-mechanisms sharing the `refusals` table.
 
 ### dream
-**Nightly multi-step consolidation into long-term memory.**
-- Pipeline: step-knowledge → step-habits (from edges[kind='occurs_with']) → step-narrative (from edges[kind='mentions']) → step-persona → step-reflection → step-scope-cleanup. Plus comm-style and calibration sub-steps.
+**Nightly multi-step consolidation into long-term memory. Layered DAG: ten steps fan out across three topological layers; per-step failures captured into `summary.<step>.error`; unified `dreamed_at` mark fires once, post-barrier, after every layer settles.**
+- Files: `system/cognition/dream/pipeline.js`, `system/cognition/dream/scheduler.js` (`runDag`, `topoLayers`, `chunkByLimit`), `system/cognition/dream/dag.js` (`DREAM_DAG_DEPS`), `system/cognition/dream/step-registry.js` (`byName`), `system/cognition/dream/dream-budget.js` (`readDreamConfig`, `shouldHalt`, `defaultFloor`), `system/cognition/dream/telemetry.js` (`recordStepTelemetry`), `system/cognition/dream/step-*.js`.
+- Layers: **L1** `knowledge, patterns, reflection, profile, arcs, commStyle, confidence` · **L2** `scopeCleanup ← knowledge`, `calibration ← commStyle` (persona serial) · **L3** `compaction ← knowledge, scopeCleanup`. Within a layer, steps run via `Promise.all`; layers run in series.
 - step-knowledge emits `supersedes` edges when promoting contradicting facts (old memo preserved; `fn::freshness` returns 0).
 - step-scope-cleanup promotes referenced ephemerals to global; prunes the rest (session: 7d, temp: 24h).
+- Runtime config: `runtime:`dream.config`.value` carries `parallelism_enabled` (default `false`), `max_concurrent` (`NONE` → unlimited within a layer), `budget_check_enabled` (default `true`), `budget_floor` (`NONE` → 20% of `runtime:`cadence.config`.daily_token_budget`). Flip parallelism on with `UPDATE runtime:\`dream.config\` SET value.parallelism_enabled = true;`; rollback with `false`.
+- Budget coupling (§5.1): dream's per-step writes land in `cadence_telemetry` alongside the cadence consumer's rows, so `currentBudget(db, cfg)`'s 24-h rolling sum reflects both surfaces. The dream budget halts at layer boundaries — never mid-step. Worst-case overshoot is bounded by the most expensive layer (today: layer 1 with five LLM-bound steps ≈ 250k tokens).
+- Per-run ledger: `runtime:dream.value` carries `last_run_at`, `last_run_at_success`, `last_layers: [{ names, duration_ms }]`, `last_halted: 'budget_exhausted' | 'scheduler_error' | NONE`. Doctor + `show_step_health` consume these.
 
 ### reflection
 **Correction-to-rule + reinforcement-to-rule learning loop.** Runs as a step inside dream; clusters correction *and* positive-reinforcement events into `rule_candidates`.
