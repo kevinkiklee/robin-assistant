@@ -58,15 +58,26 @@ export async function getAttention(db, { source, windowMinutes = DEFAULT_WINDOW_
   const eventIds = recent_events.map((e) => e.id);
   let entities = [];
   if (eventIds.length > 0) {
+    // Note: SurrealDB v3 parser dislikes `DISTINCT to AS ...` — `to` is a
+    // reserved word. Project via VALUE on the `to` field, then dedupe in JS.
     const entSql = `
-      SELECT DISTINCT to AS entity, kind FROM edges
+      SELECT VALUE to FROM edges
       WHERE kind IN ['mentions', 'about'] AND from IN $eids
       LIMIT 50
     `;
-    const [rows] = await db.query(new BoundQuery(entSql, { eids: eventIds })).collect();
+    const [rawIds] = await db.query(new BoundQuery(entSql, { eids: eventIds })).collect();
+    const seen = new Set();
+    const uniqIds = [];
+    for (const id of rawIds) {
+      const key = String(id);
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqIds.push(id);
+      }
+    }
     // Hydrate entity names
-    if (rows.length > 0) {
-      const ids = rows.map((r) => r.entity);
+    if (uniqIds.length > 0) {
+      const ids = uniqIds;
       const [hydrated] = await db
         .query(new BoundQuery('SELECT id, name, type FROM entities WHERE id IN $ids', { ids }))
         .collect();
