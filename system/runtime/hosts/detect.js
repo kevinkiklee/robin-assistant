@@ -1,21 +1,45 @@
 import { claudeCodeAdapter } from './claude-code.js';
 import { geminiAdapter } from './gemini.js';
 
+// Keys remain underscored — they match adapter.name and many existing call
+// sites (e.g., install/hooks-settings.js uses `${host.name}-hooks` as a
+// settings.json key; events.meta.host carries underscored values). The full
+// repo-wide rename is deferred to a separate cleanup PR with explicit
+// settings.json migration.
 const ADAPTERS = {
   claude_code: claudeCodeAdapter,
   gemini_cli: geminiAdapter,
 };
 
+// Accept both hyphenated (canonical going forward) and underscored (legacy)
+// forms of ROBIN_HOST. Internally we still look up by underscored key.
+const ROBIN_HOST_ALIASES = {
+  'claude-code': 'claude_code',
+  'gemini-cli': 'gemini_cli',
+  // identity aliases for legacy callers
+  claude_code: 'claude_code',
+  gemini_cli: 'gemini_cli',
+};
+
+let warnedUnderscoreOverride = false;
+
 export async function detectHost(opts = {}) {
-  // Explicit override wins (only if it names a known adapter)
-  const override = process.env.ROBIN_HOST;
-  if (override && ADAPTERS[override]) {
-    return ADAPTERS[override];
+  const raw = process.env.ROBIN_HOST;
+  if (raw) {
+    const internal = ROBIN_HOST_ALIASES[raw];
+    if (internal) {
+      if ((raw === 'claude_code' || raw === 'gemini_cli') && !warnedUnderscoreOverride) {
+        console.warn(
+          `[hosts] ROBIN_HOST=${raw} is deprecated; use the hyphenated form '${raw.replace('_', '-')}' instead.`,
+        );
+        warnedUnderscoreOverride = true;
+      }
+      return ADAPTERS[internal];
+    }
   }
 
   // Heuristics
   if (process.env.CLAUDE_PROJECT_DIR) return claudeCodeAdapter;
-  // GEMINI_API_KEY is a strong signal someone wants Gemini even though Path A doesn't need it
   if (process.env.GEMINI_API_KEY) return geminiAdapter;
 
   // Last-resort: probe availability (skipped in tests via skipAvailabilityCheck)
@@ -25,6 +49,6 @@ export async function detectHost(opts = {}) {
   }
 
   throw new Error(
-    'no host detected: set ROBIN_HOST=claude_code|gemini_cli or install one of the host CLIs',
+    'no host detected: set ROBIN_HOST=claude-code|gemini-cli or install one of the host CLIs',
   );
 }
