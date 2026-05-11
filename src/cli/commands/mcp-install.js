@@ -29,25 +29,27 @@ async function readDbDataForAgentsMd() {
     const { connect, close } = await import('../../db/client.js');
     const { listAllJobs } = await import('../../jobs/db.js');
     const { getCommStyle } = await import('../../jobs/comm-style.js');
+    const { getCalibration } = await import('../../jobs/predictions.js');
     await ensureHome();
     const p = paths();
     const db = await connect({ engine: `rocksdb://${p.db}` });
     try {
       const jobs = await listAllJobs(db);
       const commStyle = await getCommStyle(db);
-      return { jobs, commStyle };
+      const calibration = await getCalibration(db);
+      return { jobs, commStyle, calibration };
     } finally {
       await close(db);
     }
   } catch {
-    return { jobs: undefined, commStyle: null };
+    return { jobs: undefined, commStyle: null, calibration: null };
   }
 }
 
-async function writeMergedAgentsMd(path, jobs, commStyle) {
+async function writeMergedAgentsMd(path, jobs, commStyle, calibration) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
-  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs, commStyle }));
+  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs, commStyle, calibration }));
   await writeFile(path, merged, 'utf8');
   console.log(`updated ${path}`);
 }
@@ -177,9 +179,9 @@ export async function mcpInstall(argv) {
   if (!noAgentsMd) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
-    const { jobs, commStyle } = await readDbDataForAgentsMd();
-    await writeMergedAgentsMd(claudePath, jobs, commStyle);
-    await writeMergedAgentsMd(geminiPath, jobs, commStyle);
+    const { jobs, commStyle, calibration } = await readDbDataForAgentsMd();
+    await writeMergedAgentsMd(claudePath, jobs, commStyle, calibration);
+    await writeMergedAgentsMd(geminiPath, jobs, commStyle, calibration);
   }
 
   // 7. Print summary.

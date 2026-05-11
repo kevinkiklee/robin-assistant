@@ -161,6 +161,23 @@ export async function main(argv) {
     console.error('usage: robin commstyle <show|refresh>');
     process.exit(1);
   }
+  if (cmd === 'predictions') {
+    const sub = argv[1];
+    if (sub === 'list') {
+      const { predictionsList } = await import('./commands/predictions-list.js');
+      return predictionsList(argv.slice(2));
+    }
+    if (sub === 'resolve') {
+      const { predictionsResolve } = await import('./commands/predictions-resolve.js');
+      return predictionsResolve(argv.slice(2));
+    }
+    console.error('usage: robin predictions <list|resolve>');
+    process.exit(1);
+  }
+  if (cmd === 'calibration') {
+    const { calibrationShow } = await import('./commands/calibration-show.js');
+    return calibrationShow(argv.slice(1));
+  }
   if (cmd === 'integrations') {
     const sub = argv[1];
     if (sub === 'list') {

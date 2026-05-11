@@ -183,7 +183,7 @@ ${renderIntegrationsList(integrations)}
 }
 
 export function commStyleSection(commStyle) {
-  if (commStyle && commStyle.tone) {
+  if (commStyle?.tone) {
     const ts = commStyle.last_synthesized_at
       ? new Date(commStyle.last_synthesized_at).toISOString()
       : 'unknown';
@@ -216,7 +216,45 @@ corrections to check whether enough signal has accumulated.
 <!-- robin-comm-style:end -->`;
 }
 
-export function agentsMdContent({ integrations = [], jobs, commStyle } = {}) {
+export function calibrationSection(calibration) {
+  if (calibration?.by_kind && Object.keys(calibration.by_kind).length > 0) {
+    const lines = Object.entries(calibration.by_kind).map(([k, v]) => {
+      const pct = (v.accuracy * 100).toFixed(0);
+      return `- ${k}: ${pct}% accurate (n=${v.resolved})`;
+    });
+    const ts = calibration.last_computed_at
+      ? new Date(calibration.last_computed_at).toISOString()
+      : 'unknown';
+    return `<!-- robin-calibration:start (auto-generated, do not hand-edit) -->
+## Calibration
+
+Your past predictions (synthesized nightly):
+${lines.join('\n')}
+- total_open: ${calibration.total_open ?? 0} predictions awaiting resolution
+- last_computed: ${ts}
+
+When you make a falsifiable claim — "this will take 30 min", "you usually prefer X",
+"the meeting is at 3pm" — call \`predict({statement, kind, confidence})\` so
+calibration can improve. When the outcome becomes known, call
+\`resolve_prediction({id, correct, actual_outcome})\`. You can call
+\`list_open_predictions()\` to find unresolved claims.
+
+If accuracy < 50% for a kind, treat new predictions in that kind with
+low confidence (≤ 0.5).
+<!-- robin-calibration:end -->`;
+  }
+  return `<!-- robin-calibration:start (auto-generated, do not hand-edit) -->
+## Calibration
+
+No calibration data yet — make some predictions and resolve them. Call
+\`predict({statement, kind, confidence})\` when you make a falsifiable
+claim, then \`resolve_prediction({id, correct, ...})\` when you find out.
+Common kinds: \`duration\`, \`fact_recall\`, \`preference_guess\`,
+\`identity\`, \`event_timing\`.
+<!-- robin-calibration:end -->`;
+}
+
+export function agentsMdContent({ integrations = [], jobs, commStyle, calibration } = {}) {
   return `# Robin
 
 You're talking to a user through Robin. Robin gives you a memory layer
@@ -309,6 +347,8 @@ ${knowledgeOpsSection()}
 ${actionsSection()}
 
 ${commStyleSection(commStyle)}
+
+${calibrationSection(calibration)}
 
 ${buildSecurityBlock()}
 `;
