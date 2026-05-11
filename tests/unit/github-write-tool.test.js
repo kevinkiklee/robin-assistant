@@ -8,6 +8,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { createCapture } from '../../src/integrations/_framework/capture.js';
 import { createGitHubWriteTool } from '../../src/integrations/github_write/tools/github-write.js';
+import { setActionTrust } from '../../src/jobs/action-trust.js';
 
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
@@ -39,6 +40,10 @@ async function freshSetup() {
   saveSecret('GITHUB_PAT', 'ghp_test');
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../src/schema/migrations'));
+  // Pre-seed all actions to AUTO so existing tests bypass the trust gate.
+  for (const action of ['create-issue', 'comment', 'label', 'mark-read']) {
+    await setActionTrust(db, `github_write:${action}`, 'AUTO', 'user');
+  }
   const e = createStubEmbedder({ dimension: 1024 });
   const capture = createCapture({
     db,
