@@ -25,7 +25,10 @@ export function validateBiographerBatchOutput(o, expectedIds) {
     }
     const id = entry.event_id;
     if (typeof id !== 'string' || id.length === 0) {
-      malformed.push({ event_id: '<missing event_id>', error: 'event_id must be non-empty string' });
+      malformed.push({
+        event_id: '<missing event_id>',
+        error: 'event_id must be non-empty string',
+      });
       continue;
     }
     if (!expected.has(id)) {

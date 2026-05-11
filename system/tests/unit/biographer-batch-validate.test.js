@@ -16,11 +16,7 @@ function validPerEvent(id) {
 test('well-formed batch with 3 entries returns ok with 3 entries', () => {
   const r = validateBiographerBatchOutput(
     {
-      events: [
-        validPerEvent('events:a'),
-        validPerEvent('events:b'),
-        validPerEvent('events:c'),
-      ],
+      events: [validPerEvent('events:a'), validPerEvent('events:b'), validPerEvent('events:c')],
     },
     ['events:a', 'events:b', 'events:c'],
   );
@@ -31,10 +27,10 @@ test('well-formed batch with 3 entries returns ok with 3 entries', () => {
 });
 
 test('missing event_id in output recorded as missing', () => {
-  const r = validateBiographerBatchOutput(
-    { events: [validPerEvent('events:a')] },
-    ['events:a', 'events:b'],
-  );
+  const r = validateBiographerBatchOutput({ events: [validPerEvent('events:a')] }, [
+    'events:a',
+    'events:b',
+  ]);
   assert.equal(r.ok, true);
   assert.equal(r.events.size, 1);
   assert.deepEqual(r.missing, ['events:b']);
