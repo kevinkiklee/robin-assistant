@@ -1,11 +1,23 @@
+// biographer-output.js — validates the JSON shape the biographer LLM returns.
+//
+// Edge vocabulary accepts both the new EDGE_KIND_REGISTRY names and the
+// legacy aliases (co_occurs_with, precedes) so existing prompts keep working
+// while the prompt template is updated. The biographer translates aliases
+// when emitting edges via `store.relateAll`.
+
 const ENTITY_TYPES = new Set(['person', 'place', 'project', 'topic', 'thing']);
 const EDGE_TYPES = new Set([
+  // Current registry kinds the biographer is allowed to emit.
   'mentions',
   'about',
-  'precedes',
   'works_on',
   'participates_in',
+  'occurs_with',
+  'before',
+  // Legacy aliases — accepted for backward compatibility, normalized in
+  // biographer.js → normalizeEdgeKind() before they touch the DB.
   'co_occurs_with',
+  'precedes',
 ]);
 
 export function validateBiographerOutput(o) {
