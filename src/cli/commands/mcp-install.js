@@ -30,13 +30,13 @@ async function readOrEmpty(path) {
 // close-hang. Fail-soft: any error returns the per-field "unavailable" value.
 async function readDbDataForAgentsMd() {
   try {
-    const { ensureHome, paths } = await import('../../runtime/data-store.js');
-    const { connect, close } = await import('../../db/client.js');
+    const { ensureHome } = await import('../../runtime/data-store.js');
+    const { connect, close, defaultDbUrl } = await import('../../db/client.js');
     const { listAllJobs } = await import('../../jobs/db.js');
     const { getCommStyle } = await import('../../jobs/comm-style.js');
     const { getCalibration } = await import('../../jobs/predictions.js');
     await ensureHome();
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    const db = await connect({ engine: await defaultDbUrl() });
     try {
       const jobs = await listAllJobs(db);
       const commStyle = await getCommStyle(db);

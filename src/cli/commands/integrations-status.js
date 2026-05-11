@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
-import { close, connect } from '../../db/client.js';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
+import { ensureHome } from '../../runtime/data-store.js';
 
 export async function integrationsStatus(argv) {
   if (!argv[0]) {
@@ -10,7 +10,7 @@ export async function integrationsStatus(argv) {
   const name = argv[0];
   const json = argv.includes('--json');
   await ensureHome();
-  const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+  const db = await connect({ engine: await defaultDbUrl() });
   try {
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)

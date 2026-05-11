@@ -7,7 +7,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { surql } from 'surrealdb';
 import { biographerProcess } from '../capture/biographer.js';
-import { close, connect } from '../db/client.js';
+import { close, connect, defaultDbUrl } from '../db/client.js';
 import { dreamProcess } from '../dream/pipeline.js';
 import { createEmbedder } from '../embed/factory.js';
 import { detectHost } from '../hosts/detect.js';
@@ -135,7 +135,7 @@ export async function startDaemon() {
   });
 
   try {
-    dbHandle = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    dbHandle = await connect({ engine: await defaultDbUrl() });
 
     // Profile-drift detection. config.json is filesystem state; runtime:embedder
     // is set by whichever 0008-embedder-<profile>.surql migration last ran.

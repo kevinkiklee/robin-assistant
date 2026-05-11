@@ -1,6 +1,6 @@
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { getJob } from '../../jobs/db.js';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { ensureHome } from '../../runtime/data-store.js';
 
 export async function jobsStatus(argv = [], deps = {}) {
   const out = deps.out ?? ((s) => console.log(s));
@@ -15,7 +15,7 @@ export async function jobsStatus(argv = [], deps = {}) {
     deps.getJob ??
     (async (n) => {
       await ensureHome();
-      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+      const db = await connect({ engine: await defaultDbUrl() });
       try {
         return await getJob(db, n);
       } finally {

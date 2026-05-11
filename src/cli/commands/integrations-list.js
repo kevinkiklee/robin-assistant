@@ -1,7 +1,7 @@
 import { surql } from 'surrealdb';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { loadManifests } from '../../integrations/_framework/manifest-loader.js';
-import { ensureHome, paths } from '../../runtime/data-store.js';
+import { ensureHome } from '../../runtime/data-store.js';
 
 function formatCadence(m) {
   if (m.kind === 'gateway') return 'gateway';
@@ -43,7 +43,7 @@ export async function integrationsList(args = []) {
   const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
   const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
 
-  const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+  const db = await connect({ engine: await defaultDbUrl() });
   let rtIntegrations = {};
   try {
     const [rows] = await db

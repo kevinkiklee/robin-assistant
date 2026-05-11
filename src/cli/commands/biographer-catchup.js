@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
 import { biographerProcess } from '../../capture/biographer.js';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { createEmbedder } from '../../embed/factory.js';
 import { detectHost } from '../../hosts/detect.js';
@@ -14,7 +14,7 @@ export async function biographerCatchup(argv) {
   await ensureHome();
   const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    const db = await connect({ engine: await defaultDbUrl() });
     try {
       let pending;
       if (retryFailed) {

@@ -13,6 +13,14 @@
 DEFINE DATABASE IF NOT EXISTS main STRICT;
 
 -- ----------------------------------------------------------------------------
+-- Analyzer for full-text BM25 indexes (section 2 hybrid retrieval)
+-- ----------------------------------------------------------------------------
+-- Snowball stems English aggressively (good recall on grammatical variants);
+-- code/identifier-heavy content is lossy under this analyzer (known limitation;
+-- vector retrieval still covers identifier queries via embeddings).
+DEFINE ANALYZER english TOKENIZERS class FILTERS lowercase, ascii, snowball(english);
+
+-- ----------------------------------------------------------------------------
 -- _migrations bookkeeping
 -- ----------------------------------------------------------------------------
 
@@ -39,7 +47,10 @@ DEFINE FIELD attachments   ON events TYPE array<object> DEFAULT [];
 DEFINE FIELD meta          ON events TYPE option<object> FLEXIBLE;
 DEFINE FIELD biographed_at ON events TYPE option<datetime>;
 DEFINE FIELD dreamed_at    ON events TYPE option<datetime>;
-DEFINE FIELD episode_id    ON events TYPE option<record<episodes>>;
+-- REFERENCE ON DELETE UNSET: episode-containment pointer. When the episode is
+-- removed, this event's pointer is nulled (it's no longer claimed by a deleted
+-- episode). Enables `<~events` back-ref on episodes for one-query attention.
+DEFINE FIELD episode_id    ON events TYPE option<record<episodes>> REFERENCE ON DELETE UNSET;
 DEFINE INDEX events_ts          ON events FIELDS ts;
 DEFINE INDEX events_source      ON events FIELDS source;
 DEFINE INDEX events_trust       ON events FIELDS trust;
@@ -50,6 +61,11 @@ DEFINE INDEX events_chash       ON events FIELDS content_hash;
 DEFINE INDEX events_biographed  ON events FIELDS biographed_at;
 DEFINE INDEX events_dreamed     ON events FIELDS dreamed_at;
 DEFINE INDEX events_episode     ON events FIELDS episode_id;
+-- Field-path index for the reinforcement correction-event scan.
+DEFINE INDEX events_meta_kind   ON events FIELDS meta.kind;
+-- FULLTEXT BM25 index for hybrid recall (section 2).
+DEFINE INDEX events_content_fts ON events FIELDS content
+  FULLTEXT ANALYZER english BM25 HIGHLIGHTS;
 
 -- ----------------------------------------------------------------------------
 -- Substrate: memos (discriminated by kind; per-kind extras live in meta.*)
@@ -80,6 +96,9 @@ DEFINE INDEX memos_tags              ON memos FIELDS tags;
 DEFINE INDEX memos_habit_name        ON memos FIELDS kind, meta.name;
 DEFINE INDEX memos_prediction_open   ON memos FIELDS kind, meta.resolved_at;
 DEFINE INDEX memos_prediction_kind   ON memos FIELDS kind, meta.statement_kind;
+-- FULLTEXT BM25 index for hybrid recall (section 2).
+DEFINE INDEX memos_content_fts       ON memos FIELDS content
+  FULLTEXT ANALYZER english BM25 HIGHLIGHTS;
 
 -- ----------------------------------------------------------------------------
 -- Substrate: entities
@@ -96,6 +115,9 @@ DEFINE FIELD meta        ON entities TYPE option<object> FLEXIBLE;
 DEFINE INDEX entities_name_lower    ON entities FIELDS name_lower, type;
 DEFINE INDEX entities_scope         ON entities FIELDS scope;
 DEFINE INDEX entities_tags          ON entities FIELDS tags;
+-- FULLTEXT BM25 index for hybrid recall (section 2).
+DEFINE INDEX entities_name_fts      ON entities FIELDS name
+  FULLTEXT ANALYZER english BM25 HIGHLIGHTS;
 
 -- ----------------------------------------------------------------------------
 -- Episodes: narrative containers
@@ -108,6 +130,10 @@ DEFINE FIELD source      ON episodes TYPE string;
 DEFINE FIELD scope       ON episodes TYPE string DEFAULT 'global';
 DEFINE FIELD summary     ON episodes TYPE option<string>;
 DEFINE FIELD meta        ON episodes TYPE option<object> FLEXIBLE;
+-- Back-reference to events claiming this episode via events.episode_id REFERENCE.
+-- Named `member_events` (not `events`) to avoid a name clash with the events
+-- table in the COMPUTED expression body.
+DEFINE FIELD member_events ON episodes COMPUTED <~events;
 DEFINE INDEX episodes_started  ON episodes FIELDS started_at;
 DEFINE INDEX episodes_source   ON episodes FIELDS source;
 DEFINE INDEX episodes_active   ON episodes FIELDS source, ended_at;
@@ -187,6 +213,17 @@ DEFINE TABLE runtime SCHEMAFULL TYPE NORMAL;
 DEFINE FIELD value      ON runtime TYPE object FLEXIBLE;
 DEFINE FIELD updated_at ON runtime TYPE datetime VALUE time::now();
 
+-- Tunables for hybrid recall (section 2). Stored in runtime so we can tweak
+-- without code change. _surfaceSearch reads these per call (cached briefly).
+UPSERT runtime:recall CONTENT {
+  value: {
+    rrf_k: 60,
+    knn_overfetch_base: 1.5,
+    knn_overfetch_per_filter: 1.5,
+    mmr_threshold: 0.92
+  }
+};
+
 -- ----------------------------------------------------------------------------
 -- Runtime sessions (host session registry)
 -- ----------------------------------------------------------------------------
@@ -226,6 +263,9 @@ DEFINE FIELD next_run_at       ON runtime_jobs TYPE option<datetime>;
 DEFINE FIELD consecutive_failures ON runtime_jobs TYPE int DEFAULT 0;
 DEFINE FIELD in_flight         ON runtime_jobs TYPE bool DEFAULT false;
 DEFINE FIELD updated_at        ON runtime_jobs TYPE datetime DEFAULT time::now();
+-- Pure same-row COMPUTED for the heartbeat dispatcher; ~10 rows, no index needed.
+DEFINE FIELD is_overdue        ON runtime_jobs COMPUTED
+  (next_run_at != NONE AND next_run_at < time::now() AND !in_flight AND enabled);
 DEFINE INDEX runtime_jobs_name ON runtime_jobs FIELDS name UNIQUE;
 
 -- ----------------------------------------------------------------------------
@@ -300,7 +340,10 @@ DEFINE TABLE rule_candidates SCHEMAFULL TYPE NORMAL;
 DEFINE FIELD content          ON rule_candidates TYPE string;
 DEFINE FIELD kind             ON rule_candidates TYPE string
   ASSERT $value IN ['behavior', 'profile_update', 'conflict_warning', 'reinforce_behavior'];
-DEFINE FIELD signal_events    ON rule_candidates TYPE array<record<events>> DEFAULT [];
+-- REFERENCE ON DELETE IGNORE: preserves audit history (which events triggered
+-- this candidate) even after the events are GC'd; dangling refs filtered on read.
+DEFINE FIELD signal_events    ON rule_candidates TYPE array<record<events>>
+  REFERENCE ON DELETE IGNORE DEFAULT [];
 DEFINE FIELD payload          ON rule_candidates TYPE option<object> FLEXIBLE;
 DEFINE FIELD confidence       ON rule_candidates TYPE float
   ASSERT $value >= 0 AND $value <= 1;
@@ -317,7 +360,9 @@ DEFINE FIELD content          ON rules TYPE string;
 DEFINE FIELD kind             ON rules TYPE string
   ASSERT $value IN ['behavior', 'profile_update', 'reinforce_behavior'];
 DEFINE FIELD payload          ON rules TYPE option<object> FLEXIBLE;
-DEFINE FIELD source_candidate ON rules TYPE option<record<rule_candidates>>;
+-- REFERENCE ON DELETE IGNORE: rule lives independently of its source candidate.
+DEFINE FIELD source_candidate ON rules TYPE option<record<rule_candidates>>
+  REFERENCE ON DELETE IGNORE;
 DEFINE FIELD priority         ON rules TYPE int DEFAULT 50;
 DEFINE FIELD active           ON rules TYPE bool DEFAULT true;
 DEFINE FIELD created_at       ON rules TYPE datetime DEFAULT time::now() READONLY;

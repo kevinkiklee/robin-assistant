@@ -224,6 +224,139 @@ async function gateFreshness(db) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// New gates for the 2026-05-11-surrealdb-improvements-design.md spec.
+// G15 — REFERENCE back-ref <~events matches WHERE episode_id = $X
+// G16 — ON DELETE UNSET clears events.episode_id on episode delete
+// G17 — COMPUTED runtime_jobs.is_overdue across truth-table
+// G18 — entities_name_lower index still selected by the planner
+// ---------------------------------------------------------------------------
+
+async function gateReferenceBackRef(db) {
+  console.log('\nG15 — REFERENCE back-ref <~events on episodes');
+  await db
+    .query(
+      `
+      DEFINE TABLE IF NOT EXISTS episodes SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD started_at ON episodes TYPE datetime DEFAULT time::now();
+      DEFINE FIELD member_events ON episodes COMPUTED <~events_ref;
+
+      DEFINE TABLE IF NOT EXISTS events_ref SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD ts ON events_ref TYPE datetime DEFAULT time::now();
+      DEFINE FIELD episode_id ON events_ref TYPE option<record<episodes>> REFERENCE ON DELETE UNSET;
+    `,
+    )
+    .collect();
+
+  await db
+    .query(
+      `
+      CREATE episodes:e1;
+      CREATE events_ref:e1a SET episode_id = episodes:e1;
+      CREATE events_ref:e1b SET episode_id = episodes:e1;
+      CREATE events_ref:e1c SET episode_id = NONE;
+    `,
+    )
+    .collect();
+
+  const [byField] = await db
+    .query('SELECT VALUE id FROM events_ref WHERE episode_id = episodes:e1')
+    .collect();
+  const [byBackref] = await db.query('SELECT VALUE member_events FROM ONLY episodes:e1').collect();
+
+  const sortIds = (xs) => xs.map((x) => String(x)).sort();
+  const expected = sortIds(byField);
+  const got = sortIds(byBackref ?? []);
+  if (expected.length === 2 && JSON.stringify(expected) === JSON.stringify(got)) {
+    ok(`member_events back-ref matches forward query (${expected.length} events)`);
+  } else {
+    fail(`back-ref mismatch: forward=${JSON.stringify(expected)} backref=${JSON.stringify(got)}`);
+  }
+}
+
+async function gateOnDeleteUnset(db) {
+  console.log('\nG16 — REFERENCE ON DELETE UNSET clears scalar pointer');
+  // Schema reused from G15.
+  await db.query('DELETE episodes:e1').collect();
+  const [remaining] = await db
+    .query('SELECT id, episode_id FROM events_ref WHERE id IN [events_ref:e1a, events_ref:e1b]')
+    .collect();
+  const allCleared = remaining.every((r) => r.episode_id == null);
+  if (allCleared && remaining.length === 2) {
+    ok('events_ref.episode_id was cleared on episode delete');
+  } else {
+    fail(`expected episode_id=NONE for both rows, got ${JSON.stringify(remaining)}`);
+  }
+}
+
+async function gateComputedIsOverdue(db) {
+  console.log('\nG17 — COMPUTED runtime_jobs.is_overdue matrix');
+  await db
+    .query(
+      `
+      DEFINE TABLE IF NOT EXISTS rj_test SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD enabled     ON rj_test TYPE bool;
+      DEFINE FIELD in_flight   ON rj_test TYPE bool DEFAULT false;
+      DEFINE FIELD next_run_at ON rj_test TYPE option<datetime>;
+      DEFINE FIELD is_overdue  ON rj_test COMPUTED
+        (next_run_at != NONE AND next_run_at < time::now() AND !in_flight AND enabled);
+    `,
+    )
+    .collect();
+  const past = new Date(Date.now() - 60_000).toISOString();
+  const future = new Date(Date.now() + 60_000).toISOString();
+  const cases = [
+    { id: 'rj_test:overdue', enabled: true, in_flight: false, next: past, expect: true },
+    { id: 'rj_test:future', enabled: true, in_flight: false, next: future, expect: false },
+    { id: 'rj_test:in_flight', enabled: true, in_flight: true, next: past, expect: false },
+    { id: 'rj_test:disabled', enabled: false, in_flight: false, next: past, expect: false },
+    { id: 'rj_test:no_next', enabled: true, in_flight: false, next: null, expect: false },
+  ];
+  for (const c of cases) {
+    const nextLit = c.next ? `d'${c.next}'` : 'NONE';
+    await db
+      .query(
+        `CREATE ${c.id} SET enabled=${c.enabled}, in_flight=${c.in_flight}, next_run_at=${nextLit}`,
+      )
+      .collect();
+  }
+  let allOk = true;
+  for (const c of cases) {
+    const [row] = await db.query(`SELECT VALUE is_overdue FROM ONLY ${c.id}`).collect();
+    if (row !== c.expect) {
+      fail(`${c.id}: expected ${c.expect}, got ${row}`);
+      allOk = false;
+    }
+  }
+  if (allOk) ok('is_overdue COMPUTED returned expected booleans across 5 cases');
+}
+
+async function gateNameLowerIndexStillSelected(db) {
+  console.log('\nG18 — entities_name_lower index still selected by planner');
+  await db
+    .query(
+      `
+      DEFINE TABLE IF NOT EXISTS entities_t SCHEMAFULL TYPE NORMAL;
+      DEFINE FIELD name       ON entities_t TYPE string;
+      DEFINE FIELD name_lower ON entities_t TYPE string VALUE string::lowercase(name) READONLY;
+      DEFINE FIELD type       ON entities_t TYPE string;
+      DEFINE INDEX entities_t_name_lower ON entities_t FIELDS name_lower, type;
+
+      CREATE entities_t SET name = 'Alice', type = 'person';
+    `,
+    )
+    .collect();
+  const [plan] = await db
+    .query("SELECT id FROM entities_t WHERE name_lower = 'alice' AND type = 'person' EXPLAIN FULL")
+    .collect();
+  const planStr = JSON.stringify(plan ?? []);
+  if (planStr.includes('entities_t_name_lower') || planStr.includes('Index')) {
+    ok('planner used the name_lower index');
+  } else {
+    fail(`expected Index iterator on entities_t_name_lower, plan=${planStr}`);
+  }
+}
+
 async function main() {
   const db = await connect();
   try {
@@ -232,6 +365,10 @@ async function main() {
     await gateUpsertIdempotence(db);
     await gateFieldPathIndex(db);
     await gateFreshness(db);
+    await gateReferenceBackRef(db);
+    await gateOnDeleteUnset(db);
+    await gateComputedIsOverdue(db);
+    await gateNameLowerIndexStillSelected(db);
   } finally {
     try {
       await db.close();
@@ -242,7 +379,7 @@ async function main() {
   if (process.exitCode && process.exitCode !== 0) {
     console.error('\nVerification FAILED. Design needs adjustment before plan execution.');
   } else {
-    console.log('\nAll four verification gates passed.');
+    console.log('\nAll verification gates passed.');
   }
 }
 

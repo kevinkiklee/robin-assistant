@@ -16,9 +16,8 @@
 // `list` connects to the DB directly.
 
 import readline from 'node:readline/promises';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { tableNameSafeProfile } from '../../embed/profile-router.js';
-import { paths } from '../../runtime/data-store.js';
 import { daemonRequest as defaultRequest } from '../daemon-request.js';
 
 const VALID_PROFILE_RX = /^[a-z0-9-]+$/;
@@ -76,7 +75,7 @@ function validateProfile(profile) {
 
 async function listCmd({ out, err, deps }) {
   const ownsDb = !deps.db;
-  const db = deps.db ?? (await connect({ engine: `rocksdb://${paths.data.db()}` }));
+  const db = deps.db ?? (await connect({ engine: await defaultDbUrl() }));
   try {
     const [rows] = await db.query('SELECT VALUE value FROM runtime:embedder').collect();
     const value = rows?.[0] ?? null;

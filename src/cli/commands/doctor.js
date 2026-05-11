@@ -20,7 +20,7 @@ import { surql } from 'surrealdb';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
 import { readDaemonState } from '../../daemon/state.js';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import {
@@ -96,7 +96,7 @@ async function doPurgeStaleSessions(out, err, deps = {}) {
   }
   const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    const db = await connect({ engine: await defaultDbUrl() });
     try {
       const n = await purgeStaleSessions(db);
       out(`purged ${n} stale sessions`);
@@ -231,7 +231,7 @@ function probeBiographerLog() {
 async function probeIntegrationFreshness() {
   let db;
   try {
-    db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    db = await connect({ engine: await defaultDbUrl() });
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
       .collect();

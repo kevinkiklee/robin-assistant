@@ -1,6 +1,6 @@
 import { isPidAlive } from '../../daemon/lock.js';
 import { readDaemonState } from '../../daemon/state.js';
-import { close, connect } from '../../db/client.js';
+import { close, connect, defaultDbUrl } from '../../db/client.js';
 import { acquire } from '../../db/lock.js';
 import { listJournalEntries } from '../../memory/chronicle.js';
 import { ensureHome, paths } from '../../runtime/data-store.js';
@@ -23,7 +23,7 @@ export async function journalCmd(argv) {
   }
   const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+    const db = await connect({ engine: await defaultDbUrl() });
     try {
       const entries = await listJournalEntries(db, {
         since: typeof args.flags.since === 'string' ? args.flags.since : undefined,
