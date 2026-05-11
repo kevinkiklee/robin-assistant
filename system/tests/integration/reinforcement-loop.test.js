@@ -326,6 +326,80 @@ test('B1: per-row attribution + reply_event_id are persisted', async () => {
   await close(db);
 });
 
+test('B1 §8.2 #16: episode-tagged memo + [episode YYYY-MM-DD] reply → attribution.mode=citation', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  // Memo with meta.kind='episode_summary' is the ONLY shape that
+  // produces an [episode ...] citation line in inject.js:formatHit, and
+  // the only shape that attribute()'s citation pass will accept for the
+  // 'episode' keyword.
+  // memos.derived_at is READONLY DEFAULT time::now(); the citation pass
+  // tolerates the resulting "today" timestamp because we use a +/-2 day
+  // window. We craft the reply citation to match today's date for stability.
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const [memoCreate] = await db
+    .query(
+      `CREATE memos CONTENT {
+         kind: 'knowledge',
+         content: 'team off-site retro: shipping calendar reset',
+         derived_by: 'manual',
+         signal_count: 1,
+         meta: { kind: 'episode_summary' }
+       }`,
+    )
+    .collect();
+  const memoId = (Array.isArray(memoCreate) ? memoCreate[0] : memoCreate).id;
+
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .query(
+      `CREATE events CONTENT {
+         source: 'conversation',
+         content: $content,
+         ts: $ts,
+         meta: { session_id: 'sess-ep' }
+       }`,
+      {
+        content: `USER: q\n\nASSISTANT: see [episode ${todayStr}] for the shipping context.`,
+        ts: new Date(pastTs.getTime() + 60_000),
+      },
+    )
+    .collect();
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 'sess-ep', query: 'q', k: 1,
+         ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(memoId) },
+    )
+    .collect();
+
+  const summary = await evaluatePending(db);
+  assert.equal(summary.reinforced, 1);
+
+  const [rows] = await db.query('SELECT ranked_hits, attribution FROM recall_log').collect();
+  assert.equal(rows[0].attribution.mode, 'citation');
+  assert.equal(rows[0].ranked_hits[0].used, true);
+  assert.equal(rows[0].ranked_hits[0].used_via, 'citation');
+
+  const [after] = await db.query(`SELECT signal_count FROM ${memoId}`).collect();
+  assert.equal(after[0].signal_count, 2, 'episode memo bumped by 1');
+
+  const [ledger] = await db
+    .query('SELECT polarity, weight FROM evidence_ledger WHERE memo_id = $id', { id: memoId })
+    .collect();
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].polarity, 'corroborates');
+  assert.equal(ledger[0].weight, 1);
+
+  await close(db);
+});
+
 test('reinforcement: rows newer than the window are not evaluated', async () => {
   const db = await fresh();
   const m = await store.note(db, fakeEmbedder, 'knowledge', {

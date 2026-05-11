@@ -225,7 +225,10 @@ export async function evaluatePending(db) {
       const [rows] = await db
         .query(
           new BoundQuery(
-            `SELECT id, content, ts, meta FROM memos
+            // memos do not carry `ts` (cf. inject.js: h.record.ts ?? h.record.derived_at).
+            // Alias derived_at AS ts so the per-hit attribution pipeline sees a uniform
+            // shape regardless of source table.
+            `SELECT id, content, derived_at AS ts, meta FROM memos
              WHERE id IN $ids.map(|$s| type::record('memos', $s.slice($prefix.len())))`,
             { ids: Array.from(memoIds), prefix: 'memos:' },
           ),
