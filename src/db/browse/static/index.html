@@ -1,0 +1,4165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#050505">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>robin db</title>
+<style>
+:root {
+  --bg-0: #050505;
+  --bg-1: #0b0b0b;
+  --bg-2: #121212;
+  --bg-3: #1a1a1a;
+  --line: #1d1d1d;
+  --line-bright: #2a2a2a;
+
+  --fg-0: #ececec;          /* primary text — 14.5:1 */
+  --fg-1: #a8a8a8;          /* secondary  — 10:1 */
+  --fg-2: #7a7a7a;          /* muted      — 5.4:1 (AA) */
+  --fg-3: #6a6a6a;          /* faint label — 4.4:1 (AA-ish) */
+  --fg-4: #4a4a4a;          /* decorative — fails AA, used only on borders/bullets */
+
+  --coral: #f56742;
+  --coral-d: #d64f2c;
+  --coral-soft: rgba(245, 103, 66, 0.10);
+  --coral-row: rgba(245, 103, 66, 0.035);
+
+  --green: #4cce72;
+  --orange: #ffb455;
+  --red: #ff6363;
+
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --t-fast: 120ms;
+  --t-med: 200ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Typography scale — 7 tokens. Every font-size in the file references
+     one of these (decorative glyphs are bumped to --fs-cap, the smallest). */
+  --fs-cap:   10.5px;
+  --fs-sm:    11.5px;
+  --fs-md:    12.5px;
+  --fs-code:  12px;
+  --fs-h-sm:  14px;
+  --fs-h-md:  18px;
+  --fs-h-lg:  22px;
+
+  /* Line heights */
+  --lh-tight: 1.4;
+  --lh-body:  1.65;
+  --lh-loose: 1.75;
+
+  --sidebar-w: 248px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; }
+
+body {
+  font: var(--fs-md)/var(--lh-body) var(--mono);
+  font-feature-settings: 'liga' 0, 'calt' 0;
+  color: var(--fg-0);
+  background: var(--bg-0);
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+}
+
+::selection { background: var(--coral-soft); color: var(--fg-0); }
+
+/* Focus rings — keyboard-only via :focus-visible. */
+:where(button, textarea, input, [tabindex]):focus-visible {
+  outline: 1.5px solid var(--coral);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--line-bright); background-clip: padding-box; border: 2px solid transparent; }
+
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────────── */
+main {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 0;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+#sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 10px; left: 10px;
+  z-index: 30;
+  background: var(--bg-2);
+  color: var(--fg-0);
+  border: 1px solid var(--line-bright);
+  border-radius: 4px;
+  width: 36px; height: 36px;
+  font-family: var(--mono);
+  font-size: var(--fs-h-sm);
+  cursor: pointer;
+}
+
+.scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 18;
+}
+
+/* ── SIDEBAR ────────────────────────────────────────────── */
+aside {
+  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+  overflow-y: auto;
+  padding: 18px 0 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.brand {
+  padding: 0 18px 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-h-sm);
+  font-weight: 600;
+  color: var(--coral);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.brand .arrow { color: var(--coral); }
+.brand .about-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--line-bright);
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  padding: 0 8px;
+  height: 20px;
+  border-radius: 99px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.brand .about-btn:hover { color: var(--coral); border-color: var(--coral); }
+
+.meta {
+  padding: 0 18px 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+  font-size: var(--fs-sm);
+  color: var(--fg-2);
+  line-height: var(--lh-loose);
+}
+.meta .row { display: flex; align-items: center; gap: 8px; }
+.meta .url { color: var(--fg-1); word-break: break-all; }
+.meta .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(76, 206, 114, 0.45);
+  transition: background var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease);
+}
+body.connecting .meta .dot {
+  background: var(--orange);
+  box-shadow: 0 0 6px rgba(255, 180, 85, 0.5);
+}
+body.errored .meta .dot {
+  background: var(--red);
+  box-shadow: 0 0 6px rgba(255, 99, 99, 0.5);
+  animation: none;
+}
+body.running .meta .dot {
+  background: var(--coral);
+  box-shadow: 0 0 8px var(--coral);
+  animation: pulse 0.75s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.group { padding: 0 12px; margin-bottom: 14px; }
+.group h2 {
+  font-size: var(--fs-cap);
+  font-weight: 500;
+  color: var(--fg-3);
+  padding: 0 8px 6px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.group.layer h2 {
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px 6px;
+  gap: 6px;
+}
+.group.layer h2 .pill {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--coral-soft);
+  color: var(--coral);
+  font-weight: 600;
+  font-size: var(--fs-cap);
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+.group.layer h2 .arrow {
+  margin-left: auto;
+  color: var(--fg-4);
+  transition: transform var(--t-fast) var(--ease);
+  font-size: var(--fs-cap);
+}
+.group.layer h2 .layer-active-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--coral);
+  margin-left: 6px;
+  margin-right: 4px;
+  box-shadow: 0 0 6px rgba(245, 103, 66, 0.5);
+}
+.group.layer.is-active-layer h2 .layer-active-dot { display: inline-block; }
+.group.layer.collapsed h2 .arrow { transform: rotate(-90deg); }
+.group.layer .layer-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--t-med) var(--ease);
+}
+.group.layer.collapsed .layer-body {
+  grid-template-rows: 0fr;
+}
+.group.layer .layer-body > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.group.layer:not(.collapsed) .layer-body > * { overflow: visible; }
+.group h2 .count {
+  font-weight: 400;
+  color: var(--fg-3);
+  font-size: var(--fs-cap);
+}
+
+.t-filter-wrap { padding: 0 8px 6px; }
+input.t-filter {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--fg-0);
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  outline: none;
+}
+input.t-filter::placeholder { color: var(--fg-3); }
+input.t-filter:focus { border-color: var(--line-bright); }
+.t-filter-counter {
+  padding: 2px 10px 0;
+  font-size: var(--fs-cap);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.t-filter-counter:empty { display: none; }
+mark.q {
+  background: var(--coral-soft);
+  color: var(--coral);
+  padding: 0;
+  border-radius: 1px;
+}
+aside button .desc-snippet {
+  display: block;
+  padding: 2px 0 0 0;
+  color: var(--fg-3);
+  font-size: var(--fs-cap);
+  font-weight: 400;
+  white-space: normal;
+  line-height: var(--lh-tight);
+}
+aside button .desc-snippet:empty { display: none; }
+
+aside button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: var(--fg-1);
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-code);
+  font-weight: 400;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  animation: fadeIn 360ms var(--ease) both;
+  letter-spacing: -0.005em;
+}
+aside button:hover { background: var(--bg-3); color: var(--fg-0); }
+aside button:active { background: var(--bg-2); }
+aside button.active-route {
+  background: var(--bg-2);
+  border-left: 2px solid var(--coral);
+  padding-left: 6px; /* 8px default - 2px border keeps text aligned */
+  color: var(--fg-0);
+}
+aside button.active-route:hover { background: var(--bg-3); }
+aside button .row-count {
+  font-size: var(--fs-cap);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+aside button:hover .row-count { color: var(--fg-1); }
+aside button.hidden { display: none; }
+.empty-hint {
+  padding: 6px 10px;
+  font-size: var(--fs-cap);
+  color: var(--fg-3);
+  font-style: italic;
+}
+.empty-hint-action {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--coral);
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  font-style: italic;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.empty-hint-action:hover { color: var(--coral-d); }
+
+.user-saved-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+.user-saved-item .menu-btn {
+  background: transparent;
+  border: 0;
+  color: var(--fg-3);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: var(--fs-cap);
+  line-height: 1;
+}
+.user-saved-item .menu-btn:hover { color: var(--coral); }
+
+.save-modal label { display: block; font-size: var(--fs-cap); color: var(--fg-2); margin-bottom: 4px; }
+.save-modal input, .save-modal textarea {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--fg-0);
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  outline: none;
+  margin-bottom: 12px;
+}
+.save-modal textarea { min-height: 60px; resize: vertical; }
+.save-modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.save-modal .note { color: var(--orange); font-size: var(--fs-cap); margin-bottom: 10px; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-2px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── EDITOR + RESULTS ───────────────────────────────────── */
+section.editor {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr;
+  min-height: 0;
+  background: var(--bg-0);
+}
+#table-card-host:empty { display: none; }
+#table-card-host { overflow: auto; max-height: 50vh; border-bottom: 1px solid var(--line); view-transition-name: card; }
+#table-card-host:has(.t-card.page) { max-height: none; }
+.trail {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--fg-3);
+  flex-wrap: wrap;
+}
+body.has-trail .trail { display: flex; }
+.trail .step {
+  background: transparent;
+  border: 0;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.trail .step:hover { color: var(--coral); background: var(--bg-3); }
+.trail .step.current { color: var(--fg-0); cursor: default; }
+.trail .sep { color: var(--fg-4); }
+.trail .ellipsis { color: var(--fg-4); padding: 0 2px; }
+
+/* Reading-page mode: hide the editor + controls + results so the page owns the screen. */
+body.page-mode .editor-wrap,
+body.page-mode .controls,
+body.page-mode #warn,
+body.page-mode .results { display: none; }
+body.page-mode footer { display: none; }
+
+.editor-wrap {
+  position: relative;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+}
+.prompt {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  color: var(--coral);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  pointer-events: none;
+  user-select: none;
+}
+textarea#sql {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--fg-0);
+  padding: 14px 22px 14px 36px;
+  font-family: var(--mono);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+  min-height: 110px;
+  max-height: 280px;
+  resize: vertical;
+  outline: none;
+  caret-color: var(--coral);
+  tab-size: 2;
+  font-feature-settings: 'liga' 0, 'calt' 0;
+}
+textarea#sql::placeholder { color: var(--fg-3); }
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 9px 22px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+
+button.primary, button.secondary {
+  border: 0;
+  padding: 5px 12px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  transition: background var(--t-fast) var(--ease), transform 60ms var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  letter-spacing: 0.01em;
+  position: relative;
+}
+button.primary {
+  background: var(--coral);
+  color: #1a0d05;
+}
+button.primary:hover { background: var(--coral-d); }
+button.primary:active { transform: translateY(1px); }
+button.primary[aria-busy="true"] { padding-right: 26px; cursor: progress; }
+button.primary[aria-busy="true"]::after {
+  content: '';
+  position: absolute;
+  right: 9px; top: 50%;
+  width: 9px; height: 9px;
+  margin-top: -5px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary kbd {
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  background: rgba(26, 13, 5, 0.18);
+  color: rgba(26, 13, 5, 0.8);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+button.secondary {
+  background: transparent;
+  color: var(--fg-2);
+  border: 1px solid var(--line-bright);
+  padding: 4px 10px;
+  font-weight: 500;
+}
+button.secondary:hover { color: var(--fg-0); border-color: var(--fg-3); }
+button.secondary:active { transform: translateY(1px); }
+button.secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+button.secondary.hidden { display: none; }
+button.secondary.success { color: var(--green); border-color: rgba(76, 206, 114, 0.4); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.stats {
+  font-size: var(--fs-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.stats em { font-style: normal; color: var(--fg-1); }
+.stats .sep { color: var(--fg-4); margin: 0 2px; }
+
+.grow { flex: 1; }
+
+[role="tablist"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-4);
+}
+[role="tab"] {
+  background: transparent;
+  color: var(--fg-2);
+  border: 0;
+  padding: 4px 8px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease);
+}
+[role="tab"]:hover { color: var(--fg-1); }
+[role="tab"][aria-selected="true"] { color: var(--coral); }
+[role="tab"][aria-selected="true"]:hover { color: var(--coral); }
+.tab-sep { padding: 0 2px; }
+
+#warn {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  padding: 0 22px;
+  background: rgba(255, 180, 85, 0.06);
+  color: var(--orange);
+  border-bottom: 1px solid transparent;
+  font-size: var(--fs-sm);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: max-height var(--t-med) var(--ease), opacity var(--t-fast) var(--ease),
+              padding-top var(--t-med) var(--ease), padding-bottom var(--t-med) var(--ease),
+              border-color var(--t-med) var(--ease);
+}
+#warn.show {
+  max-height: 60px;
+  opacity: 1;
+  padding-top: 8px; padding-bottom: 8px;
+  border-bottom-color: rgba(255, 180, 85, 0.18);
+}
+#warn::before { content: '!'; color: var(--orange); font-weight: 600; }
+
+.results {
+  overflow: auto;
+  min-height: 0;
+  background: var(--bg-0);
+  view-transition-name: results;
+}
+
+.results .placeholder {
+  color: var(--fg-2);
+  padding: 40px 24px;
+  font-size: var(--fs-md);
+}
+.results .placeholder.err { color: var(--red); }
+.results .placeholder .hint { color: var(--fg-3); margin-right: 6px; }
+.results .placeholder .kbd-hint { color: var(--fg-3); }
+.results .placeholder .kbd-hint kbd {
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  background: var(--bg-2);
+  border: 1px solid var(--line-bright);
+  padding: 0 5px;
+  border-radius: 2px;
+  color: var(--fg-1);
+}
+.results .placeholder .action {
+  display: inline-block;
+  margin-left: 10px;
+  background: transparent;
+  color: var(--fg-1);
+  border: 1px solid var(--line-bright);
+  border-radius: 3px;
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.results .placeholder .action:hover { color: var(--coral); border-color: var(--coral); }
+.results .placeholder .action:active { transform: translateY(1px); }
+
+/* Skeleton loading — shimmer via animated background-position. */
+@keyframes skeleton-shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+.skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    var(--bg-2) 25%,
+    var(--bg-3) 50%,
+    var(--bg-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s linear infinite;
+  border-radius: 2px;
+}
+.skeleton-line { height: 0.95em; }
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 18% 24% 32% 26%;
+  gap: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.skeleton-row .skeleton { height: 1em; }
+.skeleton-card {
+  padding: 22px 24px 18px;
+  border-left: 3px solid var(--coral);
+  background: var(--bg-2);
+}
+.skeleton-card .skeleton-line { display: block; margin-bottom: 10px; }
+.skeleton-card .skeleton-line:nth-child(1) { width: 30%; height: 0.8em; }
+.skeleton-card .skeleton-line:nth-child(2) { width: 50%; height: 1.4em; margin-bottom: 14px; }
+.skeleton-card .skeleton-line:nth-child(3) { width: 90%; }
+.skeleton-card .skeleton-line:nth-child(4) { width: 80%; }
+.skeleton-card .skeleton-line:nth-child(5) { width: 60%; }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+.results .stmt-header {
+  background: var(--bg-1);
+  color: var(--fg-2);
+  padding: 7px 22px;
+  font-size: var(--fs-cap);
+  font-weight: 500;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.results .stmt-header:first-child { border-top: 0; }
+.results .stmt-header.err { color: var(--red); }
+.results .stmt-header .label { color: var(--fg-3); }
+.results .stmt-header .meta {
+  margin-left: auto;
+  font-size: var(--fs-cap);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.results table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: var(--fs-sm);
+}
+.results th, .results td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 14px;
+  text-align: left;
+  vertical-align: top;
+  max-width: 480px;
+}
+.results th {
+  background: var(--bg-1);
+  color: var(--fg-2);
+  font-weight: 500;
+  font-size: var(--fs-cap);
+  position: sticky;
+  top: 31px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line-bright);
+  z-index: 1;
+}
+.results th .sort-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.results th .sort-btn:hover { color: var(--coral); }
+.results th .sort-indicator { color: var(--coral); font-size: 9px; line-height: 1; }
+.results th .sort-btn.no-sort { cursor: not-allowed; opacity: 0.6; }
+.results th .sort-btn.no-sort:hover { color: inherit; }
+.results .filter-row td {
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line-bright);
+  padding: 4px 8px;
+  position: sticky;
+  top: 31px;
+  z-index: 1;
+}
+.results .filter-row input,
+.results .filter-row .bool-pill {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg-0);
+  padding: 2px 6px;
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  outline: none;
+}
+.results .filter-row input::placeholder { color: var(--fg-3); }
+.results .filter-row .bool-pill { cursor: pointer; padding: 2px 6px; }
+.results .filter-row .bool-pill:hover { border-color: var(--line-bright); }
+.results tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.012); }
+.results tbody tr:hover { background: var(--coral-row); }
+.results tbody tr:nth-child(even):hover { background: rgba(245, 103, 66, 0.05); }
+
+.results td.cell-null { color: var(--fg-3); cursor: default; }
+.results td .record-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--coral);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(245, 103, 66, 0.4);
+  text-underline-offset: 2px;
+  transition: text-decoration-color var(--t-fast) var(--ease);
+}
+.results td .record-link:hover { text-decoration-color: var(--coral); }
+.results td .record-link:focus-visible { outline: 1.5px solid var(--coral); outline-offset: 1px; border-radius: 2px; }
+.results td .truncate {
+  display: inline-block;
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.results td.expanded .truncate {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.results td:not(.cell-null) { cursor: pointer; }
+
+.results pre.json {
+  margin: 0;
+  padding: 16px 24px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  white-space: pre;
+  color: var(--fg-1);
+  background: var(--bg-0);
+}
+
+/* Pagination + render-cap banner. */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 22px;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-cap);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.pager button {
+  background: transparent;
+  border: 1px solid var(--line-bright);
+  color: var(--fg-1);
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  padding: 2px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.pager button:hover:not(:disabled) { color: var(--coral); border-color: var(--coral); }
+.pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pager .info em { font-style: normal; color: var(--fg-1); }
+.render-cap-banner {
+  padding: 10px 22px;
+  background: rgba(255, 180, 85, 0.08);
+  color: var(--orange);
+  border-bottom: 1px solid rgba(255, 180, 85, 0.18);
+  font-size: var(--fs-sm);
+}
+.render-cap-banner::before { content: '!'; color: var(--orange); font-weight: 600; margin-right: 8px; }
+
+/* ── TABLE / PAGE CARD ──────────────────────────────────── */
+.t-card {
+  background: var(--bg-2);
+  border-left: 3px solid var(--coral);
+  padding: 22px 24px 18px;
+  position: relative;
+}
+.t-card .eyebrow {
+  font-size: var(--fs-cap);
+  color: var(--fg-3);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.t-card .eyebrow .sep { color: var(--fg-4); margin: 0 6px; }
+.t-card.page { padding: 26px 28px 28px; position: relative; }
+.t-card.page.has-toc { padding-right: 210px; }
+.t-card.page .toc {
+  float: right;
+  width: 176px;
+  margin-right: -198px;
+  margin-bottom: 14px;
+  position: sticky;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+.t-card.page .toc-link {
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 3px 6px;
+  color: var(--fg-3);
+  cursor: pointer;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  line-height: var(--lh-tight);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.t-card.page .toc-link:hover { color: var(--fg-1); background: var(--bg-3); }
+.t-card.page .toc-link.active { color: var(--coral); }
+.t-card.page details.toc-mobile {
+  display: none;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-bottom: 14px;
+  font-size: var(--fs-sm);
+}
+.t-card.page details.toc-mobile summary {
+  cursor: pointer;
+  color: var(--fg-2);
+  list-style: none;
+}
+.t-card.page details.toc-mobile summary::-webkit-details-marker { display: none; }
+.t-card.page details.toc-mobile a {
+  display: block;
+  color: var(--fg-1);
+  padding: 3px 0;
+  text-decoration: none;
+}
+.t-card.page details.toc-mobile a:hover { color: var(--coral); }
+@media (max-width: 720px) {
+  .t-card.page .toc { display: none; }
+  .t-card.page.has-toc { padding-right: 28px; }
+  .t-card.page details.toc-mobile { display: block; }
+}
+.t-card .page-h {
+  color: var(--coral);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 22px 0 8px;
+  font-family: var(--mono);
+}
+.t-card .page-h:first-of-type { margin-top: 18px; }
+.t-card .page-body {
+  color: var(--fg-1);
+  font-size: var(--fs-md);
+  line-height: var(--lh-loose);
+  max-width: 78ch;
+  margin-bottom: 6px;
+  font-family: var(--mono);
+}
+.t-card .page-list {
+  list-style: none;
+  padding: 6px 0 4px 0;
+  margin: 0 0 8px 0;
+  max-width: 80ch;
+}
+.t-card .page-list li {
+  position: relative;
+  padding: 4px 0 4px 18px;
+  color: var(--fg-1);
+  font-size: var(--fs-code);
+  line-height: var(--lh-loose);
+  font-family: var(--mono);
+}
+.t-card .page-list li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  color: var(--coral);
+  font-size: var(--fs-sm);
+}
+
+/* Layer diagram — used by the four-memory-layers section. */
+.layers-diagram {
+  margin: 14px 0 6px;
+  max-width: 90ch;
+}
+.layer-block {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--bg-3);
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.layer-badge {
+  flex: 0 0 78px;
+  background: linear-gradient(180deg, rgba(245, 103, 66, 0.18), rgba(245, 103, 66, 0.06));
+  color: var(--coral);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: var(--fs-h-lg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-right: 1px solid var(--line-bright);
+}
+.layer-content {
+  flex: 1;
+  padding: 14px 18px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.layer-name {
+  color: var(--fg-0);
+  font-family: var(--mono);
+  font-size: var(--fs-h-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.layer-summary {
+  color: var(--fg-1);
+  font-family: var(--mono);
+  font-size: var(--fs-code);
+  line-height: var(--lh-body);
+  max-width: 78ch;
+}
+.layer-content .chips { gap: 5px; }
+.layer-content .chip {
+  background: var(--bg-1);
+  border-color: var(--line);
+  font-size: var(--fs-cap);
+  padding: 2px 8px;
+}
+.layer-arrow {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  align-items: center;
+  margin: 4px 0;
+  color: var(--fg-3);
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.layer-arrow .glyph {
+  text-align: center;
+  font-size: var(--fs-h-md);
+  color: var(--coral);
+  line-height: 1;
+}
+.layer-arrow .label {
+  padding-left: 16px;
+  color: var(--fg-3);
+}
+
+/* Tighter on narrow viewports. */
+@media (max-width: 720px) {
+  .layer-block { flex-direction: column; }
+  .layer-badge { flex: 0 0 40px; padding: 8px 0; border-right: 0; border-bottom: 1px solid var(--line-bright); font-size: var(--fs-h-sm); }
+  .layer-arrow { grid-template-columns: 1fr; padding-left: 6px; }
+  .layer-arrow .glyph { text-align: left; }
+  .layer-arrow .label { padding-left: 6px; }
+}
+.t-card pre.sql-preview {
+  margin: 8px 0 4px;
+  padding: 9px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--fg-1);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.t-card .head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.t-card h1 {
+  font-size: var(--fs-h-lg);
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: -0.01em;
+  font-family: var(--mono);
+}
+.t-card .layer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--coral-soft);
+  color: var(--coral);
+  font-size: var(--fs-cap);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.t-card .row-count {
+  margin-left: auto;
+  color: var(--fg-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.t-card .dismiss {
+  background: transparent;
+  border: 0;
+  color: var(--fg-3);
+  font-size: var(--fs-h-sm);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.t-card .dismiss:hover { color: var(--fg-0); }
+.t-card .purpose {
+  color: var(--fg-1);
+  font-size: var(--fs-md);
+  line-height: var(--lh-loose);
+  max-width: 78ch;
+  margin-bottom: 8px;
+  font-family: var(--mono);
+}
+.t-card .detail {
+  color: var(--fg-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-loose);
+  max-width: 78ch;
+  margin-bottom: 14px;
+  font-family: var(--mono);
+}
+.t-card .section-label {
+  color: var(--fg-3);
+  font-size: var(--fs-cap);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 14px 0 6px;
+}
+.t-card .fields {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  column-gap: 18px;
+  row-gap: 4px;
+  font-size: var(--fs-sm);
+  max-width: 100%;
+  overflow-x: auto;
+}
+.t-card .fields .fn { color: var(--coral); font-weight: 500; }
+.t-card .fields .fd { color: var(--fg-1); }
+.t-card .indexes {
+  font-size: var(--fs-sm);
+  color: var(--fg-2);
+  line-height: var(--lh-loose);
+  margin-top: 4px;
+}
+.t-card .indexes code { color: var(--fg-1); }
+.t-card .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.t-card .chip {
+  background: transparent;
+  border: 1px solid var(--line-bright);
+  border-radius: 99px;
+  padding: 3px 10px;
+  color: var(--fg-1);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.t-card .chip:hover { color: var(--coral); border-color: var(--coral); }
+.t-card .chip:active { transform: translateY(1px); }
+.t-card .chip.sample { background: var(--bg-2); }
+
+/* ── ARCHITECTURE OVERLAY ───────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 40;
+  display: none;
+  overflow: auto;
+  padding: 40px 16px;
+}
+body.arch-open .overlay { display: block; }
+
+.overlay-card {
+  max-width: 820px;
+  margin: 0 auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 28px 32px 32px;
+  position: relative;
+  font-family: var(--mono);
+}
+.overlay-card .close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-2);
+  font-size: var(--fs-h-md);
+  cursor: pointer;
+  line-height: 1;
+}
+.overlay-card .close:hover { color: var(--fg-0); }
+.overlay-card h1 {
+  font-size: var(--fs-h-md);
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+.overlay-card .intro {
+  color: var(--fg-1);
+  font-size: var(--fs-md);
+  line-height: var(--lh-loose);
+  margin-bottom: 20px;
+  max-width: 72ch;
+}
+.overlay-card .layer-row {
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+.overlay-card .layer-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.overlay-card .layer-id {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--coral-soft);
+  color: var(--coral);
+  font-size: var(--fs-cap);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.overlay-card .layer-name { font-size: var(--fs-h-sm); color: var(--fg-0); font-weight: 600; }
+.overlay-card .layer-summary {
+  color: var(--fg-1);
+  font-size: var(--fs-code);
+  line-height: var(--lh-loose);
+  max-width: 72ch;
+  margin-bottom: 8px;
+}
+.overlay-card .layer-tables { display: flex; flex-wrap: wrap; gap: 6px; }
+.overlay-card .layer-tables button {
+  background: var(--bg-2);
+  border: 1px solid var(--line-bright);
+  color: var(--fg-1);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  border-radius: 99px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.overlay-card .layer-tables button:hover { color: var(--coral); border-color: var(--coral); }
+.overlay-card .layer-tables button:active { transform: translateY(1px); }
+.overlay-card .footer-note {
+  margin-top: 18px;
+  color: var(--fg-3);
+  font-size: var(--fs-cap);
+}
+.results .err-message {
+  padding: 18px 24px;
+  color: var(--red);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+}
+
+/* View Transitions for tab switch + re-render. */
+::view-transition-old(results),
+::view-transition-new(results),
+::view-transition-old(card),
+::view-transition-new(card) {
+  animation-duration: var(--t-med);
+  animation-timing-function: var(--ease);
+}
+
+/* Generic modal — used by query history + saved-as-bookmark dialogs. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 50;
+  display: none;
+  overflow: auto;
+  padding: 40px 16px;
+}
+body.modal-open .modal-overlay { display: block; }
+.modal-card {
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px 24px 24px;
+  position: relative;
+  font-family: var(--mono);
+}
+.modal-card h2 {
+  font-size: var(--fs-h-md);
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+.modal-card .modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-2);
+  font-size: var(--fs-h-md);
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-card .modal-close:hover { color: var(--fg-0); }
+
+/* History list */
+.history-list { display: flex; flex-direction: column; gap: 4px; max-height: 60vh; overflow: auto; }
+.history-item {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 10px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+}
+.history-item:hover { background: var(--bg-2); border-color: var(--line); color: var(--fg-0); }
+.history-item .ts { color: var(--fg-3); font-size: var(--fs-cap); }
+.history-item .sql { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Floating "history N/50" indicator */
+.history-indicator {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  background: var(--bg-3);
+  color: var(--fg-1);
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  padding: 3px 8px;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.history-indicator.show { opacity: 1; }
+
+/* Editor wrap is the offset parent for the indicator */
+.editor-wrap { position: relative; }
+
+/* Autocomplete popover anchored under the textarea cursor. */
+.ac-popover {
+  position: absolute;
+  z-index: 30;
+  background: var(--bg-2);
+  border: 1px solid var(--line-bright);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+  min-width: 180px;
+  max-width: 320px;
+  max-height: 220px;
+  overflow: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  display: none;
+  padding: 4px 0;
+}
+.ac-popover.show { display: block; }
+.ac-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.ac-item:hover, .ac-item[aria-selected="true"] { background: var(--bg-3); color: var(--fg-0); }
+.ac-item .ac-kind {
+  font-size: var(--fs-cap);
+  color: var(--fg-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ac-item mark { background: var(--coral-soft); color: var(--coral); padding: 0; }
+
+/* ── FOOTER ─────────────────────────────────────────────── */
+footer {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 6px 22px;
+  background: var(--bg-1);
+  font-size: var(--fs-cap);
+  color: var(--fg-2);
+  user-select: none;
+}
+footer span { display: inline-flex; align-items: center; gap: 6px; }
+footer kbd {
+  font-family: var(--mono);
+  font-size: var(--fs-cap);
+  background: var(--bg-2);
+  border: 1px solid var(--line-bright);
+  padding: 0 5px;
+  border-radius: 2px;
+  color: var(--fg-1);
+  line-height: var(--lh-tight);
+}
+footer .spacer { flex: 1; }
+footer .ver { color: var(--fg-3); }
+
+/* ── MOBILE / NARROW ────────────────────────────────────── */
+@media (max-width: 720px) {
+  main { grid-template-columns: 1fr; }
+  #sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  aside {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: min(280px, 86vw);
+    z-index: 20;
+    transform: translateX(-100%);
+    transition: transform var(--t-med) var(--ease);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
+    padding-top: 56px;
+  }
+  body.sidebar-open aside { transform: translateX(0); }
+  body.sidebar-open .scrim { display: block; }
+  textarea#sql { padding-left: 24px; padding-top: 50px; min-height: 96px; }
+  .prompt { top: 52px; left: 12px; }
+  .controls { padding: 9px 12px; gap: 10px; }
+  .results th, .results td { padding: 6px 10px; max-width: 280px; }
+  .results .stmt-header { padding: 7px 12px; }
+  footer { padding: 6px 12px; gap: 12px; flex-wrap: wrap; }
+  footer .spacer { display: none; }
+}
+
+/* ── REDUCED MOTION ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* ===== Animations & transitions ===== */
+@keyframes view-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes view-page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes view-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes view-page-enter { from { opacity: 0; } to { opacity: 1; } }
+}
+.view-page { animation: view-page-enter 240ms var(--ease) both; }
+.fade-in { opacity: 0; }
+.fade-in.fade-in--ready { animation: view-fade-in 320ms var(--ease) both; }
+
+/* Smooth state transitions on common interactive bits. */
+#saved-groups button { transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.view-page .ra-card,
+.view-page .tiles li a,
+.view-page .layer-tile,
+.view-page .anly-card,
+.view-page .trend-card,
+.view-page .inv-card,
+.view-page .chip {
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.view-page details > summary { transition: color var(--t-fast) var(--ease); }
+.view-page details[open] > summary { color: var(--coral); }
+.view-page .activity-table tbody tr { transition: background var(--t-fast) var(--ease); }
+.view-page .activity-table tbody tr:hover { background: var(--bg-3); }
+
+/* ===== Tooltip + View pages — match the overview page styling ===== */
+.tooltip-bubble {
+  position: fixed; display: none;
+  background: var(--bg-3); color: var(--fg-0);
+  padding: 6px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 3px;
+  font: var(--fs-sm)/var(--lh-tight) var(--mono);
+  max-width: 320px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 9999;
+  pointer-events: none;
+}
+
+/* View page sections — inherit .t-card.page styling. Add only what's
+   specific to View content. */
+.view-page .dash-greet { display: grid; grid-template-columns: 1fr 280px; align-items: end; gap: 14px; margin-bottom: 18px; }
+.view-page .dash-greet .freshness { color: var(--fg-2); font-size: var(--fs-sm); margin-top: 4px; }
+.view-page .dash-search-wrap { position: relative; }
+.view-page .dash-search { width: 100%; padding: 6px 10px; background: var(--bg-1); color: var(--fg-0); border: 1px solid var(--line-bright); border-radius: 3px; font: var(--fs-sm)/var(--lh-tight) var(--mono); }
+.view-page .dash-search:focus { outline: 1.5px solid var(--coral); outline-offset: 0; }
+.view-page .search-results { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-2); border: 1px solid var(--line-bright); border-radius: 3px; min-width: 240px; max-width: 360px; z-index: 100; padding: 4px 0; }
+.view-page .search-results a { display: block; padding: 4px 10px; color: var(--fg-1); text-decoration: none; font-size: var(--fs-sm); }
+.view-page .search-results a:hover { color: var(--coral); background: var(--bg-3); }
+
+.view-page .about-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 6px 0; }
+.view-page .about-name { font-size: var(--fs-md); color: var(--fg-0); }
+
+.view-page .ra-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 6px 0 10px; }
+.view-page .ra-card { display: block; padding: 10px 12px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 3px; text-decoration: none; color: var(--fg-1); }
+.view-page .ra-card:hover { border-color: var(--coral); transform: translateY(-1px); }
+.view-page .ra-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.view-page .ra-card-head strong { color: var(--fg-0); }
+.view-page .ra-card-meta { color: var(--fg-3); font-size: var(--fs-cap); }
+
+/* Recent activity table (paginated) */
+.view-page .activity-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); margin: 6px 0; }
+.view-page .activity-table th { text-align: left; padding: 6px 8px; color: var(--fg-3); font-size: var(--fs-cap); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--line-bright); }
+.view-page .activity-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--fg-1); vertical-align: top; }
+.view-page .activity-table .ar-ts { white-space: nowrap; color: var(--fg-3); font-size: var(--fs-cap); width: 6rem; }
+.view-page .activity-table .ar-body { color: var(--fg-1); }
+.view-page .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0 0; font-size: var(--fs-sm); color: var(--fg-2); }
+.view-page .pager button { padding: 4px 12px; background: transparent; color: var(--fg-1); border: 1px solid var(--line-bright); border-radius: 3px; cursor: pointer; font: var(--fs-sm)/1 var(--mono); transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.view-page .pager button:not(:disabled):hover { color: var(--coral); border-color: var(--coral); }
+.view-page .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+.view-page .pager .pg-info strong { color: var(--fg-0); }
+
+.view-page .tiles { list-style: none; padding: 0; margin: 6px 0 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.view-page .tiles li a { display: block; padding: 10px 12px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 3px; text-decoration: none; color: var(--fg-1); }
+.view-page .tiles li a:hover { border-color: var(--coral); transform: translateY(-1px); }
+.view-page .tiles strong { display: block; font-size: var(--fs-h-md); color: var(--fg-0); }
+.view-page .tiles span { color: var(--fg-3); font-size: var(--fs-cap); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.view-page .anly-grid, .view-page .charts { display: grid; grid-template-columns: 1fr; gap: 14px; margin: 6px 0 14px; align-items: start; }
+@media (min-width: 720px) {
+  .view-page .anly-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .view-page .charts    { grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 16px; }
+}
+.view-page .anly-card, .view-page .inv-card { padding: 12px 14px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 3px; }
+.view-page .anly-card { display: flex; flex-direction: column; min-height: 0; max-height: 360px; }
+.view-page .trend-card {
+  padding: 16px 18px 18px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-bright);
+  border-left: 3px solid var(--coral);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.view-page .anly-card h3, .view-page .trend-card h3, .view-page .inv-card h3 { font: 600 var(--fs-md)/var(--lh-tight) var(--mono); color: var(--coral); margin: 0; }
+.view-page .anly-card .subtitle, .view-page .trend-card .subtitle, .view-page .inv-card .desc { color: var(--fg-2); font-size: var(--fs-sm); margin: 4px 0 0; line-height: var(--lh-body); }
+.view-page .trend-head { display: flex; flex-direction: column; gap: 2px; }
+.view-page .anly-body { flex: 1 1 auto; min-height: 0; }
+.view-page .anly-scroll { max-height: 240px; overflow: auto; padding-right: 4px; }
+.view-page .anly-scroll::-webkit-scrollbar { width: 6px; }
+
+/* Horizontal-bar list (used by prefs-by-domain etc) */
+.view-page .hbar-list { list-style: none; margin: 0; padding: 0; }
+.view-page .hbar-list li { display: grid; grid-template-columns: 1fr 100px 36px; align-items: center; gap: 8px; padding: 4px 0; font-size: var(--fs-sm); }
+.view-page .hbar-label { color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.view-page .hbar-track { background: var(--bg-3); height: 4px; border-radius: 2px; overflow: hidden; }
+.view-page .hbar-fill { display: block; height: 100%; background: var(--coral); transition: width 320ms var(--ease); }
+.view-page .hbar-count { color: var(--fg-3); text-align: right; font-size: var(--fs-cap); }
+
+/* Domain-confidence compact list */
+.view-page .dc-list { list-style: none; margin: 0; padding: 0; }
+.view-page .dc-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+.view-page .dc-list li:last-child { border-bottom: 0; }
+.view-page .dc-domain { color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.view-page .badge.level-low    { color: var(--orange); border-color: var(--orange); }
+.view-page .badge.level-medium { color: var(--fg-1); border-color: var(--line-bright); }
+.view-page .badge.level-high   { color: var(--green); border-color: var(--green); }
+
+/* Predictions accuracy callout */
+.view-page .prediction-stat { padding: 14px 0 8px; text-align: center; }
+.view-page .prediction-pct { font: 600 28px/1 var(--mono); color: var(--coral); }
+.view-page .prediction-fraction { color: var(--fg-2); font-size: var(--fs-cap); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Top-corrections refined head */
+.view-page .cor-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.view-page .cor-head .cor-meta { color: var(--fg-3); font-size: var(--fs-cap); }
+
+/* Trend card stat row */
+.view-page .trend-fixed { color: var(--fg-3); font-style: normal; font-size: var(--fs-cap); margin-left: 6px; }
+.view-page .trend-stat { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 3px; min-height: 28px; }
+.view-page .trend-stat:empty { display: none; }
+.view-page .trend-body { padding: 4px 0 0; }
+.view-page .stat-num { font: 600 var(--fs-h-md)/1 var(--mono); color: var(--fg-0); }
+.view-page .stat-label { color: var(--fg-2); font-size: var(--fs-sm); }
+.view-page .stat-meta { color: var(--fg-3); font-size: var(--fs-cap); margin-left: auto; }
+
+.view-page .range-ctl { display: flex; align-items: center; gap: 4px; margin: 6px 0 14px; padding: 6px 0; }
+.view-page .range-ctl-label { color: var(--fg-3); font-size: var(--fs-cap); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 6px; }
+.view-page .range-ctl button { padding: 3px 10px; background: transparent; color: var(--fg-1); border: 1px solid var(--line-bright); border-radius: 3px; cursor: pointer; font: var(--fs-sm)/1 var(--mono); }
+.view-page .range-ctl button:hover { color: var(--coral); border-color: var(--coral); }
+.view-page .range-ctl button[aria-checked="true"] { color: var(--coral); border-color: var(--coral); background: var(--coral-soft); }
+
+/* Inventory: top summary line and layer tile grid */
+.view-page .inv-summary { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 6px 0; color: var(--fg-2); font-size: var(--fs-sm); }
+.view-page .inv-summary strong { color: var(--fg-0); }
+.view-page .inv-summary .sep { color: var(--fg-4); }
+.view-page .layer-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin: 10px 0 18px; }
+.view-page .layer-tile { display: block; padding: 12px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 3px; text-decoration: none; color: var(--fg-1); }
+.view-page .layer-tile:hover { border-color: var(--coral); transform: translateY(-1px); }
+.view-page .layer-tile-id { color: var(--coral); font: 600 var(--fs-cap)/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.view-page .layer-tile-name { color: var(--fg-0); font-weight: 600; margin-bottom: 4px; }
+.view-page .layer-tile-stat { color: var(--fg-3); font-size: var(--fs-cap); }
+.view-page .layer-tile-stat strong { color: var(--fg-1); }
+
+.view-page .inv-section { margin: 12px 0; padding: 10px 0; border-top: 1px solid var(--line); }
+.view-page .inv-section > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 10px; padding: 4px 0; }
+.view-page .inv-section > summary::-webkit-details-marker { display: none; }
+.view-page .inv-section-id { color: var(--coral); font: 600 var(--fs-cap)/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
+.view-page .inv-section-name { color: var(--fg-0); font-weight: 600; font-size: var(--fs-md); }
+.view-page .inv-section-count { color: var(--fg-3); font-size: var(--fs-cap); margin-left: auto; }
+.view-page .inv-section-summary { color: var(--fg-2); font-size: var(--fs-sm); margin: 4px 0 8px; max-width: 78ch; }
+.view-page .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin: 8px 0 0; }
+.view-page .inv-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.view-page .inv-card-name { color: var(--fg-0); text-decoration: none; font-weight: 600; }
+.view-page .inv-card-name:hover { color: var(--coral); }
+.view-page .inv-card .count { color: var(--fg-3); font-size: var(--fs-cap); }
+.view-page .inv-card .desc { color: var(--fg-2); font-size: var(--fs-sm); margin: 0 0 6px; }
+.view-page .inv-card .inv-sample { margin-top: 4px; }
+.view-page .inv-card .inv-sample > summary { cursor: pointer; list-style: none; color: var(--fg-3); font-size: var(--fs-cap); text-transform: uppercase; letter-spacing: 0.04em; }
+.view-page .inv-card .inv-sample > summary::-webkit-details-marker { display: none; }
+.view-page .inv-card .inv-sample > summary::before { content: '› '; transition: transform var(--t-fast) var(--ease); display: inline-block; }
+.view-page .inv-card .inv-sample[open] > summary::before { transform: rotate(90deg); }
+.view-page .inv-card .empty { color: var(--fg-3); font-style: italic; font-size: var(--fs-sm); }
+.view-page .inv-card .sample { margin: 6px 0 0; }
+
+.view-page details.arch-overview { margin: 18px 0 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+.view-page details.arch-overview > summary { cursor: pointer; list-style: none; color: var(--fg-3); font-size: var(--fs-cap); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0; }
+.view-page details.arch-overview > summary::-webkit-details-marker { display: none; }
+.view-page details.arch-overview ul { list-style: none; padding: 6px 0 0; margin: 0; }
+.view-page details.arch-overview li { padding: 6px 0; color: var(--fg-1); font-size: var(--fs-sm); border-bottom: 1px solid var(--line); }
+.view-page details.arch-overview li:last-child { border-bottom: 0; }
+.view-page details.arch-overview li strong { color: var(--coral); margin-right: 6px; }
+.view-page details.arch-overview li .layer-name { color: var(--fg-0); font-weight: 600; }
+.view-page details.arch-overview li p { margin: 4px 0 0; color: var(--fg-2); font-size: var(--fs-sm); max-width: 78ch; }
+
+/* Card renderers (used by Tables-tab cards, Inventory samples, Profile lists). */
+.card { padding: 8px 12px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 3px; margin: 6px 0; }
+.card .card-h { font-size: var(--fs-cap); color: var(--fg-3); margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; text-transform: uppercase; letter-spacing: 0.04em; }
+.card .card-h .ts { text-transform: none; letter-spacing: 0; }
+.card .card-body { font-size: var(--fs-sm); color: var(--fg-1); line-height: var(--lh-body); }
+.card .card-body p { margin: 2px 0; }
+.card .card-body p.title { color: var(--fg-0); font-weight: 600; }
+.card .card-body p.rule { color: var(--fg-0); }
+.card .card-body p.wgw { color: var(--fg-0); }
+.card .card-f { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; font-size: var(--fs-cap); color: var(--fg-3); }
+.badge { display: inline-block; padding: 1px 6px; border-radius: 2px; font-size: var(--fs-cap); font-family: var(--mono); text-decoration: none; letter-spacing: 0.02em; }
+.badge.tag { background: var(--coral-soft); color: var(--coral); }
+.badge.origin { background: var(--bg-3); color: var(--fg-1); border: 1px solid var(--line-bright); }
+.badge.source { background: var(--bg-3); color: var(--fg-2); border: 1px solid var(--line-bright); }
+.badge.kind { background: var(--bg-3); color: var(--fg-1); border: 1px solid var(--line-bright); }
+.badge.dom { background: var(--bg-3); color: var(--fg-1); border: 1px solid var(--line-bright); }
+.badge.raw { background: var(--bg-3); color: var(--orange); border: 1px solid var(--line-bright); }
+.card .chip { display: inline-block; padding: 1px 8px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 999px; font-size: var(--fs-cap); color: var(--fg-2); text-decoration: none; }
+.card .chip.cat { color: var(--fg-1); border-color: var(--line-bright); }
+.card .rec-chip { color: var(--coral); }
+.card .amt.pos { color: var(--fg-0); }
+.card .amt.neg { color: var(--green); }
+.card .body.trunc { color: var(--fg-1); }
+.card .show-more { background: transparent; color: var(--coral); border: 0; cursor: pointer; padding: 0; font-size: var(--fs-cap); }
+.card details.json summary { cursor: pointer; color: var(--fg-3); font-size: var(--fs-cap); }
+.card details.json pre { white-space: pre-wrap; word-wrap: break-word; max-height: 320px; overflow: auto; background: var(--bg-0); padding: 6px 8px; border-radius: 3px; font-size: var(--fs-code); }
+
+/* Profile page sections inside .t-card.page */
+.view-page .profile-meta { color: var(--fg-2); font-size: var(--fs-sm); margin-bottom: 12px; }
+.view-page .profile-summary { color: var(--fg-1); font-size: var(--fs-sm); margin-bottom: 14px; }
+.view-page .chips-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.view-page .chips-row .chip { display: inline-block; padding: 2px 8px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 999px; color: var(--fg-1); font-size: var(--fs-sm); text-decoration: none; }
+.view-page .chips-row .chip:hover { border-color: var(--coral); color: var(--coral); }
+
+/* Analysis card content */
+.view-page .ac-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.view-page .ac-table th { color: var(--fg-3); font-weight: 500; text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); font-size: var(--fs-cap); text-transform: uppercase; letter-spacing: 0.04em; }
+.view-page .ac-table td { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--fg-1); }
+.view-page .tc-list { list-style: none; margin: 0; padding: 0; }
+.view-page .tc-list li { padding: 4px 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: var(--fs-sm); border-bottom: 1px solid var(--line); }
+.view-page .tc-list li:last-child { border-bottom: 0; }
+.view-page .tc-list li a { color: var(--fg-1); text-decoration: none; }
+.view-page .tc-list li a:hover { color: var(--coral); }
+.view-page .tc-list .count { color: var(--fg-3); font-size: var(--fs-cap); }
+.view-page .cor-list { list-style: none; margin: 0; padding: 0; }
+.view-page .cor-list li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); color: var(--fg-1); }
+.view-page .cor-list li:last-child { border-bottom: 0; }
+.view-page .cor-list li p { margin: 4px 0 0; color: var(--fg-2); font-size: var(--fs-sm); }
+.view-page .empty { color: var(--fg-3); font-style: italic; font-size: var(--fs-sm); }
+
+/* Small-multiples (Trends) */
+.view-page .sm-row { display: grid; grid-template-columns: 1fr 60px 140px; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+.view-page .sm-row:last-child { border-bottom: 0; }
+.view-page .sm-label { color: var(--fg-1); }
+.view-page .sm-total { color: var(--fg-3); text-align: right; font-size: var(--fs-cap); }
+
+/* SVG charts */
+.chart { display: block; margin: 6px 0; max-width: 100%; color: var(--coral); }
+.chart rect { fill: currentColor; }
+.chart.stacked rect { fill: inherit; }
+.chart-axis { font: var(--fs-cap)/1 var(--mono); fill: var(--fg-3); }
+.chart-single { padding: 16px 8px; text-align: center; }
+.chart-single-label { color: var(--fg-3); font-size: var(--fs-cap); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.chart-single-value { font: 600 28px/1.1 var(--mono); color: var(--fg-0); }
+.chart-single-hint { color: var(--fg-3); font-size: var(--fs-cap); margin-top: 4px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: var(--fs-cap); color: var(--fg-2); margin: 0 0 6px; padding-left: 36px; }
+.chart-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.chart-legend-item .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+
+.card-mode-toggle { display: inline-flex; gap: 4px; margin: 0 0 8px; }
+.card-mode-toggle button { padding: 3px 10px; background: transparent; color: var(--fg-1); border: 1px solid var(--line-bright); border-radius: 3px; cursor: pointer; font: var(--fs-sm)/1 var(--mono); }
+.card-mode-toggle button[aria-checked="true"] { color: var(--coral); border-color: var(--coral); }
+</style>
+</head>
+<body class="connecting">
+
+<a href="#editor" class="sr-only">skip to editor</a>
+
+<button id="sidebar-toggle" type="button" aria-label="toggle navigation" aria-controls="sidebar" aria-expanded="false">≡</button>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+<main>
+  <aside id="sidebar" aria-label="navigation">
+    <div class="brand">
+      <span class="arrow" aria-hidden="true">▸</span>
+      <span>robin db</span>
+      <button id="arch-btn" class="about-btn" type="button" aria-label="show memory architecture overview" title="how Robin remembers">about</button>
+    </div>
+    <div class="meta" role="status" aria-live="polite">
+      <div class="row url" id="brand-url">—</div>
+      <div class="row">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="brand-status">connecting</span>
+      </div>
+      <div class="row" id="brand-tables"></div>
+    </div>
+
+    <div id="saved-groups"></div>
+    <div class="group tables">
+      <h2>tables <span class="count" id="t-count" aria-hidden="true"></span></h2>
+      <div class="t-filter-wrap">
+        <input class="t-filter" id="t-filter" type="search" placeholder="filter (press /)" aria-label="filter tables and saved queries" autocomplete="off" spellcheck="false">
+        <div class="t-filter-counter" id="t-filter-counter" aria-live="polite"></div>
+      </div>
+      <div id="tables" class="layered"></div>
+    </div>
+  </aside>
+
+  <section class="editor" id="editor">
+    <div class="trail" id="trail" aria-label="recent navigation"></div>
+    <div id="table-card-host"></div>
+    <div class="editor-wrap">
+      <span class="prompt" aria-hidden="true">&gt;</span>
+      <textarea
+        id="sql"
+        spellcheck="false"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls="ac-popover"
+        aria-expanded="false"
+        aria-label="SurrealQL query"
+        placeholder="select * from …  ⌘↵ to run"
+      ></textarea>
+      <div class="ac-popover" id="ac-popover" role="listbox" aria-label="autocomplete suggestions"></div>
+    </div>
+    <div class="controls">
+      <button class="primary" id="run" type="button">
+        <span>run</span>
+        <kbd aria-hidden="true">⌘↵</kbd>
+      </button>
+      <button class="secondary hidden" id="cancel" type="button" aria-label="cancel running query">cancel</button>
+      <button class="secondary" id="copy" type="button" aria-label="copy results to clipboard" disabled>copy</button>
+      <button class="secondary" id="csv" type="button" aria-label="download results as CSV" disabled>csv</button>
+      <button class="secondary" id="filter-toggle" type="button" aria-pressed="false" aria-label="toggle column filter row">filter</button>
+      <button class="secondary" id="history-btn" type="button" aria-label="open query history">history</button>
+      <button class="secondary" id="save-btn" type="button" aria-label="save current query as bookmark">save</button>
+      <span class="stats" id="stats" role="status" aria-live="polite"></span>
+      <span class="grow"></span>
+      <span role="tablist" aria-label="result view">
+        <button id="tab-table" role="tab" aria-selected="true" aria-controls="results" type="button">table</button>
+        <span class="tab-sep" aria-hidden="true">·</span>
+        <button id="tab-json" role="tab" aria-selected="false" aria-controls="results" type="button">json</button>
+      </span>
+    </div>
+    <div id="warn" role="status" aria-live="polite">this query writes data — be sure</div>
+    <div class="results" id="results" role="tabpanel" aria-labelledby="tab-table">
+      <div class="placeholder">
+        <span class="hint" aria-hidden="true">?</span>pick a snapshot, click a table, or type a query
+        <span class="kbd-hint"> · <kbd>⌘K</kbd> focus · <kbd>⌘↵</kbd> run</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="arch-overlay" role="dialog" aria-modal="true" aria-labelledby="arch-title" tabindex="-1">
+  <div class="overlay-card">
+    <button class="close" id="arch-close" type="button" aria-label="close overview">×</button>
+    <h1 id="arch-title">—</h1>
+    <p class="intro" id="arch-intro"></p>
+    <div id="arch-layers"></div>
+    <div class="footer-note">Press <kbd>esc</kbd> to close. Click any table chip to jump to its page.</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
+  <div class="modal-card">
+    <button class="modal-close" id="modal-close" type="button" aria-label="close dialog">×</button>
+    <h2 id="modal-title">—</h2>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<footer aria-label="keyboard shortcuts">
+  <span><kbd>⌘↵</kbd> run</span>
+  <span><kbd>⌘K</kbd> focus</span>
+  <span><kbd>tab</kbd> indent</span>
+  <span><kbd>esc</kbd> blur/cancel</span>
+  <span class="spacer"></span>
+  <span class="ver">robin · surrealdb</span>
+</footer>
+
+<script type="module">
+'use strict';
+import { compactFieldDef, parseHash, hashFromState, matchesQuery, detectRecordLink, compareValues, parseFilterExpression, dedupeHistory, parseAutocompleteContext } from '/db/static/browse-utils.js';
+import { SAVED } from '/db/static/browse-saved.js';
+
+
+const WRITE_RE = /\b(CREATE|UPDATE|UPSERT|DELETE|INSERT|RELATE|REMOVE|DEFINE|ALTER|REBUILD)\b/i;
+const STORAGE_KEY = 'robin-db:last-query';
+const FILTER_KEY = 'robin-db:t-filter';
+const VIEW_KEY = 'robin-db:view';
+
+const $ = (id) => document.getElementById(id);
+const sqlEl = $('sql'), runEl = $('run'), cancelEl = $('cancel'), copyEl = $('copy'), csvEl = $('csv');
+const statsEl = $('stats'), resultsEl = $('results');
+const warnEl = $('warn'), tabTable = $('tab-table'), tabJson = $('tab-json');
+const brandUrl = $('brand-url'), brandStatus = $('brand-status'), brandTables = $('brand-tables');
+const tFilter = $('t-filter');
+const sidebarToggle = $('sidebar-toggle'), scrim = $('scrim');
+const archBtn = $('arch-btn'), archOverlay = $('arch-overlay'), archClose = $('arch-close');
+const archTitle = $('arch-title'), archIntro = $('arch-intro'), archLayers = $('arch-layers');
+const cardHost = $('table-card-host');
+
+let lastResponse = null;
+let viewMode = 'table';
+const RENDER_CAP = 2000;
+const PAGE_SIZE = 100;
+const pageState = new Map();  // statement-index -> page (0-based)
+const sortState = new Map();  // statement-index -> [{ key, dir }]  // dir: 'asc'|'desc', max 2 entries
+const filterState = new Map();  // statement-index -> { col -> raw filter input string }
+let filtersVisible = false;
+const HISTORY_KEY = 'robin-db:history';
+let queryHistory = []; // loaded from localStorage at startup
+let historyCursor = -1; // -1 = textarea has its own content; otherwise index into queryHistory
+let historyDraft = ''; // cached unsaved typing while cycling
+let modalLastFocus = null;
+let activeAbort = null;
+let elapsedTimer = null;
+const trail = { entries: [], pos: -1 }; // entries: [{ state, label }]
+let descriptions = {};
+let layers = {};
+const COLLAPSE_KEY = 'robin-db:sidebar-collapsed';
+let lastTable = null; // currently-displayed table for the card
+let archCache = null;
+let archLastFocus = null;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+function setBodyState(state) {
+  document.body.classList.remove('connecting', 'running', 'errored');
+  if (state) document.body.classList.add(state);
+}
+
+function fmtCount(n) {
+  if (n == null) return '';
+  if (n < 1_000) return String(n);
+  if (n < 1_000_000) return (n / 1_000).toFixed(n < 10_000 ? 1 : 0) + 'k';
+  return (n / 1_000_000).toFixed(1) + 'M';
+}
+
+function withTransition(fn) {
+  if (document.startViewTransition && !reduceMotion.matches) {
+    const t = document.startViewTransition(fn);
+    // Swallow the abort rejection that fires when a newer transition
+    // (e.g., rapid card swaps) supersedes this one. View Transitions exposes
+    // three promises and any of them can reject on abort — silence all three
+    // so the console stays clean during fast user navigation.
+    t.finished.catch(() => {});
+    t.ready.catch(() => {});
+    t.updateCallbackDone.catch(() => {});
+  } else {
+    fn();
+  }
+}
+
+function setSidebar(open) {
+  document.body.classList.toggle('sidebar-open', open);
+  sidebarToggle.setAttribute('aria-expanded', String(open));
+  if (open) {
+    const first = $('sidebar').querySelector('button, input');
+    if (first) first.focus({ preventScroll: true });
+  } else if (document.activeElement && $('sidebar').contains(document.activeElement)) {
+    sidebarToggle.focus({ preventScroll: true });
+  }
+}
+
+function openModal(title, contentNode) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').replaceChildren(contentNode);
+  modalLastFocus = document.activeElement;
+  document.body.classList.add('modal-open');
+  document.getElementById('modal-overlay').focus({ preventScroll: true });
+}
+function closeModal() {
+  if (!document.body.classList.contains('modal-open')) return;
+  document.body.classList.remove('modal-open');
+  if (modalLastFocus && document.contains(modalLastFocus)) modalLastFocus.focus({ preventScroll: true });
+  modalLastFocus = null;
+}
+
+function readHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function writeHistory(arr) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch {}
+}
+
+const USER_SAVED_KEY = 'robin-db:user-saved';
+let userSaved = []; // [{ id, label, description, sql, createdAt }]
+
+const fieldsCache = new Map();   // tableName -> { fields: string[] } (resolved data)
+const fieldsInflight = new Map(); // tableName -> Promise<{fields}>
+let acItems = [];      // current popover items
+let acSelected = -1;   // index into acItems
+let acAnchor = null;   // textarea cursor position when popover opened
+
+function readUserSaved() {
+  try {
+    const raw = localStorage.getItem(USER_SAVED_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function writeUserSaved(arr) {
+  try { localStorage.setItem(USER_SAVED_KEY, JSON.stringify(arr)); } catch {}
+}
+
+function renderSidebar({ tables, counts, descriptions: descs, layers: layerMap }) {
+  descriptions = descs ?? {};
+  layers = layerMap ?? {};
+  const groupsEl = $('saved-groups');
+  const groupsFrag = document.createDocumentFragment();
+
+  // Overview as its own pseudo-group at the very top of the sidebar.
+  const ov = findOverview();
+  if (ov) {
+    const ovWrap = document.createElement('div');
+    ovWrap.className = 'group';
+    const ovH2 = document.createElement('h2');
+    ovH2.textContent = ' ';
+    ovH2.style.minHeight = '0.5rem';
+    ovWrap.appendChild(ovH2);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.label = 'overview';
+    b.dataset.desc = ov.item.description ?? '';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'q-label';
+    labelEl.textContent = 'overview';
+    const snipEl = document.createElement('span');
+    snipEl.className = 'desc-snippet';
+    b.append(labelEl, snipEl);
+    b.title = ov.item.description ?? '';
+    b.addEventListener('click', () => selectSaved(ov.group, ov.item));
+    ovWrap.appendChild(b);
+    groupsFrag.appendChild(ovWrap);
+  }
+
+  // View group above schema. Each item renders a synthesized View page
+  // (Dashboard/Analysis/Trends/Inventory) in the editor pane.
+  const viewWrap = document.createElement('div');
+  viewWrap.className = 'group';
+  const viewH2 = document.createElement('h2');
+  viewH2.textContent = 'view';
+  viewWrap.appendChild(viewH2);
+  for (const p of [
+    { label: 'dashboard', desc: 'What Robin currently knows about you and what is fresh' },
+    { label: 'analysis',  desc: 'Non-obvious surfaces about your data' },
+    { label: 'trends',    desc: 'How activity, knowledge, and behavior change over time' },
+    { label: 'inventory', desc: 'Plain-language map of every table Robin stores' },
+  ]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.label = p.label;
+    b.dataset.desc = p.desc;
+    const labelEl = document.createElement('span');
+    labelEl.className = 'q-label';
+    labelEl.textContent = p.label;
+    const snipEl = document.createElement('span');
+    snipEl.className = 'desc-snippet';
+    b.append(labelEl, snipEl);
+    b.title = p.desc;
+    b.addEventListener('click', () => selectViewPage(p.label));
+    viewWrap.appendChild(b);
+  }
+  groupsFrag.appendChild(viewWrap);
+
+  for (const grp of SAVED) {
+    const wrap = document.createElement('div');
+    wrap.className = 'group';
+    const h2 = document.createElement('h2');
+    h2.textContent = grp.group;
+    wrap.appendChild(h2);
+    for (const q of grp.items) {
+      // Overview is rendered as its own pseudo-group at the top of the sidebar
+      // (see above). Skip it here so it doesn't appear under "schema" too.
+      if (q.kind === 'page' && q.label === 'overview') continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.label = q.label;
+      b.dataset.desc = q.description ?? '';
+      const labelEl = document.createElement('span');
+      labelEl.className = 'q-label';
+      labelEl.textContent = q.label;
+      const snipEl = document.createElement('span');
+      snipEl.className = 'desc-snippet';
+      b.append(labelEl, snipEl);
+      b.title = q.sql ?? q.description ?? '';
+      b.addEventListener('click', () => selectSaved(grp.group, q));
+      wrap.appendChild(b);
+    }
+    groupsFrag.appendChild(wrap);
+  }
+  groupsEl.replaceChildren(groupsFrag);
+
+  $('t-count').textContent = tables.length ? String(tables.length) : '';
+  brandTables.textContent = tables.length ? `${tables.length} tables` : '';
+
+  const LAYER_ORDER = [
+    { id: 'L1', name: 'captures' },
+    { id: 'L2', name: 'episodes' },
+    { id: 'L3', name: 'entities & edges' },
+    { id: 'L4', name: 'reflection' },
+    { id: 'OP', name: 'operational' },
+    { id: null, name: 'other' },
+  ];
+  const collapsed = readCollapsed();
+  const tEl = $('tables');
+  const tFrag = document.createDocumentFragment();
+  for (const layer of LAYER_ORDER) {
+    const inLayer = tables.filter((t) => (layers[t] ?? null) === layer.id);
+    if (!inLayer.length) continue;
+    const group = document.createElement('div');
+    group.className = 'group layer';
+    group.dataset.layer = layer.id ?? 'other';
+    if (collapsed.has(layer.id ?? 'other')) group.classList.add('collapsed');
+    const h2 = document.createElement('h2');
+    h2.setAttribute('role', 'button');
+    h2.setAttribute("tabindex", "0");
+    h2.setAttribute('aria-expanded', String(!group.classList.contains('collapsed')));
+    if (layer.id) {
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = layer.id;
+      h2.appendChild(pill);
+    }
+    h2.appendChild(document.createTextNode(layer.name));
+    const cnt = document.createElement('span');
+    cnt.className = 'count';
+    cnt.textContent = `· ${inLayer.length}`;
+    h2.appendChild(cnt);
+    const dot = document.createElement('span');
+    dot.className = 'layer-active-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    h2.appendChild(dot);
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = '▾';
+    h2.appendChild(arrow);
+    h2.addEventListener('click', () => toggleLayerCollapse(group, layer.id ?? 'other'));
+    h2.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleLayerCollapse(group, layer.id ?? 'other');
+      }
+    });
+    group.appendChild(h2);
+    const body = document.createElement('div');
+    body.className = 'layer-body';
+    for (const t of inLayer) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.name = t;
+      const name = document.createElement('span');
+      name.className = 't-name';
+      name.textContent = t;
+      const count = document.createElement('span');
+      count.className = 'row-count';
+      count.textContent = fmtCount(counts?.[t]);
+      const snip = document.createElement('span');
+      snip.className = 'desc-snippet';
+      b.append(name, count, snip);
+      if (descriptions[t]) b.title = descriptions[t];
+      b.addEventListener('click', () => selectTable(t));
+      body.appendChild(b);
+    }
+    group.appendChild(body);
+    tFrag.appendChild(group);
+  }
+  tEl.replaceChildren(tFrag);
+  applyTableFilter(tFilter.value);
+}
+
+function renderUserSaved() {
+  let host = document.getElementById('user-saved-group');
+  if (!host) {
+    host = document.createElement('div');
+    host.className = 'group';
+    host.id = 'user-saved-group';
+    const h2 = document.createElement('h2');
+    h2.textContent = 'saved (yours)';
+    host.appendChild(h2);
+    const savedGroups = document.getElementById('saved-groups');
+    savedGroups.parentNode.insertBefore(host, savedGroups);
+  }
+  while (host.children.length > 1) host.removeChild(host.lastChild);
+  if (!userSaved.length) {
+    host.style.display = 'none';
+    return;
+  }
+  host.style.display = '';
+  for (const item of userSaved) {
+    const row = document.createElement('div');
+    row.className = 'user-saved-item';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.label = item.label;
+    b.dataset.desc = item.description ?? '';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'q-label';
+    labelEl.textContent = item.label;
+    const snipEl = document.createElement('span');
+    snipEl.className = 'desc-snippet';
+    b.append(labelEl, snipEl);
+    b.title = item.description ?? item.sql;
+    b.addEventListener('click', () => {
+      lastTable = null;
+      sqlEl.value = item.sql;
+      checkWrite();
+      renderSavedCard('saved (yours)', { label: item.label, description: item.description, sql: item.sql, tables: [] });
+      run();
+    });
+    const menu = document.createElement('button');
+    menu.type = 'button';
+    menu.className = 'menu-btn';
+    menu.textContent = '⋯';
+    menu.setAttribute('aria-label', `actions for ${item.label}`);
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm(`Delete saved query "${item.label}"?`)) {
+        userSaved = userSaved.filter((u) => u.id !== item.id);
+        writeUserSaved(userSaved);
+        renderUserSaved();
+      }
+    });
+    row.append(b, menu);
+    host.appendChild(row);
+  }
+}
+
+function readCollapsed() {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch { return new Set(); }
+}
+
+function writeCollapsed(set) {
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); } catch {}
+}
+
+function toggleLayerCollapse(groupEl, key) {
+  const collapsed = readCollapsed();
+  const isCollapsed = groupEl.classList.toggle('collapsed');
+  groupEl.querySelector('h2').setAttribute('aria-expanded', String(!isCollapsed));
+  if (isCollapsed) collapsed.add(key); else collapsed.delete(key);
+  writeCollapsed(collapsed);
+}
+
+// Render `text` into `host` with the matched substring wrapped in <mark class="q">.
+function renderHighlighted(host, text, range) {
+  host.replaceChildren();
+  if (!range) { host.textContent = text; return; }
+  const [a, b] = range;
+  if (a > 0) host.appendChild(document.createTextNode(text.slice(0, a)));
+  const mark = document.createElement('mark');
+  mark.className = 'q';
+  mark.textContent = text.slice(a, b);
+  host.appendChild(mark);
+  if (b < text.length) host.appendChild(document.createTextNode(text.slice(b)));
+}
+
+function applyTableFilter(query) {
+  const q = (query || '').trim();
+  let nTables = 0;
+  let nQueries = 0;
+
+  // Tables
+  for (const b of $('tables').querySelectorAll('button')) {
+    const name = b.dataset.name ?? '';
+    const desc = descriptions[name] ?? '';
+    const nameMatch = matchesQuery(name, q);
+    const descMatch = nameMatch.match ? { match: false, range: null } : matchesQuery(desc, q);
+    const show = nameMatch.match || descMatch.match;
+    b.classList.toggle('hidden', !show);
+    if (show) {
+      nTables += 1;
+      const nameEl = b.querySelector('.t-name');
+      if (nameEl) renderHighlighted(nameEl, name, nameMatch.match ? nameMatch.range : null);
+      const snip = b.querySelector('.desc-snippet');
+      if (snip) {
+        if (descMatch.match) {
+          renderHighlighted(snip, makeSnippet(desc, descMatch.range), shiftRange(descMatch.range, desc));
+        } else {
+          snip.replaceChildren();
+        }
+      }
+    }
+  }
+
+  // Saved queries (within #saved-groups)
+  for (const b of $('saved-groups').querySelectorAll('button')) {
+    const label = b.dataset.label ?? '';
+    const desc = b.dataset.desc ?? '';
+    const labelMatch = matchesQuery(label, q);
+    const descMatch = labelMatch.match ? { match: false, range: null } : matchesQuery(desc, q);
+    const show = labelMatch.match || descMatch.match;
+    b.classList.toggle('hidden', !show);
+    if (show) {
+      nQueries += 1;
+      const labelEl = b.querySelector('.q-label');
+      if (labelEl) renderHighlighted(labelEl, label, labelMatch.match ? labelMatch.range : null);
+      const snip = b.querySelector('.desc-snippet');
+      if (snip) {
+        if (descMatch.match) {
+          renderHighlighted(snip, makeSnippet(desc, descMatch.range), shiftRange(descMatch.range, desc));
+        } else {
+          snip.replaceChildren();
+        }
+      }
+    }
+  }
+
+  // Per-layer + per-saved-group: hide groups with zero visible items.
+  // When a filter is active, also auto-expand any layer group that contains
+  // a match — otherwise the user sees "1 table" in the counter but the
+  // matching button is invisible inside a collapsed layer.
+  const allGroups = [
+    ...$('saved-groups').querySelectorAll('.group'),
+    ...$('tables').querySelectorAll('.group.layer'),
+  ];
+  const filterActive = q.length > 0;
+  const collapsedSet = readCollapsed();
+  for (const grp of allGroups) {
+    const anyVisible = Array.from(grp.querySelectorAll('button')).some((b) => !b.classList.contains('hidden'));
+    grp.classList.toggle('hidden-group', !anyVisible);
+    // Only layer groups have collapse state; saved-query groups are always expanded.
+    if (!grp.classList.contains('layer')) continue;
+    const key = grp.dataset.layer ?? 'other';
+    if (filterActive && anyVisible) {
+      // Force-expand for the duration of the filter; remember to restore on clear.
+      grp.classList.remove('collapsed');
+      grp.querySelector('h2').setAttribute('aria-expanded', 'true');
+    } else if (!filterActive && collapsedSet.has(key)) {
+      // Filter cleared — restore the user's saved collapsed state.
+      grp.classList.add('collapsed');
+      grp.querySelector('h2').setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  // Counter
+  const counter = $('t-filter-counter');
+  if (q) counter.textContent = `${nTables} tables · ${nQueries} queries`;
+  else counter.textContent = '';
+
+  // Empty hint inside the tables list (preserve existing behaviour).
+  let hint = $('tables').querySelector('.empty-hint');
+  if (q && nTables === 0) {
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.className = 'empty-hint';
+      $('tables').appendChild(hint);
+    }
+    hint.replaceChildren();
+    hint.appendChild(document.createTextNode(`No tables matching "${q}". `));
+    const clr = document.createElement('button');
+    clr.type = 'button';
+    clr.className = 'empty-hint-action';
+    clr.textContent = 'clear filter';
+    clr.addEventListener('click', () => { tFilter.value = ''; tFilter.dispatchEvent(new Event('input')); });
+    hint.appendChild(clr);
+  } else if (hint) {
+    hint.remove();
+  }
+}
+
+// Build a <=80-char snippet centred on the matched range.
+function makeSnippet(text, range, max = 80) {
+  if (!range) return text.slice(0, max);
+  const [a, b] = range;
+  const span = b - a;
+  const half = Math.max(0, Math.floor((max - span) / 2));
+  const start = Math.max(0, a - half);
+  const end = Math.min(text.length, start + max);
+  let s = text.slice(start, end);
+  if (start > 0) s = '…' + s;
+  if (end < text.length) s = s + '…';
+  return s;
+}
+
+// Translate a range expressed against the original text into the snippet.
+function shiftRange(range, text, max = 80) {
+  if (!range) return null;
+  const snip = makeSnippet(text, range, max);
+  const i = snip.toLowerCase().indexOf(text.slice(range[0], range[1]).toLowerCase());
+  return i < 0 ? null : [i, i + (range[1] - range[0])];
+}
+
+// Hide group headers when the group is fully filtered out.
+const hideGroupStyle = document.createElement('style');
+hideGroupStyle.textContent = '.hidden-group { display: none; }';
+document.head.appendChild(hideGroupStyle);
+
+function checkWrite() {
+  warnEl.classList.toggle('show', WRITE_RE.test(sqlEl.value));
+}
+
+async function loadInfo() {
+  brandUrl.textContent = window.location.host;
+  setBodyState('connecting');
+  brandStatus.textContent = 'connecting';
+  try {
+    const r = await fetch('/db/api/info');
+    if (!r.ok) throw new Error(await r.text());
+    const info = await r.json();
+    renderSidebar(info);
+    setActiveRoute(parseHash(location.hash));
+    setBodyState(null);
+    brandStatus.textContent = 'connected';
+    const ph = resultsEl.querySelector('.placeholder.err');
+    if (ph) {
+      resultsEl.replaceChildren(makePlaceholder('connected — pick a snapshot, click a table, or type a query'));
+    }
+  } catch (e) {
+    setBodyState('errored');
+    brandStatus.textContent = 'disconnected';
+    resultsEl.replaceChildren(makePlaceholder("Couldn't reach the daemon.", {
+      isErr: true,
+      actionLabel: 'retry',
+      onAction: loadInfo,
+    }));
+  }
+}
+
+// Skeleton constructors. Returns a DOM node ready to insert; visually
+// indicates loading via shimmer. aria-busy is set on the parent by the caller;
+// the skeleton itself is aria-hidden so screen readers don't announce it.
+function makeSkeletonLine(width) {
+  const s = document.createElement('span');
+  s.className = 'skeleton skeleton-line';
+  s.setAttribute('aria-hidden', 'true');
+  if (width != null) s.style.width = typeof width === 'number' ? `${width}%` : width;
+  return s;
+}
+function makeSkeletonRows(n = 5) {
+  const wrap = document.createElement('div');
+  wrap.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < n; i++) {
+    const row = document.createElement('div');
+    row.className = 'skeleton-row';
+    for (let c = 0; c < 4; c++) {
+      const bar = document.createElement('span');
+      bar.className = 'skeleton';
+      row.appendChild(bar);
+    }
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+function makeSkeletonCard() {
+  const wrap = document.createElement('div');
+  wrap.className = 'skeleton-card';
+  wrap.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 5; i++) wrap.appendChild(makeSkeletonLine());
+  return wrap;
+}
+
+function makePlaceholder(text, opts = {}) {
+  const { isErr = false, actionLabel = null, onAction = null } = opts;
+  const el = document.createElement('div');
+  el.className = 'placeholder' + (isErr ? ' err' : '');
+  el.textContent = text;
+  if (actionLabel && typeof onAction === 'function') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'action';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', onAction);
+    el.appendChild(btn);
+  }
+  return el;
+}
+
+function setActiveRoute(state) {
+  // Clear all current highlights.
+  for (const b of document.querySelectorAll('aside button.active-route')) {
+    b.classList.remove('active-route');
+  }
+  for (const g of document.querySelectorAll('#tables .group.layer.is-active-layer')) {
+    g.classList.remove('is-active-layer');
+  }
+  if (!state || !state.kind) return;
+  if (state.kind === 'table') {
+    const b = document.querySelector(`#tables button[data-name="${CSS.escape(state.name)}"]`);
+    if (b) {
+      b.classList.add('active-route');
+      // Walk up to the layer group and add the active-layer dot.
+      const grp = b.closest('.group.layer');
+      if (grp) grp.classList.add('is-active-layer');
+    }
+  } else if (state.kind === 'overview' || state.kind === 'saved') {
+    const targetLabel = state.kind === 'overview' ? 'overview' : state.label;
+    for (const b of document.querySelectorAll('#saved-groups button')) {
+      if (b.dataset.label === targetLabel) { b.classList.add('active-route'); break; }
+    }
+    // No layer dot — saved queries aren't "in" a layer.
+  }
+}
+
+function navigate(state, opts = {}) {
+  const hash = hashFromState(state);
+  const cur = location.hash || '#';
+  if (hash !== cur) {
+    if (opts.replace) history.replaceState(state, '', hash);
+    else history.pushState(state, '', hash);
+  }
+  // Push to trail on every navigation that has a card kind — including the
+  // initial replace-state load (so the trail starts with 'overview' before
+  // the user navigates anywhere). Dismiss (kind: null) is excluded.
+  if (state && state.kind) pushTrail(state);
+  setActiveRoute(state);
+}
+
+function trailLabelForState(s) {
+  if (!s || !s.kind) return null;
+  if (s.kind === 'overview') return 'overview';
+  if (s.kind === 'table')    return s.name;
+  if (s.kind === 'saved')    return s.label;
+  return null;
+}
+
+function pushTrail(state) {
+  const label = trailLabelForState(state);
+  if (label == null) return;
+  // Linear / browser-style: replace forward stack on a new branch.
+  trail.entries = trail.entries.slice(0, trail.pos + 1);
+  // Avoid duplicate consecutive entries.
+  const last = trail.entries[trail.entries.length - 1];
+  if (last && last.label === label) return;
+  trail.entries.push({ state, label });
+  trail.pos = trail.entries.length - 1;
+  renderTrail();
+}
+
+function moveTrailTo(label) {
+  // Called from popstate so we know the location changed but don't know which way.
+  // Find the most recent entry matching label and move pos to it.
+  for (let i = trail.entries.length - 1; i >= 0; i--) {
+    if (trail.entries[i].label === label) { trail.pos = i; renderTrail(); return; }
+  }
+}
+
+function renderTrail() {
+  const el = document.getElementById('trail');
+  el.replaceChildren();
+  const visibleCount = Math.min(trail.pos + 1, 5);
+  if (visibleCount <= 1) { document.body.classList.remove('has-trail'); return; }
+  document.body.classList.add('has-trail');
+  const start = (trail.pos + 1) - visibleCount;
+  if (start > 0) {
+    const dots = document.createElement('span');
+    dots.className = 'ellipsis';
+    dots.textContent = '…';
+    el.appendChild(dots);
+  }
+  for (let i = start; i <= trail.pos; i++) {
+    if (i > start) {
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '›';
+      el.appendChild(sep);
+    }
+    const entry = trail.entries[i];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'step' + (i === trail.pos ? ' current' : '');
+    btn.textContent = entry.label;
+    if (i !== trail.pos) {
+      const target = entry.state;
+      btn.addEventListener('click', () => {
+        navigate(target);
+        // The popstate listener doesn't fire for pushState, so route now.
+        routeFromHash();
+      });
+    }
+    el.appendChild(btn);
+  }
+}
+
+async function selectTable(t, opts = {}) {
+  lastTable = t;
+  navigate({ kind: 'table', name: t });
+  document.body.classList.remove('page-mode');
+  sqlEl.value = opts.sql || `SELECT * FROM ${t} LIMIT 100;`;
+  checkWrite();
+  if (window.matchMedia('(max-width: 720px)').matches) setSidebar(false);
+  // Run the query AND fetch the table card in parallel so neither blocks the other.
+  const cardPromise = fetchAndShowCard(t);
+  await run();
+  await cardPromise;
+}
+
+async function renderViewInto(wrap, name, ctx = {}) {
+  try {
+    const mod = await import('/db/static/browse-view.js');
+    if (ctx.entity) {
+      // Profile view consumes ?entity= from URL search params.
+      const u = new URL(location);
+      u.searchParams.set('entity', ctx.entity);
+      history.replaceState(history.state, '', u);
+    }
+    await mod.activate(wrap, name);
+  } catch (err) {
+    console.error('view page render failed', err);
+    wrap.innerHTML = `<p style="color:#c66">Failed to load view page: ${String(err?.message ?? err)}</p>`;
+  }
+}
+
+async function selectViewPage(name) {
+  lastTable = null;
+  navigate({ kind: 'view', label: name });
+  document.body.classList.add('page-mode');
+  if (window.matchMedia('(max-width: 720px)').matches) setSidebar(false);
+  // Mark the active view sidebar button.
+  document.querySelectorAll('#saved-groups .group').forEach((g) => {
+    if (g.querySelector('h2')?.textContent === 'view') {
+      g.querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('active', b.dataset.label === name);
+      });
+    }
+  });
+  cardHost.replaceChildren();
+  const wrap = document.createElement('div');
+  wrap.className = 't-card page view-page';
+  wrap.dataset.viewPage = name;
+  cardHost.appendChild(wrap);
+  await renderViewInto(wrap, name);
+  statsEl.textContent = '';
+  lastResponse = null;
+  copyEl.disabled = true;
+  csvEl.disabled = true;
+}
+
+async function selectViewEntity(slug) {
+  lastTable = null;
+  navigate({ kind: 'view', label: 'entity', entity: slug });
+  document.body.classList.add('page-mode');
+  if (window.matchMedia('(max-width: 720px)').matches) setSidebar(false);
+  cardHost.replaceChildren();
+  const wrap = document.createElement('div');
+  wrap.className = 't-card page view-page';
+  wrap.dataset.viewPage = 'entity';
+  cardHost.appendChild(wrap);
+  await renderViewInto(wrap, 'entity', { entity: slug });
+  statsEl.textContent = '';
+  lastResponse = null;
+  copyEl.disabled = true;
+  csvEl.disabled = true;
+}
+
+// Delegated click handler — page modules emit anchors with ?tab=view|workbench
+// query strings. Intercept and route them into the appropriate handler so the
+// page doesn't actually navigate.
+document.body.addEventListener('click', (e) => {
+  const a = e.target.closest('a');
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (!href.includes('tab=')) return;
+  let u;
+  try { u = new URL(href, location.origin); } catch { return; }
+  const tab = u.searchParams.get('tab');
+  const page = u.searchParams.get('page');
+  const entity = u.searchParams.get('entity');
+  const table = u.searchParams.get('table');
+  if (tab === 'view' && page === 'entity' && entity) {
+    e.preventDefault();
+    selectViewEntity(entity);
+  } else if (tab === 'view' && page) {
+    e.preventDefault();
+    selectViewPage(page);
+  } else if (tab === 'workbench' && table) {
+    e.preventDefault();
+    selectTable(table);
+  }
+});
+
+function selectSaved(group, item) {
+  lastTable = null;
+  // Page-kind items are routed by their label so deep-linking works for both
+  // 'overview' (page) and concrete saved queries.
+  navigate(item.label === 'overview' && item.kind === 'page'
+    ? { kind: 'overview' }
+    : { kind: 'saved', group, label: item.label });
+  if (window.matchMedia('(max-width: 720px)').matches) setSidebar(false);
+  if (item.kind === 'page') {
+    document.body.classList.add('page-mode');
+    renderPageCard(group, item);
+    statsEl.textContent = '';
+    lastResponse = null;
+    copyEl.disabled = true;
+    csvEl.disabled = true;
+    return;
+  }
+  document.body.classList.remove('page-mode');
+  sqlEl.value = item.sql;
+  checkWrite();
+  renderSavedCard(group, item);
+  run();
+}
+
+function renderPageCard(group, item) {
+  const wrap = document.createElement('div');
+  wrap.className = 't-card page';
+
+  const eyebrow = document.createElement('div');
+  eyebrow.className = 'eyebrow';
+  eyebrow.append(text('overview'), sep(), text(group));
+  wrap.appendChild(eyebrow);
+
+  const head = document.createElement('div');
+  head.className = 'head';
+  const h1 = document.createElement('h1');
+  h1.textContent = item.label;
+  head.appendChild(h1);
+  const dismiss = document.createElement('button');
+  dismiss.className = 'dismiss';
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', 'dismiss page');
+  dismiss.textContent = '×';
+  dismiss.addEventListener('click', clearTableCard);
+  head.appendChild(dismiss);
+  wrap.appendChild(head);
+
+  if (item.description) {
+    const p = document.createElement('div');
+    p.className = 'purpose';
+    p.textContent = item.description;
+    wrap.appendChild(p);
+  }
+
+  for (const sec of item.sections ?? []) {
+    if (sec.heading) {
+      const h = document.createElement('h2');
+      h.className = 'page-h';
+      h.textContent = sec.heading;
+      wrap.appendChild(h);
+    }
+    if (sec.body) {
+      const b = document.createElement('div');
+      b.className = 'page-body';
+      b.textContent = sec.body;
+      wrap.appendChild(b);
+    }
+    if (sec.diagram === 'layers' && Array.isArray(sec.layers)) {
+      wrap.appendChild(renderLayersDiagram(sec.layers));
+    }
+    if (Array.isArray(sec.list) && sec.list.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'page-list';
+      for (const li of sec.list) {
+        const item = document.createElement('li');
+        item.textContent = li;
+        ul.appendChild(item);
+      }
+      wrap.appendChild(ul);
+    }
+    if (Array.isArray(sec.chips) && sec.chips.length) {
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      for (const t of sec.chips) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = t;
+        c.title = descriptions[t] ?? '';
+        c.addEventListener('click', () => selectTable(t));
+        chips.appendChild(c);
+      }
+      wrap.appendChild(chips);
+    }
+  }
+
+  // Build TOC if we have enough sections.
+  const headings = wrap.querySelectorAll('.page-h');
+  if (headings.length >= 4) {
+    wrap.classList.add('has-toc');
+
+    // Mobile collapse at top of card.
+    const mobile = document.createElement('details');
+    mobile.className = 'toc-mobile';
+    const summary = document.createElement('summary');
+    summary.textContent = 'sections';
+    mobile.appendChild(summary);
+    headings.forEach((h, i) => {
+      const id = `sec-${i}`;
+      h.id = id;
+      const a = document.createElement('a');
+      a.href = '#' + id;
+      a.textContent = h.textContent;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        scrollToSection(id);
+        mobile.open = false;
+      });
+      mobile.appendChild(a);
+    });
+    // Insert mobile TOC right after the head.
+    const headEl = wrap.querySelector('.head');
+    headEl.insertAdjacentElement('afterend', mobile);
+
+    // Desktop sticky TOC on the right.
+    const toc = document.createElement('div');
+    toc.className = 'toc';
+    headings.forEach((h, i) => {
+      const id = `sec-${i}`;
+      h.id = id;
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'toc-link';
+      link.dataset.target = id;
+      link.textContent = h.textContent;
+      link.addEventListener('click', () => scrollToSection(id));
+      toc.appendChild(link);
+    });
+    // Insert TOC as the FIRST child so float-right works and content wraps around it.
+    wrap.insertBefore(toc, wrap.firstChild);
+  }
+
+  withTransition(() => cardHost.replaceChildren(wrap));
+
+  // Active-section highlight via IntersectionObserver.
+  // Root is the card host (the actual scroll container).
+  if (headings.length >= 4) {
+    setupTocObserver();
+  }
+}
+
+function scrollToSection(id) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  const host = cardHost;
+  const targetRect = target.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  host.scrollTo({ top: host.scrollTop + (targetRect.top - hostRect.top) - 12, behavior: 'smooth' });
+}
+
+let tocObserver = null;
+function setupTocObserver() {
+  if (tocObserver) tocObserver.disconnect();
+  const headings = cardHost.querySelectorAll('.page-h');
+  tocObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        for (const link of cardHost.querySelectorAll('.toc-link')) {
+          link.classList.toggle('active', link.dataset.target === id);
+        }
+      }
+    }
+  }, { root: cardHost, rootMargin: '0px 0px -75% 0px', threshold: 0 });
+  headings.forEach((h) => tocObserver.observe(h));
+}
+
+function renderSavedCard(group, item) {
+  const wrap = document.createElement('div');
+  wrap.className = 't-card';
+
+  const eyebrow = document.createElement('div');
+  eyebrow.className = 'eyebrow';
+  eyebrow.append(text('saved query'), sep(), text(group));
+  wrap.appendChild(eyebrow);
+
+  const head = document.createElement('div');
+  head.className = 'head';
+  const h1 = document.createElement('h1');
+  h1.textContent = item.label;
+  head.append(h1);
+  const dismiss = document.createElement('button');
+  dismiss.className = 'dismiss';
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', 'dismiss query info');
+  dismiss.textContent = '×';
+  dismiss.addEventListener('click', clearTableCard);
+  head.appendChild(dismiss);
+  wrap.appendChild(head);
+
+  if (item.description) {
+    const p = document.createElement('div');
+    p.className = 'purpose';
+    p.textContent = item.description;
+    wrap.appendChild(p);
+  }
+
+  const sqlPre = document.createElement('pre');
+  sqlPre.className = 'sql-preview';
+  sqlPre.textContent = item.sql;
+  wrap.appendChild(sqlPre);
+
+  if (Array.isArray(item.tables) && item.tables.length) {
+    wrap.appendChild(sectionLabel('tables touched'));
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    for (const t of item.tables) {
+      const c = document.createElement('button');
+      c.type = 'button';
+      c.className = 'chip';
+      c.textContent = t;
+      c.title = descriptions[t] ?? '';
+      c.addEventListener('click', () => selectTable(t));
+      chips.appendChild(c);
+    }
+    wrap.appendChild(chips);
+  }
+
+  cardHost.replaceChildren(wrap);
+}
+
+function renderLayersDiagram(layers) {
+  const wrap = document.createElement('div');
+  wrap.className = 'layers-diagram';
+  layers.forEach((layer, idx) => {
+    const block = document.createElement('div');
+    block.className = 'layer-block';
+    const badge = document.createElement('div');
+    badge.className = 'layer-badge';
+    badge.textContent = layer.id;
+    const content = document.createElement('div');
+    content.className = 'layer-content';
+    const name = document.createElement('div');
+    name.className = 'layer-name';
+    name.textContent = layer.name;
+    content.appendChild(name);
+    if (layer.summary) {
+      const sum = document.createElement('div');
+      sum.className = 'layer-summary';
+      sum.textContent = layer.summary;
+      content.appendChild(sum);
+    }
+    if (Array.isArray(layer.tables) && layer.tables.length) {
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      for (const t of layer.tables) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = t;
+        c.title = descriptions[t] ?? '';
+        c.addEventListener('click', () => selectTable(t));
+        chips.appendChild(c);
+      }
+      content.appendChild(chips);
+    }
+    block.append(badge, content);
+    wrap.appendChild(block);
+
+    // Connector arrow + transition label between layers.
+    if (layer.transition && idx < layers.length - 1) {
+      const arrow = document.createElement('div');
+      arrow.className = 'layer-arrow';
+      const glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      glyph.textContent = '↓';
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = layer.transition;
+      arrow.append(glyph, label);
+      wrap.appendChild(arrow);
+    }
+  });
+  return wrap;
+}
+
+// Heuristic: a single-table SELECT/INFO statement → that table.
+const SINGLE_FROM_RE = /\bfrom\s+`?([a-z_][a-z0-9_]*)`?/gi;
+const INFO_FOR_TABLE_RE = /\binfo\s+for\s+table\s+`?([a-z_][a-z0-9_]*)`?/i;
+function detectSingleTable(sql) {
+  const trimmed = sql.trim();
+  if (!trimmed) return null;
+  const info = INFO_FOR_TABLE_RE.exec(trimmed);
+  if (info) return info[1];
+  // Strip line/block comments before scanning.
+  const cleaned = trimmed.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const matches = new Set();
+  for (const m of cleaned.matchAll(SINGLE_FROM_RE)) matches.add(m[1].toLowerCase());
+  if (matches.size === 1) return [...matches][0];
+  return null;
+}
+
+async function fetchAndShowCard(t) {
+  // Show a fast placeholder card immediately so the page reacts; if the
+  // fetch is slow, swap to a fuller skeleton after 200ms.
+  renderTableCard({ name: t, meta: null, schema: null, count: null, _loading: true });
+  cardHost.setAttribute('aria-busy', 'true');
+  const skeletonTimer = setTimeout(() => {
+    cardHost.replaceChildren(makeSkeletonCard());
+  }, 200);
+  try {
+    const r = await fetch(`/db/api/table/${encodeURIComponent(t)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    renderTableCard(data);
+  } catch (e) {
+    renderTableCard({ name: t, meta: null, schema: { error: String(e?.message ?? e) }, count: null });
+  } finally {
+    clearTimeout(skeletonTimer);
+    cardHost.removeAttribute('aria-busy');
+  }
+}
+
+function renderTableCard(info) {
+  const wrap = document.createElement('div');
+  wrap.className = 't-card';
+
+  const head = document.createElement('div');
+  head.className = 'head';
+  const layer = document.createElement('span');
+  layer.className = 'layer';
+  layer.textContent = info.meta?.layerName ?? (info.meta?.layer ?? 'table');
+  const h1 = document.createElement('h1');
+  h1.textContent = info.name;
+  head.append(layer, h1);
+  if (info.count != null) {
+    const rc = document.createElement('span');
+    rc.className = 'row-count';
+    rc.textContent = `${fmtCount(info.count)} rows`;
+    head.appendChild(rc);
+  }
+  const dismiss = document.createElement('button');
+  dismiss.className = 'dismiss';
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', 'dismiss table info');
+  dismiss.textContent = '×';
+  dismiss.addEventListener('click', clearTableCard);
+  head.appendChild(dismiss);
+  wrap.appendChild(head);
+
+  if (info._loading) {
+    const p = document.createElement('div');
+    p.className = 'purpose';
+    p.textContent = 'loading…';
+    wrap.appendChild(p);
+  } else if (info.meta) {
+    const purpose = document.createElement('div');
+    purpose.className = 'purpose';
+    purpose.textContent = info.meta.purpose;
+    wrap.appendChild(purpose);
+    if (info.meta.detail) {
+      const detail = document.createElement('div');
+      detail.className = 'detail';
+      detail.textContent = info.meta.detail;
+      wrap.appendChild(detail);
+    }
+    if (Array.isArray(info.meta.keyFields) && info.meta.keyFields.length) {
+      wrap.appendChild(sectionLabel('key fields'));
+      const grid = document.createElement('div');
+      grid.className = 'fields';
+      for (const [name, desc] of info.meta.keyFields) {
+        const fn = document.createElement('div');
+        fn.className = 'fn';
+        fn.textContent = name;
+        const fd = document.createElement('div');
+        fd.className = 'fd';
+        fd.textContent = desc;
+        grid.append(fn, fd);
+      }
+      wrap.appendChild(grid);
+    }
+    if (Array.isArray(info.meta.samples) && info.meta.samples.length) {
+      wrap.appendChild(sectionLabel('starter queries'));
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      for (const s of info.meta.samples) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip sample';
+        c.textContent = s.label;
+        c.title = s.sql;
+        c.addEventListener('click', () => { sqlEl.value = s.sql; checkWrite(); run(); });
+        chips.appendChild(c);
+      }
+      wrap.appendChild(chips);
+    }
+    if (Array.isArray(info.meta.related) && info.meta.related.length) {
+      wrap.appendChild(sectionLabel('related tables'));
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      for (const r of info.meta.related) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip';
+        c.textContent = r;
+        c.title = descriptions[r] ?? '';
+        c.addEventListener('click', () => selectTable(r));
+        chips.appendChild(c);
+      }
+      wrap.appendChild(chips);
+    }
+  } else {
+    const p = document.createElement('div');
+    p.className = 'purpose';
+    p.textContent = info.name.startsWith('_')
+      ? 'Internal bookkeeping table.'
+      : 'No description available for this table yet.';
+    wrap.appendChild(p);
+  }
+
+  if (info.schema?.fields?.length) {
+    wrap.appendChild(sectionLabel(`schema (${info.schema.fields.length} fields)`));
+    const grid = document.createElement('div');
+    grid.className = 'fields';
+    for (const f of info.schema.fields) {
+      const fn = document.createElement('div');
+      fn.className = 'fn';
+      fn.textContent = f.name;
+      const fd = document.createElement('div');
+      fd.className = 'fd';
+      fd.textContent = f.def || '';
+      grid.append(fn, fd);
+    }
+    wrap.appendChild(grid);
+  }
+  if (info.schema?.indexes?.length) {
+    wrap.appendChild(sectionLabel(`indexes (${info.schema.indexes.length})`));
+    const list = document.createElement('div');
+    list.className = 'indexes';
+    for (const i of info.schema.indexes) {
+      const row = document.createElement('div');
+      const code = document.createElement('code');
+      code.textContent = i.def;
+      row.appendChild(code);
+      list.appendChild(row);
+    }
+    wrap.appendChild(list);
+  }
+
+  withTransition(() => cardHost.replaceChildren(wrap));
+}
+
+function clearTableCard() {
+  lastTable = null;
+  withTransition(() => cardHost.replaceChildren());
+  document.body.classList.remove('page-mode');
+  if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+  navigate({ kind: null }, { replace: true });
+}
+
+function tableExists(name) {
+  return Object.prototype.hasOwnProperty.call(descriptions, name);
+}
+
+function sectionLabel(text) {
+  const el = document.createElement('div');
+  el.className = 'section-label';
+  el.textContent = text;
+  return el;
+}
+
+function startElapsed() {
+  const t0 = performance.now();
+  stopElapsed();
+  elapsedTimer = setInterval(() => {
+    const ms = Math.round(performance.now() - t0);
+    statsEl.textContent = `${ms} ms…`;
+  }, 100);
+}
+function stopElapsed() {
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+
+let historyIndicatorTimer = null;
+function showHistoryIndicator(text) {
+  let ind = document.querySelector('.editor-wrap .history-indicator');
+  if (!ind) {
+    ind = document.createElement('div');
+    ind.className = 'history-indicator';
+    ind.setAttribute('aria-live', 'polite');
+    document.querySelector('.editor-wrap').appendChild(ind);
+  }
+  ind.textContent = text;
+  ind.classList.add('show');
+  clearTimeout(historyIndicatorTimer);
+  historyIndicatorTimer = setTimeout(() => ind.classList.remove('show'), 1500);
+}
+
+function setRunning(on) {
+  runEl.disabled = on;
+  if (on) {
+    runEl.setAttribute('aria-busy', 'true');
+    cancelEl.classList.remove('hidden');
+  } else {
+    runEl.removeAttribute('aria-busy');
+    cancelEl.classList.add('hidden');
+  }
+}
+
+async function run() {
+  const sql = sqlEl.value.trim();
+  if (!sql) return;
+  pageState.clear();
+  sortState.clear();
+  filterState.clear();
+  // Auto-detect a single-table query and show its card if no card is up.
+  const detected = detectSingleTable(sql);
+  if (detected && detected !== lastTable && !cardHost.children.length && tableExists(detected)) {
+    lastTable = detected;
+    fetchAndShowCard(detected);
+  }
+  if (activeAbort) activeAbort.abort();
+  activeAbort = new AbortController();
+  const myAbort = activeAbort;
+  setRunning(true);
+  setBodyState('running');
+  brandStatus.textContent = 'running';
+  startElapsed();
+  // Schedule skeleton after 200ms — most local queries finish faster and
+  // never flash a skeleton. resultsEl gets aria-busy while pending.
+  resultsEl.setAttribute('aria-busy', 'true');
+  const skeletonTimer = setTimeout(() => {
+    if (myAbort !== activeAbort) return;
+    resultsEl.replaceChildren(makeSkeletonRows(5));
+  }, 200);
+  copyEl.disabled = true;
+  csvEl.disabled = true;
+  copyEl.classList.remove('success');
+  copyEl.textContent = 'copy';
+  try {
+    const r = await fetch('/db/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+      signal: myAbort.signal,
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    lastResponse = data;
+    stopElapsed();
+    statsEl.replaceChildren(...formatStats(data));
+    setBodyState(null);
+    brandStatus.textContent = `${data.ms} ms`;
+    try { localStorage.setItem(STORAGE_KEY, sql); } catch {}
+    queryHistory = dedupeHistory(queryHistory, sql);
+    writeHistory(queryHistory);
+    historyCursor = -1;
+    historyDraft = '';
+    copyEl.disabled = false;
+    csvEl.disabled = !hasTabularResult(data);
+    withTransition(render);
+  } catch (e) {
+    stopElapsed();
+    if (e?.name === 'AbortError') {
+      statsEl.textContent = 'cancelled';
+      setBodyState(null);
+      brandStatus.textContent = 'cancelled';
+      withTransition(() => resultsEl.replaceChildren(makePlaceholder('Cancelled.')));
+      lastResponse = null;
+      return;
+    }
+    statsEl.textContent = '';
+    setBodyState('errored');
+    brandStatus.textContent = 'error';
+    withTransition(() => resultsEl.replaceChildren(makePlaceholder(String(e.message ?? e), { isErr: true })));
+    lastResponse = null;
+  } finally {
+    clearTimeout(skeletonTimer);
+    resultsEl.removeAttribute('aria-busy');
+    if (activeAbort === myAbort) {
+      activeAbort = null;
+      setRunning(false);
+    }
+  }
+}
+
+function hasTabularResult(data) {
+  return data.responses.some((r) => r.success && Array.isArray(r.result) && r.result.length
+    && r.result.every((x) => x && typeof x === 'object' && !Array.isArray(x)));
+}
+
+function cancel() {
+  if (activeAbort) activeAbort.abort();
+}
+
+async function copyResults() {
+  if (!lastResponse) return;
+  let text;
+  if (viewMode === 'json') {
+    text = JSON.stringify(lastResponse.responses, null, 2);
+  } else {
+    text = lastResponse.responses.map((r, i) => {
+      if (!r.success) return `[${i + 1}] ERROR\n${r.error}`;
+      const v = r.result;
+      if (Array.isArray(v) && v.length && v.every((x) => x && typeof x === 'object' && !Array.isArray(x))) {
+        const keys = Array.from(v.reduce((s, row) => { Object.keys(row).forEach((k) => s.add(k)); return s; }, new Set()));
+        const cell = (x) => x == null ? '' : (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') ? String(x) : JSON.stringify(x);
+        const lines = [keys.join('\t')];
+        for (const row of v) lines.push(keys.map((k) => cell(row[k])).join('\t'));
+        return `[${i + 1}] ${v.length} rows\n${lines.join('\n')}`;
+      }
+      return `[${i + 1}]\n${JSON.stringify(v, null, 2)}`;
+    }).join('\n\n');
+  }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    copyEl.classList.add('success');
+    copyEl.textContent = 'copied';
+    setTimeout(() => {
+      copyEl.classList.remove('success');
+      copyEl.textContent = 'copy';
+    }, 1200);
+  } catch {
+    copyEl.textContent = 'copy failed';
+    setTimeout(() => { copyEl.textContent = 'copy'; }, 1200);
+  }
+}
+
+function formatStats(data) {
+  const counts = data.responses.map((r) => Array.isArray(r.result) ? r.result.length : (r.success ? 'ok' : '!'));
+  const parts = [
+    text(`${data.responses.length}`, 'em'), ' stmt ', sep(),
+    text(`${counts.join('+')}`, 'em'), ' rows ', sep(),
+    text(`${data.ms}`, 'em'), ' ms',
+  ];
+  return parts.map((p) => typeof p === 'string' ? document.createTextNode(p) : p);
+}
+function text(t, cls) {
+  const el = document.createElement('span');
+  if (cls) el.className = cls;
+  el.textContent = t;
+  return el;
+}
+function sep() {
+  const s = document.createElement('span');
+  s.className = 'sep';
+  s.textContent = '·';
+  return s;
+}
+
+function render() {
+  if (!lastResponse) return;
+  if (viewMode === 'json') return renderJson();
+  renderTable();
+}
+
+function renderJson() {
+  const pre = document.createElement('pre');
+  pre.className = 'json';
+  pre.textContent = JSON.stringify(lastResponse.responses, null, 2);
+  resultsEl.replaceChildren(pre);
+}
+
+function renderTable() {
+  const frag = document.createDocumentFragment();
+  lastResponse.responses.forEach((r, i) => {
+    const header = document.createElement('div');
+    header.className = 'stmt-header' + (r.success ? '' : ' err');
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = `[${i + 1}]`;
+    const main = document.createElement('span');
+    main.textContent = r.success
+      ? (Array.isArray(r.result) ? `${r.result.length} rows` : 'ok')
+      : 'error';
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    if (r.stats?.execution_time) meta.textContent = r.stats.execution_time;
+    header.append(label, main, meta);
+    frag.appendChild(header);
+
+    if (!r.success) {
+      const p = document.createElement('div');
+      p.className = 'err-message';
+      p.textContent = r.error;
+      frag.appendChild(p);
+      return;
+    }
+    const v = r.result;
+    if (Array.isArray(v) && v.length && v.every((x) => x && typeof x === 'object' && !Array.isArray(x))) {
+      // Apply render cap.
+      let rows = v;
+      if (rows.length > RENDER_CAP) {
+        const banner = document.createElement('div');
+        banner.className = 'render-cap-banner';
+        banner.textContent = `Showing first ${RENDER_CAP} of ${rows.length} rows. Add LIMIT to your query, or fetch more. Sort/filter applies to the displayed rows only.`;
+        frag.appendChild(banner);
+        rows = rows.slice(0, RENDER_CAP);
+      }
+      // Pagination: if more than PAGE_SIZE rows, paginate.
+      if (rows.length > PAGE_SIZE) {
+        const totalPages = Math.ceil(rows.length / PAGE_SIZE);
+        let page = pageState.get(i) ?? 0;
+        if (page >= totalPages) { page = 0; pageState.set(i, 0); }
+        const start = page * PAGE_SIZE;
+        const slice = rows.slice(start, start + PAGE_SIZE);
+        frag.appendChild(buildTable(slice, i));
+        frag.appendChild(buildPager(i, page, totalPages, rows.length));
+      } else {
+        frag.appendChild(buildTable(rows, i));
+      }
+    } else if (Array.isArray(v) && v.length === 0) {
+      frag.appendChild(makePlaceholder('No rows.', {
+        actionLabel: 'edit query',
+        onAction: () => sqlEl.focus(),
+      }));
+    } else {
+      const pre = document.createElement('pre');
+      pre.className = 'json';
+      pre.textContent = JSON.stringify(v, null, 2);
+      frag.appendChild(pre);
+    }
+  });
+  resultsEl.replaceChildren(frag);
+}
+
+function buildTable(rows, stmtIdx = 0) {
+  const keys = Array.from(rows.reduce((s, r) => { Object.keys(r).forEach((k) => s.add(k)); return s; }, new Set()));
+  // Detect columns where the first non-null value is an array of length > 32 — sort disabled.
+  const sortDisabled = new Set();
+  for (const k of keys) {
+    for (const row of rows) {
+      const v = row[k];
+      if (v == null) continue;
+      if (Array.isArray(v) && v.length > 32) sortDisabled.add(k);
+      break;
+    }
+  }
+  // Filter type inference per column. 'numeric' if every non-null value is a
+  // number or numeric string; 'boolean' if every non-null is boolean;
+  // otherwise 'text'.
+  const colType = {};
+  for (const k of keys) {
+    let allNum = true, allBool = true, hasAny = false;
+    for (const row of rows) {
+      const v = row[k];
+      if (v == null) continue;
+      hasAny = true;
+      if (typeof v !== 'number' && !(typeof v === 'string' && v !== '' && !isNaN(Number(v)))) allNum = false;
+      if (typeof v !== 'boolean') allBool = false;
+      if (!allNum && !allBool) break;
+    }
+    colType[k] = !hasAny ? 'text' : (allNum ? 'numeric' : (allBool ? 'boolean' : 'text'));
+  }
+  // Apply filters BEFORE sort.
+  let view = applyFilters(rows, keys, colType, stmtIdx);
+  // Apply sort.
+  const sorts = sortState.get(stmtIdx) ?? [];
+  if (sorts.length) {
+    view = [...view].sort((a, b) => {
+      for (const s of sorts) {
+        const c = compareValues(a[s.key], b[s.key]);
+        if (c !== 0) return s.dir === 'desc' ? -c : c;
+      }
+      return 0;
+    });
+  }
+
+  const t = document.createElement('table');
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  for (const k of keys) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sort-btn' + (sortDisabled.has(k) ? ' no-sort' : '');
+    btn.appendChild(document.createTextNode(k));
+    const sortEntry = sorts.find((s) => s.key === k);
+    if (sortEntry) {
+      const ind = document.createElement('span');
+      ind.className = 'sort-indicator';
+      ind.textContent = sortEntry.dir === 'asc' ? '▲' : '▼';
+      btn.appendChild(ind);
+      th.setAttribute('aria-sort', sortEntry.dir === 'asc' ? 'ascending' : 'descending');
+    } else {
+      th.setAttribute('aria-sort', 'none');
+    }
+    if (sortDisabled.has(k)) {
+      btn.title = 'column has large array values, sort disabled';
+    } else {
+      btn.addEventListener('click', (e) => toggleSort(stmtIdx, k, e.shiftKey));
+    }
+    th.appendChild(btn);
+    tr.appendChild(th);
+  }
+  thead.appendChild(tr);
+  if (filtersVisible) {
+    const fr = document.createElement('tr');
+    fr.className = 'filter-row';
+    const filters = filterState.get(stmtIdx) ?? {};
+    for (const k of keys) {
+      const td = document.createElement('td');
+      if (colType[k] === 'boolean') {
+        const cur = filters[k] ?? '';
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'bool-pill';
+        pill.setAttribute('aria-label', `filter ${k} (boolean)`);
+        pill.textContent = cur === 'true' ? '✓ true' : cur === 'false' ? '✗ false' : '· any';
+        pill.addEventListener('click', () => {
+          const next = cur === '' ? 'true' : cur === 'true' ? 'false' : '';
+          const map = filterState.get(stmtIdx) ?? {};
+          map[k] = next;
+          filterState.set(stmtIdx, map);
+          withTransition(render);
+        });
+        td.appendChild(pill);
+      } else {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.placeholder = colType[k] === 'numeric' ? '>10' : 'filter…';
+        inp.value = filters[k] ?? '';
+        inp.setAttribute('aria-label', `filter ${k}`);
+        inp.addEventListener('input', () => {
+          const map = filterState.get(stmtIdx) ?? {};
+          map[k] = inp.value;
+          filterState.set(stmtIdx, map);
+          withTransition(render);
+        });
+        td.appendChild(inp);
+      }
+      fr.appendChild(td);
+    }
+    thead.appendChild(fr);
+  }
+  t.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  for (const row of view) {
+    const r = document.createElement('tr');
+    for (const k of keys) {
+      const td = document.createElement('td');
+      const v = row[k];
+      if (v == null) {
+        td.classList.add('cell-null');
+        td.textContent = '—';
+      } else {
+        const display = (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+          ? String(v) : JSON.stringify(v);
+        const link = detectRecordLink(display);
+        if (link) {
+          const lbtn = document.createElement('button');
+          lbtn.type = 'button';
+          lbtn.className = 'record-link';
+          lbtn.textContent = display;
+          lbtn.title = `navigate to ${link.table}:${link.id}`;
+          lbtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectTable(link.table, { sql: `SELECT * FROM ${display};` });
+          });
+          td.appendChild(lbtn);
+        } else {
+          const span = document.createElement('span');
+          span.className = 'truncate';
+          span.textContent = display;
+          td.appendChild(span);
+          td.title = display;
+          td.addEventListener('click', () => td.classList.toggle('expanded'));
+        }
+      }
+      r.appendChild(td);
+    }
+    tbody.appendChild(r);
+  }
+  t.appendChild(tbody);
+  return t;
+}
+
+function toggleSort(stmtIdx, key, isShift) {
+  const cur = sortState.get(stmtIdx) ?? [];
+  const existing = cur.find((s) => s.key === key);
+  let next;
+  if (isShift) {
+    // Shift-click: add as secondary sort, max 2 entries total.
+    if (existing) {
+      // Cycle: asc → desc → remove (drop just this one, keep others).
+      if (existing.dir === 'asc') { existing.dir = 'desc'; next = cur; }
+      else next = cur.filter((s) => s.key !== key);
+    } else {
+      next = [...cur, { key, dir: 'asc' }];
+      if (next.length > 2) next.shift();  // cap at 2; drop the oldest
+    }
+  } else {
+    // Plain click: replaces sorts. Cycle asc → desc → no-sort.
+    if (existing && cur.length === 1) {
+      if (existing.dir === 'asc') { existing.dir = 'desc'; next = cur; }
+      else next = [];
+    } else {
+      next = [{ key, dir: 'asc' }];
+    }
+  }
+  sortState.set(stmtIdx, next);
+  withTransition(render);
+}
+
+function applyFilters(rows, keys, colType, stmtIdx) {
+  const filters = filterState.get(stmtIdx);
+  if (!filters) return rows;
+  const parsed = {};
+  for (const k of keys) {
+    const raw = filters[k];
+    if (raw == null || raw === '') continue;
+    if (colType[k] === 'boolean') {
+      parsed[k] = raw === 'true' ? true : raw === 'false' ? false : null;
+    } else {
+      parsed[k] = parseFilterExpression(raw);
+    }
+  }
+  if (!Object.keys(parsed).length) return rows;
+  return rows.filter((row) => {
+    for (const k of Object.keys(parsed)) {
+      const v = row[k];
+      const f = parsed[k];
+      if (colType[k] === 'boolean') {
+        if (f === null) continue;
+        if (v !== f) return false;
+        continue;
+      }
+      if (!f) continue;
+      if (f.kind === 'numeric' && colType[k] === 'numeric') {
+        const n = typeof v === 'number' ? v : (typeof v === 'string' && v !== '' && !isNaN(Number(v)) ? Number(v) : null);
+        if (n === null) return false;
+        if (f.op === '..') { if (n < f.min || n > f.max) return false; }
+        else if (f.op === '>' && !(n > f.value)) return false;
+        else if (f.op === '<' && !(n < f.value)) return false;
+        else if (f.op === '>=' && !(n >= f.value)) return false;
+        else if (f.op === '<=' && !(n <= f.value)) return false;
+        else if (f.op === '=' && !(n === f.value)) return false;
+      } else {
+        const text = f.kind === 'text' ? f.text : String(f.value ?? `${f.min}..${f.max}`);
+        const sv = v == null ? '' : String(v);
+        if (!sv.toLowerCase().includes(text.toLowerCase())) return false;
+      }
+    }
+    return true;
+  });
+}
+
+function buildPager(stmtIdx, currentPage, totalPages, totalRows) {
+  const wrap = document.createElement('div');
+  wrap.className = 'pager';
+  const info = document.createElement('span');
+  info.className = 'info';
+  info.append(
+    'Page ',
+    text(String(currentPage + 1), 'em'),
+    ' of ',
+    text(String(totalPages), 'em'),
+    ' · ',
+    text(`${PAGE_SIZE} per page`, 'em'),
+    ' · ',
+    text(`${totalRows} rows`, 'em'),
+  );
+  wrap.appendChild(info);
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.textContent = 'prev';
+  prev.disabled = currentPage === 0;
+  prev.addEventListener('click', () => {
+    pageState.set(stmtIdx, Math.max(0, currentPage - 1));
+    withTransition(render);
+  });
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.textContent = 'next';
+  next.disabled = currentPage >= totalPages - 1;
+  next.addEventListener('click', () => {
+    pageState.set(stmtIdx, Math.min(totalPages - 1, currentPage + 1));
+    withTransition(render);
+  });
+  wrap.append(prev, next);
+  return wrap;
+}
+
+function setTab(mode) {
+  if (viewMode === mode) return;
+  viewMode = mode;
+  const tableSelected = mode === 'table';
+  tabTable.setAttribute('aria-selected', String(tableSelected));
+  tabJson.setAttribute('aria-selected', String(!tableSelected));
+  resultsEl.setAttribute('aria-labelledby', tableSelected ? 'tab-table' : 'tab-json');
+  try { localStorage.setItem(VIEW_KEY, mode); } catch {}
+  withTransition(render);
+}
+
+function downloadCsv() {
+  if (!lastResponse) return;
+  const rs = lastResponse.responses
+    .filter((r) => r.success && Array.isArray(r.result) && r.result.length
+      && r.result.every((x) => x && typeof x === 'object' && !Array.isArray(x)));
+  if (!rs.length) return;
+  const esc = (v) => {
+    if (v == null) return '';
+    const s = (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') ? String(v) : JSON.stringify(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const parts = rs.map((r, i) => {
+    const keys = Array.from(r.result.reduce((s, row) => { Object.keys(row).forEach((k) => s.add(k)); return s; }, new Set()));
+    const lines = [keys.join(',')];
+    for (const row of r.result) lines.push(keys.map((k) => esc(row[k])).join(','));
+    return rs.length > 1 ? `# statement ${i + 1}\n${lines.join('\n')}` : lines.join('\n');
+  });
+  const blob = new Blob([parts.join('\n\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `robin-db-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function fetchFieldsFor(table) {
+  if (fieldsCache.has(table)) return fieldsCache.get(table);
+  if (fieldsInflight.has(table)) return fieldsInflight.get(table);
+  const p = (async () => {
+    try {
+      const r = await fetch(`/db/api/table/${encodeURIComponent(table)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const fields = Array.isArray(data?.schema?.fields)
+        ? data.schema.fields.map((f) => f.name)
+        : [];
+      const out = { fields };
+      fieldsCache.set(table, out);
+      return out;
+    } catch {
+      const out = { fields: [] };
+      fieldsCache.set(table, out);
+      return out;
+    } finally {
+      fieldsInflight.delete(table);
+    }
+  })();
+  fieldsInflight.set(table, p);
+  return p;
+}
+
+function matchesAcPrefix(name, prefix) {
+  if (!prefix) return true;
+  return name.toLowerCase().startsWith(prefix.toLowerCase()) ||
+         name.toLowerCase().includes(prefix.toLowerCase());
+}
+
+function rankAcItems(names, prefix) {
+  return names
+    .filter((n) => matchesAcPrefix(n, prefix))
+    .sort((a, b) => {
+      const pa = a.toLowerCase().startsWith(prefix.toLowerCase()) ? 0 : 1;
+      const pb = b.toLowerCase().startsWith(prefix.toLowerCase()) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return a.localeCompare(b);
+    })
+    .slice(0, 8);
+}
+
+function closeAc() {
+  const pop = document.getElementById('ac-popover');
+  pop.classList.remove('show');
+  sqlEl.setAttribute('aria-expanded', 'false');
+  sqlEl.removeAttribute('aria-activedescendant');
+  acItems = [];
+  acSelected = -1;
+}
+
+function renderAcPopover(items, prefix) {
+  const pop = document.getElementById('ac-popover');
+  pop.replaceChildren();
+  items.forEach((it, idx) => {
+    const el = document.createElement('div');
+    el.className = 'ac-item';
+    el.id = `ac-item-${idx}`;
+    el.setAttribute('role', 'option');
+    el.setAttribute('aria-selected', String(idx === acSelected));
+    const kind = document.createElement('span');
+    kind.className = 'ac-kind';
+    kind.textContent = it.kind;
+    const name = document.createElement('span');
+    const lo = it.name.toLowerCase();
+    const pos = prefix ? lo.indexOf(prefix.toLowerCase()) : -1;
+    if (pos >= 0) {
+      const before = it.name.slice(0, pos);
+      const mid = it.name.slice(pos, pos + prefix.length);
+      const after = it.name.slice(pos + prefix.length);
+      if (before) name.appendChild(document.createTextNode(before));
+      const m = document.createElement('mark');
+      m.textContent = mid;
+      name.appendChild(m);
+      if (after) name.appendChild(document.createTextNode(after));
+    } else {
+      name.textContent = it.name;
+    }
+    el.append(kind, name);
+    el.addEventListener('mousedown', (e) => { e.preventDefault(); insertAc(idx); });
+    pop.appendChild(el);
+  });
+  if (items.length) {
+    pop.classList.add('show');
+    sqlEl.setAttribute('aria-expanded', 'true');
+    if (acSelected >= 0) sqlEl.setAttribute('aria-activedescendant', `ac-item-${acSelected}`);
+    positionAcPopover();
+  } else {
+    closeAc();
+  }
+}
+
+function positionAcPopover() {
+  const pop = document.getElementById('ac-popover');
+  pop.style.left = '36px';
+  pop.style.top  = (sqlEl.offsetHeight + 4) + 'px';
+}
+
+async function updateAc() {
+  const sql = sqlEl.value;
+  const cursor = sqlEl.selectionStart;
+  const ctx = parseAutocompleteContext(sql, cursor);
+  if (!ctx) { closeAc(); return; }
+  acAnchor = cursor;
+  let names = [];
+  if (ctx.kind === 'table') {
+    names = Object.keys(descriptions ?? {});
+  } else if (ctx.kind === 'field') {
+    const data = await fetchFieldsFor(ctx.table);
+    names = data.fields;
+  }
+  const ranked = rankAcItems(names, ctx.prefix);
+  acItems = ranked.map((n) => ({ kind: ctx.kind, name: n, prefix: ctx.prefix, contextStart: cursor - ctx.prefix.length }));
+  acSelected = acItems.length ? 0 : -1;
+  renderAcPopover(acItems, ctx.prefix);
+}
+
+function insertAc(idx) {
+  const it = acItems[idx];
+  if (!it) return;
+  const before = sqlEl.value.slice(0, it.contextStart);
+  const after = sqlEl.value.slice(it.contextStart + it.prefix.length);
+  sqlEl.value = before + it.name + after;
+  const newPos = (before + it.name).length;
+  sqlEl.setSelectionRange(newPos, newPos);
+  closeAc();
+  sqlEl.focus();
+}
+
+// — Wire-up —
+runEl.addEventListener('click', run);
+cancelEl.addEventListener('click', cancel);
+copyEl.addEventListener('click', copyResults);
+sqlEl.addEventListener('input', () => {
+  checkWrite();
+  updateAc();
+});
+sqlEl.addEventListener('blur', () => {
+  setTimeout(() => closeAc(), 150);
+});
+sqlEl.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === ' ' && !e.metaKey) {
+    e.preventDefault();
+    updateAc();
+    return;
+  }
+  // Autocomplete navigation when popover is open.
+  if (acItems.length) {
+    if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      acSelected = (acSelected + 1) % acItems.length;
+      renderAcPopover(acItems, acItems[acSelected].prefix);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      acSelected = (acSelected - 1 + acItems.length) % acItems.length;
+      renderAcPopover(acItems, acItems[acSelected].prefix);
+      return;
+    }
+    if (e.key === 'Tab' || e.key === 'Enter') {
+      e.preventDefault();
+      insertAc(acSelected);
+      return;
+    }
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run(); return; }
+  // Ctrl+↑/↓ cycles through history. NOT Cmd because that's the textarea's
+  // native cursor-to-start/end shortcut on macOS.
+  if (e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    if (queryHistory.length === 0) return;
+    e.preventDefault();
+    if (historyCursor === -1) historyDraft = sqlEl.value;
+    if (e.key === 'ArrowUp') {
+      historyCursor = historyCursor === -1 ? queryHistory.length - 1 : Math.max(0, historyCursor - 1);
+    } else {
+      historyCursor = historyCursor === -1 ? -1 : historyCursor + 1;
+      if (historyCursor >= queryHistory.length) {
+        historyCursor = -1;
+        sqlEl.value = historyDraft;
+        showHistoryIndicator(`history end · draft restored`);
+        checkWrite();
+        return;
+      }
+    }
+    sqlEl.value = queryHistory[historyCursor].sql;
+    checkWrite();
+    showHistoryIndicator(`history ${queryHistory.length - historyCursor} / ${queryHistory.length}`);
+    return;
+  }
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    const start = sqlEl.selectionStart, end = sqlEl.selectionEnd;
+    const indent = '  ';
+    sqlEl.value = sqlEl.value.slice(0, start) + indent + sqlEl.value.slice(end);
+    sqlEl.selectionStart = sqlEl.selectionEnd = start + indent.length;
+    return;
+  }
+  if (e.key === 'Escape') sqlEl.blur();
+});
+document.addEventListener('keydown', (e) => {
+  // '/' focuses the sidebar filter (vim-style). Skip if user is typing in an
+  // input/textarea or any other editable element.
+  if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const a = document.activeElement;
+    const editable = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+    if (!editable) {
+      e.preventDefault();
+      tFilter.focus();
+      tFilter.select();
+      return;
+    }
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    sqlEl.focus();
+    sqlEl.select();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === '1') { e.preventDefault(); setTab('table'); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === '2') { e.preventDefault(); setTab('json'); return; }
+  if (e.key === 'Escape') {
+    if (document.body.classList.contains('modal-open')) { e.preventDefault(); closeModal(); return; }
+    if (document.body.classList.contains('arch-open')) { e.preventDefault(); closeArchitecture(); return; }
+    if (activeAbort) { e.preventDefault(); cancel(); return; }
+    if (document.body.classList.contains('sidebar-open')) { e.preventDefault(); setSidebar(false); return; }
+  }
+});
+tabTable.addEventListener('click', () => setTab('table'));
+tabJson.addEventListener('click', () => setTab('json'));
+csvEl.addEventListener('click', downloadCsv);
+$('filter-toggle').addEventListener('click', () => {
+  filtersVisible = !filtersVisible;
+  $('filter-toggle').setAttribute('aria-pressed', String(filtersVisible));
+  withTransition(render);
+});
+
+$('history-btn').addEventListener('click', () => {
+  const list = document.createElement('div');
+  list.className = 'history-list';
+  if (queryHistory.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.color = 'var(--fg-3)';
+    empty.style.padding = '8px';
+    empty.textContent = 'No history yet — run a query to populate.';
+    list.appendChild(empty);
+  } else {
+    for (let i = queryHistory.length - 1; i >= 0; i--) {
+      const entry = queryHistory[i];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'history-item';
+      const ts = document.createElement('span');
+      ts.className = 'ts';
+      const d = new Date(entry.ts);
+      ts.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const sql = document.createElement('span');
+      sql.className = 'sql';
+      sql.textContent = entry.sql.replace(/\s+/g, ' ').slice(0, 200);
+      sql.title = entry.sql;
+      btn.append(ts, sql);
+      btn.addEventListener('click', () => {
+        sqlEl.value = entry.sql;
+        checkWrite();
+        closeModal();
+        sqlEl.focus();
+      });
+      list.appendChild(btn);
+    }
+  }
+  openModal(`History (${queryHistory.length}/50)`, list);
+});
+
+$('save-btn').addEventListener('click', () => openSaveModal());
+
+function openSaveModal() {
+  const wrap = document.createElement('div');
+  wrap.className = 'save-modal';
+  if (userSaved.length >= 30) {
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = `You have ${userSaved.length} saved queries. Consider deleting some you no longer use.`;
+    wrap.appendChild(note);
+  }
+  const lblName = document.createElement('label');
+  lblName.textContent = 'Name';
+  const inpName = document.createElement('input');
+  inpName.type = 'text';
+  inpName.placeholder = 'short name';
+  const lblDesc = document.createElement('label');
+  lblDesc.textContent = 'Description (optional)';
+  const inpDesc = document.createElement('textarea');
+  inpDesc.placeholder = 'what this query does';
+  const sqlPreview = document.createElement('pre');
+  sqlPreview.className = 'sql-preview';
+  sqlPreview.textContent = sqlEl.value.trim() || '(empty — type a query first)';
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'secondary';
+  cancel.textContent = 'cancel';
+  cancel.addEventListener('click', closeModal);
+  const ok = document.createElement('button');
+  ok.type = 'button';
+  ok.className = 'primary';
+  ok.textContent = 'save';
+  ok.addEventListener('click', () => {
+    const label = inpName.value.trim();
+    if (!label || !sqlEl.value.trim()) { inpName.focus(); return; }
+    userSaved.push({
+      id: 'us-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      label,
+      description: inpDesc.value.trim() || undefined,
+      sql: sqlEl.value.trim(),
+      createdAt: Date.now(),
+    });
+    writeUserSaved(userSaved);
+    closeModal();
+    renderUserSaved();
+  });
+  actions.append(cancel, ok);
+  wrap.append(lblName, inpName, lblDesc, inpDesc, sqlPreview, actions);
+  openModal('Save query', wrap);
+  setTimeout(() => inpName.focus(), 0);
+}
+
+tFilter.addEventListener('input', () => {
+  applyTableFilter(tFilter.value);
+  try { localStorage.setItem(FILTER_KEY, tFilter.value); } catch {}
+});
+
+sidebarToggle.addEventListener('click', () => setSidebar(!document.body.classList.contains('sidebar-open')));
+scrim.addEventListener('click', () => setSidebar(false));
+
+archBtn.addEventListener('click', openArchitecture);
+archClose.addEventListener('click', closeArchitecture);
+archOverlay.addEventListener('click', (e) => { if (e.target === archOverlay) closeArchitecture(); });
+
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'modal-overlay') closeModal();
+});
+
+async function openArchitecture() {
+  if (!archCache) {
+    try {
+      const r = await fetch('/db/api/architecture');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      archCache = await r.json();
+    } catch (e) {
+      archCache = { title: 'unavailable', intro: String(e?.message ?? e), layers: [] };
+    }
+  }
+  archTitle.textContent = archCache.title ?? '—';
+  archIntro.textContent = archCache.intro ?? '';
+  archLayers.replaceChildren();
+  for (const layer of archCache.layers ?? []) {
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    const head = document.createElement('div');
+    head.className = 'layer-head';
+    const id = document.createElement('span');
+    id.className = 'layer-id';
+    id.textContent = layer.id;
+    const name = document.createElement('span');
+    name.className = 'layer-name';
+    name.textContent = layer.name;
+    head.append(id, name);
+    row.appendChild(head);
+    const sum = document.createElement('div');
+    sum.className = 'layer-summary';
+    sum.textContent = layer.summary;
+    row.appendChild(sum);
+    if (Array.isArray(layer.tables) && layer.tables.length) {
+      const tabs = document.createElement('div');
+      tabs.className = 'layer-tables';
+      for (const t of layer.tables) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = t;
+        b.title = descriptions[t] ?? '';
+        b.addEventListener('click', () => {
+          closeArchitecture();
+          selectTable(t);
+        });
+        tabs.appendChild(b);
+      }
+      row.appendChild(tabs);
+    }
+    archLayers.appendChild(row);
+  }
+  archLastFocus = document.activeElement;
+  document.body.classList.add('arch-open');
+  archOverlay.focus({ preventScroll: true });
+}
+
+function closeArchitecture() {
+  if (!document.body.classList.contains('arch-open')) return;
+  document.body.classList.remove('arch-open');
+  if (archLastFocus && document.contains(archLastFocus)) archLastFocus.focus({ preventScroll: true });
+  archLastFocus = null;
+}
+
+// Restore last query + filter + view mode (if any). The textarea value is
+// restored even though the overview is shown by default — when the user
+// dismisses the overview their previous query is still there.
+try {
+  const last = localStorage.getItem(STORAGE_KEY);
+  if (last) { sqlEl.value = last; checkWrite(); }
+  const f = localStorage.getItem(FILTER_KEY);
+  if (f) tFilter.value = f;
+  const v = localStorage.getItem(VIEW_KEY);
+  if (v === 'json' || v === 'table') {
+    if (v !== 'table') setTab(v);
+  }
+} catch {}
+queryHistory = readHistory();
+userSaved = readUserSaved();
+renderUserSaved();
+
+function findOverview() {
+  for (const grp of SAVED) {
+    const ov = grp.items.find((i) => i.kind === 'page' && i.label === 'overview');
+    if (ov) return { group: grp.group, item: ov };
+  }
+  return null;
+}
+
+function findSaved(group, label) {
+  const grp = SAVED.find((g) => g.group === group);
+  if (!grp) return null;
+  const item = grp.items.find((i) => i.label === label);
+  return item ? { group, item } : null;
+}
+
+function routeFromHash() {
+  const r = parseHash(location.hash);
+  if (r.kind === 'table') {
+    if (!tableExists(r.name)) {
+      // Silently fall back; don't leave a broken URL in history.
+      const ov = findOverview();
+      if (ov) {
+        history.replaceState({ kind: 'overview' }, '', '#overview');
+        selectSaved(ov.group, ov.item);
+      }
+      return;
+    }
+    selectTable(r.name);
+    return;
+  }
+  if (r.kind === 'saved') {
+    const found = findSaved(r.group, r.label);
+    if (found) { selectSaved(found.group, found.item); return; }
+  }
+  // Default: overview. Always replace on fallback so unknown hashes never
+  // stay reachable via the back button. (replace param is unused now since
+  // both initial-load and popstate-fallback want the same behaviour.)
+  const ov = findOverview();
+  if (ov) {
+    history.replaceState({ kind: 'overview' }, '', '#overview');
+    selectSaved(ov.group, ov.item);
+  }
+}
+
+window.addEventListener('popstate', () => {
+  const r = parseHash(location.hash);
+  const label = trailLabelForState(r);
+  if (label != null) moveTrailTo(label);
+  routeFromHash();
+});
+
+loadInfo().then(() => routeFromHash());
+</script>
+
+<div id="tooltip-bubble" class="tooltip-bubble" role="tooltip" aria-hidden="true"></div>
+
+<script type="module">
+  import { mountTooltipDelegation } from '/db/static/browse-explainers.js';
+  mountTooltipDelegation(document.body, document.getElementById('tooltip-bubble'));
+</script>
+
+</body>
+</html>
