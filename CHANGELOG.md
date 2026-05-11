@@ -2,7 +2,33 @@
 
 ## Unreleased
 
-### Zero-prompt install via npm postinstall
+### Cognition wave (B1 + A3 + C1 + D1 + B2 + D2 + D3 + C2 + C3)
+
+Nine post-alpha.16 cognition features landed in two parallel waves:
+
+**Wave 1 — recall foundation, biographer batching, focus block.**
+
+- **B1: Per-hit reinforcement attribution.** `system/cognition/intuition/attribute.js` (new) wires the explicit → citation → similarity → fallback chain. `recall_log.ranked_hits[*].used` plus top-level `reply_event_id` + `attribution` (7-field object) added by migration `0009-per-hit-reinforcement.surql`. New outcome `evaluated_no_used`. Session-ID plumbing wired through handler → daemon → inject. Runtime config: `runtime:reinforcement.config.{mode, similarity_threshold, jaccard_min_overlap_tokens, fallback_when_no_reply}` — ships in `'off'` mode for safe rollout.
+- **A3 + A1 + A2: Recall eval harness + real-cosine MMR + entity boost.** New `system/cognition/intuition/{eval,eval-labels,eval-metrics,vectors,entities}.js`. CLI: `robin recall-eval` (text + `--json`). Migration `0010-recall-eval-and-mmr.surql` adds `recall_eval_runs` table + `intuition_telemetry.meta` FLEXIBLE field. Entity-aware boost from `runtime:recall.value.entity_boost_enabled` (catalog match + prior-tail biographed entities). Fixed pre-existing `getRecallConfig` SurrealDB v3 parse bug.
+- **C1: Biographer event batching.** `system/cognition/biographer/{batch-prompt,batch-output,accumulator}.js` (new). One LLM call per N events (defaults: `max_batch_size=8`, `debounce_ms=750`, `max_wait_ms=3000`). Per-episode-group mark UPDATE; per-event validation; failure isolation. Single-event `biographerProcess` preserved as wrapper. Rollback knob: `batch_config.disable=true`. Telemetry counters on `runtime:biographer.value` (input/output tokens, via_batch/via_fallback splits).
+- **D1: State_inference activation.** New `system/cognition/memory/state_inference.js`, internal job `state-inference.js`, MCP tool `explain_state_inference`. `<!-- current focus -->` block prepended above `<!-- relevant memory -->` (200-token cap; 7 suppression rules: disabled/no_memo/low_confidence/stale/superseded/pivot/private). Three-stage rollout migrations `0012/0013/0014`. Source resolution via `ROBIN_SOURCE`/`CLAUDE_PROJECT_DIR`/`GEMINI_CLI_SESSION`. Writes `recall_log.meta.focus_block_present`/`focus_block_tokens` for A3 stratification.
+
+**Wave 2 — quality + meta-cognition + parallelism + telemetry umbrella.**
+
+- **B2: Contradiction surfacing at recall.** `system/cognition/intuition/conflicts.js` (new). `<!-- conflicts -->` block above `<!-- relevant memory -->` (cap 300 tok; total ceiling 2000 with all three blocks active). Wires `contradictionCount` into BOTH `score()` callsites (previously dormant). 5 suppression rules including outbound-blocked redaction. Migration `0015-conflict-surfacing.surql`.
+- **D2: Recall-failures meta-cognition.** Weekly Sunday-05:00 LOCAL internal job `meta-recall-narrative.js`. Pure-JS clustering by `about`-edge endpoints, one `tier:'fast'` LLM call, emits `kind='reasoning'` memo + `rule_candidates` (`kind='behavior'`, `payload.source='meta_cognition'`). Shared `kindFilter()` in `store.js` so `searchMemos` accepts `kind: ['knowledge', 'reasoning']` (extended in `inject.js`). Migration `0018-meta-cognition.surql`. Reserved `meta.dimension='recall_failures'`.
+- **D3: belief() gating + calibration meta-narrative.** New `system/cognition/belief/*` + MCP tool `belief({query, domain?, k?})` returning `assert | soften | unknown`. Weight = `signal_count × decay × relevance` (no confidence multiplier — avoids `fn::freshness` double-count). Direct + transitive privacy filter. Sunday 05:30 LOCAL meta-calibration writer (staggered after D2). `rule_candidates` with `payload.source='meta_cognition_calibration'`. Migration `0019-belief-gating.surql`. Reserved `meta.dimension='calibration'`.
+- **C2: Dream DAG + persona refactor.** Layered concurrent scheduler in `system/cognition/dream/{dag,scheduler,step-registry,telemetry,dream-budget}.js`. Three layers L1 (`knowledge, patterns, reflection, profile, arcs, commStyle, confidence`) → L2 (`scopeCleanup, calibration`) → L3 (`compaction`). `updatePersonaFields` refactored from `UPSERT MERGE` to field-scoped `UPDATE SET` (fixes cross-process MERGE race). 80/20 dream/cadence budget split. Migration `0020-dream-dag.surql`. Flag-gated via `runtime:dream.config.parallelism_enabled`.
+- **C3: Telemetry umbrella.** New `telemetry_hourly` table + per-faculty `rollup-registry.js`. Hourly aggregator (`telemetry-rollup.js`) + retention (`telemetry-prune.js`). Privacy/cardinality contract on dimensions (string|bool|int only, ≤64 chars, ASCII, ≤16 keys for object fan-out). New MCP tool `show_telemetry_rollup` (shadow_mode for first week). New indexes on `recall_log.evaluated_at`. Doctor probe for pending recall_log > 7d. Migration `0017-telemetry-umbrella.surql`.
+
+### Test coverage delta
+
+- Unit tests: 1060 → **1369** (+309)
+- Integration tests: 124 → **258** passing (+134; 1 pre-existing skip)
+- Lint clean (Biome, 755 files)
+- All 9 features ship behind explicit runtime flags (`enabled` three-valued for D1/D2; `conflict_surfacing_enabled`/`entity_boost_enabled`/`mmr_use_cosine` for B2/A2/A1; `parallelism_enabled` for C2; `shadow_mode` for C3/D3). Initial rollout state for every feature is conservative (off, shadow, or pre-B1 default), so the merge is behaviorally a no-op until operators flip flags.
+
+
 
 - New `system/runtime/install/postinstall.js` registered as `package.json#scripts.postinstall`. After `npm install` the script runs `robin install --auto`, wiring up the home directory, embedder profile, migrations, hooks, daemon supervisor, and MCP host registration with no further user input.
 - New `--auto` flag on `robin install`: equivalent to `--yes --profile mxbai-1024 --on-existing ignore`. Explicit flags still win, so `robin install --auto --profile gemini-3072 --i-understand` keeps the gemini profile.
