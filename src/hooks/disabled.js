@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { paths } from '../runtime/data-store.js';
 
 function disabledPath() {
-  return join(paths().home, 'hooks-disabled.txt');
+  return join(paths.data.home(), 'hooks-disabled.txt');
 }
 
 function readLines() {

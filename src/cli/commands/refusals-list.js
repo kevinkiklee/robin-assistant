@@ -11,15 +11,14 @@ const HEADER = 'created_at | direction | destination | reason | hash';
 // PII-guard refusals and outbound write refusals). Plain text columns.
 export async function refusalsList(_argv, { out = console.log, err = console.error } = {}) {
   await ensureHome();
-  const p = paths();
-  const daemonState = await readDaemonState(p.daemonState);
+  const daemonState = await readDaemonState(paths.data.daemonState());
   if (daemonState && isPidAlive(daemonState.pid)) {
     err('daemon is running. Stop it first: robin mcp stop');
     process.exit(1);
   }
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       await printRefusals(db, out);
     } finally {

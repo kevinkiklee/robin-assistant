@@ -4,8 +4,7 @@ import { paths } from '../../runtime/data-store.js';
 import { mcpStart } from './mcp-start.js';
 
 export async function mcpEnsureRunning() {
-  const p = paths();
-  const statePath = p.daemonState;
+  const statePath = paths.data.daemonState();
   const state = await readDaemonState(statePath);
   if (state && isPidAlive(state.pid)) {
     console.log(`daemon already running on :${state.port}`);

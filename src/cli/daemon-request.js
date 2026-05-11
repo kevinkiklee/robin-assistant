@@ -3,7 +3,7 @@ import { readDaemonState } from '../daemon/state.js';
 import { paths } from '../runtime/data-store.js';
 
 export async function daemonRequest(path, body) {
-  const state = await readDaemonState(paths().daemonState);
+  const state = await readDaemonState(paths.data.daemonState());
   if (!state?.port) throw new Error('daemon not running');
   const res = await fetch(`http://127.0.0.1:${state.port}${path}`, {
     method: 'POST',

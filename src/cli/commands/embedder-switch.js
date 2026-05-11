@@ -168,13 +168,12 @@ export async function embedderSwitch(argv, options = {}) {
     return;
   }
 
-  const p = paths();
-  console.log(`switching ${current} → ${target} (db: ${p.db})`);
+  console.log(`switching ${current} → ${target} (db: ${paths.data.db()})`);
 
   // Connect to the on-disk DB. Tests inject a pre-opened db handle to avoid
   // the cost / single-process lock of opening a real rocksdb store.
   const ownsDb = !options.db;
-  const db = options.db ?? (await connect({ engine: `rocksdb://${p.db}` }));
+  const db = options.db ?? (await connect({ engine: `rocksdb://${paths.data.db()}` }));
   try {
     // Step 1: write the new profile to config.json so runMigrations picks the
     // matching 0008 file.
@@ -200,7 +199,7 @@ export async function embedderSwitch(argv, options = {}) {
 
     // Step 4: re-run migrations. Only 0008 is missing; runner re-applies just
     // that file and writes a fresh _migrations row at the new dimension.
-    await runMigrations(db, p.migrationsDir);
+    await runMigrations(db, paths.source.migrations());
 
     // Step 5: re-embed events (knowledge/entities/recall_events are empty —
     // they regenerate from raw events via Dream and biographer).

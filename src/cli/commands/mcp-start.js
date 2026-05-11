@@ -7,10 +7,9 @@ import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function mcpStart() {
   await ensureHome();
-  const p = paths();
   const here = dirname(fileURLToPath(import.meta.url));
   const serverPath = join(here, '../../daemon/server.js');
-  const logsDir = join(p.cache, 'logs');
+  const logsDir = paths.data.logs();
   mkdirSync(logsDir, { recursive: true });
   const logFh = await open(join(logsDir, 'daemon.log'), 'a');
   const proc = spawn(process.execPath, [serverPath], {

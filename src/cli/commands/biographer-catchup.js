@@ -12,10 +12,9 @@ export async function biographerCatchup(argv) {
   const retryFailed = args.flags['retry-failed'] === true;
 
   await ensureHome();
-  const p = paths();
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       let pending;
       if (retryFailed) {

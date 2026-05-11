@@ -15,8 +15,7 @@ export async function jobsStatus(argv = [], deps = {}) {
     deps.getJob ??
     (async (n) => {
       await ensureHome();
-      const p = paths();
-      const db = await connect({ engine: `rocksdb://${p.db}` });
+      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
       try {
         return await getJob(db, n);
       } finally {

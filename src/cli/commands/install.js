@@ -166,10 +166,9 @@ async function validateGemini({ prompt, interactive, iUnderstand }) {
 
 async function applyMigrations({ connectFn, closeFn, onDbReady }) {
   await ensureHome();
-  const p = paths();
-  const db = await connectFn({ engine: `rocksdb://${p.db}` });
+  const db = await connectFn({ engine: `rocksdb://${paths.data.db()}` });
   try {
-    const applied = await runMigrations(db, p.migrationsDir);
+    const applied = await runMigrations(db, paths.source.migrations());
     const noun = applied.length === 1 ? 'migration' : 'migrations';
     const suffix = applied.length ? `: ${applied.join(', ')}` : '';
     console.log(`applied ${applied.length} ${noun}${suffix}`);

@@ -17,7 +17,7 @@ test('resolver round-trips entity + episode mappings', async () => {
 
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     const r = createResolver(db);
     r.set('entity', 'entity:abc', 'entities:newabc');
     r.set('episode', 'episode:xyz', 'episodes:newxyz');

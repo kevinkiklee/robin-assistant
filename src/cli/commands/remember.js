@@ -17,7 +17,7 @@ export async function remember(argv = []) {
     process.exit(1);
   }
 
-  const state = await readDaemonState(paths().daemonState);
+  const state = await readDaemonState(paths.data.daemonState());
   if (!state || !isPidAlive(state.pid)) {
     console.error('daemon not running. Start it with: robin mcp start');
     process.exit(1);

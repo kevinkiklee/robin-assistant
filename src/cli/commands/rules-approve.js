@@ -11,15 +11,14 @@ export async function rulesApprove(argv) {
     process.exit(1);
   }
   await ensureHome();
-  const p = paths();
-  const daemonState = await readDaemonState(p.daemonState);
+  const daemonState = await readDaemonState(paths.data.daemonState());
   if (daemonState && isPidAlive(daemonState.pid)) {
     console.error('daemon is running. Stop it first: robin mcp stop');
     process.exit(1);
   }
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       const r = await approveCandidate(db, argv[0]);
       console.log(`approved; rule id: ${String(r.id)}`);

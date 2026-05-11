@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { paths } from '../runtime/data-store.js';
 
 function envPath() {
-  return join(paths().secrets, '.env');
+  return join(paths.data.secrets(), '.env');
 }
 
 function parseEnv(path) {

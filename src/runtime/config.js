@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { paths } from './data-store.js';
 
 export async function readConfig() {
-  const p = paths().config;
+  const p = paths.data.config();
   if (!existsSync(p)) return null;
   try {
     return JSON.parse(readFileSync(p, 'utf-8'));
@@ -13,7 +13,7 @@ export async function readConfig() {
 }
 
 export async function writeConfig(cfg) {
-  const p = paths().config;
+  const p = paths.data.config();
   mkdirSync(dirname(p), { recursive: true });
   const tmp = `${p}.tmp`;
   writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o644 });

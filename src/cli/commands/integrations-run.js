@@ -16,17 +16,16 @@ export async function integrationsRun(argv) {
   }
   const name = argv[0];
   await ensureHome();
-  const p = paths();
-  const state = await readDaemonState(p.daemonState);
+  const state = await readDaemonState(paths.data.daemonState());
   if (state && isPidAlive(state.pid)) {
     console.error(
       'daemon is running. Use the integration_run MCP tool, or stop the daemon first: robin mcp stop',
     );
     process.exit(1);
   }
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
       const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);

@@ -8,21 +8,20 @@ import { ensureHome, paths } from '../../runtime/data-store.js';
 
 export async function migrate() {
   await ensureHome();
-  const p = paths();
-  const daemonState = await readDaemonState(p.daemonState);
+  const daemonState = await readDaemonState(paths.data.daemonState());
   if (daemonState && isPidAlive(daemonState.pid)) {
     console.error('daemon is running. Stop it first: robin mcp stop');
     process.exit(1);
   }
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
     // Pre-migration backup (no-op on fresh install where db dir is empty)
-    const archive = await snapshot(p.db, p.backup);
+    const archive = await snapshot(paths.data.db(), paths.data.backup());
     if (archive) console.log(`backup: ${archive}`);
 
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
-      const applied = await runMigrations(db, p.migrationsDir);
+      const applied = await runMigrations(db, paths.source.migrations());
       const suffix = applied.length ? `: ${applied.join(', ')}` : '';
       const noun = applied.length === 1 ? 'migration' : 'migrations';
       console.log(`applied ${applied.length} ${noun}${suffix}`);

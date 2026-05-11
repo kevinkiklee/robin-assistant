@@ -58,8 +58,7 @@ export function parseArgs(argv) {
 
 async function checkPreconditions({ source = null, allowMissingV1 = false } = {}) {
   await ensureHome();
-  const p = paths();
-  const ds = await readDaemonState(p.daemonState);
+  const ds = await readDaemonState(paths.data.daemonState());
   if (ds && isPidAlive(ds.pid)) {
     console.error('v2 daemon is running. Stop it first: robin mcp stop');
     process.exit(1);
@@ -79,14 +78,12 @@ async function checkPreconditions({ source = null, allowMissingV1 = false } = {}
       process.exit(1);
     }
   }
-  return p;
 }
 
 async function openV2() {
-  const p = paths();
-  const release = await acquire(p.daemonLock);
-  const db = await connect({ engine: `rocksdb://${p.db}` });
-  await runMigrations(db, p.migrationsDir);
+  const release = await acquire(paths.data.daemonLock());
+  const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
+  await runMigrations(db, paths.source.migrations());
   return { db, release };
 }
 

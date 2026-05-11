@@ -41,7 +41,7 @@ test.beforeEach(async () => {
 test('backfill tick embeds rows with embedding=NONE', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     const embedder = stubEmbedder();
     await insertEvent(db, 'one');
     await insertEvent(db, 'two');
@@ -57,7 +57,7 @@ test('backfill tick embeds rows with embedding=NONE', async () => {
 test('backfill skips poison rows on next tick', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     const failing = {
       dimension: 1024,
       embed: async () => {
@@ -86,7 +86,7 @@ test('backfill skips poison rows on next tick', async () => {
 test('backfill is idempotent on already-embedded rows', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     const embedder = stubEmbedder();
     await insertEvent(db, 'pre-embedded', { embedding: Array(1024).fill(0.5) });
     const r = await embedBackfillTick({ db, embedder, batch: 10 });

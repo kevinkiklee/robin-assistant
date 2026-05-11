@@ -15,8 +15,7 @@ export async function jobsDisable(argv = [], deps = {}) {
     deps.setEnabled ??
     (async (n, v) => {
       await ensureHome();
-      const p = paths();
-      const db = await connect({ engine: `rocksdb://${p.db}` });
+      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
       try {
         await setEnabled(db, n, v);
       } finally {

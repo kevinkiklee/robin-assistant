@@ -45,8 +45,7 @@ function formatContent(userText, assistantText) {
 
 async function logSkip({ rule, sessionId, userLen, assistantLen }) {
   try {
-    const p = paths();
-    const dir = join(p.cache, 'logs');
+    const dir = paths.data.logs();
     mkdirSync(dir, { recursive: true });
     const line = JSON.stringify({
       ts: new Date().toISOString(),

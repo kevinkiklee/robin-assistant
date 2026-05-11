@@ -44,7 +44,7 @@ test('--reset --phase entity removes only v1 entities', async () => {
   await writeConfig({ embedder_profile: 'mxbai-1024' });
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await seedMixed(db);
     await runReset(db, { phase: 'entity', dryRun: false, prompt: false });
     const [rows] = await db.query('SELECT name FROM entities').collect();
@@ -59,7 +59,7 @@ test('--reset (no phase) wipes all v1 rows + progress + id_map + failures', asyn
   await writeConfig({ embedder_profile: 'mxbai-1024' });
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await seedMixed(db);
     await db
       .query(
@@ -92,7 +92,7 @@ test('--dry-run produces a plan without modifying state', async () => {
   await writeConfig({ embedder_profile: 'mxbai-1024' });
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await seedMixed(db);
     const r = await runReset(db, { phase: 'entity', dryRun: true, prompt: false });
     assert.equal(r.applied, false);
@@ -108,7 +108,7 @@ test('--reset --phase lossy:preference deletes only that kind', async () => {
   await writeConfig({ embedder_profile: 'mxbai-1024' });
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     // ts has DEFAULT time::now() READONLY; embedding is option<array<float>> — omit both.
     await db
       .query(

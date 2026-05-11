@@ -72,7 +72,7 @@ test('end-to-end: 1 entity + 1 episode + 1 capture migrate, capture gets episode
 
   const v2 = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(v2, paths().migrationsDir);
+    await runMigrations(v2, paths.source.migrations());
     const result = await runMigration({
       v1Handle,
       v2db: v2,
@@ -99,7 +99,7 @@ test('idempotent re-run: 0 net imports on second pass', async () => {
 
   const v2 = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(v2, paths().migrationsDir);
+    await runMigrations(v2, paths.source.migrations());
 
     // First run
     const v1First = await openSeededV1();
@@ -128,7 +128,7 @@ test('--only runs a single phase', async () => {
 
   const v2 = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(v2, paths().migrationsDir);
+    await runMigrations(v2, paths.source.migrations());
     const r = await runMigration({
       v1Handle,
       v2db: v2,

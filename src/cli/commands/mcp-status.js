@@ -3,8 +3,7 @@ import { readDaemonState } from '../../daemon/state.js';
 import { paths } from '../../runtime/data-store.js';
 
 export async function mcpStatus() {
-  const p = paths();
-  const state = await readDaemonState(p.daemonState);
+  const state = await readDaemonState(paths.data.daemonState());
   if (!state) {
     console.log('not running');
     return;

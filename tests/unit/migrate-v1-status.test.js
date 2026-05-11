@@ -23,7 +23,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('printStatus reports progress + counts', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await db
       .query(
         surql`UPSERT type::record('runtime', 'migration_progress') SET value = ${{
@@ -55,7 +55,7 @@ test('printStatus reports progress + counts', async () => {
 test('printStatus on no-progress reports gracefully', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     const lines = [];
     await printStatus(db, (s) => lines.push(s));
     assert.match(lines.join('\n'), /no migration in progress/);

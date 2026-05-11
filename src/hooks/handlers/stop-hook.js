@@ -31,8 +31,7 @@ export async function stopHookHandler(args = {}) {
   const readState = args.readState;
 
   await ensureHome();
-  const p = paths();
-  const state = readState ? await readState() : await readDaemonState(p.daemonState);
+  const state = readState ? await readState() : await readDaemonState(paths.data.daemonState());
   if (state && isPidAlive(state.pid)) {
     const body = {};
     if (since) body.since = since;
@@ -42,7 +41,7 @@ export async function stopHookHandler(args = {}) {
     if (ok) return;
   }
   // Direct-spawn fallback
-  const logsDir = join(p.cache, 'logs');
+  const logsDir = paths.data.logs();
   mkdirSync(logsDir, { recursive: true });
   const logFh = await open(join(logsDir, 'biographer.log'), 'a');
   const cmdArgs = [resolveBinPath(), 'biographer', 'process-pending'];

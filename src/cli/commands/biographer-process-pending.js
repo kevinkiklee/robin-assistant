@@ -15,10 +15,9 @@ export async function biographerProcessPending(argv) {
   const sessionId = args.flags['session-id'] ?? null;
 
   await ensureHome();
-  const p = paths();
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       let embedder = null;
       let host = null;

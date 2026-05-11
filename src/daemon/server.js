@@ -75,9 +75,8 @@ export async function startDaemon() {
       '         Run: robin secrets import --from <v1-user-data>  (or: robin secrets set <KEY>)',
     );
   }
-  const p = paths();
-  const lockPath = p.daemonLock;
-  const statePath = p.daemonState;
+  const lockPath = paths.data.daemonLock();
+  const statePath = paths.data.daemonState();
 
   await acquireDaemonLock(lockPath);
 
@@ -128,7 +127,7 @@ export async function startDaemon() {
   });
 
   try {
-    dbHandle = await connect({ engine: `rocksdb://${p.db}` });
+    dbHandle = await connect({ engine: `rocksdb://${paths.data.db()}` });
 
     // Profile-drift detection. config.json is filesystem state; runtime:embedder
     // is set by whichever 0008-embedder-<profile>.surql migration last ran.
@@ -344,7 +343,7 @@ export async function startDaemon() {
     // Phase 4d — discover jobs (built-in + user) and UPSERT into runtime_jobs.
     const jobsCache = { current: [] };
     const refreshJobs = async () => {
-      const userJobsDir = _jobsJoin(p.home, 'jobs');
+      const userJobsDir = _jobsJoin(paths.data.home(), 'jobs');
       jobsCache.current = discoverJobs({
         builtinDir: BUILTIN_JOBS_DIR,
         userDir: userJobsDir,

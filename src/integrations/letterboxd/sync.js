@@ -4,7 +4,7 @@ import { paths } from '../../runtime/data-store.js';
 import { isDiaryCsv, parseDiaryCsv } from './csv.js';
 
 function uploadDir() {
-  return join(paths().home, 'upload');
+  return paths.data.upload();
 }
 
 function processedDir() {

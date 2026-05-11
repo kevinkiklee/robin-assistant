@@ -82,15 +82,14 @@ async function doPurgeStaleSessions(out, err, deps = {}) {
     return;
   }
   await ensureHome();
-  const p = paths();
-  const daemonState = await readDaemonState(p.daemonState);
+  const daemonState = await readDaemonState(paths.data.daemonState());
   if (daemonState && isPidAlive(daemonState.pid)) {
     err('daemon is running. Stop it first: robin mcp stop');
     process.exit(1);
   }
-  const release = await acquire(p.daemonLock);
+  const release = await acquire(paths.data.daemonLock());
   try {
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       const n = await purgeStaleSessions(db);
       out(`purged ${n} stale sessions`);
@@ -198,8 +197,8 @@ function probeSupervisor({ spawn = spawnSync, plat = platform() } = {}) {
 const LOG_TAIL_BYTES = 16 * 1024;
 const LOG_ERROR_RE = /\b(error|exception|fail(ed|ure)?|fatal)\b/i;
 
-function probeBiographerLog(p) {
-  const logPath = join(p.cache, 'logs', 'biographer.log');
+function probeBiographerLog() {
+  const logPath = join(paths.data.logs(), 'biographer.log');
   if (!existsSync(logPath)) return { exists: false };
   try {
     const stat = statSync(logPath);
@@ -222,10 +221,10 @@ function probeBiographerLog(p) {
   }
 }
 
-async function probeIntegrationFreshness(p) {
+async function probeIntegrationFreshness() {
   let db;
   try {
-    db = await connect({ engine: `rocksdb://${p.db}` });
+    db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
       .collect();
@@ -255,11 +254,10 @@ async function probeIntegrationFreshness(p) {
 }
 
 async function doStatus(out, deps = {}) {
-  const p = paths();
-  out(`ROBIN_HOME: ${p.home}`);
-  const manifestExists = existsSync(join(p.home, 'manifest.json'));
+  out(`ROBIN_HOME: ${paths.data.home()}`);
+  const manifestExists = existsSync(join(paths.data.home(), 'manifest.json'));
   out(`manifest: ${manifestExists ? 'present' : 'missing'}`);
-  const daemonState = await readDaemonState(p.daemonState);
+  const daemonState = await readDaemonState(paths.data.daemonState());
   let daemonRunning = false;
   if (daemonState && isPidAlive(daemonState.pid)) {
     out(`daemon: running (pid=${daemonState.pid}, port=${daemonState.port ?? '?'})`);
@@ -269,9 +267,9 @@ async function doStatus(out, deps = {}) {
   } else {
     out('daemon: not running');
   }
-  const secretsEnv = join(p.secrets, '.env');
+  const secretsEnv = join(paths.data.secrets(), '.env');
   out(`secrets file: ${existsSync(secretsEnv) ? 'present' : 'missing'}`);
-  const configExists = existsSync(p.config);
+  const configExists = existsSync(paths.data.config());
   out(`config: ${configExists ? 'present' : 'missing'}`);
 
   // Native bindings — the failure that bit us at chrome/lrc test load.
@@ -298,7 +296,7 @@ async function doStatus(out, deps = {}) {
   out(`supervisor: ${sup.status}${sup.detail ? ` (${sup.detail})` : ''}`);
 
   // Biographer log — surface recent errors.
-  const log = (deps.probeBiographerLog ?? probeBiographerLog)(p);
+  const log = (deps.probeBiographerLog ?? probeBiographerLog)();
   if (!log.exists) {
     out('biographer.log: absent (no Stop hook fires yet, or never ran biographer)');
   } else if (log.error) {
@@ -317,7 +315,7 @@ async function doStatus(out, deps = {}) {
   // one driving it. Tests inject probeIntegrationFreshness to verify the
   // rendering path independent of an actual DB.
   if (deps.probeIntegrationFreshness || daemonRunning) {
-    const fresh = await (deps.probeIntegrationFreshness ?? probeIntegrationFreshness)(p);
+    const fresh = await (deps.probeIntegrationFreshness ?? probeIntegrationFreshness)();
     if (fresh.error) {
       out(`integrations: read failed (${fresh.error})`);
     } else if (fresh.total === 0) {

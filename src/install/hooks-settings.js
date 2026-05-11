@@ -128,7 +128,7 @@ function removeCommandFromPhase(phaseArr, command) {
 }
 
 function manifestPath() {
-  return join(paths().home, 'installed-hooks.json');
+  return join(paths.data.home(), 'installed-hooks.json');
 }
 
 /**

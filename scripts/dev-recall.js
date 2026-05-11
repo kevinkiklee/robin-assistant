@@ -14,8 +14,7 @@ if (!query) {
 }
 
 await ensureHome();
-const p = paths();
-const db = await connect({ engine: `rocksdb://${p.db}` });
+const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
 try {
   const embedder = await createTransformersEmbedder();
   const r = await recall(db, embedder, query, { limit: 10 });

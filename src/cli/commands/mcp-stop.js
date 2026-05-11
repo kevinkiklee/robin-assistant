@@ -3,8 +3,7 @@ import { clearDaemonState, readDaemonState } from '../../daemon/state.js';
 import { paths } from '../../runtime/data-store.js';
 
 export async function mcpStop() {
-  const p = paths();
-  const statePath = p.daemonState;
+  const statePath = paths.data.daemonState();
   const state = await readDaemonState(statePath);
   if (!state || !isPidAlive(state.pid)) {
     console.log('daemon not running');

@@ -26,8 +26,7 @@ async function readJobsForAgentsMd() {
     const { connect, close } = await import('../../db/client.js');
     const { listAllJobs } = await import('../../jobs/db.js');
     await ensureHome();
-    const p = paths();
-    const db = await connect({ engine: `rocksdb://${p.db}` });
+    const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
     try {
       return await listAllJobs(db);
     } finally {
@@ -146,8 +145,7 @@ export async function mcpInstall(argv) {
     try {
       await mcpEnsureRunning();
       // 4. Read port from .daemon.state.
-      const p = paths();
-      const state = await readDaemonState(p.daemonState);
+      const state = await readDaemonState(paths.data.daemonState());
       if (state?.port) port = state.port;
     } catch (e) {
       console.log(`daemon failed to start (non-fatal): ${e.message}`);

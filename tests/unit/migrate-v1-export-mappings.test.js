@@ -24,7 +24,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('exportMappings writes JSON keyed by entities/episodes/events', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     // Create one entity + one event with from_v1 audit
     await db
       .query(
@@ -65,7 +65,7 @@ test('exportMappings writes JSON keyed by entities/episodes/events', async () =>
 test('exportMappings on empty DB writes empty maps', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     const out = mkdtempSync(join(tmpdir(), 'map-empty-'));
     const path = join(out, 'mappings.json');
     await exportMappings(db, path);

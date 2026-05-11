@@ -22,7 +22,7 @@ await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 test('recordFailure appends to runtime:migration_failures.value.entries', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await recordFailure(db, {
       v1_table: 'capture',
       v1_id: 'capture:bad1',
@@ -46,7 +46,7 @@ test('recordFailure appends to runtime:migration_failures.value.entries', async 
 test('listFailures filters by phase', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await recordFailure(db, {
       v1_table: 'capture',
       v1_id: 'c1',
@@ -70,7 +70,7 @@ test('listFailures filters by phase', async () => {
 test('clearFailures empties the row', async () => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await runMigrations(db, paths().migrationsDir);
+    await runMigrations(db, paths.source.migrations());
     await recordFailure(db, { v1_table: 't', v1_id: 't:1', error_message: 'x' });
     await clearFailures(db);
     assert.equal((await listFailures(db)).length, 0);

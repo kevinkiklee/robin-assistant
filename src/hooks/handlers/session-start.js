@@ -66,8 +66,7 @@ export async function sessionStartHandler({ stdin, stderr, readState, fetchFn } 
     if (typeof readState === 'function') {
       state = await readState();
     } else {
-      const p = paths();
-      state = await readDaemonState(p.daemonState);
+      state = await readDaemonState(paths.data.daemonState());
     }
   } catch {
     return;

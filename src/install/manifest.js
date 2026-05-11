@@ -70,11 +70,10 @@ export async function computeManifest(opts = {}) {
     if (hash !== null) files.push({ path: rel, sha256: hash });
   }
 
-  const p = paths();
-  const secretsEnv = join(p.secrets, '.env');
+  const secretsEnv = join(paths.data.secrets(), '.env');
   const perms = {
     secrets_env_mode: await modeFor(secretsEnv),
-    db_dir_mode: await modeFor(p.db),
+    db_dir_mode: await modeFor(paths.data.db()),
   };
 
   let supervisor = null;
@@ -100,7 +99,7 @@ export async function computeManifest(opts = {}) {
 }
 
 function manifestPath() {
-  return join(paths().home, 'manifest.json');
+  return join(paths.data.home(), 'manifest.json');
 }
 
 export async function writeManifest(manifest) {

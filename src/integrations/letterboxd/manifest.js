@@ -16,7 +16,7 @@ export const manifest = {
    * new file is dropped.
    */
   preflight: async () => {
-    mkdirSync(join(paths().home, 'upload'), { recursive: true });
+    mkdirSync(paths.data.upload(), { recursive: true });
   },
   sync,
   tools: [createLetterboxdRecentTool],

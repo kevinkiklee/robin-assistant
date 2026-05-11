@@ -4,7 +4,7 @@ import { readSqliteSnapshot } from '../_local/sqlite.js';
 import { lrcCatalogPath, readCatalogSummary } from './client.js';
 
 function cacheDir() {
-  return join(paths().cache, 'sqlite-snapshots');
+  return join(paths.data.cache(), 'sqlite-snapshots');
 }
 
 export async function sync(ctx) {

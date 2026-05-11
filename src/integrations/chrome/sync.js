@@ -12,7 +12,7 @@ function chromeTimeToDate(visit_time) {
 }
 
 function cacheDir() {
-  return join(paths().cache, 'sqlite-snapshots');
+  return join(paths.data.cache(), 'sqlite-snapshots');
 }
 
 export async function sync(ctx) {

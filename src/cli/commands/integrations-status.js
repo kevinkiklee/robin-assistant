@@ -10,8 +10,7 @@ export async function integrationsStatus(argv) {
   const name = argv[0];
   const json = argv.includes('--json');
   await ensureHome();
-  const p = paths();
-  const db = await connect({ engine: `rocksdb://${p.db}` });
+  const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
   try {
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)

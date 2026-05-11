@@ -12,8 +12,7 @@ export async function jobsList(_argv = [], deps = {}) {
     deps.listJobs ??
     (async () => {
       await ensureHome();
-      const p = paths();
-      const db = await connect({ engine: `rocksdb://${p.db}` });
+      const db = await connect({ engine: `rocksdb://${paths.data.db()}` });
       try {
         return await listAllJobs(db);
       } finally {
