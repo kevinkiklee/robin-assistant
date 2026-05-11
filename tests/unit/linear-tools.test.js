@@ -101,6 +101,7 @@ test('linear_get_issue surfaces a clear error when secret missing', async () => 
     await assert.rejects(() => t.handler({ identifier: 'ENG-1' }), /linear not configured/);
   } finally {
     if (prev !== undefined) process.env.ROBIN_HOME = prev;
+    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     else delete process.env.ROBIN_HOME;
     _rm(home, { recursive: true, force: true });
   }

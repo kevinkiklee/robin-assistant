@@ -1,9 +1,8 @@
-// tests/integration/install-first.test.js
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import test from 'node:test';
 import { pickHome } from '../../src/cli/commands/install.js';
 
 test('pickHome: numeric selection of option 3 returns ~/Documents/Robin', async () => {

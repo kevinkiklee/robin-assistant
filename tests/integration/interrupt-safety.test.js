@@ -1,10 +1,8 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import test from 'node:test';
 import {
   ensureHome,
   packageRootDir,
@@ -32,6 +30,7 @@ test('interrupt between ensureHome and writePointer: re-running both is idempote
     const secondMarker = readMarker();
     assert.deepStrictEqual(firstMarker, secondMarker);
   } finally {
+    // biome-ignore lint/performance/noDelete: env vars must be deleted, not assigned undefined
     delete process.env.ROBIN_HOME;
     rmSync(home, { recursive: true, force: true });
     // Restore the original pointer (or remove the test-written one).
