@@ -12,7 +12,7 @@ Robin's behaviour is organised into seven named faculties. Each maps to a specif
 - **Writes:** one row in `runtime_intuition_telemetry` per fire (query length, hit count, tokens injected, latency, truncation flag). Telemetry is advisory; failures here never break the response.
 - **Fail-soft:** every error path (no daemon, timeout, non-2xx, malformed payload) exits 0 silently. The agent turn proceeds without injection.
 - **Cutover suppression:** if `$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js` exists (a v1 hook installation), intuition yields with a one-line stderr notice to avoid double `<!-- relevant memory -->` blocks.
-- **Disable:** `robin hooks disable intuition` writes to `<robinHome>/hooks-disabled.txt`.
+- **Disable:** `robin hooks disable intuition` sets `hooks.disabled = true` in `<robinHome>/config.json`. The kill-switch is global — when disabled, all hook phases are suppressed.
 - **Inspect:** `SELECT * FROM runtime_intuition_telemetry ORDER BY ts DESC LIMIT 20`.
 
 ## biographer

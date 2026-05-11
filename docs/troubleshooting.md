@@ -14,8 +14,8 @@ robin mcp start    # foreground start (Ctrl-C to stop)
 If `mcp start` exits immediately:
 
 - **Port in use:** another process is on the same port. `robin mcp status` prints the recorded port. `lsof -i :<port>` to find the squatter.
-- **Lock not released:** `<package_root>/user-data/.daemon.lock` is held. If no daemon PID is alive, delete it: `rm <package_root>/user-data/.daemon.lock`.
-- **Stale state:** `<package_root>/user-data/.daemon.state` lists a dead PID. `robin doctor` detects this. Delete: `rm <package_root>/user-data/.daemon.state`.
+- **Lock not released:** `<robinHome>/.daemon.lock` is held. If no daemon PID is alive, delete it: `rm <robinHome>/.daemon.lock`.
+- **Stale state:** `<robinHome>/.daemon.state` lists a dead PID. `robin doctor` detects this. Delete: `rm <robinHome>/.daemon.state`.
 
 ### Daemon crashes immediately after start
 
@@ -61,7 +61,7 @@ After re-installing hooks, **restart the host session** — Claude Code and Gemi
 
 - Verify the daemon is running: `robin mcp status`.
 - Verify the hook is wired: `robin doctor --lint-hooks` should list a `UserPromptSubmit → intuition` entry.
-- Verify the hook isn't disabled: `cat <package_root>/user-data/hooks-disabled.txt`. Re-enable with `robin hooks enable intuition`.
+- Verify hooks aren't globally disabled: check `hooks.disabled` in `<robinHome>/config.json`. Re-enable with `robin hooks enable intuition` (re-enabling any phase clears the global kill-switch).
 - Telemetry: `SELECT * FROM runtime_intuition_telemetry ORDER BY ts DESC LIMIT 10` — confirms recent fires, hits, latency.
 - v1 cutover suppression: if you have v1 hooks (`$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js`) still installed, v2 intuition yields. The hook prints a one-line stderr notice when this happens.
 
@@ -96,7 +96,7 @@ If the pattern is wrong, file an issue. Patterns live in `src/hooks/pii-patterns
 
 Possible causes:
 
-- Biographer never ran. Check `<package_root>/user-data/cache/logs/biographer.log` for the most recent invocation. Manually run `robin biographer-catchup` to drain pending events.
+- Biographer never ran. Check `<robinHome>/cache/logs/biographer.log` for the most recent invocation. Manually run `robin biographer-catchup` to drain pending events.
 - The Stop hook didn't fire. Verify with `robin doctor --lint-hooks` — should list a `Stop → stop` entry.
 - The conversation-capture pipeline skipped the turn. Skip log lines are in `biographer.log` with a `skip_reason` field: `no_transcript_path`, `no_assistant_turn`, `single_word_ack`, `pure_tool_turn`, `empty_turn`, `dedup_hit`, `pii_refused`.
 

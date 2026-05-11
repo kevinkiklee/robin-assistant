@@ -32,7 +32,7 @@ Claude Code / Gemini CLI session
                          multi-session registry; refusals audit table
        │
        ▼
-   Embedded SurrealDB v3   (rocksdb:// at <package_root>/user-data/db/)
+   Embedded SurrealDB v3   (rocksdb:// at <robinHome>/db/)
        events · entities · episodes · 6 edge tables ·
        knowledge · patterns · profile · threads ·
        rule_candidates · rules · recall_events · refusals · runtime_*

@@ -39,17 +39,29 @@ Non-interactive form:
 node bin/robin install --profile mxbai-1024
 ```
 
+### Home directory
+
+`robin install` prompts for where to store your data (the "robin home"). The picker offers four options:
+
+1. `<package_root>/user-data/` — keeps data alongside the package install (default v2 layout)
+2. `~/.robin/` — home directory, hidden
+3. `~/Documents/Robin/` — home directory, visible
+4. Custom path
+
+The chosen location is written to `<package_root>/.robin-home` (a pointer file) and exported as `ROBIN_HOME` in the supervisor unit. Throughout the rest of these docs, `<robinHome>` refers to whichever path you picked. The picker also scans known locations on reinstall and offers to migrate existing data with a copy-verify-delete sequence.
+
 ### What `robin install` does
 
 1. **Embedder profile validation** — checks Ollama is reachable / Gemini key is present where required.
-2. **Persists config** to `<package_root>/user-data/config.json`.
-3. **Runs migrations** (`runMigrations`) against `<package_root>/user-data/db/` — applies any pending `.surql` files, including the profile-specific `0008-embedder-<profile>.surql`.
-4. **Writes the introspection baseline** to `<package_root>/user-data/manifest.json` — content hashes of key handler files, permission bits on the secrets/db directories, supervisor file checksum. The daemon checks against this on boot.
-5. **Installs host-side hooks** into `~/.claude/settings.json` and `~/.gemini/settings.json` — discretion (Bash), intuition (UserPromptSubmit), SessionStart registry, Stop hook. Hooks invoke `<package_root>/bin/robin-hook.sh`, a POSIX shim that finds `node` even under nvm/asdf where `/bin/sh` may not have it on PATH. Foreign hook entries in those files are preserved byte-for-byte; the manifest of robin-owned entries lives at `<package_root>/user-data/installed-hooks.json`.
-6. **Installs the daemon supervisor** — writes `~/Library/LaunchAgents/io.robin-assistant.mcp.plist` (macOS) or `~/.config/systemd/user/robin-mcp.service` (Linux) and `launchctl load` / `systemctl --user enable` so the daemon auto-restarts on crash.
-7. **Starts the daemon** and writes the chosen port to `<package_root>/user-data/.daemon.state`.
-8. **Registers with each host CLI** on PATH: `claude mcp add --transport sse robin http://127.0.0.1:<port>/sse` and the Gemini equivalent.
-9. **Merges the `<!-- robin -->` block** into `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md` so agents see the active rules + integration surface on next session start.
+2. **Resolves the robin home** via the picker described above and writes the `.robin-home` pointer + `<robinHome>/.robin-data` marker.
+3. **Persists config** to `<robinHome>/config.json`.
+4. **Runs migrations** (`runMigrations`) against `<robinHome>/db/` — applies any pending `.surql` files, including the profile-specific `0008-embedder-<profile>.surql`.
+5. **Writes the introspection baseline** to `<robinHome>/manifest.json` — content hashes of key handler files, permission bits on the secrets/db directories, supervisor file checksum. The daemon checks against this on boot.
+6. **Installs host-side hooks** into `~/.claude/settings.json` and `~/.gemini/settings.json` — discretion (Bash), intuition (UserPromptSubmit), SessionStart registry, Stop hook. Hooks invoke `<package_root>/bin/robin-hook.sh`, a POSIX shim that finds `node` even under nvm/asdf where `/bin/sh` may not have it on PATH. Foreign hook entries in those files are preserved byte-for-byte; the manifest of robin-owned touchpoints (hook entries, plists, supervisor units) lives at `<robinHome>/host-integrations.json`.
+7. **Installs the daemon supervisor** — writes `~/Library/LaunchAgents/io.robin-assistant.mcp.plist` (macOS) or `~/.config/systemd/user/robin-mcp.service` (Linux) with `ROBIN_HOME` baked in, and `launchctl load` / `systemctl --user enable` so the daemon auto-restarts on crash.
+8. **Starts the daemon** and writes the chosen port to `<robinHome>/.daemon.state`.
+9. **Registers with each host CLI** on PATH: `claude mcp add --transport sse robin http://127.0.0.1:<port>/sse` and the Gemini equivalent.
+10. **Merges the `<!-- robin -->` block** into `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md` so agents see the active rules + integration surface on next session start.
 
 **Restart your Claude Code / Gemini CLI session afterward** so it picks up the new MCP server and hooks.
 
@@ -65,7 +77,7 @@ node bin/robin install --profile mxbai-1024
 
 ## Step 3 — Add your secrets
 
-v2 keeps a single `<package_root>/user-data/secrets/.env` (mode 0600). If you're coming from v1:
+v2 keeps a single `<robinHome>/secrets/.env` (mode 0600). If you're coming from v1:
 
 ```sh
 robin secrets import --from ~/workspace/robin/robin-assistant/user-data/runtime/secrets/.env
@@ -180,7 +192,7 @@ Each pulls from an external API on its own interval and writes new rows into `ev
 robin uninstall
 ```
 
-Stops the daemon, removes hook entries from host settings, unregisters from each host CLI, unloads the supervisor, removes the supervisor file. Your `<package_root>/user-data/` (DB, secrets, backups, telemetry) is left in place — remove manually if desired.
+Stops the daemon, removes hook entries from host settings, unregisters from each host CLI, unloads the supervisor, removes the supervisor file (best-effort by default; `--strict` aborts on first failure). Your `<robinHome>` (DB, secrets, backups, telemetry) is left in place — pass `--purge` to remove it, or delete the directory manually.
 
 ## See also
 
