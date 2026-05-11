@@ -1,3 +1,8 @@
+// lint-checks.test.js — covers src/jobs/lint-checks.js after the schema
+// redesign. Knowledge rows now live in `memos` with `kind='knowledge'`;
+// the old `knowledge` table is gone. Edges live in a single `edges` table
+// with a `kind` discriminator; the old `mentions` per-relation table is gone.
+
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,6 +13,7 @@ import { close, connect } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createStubEmbedder } from '../../src/embed/embedder.js';
 import { runLintChecks } from '../../src/jobs/lint-checks.js';
+import * as store from '../../src/memory/store.js';
 
 import { writeConfig as __wc } from '../../src/runtime/config.js';
 
@@ -23,10 +29,9 @@ async function fresh() {
 }
 
 test('orphan_entity — entity with no inbound edges is flagged', async () => {
-  const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('orphan'));
+  const { db } = await fresh();
   await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Orphan', type: 'thing', embedding: emb }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Orphan', type: 'thing' }}`)
     .collect();
   const issues = await runLintChecks(db);
   assert.ok(issues.some((i) => i.kind === 'orphan_entity'));
@@ -34,13 +39,12 @@ test('orphan_entity — entity with no inbound edges is flagged', async () => {
 });
 
 test('duplicate_entity — same name+type creates a duplicate issue', async () => {
-  const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('dup'));
+  const { db } = await fresh();
   await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'X', type: 'thing', embedding: emb }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'X', type: 'thing' }}`)
     .collect();
   await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'x', type: 'thing', embedding: emb }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'x', type: 'thing' }}`)
     .collect();
   const issues = await runLintChecks(db);
   assert.ok(issues.some((i) => i.kind === 'duplicate_entity'));
@@ -48,25 +52,13 @@ test('duplicate_entity — same name+type creates a duplicate issue', async () =
 });
 
 test('stale_knowledge — low confidence + future cutoff triggers stale', async () => {
-  // NOTE: knowledge.updated_at uses VALUE time::now() in the SurrealDB schema,
-  // which re-triggers to time::now() on every UPDATE. Backdating via UPDATE is
-  // therefore not reliable. Instead we pass a future cutoffDate so all rows
-  // are considered older than the cutoff regardless of their actual updated_at.
   const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('stale'));
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{
-        content: 'old stale claim',
-        content_hash: 'h1',
-        confidence: 0.1,
-        source_events: [],
-        source_episodes: [],
-        embedding: emb,
-      }}`,
-    )
-    .collect();
-  // Pass a cutoffDate in the future so all existing rows appear "older than cutoff"
+  await store.note(db, embedder, 'knowledge', {
+    content: 'old stale claim',
+    confidence: 0.1,
+    derived_by: 'manual',
+  });
+  // Pass a cutoffDate in the future so all existing rows appear older than cutoff.
   const futureDate = new Date(Date.now() + 999 * 86_400_000);
   const issues = await runLintChecks(db, { cutoffDate: futureDate });
   assert.ok(
@@ -76,15 +68,10 @@ test('stale_knowledge — low confidence + future cutoff triggers stale', async 
   await close(db);
 });
 
-test('runLintChecks — issues sorted severity desc, kind asc, ref asc', async () => {
-  const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('a'));
-  await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'A', type: 'thing', embedding: emb }}`)
-    .collect();
-  await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'B', type: 'thing', embedding: emb }}`)
-    .collect();
+test('runLintChecks — issues sorted severity desc', async () => {
+  const { db } = await fresh();
+  await db.query(surql`CREATE entities CONTENT ${{ name: 'A', type: 'thing' }}`).collect();
+  await db.query(surql`CREATE entities CONTENT ${{ name: 'B', type: 'thing' }}`).collect();
   const issues = await runLintChecks(db);
   assert.ok(issues.every((i) => typeof i.severity === 'number'));
   for (let i = 1; i < issues.length; i++) {
@@ -94,34 +81,29 @@ test('runLintChecks — issues sorted severity desc, kind asc, ref asc', async (
 });
 
 test('near_duplicate_knowledge — symmetric pair reported once', async () => {
-  // Two knowledge rows sharing the same embedding → cosine 1.0 > 0.95 threshold.
-  // Canonical [low, high] ordering should ensure only one issue, not two.
+  // Two knowledge memos with the same embedding → cosine 1.0 > 0.95 threshold.
+  // Canonical [low, high] ordering ensures only one issue.
   const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('same vector'));
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{
-        content: 'first claim',
-        content_hash: 'nd1',
-        confidence: 0.8,
-        source_events: [],
-        source_episodes: [],
-        embedding: emb,
-      }}`,
-    )
-    .collect();
-  await db
-    .query(
-      surql`CREATE knowledge CONTENT ${{
-        content: 'second claim — same vector',
-        content_hash: 'nd2',
-        confidence: 0.8,
-        source_events: [],
-        source_episodes: [],
-        embedding: emb,
-      }}`,
-    )
-    .collect();
+  // Same embedding text triggers identical vectors from the stub embedder.
+  // The memos table dedupes by content_hash, so vary the content slightly
+  // but feed the same text into the embedder via a wrapper.
+  const sameVec = await embedder.embed('shared vector seed');
+  const constEmbedder = {
+    dimension: 1024,
+    modelId: 'const',
+    embed: async () => sameVec,
+    embedBatch: async (xs) => xs.map(() => sameVec),
+  };
+  await store.note(db, constEmbedder, 'knowledge', {
+    content: 'first claim',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
+  await store.note(db, constEmbedder, 'knowledge', {
+    content: 'second claim — same vector',
+    confidence: 0.8,
+    derived_by: 'manual',
+  });
   const issues = await runLintChecks(db);
   const nearDups = issues.filter((i) => i.kind === 'near_duplicate_knowledge');
   assert.equal(nearDups.length, 1, 'symmetric pair should be reported exactly once');
@@ -130,27 +112,25 @@ test('near_duplicate_knowledge — symmetric pair reported once', async () => {
 });
 
 test('orphan_entity — entity reachable via mentions edge is NOT flagged', async () => {
-  // Positive case for the orphan check — confirm that an entity WITH an
-  // inbound mentions edge from an event is not falsely reported.
+  // Positive case for the orphan check — entity with an inbound mentions edge
+  // from an event should not be reported. mentions now lives on the unified
+  // `edges` table with kind='mentions'; we route through store.relate.
   const { db, embedder } = await fresh();
-  const emb = Array.from(await embedder.embed('linked'));
   const [createdEnts] = await db
-    .query(surql`CREATE entities CONTENT ${{ name: 'Linked', type: 'thing', embedding: emb }}`)
+    .query(surql`CREATE entities CONTENT ${{ name: 'Linked', type: 'thing' }}`)
     .collect();
   const entId = createdEnts[0].id;
-  const evtEmb = Array.from(await embedder.embed('event content'));
   const [createdEvts] = await db
     .query(
       surql`CREATE events CONTENT ${{
         source: 'manual',
         content: 'event mentions Linked',
         content_hash: 'evh1',
-        embedding: evtEmb,
       }}`,
     )
     .collect();
   const evtId = createdEvts[0].id;
-  await db.query(`RELATE ${evtId}->mentions->${entId}`).collect();
+  await store.relate(db, evtId, entId, 'mentions');
   const issues = await runLintChecks(db);
   const orphans = issues.filter((i) => i.kind === 'orphan_entity' && i.ref === String(entId));
   assert.equal(

@@ -510,7 +510,7 @@ export async function neighbors(db, recordId, kind, opts = {}) {
     weight, last_seen, valid_from, valid_until
     FROM edges
     WHERE kind = $k AND ${whereClause}
-    ORDER BY weight DESC NULLS LAST
+    ORDER BY weight DESC
     LIMIT ${limit}`;
   const [rows] = await db
     .query(new BoundQuery(sql, { e: recordId, k: kind }))

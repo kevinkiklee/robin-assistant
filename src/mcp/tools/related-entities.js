@@ -40,7 +40,7 @@ export function createRelatedEntitiesTool({ db }) {
             weight
           FROM edges
           WHERE kind = '${kind}' AND (from = ${idRef} OR to = ${idRef})
-          ORDER BY weight DESC NULLS LAST
+          ORDER BY weight DESC
           LIMIT ${limit}`;
         const [rows] = await db.query(sql).collect();
         const others = rows ?? [];
