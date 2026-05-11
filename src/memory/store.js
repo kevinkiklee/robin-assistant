@@ -26,6 +26,7 @@ import {
   validateEdge,
 } from './edge-registry.js';
 import { MEMO_KIND_REGISTRY, validateAttachment, validateMemoKind } from './kind-registry.js';
+import { withTxRetry } from './tx.js';
 
 // ============================================================================
 // WRITE PRIMITIVES
@@ -168,27 +169,34 @@ export async function note(db, embedder, kind, input) {
 export async function upsertMemoByName(db, embedder, kind, input) {
   const { name } = input;
   if (!name) throw new Error('upsertMemoByName: meta.name required (passed as input.name)');
-  const [existing] = await db
-    .query(surql`SELECT id FROM memos WHERE kind = ${kind} AND meta.name = ${name} LIMIT 1`)
-    .collect();
-  if (existing[0]) {
-    const id = existing[0].id;
-    await db.query(surql`UPDATE ${id} SET signal_count += 1, last_active = time::now()`).collect();
-    // Also merge any new lineage as derived_from edges.
-    if (input.lineage?.length > 0) {
-      const rows = input.lineage.map((l) => ({
-        from: id,
-        to: l.id ?? l,
-        kind: 'derived_from',
-      }));
-      await relateAll(db, rows);
+  // SELECT-then-CREATE is not strictly atomic. Wrap in withTxRetry so the
+  // SurrealDB engine's "Transaction conflict" surface for paired callers is
+  // retried with jittered backoff; concurrent callers converge to one row.
+  return withTxRetry(async () => {
+    const [existing] = await db
+      .query(surql`SELECT id FROM memos WHERE kind = ${kind} AND meta.name = ${name} LIMIT 1`)
+      .collect();
+    if (existing[0]) {
+      const id = existing[0].id;
+      await db
+        .query(surql`UPDATE ${id} SET signal_count += 1, last_active = time::now()`)
+        .collect();
+      // Also merge any new lineage as derived_from edges.
+      if (input.lineage?.length > 0) {
+        const rows = input.lineage.map((l) => ({
+          from: id,
+          to: l.id ?? l,
+          kind: 'derived_from',
+        }));
+        await relateAll(db, rows);
+      }
+      return { id, signal_increment: 1 };
     }
-    return { id, signal_increment: 1 };
-  }
-  // Create path: ensure `meta.name` is part of the meta we pass through.
-  const meta = { ...(input.meta ?? {}), name };
-  const result = await note(db, embedder, kind, { ...input, meta });
-  return { id: result.id, signal_increment: 0 };
+    // Create path: ensure `meta.name` is part of the meta we pass through.
+    const meta = { ...(input.meta ?? {}), name };
+    const result = await note(db, embedder, kind, { ...input, meta });
+    return { id: result.id, signal_increment: 0 };
+  });
 }
 
 /**
@@ -372,7 +380,6 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
     throw new Error(`searchMemos: limit out of range [1,100]: ${limit}`);
   }
   const ef = Math.max(64, limit * 8);
-  const _profile = (await import('../embed/profile-router.js')).then; // tree-shake guard
   const { readProfile } = await import('../embed/profile-router.js');
   const readProf = await readProfile(db);
   const embeddingTbl = embeddingTable(readProf, surface);

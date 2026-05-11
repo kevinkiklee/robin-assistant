@@ -14,6 +14,7 @@
 import { surql } from 'surrealdb';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../graph/episodes.js';
 import * as store from '../memory/store.js';
+import { withTxRetry } from '../memory/tx.js';
 import { validateBiographerOutput } from './biographer-output.js';
 import { buildBiographerPrompt } from './biographer-prompt.js';
 
@@ -42,32 +43,6 @@ async function loadRuntime(db) {
     .query(surql`SELECT * FROM type::record('runtime', 'biographer')`)
     .collect();
   return rows.length === 0 ? null : (rows[0]?.value ?? null);
-}
-
-// SurrealDB embedded engines surface "Transaction conflict: Write conflict"
-// when two callers write the same record concurrently. The error is
-// retryable — the engine asks us to retry the whole transaction. For our
-// idempotent writes (UPSERT, gated UPDATE, check-then-RELATE) a small
-// bounded retry loop converges parallel callers to a single resolved row.
-const MAX_TX_RETRIES = 4;
-
-function isTxConflict(err) {
-  return String(err?.message ?? '').includes('Transaction conflict');
-}
-
-async function withTxRetry(fn) {
-  let lastErr;
-  for (let attempt = 0; attempt <= MAX_TX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (!isTxConflict(e)) throw e;
-      lastErr = e;
-      // brief backoff with a jitter so paired callers desynchronise
-      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 10)));
-    }
-  }
-  throw lastErr;
 }
 
 async function ensureRuntime(db) {
