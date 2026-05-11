@@ -6,7 +6,7 @@ This is the SurrealDB-first rebuild of Robin. v1 (`robin-assistant@5.x`) remains
 
 ## Status
 
-`6.0.0-alpha.10` — daily-use safety floor (discretion on bash + memory writes, introspection at daemon boot, intuition on prompt, multi-session registry, pre-commit hook, host-side hook installation) plus the in-flight rename pass that gives every long-lived mechanism a named faculty.
+`6.0.0-alpha.11` — Phase 4 envelope: daily-use safety floor (4a), action policy + comm-style + predictions/calibration (4b), knowledge ops (4c), daemon-internal job runner (4d), conversation capture (4f), plus the rename pass that gives every long-lived mechanism a named faculty. Remaining envelope: 4e (trained reranker + knowledge-promotion classifier) — both data-dependent.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-phase delta and the design docs under [`docs/superpowers/specs/`](docs/superpowers/specs/) for architecture rationale.
 
