@@ -1,5 +1,6 @@
-// `robin hooks disable <phase>` — write the phase name into
-// <robinHome>/hooks-disabled.txt so the dispatcher skips it. Used as the
+// `robin hooks disable <phase>` — add the phase to the disabled list in
+// <robinHome>/config.json.hooks.disabled so the dispatcher skips it.
+// Per-phase: disabling one phase leaves the others running. Used as the
 // kill-switch when a hook produces false-positives (spec §11).
 
 import { DISPATCH } from '../../hooks/cli.js';

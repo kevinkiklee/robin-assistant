@@ -12,6 +12,7 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { migrateHooksDisabledFlag } from '../hooks/disabled.js';
 
 function findPackageRoot() {
   let dir = dirname(fileURLToPath(import.meta.url));
@@ -149,9 +150,10 @@ export async function ensureHome() {
     const payload = { version: MARKER_VERSION, createdAt: new Date().toISOString() };
     writeFileSync(markerPath, JSON.stringify(payload, null, 2), { mode: 0o644 });
   }
-  // Migrate hooks-disabled.txt → config.json.hooks.disabled.
+  // Migrate hooks-disabled.txt → config.json.hooks.disabled (string[]).
   const flagPath = join(home, 'hooks-disabled.txt');
   if (existsSync(flagPath)) {
+    const list = migrateHooksDisabledFlag(home);
     const cfgPath = paths.data.config();
     let cfg = {};
     if (existsSync(cfgPath)) {
@@ -161,7 +163,7 @@ export async function ensureHome() {
         cfg = {};
       }
     }
-    cfg.hooks = { ...(cfg.hooks ?? {}), disabled: true };
+    cfg.hooks = { ...(cfg.hooks ?? {}), disabled: list };
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), { mode: 0o644 });
     unlinkSync(flagPath);
   }

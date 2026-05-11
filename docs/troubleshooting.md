@@ -61,7 +61,7 @@ After re-installing hooks, **restart the host session** — Claude Code and Gemi
 
 - Verify the daemon is running: `robin mcp status`.
 - Verify the hook is wired: `robin doctor --lint-hooks` should list a `UserPromptSubmit → intuition` entry.
-- Verify hooks aren't globally disabled: check `hooks.disabled` in `<robinHome>/config.json`. Re-enable with `robin hooks enable intuition` (re-enabling any phase clears the global kill-switch).
+- Verify the phase isn't disabled: check `hooks.disabled` (a `string[]`) in `<robinHome>/config.json`. Re-enable with `robin hooks enable intuition`.
 - Telemetry: `SELECT * FROM runtime_intuition_telemetry ORDER BY ts DESC LIMIT 10` — confirms recent fires, hits, latency.
 - v1 cutover suppression: if you have v1 hooks (`$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js`) still installed, v2 intuition yields. The hook prints a one-line stderr notice when this happens.
 

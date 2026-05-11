@@ -1,5 +1,6 @@
-// `robin hooks enable <phase>` — remove the phase name from
-// <robinHome>/hooks-disabled.txt. Inverse of `robin hooks disable`.
+// `robin hooks enable <phase>` — remove the phase from the disabled list
+// in <robinHome>/config.json.hooks.disabled. Inverse of `robin hooks disable`.
+// Per-phase: enabling one phase leaves the others untouched.
 
 import { DISPATCH } from '../../hooks/cli.js';
 import { removeDisabled } from '../../hooks/disabled.js';

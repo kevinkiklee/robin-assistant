@@ -32,16 +32,17 @@ function harness() {
   };
 }
 
-test('hooksDisable: disables a known phase (global kill-switch)', async () => {
+test('hooksDisable: disables a known phase (per-phase, leaves others alone)', async () => {
   rmSync(configFile, { force: true });
   const h = harness();
   await hooksDisable(['discretion'], h);
   assert.equal(await isHookDisabled('discretion'), true);
+  assert.equal(await isHookDisabled('intuition'), false);
   assert.deepEqual(h.exitCalls, []);
   assert.match(h.outLines.join('\n'), /disabled hook: discretion/);
 });
 
-test('hooksEnable: enables a previously disabled phase (global kill-switch)', async () => {
+test('hooksEnable: re-enables a previously disabled phase', async () => {
   const h = harness();
   await hooksEnable(['discretion'], h);
   assert.equal(await isHookDisabled('discretion'), false);
@@ -88,13 +89,13 @@ test('hooksDisable: idempotent — disabling twice stays disabled', async () => 
   assert.equal(await isHookDisabled('stop'), false);
 });
 
-test('hooksDisable + hooksEnable: round-trip (global switch)', async () => {
+test('hooksDisable + hooksEnable: round-trip is per-phase, never affects other phases', async () => {
   rmSync(configFile, { force: true });
   const h = harness();
   await hooksDisable(['intuition'], h);
   assert.equal(await isHookDisabled('intuition'), true);
-  // Global: all phases disabled simultaneously
-  assert.equal(await isHookDisabled('session-start'), true);
+  // Other phases stay enabled.
+  assert.equal(await isHookDisabled('session-start'), false);
   await hooksEnable(['intuition'], h);
   assert.equal(await isHookDisabled('intuition'), false);
   assert.equal(await isHookDisabled('session-start'), false);
