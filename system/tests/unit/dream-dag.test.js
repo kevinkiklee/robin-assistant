@@ -41,3 +41,18 @@ test('every dep edge references a known step', () => {
     }
   }
 });
+
+test('topoLayers(byName, DREAM_DAG_DEPS) returns three layers with expected membership', async () => {
+  const { topoLayers } = await import('../../cognition/dream/scheduler.js');
+  const layers = topoLayers(byName, DREAM_DAG_DEPS);
+  assert.equal(layers.length, 3);
+  // Layer 1: knowledge, patterns, reflection, profile, arcs, commStyle, confidence
+  assert.deepEqual(
+    [...layers[0]].sort(),
+    ['arcs', 'commStyle', 'confidence', 'knowledge', 'patterns', 'profile', 'reflection'],
+  );
+  // Layer 2: scopeCleanup, calibration
+  assert.deepEqual([...layers[1]].sort(), ['calibration', 'scopeCleanup']);
+  // Layer 3: compaction
+  assert.deepEqual([...layers[2]].sort(), ['compaction']);
+});
