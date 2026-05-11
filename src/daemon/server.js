@@ -239,7 +239,9 @@ export async function startDaemon() {
           .then(() => {
             lastBiographerRunAt = new Date().toISOString();
           })
-          .catch(() => {});
+          .catch((e) =>
+            console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
+          );
         return promise;
       },
       get lastRunAt() {
@@ -612,7 +614,9 @@ export async function startDaemon() {
             .query('SELECT id, ts FROM events WHERE biographed_at IS NONE ORDER BY ts ASC LIMIT 50')
             .collect();
           for (const row of pendingRows) {
-            queueWrap.enqueue(String(row.id)).catch(() => {});
+            queueWrap.enqueue(String(row.id)).catch(() => {
+              // queueWrap already logs; swallow here to keep loop going.
+            });
           }
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ enqueued: pendingRows.length }));
@@ -634,7 +638,9 @@ export async function startDaemon() {
               meta: body.meta ?? undefined,
               guard: body.force === true ? undefined : guardInboundContent,
             });
-            queueWrap.enqueue(String(result.id)).catch(() => {});
+            queueWrap.enqueue(String(result.id)).catch(() => {
+              // queueWrap already logs.
+            });
             res.writeHead(200, { 'content-type': 'application/json' });
             res.end(JSON.stringify({ id: String(result.id) }));
           } catch (e) {

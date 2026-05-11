@@ -75,8 +75,12 @@ export async function evaluatePending(db) {
               { key },
             )
             .collect();
-        } catch {
-          // Memo may have been deleted; tolerate.
+        } catch (e) {
+          // Memo deletion is expected; other errors (DB connection, schema)
+          // are worth surfacing so silent signal loss doesn't hide regressions.
+          if (!String(e?.message ?? '').includes('does not exist')) {
+            console.warn(`[reinforce] memo update failed for ${idStr}: ${e.message}`);
+          }
         }
       }
       outcome = 'reinforced';

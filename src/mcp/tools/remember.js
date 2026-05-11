@@ -24,7 +24,11 @@ export function createRememberTool({ db, embedder, queue }) {
         guard: guardInboundContent,
       });
       if (args.trigger_biographer !== false) {
-        queue.enqueue(String(result.id)).catch(() => {});
+        queue
+          .enqueue(String(result.id))
+          .catch((e) =>
+            console.warn(`[remember] biographer enqueue failed for ${result.id}: ${e.message}`),
+          );
       }
       return { id: String(result.id) };
     },

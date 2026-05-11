@@ -29,13 +29,13 @@ export function createScheduler({ listDue, runOne, isOverflow, heartbeatMs = 60_
       if (inFlight.has(item.name)) continue;
       inFlight.add(item.name);
       runOne(item.name)
-        .catch(() => {})
+        .catch((e) => console.warn(`[scheduler] ${item.name} failed: ${e.message}`))
         .finally(() => inFlight.delete(item.name));
     }
     if (inFlight.size === 0 && (await isOverflow?.())) {
       inFlight.add('__dream__');
       runOne('__dream__')
-        .catch(() => {})
+        .catch((e) => console.warn(`[scheduler] __dream__ failed: ${e.message}`))
         .finally(() => inFlight.delete('__dream__'));
     }
   }
@@ -43,10 +43,10 @@ export function createScheduler({ listDue, runOne, isOverflow, heartbeatMs = 60_
   function start() {
     if (timer) clearInterval(timer);
     timer = setInterval(() => {
-      tick().catch(() => {});
+      tick().catch((e) => console.warn(`[scheduler] tick failed: ${e.message}`));
     }, heartbeatMs);
     timer.unref();
-    tick().catch(() => {});
+    tick().catch((e) => console.warn(`[scheduler] initial tick failed: ${e.message}`));
   }
 
   function stop() {
