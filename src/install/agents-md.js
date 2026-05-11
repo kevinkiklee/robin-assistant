@@ -182,7 +182,41 @@ ${renderIntegrationsList(integrations)}
 <!-- robin-integrations:end -->`;
 }
 
-export function agentsMdContent({ integrations = [], jobs } = {}) {
+export function commStyleSection(commStyle) {
+  if (commStyle && commStyle.tone) {
+    const ts = commStyle.last_synthesized_at
+      ? new Date(commStyle.last_synthesized_at).toISOString()
+      : 'unknown';
+    return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
+## Communication style
+
+Inferred preferences (synthesized nightly from your corrections):
+{
+  tone: "${commStyle.tone}",
+  formality: "${commStyle.formality}",
+  emoji_ok: ${commStyle.emoji_ok},
+  direct_feedback_ok: ${commStyle.direct_feedback_ok},
+  code_comment_density: "${commStyle.code_comment_density}",
+  summary_style: "${commStyle.summary_style}",
+  confidence: ${commStyle.confidence},
+  synthesized: ${ts}
+}
+
+If \`confidence\` is low (<0.4), treat these as soft hints; honor explicit
+instructions in the current turn first. Use \`get_comm_style()\` to re-read
+if something might have updated mid-session.
+<!-- robin-comm-style:end -->`;
+  }
+  return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
+## Communication style
+
+No comm-style inferred yet — too few corrections, or Dream hasn't run.
+Use balanced defaults. Use \`get_comm_style()\` once a session has produced
+corrections to check whether enough signal has accumulated.
+<!-- robin-comm-style:end -->`;
+}
+
+export function agentsMdContent({ integrations = [], jobs, commStyle } = {}) {
   return `# Robin
 
 You're talking to a user through Robin. Robin gives you a memory layer
@@ -273,6 +307,8 @@ ${jobsSection(jobs)}
 ${knowledgeOpsSection()}
 
 ${actionsSection()}
+
+${commStyleSection(commStyle)}
 
 ${buildSecurityBlock()}
 `;

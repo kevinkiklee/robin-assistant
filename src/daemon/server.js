@@ -16,6 +16,7 @@ import { createCapture } from '../integrations/_framework/capture.js';
 import { loadManifests } from '../integrations/_framework/manifest-loader.js';
 import { runIntegrationSync } from '../integrations/_framework/run-sync.js';
 import { resetActionTrust, setActionTrust } from '../jobs/action-trust.js';
+import { synthesizeCommStyle } from '../jobs/comm-style.js';
 import { garbageCollect, getJob, upsertFromDiscovered } from '../jobs/db.js';
 import { discoverJobs } from '../jobs/loader.js';
 import { runOneJob } from '../jobs/runner.js';
@@ -23,6 +24,7 @@ import { listDueJobs, planNextRunAt } from '../jobs/scheduler-ext.js';
 import { createRepeatQueryDetector } from '../mcp/implicit-signals.js';
 import { createAuditTool } from '../mcp/tools/audit.js';
 import { createCheckActionTool } from '../mcp/tools/check-action.js';
+import { createGetCommStyleTool } from '../mcp/tools/get-comm-style.js';
 import { createFindEntityTool } from '../mcp/tools/find-entity.js';
 import { createGetEntityTool } from '../mcp/tools/get-entity.js';
 import { createGetHotTool } from '../mcp/tools/get-hot.js';
@@ -446,6 +448,7 @@ export async function startDaemon() {
     tools.push(createAuditTool({ db: dbHandle, host }));
     tools.push(createCheckActionTool({ db: dbHandle }));
     tools.push(createUpdateActionPolicyTool({ db: dbHandle }));
+    tools.push(createGetCommStyleTool({ db: dbHandle }));
 
     // Heartbeat scheduler: surveys due integrations + dream cursor each tick,
     // dispatches via runOne. Falls back to dream when nothing is due and the
@@ -775,6 +778,12 @@ export async function startDaemon() {
           await resetActionTrust(dbHandle, body.class);
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ ok: true, class: body.class, state: 'ASK' }));
+          return;
+        }
+        if (req.method === 'POST' && req.url === '/internal/comm-style/refresh') {
+          const result = await synthesizeCommStyle(dbHandle, host);
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result));
           return;
         }
         if (req.method === 'POST' && req.url === '/internal/intuition') {

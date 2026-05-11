@@ -38,10 +38,28 @@ async function readJobsForAgentsMd() {
   }
 }
 
-async function writeMergedAgentsMd(path, jobs) {
+async function readCommStyleForAgentsMd() {
+  try {
+    const { ensureHome, paths } = await import('../../runtime/home.js');
+    const { connect, close } = await import('../../db/client.js');
+    const { getCommStyle } = await import('../../jobs/comm-style.js');
+    await ensureHome();
+    const p = paths();
+    const db = await connect({ engine: `rocksdb://${p.db}` });
+    try {
+      return await getCommStyle(db);
+    } finally {
+      await close(db);
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function writeMergedAgentsMd(path, jobs, commStyle) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
-  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs }));
+  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs, commStyle }));
   await writeFile(path, merged, 'utf8');
   console.log(`updated ${path}`);
 }
@@ -172,8 +190,9 @@ export async function mcpInstall(argv) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
     const jobs = await readJobsForAgentsMd();
-    await writeMergedAgentsMd(claudePath, jobs);
-    await writeMergedAgentsMd(geminiPath, jobs);
+    const commStyle = await readCommStyleForAgentsMd();
+    await writeMergedAgentsMd(claudePath, jobs, commStyle);
+    await writeMergedAgentsMd(geminiPath, jobs, commStyle);
   }
 
   // 7. Print summary.
