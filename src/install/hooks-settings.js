@@ -244,7 +244,6 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
         const r = removeCommandFromPhase(phaseArr, entry.command);
         removed += r.removed;
         if (Array.isArray(r.arr) && r.arr.length === 0) {
-          // biome-ignore lint/performance/noDelete: must remove the key, not set to undefined (JSON-serialized output diverges)
           delete settings.hooks[entry.phase];
         } else {
           settings.hooks[entry.phase] = r.arr;
@@ -279,7 +278,6 @@ export async function uninstallHooksFromSettings({ homeDir, packageRoot }) {
           }
         }
         if (out.length === 0) {
-          // biome-ignore lint/performance/noDelete: must remove the key, not set to undefined (JSON-serialized output diverges)
           delete settings.hooks[phase];
         } else {
           settings.hooks[phase] = out;
