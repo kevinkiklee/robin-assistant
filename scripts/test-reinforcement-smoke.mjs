@@ -93,6 +93,7 @@ await db.close();
 
 if (r2[0].signal_count === 2 && r3[0].signal_count === 2 && summary.reinforced === 1 && summary2.corrected === 1) {
   console.log('\nReinforcement smoke test PASSED');
+  process.exit(0);
 } else {
   console.error('\nReinforcement smoke test FAILED');
   process.exit(1);

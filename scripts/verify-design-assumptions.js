@@ -251,7 +251,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('Unexpected error:', err);
-  process.exit(2);
-});
+main()
+  .then(() => process.exit(process.exitCode ?? 0))
+  .catch((err) => {
+    console.error('Unexpected error:', err);
+    process.exit(2);
+  });

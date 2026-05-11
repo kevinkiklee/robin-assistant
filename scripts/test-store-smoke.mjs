@@ -131,3 +131,4 @@ console.log('  fn::freshness(memo3) =', memo3Fresh[0]?.[0] ?? memo3Fresh[0]);
 
 await db.close();
 console.log('\nSmoke test passed.');
+process.exit(0);
