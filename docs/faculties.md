@@ -198,8 +198,56 @@ Jaccard similarity. Manual MCP access via `list_arcs` and `get_arc`.
 - `archive_history` — archive_log filtered by memo.
 
 Plus `robin doctor --health` — status rollups (token budget, pending
-triggers, dream freshness, faculty errors). Exit codes 0/1/2 for cron
-monitoring. `--json` for machine-readable output.
+triggers, pending recall_log > 7d, dream freshness, faculty errors). Exit
+codes 0/1/2 for cron monitoring. `--json` for machine-readable output.
+
+### telemetry (Cognition C3, post-alpha.16)
+
+Two-tier classification:
+
+- **Hot** (rolled up hourly into `telemetry_hourly`):
+  - `intuition_telemetry` → `faculty='intuition'`, `event_kind='recall'`.
+    Dimensions: `source`, `mmr_path`. Metric sums: `latency_ms_sum`,
+    `tokens_injected_sum`, `hits_sum`, `query_chars_sum`.
+  - `recall_log` (via `evaluated_at` cursor) → `faculty='intuition'`,
+    `event_kind='recall_attribution'` (dimensions: `mode`, `source`,
+    `focus_block_present`; metric sums: `used_count_sum`, `total_sum`,
+    `dropped_hits_sum`, `elapsed_ms_sum`, `focus_block_tokens_sum`) AND
+    `faculty='reinforcement'`, `event_kind='evaluate'` (dimensions:
+    `outcome`).
+  - `cadence_telemetry` (hot prefixes `belief.%`, `dream.%`) →
+    `faculty='belief'` / `event_kind='<sub_step>'` and `faculty='dream'`
+    / `event_kind='<sub_step>'`. Dimensions: `success`.
+  - `meta_cognition_telemetry` → `faculty='meta_cognition'`,
+    `event_kind='run'`. Dimensions: `outcome`.
+
+- **Cold** (raw only — query directly): `compaction_telemetry`,
+  `state_inference_telemetry`, `recall_eval_runs`, non-hot
+  `cadence_telemetry`.
+
+**`show_telemetry_rollup` MCP tool.** Read-only window query over
+`telemetry_hourly`. Default window `PT24H`; filter by `faculty` and/or
+`event_kind`. Behind `runtime:telemetry.config.shadow_mode` for the first
+week after migration — the tool returns an explanatory error until the
+operator flips `shadow_mode=false`.
+
+**`recordTelemetry()` contract for new faculties.** New telemetry writers
+use `system/cognition/telemetry/recorder.js`:
+
+```js
+await recordTelemetry({
+  db,
+  faculty: 'intuition',
+  event_kind: 'recall',
+  dimensions: { source: 'intuition', mmr_path: 'cosine' }, // string|bool|int; ≤64 chars; charset [A-Za-z0-9_.-]
+  metrics: { latency_ms: 18, contradictions_suppressed_by_rule: { low_confidence: 3 } }, // object metrics fan out (≤16 keys)
+  meta: { query: 'free text goes here' }, // FLEXIBLE per-row extras — never in dimensions
+});
+```
+
+Existing recorders (`intuition_telemetry`, `recall_log`, `cadence_telemetry`)
+are grandfathered — they continue to write directly. The aggregator
+translates their column shape into the umbrella row family at rollup time.
 
 ## See also
 
