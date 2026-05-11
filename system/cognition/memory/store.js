@@ -495,7 +495,6 @@ export function _resetRecallConfigCache() {
 }
 export const __resetRecallConfigCacheForTests = _resetRecallConfigCache;
 
-
 export async function getRecallConfig(db) {
   // 5-second cache; runtime:recall is read on every search call.
   if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
