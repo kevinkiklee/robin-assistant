@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { surql } from 'surrealdb';
+import { BoundQuery, surql } from 'surrealdb';
+import { isOutboundBlocked } from '../memory/scope-registry.js';
 import { PII_PATTERNS, SECRET_PATTERNS } from './patterns.js';
 
 const UNTRUSTED_LOOKBACK_DAYS = 7;
@@ -70,4 +71,58 @@ export async function checkOutbound(db, { destination, text }) {
     }
   }
   return { ok: true };
+}
+
+// Theme 1c: outbound private-scope guard. Closes the redesign-spec promise
+// that `private` memos never leave the boundary.
+export async function checkOutboundScope(db, { tool, refs }) {
+  if (!refs || refs.length === 0) return { ok: true };
+
+  // Direct: any referenced row in a blocked scope?
+  // We can't SELECT across tables in one query, so check memos + events + entities.
+  const [memoRows] = await db
+    .query(new BoundQuery('SELECT id, scope FROM memos WHERE id IN $refs', { refs }))
+    .collect();
+  const [eventRows] = await db
+    .query(new BoundQuery('SELECT id, scope FROM events WHERE id IN $refs', { refs }))
+    .collect();
+  const [entityRows] = await db
+    .query(new BoundQuery('SELECT id, scope FROM entities WHERE id IN $refs', { refs }))
+    .collect();
+  const allRefs = [...(memoRows ?? []), ...(eventRows ?? []), ...(entityRows ?? [])];
+  const directBlocked = allRefs.filter((r) => r.scope && isOutboundBlocked(r.scope));
+
+  // Transitive: events derived_from a private memo are also blocked.
+  // Uses post-merge arrow traversal on TYPE RELATION edges.
+  let derivedBlocked = [];
+  try {
+    const [derived] = await db
+      .query(
+        new BoundQuery(
+          `SELECT id, scope FROM events
+           WHERE id IN $refs
+             AND count(<-derived_from<-memos[WHERE scope = 'private']) > 0`,
+          { refs },
+        ),
+      )
+      .collect();
+    derivedBlocked = derived ?? [];
+  } catch {
+    // arrow traversal not available (older engine) — fall back to OK
+  }
+
+  const allBlocked = [...directBlocked, ...derivedBlocked];
+  if (allBlocked.length === 0) return { ok: true };
+
+  await logRefusal(
+    db,
+    tool ?? 'unknown',
+    'private_scope',
+    `<redacted: ${allBlocked.length} private-scope reference(s)>`,
+  );
+  return {
+    ok: false,
+    reason: `${allBlocked.length} record(s) in private scope; refused to forward`,
+    blocked: allBlocked.map((r) => String(r.id)),
+  };
 }

@@ -26,7 +26,10 @@ import {
   validateEdge,
 } from './edge-registry.js';
 import { MEMO_KIND_REGISTRY, validateAttachment, validateMemoKind } from './kind-registry.js';
+import { persistentScopesSqlFilter, validateScope } from './scope-registry.js';
 import { withTxRetry } from './tx.js';
+
+const PERSISTENT_SCOPES_FILTER = persistentScopesSqlFilter();
 
 // ============================================================================
 // WRITE PRIMITIVES
@@ -54,6 +57,7 @@ export async function remember(db, embedder, input) {
   } = input;
   if (!source) throw new Error('remember: source required');
   if (!content || content.length === 0) throw new Error('remember: content required');
+  validateScope(scope);
 
   // Validate attachments (open enum, but known kinds get their shape checked).
   for (const a of attachments) {
@@ -116,6 +120,7 @@ export async function note(db, embedder, kind, input) {
     meta = {},
   } = input;
 
+  validateScope(scope);
   const spec = MEMO_KIND_REGISTRY[kind];
   const dedupByHash = spec?.dedup_by === 'content_hash';
   const contentHash = sha256(content);
@@ -554,11 +559,12 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
     filters.push('type = $entitytype');
   }
   const scopes = opts.scopes;
-  if (scopes === undefined && !opts.includeEphemeral) {
-    // default: exclude ephemerals
-    filters.push(
-      `(scope = 'global' OR string::starts_with(scope, 'project:') OR string::starts_with(scope, 'integration:') OR scope = 'private')`,
-    );
+  if (opts.scope_descends_from) {
+    bindings.scope_root = opts.scope_descends_from;
+    filters.push("(scope = $scope_root OR string::starts_with(scope, $scope_root + '/'))");
+  } else if (scopes === undefined && !opts.includeEphemeral) {
+    // default: exclude ephemerals (registry-derived)
+    filters.push(PERSISTENT_SCOPES_FILTER);
   } else if (Array.isArray(scopes) && !scopes.includes('*')) {
     bindings.scopes = scopes;
     filters.push('scope IN $scopes');
@@ -718,6 +724,7 @@ export async function neighbors(db, recordId, kind, opts = {}) {
  * one module. The embedding write moves to the per-surface entities table.
  */
 export async function upsertEntity(db, embedder, input) {
+  if (input?.scope !== undefined) validateScope(input.scope);
   const { upsertEntityCascade } = await import('../graph/upsert-entity.js');
   const result = await upsertEntityCascade(db, embedder, input);
   // Write embedding into the active profile's entities surface.

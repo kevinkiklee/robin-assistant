@@ -30,6 +30,7 @@ export async function recall(db, embedder, query, opts = {}) {
   if (opts.source != null) searchOpts.source = opts.source;
   if (opts.since != null) searchOpts.since = opts.since;
   if (opts.until != null) searchOpts.until = opts.until;
+  if (opts.scope_descends_from != null) searchOpts.scope_descends_from = opts.scope_descends_from;
 
   const { hits } = await store.searchEvents(db, embedder, query, searchOpts);
 
