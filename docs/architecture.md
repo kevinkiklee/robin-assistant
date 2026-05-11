@@ -112,12 +112,13 @@ Seven themes layered on top of the substrate:
   against existing arcs via Jaccard ≥ 0.7. State machine
   active→paused→closed by idle time. `closeStaleEpisodes` heartbeat (10
   min) closes episodes whose `last_event_at` exceeds per-source idle.
-- **Theme 4 — Introspection.** Seven read-only MCP tools (`explain_recall`,
-  `explain_belief`, `explain_action_trust`, `show_pending_triggers`,
-  `show_step_health`, `recent_refusals`, `archive_history`) plus
-  `robin doctor --health` (status rollups + exit codes 0/1/2 for cron
-  monitoring). Audit test (`audit-introspection-readonly.test.js`)
-  enforces zero write keywords in introspection tool source.
+- **Theme 4 — Introspection.** Read-only MCP tools (`explain_recall`,
+  `explain_belief`, `explain_action_trust`, `explain_state_inference`,
+  `show_pending_triggers`, `show_step_health`, `show_telemetry_rollup`,
+  `recent_refusals`, `archive_history`) plus `robin doctor --health`
+  (status rollups + exit codes 0/1/2 for cron monitoring). Audit test
+  (`audit-introspection-readonly.test.js`) enforces zero write keywords
+  in introspection tool source.
 - **Cognition C3 — Telemetry umbrella.** `telemetry_hourly` is an hourly
   rollup of hot-tier telemetry — `intuition_telemetry`, `recall_log`
   (via the `evaluated_at` cursor, B1-aware), the hot prefixes of
@@ -133,6 +134,13 @@ Seven themes layered on top of the substrate:
   `cadence_telemetry`) stay raw. `show_telemetry_rollup` MCP tool reads
   rolled-up rows; shipped with `shadow_mode=true` for a one-week soak.
   See `docs/superpowers/specs/2026-05-11-cognition-c3-telemetry-umbrella-design.md`.
+- **Cognition D1 — State inference.** Heartbeat-paced 5-min ticker in
+  `runtime/daemon/server.js` runs `evaluateStateInference` once per active
+  source. Writes `memos.kind = 'state_inference'` via
+  `cognition/memory/state_inference.js`. The intuition path surfaces a
+  `<!-- current focus -->` block when the latest inference is fresh,
+  confident, and not pivoted away from the user's current prompt. Gated by
+  `runtime:state_inference.config.enabled` (`false` | `'shadow'` | `true`).
 - **Cognition D3 — `belief()` gating + calibration meta-narrative.**
   `belief({query, domain?, k?})` aggregates evidence-backed confidence over
   recalled knowledge memos and returns `assert | soften | unknown`. Pure
@@ -149,7 +157,7 @@ Seven themes layered on top of the substrate:
 ## A typical agent turn
 
 1. **SessionStart hook** registers the session in `runtime_sessions` (with `transcript_path`).
-2. **You type a message.** UserPromptSubmit (intuition) reads the transcript tail, POSTs `{query, prior_assistant, k:6, recency_days:30}` to the daemon. Intuition pipeline: `store.searchEvents` + `store.searchMemos(kind='knowledge')` → batched `conflicts.fetchContradictors` (when `runtime:recall.value.conflict_surfacing_enabled` is `true`) → `rank.score` (now passing `contradictionCount` from the hydrated pairs) → MMR-lite → format as `<!-- conflicts -->` (cap 300 tok, only when pairs survive suppression) + `<!-- relevant memory -->` (cap 1500 tok). Writes `recall_log{outcome:pending}` and `intuition_telemetry` rows. Fail-soft on every error.
+2. **You type a message.** UserPromptSubmit (intuition) reads the transcript tail, POSTs `{query, prior_assistant, source, k:6, recency_days:30}` to the daemon. The handler resolves the latest `state_inference` for the agent's source; if one exists and is fresh + confident, a `<!-- current focus -->` block is prepended (200-token cap; suppression rules cover disabled flag, low confidence, staleness, supersedes leak, pivot detection, and private scope). Intuition pipeline: `store.searchEvents` + `store.searchMemos(kind='knowledge')` → batched `conflicts.fetchContradictors` (when `runtime:recall.value.conflict_surfacing_enabled` is `true`) → `rank.score` (passing `contradictionCount` from the hydrated pairs) → MMR-lite → wire format `<!-- current focus -->` (D1, cap 200) + `<!-- conflicts -->` (B2, cap 300, only when pairs survive suppression) + `<!-- relevant memory -->` (cap 1500). Writes `recall_log{outcome:pending}` (with `meta.focus_block_present` and `meta.focus_block_tokens` for A3 stratification) and `intuition_telemetry` rows. Fail-soft on every error.
 3. **The agent reads its instructions** and calls MCP tools (`recall`, `remember`, `note`, `find_entity`, `ingest`, `predict`, `update_action_policy`, etc.).
 4. **Bash PreToolUse hook (discretion)** statically checks the command against 7 deny rules. Match → exit 2.
 5. **`store.remember` / `store.note`** validates against registries, writes the row + embedding, optionally relates subjects (`about` edges) and lineage (`derived_from` edges).

@@ -24,6 +24,7 @@ const INTROSPECTION_TOOLS = [
   'system/io/mcp/tools/recent-refusals.js',
   'system/io/mcp/tools/archive-history.js',
   'system/io/mcp/tools/belief.js',
+  'system/io/mcp/tools/explain-state-inference.js',
 ];
 
 // These are full SurrealQL statement keywords. We require them to appear

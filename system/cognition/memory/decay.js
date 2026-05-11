@@ -12,6 +12,7 @@ export const HALF_LIFE_BY_KIND_MS = {
   habit: 60 * 24 * 60 * 60 * 1000, // 60d
   thread: 30 * 24 * 60 * 60 * 1000, // 30d
   prediction: 365 * 24 * 60 * 60 * 1000, // 365d
+  state_inference: 6 * 60 * 60 * 1000, // 6h — focus shifts over hours, not days (D1 spec §2.2)
 };
 
 const DEFAULT_HALF_LIFE_MS = 90 * 24 * 60 * 60 * 1000; // 90d default
