@@ -2,7 +2,12 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { surql } from 'surrealdb';
-import { biographerProcess } from '../../cognition/biographer/pipeline.js';
+import { createBatchAccumulator } from '../../cognition/biographer/accumulator.js';
+import {
+  biographerProcess,
+  biographerProcessBatch,
+  readBatchConfig,
+} from '../../cognition/biographer/pipeline.js';
 import { createBiographerQueue } from '../../cognition/biographer/queue.js';
 import { garbageCollect, upsertFromDiscovered } from '../../cognition/jobs/db.js';
 import { discoverJobs } from '../../cognition/jobs/loader.js';
@@ -23,6 +28,15 @@ import { retryWithBackoff } from './retry.js';
 import { getCliVersion } from './version-handshake.js';
 
 const BUILTIN_JOBS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'builtin');
+
+// Fallback snapshot used until the first successful readBatchConfig load.
+// Kept in sync with DEFAULT_BATCH_CONFIG in cognition/biographer/pipeline.js.
+const DEFAULT_ACCUMULATOR_CONFIG_FALLBACK = {
+  max_batch_size: 8,
+  debounce_ms: 750,
+  max_wait_ms: 3000,
+  disable: false,
+};
 
 /**
  * Boot the daemon: ensure home, open DB, detect drift, build embedder
@@ -137,28 +151,41 @@ export async function boot() {
   const detector = createRepeatQueryDetector({});
 
   // Biographer queue + wrapper. The worker resolves the host via the live ctx
-  // accessor so a watchdog-promoted host is picked up automatically.
+  // accessor so a watchdog-promoted host is picked up automatically. The
+  // worker branches on payload shape: batch payloads (from the accumulator)
+  // go through `biographerProcessBatch`, single-id payloads (from MCP-tool
+  // callers and explicit single-event enqueues) go through `biographerProcess`.
   let _ctxRef = null;
   const queue = createBiographerQueue({
-    worker: async (eventId) => {
+    worker: async (payload) => {
       const e = await idleEmbedder.get();
       const h = _ctxRef?.host ?? _host;
-      await biographerProcess(dbHandle, e, h, eventId);
+      if (payload && typeof payload === 'object' && Array.isArray(payload.eventIds)) {
+        await biographerProcessBatch(dbHandle, e, h, payload.eventIds, {
+          __queueKey: payload.__queueKey,
+        });
+      } else {
+        await biographerProcess(dbHandle, e, h, payload);
+      }
     },
     dedupe: true,
     maxPending: 1000,
   });
   let lastBiographerRunAt = null;
   const queueWrap = {
-    enqueue: (id) => {
-      const ret = queue.enqueue(id);
+    enqueue: (payload) => {
+      const ret = queue.enqueue(payload);
+      const tag =
+        payload && typeof payload === 'object' && Array.isArray(payload.eventIds)
+          ? `batch(${payload.source}:${payload.eventIds.length})`
+          : String(payload);
       if (ret && typeof ret.then === 'function') {
         ret
           .then(() => {
             lastBiographerRunAt = new Date().toISOString();
           })
           .catch((e) =>
-            console.warn(`[biographer] enqueue/process failed for ${id}: ${e.message}`),
+            console.warn(`[biographer] enqueue/process failed for ${tag}: ${e.message}`),
           );
         return ret;
       }
@@ -176,6 +203,37 @@ export async function boot() {
     get lastSkippedAt() {
       return queue.lastSkippedAt;
     },
+  };
+
+  // Batch accumulator: between enqueue-from-route callsites and the queue.
+  // The config snapshot is refreshed lazily (readBatchConfig caches 5 s) so
+  // operator changes to `runtime:biographer.value.batch_config` take effect
+  // within a 5 s window without coordination.
+  let _accumulatorConfigSnapshot = { ...DEFAULT_ACCUMULATOR_CONFIG_FALLBACK };
+  async function refreshAccumulatorConfig() {
+    try {
+      _accumulatorConfigSnapshot = await readBatchConfig(dbHandle);
+    } catch {
+      // Keep last good snapshot; fall through to defaults if first read fails.
+    }
+  }
+  await refreshAccumulatorConfig();
+  const accumulator = createBatchAccumulator({
+    config: () => _accumulatorConfigSnapshot,
+    fire: (eventIds, source) => {
+      const sorted = [...eventIds].sort();
+      const payload = {
+        kind: 'batch',
+        source,
+        eventIds: sorted,
+        __queueKey: `${source}:${sorted.join(',')}`,
+      };
+      return queueWrap.enqueue(payload);
+    },
+  });
+  const accumulatorWrap = {
+    add: (eventId, source) => accumulator.add(eventId, source),
+    refreshConfig: refreshAccumulatorConfig,
   };
 
   // Integrations: clear stale in-flight, load manifests, build registry +
@@ -284,6 +342,7 @@ export async function boot() {
     embedder: { idle: idleEmbedder, wrap: embedderWrap },
     detector,
     queue: queueWrap,
+    accumulator: accumulatorWrap,
     sessions: { count: 0 },
     manifests,
     registry,

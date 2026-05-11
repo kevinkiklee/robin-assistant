@@ -15,6 +15,8 @@ import { surql } from 'surrealdb';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../memory/episodes.js';
 import * as store from '../memory/store.js';
 import { withTxRetry } from '../memory/tx.js';
+import { validateBiographerBatchOutput } from './batch-output.js';
+import { buildBiographerBatchPrompt } from './batch-prompt.js';
 import { validateBiographerOutput } from './output.js';
 import { buildBiographerPrompt } from './prompt.js';
 
@@ -28,6 +30,32 @@ const DEFAULT_CONFIG = {
   catalog_size: 100,
   cooccur_cap: 8,
 };
+
+export const DEFAULT_BATCH_CONFIG = {
+  max_batch_size: 8,
+  debounce_ms: 750,
+  max_wait_ms: 3000,
+  disable: false,
+};
+
+// Per-db cache for readBatchConfig. Using a WeakMap keyed on the db handle
+// scopes the 5s TTL cache per-connection so concurrent test databases
+// don't share stale snapshots.
+const _batchConfigCache = new WeakMap();
+const BATCH_CONFIG_TTL_MS = 5000;
+
+export async function readBatchConfig(db) {
+  const cached = _batchConfigCache.get(db);
+  const now = Date.now();
+  if (cached && now - cached.at < BATCH_CONFIG_TTL_MS) {
+    return cached.value;
+  }
+  const runtime = await loadRuntime(db);
+  const stored = runtime?.batch_config ?? {};
+  const cfg = { ...DEFAULT_BATCH_CONFIG, ...stored };
+  _batchConfigCache.set(db, { value: cfg, at: now });
+  return cfg;
+}
 
 async function getCatalog(db, size) {
   const [rows] = await db
@@ -47,16 +75,27 @@ async function loadRuntime(db) {
 
 async function ensureRuntime(db) {
   const existing = await loadRuntime(db);
-  if (existing?.config) return existing;
-  const initial = { config: DEFAULT_CONFIG, entity_catalog_version: 0 };
+  if (existing?.config && existing?.batch_config) return existing;
   await withTxRetry(async () => {
     const current = await loadRuntime(db);
-    if (current?.config) return;
+    if (current?.config && current?.batch_config) return;
+    const merged = {
+      ...(current ?? {}),
+      config: current?.config ?? DEFAULT_CONFIG,
+      batch_config: current?.batch_config ?? DEFAULT_BATCH_CONFIG,
+      entity_catalog_version: current?.entity_catalog_version ?? 0,
+    };
     await db
-      .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${initial}`)
+      .query(surql`UPSERT type::record('runtime', 'biographer') SET value = ${merged}`)
       .collect();
   });
-  return (await loadRuntime(db)) ?? initial;
+  return (
+    (await loadRuntime(db)) ?? {
+      config: DEFAULT_CONFIG,
+      batch_config: DEFAULT_BATCH_CONFIG,
+      entity_catalog_version: 0,
+    }
+  );
 }
 
 async function invokeWithRetry(host, messages, opts, retries = 3, baseDelayMs = 1000) {
@@ -88,6 +127,414 @@ async function recordFailure(db, eventId, error) {
 }
 
 export async function biographerProcess(db, embedder, host, eventId, opts = {}) {
+  const r = await biographerProcessBatch(db, embedder, host, [eventId], opts);
+  return r.perEvent.get(String(eventId)) ?? { skipped: true, reason: 'unknown' };
+}
+
+export async function biographerProcessBatch(db, embedder, host, eventIds, opts = {}) {
+  const perEvent = new Map();
+  if (!Array.isArray(eventIds) || eventIds.length === 0) {
+    return { perEvent };
+  }
+
+  // 1. Single-event fast path stays as-is — short-circuits to _processOne for
+  //    behaviour-identical N=1 calls (MCP-tool callers, biographer-catchup CLI).
+  //    Batch overhead saves nothing at N=1 and would change observable counter
+  //    semantics (per-event recordFailure shapes).
+  if (eventIds.length === 1) {
+    try {
+      const r = await _processOne(db, embedder, host, eventIds[0], opts);
+      perEvent.set(String(eventIds[0]), r);
+    } catch (e) {
+      perEvent.set(String(eventIds[0]), { failed: true, error: e.message });
+      throw e;
+    }
+    return { perEvent };
+  }
+
+  const retryBaseDelayMs = opts.retryBaseDelayMs ?? 1000;
+  const runtime = await ensureRuntime(db);
+  const config = runtime.config ?? DEFAULT_CONFIG;
+
+  // 2. Load events; filter out already-biographed. Use SELECT-per-id since the
+  //    SurrealDB JS SDK's surql tag for RecordId arrays in IN clauses needs
+  //    careful handling — per-id SELECTs are still one round-trip each but
+  //    avoid binding-encoding hazards. Total round-trips are still N+1 vs the
+  //    old N×(many) shape.
+  const events = [];
+  for (const id of eventIds) {
+    const [rows] = await db.query(surql`SELECT * FROM ${id}`).collect();
+    if (rows.length > 0) events.push(rows[0]);
+  }
+  const toProcess = events
+    .filter((ev) => !ev.biographed_at)
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  for (const ev of events) {
+    if (ev.biographed_at) {
+      perEvent.set(String(ev.id), { skipped: true, reason: 'already_biographed' });
+    }
+  }
+  if (toProcess.length === 0) return { perEvent };
+
+  // 3. Build prompt; the active episode + catalog are read once per batch.
+  const source = toProcess[0].source;
+  const catalog = await getCatalog(db, config.catalog_size);
+  const activeEpisode = await findActiveEpisode(db, source);
+  const { system, messages } = buildBiographerBatchPrompt({
+    events: toProcess,
+    catalog,
+    activeEpisode,
+  });
+
+  // 4. Invoke LLM (one call for the whole batch). On retries-exhausted /
+  //    parse failure / batch-validation failure, fall back to per-event
+  //    single-call processing (§8).
+  let response;
+  try {
+    response = await invokeWithRetry(
+      host,
+      messages,
+      { tier: 'fast', json: true, system },
+      3,
+      retryBaseDelayMs,
+    );
+  } catch (e) {
+    await _recordBatchFallback(db, 'network');
+    return _fallbackPerEvent(
+      db,
+      embedder,
+      host,
+      toProcess.map((ev) => ev.id),
+      perEvent,
+      opts,
+      e,
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(response.content);
+  } catch (e) {
+    await _recordBatchFallback(db, 'outer_json');
+    return _fallbackPerEvent(
+      db,
+      embedder,
+      host,
+      toProcess.map((ev) => ev.id),
+      perEvent,
+      opts,
+      e,
+    );
+  }
+  const expectedIds = toProcess.map((ev) => String(ev.id));
+  const validation = validateBiographerBatchOutput(parsed, expectedIds);
+  if (!validation.ok) {
+    await _recordBatchFallback(db, 'batch_validation');
+    return _fallbackPerEvent(
+      db,
+      embedder,
+      host,
+      toProcess.map((ev) => ev.id),
+      perEvent,
+      opts,
+      new Error(validation.error),
+    );
+  }
+
+  // 5. Per-entry failure handling — record missing/malformed via recordFailure
+  //    with kind-prefixed messages so `value.last_error` retains the cause.
+  for (const id of validation.missing) {
+    const msg = `missing_in_batch_output: ${id}`;
+    await recordFailure(db, id, new Error(msg));
+    perEvent.set(id, { failed: true, error: msg });
+  }
+  for (const { event_id, error } of validation.malformed) {
+    if (event_id !== '<missing event_id>') {
+      const msg = `batch_malformed: ${error}`;
+      await recordFailure(db, event_id, new Error(msg));
+      perEvent.set(event_id, { failed: true, error: msg });
+    }
+  }
+
+  const validEvents = toProcess.filter((ev) => validation.events.has(String(ev.id)));
+  if (validEvents.length === 0) {
+    await _recordBatchTelemetry(db, { batches_total_delta: 1 });
+    return { perEvent };
+  }
+
+  // 6. Entity cascade dedup across the whole batch (spec §5).
+  //    Collect unique (type, name_lower) keys; resolve once each via
+  //    store.upsertEntity (which runs the existing 3-stage cascade).
+  const desiredEntities = new Map(); // key -> { name, type }
+  for (const ev of validEvents) {
+    const perOut = validation.events.get(String(ev.id));
+    for (const ent of perOut.entities) {
+      const key = `${ent.type}__${ent.name.toLowerCase()}`;
+      if (!desiredEntities.has(key)) desiredEntities.set(key, { name: ent.name, type: ent.type });
+    }
+  }
+  const keyToId = new Map();
+  for (const [key, { name, type }] of desiredEntities) {
+    const r = await withTxRetry(() =>
+      store.upsertEntity(db, embedder, { name, type, host, config }),
+    );
+    keyToId.set(key, r.id);
+  }
+
+  // 7. Episode determination across the batch (spec §4).
+  //    Walk events in ts-ascending order; carry currentEpisodeId; close+open
+  //    in-loop without re-querying the DB.
+  let currentEpisodeId = activeEpisode?.id ?? null;
+  let lastEpisodeStart = activeEpisode?.started_at ? new Date(activeEpisode.started_at) : null;
+  const episodeIdForEvent = new Map();
+  for (const ev of validEvents) {
+    const perOut = validation.events.get(String(ev.id));
+    const eventTs = ev.ts ? new Date(ev.ts) : new Date();
+    const llmSaysContinues = perOut.episode_continues_previous === true;
+    const withinWindow =
+      currentEpisodeId && lastEpisodeStart
+        ? (eventTs.getTime() - lastEpisodeStart.getTime()) / 60000 <= config.episode_window_minutes
+        : false;
+    if (currentEpisodeId && llmSaysContinues && withinWindow) {
+      episodeIdForEvent.set(String(ev.id), currentEpisodeId);
+    } else {
+      if (currentEpisodeId) {
+        await closeEpisode(db, currentEpisodeId, {
+          endedAt: eventTs,
+          summary: perOut.episode_summary ?? undefined,
+        });
+      }
+      const newEp = await createEpisode(db, { source: ev.source });
+      currentEpisodeId = newEp.id;
+      lastEpisodeStart = eventTs;
+      episodeIdForEvent.set(String(ev.id), currentEpisodeId);
+    }
+  }
+
+  // 8. Edge collection (spec §6). Per-event scope for mentions/about/edges
+  //    /occurs_with; within-batch `before` chained inside each episode group.
+  const edgeRows = [];
+  const evidenceJobs = [];
+  for (const ev of validEvents) {
+    const perOut = validation.events.get(String(ev.id));
+    const contextSnippet = (ev.content ?? '').slice(0, 200);
+    const nameToId = new Map();
+    for (const ent of perOut.entities) {
+      const key = `${ent.type}__${ent.name.toLowerCase()}`;
+      const id = keyToId.get(key);
+      if (id) nameToId.set(ent.name, id);
+    }
+    for (const ent of perOut.entities) {
+      const eid = nameToId.get(ent.name);
+      if (eid) edgeRows.push({ from: ev.id, to: eid, kind: 'mentions', context: contextSnippet });
+    }
+    for (const aboutName of perOut.about) {
+      const eid = nameToId.get(aboutName);
+      if (eid) edgeRows.push({ from: ev.id, to: eid, kind: 'about' });
+    }
+    for (const edge of perOut.edges) {
+      const kind = normalizeEdgeKind(edge.type);
+      if (!kind) continue;
+      const fromId = nameToId.get(edge.from);
+      const toId = nameToId.get(edge.to);
+      if (!fromId || !toId) continue;
+      if (ENTITY_EDGE_KINDS.has(kind)) {
+        edgeRows.push({ from: fromId, to: toId, kind });
+      }
+    }
+    const entityIds = Array.from(nameToId.values()).slice(0, config.cooccur_cap);
+    for (let i = 0; i < entityIds.length; i++) {
+      for (let j = i + 1; j < entityIds.length; j++) {
+        edgeRows.push({ from: entityIds[i], to: entityIds[j], kind: 'occurs_with' });
+      }
+    }
+    if (Array.isArray(perOut.evidence_signals) && perOut.evidence_signals.length > 0) {
+      evidenceJobs.push({ ev, signals: perOut.evidence_signals });
+    }
+  }
+
+  // within-batch `before` edges: group by episodeIdForEvent, chain in ts asc.
+  const byEpisode = new Map();
+  for (const ev of validEvents) {
+    const epId = String(episodeIdForEvent.get(String(ev.id)));
+    if (!byEpisode.has(epId)) byEpisode.set(epId, []);
+    byEpisode.get(epId).push(ev);
+  }
+  for (const group of byEpisode.values()) {
+    group.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    for (let i = 0; i < group.length - 1; i++) {
+      edgeRows.push({ from: group[i].id, to: group[i + 1].id, kind: 'before' });
+    }
+  }
+
+  // 9. Write edges (one batched relateAll call; chunks at 50 internally).
+  if (edgeRows.length > 0) {
+    await withTxRetry(() => store.relateAll(db, edgeRows));
+  }
+
+  // 10. Per-episode-group gated mark step (spec §3, §7 invariant).
+  //     For each distinct episode in the batch, one UPDATE with
+  //     WHERE id IN $idsForEpisode AND biographed_at IS NONE.
+  const validIdStrs = validEvents.map((ev) => String(ev.id));
+  const idsByEpisode = new Map(); // episodeId -> RecordId[]
+  for (const ev of validEvents) {
+    const epId = episodeIdForEvent.get(String(ev.id));
+    if (!idsByEpisode.has(epId)) idsByEpisode.set(epId, []);
+    idsByEpisode.get(epId).push(ev.id);
+  }
+  const markedSet = new Set();
+  await withTxRetry(async () => {
+    for (const [epId, idsForEpisode] of idsByEpisode) {
+      const [rows] = await db
+        .query(
+          surql`
+          UPDATE events
+            SET biographed_at = time::now(), episode_id = ${epId}
+            WHERE id IN ${idsForEpisode} AND biographed_at IS NONE
+        `,
+        )
+        .collect();
+      for (const r of rows) markedSet.add(String(r.id));
+    }
+  });
+  const racedCount = validIdStrs.length - markedSet.size;
+  const batchKey = opts.__queueKey ?? `${source}:${[...validIdStrs].sort().join(',')}`;
+  if (racedCount > 0) {
+    console.warn(
+      `biographer race detected on ${racedCount}/${validIdStrs.length} events in batch ${batchKey}`,
+    );
+  }
+  for (const ev of validEvents) {
+    perEvent.set(String(ev.id), {
+      processed: true,
+      episodeId: episodeIdForEvent.get(String(ev.id)),
+      entitiesCount: keyToId.size,
+    });
+  }
+
+  // 11. Evidence signals (Theme 2a) — AFTER the gated mark UPDATE succeeds.
+  //     Running addEvidence BEFORE the mark would double-count the ledger on
+  //     retry. Limit to events whose mark actually landed (markedSet).
+  if (evidenceJobs.length > 0) {
+    try {
+      const { addEvidence, readEvidenceConfig } = await import('../memory/evidence.js');
+      const { RecordId } = await import('surrealdb');
+      const evCfg = await readEvidenceConfig(db);
+      for (const { ev, signals } of evidenceJobs) {
+        if (!markedSet.has(String(ev.id))) continue;
+        for (const sig of signals) {
+          try {
+            const idStr = String(sig.memo_id);
+            const key = idStr.startsWith('memos:') ? idStr.slice('memos:'.length) : idStr;
+            await addEvidence(db, {
+              memo_id: new RecordId('memos', key),
+              polarity: sig.polarity,
+              reason: 'biographer',
+              weight: evCfg.biographer_weight ?? 0.5,
+              source_event: ev.id,
+            });
+          } catch (e) {
+            console.warn(`[biographer evidence_signal] ${sig?.memo_id}: ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[biographer evidence_signals] ${e.message}`);
+    }
+  }
+
+  // 12. Runtime row: telemetry + last_run housekeeping.
+  const inputTokens = Number(response?.usage?.input_tokens ?? 0);
+  const outputTokens = Number(response?.usage?.output_tokens ?? 0);
+  await _recordBatchTelemetry(db, {
+    batches_total_delta: 1,
+    batch_size: validEvents.length,
+    events_biographed_via_batch_delta: markedSet.size,
+    batch_input_tokens_delta: inputTokens,
+    batch_output_tokens_delta: outputTokens,
+    last_batch_input_tokens: inputTokens,
+    last_batch_output_tokens: outputTokens,
+  });
+
+  // Housekeeping: last_processed + last_run_at (preserve existing single-event
+  // semantics so observers don't notice the path switch).
+  await withTxRetry(async () => {
+    await db
+      .query(surql`
+        UPSERT type::record('runtime', 'biographer')
+          SET value.last_processed_event_id = ${String(validEvents[validEvents.length - 1].id)},
+              value.last_run_at = time::now()
+      `)
+      .collect();
+  });
+
+  return { perEvent };
+}
+
+async function _fallbackPerEvent(db, embedder, host, eventIds, perEvent, opts, _batchError) {
+  // Single-event fallback. Spec §8: never worse than today's baseline.
+  let successCount = 0;
+  for (const id of eventIds) {
+    try {
+      const r = await _processOne(db, embedder, host, id, opts);
+      perEvent.set(String(id), r);
+      if (r?.processed) successCount++;
+    } catch (e) {
+      perEvent.set(String(id), { failed: true, error: e.message });
+    }
+  }
+  await _recordBatchTelemetry(db, {
+    batches_total_delta: 1,
+    batches_fallback_delta: 1,
+    events_biographed_via_fallback_delta: successCount,
+  });
+  return { perEvent };
+}
+
+async function _recordBatchFallback(db, reason) {
+  await withTxRetry(async () => {
+    await db
+      .query(surql`
+        UPSERT type::record('runtime', 'biographer')
+        SET value.last_fallback_reason = ${reason},
+            value.last_fallback_at     = time::now()
+      `)
+      .collect();
+  });
+}
+
+async function _recordBatchTelemetry(
+  db,
+  {
+    batches_total_delta = 0,
+    batches_fallback_delta = 0,
+    events_biographed_via_batch_delta = 0,
+    events_biographed_via_fallback_delta = 0,
+    batch_input_tokens_delta = 0,
+    batch_output_tokens_delta = 0,
+    last_batch_input_tokens,
+    last_batch_output_tokens,
+    batch_size,
+  },
+) {
+  await withTxRetry(async () => {
+    await db
+      .query(surql`
+        UPSERT type::record('runtime', 'biographer')
+        SET value.batches_total                  = (value.batches_total                  ?? 0) + ${batches_total_delta},
+            value.batches_fallback               = (value.batches_fallback               ?? 0) + ${batches_fallback_delta},
+            value.events_biographed_via_batch    = (value.events_biographed_via_batch    ?? 0) + ${events_biographed_via_batch_delta},
+            value.events_biographed_via_fallback = (value.events_biographed_via_fallback ?? 0) + ${events_biographed_via_fallback_delta},
+            value.batch_input_tokens_total       = (value.batch_input_tokens_total       ?? 0) + ${batch_input_tokens_delta},
+            value.batch_output_tokens_total      = (value.batch_output_tokens_total      ?? 0) + ${batch_output_tokens_delta},
+            value.last_batch_size                = ${batch_size ?? null},
+            value.last_batch_input_tokens        = ${last_batch_input_tokens ?? null},
+            value.last_batch_output_tokens       = ${last_batch_output_tokens ?? null}
+      `)
+      .collect();
+  });
+}
+
+async function _processOne(db, embedder, host, eventId, opts = {}) {
   const retryBaseDelayMs = opts.retryBaseDelayMs ?? 1000;
   // 1. Read event; skip if already biographed
   const [eventRows] = await db.query(surql`SELECT * FROM ${eventId}`).collect();

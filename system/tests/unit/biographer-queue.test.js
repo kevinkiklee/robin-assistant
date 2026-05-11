@@ -93,3 +93,31 @@ test('dedupe still returns the in-flight promise even at cap', async () => {
   const r2 = q.enqueue('same'); // dedupe hits BEFORE the cap check
   assert.equal(r1, r2);
 });
+
+test('payload object with __queueKey dedupes by that key', async () => {
+  let calls = 0;
+  const worker = async () => {
+    calls++;
+    return { processed: 1 };
+  };
+  const q = createBiographerQueue({ worker, dedupe: true });
+  const p1 = { kind: 'batch', source: 'cli', eventIds: ['e1', 'e2'], __queueKey: 'cli:e1,e2' };
+  const p2 = { kind: 'batch', source: 'cli', eventIds: ['e1', 'e2'], __queueKey: 'cli:e1,e2' };
+  const r1 = q.enqueue(p1);
+  const r2 = q.enqueue(p2);
+  await Promise.all([r1, r2]);
+  assert.equal(calls, 1, 'identical __queueKey should coalesce');
+});
+
+test('payload objects with different __queueKey run independently', async () => {
+  let calls = 0;
+  const worker = async () => {
+    calls++;
+    return { processed: 1 };
+  };
+  const q = createBiographerQueue({ worker, dedupe: true });
+  const a = { kind: 'batch', source: 'cli', eventIds: ['e1'], __queueKey: 'cli:e1' };
+  const b = { kind: 'batch', source: 'discord', eventIds: ['e1'], __queueKey: 'discord:e1' };
+  await Promise.all([q.enqueue(a), q.enqueue(b)]);
+  assert.equal(calls, 2);
+});
