@@ -470,14 +470,26 @@ const HYBRID_DEFAULTS = {
 
 let _recallConfigCache = null;
 let _recallConfigCachedAt = 0;
+// Test helper: force the next getRecallConfig() call to round-trip. Used by
+// integration tests that mutate runtime:recall mid-run.
+export function __resetRecallConfigCacheForTests() {
+  _recallConfigCache = null;
+  _recallConfigCachedAt = 0;
+}
 export async function getRecallConfig(db) {
   // 5-second cache; runtime:recall is read on every search call.
   if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
     return _recallConfigCache;
   }
   try {
-    const [rows] = await db.query('SELECT value FROM runtime:recall').collect();
-    const value = rows?.[0]?.value ?? {};
+    // Note: bare `runtime:recall` fails to parse in SurrealDB v3 (`runtime`
+    // is reserved). Use the raw-record syntax (`r"runtime:recall"`) or
+    // parenthesized form so the parser treats `runtime:recall` as a record
+    // id, not `runtime` as a keyword followed by `:recall`. The original
+    // `'FROM runtime:recall'` query has been silently throwing for some
+    // time, masking config drift behind the in-memory HYBRID_DEFAULTS.
+    const [rows] = await db.query('SELECT VALUE value FROM r"runtime:recall"').collect();
+    const value = rows?.[0] ?? {};
     _recallConfigCache = { ...HYBRID_DEFAULTS, ...value };
   } catch {
     _recallConfigCache = HYBRID_DEFAULTS;

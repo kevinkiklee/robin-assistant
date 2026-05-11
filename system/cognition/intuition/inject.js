@@ -2,9 +2,20 @@
 // repeat-query suppression.
 
 import { surql } from 'surrealdb';
+import { recordStringId } from '../memory/edge-registry.js';
 import * as store from '../memory/store.js';
+import { getRecallConfig } from '../memory/store.js';
+import {
+  aboutEntitiesForMemos,
+  entityBoostFromAboutIds,
+  matchCatalogEntities,
+  matchPriorTailEntities,
+  readEntityCatalog,
+  tokensOf,
+} from './entities.js';
 import { recall } from './engine.js';
 import { mmrLite, score } from './rank.js';
+import { cosineSim, loadVectorsForHits } from './vectors.js';
 
 const PRIOR_TAIL_CHARS = 500;
 const LINE_CONTENT_CHARS = 120;
@@ -94,6 +105,15 @@ export async function intuitionEndpoint({
       : safePrior;
   const combined = priorTail.length > 0 ? `${safeQuery}\n\n${priorTail}` : safeQuery;
 
+  // Telemetry variables (declared in outer scope so the telemetry write below
+  // can pick them up regardless of which path the merge/MMR block took).
+  let mmrDropsOut = 0;
+  let mmrPathOut = 'cosine';
+  let mmrVecCoverageOut = 0;
+  let entityBoostAppliedOut = false;
+  let entityBoostCountOut = 0;
+  let queryEntitiesMatchedOut = 0;
+
   let hits = [];
   if (combined.trim().length > 0) {
     const since = new Date(Date.now() - recencyDays * 86400_000);
@@ -119,20 +139,102 @@ export async function intuitionEndpoint({
       _kind: 'memo',
     }));
 
-    const merged = [...eventHits, ...memoHits].map((h) => ({
-      ...h,
-      _scored: score(h, { session_id: undefined }),
+    const cfg = await getRecallConfig(db).catch(() => ({
+      mmr_threshold: 0.92,
+      mmr_threshold_legacy_substring: 0.85,
+      mmr_use_cosine: true,
+      entity_boost_enabled: true,
     }));
+
+    // A2: entity boost. Gated by cfg.entity_boost_enabled. Boosts memos
+    // whose `about` edges point at entities matched by (a) the query
+    // tokens against the catalog, unioned with (b) entities mentioned in
+    // recent prior-tail biographed events (spec §3.1 candidates 1+2).
+    let matchedEntityIds = new Set();
+    let aboutByMemo = new Map();
+    if (cfg.entity_boost_enabled !== false) {
+      try {
+        const catalog = await readEntityCatalog(db, cfg);
+        const queryTokens = tokensOf(combined);
+        const matched = matchCatalogEntities(catalog, queryTokens);
+        const priorTailEnts = await matchPriorTailEntities(db, sessionId).catch(() => []);
+        matchedEntityIds = new Set(matched.map((m) => String(m.id)));
+        for (const e of priorTailEnts) matchedEntityIds.add(String(e.id));
+        queryEntitiesMatchedOut = matchedEntityIds.size;
+        const memoIdRefs = memoHits.map((h) => h.record.id);
+        if (memoIdRefs.length > 0 && matchedEntityIds.size > 0) {
+          aboutByMemo = await aboutEntitiesForMemos(db, memoIdRefs);
+        }
+      } catch {
+        // Fail-soft: no boost applied.
+      }
+    }
+
+    const merged = [...eventHits, ...memoHits].map((h) => {
+      let entityBoost = 1.0;
+      let entityBoostCount = 0;
+      if (h._kind === 'memo' && matchedEntityIds.size > 0) {
+        const memoKey = recordStringId(h.record.id);
+        const aboutIds = aboutByMemo.get(memoKey) ?? new Set();
+        const r = entityBoostFromAboutIds(aboutIds, matchedEntityIds, cfg);
+        entityBoost = r.boost;
+        entityBoostCount = r.count;
+      }
+      return {
+        ...h,
+        _scored: score(h, { session_id: undefined, entityBoost, entityBoostCount }),
+      };
+    });
     merged.sort((a, b) => (b._scored.score ?? 0) - (a._scored.score ?? 0));
 
-    // MMR-lite: drop near-duplicates without re-embedding. Since we don't
-    // have inline embeddings here, fall back to substring overlap as a
-    // cheap proxy for cosine.
-    const deduped = mmrLite(
-      merged,
-      (a, b) => substringOverlap(a.record.content, b.record.content),
-      0.85,
-    ).slice(0, k);
+    // Capture A2 telemetry.
+    for (const m of merged) {
+      const eb = m._scored?.components?.entityBoost ?? 1.0;
+      if (eb > 1.0) {
+        entityBoostAppliedOut = true;
+        entityBoostCountOut += 1;
+      }
+    }
+
+    // A1: cosine-based MMR with batched vector hydration. Falls back to
+    // substring overlap when vectors are unavailable or disabled.
+    const eventIds = merged.filter((h) => h._kind === 'event').map((h) => h.record.id);
+    const memoIds = merged.filter((h) => h._kind === 'memo').map((h) => h.record.id);
+
+    let vectors = new Map();
+    if (cfg.mmr_use_cosine !== false && merged.length >= 2) {
+      try {
+        vectors = await loadVectorsForHits(db, { eventIds, memoIds });
+      } catch {
+        vectors = new Map();
+      }
+    }
+    const vecCoverage = merged.length === 0 ? 0 : vectors.size / merged.length;
+    const useCosine = cfg.mmr_use_cosine !== false && vectors.size >= 2;
+    let cosineFn;
+    let threshold;
+    let mmrPath;
+    if (useCosine) {
+      const vecAt = (h) => vectors.get(recordStringId(h.record.id));
+      cosineFn = (a, b) => {
+        const va = vecAt(a);
+        const vb = vecAt(b);
+        return va && vb ? cosineSim(va, vb) : 0;
+      };
+      threshold = cfg.mmr_threshold ?? 0.92;
+      mmrPath = 'cosine';
+    } else {
+      cosineFn = (a, b) => substringOverlap(a.record.content, b.record.content);
+      threshold = cfg.mmr_threshold_legacy_substring ?? 0.85;
+      mmrPath = 'substring';
+    }
+    const dedupedAll = mmrLite(merged, cosineFn, threshold);
+    const mmrDrops = merged.length - dedupedAll.length;
+    const deduped = dedupedAll.slice(0, k);
+
+    mmrDropsOut = mmrDrops;
+    mmrPathOut = mmrPath;
+    mmrVecCoverageOut = vecCoverage;
 
     hits = deduped.map((h) => ({
       id: h.record.id,
@@ -142,6 +244,7 @@ export async function intuitionEndpoint({
       meta: h.record.meta ?? { kind: h._kind === 'memo' ? h.record.kind : undefined },
       dist: h.distance,
       _kind: h._kind,
+      _scored: h._scored,
     }));
   }
 
@@ -185,6 +288,14 @@ export async function intuitionEndpoint({
           tokens_injected: tokens,
           latency_ms,
           truncated,
+          meta: {
+            mmr_drops: mmrDropsOut,
+            mmr_path: mmrPathOut,
+            mmr_vec_coverage: mmrVecCoverageOut,
+            entity_boost_applied: entityBoostAppliedOut,
+            entity_boost_count: entityBoostCountOut,
+            query_entities_matched: queryEntitiesMatchedOut,
+          },
         }}`,
       )
       .collect();
@@ -197,7 +308,9 @@ export async function intuitionEndpoint({
     const rankedHits = hits.map((h, i) => ({
       record: h.id,
       kind: h._kind,
-      score_components: score({ record: h, distance: h.dist ?? 0 }).components,
+      // Reuse the components computed during the score-and-MMR pass so the
+      // entity boost (A2) is reflected here, not recomputed without context.
+      score_components: h._scored?.components ?? {},
       rank: i,
     }));
     await db
@@ -208,7 +321,16 @@ export async function intuitionEndpoint({
           k,
           ranked_hits: rankedHits,
           outcome: 'pending',
-          meta: { latency_ms, truncated },
+          meta: {
+            latency_ms,
+            truncated,
+            from: 'intuition',
+            // Phase 11 cross-design fix: default focus_block fields so the
+            // recall-eval harness can stratify metrics by them. D1 will
+            // flip these to real values when it lands.
+            focus_block_present: false,
+            focus_block_tokens: 0,
+          },
         }}`,
       )
       .collect();
