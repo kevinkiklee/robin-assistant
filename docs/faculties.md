@@ -59,8 +59,31 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 **The UserPromptSubmit hook that injects relevant memory into the next turn.**
 - Trigger: Claude Code or Gemini CLI fires `UserPromptSubmit` with `{prompt, transcript_path, session_id}`.
 - Files: `system/cognition/intuition/handler.js` (hook entry), `system/cognition/intuition/inject.js` (daemon endpoint), `system/cognition/intuition/rank.js`.
-- Behavior: Composes events + memos[kind=knowledge] recall via `store.searchEvents` + `store.searchMemos`. Ranks via `rank.score` (cosine × freshness × contradiction × trust × scope). MMR-lite diversity pass. Writes `intuition_telemetry` + `recall_log{outcome:pending}` rows. Returns a `<!-- relevant memory -->` block under a 1500-token budget.
+- Behavior: Composes events + memos[kind=knowledge] recall via `store.searchEvents` + `store.searchMemos`. Ranks via `rank.score` (cosine × freshness × contradiction × trust × scope × entityBoost). MMR-lite diversity pass. Writes `intuition_telemetry` + `recall_log{outcome:pending}` rows. Returns a `<!-- relevant memory -->` block under a 1500-token budget.
 - Inspect: `SELECT * FROM intuition_telemetry ORDER BY ts DESC LIMIT 20`.
+
+#### MMR diversity (A1)
+
+When `runtime:recall.value.mmr_use_cosine = true` (default), the intuition
+endpoint batches a `SELECT record, vector FROM embeddings_<profile>_<surface>
+WHERE record IN $ids` for every non-empty surface and uses real cosine
+similarity to drop near-duplicates. The threshold is
+`runtime:recall.value.mmr_threshold` (default `0.92`). When vectors are
+unavailable (legacy rows, profile mid-migration) MMR falls back to the
+substring-overlap proxy with the lower threshold
+`runtime:recall.value.mmr_threshold_legacy_substring` (default `0.85`). The
+chosen path is recorded under `intuition_telemetry.meta.mmr_path`.
+
+#### Entity-aware boost (A2)
+
+When `runtime:recall.value.entity_boost_enabled = true` (default), memos
+whose `about` edges point at entities matched against the query + prior
+assistant tail get a bounded score multiplier (`[1.0, 1.25]`, default
++0.10 per overlap, capped). The entity catalog is read with a 60-second TTL.
+The boost is recorded per-hit under
+`recall_log.ranked_hits[*].score_components.entityBoost` and aggregated
+under `intuition_telemetry.meta.entity_boost_applied` /
+`entity_boost_count` / `query_entities_matched`.
 
 ### biographer
 **Per-turn consolidation: turns raw events into structured entities, edges, and (rarely) memos.**
@@ -122,6 +145,19 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 - BM25-only hits get a neutral cosine distance (`0.5`) so `rank.score()` doesn't underrank them. Re-embedding would cost an extra embed call per recall on the intuition path (every UserPromptSubmit); the pad is the cheap, defensible choice. `recall_log` records `_sources: ['knn', 'bm25']` per hit so we can see how often the BM25 lane carries weight.
 - Tunables in `runtime:recall.value` (5s-cached): `rrf_k`, `knn_overfetch_base`, `knn_overfetch_per_filter`, `mmr_threshold`. Tweak without code change.
 - BM25 fails-soft: if FULLTEXT indexes aren't available (e.g., upgraded engine), vector-only recall keeps working.
+
+#### Evaluation harness (A3)
+
+`robin recall-eval` scores historical `recall_log` rows against
+correction-derived labels (`negative` on `outcome=corrected`,
+`soft_positive` on `outcome=reinforced`, `unlabeled` otherwise) and writes
+per-run rollups to `recall_eval_runs`. Replay mode (`--replay`) re-scores
+hits against the current `rank.score` + MMR + entity-boost using current
+embedding vectors; mean Kendall τ between recorded and replayed orderings
+is recorded under `recall_eval_runs.metrics.replay_kendall_mean`. Metrics
+are stratified by `recall_log.meta.focus_block_present` so the D1 focus
+block does not distort the baseline. See `docs/development.md` for CLI
+usage.
 
 ### evidence (alpha.16, Theme 2a)
 **Confidence as a derivable signal.** `evidence_ledger` accumulates
