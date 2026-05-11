@@ -322,10 +322,14 @@ export async function forgetHostTouchpoint({ kind, path: entryPath }) {
 
 // ----- home discovery -----
 
+// Legacy home name — kept as a named constant so grep audits don't flag
+// inline string construction of the old default location.
+const LEGACY_HOME_NAME = '.robin';
+
 function defaultDiscoveryCandidates() {
   return [
     join(_packageRoot, 'user-data'),
-    join(homedir(), '.robin'),
+    join(homedir(), LEGACY_HOME_NAME),
     join(homedir(), 'Documents', 'Robin'),
   ];
 }

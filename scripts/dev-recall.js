@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Manual smoke: open ~/.robin's DB, run a recall query, print results.
+// Manual smoke: open Robin's DB (via $ROBIN_HOME or .robin-home pointer), run a recall query, print results.
 // Not a public CLI. Phase 3 will build the real agent interface.
 
 import { close, connect } from '../src/db/client.js';
