@@ -87,6 +87,8 @@ function matches(parts, date) {
 export function nextFire(parts, after) {
   const t = new Date(after);
   t.setSeconds(0, 0);
+  // Advance one minute before scanning so we never return `after` itself even
+  // when it happens to match the schedule. "Next fire" means strictly after.
   t.setMinutes(t.getMinutes() + 1);
   for (let i = 0; i < ITER_CAP; i += 1) {
     if (matches(parts, t)) return new Date(t);
@@ -98,6 +100,7 @@ export function nextFire(parts, after) {
 export function prevFire(parts, before) {
   const t = new Date(before);
   t.setSeconds(0, 0);
+  // Step back one minute before scanning — strictly-before semantics, mirrors nextFire.
   t.setMinutes(t.getMinutes() - 1);
   for (let i = 0; i < ITER_CAP; i += 1) {
     if (matches(parts, t)) return new Date(t);

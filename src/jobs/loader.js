@@ -46,17 +46,17 @@ export function validateJob(fm) {
   }
 }
 
-export function parseJobFile(path, source = 'builtin') {
-  const raw = readFileSync(path, 'utf8');
+export function parseJobFile(filePath, source = 'builtin') {
+  const raw = readFileSync(filePath, 'utf8');
   const { frontmatter, body } = parseFrontmatter(raw);
   validateJob(frontmatter);
-  const expectedName = basename(path).replace(/\.md$/, '');
+  const expectedName = basename(filePath).replace(/\.md$/, '');
   if (frontmatter.name !== expectedName) {
     throw new Error(
       `job: filename '${expectedName}' must match frontmatter name '${frontmatter.name}'`,
     );
   }
-  return { ...DEFAULTS, ...frontmatter, body, source, path };
+  return { ...DEFAULTS, ...frontmatter, body, source, path: filePath };
 }
 
 function listMd(dir) {
