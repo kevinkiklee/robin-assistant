@@ -173,6 +173,10 @@ test('pending recall_log is NOT rolled up; rolls up after evaluated_at is set', 
 
 test('per-entry fail-soft: a missing meta_cognition_telemetry table does not block intuition rollup', async () => {
   const db = await fresh();
+  // Simulate a missing source by dropping the meta_cognition_telemetry
+  // table (D2 created it, but the rollup must still degrade gracefully if
+  // a future migration removes it or it gets corrupted).
+  await db.query('REMOVE TABLE IF EXISTS meta_cognition_telemetry').collect();
   const hour = new Date('2026-05-11T14:00:00Z');
   await db
     .query(
@@ -183,8 +187,6 @@ test('per-entry fail-soft: a missing meta_cognition_telemetry table does not blo
     )
     .collect();
   const cfg = await readTelemetryConfig(db);
-  // meta_cognition_telemetry table is NOT created by any migration in this
-  // round (D2 ships later). Its rollup branch must fail-soft.
   const res = await rollupHotTelemetry({
     db,
     cfg,

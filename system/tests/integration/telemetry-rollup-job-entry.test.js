@@ -56,8 +56,9 @@ test('telemetry-rollup no-ops when enabled=false', async () => {
 
 test('telemetry-rollup always exits cleanly even if one stage throws', async () => {
   const db = await fresh();
-  // The meta_cognition_telemetry table is missing (D2 hasn't shipped).
-  // That branch fails-soft; the overall job returns a JSON result.
+  // Simulate a missing/corrupted source by dropping meta_cognition_telemetry.
+  // The branch must fail-soft; the overall job returns a JSON result.
+  await db.query('REMOVE TABLE IF EXISTS meta_cognition_telemetry').collect();
   const result = JSON.parse(await telemetryRollup({ db }));
   assert.ok(result.rollup);
   assert.equal(result.rollup.per_entry.meta_cognition_telemetry?.ok, false);
