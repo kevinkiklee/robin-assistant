@@ -135,6 +135,36 @@ test('reinforcement: pending recall with empty hits → evaluated_no_signal (ide
   await close(db);
 });
 
+test('B1: no reply event, fallback_when_no_reply=true -> row reinforced, used=true,used_via=fallback', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  const m = await store.note(db, fakeEmbedder, 'knowledge', {
+    content: 'fact about birds',
+    derived_by: 'manual',
+  });
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 'sess-fb', query: 'q', k: 1,
+         ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(m.id) },
+    )
+    .collect();
+  const summary = await evaluatePending(db);
+  assert.equal(summary.reinforced, 1);
+  const [rows] = await db.query('SELECT ranked_hits, attribution FROM recall_log').collect();
+  const hit = rows[0].ranked_hits[0];
+  assert.equal(hit.used, true);
+  assert.equal(hit.used_via, 'fallback');
+  assert.equal(rows[0].attribution.mode, 'fallback_no_reply');
+  await close(db);
+});
+
 test('reinforcement: rows newer than the window are not evaluated', async () => {
   const db = await fresh();
   const m = await store.note(db, fakeEmbedder, 'knowledge', {
