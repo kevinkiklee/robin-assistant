@@ -433,12 +433,62 @@ export async function searchEntities(db, embedder, query, opts = {}) {
   return _surfaceSearch(db, embedder, 'entities', query, opts);
 }
 
+// Hybrid retrieval (Phase 4 — section 2 of the surrealdb-improvements spec)
+// runs vector + BM25 in parallel and fuses with RRF. Adaptive over-fetch on
+// the kNN side mitigates post-filter shrinkage when callers narrow by
+// kind/scope/tags/since.
+
+const HYBRID_DEFAULTS = {
+  rrf_k: 60,
+  knn_overfetch_base: 1.5,
+  knn_overfetch_per_filter: 1.5,
+  mmr_threshold: 0.92,
+};
+
+let _recallConfigCache = null;
+let _recallConfigCachedAt = 0;
+async function getRecallConfig(db) {
+  // 5-second cache; runtime:recall is read on every search call.
+  if (_recallConfigCache && Date.now() - _recallConfigCachedAt < 5000) {
+    return _recallConfigCache;
+  }
+  try {
+    const [rows] = await db.query('SELECT value FROM runtime:recall').collect();
+    const value = rows?.[0]?.value ?? {};
+    _recallConfigCache = { ...HYBRID_DEFAULTS, ...value };
+  } catch {
+    _recallConfigCache = HYBRID_DEFAULTS;
+  }
+  _recallConfigCachedAt = Date.now();
+  return _recallConfigCache;
+}
+
+function countActiveFilters(opts, surface) {
+  let n = 0;
+  if (surface === 'memos' && opts.kind) n += 1;
+  if (surface === 'events' && opts.source) n += 1;
+  if (surface === 'entities' && opts.type) n += 1;
+  if (Array.isArray(opts.scopes) && !opts.scopes.includes('*')) n += 1;
+  if (opts.tags && opts.tags.length > 0) n += 1;
+  if (opts.since) n += 1;
+  return n;
+}
+
 async function _surfaceSearch(db, embedder, surface, query, opts) {
   const limit = Number.isInteger(opts.limit) ? opts.limit : 10;
   if (limit < 1 || limit > 100) {
     throw new Error(`searchMemos: limit out of range [1,100]: ${limit}`);
   }
-  const ef = Math.max(64, limit * 8);
+
+  // Hybrid retrieval can be disabled per-call (e.g. for explainability tests)
+  // via opts.disableBm25 — vector-only path remains the legacy semantics.
+  const cfg = await getRecallConfig(db);
+  const filterCount = countActiveFilters(opts, surface);
+  const knnK = Math.min(
+    100,
+    Math.max(limit, Math.ceil(limit * (cfg.knn_overfetch_base + filterCount * cfg.knn_overfetch_per_filter))),
+  );
+  const ef = Math.max(64, knnK * 4);
   const { readProfile } = await import('../embed/profile-router.js');
   const readProf = await readProfile(db);
   const embeddingTbl = embeddingTable(readProf, surface);
@@ -450,16 +500,41 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   // a timeout produces an empty hit list rather than crashing the turn.
   const knnSql = `SELECT record, vector::distance::knn() AS dist
                   FROM ${embeddingTbl}
-                  WHERE vector <|${limit}, ${ef}|> $qvec
+                  WHERE vector <|${knnK}, ${ef}|> $qvec
                   ORDER BY dist
-                  LIMIT ${limit}
+                  LIMIT ${knnK}
                   TIMEOUT 2s`;
   const [knnRows] = await db.query(new BoundQuery(knnSql, { qvec })).collect();
-  if (knnRows.length === 0) return { hits: [] };
+
+  // Step 1b (Phase 4): BM25 keyword retrieval. Fail-soft — FULLTEXT indexes
+  // were added in Phase 1 but if the engine version doesn't support the
+  // index variant, vector-only recall still works.
+  let bm25Rows = [];
+  if (!opts.disableBm25 && query && query.length > 0) {
+    bm25Rows = await _bm25Retrieve(db, surface, query, knnK).catch(() => []);
+  }
+
+  if (knnRows.length === 0 && bm25Rows.length === 0) return { hits: [] };
 
   // Step 2: fetch records and apply scope/kind/tags filter.
-  const ids = knnRows.map((r) => r.record);
+  // We hydrate the union of kNN and BM25 candidates in a single SELECT.
   const idDist = new Map(knnRows.map((r) => [recordStringId(r.record), r.dist]));
+  const candidateIdSet = new Set();
+  const ids = [];
+  for (const r of knnRows) {
+    const k = recordStringId(r.record);
+    if (!candidateIdSet.has(k)) {
+      candidateIdSet.add(k);
+      ids.push(r.record);
+    }
+  }
+  for (const r of bm25Rows) {
+    const k = recordStringId(r.id);
+    if (!candidateIdSet.has(k)) {
+      candidateIdSet.add(k);
+      ids.push(r.id);
+    }
+  }
 
   const filters = ['id IN $ids'];
   const bindings = { ids };
@@ -498,11 +573,64 @@ async function _surfaceSearch(db, embedder, surface, query, opts) {
   const fetchSql = `SELECT * FROM ${surface} WHERE ${filters.join(' AND ')}`;
   const [rows] = await db.query(new BoundQuery(fetchSql, bindings)).collect();
 
-  const hits = rows
-    .map((row) => ({ record: row, distance: idDist.get(recordStringId(row.id)) ?? 1 }))
-    .sort((a, b) => a.distance - b.distance);
+  // Phase 4: build kNN- and BM25-ranked lists from the hydrated rows, then
+  // RRF-fuse them. BM25-only hits get distance=0.5 in fusion.padDistances.
+  const { rrfFuse, padDistances } = await import('../recall/fusion.js');
+  const rowById = new Map(rows.map((r) => [recordStringId(r.id), r]));
 
-  return { hits };
+  // kNN-ordered hydrated hits (only those that survived post-filters).
+  const knnHits = [];
+  for (const k of knnRows) {
+    const key = recordStringId(k.record);
+    const row = rowById.get(key);
+    if (!row) continue;
+    knnHits.push({ id: row.id, ...row, distance: k.dist, _source: 'knn' });
+  }
+  // BM25-ordered hydrated hits.
+  const bm25Hits = [];
+  for (const b of bm25Rows) {
+    const key = recordStringId(b.id);
+    const row = rowById.get(key);
+    if (!row) continue;
+    bm25Hits.push({ id: row.id, ...row, distance: undefined, _source: 'bm25' });
+  }
+
+  const fused = padDistances(rrfFuse([knnHits, bm25Hits], { k: cfg.rrf_k }));
+  const final = fused.slice(0, limit);
+
+  // Keep RRF order (do NOT re-sort by distance — that would undo the fusion).
+  const hits = final.map((row) => ({
+    record: row,
+    distance: row.distance ?? idDist.get(recordStringId(row.id)) ?? 1,
+    _sources: row._sources ?? [],
+    _rrf: row._rrf ?? 0,
+  }));
+
+  return {
+    hits,
+    debug: { knn_n: knnHits.length, bm25_n: bm25Hits.length, fused_n: fused.length },
+  };
+}
+
+/**
+ * BM25 keyword retrieval helper. Fails-soft on missing FULLTEXT indexes so
+ * vector-only recall keeps working on engines that don't support BM25.
+ */
+async function _bm25Retrieve(db, surface, query, k) {
+  const indexName =
+    surface === 'memos' ? 'memos_content_fts'
+    : surface === 'events' ? 'events_content_fts'
+    : surface === 'entities' ? 'entities_name_fts' : null;
+  if (!indexName) return [];
+  const field = surface === 'entities' ? 'name' : 'content';
+  const sql = `SELECT id, search::score(0) AS bm25_score
+               FROM ${surface} WITH INDEX ${indexName}
+               WHERE ${field} @0@ $q
+               ORDER BY bm25_score DESC
+               LIMIT ${k}
+               TIMEOUT 2s`;
+  const [rows] = await db.query(new BoundQuery(sql, { q: query })).collect();
+  return rows ?? [];
 }
 
 /**
