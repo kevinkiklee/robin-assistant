@@ -53,6 +53,8 @@ export function createExplainRecallTool({ db }) {
           ts: row.ts,
           query: row.query,
           outcome: row.outcome,
+          attribution: row.attribution ?? null,
+          reply_event_id: row.reply_event_id ?? null,
           ranked_hits: hits,
         });
       }

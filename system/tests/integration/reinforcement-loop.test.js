@@ -489,6 +489,50 @@ test('B1 §7.10: duplicate hit in ranked_hits dedups in memoHitCount → signal_
   await close(db);
 });
 
+test('B1 section 10: explain_recall surfaces used/used_via/attribution/reply_event_id', async () => {
+  const db = await fresh();
+  await db
+    .query("UPDATE runtime:`reinforcement.config` SET value.attribution_mode = 'hybrid'")
+    .collect();
+  const m = await store.note(db, fakeEmbedder, 'knowledge', {
+    content: 'eclipse tuesday striking',
+    derived_by: 'manual',
+  });
+  const pastTs = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .query(
+      `CREATE events CONTENT {
+         source: 'conversation',
+         content: 'USER: q\n\nASSISTANT: eclipse tuesday striking observation.',
+         ts: $ts,
+         meta: { session_id: 'sx' }
+       }`,
+      { ts: new Date(pastTs.getTime() + 60_000) },
+    )
+    .collect();
+  await db
+    .query(
+      `CREATE recall_log CONTENT {
+         ts: $ts, session_id: 'sx', query: 'q', k: 1,
+         ranked_hits: [{ record: $rid, kind: 'memo', rank: 0 }],
+         outcome: 'pending'
+       }`,
+      { ts: pastTs, rid: String(m.id) },
+    )
+    .collect();
+  await evaluatePending(db);
+
+  const { createExplainRecallTool } = await import('../../io/mcp/tools/explain-recall.js');
+  const tool = createExplainRecallTool({ db });
+  const out = await tool.handler({ last_n: 1 });
+  const q = out.queries[0];
+  assert.equal(q.attribution.mode, 'similarity');
+  assert.equal(q.ranked_hits[0].used, true);
+  assert.equal(q.ranked_hits[0].used_via, 'similarity');
+  assert.ok(q.reply_event_id);
+  await close(db);
+});
+
 test('reinforcement: rows newer than the window are not evaluated', async () => {
   const db = await fresh();
   const m = await store.note(db, fakeEmbedder, 'knowledge', {
