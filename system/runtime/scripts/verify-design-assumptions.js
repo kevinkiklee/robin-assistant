@@ -686,14 +686,16 @@ async function gateDreamOutputEquivalence(_db) {
     'node',
     [
       '--test',
+      '--test-force-exit',
+      '--test-timeout=30000',
       '--test-name-pattern',
       'output equivalence: parallel summary equals serial summary',
       'system/tests/integration/dream-parallel.test.js',
     ],
-    { stdio: 'inherit' },
+    { stdio: 'inherit', timeout: 60_000 },
   );
   if (res.status === 0) ok('parallel summary ≡ serial summary under normalizeSummary');
-  else fail(`equivalence test failed (exit ${res.status})`);
+  else fail(`equivalence test failed (exit ${res.status ?? 'timeout'})`);
 }
 
 async function main() {
