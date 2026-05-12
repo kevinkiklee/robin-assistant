@@ -50,12 +50,116 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
       state.tool_count >= 30,
       `expected at least 30 registered tools, got ${state.tool_count}`,
     );
-    // Smoke: connecting to /sse should at least open (we don't parse SSE here)
-    const res = await fetch(`http://127.0.0.1:${state.port}/sse`, {
-      signal: AbortSignal.timeout(2000),
-    }).catch((e) => e);
-    // Either succeeded or aborted by timeout — both confirm the port is live
-    assert.ok(res, 'fetch returned something');
+    // Full SSE round-trip: open /sse, parse the `endpoint` event for the
+    // server-assigned sessionId, then drive initialize + tools/list over
+    // POST /messages?sessionId=… and read the JSON-RPC responses back off
+    // the SSE stream. Without the daemon's POST /messages handler this
+    // step would 404 (and previously did — that's the bug this test pins).
+    const base = `http://127.0.0.1:${state.port}`;
+    const ac = new AbortController();
+    try {
+      const sse = await fetch(`${base}/sse`, { signal: ac.signal });
+      assert.equal(sse.status, 200, 'SSE handshake');
+      const reader = sse.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      const events = [];
+      const readUntil = async (pred, timeoutMs = 5000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          for (;;) {
+            const idx = buf.indexOf('\n\n');
+            if (idx === -1) break;
+            const block = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            const ev = { event: 'message', data: '' };
+            for (const line of block.split('\n')) {
+              if (line.startsWith('event: ')) ev.event = line.slice(7);
+              else if (line.startsWith('data: ')) ev.data += line.slice(6);
+            }
+            events.push(ev);
+            const hit = pred(ev);
+            if (hit) return hit;
+          }
+        }
+        throw new Error(
+          `SSE event matching predicate not seen within ${timeoutMs}ms; got: ${JSON.stringify(events)}`,
+        );
+      };
+
+      const endpointEv = await readUntil((e) => (e.event === 'endpoint' ? e : null));
+      const endpointPath = endpointEv.data.trim();
+      assert.match(endpointPath, /^\/messages\?sessionId=/, 'endpoint event format');
+
+      const post = async (body) =>
+        await fetch(`${base}${endpointPath}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+      const initRes = await post({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'mcp-e2e-test', version: '0.0.0' },
+        },
+      });
+      assert.equal(initRes.status, 202, 'initialize accepted');
+
+      const initReply = await readUntil((e) => {
+        if (e.event !== 'message') return null;
+        try {
+          const j = JSON.parse(e.data);
+          return j.id === 1 ? j : null;
+        } catch {
+          return null;
+        }
+      });
+      assert.ok(initReply.result, 'initialize result');
+      assert.equal(initReply.result.serverInfo.name, 'robin');
+
+      const initialized = await post({
+        jsonrpc: '2.0',
+        method: 'notifications/initialized',
+      });
+      assert.equal(initialized.status, 202, 'notifications/initialized accepted');
+
+      const listRes = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+      assert.equal(listRes.status, 202, 'tools/list accepted');
+      const listReply = await readUntil((e) => {
+        if (e.event !== 'message') return null;
+        try {
+          const j = JSON.parse(e.data);
+          return j.id === 2 ? j : null;
+        } catch {
+          return null;
+        }
+      });
+      assert.ok(Array.isArray(listReply.result?.tools), 'tools array');
+      assert.ok(
+        listReply.result.tools.length >= 30,
+        `expected ≥30 tools over MCP, got ${listReply.result.tools.length}`,
+      );
+    } finally {
+      ac.abort();
+    }
+
+    // Negative: a POST to /messages with no sessionId should 404 cleanly
+    // (not crash the daemon, not 500). Pins the "unknown SSE session"
+    // branch in handlePostMessage.
+    const stray = await fetch(`${base}/messages?sessionId=does-not-exist`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(stray.status, 404, 'stray POST /messages 404s');
   } finally {
     daemon.kill('SIGTERM');
     await new Promise((r) => daemon.once('exit', r));

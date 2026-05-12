@@ -6,6 +6,7 @@ import {
   readStateInferenceConfig,
 } from '../../cognition/jobs/internal/state-inference.js';
 import { paths } from '../../config/data-store.js';
+import { readConfig } from '../../config/paths.js';
 import { detectHost } from '../hosts/detect.js';
 import { boot } from './boot.js';
 import { consumePendingTriggers } from './cadence-consumer.js';
@@ -13,7 +14,7 @@ import { createDispatcherTick } from './dispatcher-tick.js';
 import { createScheduler } from './heartbeat.js';
 import { startHttp } from './http.js';
 import { createLifecycle } from './lifecycle.js';
-import { bindFreePort } from './port.js';
+import { bindPort } from './port.js';
 import { buildRoutes } from './routes/index.js';
 import { markStaleSessions } from './sessions.js';
 import { buildTools } from './tools.js';
@@ -32,7 +33,11 @@ import { buildTools } from './tools.js';
  */
 export async function startDaemon() {
   const lifecycle = createLifecycle({
-    lockPath: paths.data.daemonLock(),
+    // Process-singleton lock — distinct from `.daemon.lock`, which is the
+    // embedded-DB writer-serialization lock held by CLI subcommands.
+    // Sharing one file made every long-running biographer/dream/ingest run
+    // block `mcp restart`; see data-store.js for the file-role split.
+    lockPath: paths.data.daemonPid(),
     statePath: paths.data.daemonState(),
     logDir: `${paths.data.home()}/logs`,
   });
@@ -42,7 +47,13 @@ export async function startDaemon() {
     const ctx = await boot();
     const tools = buildTools(ctx);
     const routes = buildRoutes();
-    const { server: probe, port } = await bindFreePort();
+    // Preferred-port: read once from config.json so launchd restarts keep
+    // the same port, which keeps `~/.claude.json` (and Gemini's settings.json)
+    // pointed at a valid URL across daemon lifecycles. Falls back to an
+    // ephemeral port if the preferred one is busy.
+    const cfgForPort = await readConfig().catch(() => null);
+    const preferredPort = Number.isInteger(cfgForPort?.mcp?.port) ? cfgForPort.mcp.port : 0;
+    const { server: probe, port } = await bindPort(preferredPort);
     probe.close();
 
     const dispatcherTick = createDispatcherTick(ctx, tools);

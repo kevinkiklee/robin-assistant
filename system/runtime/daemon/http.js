@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { handleSse } from './mcp-sse.js';
+import { handlePostMessage, handleSse } from './mcp-sse.js';
 import { validate } from './schema.js';
 
 // 5 MB is well above any legitimate /internal/* payload (the largest are
@@ -83,6 +83,16 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
     try {
       if (req.method === 'GET' && req.url.startsWith('/sse')) {
         await handleSse(req, res, { ctx, tools });
+        return;
+      }
+      // POST /messages?sessionId=… is the client→server half of the MCP
+      // SSE protocol. Must be matched BEFORE readJsonBody runs: the SDK's
+      // handlePostMessage reads the raw body via raw-body, and a body that
+      // has already been drained surfaces as 'Invalid message' from the
+      // JSON-RPC parser. Sits outside the auth gate by design — the SSE
+      // transport is loopback-only and has its own session join key.
+      if (req.method === 'POST' && req.url.startsWith('/messages')) {
+        await handlePostMessage(req, res);
         return;
       }
       // Bearer-token gate for /internal/*. Other paths (health probes, /sse)

@@ -204,7 +204,14 @@ export const paths = {
     config: () => join(robinHome(), 'config.json'),
     hostIntegrations: () => join(robinHome(), 'host-integrations.json'),
     daemonState: () => join(robinHome(), '.daemon.state'),
+    // `.daemon.lock` is the *embedded-DB writer-serialization* lock, held
+    // briefly by CLI subcommands (biographer, dream, ingest, etc.) that
+    // open the local store directly. It is NOT the daemon's process-
+    // singleton lock — `.daemon.pid` below owns that. Keeping the two
+    // separate lets the daemon start while a long-running CLI subcommand
+    // (e.g. biographer flushing through an LLM call) is mid-flight.
     daemonLock: () => join(robinHome(), '.daemon.lock'),
+    daemonPid: () => join(robinHome(), '.daemon.pid'),
     manifestLock: () => join(robinHome(), '.manifest.lock'),
     marker: () => join(robinHome(), '.robin-data'),
   },

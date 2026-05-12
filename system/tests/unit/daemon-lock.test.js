@@ -3,7 +3,18 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { acquireDaemonLock, isPidAlive, releaseDaemonLock } from '../../runtime/daemon/lock.js';
+import {
+  acquireDaemonLock,
+  isDaemonProcess,
+  isPidAlive,
+  releaseDaemonLock,
+} from '../../runtime/daemon/lock.js';
+
+// Stubs for the pluggable daemon-identity check. Production callers use the
+// real `isDaemonProcess` (which sniffs the process's command line via `ps`);
+// tests inject synchronous results to express intent directly.
+const alwaysDaemon = () => true;
+const neverDaemon = () => false;
 
 test('acquireDaemonLock writes pid; release deletes file', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-daemon-lock-'));
@@ -13,11 +24,27 @@ test('acquireDaemonLock writes pid; release deletes file', async () => {
   rmSync(tmp, { recursive: true });
 });
 
-test('acquireDaemonLock fails when locked by live PID', async () => {
+test('acquireDaemonLock fails when locked by live PID that IS the daemon', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-daemon-lock2-'));
   const path = join(tmp, '.daemon.lock');
   writeFileSync(path, String(process.pid));
-  await assert.rejects(acquireDaemonLock(path), /already running/i);
+  await assert.rejects(
+    acquireDaemonLock(path, { isDaemonProcess: alwaysDaemon }),
+    /already running/i,
+  );
+  rmSync(tmp, { recursive: true });
+});
+
+test('acquireDaemonLock reclaims when locked by live PID that is NOT the daemon', async () => {
+  // PID reuse hazard: an old daemon's PID gets recycled to an unrelated
+  // process (a biographer flush, a shell, anything). Without an identity
+  // check, that recycled PID looks alive and the new daemon refuses to
+  // start. With the check, we recognise it isn't a daemon and reclaim.
+  const tmp = mkdtempSync(join(tmpdir(), 'robin-daemon-lock-reuse-'));
+  const path = join(tmp, '.daemon.lock');
+  writeFileSync(path, String(process.pid));
+  await acquireDaemonLock(path, { isDaemonProcess: neverDaemon });
+  await releaseDaemonLock(path);
   rmSync(tmp, { recursive: true });
 });
 
@@ -28,6 +55,18 @@ test('acquireDaemonLock cleans up stale lock from dead PID', async () => {
   await acquireDaemonLock(path);
   await releaseDaemonLock(path);
   rmSync(tmp, { recursive: true });
+});
+
+test('isDaemonProcess returns false for the test runner itself', () => {
+  // The unit-test runner is a `node --test` process; its command line
+  // doesn't contain the daemon's marker strings, so the identity check
+  // must return false. This pins the contract that prevented the PID-
+  // reuse hazard from blocking daemon startup.
+  assert.equal(isDaemonProcess(process.pid), false);
+});
+
+test('isDaemonProcess returns false for a clearly-dead PID', () => {
+  assert.equal(isDaemonProcess(999999), false);
 });
 
 test('isPidAlive returns true for self', () => {
@@ -61,14 +100,20 @@ test('releaseDaemonLock is idempotent (no error when file absent)', async () => 
 test('two acquireDaemonLock attempts on the same path: exactly one succeeds', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'robin-daemon-lock-concur-'));
   const path = join(tmp, '.daemon.lock');
-  // The current implementation has a TOCTOU window (read → check → write).
-  // Atomicity test: fire two acquires back-to-back. Both must NOT succeed.
-  const results = await Promise.allSettled([acquireDaemonLock(path), acquireDaemonLock(path)]);
+  // Concurrency contract: with the wx-based atomic create, exactly one
+  // caller wins the file. The loser sees EEXIST, reads the winner's pid,
+  // and — because we stub the identity check to "yes, this is the daemon"
+  // — rejects with EALREADY. (Without the stub, both callers would
+  // observe the test runner's pid, conclude "not a daemon, reclaim," and
+  // unlink the winner's file — exactly the PID-reuse hazard the new
+  // contract is designed to handle, but not what this test is pinning.)
+  const opts = { isDaemonProcess: alwaysDaemon };
+  const results = await Promise.allSettled([
+    acquireDaemonLock(path, opts),
+    acquireDaemonLock(path, opts),
+  ]);
   const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
   const rejected = results.filter((r) => r.status === 'rejected').length;
-  // After atomic wx-based acquire: exactly one fulfills, the other rejects with EALREADY.
-  // Note: when both callers see no file and write concurrently, the wx flag must
-  // ensure one of them gets EEXIST. Within the same process the OS guarantee holds.
   assert.equal(
     fulfilled,
     1,

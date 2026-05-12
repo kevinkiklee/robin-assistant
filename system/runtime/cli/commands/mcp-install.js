@@ -10,11 +10,36 @@ import {
   recordHostTouchpoint,
   robinHome,
 } from '../../../config/data-store.js';
+import { readConfig, writeConfig } from '../../../config/paths.js';
+import { bindPort } from '../../daemon/port.js';
 import { agentsMdContent, mergeAgentsMdContent } from '../../install/agents-md.js';
 import { generateLaunchdPlist } from '../../install/launchd-plist.js';
 import { generateSystemdUnit } from '../../install/systemd-unit.js';
 import { parseArgs } from '../args.js';
 import { mcpEnsureRunning } from './mcp-ensure-running.js';
+import { mcpStop } from './mcp-stop.js';
+
+/**
+ * Ensure `config.json` has a persisted `mcp.port`. Without it, every daemon
+ * restart binds a fresh ephemeral port, which silently invalidates the URL
+ * we just registered in `~/.claude.json` (and Gemini's settings.json). Pick
+ * once at install, persist, then the daemon reads it back at boot. Port
+ * collisions degrade gracefully to ephemeral (see daemon/port.js).
+ */
+async function ensureMcpPort() {
+  const cfg = (await readConfig()) ?? {};
+  if (Number.isInteger(cfg?.mcp?.port)) return cfg.mcp.port;
+  // Reserve a port: bind ephemeral, read the kernel-assigned port, free it.
+  // Race: another process can grab it before the daemon does, in which case
+  // bindPort() falls back to ephemeral and the host URL goes stale until
+  // the next install. Acceptable — the steady-state behaviour is stable.
+  const { server, port } = await bindPort(0);
+  await new Promise((r) => server.close(r));
+  cfg.mcp = { ...(cfg.mcp ?? {}), port };
+  await writeConfig(cfg);
+  console.log(`reserved mcp port ${port} in config.json`);
+  return port;
+}
 
 async function readOrEmpty(path) {
   try {
@@ -115,6 +140,18 @@ export async function mcpInstall(argv) {
   const home = homedir();
   const packageRoot = packageRootDir();
   const currentRobinHome = robinHome();
+
+  // Reserve mcp.port BEFORE supervising/starting the daemon, so the
+  // forthcoming daemon process reads the persisted preference at boot and
+  // binds the same port every restart.
+  await ensureMcpPort();
+
+  // Stop any pre-existing daemon (detached *or* launchd-managed) before
+  // touching the supervisor. mcpStop SIGTERMs the PID from `.daemon.state`
+  // and polls until exit, so by the time we hit `launchctl load` the lock
+  // is free and the fresh daemon acquires it on first try — no EALREADY
+  // bounce through launchd's 10-second KeepAlive throttle.
+  await mcpStop();
 
   let plistPath = null;
   let unitPath = null;

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
 
 export function isPidAlive(pid) {
@@ -9,20 +10,56 @@ export function isPidAlive(pid) {
   }
 }
 
+// Substrings unique to the daemon's command line. Any of these means
+// "this PID is actually the daemon," not an unrelated process that
+// happens to have inherited a recycled PID.
+//   - server.js path → matches the detached spawn from `mcp start`
+//   - "robin mcp start" → matches the foreground supervisor invocation
+//     (launchd plist or systemd unit running `robin mcp start --foreground`)
+const DAEMON_CMDLINE_MARKERS = [
+  /\/system\/runtime\/daemon\/server\.js\b/,
+  /\brobin\s+mcp\s+start\b/,
+];
+
+/**
+ * Best-effort check that the given PID is *actually a Robin daemon*, not
+ * an unrelated process that PID reuse handed the same number to. Returns
+ * `true` only on strong positive evidence. Failure modes (ps missing,
+ * unsupported platform, transient error) return `false` so the lock can
+ * be safely reclaimed — the worst case is the daemon refuses to start and
+ * the user retries.
+ */
+export function isDaemonProcess(pid) {
+  if (!Number.isInteger(pid)) return false;
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return false;
+  const result = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
+  if (result.status !== 0) return false;
+  const cmd = (result.stdout || '').trim();
+  if (!cmd) return false;
+  return DAEMON_CMDLINE_MARKERS.some((re) => re.test(cmd));
+}
+
 /**
  * Acquire the daemon lock atomically.
  *
  * Algorithm:
  *   1. Attempt `writeFile(path, pid, { flag: 'wx' })` — exclusive create.
- *   2. On EEXIST: read existing pid; if alive, throw EALREADY.
- *   3. If existing pid is dead or unparseable, unlink and retry.
+ *   2. On EEXIST: read existing pid. If alive **and identified as the
+ *      daemon** (`isDaemonProcess`), throw EALREADY.
+ *   3. Otherwise (dead pid, malformed, or PID reuse by an unrelated
+ *      process), unlink and retry.
  *
  * The wx flag closes the TOCTOU window: we never read-then-write. Multiple
  * daemons racing through dead-pid cleanup converge because at most one of
  * them is alive at any moment. Bounded loop guards against pathological
  * thrashing.
+ *
+ * Opts:
+ *   - `isDaemonProcess` — override the production cmdline-sniff for
+ *     tests. Production callers leave this unset and get the real check.
  */
-export async function acquireDaemonLock(path) {
+export async function acquireDaemonLock(path, opts = {}) {
+  const checkIsDaemon = opts.isDaemonProcess ?? isDaemonProcess;
   // Up to 5 iterations to absorb both empty-file races (a concurrent
   // wx-writer hasn't flushed its pid yet) and the standard
   // dead-pid-cleanup retry.
@@ -51,12 +88,14 @@ export async function acquireDaemonLock(path) {
         continue;
       }
       const pid = Number.parseInt(trimmed, 10);
-      if (Number.isInteger(pid) && isPidAlive(pid)) {
+      if (Number.isInteger(pid) && isPidAlive(pid) && checkIsDaemon(pid)) {
         const err = new Error(`daemon already running (pid ${pid})`);
         err.code = 'EALREADY';
         throw err;
       }
-      // Dead pid or genuinely malformed non-empty content → reclaim.
+      // Dead pid, malformed content, OR live-but-not-the-daemon (PID
+      // reuse — the recycled number now belongs to some other process,
+      // commonly a biographer/dream CLI subcommand). Reclaim.
       await unlink(path).catch(() => {});
     }
   }
