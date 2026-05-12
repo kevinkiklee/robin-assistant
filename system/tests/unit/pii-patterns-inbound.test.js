@@ -10,10 +10,13 @@ test('INBOUND_DENY_PATTERNS contains expected rule names', () => {
     'aws_access_key',
     'env_secret_value',
     'github_token',
+    'google_api_key',
     'jwt',
     'openai_key',
     'password_assignment',
     'private_key_pem',
+    'slack_token',
+    'stripe_key',
   ]);
 });
 
@@ -63,6 +66,39 @@ const cases = [
     expect: 'secret:aws_access_key',
   },
   { label: 'aws_access_key negative', text: 'AKIA-not-a-key', expect: null },
+
+  // ---- google_api_key -------------------------------------------------
+  {
+    label: 'google_api_key positive',
+    text: 'GEMINI=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI',
+    expect: 'secret:google_api_key',
+  },
+  {
+    label: 'google_api_key negative (too short)',
+    text: 'AIzaShort',
+    expect: null,
+  },
+
+  // ---- slack_token ----------------------------------------------------
+  {
+    label: 'slack_token positive (xoxb)',
+    text: 'Authorization: xoxb-1234567890-abcdefg-XYZ',
+    expect: 'secret:slack_token',
+  },
+  { label: 'slack_token negative', text: 'xoxo-fashion', expect: null },
+
+  // ---- stripe_key -----------------------------------------------------
+  {
+    label: 'stripe_key positive (live)',
+    text: 'STRIPE_KEY=sk_live_abcdefghij1234567890klmnopqrstuv',
+    expect: 'secret:stripe_key',
+  },
+  {
+    label: 'stripe_key positive (test)',
+    text: 'sk_test_abcdefghij1234567890klmnop',
+    expect: 'secret:stripe_key',
+  },
+  { label: 'stripe_key negative', text: 'sk_other_short', expect: null },
 
   // ---- env_secret_value -----------------------------------------------
   {

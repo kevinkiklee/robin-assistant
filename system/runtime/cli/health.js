@@ -3,28 +3,24 @@
 import { surql } from 'surrealdb';
 import { currentBudget, readCadenceConfig } from '../../cognition/dream/budget.js';
 
+// Defaults applied when `runtime:doctor.config` is missing OR the query
+// itself fails (DB closed, schema not yet migrated, etc.). Single source
+// of truth — prior versions inlined this twice and drifted on edits.
+const DEFAULT_DOCTOR_CONFIG = Object.freeze({
+  budget_warn_pct: 0.85,
+  budget_fail_pct: 0.98,
+  pending_triggers_warn: 50,
+  faculty_error_rate_warn: 0.01,
+  faculty_error_rate_fail: 0.05,
+  stale_dream_warn_hours: 30,
+});
+
 async function readDoctorConfig(db) {
   try {
     const [rows] = await db.query('SELECT VALUE value FROM runtime:`doctor.config`').collect();
-    return (
-      rows?.[0] ?? {
-        budget_warn_pct: 0.85,
-        budget_fail_pct: 0.98,
-        pending_triggers_warn: 50,
-        faculty_error_rate_warn: 0.01,
-        faculty_error_rate_fail: 0.05,
-        stale_dream_warn_hours: 30,
-      }
-    );
+    return rows?.[0] ?? DEFAULT_DOCTOR_CONFIG;
   } catch {
-    return {
-      budget_warn_pct: 0.85,
-      budget_fail_pct: 0.98,
-      pending_triggers_warn: 50,
-      faculty_error_rate_warn: 0.01,
-      faculty_error_rate_fail: 0.05,
-      stale_dream_warn_hours: 30,
-    };
+    return DEFAULT_DOCTOR_CONFIG;
   }
 }
 

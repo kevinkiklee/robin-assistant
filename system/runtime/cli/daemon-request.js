@@ -3,7 +3,19 @@
 import { readDaemonState } from '../../config/daemon-state.js';
 import { paths } from '../../config/data-store.js';
 
-export async function daemonRequest(path, body) {
+// 60s default covers slow endpoints (ingest, audit, full re-embed). Set
+// $ROBIN_DAEMON_REQUEST_TIMEOUT_MS to override for diagnostics. Without a
+// timeout a stuck or runaway daemon hangs every CLI command indefinitely.
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+function resolveTimeoutMs(explicit) {
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const env = Number.parseInt(process.env.ROBIN_DAEMON_REQUEST_TIMEOUT_MS ?? '', 10);
+  if (Number.isInteger(env) && env > 0) return env;
+  return DEFAULT_TIMEOUT_MS;
+}
+
+export async function daemonRequest(path, body, { timeoutMs } = {}) {
   const state = await readDaemonState(paths.data.daemonState());
   if (!state?.port) throw new Error('daemon not running');
   const headers = { 'content-type': 'application/json' };
@@ -16,6 +28,13 @@ export async function daemonRequest(path, body) {
     method: 'POST',
     headers,
     body: JSON.stringify(body ?? {}),
+    signal: AbortSignal.timeout(resolveTimeoutMs(timeoutMs)),
   });
-  return res.json();
+  // Daemon errors land here with `{ok:false, ...}` JSON; surface the parse
+  // failure with a useful message instead of an opaque SyntaxError.
+  try {
+    return await res.json();
+  } catch (e) {
+    throw new Error(`daemon returned non-JSON response (${res.status}): ${e.message}`);
+  }
 }

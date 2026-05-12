@@ -12,7 +12,7 @@
 // recent biographer.log errors, and integration freshness rollup.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -227,9 +227,22 @@ function probeBiographerLog() {
   try {
     const stat = statSync(logPath);
     const size = stat.size;
-    const start = Math.max(0, size - LOG_TAIL_BYTES);
-    const fd = readFileSync(logPath, { encoding: 'utf8' });
-    const tail = fd.slice(start);
+    // Read only the last LOG_TAIL_BYTES from disk. The prior implementation
+    // read the entire file into memory, then sliced — on a multi-MB
+    // biographer.log this caused `robin doctor` to allocate the full log
+    // size for a glimpse at the last 16 KB.
+    const length = Math.min(LOG_TAIL_BYTES, size);
+    let tail = '';
+    if (length > 0) {
+      const fd = openSync(logPath, 'r');
+      try {
+        const buf = Buffer.alloc(length);
+        readSync(fd, buf, 0, length, size - length);
+        tail = buf.toString('utf8');
+      } finally {
+        closeSync(fd);
+      }
+    }
     const lines = tail.split('\n').filter(Boolean);
     const errors = lines.filter((l) => LOG_ERROR_RE.test(l));
     return {

@@ -171,6 +171,13 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(envelope));
     } catch (e) {
+      // Surface uncaught handler errors so operators can diagnose. Without
+      // this log line a 500 is invisible: clients see `{ok:false, error:...}`
+      // but the daemon process leaves no trace. `[http]` keeps the line
+      // greppable in the launchd / systemd journal.
+      console.error(
+        `[http] ${req.method} ${req.url} → 500: ${e?.name ?? 'Error'}: ${e?.message ?? e}`,
+      );
       try {
         res.writeHead(500, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message, name: e.name }));

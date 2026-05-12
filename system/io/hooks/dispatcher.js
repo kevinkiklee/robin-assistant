@@ -50,8 +50,14 @@ export async function runHook(phase, opts = {}) {
     const handler = mod[entry.exportName];
     if (typeof handler !== 'function') return;
     await handler({ stdin });
-  } catch {
+  } catch (e) {
     // fail-soft: handlers that want to block must call process.exit(2) themselves.
+    // Errors swallowed silently here are nearly invisible because hooks run
+    // inside Claude/Gemini's stdio capture, so opt-in surfacing is gated by
+    // ROBIN_DEBUG to keep normal sessions noise-free.
+    if (process.env.ROBIN_DEBUG) {
+      console.error(`[hook:${phase}] ${e?.name ?? 'Error'}: ${e?.message ?? e}`);
+    }
   }
 }
 

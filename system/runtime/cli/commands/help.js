@@ -31,7 +31,14 @@ export function renderHelp(commands) {
     ...render(commands),
     '',
     'ENVIRONMENT',
-    '  ROBIN_HOME              override the data directory (default: chosen at install)',
+    '  ROBIN_HOME                          override the data directory (default: chosen at install)',
+    '  ROBIN_DEBUG                         print full stack traces on CLI errors and hook failures',
+    '  ROBIN_SKIP_FIRST_RUN                disable the auto-install on first non-install command',
+    '  ROBIN_DAEMON_REQUEST_TIMEOUT_MS     CLI→daemon HTTP timeout (default 60000)',
+    '  ROBIN_INTEGRATION_TIMEOUT_MS        per-sync hard cap; aborts the sync signal (default off)',
+    '',
+    '  Install-time toggles (ROBIN_SKIP_MCP, ROBIN_SKIP_HOOKS, etc.) are documented',
+    '  in docs/install.md.',
   ];
   return out.join('\n');
 }

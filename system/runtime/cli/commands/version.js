@@ -1,12 +1,19 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { robinHome } from '../../../config/data-store.js';
+import { pointerExists, robinHome } from '../../../config/data-store.js';
+import { getCliVersion } from '../../daemon/version-handshake.js';
 
 export async function version() {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const pkgPath = resolve(here, '../../../package.json');
-  const pkg = JSON.parse(await readFile(pkgPath, 'utf8'));
-  console.log(`robin-assistant ${pkg.version}`);
-  console.log(`home: ${robinHome()}`);
+  const v = await getCliVersion();
+  console.log(`robin-assistant ${v}`);
+  // Pre-install (or relocate-in-progress) is a legitimate state for
+  // `robin --version`. Don't make `--version` throw — the user is likely
+  // running it precisely BECAUSE they haven't finished installing.
+  if (!pointerExists()) {
+    console.log('home: (not installed — run `robin install`)');
+    return;
+  }
+  try {
+    console.log(`home: ${robinHome()}`);
+  } catch (e) {
+    console.log(`home: (unavailable — ${e.message})`);
+  }
 }

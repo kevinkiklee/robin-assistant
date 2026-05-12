@@ -94,3 +94,31 @@ test('listKeys returns names only', async () => {
   const keys = listKeys();
   assert.deepEqual(keys.sort(), ['A', 'B']);
 });
+
+test('saveSecret rejects newline-bearing values (injection guard)', async () => {
+  const { saveSecret, getSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
+  // Without the guard this would write two lines, silently introducing
+  // INJECTED=evil into the secrets store.
+  assert.throws(() => saveSecret('SAFE', 'value\nINJECTED=evil'), /must not contain newline/);
+  assert.throws(() => saveSecret('SAFE', 'value\rINJECTED=evil'), /must not contain newline/);
+  // Nothing should have landed on disk for SAFE or INJECTED.
+  assert.equal(getSecret('SAFE'), null);
+  assert.equal(getSecret('INJECTED'), null);
+});
+
+test('saveSecret rejects malformed keys', async () => {
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
+  // Empty, starts with digit, contains '=', contains whitespace, contains '\n'.
+  assert.throws(() => saveSecret('', 'v'), /invalid secret key/);
+  assert.throws(() => saveSecret('1BAD', 'v'), /invalid secret key/);
+  assert.throws(() => saveSecret('A=B', 'v'), /invalid secret key/);
+  assert.throws(() => saveSecret('A B', 'v'), /invalid secret key/);
+  assert.throws(() => saveSecret('A\nB', 'v'), /invalid secret key/);
+});
+
+test('saveSecret rejects non-string values', async () => {
+  const { saveSecret } = await import(`../../config/secrets.js?cb=${Date.now()}`);
+  assert.throws(() => saveSecret('KEY', 42), /must be a string/);
+  assert.throws(() => saveSecret('KEY', null), /must be a string/);
+  assert.throws(() => saveSecret('KEY', undefined), /must be a string/);
+});

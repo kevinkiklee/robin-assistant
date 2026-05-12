@@ -42,8 +42,9 @@ system/
   io/
     capture/            record-event + session-capture + transcript +
                         errors
-    hooks/              dispatcher.js (CLI), disabled.js,
+    hooks/              dispatcher.js (CLI),
                         session-start/stop handlers
+                        (disable toggle lives in config/hooks-disabled.js)
     integrations/<name>/ manifest + sync + tool factories + auth helpers
     mcp/                MCP tool definitions
     outbound/           rate limiter + patterns

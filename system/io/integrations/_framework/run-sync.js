@@ -84,6 +84,19 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
   console.log(`[integrations:${name}] ${trigger}`);
 
   const ctrl = new AbortController();
+  // Optional backstop timeout — integrations are free to ignore the signal,
+  // but if they propagate it (lunch_money, google_calendar, etc.) we can
+  // abort a runaway sync before it blocks the scheduler forever. Opt-in
+  // because integrations with legitimate >5 min paginated syncs exist;
+  // setting $ROBIN_INTEGRATION_TIMEOUT_MS=300000 enables a 5-min cap.
+  const explicitTimeout = Number.parseInt(process.env.ROBIN_INTEGRATION_TIMEOUT_MS ?? '', 10);
+  let timeoutHandle = null;
+  if (Number.isInteger(explicitTimeout) && explicitTimeout > 0) {
+    timeoutHandle = setTimeout(
+      () => ctrl.abort(new Error(`integration ${name} exceeded ${explicitTimeout}ms`)),
+      explicitTimeout,
+    );
+  }
   const startMs = Date.now();
   try {
     const secrets = {};
@@ -141,5 +154,7 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
       next_run_at: manual ? cur.next_run_at : new Date(Date.now() + cadence),
     });
     return { ok: false, reason: 'sync_error', error: e.message };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }
