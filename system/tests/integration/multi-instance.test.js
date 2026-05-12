@@ -36,10 +36,18 @@ test('multiple parallel HTTP requests to the daemon do not corrupt the DB', asyn
   });
   try {
     const state = await waitForState(tmp);
+    // `/internal/*` is bearer-token-gated (per-boot 64-char hex token
+    // written to .daemon.state). Without it, every request 401s and the
+    // assertion below trivially fails. Read the token from the state
+    // file the same way the real CLI/hook callers do.
+    const headers = {
+      'content-type': 'application/json',
+      ...(state.auth_token ? { authorization: `Bearer ${state.auth_token}` } : {}),
+    };
     const reqs = Array.from({ length: 10 }, () =>
       fetch(`http://127.0.0.1:${state.port}/internal/biographer/process-pending`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({}),
         signal: AbortSignal.timeout(5000),
       }).catch((e) => ({ ok: false, error: e.message })),

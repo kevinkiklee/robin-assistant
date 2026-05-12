@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -139,8 +139,14 @@ export async function surrealInstall({
       },
       // 0600 because the file embeds the surreal root password in
       // ProgramArguments. launchd reads it as the loading user, so other
-      // local users get no read access.
-      () => writeFileSync(plistPath, xml, { mode: 0o600 }),
+      // local users get no read access. writeFileSync's `mode` is only
+      // honoured on CREATE, so a re-install over an existing file would
+      // silently keep the prior permissions (often 0644). chmodSync after
+      // closes that gap.
+      () => {
+        writeFileSync(plistPath, xml, { mode: 0o600 });
+        chmodSync(plistPath, 0o600);
+      },
     );
     console.log(`installed launchd plist: ${plistPath}`);
   } else if (platform() === 'linux') {
@@ -164,7 +170,11 @@ export async function surrealInstall({
         label: 'robin-surreal.service',
       },
       // 0600 to keep the password out of other local users' reach.
-      () => writeFileSync(unitPath, txt, { mode: 0o600 }),
+      // Same writeFileSync mode-on-create caveat as the plist branch above.
+      () => {
+        writeFileSync(unitPath, txt, { mode: 0o600 });
+        chmodSync(unitPath, 0o600);
+      },
     );
     console.log(`installed systemd user unit: ${unitPath}`);
   } else {

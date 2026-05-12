@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -172,7 +172,14 @@ export async function mcpInstall(argv) {
       // 0600 parity with surreal-install: the plist embeds the absolute
       // node path + ROBIN_HOME, which can be sensitive on shared machines.
       // launchd reads it as the loading user, so 0600 doesn't break load.
-      () => writeFileSync(plistPath, xml, { mode: 0o600 }),
+      // writeFileSync's `mode` only applies on CREATE — on re-install over
+      // an existing file the permission would silently revert to whatever
+      // the prior write produced (commonly 0644 under default umask).
+      // Explicit chmodSync closes that gap.
+      () => {
+        writeFileSync(plistPath, xml, { mode: 0o600 });
+        chmodSync(plistPath, 0o600);
+      },
     );
     console.log(`installed launchd plist: ${plistPath}`);
   } else if (platform() === 'linux') {
@@ -187,7 +194,11 @@ export async function mcpInstall(argv) {
         expectedHome: currentRobinHome,
         label: 'robin-mcp.service',
       },
-      () => writeFileSync(unitPath, txt, { mode: 0o600 }),
+      // Same writeFileSync mode-on-create caveat as the plist branch above.
+      () => {
+        writeFileSync(unitPath, txt, { mode: 0o600 });
+        chmodSync(unitPath, 0o600);
+      },
     );
     console.log(`installed systemd user unit: ${unitPath}`);
   } else {
