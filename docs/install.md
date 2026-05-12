@@ -12,8 +12,8 @@ The full install walkthrough. For the one-liner, see the [README](../README.md).
 ## The fast path
 
 ```sh
-git clone git@github.com:kevinkiklee/robin-assistant.git robin-v2
-cd robin-v2
+git clone git@github.com:kevinkiklee/robin-assistant.git
+cd robin-assistant
 npm install
 ```
 

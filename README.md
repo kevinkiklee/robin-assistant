@@ -96,8 +96,8 @@ record_correction(...)  ──┘
 ## Quickstart
 
 ```sh
-git clone git@github.com:kevinkiklee/robin-assistant.git robin-v2
-cd robin-v2
+git clone git@github.com:kevinkiklee/robin-assistant.git
+cd robin-assistant
 npm install
 ```
 
