@@ -13,6 +13,11 @@ export const commands = {
     export: 'migrate',
     help: 'apply schema migrations',
   },
+  'import-v1': {
+    import: './commands/import-v1.js',
+    export: 'importV1',
+    help: 'import v1 markdown user-data into v2',
+  },
   doctor: { import: './commands/doctor.js', export: 'doctor', help: 'health check' },
   'recall-eval': {
     import: './commands/recall-eval.js',

@@ -10,6 +10,7 @@ const SKIP_FIRST_RUN_INIT = new Set([
   'uninstall',
   'doctor',
   'migrate',
+  'import-v1',
   'hook',
   'mcp',
   '--help',
