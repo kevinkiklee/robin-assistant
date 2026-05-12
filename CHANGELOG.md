@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### `secrets set` — accept `KEY VALUE`, validate key shape before prompting
+
+Two UX bugs in `robin secrets set` reported from real use:
+
+- **Silent argv-drop.** Handler in `secrets-set.js` only read `argv[0]`, so the natural form `robin secrets set GEMINI_API_KEY <value>` (two positional args) silently discarded the value and dropped the user into the interactive prompt with no explanation. Now: two-arg form is accepted (same shell-history warning as `KEY=VALUE`), and `>2` positional args exits with usage instead of swallowing extras.
+- **Post-prompt key validation.** The `ENV_KEY_RE` check lived only inside `saveSecret`, so a misuse like `robin secrets set AIzaSy-not-a-key` (forgot the env var name) made the user type a hidden value at the prompt before being told the *key* was malformed. `ENV_KEY_RE` + new `assertValidKey` are now exported from `config/secrets.js` and the CLI validates the key shape before any prompt — invalid keys fail instantly.
+
+Tests: new `secrets-cli-set.test.js` covering `KEY=VAL`, `KEY VAL`, no-args usage, too-many-args usage, and pre-prompt key-shape rejection (5 tests). Existing `assertValidSecret` path unchanged.
+
+### v1 import — close the remaining data-loss gaps
+
+A full audit of the v1→v2 migrator against Kevin's actual v1 user-data surfaced five concrete losses that this round fixes. Before: ~270 timestamped entries collapsed into 2 mtime-based events; ~13 active `self-improvement/` and root files weren't imported at all; a live working artifact (`cali-trip-2026-packing-list.md`) sat outside the copied paths; the on-disk `_v1_imports` ledger correctly tracked everything, but report-level visibility into per-source breakdowns was dead.
+
+- **`streams/inbox.md` (248 dated entries) + `streams/log.md` ([YYYY-MM-DD] headers).** The dated-header regex in `parsers/dated-entries.js` only matched `## YYYY-MM-DD` or `## YYYY-MM-DD — title`; everything else fell through `passEvents`' empty-entries branch and produced a single mtime-anchored event per file. New regex `^(##|###)\s+\[?(\d{4}-\d{2}-\d{2})\]?(.*)$` plus a `cleanTitle` helper strips em-dash / pipe separators left over from the various v1 shapes. `passes/d-events.js` keys inbox/log sourcePaths off the header line number so same-day entries don't collide on `content_hash`. After fix: 247 inbox events + 4 log events (was 1 + 1).
+- **`self-improvement/{communication-style,threads,domain-confidence,learning-queue,session-handoff}.md`.** None were imported. Pass B now routes `communication-style.md` through `applyFacet` (the existing `commStyleProjector` in `taxonomy.js` was already wired but no caller invoked it) and creates `memos(kind='pattern' | 'knowledge', meta.source=<slug>)` for the others. Long bodies (`threads.md`, `learning-queue.md`) chunk via the existing `writeChunkedMemo` path.
+- **`memory/tasks.md`.** Previously skipped as a "view" file, but its open `[ ]` items (HSA top-ups, Prudential V9043863 follow-ups, MS beneficiary, ELCAP CT, dermatology, BofA close-out, project work) aren't derivable from anywhere else. Removed from `SKIPPED_VIEW_FILES`; imported as `kind='knowledge', meta.source='v1-tasks'` (chunked when long).
+- **`memory.surrealdb-era/**`.** Historical photo-collection audit/proposals/scans, frozen from a prior schema era. Spec said skip; reality is they're 11 markdown records not duplicated elsewhere. Pass B now walks `memoryDir/../memory.surrealdb-era/` and imports each as low-confidence (`0.3`) `knowledge` memos with `meta.archived=true, meta.source='memory.surrealdb-era'`.
+- **`user-data/artifacts/*.md`.** Live working docs (the cali-trip-2026-packing-list ahead of the 5/14 flight). Extended `passSources` with a generic `copyTree` helper so it now mirrors both `sources/` (all files) and `artifacts/` (`.md` only) into v2's `user-data/`, recording one `_v1_imports(kind='source_file')` row per file.
+- **Reporting bugs.** `report.breakdown_events` was initialised but never incremented (`bumpCounts` now updates it); `report.breakdown_edges.about` was double-counting `derived_from` edges because `passMemos` lumped both into a single `counts.edges`. Pass B now tracks `about_edges` and `derived_from_edges` separately and `index.js` writes them to the right buckets.
+
+Live import deltas against Kevin's v1 user-data (gemini-3072 profile, `--embed=defer`): +46 memos (5 v1-tasks chunks, 11 memory.surrealdb-era, 2 biographer-threads, 2 learning-queue, 1 communication-style facet, 1 domain-confidence, 1 session-handoff), +253 events (247 inbox + 4 log + 2 from the line-suffix de-dup change), +7 derived_from edges from new chunking, +1 source file (cali-trip). 0 errors. Final population: 553 memos · 669 events · 277 entities · 903 edges · 311 rules · 1 refusal.
+
+Tests: 4 new parser tests for the inbox/log header shapes (`## YYYY-MM-DD HH:MM` and `## [YYYY-MM-DD] freeform title`) and 1 for many-same-day same-hash de-dup via line suffix; integration test fixture extended with all five new branches plus `memory.surrealdb-era/` + `artifacts/` + the inbox/log shapes, expected memo count moved from 5 to 12, expected event count from 3 to 6, and new assertions confirm `breakdown_events` is populated, persona's `comm_style.communication-style` is set, and `artifacts/` rows land in `_v1_imports`.
+
 ### MCP SSE round-trip + daemon supervisor lifecycle
 
 Five independent defects collectively prevented the v2 daemon from being usable via the SSE transport from Claude Code / Gemini CLI:

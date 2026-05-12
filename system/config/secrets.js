@@ -44,12 +44,16 @@ export function envFilePath() {
 // Keys must be POSIX shell-style identifiers so they parse identically in
 // dotenv readers, login shells, and downstream tooling. This also blocks
 // injection where a corrupted key smuggles in `\n` or `=` characters.
-const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-function assertValidSecret(key, value) {
+export function assertValidKey(key) {
   if (typeof key !== 'string' || !ENV_KEY_RE.test(key)) {
     throw new Error(`invalid secret key: must match ${ENV_KEY_RE} (got: ${JSON.stringify(key)})`);
   }
+}
+
+function assertValidSecret(key, value) {
+  assertValidKey(key);
   if (typeof value !== 'string') {
     throw new Error(`invalid secret value for ${key}: must be a string`);
   }
