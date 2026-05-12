@@ -30,6 +30,10 @@ export const EDGE_KIND_REGISTRY = {
   },
   supersedes: { in: ['memos'], out: ['memos'] },
   contradicts: { in: ['memos'], out: ['memos'], symmetric: true },
+  // arc_contains: arc -> episode membership. Replaces the legacy
+  // `meta.episode_ids` array tracked on arcs (still written as a defensive
+  // mirror for back-compat).
+  arc_contains: { in: ['arcs'], out: ['episodes'] },
 };
 
 /**

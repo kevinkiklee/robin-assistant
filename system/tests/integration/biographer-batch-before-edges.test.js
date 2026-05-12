@@ -133,3 +133,76 @@ test('within-batch before edges do not cross episode boundaries', async () => {
   assert.equal(rows[0].n, 1, 'expected exactly 1 before edge (ev1->ev2) — no cross-episode chain');
   await close(db);
 });
+
+test('cross-batch before edge: batch B chains to last event of batch A when same episode', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
+  const ev2 = await recordEvent(db, e, { source: 'cli', content: 'two' });
+  const ev3 = await recordEvent(db, e, { source: 'cli', content: 'three' });
+  const ev4 = await recordEvent(db, e, { source: 'cli', content: 'four' });
+
+  // Batch A: 2 events, same episode.
+  const hostA = host(
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(ev1.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev2.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+      ],
+    }),
+  );
+  await biographerProcessBatch(db, e, hostA, [ev1.id, ev2.id]);
+
+  // Batch B: 2 events in the SAME episode (stays in batch-mode path).
+  const hostB = host(
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(ev3.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev4.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+      ],
+    }),
+  );
+  await biographerProcessBatch(db, e, hostB, [ev3.id, ev4.id]);
+
+  // Expect: ev1->ev2 (within batch A) + ev3->ev4 (within batch B) +
+  // ev2->ev3 (cross-batch).
+  const [rows] = await db
+    .query("SELECT count() AS n FROM edges WHERE kind = 'before' GROUP ALL")
+    .collect();
+  assert.equal(rows[0].n, 3, 'expected 3 before edges: 1 in A + 1 in B + 1 cross-batch');
+
+  const [chain] = await db
+    .query(`SELECT in, out FROM edges WHERE kind = 'before' AND in = ${String(ev2.id)}`)
+    .collect();
+  assert.equal(chain.length, 1, 'expected one before edge originating at ev2');
+  assert.equal(String(chain[0].out), String(ev3.id), 'cross-batch edge points to ev3');
+  await close(db);
+});

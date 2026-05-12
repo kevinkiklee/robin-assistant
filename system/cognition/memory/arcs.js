@@ -51,15 +51,19 @@ export async function extendArc(db, arcId, { entity_ids = [], episode_ids = [] }
       ),
     )
     .collect();
-  // Note: arc_contains edges between arcs and episodes would require
-  // registry support (deferred for v1) — track membership via meta.episode_ids
-  // on the arc for now.
   if (episode_ids.length > 0) {
     const existing = arc.meta?.episode_ids ?? [];
     const all = Array.from(new Set([...existing.map(String), ...episode_ids.map(String)]));
     await db
       .query(new BoundQuery('UPDATE $id SET meta.episode_ids = $eids', { id: arcId, eids: all }))
       .collect();
+    // Also emit `arc_contains` graph edges (registry-validated post-alpha.17).
+    // The meta.episode_ids array is preserved above as a defensive mirror.
+    const { relateAll } = await import('./store.js');
+    const rows = episode_ids.map((eid) => ({ from: arcId, to: eid, kind: 'arc_contains' }));
+    await relateAll(db, rows).catch(() => {
+      /* fail-soft: meta.episode_ids is authoritative if edges fail */
+    });
   }
   return arc;
 }

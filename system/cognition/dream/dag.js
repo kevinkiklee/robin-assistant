@@ -15,5 +15,8 @@ export const DREAM_DAG_DEPS = {
   confidence: [], // §1.2 — no edge to knowledge (confidence reads evidence_ledger, not memos)
   scopeCleanup: ['knowledge'], // §1.2 — derived_from edges seed scope-cleanup's promote pass
   calibration: ['commStyle'], // §1.2 — persona MERGE serial within a dream run
-  compaction: ['knowledge', 'scopeCleanup'], // §1.2 — content_hash + delete-then-archive
+  // §1.2 — content_hash + delete-then-archive; also waits for confidence so
+  // compaction reads memo.confidence after step-confidence-recompute settles
+  // (avoids archiving rows whose freshness would have crossed the threshold).
+  compaction: ['knowledge', 'scopeCleanup', 'confidence'],
 };

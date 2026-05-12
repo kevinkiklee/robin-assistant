@@ -366,6 +366,36 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     }
   }
 
+  // Cross-batch `before` edge: if the previous batch for this source ended in
+  // an episode that this batch's first event also belongs to, chain them.
+  // Uses per-source cursor `runtime:biographer.value.last_event_by_source`.
+  try {
+    const prevCursor = runtime?.last_event_by_source?.[source];
+    if (prevCursor?.event_id && prevCursor?.episode_id) {
+      // Find the earliest event in this batch whose episode matches the cursor.
+      let chained = null;
+      const sortedValid = [...validEvents].sort(
+        (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
+      );
+      for (const ev of sortedValid) {
+        if (String(episodeIdForEvent.get(String(ev.id))) === String(prevCursor.episode_id)) {
+          chained = ev;
+          break;
+        }
+      }
+      if (chained) {
+        const { RecordId } = await import('surrealdb');
+        const fromId =
+          typeof prevCursor.event_id === 'string' && prevCursor.event_id.includes(':')
+            ? new RecordId('events', prevCursor.event_id.split(':')[1])
+            : new RecordId('events', prevCursor.event_id);
+        edgeRows.push({ from: fromId, to: chained.id, kind: 'before' });
+      }
+    }
+  } catch {
+    /* fail-soft: cross-batch chaining is best-effort */
+  }
+
   // 9. Write edges (one batched relateAll call; chunks at 50 internally).
   if (edgeRows.length > 0) {
     await withTxRetry(() => store.relateAll(db, edgeRows));
@@ -455,15 +485,29 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     last_batch_output_tokens: outputTokens,
   });
 
-  // Housekeeping: last_processed + last_run_at (preserve existing single-event
-  // semantics so observers don't notice the path switch).
+  // Housekeeping: last_processed + last_run_at + per-source cross-batch
+  // cursor. The cursor feeds the next batch's cross-batch `before` edge so
+  // we can chain the last event of batch K to the first event of batch K+1
+  // when they share an episode.
+  const sortedValidEvents = [...validEvents].sort(
+    (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
+  );
+  const lastEvent = sortedValidEvents[sortedValidEvents.length - 1];
+  const lastEventId = String(lastEvent.id?.id ?? lastEvent.id);
+  const lastEpisodeId = String(episodeIdForEvent.get(String(lastEvent.id)));
   await withTxRetry(async () => {
     await db
-      .query(surql`
+      .query(
+        surql`
         UPSERT type::record('runtime', 'biographer')
-          SET value.last_processed_event_id = ${String(validEvents[validEvents.length - 1].id)},
-              value.last_run_at = time::now()
-      `)
+          SET value.last_processed_event_id = ${lastEventId},
+              value.last_run_at = time::now(),
+              value.last_event_by_source[${source}] = ${{
+                event_id: lastEventId,
+                episode_id: lastEpisodeId,
+              }}
+      `,
+      )
       .collect();
   });
 
