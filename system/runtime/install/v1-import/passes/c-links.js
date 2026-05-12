@@ -19,7 +19,11 @@ function parseRecordIdStr(s) {
   return new RecordId(s.slice(0, i), s.slice(i + 1));
 }
 
-export async function passLinks({ memoryDir, entitiesByPath, db, sessionId, report }) {
+// `sessionId` is unused: edge writes go through `upsertEdge`, which is
+// idempotent via the composite (kind, in, out) record id and bypasses the
+// `_v1_imports` ledger. Kept in the signature for symmetry with other passes
+// in case a future change adds per-edge ledger entries.
+export async function passLinks({ memoryDir, entitiesByPath, db, sessionId: _s, report }) {
   const counts = { edges: 0, unresolved: 0, errors: 0 };
   const linksPath = join(memoryDir, 'LINKS.md');
   if (!existsSync(linksPath)) return { counts };

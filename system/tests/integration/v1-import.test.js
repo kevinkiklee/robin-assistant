@@ -24,7 +24,6 @@ await writeConfig({ embedder_profile: 'mxbai-1024' });
 
 function buildFixtureUserData() {
   const root = join(tmpdir(), `v1-fixture-${process.pid}-${Math.random().toString(36).slice(2)}`);
-  const mem = join(root, 'memory');
   const w = (relPath, content) => {
     const p = join(root, relPath);
     mkdirSync(p.slice(0, p.lastIndexOf('/')), { recursive: true });
@@ -253,7 +252,7 @@ test('runImport: re-run is idempotent (every writer skips)', async () => {
   const db = await fresh();
   const src = buildFixtureUserData();
 
-  const first = await runImport({ src, db, robinHome: HOME, embed: 'defer' });
+  await runImport({ src, db, robinHome: HOME, embed: 'defer' });
   const before = await rowCount(db);
 
   const second = await runImport({ src, db, robinHome: HOME, embed: 'defer' });
