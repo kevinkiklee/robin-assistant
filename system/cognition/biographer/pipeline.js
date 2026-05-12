@@ -136,6 +136,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   if (!Array.isArray(eventIds) || eventIds.length === 0) {
     return { perEvent };
   }
+  const batchStartedAt = Date.now();
 
   // 1. Single-event fast path stays as-is — short-circuits to _processOne for
   //    behaviour-identical N=1 calls (MCP-tool callers, biographer-catchup CLI).
@@ -484,6 +485,15 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     last_batch_input_tokens: inputTokens,
     last_batch_output_tokens: outputTokens,
   });
+  // Structured per-batch row (additive to the runtime counters).
+  await _writeBiographerTelemetry(db, {
+    source,
+    batch_size: validEvents.length,
+    via: 'batch',
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    duration_ms: Date.now() - batchStartedAt,
+  });
 
   // Housekeeping: last_processed + last_run_at + per-source cross-batch
   // cursor. The cursor feeds the next batch's cross-batch `before` edge so
@@ -516,6 +526,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
 
 async function _fallbackPerEvent(db, embedder, host, eventIds, perEvent, opts, _batchError) {
   // Single-event fallback. Spec §8: never worse than today's baseline.
+  const fallbackStartedAt = Date.now();
   let successCount = 0;
   for (const id of eventIds) {
     try {
@@ -530,6 +541,27 @@ async function _fallbackPerEvent(db, embedder, host, eventIds, perEvent, opts, _
     batches_total_delta: 1,
     batches_fallback_delta: 1,
     events_biographed_via_fallback_delta: successCount,
+  });
+  // Structured per-batch row for the fallback path. The fallback reason
+  // was already written to runtime via _recordBatchFallback; carry it here
+  // best-effort by reading it back.
+  let fallbackReason = null;
+  try {
+    const [rt] = await db
+      .query("SELECT * FROM type::record('runtime', 'biographer') LIMIT 1")
+      .collect();
+    fallbackReason = rt[0]?.value?.last_fallback_reason ?? null;
+  } catch {
+    /* fail-soft */
+  }
+  await _writeBiographerTelemetry(db, {
+    source: '__fallback__', // multi-source possible in fallback path
+    batch_size: eventIds.length,
+    via: 'fallback',
+    input_tokens: 0,
+    output_tokens: 0,
+    duration_ms: Date.now() - fallbackStartedAt,
+    fallback_reason: fallbackReason,
   });
   return { perEvent };
 }
@@ -576,6 +608,29 @@ async function _recordBatchTelemetry(
       `)
       .collect();
   });
+}
+
+// Append a structured row to biographer_telemetry (post-alpha.17 follow-up).
+// Additive to the runtime counters above — both are written. Fail-soft so
+// a missing table (legacy installs running before 0022) never blocks a batch.
+async function _writeBiographerTelemetry(db, fields) {
+  try {
+    await db
+      .query(
+        surql`CREATE biographer_telemetry CONTENT ${{
+          source: String(fields.source ?? '__unknown__'),
+          batch_size: Number(fields.batch_size ?? 0),
+          via: String(fields.via ?? 'batch'),
+          input_tokens: Number(fields.input_tokens ?? 0),
+          output_tokens: Number(fields.output_tokens ?? 0),
+          duration_ms: Number(fields.duration_ms ?? 0),
+          ...(fields.fallback_reason ? { fallback_reason: String(fields.fallback_reason) } : {}),
+        }}`,
+      )
+      .collect();
+  } catch {
+    /* fail-soft */
+  }
 }
 
 async function _processOne(db, embedder, host, eventId, opts = {}) {

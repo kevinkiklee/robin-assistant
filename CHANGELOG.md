@@ -38,9 +38,28 @@ Already-on (no flip needed): A1 cosine MMR, A2 entity boost, C1 biographer batch
 
 ### Follow-up cleanups
 
-- **Batched CLI catchup.** `robin biographer-process-pending` and `robin biographer-catchup` now group pending events by source and call `biographerProcessBatch` in chunks of 8 (matching the daemon's accumulator default), with per-event fallback if the batch call fails. Closes C1's "CLIs still loop single-event" follow-up.
-- **C1 Gate #7 verification.** New integration test in `biographer-batch-pipeline.test.js` makes the host throw 3 times on the batch call, asserts retry budget is exhausted, fallback runs per-event, and `runtime:biographer.value.last_fallback_reason='network'` lands. Closes the deferred C1 verification gate.
-- **Lint warnings cleared.** Two pre-existing optional-chain warnings in `system/cognition/belief/calibration.js` resolved; lint now reports 0 warnings.
+**Batched CLI catchup.** `robin biographer-process-pending` and `robin biographer-catchup` now group pending events by source and call `biographerProcessBatch` in chunks of 8 (matching the daemon's accumulator default), with per-event fallback if the batch call fails. Closes C1's "CLIs still loop single-event" follow-up.
+
+**C1 Gate #7 verification.** New integration test in `biographer-batch-pipeline.test.js` makes the host throw 3 times on the batch call, asserts retry budget is exhausted, fallback runs per-event, and `runtime:biographer.value.last_fallback_reason='network'` lands. Closes the deferred C1 Gate #7.
+
+**C1 Gate #9 verification.** New integration test injects a transient `Transaction conflict` on the first mark-step UPDATE, asserts `withTxRetry` converges, and both events still get `biographed_at` set. Closes the deferred C1 Gate #9.
+
+**C1 cross-batch `before` edges.** New per-source cursor `runtime:biographer.value.last_event_by_source` chains the last event of batch K to the first event of batch K+1 when they belong to the same episode. Closes the deferred C1 "cross-batch before edges" item.
+
+**C2 DAG edge `step-compaction ← step-confidence-recompute`.** Compaction now waits for confidence-recompute to settle (avoids archiving memos whose freshness was about to cross threshold). Closes the documentary C2 §Open-items entry.
+
+**arcs edge-registry support.** New `arc_contains` edge kind (arcs → episodes) is registry-validated and written by `extendArc` via `relateAll`. The legacy `meta.episode_ids` array remains as a defensive mirror. Closes the v1 deferral in `arcs.js`.
+
+**D3 `ctx.catalog` plumbing collapse.** `belief.js` fallback now delegates to `cognition/intuition/entities.js:readEntityCatalog` (A2's cached 60-second TTL reader) so the belief tool and the recall path share a single entity-catalog source of truth. Closes D3 §Open-items.
+
+**B1 session_id fallback.** `tools.js` adds `getMostRecentSessionId()` that falls back to `runtime_sessions WHERE status='active' ORDER BY last_seen_at DESC` when no in-process `ctx.sessions.active` is set. MCP recall tools called from Claude Code now naturally pick up the live session for `recall_log` correlation. Closes B1 §Open-items.
+
+**Structured telemetry tables** (migration `0022-structured-telemetry.surql`). Two new SCHEMAFULL tables provide structured per-run history for downstream tooling, additive to the existing runtime-counter / `cadence_telemetry` rows:
+
+- `biographer_telemetry` — one row per batch with `source`, `via ∈ {'batch', 'fallback'}`, `batch_size`, `input_tokens`, `output_tokens`, `duration_ms`, `fallback_reason`. Closes C1 §Open-items "Telemetry table".
+- `dream_telemetry` — one row per step per dream run with `step`, `layer ∈ {1, 2, 3}`, `duration_ms`, `tokens_in`/`tokens_out`, `success`/`error`, `parallel` flag (distinguishes the scheduler path from the serial fallback). Closes C2 §Open-items "Separate dream_telemetry table".
+
+**Lint warnings cleared.** Two pre-existing optional-chain warnings in `system/cognition/belief/calibration.js` resolved; lint reports 0 warnings.
 
 ### Test coverage delta
 
