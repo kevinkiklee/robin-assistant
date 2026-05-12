@@ -204,6 +204,23 @@ function probeSupervisor({ spawn = spawnSync, plat = platform() } = {}) {
 const LOG_TAIL_BYTES = 16 * 1024;
 const LOG_ERROR_RE = /\b(error|exception|fail(ed|ure)?|fatal)\b/i;
 
+async function probeSurreal(httpUrl, { fetchFn = globalThis.fetch } = {}) {
+  try {
+    const url = `${httpUrl.replace(/\/$/, '')}/health`;
+    const resp = await fetchFn(url, {
+      method: 'GET',
+      signal: AbortSignal.timeout(2000),
+    });
+    if (resp.ok) return { ok: true, message: `reachable at ${httpUrl} (HTTP ${resp.status})` };
+    return { ok: false, message: `unhealthy at ${httpUrl} (HTTP ${resp.status})` };
+  } catch (e) {
+    return {
+      ok: false,
+      message: `unreachable at ${httpUrl} (${e?.code ?? e?.message ?? 'unknown'})`,
+    };
+  }
+}
+
 function probeBiographerLog() {
   const logPath = join(paths.data.logs(), 'biographer.log');
   if (!existsSync(logPath)) return { exists: false };
@@ -269,6 +286,11 @@ async function doStatus(out, deps = {}) {
   if (daemonState && isPidAlive(daemonState.pid)) {
     out(`daemon: running (pid=${daemonState.pid}, port=${daemonState.port ?? '?'})`);
     daemonRunning = true;
+    if (!daemonState.auth_token) {
+      out('  auth_token: MISSING (daemon predates auth gate — `robin mcp restart`)');
+    } else {
+      out('  auth_token: present');
+    }
   } else if (daemonState) {
     out(`daemon: stale state file (port=${daemonState.port ?? '?'}, process not alive)`);
   } else {
@@ -279,21 +301,42 @@ async function doStatus(out, deps = {}) {
   const configExists = existsSync(paths.data.config());
   out(`config: ${configExists ? 'present' : 'missing'}`);
 
+  // Surreal server — when db.url is ws/wss, the daemon depends on the
+  // standalone server. Probe its /health endpoint so users can tell a
+  // "daemon down" issue from a "surreal down" issue at a glance.
+  try {
+    const dbUrl = await defaultDbUrl();
+    if (/^wss?:\/\//.test(dbUrl)) {
+      const httpUrl = dbUrl.replace(/^ws/, 'http');
+      const surreal = await (deps.probeSurreal ?? probeSurreal)(httpUrl);
+      out(`surreal server: ${surreal.message}`);
+    }
+  } catch {
+    /* surreal check is supplementary; never fail doctor over it */
+  }
+
   // Engine check: surface mismatch between config and on-disk DB so a daemon
-  // configured for `surrealkv` doesn't quietly open a stale `rocksdb` store.
-  // (Detects the migration footgun: switching engines requires `rm -rf db/`.)
+  // configured for embedded `surrealkv` doesn't quietly open a stale `rocksdb`
+  // store. Skipped when db.url points at a standalone server (ws/wss/http) —
+  // in that mode the on-disk format is owned by the surreal binary, not by
+  // our connect() path, so a `surrealkv:` directory under a `ws:` config is
+  // expected, not drift.
   try {
     const dbUrl = await defaultDbUrl();
     const engine = dbUrl.split('://')[0];
-    const dbDir = paths.data.db();
-    let onDisk = null;
-    if (existsSync(join(dbDir, 'CURRENT'))) onDisk = 'rocksdb';
-    else if (existsSync(join(dbDir, 'rev')) || existsSync(join(dbDir, 'lock')))
-      onDisk = 'surrealkv';
-    if (onDisk && onDisk !== engine) {
-      out(`engine: ${engine} (config) ≠ ${onDisk} (on-disk) — destructive reset required`);
+    if (/^wss?$|^https?$/.test(engine)) {
+      out(`engine: ${engine} (remote — on-disk format owned by surreal server)`);
     } else {
-      out(`engine: ${engine}${onDisk ? '' : ' (no on-disk DB yet)'}`);
+      const dbDir = paths.data.db();
+      let onDisk = null;
+      if (existsSync(join(dbDir, 'CURRENT'))) onDisk = 'rocksdb';
+      else if (existsSync(join(dbDir, 'rev')) || existsSync(join(dbDir, 'lock')))
+        onDisk = 'surrealkv';
+      if (onDisk && onDisk !== engine) {
+        out(`engine: ${engine} (config) ≠ ${onDisk} (on-disk) — destructive reset required`);
+      } else {
+        out(`engine: ${engine}${onDisk ? '' : ' (no on-disk DB yet)'}`);
+      }
     }
   } catch (e) {
     out(`engine: error resolving (${e.message})`);

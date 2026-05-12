@@ -107,6 +107,33 @@ test('doctor --lint-hooks: no settings.json prints empty', async () => {
   assert.match(all, /total robin-owned hook entries: 0/);
 });
 
+test('doctor status: db.url=ws → probeSurreal output appears, engine line says "remote"', async () => {
+  // Rewrite config to point at a ws:// URL for the duration of this test.
+  await writeConfig({
+    embedder_profile: 'mxbai-1024',
+    db: { url: 'ws://127.0.0.1:8000', user: 'root', pass: 'fake' },
+  });
+  try {
+    const o = makeOutCapture();
+    const e = makeOutCapture();
+    await doctor([], {
+      out: o.fn,
+      err: e.fn,
+      probeSurreal: async (httpUrl) => ({
+        ok: true,
+        message: `reachable at ${httpUrl} (HTTP 200)`,
+      }),
+    });
+    const all = o.lines.join('\n');
+    assert.match(all, /surreal server: reachable at http:\/\/127\.0\.0\.1:8000/);
+    assert.match(all, /engine: ws \(remote — on-disk format owned by surreal server\)/);
+    // Should NOT emit the destructive-reset false alarm for ws-mode.
+    assert.doesNotMatch(all, /destructive reset required/);
+  } finally {
+    await writeConfig({ embedder_profile: 'mxbai-1024' });
+  }
+});
+
 test('doctor status: better-sqlite3 ABI mismatch surfaces fix-it hint', async () => {
   const o = makeOutCapture();
   const e = makeOutCapture();

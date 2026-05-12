@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+### Standalone SurrealDB server architecture + install/daemon hardening
+
+The embedded `@surrealdb/node` engine is single-writer; concurrent Robin processes (daemon + biographer + CLI commands all firing from hooks) deadlock on the surrealkv lockfile. `robin install` now installs and supervises a standalone SurrealDB server (launchd plist on macOS, systemd user unit on Linux), writes `db.url: ws://127.0.0.1:8000` plus per-install credentials into `config.json`, and all consumers connect through it. Multi-writer arbitration is delegated to surreal where it belongs.
+
+- **Auto-supervise.** New `system/runtime/install/surreal-plist.js` + `surreal-unit.js` generators; new `surreal-install.js` command (parallel shape to `mcp-install.js`) that writes the supervisor file, records it in `host-integrations.json`, loads it via `launchctl load` / `systemctl enable --now`, and polls `/health` until the server is ready (up to 30s). Idempotent in `upgrade()`, so `npm install` against an existing install picks it up.
+- **Per-install random root password.** Surreal `--user root --pass <random>` with a 24-byte hex password generated at install time. Plist/unit files and `config.json` are chmod 0600 to keep the password out of other local users' reach.
+- **client.js sign-in.** `connect({ engine, auth })` auto-signs-in when the engine is `ws/wss/http/https`; `defaultDbAuth()` reads `db.user`/`db.pass` from `config.json`. Embedded engines (`mem://`, `surrealkv://`, `rocksdb://`) skip auth.
+- **`--no-surreal` escape hatch.** Falls back to embedded NAPI. Interactive mode requires `i-understand` confirmation because concurrent writers will deadlock.
+- **Doctor.** `robin doctor` now probes the surreal `/health` endpoint when `db.url` is remote, reports auth_token presence, and no longer false-alarms on `engine: ws (config) ≠ surrealkv (on-disk)` (in ws mode the on-disk format is owned by the surreal binary, not by our connect path).
+
+### Daemon `/internal/*` bearer-token auth
+
+The daemon binds 127.0.0.1 only, but anything else running on the same machine (browser tabs, scripts, other user accounts) can hit it. Now a per-boot 64-char hex token gates `/internal/*` endpoints, written to `.daemon.state` (chmod 0600) so CLI + hook callers can read it but unrelated processes can't.
+
+- **Daemon side.** `randomBytes(32).toString('hex')` at boot, passed to `startHttp({ authToken })`. `/internal/*` returns 401 `RobinUnauthorizedError` without `Authorization: Bearer <token>`. The non-`/internal/` surface (health probes, `/sse`) is unaffected — MCP transport has its own auth surface, and probes need to work for supervisors that don't carry the token.
+- **Client side.** `daemon-request.js` reads `state.auth_token` and adds the header. All four direct-fetch callers updated: `commands/remember.js`, `cognition/intuition/handler.js`, `io/hooks/stop-hook.js`, `io/hooks/session-start.js`.
+- **Backward compat.** State files written by old daemons omit `auth_token`; both sides treat missing token as no-auth so `robin mcp restart` cleanly upgrades both directions.
+
+### MCP daemon supervisor + Ollama auto-start
+
+- **launchd / systemd PATH fix.** Plist/unit now pin an absolute node binary (`process.execPath` at install time) and seed `PATH`. The shebang on `system/bin/robin` is `#!/usr/bin/env node`, which launchd's stripped PATH can't resolve — every restart attempt was failing silently and spawning thrash loops.
+- **`mcpEnsureRunning` poll-while-alive.** Replaced the rigid 5s × 100ms poll with a poll-while-alive loop: keep waiting as long as the spawned PID is running, fail fast when the PID dies (with the last 20 lines of `daemon.log`), generous 60s upper bound. Surfaces the real cause when the daemon dies during startup (db lock contention, missing secret, etc.) instead of a generic "failed within 5s".
+- **`mcpStart` returns the PID** so the poll can monitor it.
+- **`validateOllama` auto-start + auto-pull.** When the `ollama` binary is on PATH but the daemon isn't running, install spawns `ollama serve` detached and polls; if `qwen3-embedding:8b` is missing, install runs `ollama pull` with inherited stdio (progress bars visible). All injectable via `whichFn`/`spawnFn`/`spawnSyncFn` for tests. Helpers extracted to `system/runtime/install/ollama-profile.js`.
+- **Gemini embedder.** `embedBatch` transparently chunks at the 100-request `BatchEmbedContents` cap, and 429/5xx responses get exponential backoff (4s, 8s, 16s, 32s, 64s, 128s with jitter) so a large backfill drains across rate-limit windows instead of bailing out.
+
+### npm postinstall + `--upgrade`
+
+- `npm install` against an already-installed Robin now runs `robin install --upgrade` (idempotent refresh of migrations, hooks, manifest, supervisor, surreal-install) instead of printing a manual-step hint.
+- `upgrade()` self-heals the `.robin-home` pointer when the legacy default home (`<packageRoot>/user-data/`) has a `.robin-data` marker but no pointer file — covers users from before pointer-based home tracking existed.
+- `install --force` now merges over existing config.json instead of clobbering it; user-set fields (custom integrations, `hooks.disabled`, db overrides) survive a reinstall.
+
+### CLI UX
+
+- `robin --help` shows a one-line description for every leaf subcommand (~45 added across `mcp/*`, `jobs/*`, `rules/*`, `actions/*`, `auth/*`, `secrets/*`, `predictions/*`, `integrations/*`, `pre-commit/*`, `hooks/*`, `biographer/*`).
+- `robin mcp bogus` now prints `unknown subcommand: bogus\nusage: robin mcp <start|stop|...>` with the parent breadcrumb, instead of a bare `<start|stop|...>`.
+- Tool handler exceptions returned through MCP are sanitised to `tool '<name>' failed (<ErrorName>). See daemon.log for details.` — the raw `e.message` could carry paths, URLs, or API response bodies.
+- Boot warns when running with embedded engine (loud signal for `--no-surreal` users) so a daemon-vs-hook deadlock is easy to diagnose.
+- Fixed typo: `robin secret set` → `robin secrets set` in the gemini-3072 boot error.
+
 ### v1 → v2 markdown migrator (`robin import-v1`)
 
 One-shot CLI that imports a v1 markdown user-data tree into the v2 SurrealDB. Markdown-only input (no v1 SurrealDB dependency); content-hash dedup via a new `_v1_imports` ledger (migration `0023-v1-imports.surql`) so re-runs are O(1) skips and rollback is session-scoped.
