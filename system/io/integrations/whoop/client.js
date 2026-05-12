@@ -1,4 +1,9 @@
-const WHOOP_BASE = 'https://api.prod.whoop.com/developer/v1';
+// v1 was sunset in late 2025. v2 keeps the same base host and path shape
+// (/recovery, /activity/sleep, /activity/workout, /cycle), but sleep and
+// workout resources now use UUID ids rather than numeric ones. Our
+// external_id keys treat ids as opaque strings, so the id-shape change
+// flows through transparently.
+const WHOOP_BASE = 'https://api.prod.whoop.com/developer/v2';
 const DEFAULT_WINDOW_DAYS = 14;
 const DAY_MS = 86_400_000;
 

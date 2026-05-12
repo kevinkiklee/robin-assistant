@@ -5,8 +5,13 @@
  * value rather than aborting the whole snapshot.
  */
 
+import { getSecret } from '../../../config/secrets.js';
+
+// Read from process.env first (so shell-level override still works), then
+// fall back to user-data/secrets/.env so `robin secrets set LRC_CATALOG_PATH`
+// is the supported way to configure this without touching shell rc files.
 export function lrcCatalogPath() {
-  return process.env.LRC_CATALOG_PATH;
+  return process.env.LRC_CATALOG_PATH ?? getSecret('LRC_CATALOG_PATH') ?? undefined;
 }
 
 export function readCatalogSummary(db) {
