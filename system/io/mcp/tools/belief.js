@@ -12,7 +12,7 @@
 // belief.js writes ONLY to `cadence_telemetry` — this is enforced by the
 // audit-introspection-readonly invariant in tests/unit.
 
-import { BoundQuery, surql } from 'surrealdb';
+import { BoundQuery } from 'surrealdb';
 import { aggregateBelief } from '../../../cognition/belief/aggregate.js';
 import { calibrateAdjust, readCalibration } from '../../../cognition/belief/calibration.js';
 import { readBeliefConfig } from '../../../cognition/belief/config.js';
@@ -58,12 +58,13 @@ async function recordTelemetry(db, row) {
   }
 }
 
+// Reuse A2's cached entity-catalog reader (60-second TTL). Tightens the
+// coupling so we have a single source of truth for the catalog rather than
+// two parallel readers diverging over time.
 async function getCatalogFallback(db) {
   try {
-    const [rows] = await db
-      .query(surql`SELECT name, type FROM entities ORDER BY created_at DESC LIMIT 100`)
-      .collect();
-    return rows ?? [];
+    const { readEntityCatalog } = await import('../../../cognition/intuition/entities.js');
+    return await readEntityCatalog(db, {});
   } catch {
     return [];
   }

@@ -277,6 +277,68 @@ test('outer JSON parse failure triggers single-event fallback', async () => {
   await close(db);
 });
 
+test('Gate #9: transient Transaction conflict on mark step retries via withTxRetry and converges', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const ev1 = await recordEvent(db, e, { source: 'cli', content: 'one' });
+  const ev2 = await recordEvent(db, e, { source: 'cli', content: 'two' });
+  const h = fakeHost([
+    JSON.stringify({
+      events: [
+        {
+          event_id: String(ev1.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: false,
+          episode_summary: null,
+        },
+        {
+          event_id: String(ev2.id),
+          entities: [],
+          edges: [],
+          about: [],
+          episode_continues_previous: true,
+          episode_summary: null,
+        },
+      ],
+    }),
+  ]);
+
+  // Fault-injection wrapper: throw "Transaction conflict" on the FIRST mark
+  // UPDATE call (containing `biographed_at = time::now()`), then pass through.
+  // BoundQuery exposes the SQL via `.query` getter.
+  const origQuery = db.query.bind(db);
+  let injected = false;
+  db.query = (...args) => {
+    const arg = args[0];
+    const sql = typeof arg === 'string' ? arg : (arg?.query ?? '');
+    if (!injected && sql.includes('biographed_at = time::now()')) {
+      injected = true;
+      return {
+        async collect() {
+          throw new Error('Transaction conflict: Write conflict (injected by Gate #9)');
+        },
+      };
+    }
+    return origQuery(...args);
+  };
+
+  await biographerProcessBatch(db, e, h, [ev1.id, ev2.id], { retryBaseDelayMs: 0 });
+
+  // Restore for subsequent assertions
+  db.query = origQuery;
+
+  assert.ok(injected, 'fault-injection fired');
+
+  // Both events should still be marked biographed (withTxRetry converged).
+  const [rows] = await db
+    .query(`SELECT count() AS n FROM events WHERE biographed_at IS NOT NONE GROUP ALL`)
+    .collect();
+  assert.equal(rows[0]?.n, 2, 'both events biographed despite transient mark-step failure');
+  await close(db);
+});
+
 test('Gate #7: retries-exhausted on batch call triggers per-event fallback with last_fallback_reason=network', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
