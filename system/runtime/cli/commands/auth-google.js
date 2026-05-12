@@ -60,7 +60,7 @@ export function parseCodeArg(argv) {
 }
 
 async function unionScopes(provider) {
-  const dir = new URL('../../integrations/', import.meta.url).pathname;
+  const dir = new URL('../../../io/integrations/', import.meta.url).pathname;
   const { loaded: manifests } = await loadManifests(dir);
   const all = new Set();
   for (const m of manifests) {

@@ -50,6 +50,42 @@ async function readOrEmpty(path) {
   }
 }
 
+// Load installable integration manifests so the auto-generated
+// `<!-- robin-integrations:* -->` block lists what the daemon actually
+// surfaces. Without this the block stays "(none registered)" forever.
+// Shape matches what `renderIntegrationsList` expects:
+// `{ name, kind, cadence_ms, tool_names }`.
+async function loadIntegrationsForAgentsMd() {
+  try {
+    const { loadManifests } = await import(
+      '../../../io/integrations/_framework/manifest-loader.js'
+    );
+    const integrationsDir = new URL('../../../io/integrations/', import.meta.url).pathname;
+    const { loaded } = await loadManifests(integrationsDir);
+    // Manifest `tools:` is an array of factory FUNCTIONS, not built tool
+    // objects. Each factory returns `{ name: 'gmail_search', ... }` when
+    // invoked. Factories accept context (db/embedder/capture) but read it
+    // lazily in their handler — so calling them with no args during render
+    // returns the public tool name without firing any handler side effects.
+    // Wrap in try/catch in case a factory tightens that contract later.
+    return loaded.map((m) => {
+      const toolNames = [];
+      for (const factory of m.tools ?? []) {
+        if (typeof factory !== 'function') continue;
+        try {
+          const built = factory({});
+          if (built?.name) toolNames.push(built.name);
+        } catch {
+          if (factory.name) toolNames.push(factory.name);
+        }
+      }
+      return { name: m.name, kind: m.kind, cadence_ms: m.cadence_ms, tool_names: toolNames };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Single-pass DB read for all AGENTS.md inputs. Combined to avoid sequential
 // rocksdb open+close cycles, which can deadlock under the @surrealdb/node v3
 // close-hang. Fail-soft: any error returns the per-field "unavailable" value.
@@ -66,19 +102,23 @@ async function readDbDataForAgentsMd() {
       const jobs = await listAllJobs(db);
       const commStyle = await getCommStyle(db);
       const calibration = await getCalibration(db);
-      return { jobs, commStyle, calibration };
+      const integrations = await loadIntegrationsForAgentsMd();
+      return { jobs, commStyle, calibration, integrations };
     } finally {
       await close(db);
     }
   } catch {
-    return { jobs: undefined, commStyle: null, calibration: null };
+    return { jobs: undefined, commStyle: null, calibration: null, integrations: [] };
   }
 }
 
-async function writeMergedAgentsMd(path, jobs, commStyle, calibration) {
+async function writeMergedAgentsMd(path, jobs, commStyle, calibration, integrations) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
-  const merged = mergeAgentsMdContent(existing, agentsMdContent({ jobs, commStyle, calibration }));
+  const merged = mergeAgentsMdContent(
+    existing,
+    agentsMdContent({ jobs, commStyle, calibration, integrations }),
+  );
   await writeFile(path, merged, 'utf8');
   console.log(`updated ${path}`);
 }
@@ -243,9 +283,9 @@ export async function mcpInstall(argv) {
   if (!noAgentsMd) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
-    const { jobs, commStyle, calibration } = await readDbDataForAgentsMd();
-    await writeMergedAgentsMd(claudePath, jobs, commStyle, calibration);
-    await writeMergedAgentsMd(geminiPath, jobs, commStyle, calibration);
+    const { jobs, commStyle, calibration, integrations } = await readDbDataForAgentsMd();
+    await writeMergedAgentsMd(claudePath, jobs, commStyle, calibration, integrations);
+    await writeMergedAgentsMd(geminiPath, jobs, commStyle, calibration, integrations);
   }
 
   // 7. Print summary.

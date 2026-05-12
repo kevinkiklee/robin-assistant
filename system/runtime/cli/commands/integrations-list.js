@@ -40,7 +40,7 @@ export async function integrationsList(args = []) {
   const matches = (name) => (needle ? name.toLowerCase().includes(needle) : true);
 
   await ensureHome();
-  const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
+  const integrationsDir = new URL('../../../io/integrations/', import.meta.url).pathname;
   const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
 
   const db = await connect({ engine: await defaultDbUrl() });

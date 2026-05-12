@@ -27,7 +27,7 @@ export async function integrationsRun(argv) {
   try {
     const db = await connect({ engine: await defaultDbUrl() });
     try {
-      const integrationsDir = new URL('../../integrations/', import.meta.url).pathname;
+      const integrationsDir = new URL('../../../io/integrations/', import.meta.url).pathname;
       const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
       const target = manifests.find((m) => m.name === name);
       if (!target) {

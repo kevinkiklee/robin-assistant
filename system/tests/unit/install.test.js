@@ -510,3 +510,90 @@ test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtim
     cleanup();
   }
 });
+
+// surrealkv persists the root credential in the data dir on first start; the
+// `--pass` flag is silently ignored on subsequent starts when a root user
+// already exists. Previously `install()` generated a fresh random pass every
+// run via `surrealInstall()`, so every re-install wrote a config + plist whose
+// password no longer matched what the live db expected → auth failures. The
+// fix: reuse the existing `config.json` db.pass on re-install. These tests
+// pin that behaviour.
+test('install rotates db.pass on a fresh install (no prior config)', async () => {
+  setup();
+  try {
+    const surrealCalls = [];
+    const surrealMock = async (opts) => {
+      surrealCalls.push(opts);
+      return {
+        url: 'ws://127.0.0.1:8000',
+        user: 'root',
+        pass: opts.pass ?? 'generated-fresh-pass',
+      };
+    };
+    const { install } = await importInstall();
+    await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate', '--no-hooks'], {
+      supervise: noopSupervise(),
+      surreal: surrealMock,
+    });
+    assert.equal(surrealCalls.length, 1);
+    assert.equal(surrealCalls[0].pass, undefined, 'fresh install should not pin a pass');
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.db.pass, 'generated-fresh-pass');
+  } finally {
+    cleanup();
+  }
+});
+
+test('install reuses existing db.pass on re-install (no rotation)', async () => {
+  setup();
+  try {
+    const surrealCalls = [];
+    const surrealMock = async (opts) => {
+      surrealCalls.push(opts);
+      return {
+        url: 'ws://127.0.0.1:8000',
+        user: 'root',
+        // Simulate surrealInstall's real behaviour: when caller pins `pass`,
+        // it honours it; otherwise it generates one.
+        pass: opts.pass ?? `gen-${surrealCalls.length}`,
+      };
+    };
+    const { install } = await importInstall();
+
+    // First install — surreal generates a pass, install persists it.
+    await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate', '--no-hooks'], {
+      supervise: noopSupervise(),
+      surreal: surrealMock,
+    });
+    const firstPass = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8')).db.pass;
+    assert.ok(firstPass);
+
+    // Re-install with --force. Should pin surreal's `pass` to firstPass.
+    const { install: install2 } = await importInstall();
+    await install2(
+      [
+        '--profile',
+        'mxbai-1024',
+        '--no-mcp',
+        '--no-migrate',
+        '--no-hooks',
+        '--force',
+        '--on-existing',
+        'ignore',
+      ],
+      { supervise: noopSupervise(), surreal: surrealMock },
+    );
+
+    assert.equal(surrealCalls.length, 2, 'surreal mock called once per install');
+    assert.equal(
+      surrealCalls[1].pass,
+      firstPass,
+      're-install must pass existing pass through so surreal does not rotate',
+    );
+
+    const finalPass = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8')).db.pass;
+    assert.equal(finalPass, firstPass, 'config.json db.pass must remain stable across re-install');
+  } finally {
+    cleanup();
+  }
+});

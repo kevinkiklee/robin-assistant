@@ -27,7 +27,14 @@ import { runIntrospection } from './introspection.js';
 import { retryWithBackoff } from './retry.js';
 import { getCliVersion } from './version-handshake.js';
 
-const BUILTIN_JOBS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'jobs', 'builtin');
+const BUILTIN_JOBS_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'cognition',
+  'jobs',
+  'builtin',
+);
 
 // Fallback snapshot used until the first successful readBatchConfig load.
 // Kept in sync with DEFAULT_BATCH_CONFIG in cognition/biographer/pipeline.js.

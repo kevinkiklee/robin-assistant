@@ -378,10 +378,15 @@ export async function upgrade(deps = {}) {
     }
   } else if (!skipSurreal && existing?.db?.url) {
     // Already configured; just make sure the supervisor is up to date.
+    // Reuse the existing password — see the note in install() above; the
+    // persisted root user in surrealkv won't accept a fresh one.
     await installSurreal({
       spawnSync: deps.spawnSync,
       fetchFn: deps.fetch ?? globalThis.fetch,
       readyTimeoutMs: deps.surrealReadyTimeoutMs,
+      ...(typeof existing.db.pass === 'string' && existing.db.pass.length > 0
+        ? { pass: existing.db.pass }
+        : {}),
     });
   }
 
@@ -733,10 +738,18 @@ export async function install(argv = [], deps = {}) {
   }
   if (!skipSurreal) {
     const installSurreal = deps.surreal ?? surrealInstall;
+    // surrealkv persists root credentials in the data directory on first
+    // start; subsequent --pass values are silently ignored (the server logs
+    // "Credentials were provided, but existing root users were found"). If
+    // we generate a fresh password each install, it won't match the live
+    // root user and every connect fails. Reuse the existing config password
+    // when one is present so re-installs stay authable.
+    const priorPass = (await readConfig())?.db?.pass;
     const surreal = await installSurreal({
       spawnSync: deps.spawnSync,
       fetchFn,
       readyTimeoutMs: deps.surrealReadyTimeoutMs,
+      ...(typeof priorPass === 'string' && priorPass.length > 0 ? { pass: priorPass } : {}),
     });
     if (surreal?.url) {
       dbConfig = { db: { url: surreal.url, user: surreal.user, pass: surreal.pass } };
