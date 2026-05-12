@@ -19,6 +19,7 @@
 //   ROBIN_SKIP_AGENTS_MD    → --no-agents-md
 //   ROBIN_SKIP_SUPERVISE    → --no-supervise
 //   ROBIN_SKIP_REGISTER     → --no-register
+//   ROBIN_SKIP_SURREAL      → --no-surreal
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -91,6 +92,7 @@ if (process.env.ROBIN_SKIP_HOOKS) flags.push('--no-hooks');
 if (process.env.ROBIN_SKIP_AGENTS_MD) flags.push('--no-agents-md');
 if (process.env.ROBIN_SKIP_SUPERVISE) flags.push('--no-supervise');
 if (process.env.ROBIN_SKIP_REGISTER) flags.push('--no-register');
+if (process.env.ROBIN_SKIP_SURREAL) flags.push('--no-surreal');
 
 // Clear ROBIN_SKIP_INSTALL in the child env so first-run-init can still trigger
 // later if this run somehow no-ops without writing the pointer.

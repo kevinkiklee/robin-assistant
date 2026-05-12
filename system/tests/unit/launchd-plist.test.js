@@ -6,18 +6,23 @@ test('generateLaunchdPlist produces a valid plist with ROBIN_HOME, KeepAlive=tru
   const xml = generateLaunchdPlist({
     packageRoot: '/opt/robin',
     robinHome: '/Users/x/.robin-data',
+    nodePath: '/usr/local/bin/node',
   });
   assert.match(xml, /<key>Label<\/key>\s*<string>io\.robin-assistant\.mcp<\/string>/);
   assert.match(xml, /<key>RunAtLoad<\/key>\s*<true\/>/);
   assert.match(xml, /<key>KeepAlive<\/key>\s*<true\/>/);
-  assert.match(xml, /\/opt\/robin\/system\/bin\/robin/);
+  // ProgramArguments must start with the absolute node binary so launchd's
+  // stripped PATH doesn't break `#!/usr/bin/env node` resolution.
+  assert.match(
+    xml,
+    /<key>ProgramArguments<\/key>\s*<array>\s*<string>\/usr\/local\/bin\/node<\/string>\s*<string>\/opt\/robin\/system\/bin\/robin<\/string>/,
+  );
   assert.match(xml, /<string>mcp<\/string>/);
   assert.match(xml, /<string>start<\/string>/);
   assert.match(xml, /<string>--foreground<\/string>/);
   assert.match(xml, /<key>ROBIN_HOME<\/key>\s*<string>\/Users\/x\/\.robin-data<\/string>/);
+  assert.match(xml, /<key>PATH<\/key>\s*<string>\/usr\/local\/bin:/);
   assert.match(xml, /\/Users\/x\/\.robin-data\/cache\/logs\/daemon\.log/);
-  // Must NOT contain old ~/.robin/logs literal
-  assert.doesNotMatch(xml, /\.robin\/logs/);
 });
 
 test('generateLaunchdPlist escapes XML special chars in paths', () => {

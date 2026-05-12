@@ -1,18 +1,26 @@
 #!/usr/bin/env node
-// start-surreal-server.mjs — launch a standalone SurrealDB server.
+// start-surreal-server.mjs — launch a standalone SurrealDB server in the
+// foreground. MANUAL ESCAPE HATCH ONLY.
 //
-// Workaround for @surrealdb/node 3.0.3's surrealkv+versioned embedded-engine
-// hang. The standalone `surreal` binary supports the full set of v3 storage
-// backends — including versioned storage — and we connect via ws://.
+// The canonical path is `robin install`, which installs + supervises the
+// server via launchd (macOS) or systemd (Linux) and writes db.url into
+// <robinHome>/config.json. Use this script when you want to spin the server
+// up by hand for debugging — e.g., to tail logs in your terminal, try a
+// different storage backend, or run on a non-default port without
+// reinstalling.
 //
 // Usage:
 //   node scripts/start-surreal-server.mjs            # uses ROBIN_HOME/db
 //   node scripts/start-surreal-server.mjs --bind 127.0.0.1:8000
-//   node scripts/start-surreal-server.mjs --storage surrealkv+versioned
+//   node scripts/start-surreal-server.mjs --storage rocksdb
 //
 // After it's running:
 //   1. Update <robinHome>/config.json: { "db": { "url": "ws://127.0.0.1:8000" } }
 //   2. Restart the robin daemon — it'll connect to the server.
+//
+// Note: surreal 3.0.4 dropped the `surrealkv+versioned://` URL scheme. Use
+// `surrealkv` (default) or `rocksdb`. The `--storage` flag accepts any
+// scheme the bundled surreal binary recognises.
 //
 // Setup (one-time):
 //   brew install surrealdb/tap/surreal
@@ -26,7 +34,7 @@ import { paths } from '../../config/data-store.js';
 function parseArgs(argv) {
   const args = {
     bind: '127.0.0.1:8000',
-    storage: 'surrealkv+versioned',
+    storage: 'surrealkv',
     user: 'root',
     pass: 'root',
     log: 'info',
@@ -54,7 +62,7 @@ function parseArgs(argv) {
 
 Options:
   --bind <host:port>    bind address (default 127.0.0.1:8000)
-  --storage <scheme>    storage backend: surrealkv | surrealkv+versioned | rocksdb (default surrealkv+versioned)
+  --storage <scheme>    storage backend: surrealkv | rocksdb (default surrealkv)
   --user <name>         root username (default root)
   --pass <pass>         root password (default root)
   --log <level>         log level: error|warn|info|debug|trace (default info)
@@ -94,7 +102,10 @@ Then re-run this script.`);
   const dbDir = paths.data.db();
   if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
 
-  const url = `${args.storage}:${dbDir}`;
+  // Three-slash URL form (scheme:///absolute-path) is what surreal 3.0.4
+  // accepts. The single-slash form `scheme:/path` is rejected with
+  // "Provide a valid database path parameter".
+  const url = `${args.storage}://${dbDir}`;
   console.log(`Starting SurrealDB server:`);
   console.log(`  bind:    ${args.bind}`);
   console.log(`  storage: ${url}`);

@@ -45,6 +45,13 @@ Set any of these before `npm install` to skip a single step:
 | `ROBIN_SKIP_AGENTS_MD` | `--no-agents-md` |
 | `ROBIN_SKIP_SUPERVISE` | `--no-supervise` |
 | `ROBIN_SKIP_REGISTER` | `--no-register` |
+| `ROBIN_SKIP_SURREAL` | `--no-surreal` |
+
+`--no-surreal` skips installing + starting the standalone SurrealDB server
+and leaves `db.url` out of `config.json`, so the daemon falls back to the
+embedded NAPI engine. Only safe when you run **one** Robin process at a
+time — the embedded engine is single-writer and concurrent processes
+(daemon + biographer + CLI) will hang on its lockfile.
 
 `ROBIN_HOME=<path> npm install` overrides the home directory without any other ceremony.
 
@@ -121,6 +128,7 @@ The chosen location is written to `<package_root>/.robin-home` (a pointer file) 
 - `--no-mcp` skip everything in the MCP-install bundle (supervise + register + start + agents-md)
 - `--no-migrate` skip running DB migrations
 - `--no-hooks` skip host-side hook installation
+- `--no-surreal` skip the standalone SurrealDB server install (falls back to embedded NAPI engine; only safe single-process — see `docs/troubleshooting.md`)
 - `--hooks-only` only run the hook-install step (use after manual settings.json edits)
 - `--force` re-run even if Robin is already configured
 

@@ -3,22 +3,22 @@ import { createRemoteEngines, Surreal } from 'surrealdb';
 import { paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
 
-// Default engine; can be overridden via config.json's `db.engine` field.
-// surrealkv is the canonical successor to rocksdb on SurrealDB v3.
+// Default engine when no `db.url`/`db.engine` is set in config.json.
 //
-// Embedded engines: `mem`, `rocksdb`, `surrealkv`, `surrealkv+versioned`.
-// NOTE: `surrealkv+versioned://` (embedded) currently hangs on connect under
-// @surrealdb/node 3.0.3. As a workaround, point `db.engine` at a remote
-// SurrealDB server URL using `ws://` or `wss://`:
+// In normal operation `robin install` writes a `db.url: ws://...` pointing
+// at the standalone SurrealDB server it installs and supervises (see
+// system/runtime/cli/commands/surreal-install.js), so this default only
+// kicks in for: install-time pre-config reads, `--no-surreal` opt-outs,
+// and tests using ROBIN_HOME against a fresh tmp dir.
 //
-//   1. Install the standalone server: `brew install surrealdb/tap/surreal` or
-//      `curl -sSf https://install.surrealdb.com | sh`.
-//   2. Start it with versioned storage:
-//      `surreal start --user root --pass root surrealkv+versioned:/path/to/db`
-//   3. Set `db.engine: 'ws://127.0.0.1:8000'` in config.json (or set
-//      `db.url` directly — the resolver honors both).
+// Embedded engines accepted here: `mem`, `rocksdb`, `surrealkv`.
+// `surrealkv+versioned` is intentionally NOT supported — the v3.0.4
+// standalone binary doesn't accept that URL scheme, and the embedded NAPI
+// variant hangs on connect in @surrealdb/node 3.0.3. Multi-writer setups
+// must use the standalone server.
 //
-// scripts/start-surreal-server.mjs automates the spawn + config wiring.
+// system/runtime/scripts/start-surreal-server.mjs exists as a manual escape
+// hatch for debugging; the canonical path is `robin install`.
 export const DEFAULT_ENGINE = 'surrealkv';
 
 /**
@@ -55,18 +55,48 @@ export async function defaultDbUrl() {
   return `${DEFAULT_ENGINE}://${paths.data.db()}`;
 }
 
+/**
+ * Read SurrealDB sign-in credentials from config.json, if present.
+ *
+ * Only relevant when `db.url` points at a standalone server (ws://, wss://,
+ * http://, https://). Embedded engines don't authenticate.
+ *
+ * Returns null when no credentials are configured, leaving connect() to
+ * skip the signin step.
+ *
+ * @returns {Promise<{ username: string, password: string } | null>}
+ */
+export async function defaultDbAuth() {
+  try {
+    const cfg = await readConfig();
+    const u = cfg?.db?.user;
+    const p = cfg?.db?.pass;
+    if (typeof u === 'string' && typeof p === 'string') {
+      return { username: u, password: p };
+    }
+  } catch {
+    /* no config yet — skip auth */
+  }
+  return null;
+}
+
 // Connect hangs on `surrealkv+versioned://` in @surrealdb/node 3.0.3.
 // A 10s race converts the silent hang into an actionable error so the daemon
 // fails fast instead of looking deadlocked.
 const CONNECT_TIMEOUT_MS = 10_000;
 
-export async function connect({ engine = 'mem://', namespace = 'robin', database = 'main' } = {}) {
+export async function connect({
+  engine = 'mem://',
+  namespace = 'robin',
+  database = 'main',
+  auth,
+} = {}) {
   // Register BOTH embedded and remote engines so config can opt into either:
   //   - "surrealkv://", "rocksdb://", "mem://"       — embedded NAPI
   //   - "ws://", "wss://", "http://", "https://"     — standalone server
-  // This is the workaround for the surrealkv+versioned embedded-engine hang:
-  // run a standalone `surreal start ... surrealkv+versioned:/path` server and
-  // connect via ws://.
+  // The standalone-server path is the supported way to run Robin with
+  // multiple writers (daemon + biographer + CLI). Embedded NAPI is single-
+  // writer; concurrent writers hang on the lockfile.
   const db = new Surreal({
     engines: { ...createRemoteEngines(), ...createNodeEngines() },
   });
@@ -88,6 +118,13 @@ export async function connect({ engine = 'mem://', namespace = 'robin', database
     await Promise.race([db.connect(engine), timeout]);
   } finally {
     clearTimeout(timer);
+  }
+  // Remote schemes need sign-in. Caller can pass `auth` explicitly; otherwise
+  // we fall back to config.json's db.user/db.pass via defaultDbAuth(). Embedded
+  // schemes (mem://, surrealkv://, rocksdb://) don't authenticate.
+  if (/^(wss?|https?):\/\//.test(engine)) {
+    const creds = auth ?? (await defaultDbAuth());
+    if (creds) await db.signin(creds);
   }
   await db.use({ namespace, database });
   return db;

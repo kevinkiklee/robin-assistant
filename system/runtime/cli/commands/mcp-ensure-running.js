@@ -1,7 +1,28 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { clearDaemonState, readDaemonState } from '../../../config/daemon-state.js';
 import { paths } from '../../../config/data-store.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import { mcpStart } from './mcp-start.js';
+
+// Generous upper bound. The poll exits earlier in two ways: (a) the state
+// file appears with a live PID (success), or (b) the spawned PID dies
+// before state is written (daemon crashed — fail fast). The cap only
+// matters if the daemon stays alive but never writes state, which would
+// indicate it's hung.
+const STARTUP_TIMEOUT_MS = 60000;
+const POLL_INTERVAL_MS = 100;
+
+async function tailDaemonLog(lines = 20) {
+  try {
+    const logPath = join(paths.data.logs(), 'daemon.log');
+    const text = await readFile(logPath, 'utf-8');
+    const rows = text.split('\n').filter(Boolean);
+    return rows.slice(-lines).join('\n');
+  } catch {
+    return null;
+  }
+}
 
 export async function mcpEnsureRunning() {
   const statePath = paths.data.daemonState();
@@ -11,14 +32,27 @@ export async function mcpEnsureRunning() {
     return;
   }
   if (state) await clearDaemonState(statePath);
-  await mcpStart();
-  for (let i = 0; i < 50; i++) {
+
+  const spawnedPid = await mcpStart();
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
     const s = await readDaemonState(statePath);
     if (s && isPidAlive(s.pid)) {
       console.log(`daemon ready on :${s.port}`);
       return;
     }
-    await new Promise((r) => setTimeout(r, 100));
+    if (spawnedPid && !isPidAlive(spawnedPid)) {
+      const tail = await tailDaemonLog();
+      const tailMsg = tail ? `\nlast log lines:\n${tail}` : '';
+      throw new Error(`daemon process (pid ${spawnedPid}) exited before becoming ready${tailMsg}`);
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
-  throw new Error('daemon failed to start within 5s');
+
+  const tail = await tailDaemonLog();
+  const tailMsg = tail ? `\nlast log lines:\n${tail}` : '';
+  throw new Error(
+    `daemon failed to start within ${Math.round(STARTUP_TIMEOUT_MS / 1000)}s${tailMsg}`,
+  );
 }

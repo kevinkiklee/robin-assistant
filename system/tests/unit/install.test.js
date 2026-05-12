@@ -68,13 +68,23 @@ function noopSupervise() {
   return async () => {};
 }
 
+// Skip the standalone-surreal install step in tests. Returning null tells
+// install() to leave `db.url` out of config, so connect() falls back to
+// the embedded engine — which is what these tests exercise.
+async function noopSurreal() {
+  return null;
+}
+
 // ---------- Argument parsing ----------
 
 test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', async () => {
   setup();
   try {
     const { install } = await importInstall();
-    await install(['--profile', 'mxbai-1024', '--no-mcp'], { supervise: noopSupervise() });
+    await install(['--profile', 'mxbai-1024', '--no-mcp'], {
+      supervise: noopSupervise(),
+      surreal: noopSurreal,
+    });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.ok(cfg.installed_at);
@@ -87,7 +97,10 @@ test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', as
   setup();
   try {
     const { install } = await importInstall();
-    await install(['--auto', '--no-mcp'], { supervise: noopSupervise() });
+    await install(['--auto', '--no-mcp'], {
+      supervise: noopSupervise(),
+      surreal: noopSurreal,
+    });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.ok(cfg.installed_at);
@@ -104,7 +117,7 @@ test('install --auto --profile gemini-3072 --i-understand --no-mcp respects expl
     const { install } = await importInstall();
     await install(
       ['--auto', '--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'],
-      { supervise: noopSupervise() },
+      { supervise: noopSupervise(), surreal: noopSurreal },
     );
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'gemini-3072');
@@ -121,6 +134,7 @@ test('install --profile gemini-3072 --i-understand --no-mcp persists profile whe
     const { install } = await importInstall();
     await install(['--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
     });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'gemini-3072');
@@ -136,6 +150,7 @@ test('install --profile gemini-3072 in non-interactive mode without --i-understa
     const exitCode = await captureExit(() =>
       install(['--profile', 'gemini-3072', '--no-mcp'], {
         supervise: noopSupervise(),
+        surreal: noopSurreal,
         interactive: false,
       }),
     );
@@ -151,7 +166,10 @@ test('install --profile invalid-name exits 1', async () => {
   try {
     const { install } = await importInstall();
     const exitCode = await captureExit(() =>
-      install(['--profile', 'bogus-1234', '--no-mcp'], { supervise: noopSupervise() }),
+      install(['--profile', 'bogus-1234', '--no-mcp'], {
+        supervise: noopSupervise(),
+        surreal: noopSurreal,
+      }),
     );
     assert.equal(exitCode, 1);
   } finally {
@@ -171,6 +189,7 @@ test('empty ~/.robin/ no longer aborts install (proceeds without prompt)', async
     // Empty ~/.robin/ is not a recognised legacy home; install proceeds normally.
     await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
       interactive: false,
     });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
@@ -187,6 +206,7 @@ test('empty ~/.robin/ with --force proceeds non-interactively', async () => {
     const { install } = await importInstall();
     await install(['--profile', 'mxbai-1024', '--force', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
       interactive: false,
     });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
@@ -207,6 +227,7 @@ test('install interactive: profile flag respected, config written', async () => 
     const { install } = await importInstall();
     await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
       interactive: true,
       prompt: promptFn,
     });
@@ -249,6 +270,7 @@ test('reinstall with --force proceeds past short-circuit', async () => {
     const { install } = await importInstall();
     await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
     });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
@@ -260,7 +282,7 @@ test('reinstall with --force proceeds past short-circuit', async () => {
 
 // ---------- Per-profile validation: Ollama ----------
 
-test('qwen3-4096 with Ollama unreachable exits 1', async () => {
+test('qwen3-4096 with Ollama unreachable AND binary missing exits 1', async () => {
   setup();
   try {
     const fetchFn = async () => {
@@ -270,7 +292,9 @@ test('qwen3-4096 with Ollama unreachable exits 1', async () => {
     const exitCode = await captureExit(() =>
       install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
         supervise: noopSupervise(),
+        surreal: noopSurreal,
         fetch: fetchFn,
+        which: () => null,
       }),
     );
     assert.equal(exitCode, 1);
@@ -280,7 +304,42 @@ test('qwen3-4096 with Ollama unreachable exits 1', async () => {
   }
 });
 
-test('qwen3-4096 with Ollama reachable but model missing exits 1', async () => {
+test('qwen3-4096 with Ollama unreachable but binary present auto-starts daemon', async () => {
+  setup();
+  try {
+    // First fetch fails (daemon down); after auto-start, subsequent fetches succeed.
+    let started = false;
+    const fetchFn = async () => {
+      if (!started) throw new Error('connection refused');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ models: [{ name: 'qwen3-embedding:8b' }] }),
+      };
+    };
+    const spawnCalls = [];
+    const spawnFn = (cmd, args) => {
+      spawnCalls.push([cmd, args]);
+      started = true; // simulate daemon coming up
+      return { unref: () => {} };
+    };
+    const { install } = await importInstall();
+    await install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+      surreal: noopSurreal,
+      fetch: fetchFn,
+      which: () => '/usr/local/bin/ollama',
+      spawn: spawnFn,
+    });
+    assert.deepEqual(spawnCalls, [['ollama', ['serve']]]);
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'qwen3-4096');
+  } finally {
+    cleanup();
+  }
+});
+
+test('qwen3-4096 with model missing auto-pulls and persists config', async () => {
   setup();
   try {
     const fetchFn = async () => ({
@@ -288,11 +347,42 @@ test('qwen3-4096 with Ollama reachable but model missing exits 1', async () => {
       status: 200,
       json: async () => ({ models: [{ name: 'llama3' }] }),
     });
+    const pullCalls = [];
+    const spawnSyncFn = (cmd, args) => {
+      pullCalls.push([cmd, args]);
+      return { status: 0 };
+    };
+    const { install } = await importInstall();
+    await install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
+      supervise: noopSupervise(),
+      surreal: noopSurreal,
+      fetch: fetchFn,
+      spawnSync: spawnSyncFn,
+    });
+    assert.deepEqual(pullCalls, [['ollama', ['pull', 'qwen3-embedding:8b']]]);
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    assert.equal(cfg.embedder_profile, 'qwen3-4096');
+  } finally {
+    cleanup();
+  }
+});
+
+test('qwen3-4096 with model missing + pull failure exits 1', async () => {
+  setup();
+  try {
+    const fetchFn = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ models: [{ name: 'llama3' }] }),
+    });
+    const spawnSyncFn = () => ({ status: 1 });
     const { install } = await importInstall();
     const exitCode = await captureExit(() =>
       install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
         supervise: noopSupervise(),
+        surreal: noopSurreal,
         fetch: fetchFn,
+        spawnSync: spawnSyncFn,
       }),
     );
     assert.equal(exitCode, 1);
@@ -313,6 +403,7 @@ test('qwen3-4096 with Ollama reachable + model present persists config', async (
     const { install } = await importInstall();
     await install(['--profile', 'qwen3-4096', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
       fetch: fetchFn,
     });
     const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
@@ -331,6 +422,7 @@ test('gemini-3072 in non-interactive without GEMINI_API_KEY exits 1', async () =
     const exitCode = await captureExit(() =>
       install(['--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'], {
         supervise: noopSupervise(),
+        surreal: noopSurreal,
         interactive: false,
       }),
     );
@@ -349,6 +441,7 @@ test('config.json is written atomically with profile and installed_at', async ()
     const { install } = await importInstall();
     await install(['--profile', 'mxbai-1024', '--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
     });
     const cfgPath = join(tmpHome, 'config.json');
     assert.ok(existsSync(cfgPath));
@@ -373,6 +466,7 @@ test('interactive prompt with default (empty input) picks mxbai-1024', async () 
     const { install } = await importInstall();
     await install(['--no-mcp', '--no-migrate'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
       interactive: true,
       prompt: promptFn,
     });
@@ -392,6 +486,7 @@ test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtim
     const { install } = await importInstall();
     await install(['--profile', 'mxbai-1024', '--force', '--no-mcp'], {
       supervise: noopSupervise(),
+      surreal: noopSurreal,
       onDbReady: async (db) => {
         const [rows] = await db
           .query("SELECT * FROM type::record('runtime', 'embedder');")

@@ -22,32 +22,38 @@ rm -rf <robinHome>/db/*
 
 `robin doctor` detected that `config.json.db.engine` doesn't match the on-disk store format. Embedded stores can't switch engines in place — same destructive-reset playbook applies. After the reset, the daemon opens the configured engine and applies migrations.
 
-### `surrealkv+versioned://` hangs on connect (embedded engine)
+### Standalone SurrealDB server (automatic since alpha.18)
 
-Known upstream issue in `@surrealdb/node` 3.0.3: the versioned engine variant doesn't connect (silent hang on `db.connect()`). The local `connect()` helper has a 10s timeout so the daemon fails fast with an actionable error.
+`robin install` now installs and supervises a standalone SurrealDB server
+(launchd plist on macOS, systemd user unit on Linux), and writes
+`db.url: "ws://127.0.0.1:8000"` plus credentials into `<robinHome>/config.json`
+so the daemon, biographer, and all CLI commands connect through it
+concurrently. This replaces the embedded NAPI single-writer engine, which
+hangs under multi-process contention.
 
-**Workaround — run a standalone SurrealDB server and connect over WebSocket:**
+Prerequisite — install the `surreal` binary once:
 
 ```bash
-# 1. Install the server (one-time)
-brew install surrealdb/tap/surreal
-# or:
-curl -sSf https://install.surrealdb.com | sh
-
-# 2. Start it with versioned storage
-node system/runtime/scripts/start-surreal-server.mjs --storage surrealkv+versioned
-# (the helper script reads ROBIN_HOME and writes to <home>/db)
-
-# 3. Point Robin at the server. Edit <robinHome>/config.json:
-#    {
-#      "db": { "url": "ws://127.0.0.1:8000" }
-#    }
-#
-# 4. Restart the daemon. `robin doctor` will now print:
-#    engine: ws (no on-disk DB yet — embedded path doesn't apply)
+brew install surrealdb/tap/surreal              # macOS
+curl -sSf https://install.surrealdb.com | sh    # Linux
 ```
 
-The SDK's remote engines (`ws`, `wss`, `http`, `https`) are registered alongside the embedded ones, so config can switch between embedded and server-mode without code changes. Time-travel reads via `SELECT ... VERSION d'...'` work against the server immediately. Once the embedded `surrealkv+versioned://` upstream bug is fixed, you can drop the standalone server and switch back to `db.engine: "surrealkv+versioned"`.
+If something goes wrong:
+
+- **Diagnose:** `robin doctor` checks the server health and config drift.
+- **Re-run setup:** `robin install --force` re-installs the supervisor and
+  re-writes `db.url`.
+- **Skip standalone surreal entirely** (advanced — falls back to the
+  embedded engine; only safe if you never run more than one Robin process
+  at a time): `robin install --no-surreal`.
+- **Manual control** (for debugging): `system/runtime/scripts/start-surreal-server.mjs`
+  spawns a foreground server; pair it with a hand-edited `db.url` in
+  `config.json`.
+
+Older versions of these docs referenced `surrealkv+versioned://` as a
+workaround for a 3.0.3 embedded hang. That URL scheme is not accepted by
+the surreal 3.0.4+ standalone binary, and the workaround it described has
+been folded into the install flow above.
 
 ## The daemon
 

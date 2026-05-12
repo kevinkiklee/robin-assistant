@@ -20,4 +20,5 @@ export async function mcpStart() {
   proc.unref();
   await logFh.close();
   console.log(`daemon spawning (pid ${proc.pid}); logs at ${logsDir}/daemon.log`);
+  return proc.pid;
 }

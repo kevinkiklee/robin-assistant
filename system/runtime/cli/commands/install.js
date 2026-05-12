@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -25,6 +26,7 @@ import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
 import { doctorData } from './doctor.js';
 import { mcpInstall } from './mcp-install.js';
+import { surrealInstall } from './surreal-install.js';
 
 const VALID_PROFILES = ['mxbai-1024', 'qwen3-4096', 'gemini-3072'];
 
@@ -136,32 +138,79 @@ async function pickProfile({ prompt, interactive, profileFlag }) {
   process.exit(1);
 }
 
-async function validateOllama({ fetchFn }) {
-  let resp;
+function whichOllama(spawnSyncFn) {
+  const finder = process.platform === 'win32' ? 'where' : 'which';
+  const r = spawnSyncFn(finder, ['ollama'], { encoding: 'utf-8' });
+  if (r.status !== 0) return null;
+  return r.stdout.trim().split(/\r?\n/)[0] || null;
+}
+
+async function fetchOllamaTags(fetchFn) {
   try {
-    resp = await fetchFn(`${OLLAMA_HOST}/api/tags`);
+    const resp = await fetchFn(`${OLLAMA_HOST}/api/tags`);
+    if (!resp.ok) return { ok: false, status: resp.status };
+    return { ok: true, json: await resp.json() };
   } catch (e) {
-    console.error(`Ollama unreachable at ${OLLAMA_HOST}: ${e.message}`);
-    console.error('Install Ollama:');
-    console.error('  brew install ollama        # macOS');
-    console.error('  curl -fsSL https://ollama.com/install.sh | sh   # Linux');
-    console.error('Then start it (`ollama serve`) and re-run `robin install`.');
-    process.exit(1);
+    return { ok: false, error: e };
   }
-  if (!resp.ok) {
-    console.error(`Ollama at ${OLLAMA_HOST} returned ${resp.status}.`);
-    console.error('Make sure ollama is running, then re-run `robin install`.');
-    process.exit(1);
+}
+
+async function waitForOllama(fetchFn, { timeoutMs, intervalMs = 500 }) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await fetchOllamaTags(fetchFn);
+    if (r.ok) return r;
+    await new Promise((res) => setTimeout(res, intervalMs));
   }
-  const json = await resp.json();
-  const installed = (json.models ?? []).map((m) => m.name);
+  return null;
+}
+
+async function validateOllama({
+  fetchFn,
+  whichFn = whichOllama,
+  spawnFn = spawn,
+  spawnSyncFn = spawnSync,
+  startTimeoutMs = 20000,
+}) {
+  let r = await fetchOllamaTags(fetchFn);
+
+  if (!r.ok) {
+    const ollamaBin = whichFn(spawnSyncFn);
+    if (!ollamaBin) {
+      const reason = r.error?.message ?? `HTTP ${r.status}`;
+      console.error(`Ollama unreachable at ${OLLAMA_HOST}: ${reason}`);
+      console.error('`ollama` is not on PATH. Install it:');
+      console.error('  brew install ollama        # macOS');
+      console.error('  curl -fsSL https://ollama.com/install.sh | sh   # Linux');
+      console.error('Then re-run `robin install`.');
+      process.exit(1);
+    }
+    console.log(
+      `Ollama not running at ${OLLAMA_HOST}; starting \`ollama serve\` in the background…`,
+    );
+    const child = spawnFn('ollama', ['serve'], { detached: true, stdio: 'ignore' });
+    child.unref?.();
+    r = await waitForOllama(fetchFn, { timeoutMs: startTimeoutMs });
+    if (!r) {
+      console.error(`Ollama failed to start within ${Math.round(startTimeoutMs / 1000)}s.`);
+      console.error(
+        'Try `ollama serve` manually, check ~/.ollama/logs, then re-run `robin install`.',
+      );
+      process.exit(1);
+    }
+    console.log(`Ollama is running at ${OLLAMA_HOST}.`);
+  }
+
+  const installed = (r.json.models ?? []).map((m) => m.name);
   const found = installed.some((n) => n.startsWith('qwen3-embedding:8b'));
   if (!found) {
-    console.error('Ollama is running but qwen3-embedding:8b is not installed.');
-    console.error('Run:');
-    console.error('  ollama pull qwen3-embedding:8b');
-    console.error('Then re-run `robin install`.');
-    process.exit(1);
+    console.log('Pulling qwen3-embedding:8b (~16 GB, this can take a while)…');
+    const res = spawnSyncFn('ollama', ['pull', 'qwen3-embedding:8b'], { stdio: 'inherit' });
+    if (res.status !== 0) {
+      console.error(`\`ollama pull qwen3-embedding:8b\` failed (exit ${res.status}).`);
+      console.error('Run it manually once the issue is resolved, then re-run `robin install`.');
+      process.exit(1);
+    }
   }
 }
 
@@ -335,9 +384,12 @@ export async function repair() {
 
 /**
  * Idempotent upgrade: re-apply migrations, manifest baseline, hooks, and
- * MCP supervisor against an existing install. Reads the home from
- * ROBIN_HOME or the package-root pointer; never prompts; never rewrites
- * config.json (preserves embedder_profile and any other persisted fields).
+ * MCP supervisor against an existing install. Resolves home from
+ * ROBIN_HOME, the package-root pointer, or — as a fallback — the default
+ * `<packageRoot>/user-data/` home if it has a `.robin-data` marker
+ * (covers users who installed before the pointer file existed). Never
+ * prompts; never rewrites config.json (preserves embedder_profile and any
+ * other persisted fields).
  *
  * Used by the npm postinstall when Robin is already installed: lets a
  * package upgrade refresh idempotent state without forcing the user to
@@ -348,17 +400,29 @@ export async function upgrade(deps = {}) {
   const closeFn = deps.close ?? close;
   const onDbReady = deps.onDbReady;
   const supervise = deps.supervise ?? mcpInstall;
+  const installSurreal = deps.surreal ?? surrealInstall;
   const skipMcp = deps.skipMcp === true;
   const skipHooks = deps.skipHooks === true;
+  const skipSurreal = deps.skipSurreal === true;
 
   let home;
+  let healPointer = false;
   if (process.env.ROBIN_HOME) {
     home = resolve(process.env.ROBIN_HOME);
   } else if (pointerExists()) {
     home = readPointer().home;
   } else {
-    console.error('upgrade: no Robin install found. Run `robin install` first.');
-    process.exit(1);
+    // Fallback: marker at the default home means an older install that
+    // predates the pointer file. Use it and self-heal by writing the
+    // pointer so subsequent upgrades skip this discovery step.
+    const defaultHome = join(packageRootDir(), 'user-data');
+    if (existsSync(join(defaultHome, '.robin-data'))) {
+      home = defaultHome;
+      healPointer = true;
+    } else {
+      console.error('upgrade: no Robin install found. Run `robin install` first.');
+      process.exit(1);
+    }
   }
   process.env.ROBIN_HOME = home;
 
@@ -372,6 +436,32 @@ export async function upgrade(deps = {}) {
     process.exit(1);
   }
   console.log(`Upgrading Robin at ${home} (profile: ${existing.embedder_profile})`);
+
+  // Existing installs may not have the standalone SurrealDB server set up.
+  // Bring it online before migrations so the rest of the upgrade (and any
+  // concurrent Robin processes) connects via ws:// instead of the embedded
+  // single-writer NAPI engine. Skips silently if already running.
+  if (!skipSurreal && !existing?.db?.url) {
+    const surreal = await installSurreal({
+      spawnSync: deps.spawnSync,
+      fetchFn: deps.fetch ?? globalThis.fetch,
+      readyTimeoutMs: deps.surrealReadyTimeoutMs,
+    });
+    if (surreal?.url) {
+      await writeConfig({
+        ...existing,
+        db: { url: surreal.url, user: surreal.user, pass: surreal.pass },
+      });
+      console.log(`config: db.url = ${surreal.url}`);
+    }
+  } else if (!skipSurreal && existing?.db?.url) {
+    // Already configured; just make sure the supervisor is up to date.
+    await installSurreal({
+      spawnSync: deps.spawnSync,
+      fetchFn: deps.fetch ?? globalThis.fetch,
+      readyTimeoutMs: deps.surrealReadyTimeoutMs,
+    });
+  }
 
   await applyMigrations({ connectFn, closeFn, onDbReady });
 
@@ -389,6 +479,13 @@ export async function upgrade(deps = {}) {
     console.log('');
     console.log('Refreshing MCP daemon supervision and host registration...');
     await supervise([]);
+  }
+
+  if (healPointer) {
+    writePointer({
+      home,
+      installedBy: `robin install --upgrade ${process.env.npm_package_version ?? 'unknown'}`,
+    });
   }
 
   console.log('');
@@ -498,6 +595,7 @@ export async function install(argv = [], deps = {}) {
   const skipMcp = args.flags['no-mcp'] === true;
   const skipMigrate = args.flags['no-migrate'] === true;
   const skipHooks = args.flags['no-hooks'] === true;
+  const skipSurreal = args.flags['no-surreal'] === true;
   const hooksOnly = args.flags['hooks-only'] === true;
   const onExistingFlag =
     typeof args.flags['on-existing'] === 'string' ? args.flags['on-existing'] : null;
@@ -536,8 +634,13 @@ export async function install(argv = [], deps = {}) {
       close: deps.close,
       onDbReady: deps.onDbReady,
       supervise: deps.supervise,
+      surreal: deps.surreal,
+      spawnSync: deps.spawnSync,
+      fetch: deps.fetch,
+      surrealReadyTimeoutMs: deps.surrealReadyTimeoutMs,
       skipMcp: args.flags['no-mcp'] === true,
       skipHooks: args.flags['no-hooks'] === true,
+      skipSurreal: args.flags['no-surreal'] === true,
     });
     return;
   }
@@ -673,20 +776,44 @@ export async function install(argv = [], deps = {}) {
 
   // 6. Per-profile validation.
   if (profile === 'qwen3-4096') {
-    await validateOllama({ fetchFn });
+    await validateOllama({
+      fetchFn,
+      whichFn: deps.which,
+      spawnFn: deps.spawn,
+      spawnSyncFn: deps.spawnSync,
+    });
   } else if (profile === 'gemini-3072') {
     await validateGemini({ prompt, interactive, iUnderstand });
   }
   // mxbai-1024: nothing to validate (model downloads on first use).
 
-  // 7. Persist config.
+  // 7. Install + start the standalone SurrealDB server. Required before
+  // migrations + daemon: embedded NAPI is single-writer, and Robin's hooks
+  // can spawn multiple short-lived processes (biographer, CLI commands)
+  // that all need db access concurrently. The ws:// server arbitrates
+  // them.
+  let dbConfig = {};
+  if (!skipSurreal) {
+    const installSurreal = deps.surreal ?? surrealInstall;
+    const surreal = await installSurreal({
+      spawnSync: deps.spawnSync,
+      fetchFn,
+      readyTimeoutMs: deps.surrealReadyTimeoutMs,
+    });
+    if (surreal?.url) {
+      dbConfig = { db: { url: surreal.url, user: surreal.user, pass: surreal.pass } };
+    }
+  }
+
+  // 8. Persist config (includes db.url so migrations connect via ws://).
   await writeConfig({
     embedder_profile: profile,
     installed_at: new Date().toISOString(),
+    ...dbConfig,
   });
   console.log(`config: profile = ${profile}`);
 
-  // 8. Run migrations.
+  // 9. Run migrations.
   if (!skipMigrate) {
     await applyMigrations({ connectFn, closeFn, onDbReady });
   }

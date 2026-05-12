@@ -2,8 +2,13 @@ node_modules/
 .robin/
 user-data/
 .claude/
+.gemini/
 *.log
 .DS_Store
 system/tests/fixtures/synthetic-events.json
 system/tests/fixtures/seed-recall-pairs.json
 .robin-home
+# Local CLI scratch — surreal SQL history, paste-in api key files, etc.
+history.txt
+*.apikey
+geminapikey
