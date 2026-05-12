@@ -120,6 +120,45 @@ test('createMemo: findByPath returns the most recent ledger entry', async () => 
   await close(db);
 });
 
+test('findByPath: kind filter targets a specific ledger row when a path has multiple', async () => {
+  // A profile file emits both a `memo` row (body) and a `persona_field` row
+  // (extracted facet) into the ledger under the same source_path. The
+  // c-links pass needs `kind: 'memo'` so it picks the right one rather
+  // than whichever happened to be written last.
+  const db = await fresh();
+  const { recordImport } = await import(
+    `../../../runtime/install/v1-import/ledger.js?cb=${Date.now()}`
+  );
+  await recordImport(db, {
+    sourcePath: 'profile/interests.md',
+    hash: 'memo-hash',
+    target: 'memos:abc123',
+    kind: 'memo',
+    sessionId: session,
+  });
+  await recordImport(db, {
+    sourcePath: 'profile/interests.md',
+    hash: 'persona-hash',
+    target: 'persona:singleton',
+    kind: 'persona_field',
+    sessionId: session,
+  });
+
+  const memoLedger = await findByPath(db, 'profile/interests.md', { kind: 'memo' });
+  assert.equal(memoLedger.kind, 'memo');
+  assert.equal(memoLedger.target, 'memos:abc123');
+
+  const personaLedger = await findByPath(db, 'profile/interests.md', {
+    kind: 'persona_field',
+  });
+  assert.equal(personaLedger.kind, 'persona_field');
+  assert.equal(personaLedger.target, 'persona:singleton');
+
+  const missingLedger = await findByPath(db, 'profile/interests.md', { kind: 'event' });
+  assert.equal(missingLedger, null);
+  await close(db);
+});
+
 test('upsertEdge: creates an `about` edge and is idempotent', async () => {
   const db = await fresh();
   const entity = await upsertEntity(db, {

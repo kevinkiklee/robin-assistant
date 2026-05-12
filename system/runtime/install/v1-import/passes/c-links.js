@@ -31,8 +31,13 @@ export async function passLinks({ memoryDir, entitiesByPath, db, sessionId: _s, 
   const rows = parseLinksMd(body);
   for (const row of rows) {
     try {
-      const fromLedger = await findByPath(db, row.from_path);
-      if (!fromLedger || fromLedger.kind !== 'memo') {
+      // Scope to kind='memo'. Profile files (interests/identity/character/
+      // routines/preferences) emit both a `memo` row AND a `persona_field`
+      // row; without the kind filter, the persona_field shadows the memo
+      // when it was written later, so every LINK from a profile file fell
+      // into the unresolved branch.
+      const fromLedger = await findByPath(db, row.from_path, { kind: 'memo' });
+      if (!fromLedger) {
         counts.unresolved++;
         report.warnings.unresolved_link.push(row);
         continue;

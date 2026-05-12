@@ -43,12 +43,23 @@ export async function upsertEntity(db, { name, type, aliases = [], sourcePath, s
     `${sourcePath}\n${canonicalPayload({ name, type, aliases: dedupedAliases })}`,
   );
 
-  if (await hashExists(db, hash)) {
-    return { id: null, action: 'skipped', hash };
-  }
-
   const key = stableKey(type, name);
   const recordIdStr = `entities:${key}`;
+
+  if (await hashExists(db, hash)) {
+    // Idempotent re-run: this exact entity payload is already in the
+    // ledger. Look up the existing record id so callers (Pass A's
+    // entitiesByPath, Pass B's about-edge writer) get a usable ref. The
+    // earlier `{ id: null, action: 'skipped' }` was the cause of the
+    // "upsertEdge: to: missing or invalid record ref" cascade on re-imports.
+    // type::record needs (table, id) parts — passing a single "table:id"
+    // string is rejected by SurrealDB.
+    const [existing] = await db
+      .query(new BoundQuery('SELECT id FROM type::record($tb, $k)', { tb: 'entities', k: key }))
+      .collect();
+    const existingId = Array.isArray(existing) && existing.length > 0 ? existing[0].id : null;
+    return { id: existingId, action: 'skipped', hash };
+  }
 
   // Look up existing row first (read-only; outside the transaction).
   const [existing] = await db

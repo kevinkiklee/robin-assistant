@@ -20,15 +20,47 @@ export async function hashExists(db, hash) {
 }
 
 /**
- * Find the most recent ledger row for a source path. Used for supersedes-on-edit.
- * Returns null if no prior import for the path.
+ * Return the ledger row for a specific content hash, or null if absent.
+ * Used by writers to recover the existing target record id on idempotent
+ * re-runs (when `hashExists` is true and the caller still needs the id to
+ * build edges).
  */
-export async function findByPath(db, sourcePath) {
+export async function findByHash(db, hash) {
   const [rows] = await db
     .query(
       new BoundQuery(
-        'SELECT content_hash, target, kind, imported_at FROM _v1_imports WHERE source_path = $p ORDER BY imported_at DESC LIMIT 1',
-        { p: sourcePath },
+        'SELECT content_hash, target, kind, imported_at FROM _v1_imports WHERE content_hash = $h ORDER BY imported_at DESC LIMIT 1',
+        { h: hash },
+      ),
+    )
+    .collect();
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return { hash: rows[0].content_hash, target: rows[0].target, kind: rows[0].kind };
+}
+
+/**
+ * Find the most recent ledger row for a source path. Used for supersedes-on-edit
+ * and (via the optional `kind` filter) by passes that resolve to a specific
+ * import-shape.
+ *
+ * A single source file can produce *multiple* ledger rows of different kinds —
+ * e.g. profile/interests.md emits both a `memo` (the body) and a
+ * `persona_field` (facets extracted into the persona singleton). Callers that
+ * want the memo specifically must pass `{ kind: 'memo' }`; otherwise the
+ * persona_field row may shadow it (whichever was written last wins the
+ * `ORDER BY imported_at DESC LIMIT 1`), leaving the caller staring at a
+ * non-memo target and falling through to its unresolved branch.
+ *
+ * Returns null if no prior import matching the (optional) kind exists.
+ */
+export async function findByPath(db, sourcePath, { kind } = {}) {
+  const where = kind ? 'WHERE source_path = $p AND kind = $k' : 'WHERE source_path = $p';
+  const params = kind ? { p: sourcePath, k: kind } : { p: sourcePath };
+  const [rows] = await db
+    .query(
+      new BoundQuery(
+        `SELECT content_hash, target, kind, imported_at FROM _v1_imports ${where} ORDER BY imported_at DESC LIMIT 1`,
+        params,
       ),
     )
     .collect();
