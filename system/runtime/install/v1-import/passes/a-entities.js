@@ -117,5 +117,7 @@ async function* walkMarkdown(dir) {
 }
 
 function slugify(s) {
-  return String(s).replace(/[^a-zA-Z0-9-_]/g, '-').replace(/-+/g, '-');
+  return String(s)
+    .replace(/[^a-zA-Z0-9-_]/g, '-')
+    .replace(/-+/g, '-');
 }

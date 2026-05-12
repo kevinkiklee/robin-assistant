@@ -34,7 +34,10 @@ test('parseLinksMd: accepts empty context cell', () => {
 });
 
 test('parseLinksMd: drops rows where either endpoint is not pathish', () => {
-  const src = ['| knowledge/a.md | something | ctx |', '| not-a-path | knowledge/b.md | ctx |'].join('\n');
+  const src = [
+    '| knowledge/a.md | something | ctx |',
+    '| not-a-path | knowledge/b.md | ctx |',
+  ].join('\n');
   assert.deepEqual(parseLinksMd(src), []);
 });
 

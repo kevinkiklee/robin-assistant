@@ -12,9 +12,12 @@ import { test } from 'node:test';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { runImport, rollbackImport } from '../../runtime/install/v1-import/index.js';
+import { rollbackImport, runImport } from '../../runtime/install/v1-import/index.js';
 
-const HOME = join(tmpdir(), `robin-v1imp-int-${process.pid}-${Math.random().toString(36).slice(2)}`);
+const HOME = join(
+  tmpdir(),
+  `robin-v1imp-int-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -167,12 +170,7 @@ function buildFixtureUserData() {
   // quarantine/
   w(
     'memory/quarantine/example.md',
-    [
-      '---',
-      'description: Quarantined',
-      '---',
-      'A snippet that v1 refused inbound.',
-    ].join('\n'),
+    ['---', 'description: Quarantined', '---', 'A snippet that v1 refused inbound.'].join('\n'),
   );
 
   return root;
@@ -203,9 +201,7 @@ test('runImport: end-to-end fixture lands expected rows', async () => {
   assert.equal(ec.n, 3);
 
   // bh-photo's aliases come from ENTITIES.md
-  const [bh] = await db
-    .query("SELECT name, meta FROM entities WHERE type = 'service'")
-    .collect();
+  const [bh] = await db.query("SELECT name, meta FROM entities WHERE type = 'service'").collect();
   assert.equal(bh[0].name, 'B&H Photo');
   assert.ok(Array.isArray(bh[0].meta.aliases));
   assert.deepEqual([...bh[0].meta.aliases].sort(), ['B&H', 'BH Photo']);

@@ -103,5 +103,9 @@ function bumpCounts(counts, action) {
 }
 
 function slugify(s) {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
 }

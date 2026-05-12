@@ -231,10 +231,10 @@ tar -czf ~/robin-v1-final-$(date -u +%Y%m%dT%H%M%SZ).tar.gz \
 cd ~/workspace/robin/robin-assistant-v2 && robin migrate
 
 # 3. Preview
-robin import-v1 --src ~/workspace/robin/robin-assistant/user-data --dry-run
+robin import-v1 --src ~/workspace/robin/robin-assistant-v1/user-data --dry-run
 
 # 4. Real run
-robin import-v1 --src ~/workspace/robin/robin-assistant/user-data
+robin import-v1 --src ~/workspace/robin/robin-assistant-v1/user-data
 
 # 5. Validate counts
 robin db query "SELECT count() AS n FROM memos WHERE meta.imported_from='v1' GROUP ALL;"

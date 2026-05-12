@@ -9,7 +9,14 @@ test('parseFrontmatter: returns body when no frontmatter', () => {
 });
 
 test('parseFrontmatter: extracts simple keys', () => {
-  const src = ['---', 'description: Test doc', 'type: topic', 'decay: medium', '---', '# Hello'].join('\n');
+  const src = [
+    '---',
+    'description: Test doc',
+    'type: topic',
+    'decay: medium',
+    '---',
+    '# Hello',
+  ].join('\n');
   const { frontmatter, body } = parseFrontmatter(src);
   assert.deepEqual(frontmatter, { description: 'Test doc', type: 'topic', decay: 'medium' });
   assert.equal(body, '# Hello');

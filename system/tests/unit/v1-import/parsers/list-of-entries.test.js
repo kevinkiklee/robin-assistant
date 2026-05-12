@@ -39,7 +39,9 @@ test('parseListOfEntries: top-level bullets each become an entry when no headers
 });
 
 test('parseListOfEntries: continuation lines fold into the preceding top-level bullet', () => {
-  const src = ['- First bullet', '  continued text', '  more continuation', '- Second bullet'].join('\n');
+  const src = ['- First bullet', '  continued text', '  more continuation', '- Second bullet'].join(
+    '\n',
+  );
   const rows = parseListOfEntries(src);
   assert.equal(rows.length, 2);
   assert.match(rows[0].content, /continued text[\s\S]+more continuation/);

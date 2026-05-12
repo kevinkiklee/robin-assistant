@@ -28,7 +28,10 @@ export function needsChunking(content) {
  */
 export function splitAtParagraphs(content) {
   if (!needsChunking(content)) return [content];
-  const paragraphs = content.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = content
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
   const chunks = [];
   let buf = '';
   for (const p of paragraphs) {

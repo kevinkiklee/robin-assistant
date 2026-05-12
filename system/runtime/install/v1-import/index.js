@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { mostRecentSession, summary, deleteSession } from './ledger.js';
+import { deleteSession, mostRecentSession, summary } from './ledger.js';
 import { buildCanonicalNameTable } from './passes/0-entities-md.js';
 import { passEntities } from './passes/a-entities.js';
 import { passMemos } from './passes/b-memos.js';

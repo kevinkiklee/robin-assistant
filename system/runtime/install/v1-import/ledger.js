@@ -10,7 +10,11 @@ import { BoundQuery } from 'surrealdb';
  */
 export async function hashExists(db, hash) {
   const [rows] = await db
-    .query(new BoundQuery('SELECT VALUE id FROM _v1_imports WHERE content_hash = $h LIMIT 1', { h: hash }))
+    .query(
+      new BoundQuery('SELECT VALUE id FROM _v1_imports WHERE content_hash = $h LIMIT 1', {
+        h: hash,
+      }),
+    )
     .collect();
   return Array.isArray(rows) && rows.length > 0;
 }
@@ -78,10 +82,9 @@ export async function summary(db, sessionId) {
 export async function deleteSession(db, sessionId) {
   const [rows] = await db
     .query(
-      new BoundQuery(
-        'SELECT target, kind FROM _v1_imports WHERE import_session = $s',
-        { s: sessionId },
-      ),
+      new BoundQuery('SELECT target, kind FROM _v1_imports WHERE import_session = $s', {
+        s: sessionId,
+      }),
     )
     .collect();
   const counts = {};
@@ -94,9 +97,7 @@ export async function deleteSession(db, sessionId) {
     if (idx < 1) continue;
     const tb = row.target.slice(0, idx);
     const key = row.target.slice(idx + 1);
-    await db
-      .query(new BoundQuery('DELETE type::record($tb, $k)', { tb, k: key }))
-      .collect();
+    await db.query(new BoundQuery('DELETE type::record($tb, $k)', { tb, k: key })).collect();
   }
   await db
     .query(new BoundQuery('DELETE _v1_imports WHERE import_session = $s', { s: sessionId }))

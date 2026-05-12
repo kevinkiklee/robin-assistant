@@ -10,9 +10,9 @@ import { ensureHome, paths } from '../../../config/data-store.js';
 import { readConfig } from '../../../config/paths.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
+import { isPidAlive } from '../../daemon/lock.js';
 import { rollbackImport, runImport } from '../../install/v1-import/index.js';
 import { renderReport } from '../../install/v1-import/report.js';
-import { isPidAlive } from '../../daemon/lock.js';
 
 const USAGE = `usage: robin import-v1 --src <path> [options]
 

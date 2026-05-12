@@ -39,7 +39,9 @@ export async function upsertEntity(db, { name, type, aliases = [], sourcePath, s
   if (!type) throw new TypeError('upsertEntity: type required');
 
   const dedupedAliases = uniqOrdered(aliases.filter((a) => a && a !== name));
-  const hash = sha256(`${sourcePath}\n${canonicalPayload({ name, type, aliases: dedupedAliases })}`);
+  const hash = sha256(
+    `${sourcePath}\n${canonicalPayload({ name, type, aliases: dedupedAliases })}`,
+  );
 
   if (await hashExists(db, hash)) {
     return { id: null, action: 'skipped', hash };

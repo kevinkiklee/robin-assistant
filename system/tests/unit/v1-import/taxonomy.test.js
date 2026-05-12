@@ -37,7 +37,7 @@ test('confidenceForDecay: unknown falls back to default', () => {
 
 test('detectRuleKind: profile_update for naming preferences', () => {
   assert.equal(detectRuleKind('Refer to umma as Mom'), 'profile_update');
-  assert.equal(detectRuleKind('Call Kevin\'s brother as Joony'), 'profile_update');
+  assert.equal(detectRuleKind("Call Kevin's brother as Joony"), 'profile_update');
 });
 
 test('detectRuleKind: defaults to behavior', () => {

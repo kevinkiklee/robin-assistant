@@ -2,7 +2,7 @@
 // quarantine → refusals.
 
 import { existsSync } from 'node:fs';
-import { readFile, readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { parseFrontmatter } from '../parsers/frontmatter.js';
 import { parseListOfEntries } from '../parsers/list-of-entries.js';
@@ -104,5 +104,9 @@ async function* walkMarkdown(dir) {
 }
 
 function slugify(s) {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
 }

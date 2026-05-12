@@ -10,9 +10,9 @@ import { writeConfig } from '../../../config/paths.js';
 import { close, connect } from '../../../data/db/client.js';
 import { runMigrations } from '../../../data/db/migrate.js';
 import { findByPath, hashExists } from '../../../runtime/install/v1-import/ledger.js';
-import { createEvent } from '../../../runtime/install/v1-import/writers/event-writer.js';
 import { upsertEdge } from '../../../runtime/install/v1-import/writers/edge-writer.js';
 import { upsertEntity } from '../../../runtime/install/v1-import/writers/entity-writer.js';
+import { createEvent } from '../../../runtime/install/v1-import/writers/event-writer.js';
 import { createMemo } from '../../../runtime/install/v1-import/writers/memo-writer.js';
 import { applyFacet } from '../../../runtime/install/v1-import/writers/persona-writer.js';
 import { createRefusal } from '../../../runtime/install/v1-import/writers/refusal-writer.js';
@@ -165,9 +165,7 @@ test('upsertEdge: mentions edge with context accumulates contexts on repeat', as
     context: 'google search',
   });
   await upsertEdge(db, { from: source.id, to: target.id, kind: 'mentions', context: 'google' });
-  const [rows] = await db
-    .query('SELECT meta FROM edges WHERE kind = "mentions"')
-    .collect();
+  const [rows] = await db.query('SELECT meta FROM edges WHERE kind = "mentions"').collect();
   assert.equal(rows.length, 1);
   const ctxs = rows[0]?.meta?.contexts ?? [];
   assert.deepEqual([...ctxs].sort(), ['google', 'google search']);

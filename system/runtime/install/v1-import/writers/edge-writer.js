@@ -36,10 +36,11 @@ export async function upsertEdge(db, { from, to, kind, context, meta = {} }) {
   {
     const [existing] = await db
       .query(
-        new BoundQuery(
-          'SELECT meta FROM type::record("edges", [$kind, $inRec, $outRec])',
-          { kind, inRec: cFrom, outRec: cTo },
-        ),
+        new BoundQuery('SELECT meta FROM type::record("edges", [$kind, $inRec, $outRec])', {
+          kind,
+          inRec: cFrom,
+          outRec: cTo,
+        }),
       )
       .collect();
     if (Array.isArray(existing) && existing.length > 0 && existing[0]?.meta) {

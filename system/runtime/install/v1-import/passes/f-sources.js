@@ -4,10 +4,10 @@
 // see what was added (though the filesystem copy itself is left in place
 // on --rollback; the user can rm -rf manually).
 
-import { BoundQuery } from 'surrealdb';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, stat, copyFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
+import { BoundQuery } from 'surrealdb';
 import { sha256 } from '../../../../data/embed/hash.js';
 import { hashExists } from '../ledger.js';
 

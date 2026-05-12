@@ -48,8 +48,12 @@ export function renderReport(report) {
   lines.push(`Embed mode: ${report.embed_mode}`);
   lines.push('');
   lines.push('Imported (new):');
-  lines.push(`  entities          ${report.counts.entities.created + report.counts.entities.merged}`);
-  lines.push(`    (created: ${report.counts.entities.created}, merged: ${report.counts.entities.merged})`);
+  lines.push(
+    `  entities          ${report.counts.entities.created + report.counts.entities.merged}`,
+  );
+  lines.push(
+    `    (created: ${report.counts.entities.created}, merged: ${report.counts.entities.merged})`,
+  );
   lines.push(`  memos             ${report.counts.memos}`);
   lines.push(`  edges             ${report.counts.edges}`);
   lines.push(`  events            ${report.counts.events}`);
