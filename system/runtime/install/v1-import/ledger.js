@@ -88,9 +88,15 @@ export async function deleteSession(db, sessionId) {
   for (const row of rows ?? []) {
     counts[row.kind] = (counts[row.kind] ?? 0) + 1;
     if (row.kind === 'source_file') continue; // filesystem path, not a record
-    if (row.kind === 'persona_field') continue; // we don't unset persona singleton fields
-    // DELETE by composite-id record reference
-    await db.query(new BoundQuery('DELETE type::record($t)', { t: row.target })).collect();
+    if (row.kind === 'persona_field') continue; // singleton; structured fields stay
+    // Split "table:id" into table + id for type::record(string, string).
+    const idx = String(row.target).indexOf(':');
+    if (idx < 1) continue;
+    const tb = row.target.slice(0, idx);
+    const key = row.target.slice(idx + 1);
+    await db
+      .query(new BoundQuery('DELETE type::record($tb, $k)', { tb, k: key }))
+      .collect();
   }
   await db
     .query(new BoundQuery('DELETE _v1_imports WHERE import_session = $s', { s: sessionId }))

@@ -48,7 +48,9 @@ export async function createMemo(db, input) {
     tags: [],
     meta,
     ...(confidence !== undefined ? { confidence } : {}),
-    ...(decayAnchor ? { decay_anchor: decayAnchor.toISOString() } : {}),
+    // Pass the JS Date directly — SDK serializes to datetime. toISOString()
+    // would produce a string and fail the schema's datetime coercion.
+    ...(decayAnchor ? { decay_anchor: decayAnchor } : {}),
   };
   const { id } = await createWithLedger(db, {
     table: 'memos',
