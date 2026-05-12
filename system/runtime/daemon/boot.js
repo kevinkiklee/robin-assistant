@@ -114,7 +114,7 @@ export async function boot() {
       );
     } else if (profile === 'gemini-3072') {
       console.error(
-        '  Missing or invalid GEMINI_API_KEY. Run `robin secret set GEMINI_API_KEY <your_key>`.',
+        '  Missing or invalid GEMINI_API_KEY. Run `robin secrets set GEMINI_API_KEY <your_key>`.',
       );
     }
     throw e;

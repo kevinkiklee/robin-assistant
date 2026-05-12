@@ -806,7 +806,14 @@ export async function install(argv = [], deps = {}) {
   }
 
   // 8. Persist config (includes db.url so migrations connect via ws://).
+  // Merge over any existing config so re-running `install --force` doesn't
+  // clobber user-set fields (custom integrations config, hooks.disabled,
+  // arbitrary db overrides for tests/staging, etc.). The fields we *do*
+  // overwrite are the ones install owns: embedder_profile, installed_at,
+  // and the db block when surreal-install ran.
+  const existingCfg = (await readConfig()) ?? {};
   await writeConfig({
+    ...existingCfg,
     embedder_profile: profile,
     installed_at: new Date().toISOString(),
     ...dbConfig,

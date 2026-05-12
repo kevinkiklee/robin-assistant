@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
 import {
@@ -121,7 +122,12 @@ export async function startDaemon() {
     });
     scheduler.start();
 
-    const httpServer = startHttp({ ctx, tools, routes, port });
+    // Per-boot token gates /internal/* endpoints. CLI reads it from
+    // .daemon.state (which is chmod 0600). Loopback binding stops remote
+    // attackers; the token stops co-resident processes (browser tabs,
+    // other user accounts on shared machines) from hitting the daemon.
+    const authToken = randomBytes(32).toString('hex');
+    const httpServer = startHttp({ ctx, tools, routes, port, authToken });
 
     lifecycle.ready({
       scheduler,
@@ -149,6 +155,7 @@ export async function startDaemon() {
       version: ctx.version,
       startedAt: ctx.startedAt.toISOString(),
       toolCount: tools.length,
+      authToken,
     });
 
     console.log(`robin-mcp daemon ready on 127.0.0.1:${port}`);

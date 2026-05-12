@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
@@ -10,8 +11,15 @@ import { surrealEnsureRunning } from './surreal-ensure-running.js';
 
 export const DEFAULT_BIND = '127.0.0.1:8000';
 export const DEFAULT_USER = 'root';
-export const DEFAULT_PASS = 'root';
 export const DEFAULT_STORAGE = 'surrealkv';
+
+// Generate a fresh random password per install. The hardcoded `root:root`
+// alternative is a well-known default that anyone with local-network access
+// (or another local user on a shared machine) would try first. Random hex
+// is overkill for a 127.0.0.1-only bind but the cost is zero.
+function generatePassword() {
+  return randomBytes(24).toString('hex');
+}
 
 function whichSurreal(spawnSyncFn) {
   const finder = platform() === 'win32' ? 'where' : 'which';
@@ -77,13 +85,18 @@ function autoSuperviseSurreal(plistPath, _unitPath, spawnSyncFn) {
 export async function surrealInstall({
   bind = DEFAULT_BIND,
   user = DEFAULT_USER,
-  pass = DEFAULT_PASS,
+  pass,
   storage = DEFAULT_STORAGE,
   spawnSync: spawnSyncFn = spawnSync,
   fetchFn = globalThis.fetch,
   which = whichSurreal,
   readyTimeoutMs = 30000,
 } = {}) {
+  // Caller can pin `pass` for tests; otherwise we generate a fresh random
+  // one per install. The password lands in the supervisor file (chmod 0600)
+  // and in config.json's `db.pass`, where it's read by the daemon, biographer,
+  // and CLI commands on connect.
+  const surrealPass = pass ?? generatePassword();
   const surrealBin = which(spawnSyncFn);
   if (!surrealBin) {
     console.error("'surreal' binary not found on PATH.");
@@ -112,7 +125,7 @@ export async function surrealInstall({
       surrealBin,
       bind,
       user,
-      pass,
+      pass: surrealPass,
       storage,
       dbDir,
       logPath,
@@ -124,7 +137,10 @@ export async function surrealInstall({
         expectedHome: home,
         label: 'io.robin-assistant.surreal',
       },
-      () => writeFileSync(plistPath, xml, { mode: 0o644 }),
+      // 0600 because the file embeds the surreal root password in
+      // ProgramArguments. launchd reads it as the loading user, so other
+      // local users get no read access.
+      () => writeFileSync(plistPath, xml, { mode: 0o600 }),
     );
     console.log(`installed launchd plist: ${plistPath}`);
   } else if (platform() === 'linux') {
@@ -135,7 +151,7 @@ export async function surrealInstall({
       surrealBin,
       bind,
       user,
-      pass,
+      pass: surrealPass,
       storage,
       dbDir,
       logPath,
@@ -147,7 +163,8 @@ export async function surrealInstall({
         expectedHome: home,
         label: 'robin-surreal.service',
       },
-      () => writeFileSync(unitPath, txt, { mode: 0o644 }),
+      // 0600 to keep the password out of other local users' reach.
+      () => writeFileSync(unitPath, txt, { mode: 0o600 }),
     );
     console.log(`installed systemd user unit: ${unitPath}`);
   } else {
@@ -168,5 +185,5 @@ export async function surrealInstall({
   }
   console.log(`SurrealDB server ready at ws://${bind}`);
 
-  return { url: `ws://${bind}`, user, pass };
+  return { url: `ws://${bind}`, user, pass: surrealPass };
 }

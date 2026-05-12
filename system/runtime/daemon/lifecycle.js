@@ -87,7 +87,7 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
     }
   }
 
-  async function writeReady({ port, pid, version, startedAt, toolCount }) {
+  async function writeReady({ port, pid, version, startedAt, toolCount, authToken }) {
     if (statePath) {
       await writeDaemonState(statePath, {
         port,
@@ -95,6 +95,7 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
         version,
         started_at: startedAt,
         tool_count: toolCount,
+        auth_token: authToken,
       });
     }
   }

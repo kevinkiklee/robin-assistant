@@ -169,9 +169,11 @@ export async function intuitionHandler({ stdin, stdout, stderr, readState, fetch
 
   let res;
   try {
+    const headers = { 'content-type': 'application/json' };
+    if (state.auth_token) headers.authorization = `Bearer ${state.auth_token}`;
     res = await doFetch(`http://127.0.0.1:${state.port}/internal/intuition`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify({
         query,
         session_id: sessionId,

@@ -251,3 +251,138 @@ test('readJsonBody accumulates chunks up to MAX_BODY_BYTES then rejects', async 
   assert.equal(typeof MAX_BODY_BYTES, 'number');
   assert.ok(MAX_BODY_BYTES > 0);
 });
+
+// ---------- Bearer-token gate on /internal/* ----------
+
+function postWithHeaders(port, path, body, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(data),
+          ...extraHeaders,
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode,
+            body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
+          }),
+        );
+      },
+    );
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+const internalRoutes = [
+  {
+    method: 'POST',
+    path: '/internal/echo',
+    async handler({ body }) {
+      return { received: body };
+    },
+  },
+  {
+    method: 'POST',
+    path: '/public',
+    async handler() {
+      return { ok2: true };
+    },
+  },
+];
+
+test('/internal/* requires Authorization when authToken set', async () => {
+  const server = startHttp({
+    ctx: stubCtx,
+    tools: [],
+    routes: internalRoutes,
+    port: 0,
+    authToken: 'secret-token-abc',
+  });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postJson(port, '/internal/echo', { hello: 1 });
+  assert.equal(r.status, 401);
+  assert.equal(r.body.ok, false);
+  assert.equal(r.body.name, 'RobinUnauthorizedError');
+  server.close();
+});
+
+test('/internal/* with wrong Authorization → 401', async () => {
+  const server = startHttp({
+    ctx: stubCtx,
+    tools: [],
+    routes: internalRoutes,
+    port: 0,
+    authToken: 'secret-token-abc',
+  });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postWithHeaders(
+    port,
+    '/internal/echo',
+    { hello: 1 },
+    { authorization: 'Bearer wrong-token' },
+  );
+  assert.equal(r.status, 401);
+  server.close();
+});
+
+test('/internal/* with correct Authorization → 200', async () => {
+  const server = startHttp({
+    ctx: stubCtx,
+    tools: [],
+    routes: internalRoutes,
+    port: 0,
+    authToken: 'secret-token-abc',
+  });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postWithHeaders(
+    port,
+    '/internal/echo',
+    { hello: 1 },
+    { authorization: 'Bearer secret-token-abc' },
+  );
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { ok: true, received: { hello: 1 } });
+  server.close();
+});
+
+test('non-/internal routes do NOT require Authorization', async () => {
+  const server = startHttp({
+    ctx: stubCtx,
+    tools: [],
+    routes: internalRoutes,
+    port: 0,
+    authToken: 'secret-token-abc',
+  });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postJson(port, '/public', {});
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { ok: true, ok2: true });
+  server.close();
+});
+
+test('omitting authToken skips the gate entirely (backward compat)', async () => {
+  const server = startHttp({ ctx: stubCtx, tools: [], routes: internalRoutes, port: 0 });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postJson(port, '/internal/echo', { hi: 2 });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { ok: true, received: { hi: 2 } });
+  server.close();
+});

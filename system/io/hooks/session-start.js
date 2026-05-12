@@ -77,9 +77,11 @@ export async function sessionStartHandler({ stdin, stderr, readState, fetchFn } 
 
   let res;
   try {
+    const headers = { 'content-type': 'application/json' };
+    if (state.auth_token) headers.authorization = `Bearer ${state.auth_token}`;
     res = await doFetch(`http://127.0.0.1:${state.port}/internal/session/register`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(1000),
     });

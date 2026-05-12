@@ -25,9 +25,11 @@ export async function remember(argv = []) {
 
   let res;
   try {
+    const headers = { 'content-type': 'application/json' };
+    if (state.auth_token) headers.authorization = `Bearer ${state.auth_token}`;
     res = await fetch(`http://127.0.0.1:${state.port}/internal/remember`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify({ content, force, source: 'cli' }),
       signal: AbortSignal.timeout(5000),
     });

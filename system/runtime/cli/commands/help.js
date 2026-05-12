@@ -1,19 +1,18 @@
+const NAME_WIDTH = 22;
+
 function render(node, indent = '  ') {
   const lines = [];
   for (const [key, entry] of Object.entries(node)) {
     if (entry.subcommands) {
       const helpLine = entry.help ? `   ${entry.help}` : '';
       lines.push(`${indent}${key} <subcommand>${helpLine}`);
-      // If any sub has its own subcommands, recurse another level
-      const nested = Object.values(entry.subcommands).some((e) => e.subcommands);
-      if (nested) {
-        lines.push(...render(entry.subcommands, `${indent}  `));
-      } else {
-        lines.push(`${indent}  ${Object.keys(entry.subcommands).join(', ')}`);
-      }
+      // Always recurse — even leaf-only subcommand groups have per-leaf
+      // `help` text we want to surface. (Previously these collapsed to a
+      // comma-separated key list, hiding the help.)
+      lines.push(...render(entry.subcommands, `${indent}  `));
     } else {
       const helpLine = entry.help ?? '';
-      lines.push(`${indent}${key.padEnd(22)} ${helpLine}`);
+      lines.push(`${indent}${key.padEnd(NAME_WIDTH)} ${helpLine}`);
     }
   }
   return lines;

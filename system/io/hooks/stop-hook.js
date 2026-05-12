@@ -10,9 +10,11 @@ import { isPidAlive } from '../../runtime/daemon/lock.js';
 async function tryDaemonRoute(state, body, fetchFn) {
   try {
     const url = `http://127.0.0.1:${state.port}/internal/biographer/process-pending`;
+    const headers = { 'content-type': 'application/json' };
+    if (state.auth_token) headers.authorization = `Bearer ${state.auth_token}`;
     const res = await fetchFn(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(2000),
     });

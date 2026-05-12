@@ -57,7 +57,25 @@ export async function readJsonBody(req) {
  * GET /sse is special-cased (long-lived SSE, not in the table). Unmatched
  * routes return 404. Uncaught handler errors return 500 with the envelope.
  */
-export function startHttp({ ctx, tools, routes, port }) {
+// Constant-time compare: short-circuiting `===` on a hex string would leak
+// the prefix length the comparison matched against. Hex is fixed-width so
+// length-mismatch can be rejected up front without leaking the secret.
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function extractBearer(req) {
+  const h = req.headers.authorization || req.headers.Authorization;
+  if (typeof h !== 'string') return null;
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : null;
+}
+
+export function startHttp({ ctx, tools, routes, port, authToken }) {
   const table = new Map();
   for (const r of routes) table.set(`${r.method} ${r.path}`, r);
 
@@ -66,6 +84,24 @@ export function startHttp({ ctx, tools, routes, port }) {
       if (req.method === 'GET' && req.url.startsWith('/sse')) {
         await handleSse(req, res, { ctx, tools });
         return;
+      }
+      // Bearer-token gate for /internal/*. Other paths (health probes, /sse)
+      // remain unauthenticated — the MCP transport has its own auth surface
+      // and probes need to work for supervisors that don't carry the token.
+      if (authToken && req.url.startsWith('/internal/')) {
+        const presented = extractBearer(req);
+        if (!presented || !safeEqual(presented, authToken)) {
+          res.writeHead(401, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                'missing or invalid Authorization. CLI commands read the token from <robinHome>/.daemon.state; restart the daemon (`robin mcp restart`) if the token in your shell session is stale.',
+              name: 'RobinUnauthorizedError',
+            }),
+          );
+          return;
+        }
       }
       const entry = table.get(`${req.method} ${req.url}`);
       if (!entry) {
