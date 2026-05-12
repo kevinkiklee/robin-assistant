@@ -334,6 +334,68 @@ export async function repair() {
 }
 
 /**
+ * Idempotent upgrade: re-apply migrations, manifest baseline, hooks, and
+ * MCP supervisor against an existing install. Reads the home from
+ * ROBIN_HOME or the package-root pointer; never prompts; never rewrites
+ * config.json (preserves embedder_profile and any other persisted fields).
+ *
+ * Used by the npm postinstall when Robin is already installed: lets a
+ * package upgrade refresh idempotent state without forcing the user to
+ * run `robin install --force` manually.
+ */
+export async function upgrade(deps = {}) {
+  const connectFn = deps.connect ?? connect;
+  const closeFn = deps.close ?? close;
+  const onDbReady = deps.onDbReady;
+  const supervise = deps.supervise ?? mcpInstall;
+  const skipMcp = deps.skipMcp === true;
+  const skipHooks = deps.skipHooks === true;
+
+  let home;
+  if (process.env.ROBIN_HOME) {
+    home = resolve(process.env.ROBIN_HOME);
+  } else if (pointerExists()) {
+    home = readPointer().home;
+  } else {
+    console.error('upgrade: no Robin install found. Run `robin install` first.');
+    process.exit(1);
+  }
+  process.env.ROBIN_HOME = home;
+
+  await ensureHome();
+
+  const existing = await readConfig();
+  if (!existing?.embedder_profile) {
+    console.error(
+      'upgrade: config.json missing or has no embedder_profile. Run `robin install` first.',
+    );
+    process.exit(1);
+  }
+  console.log(`Upgrading Robin at ${home} (profile: ${existing.embedder_profile})`);
+
+  await applyMigrations({ connectFn, closeFn, onDbReady });
+
+  try {
+    const manifest = await computeManifest();
+    await writeManifest(manifest);
+    console.log(`introspection baseline written (${manifest.files.length} files)`);
+  } catch (e) {
+    console.warn(`introspection baseline failed (non-fatal): ${e.message}`);
+  }
+
+  await installHooksStep({ skipHooks });
+
+  if (!skipMcp) {
+    console.log('');
+    console.log('Refreshing MCP daemon supervision and host registration...');
+    await supervise([]);
+  }
+
+  console.log('');
+  console.log(`Robin upgrade complete (home: ${home}).`);
+}
+
+/**
  * Determine the Robin home path and optional migration plan without executing
  * any side-effects. Extracted for testability.
  *
@@ -464,6 +526,19 @@ export async function install(argv = [], deps = {}) {
   // --repair: re-apply hook entries from the manifest.
   if (args.flags.repair) {
     await repair();
+    return;
+  }
+
+  // --upgrade: idempotent re-run for package upgrades. Preserves config.
+  if (args.flags.upgrade === true) {
+    await upgrade({
+      connect: deps.connect,
+      close: deps.close,
+      onDbReady: deps.onDbReady,
+      supervise: deps.supervise,
+      skipMcp: args.flags['no-mcp'] === true,
+      skipHooks: args.flags['no-hooks'] === true,
+    });
     return;
   }
 

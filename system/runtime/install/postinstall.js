@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // npm/pnpm/yarn `postinstall` entry. Decides whether to invoke
-// `robin install --auto`. Never fails the install: any error becomes a
-// printed hint and exit 0, so a setup glitch can't brick `npm install`.
+// `robin install --auto` (fresh install) or `robin install --upgrade`
+// (already installed — idempotent refresh of migrations, hooks, manifest,
+// supervisor; preserves config). Never fails the install: any error becomes
+// a printed hint and exit 0, so a setup glitch can't brick `npm install`.
 //
 // Gating:
 //   - Skip if ROBIN_SKIP_INSTALL is set (explicit opt-out).
@@ -10,7 +12,7 @@
 //   - Skip when installed transitively as a dep (INIT_CWD !== process.cwd()).
 //   - Skip on Windows (daemon supervision unsupported).
 //
-// Pass-through env flags (each maps to a `robin install --auto` switch):
+// Pass-through env flags (each maps to a `robin install` switch):
 //   ROBIN_SKIP_MCP          → --no-mcp
 //   ROBIN_SKIP_DAEMON       → --no-start
 //   ROBIN_SKIP_HOOKS        → --no-hooks
@@ -66,11 +68,8 @@ function shouldRun() {
     };
   }
   if (alreadyInstalled()) {
-    return {
-      run: false,
-      advise:
-        'Robin already installed. Run `node system/bin/robin install --force` to reconfigure.',
-    };
+    // Upgrade path: idempotent refresh, no prompts, config preserved.
+    return { run: true, upgrade: true };
   }
   return { run: true };
 }
@@ -85,7 +84,7 @@ if (!decision.run) {
 
 const binPath = resolve(here, '../../bin/robin');
 
-const flags = ['install', '--auto'];
+const flags = decision.upgrade ? ['install', '--upgrade'] : ['install', '--auto'];
 if (process.env.ROBIN_SKIP_MCP) flags.push('--no-mcp');
 if (process.env.ROBIN_SKIP_DAEMON) flags.push('--no-start');
 if (process.env.ROBIN_SKIP_HOOKS) flags.push('--no-hooks');

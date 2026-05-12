@@ -61,10 +61,16 @@ test('postinstall skips silently when INIT_CWD differs from cwd (transitive inst
   }
 });
 
-test('postinstall skips with hint when .robin-home pointer exists at package root', () => {
+test('postinstall runs `install --upgrade` when .robin-home pointer exists at package root', () => {
   // Simulate an already-installed package by placing a copy of the script in
   // a fake package-root tree (so `resolve(here, "../../..")` lands at the
   // tmpdir) and writing a `.robin-home` pointer there.
+  //
+  // The fake tree has no `system/bin/robin`, so the spawned node process
+  // exits non-zero. We assert (a) postinstall did NOT print the old
+  // "already installed" advise (the manual-step hint is gone), and (b) it
+  // attempted to launch auto-setup — proving it took the run path rather
+  // than the silent-skip path.
   const tmp = mkdtempSync(join(tmpdir(), 'robin-fake-root-'));
   try {
     writeFileSync(join(tmp, '.robin-home'), '/tmp/somewhere');
@@ -74,7 +80,8 @@ test('postinstall skips with hint when .robin-home pointer exists at package roo
     writeFileSync(fakeScript, readFileSync(postinstallPath, 'utf-8'));
     const res = runPostinstall({}, { scriptPath: fakeScript, cwd: tmp });
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /already installed/i);
+    assert.doesNotMatch(res.stdout, /already installed/i);
+    assert.match(res.stdout, /auto-setup exited/i);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
