@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### v1 → v2 markdown migrator (`robin import-v1`)
+
+One-shot CLI that imports a v1 markdown user-data tree into the v2 SurrealDB. Markdown-only input (no v1 SurrealDB dependency); content-hash dedup via a new `_v1_imports` ledger (migration `0023-v1-imports.surql`) so re-runs are O(1) skips and rollback is session-scoped.
+
+- **Hybrid mapping strategy.** Curated v1 content (`knowledge/`, `profile/`, `self-improvement/{rules,patterns,preferences}.md`, `ENTITIES.md`, `LINKS.md`, `watches/`, `memory/archive/`) lands directly as `entities` + `memos` + `edges` + `persona`. Time-series content (`streams/{journal,log,decisions,inbox}.md`, `self-improvement/corrections.md`) is replayed as `events` with `biographed_at=NULL` so the heartbeat picks them up on its normal cadence (no LLM cost at migration time). `memory/quarantine/` → `refusals` (audit-only). `sources/**` → `cp -a` into `<robin_home>/sources/`.
+- **Schema delta.** `0023-v1-imports.surql` adds the ledger table with `UNIQUE(content_hash)` and `INDEX(import_session)`. Every migrated row also stamps `meta.imported_from='v1'` and `meta.v1_source_path` for in-row provenance.
+- **Module layout.** `system/runtime/install/v1-import/` — `index.js` (orchestrator), `ledger.js`, `tx.js`, `chunk.js`, `taxonomy.js`, `report.js`, `parsers/{frontmatter,entities-md,links-md,dated-entries,list-of-entries}.js`, `writers/{entity,memo,edge,event,persona,rule,refusal}-writer.js`, `passes/{0-entities-md,a-entities,b-memos,c-links,d-events,e-rules-patterns,f-sources,g-embed}.js`. CLI entry `system/runtime/cli/commands/import-v1.js` registered as `import-v1`.
+- **Transactional writes.** Every writer issues a single multi-statement `BEGIN/CREATE row/CREATE _v1_imports/COMMIT` query with a JS-side-generated record ID, so atomicity is preserved without round-tripping the auto-id. Aborted runs never leave a row without its ledger entry; re-runs resume via the unique content_hash index.
+- **Edge kinds.** Imported edges stay within v2's `EDGE_KIND_REGISTRY`: `about` (memo → entity for each knowledge/profile-person memo), `mentions` (memo → entity, with `meta.contexts[]` accumulating across multiple LINKS.md rows for the same `(from, to)`), `derived_from` (child chunk → parent memo when long content is split), `supersedes` (new memo → old memo on re-import after a source edit).
+- **Long-content chunking.** Files over 8 KB are paragraph-split into ≤6 KB chunks at `\n\n` boundaries. The parent memo carries the first chunk; children are linked via `derived_from`. Neither `embeddings-backfill.js` nor `embed/backfill.js` chunk, so this is required to keep the embedder from choking on oversized seeds.
+- **Embedding.** `--embed=sync` (default) invokes `cognition/jobs/internal/embeddings-backfill.js` at the end of the import; `--embed=defer` skips it (heartbeat backfills in the background).
+- **CLI.** `robin import-v1 --src <path> [--dry-run] [--embed=sync|defer] [--rollback] [--session <id>] [--include-views]`. `--src` accepts either `.../user-data` or `.../user-data/memory`. `--dry-run` parses + counts against an ephemeral `mem://` DB without touching the target. `--rollback [--session <id>]` deletes a session's target records (cascade-on-delete edge triggers wipe associated edges) plus the ledger rows themselves; `sources/**` filesystem copy is left in place. Refuses to run if the daemon is up.
+- **Tests.** 37 parser/taxonomy unit tests, 10 writer unit tests against `mem://`, 3 end-to-end integration tests (fixture tree → expected counts, re-run idempotency, rollback). 50 total — all green.
+- **Spec.** `docs/superpowers/specs/2026-05-11-v1-to-v2-data-migrator-design.md`.
+
 ### Cognition wave (B1 + A3 + C1 + D1 + B2 + D2 + D3 + C2 + C3)
 
 Nine post-alpha.16 cognition features landed in two parallel waves:
