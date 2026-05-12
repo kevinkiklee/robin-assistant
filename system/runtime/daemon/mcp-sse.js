@@ -9,6 +9,13 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
  */
 export async function handleSse(req, res, { ctx, tools }) {
   ctx.sessions.count++;
+  // Wire close BEFORE the async setup. If the client disconnects between
+  // `count++` and `mcpServer.connect()` returning (a real race during
+  // shutdown or flaky clients), the post-await listener would never attach
+  // and the counter would leak upward.
+  req.once('close', () => {
+    ctx.sessions.count = Math.max(0, ctx.sessions.count - 1);
+  });
   const transport = new SSEServerTransport('/messages', res);
   const mcpServer = new Server(
     { name: 'robin', version: ctx.version },
@@ -42,7 +49,4 @@ export async function handleSse(req, res, { ctx, tools }) {
     }
   });
   await mcpServer.connect(transport);
-  req.on('close', () => {
-    ctx.sessions.count = Math.max(0, ctx.sessions.count - 1);
-  });
 }

@@ -132,7 +132,10 @@ export async function mcpInstall(argv) {
         expectedHome: currentRobinHome,
         label: 'io.robin-assistant.mcp',
       },
-      () => writeFileSync(plistPath, xml, { mode: 0o644 }),
+      // 0600 parity with surreal-install: the plist embeds the absolute
+      // node path + ROBIN_HOME, which can be sensitive on shared machines.
+      // launchd reads it as the loading user, so 0600 doesn't break load.
+      () => writeFileSync(plistPath, xml, { mode: 0o600 }),
     );
     console.log(`installed launchd plist: ${plistPath}`);
   } else if (platform() === 'linux') {
@@ -147,7 +150,7 @@ export async function mcpInstall(argv) {
         expectedHome: currentRobinHome,
         label: 'robin-mcp.service',
       },
-      () => writeFileSync(unitPath, txt, { mode: 0o644 }),
+      () => writeFileSync(unitPath, txt, { mode: 0o600 }),
     );
     console.log(`installed systemd user unit: ${unitPath}`);
   } else {
