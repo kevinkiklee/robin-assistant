@@ -45,20 +45,28 @@ export async function main(argv) {
   return dispatchFor(commands, argv);
 }
 
-export async function dispatchFor(node, argv) {
+export async function dispatchFor(node, argv, path = []) {
   const [head, ...rest] = argv;
   const entry = node[head];
   if (!entry) {
-    console.error(`unknown command: ${head}`);
+    const where = path.length ? `\`robin ${path.join(' ')}\`` : 'robin';
+    const choices = Object.keys(node).join('|');
+    console.error(
+      head
+        ? `unknown ${path.length ? 'subcommand' : 'command'}: ${head}`
+        : `${where} requires a subcommand`,
+    );
+    console.error(`usage: robin ${[...path, `<${choices}>`].join(' ')}`);
     console.error('run `robin --help` for usage');
     process.exit(1);
   }
   if (entry.subcommands) {
     if (!rest[0]) {
-      console.error(`usage: <${Object.keys(entry.subcommands).join('|')}>`);
+      const choices = Object.keys(entry.subcommands).join('|');
+      console.error(`usage: robin ${[...path, head, `<${choices}>`].join(' ')}`);
       process.exit(1);
     }
-    return dispatchFor(entry.subcommands, rest);
+    return dispatchFor(entry.subcommands, rest, [...path, head]);
   }
   // Test escape hatch
   if (typeof entry.fn === 'function') return entry.fn(rest);

@@ -31,7 +31,14 @@ export async function handleSse(req, res, { ctx, tools }) {
       const result = await tool.handler(args ?? {});
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     } catch (e) {
-      return { isError: true, content: [{ type: 'text', text: e.message }] };
+      // Sanitise tool errors before returning them to the MCP client: raw
+      // e.message can carry absolute paths, surreal connection strings,
+      // API response bodies, or session/auth tokens. We log the full error
+      // server-side (callers can chase it via cache/logs/daemon.log) and
+      // hand back a non-revealing summary tagged by name + tool.
+      console.error(`tool ${name} failed: ${e?.name ?? 'Error'}: ${e?.message ?? e}`);
+      const summary = `tool '${name}' failed (${e?.name ?? 'Error'}). See daemon.log for details.`;
+      return { isError: true, content: [{ type: 'text', text: summary }] };
     }
   });
   await mcpServer.connect(transport);

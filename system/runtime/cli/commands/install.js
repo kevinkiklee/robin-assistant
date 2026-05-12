@@ -1,4 +1,3 @@
-import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -22,6 +21,7 @@ import { ensureHookShim } from '../../install/hook-shim.js';
 import { installHooksToSettings, validateRobinResolvable } from '../../install/hooks-settings.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { migrateHome } from '../../install/migrate-home.js';
+import { validateOllama } from '../../install/ollama-profile.js';
 import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
 import { doctorData } from './doctor.js';
@@ -37,8 +37,6 @@ const PROFILE_SUMMARIES = {
   'gemini-3072':
     "Cloud API. Requires GEMINI_API_KEY. Free tier trains on input. Paid tier does not. By picking this you accept that all captured content goes to Google's servers.",
 };
-
-const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 
 async function defaultPrompt(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -136,82 +134,6 @@ async function pickProfile({ prompt, interactive, profileFlag }) {
   if (answer === '3' || answer === 'gemini-3072') return 'gemini-3072';
   console.error(`invalid choice: ${answer}. Valid: 1, 2, 3.`);
   process.exit(1);
-}
-
-function whichOllama(spawnSyncFn) {
-  const finder = process.platform === 'win32' ? 'where' : 'which';
-  const r = spawnSyncFn(finder, ['ollama'], { encoding: 'utf-8' });
-  if (r.status !== 0) return null;
-  return r.stdout.trim().split(/\r?\n/)[0] || null;
-}
-
-async function fetchOllamaTags(fetchFn) {
-  try {
-    const resp = await fetchFn(`${OLLAMA_HOST}/api/tags`);
-    if (!resp.ok) return { ok: false, status: resp.status };
-    return { ok: true, json: await resp.json() };
-  } catch (e) {
-    return { ok: false, error: e };
-  }
-}
-
-async function waitForOllama(fetchFn, { timeoutMs, intervalMs = 500 }) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const r = await fetchOllamaTags(fetchFn);
-    if (r.ok) return r;
-    await new Promise((res) => setTimeout(res, intervalMs));
-  }
-  return null;
-}
-
-async function validateOllama({
-  fetchFn,
-  whichFn = whichOllama,
-  spawnFn = spawn,
-  spawnSyncFn = spawnSync,
-  startTimeoutMs = 20000,
-}) {
-  let r = await fetchOllamaTags(fetchFn);
-
-  if (!r.ok) {
-    const ollamaBin = whichFn(spawnSyncFn);
-    if (!ollamaBin) {
-      const reason = r.error?.message ?? `HTTP ${r.status}`;
-      console.error(`Ollama unreachable at ${OLLAMA_HOST}: ${reason}`);
-      console.error('`ollama` is not on PATH. Install it:');
-      console.error('  brew install ollama        # macOS');
-      console.error('  curl -fsSL https://ollama.com/install.sh | sh   # Linux');
-      console.error('Then re-run `robin install`.');
-      process.exit(1);
-    }
-    console.log(
-      `Ollama not running at ${OLLAMA_HOST}; starting \`ollama serve\` in the background…`,
-    );
-    const child = spawnFn('ollama', ['serve'], { detached: true, stdio: 'ignore' });
-    child.unref?.();
-    r = await waitForOllama(fetchFn, { timeoutMs: startTimeoutMs });
-    if (!r) {
-      console.error(`Ollama failed to start within ${Math.round(startTimeoutMs / 1000)}s.`);
-      console.error(
-        'Try `ollama serve` manually, check ~/.ollama/logs, then re-run `robin install`.',
-      );
-      process.exit(1);
-    }
-    console.log(`Ollama is running at ${OLLAMA_HOST}.`);
-  }
-
-  const installed = (r.json.models ?? []).map((m) => m.name);
-  const found = installed.some((n) => n.startsWith('qwen3-embedding:8b'));
-  if (!found) {
-    console.log('Pulling qwen3-embedding:8b (~16 GB, this can take a while)…');
-    const res = spawnSyncFn('ollama', ['pull', 'qwen3-embedding:8b'], { stdio: 'inherit' });
-    if (res.status !== 0) {
-      console.error(`\`ollama pull qwen3-embedding:8b\` failed (exit ${res.status}).`);
-      console.error('Run it manually once the issue is resolved, then re-run `robin install`.');
-      process.exit(1);
-    }
-  }
 }
 
 async function validateGemini({ prompt, interactive, iUnderstand }) {
@@ -793,6 +715,22 @@ export async function install(argv = [], deps = {}) {
   // that all need db access concurrently. The ws:// server arbitrates
   // them.
   let dbConfig = {};
+  if (skipSurreal && interactive && !yesFlag) {
+    console.log('');
+    console.log('--no-surreal disables the standalone SurrealDB server.');
+    console.log('Robin will fall back to the embedded NAPI engine, which can only handle ONE');
+    console.log('writer at a time. If you run the daemon AND a hook fires (biographer, etc.)');
+    console.log('they will deadlock on the surrealkv lockfile.');
+    console.log('');
+    console.log('Safe only for single-process testing or when you have other isolation.');
+    const answer = (await prompt('Type "i-understand" to proceed, or anything else to abort: '))
+      .trim()
+      .toLowerCase();
+    if (answer !== 'i-understand') {
+      console.error('aborting: --no-surreal not confirmed.');
+      process.exit(1);
+    }
+  }
   if (!skipSurreal) {
     const installSurreal = deps.surreal ?? surrealInstall;
     const surreal = await installSurreal({

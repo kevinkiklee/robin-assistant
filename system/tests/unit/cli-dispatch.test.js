@@ -73,3 +73,61 @@ test('unknown command exits 1', async () => {
     console.error = origErr;
   }
 });
+
+test('unknown subcommand error shows the parent command path', async () => {
+  const origExit = process.exit;
+  const origErr = console.error;
+  const errs = [];
+  process.exit = () => {
+    throw new Error('__exit__');
+  };
+  console.error = (...a) => errs.push(a.join(' '));
+  try {
+    const node = {
+      mcp: { subcommands: { start: { fn: () => {} }, stop: { fn: () => {} } } },
+    };
+    await assert.rejects(() => dispatchFor(node, ['mcp', 'bogus']), /__exit__/);
+    assert.ok(
+      errs.some((e) => e.includes('unknown subcommand: bogus')),
+      `expected typed error, got: ${errs.join('|')}`,
+    );
+    assert.ok(
+      errs.some((e) => e.includes('usage: robin mcp <start|stop>')),
+      `expected breadcrumbed usage, got: ${errs.join('|')}`,
+    );
+  } finally {
+    process.exit = origExit;
+    console.error = origErr;
+  }
+});
+
+test('missing-subcommand usage line is prefixed with `robin <parent>`', async () => {
+  const origExit = process.exit;
+  const origErr = console.error;
+  const errs = [];
+  process.exit = () => {
+    throw new Error('__exit__');
+  };
+  console.error = (...a) => errs.push(a.join(' '));
+  try {
+    const node = {
+      integrations: {
+        subcommands: {
+          discord: {
+            subcommands: {
+              'register-commands': { fn: () => {} },
+            },
+          },
+        },
+      },
+    };
+    await assert.rejects(() => dispatchFor(node, ['integrations', 'discord']), /__exit__/);
+    assert.ok(
+      errs.some((e) => e.includes('usage: robin integrations discord <register-commands>')),
+      `expected nested usage, got: ${errs.join('|')}`,
+    );
+  } finally {
+    process.exit = origExit;
+    console.error = origErr;
+  }
+});

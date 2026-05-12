@@ -62,7 +62,18 @@ export async function boot() {
     );
   }
 
-  const dbHandle = await connect({ engine: await defaultDbUrl() });
+  const dbUrl = await defaultDbUrl();
+  if (!/^(wss?|https?):\/\//.test(dbUrl)) {
+    // Embedded engine is single-writer. The daemon itself is fine, but any
+    // concurrent writer (biographer hook, `robin remember`, `robin ingest`)
+    // will deadlock on surrealkv's lockfile. Loudly surface this at boot so
+    // a user who chose `--no-surreal` (or whose surreal server crashed)
+    // doesn't spend an hour debugging mysterious hangs.
+    console.warn(
+      `[daemon] running with embedded engine (${dbUrl.split(':')[0]}://). Concurrent Robin processes will hang on the lockfile. Run \`robin install\` (without --no-surreal) for the standalone server.`,
+    );
+  }
+  const dbHandle = await connect({ engine: dbUrl });
 
   // Profile-drift detection.
   const cfg = await readConfig();
