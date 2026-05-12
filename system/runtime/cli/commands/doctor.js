@@ -12,7 +12,7 @@
 // recent biographer.log errors, and integration freshness rollup.
 
 import { spawnSync } from 'node:child_process';
-import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +26,7 @@ import {
   readPointer,
   robinHome,
 } from '../../../config/data-store.js';
+import { readFileTail } from '../../../config/file-tail.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { isPidAlive } from '../../daemon/lock.js';
@@ -226,28 +227,15 @@ function probeBiographerLog() {
   if (!existsSync(logPath)) return { exists: false };
   try {
     const stat = statSync(logPath);
-    const size = stat.size;
-    // Read only the last LOG_TAIL_BYTES from disk. The prior implementation
-    // read the entire file into memory, then sliced — on a multi-MB
-    // biographer.log this caused `robin doctor` to allocate the full log
-    // size for a glimpse at the last 16 KB.
-    const length = Math.min(LOG_TAIL_BYTES, size);
-    let tail = '';
-    if (length > 0) {
-      const fd = openSync(logPath, 'r');
-      try {
-        const buf = Buffer.alloc(length);
-        readSync(fd, buf, 0, length, size - length);
-        tail = buf.toString('utf8');
-      } finally {
-        closeSync(fd);
-      }
-    }
+    // `readFileTail` (config/file-tail.js) is the package-wide helper for
+    // bounded tail reads — also used by capture/transcript and the
+    // intuition handler. Keeps one tail-reading code path everywhere.
+    const tail = readFileTail(logPath, LOG_TAIL_BYTES);
     const lines = tail.split('\n').filter(Boolean);
     const errors = lines.filter((l) => LOG_ERROR_RE.test(l));
     return {
       exists: true,
-      size,
+      size: stat.size,
       tail_lines: lines.length,
       error_lines: errors.length,
       last_error: errors[errors.length - 1] ?? null,
