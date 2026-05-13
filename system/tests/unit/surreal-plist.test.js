@@ -5,8 +5,8 @@ import { generateSurrealPlist } from '../../runtime/install/surreal-plist.js';
 test('generateSurrealPlist produces a valid plist with absolute surreal binary, KeepAlive=true, and storage args', () => {
   const xml = generateSurrealPlist({
     surrealBin: '/opt/homebrew/bin/surreal',
-    dbDir: '/Users/x/.robin-data/db',
-    logPath: '/Users/x/.robin-data/cache/logs/surreal.log',
+    dbDir: '/Users/x/.robin-data/data/db',
+    logPath: '/Users/x/.robin-data/runtime/logs/surreal.log',
   });
   assert.match(xml, /<key>Label<\/key>\s*<string>io\.robin-assistant\.surreal<\/string>/);
   assert.match(xml, /<key>RunAtLoad<\/key>\s*<true\/>/);
@@ -21,9 +21,9 @@ test('generateSurrealPlist produces a valid plist with absolute surreal binary, 
   assert.match(xml, /<string>--pass<\/string>\s*<string>root<\/string>/);
   // Storage URL combines the storage scheme with the db dir path, using the
   // standard `scheme:///absolute-path` form that surreal v3 expects.
-  assert.match(xml, /<string>surrealkv:\/\/\/Users\/x\/\.robin-data\/db<\/string>/);
+  assert.match(xml, /<string>surrealkv:\/\/\/Users\/x\/\.robin-data\/data\/db<\/string>/);
   assert.match(xml, /<key>PATH<\/key>\s*<string>\/opt\/homebrew\/bin:/);
-  assert.match(xml, /\/Users\/x\/\.robin-data\/cache\/logs\/surreal\.log/);
+  assert.match(xml, /\/Users\/x\/\.robin-data\/runtime\/logs\/surreal\.log/);
 });
 
 test('generateSurrealPlist accepts overrides for bind, user, pass, storage', () => {

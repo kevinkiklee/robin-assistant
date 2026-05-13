@@ -22,8 +22,8 @@ Environment=ROBIN_HOME=${robinHome}
 Environment=PATH=${nodeBinDir}:/usr/local/bin:/usr/bin:/bin
 ExecStart=${nodePath} ${packageRoot}/system/bin/robin mcp start --foreground
 Restart=on-failure
-StandardOutput=append:${robinHome}/cache/logs/daemon.log
-StandardError=append:${robinHome}/cache/logs/daemon.log
+StandardOutput=append:${robinHome}/runtime/logs/daemon.log
+StandardError=append:${robinHome}/runtime/logs/daemon.log
 
 [Install]
 WantedBy=default.target

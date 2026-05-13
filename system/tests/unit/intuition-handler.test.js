@@ -10,6 +10,7 @@ const __robinTestHome = join(
   `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
 );
 mkdirSync(__robinTestHome, { recursive: true });
+mkdirSync(join(__robinTestHome, 'runtime', 'daemon'), { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
 const { intuitionHandler } = await import('../../cognition/intuition/handler.js');
@@ -40,7 +41,7 @@ function startStubServer(handler) {
 }
 
 function writeDaemonStateFile(port) {
-  const statePath = join(__robinTestHome, '.daemon.state');
+  const statePath = join(__robinTestHome, 'runtime', 'daemon', '.state');
   writeFileSync(
     statePath,
     JSON.stringify({
@@ -56,7 +57,7 @@ function writeDaemonStateFile(port) {
 
 function clearDaemonStateFile() {
   try {
-    rmSync(join(__robinTestHome, '.daemon.state'));
+    rmSync(join(__robinTestHome, 'runtime', 'daemon', '.state'));
   } catch {
     // ignore
   }

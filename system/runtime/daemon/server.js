@@ -33,8 +33,8 @@ import { buildTools } from './tools.js';
  */
 export async function startDaemon() {
   const lifecycle = createLifecycle({
-    // Process-singleton lock — distinct from `.daemon.lock`, which is the
-    // embedded-DB writer-serialization lock held by CLI subcommands.
+    // Process-singleton lock — distinct from `runtime/daemon/.lock`, which is
+    // the embedded-DB writer-serialization lock held by CLI subcommands.
     // Sharing one file made every long-running biographer/dream/ingest run
     // block `mcp restart`; see data-store.js for the file-role split.
     lockPath: paths.data.daemonPid(),
@@ -134,8 +134,8 @@ export async function startDaemon() {
     scheduler.start();
 
     // Per-boot token gates /internal/* endpoints. CLI reads it from
-    // .daemon.state (which is chmod 0600). Loopback binding stops remote
-    // attackers; the token stops co-resident processes (browser tabs,
+    // runtime/daemon/.state (which is chmod 0600). Loopback binding stops
+    // remote attackers; the token stops co-resident processes (browser tabs,
     // other user accounts on shared machines) from hitting the daemon.
     const authToken = randomBytes(32).toString('hex');
     const httpServer = startHttp({ ctx, tools, routes, port, authToken });

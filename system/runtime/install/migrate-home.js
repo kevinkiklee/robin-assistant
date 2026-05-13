@@ -6,7 +6,9 @@ import { dirname } from 'node:path';
  * Copy-verify-delete migration of a Robin home directory.
  *
  * - Always copies first (`cp -a` preserves mode/owner/timestamps).
- * - Verifies the .robin-data marker exists at the target after copy.
+ * - Verifies a Robin marker exists at the target after copy. During the v1→v2
+ *   transition this accepts EITHER the v2 marker
+ *   (`runtime/install/.marker.json`) OR the legacy v1 marker (`.robin-data`).
  * - Only on success (mode='move'): rm -rf the source.
  * - On any failure: delete the partial target, leave source intact, throw.
  *
@@ -34,9 +36,14 @@ export async function migrateHome({ from, to, mode }) {
     const stderr = cp.stderr?.toString('utf8').trim() ?? '(no stderr)';
     throw new Error(`migrateHome: cp -a failed (exit ${cp.status}): ${stderr}`);
   }
-  if (!existsSync(`${to}/.robin-data`)) {
+  const newMarker = `${to}/runtime/install/.marker.json`;
+  const oldMarker = `${to}/.robin-data`;
+  if (!existsSync(newMarker) && !existsSync(oldMarker)) {
     rmSync(to, { recursive: true, force: true });
-    throw new Error(`migrateHome: verification failed — .robin-data missing at ${to}`);
+    throw new Error(
+      `migrateHome: verification failed — no Robin marker at ${to} ` +
+        `(checked runtime/install/.marker.json and .robin-data)`,
+    );
   }
   if (mode === 'move') {
     rmSync(from, { recursive: true, force: true });

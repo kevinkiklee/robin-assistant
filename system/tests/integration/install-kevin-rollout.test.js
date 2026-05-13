@@ -50,7 +50,7 @@ test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly
     writePointer({ home, installedBy: 'kevin-rollout-test' });
 
     const marker = readMarker();
-    assert.strictEqual(marker.version, 1);
+    assert.strictEqual(marker.user_data_layout_version, 2);
     assert.ok(pointerExists());
     assert.strictEqual(readPointer().home, home);
     assert.strictEqual(existsSync(join(home, 'installed-hooks.json')), false);

@@ -10,14 +10,16 @@ const __h = join(
   tmpdir(),
   `robin-log-rotate-${process.pid}-${Math.random().toString(36).slice(2)}`,
 );
-mkdirSync(join(__h, 'cache', 'logs'), { recursive: true });
+mkdirSync(join(__h, 'runtime', 'logs'), { recursive: true });
+mkdirSync(join(__h, 'config'), { recursive: true });
 process.env.ROBIN_HOME = __h;
 
 const { default: logRotate } = await import('../../cognition/jobs/internal/log-rotate.js');
 
-const LOGS_DIR = join(__h, 'cache', 'logs');
+const LOGS_DIR = join(__h, 'runtime', 'logs');
 const DAEMON_LOG = join(LOGS_DIR, 'daemon.log');
 const ARCHIVE = join(LOGS_DIR, 'daemon.log.1');
+const CONFIG_PATH = join(__h, 'config', 'config.json');
 
 const THRESHOLD = 10 * 1024 * 1024; // 10 MB default
 
@@ -53,7 +55,7 @@ test('rotates when log meets threshold — original truncated to 0 bytes', async
   writeFileSync(DAEMON_LOG, content);
   // Override threshold so we don't have to write 10 MB in a unit test.
   writeFileSync(
-    join(__h, 'config.json'),
+    CONFIG_PATH,
     JSON.stringify({ logs: { rotateAtBytes: content.length } }),
   );
 
@@ -75,7 +77,7 @@ test('overwrites existing daemon.log.1 on rotation', async () => {
 
   writeFileSync(ARCHIVE, oldArchive);
   writeFileSync(DAEMON_LOG, newContent);
-  writeFileSync(join(__h, 'config.json'), JSON.stringify({ logs: { rotateAtBytes: threshold } }));
+  writeFileSync(CONFIG_PATH, JSON.stringify({ logs: { rotateAtBytes: threshold } }));
 
   const result = JSON.parse(await logRotate());
   assert.equal(result.rotated, true);
@@ -89,7 +91,7 @@ test('uses config.json logs.rotateAtBytes threshold when present', async () => {
   const customThreshold = 512;
   writeLog(DAEMON_LOG, customThreshold);
   writeFileSync(
-    join(__h, 'config.json'),
+    CONFIG_PATH,
     JSON.stringify({ logs: { rotateAtBytes: customThreshold } }),
   );
 
@@ -102,7 +104,7 @@ test('no rotation when log is one byte below custom threshold', async () => {
   const customThreshold = 256;
   writeLog(DAEMON_LOG, customThreshold - 1);
   writeFileSync(
-    join(__h, 'config.json'),
+    CONFIG_PATH,
     JSON.stringify({ logs: { rotateAtBytes: customThreshold } }),
   );
 

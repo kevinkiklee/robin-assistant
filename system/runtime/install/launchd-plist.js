@@ -19,7 +19,7 @@ function esc(s) {
  * @returns {string} plist XML
  */
 export function generateLaunchdPlist({ packageRoot, robinHome, nodePath = process.execPath }) {
-  const logPath = `${robinHome}/cache/logs/daemon.log`;
+  const logPath = `${robinHome}/runtime/logs/daemon.log`;
   const nodeBinDir = dirname(nodePath);
   const inheritedPath = process.env.PATH ?? '';
   const launchdPath = [

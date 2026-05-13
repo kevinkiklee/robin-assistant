@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { paths } from '../../../config/data-store.js';
 import { readSqliteSnapshot } from '../_local/sqlite.js';
 import { chromeHistoryPath } from './manifest.js';
@@ -11,10 +10,6 @@ function chromeTimeToDate(visit_time) {
   return new Date((visit_time - 11_644_473_600_000_000) / 1000);
 }
 
-function cacheDir() {
-  return join(paths.data.cache(), 'sqlite-snapshots');
-}
-
 export async function sync(ctx) {
   const sinceVisitId = ctx.cursor?.since_visit_id ?? 0;
   const events = [];
@@ -23,7 +18,7 @@ export async function sync(ctx) {
 
   readSqliteSnapshot({
     srcPath: chromeHistoryPath(),
-    cacheDir: cacheDir(),
+    cacheDir: paths.data.sqliteSnapshots(),
     snapshotName: 'chrome-history',
     queryFn: (db) => {
       const stmt = db.prepare(`

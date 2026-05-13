@@ -30,6 +30,21 @@ import { surrealInstall } from './surreal-install.js';
 
 const VALID_PROFILES = ['mxbai-1024', 'qwen3-4096', 'gemini-3072'];
 
+/**
+ * Probe for a Robin install marker in `home`, accepting either the v2
+ * location (`runtime/install/.marker.json`) or the legacy v1 location
+ * (`.robin-data`). Used during the v1→v2 transition window so existing
+ * homes are recognized regardless of which side of the migration they
+ * sit on. WRITES of the marker are owned by `ensureHome()` / the
+ * layout migrator — this is read-only.
+ */
+function hasMarker(home) {
+  return (
+    existsSync(join(home, 'runtime', 'install', '.marker.json')) ||
+    existsSync(join(home, '.robin-data'))
+  );
+}
+
 const PROFILE_SUMMARIES = {
   'mxbai-1024': 'Local in-process. Default. ~1.3GB model, no extra setup.',
   'qwen3-4096':
@@ -308,8 +323,9 @@ export async function repair() {
  * Idempotent upgrade: re-apply migrations, manifest baseline, hooks, and
  * MCP supervisor against an existing install. Resolves home from
  * ROBIN_HOME, the package-root pointer, or — as a fallback — the default
- * `<packageRoot>/user-data/` home if it has a `.robin-data` marker
- * (covers users who installed before the pointer file existed). Never
+ * `<packageRoot>/user-data/` home if it has a Robin install marker
+ * (v2 `runtime/install/.marker.json` or legacy v1 `.robin-data`),
+ * covering users who installed before the pointer file existed. Never
  * prompts; never rewrites config.json (preserves embedder_profile and any
  * other persisted fields).
  *
@@ -338,7 +354,7 @@ export async function upgrade(deps = {}) {
     // predates the pointer file. Use it and self-heal by writing the
     // pointer so subsequent upgrades skip this discovery step.
     const defaultHome = join(packageRootDir(), 'user-data');
-    if (existsSync(join(defaultHome, '.robin-data'))) {
+    if (hasMarker(defaultHome)) {
       home = defaultHome;
       healPointer = true;
     } else {
@@ -669,9 +685,14 @@ export async function install(argv = [], deps = {}) {
         // Silently skip migration; continue to install at chosen home.
         // --force is required when target exists and has no Robin marker.
         if (existsSync(home) && !force) {
+          // Recognize Robin homes by either marker location (v2 or legacy v1)
+          // OR by storage signatures in either layout: v2 (`data/db/CURRENT`,
+          // `config/secrets/.env`) or v1 (`db/CURRENT`, `secrets/.env`).
           const isRobin =
-            existsSync(join(home, '.robin-data')) ||
+            hasMarker(home) ||
+            existsSync(join(home, 'data', 'db', 'CURRENT')) ||
             existsSync(join(home, 'db', 'CURRENT')) ||
+            existsSync(join(home, 'config', 'secrets', '.env')) ||
             existsSync(join(home, 'secrets', '.env'));
           if (!isRobin) {
             console.error(

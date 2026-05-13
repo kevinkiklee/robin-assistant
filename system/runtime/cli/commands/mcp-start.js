@@ -10,7 +10,7 @@ import { ensureHome, paths } from '../../../config/data-store.js';
  *
  * Two modes:
  *  - **Default (detached):** spawn `node server.js` detached, log to
- *    `<home>/cache/logs/daemon.log`, return immediately. This is the
+ *    `<home>/runtime/logs/daemon.log`, return immediately. This is the
  *    interactive CLI path (`robin mcp start` from a terminal).
  *  - **`--foreground`:** import and `await startDaemon()` in *this*
  *    process. The function only returns when the daemon shuts down (a

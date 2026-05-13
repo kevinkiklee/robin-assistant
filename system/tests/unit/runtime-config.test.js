@@ -27,7 +27,8 @@ test('writeConfig + readConfig round-trip', async () => {
 });
 
 test('readConfig throws on malformed JSON', async () => {
-  writeFileSync(join(tmpHome, 'config.json'), '{not json', 'utf-8');
+  mkdirSync(join(tmpHome, 'config'), { recursive: true });
+  writeFileSync(join(tmpHome, 'config', 'config.json'), '{not json', 'utf-8');
   const { readConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
   await assert.rejects(() => readConfig(), /malformed/);
 });

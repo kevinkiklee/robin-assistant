@@ -8,12 +8,16 @@
 // Lifted from Robin v1 (system/runtime/scripts/lib/bash-sensitive-patterns.js)
 // with v2 refresh per Phase 4a §5.A:
 //   - DROPPED `misrouted-write` (no canonical user-data/artifacts/upload/
-//     /backup paths in v2 — DB is the writable surface).
+//     paths in v2 — DB is the writable surface; DB snapshots now live at
+//     `user-data/data/snapshots/` and the legacy `user-data/backup/` is gone).
 //   - KEPT `secrets-read`, `env-dump`, `destructive-rm`, `low-level-fs`,
 //     `git-expose-userdata`, `eval-injection`.
 //   - REFRESHED `secrets-read` regex: v1 referenced
 //     `user-data/(?:runtime/|ops/)?secrets/`; v2 path is
-//     `user-data/secrets/` only (drop the runtime/ops/ prefixes).
+//     `user-data/config/secrets/`. The regex matches both the new
+//     `user-data/config/secrets/` location and the legacy `user-data/secrets/`
+//     literal so any stale tooling/migrations referring to the old path are
+//     still gated.
 //   - ADDED `db-direct-access` — refuse `surreal sql/connect/import/export`
 //     against the local Robin DB. Only the daemon may touch it.
 
@@ -21,7 +25,7 @@ export const BASH_DENY_PATTERNS = [
   {
     name: 'secrets-read',
     pattern:
-      /(?:^|[\s|;&])(?:cat|less|more|head|tail|grep|awk|sed|cp|mv|tar|zip|rsync)\s+[^|;&]*(?:user-data\/secrets\/|\.env\b)/,
+      /(?:^|[\s|;&])(?:cat|less|more|head|tail|grep|awk|sed|cp|mv|tar|zip|rsync)\s+[^|;&]*(?:user-data\/(?:config\/)?secrets\/|\.env\b)/,
     why: 'Reads secrets file or .env',
   },
   {

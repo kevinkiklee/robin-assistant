@@ -16,7 +16,7 @@ test('interrupt between ensureHome and writePointer: re-running both is idempote
     // First call: creates dirs + marker.
     await ensureHome();
     const firstMarker = readMarker();
-    assert.strictEqual(firstMarker.version, 1);
+    assert.strictEqual(firstMarker.user_data_layout_version, 2);
 
     // Simulate "interrupted after ensureHome but before writePointer":
     // call ensureHome a second time — marker must remain identical.

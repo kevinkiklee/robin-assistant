@@ -99,7 +99,7 @@ export async function computeManifest(opts = {}) {
 }
 
 function manifestPath() {
-  return join(paths.data.home(), 'manifest.json');
+  return paths.data.manifest();
 }
 
 export async function writeManifest(manifest) {

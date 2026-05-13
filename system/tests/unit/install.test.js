@@ -85,7 +85,7 @@ test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', 
       supervise: noopSupervise(),
       surreal: noopSurreal,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.ok(cfg.installed_at);
   } finally {
@@ -101,7 +101,7 @@ test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', as
       supervise: noopSupervise(),
       surreal: noopSurreal,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.ok(cfg.installed_at);
   } finally {
@@ -119,7 +119,7 @@ test('install --auto --profile gemini-3072 --i-understand --no-mcp respects expl
       ['--auto', '--profile', 'gemini-3072', '--i-understand', '--no-mcp', '--no-migrate'],
       { supervise: noopSupervise(), surreal: noopSurreal },
     );
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'gemini-3072');
   } finally {
     cleanup();
@@ -136,7 +136,7 @@ test('install --profile gemini-3072 --i-understand --no-mcp persists profile whe
       supervise: noopSupervise(),
       surreal: noopSurreal,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'gemini-3072');
   } finally {
     cleanup();
@@ -155,7 +155,7 @@ test('install --profile gemini-3072 in non-interactive mode without --i-understa
       }),
     );
     assert.equal(exitCode, 1);
-    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+    assert.ok(!existsSync(join(tmpHome, 'config', 'config.json')));
   } finally {
     cleanup();
   }
@@ -192,7 +192,7 @@ test('empty ~/.robin/ no longer aborts install (proceeds without prompt)', async
       surreal: noopSurreal,
       interactive: false,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
   } finally {
     cleanup();
@@ -209,7 +209,7 @@ test('empty ~/.robin/ with --force proceeds non-interactively', async () => {
       surreal: noopSurreal,
       interactive: false,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
   } finally {
     cleanup();
@@ -231,7 +231,7 @@ test('install interactive: profile flag respected, config written', async () => 
       interactive: true,
       prompt: promptFn,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
   } finally {
     cleanup();
@@ -245,7 +245,7 @@ test('reinstall short-circuit when config exists', async () => {
   try {
     const { writeConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
     await writeConfig({ embedder_profile: 'mxbai-1024' });
-    const installedAtBefore = existsSync(join(tmpHome, 'config.json'));
+    const installedAtBefore = existsSync(join(tmpHome, 'config', 'config.json'));
     assert.ok(installedAtBefore);
     let superviseCalled = false;
     const supervise = async () => {
@@ -254,7 +254,7 @@ test('reinstall short-circuit when config exists', async () => {
     const { install } = await importInstall();
     await install(['--profile', 'qwen3-4096', '--no-mcp'], { supervise });
     // Did NOT switch to qwen3 — short-circuited.
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.equal(superviseCalled, false);
   } finally {
@@ -272,7 +272,7 @@ test('reinstall with --force proceeds past short-circuit', async () => {
       supervise: noopSupervise(),
       surreal: noopSurreal,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     assert.notEqual(cfg.installed_at, 'old');
   } finally {
@@ -298,7 +298,7 @@ test('qwen3-4096 with Ollama unreachable AND binary missing exits 1', async () =
       }),
     );
     assert.equal(exitCode, 1);
-    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+    assert.ok(!existsSync(join(tmpHome, 'config', 'config.json')));
   } finally {
     cleanup();
   }
@@ -332,7 +332,7 @@ test('qwen3-4096 with Ollama unreachable but binary present auto-starts daemon',
       spawn: spawnFn,
     });
     assert.deepEqual(spawnCalls, [['ollama', ['serve']]]);
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'qwen3-4096');
   } finally {
     cleanup();
@@ -360,7 +360,7 @@ test('qwen3-4096 with model missing auto-pulls and persists config', async () =>
       spawnSync: spawnSyncFn,
     });
     assert.deepEqual(pullCalls, [['ollama', ['pull', 'qwen3-embedding:8b']]]);
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'qwen3-4096');
   } finally {
     cleanup();
@@ -386,7 +386,7 @@ test('qwen3-4096 with model missing + pull failure exits 1', async () => {
       }),
     );
     assert.equal(exitCode, 1);
-    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+    assert.ok(!existsSync(join(tmpHome, 'config', 'config.json')));
   } finally {
     cleanup();
   }
@@ -406,7 +406,7 @@ test('qwen3-4096 with Ollama reachable + model present persists config', async (
       surreal: noopSurreal,
       fetch: fetchFn,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'qwen3-4096');
   } finally {
     cleanup();
@@ -427,7 +427,7 @@ test('gemini-3072 in non-interactive without GEMINI_API_KEY exits 1', async () =
       }),
     );
     assert.equal(exitCode, 1);
-    assert.ok(!existsSync(join(tmpHome, 'config.json')));
+    assert.ok(!existsSync(join(tmpHome, 'config', 'config.json')));
   } finally {
     cleanup();
   }
@@ -443,7 +443,7 @@ test('config.json is written atomically with profile and installed_at', async ()
       supervise: noopSupervise(),
       surreal: noopSurreal,
     });
-    const cfgPath = join(tmpHome, 'config.json');
+    const cfgPath = join(tmpHome, 'config', 'config.json');
     assert.ok(existsSync(cfgPath));
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
@@ -470,7 +470,7 @@ test('interactive prompt with default (empty input) picks mxbai-1024', async () 
       interactive: true,
       prompt: promptFn,
     });
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
   } finally {
     cleanup();
@@ -495,12 +495,12 @@ test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtim
       },
     });
     // Config written
-    const cfgPath = join(tmpHome, 'config.json');
+    const cfgPath = join(tmpHome, 'config', 'config.json');
     assert.ok(existsSync(cfgPath));
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
     assert.equal(cfg.embedder_profile, 'mxbai-1024');
     // DB dir exists
-    assert.ok(existsSync(join(tmpHome, 'db')));
+    assert.ok(existsSync(join(tmpHome, 'data', 'db')));
     // runtime:embedder row exists with the right profile + dimension
     assert.ok(Array.isArray(runtimeEmbedderRow));
     assert.ok(runtimeEmbedderRow.length >= 1);
@@ -537,7 +537,7 @@ test('install rotates db.pass on a fresh install (no prior config)', async () =>
     });
     assert.equal(surrealCalls.length, 1);
     assert.equal(surrealCalls[0].pass, undefined, 'fresh install should not pin a pass');
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.db.pass, 'generated-fresh-pass');
   } finally {
     cleanup();
@@ -565,7 +565,7 @@ test('install reuses existing db.pass on re-install (no rotation)', async () => 
       supervise: noopSupervise(),
       surreal: surrealMock,
     });
-    const firstPass = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8')).db.pass;
+    const firstPass = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8')).db.pass;
     assert.ok(firstPass);
 
     // Re-install with --force. Should pin surreal's `pass` to firstPass.
@@ -591,7 +591,7 @@ test('install reuses existing db.pass on re-install (no rotation)', async () => 
       're-install must pass existing pass through so surreal does not rotate',
     );
 
-    const finalPass = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8')).db.pass;
+    const finalPass = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8')).db.pass;
     assert.equal(finalPass, firstPass, 'config.json db.pass must remain stable across re-install');
   } finally {
     cleanup();

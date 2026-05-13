@@ -5,8 +5,8 @@ import { generateSurrealUnit } from '../../runtime/install/surreal-unit.js';
 test('generateSurrealUnit produces a user unit with absolute surreal binary, Restart=on-failure, and storage args', () => {
   const txt = generateSurrealUnit({
     surrealBin: '/usr/local/bin/surreal',
-    dbDir: '/home/x/.robin-data/db',
-    logPath: '/home/x/.robin-data/cache/logs/surreal.log',
+    dbDir: '/home/x/.robin-data/data/db',
+    logPath: '/home/x/.robin-data/runtime/logs/surreal.log',
   });
   assert.match(txt, /\[Unit\]/);
   assert.match(txt, /\[Service\]/);
@@ -14,10 +14,10 @@ test('generateSurrealUnit produces a user unit with absolute surreal binary, Res
   assert.match(txt, /Restart=on-failure/);
   assert.match(
     txt,
-    /ExecStart=\/usr\/local\/bin\/surreal start --bind 127\.0\.0\.1:8000 --user root --pass root --log info surrealkv:\/\/\/home\/x\/\.robin-data\/db/,
+    /ExecStart=\/usr\/local\/bin\/surreal start --bind 127\.0\.0\.1:8000 --user root --pass root --log info surrealkv:\/\/\/home\/x\/\.robin-data\/data\/db/,
   );
   assert.match(txt, /Environment=PATH=\/usr\/local\/bin:/);
-  assert.match(txt, /append:\/home\/x\/\.robin-data\/cache\/logs\/surreal\.log/);
+  assert.match(txt, /append:\/home\/x\/\.robin-data\/runtime\/logs\/surreal\.log/);
 });
 
 test('generateSurrealUnit honors overrides for bind, credentials, and storage', () => {

@@ -187,10 +187,11 @@ export async function mcpInstall(argv) {
   await ensureMcpPort();
 
   // Stop any pre-existing daemon (detached *or* launchd-managed) before
-  // touching the supervisor. mcpStop SIGTERMs the PID from `.daemon.state`
-  // and polls until exit, so by the time we hit `launchctl load` the lock
-  // is free and the fresh daemon acquires it on first try — no EALREADY
-  // bounce through launchd's 10-second KeepAlive throttle.
+  // touching the supervisor. mcpStop SIGTERMs the PID from
+  // `runtime/daemon/.state` and polls until exit, so by the time we hit
+  // `launchctl load` the lock is free and the fresh daemon acquires it on
+  // first try — no EALREADY bounce through launchd's 10-second KeepAlive
+  // throttle.
   await mcpStop();
 
   let plistPath = null;
@@ -258,7 +259,7 @@ export async function mcpInstall(argv) {
   if (!noStart) {
     try {
       await mcpEnsureRunning();
-      // 4. Read port from .daemon.state.
+      // 4. Read port from runtime/daemon/.state.
       const state = await readDaemonState(paths.data.daemonState());
       if (state?.port) port = state.port;
     } catch (e) {

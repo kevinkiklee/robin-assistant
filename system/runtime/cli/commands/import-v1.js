@@ -149,8 +149,8 @@ export async function importV1(argv) {
       console.log(renderReport(report));
 
       try {
-        mkdirSync(paths.data.cache(), { recursive: true });
-        const reportPath = join(paths.data.cache(), `v1-import-report-${sessionId}.json`);
+        mkdirSync(paths.data.installReports(), { recursive: true });
+        const reportPath = join(paths.data.installReports(), `v1-import-report-${sessionId}.json`);
         writeFileSync(reportPath, JSON.stringify(report, null, 2), { mode: 0o644 });
         console.log('');
         console.log(`report saved: ${reportPath}`);

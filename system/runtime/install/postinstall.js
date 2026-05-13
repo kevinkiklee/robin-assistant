@@ -36,8 +36,12 @@ function alreadyInstalled() {
   // Or the default home (<package_root>/user-data/) already has a Robin
   // data marker — covers users who ran `robin install` before the postinstall
   // existed. Skipping here prevents `writeConfig` from clobbering their
-  // existing config (e.g. hooks.disabled, custom embedder_profile).
-  if (existsSync(join(packageRoot, 'user-data', '.robin-data'))) return true;
+  // existing config (e.g. hooks.disabled, custom embedder_profile). Accept
+  // either the v2 marker (runtime/install/.marker.json) or the legacy v1
+  // marker (.robin-data) during the transition window.
+  const home = join(packageRoot, 'user-data');
+  if (existsSync(join(home, 'runtime', 'install', '.marker.json'))) return true;
+  if (existsSync(join(home, '.robin-data'))) return true;
   return false;
 }
 

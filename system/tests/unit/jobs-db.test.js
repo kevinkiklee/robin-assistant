@@ -37,6 +37,7 @@ const SAMPLE = {
   notify_on_failure: true,
   timeout_minutes: 10,
   manually_runnable: true,
+  scheduler_driven: false,
 };
 
 test('upsertFromDiscovered — first call creates row with defaults', async () => {

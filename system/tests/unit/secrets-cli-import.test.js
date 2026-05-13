@@ -22,7 +22,7 @@ test('secrets import --from <path>/runtime/secrets/.env succeeds', async () => {
     `../../runtime/cli/commands/secrets-import.js?cb=${Date.now()}`
   );
   await secretsImport(['--from', v1]);
-  const dest = join(tmpHome, 'secrets', '.env');
+  const dest = join(tmpHome, 'config', 'secrets', '.env');
   assert.ok(existsSync(dest));
   assert.match(readFileSync(dest, 'utf-8'), /KEY=value/);
 });
@@ -34,6 +34,6 @@ test('secrets import accepts direct .env path', async () => {
     `../../runtime/cli/commands/secrets-import.js?cb=${Date.now()}`
   );
   await secretsImport(['--from', src]);
-  const dest = join(tmpHome, 'secrets', '.env');
+  const dest = join(tmpHome, 'config', 'secrets', '.env');
   assert.ok(existsSync(dest));
 });

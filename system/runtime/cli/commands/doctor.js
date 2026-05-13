@@ -31,6 +31,7 @@ import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
+import { LEGACY_STRAY_DIRS, detectLayoutVersion } from '../../install/layout-migrator.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { parseArgs } from '../args.js';
 
@@ -278,10 +279,50 @@ async function probeIntegrationFreshness() {
   }
 }
 
+/**
+ * Layout-version + stray-legacy-dir scan. Surfaced in `robin doctor` so a
+ * partial or pending v1→v2 migration is visible at a glance. The migration
+ * itself runs automatically via `ensureHome()`; doctor never moves files.
+ */
+function probeLayout({ home = paths.data.home() } = {}) {
+  const version = detectLayoutVersion(home);
+  const strays = LEGACY_STRAY_DIRS.filter((rel) => existsSync(join(home, rel)));
+  const expectedV2 = [
+    'artifacts',
+    'jobs',
+    'skills',
+    'sources',
+    'upload',
+    'config',
+    'cognition',
+    'io',
+    'data',
+    'runtime',
+  ];
+  const missing = version === 'v2' ? expectedV2.filter((d) => !existsSync(join(home, d))) : [];
+  return { version, strays, missing };
+}
+
 async function doStatus(out, deps = {}) {
   out(`ROBIN_HOME: ${paths.data.home()}`);
-  const manifestExists = existsSync(join(paths.data.home(), 'manifest.json'));
+  const manifestExists = existsSync(paths.data.manifest());
   out(`manifest: ${manifestExists ? 'present' : 'missing'}`);
+
+  // Layout — surfaces pending v1→v2 migration and stray legacy directories.
+  const layout = (deps.probeLayout ?? probeLayout)();
+  if (layout.version === 'fresh') {
+    out('layout: fresh install (no marker yet)');
+  } else if (layout.version === 'v1') {
+    out('layout: v1 (run any robin command, or `robin migrate-user-data`, to migrate)');
+  } else {
+    out('layout: v2');
+  }
+  if (layout.strays.length > 0) {
+    out(`  stray legacy: ${layout.strays.join(', ')} — run \`robin migrate-user-data\` to clean up`);
+  }
+  if (layout.missing.length > 0) {
+    out(`  MISSING expected v2 dirs: ${layout.missing.join(', ')} (failed mid-migration?)`);
+  }
   const daemonState = await readDaemonState(paths.data.daemonState());
   let daemonRunning = false;
   if (daemonState && isPidAlive(daemonState.pid)) {

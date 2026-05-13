@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 function seedConfig(home) {
-  writeFileSync(join(home, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  mkdirSync(join(home, 'config'), { recursive: true });
+  writeFileSync(join(home, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
 }
 
 test('robin recall-eval --json exits 1 when rows_scored < min_rows', () => {

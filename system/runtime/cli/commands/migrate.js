@@ -16,7 +16,7 @@ export async function migrate() {
   const release = await acquire(paths.data.daemonLock());
   try {
     // Pre-migration backup (no-op on fresh install where db dir is empty)
-    const archive = await snapshot(paths.data.db(), paths.data.backup());
+    const archive = await snapshot(paths.data.db(), paths.data.snapshots());
     if (archive) console.log(`backup: ${archive}`);
 
     const db = await connect({ engine: await defaultDbUrl() });

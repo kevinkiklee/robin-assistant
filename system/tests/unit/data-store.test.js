@@ -36,18 +36,18 @@ test('ROBIN_HOME env var overrides default', async () => {
   }
 });
 
-test('paths.data includes db, secrets, cache, config, backup, daemonState, daemonLock; paths.source includes migrations', async () => {
+test('paths.data includes db, secrets, snapshots, config, logs, daemonState, daemonLock; paths.source includes migrations', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-ds-t3-'));
   process.env.ROBIN_HOME = home;
   try {
     const { paths } = await import(`../../config/data-store.js?cb=${Date.now()}`);
-    assert.equal(paths.data.db(), join(home, 'db'));
-    assert.equal(paths.data.secrets(), join(home, 'secrets'));
-    assert.equal(paths.data.cache(), join(home, 'cache'));
-    assert.equal(paths.data.config(), join(home, 'config.json'));
-    assert.equal(paths.data.backup(), join(home, 'backup'));
-    assert.equal(paths.data.daemonState(), join(home, '.daemon.state'));
-    assert.equal(paths.data.daemonLock(), join(home, '.daemon.lock'));
+    assert.equal(paths.data.db(), join(home, 'data', 'db'));
+    assert.equal(paths.data.secrets(), join(home, 'config', 'secrets'));
+    assert.equal(paths.data.snapshots(), join(home, 'data', 'snapshots'));
+    assert.equal(paths.data.config(), join(home, 'config', 'config.json'));
+    assert.equal(paths.data.logs(), join(home, 'runtime', 'logs'));
+    assert.equal(paths.data.daemonState(), join(home, 'runtime', 'daemon', '.state'));
+    assert.equal(paths.data.daemonLock(), join(home, 'runtime', 'daemon', '.lock'));
     assert.match(paths.source.migrations(), /\/system\/data\/db\/migrations$/);
   } finally {
     delete process.env.ROBIN_HOME;
@@ -88,9 +88,8 @@ test('paths.data is under robinHome()', () => {
     for (const key of [
       'db',
       'secrets',
-      'cache',
+      'snapshots',
       'logs',
-      'backup',
       'upload',
       'config',
       'hostIntegrations',
@@ -98,6 +97,16 @@ test('paths.data is under robinHome()', () => {
       'daemonLock',
       'manifestLock',
       'marker',
+      'installReports',
+      'sqliteSnapshots',
+      'daemonStatus',
+      'manifest',
+      'publishIndex',
+      'reinforcementLastRun',
+      'artifacts',
+      'jobs',
+      'skills',
+      'sources',
     ]) {
       const v = paths.data[key]();
       assert.ok(
@@ -140,9 +149,9 @@ test('paths.data and paths.source roots do not overlap', () => {
   }
 });
 
-// ── Task 1.3: .robin-data marker ──────────────────────────────────────────────
+// ── Task 1.3: v2 install marker ──────────────────────────────────────────────
 
-test('ensureHome() writes .robin-data marker with version', async () => {
+test('ensureHome() writes v2 marker with layout version', async () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-home-'));
   const prev = process.env.ROBIN_HOME;
   process.env.ROBIN_HOME = home;
@@ -151,7 +160,7 @@ test('ensureHome() writes .robin-data marker with version', async () => {
     const markerPath = paths.data.marker();
     const raw = readFileSync(markerPath, 'utf8');
     const parsed = JSON.parse(raw);
-    assert.strictEqual(parsed.version, 1);
+    assert.strictEqual(parsed.user_data_layout_version, 2);
     assert.ok(typeof parsed.createdAt === 'string');
     assert.ok(new Date(parsed.createdAt).toISOString() === parsed.createdAt);
   } finally {

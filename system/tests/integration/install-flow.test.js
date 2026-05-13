@@ -6,7 +6,8 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 function seedConfig(home) {
-  writeFileSync(join(home, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  mkdirSync(join(home, 'config'), { recursive: true });
+  writeFileSync(join(home, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
 }
 
 test('robin mcp install with --no-supervise --no-register --no-start writes supervisor + AGENTS.md', () => {

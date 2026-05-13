@@ -47,7 +47,7 @@ test('doctor --rebaseline: writes manifest.json', async () => {
   const o = makeOutCapture();
   const e = makeOutCapture();
   await doctor(['--rebaseline'], { out: o.fn, err: e.fn });
-  const manifestPath = join(__robinTestHome, 'manifest.json');
+  const manifestPath = join(__robinTestHome, 'runtime', 'install', 'manifest.json');
   assert.ok(existsSync(manifestPath), 'manifest must exist after rebaseline');
   const all = o.lines.join('\n');
   assert.match(all, /introspection baseline rewritten/);

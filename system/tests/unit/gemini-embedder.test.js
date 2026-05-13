@@ -14,8 +14,8 @@ const __tmpHome = join(
   tmpdir(),
   `robin-gemini-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
 );
-mkdirSync(join(__tmpHome, 'secrets'), { recursive: true });
-writeFileSync(join(__tmpHome, 'secrets', '.env'), 'GEMINI_API_KEY=fake-key\n', {
+mkdirSync(join(__tmpHome, 'config', 'secrets'), { recursive: true });
+writeFileSync(join(__tmpHome, 'config', 'secrets', '.env'), 'GEMINI_API_KEY=fake-key\n', {
   mode: 0o600,
 });
 process.env.ROBIN_HOME = __tmpHome;

@@ -34,7 +34,7 @@ test('drift check passes when config + runtime row match', async () => {
     assert.equal(rows[0].value.active_profile, 'mxbai-1024');
 
     // The drift check itself: profiles match → no error.
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     assert.equal(cfg.embedder_profile, rows[0].value.active_profile);
   } finally {
     await close(db);
@@ -52,7 +52,7 @@ test('drift check detects mismatch', async () => {
     // Hand-edit config to mxbai while runtime row still says qwen3.
     await writeConfig({ embedder_profile: 'mxbai-1024' });
 
-    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config.json'), 'utf-8'));
+    const cfg = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8'));
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'embedder')`)
       .collect();

@@ -44,7 +44,7 @@ function captureExit() {
 }
 
 function envFile() {
-  return join(process.env.ROBIN_HOME, 'secrets', '.env');
+  return join(process.env.ROBIN_HOME, 'config', 'secrets', '.env');
 }
 
 test('secrets set <KEY>=<value> saves and warns about shell history', async () => {

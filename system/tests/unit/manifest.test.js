@@ -8,8 +8,9 @@ let tmpHome;
 test.beforeEach(() => {
   tmpHome = join(tmpdir(), `robin-manifest-${process.pid}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpHome, { recursive: true });
-  mkdirSync(join(tmpHome, 'db'), { recursive: true });
-  mkdirSync(join(tmpHome, 'secrets'), { recursive: true });
+  mkdirSync(join(tmpHome, 'data', 'db'), { recursive: true });
+  mkdirSync(join(tmpHome, 'config', 'secrets'), { recursive: true });
+  mkdirSync(join(tmpHome, 'runtime', 'install'), { recursive: true });
   process.env.ROBIN_HOME = tmpHome;
 });
 test.afterEach(() => {
@@ -64,8 +65,8 @@ test('writeManifest + readManifest round-trip', async () => {
   const read = await readManifest();
   assert.deepEqual(read, m);
   // No leftover tmp file.
-  assert.equal(existsSync(join(tmpHome, 'manifest.json.tmp')), false);
-  assert.equal(existsSync(join(tmpHome, 'manifest.json')), true);
+  assert.equal(existsSync(join(tmpHome, 'runtime', 'install', 'manifest.json.tmp')), false);
+  assert.equal(existsSync(join(tmpHome, 'runtime', 'install', 'manifest.json')), true);
 });
 
 test('readManifest returns null when file missing', async () => {
@@ -75,7 +76,7 @@ test('readManifest returns null when file missing', async () => {
 
 test('readManifest returns null when file malformed', async () => {
   const { writeFileSync } = await import('node:fs');
-  writeFileSync(join(tmpHome, 'manifest.json'), '{not json', 'utf-8');
+  writeFileSync(join(tmpHome, 'runtime', 'install', 'manifest.json'), '{not json', 'utf-8');
   const { readManifest } = await import(`../../runtime/install/manifest.js?cb=${Date.now()}`);
   assert.equal(await readManifest(), null);
 });

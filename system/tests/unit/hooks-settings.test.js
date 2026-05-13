@@ -16,6 +16,9 @@ function makeFreshEnv() {
   const packageRoot = join(root, 'pkg');
   mkdirSync(homeDir, { recursive: true });
   mkdirSync(robinHome, { recursive: true });
+  // Production code now writes the manifest under <home>/runtime/install/;
+  // pre-create the dir so acquireManifestLock can openSync the lock file.
+  mkdirSync(join(robinHome, 'runtime', 'install'), { recursive: true });
   mkdirSync(join(packageRoot, 'system', 'bin'), { recursive: true });
   writeFileSync(join(packageRoot, 'system', 'bin', 'robin-hook.sh'), '#!/bin/sh\nexit 0\n', {
     mode: 0o755,
@@ -220,7 +223,7 @@ test('uninstall fallback (no manifest entry) removes any command starting with t
     const { installHooksToSettings, uninstallHooksFromSettings } = await importFresh();
     await installHooksToSettings({ homeDir: env.homeDir, packageRoot: env.packageRoot });
     // Delete the unified manifest file to force fallback path.
-    rmSync(join(env.robinHome, 'host-integrations.json'), { force: true });
+    rmSync(join(env.robinHome, 'runtime', 'install', 'host-integrations.json'), { force: true });
 
     const { removedByHost } = await uninstallHooksFromSettings({
       homeDir: env.homeDir,

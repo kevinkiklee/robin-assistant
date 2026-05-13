@@ -22,7 +22,7 @@ test('generateLaunchdPlist produces a valid plist with ROBIN_HOME, KeepAlive=tru
   assert.match(xml, /<string>--foreground<\/string>/);
   assert.match(xml, /<key>ROBIN_HOME<\/key>\s*<string>\/Users\/x\/\.robin-data<\/string>/);
   assert.match(xml, /<key>PATH<\/key>\s*<string>\/usr\/local\/bin:/);
-  assert.match(xml, /\/Users\/x\/\.robin-data\/cache\/logs\/daemon\.log/);
+  assert.match(xml, /\/Users\/x\/\.robin-data\/runtime\/logs\/daemon\.log/);
 });
 
 test('generateLaunchdPlist escapes XML special chars in paths', () => {

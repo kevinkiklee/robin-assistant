@@ -15,7 +15,8 @@ const { isHookDisabled, addDisabled, removeDisabled } = await import(
   '../../config/hooks-disabled.js'
 );
 
-const configFile = join(__robinTestHome, 'config.json');
+mkdirSync(join(__robinTestHome, 'config'), { recursive: true });
+const configFile = join(__robinTestHome, 'config', 'config.json');
 
 test('isHookDisabled returns false when config is missing', async () => {
   rmSync(configFile, { force: true });

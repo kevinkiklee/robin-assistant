@@ -15,6 +15,10 @@ function setup() {
   const packageRoot = join(root, 'pkg');
   mkdirSync(homeDir, { recursive: true });
   mkdirSync(robinHome, { recursive: true });
+  // acquireManifestLock opens <robinHome>/runtime/install/.manifest.lock;
+  // pre-create the dir so the openSync doesn't ENOENT in tests that bypass
+  // ensureHome().
+  mkdirSync(join(robinHome, 'runtime', 'install'), { recursive: true });
   mkdirSync(join(packageRoot, 'system', 'bin'), { recursive: true });
   writeFileSync(join(packageRoot, 'system', 'bin', 'robin-hook.sh'), '#!/bin/sh\nexit 0\n', {
     mode: 0o755,

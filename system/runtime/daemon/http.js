@@ -106,7 +106,7 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
             JSON.stringify({
               ok: false,
               error:
-                'missing or invalid Authorization. CLI commands read the token from <robinHome>/.daemon.state; restart the daemon (`robin mcp restart`) if the token in your shell session is stale.',
+                'missing or invalid Authorization. CLI commands read the token from <robinHome>/runtime/daemon/.state; restart the daemon (`robin mcp restart`) if the token in your shell session is stale.',
               name: 'RobinUnauthorizedError',
             }),
           );

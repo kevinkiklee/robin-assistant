@@ -1,11 +1,6 @@
-import { join } from 'node:path';
 import { paths } from '../../../config/data-store.js';
 import { readSqliteSnapshot } from '../_local/sqlite.js';
 import { lrcCatalogPath, readCatalogSummary } from './client.js';
-
-function cacheDir() {
-  return join(paths.data.cache(), 'sqlite-snapshots');
-}
 
 export async function sync(ctx) {
   const path = lrcCatalogPath();
@@ -13,7 +8,7 @@ export async function sync(ctx) {
 
   const summary = readSqliteSnapshot({
     srcPath: path,
-    cacheDir: cacheDir(),
+    cacheDir: paths.data.sqliteSnapshots(),
     snapshotName: 'lrc-catalog',
     queryFn: readCatalogSummary,
   });

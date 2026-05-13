@@ -13,7 +13,8 @@ process.env.ROBIN_HOME = __robinTestHome;
 
 const { DISPATCH, runHook } = await import('../../io/hooks/dispatcher.js');
 
-const configFile = join(__robinTestHome, 'config.json');
+mkdirSync(join(__robinTestHome, 'config'), { recursive: true });
+const configFile = join(__robinTestHome, 'config', 'config.json');
 
 test('DISPATCH map exposes the four expected phases', () => {
   assert.deepEqual(

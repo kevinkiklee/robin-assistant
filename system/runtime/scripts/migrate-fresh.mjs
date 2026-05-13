@@ -4,8 +4,8 @@
 // Workflow:
 //   1. Resolve ROBIN_HOME via the data-store resolver.
 //   2. Read <robinHome>/config.json; if no embedder_profile, default to mxbai-1024.
-//   3. Backup the existing <robinHome>/db/ to <robinHome>/cache/backups/<ts>-pre-redesign.tar.gz.
-//   4. Open the DB (rocksdb://<robinHome>/db) and apply migrations.
+//   3. Backup the existing <robinHome>/data/db/ to <robinHome>/data/snapshots/<ts>-pre-redesign.tar.gz.
+//   4. Open the DB (rocksdb://<robinHome>/data/db) and apply migrations.
 //   5. Report what landed.
 //
 // This is what we run after merging the redesign into main. The user's daemon
@@ -20,9 +20,9 @@ import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
 const ROBIN_HOME = robinHome();
-const CONFIG_PATH = join(ROBIN_HOME, 'config.json');
-const DB_DIR = join(ROBIN_HOME, 'db');
-const BACKUP_DIR = join(ROBIN_HOME, 'cache', 'backups');
+const CONFIG_PATH = join(ROBIN_HOME, 'config', 'config.json');
+const DB_DIR = join(ROBIN_HOME, 'data', 'db');
+const BACKUP_DIR = join(ROBIN_HOME, 'data', 'snapshots');
 const MIGRATIONS_DIR = new URL('../../data/db/migrations/', import.meta.url).pathname;
 
 function ts() {

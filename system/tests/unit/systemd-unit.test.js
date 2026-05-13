@@ -18,5 +18,5 @@ test('generateSystemdUnit produces a user unit with ROBIN_HOME, Restart=on-failu
     /ExecStart=\/usr\/local\/bin\/node \/opt\/robin\/system\/bin\/robin mcp start --foreground/,
   );
   assert.match(txt, /Environment=PATH=\/usr\/local\/bin:/);
-  assert.match(txt, /\/home\/x\/\.robin-data\/cache\/logs\/daemon\.log/);
+  assert.match(txt, /\/home\/x\/\.robin-data\/runtime\/logs\/daemon\.log/);
 });

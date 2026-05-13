@@ -13,6 +13,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrateHooksDisabledFlag } from '../config/hooks-disabled.js';
+import { migrateUserDataLayout } from '../runtime/install/layout-migrator.js';
 
 function findPackageRoot() {
   let dir = dirname(fileURLToPath(import.meta.url));
@@ -192,28 +193,56 @@ export function robinHome() {
   return resolveHomeStrict();
 }
 
+// Faculty-aligned v2 layout. The realm directory (cognition/io/data/runtime)
+// a path lives under tells you which faculty in `system/` owns the producer.
+// See docs/superpowers/specs/2026-05-12-user-data-folder-redesign-design.md.
 export const paths = {
   data: {
     home: () => robinHome(),
-    db: () => join(robinHome(), 'db'),
-    secrets: () => join(robinHome(), 'secrets'),
-    cache: () => join(robinHome(), 'cache'),
-    logs: () => join(robinHome(), 'cache', 'logs'),
-    backup: () => join(robinHome(), 'backup'),
+
+    // User-content surfaces (top-level for visibility).
+    artifacts: () => join(robinHome(), 'artifacts'),
+    jobs: () => join(robinHome(), 'jobs'),
+    skills: () => join(robinHome(), 'skills'),
+    sources: () => join(robinHome(), 'sources'),
     upload: () => join(robinHome(), 'upload'),
-    config: () => join(robinHome(), 'config.json'),
-    hostIntegrations: () => join(robinHome(), 'host-integrations.json'),
-    daemonState: () => join(robinHome(), '.daemon.state'),
+
+    // Config realm.
+    config: () => join(robinHome(), 'config', 'config.json'),
+    secrets: () => join(robinHome(), 'config', 'secrets'),
+
+    // Cognition realm.
+    reinforcementLastRun: () =>
+      join(robinHome(), 'cognition', 'reinforcement-last-run.json'),
+
+    // Io realm.
+    publishIndex: () => join(robinHome(), 'io', 'publish', 'index.jsonl'),
+    sqliteSnapshots: () => join(robinHome(), 'io', 'sqlite-snapshots'),
+
+    // Data realm.
+    db: () => join(robinHome(), 'data', 'db'),
+    // Robin-DB pre-migration backups (distinct from io/sqlite-snapshots,
+    // which caches external sqlite DBs for io integrations).
+    snapshots: () => join(robinHome(), 'data', 'snapshots'),
+
+    // Runtime realm.
+    logs: () => join(robinHome(), 'runtime', 'logs'),
+    daemonStatus: () => join(robinHome(), 'runtime', 'daemon', 'status.json'),
+    daemonPid: () => join(robinHome(), 'runtime', 'daemon', '.pid'),
+    daemonState: () => join(robinHome(), 'runtime', 'daemon', '.state'),
     // `.daemon.lock` is the *embedded-DB writer-serialization* lock, held
     // briefly by CLI subcommands (biographer, dream, ingest, etc.) that
     // open the local store directly. It is NOT the daemon's process-
-    // singleton lock — `.daemon.pid` below owns that. Keeping the two
+    // singleton lock — `.daemon.pid` above owns that. Keeping the two
     // separate lets the daemon start while a long-running CLI subcommand
     // (e.g. biographer flushing through an LLM call) is mid-flight.
-    daemonLock: () => join(robinHome(), '.daemon.lock'),
-    daemonPid: () => join(robinHome(), '.daemon.pid'),
-    manifestLock: () => join(robinHome(), '.manifest.lock'),
-    marker: () => join(robinHome(), '.robin-data'),
+    daemonLock: () => join(robinHome(), 'runtime', 'daemon', '.lock'),
+    manifest: () => join(robinHome(), 'runtime', 'install', 'manifest.json'),
+    manifestLock: () => join(robinHome(), 'runtime', 'install', '.manifest.lock'),
+    hostIntegrations: () =>
+      join(robinHome(), 'runtime', 'install', 'host-integrations.json'),
+    marker: () => join(robinHome(), 'runtime', 'install', '.marker.json'),
+    installReports: () => join(robinHome(), 'runtime', 'install', 'reports'),
   },
   source: {
     migrations: () => join(_packageRoot, 'system', 'data', 'db', 'migrations'),
@@ -222,27 +251,75 @@ export const paths = {
   },
 };
 
-const MARKER_VERSION = 1;
+const MARKER_VERSION_V2 = 2;
+
+function ensureMarker(home) {
+  const newMarker = paths.data.marker();
+  if (existsSync(newMarker)) return;
+  // Preserve createdAt from the legacy marker if it's still around (e.g. the
+  // migrator wrote the new marker but failed to unlink the old one). Falls
+  // back to "now" on a fresh install.
+  let createdAt = new Date().toISOString();
+  const oldMarker = join(home, '.robin-data');
+  if (existsSync(oldMarker)) {
+    try {
+      const legacy = JSON.parse(readFileSync(oldMarker, 'utf8'));
+      if (typeof legacy?.createdAt === 'string') createdAt = legacy.createdAt;
+    } catch {}
+    try {
+      unlinkSync(oldMarker);
+    } catch {}
+  }
+  mkdirSync(dirname(newMarker), { recursive: true });
+  writeFileSync(
+    newMarker,
+    JSON.stringify(
+      { user_data_layout_version: MARKER_VERSION_V2, createdAt },
+      null,
+      2,
+    ),
+    { mode: 0o644 },
+  );
+}
 
 export async function ensureHome() {
   const home = robinHome();
+  mkdirSync(home, { recursive: true });
+
+  // Step 1: migrate v1→v2 layout if needed. No-op once already v2 or fresh.
+  // Must run BEFORE mkdir below, because pre-creating the new dirs causes
+  // rename-onto-empty-dir to fail on macOS (and behave nondeterministically
+  // on Linux). The migrator throws LAYOUT_MIGRATOR_DAEMON_RUNNING if the
+  // daemon is alive during a v1→v2 transition.
+  await migrateUserDataLayout(home);
+
+  // Step 2: ensure the v2 directory set exists.
   for (const dir of [
-    home,
-    paths.data.db(),
-    paths.data.secrets(),
-    paths.data.cache(),
-    paths.data.logs(),
-    paths.data.backup(),
+    paths.data.artifacts(),
+    paths.data.jobs(),
+    paths.data.skills(),
+    paths.data.sources(),
     paths.data.upload(),
+    dirname(paths.data.config()), // config/
+    paths.data.secrets(), // config/secrets/
+    dirname(paths.data.reinforcementLastRun()), // cognition/
+    dirname(paths.data.publishIndex()), // io/publish/
+    paths.data.sqliteSnapshots(),
+    paths.data.db(),
+    paths.data.snapshots(),
+    paths.data.logs(),
+    dirname(paths.data.daemonStatus()), // runtime/daemon/
+    dirname(paths.data.manifest()), // runtime/install/
+    paths.data.installReports(),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
-  const markerPath = paths.data.marker();
-  if (!existsSync(markerPath)) {
-    const payload = { version: MARKER_VERSION, createdAt: new Date().toISOString() };
-    writeFileSync(markerPath, JSON.stringify(payload, null, 2), { mode: 0o644 });
-  }
-  // Migrate hooks-disabled.txt → config.json.hooks.disabled (string[]).
+
+  // Step 3: marker — write the v2 marker on a fresh install (no-op if the
+  // migrator already wrote it).
+  ensureMarker(home);
+
+  // Step 4: legacy hooks-disabled.txt → config.json.hooks.disabled migration.
   const flagPath = join(home, 'hooks-disabled.txt');
   if (existsSync(flagPath)) {
     const list = migrateHooksDisabledFlag(home);
@@ -256,18 +333,28 @@ export async function ensureHome() {
       }
     }
     cfg.hooks = { ...(cfg.hooks ?? {}), disabled: list };
+    mkdirSync(dirname(cfgPath), { recursive: true });
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), { mode: 0o644 });
     unlinkSync(flagPath);
   }
 }
 
 export function readMarker() {
-  const p = paths.data.marker();
-  if (!existsSync(p)) return null;
+  // Prefer the v2 marker.
+  const newP = paths.data.marker();
+  if (existsSync(newP)) {
+    try {
+      const parsed = JSON.parse(readFileSync(newP, 'utf8'));
+      if (typeof parsed === 'object' && parsed !== null) return parsed;
+    } catch {}
+  }
+  // Fall back to the legacy marker (only relevant between migration steps or
+  // on a never-touched home).
+  const oldP = join(robinHome(), '.robin-data');
+  if (!existsSync(oldP)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(p, 'utf8'));
-    if (typeof parsed !== 'object' || parsed === null) return null;
-    return parsed;
+    const parsed = JSON.parse(readFileSync(oldP, 'utf8'));
+    return typeof parsed === 'object' && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
@@ -431,12 +518,19 @@ export function discoverExistingHomes({ candidates = defaultDiscoveryCandidates(
   const out = [];
   for (const dir of candidates) {
     if (!existsSync(dir)) continue;
-    const markerPath = join(dir, '.robin-data');
-    if (existsSync(markerPath)) {
+    const newMarker = join(dir, 'runtime', 'install', '.marker.json');
+    const oldMarker = join(dir, '.robin-data');
+    if (existsSync(newMarker) || existsSync(oldMarker)) {
       out.push({ path: dir, kind: 'marker', lastUsed: safeMtime(dir) });
       continue;
     }
-    if (existsSync(join(dir, 'db', 'CURRENT')) || existsSync(join(dir, 'secrets', '.env'))) {
+    // Legacy-shape detection: probe v2 and v1 storage locations alike.
+    if (
+      existsSync(join(dir, 'data', 'db', 'CURRENT')) ||
+      existsSync(join(dir, 'db', 'CURRENT')) ||
+      existsSync(join(dir, 'config', 'secrets', '.env')) ||
+      existsSync(join(dir, 'secrets', '.env'))
+    ) {
       out.push({ path: dir, kind: 'legacy', lastUsed: safeMtime(dir) });
     }
   }

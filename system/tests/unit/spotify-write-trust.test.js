@@ -26,7 +26,8 @@ test.beforeEach(() => {
   tmpHome = join(tmpdir(), `robin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpHome, { recursive: true });
   process.env.ROBIN_HOME = tmpHome;
-  writeFileSync(join(tmpHome, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  mkdirSync(join(tmpHome, 'config'), { recursive: true });
+  writeFileSync(join(tmpHome, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
   _resetCache('spotify');
 });
 test.afterEach(() => {

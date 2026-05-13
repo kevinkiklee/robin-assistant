@@ -18,7 +18,7 @@ test('stopHookHandler returns within 100ms (fire-and-forget)', async () => {
     // test load; tighter than this flaked roughly 1 run in 5 on this machine.
     assert.ok(elapsed < 500, `expected < 500ms (fire-and-forget), got ${elapsed.toFixed(0)}ms`);
     // The detached subprocess may or may not have written the log yet; just confirm the dir exists
-    assert.ok(existsSync(join(tmp, 'cache', 'logs')));
+    assert.ok(existsSync(join(tmp, 'runtime', 'logs')));
   } finally {
     if (orig) process.env.ROBIN_HOME = orig;
     else Reflect.deleteProperty(process.env, 'ROBIN_HOME');

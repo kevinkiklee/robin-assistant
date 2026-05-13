@@ -11,6 +11,7 @@ const __robinTestHome = join(
   `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
 );
 mkdirSync(__robinTestHome, { recursive: true });
+mkdirSync(join(__robinTestHome, 'runtime', 'install'), { recursive: true });
 process.env.ROBIN_HOME = __robinTestHome;
 
 const {

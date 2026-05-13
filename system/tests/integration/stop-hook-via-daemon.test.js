@@ -1,20 +1,21 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { stopHookHandler } from '../../io/hooks/stop-hook.js';
 
 function seedConfig(home) {
-  writeFileSync(join(home, 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  mkdirSync(join(home, 'config'), { recursive: true });
+  writeFileSync(join(home, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
 }
 
 async function waitForState(home, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      return JSON.parse(readFileSync(join(home, '.daemon.state'), 'utf8'));
+      return JSON.parse(readFileSync(join(home, 'runtime', 'daemon', '.state'), 'utf8'));
     } catch {
       await new Promise((r) => setTimeout(r, 100));
     }

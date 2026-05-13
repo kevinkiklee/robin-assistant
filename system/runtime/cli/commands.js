@@ -21,6 +21,11 @@ export const commands = {
     export: 'migrate',
     help: 'apply schema migrations',
   },
+  'migrate-user-data': {
+    import: './commands/migrate-user-data.js',
+    export: 'migrateUserData',
+    help: 'migrate user-data layout from v1 to v2 (idempotent; --dry-run supported)',
+  },
   'import-v1': {
     import: './commands/import-v1.js',
     export: 'importV1',
