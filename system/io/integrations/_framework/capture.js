@@ -2,8 +2,15 @@ import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../../../data/embed/hash.js';
 import { activeProfile, embeddingTable } from '../../../data/embed/profile-router.js';
 
+// SurrealDB record-id components only need to survive being passed as a
+// string literal, but historically we restricted to `[a-zA-Z0-9_-]` and
+// hashed everything else. The previous hex-truncation-to-16 was unsafe:
+// any external_id sharing a ≥8-byte prefix (e.g. `nhl:game:<id>`,
+// `ebird:S<id>`) collided, and UPSERT silently kept overwriting one row.
+// Use a sha256 prefix instead — 24 hex chars / 96 bits is comfortably past
+// birthday-collision risk for realistic row counts.
 function sanitizeIdPart(s) {
-  return /^[a-zA-Z0-9_-]+$/.test(s) ? s : `h_${Buffer.from(s).toString('hex').slice(0, 16)}`;
+  return /^[a-zA-Z0-9_-]+$/.test(s) ? s : `h_${sha256(s).slice(0, 24)}`;
 }
 
 function deterministicId(source, external_id) {
