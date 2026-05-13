@@ -1,12 +1,12 @@
 # Troubleshooting
 
-Common problems and how to diagnose them under the v2 substrate. The first step in every case is `robin doctor` — it prints a one-fact-per-line health overview.
+Common problems and how to diagnose them. The first step in every case is `robin doctor` — it prints a one-fact-per-line health overview.
 
 ## After upgrading to alpha.15 (SurrealDB improvements)
 
 ### "checksum mismatch for migration 0001-init"
 
-The schema rewrite changed the checksum of `0001-init.surql`. The migration runner refuses to boot when the recorded checksum (in `_migrations`) doesn't match the file. **There is no automatic migrator** (per spec; no v2 users / data).
+The schema rewrite changed the checksum of `0001-init.surql`. The migration runner refuses to boot when the recorded checksum (in `_migrations`) doesn't match the file. **There is no automatic migrator** (per spec; no prior users / data on this schema).
 
 ```sh
 # 1. Stop the daemon
@@ -236,7 +236,7 @@ WHERE id IN (SELECT VALUE from FROM edges WHERE kind = 'supersedes' AND to = $me
 
 Possible causes:
 
-- Biographer never ran. Check `<robinHome>/cache/logs/biographer.log`. Manually drain: `robin biographer-catchup`.
+- Biographer never ran. Check `<robinHome>/runtime/logs/biographer.log`. Manually drain: `robin biographer-catchup`.
 - Stop hook didn't fire. `robin doctor --lint-hooks` should list a `Stop → stop` entry.
 - The conversation-capture pipeline skipped the turn. Skip log lines are in `biographer.log` with a `skip_reason` field: `no_transcript_path`, `no_assistant_turn`, `single_word_ack`, `pure_tool_turn`, `empty_turn`, `dedup_hit`, `pii_refused`.
 
@@ -345,20 +345,20 @@ robin migrate
 
 ### DB migration failed mid-flight
 
-The migration runner tars `<robinHome>/db/` into `<robinHome>/backup/<timestamp>.tar` before applying each migration. If a migration aborts and leaves the DB in a weird state:
+The migration runner tars `<robinHome>/db/` into `<robinHome>/data/snapshots/<timestamp>.tar` before applying each migration. If a migration aborts and leaves the DB in a weird state:
 
 ```sh
 robin mcp stop
 ls <robinHome>/backup/          # find the pre-migration archive
 rm -rf <robinHome>/db/*
-tar -xf <robinHome>/backup/<timestamp>.tar -C <robinHome>/db/
+tar -xf <robinHome>/data/snapshots/<timestamp>.tar -C <robinHome>/db/
 # inspect / fix the migration .surql, then:
 robin migrate
 ```
 
 ## Common SurrealQL footguns
 
-These corrections came out of the v2 redesign verification gates and have bitten people in production:
+These corrections came out of the redesign verification gates and have bitten people in production:
 
 - **`type::thing` was renamed to `type::record`** in SurrealDB v3.
 - **`math::log(x, 2)` is the two-arg form** for log_2; the one-arg variant is rejected.
@@ -367,7 +367,7 @@ These corrections came out of the v2 redesign verification gates and have bitten
 - **`RecordId.table` returns a `Table` object**, not a string — coerce with `String(rec.table)` in JS.
 - **JS `null` binds as SurrealDB `NULL`**, not `NONE` — optional fields should be omitted from SET clauses, not bound as null.
 - **`value` is a SurrealQL keyword.** Use `SELECT VALUE value FROM …` (the flattener consumes the keyword in the projection position).
-- **`TYPE NORMAL` is incompatible with graph arrows** (`->edges->entities`). The v2 schema uses `TYPE NORMAL` on `edges` for composite-ID idempotent UPSERT; therefore traversals use explicit `SELECT … FROM edges WHERE kind = X AND from = $id`, not arrow syntax.
+- **`TYPE NORMAL` is incompatible with graph arrows** (`->edges->entities`). The schema uses `TYPE NORMAL` on `edges` for composite-ID idempotent UPSERT; therefore traversals use explicit `SELECT … FROM edges WHERE kind = X AND from = $id`, not arrow syntax.
 - **`FLEXIBLE` comes after `TYPE`** in `DEFINE FIELD`: write `TYPE object FLEXIBLE`, not `FLEXIBLE TYPE object`.
 - **`array<object>` doesn't accept `FLEXIBLE` on the parent.** Use `array` (untyped) plus `array[*] TYPE object FLEXIBLE` for nested object arrays.
 

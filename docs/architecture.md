@@ -1,6 +1,6 @@
 # Architecture
 
-How Robin v2 is structured after the database + memory redesign, the
+How Robin is structured after the database + memory redesign, the
 surrealdb-improvements pass, and the seven-theme evolution roadmap
 (alpha.16).
 

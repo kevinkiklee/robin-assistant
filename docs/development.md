@@ -1,6 +1,6 @@
 # Development
 
-How to work on Robin v2: run tests, extend memory shape, add an integration, add a hook handler, add an embedder profile, add a dream step.
+How to work on Robin: run tests, extend memory shape, add an integration, add a hook handler, add an embedder profile, add a dream step.
 
 ## Test, lint, format
 
@@ -68,7 +68,7 @@ docs/                   architecture, faculties, install, troubleshooting,
 
 ## The mental model: substrate vs. lens
 
-After the v2 redesign there are **only three data tables** — `events`, `memos`, `entities` — plus one generic `edges` table (composite-ID `edges:[kind, from, to]`). Almost every extension is a **code change**, not a schema migration:
+After the database and memory redesign there are **only three data tables** — `events`, `memos`, `entities` — plus one generic `edges` table (composite-ID `edges:[kind, from, to]`). Almost every extension is a **code change**, not a schema migration:
 
 | You want to add… | What changes |
 |---|---|
@@ -330,7 +330,7 @@ Substrate migrations are rare after v2. Most extensions go through registries, `
    DEFINE INDEX my_op_foo ON my_op FIELDS foo;
    ```
 
-3. **Pre-migration backup.** The runner tars `<robinHome>/db/` into `<robinHome>/cache/backups/<timestamp>.tar` before applying. You don't need to do anything; just be aware your data is safe.
+3. **Pre-migration backup.** The runner tars `<robinHome>/db/` into `<robinHome>/data/snapshots/<timestamp>.tar` before applying. You don't need to do anything; just be aware your data is safe.
 
 4. **Test.** Migrations are exercised by `system/tests/integration/bootstrap-empty-db.test.js` (full sequence). For schema-specific behaviour, add a test that creates a fresh DB, runs migrations, and asserts the resulting shape.
 
@@ -375,4 +375,4 @@ tune in `runtime:recall_eval.thresholds.value` after the first baseline run.
 - [`architecture.md`](architecture.md) — how the pieces fit together
 - [`faculties.md`](faculties.md) — the seven named faculties and what they do
 - [`troubleshooting.md`](troubleshooting.md) — diagnosing problems
-- `docs/superpowers/specs/2026-05-11-robin-v2-database-and-memory-redesign-design.md` — design rationale for the v2 substrate
+- `docs/superpowers/specs/2026-05-11-robin-v2-database-and-memory-redesign-design.md` — design rationale for the current substrate

@@ -1,6 +1,6 @@
 // Verifies the recall-reinforcement loop, the "keystone effectiveness fix"
-// described in HANDOFF.md. Promoted from scripts/test-reinforcement-smoke.mjs
-// so regressions in this loop fail CI.
+// (see docs/archive/HANDOFF-v2-migration.md). Promoted from
+// scripts/test-reinforcement-smoke.mjs so regressions in this loop fail CI.
 
 import assert from 'node:assert/strict';
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
