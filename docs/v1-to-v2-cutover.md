@@ -94,12 +94,34 @@ robin import-v1 --rollback --session <ULID> # rolls back a specific session
 The migrator is **read-only** against v1; nothing in v1's user-data is ever
 touched. Rollback only affects v2.
 
+## What gets imported (extended coverage)
+
+Beyond the obvious paths (`knowledge/`, `profile/`, `streams/`, `quarantine/`,
+`memory/archive/`, `self-improvement/preferences,patterns,corrections`):
+
+- `memory/self-improvement/communication-style.md` → persona facet (routes
+  through the same `commStyleProjector` as `profile/{personality,character}.md`)
+- `memory/self-improvement/threads.md` → `memos(kind='pattern')` (chunks if long)
+- `memory/self-improvement/{domain-confidence,learning-queue,session-handoff}.md`
+  → `memos(kind='knowledge', meta.source=<slug>)`
+- `memory/tasks.md` → `memos(kind='knowledge', meta.source='v1-tasks')` —
+  open `[ ]` items aren't derivable elsewhere, so this is no longer treated as
+  a "view" file by default
+- `memory.surrealdb-era/**/*.md` → low-confidence `knowledge` memos with
+  `meta.source='memory.surrealdb-era'` (historical photo-collection
+  audit/proposals/scans)
+- `streams/inbox.md` headers like `## YYYY-MM-DD HH:MM` and `streams/log.md`
+  bracketed-date headers `## [YYYY-MM-DD] ...` are now parsed per-entry instead
+  of being collapsed into a single mtime-based event
+- `user-data/artifacts/*.md` → copied into v2's `user-data/artifacts/` alongside
+  the `sources/` copy (preserves live working docs like packing lists)
+
 ## What gets skipped (and how to override)
 
 These v1 files are not imported by default because they're auto-generated views
 in v1 (re-derivable in v2):
 
-- `memory/{INDEX,MANIFEST,LINKS,ENTITIES,hot,tasks}.md`
+- `memory/{INDEX,MANIFEST,LINKS,ENTITIES,hot}.md`
   (LINKS and ENTITIES are parsed for signal; only their *content* is skipped)
 - `memory/profile/{INDEX,people,relationships}.md`
 
@@ -110,8 +132,8 @@ not relevant to v2):
 
 - `archive/20260508-222124/`, `archive/20260509-150134-pre-empty/` (pre-cutover
   snapshots in v1's user-data root, not `memory/archive/` which IS imported)
-- `memory.surrealdb-era/` (leftover from a prior era)
-- `runtime/`, `backup/`, `upload/`, `skills/`, `artifacts/`
+- `runtime/`, `backup/`, `upload/`, `skills/` (non-document working state)
+- non-markdown content under `artifacts/` (only `*.md` is mirrored)
 
 ## Edge cases you might hit
 

@@ -46,13 +46,16 @@ export function resolveSrc(src) {
  * @param {object} opts
  * @param {string} opts.src           Path to v1 user-data (or user-data/memory).
  * @param {object} opts.db            SurrealDB handle (already migrated through 0023).
- * @param {string} opts.robinHome     v2 user-data root (target for sources/ copy).
+ * @param {string} [opts.robinHome]   v2 user-data root. Kept for API stability;
+ *   the actual copy destinations are derived from `paths.data.sources()` /
+ *   `paths.data.artifacts()`, which resolve through ROBIN_HOME / the pointer.
+ *   Callers must set ROBIN_HOME before invoking (install.js does).
  * @param {'sync'|'defer'} [opts.embed='sync']
  * @param {boolean} [opts.includeViews=false] Override the views skip list.
  * @returns {Promise<{ sessionId: string, report: object }>}
  */
 export async function runImport(opts) {
-  const { src, db, robinHome, embed = 'sync', includeViews = false } = opts;
+  const { src, db, embed = 'sync', includeViews = false } = opts;
   const { memoryDir, srcRoot } = resolveSrc(src);
   const sessionId = newSessionId();
   const report = newReport();
@@ -79,7 +82,8 @@ export async function runImport(opts) {
   report.counts.memos_skipped = b.counts.memos_skipped;
   report.counts.edges += b.counts.edges;
   report.counts.chunked = b.counts.chunked;
-  report.breakdown_edges.about += b.counts.edges;
+  report.breakdown_edges.about += b.counts.about_edges;
+  report.breakdown_edges.derived_from += b.counts.derived_from_edges;
 
   // Pass C — LINKS.md edges.
   const c = await passLinks({ memoryDir, entitiesByPath: a.entitiesByPath, db, sessionId, report });
@@ -97,8 +101,12 @@ export async function runImport(opts) {
   report.counts.patterns = e.counts.patterns;
   report.counts.refusals = e.counts.refusals;
 
-  // Pass F — sources/ filesystem copy.
-  const f = await passSources({ srcRoot, destRoot: robinHome, db, sessionId, report });
+  // Pass F — sources/ filesystem copy. Destinations are derived from
+  // `paths.data.sources()` / `paths.data.artifacts()` inside the pass, which
+  // resolve through `robinHome()` (ROBIN_HOME / pointer). Callers must have
+  // set ROBIN_HOME before invoking runImport (install.js and the test fixture
+  // both do).
+  const f = await passSources({ srcRoot, db, sessionId, report });
   report.counts.source_files = f.counts.copied;
 
   // Pass G — embedding backfill.

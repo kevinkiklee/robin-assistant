@@ -12,10 +12,10 @@ import { parseFrontmatter } from '../parsers/frontmatter.js';
 import { createEvent } from '../writers/event-writer.js';
 
 const STREAM_SOURCES = {
-  'journal.md': 'v1-journal',
-  'log.md': 'v1-log',
-  'decisions.md': 'v1-decision',
-  'inbox.md': 'v1-inbox',
+  'journal.md': { source: 'v1-journal', breakdown: 'journal' },
+  'log.md': { source: 'v1-log', breakdown: 'log' },
+  'decisions.md': { source: 'v1-decision', breakdown: 'decision' },
+  'inbox.md': { source: 'v1-inbox', breakdown: 'inbox' },
 };
 
 export async function passEvents({ memoryDir, db, sessionId, report }) {
@@ -23,7 +23,8 @@ export async function passEvents({ memoryDir, db, sessionId, report }) {
 
   // streams/
   const streamsDir = join(memoryDir, 'streams');
-  for (const [file, source] of Object.entries(STREAM_SOURCES)) {
+  for (const [file, spec] of Object.entries(STREAM_SOURCES)) {
+    const { source, breakdown } = spec;
     const p = join(streamsDir, file);
     if (!existsSync(p)) continue;
     const rel = relative(memoryDir, p);
@@ -41,13 +42,18 @@ export async function passEvents({ memoryDir, db, sessionId, report }) {
           sourcePath: rel,
           sessionId,
         });
-        bumpCounts(counts, r.action);
+        bumpCounts(counts, report, breakdown, r.action);
         counts.undated++;
         report.warnings.undated_event.push(rel);
         continue;
       }
+      // Inbox + log can have many entries on the same date; suffix with the
+      // header line number to keep sourcePath (and therefore content_hash)
+      // unique. Other streams keep the date-only suffix for stable idempotency.
+      const needsLineSuffix = breakdown === 'inbox' || breakdown === 'log';
       for (const entry of entries) {
-        const sub = `${rel}#${entry.date.toISOString().slice(0, 10)}`;
+        const dateSlug = entry.date.toISOString().slice(0, 10);
+        const sub = needsLineSuffix ? `${rel}#${dateSlug}-L${entry.line}` : `${rel}#${dateSlug}`;
         const meta = { source_file: file };
         if (entry.title) meta.title = entry.title;
         const r = await createEvent(db, {
@@ -58,7 +64,7 @@ export async function passEvents({ memoryDir, db, sessionId, report }) {
           sourcePath: sub,
           sessionId,
         });
-        bumpCounts(counts, r.action);
+        bumpCounts(counts, report, breakdown, r.action);
       }
     } catch (e) {
       counts.errors++;
@@ -86,7 +92,7 @@ export async function passEvents({ memoryDir, db, sessionId, report }) {
           sourcePath: sub,
           sessionId,
         });
-        bumpCounts(counts, r.action);
+        bumpCounts(counts, report, 'correction', r.action);
       }
     } catch (e) {
       counts.errors++;
@@ -97,9 +103,15 @@ export async function passEvents({ memoryDir, db, sessionId, report }) {
   return { counts };
 }
 
-function bumpCounts(counts, action) {
-  if (action === 'created') counts.created++;
-  else if (action === 'skipped') counts.skipped++;
+function bumpCounts(counts, report, breakdownKey, action) {
+  if (action === 'created') {
+    counts.created++;
+    if (report.breakdown_events && breakdownKey in report.breakdown_events) {
+      report.breakdown_events[breakdownKey]++;
+    }
+  } else if (action === 'skipped') {
+    counts.skipped++;
+  }
 }
 
 function slugify(s) {

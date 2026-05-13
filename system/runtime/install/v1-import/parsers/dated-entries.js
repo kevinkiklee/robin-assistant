@@ -5,8 +5,26 @@
 // self-improvement/corrections.md. The body of each section is whatever follows
 // the header up to (but not including) the next dated header, EOF, or
 // `<!-- APPEND-ONLY below -->` sentinel marker.
+//
+// Recognised shapes (date may be plain or bracketed; suffix is captured as title):
+//   ## 2026-04-30                                 → journal
+//   ## 2026-04-30 — Some title                    → decisions
+//   ### 2026-05-08 — Some title                   → corrections
+//   ## 2026-05-08 00:55                           → inbox (time preserved as title)
+//   ## 2026-05-08 00:55 — Some title              → inbox + title
+//   ## [2026-04-28] lint | all | issues: 6        → log (everything after date = title)
 
-const HEADER = /^(##|###)\s+(\d{4}-\d{2}-\d{2})(?:\s+—\s+(.+?))?\s*$/;
+const HEADER = /^(##|###)\s+\[?(\d{4}-\d{2}-\d{2})\]?(.*)$/;
+
+function cleanTitle(suffix) {
+  if (!suffix) return null;
+  // Strip leading em-dash/pipe separators left from the various v1 shapes.
+  const t = suffix
+    .trim()
+    .replace(/^[—|]\s*/, '')
+    .trim();
+  return t.length > 0 ? t : null;
+}
 
 /**
  * @param {string} text
@@ -19,7 +37,7 @@ export function parseDatedEntries(text) {
   const heads = [];
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(HEADER);
-    if (m) heads.push({ index: i, date: m[2], title: m[3] ?? null });
+    if (m) heads.push({ index: i, date: m[2], title: cleanTitle(m[3]) });
   }
   if (heads.length === 0) return [];
   const out = [];

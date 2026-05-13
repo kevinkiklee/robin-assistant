@@ -172,6 +172,125 @@ function buildFixtureUserData() {
     ['---', 'description: Quarantined', '---', 'A snippet that v1 refused inbound.'].join('\n'),
   );
 
+  // streams/inbox.md — HH:MM headers (regression target for the parser fix)
+  w(
+    'memory/streams/inbox.md',
+    [
+      '---',
+      'description: Inbox',
+      '---',
+      '# Inbox',
+      '',
+      '## 2026-05-08 00:55',
+      '',
+      '[fact] first inbox entry',
+      '',
+      '## 2026-05-08 01:00',
+      '',
+      '[thread] second inbox entry',
+    ].join('\n'),
+  );
+
+  // streams/log.md — [bracketed] dates
+  w(
+    'memory/streams/log.md',
+    [
+      '---',
+      'description: Log',
+      '---',
+      '# Log',
+      '',
+      '## [2026-04-28] lint | all | issues: 6',
+      '',
+      '- Contradictions: 0',
+    ].join('\n'),
+  );
+
+  // self-improvement files previously not imported
+  w(
+    'memory/self-improvement/communication-style.md',
+    [
+      '---',
+      'description: Communication Style',
+      '---',
+      '# Communication Style',
+      '',
+      '- No summaries. Read the diff.',
+    ].join('\n'),
+  );
+  w(
+    'memory/self-improvement/threads.md',
+    [
+      '---',
+      'description: Threads',
+      '---',
+      '# Threads',
+      '',
+      '- [thread] Recurring pattern A',
+      '- [thread] Recurring pattern B',
+    ].join('\n'),
+  );
+  w(
+    'memory/self-improvement/domain-confidence.md',
+    [
+      '---',
+      'description: Domain Confidence',
+      '---',
+      '# Domain Confidence',
+      '',
+      '| Domain | Confidence |',
+      '|--------|------------|',
+      '| robin  | high       |',
+    ].join('\n'),
+  );
+  w(
+    'memory/self-improvement/learning-queue.md',
+    [
+      '---',
+      'description: Learning Queue',
+      '---',
+      '# Learning Queue',
+      '',
+      '### 2026-04-30 — Question 1',
+      '- status: open',
+    ].join('\n'),
+  );
+  w(
+    'memory/self-improvement/session-handoff.md',
+    [
+      '---',
+      'description: Session Handoff',
+      '---',
+      '# Session Handoff',
+      '',
+      '## Session — example',
+      'context: example handoff text',
+    ].join('\n'),
+  );
+
+  // tasks.md — open and completed items
+  w(
+    'memory/tasks.md',
+    [
+      '---',
+      'description: Tasks',
+      '---',
+      '# Tasks',
+      '',
+      '- [ ] Open task A (priority: high)',
+      '- [x] Completed task B',
+    ].join('\n'),
+  );
+
+  // memory.surrealdb-era/ — sibling directory; historical photo-collection records
+  w(
+    'memory.surrealdb-era/knowledge/photo-collection/audit/2026-05-10-audit-report.md',
+    ['# Audit', '', '40 scans surveyed.'].join('\n'),
+  );
+
+  // artifacts/ — live working docs (cali-trip packing list shape)
+  w('artifacts/cali-trip-2026-packing-list.md', ['# Cali Trip', '', '- [ ] Socks × 8'].join('\n'));
+
   return root;
 }
 
@@ -205,14 +324,64 @@ test('runImport: end-to-end fixture lands expected rows', async () => {
   assert.ok(Array.isArray(bh[0].meta.aliases));
   assert.deepEqual([...bh[0].meta.aliases].sort(), ['B&H', 'BH Photo']);
 
-  // memos: 2 knowledge (bh-photo + home) + 1 person body + 1 profile_facet
-  // (identity) + 1 pattern = 5
+  // memos:
+  //   2 knowledge (bh-photo + home)
+  // + 1 person body (jake-lee)
+  // + 1 profile_facet (identity)
+  // + 1 pattern (patterns.md)
+  // + 1 profile_facet (communication-style)
+  // + 1 pattern (threads.md)
+  // + 1 knowledge (domain-confidence)
+  // + 1 knowledge (learning-queue)
+  // + 1 knowledge (session-handoff)
+  // + 1 knowledge (tasks.md)
+  // + 1 knowledge (memory.surrealdb-era audit)
+  // = 12
   const [[mc]] = await db.query('SELECT count() AS n FROM memos GROUP ALL').collect();
-  assert.equal(mc.n, 5);
+  assert.equal(mc.n, 12);
 
-  // events: 2 journal days + 1 correction = 3
+  // events: 2 journal days + 1 correction + 2 inbox entries + 1 log entry = 6
   const [[evc]] = await db.query('SELECT count() AS n FROM events GROUP ALL').collect();
-  assert.equal(evc.n, 3);
+  assert.equal(evc.n, 6);
+
+  // breakdown_events is populated (was a dead field before)
+  assert.equal(report.breakdown_events.journal, 2);
+  assert.equal(report.breakdown_events.inbox, 2);
+  assert.equal(report.breakdown_events.log, 1);
+  assert.equal(report.breakdown_events.correction, 1);
+
+  // inbox entries (HH:MM headers) have unique titles preserving the time
+  const inboxRows = await db.query("SELECT meta FROM events WHERE source = 'v1-inbox'").collect();
+  const inboxTitles = inboxRows[0].map((r) => r.meta.title).sort();
+  assert.deepEqual(inboxTitles, ['00:55', '01:00']);
+
+  // log entries ([YYYY-MM-DD] headers) carry the freeform title
+  const logRows = await db.query("SELECT meta FROM events WHERE source = 'v1-log'").collect();
+  assert.equal(logRows[0][0].meta.title, 'lint | all | issues: 6');
+
+  // communication-style projected onto persona.comm_style
+  const [personaComm] = await db.query('SELECT comm_style FROM persona:singleton').collect();
+  assert.ok(personaComm[0].comm_style?.['communication-style']);
+
+  // tasks.md imported
+  const [taskMemo] = await db
+    .query("SELECT content FROM memos WHERE meta.source = 'v1-tasks'")
+    .collect();
+  assert.match(taskMemo[0].content, /Open task A/);
+
+  // memory.surrealdb-era imported with archived flag
+  const [archivedEra] = await db
+    .query("SELECT content FROM memos WHERE meta.source = 'memory.surrealdb-era'")
+    .collect();
+  assert.equal(archivedEra.length, 1);
+
+  // artifacts/ copied to v2 user-data/artifacts/
+  const [artifactRow] = await db
+    .query(
+      "SELECT source_path FROM _v1_imports WHERE kind = 'source_file' AND string::starts_with(source_path, 'artifacts/')",
+    )
+    .collect();
+  assert.ok(artifactRow.length >= 1);
 
   // imported events must have biographed_at unset (option<datetime> = NONE)
   const [biographed] = await db

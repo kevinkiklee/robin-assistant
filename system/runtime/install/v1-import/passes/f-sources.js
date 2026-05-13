@@ -8,19 +8,52 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { BoundQuery } from 'surrealdb';
+import { paths } from '../../../../config/data-store.js';
 import { sha256 } from '../../../../data/embed/hash.js';
 import { hashExists } from '../ledger.js';
 
-export async function passSources({ srcRoot, destRoot, db, sessionId, report }) {
+export async function passSources({ srcRoot, db, sessionId, report }) {
   const counts = { copied: 0, skipped: 0, errors: 0 };
-  const srcDir = join(srcRoot, 'sources');
-  if (!existsSync(srcDir)) return { counts };
-  const destDir = join(destRoot, 'sources');
-  await mkdir(destDir, { recursive: true });
+
+  // sources/ → <home>/sources/ (recursive, all files). Destination is
+  // computed via paths.data.sources() so we ride the faculty-aligned v2
+  // layout rather than encoding the literal directory name here.
+  await copyTree({
+    srcDir: join(srcRoot, 'sources'),
+    destDir: paths.data.sources(),
+    db,
+    sessionId,
+    report,
+    counts,
+    kind: 'sources',
+  });
+
+  // artifacts/ → <home>/artifacts/ (markdown only — live working docs
+  // like packing lists / trip plans that aren't derivable from memory/)
+  await copyTree({
+    srcDir: join(srcRoot, 'artifacts'),
+    destDir: paths.data.artifacts(),
+    db,
+    sessionId,
+    report,
+    counts,
+    filter: (name) => name.endsWith('.md'),
+    kind: 'artifacts',
+  });
+
+  return { counts };
+}
+
+async function copyTree({ srcDir, destDir, db, sessionId, report, counts, filter, kind }) {
+  if (!existsSync(srcDir)) return;
   for await (const filePath of walkAll(srcDir)) {
-    const rel = relative(srcRoot, filePath);
+    if (filter && !filter(filePath)) continue;
+    // Path of this file relative to its v1 source root (e.g. "sources/foo.md").
+    // Used purely for stable hashing + ledger provenance — the destination is
+    // computed below from `destDir` so the v2 layout owns the target path.
+    const rel = join(kind, relative(srcDir, filePath));
     try {
-      const dest = join(destRoot, rel);
+      const dest = join(destDir, relative(srcDir, filePath));
       const st = await stat(filePath);
       const hash = sha256(`${rel}\n${st.size}\n${st.mtime.toISOString()}`);
       if (await hashExists(db, hash)) {
@@ -43,7 +76,6 @@ export async function passSources({ srcRoot, destRoot, db, sessionId, report }) 
       report.errors.push({ pass: 'F', file: rel, message: e.message });
     }
   }
-  return { counts };
 }
 
 async function* walkAll(dir) {
