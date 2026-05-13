@@ -57,7 +57,10 @@ function formatActiveEpisode(activeEpisode, source) {
 function truncateContent(content) {
   if (typeof content !== 'string') return '';
   if (content.length <= MAX_EVENT_CONTENT_CHARS) return content;
-  return content.slice(0, MAX_EVENT_CONTENT_CHARS);
+  // Slice by code points, not UTF-16 code units. `String.slice` splits surrogate
+  // pairs (emoji, non-BMP chars) mid-pair, producing invalid UTF-16 the LLM
+  // adapter then has to re-encode. Spread into code points first.
+  return [...content].slice(0, MAX_EVENT_CONTENT_CHARS).join('');
 }
 
 export function buildBiographerBatchPrompt({ events, catalog, activeEpisode }) {

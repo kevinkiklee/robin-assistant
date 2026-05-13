@@ -29,7 +29,8 @@ function trimLine(s, max = LINE_CONTENT_CHARS) {
   // Collapse newlines/tabs so the line stays single-line.
   const flat = s.replace(/\s+/g, ' ').trim();
   if (flat.length <= max) return flat;
-  return flat.slice(0, max).trimEnd();
+  // Slice by code points to avoid splitting surrogate pairs at the boundary.
+  return [...flat].slice(0, max).join('').trimEnd();
 }
 
 function formatHitDate(ts) {
@@ -226,9 +227,11 @@ export async function intuitionEndpoint({
 
   // Combine current prompt with the tail of the prior assistant turn so
   // recall can latch onto the in-flight thread of conversation.
+  // Slice by code points to avoid cutting a surrogate pair at the boundary.
+  const priorChars = [...safePrior];
   const priorTail =
-    safePrior.length > PRIOR_TAIL_CHARS
-      ? safePrior.slice(safePrior.length - PRIOR_TAIL_CHARS)
+    priorChars.length > PRIOR_TAIL_CHARS
+      ? priorChars.slice(priorChars.length - PRIOR_TAIL_CHARS).join('')
       : safePrior;
   const combined = priorTail.length > 0 ? `${safeQuery}\n\n${priorTail}` : safeQuery;
 
