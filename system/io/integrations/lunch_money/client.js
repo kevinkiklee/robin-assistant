@@ -14,6 +14,38 @@ export async function listTransactions({ apiKey, startDate, endDate, fetchFn, si
   return await lmFetch(`/v1/transactions?${params}`, { apiKey, fetchFn, signal });
 }
 
+// Build a stable dedup key that survives Lunch Money's id reassignment
+// when a pending Plaid transaction clears (LM mints a new `id` for the
+// cleared row even though it's the same logical transaction). Earlier
+// builds used `String(t.id)` as `external_id`, which let both the
+// pending and cleared rows persist as separate events.
+//
+// Preference order:
+//   1. Plaid's transaction_id (if LM surfaced it via plaid_metadata) —
+//      this is the upstream-canonical id, stable across pending/cleared.
+//   2. Composite of (date, plaid_account_id, amount, original_name) —
+//      stable bank-side fields. `original_name` is the raw bank
+//      description and survives LM's payee re-mapping.
+//   3. Raw LM id, as a last resort for manual / Plaid-less rows.
+function stableExternalId(t, amount) {
+  let plaidTxId = null;
+  if (t.plaid_metadata) {
+    try {
+      const pm =
+        typeof t.plaid_metadata === 'string' ? JSON.parse(t.plaid_metadata) : t.plaid_metadata;
+      plaidTxId = pm?.transaction_id ?? null;
+    } catch {
+      /* malformed metadata — fall through */
+    }
+  }
+  if (plaidTxId) return `plaid:${plaidTxId}`;
+  if (t.plaid_account_id) {
+    const norm = (t.original_name ?? t.payee ?? '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    return `lm-stable:${t.date}|${t.plaid_account_id}|${amount.toFixed(2)}|${norm}`;
+  }
+  return `lm:${t.id}`;
+}
+
 export function transactionToEvent(t) {
   const amount = Number.parseFloat(t.amount);
   const sign = t.is_income ? '+' : '-';
@@ -21,11 +53,12 @@ export function transactionToEvent(t) {
     source: 'lunch_money',
     content: `${t.payee ?? '(no payee)'} · ${sign}$${amount.toFixed(2)} · ${t.category_name ?? 'uncategorized'}`,
     ts: new Date(t.date),
-    external_id: String(t.id),
+    external_id: stableExternalId(t, amount),
     meta: {
       lm_id: t.id,
       account_id: t.asset_id ?? t.plaid_account_id ?? null,
       payee: t.payee,
+      original_name: t.original_name ?? null,
       amount,
       is_income: !!t.is_income,
       currency: t.currency,

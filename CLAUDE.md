@@ -33,3 +33,54 @@ When you see `recordEvent: embedding failed for events:...` in `user-data/runtim
 - `robin embeddings backfill <profile>` — re-embed events under the new profile
 
 Don't "fix" embedding errors by reverting the try/catch — that re-introduces the user-visible `InternalError` for every memory write.
+
+## Recurring bugs to watch for
+
+Each of these has bitten us in past sessions. If you observe the symptom, jump straight to the documented fix instead of re-diagnosing.
+
+### `.robin-home` install pointer disappears
+
+**Symptom.** CLI commands and `defaultDbUrl()`-using scripts fail with `Error: Robin is not installed. Run: robin install`. The daemon log fills with `[scheduler/dispatcher] tick failed: Robin is not installed`. Restarting CLI or daemon doesn't help.
+
+**Cause.** Some process — most likely a postinstall pass, `robin install --upgrade`, or another agent's "stale-path scrub" — deletes `.robin-home` mid-session. Only `uninstall` calls `deletePointer()` in tree, but the file vanishes anyway under multi-agent load.
+
+**Fix.** Restore to **both** locations so a single deletion leaves a working fallback. `pointerLocation()` reads from both:
+- `<packageRoot>/.robin-home` (primary)
+- `~/Library/Application Support/Robin/install.json` (OS-config fallback)
+
+Write the same JSON to both:
+```json
+{"version":1,"home":"<absolute path to user-data>","installedAt":"<iso>","installedBy":"claude-restore"}
+```
+Don't run `robin install` to fix this — it's heavy (prompts, MCP re-register, surreal-install, manifest write). The pointer file is all that's missing.
+
+### Lunch Money pending↔cleared duplicates
+
+**Symptom.** The same logical transaction appears twice in the `events` table — once with the pending LM id (e.g. `events:lunch_money__2396476310`) and again with the cleared LM id (`events:lunch_money__h_<hash>`). Daily-brief financials double-count.
+
+**Cause.** Lunch Money mints a fresh `id` when a pending Plaid txn clears. `transactionToEvent` now uses `plaid_metadata.transaction_id` (preferred) or a `lm-stable:<date>|<account>|<amount>|<original_name>` composite as `external_id` so the cleared row replaces the pending row instead of joining it.
+
+**Fix.** Re-capture the rolling window with `node user-data/scripts/recapture-lunch-money.mjs`, then dedupe legacy rows with `node user-data/scripts/dedupe-lunch-money.mjs`. The dedup script groups by `(date, plaid_account_id, amount, payee)` and keeps the `__h_<hash>`-keyed row.
+
+### `io.robin-assistant.mcp` plist KeepAlive loop
+
+**Symptom.** `launchctl list io.robin-assistant.mcp` shows `LastExitStatus = 256` (i.e. exit 1) and pid `-`; daemon log spams `daemon already running (pid N)` every ~10s.
+
+**Cause.** `robin mcp start --foreground` used to exit 1 when another daemon owned the lock. KeepAlive=true respawned forever.
+
+**Fix.** Already shipped: `system/runtime/cli/commands/mcp-start.js` catches `EALREADY`, attaches to the live daemon's pid, blocks until it exits, then returns 0 so launchd sees a clean lifecycle. If the symptom recurs, check whether the catch was reverted.
+
+### v2 MCP not exposed to Claude Code
+
+**Symptom.** `mcp__robin__*` tools are not in the deferred-tools list; only `mcp__robin-assistant-v1__*` (or nothing) shows up. The v2 daemon is running but the agent can't talk to it.
+
+**Cause.** `~/.claude.json` either has no `robin` entry or has the legacy stdio entry for v1. The v2 daemon serves MCP over SSE, not stdio.
+
+**Fix.** Edit `~/.claude.json` (preserve the rest):
+```json
+"mcpServers": {
+  ...,
+  "robin": { "type": "http", "url": "http://127.0.0.1:<port>/sse" }
+}
+```
+Port lives in `user-data/config/config.json` under `mcp.port`. After editing, the user must restart Claude Code — running sessions keep the old MCP wiring.
