@@ -16,6 +16,27 @@ export async function fetchClubSchedule({ team, fetchFn, signal }) {
   });
 }
 
+// League-wide weekly schedule. Returns `{ games: [...] }` with each game's
+// raw shape preserved, so callers reuse the same buildScheduleEvents pipeline
+// as the club endpoint. The upstream payload nests games under
+// gameWeek[].games — we flatten one level here.
+export async function fetchLeagueSchedule({ fetchFn, signal }) {
+  const data = await nhlFetch('/schedule/now', { fetchFn, signal });
+  const week = Array.isArray(data?.gameWeek) ? data.gameWeek : [];
+  const games = [];
+  for (const day of week) {
+    if (Array.isArray(day?.games)) games.push(...day.games);
+  }
+  return { games };
+}
+
+// NHL gameType: 1=preseason, 2=regular, 3=playoffs, 4=all-star. We treat
+// any week containing a playoff game as "playoffs active" — covers the
+// April–June window and degrades cleanly outside it.
+export function isPlayoffsActive(games) {
+  return Array.isArray(games) && games.some((g) => g?.gameType === 3);
+}
+
 export async function fetchStandings({ fetchFn, signal }) {
   return await nhlFetch('/standings/now', { fetchFn, signal });
 }
@@ -55,7 +76,7 @@ function gameScoreString(g) {
   return status;
 }
 
-export function buildScheduleEvents(games, { team, today = new Date(), windowDays = 14 } = {}) {
+export function buildScheduleEvents(games, { today = new Date(), windowDays = 14 } = {}) {
   const todayStr = today.toISOString().slice(0, 10);
   const events = [];
   for (const g of Array.isArray(games) ? games : []) {
@@ -78,7 +99,7 @@ export function buildScheduleEvents(games, { team, today = new Date(), windowDay
       meta: {
         kind: 'game',
         game_id: gameId,
-        team,
+        game_type: g.gameType ?? null,
         away: awayAbbrev,
         home: homeAbbrev,
         date,
