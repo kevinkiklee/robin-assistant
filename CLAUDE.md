@@ -84,13 +84,20 @@ Don't run `robin install` to fix this — it's heavy (prompts, MCP re-register, 
 
 **Symptom.** `mcp__robin__*` tools are not in the deferred-tools list; only `mcp__robin-assistant-v1__*` (or nothing) shows up. The v2 daemon is running but the agent can't talk to it.
 
-**Cause.** `~/.claude.json` either has no `robin` entry or has the legacy stdio entry for v1. The v2 daemon serves MCP over SSE, not stdio.
+**Cause.** Two flavors:
+1. `~/.claude.json` has no `robin` entry, or has the legacy stdio entry for v1. The v2 daemon serves MCP over SSE, not stdio.
+2. **Race condition with concurrent Claude sessions:** another agent session can silently rewrite `~/.claude.json` from its in-memory copy and clobber the `robin` entry. Observed live in this repo when 16 concurrent stdio v1 children were running — Claude Code's own backups in `~/.claude/backups/.claude.json.backup.*` show the `robin` entry vanishing without our action.
 
-**Fix.** Edit `~/.claude.json` (preserve the rest):
-```json
-"mcpServers": {
-  ...,
-  "robin": { "type": "http", "url": "http://127.0.0.1:<port>/sse" }
-}
-```
-Port lives in `user-data/config/config.json` under `mcp.port`. After editing, the user must restart Claude Code — running sessions keep the old MCP wiring.
+**Fix.** Write the SSE entry to **both** locations so a single race-overwrite of the global file leaves a working fallback:
+1. `~/.claude.json` `mcpServers.robin`:
+   ```json
+   "robin": { "type": "http", "url": "http://127.0.0.1:<port>/sse" }
+   ```
+2. Project-level `.mcp.json` at the package root (gitignored — port is user-specific):
+   ```json
+   { "mcpServers": { "robin": { "type": "http", "url": "http://127.0.0.1:<port>/sse" } } }
+   ```
+
+Port lives in `user-data/config/config.json` under `mcp.port`. After editing, the user must restart Claude Code — running sessions keep whatever MCP wiring they saw at launch.
+
+To clean up orphan v1 MCP children (each terminal session that ever connected to v1 has its own stdio child server holding file descriptors): `pkill -f "robin-assistant-v1/system/scripts/mcp/server.js"`.

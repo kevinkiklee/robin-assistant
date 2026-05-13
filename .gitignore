@@ -8,6 +8,10 @@ user-data/
 system/tests/fixtures/synthetic-events.json
 system/tests/fixtures/seed-recall-pairs.json
 .robin-home
+# Project-level MCP wiring — port lives in user-data/config/config.json,
+# so it's per-user. Kept locally to survive ~/.claude.json races from
+# concurrent agent sessions (see CLAUDE.md "v2 MCP not exposed").
+.mcp.json
 # Local CLI scratch — surreal SQL history, paste-in api key files, etc.
 history.txt
 *.apikey
