@@ -8,7 +8,7 @@ export function createRunJobTool({ db, capture, host, embedder, tools, getJobs }
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string' },
+        name: { type: 'string', minLength: 1, maxLength: 100 },
         dry_run: { type: 'boolean' },
       },
       required: ['name'],

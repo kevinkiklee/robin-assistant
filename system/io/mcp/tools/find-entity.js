@@ -10,7 +10,7 @@ export function createFindEntityTool({ db, embedder }) {
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', minLength: 1 },
+        name: { type: 'string', minLength: 1, maxLength: 200 },
         type: { type: 'string', enum: ['person', 'place', 'project', 'topic', 'thing'] },
         fuzzy: { type: 'boolean', default: true },
         limit: { type: 'integer', minimum: 1, maximum: 50, default: 5 },

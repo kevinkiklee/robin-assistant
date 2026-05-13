@@ -41,7 +41,7 @@ export function createShowTelemetryRollupTool({ db }) {
           type: 'string',
           description: 'ISO duration: "PT24H", "P7D". Default "PT24H".',
         },
-        limit: { type: 'number', default: 200 },
+        limit: { type: 'integer', minimum: 1, maximum: 1000, default: 200 },
       },
     },
     handler: async (args = {}) => {

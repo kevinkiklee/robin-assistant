@@ -3,8 +3,14 @@
 
 export const PII_PATTERNS = [
   {
+    // Anchored 13-19-digit numeric pattern with optional single space/dash
+    // between digit groups. The previous `(?:\d[ -]*?){13,19}` with a nested
+    // quantifier was ReDOS-prone on long pathological inputs; this form has
+    // bounded backtracking and still matches all common card layouts
+    // (4444-3333-2222-1111, 4444 3333 2222 1111, 4444333322221111, plus
+    // 13-/15-/16-/19-digit variants). Luhn mask still gates final hit.
     name: 'credit_card',
-    regex: /\b(?:\d[ -]*?){13,19}\b/,
+    regex: /\b\d(?:[ -]?\d){12,18}\b/,
     mask: (s) => luhnCheck(s.replace(/[^0-9]/g, '')),
   },
   { name: 'ssn', regex: /\b\d{3}-\d{2}-\d{4}\b/, mask: () => true },
