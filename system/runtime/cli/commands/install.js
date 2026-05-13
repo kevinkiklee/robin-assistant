@@ -83,11 +83,17 @@ async function chooseHome({ prompt, interactive, args, homeFlag }) {
   if (homeFlag) {
     return { home: resolve(homeFlag), action: 'picked' };
   }
-  // --yes: accept default (option 1) without prompting.
-  if (args.flags.yes === true) {
-    return { home: join(packageRoot, 'user-data'), action: 'picked-default' };
-  }
-  if (!interactive) {
+  // Non-interactive paths (--yes, --auto, hooks/launchd-driven first-run)
+  // must still recover existing user-data when the pointer is missing —
+  // otherwise we'd silently clobber an existing install's embedder_profile
+  // with `--auto`'s mxbai-1024 default, then trip the migration runner's
+  // checksum guard on the next boot. Scan first; only fall back to a fresh
+  // default when nothing's discoverable.
+  if (args.flags.yes === true || !interactive) {
+    const found = discoverExistingHomes();
+    if (found.length > 0) {
+      return { home: found[0].path, action: 'recovered' };
+    }
     return { home: join(packageRoot, 'user-data'), action: 'picked-default' };
   }
   // Reinstall discovery: scan known locations. When --existing is provided,
