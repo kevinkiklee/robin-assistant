@@ -1,6 +1,10 @@
 // chronicle.js — chronological list of significant biographed events.
 // Spec §5 / module-rename from journal.js. Same filtering: biographed events,
 // content length ≥ minContentLen OR meta.kind = 'correction'.
+//
+// Backward-compat note: a `listJournalEntries` alias is exported at the bottom
+// of this file because several call sites (CLI `robin journal`, MCP tool
+// `list_journal`) still use the old name. Remove once those migrate.
 
 import { BoundQuery } from 'surrealdb';
 

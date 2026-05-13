@@ -1,5 +1,10 @@
 // persona.js — the singleton model of Robin's user.
 // Spec §5 / replaces profile.js. The underlying table renamed `profile` → `persona`.
+//
+// Backward-compat note: `getProfile` and `updateProfileFields` aliases are
+// exported at the bottom of this file because several call sites still use
+// the old names. Prefer `getPersona` / `updatePersonaFields` in new code;
+// remove the aliases once existing callers migrate.
 // C2 spec §1.2: field-scoped `UPDATE … SET` replaces `UPSERT … MERGE` so
 // concurrent writers to disjoint top-level keys no longer overwrite each other
 // at record level. Cross-process safety: dream steps and the cadence consumer
