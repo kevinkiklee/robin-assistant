@@ -24,7 +24,6 @@ import { migrateHome } from '../../install/migrate-home.js';
 import { validateOllama } from '../../install/ollama-profile.js';
 import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
-import { doctorData } from './doctor.js';
 import { mcpInstall } from './mcp-install.js';
 import { surrealInstall } from './surreal-install.js';
 
@@ -310,19 +309,6 @@ export async function relocate({ target, mode, stopDaemon, rewriteLaunchd, rewri
   }
   if (rewriteLaunchd) await rewriteLaunchd({ home: target });
   if (rewriteSystemd) await rewriteSystemd({ home: target });
-}
-
-export async function repair() {
-  const { drift } = await doctorData();
-  if (drift.length === 0) {
-    console.log('Nothing to repair.');
-    return;
-  }
-  await installHooksStep({ skipHooks: false });
-  for (const d of drift) {
-    console.log(`drift: ${d.path ?? '(home)'}: ${d.reason}`);
-  }
-  console.log('Re-applied hook entries. For plist/systemd drift, run: robin install');
 }
 
 /**

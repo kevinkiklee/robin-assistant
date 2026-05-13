@@ -14,7 +14,7 @@ export async function readCadenceConfig(db) {
   }
 }
 
-export async function deriveBaselineBudget(db) {
+async function deriveBaselineBudget(db) {
   try {
     const [rows] = await db
       .query(

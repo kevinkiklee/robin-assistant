@@ -5,22 +5,22 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 
-export const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
-export const OLLAMA_MODEL = 'qwen3-embedding:8b';
+const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
+const OLLAMA_MODEL = 'qwen3-embedding:8b';
 // Time budget for `ollama serve` to come up after we spawn it. The daemon
 // usually answers within a few seconds; 20s is the generous "cold start +
 // model loading slot is free" upper bound.
-export const OLLAMA_START_TIMEOUT_MS = 20000;
+const OLLAMA_START_TIMEOUT_MS = 20000;
 const OLLAMA_POLL_INTERVAL_MS = 500;
 
-export function whichOllama(spawnSyncFn = spawnSync) {
+function whichOllama(spawnSyncFn = spawnSync) {
   const finder = process.platform === 'win32' ? 'where' : 'which';
   const r = spawnSyncFn(finder, ['ollama'], { encoding: 'utf-8' });
   if (r.status !== 0) return null;
   return r.stdout.trim().split(/\r?\n/)[0] || null;
 }
 
-export async function fetchOllamaTags(fetchFn) {
+async function fetchOllamaTags(fetchFn) {
   try {
     const resp = await fetchFn(`${OLLAMA_HOST}/api/tags`);
     if (!resp.ok) return { ok: false, status: resp.status };
@@ -30,7 +30,7 @@ export async function fetchOllamaTags(fetchFn) {
   }
 }
 
-export async function waitForOllama(
+async function waitForOllama(
   fetchFn,
   { timeoutMs = OLLAMA_START_TIMEOUT_MS, intervalMs = OLLAMA_POLL_INTERVAL_MS } = {},
 ) {

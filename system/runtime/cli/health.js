@@ -24,7 +24,7 @@ async function readDoctorConfig(db) {
   }
 }
 
-export async function rollupTokenBudget(db) {
+async function rollupTokenBudget(db) {
   const cfg = await readDoctorConfig(db);
   const cadenceCfg = await readCadenceConfig(db);
   const budget = await currentBudget(db, cadenceCfg ?? {});
@@ -35,7 +35,7 @@ export async function rollupTokenBudget(db) {
   return { consumed: budget.consumed, daily: budget.daily, pct, status };
 }
 
-export async function rollupFacultyErrors(db, hours = 7 * 24) {
+async function rollupFacultyErrors(db, hours = 7 * 24) {
   let rows = [];
   try {
     const [r] = await db
@@ -60,7 +60,7 @@ export async function rollupFacultyErrors(db, hours = 7 * 24) {
   });
 }
 
-export async function rollupPendingTriggers(db) {
+async function rollupPendingTriggers(db) {
   const cfg = await readDoctorConfig(db);
   let count = 0;
   try {
@@ -72,7 +72,7 @@ export async function rollupPendingTriggers(db) {
   return { count, status: count >= cfg.pending_triggers_warn ? 'warn' : 'ok' };
 }
 
-export async function rollupStaleDream(db) {
+async function rollupStaleDream(db) {
   const cfg = await readDoctorConfig(db);
   let lastRun = null;
   try {
@@ -154,7 +154,7 @@ export async function rollupStateInference(db) {
   return { writes_24h, avg_conf, errors_1h, status };
 }
 
-export function aggregateExitCode(rollups) {
+function aggregateExitCode(rollups) {
   for (const r of rollups) {
     if (r?.status === 'fail') return 2;
   }

@@ -26,7 +26,7 @@ import { newReport } from './report.js';
  * @returns {{ memoryDir: string, srcRoot: string }} — `srcRoot` is one level
  *   above `memoryDir` (so `srcRoot/sources/` resolves correctly).
  */
-export function resolveSrc(src) {
+function resolveSrc(src) {
   if (!src) throw new TypeError('resolveSrc: --src required');
   const cand1 = join(src, 'memory');
   if (existsSync(join(cand1, 'INDEX.md'))) {

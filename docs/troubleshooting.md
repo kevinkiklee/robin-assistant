@@ -139,7 +139,7 @@ Force the write from the CLI:
 robin remember --force "the content..."
 ```
 
-Agents have no override path — they must escalate. Check the audit: `robin refusals list`. Patterns live in `system/cognition/discretion/pii-patterns.js` and `system/io/outbound/patterns.js`.
+Agents have no override path — they must escalate. Check the audit: `robin refusals list`. Patterns live in `system/cognition/discretion/pii-patterns.js` and `system/cognition/discretion/outbound-patterns.js`.
 
 ## Memory
 

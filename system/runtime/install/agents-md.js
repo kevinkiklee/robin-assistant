@@ -64,7 +64,7 @@ function renderJobsList(jobs) {
     .join('\n');
 }
 
-export function jobsSection(jobs) {
+function jobsSection(jobs) {
   return `<!-- robin-jobs:start (auto-generated, do not hand-edit) -->
 ## Background jobs
 
@@ -82,7 +82,7 @@ ${renderJobsList(jobs)}
 <!-- robin-jobs:end -->`;
 }
 
-export function actionsSection() {
+function actionsSection() {
   return `<!-- robin-actions:start (auto-generated, do not hand-edit) -->
 ## Action policy (AUTO / ASK / NEVER)
 
@@ -112,7 +112,7 @@ a multi-step action.
 <!-- robin-actions:end -->`;
 }
 
-export function knowledgeOpsSection() {
+function knowledgeOpsSection() {
   return `<!-- robin-knowledge-ops:start (auto-generated, do not hand-edit) -->
 ## Knowledge ops
 
@@ -132,7 +132,7 @@ never called on a loop.
 <!-- robin-knowledge-ops:end -->`;
 }
 
-export function integrationsSection(integrations = []) {
+function integrationsSection(integrations = []) {
   return `<!-- robin-integrations:start (auto-generated, do not hand-edit) -->
 ## Integration data freshness
 
@@ -184,7 +184,7 @@ ${renderIntegrationsList(integrations)}
 <!-- robin-integrations:end -->`;
 }
 
-export function commStyleSection(commStyle) {
+function commStyleSection(commStyle) {
   if (commStyle?.tone) {
     const ts = commStyle.last_synthesized_at
       ? new Date(commStyle.last_synthesized_at).toISOString()

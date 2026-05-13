@@ -77,7 +77,7 @@ export function parseStooqCsv(text) {
   };
 }
 
-export async function fetchYahoo({ ticker, fetchFn = globalThis.fetch, signal }) {
+async function fetchYahoo({ ticker, fetchFn = globalThis.fetch, signal }) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=5d&interval=1d`;
   const res = await fetchFn(url, {
     headers: { 'User-Agent': UA, Accept: 'application/json' },
@@ -87,7 +87,7 @@ export async function fetchYahoo({ ticker, fetchFn = globalThis.fetch, signal })
   return parseYahooResponse(await res.json());
 }
 
-export async function fetchStooq({ ticker, fetchFn = globalThis.fetch, signal }) {
+async function fetchStooq({ ticker, fetchFn = globalThis.fetch, signal }) {
   // sd2t2ohlcvpr → Symbol,Date,Time,Open,High,Low,Close,Volume,Prev,Turnover.
   const url = `https://stooq.com/q/l/?s=${ticker.toLowerCase()}.us&f=sd2t2ohlcvpr&h&e=csv`;
   const res = await fetchFn(url, { headers: { 'User-Agent': UA }, signal });

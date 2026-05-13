@@ -25,5 +25,3 @@ export async function readReinforcementConfig(db) {
     return { ...DEFAULTS };
   }
 }
-
-export const REINFORCEMENT_DEFAULTS = DEFAULTS;

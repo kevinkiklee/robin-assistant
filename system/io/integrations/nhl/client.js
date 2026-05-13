@@ -9,13 +9,6 @@ async function nhlFetch(path, { fetchFn = globalThis.fetch, signal }) {
   return await r.json();
 }
 
-export async function fetchClubSchedule({ team, fetchFn, signal }) {
-  return await nhlFetch(`/club-schedule-season/${encodeURIComponent(team)}/now`, {
-    fetchFn,
-    signal,
-  });
-}
-
 // League-wide weekly schedule. Returns `{ games: [...] }` with each game's
 // raw shape preserved, so callers reuse the same buildScheduleEvents pipeline
 // as the club endpoint. The upstream payload nests games under

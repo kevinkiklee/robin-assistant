@@ -42,16 +42,21 @@ function parseJson(raw) {
 export async function runHook(phase, opts = {}) {
   const entry = DISPATCH[phase];
   if (!entry) return;
-  if (await isHookDisabled(phase)) return;
-  const raw = opts.rawStdin ?? (await readStdin());
-  const stdin = parseJson(raw);
+  // Fail-soft envelope around the ENTIRE hook body (kill-switch lookup +
+  // stdin read + handler dispatch). isHookDisabled hits readConfig which
+  // throws when Robin isn't installed; without this catch, a stale hook
+  // entry on an uninstalled Robin would crash the host's hook line. Handlers
+  // that want to *block* the host's tool call still must call
+  // process.exit(2) themselves.
   try {
+    if (await isHookDisabled(phase)) return;
+    const raw = opts.rawStdin ?? (await readStdin());
+    const stdin = parseJson(raw);
     const mod = await import(entry.module);
     const handler = mod[entry.exportName];
     if (typeof handler !== 'function') return;
     await handler({ stdin });
   } catch (e) {
-    // fail-soft: handlers that want to block must call process.exit(2) themselves.
     // Errors swallowed silently here are nearly invisible because hooks run
     // inside Claude/Gemini's stdio capture, so opt-in surfacing is gated by
     // ROBIN_DEBUG to keep normal sessions noise-free.

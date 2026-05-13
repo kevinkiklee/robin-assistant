@@ -7,7 +7,7 @@
  * Lookups use the first path segment of `<relative_path>`. Anything not listed
  * falls through to 'concept'.
  */
-export const KNOWLEDGE_SUBDIR_TO_TYPE = {
+const KNOWLEDGE_SUBDIR_TO_TYPE = {
   'service-providers': 'service',
   locations: 'place',
   projects: 'project',
@@ -16,7 +16,7 @@ export const KNOWLEDGE_SUBDIR_TO_TYPE = {
   // live in profile/people/ if they're person entities at all.
 };
 
-export const DEFAULT_ENTITY_TYPE = 'concept';
+const DEFAULT_ENTITY_TYPE = 'concept';
 
 /**
  * Resolve a path relative to v1's `memory/knowledge/` to an entity type.
@@ -35,14 +35,14 @@ export function entityTypeForKnowledgePath(relPath) {
  * in v2 combines confidence with a kind-derived half-life so we don't need a
  * separate decay axis.
  */
-export const DECAY_TO_CONFIDENCE = {
+const DECAY_TO_CONFIDENCE = {
   slow: 0.9,
   medium: 0.7,
   fast: 0.5,
   immortal: 1.0,
 };
 
-export const DEFAULT_CONFIDENCE = 0.7;
+const DEFAULT_CONFIDENCE = 0.7;
 
 export function confidenceForDecay(decay) {
   return DECAY_TO_CONFIDENCE[decay] ?? DEFAULT_CONFIDENCE;
@@ -116,7 +116,7 @@ function routinesProjector(body) {
  * Detect whether a preference reads as a profile-update style rule.
  * Returns 'profile_update' if matched, else null (caller defaults to 'behavior').
  */
-export const PREFERENCE_KIND_DETECTORS = [
+const PREFERENCE_KIND_DETECTORS = [
   (text) => (/\b(call|refer to|name)\b.+?\b(as|is)\b/i.test(text) ? 'profile_update' : null),
 ];
 

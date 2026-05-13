@@ -43,7 +43,7 @@ export const EDGE_KIND_REGISTRY = {
  * Accepts either an object `{ tb, id }` (the SDK's RecordId shape) or a string
  * `"table:id"`.
  */
-export function recordTable(ref) {
+function recordTable(ref) {
   if (!ref) return null;
   if (typeof ref === 'string') {
     const idx = ref.indexOf(':');

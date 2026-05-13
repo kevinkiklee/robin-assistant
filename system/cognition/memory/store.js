@@ -478,10 +478,6 @@ export async function searchEvents(db, embedder, query, opts = {}) {
   return _surfaceSearch(db, embedder, 'events', query, opts);
 }
 
-export async function searchEntities(db, embedder, query, opts = {}) {
-  return _surfaceSearch(db, embedder, 'entities', query, opts);
-}
-
 // Hybrid retrieval (Phase 4 — section 2 of the surrealdb-improvements spec)
 // runs vector + BM25 in parallel and fuses with RRF. Adaptive over-fetch on
 // the kNN side mitigates post-filter shrinkage when callers narrow by

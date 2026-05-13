@@ -72,7 +72,7 @@ export const MEMO_KIND_REGISTRY = {
   },
 };
 
-export const ATTACHMENT_KIND_REGISTRY = {
+const ATTACHMENT_KIND_REGISTRY = {
   file: { required: ['ref'], optional: ['hash', 'mime', 'size'] },
   image: {
     required: ['ref'],

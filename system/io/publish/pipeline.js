@@ -1,12 +1,5 @@
 import matter from 'gray-matter';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import rehypeSlug from 'rehype-slug';
-import rehypeStringify from 'rehype-stringify';
-import remarkGfm from 'remark-gfm';
-import remarkParse from 'remark-parse';
-import remarkRehype from 'remark-rehype';
-import { unified } from 'unified';
+import { defaultSchema } from 'rehype-sanitize';
 
 export function extractFrontmatter(src) {
   const parsed = matter(src);
@@ -56,17 +49,3 @@ export const sanitizeSchema = {
     (t) => !['script', 'iframe', 'object', 'embed', 'form', 'base'].includes(t),
   ),
 };
-
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(rehypeRaw)
-  .use(rehypeSlug)
-  .use(rehypeSanitize, sanitizeSchema)
-  .use(rehypeStringify);
-
-export async function markdownToHtml(body) {
-  const file = await processor.process(body);
-  return String(file);
-}

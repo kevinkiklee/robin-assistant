@@ -9,9 +9,9 @@ import { generateSurrealPlist } from '../../install/surreal-plist.js';
 import { generateSurrealUnit } from '../../install/surreal-unit.js';
 import { surrealEnsureRunning } from './surreal-ensure-running.js';
 
-export const DEFAULT_BIND = '127.0.0.1:8000';
-export const DEFAULT_USER = 'root';
-export const DEFAULT_STORAGE = 'surrealkv';
+const DEFAULT_BIND = '127.0.0.1:8000';
+const DEFAULT_USER = 'root';
+const DEFAULT_STORAGE = 'surrealkv';
 
 // Generate a fresh random password per install. The hardcoded `root:root`
 // alternative is a well-known default that anyone with local-network access

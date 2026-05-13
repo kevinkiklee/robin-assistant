@@ -19,7 +19,7 @@ import { readConfig } from '../../config/paths.js';
 //
 // system/runtime/scripts/start-surreal-server.mjs exists as a manual escape
 // hatch for debugging; the canonical path is `robin install`.
-export const DEFAULT_ENGINE = 'surrealkv';
+const DEFAULT_ENGINE = 'surrealkv';
 
 /**
  * Resolve the URL to use for the production DB based on the user's config.
@@ -66,7 +66,7 @@ export async function defaultDbUrl() {
  *
  * @returns {Promise<{ username: string, password: string } | null>}
  */
-export async function defaultDbAuth() {
+async function defaultDbAuth() {
   try {
     const cfg = await readConfig();
     const u = cfg?.db?.user;

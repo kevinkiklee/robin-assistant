@@ -113,7 +113,7 @@ export function topoLayers(steps, deps) {
  * Split `arr` into consecutive sub-arrays of length ≤ `limit`. Default
  * unlimited (returns one chunk containing the full array).
  */
-export function chunkByLimit(arr, limit) {
+function chunkByLimit(arr, limit) {
   if (!limit || limit === Infinity || limit >= arr.length) return [arr];
   const out = [];
   for (let i = 0; i < arr.length; i += limit) out.push(arr.slice(i, i + limit));

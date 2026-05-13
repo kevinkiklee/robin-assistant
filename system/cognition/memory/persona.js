@@ -66,11 +66,6 @@ export async function updatePersonaFields(db, fields) {
   throw lastErr;
 }
 
-/** Sub-helper used by dream/step-comm-style. */
-export async function updateCommStyle(db, commStyleFields) {
-  await updatePersonaFields(db, { comm_style: commStyleFields });
-}
-
 /** Sub-helper used by dream/step-calibration. */
 export async function updateCalibration(db, calibrationFields) {
   await updatePersonaFields(db, { calibration: calibrationFields });

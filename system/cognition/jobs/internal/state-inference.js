@@ -74,7 +74,7 @@ export function detectChange({ prior, current, now = new Date(), refreshAfterMin
   return { materially_changed: false, signal_hash, reason: 'unchanged' };
 }
 
-export const STATE_INFERENCE_SYSTEM = `You produce a one-sentence statement of what the user is currently working on, based on recent activity. Stay grounded in the evidence; do not speculate beyond what the inputs support. Output strict JSON.`;
+const STATE_INFERENCE_SYSTEM = `You produce a one-sentence statement of what the user is currently working on, based on recent activity. Stay grounded in the evidence; do not speculate beyond what the inputs support. Output strict JSON.`;
 
 export function buildPrompt({ arc, entities, events, prior }) {
   const entityLines = (entities ?? [])

@@ -19,7 +19,7 @@ const MIME_TO_EXT = new Map([
   ['image/avif', 'avif'],
 ]);
 
-export function isLocalImageUrl(url) {
+function isLocalImageUrl(url) {
   if (!url) return false;
   if (url.startsWith('data:')) return false;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url)) {
@@ -28,7 +28,7 @@ export function isLocalImageUrl(url) {
   return true;
 }
 
-export function resolveLocalPath(url, sourceDir) {
+function resolveLocalPath(url, sourceDir) {
   let p = url;
   if (p.toLowerCase().startsWith('file://')) p = p.replace(/^file:\/\//i, '');
   const abs = resolve(sourceDir, p);
@@ -39,7 +39,7 @@ export function resolveLocalPath(url, sourceDir) {
   return abs;
 }
 
-export async function hashAsset(bytes) {
+async function hashAsset(bytes) {
   return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
 }
 

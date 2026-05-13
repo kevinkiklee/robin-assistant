@@ -9,7 +9,7 @@
 // can hit either; the parent stays addressable as a coherent unit.
 
 export const CHUNK_THRESHOLD = 8000;
-export const CHUNK_TARGET = 6000;
+const CHUNK_TARGET = 6000;
 
 /**
  * Decide whether content needs chunking. Cheap predicate.
