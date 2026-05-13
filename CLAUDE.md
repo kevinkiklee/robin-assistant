@@ -70,6 +70,16 @@ Don't run `robin install` to fix this — it's heavy (prompts, MCP re-register, 
 
 **Fix.** Already shipped: `system/runtime/cli/commands/mcp-start.js` catches `EALREADY`, attaches to the live daemon's pid, blocks until it exits, then returns 0 so launchd sees a clean lifecycle. If the symptom recurs, check whether the catch was reverted.
 
+### SurrealDB "Anonymous access not allowed" floods the daemon log
+
+**Symptom.** `daemon.log` fills with `[scheduler/dispatcher] tick failed: Anonymous access not allowed: Not enough permissions to perform this action` (and the same in `[scheduler/stale-sessions]`, `[close-stale-episodes]`, etc.). The daemon process is alive, the SurrealDB process is alive, but every scheduler tick that hits the DB fails. Often appears after laptop sleep, after `surreal start` was restarted, or after any network blip on the loopback socket.
+
+**Cause.** The `surrealdb` v2.0.3 client reconnects automatically (5 attempts, 1s base + 2x backoff) when the WebSocket drops — but the reconnected socket comes back **anonymous**, even though `signin()` and `use()` were called on the original session. Without re-applying them, the daemon stays anonymous until the process restarts.
+
+**Fix.** Already shipped in `system/data/db/client.js`: after the initial `signin()` + `use()`, the wrapper subscribes to the client's `connected` event (which fires on reconnects, *not* on the initial connect since we subscribe after `db.connect()` resolves) and re-applies signin + use. If you see this symptom recur, check whether that subscribe block was reverted.
+
+**One-shot recovery** for an already-stuck daemon: `kill <daemon pid>` — the launchd-supervised path (via the `mcp-start --foreground` EALREADY-attach fix) will spawn a fresh daemon that picks up the current code.
+
 ### v2 MCP not exposed to Claude Code
 
 **Symptom.** `mcp__robin__*` tools are not in the deferred-tools list; only `mcp__robin-assistant-v1__*` (or nothing) shows up. The v2 daemon is running but the agent can't talk to it.

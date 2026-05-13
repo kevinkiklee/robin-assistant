@@ -122,11 +122,42 @@ export async function connect({
   // Remote schemes need sign-in. Caller can pass `auth` explicitly; otherwise
   // we fall back to config.json's db.user/db.pass via defaultDbAuth(). Embedded
   // schemes (mem://, surrealkv://, rocksdb://) don't authenticate.
-  if (/^(wss?|https?):\/\//.test(engine)) {
-    const creds = auth ?? (await defaultDbAuth());
-    if (creds) await db.signin(creds);
-  }
+  const isRemote = /^(wss?|https?):\/\//.test(engine);
+  const creds = isRemote ? (auth ?? (await defaultDbAuth())) : null;
+  if (creds) await db.signin(creds);
   await db.use({ namespace, database });
+
+  // Re-establish session state on every reconnect.
+  //
+  // The Surreal client (v2.0.3) defaults to enabled reconnect (5 attempts,
+  // 1s base + 2x backoff). When the underlying WebSocket reconnects — e.g.
+  // after `surreal start` restarts, after laptop sleep, or after a flaky
+  // network blip — the new connection comes up *anonymous*, even though
+  // signin() and use() were called on the original socket. Without
+  // re-applying them, every subsequent scheduler tick fails with
+  // "Anonymous access not allowed", and the daemon stays in that broken
+  // state until process restart.
+  //
+  // The "connected" event fires on each successful (re)connection AFTER
+  // the initial connect (the initial connect resolves via db.connect()
+  // before the subscription is registered, so it never double-fires).
+  if (isRemote) {
+    db.subscribe('connected', () => {
+      // Re-arm auth + namespace/database asynchronously. Errors are
+      // surfaced via the client's existing error channel — we don't
+      // re-throw here because subscribe handlers run outside the
+      // request context.
+      (async () => {
+        try {
+          if (creds) await db.signin(creds);
+          await db.use({ namespace, database });
+        } catch (err) {
+          console.warn(`[db] post-reconnect re-auth failed: ${err.message ?? err}`);
+        }
+      })();
+    });
+  }
+
   return db;
 }
 
