@@ -35,11 +35,11 @@ function toDate(value) {
   return null;
 }
 
-async function rollupOne({ db, entry, cfg, cursors, cutoff, results }) {
+async function rollupOne({ db, entry, cfg, cursors, cutoff, now, results }) {
   const lastCursor = toDate(cursors[entry.cursorName]);
   const cursor = lastCursor
     ? lastCursor
-    : new Date(Date.now() - cfg.cursor_fallback_window_hours * 3_600_000);
+    : new Date(now.getTime() - cfg.cursor_fallback_window_hours * 3_600_000);
   try {
     const { sql, params } = entry.select({ cursor, cutoff, cfg });
     const [rows] = await db.query(sql, params).collect();
@@ -93,7 +93,7 @@ export async function rollupHotTelemetry({ db, cfg, nowFn }) {
   const results = {};
 
   for (const entry of enabled) {
-    await rollupOne({ db, entry, cfg, cursors, cutoff, results });
+    await rollupOne({ db, entry, cfg, cursors, cutoff, now, results });
   }
 
   try {

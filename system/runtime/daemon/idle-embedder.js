@@ -1,5 +1,10 @@
 export function createIdleEmbedder({ factory, idleMs = 600_000 }) {
   let embedder = null;
+  // Promise of an in-flight factory() so concurrent callers share one load.
+  // Without this, two near-simultaneous get() calls each fire factory() and
+  // one of the resulting embedders is silently leaked when the second write
+  // overwrites the first.
+  let loading = null;
   let lastTouch = 0;
   let timer = null;
 
@@ -16,7 +21,19 @@ export function createIdleEmbedder({ factory, idleMs = 600_000 }) {
   return {
     async get() {
       lastTouch = Date.now();
-      if (!embedder) embedder = await factory();
+      if (!embedder) {
+        if (!loading) {
+          loading = (async () => {
+            try {
+              embedder = await factory();
+              return embedder;
+            } finally {
+              loading = null;
+            }
+          })();
+        }
+        await loading;
+      }
       scheduleUnload();
       return embedder;
     },
@@ -27,6 +44,7 @@ export function createIdleEmbedder({ factory, idleMs = 600_000 }) {
     shutdown() {
       if (timer) clearTimeout(timer);
       embedder = null;
+      loading = null;
     },
   };
 }

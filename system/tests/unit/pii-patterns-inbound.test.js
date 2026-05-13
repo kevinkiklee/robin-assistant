@@ -9,6 +9,7 @@ test('INBOUND_DENY_PATTERNS contains expected rule names', () => {
     'anthropic_key',
     'aws_access_key',
     'env_secret_value',
+    'github_pat',
     'github_token',
     'google_api_key',
     'jwt',
@@ -54,15 +55,43 @@ const cases = [
     expect: 'secret:github_token',
   },
   {
+    label: 'github_token positive (gho_ OAuth user-to-server)',
+    text: 'gho_abcdefghijklmnopqrstuvwxyz0123456789',
+    expect: 'secret:github_token',
+  },
+  {
+    label: 'github_token positive (ghu_ user-to-server)',
+    text: 'ghu_abcdefghijklmnopqrstuvwxyz0123456789',
+    expect: 'secret:github_token',
+  },
+  {
+    label: 'github_token positive (ghr_ refresh)',
+    text: 'ghr_abcdefghijklmnopqrstuvwxyz0123456789',
+    expect: 'secret:github_token',
+  },
+  {
     label: 'github_token negative',
     text: 'github status looks fine',
     expect: null,
   },
 
+  // ---- github_pat (fine-grained PAT) ----------------------------------
+  {
+    label: 'github_pat positive',
+    text: 'token github_pat_11ABCDEFG0aBcDeFgHiJkLmNoPqRsTuVwXyZ012345abcDEFghiJK',
+    expect: 'secret:github_pat',
+  },
+  { label: 'github_pat negative (short)', text: 'github_pat_short', expect: null },
+
   // ---- aws_access_key -------------------------------------------------
   {
-    label: 'aws_access_key positive',
+    label: 'aws_access_key positive (AKIA — long-term)',
     text: 'AKIAIOSFODNN7EXAMPLE',
+    expect: 'secret:aws_access_key',
+  },
+  {
+    label: 'aws_access_key positive (ASIA — temporary STS)',
+    text: 'ASIAY44QH8DGFEXAMPLE',
     expect: 'secret:aws_access_key',
   },
   { label: 'aws_access_key negative', text: 'AKIA-not-a-key', expect: null },
@@ -85,6 +114,11 @@ const cases = [
     text: 'Authorization: xoxb-1234567890-abcdefg-XYZ',
     expect: 'secret:slack_token',
   },
+  {
+    label: 'slack_token positive (xoxe — refresh)',
+    text: 'xoxe-1-' + 'abcdefghijklmnop',
+    expect: 'secret:slack_token',
+  },
   { label: 'slack_token negative', text: 'xoxo-fashion', expect: null },
 
   // ---- stripe_key -----------------------------------------------------
@@ -100,6 +134,11 @@ const cases = [
   {
     label: 'stripe_key positive (test)',
     text: `sk_${'test'}_${'FAKEFIXTURENOTREALBBBBBBBBB1'}`,
+    expect: 'secret:stripe_key',
+  },
+  {
+    label: 'stripe_key positive (restricted, rk_)',
+    text: `rk_${'live'}_${'FAKEFIXTURENOTREALCCCCCCCCCC0'}`,
     expect: 'secret:stripe_key',
   },
   { label: 'stripe_key negative', text: 'sk_other_short', expect: null },

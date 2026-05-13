@@ -1,3 +1,5 @@
+import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../config/time.js';
+
 const START_MARKER = '<!-- robin-mcp:start -->';
 const END_MARKER = '<!-- robin-mcp:end -->';
 
@@ -20,9 +22,9 @@ function formatCadence(ms, kind) {
   if (kind === 'gateway') return 'gateway';
   if (kind === 'tool-only') return 'tool-only';
   if (ms === null || ms === undefined) return 'gateway';
-  if (ms >= 86_400_000 && ms % 86_400_000 === 0) return `${ms / 86_400_000}d`;
-  if (ms >= 3_600_000 && ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
-  return `${ms / 60_000}m`;
+  if (ms >= DAY_MS && ms % DAY_MS === 0) return `${ms / DAY_MS}d`;
+  if (ms >= HOUR_MS && ms % HOUR_MS === 0) return `${ms / HOUR_MS}h`;
+  return `${ms / MINUTE_MS}m`;
 }
 
 function renderIntegrationsList(integrations) {

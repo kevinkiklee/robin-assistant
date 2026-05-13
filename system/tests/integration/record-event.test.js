@@ -74,12 +74,31 @@ test('recordEvent rejects empty content', async () => {
   await close(db);
 });
 
-test('recordEvent rejects wrong embedding dimension at the DB layer', async () => {
+test('recordEvent absorbs wrong embedding dimension — event row still created (resilience)', async () => {
+  // Per the design in CLAUDE.md: embedding-write failure (e.g. profile mismatch
+  // or wrong-dimension vector) must not lose the event. The event row is
+  // committed first; the embedding upsert is wrapped in try/catch and logs a
+  // warning. Recall via semantic search will be degraded until the row is
+  // back-filled, but the memory-write tools never bubble InternalError to MCP
+  // clients.
   const db = await fresh();
   const embedder = createStubEmbedder({ dimension: 768 }); // wrong; schema asserts 1024
-  await assert.rejects(
-    recordEvent(db, embedder, { source: 'cli', content: 'x' }),
-    /array::len|1024/,
-  );
-  await close(db);
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const result = await recordEvent(db, embedder, { source: 'cli', content: 'x' });
+    assert.ok(result.id, 'event id returned even when embedding fails');
+    const [rows] = await db.query('SELECT id FROM events').collect();
+    assert.equal(rows.length, 1, 'event row committed despite embedding failure');
+    const [embRows] = await db.query('SELECT vector FROM embeddings_mxbai_1024_events').collect();
+    assert.equal(embRows.length, 0, 'no embedding row written on dimension mismatch');
+    assert.ok(
+      warnings.some((w) => w.includes('embedding failed')),
+      'embedding failure was logged via console.warn',
+    );
+  } finally {
+    console.warn = originalWarn;
+    await close(db);
+  }
 });

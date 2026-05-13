@@ -135,7 +135,9 @@ test('capture defaults trust to untrusted (integration data is external)', async
     { source: 'gmail', content: 'mixed', external_id: 'msg2', trust: 'untrusted-mixed' },
   ]);
   const [rows] = await db
-    .query(surql`SELECT meta.external_id AS external_id, trust FROM events ORDER BY meta.external_id`)
+    .query(
+      surql`SELECT meta.external_id AS external_id, trust FROM events ORDER BY meta.external_id`,
+    )
     .collect();
   assert.equal(rows.length, 2);
   assert.equal(rows[0].trust, 'untrusted', 'default for integration data is untrusted');

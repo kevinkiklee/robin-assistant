@@ -158,8 +158,7 @@ function formatGameLine(r) {
   const m = r.meta ?? {};
   const head = `${m.away} @ ${m.home}`;
   const score = m.score;
-  const hasNumericScore =
-    score && typeof score.away === 'number' && typeof score.home === 'number';
+  const hasNumericScore = score && typeof score.away === 'number' && typeof score.home === 'number';
   if (m.status === 'FINAL' && hasNumericScore) {
     const a = score.away;
     const h = score.home;

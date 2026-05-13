@@ -154,8 +154,13 @@ const cases = [
 
   // ---- db-direct-access (NEW) -----------------------------------------
   {
-    label: 'db-direct-access: surreal sql against user-data/db/',
+    label: 'db-direct-access: surreal sql against legacy user-data/db/',
     cmd: 'surreal sql --conn rocksdb://user-data/db/main',
+    expect: 'db-direct-access',
+  },
+  {
+    label: 'db-direct-access: surreal sql against canonical user-data/data/db/',
+    cmd: 'surreal sql --conn rocksdb://user-data/data/db/main',
     expect: 'db-direct-access',
   },
   {
@@ -164,13 +169,23 @@ const cases = [
     expect: 'db-direct-access',
   },
   {
+    label: 'db-direct-access: surreal connect against $ROBIN_HOME/data/db/',
+    cmd: 'surreal connect rocksdb://$ROBIN_HOME/data/db/main',
+    expect: 'db-direct-access',
+  },
+  {
     label: 'db-direct-access: surreal export from .robin/db/',
     cmd: 'surreal export --conn rocksdb://.robin/db/main backup.surql',
     expect: 'db-direct-access',
   },
   {
-    label: 'db-direct-access: surreal import via /usr/local/bin/surreal',
+    label: 'db-direct-access: surreal import via /usr/local/bin/surreal (legacy path)',
     cmd: '/usr/local/bin/surreal import --conn rocksdb://user-data/db/main dump.surql',
+    expect: 'db-direct-access',
+  },
+  {
+    label: 'db-direct-access: surreal import via /usr/local/bin/surreal (canonical path)',
+    cmd: '/usr/local/bin/surreal import --conn rocksdb://user-data/data/db/main dump.surql',
     expect: 'db-direct-access',
   },
   {

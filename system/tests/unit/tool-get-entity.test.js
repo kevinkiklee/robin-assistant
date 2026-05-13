@@ -48,12 +48,7 @@ test('get_entity rejects ids that would inject SurrealQL', async () => {
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const tool = createGetEntityTool({ db });
-  const hostile = [
-    'x; DELETE entities;',
-    "abc' OR true",
-    'entities:abc OR 1=1',
-    'entities:`hack`',
-  ];
+  const hostile = ['x; DELETE entities;', "abc' OR true", 'entities:abc OR 1=1', 'entities:`hack`'];
   for (const id of hostile) {
     await assert.rejects(tool.handler({ id }), /invalid record id/i);
   }

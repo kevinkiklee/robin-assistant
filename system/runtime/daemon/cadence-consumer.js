@@ -9,6 +9,7 @@ import {
 } from '../../cognition/dream/budget.js';
 import { advanceCursor, getCursor } from '../../cognition/dream/cursors.js';
 import { dispatchStep } from '../../cognition/dream/dispatch.js';
+import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../config/time.js';
 
 async function mark(db, id, outcome, reason) {
   const set = reason
@@ -71,19 +72,19 @@ export async function consumePendingTriggers(db, host) {
       summary.capped++;
       continue;
     }
-    const debounced = await countSince(db, trig.step, stepCfg.debounce_minutes * 60_000);
+    const debounced = await countSince(db, trig.step, stepCfg.debounce_minutes * MINUTE_MS);
     if (debounced > 0) {
       await mark(db, trig.id, 'debounced');
       summary.debounced++;
       continue;
     }
-    const hourly = await countSince(db, trig.step, 60 * 60_000);
+    const hourly = await countSince(db, trig.step, HOUR_MS);
     if (hourly >= stepCfg.max_per_hour) {
       await mark(db, trig.id, 'capped', 'hourly');
       summary.capped++;
       continue;
     }
-    const daily = await countSince(db, trig.step, 24 * 60 * 60_000);
+    const daily = await countSince(db, trig.step, DAY_MS);
     if (daily >= stepCfg.max_per_day) {
       await mark(db, trig.id, 'capped', 'daily');
       summary.capped++;

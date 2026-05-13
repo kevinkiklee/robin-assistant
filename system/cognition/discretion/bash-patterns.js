@@ -56,13 +56,16 @@ export const BASH_DENY_PATTERNS = [
   },
   {
     // surreal CLI invocations against the local Robin DB. Only the daemon
-    // may touch <robinHome>/db. We catch the surreal binary name (allowing
-    // path prefixes like `/usr/local/bin/surreal`) followed by a mutating
-    // or connecting subcommand, with the local DB path appearing somewhere
-    // in the same simple-command segment (no pipe/semicolon/&& between).
+    // may touch <robinHome>/data/db. We catch the surreal binary name
+    // (allowing path prefixes like `/usr/local/bin/surreal`) followed by a
+    // mutating or connecting subcommand, with the local DB path appearing
+    // somewhere in the same simple-command segment (no pipe/semicolon/&&
+    // between). The v2 canonical path is `user-data/data/db/`; the legacy
+    // `user-data/db/` literal is also matched so older tooling/scripts that
+    // still reference the pre-redesign location are gated too.
     name: 'db-direct-access',
     pattern:
-      /(?:^|[\s|;&])(?:[\w./-]*\/)?surreal\s+(?:sql|connect|import|export)\b[^|;&]*(?:user-data\/db\/|\$ROBIN_HOME\/db\/|\$\{ROBIN_HOME\}\/db\/|\.robin\/db\/)/i,
+      /(?:^|[\s|;&])(?:[\w./-]*\/)?surreal\s+(?:sql|connect|import|export)\b[^|;&]*(?:user-data\/(?:data\/)?db\/|\$ROBIN_HOME\/(?:data\/)?db\/|\$\{ROBIN_HOME\}\/(?:data\/)?db\/|\.robin\/db\/)/i,
     why: 'Direct surreal CLI access to local Robin DB; only the daemon may touch it',
   },
 ];

@@ -265,34 +265,69 @@ test('renderFinancialsSection sums yesterday spend and splits transfers + income
     source: 'lunch_money',
     content: 'Bread Financial · -$919.95 · uncategorized',
     ts: new Date('2026-05-12T00:00:00Z'),
-    meta: { lm_id: 1, payee: 'Bread Financial', amount: 919.95, is_income: false, date: '2026-05-12', category: null },
+    meta: {
+      lm_id: 1,
+      payee: 'Bread Financial',
+      amount: 919.95,
+      is_income: false,
+      date: '2026-05-12',
+      category: null,
+    },
   });
   await seed(db, {
     source: 'lunch_money',
     content: 'Netflix · -$38.09 · 🎉 Entertainment',
     ts: new Date('2026-05-12T00:00:00Z'),
-    meta: { lm_id: 2, payee: 'Netflix', amount: 38.09, is_income: false, date: '2026-05-12', category: '🎉 Entertainment' },
+    meta: {
+      lm_id: 2,
+      payee: 'Netflix',
+      amount: 38.09,
+      is_income: false,
+      date: '2026-05-12',
+      category: '🎉 Entertainment',
+    },
   });
   // A transfer row that should NOT be counted as spend
   await seed(db, {
     source: 'lunch_money',
     content: 'Payment to Chase card ending in 1427 05/12 · -$2291.64 · uncategorized',
     ts: new Date('2026-05-12T00:00:00Z'),
-    meta: { lm_id: 3, payee: 'Payment to Chase card ending in 1427 05/12', amount: 2291.64, is_income: false, date: '2026-05-12', category: null },
+    meta: {
+      lm_id: 3,
+      payee: 'Payment to Chase card ending in 1427 05/12',
+      amount: 2291.64,
+      is_income: false,
+      date: '2026-05-12',
+      category: null,
+    },
   });
   // A refund/income row yesterday
   await seed(db, {
     source: 'lunch_money',
     content: 'Amazon Refund · +$15.00 · 🛍️ Shopping',
     ts: new Date('2026-05-12T00:00:00Z'),
-    meta: { lm_id: 4, payee: 'Amazon Refund', amount: 15, is_income: true, date: '2026-05-12', category: '🛍️ Shopping' },
+    meta: {
+      lm_id: 4,
+      payee: 'Amazon Refund',
+      amount: 15,
+      is_income: true,
+      date: '2026-05-12',
+      category: '🛍️ Shopping',
+    },
   });
   // Day-before-yesterday spend that must NOT leak into the yesterday total
   await seed(db, {
     source: 'lunch_money',
     content: 'Junkosush · -$22.69 · 🍽️ Restaurants',
     ts: new Date('2026-05-11T00:00:00Z'),
-    meta: { lm_id: 5, payee: 'Junkosush', amount: 22.69, is_income: false, date: '2026-05-11', category: '🍽️ Restaurants' },
+    meta: {
+      lm_id: 5,
+      payee: 'Junkosush',
+      amount: 22.69,
+      is_income: false,
+      date: '2026-05-11',
+      category: '🍽️ Restaurants',
+    },
   });
 
   const out = await renderFinancialsSection(db, '2026-05-13');
@@ -315,7 +350,14 @@ test('renderFinancialsSection notes empty days explicitly', async () => {
     source: 'lunch_money',
     content: 'Old txn · -$10.00 · uncategorized',
     ts: new Date('2026-05-01T00:00:00Z'),
-    meta: { lm_id: 99, payee: 'Old txn', amount: 10, is_income: false, date: '2026-05-01', category: null },
+    meta: {
+      lm_id: 99,
+      payee: 'Old txn',
+      amount: 10,
+      is_income: false,
+      date: '2026-05-01',
+      category: null,
+    },
   });
   const out = await renderFinancialsSection(db, '2026-05-13');
   assert.match(out, /No transactions cleared yesterday/);

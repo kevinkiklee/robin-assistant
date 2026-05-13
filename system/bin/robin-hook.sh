@@ -6,8 +6,10 @@
 set -u
 
 SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-PKG_ROOT=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
-DISPATCHER="$PKG_ROOT/io/hooks/dispatcher.js"
+# SELF_DIR is system/bin; its parent is system/. The dispatcher lives at
+# system/io/hooks/dispatcher.js, so anchor against the system root.
+SYSTEM_DIR=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
+DISPATCHER="$SYSTEM_DIR/io/hooks/dispatcher.js"
 
 try_exec() {
   if [ -n "${1:-}" ] && [ -x "$1" ]; then

@@ -192,18 +192,32 @@ Integrations follow the v1 pattern (the integration-framework guide still applie
 
 1. **Create the directory.** `system/io/integrations/<name>/`.
 
-2. **Write `manifest.json`** declaring kind, env keys, interval:
+2. **Write `manifest.js`** exporting a `manifest` object with name, cadence, env keys, and tools:
 
-   ```json
-   {
-     "name": "myservice",
-     "kind": "sync",
-     "interval_minutes": 30,
-     "secrets": { "env_keys": ["MYSERVICE_API_KEY"] }
-   }
+   ```js
+   // system/io/integrations/myservice/manifest.js
+   import { getSecret } from '../../../config/secrets.js';
+   import { sync } from './sync.js';
+   import { createMyserviceSearchTool } from './tools/myservice-search.js';
+
+   const REQUIRED_KEYS = ['MYSERVICE_API_KEY'];
+
+   export const manifest = {
+     name: 'myservice',
+     cadence: '30m',           // omit (or set to null) for tool-only or gateway integrations
+     embed: true,              // also write to embeddings_<profile>_events
+     capture_mode: 'upsert',   // 'upsert' | 'insert-or-skip'
+     secrets: { env_keys: REQUIRED_KEYS },
+     preflight: async () => {
+       const missing = REQUIRED_KEYS.filter((k) => !getSecret(k));
+       if (missing.length > 0) throw new Error(`missing secrets: ${missing.join(', ')}`);
+     },
+     sync,
+     tools: [createMyserviceSearchTool],
+   };
    ```
 
-3. **Write `sync.js`** exporting `async syncOnce({ db, capture, requireSecret, log })`. `capture()` is the framework's hook; it normalises events through `store.remember` (handles content-hash dedupe, embedding into `embeddings_<profile>_events`, inbound discretion). Defaults: `source: '<name>'`, `scope: 'integration:<name>'`, `trust: 'trusted'`. Stash external IDs under `meta.external_id` (not a column).
+3. **Write `sync.js`** exporting `async function sync({ secrets, capture, cursor, log, signal, fetchFn })`. `capture()` is the framework's hook (see `system/io/integrations/_framework/capture.js`); it normalises rows into `events` with content-hash dedupe and (if `manifest.embed: true`) writes a vector into `embeddings_<profile>_events`. Stash external IDs at the top level as `external_id` — the framework folds them into `meta.external_id`. Return `{ count, cursor }` so the framework records progress.
 
 4. **Optional: tool factories.** Create `tools/<tool-name>.js` exporting `create<Name>Tool({db, requireSecret})` for MCP tools (e.g. `gmail_search`, `linear_create_issue`).
 

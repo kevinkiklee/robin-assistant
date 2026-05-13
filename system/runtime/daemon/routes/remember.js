@@ -31,7 +31,8 @@ export const rememberRoutes = [
         return { id: String(result.id) };
       } catch (e) {
         const code = e?.name === 'RobinPiiRefusedError' ? 422 : 500;
-        return { _status: code, _body: { error: e.message, name: e?.name } };
+        // Use the envelope shape every other route uses: `{ ok: false, error, name }`.
+        return { _status: code, _body: { ok: false, error: e.message, name: e?.name } };
       }
     },
   },

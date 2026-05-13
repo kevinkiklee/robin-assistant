@@ -23,6 +23,10 @@ async function ensureFirstRunInstall(cmd) {
   if (cmd === undefined || SKIP_FIRST_RUN_INIT.has(cmd)) return;
   if (process.env.ROBIN_HOME) return;
   if (process.env.ROBIN_SKIP_FIRST_RUN) return;
+  // Don't run the first-run installer for unknown commands — printing a "first
+  // run — running one-time setup..." line before a "unknown command" error is
+  // a confusing UX, and the install can be slow.
+  if (!Object.hasOwn(commands, cmd)) return;
   const { pointerExists } = await import('../../config/data-store.js');
   if (pointerExists()) return;
   console.log('Robin: first run — running one-time setup...');
