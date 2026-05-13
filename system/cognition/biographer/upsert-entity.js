@@ -82,8 +82,22 @@ export async function upsertEntityCascade(db, embedder, input) {
   }
 
   // Create — use a deterministic record id keyed by (type, name_lower) so
-  // concurrent upserts converge to the same row instead of racing.
-  const stableKey = `${type}__${name.toLowerCase()}`;
+  // concurrent upserts converge to the same row instead of racing. The
+  // name portion is sanitized to record-id-safe characters: SurrealDB
+  // accepts `[a-zA-Z0-9_]` in IDs without escaping. Names with spaces,
+  // punctuation, or non-ASCII would otherwise be rendered as
+  // `entities:⟨type__name with space⟩` and that bracketed form fails to
+  // round-trip through bound INSERT RELATION (`property 'out' is
+  // 'entities:⟨…⟩'` rejection seen in production). Stage-1 name lookup
+  // still searches by the `name_lower` field (which keeps the original
+  // string) so the sanitization only changes the record ID shape, not
+  // the resolution path.
+  const safeName =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'unnamed';
+  const stableKey = `${type}__${safeName}`;
   const fields = {
     name,
     type,
