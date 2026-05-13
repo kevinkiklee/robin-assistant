@@ -64,8 +64,9 @@ function buildV1Home(home) {
     '{"last":"now"}',
   );
 
-  // backup/  (empty in production today, but exercised)
+  // backup/ — a stray DB snapshot tarball from a prior `robin migrate` run.
   mkdirSync(join(home, 'backup'), { recursive: true });
+  writeFileSync(join(home, 'backup', '20260512-214549.tar'), 'snapshot-tar-bytes');
 
   // secrets/.env
   mkdirSync(join(home, 'secrets'), { recursive: true });
@@ -269,6 +270,13 @@ test('migrateUserDataLayout: full v1 home → v2 layout', async () => {
     assert.equal(
       readFileSync(join(home, 'jobs', 'daily-briefing.md'), 'utf8'),
       'daily-briefing-override',
+    );
+
+    // backup/*.tar → data/snapshots/
+    assert.equal(
+      readFileSync(join(home, 'data', 'snapshots', '20260512-214549.tar'), 'utf8'),
+      'snapshot-tar-bytes',
+      'backup tarball moved into data/snapshots/',
     );
 
     // Cleanup happened

@@ -237,6 +237,13 @@ export async function migrateUserDataLayout(home, opts = {}) {
       ctx,
     );
 
+    // 4b. backup/*.tar (and any other contents) → data/snapshots/. The
+    // dir-rename `moveEntry` would suffice on a fresh v1 home, but
+    // ensureHome's mkdir of data/snapshots/ frequently runs alongside
+    // the migrator on test instances, so we file-by-file the contents
+    // instead. Empty backup/ is no-op; rmdir is handled in step 13.
+    moveGlob(join(home, 'backup'), () => true, join(home, 'data', 'snapshots'), ctx);
+
     // 5. runtime/state/published/index.jsonl → io/publish/index.jsonl
     moveFile(
       join(home, 'runtime', 'state', 'published', 'index.jsonl'),
