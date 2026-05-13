@@ -8,7 +8,10 @@ import { stopHookHandler } from '../../io/hooks/stop-hook.js';
 
 function seedConfig(home) {
   mkdirSync(join(home, 'config'), { recursive: true });
-  writeFileSync(join(home, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  writeFileSync(
+    join(home, 'config', 'config.json'),
+    JSON.stringify({ embedder_profile: 'mxbai-1024' }),
+  );
 }
 
 async function waitForState(home, timeoutMs = 15000) {

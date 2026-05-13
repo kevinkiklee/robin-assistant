@@ -1,30 +1,33 @@
-import { stat, readFile } from 'node:fs/promises';
-import { dirname, isAbsolute, resolve as resolvePath, basename } from 'node:path';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import remarkGfm from 'remark-gfm';
-import remarkRehype from 'remark-rehype';
+import { readFile, stat } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, resolve as resolvePath } from 'node:path';
 import rehypeRaw from 'rehype-raw';
-import rehypeSlug from 'rehype-slug';
 import rehypeSanitize from 'rehype-sanitize';
+import rehypeSlug from 'rehype-slug';
 import rehypeStringify from 'rehype-stringify';
-import { extractFrontmatter, normalizeMarkdown, sanitizeSchema } from './pipeline.js';
-import { shouldRefuseUntrusted, stripUntrustedBlocks } from './untrusted.js';
-import { deriveSlug, sanitizeSlug, appendSuffix } from './slug.js';
-import { walkLocalImages } from './images.js';
-import { wrapHtml } from './template.js';
-import { appendLogEntry, readLog } from './log.js';
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import remarkRehype from 'remark-rehype';
+import { unified } from 'unified';
 import {
   COLLISION_RETRY_LIMIT,
-  HTML_CACHE_CONTROL,
   logPath as defaultLogPath,
   telemetryPath as defaultTelemetryPath,
-  EXIT_POLICY, EXIT_INPUT, EXIT_UPSTREAM,
+  EXIT_INPUT,
+  EXIT_POLICY,
+  EXIT_UPSTREAM,
+  HTML_CACHE_CONTROL,
   MARKDOWN_SOURCE_MAX_BYTES,
-  PAGE_PAYLOAD_REFUSE_BYTES, PAGE_PAYLOAD_WARN_BYTES,
-  SLUG_MAX_LENGTH,
+  PAGE_PAYLOAD_REFUSE_BYTES,
+  PAGE_PAYLOAD_WARN_BYTES,
   RESERVED_SLUG_PREFIX,
+  SLUG_MAX_LENGTH,
 } from './config.js';
+import { walkLocalImages } from './images.js';
+import { appendLogEntry, readLog } from './log.js';
+import { extractFrontmatter, normalizeMarkdown, sanitizeSchema } from './pipeline.js';
+import { appendSuffix, deriveSlug, sanitizeSlug } from './slug.js';
+import { wrapHtml } from './template.js';
+import { shouldRefuseUntrusted, stripUntrustedBlocks } from './untrusted.js';
 
 export class PublishError extends Error {
   constructor(code, message) {
@@ -34,8 +37,12 @@ export class PublishError extends Error {
   }
 }
 
-function nowUtcDate() { return new Date().toISOString().slice(0, 10); }
-function nowIsoMs() { return new Date().toISOString(); }
+function nowUtcDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+function nowIsoMs() {
+  return new Date().toISOString();
+}
 
 function extractFirstH1(body) {
   const m = body.match(/^#\s+(.+?)\s*$/m);
@@ -46,8 +53,11 @@ function extractFirstH1(body) {
 // with real blob URLs using the configured blobPublicBaseUrl.
 function rewriteDeterministicUrls(tree, blobPublicBaseUrl) {
   _walkTree(tree, (node) => {
-    if (node.type === 'image' && typeof node.url === 'string'
-        && node.url.startsWith('RESOLVE_DETERMINISTIC:')) {
+    if (
+      node.type === 'image' &&
+      typeof node.url === 'string' &&
+      node.url.startsWith('RESOLVE_DETERMINISTIC:')
+    ) {
       const key = node.url.slice('RESOLVE_DETERMINISTIC:'.length);
       node.url = `${blobPublicBaseUrl}/${key}`;
     }
@@ -75,8 +85,8 @@ export async function publish({
   mode = 'default',
   forceUntrusted = false,
   dryRun = false,
-  env,               // { token, userId, publicUrl, blobPublicBaseUrl, repoRoot }
-  blobClient,        // { headBlob, putBlob, delBlob }
+  env, // { token, userId, publicUrl, blobPublicBaseUrl, repoRoot }
+  blobClient, // { headBlob, putBlob, delBlob }
   logPath = defaultLogPath(),
   telemetryPath = defaultTelemetryPath(),
 }) {
@@ -85,11 +95,19 @@ export async function publish({
 
   // Resolve log/telemetry paths relative to repoRoot when not absolute.
   const absLogPath = isAbsolute(logPath) ? logPath : resolvePath(env.repoRoot, logPath);
-  const absTelemetryPath = isAbsolute(telemetryPath) ? telemetryPath : resolvePath(env.repoRoot, telemetryPath);
+  const absTelemetryPath = isAbsolute(telemetryPath)
+    ? telemetryPath
+    : resolvePath(env.repoRoot, telemetryPath);
 
   // --- mode=delete branch ---
   if (mode === 'delete') {
-    return runDelete({ slug: explicitSlug, env, blobClient, logPath: absLogPath, telemetryPath: absTelemetryPath });
+    return runDelete({
+      slug: explicitSlug,
+      env,
+      blobClient,
+      logPath: absLogPath,
+      telemetryPath: absTelemetryPath,
+    });
   }
 
   if (!source) throw new PublishError(EXIT_INPUT, `source required for mode=${mode}`);
@@ -106,9 +124,9 @@ export async function publish({
     throw new PublishError(
       EXIT_POLICY,
       `Refused: ${source} is marked trust:untrusted. Publishing verbatim would close a prompt-injection loop.\n` +
-      `Options:\n` +
-      `  1. Copy the parts you want into a new file.\n` +
-      `  2. Re-run with "publish anyway" / --force-untrusted to publish anyway.`,
+        `Options:\n` +
+        `  1. Copy the parts you want into a new file.\n` +
+        `  2. Re-run with "publish anyway" / --force-untrusted to publish anyway.`,
     );
   }
 
@@ -127,14 +145,23 @@ export async function publish({
   let slugCandidate = null;
   if (explicitSlug != null && explicitSlug !== '') {
     if (explicitSlug.length > SLUG_MAX_LENGTH) {
-      throw new PublishError(EXIT_INPUT, `--slug too long: ${explicitSlug.length} chars (max ${SLUG_MAX_LENGTH})`);
+      throw new PublishError(
+        EXIT_INPUT,
+        `--slug too long: ${explicitSlug.length} chars (max ${SLUG_MAX_LENGTH})`,
+      );
     }
     if (explicitSlug.startsWith(RESERVED_SLUG_PREFIX)) {
-      throw new PublishError(EXIT_POLICY, `--slug starts with reserved prefix '${RESERVED_SLUG_PREFIX}'`);
+      throw new PublishError(
+        EXIT_POLICY,
+        `--slug starts with reserved prefix '${RESERVED_SLUG_PREFIX}'`,
+      );
     }
     const sanitized = sanitizeSlug(explicitSlug);
     if (!sanitized) {
-      throw new PublishError(EXIT_INPUT, `--slug "${explicitSlug}" is not a valid slug after sanitization`);
+      throw new PublishError(
+        EXIT_INPUT,
+        `--slug "${explicitSlug}" is not a valid slug after sanitization`,
+      );
     }
     slugCandidate = sanitized;
   }
@@ -224,9 +251,8 @@ export async function publish({
   const bodyHtml = String(htmlProcessor.stringify(hast));
 
   // 12. Derive title + description
-  const title = frontmatter.title
-    || extractFirstH1(body)
-    || basename(absSource).replace(/\.[^.]+$/, '');
+  const title =
+    frontmatter.title || extractFirstH1(body) || basename(absSource).replace(/\.[^.]+$/, '');
   const description = frontmatter.description ?? null;
 
   // 13. Wrap in HTML template
@@ -303,7 +329,9 @@ export async function publish({
       duration_ms: Date.now() - t0,
       warning_count: warnings.length,
     });
-  } catch { /* telemetry is best-effort */ }
+  } catch {
+    /* telemetry is best-effort */
+  }
 
   return resultBase;
 }
@@ -329,7 +357,9 @@ async function runDelete({ slug: explicitSlug, env, blobClient, logPath, telemet
           duration_ms: Date.now() - t0,
           warning_count: 0,
         });
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
     return {
       url: `${env.publicUrl}/p/${slug}`,
@@ -366,7 +396,9 @@ async function runDelete({ slug: explicitSlug, env, blobClient, logPath, telemet
       assets: [],
       warnings: [],
     });
-  } catch { /* log failure doesn't fail delete */ }
+  } catch {
+    /* log failure doesn't fail delete */
+  }
 
   // Append telemetry entry (best-effort).
   if (telemetryPath) {
@@ -380,7 +412,9 @@ async function runDelete({ slug: explicitSlug, env, blobClient, logPath, telemet
         duration_ms: Date.now() - t0,
         warning_count: 0,
       });
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   return {

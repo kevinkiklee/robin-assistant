@@ -2,8 +2,7 @@ import { checkOutbound } from '../../../../cognition/discretion/outbound-policy.
 import { checkActionTrust, recordOutcome } from '../../../../cognition/jobs/action-trust.js';
 import { getSecret } from '../../../../config/secrets.js';
 import { checkRateLimit } from '../../../outbound/rate-limit.js';
-
-const MAX_CONTENT = 2000;
+import { DISCORD_MESSAGE_MAX } from '../constants.js';
 
 function splitIds(value) {
   return (value ?? '')
@@ -71,8 +70,8 @@ export function createDiscordSendTool({ db, capture, getGatewayClient }) {
       if (typeof content !== 'string' || content.length === 0) {
         return { ok: false, reason: 'missing_arg', arg: 'content' };
       }
-      if (content.length > MAX_CONTENT) {
-        return { ok: false, reason: 'content_too_long', max: MAX_CONTENT, given: content.length };
+      if (content.length > DISCORD_MESSAGE_MAX) {
+        return { ok: false, reason: 'content_too_long', max: DISCORD_MESSAGE_MAX, given: content.length };
       }
 
       const client = getGatewayClient?.('discord') ?? null;

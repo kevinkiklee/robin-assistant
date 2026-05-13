@@ -3,7 +3,7 @@
 
 import { parseArgs } from 'node:util';
 import { paths } from '../../../config/data-store.js';
-import { readLog, groupBySlug } from '../../../io/publish/log.js';
+import { groupBySlug, readLog } from '../../../io/publish/log.js';
 
 function pad(s, n) {
   s = String(s);

@@ -11,15 +11,19 @@ export const SLUG_MAX_LENGTH = 80;
 export const COLLISION_RETRY_LIMIT = 5;
 
 export const ASSET_CONCURRENCY = 8;
-export const ASSET_MAX_BYTES = 10 * 1024 * 1024;       // 10 MB
+export const ASSET_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 export const ASSETS_PER_PAGE_MAX = 200;
 export const ALLOWED_IMAGE_MIMES = new Set([
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/avif',
 ]);
 
-export const MARKDOWN_SOURCE_MAX_BYTES = 2 * 1024 * 1024;     // 2 MB
-export const PAGE_PAYLOAD_WARN_BYTES = 25 * 1024 * 1024;      // 25 MB
-export const PAGE_PAYLOAD_REFUSE_BYTES = 50 * 1024 * 1024;    // 50 MB
+export const MARKDOWN_SOURCE_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+export const PAGE_PAYLOAD_WARN_BYTES = 25 * 1024 * 1024; // 25 MB
+export const PAGE_PAYLOAD_REFUSE_BYTES = 50 * 1024 * 1024; // 50 MB
 export const TITLE_MAX_LENGTH = 200;
 export const DESCRIPTION_MAX_LENGTH = 300;
 

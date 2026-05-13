@@ -1,5 +1,5 @@
-import { head, put, del } from '@vercel/blob';
-import { BLOB_RETRY_MAX, BLOB_RETRY_DELAYS_MS } from './config.js';
+import { del, head, put } from '@vercel/blob';
+import { BLOB_RETRY_DELAYS_MS, BLOB_RETRY_MAX } from './config.js';
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -45,10 +45,10 @@ export function createBlobClient({ token, sdk = { head, put, del }, sleepFn = de
       // Treat any not-found-flavored error as a missing blob; rethrow others.
       const msg = err?.message ?? '';
       if (
-        err?.status === 404
-        || err?.constructor?.name === 'BlobNotFoundError'
-        || /not found/i.test(msg)
-        || /does not exist/i.test(msg)
+        err?.status === 404 ||
+        err?.constructor?.name === 'BlobNotFoundError' ||
+        /not found/i.test(msg) ||
+        /does not exist/i.test(msg)
       ) {
         return { exists: false };
       }
@@ -56,16 +56,22 @@ export function createBlobClient({ token, sdk = { head, put, del }, sleepFn = de
     }
   }
 
-  async function putBlob(key, body, { contentType, cacheControlMaxAge, allowOverwrite = false } = {}) {
-    return withRetry('PUT', () =>
-      sdk.put(key, body, {
-        access: 'public',
-        token,
-        contentType,
-        addRandomSuffix: false,
-        allowOverwrite,
-        ...(cacheControlMaxAge != null ? { cacheControlMaxAge } : {}),
-      }),
+  async function putBlob(
+    key,
+    body,
+    { contentType, cacheControlMaxAge, allowOverwrite = false } = {},
+  ) {
+    return withRetry(
+      'PUT',
+      () =>
+        sdk.put(key, body, {
+          access: 'public',
+          token,
+          contentType,
+          addRandomSuffix: false,
+          allowOverwrite,
+          ...(cacheControlMaxAge != null ? { cacheControlMaxAge } : {}),
+        }),
       { sleepFn },
     );
   }
@@ -77,11 +83,11 @@ export function createBlobClient({ token, sdk = { head, put, del }, sleepFn = de
       // del is idempotent — treat any not-found-flavored error as success
       const msg = err?.message ?? err?.cause?.message ?? '';
       if (
-        err?.status === 404
-        || err?.cause?.status === 404
-        || err?.constructor?.name === 'BlobNotFoundError'
-        || err?.cause?.constructor?.name === 'BlobNotFoundError'
-        || /not found|does not exist/i.test(msg)
+        err?.status === 404 ||
+        err?.cause?.status === 404 ||
+        err?.constructor?.name === 'BlobNotFoundError' ||
+        err?.cause?.constructor?.name === 'BlobNotFoundError' ||
+        /not found|does not exist/i.test(msg)
       ) {
         return;
       }

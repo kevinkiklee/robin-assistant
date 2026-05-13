@@ -1,10 +1,10 @@
-import { mkdir, appendFile, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 export async function appendLogEntry(logPath, row) {
   await mkdir(dirname(logPath), { recursive: true });
   // O_APPEND atomic for sub-PIPE_BUF (4KB) writes; rows are far smaller.
-  await appendFile(logPath, JSON.stringify(row) + '\n');
+  await appendFile(logPath, `${JSON.stringify(row)}\n`);
 }
 
 export async function readLog(logPath) {

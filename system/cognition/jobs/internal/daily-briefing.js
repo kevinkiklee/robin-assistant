@@ -151,10 +151,72 @@ export async function renderNhlSection(db) {
   return `- ${latest.content}`;
 }
 
-export async function renderFinancialsSection(db) {
-  const latest = await latestEvent(db, 'lunch_money');
-  if (!latest) return '_No financials captured._';
-  return `- ${latest.content}`;
+// Shift a local YYYY-MM-DD by N days without DST drift (anchored at noon UTC).
+function shiftLocalDate(localYmd, days) {
+  const [y, m, d] = localYmd.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d, 12));
+  base.setUTCDate(base.getUTCDate() + days);
+  return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}-${String(base.getUTCDate()).padStart(2, '0')}`;
+}
+
+// lunch_money rows: meta.amount is absolute; sign comes from meta.is_income
+// (new syncs) or the `· +$` / `· -$` marker in `content` (legacy rows).
+function isIncomeRow(r) {
+  if (typeof r.meta?.is_income === 'boolean') return r.meta.is_income;
+  return /· \+\$/.test(r.content ?? '');
+}
+
+function isTransferRow(r) {
+  const cat = r.meta?.category ?? '';
+  const payee = r.meta?.payee ?? '';
+  if (/Payment, ?Transfer/i.test(cat)) return true;
+  if (/^Payment to /i.test(payee)) return true;
+  return false;
+}
+
+export async function renderFinancialsSection(db, today) {
+  // Pull a generous window (~2 weeks worth of activity) and bucket by
+  // meta.date — Lunch Money's date is already in the user's local calendar.
+  const rows = await eventsBySource(db, 'lunch_money', 200);
+  if (rows.length === 0) return '_No financials captured._';
+
+  const yesterday = today ? shiftLocalDate(today, -1) : null;
+  if (!yesterday) return `- ${rows[0].content}`;
+
+  const ydayRows = rows.filter((r) => r.meta?.date === yesterday);
+  if (ydayRows.length === 0) return '_No transactions cleared yesterday._';
+
+  const transfers = ydayRows.filter(isTransferRow);
+  const nonTransfers = ydayRows.filter((r) => !isTransferRow(r));
+  const spendRows = nonTransfers.filter((r) => !isIncomeRow(r));
+  const incomeRows = nonTransfers.filter(isIncomeRow);
+
+  const spendTotal = spendRows.reduce((s, r) => s + (Number(r.meta?.amount) || 0), 0);
+
+  const lines = [];
+  const txnLabel = spendRows.length === 1 ? 'txn' : 'txns';
+  lines.push(
+    `- Yesterday's spend: **$${spendTotal.toFixed(2)}** across ${spendRows.length} ${txnLabel}`,
+  );
+
+  const top = [...spendRows]
+    .sort((a, b) => (Number(b.meta?.amount) || 0) - (Number(a.meta?.amount) || 0))
+    .slice(0, 5);
+  for (const r of top) {
+    lines.push(`  - ${r.content}`);
+  }
+
+  if (incomeRows.length > 0) {
+    const inTotal = incomeRows.reduce((s, r) => s + (Number(r.meta?.amount) || 0), 0);
+    lines.push(`- Income / refunds: $${inTotal.toFixed(2)} (${incomeRows.length})`);
+  }
+  if (transfers.length > 0) {
+    const txTotal = transfers.reduce((s, r) => s + (Number(r.meta?.amount) || 0), 0);
+    lines.push(
+      `- Transfers / card payments: $${txTotal.toFixed(2)} across ${transfers.length} (excluded from spend)`,
+    );
+  }
+  return lines.join('\n');
 }
 
 export async function renderFinanceQuoteSection(db) {
@@ -256,7 +318,7 @@ export async function compose({ db, now = new Date() }) {
       renderCalendarSection(db, today),
       renderInboxSection(db, now),
       renderNhlSection(db),
-      renderFinancialsSection(db),
+      renderFinancialsSection(db, today),
       renderFinanceQuoteSection(db),
       renderWhoopSection(db),
       renderWeatherSection(db),

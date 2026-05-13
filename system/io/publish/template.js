@@ -1,4 +1,4 @@
-import { TITLE_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from './config.js';
+import { DESCRIPTION_MAX_LENGTH, TITLE_MAX_LENGTH } from './config.js';
 
 function escapeHtml(s) {
   return String(s)

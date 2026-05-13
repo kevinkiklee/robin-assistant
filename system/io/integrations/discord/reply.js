@@ -1,4 +1,5 @@
 import { checkOutbound } from '../../../cognition/discretion/outbound-policy.js';
+import { DISCORD_MESSAGE_MAX } from './constants.js';
 
 export async function generateAndSendReply({ db, host, message, prompt }) {
   if (!host) {
@@ -6,7 +7,13 @@ export async function generateAndSendReply({ db, host, message, prompt }) {
     return { sent: false, reason: 'no_host' };
   }
   const llm = await host.invokeLLM([{ role: 'user', content: prompt }], { tier: 'fast' });
-  const replyText = (llm.content ?? '').slice(0, 2000);
+  // Slice by code points so emoji / non-BMP characters don't get cut mid-surrogate.
+  const rawReply = String(llm.content ?? '');
+  const codePoints = [...rawReply];
+  const replyText =
+    codePoints.length <= DISCORD_MESSAGE_MAX
+      ? rawReply
+      : codePoints.slice(0, DISCORD_MESSAGE_MAX).join('');
   const policy = await checkOutbound(db, { destination: 'discord', text: replyText });
   if (!policy.ok) {
     await message.reply(`(robin: reply blocked by outbound policy: ${policy.reason})`);

@@ -212,8 +212,7 @@ export const paths = {
     secrets: () => join(robinHome(), 'config', 'secrets'),
 
     // Cognition realm.
-    reinforcementLastRun: () =>
-      join(robinHome(), 'cognition', 'reinforcement-last-run.json'),
+    reinforcementLastRun: () => join(robinHome(), 'cognition', 'reinforcement-last-run.json'),
 
     // Io realm.
     publishIndex: () => join(robinHome(), 'io', 'publish', 'index.jsonl'),
@@ -239,8 +238,7 @@ export const paths = {
     daemonLock: () => join(robinHome(), 'runtime', 'daemon', '.lock'),
     manifest: () => join(robinHome(), 'runtime', 'install', 'manifest.json'),
     manifestLock: () => join(robinHome(), 'runtime', 'install', '.manifest.lock'),
-    hostIntegrations: () =>
-      join(robinHome(), 'runtime', 'install', 'host-integrations.json'),
+    hostIntegrations: () => join(robinHome(), 'runtime', 'install', 'host-integrations.json'),
     marker: () => join(robinHome(), 'runtime', 'install', '.marker.json'),
     installReports: () => join(robinHome(), 'runtime', 'install', 'reports'),
   },
@@ -273,11 +271,7 @@ function ensureMarker(home) {
   mkdirSync(dirname(newMarker), { recursive: true });
   writeFileSync(
     newMarker,
-    JSON.stringify(
-      { user_data_layout_version: MARKER_VERSION_V2, createdAt },
-      null,
-      2,
-    ),
+    JSON.stringify({ user_data_layout_version: MARKER_VERSION_V2, createdAt }, null, 2),
     { mode: 0o644 },
   );
 }

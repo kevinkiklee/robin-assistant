@@ -9,7 +9,7 @@ export function shouldRefuseUntrusted(frontmatter, forceUntrusted) {
 const BLOCK_RE = /<!--\s*UNTRUSTED-START\s*-->[\s\S]*?(?:<!--\s*UNTRUSTED-END\s*-->|$)/g;
 
 export function stripUntrustedBlocks(body) {
-  if (!body || !body.includes('UNTRUSTED-START')) return { body, removed: 0 };
+  if (!body?.includes('UNTRUSTED-START')) return { body, removed: 0 };
   let removed = 0;
   const cleaned = body.replace(BLOCK_RE, () => {
     removed += 1;

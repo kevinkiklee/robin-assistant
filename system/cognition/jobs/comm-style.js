@@ -1,5 +1,6 @@
 // src/jobs/comm-style.js
 import { surql } from 'surrealdb';
+import { DAY_MS } from '../../config/time.js';
 
 export const DEFAULTS = {
   tone: 'balanced',
@@ -64,7 +65,7 @@ export async function setCommStyle(db, fields) {
 // Synthesis
 // ---------------------------------------------------------------------------
 
-const RECENCY_MS = 30 * 86_400_000;
+const RECENCY_MS = 30 * DAY_MS;
 const MIN_SIGNALS = 3;
 const SIGNAL_CAP = 100;
 

@@ -6,8 +6,8 @@
 //   - Peer deps pre-checked so users without `npm install @vercel/blob ...`
 //     get a clean remediation line instead of ERR_MODULE_NOT_FOUND.
 
-import { parseArgs } from 'node:util';
 import { join, resolve as resolvePath } from 'node:path';
+import { parseArgs } from 'node:util';
 import { paths } from '../../../config/data-store.js';
 import { getSecret } from '../../../config/secrets.js';
 
@@ -115,14 +115,14 @@ export async function publish(argv) {
       logPath,
       telemetryPath,
     });
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     process.exit(EXIT_OK);
   } catch (err) {
     if (err instanceof PublishError) {
-      process.stderr.write(err.message + '\n');
+      process.stderr.write(`${err.message}\n`);
       process.exit(err.code);
     }
-    process.stderr.write((err.stack || err.message) + '\n');
+    process.stderr.write(`${err.stack || err.message}\n`);
     process.exit(EXIT_CRASH);
   }
 }

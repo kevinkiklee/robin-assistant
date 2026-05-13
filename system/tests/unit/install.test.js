@@ -565,7 +565,8 @@ test('install reuses existing db.pass on re-install (no rotation)', async () => 
       supervise: noopSupervise(),
       surreal: surrealMock,
     });
-    const firstPass = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8')).db.pass;
+    const firstPass = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8')).db
+      .pass;
     assert.ok(firstPass);
 
     // Re-install with --force. Should pin surreal's `pass` to firstPass.
@@ -591,7 +592,8 @@ test('install reuses existing db.pass on re-install (no rotation)', async () => 
       're-install must pass existing pass through so surreal does not rotate',
     );
 
-    const finalPass = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8')).db.pass;
+    const finalPass = JSON.parse(readFileSync(join(tmpHome, 'config', 'config.json'), 'utf-8')).db
+      .pass;
     assert.equal(finalPass, firstPass, 'config.json db.pass must remain stable across re-install');
   } finally {
     cleanup();

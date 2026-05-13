@@ -11,9 +11,8 @@
 // First matching rule short-circuits.
 
 import { BoundQuery } from 'surrealdb';
+import { DAY_MS } from '../../config/time.js';
 import { isOutboundBlocked } from '../memory/scope-registry.js';
-
-const DAY_MS = 86_400_000;
 
 function tsMs(x) {
   if (x instanceof Date) return x.getTime();

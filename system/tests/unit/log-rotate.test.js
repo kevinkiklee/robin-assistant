@@ -54,10 +54,7 @@ test('rotates when log meets threshold — original truncated to 0 bytes', async
   const content = 'hello from daemon\n'.repeat(100);
   writeFileSync(DAEMON_LOG, content);
   // Override threshold so we don't have to write 10 MB in a unit test.
-  writeFileSync(
-    CONFIG_PATH,
-    JSON.stringify({ logs: { rotateAtBytes: content.length } }),
-  );
+  writeFileSync(CONFIG_PATH, JSON.stringify({ logs: { rotateAtBytes: content.length } }));
 
   const result = JSON.parse(await logRotate());
   assert.equal(result.rotated, true);
@@ -90,10 +87,7 @@ test('overwrites existing daemon.log.1 on rotation', async () => {
 test('uses config.json logs.rotateAtBytes threshold when present', async () => {
   const customThreshold = 512;
   writeLog(DAEMON_LOG, customThreshold);
-  writeFileSync(
-    CONFIG_PATH,
-    JSON.stringify({ logs: { rotateAtBytes: customThreshold } }),
-  );
+  writeFileSync(CONFIG_PATH, JSON.stringify({ logs: { rotateAtBytes: customThreshold } }));
 
   const result = JSON.parse(await logRotate());
   assert.equal(result.rotated, true);
@@ -103,10 +97,7 @@ test('uses config.json logs.rotateAtBytes threshold when present', async () => {
 test('no rotation when log is one byte below custom threshold', async () => {
   const customThreshold = 256;
   writeLog(DAEMON_LOG, customThreshold - 1);
-  writeFileSync(
-    CONFIG_PATH,
-    JSON.stringify({ logs: { rotateAtBytes: customThreshold } }),
-  );
+  writeFileSync(CONFIG_PATH, JSON.stringify({ logs: { rotateAtBytes: customThreshold } }));
 
   const result = JSON.parse(await logRotate());
   assert.equal(result.rotated, false);

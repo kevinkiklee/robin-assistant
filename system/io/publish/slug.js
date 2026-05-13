@@ -1,10 +1,10 @@
-import { customAlphabet } from 'nanoid';
 import { basename, extname } from 'node:path';
+import { customAlphabet } from 'nanoid';
 import {
-  SLUG_ALPHABET,
-  SLUG_SUFFIX_LENGTH,
-  SLUG_MAX_LENGTH,
   RESERVED_SLUG_PREFIX,
+  SLUG_ALPHABET,
+  SLUG_MAX_LENGTH,
+  SLUG_SUFFIX_LENGTH,
 } from './config.js';
 
 const nano = customAlphabet(SLUG_ALPHABET, SLUG_SUFFIX_LENGTH);
@@ -39,8 +39,11 @@ function firstLine(body) {
 export function deriveSlug({ explicit, source, isDirectory, body, frontmatter }) {
   const candidates = [];
   if (explicit) candidates.push({ raw: explicit, origin: 'user-specified' });
+  if (frontmatter?.slug) candidates.push({ raw: frontmatter.slug, origin: 'user-specified' });
+  if (frontmatter?.title) candidates.push({ raw: frontmatter.title, origin: 'robin-derived' });
   if (source && isDirectory) candidates.push({ raw: basename(source), origin: 'robin-derived' });
-  else if (source) candidates.push({ raw: basename(source, extname(source)), origin: 'robin-derived' });
+  else if (source)
+    candidates.push({ raw: basename(source, extname(source)), origin: 'robin-derived' });
   candidates.push({ raw: firstH1(body), origin: 'robin-derived' });
   candidates.push({ raw: firstLine(body), origin: 'robin-derived' });
   candidates.push({ raw: 'page', origin: 'robin-derived' });
@@ -53,7 +56,7 @@ export function deriveSlug({ explicit, source, isDirectory, body, frontmatter })
 }
 
 export function appendSuffix(base) {
-  const suffix = '-' + nano();
+  const suffix = `-${nano()}`;
   const room = SLUG_MAX_LENGTH - suffix.length;
   const trimmedBase = base.slice(0, room).replace(/-+$/, '');
   return trimmedBase + suffix;

@@ -27,6 +27,7 @@ export function transactionToEvent(t) {
       account_id: t.asset_id ?? t.plaid_account_id ?? null,
       payee: t.payee,
       amount,
+      is_income: !!t.is_income,
       currency: t.currency,
       category: t.category_name,
       date: t.date,

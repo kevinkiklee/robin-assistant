@@ -84,9 +84,7 @@ function applyUserOverride(byName, filePath) {
   }
   const expectedName = basename(filePath).replace(/\.md$/, '');
   if (expectedName !== target) {
-    throw new Error(
-      `override: filename '${expectedName}' must match override target '${target}'`,
-    );
+    throw new Error(`override: filename '${expectedName}' must match override target '${target}'`);
   }
   const builtin = byName.get(target);
   if (!builtin) {

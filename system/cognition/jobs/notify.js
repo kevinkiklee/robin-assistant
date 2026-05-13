@@ -8,8 +8,13 @@ function readAllowedUserIds() {
 }
 
 function truncateForDiscord(text) {
-  if (text.length <= DISCORD_MAX) return text;
-  return `${text.slice(0, DISCORD_MAX - 1)}…`;
+  // Spread to code points: `String.slice` cuts surrogate pairs mid-pair when an
+  // emoji or non-BMP character straddles the boundary, and Discord's API can
+  // reject the resulting invalid UTF-16. Discord's 2000 limit is by code unit,
+  // but emitting valid UTF-16 is what matters here.
+  const codePoints = [...text];
+  if (codePoints.length <= DISCORD_MAX) return text;
+  return `${codePoints.slice(0, DISCORD_MAX - 1).join('')}…`;
 }
 
 export async function dispatchNotify({ capture, name, notify, output, tools, kind }) {

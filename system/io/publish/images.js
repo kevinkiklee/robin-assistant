@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { resolve, relative, sep } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { fileTypeFromBuffer } from 'file-type';
 import { visit } from 'unist-util-visit';
 import {
+  ALLOWED_IMAGE_MIMES,
   ASSET_CACHE_CONTROL,
   ASSET_CONCURRENCY,
   ASSET_MAX_BYTES,
   ASSETS_PER_PAGE_MAX,
-  ALLOWED_IMAGE_MIMES,
 } from './config.js';
 
 const MIME_TO_EXT = new Map([
@@ -53,7 +53,7 @@ async function uploadOne({ url, sourceDir, slug, userId, blobClient }) {
   let bytes;
   try {
     bytes = await readFile(abs);
-  } catch (e) {
+  } catch (_e) {
     return { ok: false, warning: `dropped image (${url}): not found or unreadable` };
   }
   if (bytes.length > ASSET_MAX_BYTES) {
@@ -61,7 +61,8 @@ async function uploadOne({ url, sourceDir, slug, userId, blobClient }) {
   }
   const sniff = await fileTypeFromBuffer(bytes);
   if (!sniff) return { ok: false, warning: `dropped image (${url}): could not sniff content-type` };
-  if (sniff.mime === 'image/svg+xml') return { ok: false, warning: `dropped image (${url}): svg not supported in v1` };
+  if (sniff.mime === 'image/svg+xml')
+    return { ok: false, warning: `dropped image (${url}): svg not supported in v1` };
   if (!ALLOWED_IMAGE_MIMES.has(sniff.mime)) {
     return { ok: false, warning: `dropped image (${url}): unsupported mime ${sniff.mime}` };
   }
@@ -74,7 +75,10 @@ async function uploadOne({ url, sourceDir, slug, userId, blobClient }) {
     // Use deterministic public URL pattern; same URL for re-upload.
     blobUrl = `RESOLVE_DETERMINISTIC:${key}`;
   } else {
-    const r = await blobClient.putBlob(key, bytes, { contentType: sniff.mime, cacheControl: ASSET_CACHE_CONTROL });
+    const r = await blobClient.putBlob(key, bytes, {
+      contentType: sniff.mime,
+      cacheControl: ASSET_CACHE_CONTROL,
+    });
     blobUrl = r.url;
   }
   return { ok: true, key, url: blobUrl };
@@ -94,7 +98,11 @@ async function pMapLimit(items, limit, mapper) {
 }
 
 export async function walkLocalImages({
-  tree, sourceDir, slug, userId, blobClient,
+  tree,
+  sourceDir,
+  slug,
+  userId,
+  blobClient,
   concurrency = ASSET_CONCURRENCY,
   maxAssets = ASSETS_PER_PAGE_MAX,
 }) {
@@ -106,7 +114,9 @@ export async function walkLocalImages({
   const warnings = [];
   let workSet = targets;
   if (workSet.length > maxAssets) {
-    warnings.push(`max-assets (${maxAssets}) exceeded; dropped ${workSet.length - maxAssets} excess image refs`);
+    warnings.push(
+      `max-assets (${maxAssets}) exceeded; dropped ${workSet.length - maxAssets} excess image refs`,
+    );
     // Drop the excess from the AST and from the work set
     for (const dropped of workSet.slice(maxAssets)) dropped.url = '';
     workSet = workSet.slice(0, maxAssets);

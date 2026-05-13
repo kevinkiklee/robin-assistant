@@ -131,8 +131,7 @@ test('nhl sync (regular season) filters to favorite team + emits summary', async
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/schedule/now'))
       return { ok: true, json: async () => leagueWeek(sampleGames) };
-    if (url.includes('/standings/now'))
-      return { ok: true, json: async () => standingsPayload };
+    if (url.includes('/standings/now')) return { ok: true, json: async () => standingsPayload };
     throw new Error(`unexpected ${url}`);
   });
   const captured = [];
@@ -167,8 +166,7 @@ test('nhl sync (regular season) drops games not involving favorite team', async 
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/schedule/now'))
       return { ok: true, json: async () => leagueWeek([...sampleGames, otherGame]) };
-    if (url.includes('/standings/now'))
-      return { ok: true, json: async () => standingsPayload };
+    if (url.includes('/standings/now')) return { ok: true, json: async () => standingsPayload };
     throw new Error(`unexpected ${url}`);
   });
   const captured = [];
@@ -210,8 +208,7 @@ test('nhl sync (playoffs) keeps all games, skips single-team summary', async () 
   const fetchFn = mock.fn(async (url) => {
     if (url.includes('/schedule/now'))
       return { ok: true, json: async () => leagueWeek(playoffGames) };
-    if (url.includes('/standings/now'))
-      return { ok: true, json: async () => standingsPayload };
+    if (url.includes('/standings/now')) return { ok: true, json: async () => standingsPayload };
     throw new Error(`unexpected ${url}`);
   });
   const captured = [];

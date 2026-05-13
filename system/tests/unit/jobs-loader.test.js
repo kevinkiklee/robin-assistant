@@ -127,13 +127,18 @@ test('discoverJobs — defaults filled in', () => {
 });
 
 test('discoverJobs — user override merges with builtin', () => {
-  writeJob(join(tmp, 'builtin'), 'foo', {
-    name: 'foo',
-    schedule: '@daily',
-    runtime: 'agent',
-    enabled: true,
-    timeout_minutes: 5,
-  }, 'builtin body');
+  writeJob(
+    join(tmp, 'builtin'),
+    'foo',
+    {
+      name: 'foo',
+      schedule: '@daily',
+      runtime: 'agent',
+      enabled: true,
+      timeout_minutes: 5,
+    },
+    'builtin body',
+  );
   writeJob(
     join(tmp, 'user'),
     'foo',

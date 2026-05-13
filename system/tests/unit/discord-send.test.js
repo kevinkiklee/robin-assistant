@@ -26,7 +26,10 @@ test.beforeEach(() => {
   mkdirSync(tmpHome, { recursive: true });
   process.env.ROBIN_HOME = tmpHome;
   mkdirSync(join(tmpHome, 'config'), { recursive: true });
-  writeFileSync(join(tmpHome, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  writeFileSync(
+    join(tmpHome, 'config', 'config.json'),
+    JSON.stringify({ embedder_profile: 'mxbai-1024' }),
+  );
 });
 test.afterEach(() => {
   rmSync(tmpHome, { recursive: true, force: true });

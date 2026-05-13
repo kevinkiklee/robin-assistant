@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { BoundQuery, surql } from 'surrealdb';
+import { DAY_MS } from '../../config/time.js';
 import { isOutboundBlocked } from '../memory/scope-registry.js';
 import { PII_PATTERNS, SECRET_PATTERNS } from './outbound-patterns.js';
 
@@ -18,11 +19,15 @@ function tokenize(text) {
 function containsVerbatim(replyText, sourceText, minWords = MIN_QUOTE_WORDS) {
   const reply = tokenize(replyText);
   const source = tokenize(sourceText);
-  if (source.length < minWords) return false;
-  const replyJoined = reply.join(' ');
+  if (source.length < minWords || reply.length < minWords) return false;
+  // Build a set of all N-grams in the reply, then scan source N-grams against it.
+  // O(reply + source) instead of the previous O(reply × source).
+  const replyGrams = new Set();
+  for (let i = 0; i + minWords <= reply.length; i++) {
+    replyGrams.add(reply.slice(i, i + minWords).join(' '));
+  }
   for (let i = 0; i + minWords <= source.length; i++) {
-    const window = source.slice(i, i + minWords).join(' ');
-    if (replyJoined.includes(window)) return true;
+    if (replyGrams.has(source.slice(i, i + minWords).join(' '))) return true;
   }
   return false;
 }
@@ -57,7 +62,7 @@ export async function checkOutbound(db, { destination, text }) {
       return { ok: false, reason: `secret:${p.name}` };
     }
   }
-  const cutoff = new Date(Date.now() - UNTRUSTED_LOOKBACK_DAYS * 86400_000);
+  const cutoff = new Date(Date.now() - UNTRUSTED_LOOKBACK_DAYS * DAY_MS);
   // SurrealDB v3 needs the field used in ORDER BY to appear in the projection.
   const [rows] = await db
     .query(

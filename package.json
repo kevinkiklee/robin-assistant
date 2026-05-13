@@ -60,19 +60,45 @@
     "unist-util-visit": "^5"
   },
   "peerDependenciesMeta": {
-    "@vercel/blob": { "optional": true },
-    "file-type": { "optional": true },
-    "gray-matter": { "optional": true },
-    "nanoid": { "optional": true },
-    "rehype-raw": { "optional": true },
-    "rehype-sanitize": { "optional": true },
-    "rehype-slug": { "optional": true },
-    "rehype-stringify": { "optional": true },
-    "remark-gfm": { "optional": true },
-    "remark-parse": { "optional": true },
-    "remark-rehype": { "optional": true },
-    "unified": { "optional": true },
-    "unist-util-visit": { "optional": true }
+    "@vercel/blob": {
+      "optional": true
+    },
+    "file-type": {
+      "optional": true
+    },
+    "gray-matter": {
+      "optional": true
+    },
+    "nanoid": {
+      "optional": true
+    },
+    "rehype-raw": {
+      "optional": true
+    },
+    "rehype-sanitize": {
+      "optional": true
+    },
+    "rehype-slug": {
+      "optional": true
+    },
+    "rehype-stringify": {
+      "optional": true
+    },
+    "remark-gfm": {
+      "optional": true
+    },
+    "remark-parse": {
+      "optional": true
+    },
+    "remark-rehype": {
+      "optional": true
+    },
+    "unified": {
+      "optional": true
+    },
+    "unist-util-visit": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

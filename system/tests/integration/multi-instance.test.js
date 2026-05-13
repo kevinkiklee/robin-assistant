@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { connect as netConnect, createServer } from 'node:net';
+import { createServer, connect as netConnect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -146,7 +146,7 @@ test('multiple parallel HTTP requests to the daemon do not corrupt the DB', {
           `http://127.0.0.1:${state.port}/internal/biographer/process-pending`,
           { method: 'POST', headers, body: '{}', signal: AbortSignal.timeout(2_000) },
         ).catch(() => null);
-        if (r && r.ok && Date.now() - start < 1_000) break;
+        if (r?.ok && Date.now() - start < 1_000) break;
         await new Promise((r) => setTimeout(r, 500));
       }
       const reqs = Array.from({ length: 10 }, () =>

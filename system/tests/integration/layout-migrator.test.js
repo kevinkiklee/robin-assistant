@@ -52,17 +52,11 @@ function buildV1Home(home) {
 
   // runtime/state/
   mkdirSync(join(home, 'runtime', 'state', 'published'), { recursive: true });
-  writeFileSync(
-    join(home, 'runtime', 'state', 'published', 'index.jsonl'),
-    '{"id":"pub-1"}\n',
-  );
+  writeFileSync(join(home, 'runtime', 'state', 'published', 'index.jsonl'), '{"id":"pub-1"}\n');
   mkdirSync(join(home, 'runtime', 'state', 'telemetry'), { recursive: true });
   writeFileSync(join(home, 'runtime', 'state', 'telemetry', 'publish.log'), 'publish-telemetry');
   writeFileSync(join(home, 'runtime', 'state', 'daemon-status.json'), '{"pid":1234}');
-  writeFileSync(
-    join(home, 'runtime', 'state', 'recall-reinforce-last-run.json'),
-    '{"last":"now"}',
-  );
+  writeFileSync(join(home, 'runtime', 'state', 'recall-reinforce-last-run.json'), '{"last":"now"}');
 
   // backup/ — a stray DB snapshot tarball from a prior `robin migrate` run.
   mkdirSync(join(home, 'backup'), { recursive: true });
@@ -198,11 +192,17 @@ test('migrateUserDataLayout: full v1 home → v2 layout', async () => {
 
     // cache/v1-import-report-* → runtime/install/reports/
     assert.equal(
-      readFileSync(join(home, 'runtime', 'install', 'reports', 'v1-import-report-AAA.json'), 'utf8'),
+      readFileSync(
+        join(home, 'runtime', 'install', 'reports', 'v1-import-report-AAA.json'),
+        'utf8',
+      ),
       '{"session":"AAA"}',
     );
     assert.equal(
-      readFileSync(join(home, 'runtime', 'install', 'reports', 'v1-import-report-BBB.json'), 'utf8'),
+      readFileSync(
+        join(home, 'runtime', 'install', 'reports', 'v1-import-report-BBB.json'),
+        'utf8',
+      ),
       '{"session":"BBB"}',
     );
 
@@ -252,20 +252,18 @@ test('migrateUserDataLayout: full v1 home → v2 layout', async () => {
     assert.equal(readFileSync(join(home, 'skills', 'INDEX.md'), 'utf8'), 'skills-index');
     assert.equal(readFileSync(join(home, 'skills', 'pdf', 'SKILL.md'), 'utf8'), 'pdf-skill');
     assert.equal(readFileSync(join(home, 'skills', 'docx', 'SKILL.md'), 'utf8'), 'docx-skill');
-    assert.equal(existsSync(join(home, 'skills', 'external')), false, 'old skills/external/ removed');
+    assert.equal(
+      existsSync(join(home, 'skills', 'external')),
+      false,
+      'old skills/external/ removed',
+    );
 
     // sources/media/ removed; sources/documents/ preserved
     assert.equal(existsSync(join(home, 'sources', 'media')), false, 'empty media/ removed');
-    assert.equal(
-      readFileSync(join(home, 'sources', 'documents', 'tax.pdf'), 'utf8'),
-      'tax-bytes',
-    );
+    assert.equal(readFileSync(join(home, 'sources', 'documents', 'tax.pdf'), 'utf8'), 'tax-bytes');
 
     // upload/, artifacts/, jobs/ preserved at root
-    assert.equal(
-      readFileSync(join(home, 'upload', 'Photos-1', 'pic.heic'), 'utf8'),
-      'heic-bytes',
-    );
+    assert.equal(readFileSync(join(home, 'upload', 'Photos-1', 'pic.heic'), 'utf8'), 'heic-bytes');
     assert.equal(readFileSync(join(home, 'artifacts', 'note.md'), 'utf8'), 'note-content');
     assert.equal(
       readFileSync(join(home, 'jobs', 'daily-briefing.md'), 'utf8'),
@@ -359,11 +357,7 @@ test('migrateUserDataLayout: stale lockfile (dead pid) is stolen', async () => {
     writeFileSync(join(home, '.layout-migrator.lock'), '999999');
     const result = await migrateUserDataLayout(home);
     assert.equal(result.migrated, true, 'migration completed after stealing stale lock');
-    assert.equal(
-      existsSync(join(home, '.layout-migrator.lock')),
-      false,
-      'lock removed after run',
-    );
+    assert.equal(existsSync(join(home, '.layout-migrator.lock')), false, 'lock removed after run');
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -382,10 +376,7 @@ test('migrateUserDataLayout: aborts when source and destination are BOTH non-emp
       (err) => err.code === 'LAYOUT_MIGRATOR_CONFLICT',
     );
     // Stranger content is preserved.
-    assert.equal(
-      readFileSync(join(home, 'data', 'db', 'stranger'), 'utf8'),
-      'do-not-overwrite',
-    );
+    assert.equal(readFileSync(join(home, 'data', 'db', 'stranger'), 'utf8'), 'do-not-overwrite');
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

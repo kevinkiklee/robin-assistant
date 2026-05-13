@@ -7,7 +7,10 @@ import { test } from 'node:test';
 
 function seedConfig(home) {
   mkdirSync(join(home, 'config'), { recursive: true });
-  writeFileSync(join(home, 'config', 'config.json'), JSON.stringify({ embedder_profile: 'mxbai-1024' }));
+  writeFileSync(
+    join(home, 'config', 'config.json'),
+    JSON.stringify({ embedder_profile: 'mxbai-1024' }),
+  );
 }
 
 test('robin recall-eval --json exits 1 when rows_scored < min_rows', () => {

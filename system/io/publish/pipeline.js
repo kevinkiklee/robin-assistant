@@ -1,12 +1,12 @@
 import matter from 'gray-matter';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import remarkGfm from 'remark-gfm';
-import remarkRehype from 'remark-rehype';
 import rehypeRaw from 'rehype-raw';
-import rehypeSlug from 'rehype-slug';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeSlug from 'rehype-slug';
 import rehypeStringify from 'rehype-stringify';
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import remarkRehype from 'remark-rehype';
+import { unified } from 'unified';
 
 export function extractFrontmatter(src) {
   const parsed = matter(src);
@@ -15,7 +15,7 @@ export function extractFrontmatter(src) {
 
 export function normalizeMarkdown(src) {
   let s = src;
-  if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
   s = s.replace(/\r\n/g, '\n');
   return s;
 }
@@ -38,10 +38,19 @@ export const sanitizeSchema = {
     ...defaultSchema.attributes,
     '*': [
       ...(defaultSchema.attributes?.['*'] || []).filter((a) => !String(a).startsWith('on')),
-      'id', 'className',
+      'id',
+      'className',
     ],
     a: [...(defaultSchema.attributes?.a || []), 'rel', 'target'],
-    img: [...(defaultSchema.attributes?.img || []), 'alt', 'src', 'title', 'width', 'height', 'loading'],
+    img: [
+      ...(defaultSchema.attributes?.img || []),
+      'alt',
+      'src',
+      'title',
+      'width',
+      'height',
+      'loading',
+    ],
   },
   tagNames: (defaultSchema.tagNames || []).filter(
     (t) => !['script', 'iframe', 'object', 'embed', 'form', 'base'].includes(t),

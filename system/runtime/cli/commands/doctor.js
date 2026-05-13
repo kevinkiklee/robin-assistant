@@ -31,7 +31,7 @@ import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
-import { LEGACY_STRAY_DIRS, detectLayoutVersion } from '../../install/layout-migrator.js';
+import { detectLayoutVersion, LEGACY_STRAY_DIRS } from '../../install/layout-migrator.js';
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { parseArgs } from '../args.js';
 
@@ -318,7 +318,9 @@ async function doStatus(out, deps = {}) {
     out('layout: v2');
   }
   if (layout.strays.length > 0) {
-    out(`  stray legacy: ${layout.strays.join(', ')} — run \`robin migrate-user-data\` to clean up`);
+    out(
+      `  stray legacy: ${layout.strays.join(', ')} — run \`robin migrate-user-data\` to clean up`,
+    );
   }
   if (layout.missing.length > 0) {
     out(`  MISSING expected v2 dirs: ${layout.missing.join(', ')} (failed mid-migration?)`);

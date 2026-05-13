@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { getJob, setEnabled, upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import { getJob, upsertFromDiscovered } from '../../cognition/jobs/db.js';
 import { discoverJobs } from '../../cognition/jobs/loader.js';
 import { runOneJob } from '../../cognition/jobs/runner.js';
 import { writeConfig as __wc } from '../../config/paths.js';
