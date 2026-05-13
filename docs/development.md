@@ -330,7 +330,7 @@ Substrate migrations are rare after v2. Most extensions go through registries, `
    DEFINE INDEX my_op_foo ON my_op FIELDS foo;
    ```
 
-3. **Pre-migration backup.** The runner tars `<robinHome>/db/` into `<robinHome>/data/snapshots/<timestamp>.tar` before applying. You don't need to do anything; just be aware your data is safe.
+3. **Pre-migration backup.** The runner tars `<robinHome>/data/db/` into `<robinHome>/data/snapshots/<timestamp>.tar` before applying. You don't need to do anything; just be aware your data is safe.
 
 4. **Test.** Migrations are exercised by `system/tests/integration/bootstrap-empty-db.test.js` (full sequence). For schema-specific behaviour, add a test that creates a fresh DB, runs migrations, and asserts the resulting shape.
 

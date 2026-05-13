@@ -30,9 +30,19 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, '../../..');
 
-function alreadyInstalled() {
+async function alreadyInstalled() {
   // Pointer at package root means a prior install completed successfully.
   if (existsSync(join(packageRoot, '.robin-home'))) return true;
+  // Canonical pointer location — covers homes relocated outside packageRoot
+  // (e.g. `--home <custom-path>`). Without this check, an npm reinstall would
+  // see no marker under packageRoot/user-data, treat it as a fresh install,
+  // and silently abandon the user's relocated home.
+  try {
+    const { pointerExists } = await import('../../config/data-store.js');
+    if (pointerExists()) return true;
+  } catch {
+    // data-store import failures in postinstall must never block npm install.
+  }
   // Or the default home (<package_root>/user-data/) already has a Robin
   // data marker — covers users who ran `robin install` before the postinstall
   // existed. Skipping here prevents `writeConfig` from clobbering their
@@ -45,7 +55,7 @@ function alreadyInstalled() {
   return false;
 }
 
-function shouldRun() {
+async function shouldRun() {
   if (process.env.ROBIN_SKIP_INSTALL) {
     return { run: false };
   }
@@ -72,14 +82,14 @@ function shouldRun() {
         'Robin auto-setup is not supported on Windows yet. Run `node system/bin/robin install` manually.',
     };
   }
-  if (alreadyInstalled()) {
+  if (await alreadyInstalled()) {
     // Upgrade path: idempotent refresh, no prompts, config preserved.
     return { run: true, upgrade: true };
   }
   return { run: true };
 }
 
-const decision = shouldRun();
+const decision = await shouldRun();
 if (!decision.run) {
   if (decision.advise) {
     console.log(`Robin: ${decision.advise}`);

@@ -12,9 +12,9 @@ The schema rewrite changed the checksum of `0001-init.surql`. The migration runn
 # 1. Stop the daemon
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.mcp.plist
 # 2. (safety) backup
-cp -R <robinHome>/db <robinHome>/db.pre-alpha15
+cp -R <robinHome>/data/db <robinHome>/data/db.pre-alpha15
 # 3. Reset
-rm -rf <robinHome>/db/*
+rm -rf <robinHome>/data/db/*
 # 4. Restart — new schema applies on boot
 ```
 
@@ -60,15 +60,16 @@ been folded into the install flow above.
 ### `robin doctor` says the daemon is not running
 
 ```sh
-robin mcp status   # confirm port + pid
-robin mcp start    # foreground start (Ctrl-C to stop)
+robin mcp status              # confirm port + pid
+robin mcp start               # detached start
+robin mcp start --foreground  # foreground start (Ctrl-C to stop)
 ```
 
 If `mcp start` exits immediately:
 
 - **Port in use:** another process is on the same port. `robin mcp status` prints the recorded port. `lsof -i :<port>` to find the squatter.
-- **Lock not released:** `<robinHome>/.daemon.lock` is held. If no daemon PID is alive, delete it: `rm <robinHome>/.daemon.lock`.
-- **Stale state:** `<robinHome>/.daemon.state` lists a dead PID. `robin doctor` detects this. Delete: `rm <robinHome>/.daemon.state`.
+- **Lock not released:** `<robinHome>/runtime/daemon/.lock` is held. If no daemon PID is alive, delete it: `rm <robinHome>/runtime/daemon/.lock`.
+- **Stale state:** `<robinHome>/runtime/daemon/.state` lists a dead PID. `robin doctor` detects this. Delete: `rm <robinHome>/runtime/daemon/.state`.
 
 ### Daemon crashes immediately after start
 
@@ -87,7 +88,7 @@ robin embeddings activate <profile-in-config-json>
 # OR edit user-data/config.json back to the runtime profile
 ```
 
-For a full profile swap (DDL the new profile + backfill + flip) use `robin embeddings prepare/backfill/activate`. The legacy `robin embedder switch` still exists but does an in-place re-embed against the same table set; the new flow is preferred.
+For a full profile swap (DDL the new profile + backfill + flip) use `robin embeddings prepare/backfill/activate`.
 
 ### Daemon's supervisor (launchctl / systemctl) isn't auto-restarting
 
@@ -286,7 +287,7 @@ means the live filesystem diverged from the manifest baseline. Two cases:
 
 - **Unintentional change**: investigate before rebaselining. The finding includes `expected` and `actual` sha256s; `git status` and `git diff` against the tracked file will usually explain.
 
-The `no_baseline` finding (`baselined=false`) means `<robinHome>/manifest.json` is missing — run `robin install` to write one. The daemon still runs without it.
+The `no_baseline` finding (`baselined=false`) means `<robinHome>/runtime/install/manifest.json` is missing — run `robin install` to write one. The daemon still runs without it.
 
 ## Integrations
 
@@ -345,13 +346,13 @@ robin migrate
 
 ### DB migration failed mid-flight
 
-The migration runner tars `<robinHome>/db/` into `<robinHome>/data/snapshots/<timestamp>.tar` before applying each migration. If a migration aborts and leaves the DB in a weird state:
+The migration runner tars `<robinHome>/data/db/` into `<robinHome>/data/snapshots/<timestamp>.tar` before applying each migration. If a migration aborts and leaves the DB in a weird state:
 
 ```sh
 robin mcp stop
-ls <robinHome>/backup/          # find the pre-migration archive
-rm -rf <robinHome>/db/*
-tar -xf <robinHome>/data/snapshots/<timestamp>.tar -C <robinHome>/db/
+ls <robinHome>/data/snapshots/  # find the pre-migration archive
+rm -rf <robinHome>/data/db/*
+tar -xf <robinHome>/data/snapshots/<timestamp>.tar -C <robinHome>/data/db/
 # inspect / fix the migration .surql, then:
 robin migrate
 ```

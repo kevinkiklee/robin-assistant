@@ -112,7 +112,7 @@ export const commands = {
       start: {
         import: './commands/mcp-start.js',
         export: 'mcpStart',
-        help: 'spawn the daemon (foreground unless detached)',
+        help: 'spawn the daemon (detached; pass --foreground for supervisor mode)',
       },
       stop: {
         import: './commands/mcp-stop.js',

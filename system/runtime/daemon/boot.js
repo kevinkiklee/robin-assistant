@@ -98,7 +98,7 @@ export async function boot() {
     const runtimeProfile = rows?.[0]?.value?.profile;
     if (runtimeProfile && runtimeProfile !== cfg.embedder_profile) {
       throw new Error(
-        `config drift detected:\n  config.json says: ${cfg.embedder_profile}\n  runtime:embedder says: ${runtimeProfile}\nRun \`robin embedder switch ${cfg.embedder_profile}\` to migrate the schema, or revert config.json.`,
+        `config drift detected:\n  config.json says: ${cfg.embedder_profile}\n  runtime:embedder says: ${runtimeProfile}\nTo migrate: \`robin embeddings prepare ${cfg.embedder_profile} && robin embeddings backfill ${cfg.embedder_profile} && robin embeddings activate ${cfg.embedder_profile}\` — or revert config.json's embedder_profile to ${runtimeProfile}.`,
       );
     }
   }

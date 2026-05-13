@@ -30,6 +30,13 @@ export async function migrateHome({ from, to, mode }) {
   if (!existsSync(parent)) {
     throw new Error(`migrateHome: target parent does not exist: ${parent}`);
   }
+  // Refuse if the target already exists: the failure-cleanup path below does
+  // `rmSync(to, recursive)`, which would otherwise destroy pre-existing data
+  // (e.g. an aborted prior migration that left the destination populated).
+  // Callers must explicitly clear the target before invoking us.
+  if (existsSync(to)) {
+    throw new Error(`migrateHome: target already exists; refusing to overwrite: ${to}`);
+  }
   const cp = spawnSync('cp', ['-a', `${from}/`, to], { stdio: 'pipe' });
   if (cp.status !== 0) {
     if (existsSync(to)) rmSync(to, { recursive: true, force: true });

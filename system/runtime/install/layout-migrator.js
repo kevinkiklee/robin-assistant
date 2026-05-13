@@ -7,14 +7,17 @@
 // Design spec: docs/superpowers/specs/2026-05-12-user-data-folder-redesign-design.md
 
 import {
+  closeSync,
   existsSync,
   mkdirSync,
-  readFileSync,
+  openSync,
   readdirSync,
+  readFileSync,
   renameSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -76,8 +79,31 @@ function guardDaemonNotRunning(home) {
 }
 
 function acquireLock(lockPath) {
-  if (existsSync(lockPath)) {
-    const holder = Number((readFileSync(lockPath, 'utf8') || '0').trim());
+  // O_EXCL ensures the create-or-fail step is atomic — two concurrent migrators
+  // can't both pass an existsSync check and then both write their pid. If the
+  // lock already exists, retry exactly once after clearing a stale (dead-pid)
+  // lock; that bounds recovery without risking a busy-spin between racing
+  // processes.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(lockPath, 'wx', 0o644);
+      try {
+        writeSync(fd, String(process.pid));
+      } finally {
+        closeSync(fd);
+      }
+      return;
+    } catch (e) {
+      if (e?.code !== 'EEXIST') throw e;
+    }
+    let holder = 0;
+    try {
+      holder = Number((readFileSync(lockPath, 'utf8') || '0').trim());
+    } catch {
+      // Lock file vanished between the EEXIST and the read — race resolved in
+      // our favour; loop and retry the openSync.
+      continue;
+    }
     if (isPidAlive(holder)) {
       const err = new Error(
         `layout-migrator: another robin process (pid ${holder}) is migrating; try again shortly.`,
@@ -89,7 +115,9 @@ function acquireLock(lockPath) {
       unlinkSync(lockPath);
     } catch {}
   }
-  writeFileSync(lockPath, String(process.pid), { mode: 0o644 });
+  const err = new Error('layout-migrator: could not acquire lock after retry');
+  err.code = 'LAYOUT_MIGRATOR_BUSY';
+  throw err;
 }
 
 function releaseLock(lockPath) {
@@ -231,11 +259,7 @@ export async function migrateUserDataLayout(home, opts = {}) {
     );
 
     // 4. cache/sqlite-snapshots/ → io/sqlite-snapshots/
-    moveEntry(
-      join(home, 'cache', 'sqlite-snapshots'),
-      join(home, 'io', 'sqlite-snapshots'),
-      ctx,
-    );
+    moveEntry(join(home, 'cache', 'sqlite-snapshots'), join(home, 'io', 'sqlite-snapshots'), ctx);
 
     // 4b. backup/*.tar (and any other contents) → data/snapshots/. The
     // dir-rename `moveEntry` would suffice on a fresh v1 home, but
@@ -283,11 +307,7 @@ export async function migrateUserDataLayout(home, opts = {}) {
     moveFile(join(home, '.daemon.pid'), join(home, 'runtime', 'daemon', '.pid'), ctx);
     moveFile(join(home, '.daemon.state'), join(home, 'runtime', 'daemon', '.state'), ctx);
     moveFile(join(home, '.daemon.lock'), join(home, 'runtime', 'daemon', '.lock'), ctx);
-    moveFile(
-      join(home, '.manifest.lock'),
-      join(home, 'runtime', 'install', '.manifest.lock'),
-      ctx,
-    );
+    moveFile(join(home, '.manifest.lock'), join(home, 'runtime', 'install', '.manifest.lock'), ctx);
 
     // 10. secrets/ → config/secrets/
     moveEntry(join(home, 'secrets'), join(home, 'config', 'secrets'), ctx);
@@ -311,11 +331,7 @@ export async function migrateUserDataLayout(home, opts = {}) {
       mkdirSync(dirname(newMarker), { recursive: true });
       writeFileSync(
         newMarker,
-        JSON.stringify(
-          { user_data_layout_version: 2, migrated_at: now, createdAt },
-          null,
-          2,
-        ),
+        JSON.stringify({ user_data_layout_version: 2, migrated_at: now, createdAt }, null, 2),
         { mode: 0o644 },
       );
       if (existsSync(oldMarker)) {

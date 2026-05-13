@@ -532,6 +532,10 @@ export async function install(argv = [], deps = {}) {
   // --auto: zero-interaction preset. Equivalent to `--yes --profile mxbai-1024
   // --on-existing ignore`, but only fills in slots the caller didn't set, so
   // explicit flags still win (e.g. `--auto --profile gemini-3072 --i-understand`).
+  // We track whether the profile flag came from --auto (vs the user explicitly
+  // passing --profile) so an upgrade-with-force doesn't silently downgrade an
+  // existing qwen3-4096 or gemini-3072 home to the mxbai default.
+  const profileFromAuto = args.flags.auto === true && !args.flags.profile;
   if (args.flags.auto === true) {
     if (args.flags.yes === undefined) args.flags.yes = true;
     if (!args.flags.profile) args.flags.profile = 'mxbai-1024';
@@ -539,7 +543,7 @@ export async function install(argv = [], deps = {}) {
   }
 
   const force = args.flags.force === true;
-  const profileFlag = typeof args.flags.profile === 'string' ? args.flags.profile : null;
+  let profileFlag = typeof args.flags.profile === 'string' ? args.flags.profile : null;
   const iUnderstand = args.flags['i-understand'] === true;
   const skipMcp = args.flags['no-mcp'] === true;
   const skipMigrate = args.flags['no-migrate'] === true;
@@ -622,6 +626,12 @@ export async function install(argv = [], deps = {}) {
         `Robin is already configured for profile ${existing.embedder_profile}; pass --force to reconfigure.`,
       );
       return;
+    }
+    // `--force --auto` would otherwise silently rewrite the embedder profile
+    // to the --auto default. Keep the user's existing profile unless they
+    // explicitly passed --profile.
+    if (force && profileFromAuto && existing?.embedder_profile) {
+      profileFlag = existing.embedder_profile;
     }
   }
 

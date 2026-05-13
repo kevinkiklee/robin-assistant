@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Integrations
+
+- **`photos` integration.** Apple Photos surface — captures recent imports from the local Photos library into Robin's memory. New MCP tool `photos_recent`; default cadence `6h`. Source directory is `PHOTO_COLLECTION_DIR` (defaults to `~/Photography/Collection`).
+- **`finance_quote` per-holding sync.** `FINANCE_QUOTE_TICKERS` env var now drives per-ticker fetches (one event per holding per tick) so holdings can be queried independently rather than as a single conflated quote.
+
 ### `user-data/` folder redesign — faculty-aligned layout (v2)
 
 The `<robin_home>/user-data/` tree was a flat sprawl of seventeen entries at the root (six loose files mixed with eleven directories, ad-hoc nesting like `runtime/state/`, `cache/logs/` mixing append-only logs with diagnostic reports and snapshots, an empty `backup/`, redundant `skills/external/`). Hard to predict where any file lived; harder to know whether you could touch it. New layout mirrors `system/`'s realm split (cognition · io · data · runtime), keeps every user-touchable surface at the root, and tucks the four faculty realms below.
