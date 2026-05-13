@@ -11,6 +11,7 @@ import dailyBriefing, {
   renderFinanceQuoteSection,
   renderFinancialsSection,
   renderInboxSection,
+  renderNhlSection,
   renderQuarantineSection,
   renderWeatherSection,
   renderWhoopSection,
@@ -147,6 +148,113 @@ test('renderFinanceQuoteSection summarises every captured ticker', async () => {
   assert.match(out, /GOOG/);
   assert.match(out, /145\.23/);
   assert.match(out, /AAPL/);
+  await close(db);
+});
+
+test('renderNhlSection groups games into yesterday/today/tomorrow with scores', async () => {
+  const db = await fresh();
+  // Yesterday — FINAL with score
+  await seed(db, {
+    source: 'nhl',
+    content: 'DAL @ EDM · 2026-05-12 · FINAL',
+    ts: new Date('2026-05-13T02:00:00Z'),
+    meta: {
+      kind: 'game',
+      away: 'DAL',
+      home: 'EDM',
+      date: '2026-05-12',
+      status: 'FINAL',
+      score: { away: 4, home: 3 },
+    },
+  });
+  // Today — SCHED
+  await seed(db, {
+    source: 'nhl',
+    content: 'NYR @ NJD · 2026-05-13 · SCHED',
+    ts: new Date('2026-05-14T00:00:00Z'),
+    meta: {
+      kind: 'game',
+      away: 'NYR',
+      home: 'NJD',
+      date: '2026-05-13',
+      status: 'SCHED',
+      score: null,
+    },
+  });
+  // Tomorrow — SCHED
+  await seed(db, {
+    source: 'nhl',
+    content: 'MTL @ BUF · 2026-05-14 · SCHED',
+    ts: new Date('2026-05-14T23:00:00Z'),
+    meta: {
+      kind: 'game',
+      away: 'MTL',
+      home: 'BUF',
+      date: '2026-05-14',
+      status: 'SCHED',
+      score: null,
+    },
+  });
+  // Out-of-window — must not appear
+  await seed(db, {
+    source: 'nhl',
+    content: 'ANA @ VGK · 2026-05-18 · SCHED',
+    ts: new Date('2026-05-18T23:00:00Z'),
+    meta: {
+      kind: 'game',
+      away: 'ANA',
+      home: 'VGK',
+      date: '2026-05-18',
+      status: 'SCHED',
+      score: null,
+    },
+  });
+
+  const out = await renderNhlSection(db, '2026-05-13');
+  // Yesterday FINAL with winner first
+  assert.match(out, /Yesterday \(2026-05-12\)/);
+  assert.match(out, /DAL 4, EDM 3 \(FINAL\)/);
+  // Today + tomorrow lines
+  assert.match(out, /Today \(2026-05-13\)/);
+  assert.match(out, /NYR @ NJD/);
+  assert.match(out, /Tomorrow \(2026-05-14\)/);
+  assert.match(out, /MTL @ BUF/);
+  // 5/18 game must not leak in
+  assert.doesNotMatch(out, /ANA @ VGK/);
+  await close(db);
+});
+
+test('renderNhlSection drops yesterday games that did not go FINAL', async () => {
+  const db = await fresh();
+  // Yesterday but still SCHED (e.g. postponed/never played) — drop it
+  await seed(db, {
+    source: 'nhl',
+    content: 'DAL @ EDM · 2026-05-12 · SCHED',
+    ts: new Date('2026-05-13T02:00:00Z'),
+    meta: {
+      kind: 'game',
+      away: 'DAL',
+      home: 'EDM',
+      date: '2026-05-12',
+      status: 'SCHED',
+      score: null,
+    },
+  });
+  const out = await renderNhlSection(db, '2026-05-13');
+  assert.match(out, /No NHL games yesterday, today, or tomorrow/);
+  await close(db);
+});
+
+test('renderNhlSection ignores non-game NHL events (standings, summary)', async () => {
+  const db = await fresh();
+  await seed(db, {
+    source: 'nhl',
+    content: 'standings snapshot',
+    ts: new Date('2026-05-13T00:00:00Z'),
+    meta: { kind: 'standings' },
+  });
+  const out = await renderNhlSection(db, '2026-05-13');
+  assert.match(out, /No NHL data captured/);
   await close(db);
 });
 

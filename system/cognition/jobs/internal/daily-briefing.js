@@ -145,10 +145,67 @@ export async function renderInboxSection(db, now) {
   return bulletOrNote(lines, 'No unread mail in the last 24h.');
 }
 
-export async function renderNhlSection(db) {
-  const latest = await latestEvent(db, 'nhl');
-  if (!latest) return '_No NHL data captured._';
-  return `- ${latest.content}`;
+function formatGameTime(ts, tz = TZ) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(ts));
+}
+
+function formatGameLine(r) {
+  const m = r.meta ?? {};
+  const head = `${m.away} @ ${m.home}`;
+  const score = m.score;
+  const hasNumericScore =
+    score && typeof score.away === 'number' && typeof score.home === 'number';
+  if (m.status === 'FINAL' && hasNumericScore) {
+    const a = score.away;
+    const h = score.home;
+    if (a > h) return `${m.away} ${a}, ${m.home} ${h} (FINAL)`;
+    if (h > a) return `${m.home} ${h}, ${m.away} ${a} (FINAL)`;
+    return `${head} · ${a}–${h} (FINAL)`;
+  }
+  if (m.status === 'LIVE' && hasNumericScore) {
+    return `${head} · ${score.away}–${score.home} (LIVE)`;
+  }
+  const time = r.ts ? formatGameTime(r.ts) : '';
+  return time ? `${head} · ${time}` : `${head} · ${m.date}`;
+}
+
+export async function renderNhlSection(db, today) {
+  const rows = await eventsBySource(db, 'nhl', 100);
+  const games = rows.filter((r) => r.meta?.kind === 'game');
+  if (games.length === 0) return '_No NHL data captured._';
+
+  // Legacy caller (no `today`): preserve the original single-event behavior.
+  if (!today) return `- ${games[0].content}`;
+
+  const yesterday = shiftLocalDate(today, -1);
+  const tomorrow = shiftLocalDate(today, 1);
+  const bucket = (date) => games.filter((r) => r.meta?.date === date);
+  // Only surface yesterday for FINAL results — pending games from yesterday
+  // would just be noise on a morning brief.
+  const ydayGames = bucket(yesterday).filter((r) => r.meta?.status === 'FINAL');
+  const todayGames = bucket(today);
+  const tmrwGames = bucket(tomorrow);
+
+  const lines = [];
+  if (ydayGames.length > 0) {
+    lines.push(`- Yesterday (${yesterday})`);
+    for (const r of ydayGames) lines.push(`  - ${formatGameLine(r)}`);
+  }
+  if (todayGames.length > 0) {
+    lines.push(`- Today (${today})`);
+    for (const r of todayGames) lines.push(`  - ${formatGameLine(r)}`);
+  }
+  if (tmrwGames.length > 0) {
+    lines.push(`- Tomorrow (${tomorrow})`);
+    for (const r of tmrwGames) lines.push(`  - ${formatGameLine(r)}`);
+  }
+  if (lines.length === 0) return '_No NHL games yesterday, today, or tomorrow._';
+  return lines.join('\n');
 }
 
 // Shift a local YYYY-MM-DD by N days without DST drift (anchored at noon UTC).
@@ -317,7 +374,7 @@ export async function compose({ db, now = new Date() }) {
     await Promise.all([
       renderCalendarSection(db, today),
       renderInboxSection(db, now),
-      renderNhlSection(db),
+      renderNhlSection(db, today),
       renderFinancialsSection(db, today),
       renderFinanceQuoteSection(db),
       renderWhoopSection(db),
