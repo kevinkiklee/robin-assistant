@@ -75,12 +75,61 @@ function extractBearer(req) {
   return m ? m[1].trim() : null;
 }
 
+// DNS-rebinding defense for loopback-bound HTTP servers. A malicious page can
+// resolve attacker.com to 127.0.0.1 via short-TTL DNS and have the browser
+// send same-origin-looking requests to our local daemon. We block them by
+// requiring the Host header to name a loopback target and rejecting any
+// Origin that isn't a loopback URL (CLI/MCP clients don't set Origin at all).
+function isLoopbackHost(value) {
+  if (typeof value !== 'string') return false;
+  // Strip optional :port for the comparison.
+  const host = value.replace(/:\d+$/, '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+}
+function isLoopbackOrigin(value) {
+  if (typeof value !== 'string' || value === 'null') return false;
+  try {
+    const u = new URL(value);
+    return isLoopbackHost(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function rejectNonLoopback(req, res) {
+  if (!isLoopbackHost(req.headers.host ?? '')) {
+    res.writeHead(403, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        ok: false,
+        error: 'non-loopback Host header',
+        name: 'RobinForbiddenError',
+      }),
+    );
+    return true;
+  }
+  const origin = req.headers.origin;
+  if (origin !== undefined && !isLoopbackOrigin(origin)) {
+    res.writeHead(403, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        ok: false,
+        error: 'non-loopback Origin header',
+        name: 'RobinForbiddenError',
+      }),
+    );
+    return true;
+  }
+  return false;
+}
+
 export function startHttp({ ctx, tools, routes, port, authToken }) {
   const table = new Map();
   for (const r of routes) table.set(`${r.method} ${r.path}`, r);
 
   const server = createServer(async (req, res) => {
     try {
+      if (rejectNonLoopback(req, res)) return;
       if (req.method === 'GET' && req.url.startsWith('/sse')) {
         await handleSse(req, res, { ctx, tools });
         return;

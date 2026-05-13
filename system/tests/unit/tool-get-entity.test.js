@@ -44,6 +44,37 @@ test('get_entity throws on unknown id', async () => {
   await close(db);
 });
 
+test('get_entity rejects ids that would inject SurrealQL', async () => {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
+  const tool = createGetEntityTool({ db });
+  const hostile = [
+    'x; DELETE entities;',
+    "abc' OR true",
+    'entities:abc OR 1=1',
+    'entities:`hack`',
+  ];
+  for (const id of hostile) {
+    await assert.rejects(tool.handler({ id }), /invalid record id/i);
+  }
+  await close(db);
+});
+
+test('get_entity rejects path_kinds outside the allow-list', async () => {
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
+  const [c] = await db
+    .query(surql`CREATE entities CONTENT ${{ name: 'A', type: 'person' }}`)
+    .collect();
+  const id = String((Array.isArray(c) ? c[0] : c).id);
+  const tool = createGetEntityTool({ db });
+  await assert.rejects(
+    tool.handler({ id, path_to: id, path_kinds: ["'); DROP TABLE edges; --"] }),
+    /not allowed/i,
+  );
+  await close(db);
+});
+
 test('get_entity path_to returns the shortest path through chained occurs_with', async () => {
   const { writeCoOccursWith } = await import('../../cognition/biographer/edges.js');
   const db = await connect({ engine: 'mem://' });

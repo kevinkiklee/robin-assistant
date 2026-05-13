@@ -386,3 +386,31 @@ test('omitting authToken skips the gate entirely (backward compat)', async () =>
   assert.deepEqual(r.body, { ok: true, received: { hi: 2 } });
   server.close();
 });
+
+test('rejects non-loopback Host header (DNS rebinding defense)', async () => {
+  const server = startHttp({ ctx: stubCtx, tools: [], routes: internalRoutes, port: 0 });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postWithHeaders(port, '/public', {}, { host: 'attacker.com' });
+  assert.equal(r.status, 403);
+  assert.equal(r.body.name, 'RobinForbiddenError');
+  server.close();
+});
+
+test('rejects non-loopback Origin header (DNS rebinding defense)', async () => {
+  const server = startHttp({ ctx: stubCtx, tools: [], routes: internalRoutes, port: 0 });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postWithHeaders(port, '/public', {}, { origin: 'http://attacker.com' });
+  assert.equal(r.status, 403);
+  server.close();
+});
+
+test('accepts loopback Origin header', async () => {
+  const server = startHttp({ ctx: stubCtx, tools: [], routes: internalRoutes, port: 0 });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await postWithHeaders(port, '/public', {}, { origin: `http://127.0.0.1:${port}` });
+  assert.equal(r.status, 200);
+  server.close();
+});

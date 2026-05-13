@@ -119,3 +119,26 @@ test('capture sanitizes special-char external_id', async () => {
   assert.equal(r.inserted, 1);
   await close(db);
 });
+
+test('capture defaults trust to untrusted (integration data is external)', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  const capture = createCapture({
+    db,
+    embedder: e,
+    source: 'gmail',
+    embed: false,
+    mode: 'insert-or-skip',
+  });
+  await capture([
+    { source: 'gmail', content: 'hello', external_id: 'msg1' },
+    { source: 'gmail', content: 'mixed', external_id: 'msg2', trust: 'untrusted-mixed' },
+  ]);
+  const [rows] = await db
+    .query(surql`SELECT meta.external_id AS external_id, trust FROM events ORDER BY meta.external_id`)
+    .collect();
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].trust, 'untrusted', 'default for integration data is untrusted');
+  assert.equal(rows[1].trust, 'untrusted-mixed', 'explicit row.trust still wins');
+  await close(db);
+});

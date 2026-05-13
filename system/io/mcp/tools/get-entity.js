@@ -5,7 +5,10 @@
 // `edges.kind` field. Optional `path_to` finds the shortest path to a target
 // entity through the requested edge kinds (TYPE RELATION arrow traversal).
 
+import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
+
 const ENTITY_EDGE_KINDS = ['mentions', 'about', 'works_on', 'participates_in', 'occurs_with'];
+const PATH_EDGE_KINDS = ['occurs_with', 'works_on', 'participates_in', 'mentions', 'about'];
 
 export function createGetEntityTool({ db }) {
   return {
@@ -31,7 +34,7 @@ export function createGetEntityTool({ db }) {
       required: ['id'],
     },
     handler: async (args) => {
-      const idRef = args.id.startsWith('entities:') ? args.id : `entities:${args.id}`;
+      const idRef = validateEntityRef(args.id, 'id');
       const [rows] = await db
         .query(`SELECT id, name, type, created_at, meta FROM ${idRef}`)
         .collect();
@@ -85,10 +88,11 @@ export function createGetEntityTool({ db }) {
       };
 
       if (args.path_to) {
-        const targetRef = args.path_to.startsWith('entities:')
-          ? args.path_to
-          : `entities:${args.path_to}`;
-        const kinds = args.path_kinds ?? ['occurs_with', 'works_on', 'participates_in'];
+        const targetRef = validateEntityRef(args.path_to, 'path_to');
+        const kinds = validateEdgeKinds(
+          args.path_kinds ?? ['occurs_with', 'works_on', 'participates_in'],
+          PATH_EDGE_KINDS,
+        );
         const maxDepth = Math.min(6, Math.max(1, args.path_max_depth ?? 4));
         result.path = await shortestPath(db, idRef, targetRef, kinds, maxDepth);
       }

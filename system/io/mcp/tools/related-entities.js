@@ -5,6 +5,8 @@
 // or `depth: 3` we use SurrealDB's recursive idiom syntax to walk multiple
 // hops, returning each reached entity with its discovered hop-distance.
 
+import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
+
 const ENTITY_EDGE_KINDS = ['works_on', 'participates_in', 'occurs_with'];
 
 export function createRelatedEntitiesTool({ db }) {
@@ -23,10 +25,13 @@ export function createRelatedEntitiesTool({ db }) {
       required: ['id'],
     },
     handler: async (args) => {
-      const idRef = args.id.startsWith('entities:') ? args.id : `entities:${args.id}`;
+      const idRef = validateEntityRef(args.id, 'id');
       // Accept the legacy alias `co_occurs_with` from older callers.
-      const requested = (args.edge_types ?? ENTITY_EDGE_KINDS).map((k) =>
-        k === 'co_occurs_with' ? 'occurs_with' : k,
+      const requested = validateEdgeKinds(
+        (args.edge_types ?? ENTITY_EDGE_KINDS).map((k) =>
+          k === 'co_occurs_with' ? 'occurs_with' : k,
+        ),
+        ENTITY_EDGE_KINDS,
       );
       const limit = args.limit ?? 20;
       const depth = args.depth ?? 1;

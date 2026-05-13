@@ -46,7 +46,13 @@ export function createCapture({ db, embedder, source, embed, mode }) {
           source: row.source ?? source,
           content: row.content,
           content_hash: sha256(row.content),
-          trust: row.trust ?? 'trusted',
+          // Integration data is external — default to `untrusted` so the
+          // outbound verbatim-quote guard (outbound-policy.js) scans these
+          // rows. Individual integrations may override (e.g. Robin's own
+          // discord_dispatcher already passes `trust: 'untrusted'`); a future
+          // first-party source can explicitly opt into `'trusted'` by setting
+          // `row.trust` upstream.
+          trust: row.trust ?? 'untrusted',
           meta: mergedMeta,
           ...(tsValue ? { ts: tsValue } : {}),
         };
