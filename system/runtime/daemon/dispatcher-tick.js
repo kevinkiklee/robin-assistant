@@ -30,6 +30,7 @@ export function createDispatcherTick(ctx, tools) {
         db: ctx.db,
         capture: ctx.capture.forJobs,
         host: ctx.host,
+        embedder: ctx.embedder.wrap,
         jobs: ctx.jobs.cache.current,
         tools,
         name,

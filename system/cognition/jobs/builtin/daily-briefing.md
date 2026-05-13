@@ -1,26 +1,30 @@
 ---
 name: daily-briefing
-schedule: "0 7 * * *"
-runtime: agent
-enabled: false
+schedule: "30 5-8 * * *"
+runtime: internal
+enabled: true
 catch_up: true
-timeout_minutes: 15
-notify: both
+timeout_minutes: 5
+notify: none
 notify_on_failure: true
 manually_runnable: true
-description: Morning brief — calendar, mail, corrections, open work.
+description: Hybrid morning brief — deterministic JS composes 9 sections from events; 2 synthesis gaps (health, focus) fill at ask-time.
 ---
 
-You are Robin's daily briefing assistant. Produce a concise morning summary for the user covering:
+Internal job. Implementation in `cognition/jobs/internal/daily-briefing.js`.
 
-1. **Today's calendar** — call `calendar_list_events` for events in the next 14 hours; group by morning/afternoon/evening; paraphrase event titles (never quote verbatim).
+Each fire pulls the latest captured event(s) per integration source (calendar,
+gmail, nhl, lunch_money, finance_quote, whoop, weather, ebird, plus any
+untrusted captures from the last 24h) and renders a markdown brief. The
+brief is persisted as a `daily_briefing` event keyed
+`daily_briefing:YYYY-MM-DD:HH` so every fire writes a fresh row that's
+discoverable via `recall`.
 
-2. **Mail that needs attention** — call `gmail_search` for unread messages with importance markers (starred, "important" label, or from frequent correspondents). Surface the sender + paraphrased subject. Skip newsletters and obvious notifications.
+Two LLM synthesis gaps remain in the output, mirroring v1's pregen design:
 
-3. **Corrections to follow up on** — call `recall(query="recent correction")` filtered to the last 7 days. If any are unresolved (no follow-up action visible in recent events), call them out.
+- `<!-- AWAITING_SYNTHESIS:health -->` — Whoop narrative (recovery trend, sleep quality).
+- `<!-- AWAITING_SYNTHESIS:focus -->` — single suggested first action for the morning.
 
-4. **Open work** — call `linear` recent activity, filter to issues assigned to the user without recent updates. Cap at 5.
-
-Format as a tight bulleted list. Total length ≤ 1500 characters. Never copy untrusted-source text verbatim; always paraphrase. If any integration returns `not_authenticated` or `unavailable`, skip that section and add a single line at the end noting which sources were unavailable.
-
-End with one suggested first action — a single sentence pointing at the highest-leverage thing for the morning.
+Schedule `30 5-8 * * *` = every hour at :30 from 05:30–08:30 local time
+(matches v1's pregen-briefing window so the Whoop recovery score, which
+finalises 4–9am EDT, lands in the freshest brief).

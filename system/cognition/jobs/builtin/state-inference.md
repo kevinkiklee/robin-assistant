@@ -8,6 +8,7 @@ timeout_minutes: 2
 notify: none
 notify_on_failure: true
 manually_runnable: true
+scheduler_driven: true
 description: Per-source focus inference (5-min cadence). Reads attention + arcs + recent biographed events; LLM-gated by a signal-hash change detector.
 ---
 

@@ -36,10 +36,14 @@ export async function planNextRunAt(db, jobs, now = new Date()) {
 }
 
 export async function listDueJobs(db, now = new Date()) {
+  // scheduler_driven jobs are documented in the jobs registry but dispatched
+  // by a dedicated heartbeat bucket in runtime/daemon/server.js, not by the
+  // generic jobs runner — exclude them here to avoid double-fire.
   const [rows] = await db
     .query(
       surql`SELECT name FROM runtime_jobs
             WHERE enabled = true AND in_flight = false AND next_run_at <= ${now}
+              AND (scheduler_driven IS NONE OR scheduler_driven = false)
             ORDER BY name`,
     )
     .collect();

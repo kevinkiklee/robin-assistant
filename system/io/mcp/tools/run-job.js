@@ -1,7 +1,7 @@
 import { getJob } from '../../../cognition/jobs/db.js';
 import { runOneJob } from '../../../cognition/jobs/runner.js';
 
-export function createRunJobTool({ db, capture, host, tools, getJobs }) {
+export function createRunJobTool({ db, capture, host, embedder, tools, getJobs }) {
   return {
     name: 'run_job',
     description: 'Trigger a job manually. Refuses jobs declared manually_runnable: false.',
@@ -23,6 +23,7 @@ export function createRunJobTool({ db, capture, host, tools, getJobs }) {
         db,
         capture,
         host,
+        embedder,
         jobs: getJobs(),
         tools: typeof tools === 'function' ? tools() : tools,
         name,

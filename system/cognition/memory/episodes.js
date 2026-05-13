@@ -8,6 +8,11 @@ export async function findActiveEpisode(db, source) {
 }
 
 export async function createEpisode(db, { source, summary }) {
+  if (typeof source !== 'string' || source.length === 0) {
+    throw new Error(
+      `createEpisode: source must be a non-empty string (got ${typeof source}: ${JSON.stringify(source)})`,
+    );
+  }
   const fields = { source, ...(summary ? { summary } : {}) };
   const [created] = await db.query(surql`CREATE episodes CONTENT ${fields}`).collect();
   const row = Array.isArray(created) ? created[0] : created;

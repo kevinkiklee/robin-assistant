@@ -28,7 +28,7 @@ const BUILTIN_DIR = join(
   'builtin',
 );
 
-test('jobs roundtrip — discover daily-briefing → enable → run → capture event', async () => {
+test('jobs roundtrip — discover daily-briefing → run → capture briefing event', async () => {
   const userDir = join(__h, 'jobs');
   mkdirSync(userDir, { recursive: true });
 
@@ -38,19 +38,13 @@ test('jobs roundtrip — discover daily-briefing → enable → run → capture 
   const jobs = discoverJobs({ builtinDir: BUILTIN_DIR, userDir });
   await upsertFromDiscovered(db, jobs);
 
-  // Ships disabled
+  // Daily-briefing ships enabled in v2 (internal runtime, deterministic).
   let row = await getJob(db, 'daily-briefing');
-  assert.equal(row.enabled, false);
-
-  // Enable
-  await setEnabled(db, 'daily-briefing', true);
-  row = await getJob(db, 'daily-briefing');
   assert.equal(row.enabled, true);
+  assert.equal(row.runtime, 'internal');
 
-  // Manual run with a stub LLM
-  // Override notify to 'capture' so the test doesn't need a Discord env
-  const testJobs = jobs.map((j) => (j.name === 'daily-briefing' ? { ...j, notify: 'capture' } : j));
-  const host = { invokeLLM: async () => ({ content: 'stubbed morning brief' }) };
+  // Internal-runtime jobs ignore host.invokeLLM, but we pass one for shape.
+  const host = { invokeLLM: async () => ({ content: 'unused for internal runtime' }) };
   const capture = createCapture({
     db,
     embedder: createStubEmbedder({ dimension: 1024 }),
@@ -58,12 +52,14 @@ test('jobs roundtrip — discover daily-briefing → enable → run → capture 
     embed: false,
     mode: 'insert-or-skip',
   });
-  await runOneJob({ db, capture, host, jobs: testJobs, tools: [], name: 'daily-briefing' });
+  await runOneJob({ db, capture, host, jobs, tools: [], name: 'daily-briefing' });
 
-  // Event captured
-  const [events] = await db.query("SELECT * FROM events WHERE source = 'job_output'").collect();
+  // Internal job writes a daily_briefing event (the framework respects the
+  // row's `source` field when capture is given a sourced row).
+  const [events] = await db.query("SELECT * FROM events WHERE source = 'daily_briefing'").collect();
   assert.equal(events.length, 1);
-  assert.match(events[0].content, /stubbed morning brief/);
+  assert.match(events[0].content, /# Daily Briefing —/);
+  assert.match(events[0].content, /<!-- AWAITING_SYNTHESIS:focus -->/);
 
   // Run state updated
   row = await getJob(db, 'daily-briefing');

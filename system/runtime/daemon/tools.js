@@ -147,6 +147,7 @@ export function buildTools(ctx) {
       db: ctx.db,
       capture: ctx.capture.forJobs,
       host: ctx.host,
+      embedder: ctx.embedder.wrap,
       tools: getTools,
       getJobs: () => ctx.jobs.cache.current,
     }),

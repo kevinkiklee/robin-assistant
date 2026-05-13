@@ -12,12 +12,13 @@
 //   - `events.biographed_at = time::now()` is still set on the processed event.
 
 import { surql } from 'surrealdb';
+import { recordIdFromString } from '../memory/edge-registry.js';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../memory/episodes.js';
 import * as store from '../memory/store.js';
 import { withTxRetry } from '../memory/tx.js';
 import { validateBiographerBatchOutput } from './batch-output.js';
 import { buildBiographerBatchPrompt } from './batch-prompt.js';
-import { validateBiographerOutput } from './output.js';
+import { parseLLMJSON, validateBiographerOutput } from './output.js';
 import { buildBiographerPrompt } from './prompt.js';
 
 // Edge kinds the biographer is allowed to emit, normalized to the registry.
@@ -136,6 +137,12 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   if (!Array.isArray(eventIds) || eventIds.length === 0) {
     return { perEvent };
   }
+  // Normalize ids: callers (queue accumulator, MCP handlers, CLI) may pass
+  // either "table:id" strings or SDK RecordId objects. The surql template
+  // tag binds plain strings as string LITERALS, so `SELECT * FROM ${strId}`
+  // returns garbage (string-indexed chars) instead of the row. Always pass
+  // RecordId here so internal SELECTs hit the right record.
+  eventIds = eventIds.map(recordIdFromString);
   const batchStartedAt = Date.now();
 
   // 1. Single-event fast path stays as-is — short-circuits to _processOne for
@@ -213,7 +220,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   }
   let parsed;
   try {
-    parsed = JSON.parse(response.content);
+    parsed = parseLLMJSON(response.content);
   } catch (e) {
     await _recordBatchFallback(db, 'outer_json');
     return _fallbackPerEvent(
@@ -666,7 +673,7 @@ async function _processOne(db, embedder, host, eventId, opts = {}) {
   // 4. Validate output
   let output;
   try {
-    output = JSON.parse(response.content);
+    output = parseLLMJSON(response.content);
     const validation = validateBiographerOutput(output);
     if (!validation.ok) throw new Error(`validation failed: ${validation.error}`);
   } catch (e) {

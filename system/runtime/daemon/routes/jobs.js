@@ -24,6 +24,7 @@ export const jobsRoutes = [
         db: ctx.db,
         capture: ctx.capture.forJobs,
         host: ctx.host,
+        embedder: ctx.embedder.wrap,
         jobs: ctx.jobs.cache.current,
         tools,
         name,

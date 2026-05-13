@@ -10,6 +10,7 @@ const MD_AUTHORITATIVE = [
   'notify_on_failure',
   'timeout_minutes',
   'manually_runnable',
+  'scheduler_driven',
 ];
 
 export async function listAllJobs(db) {
@@ -26,25 +27,28 @@ export async function upsertFromDiscovered(db, discovered) {
   for (const job of discovered) {
     const existing = await getJob(db, job.name);
     if (!existing) {
+      // Build from MD_AUTHORITATIVE so new fields land in one place. Skip
+      // undefined so a partial migration (column not yet defined) doesn't
+      // fail the SCHEMAFULL INSERT — this is what produced the
+      // "Found field 'scheduler_driven', but no such field exists" failures
+      // in jobs-runner runs bi6rjtk7o/bwdombt7n/etc.
       const row = {
         name: job.name,
         enabled: job.enabled,
-        schedule: job.schedule,
-        runtime: job.runtime,
-        catch_up: job.catch_up,
-        notify: job.notify,
-        notify_on_failure: job.notify_on_failure,
-        timeout_minutes: job.timeout_minutes,
-        manually_runnable: job.manually_runnable,
         consecutive_failures: 0,
         in_flight: false,
         updated_at: new Date(),
       };
+      for (const k of MD_AUTHORITATIVE) {
+        if (job[k] !== undefined) row[k] = job[k];
+      }
       await db.query(surql`CREATE runtime_jobs CONTENT ${row}`);
       continue;
     }
     const patch = { updated_at: new Date() };
-    for (const k of MD_AUTHORITATIVE) patch[k] = job[k];
+    for (const k of MD_AUTHORITATIVE) {
+      if (job[k] !== undefined) patch[k] = job[k];
+    }
     await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${job.name}`);
   }
 }

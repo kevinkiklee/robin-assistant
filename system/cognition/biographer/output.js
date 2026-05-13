@@ -5,6 +5,20 @@
 // while the prompt template is updated. The biographer translates aliases
 // when emitting edges via `store.relateAll`.
 
+// Some providers (notably Gemini via the host shim) ignore the json-mode hint
+// and wrap output in ```json … ``` fences. Strip them before JSON.parse so the
+// biographer doesn't keep retrying-and-failing each batch.
+export function parseLLMJSON(content) {
+  let s = String(content ?? '').trim();
+  if (s.startsWith('```')) {
+    s = s
+      .replace(/^```(?:json)?\s*\n?/i, '')
+      .replace(/\n?```\s*$/, '')
+      .trim();
+  }
+  return JSON.parse(s);
+}
+
 const ENTITY_TYPES = new Set(['person', 'place', 'project', 'topic', 'thing']);
 const EDGE_TYPES = new Set([
   // Current registry kinds the biographer is allowed to emit.

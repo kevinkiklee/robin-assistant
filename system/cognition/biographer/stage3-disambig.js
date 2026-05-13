@@ -1,3 +1,5 @@
+import { parseLLMJSON } from './output.js';
+
 const SYSTEM = `You disambiguate entity mentions. Given a mention and a list of candidate existing entities, pick the candidate that refers to the same thing, or null if none do.
 
 Output JSON only: { "pick": "<candidate id>" } or { "pick": null }.
@@ -22,7 +24,7 @@ Pick the candidate id that refers to the same entity, or null if none. JSON only
       json: true,
       system: [{ role: 'system', content: SYSTEM, cache_control: { type: 'ephemeral' } }],
     });
-    result = JSON.parse(r.content);
+    result = parseLLMJSON(r.content);
   } catch {
     return { action: 'none' };
   }

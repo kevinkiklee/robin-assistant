@@ -126,6 +126,51 @@ test('discoverJobs — defaults filled in', () => {
   assert.equal(job.manually_runnable, true);
 });
 
+test('discoverJobs — user override merges with builtin', () => {
+  writeJob(join(tmp, 'builtin'), 'foo', {
+    name: 'foo',
+    schedule: '@daily',
+    runtime: 'agent',
+    enabled: true,
+    timeout_minutes: 5,
+  }, 'builtin body');
+  writeJob(
+    join(tmp, 'user'),
+    'foo',
+    { override: 'foo', schedule: '0 6 * * *' },
+    'user override body',
+  );
+  const jobs = discoverJobs({ builtinDir: join(tmp, 'builtin'), userDir: join(tmp, 'user') });
+  assert.equal(jobs.length, 1);
+  const job = jobs[0];
+  assert.equal(job.name, 'foo');
+  assert.equal(job.source, 'user');
+  assert.equal(job.schedule, '0 6 * * *'); // overridden
+  assert.equal(job.runtime, 'agent'); // inherited
+  assert.equal(job.timeout_minutes, 5); // inherited
+  assert.match(job.body, /user override body/);
+});
+
+test('discoverJobs — override with no matching builtin is rejected', () => {
+  writeJob(join(tmp, 'user'), 'orphan', { override: 'orphan' });
+  const jobs = discoverJobs({ builtinDir: join(tmp, 'builtin'), userDir: join(tmp, 'user') });
+  assert.equal(jobs.length, 0);
+});
+
+test('discoverJobs — override target must match filename', () => {
+  writeJob(join(tmp, 'builtin'), 'foo', {
+    name: 'foo',
+    schedule: '@daily',
+    runtime: 'agent',
+  });
+  // file named bar.md but override: foo — should be rejected
+  writeJob(join(tmp, 'user'), 'bar', { override: 'foo' });
+  const jobs = discoverJobs({ builtinDir: join(tmp, 'builtin'), userDir: join(tmp, 'user') });
+  // builtin foo still there, user bar rejected — exactly one job
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].source, 'builtin');
+});
+
 test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
   const { discoverJobs } = await import('../../cognition/jobs/loader.js');
   const { fileURLToPath } = await import('node:url');
@@ -141,6 +186,9 @@ test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
   const jobs = discoverJobs({ builtinDir, userDir: '/nonexistent' });
   const briefing = jobs.find((j) => j.name === 'daily-briefing');
   assert.ok(briefing, 'daily-briefing should be discovered');
-  assert.equal(briefing.runtime, 'agent');
-  assert.equal(briefing.enabled, false);
+  // Daily-briefing was rewritten in v2 as a deterministic-pregen + ask-time
+  // synthesis hybrid; the JS lives in cognition/jobs/internal/daily-briefing.js.
+  assert.equal(briefing.runtime, 'internal');
+  assert.equal(briefing.enabled, true);
+  assert.equal(briefing.schedule, '30 5-8 * * *');
 });

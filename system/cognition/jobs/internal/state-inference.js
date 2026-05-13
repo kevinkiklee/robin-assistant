@@ -624,3 +624,12 @@ export async function evaluateStateInference({ db, host, embedder, now = new Dat
   }
   return { outcome: 'ran', sources_evaluated: per_source.length, per_source };
 }
+
+// Default export for the jobs runner (manual `robin jobs run state-inference`
+// and any other generic dispatcher path). Scheduled invocation is driven by
+// the heartbeat bucket in runtime/daemon/server.js, not by this entry point —
+// the builtin manifest sets `scheduler_driven: true` to keep the jobs runner
+// from double-firing every 5 minutes.
+export default async function stateInferenceJob({ db, host, embedder }) {
+  return evaluateStateInference({ db, host, embedder });
+}

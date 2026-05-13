@@ -11,6 +11,7 @@ const DEFAULTS = {
   notify: 'none',
   notify_on_failure: true,
   manually_runnable: true,
+  scheduler_driven: false,
   description: '',
 };
 
@@ -46,9 +47,13 @@ export function validateJob(fm) {
   }
 }
 
-export function parseJobFile(filePath, source = 'builtin') {
+function readRawJobFile(filePath) {
   const raw = readFileSync(filePath, 'utf8');
-  const { frontmatter, body } = parseFrontmatter(raw);
+  return parseFrontmatter(raw);
+}
+
+export function parseJobFile(filePath, source = 'builtin') {
+  const { frontmatter, body } = readRawJobFile(filePath);
   validateJob(frontmatter);
   const expectedName = basename(filePath).replace(/\.md$/, '');
   if (frontmatter.name !== expectedName) {
@@ -66,6 +71,40 @@ function listMd(dir) {
     .map((f) => join(dir, f));
 }
 
+// User files may declare `override: <builtin-name>` instead of `name:`. The
+// override's frontmatter shallow-merges onto the builtin (user wins on
+// conflicts) and the override's body replaces the builtin body. This lets
+// users tweak schedule, notify, or protocol text without redeclaring every
+// field — and survives package upgrades since the builtin keeps shipping.
+function applyUserOverride(byName, filePath) {
+  const { frontmatter, body } = readRawJobFile(filePath);
+  const target = frontmatter.override;
+  if (typeof target !== 'string' || !target) {
+    throw new Error('override: must be a non-empty string naming a builtin');
+  }
+  const expectedName = basename(filePath).replace(/\.md$/, '');
+  if (expectedName !== target) {
+    throw new Error(
+      `override: filename '${expectedName}' must match override target '${target}'`,
+    );
+  }
+  const builtin = byName.get(target);
+  if (!builtin) {
+    throw new Error(`override target '${target}' has no matching builtin`);
+  }
+  const { override: _drop, ...userFm } = frontmatter;
+  const merged = {
+    ...builtin,
+    ...userFm,
+    name: target,
+    body,
+    source: 'user',
+    path: filePath,
+  };
+  validateJob(merged);
+  byName.set(target, merged);
+}
+
 export function discoverJobs({ builtinDir, userDir }) {
   const byName = new Map();
   for (const p of listMd(builtinDir)) {
@@ -78,8 +117,13 @@ export function discoverJobs({ builtinDir, userDir }) {
   }
   for (const p of listMd(userDir)) {
     try {
-      const job = parseJobFile(p, 'user');
-      byName.set(job.name, job); // user wins
+      const { frontmatter } = readRawJobFile(p);
+      if (frontmatter.override !== undefined) {
+        applyUserOverride(byName, p);
+      } else {
+        const job = parseJobFile(p, 'user');
+        byName.set(job.name, job); // user wins
+      }
     } catch (e) {
       console.warn(`[jobs] skip user ${p}: ${e.message}`);
     }

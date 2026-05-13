@@ -10,7 +10,7 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function dispatchRuntime({ job, db, host, capture, tools }) {
+async function dispatchRuntime({ job, db, host, capture, embedder, tools }) {
   if (job.runtime === 'agent') {
     if (!host?.invokeLLM) throw new Error('agent runtime needs a host with invokeLLM');
     const llm = await host.invokeLLM([{ role: 'user', content: job.body }], { tier: 'deep' });
@@ -20,13 +20,22 @@ async function dispatchRuntime({ job, db, host, capture, tools }) {
     const mod = await import(new URL(`./internal/${job.name}.js`, import.meta.url));
     const fn = mod.default;
     if (typeof fn !== 'function') throw new Error(`internal job ${job.name}: no default export`);
-    const out = await fn({ db, host, capture, tools });
+    const out = await fn({ db, host, capture, embedder, tools });
     return out == null ? null : String(out);
   }
   throw new Error(`unknown runtime: ${job.runtime}`);
 }
 
-export async function runOneJob({ db, capture, host, jobs, tools, name, now = () => new Date() }) {
+export async function runOneJob({
+  db,
+  capture,
+  host,
+  embedder,
+  jobs,
+  tools,
+  name,
+  now = () => new Date(),
+}) {
   const job = jobs.find((j) => j.name === name);
   if (!job) throw new Error(`job not found: ${name}`);
   const start = Date.now();
@@ -46,7 +55,10 @@ export async function runOneJob({ db, capture, host, jobs, tools, name, now = ()
 
   const timeoutMs = Math.max(100, Math.floor(job.timeout_minutes * 60_000));
   try {
-    const output = await withTimeout(dispatchRuntime({ job, db, host, capture, tools }), timeoutMs);
+    const output = await withTimeout(
+      dispatchRuntime({ job, db, host, capture, embedder, tools }),
+      timeoutMs,
+    );
     const next_run_at = nextFire(parsed, now());
     await recordSuccess(db, name, {
       duration_ms: Date.now() - start,

@@ -1,3 +1,5 @@
+import { RecordId } from 'surrealdb';
+
 // edge-registry.js — EDGE_KIND_REGISTRY + endpoint validation + canonical
 // ordering + composite-ID helpers.
 //
@@ -60,6 +62,25 @@ export function recordStringId(ref) {
     return `${String(tb)}:${id}`;
   }
   return null;
+}
+
+/**
+ * Inverse of `recordStringId`: parse a "table:id" string into a RecordId
+ * object the SDK can bind correctly in a `surql` template.
+ *
+ * Why this matters: when `surql\`SELECT * FROM ${stringId}\`` is given a
+ * plain JS string, SurrealDB v3 binds it as a string literal — so
+ * `FROM "events:foo"` ends up iterating the characters of the string and
+ * returning an array-shaped row with numeric keys, not the events row.
+ *
+ * Pass-through for non-strings so this helper is safe to wrap any id.
+ */
+export function recordIdFromString(ref) {
+  if (ref == null) return ref;
+  if (typeof ref !== 'string') return ref;
+  const idx = ref.indexOf(':');
+  if (idx <= 0) throw new Error(`recordIdFromString: malformed record id '${ref}'`);
+  return new RecordId(ref.slice(0, idx), ref.slice(idx + 1));
 }
 
 /**
