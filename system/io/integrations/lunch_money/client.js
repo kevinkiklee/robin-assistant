@@ -40,7 +40,11 @@ function stableExternalId(t, amount) {
   }
   if (plaidTxId) return `plaid:${plaidTxId}`;
   if (t.plaid_account_id) {
-    const norm = (t.original_name ?? t.payee ?? '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    const norm = (t.original_name ?? t.payee ?? '')
+      .toString()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
     return `lm-stable:${t.date}|${t.plaid_account_id}|${amount.toFixed(2)}|${norm}`;
   }
   return `lm:${t.id}`;

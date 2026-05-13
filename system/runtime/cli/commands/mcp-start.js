@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { open } from 'node:fs/promises';
-import { setTimeout as wait } from 'node:timers/promises';
 import { dirname, join } from 'node:path';
+import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { ensureHome, paths } from '../../../config/data-store.js';
 
