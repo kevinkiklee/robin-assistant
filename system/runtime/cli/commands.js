@@ -376,6 +376,16 @@ export const commands = {
       },
     },
   },
+  publish: {
+    import: './commands/publish.js',
+    export: 'publish',
+    help: 'publish a markdown file to the web (askrobin.io)',
+  },
+  published: {
+    import: './commands/published.js',
+    export: 'published',
+    help: 'list pages published from this Robin instance',
+  },
   hooks: {
     help: 'hook kill switch',
     subcommands: {
