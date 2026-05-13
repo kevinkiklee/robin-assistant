@@ -48,7 +48,12 @@ export async function upsertEntityCascade(db, embedder, input) {
         lowThreshold,
       });
     } catch (e) {
-      // Stage 2 is best-effort during the schema-redesign transition.
+      // Stage 2 is best-effort during the schema-redesign transition. We
+      // record `error` on the result for callers that inspect it, but also
+      // log so failures surface in daemon.log instead of disappearing — a
+      // sustained Stage 2 outage (embedder mismatch, schema reject) was hard
+      // to spot when the catch was completely silent.
+      console.warn(`upsert-entity: stage2 failed for "${name}" (${type}): ${e?.message ?? e}`);
       s2 = { action: 'none', error: String(e?.message ?? e) };
     }
   } else {

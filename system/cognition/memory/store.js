@@ -301,14 +301,29 @@ export async function relate(db, from, to, kind, opts = {}) {
 const RELATE_CHUNK = 50;
 export async function relateAll(db, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { ids: [] };
+  // Pre-filter invalid edges (self-loops, unknown kinds, wrong endpoint tables)
+  // and log each skip. The biographer pipeline routinely produces small batches
+  // that include 1-2 redundant self-loops (LLM aliasing two synonymous names to
+  // the same canonical entity); failing the whole batch on a single invalid
+  // edge means we silently drop *all* of the surrounding good edges for the
+  // event — a much worse outcome than just dropping the bad ones.
+  const valid = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const v = validateEdge(row.from, row.to, row.kind);
+    if (!v.ok) {
+      console.warn(`relateAll[${i}]: skipping invalid edge — ${v.errors.join('; ')}`);
+      continue;
+    }
+    valid.push(row);
+  }
+  if (valid.length === 0) return { ids: [] };
   const ids = [];
-  for (let off = 0; off < rows.length; off += RELATE_CHUNK) {
-    const slice = rows.slice(off, off + RELATE_CHUNK);
+  for (let off = 0; off < valid.length; off += RELATE_CHUNK) {
+    const slice = valid.slice(off, off + RELATE_CHUNK);
     const stmts = ['BEGIN TRANSACTION'];
     const bindings = {};
     slice.forEach((row, i) => {
-      const v = validateEdge(row.from, row.to, row.kind);
-      if (!v.ok) throw new Error(`relateAll[${off + i}]: ${v.errors.join('; ')}`);
       const [cIn, cOut] = canonicalEndpoints(row.from, row.to, row.kind);
       bindings[`k${i}`] = row.kind;
       bindings[`i${i}`] = cIn;
@@ -338,11 +353,22 @@ export async function relateAll(db, rows) {
       );
     });
     stmts.push('COMMIT TRANSACTION');
-    const results = await db.query(new BoundQuery(stmts.join(';\n'), bindings)).collect();
-    // Each INSERT RELATION returns the (now-existing) row. Flatten and collect ids.
-    for (const r of results) {
-      const row = Array.isArray(r) ? r[0] : r;
-      if (row?.id) ids.push(row.id);
+    // Per-slice try/catch: a transaction reject on one slice (e.g. SurrealDB
+    // refusing a RecordId with special chars in the bound `out` field) used
+    // to bubble up and kill the entire relateAll batch, dropping every other
+    // valid edge. Each slice has its own BEGIN/COMMIT, so a failure here is
+    // already atomically scoped to just this 50-edge chunk. Log + continue.
+    try {
+      const results = await db.query(new BoundQuery(stmts.join(';\n'), bindings)).collect();
+      // Each INSERT RELATION returns the (now-existing) row. Flatten and collect ids.
+      for (const r of results) {
+        const row = Array.isArray(r) ? r[0] : r;
+        if (row?.id) ids.push(row.id);
+      }
+    } catch (e) {
+      console.warn(
+        `relateAll: slice [${off}..${off + slice.length - 1}] failed, skipping ${slice.length} edges: ${e.message}`,
+      );
     }
   }
   return { ids };

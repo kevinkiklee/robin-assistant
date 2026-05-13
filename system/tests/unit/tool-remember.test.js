@@ -71,3 +71,30 @@ test('remember skips biographer when trigger_biographer: false', async () => {
   assert.equal(enqueueCalls.length, 0);
   await close(db);
 });
+
+test('remember succeeds when embedder throws (event still recorded)', async () => {
+  // Regression: when the loaded embedder produces a vector that the active
+  // embedding table's schema rejects (profile/dimension mismatch) or the
+  // embedder is unreachable, the event row must still be created and the
+  // MCP handler must return success instead of bubbling InternalError to
+  // the client. See record-event.js — the embedding upsert is wrapped in
+  // try/catch and logs a console.warn on failure.
+  const db = await fresh();
+  const brokenEmbedder = {
+    dimension: 1024,
+    modelId: 'broken:test',
+    embed: async () => {
+      throw new Error('simulated embedder failure');
+    },
+    embedBatch: async () => {
+      throw new Error('simulated embedder failure');
+    },
+  };
+  const queue = { enqueue: () => Promise.resolve() };
+  const tool = createRememberTool({ db, embedder: brokenEmbedder, queue });
+  const result = await tool.handler({ content: 'noted despite embed fail', source: 'manual' });
+  assert.ok(result.id, 'handler should return an event id even if embedding failed');
+  const [rows] = await db.query(surql`SELECT count() AS n FROM events GROUP ALL`).collect();
+  assert.equal(rows[0].n, 1, 'event row must be persisted');
+  await close(db);
+});

@@ -27,10 +27,17 @@ export async function getArc(db, id) {
 }
 
 export async function listArcs(db, { status, limit = 20 } = {}) {
-  const where = status ? `WHERE status = '${status}'` : '';
-  const [rows] = await db
-    .query(`SELECT * FROM arcs ${where} ORDER BY last_activity_at DESC LIMIT ${limit}`)
-    .collect();
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    throw new Error(`listArcs: limit out of range [1,1000]: ${limit}`);
+  }
+  const ALLOWED_STATUS = new Set(['active', 'paused', 'closed']);
+  if (status != null && !ALLOWED_STATUS.has(status)) {
+    throw new Error(`listArcs: invalid status: ${status}`);
+  }
+  const sql = status
+    ? `SELECT * FROM arcs WHERE status = $status ORDER BY last_activity_at DESC LIMIT ${limit}`
+    : `SELECT * FROM arcs ORDER BY last_activity_at DESC LIMIT ${limit}`;
+  const [rows] = await db.query(new BoundQuery(sql, status ? { status } : {})).collect();
   return rows ?? [];
 }
 
@@ -61,8 +68,11 @@ export async function extendArc(db, arcId, { entity_ids = [], episode_ids = [] }
     // The meta.episode_ids array is preserved above as a defensive mirror.
     const { relateAll } = await import('./store.js');
     const rows = episode_ids.map((eid) => ({ from: arcId, to: eid, kind: 'arc_contains' }));
-    await relateAll(db, rows).catch(() => {
-      /* fail-soft: meta.episode_ids is authoritative if edges fail */
+    await relateAll(db, rows).catch((e) => {
+      // fail-soft: meta.episode_ids is authoritative if edges fail; log so the
+      // failure isn't completely silent (helps when the edge registry tightens
+      // and previously-accepted kinds start being rejected).
+      console.warn(`extendArc: arc_contains edges failed for arc ${arcId}: ${e.message}`);
     });
   }
   return arc;

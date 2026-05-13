@@ -57,17 +57,30 @@ export async function recordEvent(db, embedder, input) {
   // Write embedding into the active profile's per-surface embeddings table.
   // Embedding lookups go through embeddings_<profile>_events; record-event
   // remains the only writer for the events firehose.
-  const profile = await activeProfile(db);
-  const table = embeddingTable(profile, 'events');
-  const vec = Array.from(await embedder.embed(content));
-  await db
-    .query(
-      new BoundQuery(
-        'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()',
-        { tb: table, rec: eventId, vec },
-      ),
-    )
-    .collect();
+  //
+  // Embedding failure must not lose the event. Mirror the resilience pattern
+  // used by integration capture (io/integrations/_framework/capture.js): the
+  // event row is already created above; if the embedder is mis-configured or
+  // produces a vector that the active table's schema rejects, log a warning
+  // and return success. Recall via semantic search will be degraded until the
+  // profile mismatch is fixed and the row is back-filled, but writes (the
+  // memory-write tools — remember, ingest, record_correction, etc.) keep
+  // working instead of bubbling InternalError to MCP clients.
+  try {
+    const profile = await activeProfile(db);
+    const table = embeddingTable(profile, 'events');
+    const vec = Array.from(await embedder.embed(content));
+    await db
+      .query(
+        new BoundQuery(
+          'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()',
+          { tb: table, rec: eventId, vec },
+        ),
+      )
+      .collect();
+  } catch (e) {
+    console.warn(`recordEvent: embedding failed for ${eventId}: ${e.message}`);
+  }
 
   return { id: eventId };
 }
