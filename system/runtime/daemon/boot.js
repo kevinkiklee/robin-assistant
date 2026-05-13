@@ -9,7 +9,11 @@ import {
   readBatchConfig,
 } from '../../cognition/biographer/pipeline.js';
 import { createBiographerQueue } from '../../cognition/biographer/queue.js';
-import { garbageCollect, upsertFromDiscovered } from '../../cognition/jobs/db.js';
+import {
+  garbageCollect,
+  resetJobInFlightFlags,
+  upsertFromDiscovered,
+} from '../../cognition/jobs/db.js';
 import { discoverJobs } from '../../cognition/jobs/loader.js';
 import { planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
 import { ensureHome, paths } from '../../config/data-store.js';
@@ -257,6 +261,15 @@ export async function boot() {
   // Integrations: clear stale in-flight, load manifests, build registry +
   // captures, seed scheduler cursors, start gateways.
   await resetInFlightFlags(dbHandle);
+  // Jobs: clear in_flight flags left stuck by a crashed/killed daemon mid-run.
+  // The runner's finally block clears the flag on normal completion; a crash
+  // before that point leaves the flag true and the scheduler refuses to fire.
+  const jobReset = await resetJobInFlightFlags(dbHandle);
+  if (jobReset.reset > 0) {
+    console.warn(
+      `[daemon] cleared stuck in_flight on ${jobReset.reset} job(s): ${jobReset.names.join(', ')}`,
+    );
+  }
   const integrationsDir = new URL('../../io/integrations/', import.meta.url).pathname;
   const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
   for (const u of unavailable) {

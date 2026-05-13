@@ -76,6 +76,29 @@ export async function setInFlight(db, name, in_flight) {
   );
 }
 
+/**
+ * Clear stuck `in_flight: true` flags on all jobs at daemon boot. If the
+ * daemon process crashed or was killed mid-job, the in_flight flag never got
+ * cleared by the runner's finally block, leaving the job effectively wedged:
+ * the scheduler refuses to fire while in_flight is true, and `run_job`
+ * returns `{ ok: false, reason: 'in_flight' }`. Mirrors the integrations'
+ * boot-cleanup reset.
+ */
+export async function resetJobInFlightFlags(db) {
+  const [rows] = await db
+    .query(surql`SELECT name FROM runtime_jobs WHERE in_flight = true`)
+    .collect();
+  const stuck = Array.isArray(rows) ? rows : [];
+  for (const r of stuck) {
+    await db
+      .query(
+        surql`UPDATE runtime_jobs MERGE ${{ in_flight: false, updated_at: new Date() }} WHERE name = ${r.name}`,
+      )
+      .collect();
+  }
+  return { reset: stuck.length, names: stuck.map((r) => r.name) };
+}
+
 export async function setNextRunAt(db, name, next_run_at) {
   await db.query(
     surql`UPDATE runtime_jobs MERGE ${{ next_run_at, updated_at: new Date() }} WHERE name = ${name}`,
