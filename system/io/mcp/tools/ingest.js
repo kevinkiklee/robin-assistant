@@ -1,10 +1,8 @@
 // src/mcp/tools/ingest.js
 //
-// Redesigned for the new schema:
 //   - Edge writes go through `store.relateAll` against the unified edges table.
 //   - Entity upserts go through `store.upsertEntity` (3-stage cascade in
-//     src/graph/upsert-entity.js); legacy ingest-resolver retired in favor of
-//     the central primitive.
+//     biographer/upsert-entity.js).
 //   - Knowledge memos are created via `store.note('knowledge', …)` with the
 //     spec-shaped lineage `[{id, kind: 'event'}]`; createKnowledge thin lens
 //     also delegates to store.note.

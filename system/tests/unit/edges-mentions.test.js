@@ -8,11 +8,7 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import {
-  writeAboutEdge,
-  writeMentionsEdge,
-  writeTypedEntityEdge,
-} from '../../cognition/biographer/edges.js';
+import { writeMentionsEdge } from '../../cognition/biographer/edges.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
@@ -74,30 +70,13 @@ test('writeMentionsEdge works without optional fields', async () => {
   await close(db);
 });
 
-test('writeAboutEdge creates an event→entity edge', async () => {
-  const db = await fresh();
-  const { eventId, atlasId } = await seed(db);
-  await writeAboutEdge(db, eventId, atlasId);
-  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'about'`).collect();
-  assert.equal(rows.length, 1);
-  await close(db);
-});
-
-test('writeTypedEntityEdge creates a works_on edge between entities', async () => {
-  const db = await fresh();
-  const { aliceId, atlasId } = await seed(db);
-  await writeTypedEntityEdge(db, aliceId, 'works_on', atlasId);
-  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'works_on'`).collect();
-  assert.equal(rows.length, 1);
-  await close(db);
-});
-
-test('writeTypedEntityEdge throws on invalid edgeType (vocabulary check)', async () => {
+test('store.relate rejects unknown edge kinds (vocabulary check)', async () => {
+  const store = await import('../../cognition/memory/store.js');
   const db = await fresh();
   const { aliceId, atlasId } = await seed(db);
   await assert.rejects(
-    writeTypedEntityEdge(db, aliceId, 'evil_injection_attempt', atlasId),
-    /edge type|invalid|vocabulary/i,
+    store.relate(db, aliceId, atlasId, 'evil_injection_attempt'),
+    /invalid|kind|vocabulary/i,
   );
   await close(db);
 });

@@ -1,9 +1,9 @@
 // Introspection baseline manifest. Captures hashes of key handler files,
 // permissions of sensitive paths, and the supervisor (launchd/systemd) file.
 //
-// Written by `robin install` (and `robin embedder switch`, `robin doctor
-// --rebaseline`) to <robinHome>/manifest.json. Read by daemon-boot
-// introspection (src/daemon/introspection.js) to surface drift.
+// Written by `robin install` (and `robin doctor --rebaseline`) to
+// <robinHome>/runtime/install/manifest.json. Read by daemon-boot
+// introspection (system/runtime/daemon/introspection.js) to surface drift.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';

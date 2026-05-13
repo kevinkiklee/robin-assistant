@@ -279,7 +279,7 @@ Profiles are decoupled from the data tables — adding one is a code change plus
    ```
 
 2. **Register the profile.**
-   - Add `'voyage-2048'` to `PROFILES` in `system/data/embed/types.js` and the JSDoc `EmbedderProfile` typedef.
+   - Add `'voyage-2048'` to `VALID_PROFILES` in `system/runtime/cli/commands/install.js`.
    - Add a case to the `switch` in `system/data/embed/factory.js`.
    - Add the profile→dim entry to `PROFILE_DIMENSIONS` and a loader to `PROFILE_LOADERS` in `system/cognition/jobs/embeddings-ops.js`.
 

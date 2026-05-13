@@ -6,10 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const SCAN_DIRS = ['runtime', 'data', 'cognition', 'io', 'config'];
-const ALLOW_FILES = new Set([
-  join(ROOT, 'runtime/cli/commands/install.js'),
-  join(ROOT, 'migrate-v1/v1-client.js'),
-]);
+const ALLOW_FILES = new Set([join(ROOT, 'runtime/cli/commands/install.js')]);
 
 const PATTERNS = [/~\/\.robin\b/, /\/\.robin\//, /homedir\(\)\s*,\s*['"]\.robin['"]/];
 
