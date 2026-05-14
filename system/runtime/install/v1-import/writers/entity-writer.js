@@ -5,13 +5,10 @@
 // converge to the same row.
 
 import { BoundQuery } from 'surrealdb';
+import { entityRecordKey } from '../../../../cognition/biographer/upsert-entity.js';
 import { sha256 } from '../../../../data/embed/hash.js';
 import { hashExists } from '../ledger.js';
 import { upsertWithLedger } from '../tx.js';
-
-function stableKey(type, name) {
-  return `${type}__${String(name).toLowerCase()}`;
-}
 
 function canonicalPayload({ name, type, aliases }) {
   return JSON.stringify({ name, type, aliases: [...aliases].sort() });
@@ -43,7 +40,7 @@ export async function upsertEntity(db, { name, type, aliases = [], sourcePath, s
     `${sourcePath}\n${canonicalPayload({ name, type, aliases: dedupedAliases })}`,
   );
 
-  const key = stableKey(type, name);
+  const key = entityRecordKey(type, name);
   const recordIdStr = `entities:${key}`;
 
   if (await hashExists(db, hash)) {

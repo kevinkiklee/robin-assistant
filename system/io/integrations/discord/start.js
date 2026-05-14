@@ -75,6 +75,20 @@ export async function start(ctx) {
     dm_user_ids: allowed_user_ids,
   };
 
+  // Operators who forget to populate the allowlist see "Robin is online but
+  // ignores everything" — the silent-deny is the safe behavior, but it's
+  // invisible without this line. Log what we'll accept on startup so the
+  // misconfiguration is obvious.
+  if (allowed_user_ids.length === 0 && allowed_guild_ids.length === 0) {
+    ctx.log(
+      'discord: WARNING — DISCORD_ALLOWED_USER_IDS and DISCORD_ALLOWED_GUILD_IDS are both empty; bot will ignore every message',
+    );
+  } else {
+    ctx.log(
+      `discord: allowlist — ${allowed_user_ids.length} user(s), ${allowed_guild_ids.length} guild(s)`,
+    );
+  }
+
   // Trusted destinations for the outbound Layer-1 (untrusted-quote) bypass.
   // If `DISCORD_TRUSTED_ORIGINS` is set, parse it explicitly; otherwise default
   // to "your allowed guilds + your allowed users' DMs" since you've already
@@ -227,7 +241,8 @@ export async function start(ctx) {
           sessionByChannel.delete(interaction.channelId);
           await insertBoundary(ctx.capture, interaction.channelId, interaction.user.id);
           await interaction.reply({
-            content: 'Fresh start. Robin has forgotten this conversation; the next message begins a new agent session.',
+            content:
+              'Fresh start. Robin has forgotten this conversation; the next message begins a new agent session.',
             ephemeral: true,
           });
           return;
@@ -240,7 +255,10 @@ export async function start(ctx) {
           if (c) {
             c.abort();
             inFlight.delete(interaction.channelId);
-            await interaction.reply({ content: 'Cancelled the reply in progress.', ephemeral: true });
+            await interaction.reply({
+              content: 'Cancelled the reply in progress.',
+              ephemeral: true,
+            });
           } else {
             await interaction.reply({ content: 'Nothing to cancel.', ephemeral: true });
           }

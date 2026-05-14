@@ -137,7 +137,12 @@ test('fetchHistory caps total chars by dropping oldest', async () => {
   const events = [];
   for (let i = 0; i < 5; i++) {
     events.push(
-      userEvent({ channelId: 'A', id: `m${i}`, content: `${i}:${big}`, ts: new Date(1000 + i * 10) }),
+      userEvent({
+        channelId: 'A',
+        id: `m${i}`,
+        content: `${i}:${big}`,
+        ts: new Date(1000 + i * 10),
+      }),
     );
   }
   await capture(events);

@@ -200,6 +200,30 @@ test('stop clears every bucket', async () => {
   assert.equal(calls.a, before, 'no ticks after stop');
 });
 
+test('await stop() drains an in-flight tick before resolving', async () => {
+  let finished = false;
+  const sched = createScheduler({
+    buckets: [
+      {
+        name: 'slow',
+        intervalMs: 1000,
+        fireImmediately: true,
+        tick: async () => {
+          await new Promise((r) => {
+            const t = setTimeout(r, 60);
+            t.unref?.();
+          });
+          finished = true;
+        },
+      },
+    ],
+  });
+  await sched.start();
+  // The tick is mid-flight (60ms total). Stop() must wait for it to finish.
+  await sched.stop();
+  assert.equal(finished, true, 'stop() should not resolve until the in-flight tick completes');
+});
+
 test('throws when buckets is missing or empty', () => {
   assert.throws(() => createScheduler({}), /buckets/);
   assert.throws(() => createScheduler({ buckets: [] }), /buckets/);

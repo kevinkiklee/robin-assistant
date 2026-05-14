@@ -44,7 +44,10 @@ function renderTableAsCodeBlock(header, rows) {
     return cell + ' '.repeat(Math.max(0, w - len));
   };
   const fmt = (cells) =>
-    cells.map((c, i) => pad(c ?? '', widths[i])).join('  ').replace(/\s+$/, '');
+    cells
+      .map((c, i) => pad(c ?? '', widths[i]))
+      .join('  ')
+      .replace(/\s+$/, '');
   const lines = [fmt(cleanHeader), ...cleanRows.map(fmt)];
   return '```\n' + lines.join('\n') + '\n```';
 }
@@ -158,7 +161,7 @@ function findCutIndex(s, limit) {
 }
 
 function fenceBalanced(piece) {
-  return ((piece.match(/```/g) || []).length) % 2 === 0;
+  return (piece.match(/```/g) || []).length % 2 === 0;
 }
 
 // Compute a structured origin string for a Discord reply destination. Used
@@ -193,7 +196,9 @@ export function originForTarget(target, userId) {
 // collapse whitespace, slice by code points so we never cut a surrogate pair.
 // Falls back to 'Robin' if the cleaned text is empty.
 export function threadTitleFrom(text, botUserId, max = 50) {
-  const cleaned = stripMention(text ?? '', botUserId).trim().replace(/\s+/g, ' ');
+  const cleaned = stripMention(text ?? '', botUserId)
+    .trim()
+    .replace(/\s+/g, ' ');
   if (!cleaned) return 'Robin';
   const codePoints = [...cleaned];
   return codePoints.length <= max ? cleaned : codePoints.slice(0, max).join('');

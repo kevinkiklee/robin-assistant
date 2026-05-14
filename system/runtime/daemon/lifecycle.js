@@ -52,8 +52,11 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
     try {
       if (subsystems?.scheduler?.stop) {
         try {
-          console.log('scheduler stopping (in-flight dream may continue briefly)');
-          subsystems.scheduler.stop();
+          console.log('scheduler stopping (draining in-flight ticks)');
+          // Await so any tick still writing to the DB completes before
+          // db.close() below; otherwise we race "Anonymous access" /
+          // half-committed inserts during shutdown.
+          await subsystems.scheduler.stop();
         } catch (e) {
           console.warn(`scheduler stop failed: ${e.message}`);
         }

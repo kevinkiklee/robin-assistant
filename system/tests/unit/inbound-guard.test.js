@@ -91,3 +91,16 @@ test('guardInboundContent does not block medical/financial mentions', async () =
   assert.equal(await refusalCount(db), 0);
   await close(db);
 });
+
+test('refusal row for a secret stores redacted content, not the raw key', async () => {
+  const db = await fresh();
+  const secret = 'token sk-aBcDeFgHiJkLmNoPqRsTuVwXyZ012345';
+  await guardInboundContent(db, secret);
+  const [rows] = await db.query(surql`SELECT content FROM refusals LIMIT 1`).collect();
+  // Privacy invariant: PII/secret refusals must NOT persist the raw payload
+  // (the refusals table is read by `recent_refusals` MCP and `robin refusals
+  // list`). Hash + length are enough for forensic correlation.
+  assert.match(rows[0].content, /^<redacted>/);
+  assert.ok(!rows[0].content.includes('sk-aBcDeFgHiJkLmNoPqRsTuVwXyZ012345'));
+  await close(db);
+});

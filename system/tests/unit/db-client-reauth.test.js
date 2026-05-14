@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { installQueryRetry, isAnonymousError, singleFlight } from '../../data/db/client.js';
 
-const anonError = () => new Error('Anonymous access not allowed: Not enough permissions to perform this action');
+const anonError = () =>
+  new Error('Anonymous access not allowed: Not enough permissions to perform this action');
 
 // Mimics the surrealdb v2 builder shape: db.query(sql) returns a builder
 // with .collect() that triggers the round-trip and may throw.

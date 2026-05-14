@@ -22,32 +22,38 @@ export function createScheduler({ buckets } = {}) {
     throw new Error('createScheduler: buckets[] is required');
   }
   const timers = new Map();
-  const running = new Map();
+  // Map<bucketName, Promise> of in-flight ticks. Replaces the prior boolean
+  // running-flag map so `stop()` can `await` the live tick promises and
+  // callers can drain in-flight DB writes before closing the DB connection.
+  const inFlight = new Map();
 
-  async function fire(b) {
-    if (running.get(b.name)) return;
-    try {
-      if (typeof b.gate === 'function') {
-        let ok = false;
-        try {
-          ok = await b.gate();
-        } catch (e) {
-          console.warn(`[scheduler/${b.name}] gate failed: ${e.message}`);
-          return;
+  function fire(b) {
+    if (inFlight.has(b.name)) return inFlight.get(b.name);
+    const promise = (async () => {
+      try {
+        if (typeof b.gate === 'function') {
+          let ok = false;
+          try {
+            ok = await b.gate();
+          } catch (e) {
+            console.warn(`[scheduler/${b.name}] gate failed: ${e.message}`);
+            return;
+          }
+          if (!ok) return;
         }
-        if (!ok) return;
+        await b.tick();
+      } catch (e) {
+        console.warn(`[scheduler/${b.name}] tick failed: ${e.message}`);
+      } finally {
+        inFlight.delete(b.name);
       }
-      running.set(b.name, true);
-      await b.tick();
-    } catch (e) {
-      console.warn(`[scheduler/${b.name}] tick failed: ${e.message}`);
-    } finally {
-      running.set(b.name, false);
-    }
+    })();
+    inFlight.set(b.name, promise);
+    return promise;
   }
 
-  function start() {
-    stop();
+  async function start() {
+    await stop();
     for (const b of buckets) {
       const t = setInterval(() => {
         fire(b);
@@ -58,9 +64,15 @@ export function createScheduler({ buckets } = {}) {
     }
   }
 
-  function stop() {
+  // Returns a promise that resolves once timers are cancelled AND every
+  // in-flight tick has settled. Callers that subsequently close the DB rely
+  // on the awaited form so a tick's writes don't race db.close().
+  async function stop() {
     for (const t of timers.values()) clearInterval(t);
     timers.clear();
+    if (inFlight.size > 0) {
+      await Promise.allSettled([...inFlight.values()]);
+    }
   }
 
   return { start, stop };

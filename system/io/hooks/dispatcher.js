@@ -17,16 +17,25 @@ async function readStdin(timeoutMs = 1000) {
   return await new Promise((resolve) => {
     const chunks = [];
     let done = false;
+    const onData = (c) => chunks.push(c);
+    const onEnd = () => finish(Buffer.concat(chunks).toString('utf8'));
+    const onError = () => finish('');
     const finish = (val) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      // Remove every listener we attached so repeat calls within one process
+      // (tests, future in-process hook dispatch) don't accumulate handlers.
+      process.stdin.off('data', onData);
+      process.stdin.off('end', onEnd);
+      process.stdin.off('error', onError);
       resolve(val);
     };
     const timer = setTimeout(() => finish(Buffer.concat(chunks).toString('utf8')), timeoutMs);
-    process.stdin.on('data', (c) => chunks.push(c));
-    process.stdin.on('end', () => finish(Buffer.concat(chunks).toString('utf8')));
-    process.stdin.on('error', () => finish(''));
+    timer.unref?.();
+    process.stdin.on('data', onData);
+    process.stdin.on('end', onEnd);
+    process.stdin.on('error', onError);
   });
 }
 

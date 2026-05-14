@@ -131,7 +131,7 @@ export async function startDaemon() {
         },
       ],
     });
-    scheduler.start();
+    await scheduler.start();
 
     // Per-boot token gates /internal/* endpoints. CLI reads it from
     // runtime/daemon/.state (which is chmod 0600). Loopback binding stops

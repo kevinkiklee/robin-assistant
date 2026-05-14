@@ -20,6 +20,22 @@ import { stage3Disambig } from './stage3-disambig.js';
 const DEFAULT_HIGH = 0.92;
 const DEFAULT_LOW = 0.8;
 
+// SurrealDB renders record IDs outside `[A-Za-z0-9_]` as `tb:⟨…⟩` /
+// backticks, and that bracketed form fails to round-trip through a bound
+// INSERT RELATION parameter. `cognition/memory/edge-registry.validateEdge`
+// rejects unsafe keys outright, so every entity record id must pass
+// through this sanitizer. Exported so the v1-import entity-writer produces
+// the same key for the same (type, name) and re-imports converge onto the
+// row created by the biographer (and vice versa).
+export function entityRecordKey(type, name) {
+  const safeName =
+    String(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'unnamed';
+  return `${type}__${safeName}`;
+}
+
 export async function upsertEntityCascade(db, embedder, input) {
   const { name, type, scope = 'global', tags = [], meta, host, config = {} } = input;
   if (!name) throw new Error('upsertEntityCascade: name required');
@@ -82,22 +98,11 @@ export async function upsertEntityCascade(db, embedder, input) {
   }
 
   // Create — use a deterministic record id keyed by (type, name_lower) so
-  // concurrent upserts converge to the same row instead of racing. The
-  // name portion is sanitized to record-id-safe characters: SurrealDB
-  // accepts `[a-zA-Z0-9_]` in IDs without escaping. Names with spaces,
-  // punctuation, or non-ASCII would otherwise be rendered as
-  // `entities:⟨type__name with space⟩` and that bracketed form fails to
-  // round-trip through bound INSERT RELATION (`property 'out' is
-  // 'entities:⟨…⟩'` rejection seen in production). Stage-1 name lookup
-  // still searches by the `name_lower` field (which keeps the original
-  // string) so the sanitization only changes the record ID shape, not
-  // the resolution path.
-  const safeName =
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'unnamed';
-  const stableKey = `${type}__${safeName}`;
+  // concurrent upserts converge to the same row instead of racing.
+  // Stage-1 name lookup still searches by the `name_lower` field (which
+  // keeps the original string) so the sanitization only changes the
+  // record ID shape, not the resolution path.
+  const stableKey = entityRecordKey(type, name);
   const fields = {
     name,
     type,

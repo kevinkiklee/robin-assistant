@@ -1,7 +1,3 @@
-import {
-  biographerProcess,
-  biographerProcessBatch,
-} from '../../../cognition/biographer/pipeline.js';
 import { readDaemonState } from '../../../config/daemon-state.js';
 import { ensureHome, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
@@ -11,29 +7,7 @@ import { captureFromTranscript } from '../../../io/capture/session-capture.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import { detectHost } from '../../hosts/detect.js';
 import { parseArgs } from '../args.js';
-
-// Match biographer-catchup's delegate-when-alive pattern. The daemon's queue
-// worker is single-threaded; the CLI pipeline is not aware of it. Letting
-// both walk the same pending events concurrently produced the
-// "biographer race detected" + Gemini 429 incident captured in
-// beqsvw9rk.output.
-async function delegateToDaemon(state, body, fetchFn = fetch) {
-  try {
-    const url = `http://127.0.0.1:${state.port}/internal/biographer/process-pending`;
-    const headers = { 'content-type': 'application/json' };
-    if (state.auth_token) headers.authorization = `Bearer ${state.auth_token}`;
-    const res = await fetchFn(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body ?? {}),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return null;
-    return await res.json().catch(() => ({}));
-  } catch {
-    return null;
-  }
-}
+import { delegateToDaemon, processPendingChunks } from './_biographer-shared.js';
 
 export async function biographerProcessPending(argv) {
   const args = parseArgs(argv);
@@ -96,47 +70,7 @@ export async function biographerProcessPending(argv) {
       if (!embedder) embedder = await createEmbedder({ db });
       if (!host) host = await detectHost();
 
-      // Group by source so each batch shares one episode lookup + entity catalog.
-      // Per-source batches preserve C1's semantics (no cross-source mixing).
-      const bySource = new Map();
-      for (const row of pending) {
-        const key = row.source ?? '__unknown__';
-        if (!bySource.has(key)) bySource.set(key, []);
-        bySource.get(key).push(row.id);
-      }
-
-      let ok = 0;
-      let failed = 0;
-      const MAX = 8;
-      for (const ids of bySource.values()) {
-        for (let i = 0; i < ids.length; i += MAX) {
-          const chunk = ids.slice(i, i + MAX);
-          try {
-            const r = await biographerProcessBatch(db, embedder, host, chunk);
-            for (const eid of chunk) {
-              const out = r?.perEvent?.get?.(String(eid));
-              if (out?.processed) ok++;
-              else if (out?.skipped) ok++;
-              else failed++;
-            }
-          } catch (e) {
-            // Whole-batch failure — fall back to per-event so individual errors
-            // are isolated and reported (preserves pre-C1 catchup semantics).
-            console.error(
-              `batch failed (${chunk.length} events): ${e.message}; falling back to per-event`,
-            );
-            for (const eid of chunk) {
-              try {
-                await biographerProcess(db, embedder, host, eid);
-                ok++;
-              } catch (ee) {
-                failed++;
-                console.error(`biographer failed on ${eid}: ${ee.message}`);
-              }
-            }
-          }
-        }
-      }
+      const { ok, failed } = await processPendingChunks(db, embedder, host, pending);
       console.log(`process-pending: ${ok} events${failed ? ` (${failed} failed)` : ''}`);
     } finally {
       await close(db);

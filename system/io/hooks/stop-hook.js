@@ -56,5 +56,12 @@ export async function stopHookHandler(args = {}) {
     env: process.env,
   });
   proc.unref();
-  await logFh.close();
+  // The child inherited the fd via spawn's stdio; closing our copy here is
+  // safe. Wrap in try/catch so a transient close failure (e.g. ENOLCK on a
+  // network filesystem) doesn't crash the hook runner.
+  try {
+    await logFh.close();
+  } catch (e) {
+    if (process.env.ROBIN_DEBUG) console.warn(`[stop-hook] logFh close: ${e.message}`);
+  }
 }

@@ -7,9 +7,8 @@ import { BoundQuery } from 'surrealdb';
 
 /**
  * Layer lookup for dream_telemetry rows. Matches dag.js DREAM_DAG_DEPS
- * topological layering (knowledge/patterns/reflection/profile/arcs/
- * commStyle/confidence in layer 1; scopeCleanup/calibration in layer 2;
- * compaction in layer 3).
+ * topological layering: knowledge/patterns/reflection/profile/arcs/commStyle
+ * in layer 1; scopeCleanup/calibration in layer 2; compaction in layer 3.
  */
 const STEP_LAYER = {
   knowledge: 1,
@@ -18,7 +17,6 @@ const STEP_LAYER = {
   profile: 1,
   arcs: 1,
   commStyle: 1,
-  confidence: 1,
   scopeCleanup: 2,
   calibration: 2,
   compaction: 3,

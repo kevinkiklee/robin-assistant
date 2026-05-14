@@ -83,7 +83,9 @@ async function noopSurreal() {
 
 // ---------- Argument parsing ----------
 
-test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', { skip: SKIP_SLOW }, async () => {
+test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', {
+  skip: SKIP_SLOW,
+}, async () => {
   setup();
   try {
     const { install } = await importInstall();
@@ -99,7 +101,9 @@ test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', 
   }
 });
 
-test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', { skip: SKIP_SLOW }, async () => {
+test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', {
+  skip: SKIP_SLOW,
+}, async () => {
   setup();
   try {
     const { install } = await importInstall();
@@ -485,7 +489,9 @@ test('interactive prompt with default (empty input) picks mxbai-1024', async () 
 
 // ---------- End-to-end smoke ----------
 
-test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtime:embedder', { skip: SKIP_SLOW }, async () => {
+test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtime:embedder', {
+  skip: SKIP_SLOW,
+}, async () => {
   setup();
   try {
     let runtimeEmbedderRow = null;

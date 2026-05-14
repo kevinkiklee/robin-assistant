@@ -87,7 +87,9 @@ export async function generateAndSendReply({
     trustedOrigins,
   });
   if (!policy.ok) {
-    await target.send(`(robin: reply blocked by outbound policy: ${policy.reason})`).catch(() => {});
+    await target
+      .send(`(robin: reply blocked by outbound policy: ${policy.reason})`)
+      .catch(() => {});
     return { sent: false, reason: policy.reason, sessionId: result.sessionId };
   }
 

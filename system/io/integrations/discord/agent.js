@@ -23,7 +23,7 @@ function envTimeoutMs() {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : FALLBACK_TIMEOUT_MS;
 }
-const SIGKILL_DELAY_MS = 5000;            // grace period after SIGTERM
+const SIGKILL_DELAY_MS = 5000; // grace period after SIGTERM
 
 function buildArgs({ prompt, sessionId, maxTurns }) {
   // Claude Code v2.x: `-p` is print mode; `--max-turns` caps the agent loop;
@@ -100,7 +100,14 @@ export function runDiscordAgent({
 }) {
   return new Promise((resolve) => {
     if (signal?.aborted) {
-      resolve({ text: '', sessionId: null, isError: false, subtype: null, costUsd: 0, code: 'CANCELLED' });
+      resolve({
+        text: '',
+        sessionId: null,
+        isError: false,
+        subtype: null,
+        costUsd: 0,
+        code: 'CANCELLED',
+      });
       return;
     }
 
@@ -170,7 +177,14 @@ export function runDiscordAgent({
       if (signal) signal.removeEventListener('abort', onAbort);
 
       if (cancelled) {
-        resolve({ text: '', sessionId: null, isError: false, subtype: null, costUsd: 0, code: 'CANCELLED' });
+        resolve({
+          text: '',
+          sessionId: null,
+          isError: false,
+          subtype: null,
+          costUsd: 0,
+          code: 'CANCELLED',
+        });
         return;
       }
       if (timedOut) {

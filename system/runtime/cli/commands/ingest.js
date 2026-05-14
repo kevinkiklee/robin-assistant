@@ -32,9 +32,8 @@ export async function ingestCmd(argv = [], deps = {}) {
       );
     }
   } else {
-    err(
-      `ingest failed: ${result?.reason ?? 'unknown'}${result?.detail ? ` (${result.detail})` : ''}`,
-    );
+    const reason = result?.reason ?? 'no reason returned from daemon (see daemon.log)';
+    err(`ingest failed: ${reason}${result?.detail ? ` (${result.detail})` : ''}`);
     process.exitCode = 1;
   }
 }

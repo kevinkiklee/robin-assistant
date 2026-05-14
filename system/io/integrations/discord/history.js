@@ -28,7 +28,11 @@ function eventToTurn(row) {
  * Returns `[]` when there's no usable history (new conversation, only the just-
  * captured user message exists yet, etc).
  */
-export async function fetchHistory(db, channelId, { maxTurns = MAX_TURNS, maxChars = MAX_CHARS } = {}) {
+export async function fetchHistory(
+  db,
+  channelId,
+  { maxTurns = MAX_TURNS, maxChars = MAX_CHARS } = {},
+) {
   if (!channelId) return [];
   // Pull a wider window than we need so a few `slash` rows or stray non-turn
   // events don't starve the actual conversation.

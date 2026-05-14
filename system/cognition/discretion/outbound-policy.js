@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
 import { BoundQuery, surql } from 'surrealdb';
 import { DAY_MS } from '../../config/time.js';
 import { isOutboundBlocked } from '../memory/scope-registry.js';
 import { PII_PATTERNS, SECRET_PATTERNS } from './outbound-patterns.js';
+import { logRefusal } from './refusal-log.js';
 
 const UNTRUSTED_LOOKBACK_DAYS = 7;
 const MIN_QUOTE_WORDS = 10;
@@ -32,20 +32,8 @@ function containsVerbatim(replyText, sourceText, minWords = MIN_QUOTE_WORDS) {
   return false;
 }
 
-async function logRefusal(db, destination, reason, payload) {
-  // refusals is SCHEMAFULL post-redesign: {content, reason, direction, tool,
-  // meta}. Destination/payload_hash fold into meta.
-  const payload_hash = createHash('sha256').update(payload).digest('hex').slice(0, 16);
-  await db
-    .query(
-      surql`CREATE refusals CONTENT ${{
-        content: payload,
-        reason,
-        direction: 'outbound',
-        meta: { destination, payload_hash },
-      }}`,
-    )
-    .collect();
+function logOutbound(db, destination, reason, payload) {
+  return logRefusal(db, { direction: 'outbound', destination, reason, payload });
 }
 
 // True when `origin` is trusted under any prefix in `trustedOrigins`. Matches
@@ -69,13 +57,13 @@ export async function checkOutbound(db, { destination, text, origin, trustedOrig
   for (const p of PII_PATTERNS) {
     const m = p.regex.exec(text);
     if (m && (!p.mask || p.mask(m[0]))) {
-      await logRefusal(db, destination, `pii:${p.name}`, text);
+      await logOutbound(db, destination, `pii:${p.name}`, text);
       return { ok: false, reason: `pii:${p.name}` };
     }
   }
   for (const p of SECRET_PATTERNS) {
     if (p.regex.test(text)) {
-      await logRefusal(db, destination, `secret:${p.name}`, text);
+      await logOutbound(db, destination, `secret:${p.name}`, text);
       return { ok: false, reason: `secret:${p.name}` };
     }
   }
@@ -97,7 +85,7 @@ export async function checkOutbound(db, { destination, text, origin, trustedOrig
     .collect();
   for (const r of rows) {
     if (containsVerbatim(text, r.content)) {
-      await logRefusal(db, destination, 'untrusted_quote', text);
+      await logOutbound(db, destination, 'untrusted_quote', text);
       return { ok: false, reason: 'untrusted_quote' };
     }
   }
@@ -145,7 +133,7 @@ export async function checkOutboundScope(db, { tool, refs }) {
   const allBlocked = [...directBlocked, ...derivedBlocked];
   if (allBlocked.length === 0) return { ok: true };
 
-  await logRefusal(
+  await logOutbound(
     db,
     tool ?? 'unknown',
     'private_scope',

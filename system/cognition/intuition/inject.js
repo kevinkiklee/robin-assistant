@@ -1,6 +1,3 @@
-// The detector arg is currently unused — reserved for future
-// repeat-query suppression.
-
 import { surql } from 'surrealdb';
 import { readStateInferenceConfig } from '../jobs/internal/state-inference.js';
 import { recordStringId } from '../memory/edge-registry.js';
@@ -140,7 +137,6 @@ export function evaluateFocusSuppression({ cfg, memo, query, now = new Date() })
  * @param {object} args
  * @param {import('surrealdb').Surreal} args.db
  * @param {{embed:(t:string)=>Promise<Float32Array>}} args.embedder
- * @param {*} [args.detector]            Reserved for repeat-query suppression (4b).
  * @param {string} args.query             Current user message.
  * @param {string} [args.priorAssistant]  Previous assistant turn (we use the tail).
  * @param {number} [args.k]               Max hits (default 6).
@@ -151,7 +147,6 @@ export function evaluateFocusSuppression({ cfg, memo, query, now = new Date() })
 export async function intuitionEndpoint({
   db,
   embedder,
-  // detector — intentionally unused in 4a; see header comment.
   query,
   sessionId,
   source = null,
@@ -167,7 +162,9 @@ export async function intuitionEndpoint({
 
   // B2 — read recall config + resolve surfacing flag. Surfacing requires both
   // the runtime:recall flag AND a non-zero budget from the caller.
-  const cfg = await getRecallConfig(db).catch(() => ({}));
+  // getRecallConfig has its own internal try/catch that returns HYBRID_DEFAULTS
+  // on failure, so no outer catch is needed here.
+  const cfg = await getRecallConfig(db);
   const surfacingOn = cfg.conflict_surfacing_enabled === true && conflictTokenBudget > 0;
 
   // Cognition D1: focus block (computed at the prologue so it sits above the

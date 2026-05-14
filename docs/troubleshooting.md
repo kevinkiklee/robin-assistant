@@ -376,8 +376,8 @@ These corrections came out of the redesign verification gates and have bitten pe
 
 - **`Cannot execute UPSERT statement using value: NONE`** — when seeding a
   `runtime:*` row whose key contains a `.`, wrap in backticks:
-  `UPSERT runtime:\`evidence.config\` SET value = {...}`. Affects all
-  alpha.16 config rows.
+  `UPSERT runtime:\`meta.config\` SET value = {...}`. Affects any
+  config row whose key contains a dot.
 - **`Found 'DENY' for field state ... must conform to ['AUTO','ASK','NEVER']`** —
   `action_trust.state` enum was widened to include `DENY`. Pre-existing
   DBs without `0001-init.surql` reapplied will reject writes from the new
@@ -417,7 +417,6 @@ Via the MCP introspection tools (alpha.16):
 
 ```
 explain_recall {query_id?, last_n?}    # why did Robin rank these hits?
-explain_belief {memo_id}               # how did confidence get to its value?
 explain_action_trust {class}           # full ledger history for tool:action
 show_pending_triggers {step?}          # cadence queue depth
 show_step_health {since?}              # per-step success rate + cost

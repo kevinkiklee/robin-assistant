@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { surql } from 'surrealdb';
+import { BoundQuery } from 'surrealdb';
 import { readConfig } from '../../config/paths.js';
 import { sha256 } from '../embed/hash.js';
 
@@ -57,16 +57,14 @@ export async function runMigrations(db, migrationsDir) {
       continue;
     }
 
-    // Apply: the file body in a transaction.
-    const tx = `BEGIN TRANSACTION;\n${sql}\n;\nCOMMIT TRANSACTION;`;
-    await db.query(tx).collect();
-    // Insert the tracking row using the parameterised tagged template.
+    // Apply: the migration body AND the tracking-row insert in one transaction.
+    // Keeping the tracking insert outside the TX risked a state where the
+    // migration ran but the `_migrations` row never landed (e.g. process
+    // killed between the two queries); the next run would then re-apply the
+    // migration. Folding the CREATE into the same TX makes the pair atomic.
     const name = basename(file);
-    await db
-      .query(
-        surql`CREATE _migrations SET version = ${version}, name = ${name}, checksum = ${checksum};`,
-      )
-      .collect();
+    const tx = `BEGIN TRANSACTION;\n${sql}\n;\nCREATE _migrations SET version = $version, name = $name, checksum = $checksum;\nCOMMIT TRANSACTION;`;
+    await db.query(new BoundQuery(tx, { version, name, checksum })).collect();
     newlyApplied.push(version);
   }
   return newlyApplied;

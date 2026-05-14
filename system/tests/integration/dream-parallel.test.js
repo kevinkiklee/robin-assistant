@@ -292,14 +292,7 @@ test('budget variant B: layer 1 runs, layer 2/3 skipped after the boundary check
   }
   // Layer 1 ran (knowledge / patterns / reflection / profile / arcs / commStyle)
   // — their summary keys are real results, not 'skipped'.
-  for (const key of [
-    'knowledge',
-    'patterns',
-    'reflection',
-    'profile',
-    'arcs',
-    'commStyle',
-  ]) {
+  for (const key of ['knowledge', 'patterns', 'reflection', 'profile', 'arcs', 'commStyle']) {
     const v = summary[key];
     assert.notDeepEqual(v, { skipped: 'budget_exhausted' }, `layer-1 ${key} should have run`);
   }

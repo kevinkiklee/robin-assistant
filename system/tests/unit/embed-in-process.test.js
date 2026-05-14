@@ -24,16 +24,15 @@ test('embed() returns 1024-dim Float32Array', { skip: SKIP_SLOW, timeout: 60_000
   assert.equal(v.length, 1024);
 });
 
-test(
-  'embedBatch() returns array of 1024-dim Float32Arrays',
-  { skip: SKIP_SLOW, timeout: 60_000 },
-  async () => {
-    const e = await createInProcessEmbedder();
-    const vs = await e.embedBatch(['a', 'b', 'c']);
-    assert.equal(vs.length, 3);
-    for (const v of vs) assert.equal(v.length, 1024);
-  },
-);
+test('embedBatch() returns array of 1024-dim Float32Arrays', {
+  skip: SKIP_SLOW,
+  timeout: 60_000,
+}, async () => {
+  const e = await createInProcessEmbedder();
+  const vs = await e.embedBatch(['a', 'b', 'c']);
+  assert.equal(vs.length, 3);
+  for (const v of vs) assert.equal(v.length, 1024);
+});
 
 test('unload() drops extractor reference', { skip: SKIP_SLOW }, async () => {
   const e = await createInProcessEmbedder();

@@ -76,9 +76,7 @@ export function parseLLMJSON(content) {
   }
   const candidate = extractBalancedObject(s, firstBrace);
   if (candidate == null) {
-    throw new Error(
-      'parseLLMJSON: unterminated JSON object (likely truncated by max_tokens cap)',
-    );
+    throw new Error('parseLLMJSON: unterminated JSON object (likely truncated by max_tokens cap)');
   }
   return JSON.parse(candidate);
 }
