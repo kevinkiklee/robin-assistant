@@ -20,9 +20,23 @@ export function isAllowed({ allowlist, message, interaction }) {
   return false;
 }
 
+// Possible kinds:
+//   'dm'      — direct message; reply unconditionally if user is allowlisted
+//   'thread'  — message in a thread Robin created (ownerId === bot); the
+//               thread itself is the session, so any user message continues it
+//   'mention' — @-mention in a non-thread guild channel; start a new thread
+//   'other'   — drop (plain channel chatter, mention inside an unrelated thread)
 export function classifyMessage(message, botUserId) {
-  const dm = !message.guildId;
-  if (dm) return 'dm';
+  if (!message.guildId) return 'dm';
+  const channel = message.channel;
+  const inThread = typeof channel?.isThread === 'function' && channel.isThread();
+  if (inThread) {
+    // Only follow up in threads Robin owns. Threads created by other users
+    // would let unrelated chatter trigger the bot.
+    if (channel.ownerId === botUserId) return 'thread';
+    if (message.mentions.has(botUserId)) return 'thread';
+    return 'other';
+  }
   if (message.mentions.has(botUserId)) return 'mention';
   return 'other';
 }

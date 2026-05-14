@@ -41,6 +41,9 @@ export function createIdleEmbedder({ factory, idleMs = 600_000 }) {
       lastTouch = Date.now();
       scheduleUnload();
     },
+    isLoaded() {
+      return embedder !== null;
+    },
     shutdown() {
       if (timer) clearTimeout(timer);
       embedder = null;

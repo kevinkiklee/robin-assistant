@@ -89,7 +89,7 @@ export async function biographerCatchup(argv) {
       }
 
       // Lazy: only build embedder + host when we actually have work to do.
-      const embedder = await createEmbedder();
+      const embedder = await createEmbedder({ db });
       const host = await detectHost();
 
       // Group by source so each batch shares one episode lookup + entity catalog.

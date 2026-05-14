@@ -33,8 +33,12 @@ function summarizeUsage(stats) {
   return { input_tokens: input, output_tokens: output, cache_read_tokens: cached };
 }
 
-function runGemini(spawnFn, args, stdin) {
+function runGemini(spawnFn, args, stdin, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
     let proc;
     try {
       // Neutral cwd to avoid v1 project hooks firing during a Robin-internal
@@ -53,14 +57,30 @@ function runGemini(spawnFn, args, stdin) {
     }
     let stdout = '';
     let stderr = '';
+    let aborted = false;
+    const onAbort = () => {
+      aborted = true;
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        // Already exited — ignore.
+      }
+      reject(new Error('aborted'));
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
     proc.stdout.on('data', (d) => {
       stdout += d.toString();
     });
     proc.stderr.on('data', (d) => {
       stderr += d.toString();
     });
-    proc.on('error', reject);
+    proc.on('error', (e) => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      reject(e);
+    });
     proc.on('exit', (code) => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      if (aborted) return;
       if (code !== 0) reject(new Error(`gemini exited ${code}: ${stderr}`));
       else resolve(stdout);
     });
@@ -98,7 +118,7 @@ export function createGeminiAdapter(deps = {}) {
       const model = GEMINI_TIER_MAP[tier];
       const prompt = messagesToPrompt(messages, opts.system);
       const args = ['-p', prompt, '-o', 'json', '-m', model];
-      const out = await runGemini(spawnFn, args, undefined);
+      const out = await runGemini(spawnFn, args, undefined, opts.signal);
       let parsed;
       try {
         parsed = JSON.parse(out);

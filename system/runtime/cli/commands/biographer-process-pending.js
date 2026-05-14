@@ -71,7 +71,7 @@ export async function biographerProcessPending(argv) {
       // Hoists embedder + host so the biographer loop below reuses them.
       if (transcriptPath) {
         try {
-          embedder = await createEmbedder();
+          embedder = await createEmbedder({ db });
           host = await detectHost();
           await captureFromTranscript(db, embedder, {
             transcriptPath,
@@ -93,7 +93,7 @@ export async function biographerProcessPending(argv) {
         return;
       }
 
-      if (!embedder) embedder = await createEmbedder();
+      if (!embedder) embedder = await createEmbedder({ db });
       if (!host) host = await detectHost();
 
       // Group by source so each batch shares one episode lookup + entity catalog.

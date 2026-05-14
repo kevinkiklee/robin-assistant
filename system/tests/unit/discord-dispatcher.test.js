@@ -40,7 +40,7 @@ test('classifyMessage: DM', () => {
   assert.equal(classifyMessage(m, 'bot'), 'dm');
 });
 
-test('classifyMessage: mention', () => {
+test('classifyMessage: @mention in plain channel → mention (needs new thread)', () => {
   const m = makeMessage({ mentions_bot: true });
   assert.equal(classifyMessage(m, 'bot'), 'mention');
 });
@@ -48,6 +48,26 @@ test('classifyMessage: mention', () => {
 test('classifyMessage: non-mention guild message → other', () => {
   const m = makeMessage({ mentions_bot: false });
   assert.equal(classifyMessage(m, 'bot'), 'other');
+});
+
+test('classifyMessage: any message in a bot-owned thread → thread', () => {
+  const m = makeMessage({ mentions_bot: false, channel_kind: 'bot_thread' });
+  assert.equal(classifyMessage(m, 'bot'), 'thread');
+});
+
+test('classifyMessage: bot-owned thread + @mention → thread', () => {
+  const m = makeMessage({ mentions_bot: true, channel_kind: 'bot_thread' });
+  assert.equal(classifyMessage(m, 'bot'), 'thread');
+});
+
+test('classifyMessage: non-mention message in another user’s thread → other', () => {
+  const m = makeMessage({ mentions_bot: false, channel_kind: 'other_thread' });
+  assert.equal(classifyMessage(m, 'bot'), 'other');
+});
+
+test('classifyMessage: @mention in another user’s thread still triggers reply', () => {
+  const m = makeMessage({ mentions_bot: true, channel_kind: 'other_thread' });
+  assert.equal(classifyMessage(m, 'bot'), 'thread');
 });
 
 test('buildEventFromMessage stamps trust=untrusted', () => {

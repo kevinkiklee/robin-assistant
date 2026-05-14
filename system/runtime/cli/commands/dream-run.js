@@ -25,7 +25,7 @@ export async function dreamRun() {
         console.error(`dream run: ${e.message}`);
         process.exit(1);
       }
-      const embedder = await createEmbedder();
+      const embedder = await createEmbedder({ db });
       const summary = await dreamProcess(db, host, embedder);
       console.log(JSON.stringify(summary, null, 2));
     } finally {

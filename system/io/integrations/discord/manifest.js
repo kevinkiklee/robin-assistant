@@ -13,6 +13,10 @@ export const manifest = {
       'DISCORD_APPLICATION_ID',
       'DISCORD_ALLOWED_USER_IDS',
       'DISCORD_ALLOWED_GUILD_IDS',
+      // Comma-separated origin prefixes (e.g. `discord:guild:<id>`,
+      // `discord:dm:<userId>`) whose outbound Layer-1 (untrusted-quote)
+      // guard is bypassed. Optional — defaults to the allowed-guild + DM set.
+      'DISCORD_TRUSTED_ORIGINS',
     ],
   },
   start,

@@ -3,6 +3,7 @@ import { checkActionTrust, recordOutcome } from '../../../../cognition/jobs/acti
 import { getSecret } from '../../../../config/secrets.js';
 import { checkRateLimit } from '../../../outbound/rate-limit.js';
 import { DISCORD_MESSAGE_MAX } from '../constants.js';
+import { formatForDiscord } from '../formatter.js';
 
 function splitIds(value) {
   return (value ?? '')
@@ -66,10 +67,13 @@ export function createDiscordSendTool({ db, capture, getGatewayClient }) {
         };
       }
 
-      const content = args?.content;
-      if (typeof content !== 'string' || content.length === 0) {
+      const rawContent = args?.content;
+      if (typeof rawContent !== 'string' || rawContent.length === 0) {
         return { ok: false, reason: 'missing_arg', arg: 'content' };
       }
+      // Convert GFM tables → fenced code blocks. Length check uses the
+      // post-transform string since that's what actually goes to Discord.
+      const content = formatForDiscord(rawContent);
       if (content.length > DISCORD_MESSAGE_MAX) {
         return {
           ok: false,

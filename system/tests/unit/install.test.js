@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+// Slow group: these tests run the full install flow which boots SurrealDB
+// migrations and loads the mxbai-1024 embedder (~1s warm, ~30s cold). Skip
+// during `pnpm test:fast` for inner-loop iteration; CI/`pnpm test` still
+// runs them.
+const SKIP_SLOW = process.env.ROBIN_SKIP_SLOW === '1';
+
 let tmpHome;
 let tmpFakeHomedir;
 let originalHome;
@@ -77,7 +83,7 @@ async function noopSurreal() {
 
 // ---------- Argument parsing ----------
 
-test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', async () => {
+test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', { skip: SKIP_SLOW }, async () => {
   setup();
   try {
     const { install } = await importInstall();
@@ -93,7 +99,7 @@ test('install --profile mxbai-1024 --no-mcp writes config and runs migrations', 
   }
 });
 
-test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', async () => {
+test('install --auto --no-mcp picks mxbai-1024 defaults with no other flags', { skip: SKIP_SLOW }, async () => {
   setup();
   try {
     const { install } = await importInstall();
@@ -262,7 +268,7 @@ test('reinstall short-circuit when config exists', async () => {
   }
 });
 
-test('reinstall with --force proceeds past short-circuit', async () => {
+test('reinstall with --force proceeds past short-circuit', { skip: SKIP_SLOW }, async () => {
   setup();
   try {
     const { writeConfig } = await import(`../../config/paths.js?cb=${Date.now()}`);
@@ -479,7 +485,7 @@ test('interactive prompt with default (empty input) picks mxbai-1024', async () 
 
 // ---------- End-to-end smoke ----------
 
-test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtime:embedder', async () => {
+test('end-to-end: --profile mxbai-1024 --force runs migrations and writes runtime:embedder', { skip: SKIP_SLOW }, async () => {
   setup();
   try {
     let runtimeEmbedderRow = null;

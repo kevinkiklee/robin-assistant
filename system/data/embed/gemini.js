@@ -1,3 +1,4 @@
+import { surql } from 'surrealdb';
 import { requireSecret } from '../../config/secrets.js';
 
 const SINGLE_ENDPOINT =
@@ -10,6 +11,12 @@ const DIM = 3072;
 // must be split client-side; we chunk transparently inside embedBatch.
 const MAX_BATCH = 100;
 
+// Rough token estimate: gemini-embedding-001 doesn't return usage metadata,
+// so we approximate from input bytes. English text averages ~4 chars/token.
+function estimateTokens(text) {
+  return Math.ceil(String(text ?? '').length / 4);
+}
+
 class GeminiError extends Error {
   constructor(message, status) {
     super(message);
@@ -18,7 +25,27 @@ class GeminiError extends Error {
   }
 }
 
-export async function createGeminiEmbedder() {
+export async function createGeminiEmbedder({ db } = {}) {
+  // Fire-and-forget usage counter. `db` is optional — CLI paths that build an
+  // embedder without a daemon DB handle (e.g. install) simply skip telemetry.
+  // Errors are swallowed so a transient DB write failure never breaks embeds.
+  async function recordUsage(tokens, requests) {
+    if (!db || !tokens) return;
+    try {
+      await db
+        .query(
+          surql`UPSERT runtime:embed_usage SET
+            value.profile = ${MODEL},
+            value.total_tokens = (value.total_tokens ?? 0) + ${tokens},
+            value.total_requests = (value.total_requests ?? 0) + ${requests},
+            value.since = value.since ?? time::now(),
+            value.last_updated_at = time::now()`,
+        )
+        .collect();
+    } catch {
+      /* swallow; telemetry must not affect embed correctness */
+    }
+  }
   // Per-call requireSecret is intentional: lets users re-auth without daemon restart.
 
   async function embed(text) {
@@ -32,6 +59,7 @@ export async function createGeminiEmbedder() {
       throw new GeminiError(`gemini ${r.status}: ${await r.text().catch(() => '')}`, r.status);
     }
     const json = await r.json();
+    recordUsage(estimateTokens(text), 1);
     return Float32Array.from(json.embedding.values);
   }
 
@@ -55,11 +83,15 @@ export async function createGeminiEmbedder() {
       });
       if (r.ok) {
         const json = await r.json();
+        let total = 0;
+        for (const t of texts) total += estimateTokens(t);
+        recordUsage(total, 1);
         return json.embeddings.map((e) => Float32Array.from(e.values));
       }
       if (r.status === 404 || r.status === 405) {
         // Endpoint not available for this account/region — fall back to
-        // single-text embed for each input.
+        // single-text embed for each input. Each embed() records its own
+        // usage; don't double-count here.
         const out = [];
         for (const t of texts) out.push(await embed(t));
         return out;

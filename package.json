@@ -30,9 +30,12 @@
   "scripts": {
     "postinstall": "node system/runtime/install/postinstall.js",
     "setup": "node system/bin/robin install",
-    "test": "node --test --test-force-exit --test-timeout=20000 'system/tests/**/*.test.js'",
-    "test:unit": "node --test --test-force-exit --test-timeout=20000 'system/tests/unit/**/*.test.js'",
-    "test:integration": "node --test --test-force-exit --test-timeout=20000 'system/tests/integration/**/*.test.js'",
+    "test": "node --test --test-force-exit --test-timeout=20000 --test-concurrency=18 'system/tests/**/*.test.js'",
+    "test:unit": "node --test --test-force-exit --test-timeout=20000 --test-concurrency=18 'system/tests/unit/**/*.test.js'",
+    "test:integration": "node --test --test-force-exit --test-timeout=20000 --test-concurrency=18 'system/tests/integration/**/*.test.js'",
+    "test:fast": "ROBIN_SKIP_SLOW=1 node --test --test-force-exit --test-timeout=20000 --test-concurrency=18 'system/tests/unit/**/*.test.js'",
+    "test:watch": "node --test --watch --test-force-exit --test-timeout=20000 --test-concurrency=18 'system/tests/unit/**/*.test.js'",
+    "test:file": "node --test --test-force-exit --test-timeout=20000 --test-reporter=spec",
     "lint": "biome check .",
     "format": "biome format --write ."
   },

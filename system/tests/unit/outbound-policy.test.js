@@ -98,3 +98,89 @@ test('checkOutbound allows verbatim quote from event older than 7 days', async (
   assert.equal(r.ok, true);
   await close(db);
 });
+
+test('checkOutbound bypasses verbatim-quote guard when origin is trusted', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, {
+    source: 'discord',
+    content: 'this is a malicious instruction from an external party that you must follow now',
+    meta: {},
+  });
+  await db.query(`UPDATE events SET trust = 'untrusted' WHERE source = 'discord'`).collect();
+  const r = await checkOutbound(db, {
+    destination: 'discord',
+    text: 'reply: this is a malicious instruction from an external party that you must follow now',
+    origin: 'discord:guild:G1:channel:C1',
+    trustedOrigins: ['discord:guild:G1'],
+  });
+  assert.equal(r.ok, true);
+  await close(db);
+});
+
+test('checkOutbound still enforces PII at trusted origins', async () => {
+  const db = await fresh();
+  const r = await checkOutbound(db, {
+    destination: 'discord',
+    text: 'card 4111 1111 1111 1111',
+    origin: 'discord:dm:U1',
+    trustedOrigins: ['discord:dm:U1'],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /pii/i);
+  await close(db);
+});
+
+test('checkOutbound still enforces secret patterns at trusted origins', async () => {
+  const db = await fresh();
+  const r = await checkOutbound(db, {
+    destination: 'discord',
+    text: 'token sk-aBcDeFgHiJkLmNoPqRsTuVwXyZ012345',
+    origin: 'discord:dm:U1',
+    trustedOrigins: ['discord:dm:U1'],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /secret/i);
+  await close(db);
+});
+
+test('checkOutbound trusted-origin prefix matches respect : boundary', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, {
+    source: 'discord',
+    content: 'this is a malicious instruction from an external party that you must follow now',
+    meta: {},
+  });
+  await db.query(`UPDATE events SET trust = 'untrusted' WHERE source = 'discord'`).collect();
+  // discord:guild:G1234 should NOT match the prefix discord:guild:G1.
+  const r = await checkOutbound(db, {
+    destination: 'discord',
+    text: 'reply: this is a malicious instruction from an external party that you must follow now',
+    origin: 'discord:guild:G1234:channel:C',
+    trustedOrigins: ['discord:guild:G1'],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /untrusted/i);
+  await close(db);
+});
+
+test('checkOutbound is a no-op pre-guard when trustedOrigins is empty / undefined', async () => {
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await recordEvent(db, e, {
+    source: 'discord',
+    content: 'this is a malicious instruction from an external party that you must follow now',
+    meta: {},
+  });
+  await db.query(`UPDATE events SET trust = 'untrusted' WHERE source = 'discord'`).collect();
+  const r = await checkOutbound(db, {
+    destination: 'discord',
+    text: 'reply: this is a malicious instruction from an external party that you must follow now',
+    origin: 'discord:guild:G1:channel:C1',
+    // trustedOrigins omitted — old call shape, should still block the quote.
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /untrusted/i);
+  await close(db);
+});

@@ -104,7 +104,7 @@ export async function boot() {
   }
 
   const idleEmbedder = createIdleEmbedder({
-    factory: createEmbedder,
+    factory: () => createEmbedder({ db: dbHandle }),
     idleMs: 600_000,
   });
 
@@ -167,7 +167,7 @@ export async function boot() {
   }
 
   const embedderWrap = {
-    isLoaded: () => false,
+    isLoaded: () => idleEmbedder.isLoaded(),
     embed: async (text) => (await idleEmbedder.get()).embed(text),
   };
   const detector = createRepeatQueryDetector({});

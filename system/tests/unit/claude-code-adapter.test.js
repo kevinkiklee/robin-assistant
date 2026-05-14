@@ -99,3 +99,60 @@ test('claudeCodeAdapter.name is claude-code', async () => {
   const adapter = createClaudeCodeAdapter({ spawn: fakeSpawn });
   assert.equal(adapter.name, 'claude-code');
 });
+
+// Spawn that never exits on its own; only `kill()` resolves the exit handler.
+// Lets us test the abort path without relying on real subprocess timing.
+function makeHangingSpawn() {
+  let killed = false;
+  const proc = {
+    stdout: { on: () => {} },
+    stderr: { on: () => {} },
+    stdin: { write: () => {}, end: () => {} },
+    _exitHandlers: [],
+    on(event, cb) {
+      if (event === 'exit') this._exitHandlers.push(cb);
+    },
+    kill() {
+      killed = true;
+      // Real `kill('SIGKILL')` causes node to fire 'exit' with code=null and
+      // signal='SIGKILL'. runClaude's onExit listener checks `aborted` and
+      // returns early in that case, so the code value doesn't matter here.
+      setImmediate(() => {
+        for (const fn of this._exitHandlers) fn(null);
+      });
+    },
+  };
+  const spawn = mock.fn(() => proc);
+  return { spawn, wasKilled: () => killed };
+}
+
+test('claudeCodeAdapter.invokeLLM aborts via signal: rejects + kills subprocess', async () => {
+  const { spawn, wasKilled } = makeHangingSpawn();
+  const adapter = createClaudeCodeAdapter({ spawn });
+  const ac = new AbortController();
+
+  const callPromise = adapter.invokeLLM([{ role: 'user', content: 'hi' }], {
+    tier: 'fast',
+    signal: ac.signal,
+  });
+  // Tick so the spawn + signal listener attach before we abort.
+  await new Promise((r) => setImmediate(r));
+  ac.abort();
+
+  await assert.rejects(callPromise, /aborted/);
+  assert.equal(wasKilled(), true, 'expected proc.kill() to have been called');
+});
+
+test('claudeCodeAdapter.invokeLLM rejects immediately if signal is pre-aborted', async () => {
+  const { spawn } = makeHangingSpawn();
+  const adapter = createClaudeCodeAdapter({ spawn });
+  const ac = new AbortController();
+  ac.abort();
+
+  await assert.rejects(
+    adapter.invokeLLM([{ role: 'user', content: 'hi' }], { tier: 'fast', signal: ac.signal }),
+    /aborted/,
+  );
+  // Spawn should not even have been called.
+  assert.equal(spawn.mock.callCount(), 0);
+});

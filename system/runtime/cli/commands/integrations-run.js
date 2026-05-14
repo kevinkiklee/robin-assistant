@@ -39,7 +39,7 @@ export async function integrationsRun(argv) {
         }
         process.exit(1);
       }
-      const embedder = await createEmbedder();
+      const embedder = await createEmbedder({ db });
       const registry = new Map([
         [
           name,

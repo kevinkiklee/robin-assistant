@@ -127,7 +127,8 @@ export async function connect({
   if (creds) await db.signin(creds);
   await db.use({ namespace, database });
 
-  // Re-establish session state on every reconnect.
+  // Re-establish session state on every reconnect — two layers of defense
+  // against the "Anonymous access not allowed" daemon-wedge bug.
   //
   // The Surreal client (v2.0.3) defaults to enabled reconnect (5 attempts,
   // 1s base + 2x backoff). When the underlying WebSocket reconnects — e.g.
@@ -138,26 +139,106 @@ export async function connect({
   // "Anonymous access not allowed", and the daemon stays in that broken
   // state until process restart.
   //
-  // The "connected" event fires on each successful (re)connection AFTER
-  // the initial connect (the initial connect resolves via db.connect()
-  // before the subscription is registered, so it never double-fires).
-  if (isRemote) {
-    db.subscribe('connected', () => {
-      // Re-arm auth + namespace/database asynchronously. Errors are
-      // surfaced via the client's existing error channel — we don't
-      // re-throw here because subscribe handlers run outside the
-      // request context.
-      (async () => {
-        try {
-          if (creds) await db.signin(creds);
-          await db.use({ namespace, database });
-        } catch (err) {
-          console.warn(`[db] post-reconnect re-auth failed: ${err.message ?? err}`);
-        }
-      })();
-    });
-  }
+  // Layer 1 (proactive): subscribe to the "connected" event and re-apply
+  // signin + use. Fast path; covers the common reconnect-then-quiesce case.
+  //
+  // Layer 2 (reactive): wrap `db.query()` so the returned builder's
+  // `.collect()` retries once after `Anonymous access not allowed`. Layer 1
+  // alone isn't sufficient — observed 2026-05-14: the `connected` event
+  // either didn't fire, or in-flight queries issued in the gap between WS
+  // recovery and the event handler running still threw. Layer 2 catches
+  // every survivor at the call site.
+  //
+  // Why wrap `.collect()` rather than `db.query()` itself: surrealdb v2's
+  // `query()` returns a synchronous builder (`QueryPromise extends
+  // DispatchedPromise`) whose `.collect()` triggers the round-trip. The
+  // entire codebase uses `db.query(sql).collect()`; replacing `query` with
+  // an async function would resolve the builder eagerly and break the
+  // `.collect()` chain.
+  if (!isRemote) return db;
 
+  const reauth = singleFlight(async () => {
+    if (creds) await db.signin(creds);
+    await db.use({ namespace, database });
+  });
+
+  db.subscribe('connected', () => {
+    reauth().catch((err) => {
+      console.warn(`[db] post-reconnect re-auth failed: ${err.message ?? err}`);
+    });
+  });
+
+  installQueryRetry(db, reauth);
+  return db;
+}
+
+const ANONYMOUS_MARKER = 'Anonymous access not allowed';
+
+/**
+ * Detect the SurrealDB "Anonymous access not allowed" failure mode. Matches
+ * by message substring because the client surfaces it as a `NotAllowedError`
+ * in some paths and as a plain `Error` in others.
+ *
+ * @internal exported for testing.
+ */
+export function isAnonymousError(err) {
+  return String(err?.message ?? err ?? '').includes(ANONYMOUS_MARKER);
+}
+
+/**
+ * Single-flight wrapper: concurrent callers share the in-flight promise.
+ * Prevents reauth stampede when many scheduler ticks fail in the same
+ * event-loop turn.
+ *
+ * @internal exported for testing.
+ */
+export function singleFlight(fn) {
+  let inFlight = null;
+  return async () => {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        return await fn();
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+}
+
+/**
+ * Wrap `db.query()` so the returned builder's `.collect()` retries once
+ * after `Anonymous access not allowed`. The builder itself is preserved
+ * intact — only its `.collect()` method is replaced. Mutates `db` in place
+ * and returns it.
+ *
+ * On retry, we *rebuild* via `db.query(...origArgs)` rather than re-calling
+ * `.collect()` on the original builder. `DispatchedPromise` caches its
+ * settled state (rejected with Anonymous); a second `.collect()` on it
+ * would re-throw the cached error.
+ *
+ * @internal exported for testing.
+ */
+export function installQueryRetry(db, reauth) {
+  const origQuery = db.query;
+  if (typeof origQuery !== 'function') return db;
+  const boundQuery = origQuery.bind(db);
+  db.query = function patchedQuery(...args) {
+    const builder = boundQuery(...args);
+    if (!builder || typeof builder.collect !== 'function') return builder;
+    const origCollect = builder.collect.bind(builder);
+    builder.collect = async (...collectArgs) => {
+      try {
+        return await origCollect(...collectArgs);
+      } catch (err) {
+        if (!isAnonymousError(err)) throw err;
+        await reauth();
+        return boundQuery(...args).collect(...collectArgs);
+      }
+    };
+    return builder;
+  };
   return db;
 }
 

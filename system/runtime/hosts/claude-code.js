@@ -1,8 +1,12 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { CLAUDE_TIER_MAP, DEFAULT_TIER } from './interface.js';
 
-function runClaude(spawnFn, args, stdin) {
+function runClaude(spawnFn, args, stdin, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
     let proc;
     try {
       proc = spawnFn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -12,14 +16,30 @@ function runClaude(spawnFn, args, stdin) {
     }
     let stdout = '';
     let stderr = '';
+    let aborted = false;
+    const onAbort = () => {
+      aborted = true;
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        // Process may have already exited — ignore.
+      }
+      reject(new Error('aborted'));
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
     proc.stdout.on('data', (d) => {
       stdout += d.toString();
     });
     proc.stderr.on('data', (d) => {
       stderr += d.toString();
     });
-    proc.on('error', reject);
+    proc.on('error', (e) => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      reject(e);
+    });
     proc.on('exit', (code) => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      if (aborted) return;
       if (code !== 0) reject(new Error(`claude exited ${code}: ${stderr}`));
       else resolve(stdout);
     });
@@ -79,7 +99,7 @@ export function createClaudeCodeAdapter(deps = {}) {
       const model = CLAUDE_TIER_MAP[tier];
       const prompt = messagesToPrompt(messages, opts.system);
       const args = ['-p', prompt, '--output-format=json', '--model', model];
-      const out = await runClaude(spawnFn, args, undefined);
+      const out = await runClaude(spawnFn, args, undefined, opts.signal);
       let parsed;
       try {
         parsed = JSON.parse(out);

@@ -55,8 +55,14 @@ test('agent runtime — happy path captures job_output event', async () => {
 test('agent runtime — timeout fails the job', async () => {
   const { db, capture } = await setup();
   await upsertFromDiscovered(db, [SAMPLE_AGENT]);
+  // unref() the timer so it doesn't pin the event loop after the
+  // job's 100ms ceiling fires. Without unref, this leaks a 5s handle
+  // and forces the runner to rely on --test-force-exit for cleanup.
   const host = {
-    invokeLLM: () => new Promise((resolve) => setTimeout(resolve, 5_000)),
+    invokeLLM: () =>
+      new Promise((resolve) => {
+        setTimeout(resolve, 5_000).unref();
+      }),
   };
   // Override timeout to 50ms via job copy (0.001 min ≈ 60ms; floor min is 100ms)
   const fast = { ...SAMPLE_AGENT, timeout_minutes: 0.001 };

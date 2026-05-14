@@ -64,6 +64,22 @@ export function recordStringId(ref) {
   return null;
 }
 
+// Key chars allowed in a bare record id. Mirrors upsertEntityCascade's
+// safeName regex: SurrealDB renders ids outside this set with `⟨…⟩` or
+// backticks, and those forms fail to round-trip through a bound INSERT
+// RELATION parameter (Surreal rejects `'entities:⟨name with &⟩'`).
+const SAFE_ID_KEY = /^[A-Za-z0-9_]+$/;
+
+function recordIdKey(ref) {
+  if (!ref) return null;
+  if (typeof ref === 'string') {
+    const idx = ref.indexOf(':');
+    return idx > 0 ? ref.slice(idx + 1) : null;
+  }
+  if (ref.id === undefined || ref.id === null) return null;
+  return typeof ref.id === 'string' ? ref.id : String(ref.id);
+}
+
 /**
  * Inverse of `recordStringId`: parse a "table:id" string into a RecordId
  * object the SDK can bind correctly in a `surql` template.
@@ -110,6 +126,20 @@ export function validateEdge(from, to, kind) {
   const toId = recordStringId(to);
   if (fromId && toId && fromId === toId) {
     errors.push(`self-loop rejected: from === to (${fromId})`);
+  }
+  // Unsafe-key rejection: endpoints whose id key contains chars outside
+  // [A-Za-z0-9_] cannot round-trip as a bound parameter to INSERT RELATION
+  // — Surreal renders them as `tb:⟨…⟩` and that form is parser-rejected.
+  // Without this check a single bad endpoint takes out an entire 50-edge
+  // slice (BEGIN/COMMIT transaction); rejecting per-edge lets the sibling
+  // good edges through.
+  const fromKey = recordIdKey(from);
+  const toKey = recordIdKey(to);
+  if (fromKey != null && !SAFE_ID_KEY.test(fromKey)) {
+    errors.push(`from: unsafe id key '${fromKey}' (contains chars outside [A-Za-z0-9_])`);
+  }
+  if (toKey != null && !SAFE_ID_KEY.test(toKey)) {
+    errors.push(`to: unsafe id key '${toKey}' (contains chars outside [A-Za-z0-9_])`);
   }
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }

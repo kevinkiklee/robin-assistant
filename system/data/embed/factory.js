@@ -1,6 +1,6 @@
 import { readConfig } from '../../config/paths.js';
 
-export async function createEmbedder() {
+export async function createEmbedder({ db } = {}) {
   const cfg = await readConfig();
   if (!cfg?.embedder_profile) {
     throw new Error('no embedder profile configured. Run `robin install` first.');
@@ -16,7 +16,7 @@ export async function createEmbedder() {
     }
     case 'gemini-3072': {
       const { createGeminiEmbedder } = await import('./gemini.js');
-      return await createGeminiEmbedder();
+      return await createGeminiEmbedder({ db });
     }
     default:
       throw new Error(`unknown embedder profile: ${cfg.embedder_profile}`);

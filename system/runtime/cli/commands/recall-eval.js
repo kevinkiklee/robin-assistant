@@ -120,7 +120,7 @@ export async function recallEval(argv) {
 
     let embedder = null;
     if (replay) {
-      embedder = await createEmbedder();
+      embedder = await createEmbedder({ db });
     }
 
     const ks = [...new Set([1, 3, 6, 10, k])].sort((a, b) => a - b);

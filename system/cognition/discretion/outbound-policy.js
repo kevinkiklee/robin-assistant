@@ -48,7 +48,24 @@ async function logRefusal(db, destination, reason, payload) {
     .collect();
 }
 
-export async function checkOutbound(db, { destination, text }) {
+// True when `origin` is trusted under any prefix in `trustedOrigins`. Matches
+// the v1 "Layer 1 trusted origins" model: an exact match, or a prefix that
+// ends at a `:` boundary. So `discord:guild:G1` covers
+// `discord:guild:G1:channel:C` and any thread under it, but won't accidentally
+// trust `discord:guild:G1234`.
+function isTrustedOrigin(origin, trustedOrigins) {
+  if (!origin || !Array.isArray(trustedOrigins) || trustedOrigins.length === 0) {
+    return false;
+  }
+  for (const allowed of trustedOrigins) {
+    if (!allowed) continue;
+    if (origin === allowed) return true;
+    if (origin.startsWith(`${allowed}:`)) return true;
+  }
+  return false;
+}
+
+export async function checkOutbound(db, { destination, text, origin, trustedOrigins } = {}) {
   for (const p of PII_PATTERNS) {
     const m = p.regex.exec(text);
     if (m && (!p.mask || p.mask(m[0]))) {
@@ -61,6 +78,15 @@ export async function checkOutbound(db, { destination, text }) {
       await logRefusal(db, destination, `secret:${p.name}`, text);
       return { ok: false, reason: `secret:${p.name}` };
     }
+  }
+  // Verbatim-untrusted-quote guard is a Layer-1 taint check: it stops Robin
+  // from echoing chunks of untrusted integration data (emails, browser titles,
+  // calendar events) to third-party destinations. When the destination is the
+  // user themselves (their own DM, their own personal server), echoing back is
+  // the whole point — Robin's job is to summarize that data for them — so
+  // skip this layer for trusted origins. PII + secret guards still applied above.
+  if (isTrustedOrigin(origin ?? destination, trustedOrigins)) {
+    return { ok: true };
   }
   const cutoff = new Date(Date.now() - UNTRUSTED_LOOKBACK_DAYS * DAY_MS);
   // SurrealDB v3 needs the field used in ORDER BY to appear in the projection.
