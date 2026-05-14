@@ -558,7 +558,6 @@ async function gateReinforceCountBucketHybrid() {
     // ----- Variant B: hybrid + unrelated reply + fallback_when_zero_used=false -----
     await verifyDb.query('DELETE recall_log').collect();
     await verifyDb.query("DELETE events WHERE source = 'conversation'").collect();
-    await verifyDb.query('DELETE evidence_ledger').collect();
     await verifyDb
       .query('UPDATE runtime:`reinforcement.config` SET value.fallback_when_zero_used = false')
       .collect();

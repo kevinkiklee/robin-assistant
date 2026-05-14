@@ -17,8 +17,7 @@ Output JSON only, with this exact shape:
       "edges":    [{ "from": entity-name, "type": "mentions" | "about" | "precedes" | "works_on" | "participates_in" | "co_occurs_with", "to": entity-name }],
       "about":    [entity-name],
       "episode_continues_previous": boolean,
-      "episode_summary": string | null,
-      "evidence_signals": [{ "memo_id": string, "polarity": "corroborates" | "refutes" }]
+      "episode_summary": string | null
     }
   ]
 }
@@ -30,7 +29,6 @@ Rules:
 - Prefer names from the existing-entities catalog when applicable.
 - episode_continues_previous reflects whether this event continues the active episode for the source; the active episode may close mid-batch if an earlier event in the batch already broke continuity.
 - Set episode_summary only when episode_continues_previous=false AND there is an active episode for this source.
-- evidence_signals is optional; emit only when the event clearly corroborates/refutes an existing memo.
 - Be conservative: extract only entities clearly named in the event content.`;
 
 const MAX_EVENT_CONTENT_CHARS = 2000;

@@ -127,6 +127,36 @@ async function recordFailure(db, eventId, error) {
   });
 }
 
+// Drop IDs from runtime:biographer.failed_event_ids whose underlying event row
+// no longer exists. Stale IDs accumulate when an event is superseded (e.g. the
+// Lunch Money pending→cleared dedup pattern: biographer marks the pending row
+// failed, then the cleared txn replaces the row, leaving a dangling ID here).
+// Returns the number of stale IDs pruned. Fail-soft.
+async function gcFailedEvents(db) {
+  try {
+    const [rows] = await db
+      .query(surql`SELECT VALUE value.failed_event_ids FROM type::record('runtime', 'biographer')`)
+      .collect();
+    const ids = rows?.[0] ?? [];
+    if (ids.length === 0) return 0;
+    const [existing] = await db
+      .query(surql`SELECT VALUE id FROM events WHERE id IN ${ids}`)
+      .collect();
+    const live = new Set((existing ?? []).map(String));
+    const kept = ids.filter((id) => live.has(String(id)));
+    const pruned = ids.length - kept.length;
+    if (pruned === 0) return 0;
+    await db
+      .query(
+        surql`UPSERT type::record('runtime', 'biographer') SET value.failed_event_ids = ${kept}`,
+      )
+      .collect();
+    return pruned;
+  } catch {
+    return 0;
+  }
+}
+
 export async function biographerProcess(db, embedder, host, eventId, opts = {}) {
   const r = await biographerProcessBatch(db, embedder, host, [eventId], opts);
   return r.perEvent.get(String(eventId)) ?? { skipped: true, reason: 'unknown' };
@@ -137,6 +167,12 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   if (!Array.isArray(eventIds) || eventIds.length === 0) {
     return { perEvent };
   }
+  // GC stale failed_event_ids before each batch so health() always reflects
+  // events the biographer could actually retry. Logs once per non-zero prune
+  // so heavy churn surfaces in operator view without spamming on the steady
+  // state.
+  const pruned = await gcFailedEvents(db);
+  if (pruned > 0) console.log(`[biographer] gc'd ${pruned} stale failed_event_ids`);
   // Normalize ids: callers (queue accumulator, MCP handlers, CLI) may pass
   // either "table:id" strings or SDK RecordId objects. The surql template
   // tag binds plain strings as string LITERALS, so `SELECT * FROM ${strId}`
@@ -321,7 +357,6 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   // 8. Edge collection (spec §6). Per-event scope for mentions/about/edges
   //    /occurs_with; within-batch `before` chained inside each episode group.
   const edgeRows = [];
-  const evidenceJobs = [];
   for (const ev of validEvents) {
     const perOut = validation.events.get(String(ev.id));
     const contextSnippet = (ev.content ?? '').slice(0, 200);
@@ -354,9 +389,6 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
       for (let j = i + 1; j < entityIds.length; j++) {
         edgeRows.push({ from: entityIds[i], to: entityIds[j], kind: 'occurs_with' });
       }
-    }
-    if (Array.isArray(perOut.evidence_signals) && perOut.evidence_signals.length > 0) {
-      evidenceJobs.push({ ev, signals: perOut.evidence_signals });
     }
   }
 
@@ -449,38 +481,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     });
   }
 
-  // 11. Evidence signals (Theme 2a) — AFTER the gated mark UPDATE succeeds.
-  //     Running addEvidence BEFORE the mark would double-count the ledger on
-  //     retry. Limit to events whose mark actually landed (markedSet).
-  if (evidenceJobs.length > 0) {
-    try {
-      const { addEvidence, readEvidenceConfig } = await import('../memory/evidence.js');
-      const { RecordId } = await import('surrealdb');
-      const evCfg = await readEvidenceConfig(db);
-      for (const { ev, signals } of evidenceJobs) {
-        if (!markedSet.has(String(ev.id))) continue;
-        for (const sig of signals) {
-          try {
-            const idStr = String(sig.memo_id);
-            const key = idStr.startsWith('memos:') ? idStr.slice('memos:'.length) : idStr;
-            await addEvidence(db, {
-              memo_id: new RecordId('memos', key),
-              polarity: sig.polarity,
-              reason: 'biographer',
-              weight: evCfg.biographer_weight ?? 0.5,
-              source_event: ev.id,
-            });
-          } catch (e) {
-            console.warn(`[biographer evidence_signal] ${sig?.memo_id}: ${e.message}`);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn(`[biographer evidence_signals] ${e.message}`);
-    }
-  }
-
-  // 12. Runtime row: telemetry + last_run housekeeping.
+  // 11. Runtime row: telemetry + last_run housekeeping.
   const inputTokens = Number(response?.usage?.input_tokens ?? 0);
   const outputTokens = Number(response?.usage?.output_tokens ?? 0);
   await _recordBatchTelemetry(db, {
@@ -767,34 +768,6 @@ async function _processOne(db, embedder, host, eventId, opts = {}) {
 
   if (edgeRows.length > 0) {
     await withTxRetry(() => store.relateAll(db, edgeRows));
-  }
-
-  // Theme 2a: process optional evidence_signals from biographer LLM output.
-  // Each signal asserts that the new event corroborates / refutes an existing
-  // memo. We emit a ledger row with weight from config (default 0.5).
-  if (Array.isArray(output.evidence_signals) && output.evidence_signals.length > 0) {
-    try {
-      const { addEvidence, readEvidenceConfig } = await import('../memory/evidence.js');
-      const { RecordId } = await import('surrealdb');
-      const evCfg = await readEvidenceConfig(db);
-      for (const sig of output.evidence_signals) {
-        try {
-          const idStr = String(sig.memo_id);
-          const key = idStr.startsWith('memos:') ? idStr.slice('memos:'.length) : idStr;
-          await addEvidence(db, {
-            memo_id: new RecordId('memos', key),
-            polarity: sig.polarity,
-            reason: 'biographer',
-            weight: evCfg.biographer_weight ?? 0.5,
-            source_event: eventId,
-          });
-        } catch (e) {
-          console.warn(`[biographer evidence_signal] ${sig?.memo_id}: ${e.message}`);
-        }
-      }
-    } catch (e) {
-      console.warn(`[biographer evidence_signals] ${e.message}`);
-    }
   }
 
   // 8. Mark event biographed

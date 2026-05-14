@@ -10,7 +10,6 @@ import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { createBeliefTool } from '../../io/mcp/tools/belief.js';
 
 const HOME = join(tmpdir(), `robin-mc-${process.pid}-${Math.random().toString(36).slice(2)}`);
 __mk(HOME, { recursive: true });
@@ -157,38 +156,6 @@ test('M4 mixed domains: one over, one under, one too sparse -> 2 memos', async (
   const r = await runMetaCalibrationNarrative({ db, embedder: e });
   assert.equal(r.wrote.length, 2);
   assert.ok(r.skipped.includes('c'));
-  await close(db);
-});
-
-test('M5 belief() reads meta-narrative override after writer runs', async () => {
-  const db = await fresh();
-  const e = createStubEmbedder({ dimension: 1024 });
-  await db.query('UPDATE runtime:`belief.config` SET value.shadow_mode = false').collect();
-  await db.query('UPDATE runtime:`belief.config` SET value.relevance_threshold = -1').collect();
-  _resetBeliefConfigCacheForTests();
-  // Seed 5 preds + run writer.
-  const ts = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-  for (let i = 0; i < 5; i++) {
-    await seedResolvedPrediction(db, {
-      domain: 'photography',
-      predicted_confidence: 0.6,
-      correct: i < 4,
-      resolved_at: ts,
-    });
-  }
-  await runMetaCalibrationNarrative({ db, embedder: e });
-  // Seed knowledge memos so belief() has something to recall.
-  for (let i = 0; i < 3; i++) {
-    await db
-      .query(surql`CREATE memos CONTENT {
-      kind: 'knowledge', content: ${`photography ${i}`}, derived_by: 'auto', scope: 'global',
-      confidence: 0.7, signal_count: 1, derived_at: time::now(), decay_anchor: time::now()
-    }`)
-      .collect();
-  }
-  const tool = createBeliefTool({ db, embedder: e, catalog: [] });
-  const out = await tool.handler({ query: 'photography', domain: 'photography' });
-  assert.equal(out.calibration?.source, 'meta_narrative');
   await close(db);
 });
 

@@ -273,23 +273,6 @@ export async function relate(db, from, to, kind, opts = {}) {
   const [ret] = await db.query(new BoundQuery(sql, bindings)).collect();
   const row = Array.isArray(ret) ? ret[0] : ret;
 
-  // Theme 2a: contradicts edges auto-emit refute evidence_ledger rows on both endpoints.
-  if (kind === 'contradicts') {
-    try {
-      await db
-        .query(
-          new BoundQuery(
-            `CREATE evidence_ledger CONTENT { memo_id: $a, polarity: 'refutes', reason: 'contradicts_edge', weight: 1.0 };
-             CREATE evidence_ledger CONTENT { memo_id: $b, polarity: 'refutes', reason: 'contradicts_edge', weight: 1.0 };`,
-            { a: cFrom, b: cTo },
-          ),
-        )
-        .collect();
-    } catch (e) {
-      console.warn(`[store.relate contradicts] evidence emit failed: ${e.message}`);
-    }
-  }
-
   return { id: row?.id, fromId: fromIdStr, toId: toIdStr };
 }
 

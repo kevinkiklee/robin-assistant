@@ -9,7 +9,6 @@ import { dreamStepArcs } from './step-arcs.js';
 import { dreamStepCalibration } from './step-calibration.js';
 import { dreamStepCommStyle } from './step-comm-style.js';
 import { dreamStepCompaction } from './step-compaction.js';
-import { dreamStepConfidenceRecompute } from './step-confidence-recompute.js';
 import { dreamStepKnowledge } from './step-knowledge.js';
 import { dreamStepPatterns } from './step-patterns.js';
 import { dreamStepProfile } from './step-profile.js';
@@ -21,7 +20,6 @@ export const byName = {
     dreamStepKnowledge(db, host, embedder, opts?.knowledge),
   patterns: ({ db, host }) => dreamStepPatterns(db, host),
   reflection: ({ db, host, opts }) => dreamStepReflection(db, host, opts?.reflection),
-  confidence: ({ db }) => dreamStepConfidenceRecompute(db),
   profile: ({ db, host, opts }) => dreamStepProfile(db, host, opts?.profile),
   arcs: ({ db, opts }) => dreamStepArcs(db, opts?.arcs),
   commStyle: ({ db, host }) => dreamStepCommStyle(db, host),

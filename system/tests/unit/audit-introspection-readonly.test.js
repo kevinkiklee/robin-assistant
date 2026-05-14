@@ -4,11 +4,6 @@
 //
 // Scope is intentionally narrow: only the seven introspection tools defined
 // for Theme 4. Other MCP tools may legitimately write.
-//
-// Cognition D3 extension: `belief.js` is read-only in practice but writes
-// advisory rows to `cadence_telemetry` for the C3 hot-bridge rollup. The
-// PER_FILE_WRITE_ALLOWLIST permits this one table — any other CREATE/UPDATE
-// inside belief.js still fails the audit.
 
 import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync } from 'node:fs';
@@ -16,15 +11,12 @@ import { test } from 'node:test';
 
 const INTROSPECTION_TOOLS = [
   'system/io/mcp/tools/explain-recall.js',
-  'system/io/mcp/tools/explain-belief.js',
   'system/io/mcp/tools/explain-action-trust.js',
   'system/io/mcp/tools/show-pending-triggers.js',
   'system/io/mcp/tools/show-step-health.js',
   'system/io/mcp/tools/show-telemetry-rollup.js',
   'system/io/mcp/tools/recent-refusals.js',
   'system/io/mcp/tools/archive-history.js',
-  'system/io/mcp/tools/belief.js',
-  'system/io/mcp/tools/explain-state-inference.js',
 ];
 
 // These are full SurrealQL statement keywords. We require them to appear
@@ -35,9 +27,7 @@ const FORBIDDEN = ['CREATE ', 'UPDATE ', 'DELETE ', 'UPSERT ', 'INSERT ', 'RELAT
 // Per-file targeted allow-list: introspection tools that legitimately write
 // to a single advisory/telemetry table are permitted to use a write keyword
 // IFF the immediately-following token is one of the allow-listed tables.
-const PER_FILE_WRITE_ALLOWLIST = {
-  'system/io/mcp/tools/belief.js': new Set(['cadence_telemetry']),
-};
+const PER_FILE_WRITE_ALLOWLIST = {};
 
 function followingTokens(src, kw) {
   const tokens = [];

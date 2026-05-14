@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Removed: evidence system (Theme 2a + Cognition D3 belief gating)
+
+The evidence pipeline was writing data (994 rows in production — 95% from reinforcement, 5% from biographer) but nothing was consuming it in a way that affected user-visible behavior. Three concrete failure modes drove the decision:
+
+- **Dream's `step-confidence-recompute` was silently dead.** A destructure bug (`const [c] = await db.query(...).collect(); const newC = c?.[0]` against a `SELECT VALUE … FROM ONLY` scalar return shape) made every memo short-circuit at the `if (newC == null) continue` guard. Zero memos ever got `meta.evidence_recomputed_at` set in weeks of nightly runs.
+- **Biographer's `evidence_signals[]` was junk.** All 46 emitted rows referenced nonexistent `memos:<id>` keys — chat models can't produce valid record refs they haven't been shown. Cost ~20-40% of biographer output tokens for zero usable signal.
+- **The `belief` MCP tool that consumed `fn::derived_confidence` had never been called.** Same for `endorse`, `refute`, `explain_belief`, `explain_state_inference`.
+
+Removed surface:
+- `evidence_ledger` table + indexes; `fn::derived_confidence`; `runtime:evidence.config` (migration `0025-drop-evidence-system.surql`).
+- Modules: `system/cognition/memory/evidence.js`, `system/cognition/dream/step-confidence-recompute.js`, six of seven files under `system/cognition/belief/` (kept `config.js`, still read by the meta-calibration narrative writer).
+- MCP tools: `belief`, `endorse`, `refute`, `explain_belief`, `explain_state_inference`.
+- Writes: biographer `evidence_signals` emission (prompt + validator + processing in both batch and single paths), reinforcement.js refute and corroborate ledger blocks, `store.relate(..., 'contradicts')` auto-emit, state-inference calibration `addEvidence` call.
+- Dream wiring: `confidence` node from `DREAM_DAG_DEPS`, the step from `step-registry`, the call from `dream/pipeline.js`.
+- Tests: 10 deleted (`belief-*`, calibration-emit cases), 4 updated (reinforcement-loop, state-inference-cycle, meta-cal-narrative-loop, dream-parallel).
+
+Retained: `memos.confidence` as a static field with schema default `0.5` — `inject.js` uses it for `min_confidence_to_surface` filtering, `decay.js` uses it in scoring. Static value is fine without the recompute layer; both readers tolerate it being the seeded value.
+
+### Robust `parseLLMJSON` for biographer fast-tier responses
+
+Pre-fix the parser only stripped fences when they appeared at the literal start of the response, then `JSON.parse`'d the rest. Chat models on `claude-haiku-4-5` / `gemini-2.5-flash-lite` routinely emit prose preambles ("Here is the JSON:"), trailing prose after the closing fence, multiple fenced blocks (reasoning + JSON), or truncated output when hitting the implicit max_tokens cap (~8K for haiku). Live telemetry showed ~67% of biographer batches falling back to the per-event path with `last_fallback_reason='outer_json'`.
+
+`system/cognition/biographer/output.js:parseLLMJSON` now tries (1) any fenced ```json block in the content, longest match wins; (2) direct `JSON.parse` on the trimmed string; (3) balanced-brace extraction from the first `{`, respecting JSON string boundaries so `}` inside string values doesn't close the outer object early. Empty content, no-JSON-found, and truncated-mid-stream each throw a category-specific error so the caller can tell them apart instead of seeing a generic `SyntaxError`. New tests at `system/tests/unit/biographer-parse-llm-json.test.js` (12 cases, all pass).
+
 ### Integrations
 
 - **`photos` integration.** Apple Photos surface — captures recent imports from the local Photos library into Robin's memory. New MCP tool `photos_recent`; default cadence `6h`. Source directory is `PHOTO_COLLECTION_DIR` (defaults to `~/Photography/Collection`).

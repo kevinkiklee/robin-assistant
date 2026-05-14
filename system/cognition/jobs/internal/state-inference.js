@@ -9,7 +9,6 @@
 import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../../../data/embed/hash.js';
 import { getAttention } from '../../memory/attention.js';
-import { addEvidence } from '../../memory/evidence.js';
 import { isOutboundBlocked } from '../../memory/scope-registry.js';
 import { latestForSource, noteStateInference } from '../../memory/state_inference.js';
 import * as store from '../../memory/store.js';
@@ -245,30 +244,6 @@ async function recordTelemetry(db, row) {
   }
 }
 
-async function priorHasCalibrationRow(db, prior) {
-  // Per spec §5.1 — skip calibration emission only when an evidence_ledger
-  // row exists for this prior with `ts > prior.derived_at` (i.e., a
-  // post-derived calibration). Rows older than the prior would belong to a
-  // prior generation and must not block the new emission.
-  try {
-    const [rows] = await db
-      .query(
-        new BoundQuery(
-          `SELECT count() AS n FROM evidence_ledger
-           WHERE memo_id = $id
-             AND reason IN ['state_inference_held','state_inference_pivoted']
-             AND ts > $prior_derived_at
-           GROUP ALL`,
-          { id: prior?.id, prior_derived_at: prior?.derived_at },
-        ),
-      )
-      .collect();
-    return (rows?.[0]?.n ?? 0) > 0;
-  } catch {
-    return false;
-  }
-}
-
 function classifyPriorVsCurrent(prior, current) {
   const priorEnts = new Set((prior?.meta?.entities ?? []).map((s) => String(s)));
   const curEnts = new Set((current.entities ?? []).map((s) => String(s)));
@@ -356,28 +331,6 @@ export async function composeForSource({ db, embedder, host, source, cfg, now = 
       signal_hash: change.signal_hash,
     });
     return { outcome: 'skipped_unchanged', signal_hash: change.signal_hash };
-  }
-
-  // Calibration sub-step (spec §5.1) — runs before the LLM call; classified
-  // against the current snapshot regardless of whether the LLM later drops.
-  if (prior && !shadow) {
-    const cls = classifyPriorVsCurrent(prior, current);
-    if (cls !== 'ambiguous') {
-      const dedup = await priorHasCalibrationRow(db, prior);
-      if (!dedup) {
-        try {
-          await addEvidence(db, {
-            memo_id: prior.id,
-            polarity: cls === 'corroborated' ? 'corroborates' : 'refutes',
-            reason: cls === 'corroborated' ? 'state_inference_held' : 'state_inference_pivoted',
-            weight:
-              cls === 'corroborated' ? (cfg.corroborate_weight ?? 1.0) : (cfg.pivot_weight ?? 1.0),
-          });
-        } catch {
-          /* fail-soft */
-        }
-      }
-    }
   }
 
   // LLM call (spec §1.3 step 7).

@@ -5,18 +5,82 @@
 // while the prompt template is updated. The biographer translates aliases
 // when emitting edges via `store.relateAll`.
 
-// Some providers (notably Gemini via the host shim) ignore the json-mode hint
-// and wrap output in ```json … ``` fences. Strip them before JSON.parse so the
-// biographer doesn't keep retrying-and-failing each batch.
-export function parseLLMJSON(content) {
-  let s = String(content ?? '').trim();
-  if (s.startsWith('```')) {
-    s = s
-      .replace(/^```(?:json)?\s*\n?/i, '')
-      .replace(/\n?```\s*$/, '')
-      .trim();
+// Extract the largest balanced `{...}` substring starting at `startIdx`,
+// respecting JSON string boundaries so a `}` inside a string doesn't close
+// the outer object early. Returns the slice or null if unbalanced (likely
+// truncated by a max_tokens cap mid-stream).
+function extractBalancedObject(s, startIdx) {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = startIdx; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return s.slice(startIdx, i + 1);
+    }
   }
-  return JSON.parse(s);
+  return null;
+}
+
+// Parses the model's raw text content into a JSON object. Chat models in
+// "fast tier" routinely wrap output in prose ("Here's the JSON:"), fence
+// it with ```json fences anywhere in the response, or stop mid-stream when
+// a max_tokens cap is hit. We try, in order:
+//   1. fenced ```json ... ``` block (anywhere in content)
+//   2. direct JSON.parse on the trimmed string
+//   3. balanced-brace extraction starting at the first `{`
+// Throws with a category-specific message so the caller can tell empty /
+// truncated / no-JSON apart from a malformed-but-present object.
+export function parseLLMJSON(content) {
+  const s = String(content ?? '').trim();
+  if (s.length === 0) {
+    throw new Error('parseLLMJSON: empty content (model returned no body)');
+  }
+
+  // Prefer fenced ```json ... ``` blocks since chat models default to them.
+  // Greedy match keeps any inner ``` as part of the captured JSON; if multiple
+  // fenced blocks exist, the longest match wins so prefatory reasoning fences
+  // can't shadow the real JSON block.
+  const fencedRe = /```(?:json)?\s*\n?([\s\S]*?)\n?```/gi;
+  const fences = [...s.matchAll(fencedRe)].map((m) => m[1].trim()).filter((b) => b.length > 0);
+  for (const block of fences.sort((a, b) => b.length - a.length)) {
+    try {
+      return JSON.parse(block);
+    } catch {
+      // try the next candidate
+    }
+  }
+
+  // No fences (or none parsed). Try direct parse — happy path for clean output.
+  try {
+    return JSON.parse(s);
+  } catch {
+    // fall through to balanced-brace extraction
+  }
+
+  const firstBrace = s.indexOf('{');
+  if (firstBrace === -1) {
+    throw new Error('parseLLMJSON: no JSON object found in content');
+  }
+  const candidate = extractBalancedObject(s, firstBrace);
+  if (candidate == null) {
+    throw new Error(
+      'parseLLMJSON: unterminated JSON object (likely truncated by max_tokens cap)',
+    );
+  }
+  return JSON.parse(candidate);
 }
 
 const ENTITY_TYPES = new Set(['person', 'place', 'project', 'topic', 'thing']);
@@ -61,21 +125,6 @@ export function validateBiographerOutput(o) {
   if (!Array.isArray(o.about)) return { ok: false, error: 'output.about must be an array' };
   if (typeof o.episode_continues_previous !== 'boolean') {
     return { ok: false, error: 'episode_continues_previous must be boolean' };
-  }
-  // Theme 2a: optional evidence_signals[]. Biographer LLM may judge that the
-  // new event corroborates or refutes an existing memo.
-  if (o.evidence_signals !== undefined) {
-    if (!Array.isArray(o.evidence_signals)) {
-      return { ok: false, error: 'evidence_signals must be an array' };
-    }
-    for (const s of o.evidence_signals) {
-      if (typeof s?.memo_id !== 'string' || s.memo_id.length === 0) {
-        return { ok: false, error: 'evidence_signal.memo_id must be non-empty string' };
-      }
-      if (s.polarity !== 'corroborates' && s.polarity !== 'refutes') {
-        return { ok: false, error: `evidence_signal.polarity must be corroborates|refutes` };
-      }
-    }
   }
   return { ok: true };
 }

@@ -214,15 +214,6 @@ test('B1: per-hit reinforce — only matched hits bump signal_count + corroborat
   // DEFAULT signal_count=1 (0001-init); used memo bumps by 1; unused unchanged.
   assert.equal(usedRow[0].signal_count, 2, 'used memo gets += 1');
   assert.equal(unusedRow[0].signal_count, 1, 'unused memo NOT bumped');
-
-  const [ledger] = await db
-    .query(`SELECT memo_id, polarity, weight FROM evidence_ledger`)
-    .collect();
-  const usedLedger = ledger.filter((r) => String(r.memo_id) === String(used.id));
-  const unusedLedger = ledger.filter((r) => String(r.memo_id) === String(unused.id));
-  assert.equal(usedLedger.length, 1);
-  assert.equal(usedLedger[0].polarity, 'corroborates');
-  assert.equal(unusedLedger.length, 0);
   await close(db);
 });
 
@@ -390,13 +381,6 @@ test('B1 §8.2 #16: episode-tagged memo + [episode YYYY-MM-DD] reply → attribu
   const [after] = await db.query(`SELECT signal_count FROM ${memoId}`).collect();
   assert.equal(after[0].signal_count, 2, 'episode memo bumped by 1');
 
-  const [ledger] = await db
-    .query('SELECT polarity, weight FROM evidence_ledger WHERE memo_id = $id', { id: memoId })
-    .collect();
-  assert.equal(ledger.length, 1);
-  assert.equal(ledger[0].polarity, 'corroborates');
-  assert.equal(ledger[0].weight, 1);
-
   await close(db);
 });
 
@@ -436,12 +420,9 @@ test('B1 section 6: corroborate weight reflects per-hit used count, not row coun
       .collect();
   }
   await evaluatePending(db);
-  const [ledger] = await db
-    .query('SELECT polarity, weight FROM evidence_ledger WHERE memo_id = $id', { id: m.id })
-    .collect();
-  assert.equal(ledger.length, 1, 'one corroborate row for the memo');
-  assert.equal(ledger[0].polarity, 'corroborates');
-  assert.equal(ledger[0].weight, 2, 'weight=2 (used in both rows)');
+  const [after] = await db.query(`SELECT signal_count FROM ${m.id}`).collect();
+  // signal_count seeded at 1; bumped once per pending row that recalled the memo.
+  assert.equal(after[0].signal_count, 3, 'memo bumped by 2 (used in both rows)');
   await close(db);
 });
 

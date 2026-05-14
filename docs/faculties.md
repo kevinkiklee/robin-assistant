@@ -53,7 +53,6 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 - API: `predict(db, embedder, { statement, statement_kind, confidence, expected_resolution_at? })` / `resolve(db, id, { correct, actual_outcome? })` / `listOpen(db, opts)` / `computeCalibration(db)`
 - New consolidation of prediction logic previously scattered.
 - Calibration output (resolved-prediction stats per `statement_kind`)
-  is consumed by `belief()` (Cognition D3) as the day-1 drift source and
   feeds the weekly meta-calibration narrative writer.
 
 ## Process faculties
@@ -120,11 +119,11 @@ under `intuition_telemetry.meta.entity_boost_applied` /
 **The recall feedback loop — the keystone effectiveness fix.**
 - Files: `system/cognition/intuition/reinforcement.js`, `system/cognition/intuition/attribute.js`, `system/cognition/intuition/reinforcement-config.js`, `system/cognition/jobs/internal/reinforce-recall.js`, `system/cognition/jobs/builtin/reinforce-recall.md`.
 - Behavior: every 5 minutes, walks `recall_log` rows whose `outcome='pending'` and `ts < now - 5min`. For each row:
-  1. If a `meta.kind='correction'` event landed in the session window -> `outcome='corrected'`, refute every memo hit in `evidence_ledger` (Theme 2a).
+  1. If a `meta.kind='correction'` event landed in the session window -> `outcome='corrected'` and emit a `dream_triggers` reflection row so the dream pipeline picks it up next tick.
   2. Else, attribute hits via `attribute(hits, replyBody, config)` — explicit `<!-- recall_used: ... -->` marker -> `[event|episode YYYY-MM-DD]` citation -> asymmetric Jaccard similarity. Hits matched get `used=true, used_via=<pass>`.
   3. If the conversation event capturing the next reply is missing -> fallback governed by `runtime:reinforcement.config.fallback_when_no_reply`.
   4. If attribution matched zero hits -> fallback governed by `fallback_when_zero_used`. Without fallback, `outcome='evaluated_no_used'`.
-  5. For every hit with `used=true`, `signal_count += 1` and `decay_anchor = time::now()`. A `corroborates` ledger row is emitted weighted by the count of used-this-batch occurrences.
+  5. For every hit with `used=true`, `signal_count += 1` and `decay_anchor = time::now()`.
 - Config knobs (`runtime:reinforcement.config`, single UPDATE to retune):
   - `attribution_mode`: `'hybrid'` (default once rolled out) or `'off'` (kill switch, every hit force-used).
   - `similarity_threshold` (default 0.35): asymmetric Jaccard cutoff.
@@ -169,22 +168,6 @@ are stratified by `recall_log.meta.focus_block_present` so the D1 focus
 block does not distort the baseline. See `docs/development.md` for CLI
 usage.
 
-### evidence (alpha.16, Theme 2a)
-**Confidence as a derivable signal.** `evidence_ledger` accumulates
-corroboration / refutation rows per memo. `fn::derived_confidence` blends
-the initial confidence as a prior (`prior_weight` votes) with the
-accumulated evidence to compute a current value in [0, 1].
-- Producers: reinforcement loop (corroborate on `reinforced`, refute on
-  `corrected`), `store.relate(..., 'contradicts')` auto-emits two refutes,
-  biographer optional `evidence_signals[]` output, MCP `endorse`/`refute`.
-- Update path: `step-confidence-recompute` (nightly) recomputes
-  `memos.confidence` for memos with ledger activity since the last
-  `meta.evidence_recomputed_at` marker.
-- Tunables in `runtime:evidence.config`: `prior_weight` (default 3.0),
-  `biographer_weight` (0.5), `manual_weight` (2.0).
-- Inspect via Theme 4 MCP tool `explain_belief({memo_id})` — returns the
-  ledger replay + derivation formula.
-
 ### meta-cognition (cognition D2)
 
 **What:** Weekly LLM analysis of recall failures. Reads `recall_log` rows from the trailing 7 days where the user corrected the agent (and, post-B1, rows whose retrieved memos went unused). Clusters retrieved memos by shared `about` endpoints in-Node, then asks one `tier:'fast'` LLM to name the error patterns and suggest behavior rules.
@@ -213,53 +196,24 @@ accumulated evidence to compute a current value in [0, 1].
 - `'recall_failures'` — this faculty (D2).
 - `'calibration'` — D3 sibling (below).
 
-### belief (alpha.17, Cognition D3)
-**Read-only "should I assert this?" gate.** The `belief({query, domain?, k?})`
-MCP tool aggregates evidence-backed confidence over recalled `kind='knowledge'`
-memos and returns a recommendation: `assert | soften | unknown`. Pure
-aggregation — zero new LLM tokens, zero extra embeds beyond the recall.
-- Input schema (`additionalProperties: false`): `query` (required, ≤500 chars),
-  `domain` (optional, ≤80 chars), `k` (optional integer 1–20, default 8).
-- Output: `aggregate_confidence`, `calibrated_confidence`, `evidence[]`
-  (`memo_id`, `content_snippet`, `derived_confidence`, `last_observed`,
-  `weight`), `calibration` (when applied), `recommendation`, `meta`
-  (k_requested/k_returned, dropped counters, elapsed_ms, fallback_path,
-  shadow flag).
-- Pipeline: recall (kind='knowledge', overfetched) → privacy filter (direct
-  + transitive `derived_from` to private memos) → batched structural weights
-  (`signal_count × decay`, supersedes → 0) → `fn::derived_confidence` → pure
-  `aggregateBelief` (weighted average; weight = `signal_count × decay ×
-  relevance`, NO confidence multiplier) → `readCalibration` (meta-narrative
-  memo wins over `persona:singleton.calibration`) → `calibrateAdjust` (linear
-  with clamp) → threshold gate.
-- Privacy: stricter than `recall` — drops hits whose scope is private OR
-  whose lineage touches a private memo. No `refusals` row per drop;
-  aggregate `meta.hits_dropped_private` is the right granularity.
-- Telemetry: writes `cadence_telemetry` rows with `step='belief.call'` and
-  `meta.sample_rate` (1.0 in shadow, 0.1 after flip). Sampled deterministically
-  on `hash(query)`. The C3 hot-bridge rolls up `step LIKE 'belief.%'`.
-- Shadow rollout: ships behind `runtime:belief.config.value.shadow_mode=true`.
-  In shadow the gate is computed and logged via
-  `meta.shadow_recommendation_would_have_been` but the public
-  `recommendation` is forced `'unknown'`. Flip to active by setting
-  `shadow_mode = false`.
-- Tunables in `runtime:belief.config.value` (5s-cached): `default_threshold`
-  (0.6), `soften_floor` (0.4), `domain_thresholds`, `relevance_threshold`
-  (0.30), `confidence_floor` (0.05), `belief_overfetch_factor` (2.0),
-  `min_calibration_samples` (5), `calibration_adjustment_gain` (1.0),
-  `expected_accuracy_baseline` (0.75), `shadow_mode`, `telemetry_sample_rate`.
-- Pairs with the **weekly meta-calibration narrative writer** (`30 5 * * 0`,
-  Sunday 05:30 local, staggered 30 min after D2). Produces one
-  `kind='reasoning'`, `meta.dimension='calibration'`, `meta.domain=…` memo
-  per domain summarising brier + drift + trend over the past 7 days, prior
-  7 days for trend, and prior 21 days for sustained-drift detection.
-  Idempotent on `(meta.dimension, meta.domain, meta.week_starting)`. When
-  drift sign is large (`>= meta_narrative_rule_threshold`, default 0.15) and
+### meta-calibration narrative (cognition D3)
+**Weekly per-domain calibration drift summariser.** Runs Sunday 05:30 local
+(`30 5 * * 0`, staggered 30 min after D2). Reads resolved predictions over the
+past 7 days, prior 7 days for trend, and prior 21 days for sustained-drift
+detection.
+- File: `system/cognition/jobs/internal/meta-calibration-narrative.js`.
+- Writes one `kind='reasoning'`, `meta.dimension='calibration'`,
+  `meta.domain=…` memo per domain summarising brier + drift + trend.
+  Idempotent on `(meta.dimension, meta.domain, meta.week_starting)`.
+- When drift is large (`>= meta_narrative_rule_threshold`, default 0.15) and
   sustained over `meta_narrative_rule_min_weeks` consecutive weeks (default
   2), emits a `rule_candidates` row with `kind='behavior'` and
   `payload.source='meta_cognition_calibration'` (discriminator lives on
   `payload`, not `meta` — `rule_candidates` is SCHEMAFULL and undeclared
   `meta` is silently dropped).
+- Tunables in `runtime:belief.config.value`: `meta_narrative_enabled`,
+  `meta_narrative_rule_threshold`, `meta_narrative_rule_min_weeks`,
+  `meta_narrative_window_days`.
 
 ### cadence (alpha.16, Theme 3)
 **Triggered cognition with cost-budget enforcement.** Three steps —
@@ -322,18 +276,12 @@ Jaccard similarity. Manual MCP access via `list_arcs` and `get_arc`.
 
 **Surfacing:** Privileged `<!-- current focus -->` block above `<!-- relevant memory -->` in `system/cognition/intuition/inject.js`, gated by 7 suppression rules (disabled flag, no memo, low confidence, stale, supersedes leak, pivot, private scope) and a 200-token cap.
 
-**Calibration:** Each new inference compares against the prior via entity-set Jaccard + arc match; emits one `evidence_ledger` row per pivot or hold (`reason ∈ {state_inference_held, state_inference_pivoted}`). Dedup via reason filter on rows newer than `prior.derived_at`.
-
 **Rollout flag:** `runtime:state_inference.config.enabled` is three-valued: `false` | `'shadow'` | `true`. Shadow runs the pipeline (including the LLM) but suppresses the memo write and the intuition block.
 
-**Introspection MCP tool:** `explain_state_inference` (read-only) — returns `{ current, history (up to 10 supersedes hops), evidence_replay }`. Private-scope memos return only `{ private: true, id, derived_at }`.
-
 ### introspection (alpha.16, Theme 4)
-**Eight read-only MCP tools** for "why did Robin do X?":
+**Read-only MCP tools** for "why did Robin do X?":
 - `explain_recall` — recall_log + score components + sources (private redacted).
-- `explain_belief` — evidence_ledger replay + derivation formula.
 - `explain_action_trust` — current state + full ledger history.
-- `explain_state_inference` — Latest state_inference memo for a source, supersedes chain, calibration replay.
 - `show_pending_triggers` — queue depth.
 - `show_step_health` — cadence_telemetry rollup per step.
 - `recent_refusals` — discretion refusals listing.
@@ -358,9 +306,8 @@ Two-tier classification:
     `dropped_hits_sum`, `elapsed_ms_sum`, `focus_block_tokens_sum`) AND
     `faculty='reinforcement'`, `event_kind='evaluate'` (dimensions:
     `outcome`).
-  - `cadence_telemetry` (hot prefixes `belief.%`, `dream.%`) →
-    `faculty='belief'` / `event_kind='<sub_step>'` and `faculty='dream'`
-    / `event_kind='<sub_step>'`. Dimensions: `success`.
+  - `cadence_telemetry` (hot prefix `dream.%`) →
+    `faculty='dream'` / `event_kind='<sub_step>'`. Dimensions: `success`.
   - `meta_cognition_telemetry` → `faculty='meta_cognition'`,
     `event_kind='run'`. Dimensions: `outcome`.
 

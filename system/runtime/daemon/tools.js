@@ -2,13 +2,9 @@ import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';
-import { createBeliefTool } from '../../io/mcp/tools/belief.js';
 import { createCheckActionTool } from '../../io/mcp/tools/check-action.js';
-import { createEndorseTool } from '../../io/mcp/tools/endorse.js';
 import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
-import { createExplainBeliefTool } from '../../io/mcp/tools/explain-belief.js';
 import { createExplainRecallTool } from '../../io/mcp/tools/explain-recall.js';
-import { createExplainStateInferenceTool } from '../../io/mcp/tools/explain-state-inference.js';
 import { createFindEntityTool } from '../../io/mcp/tools/find-entity.js';
 import { createGetArcTool } from '../../io/mcp/tools/get-arc.js';
 import { createGetCommStyleTool } from '../../io/mcp/tools/get-comm-style.js';
@@ -32,7 +28,6 @@ import { createPredictTool } from '../../io/mcp/tools/predict.js';
 import { createRecallTool } from '../../io/mcp/tools/recall.js';
 import { createRecentRefusalsTool } from '../../io/mcp/tools/recent-refusals.js';
 import { createRecordCorrectionTool } from '../../io/mcp/tools/record-correction.js';
-import { createRefuteTool } from '../../io/mcp/tools/refute.js';
 import { createRelatedEntitiesTool } from '../../io/mcp/tools/related-entities.js';
 import { createRememberTool } from '../../io/mcp/tools/remember.js';
 import { createResolvePredictionTool } from '../../io/mcp/tools/resolve-prediction.js';
@@ -160,18 +155,9 @@ export function buildTools(ctx) {
     createPredictTool({ db: ctx.db }),
     createResolvePredictionTool({ db: ctx.db }),
     createListOpenPredictionsTool({ db: ctx.db }),
-    createEndorseTool({ db: ctx.db }),
-    createRefuteTool({ db: ctx.db }),
     createListArcsTool({ db: ctx.db }),
     createGetArcTool({ db: ctx.db }),
     createExplainRecallTool({ db: ctx.db }),
-    createExplainStateInferenceTool({ db: ctx.db }),
-    createExplainBeliefTool({ db: ctx.db }),
-    createBeliefTool({
-      db: ctx.db,
-      embedder: ctx.embedder.wrap,
-      catalog: ctx.catalog,
-    }),
     createExplainActionTrustTool({ db: ctx.db }),
     createShowPendingTriggersTool({ db: ctx.db }),
     createShowStepHealthTool({ db: ctx.db }),

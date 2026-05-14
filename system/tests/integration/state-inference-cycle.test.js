@@ -277,61 +277,6 @@ test('I6 — private memo → suppressed', async () => {
   await close(db);
 });
 
-test('I7 — calibration emits pivot refute (integration variant)', async () => {
-  const db = await fresh();
-  const e = createStubEmbedder({ dimension: 1024 });
-  await setEnabled(db, true);
-  // Seed source with entity B (the new attention focus). Prior memo claims
-  // entity A + arc=arcs:01; current snapshot has entity B + arc=null, so:
-  //   overlap = 0/1 = 0   < 0.25  ✓
-  //   arcMatches = false  ✓
-  // → classifyPriorVsCurrent returns 'refuted'.
-  const entA = (await store.upsertEntity(db, e, { type: 'topic', name: 'A' })).id;
-  const {
-    epId,
-    entRefs: [entB],
-  } = await seedSource(db, e, { entities: ['B'] });
-  const prior = await noteStateInference(db, e, {
-    source: TEST_SOURCE,
-    content: 'about A',
-    confidence: 0.8,
-    entities: [entA],
-    arc_id: 'arcs:01',
-    last_active_at: new Date(),
-    signal_hash: 'old',
-  });
-  // Seed a second B-event so attention is solidly on B (1 already, this makes 2).
-  await seedBiographedEvent(db, e, {
-    source: TEST_SOURCE,
-    content: 'B happens',
-    entities: [entB],
-    episodeId: epId,
-  });
-  await composeForSource({
-    db,
-    embedder: e,
-    host: makeHost('Working on B'),
-    source: TEST_SOURCE,
-    cfg: {
-      enabled: true,
-      attention_window_min: 90,
-      refresh_after_minutes: 30,
-      min_events_for_inference: 1,
-      max_sources_per_tick: 4,
-      min_confidence_to_surface: 0.5,
-      stale_after_minutes: 120,
-      pivot_weight: 1.0,
-      corroborate_weight: 1.0,
-    },
-  });
-  const [rows] = await db
-    .query(`SELECT polarity, reason FROM evidence_ledger WHERE memo_id = $id`, { id: prior.id })
-    .collect();
-  const refute = (rows ?? []).find((r) => r.reason === 'state_inference_pivoted');
-  assert.ok(refute);
-  await close(db);
-});
-
 test('I8 — cfg.enabled=false → evaluate skips, intuition skips block', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });

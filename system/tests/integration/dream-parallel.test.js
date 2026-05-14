@@ -219,7 +219,6 @@ test('budget variant A: cadence_telemetry seeded above the floor before run → 
     'profile',
     'arcs',
     'commStyle',
-    'confidence',
     'scopeCleanup',
     'calibration',
     'compaction',
@@ -291,7 +290,7 @@ test('budget variant B: layer 1 runs, layer 2/3 skipped after the boundary check
   } finally {
     reg.byName.knowledge = original;
   }
-  // Layer 1 ran (knowledge / patterns / reflection / profile / arcs / commStyle / confidence)
+  // Layer 1 ran (knowledge / patterns / reflection / profile / arcs / commStyle)
   // — their summary keys are real results, not 'skipped'.
   for (const key of [
     'knowledge',
@@ -300,7 +299,6 @@ test('budget variant B: layer 1 runs, layer 2/3 skipped after the boundary check
     'profile',
     'arcs',
     'commStyle',
-    'confidence',
   ]) {
     const v = summary[key];
     assert.notDeepEqual(v, { skipped: 'budget_exhausted' }, `layer-1 ${key} should have run`);

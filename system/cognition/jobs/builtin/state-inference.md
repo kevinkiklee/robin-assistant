@@ -21,10 +21,9 @@ Per tick, for each active episode source:
 3. Pick the dominant active arc (entity-set overlap).
 4. Pick up to 5 recently biographed events whose `mentions` edges touch the attention entity set.
 5. Compute a SHA-256 hash of `{entities, arc_id, last_event_id}`. If equal to `prior.meta.signal_hash` and the prior is fresh (`< refresh_after_minutes`), skip the LLM call entirely.
-6. Otherwise emit a calibration row to `evidence_ledger` (corroborate/refute) classifying the prior against the current snapshot.
-7. Call `host.invokeLLM` (fast tier). LLM returns `{ focus_statement, confidence, evidence_snippet, ambiguous, drop }`.
-8. If `drop=false`, write a new `kind='state_inference'` memo and supersede the prior. If any candidate entity/event/arc has `scope='private'`, the new memo inherits `scope='private'`.
-9. Append one row to `state_inference_telemetry` per source per tick.
+6. Call `host.invokeLLM` (fast tier). LLM returns `{ focus_statement, confidence, evidence_snippet, ambiguous, drop }`.
+7. If `drop=false`, write a new `kind='state_inference'` memo and supersede the prior. If any candidate entity/event/arc has `scope='private'`, the new memo inherits `scope='private'`.
+8. Append one row to `state_inference_telemetry` per source per tick.
 
 Gated by `runtime:state_inference.config.enabled` (three-valued: `false` | `'shadow'` | `true`).
 

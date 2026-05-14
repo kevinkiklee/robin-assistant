@@ -20,7 +20,6 @@ test('expected camelCase keys are present', () => {
     'profile',
     'arcs',
     'commStyle',
-    'confidence',
     'scopeCleanup',
     'calibration',
     'compaction',
@@ -42,11 +41,10 @@ test('topoLayers(byName, DREAM_DAG_DEPS) returns three layers with expected memb
   const { topoLayers } = await import('../../cognition/dream/scheduler.js');
   const layers = topoLayers(byName, DREAM_DAG_DEPS);
   assert.equal(layers.length, 3);
-  // Layer 1: knowledge, patterns, reflection, profile, arcs, commStyle, confidence
+  // Layer 1: knowledge, patterns, reflection, profile, arcs, commStyle
   assert.deepEqual([...layers[0]].sort(), [
     'arcs',
     'commStyle',
-    'confidence',
     'knowledge',
     'patterns',
     'profile',

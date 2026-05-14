@@ -406,20 +406,12 @@ export async function evaluatePending(db) {
     }
   }
 
-  // Theme 2a: emit refute ledger rows for memos in corrected rows.
-  // Theme 3: emit a reflection trigger for each corrected row.
-  // (`correctedRowIds` Set is pre-built before the attribute pass; here we
-  // collect the corresponding record refs for downstream emission.)
-  const correctedMemoIds = new Set();
+  // Theme 3: emit a reflection trigger for each corrected row so the dream
+  // pipeline picks them up next tick.
   const correctedRowRecords = [];
   for (const row of pending) {
     if (!correctedRowIds.has(String(row.id))) continue;
     correctedRowRecords.push(row.id);
-    for (const hit of row.ranked_hits ?? []) {
-      const id = hitRecordId(hit);
-      if (!id?.startsWith('memos:')) continue;
-      correctedMemoIds.add(id);
-    }
   }
   for (const rid of correctedRowRecords) {
     try {
@@ -433,52 +425,6 @@ export async function evaluatePending(db) {
         .collect();
     } catch (e) {
       console.warn(`[reinforce] trigger emit failed: ${e.message}`);
-    }
-  }
-  for (const idStr of correctedMemoIds) {
-    try {
-      await db
-        .query(
-          new BoundQuery(
-            `CREATE evidence_ledger CONTENT {
-              memo_id: type::record('memos', $key),
-              polarity: 'refutes',
-              reason: 'correction',
-              weight: 1.0
-            }`,
-            { key: idStr.slice('memos:'.length) },
-          ),
-        )
-        .collect();
-    } catch (e) {
-      if (!String(e?.message ?? '').includes('does not exist')) {
-        console.warn(`[reinforce] evidence-refute failed for ${idStr}: ${e.message}`);
-      }
-    }
-  }
-
-  // Theme 2a + B1: emit corroborates ledger rows. weight=N where N is the
-  // number of pending rows in this batch where the memo was both injected
-  // AND used (per-hit attribution from section 3, filtered in section 4).
-  for (const [idStr, n] of memoHitCount.entries()) {
-    try {
-      await db
-        .query(
-          new BoundQuery(
-            `CREATE evidence_ledger CONTENT {
-              memo_id: type::record('memos', $key),
-              polarity: 'corroborates',
-              reason: 'reinforcement',
-              weight: $w
-            }`,
-            { key: idStr.slice('memos:'.length), w: n },
-          ),
-        )
-        .collect();
-    } catch (e) {
-      if (!String(e?.message ?? '').includes('does not exist')) {
-        console.warn(`[reinforce] evidence-corroborate failed for ${idStr}: ${e.message}`);
-      }
     }
   }
 
