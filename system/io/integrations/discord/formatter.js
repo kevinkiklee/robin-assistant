@@ -49,7 +49,7 @@ function renderTableAsCodeBlock(header, rows) {
       .join('  ')
       .replace(/\s+$/, '');
   const lines = [fmt(cleanHeader), ...cleanRows.map(fmt)];
-  return '```\n' + lines.join('\n') + '\n```';
+  return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
 }
 
 // Detect GFM-style tables (strict form with leading/trailing `|` and a
@@ -109,7 +109,7 @@ export function stripMention(text, botUserId) {
 // keeping triple-backtick code fences balanced across chunk boundaries.
 // Returns [] for empty input.
 export function splitMessage(text, limit = DISCORD_MESSAGE_MAX) {
-  if (!text || !text.trim()) return [];
+  if (!text?.trim()) return [];
   if ([...text].length <= limit) return [text];
 
   const chunks = [];

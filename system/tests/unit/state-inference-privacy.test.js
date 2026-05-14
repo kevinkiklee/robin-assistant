@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { composeForSource } from '../../cognition/jobs/internal/state-inference.js';
-import { noteStateInference } from '../../cognition/memory/state_inference.js';
 import * as store from '../../cognition/memory/store.js';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';

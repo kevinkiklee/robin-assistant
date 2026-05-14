@@ -54,7 +54,7 @@ test('threadTitleFrom strips mention and clips to max code points', () => {
   assert.equal(threadTitleFrom('<@123> hello there', '123'), 'hello there');
   assert.equal(threadTitleFrom('', '123'), 'Robin');
   assert.equal(threadTitleFrom('<@123>', '123'), 'Robin');
-  const long = '<@123> ' + 'a'.repeat(200);
+  const long = `<@123> ${'a'.repeat(200)}`;
   assert.equal(threadTitleFrom(long, '123', 50).length, 50);
 });
 

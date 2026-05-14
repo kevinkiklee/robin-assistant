@@ -59,6 +59,19 @@ time — the embedded engine is single-writer and concurrent processes
 
 If postinstall was skipped (global install, CI re-run, `--ignore-scripts`) and you run any non-install `robin` command later, the CLI detects the missing setup, runs `robin install --auto` once, and continues with your original command. Set `ROBIN_SKIP_FIRST_RUN=1` to disable.
 
+### Runtime tunables
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ROBIN_DEBUG` | unset | When set, surface CLI / hook errors with full context (stack traces, hook dispatch failures). |
+| `ROBIN_HOME` | `<repo>/user-data` or OS data dir | Override the user-data root (DB, secrets, logs). |
+| `ROBIN_DB_URL` | `rocksdb://<home>/data/db` | Override the SurrealDB URL (e.g. `mem://` for ephemeral tests). |
+| `ROBIN_DAEMON_REQUEST_TIMEOUT_MS` | `5000` | HTTP timeout when CLI commands delegate to a running daemon. |
+| `ROBIN_INTEGRATION_TIMEOUT_MS` | per-integration | Cap a single integration sync's wall time. |
+| `ROBIN_DISCORD_AGENT_TIMEOUT_MS` | per-agent default | Cap a Claude-Code agent reply spawned by the Discord bot. |
+| `ROBIN_BACKUP_RETENTION_DAYS` | `7` | Days of nightly DB snapshots kept on disk. |
+| `ROBIN_HOST` | autodetected | Force the host adapter (`claude-code`, `gemini`) instead of detecting it. |
+
 ## The interactive path
 
 If you want to pick a different embedder profile or store data outside the repo:

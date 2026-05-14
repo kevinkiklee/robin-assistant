@@ -59,8 +59,11 @@ export async function processPendingChunks(db, embedder, host, pending) {
       try {
         const r = await biographerProcessBatch(db, embedder, host, chunk);
         for (const eid of chunk) {
-          const out = r?.perEvent?.get?.(String(eid));
-          if (out?.processed || out?.skipped) ok++;
+          // Mirror the single-event helper in pipeline.js: a missing perEvent
+          // entry means the batch deduped or short-circuited that id — treat
+          // it as skipped, not as a real failure.
+          const out = r?.perEvent?.get?.(String(eid)) ?? { skipped: true };
+          if (out.processed || out.skipped) ok++;
           else failed++;
         }
       } catch (e) {

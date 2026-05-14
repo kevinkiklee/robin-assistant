@@ -244,7 +244,7 @@ async function recordTelemetry(db, row) {
   }
 }
 
-function classifyPriorVsCurrent(prior, current) {
+function _classifyPriorVsCurrent(prior, current) {
   const priorEnts = new Set((prior?.meta?.entities ?? []).map((s) => String(s)));
   const curEnts = new Set((current.entities ?? []).map((s) => String(s)));
   let inter = 0;

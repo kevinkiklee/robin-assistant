@@ -415,38 +415,6 @@ async function writeEmbedding(db, embedder, surface, recordId, text) {
 // ============================================================================
 
 /**
- * Read a memo with hydrated subjects, lineage, contradictions count.
- * Phase 3 batching: 4 sequential queries collapse to one multi-statement
- * query (one round-trip) via LET blocks.
- */
-export async function getMemo(db, id) {
-  const sql = `
-    LET $m = (SELECT *, fn::freshness(id) AS freshness FROM $id);
-    LET $subj = (SELECT VALUE out FROM edges WHERE kind = 'about' AND in = $id);
-    LET $line = (SELECT VALUE out FROM edges WHERE kind = 'derived_from' AND in = $id);
-    LET $contra = (SELECT count() AS n FROM edges
-                   WHERE kind = 'contradicts' AND (in = $id OR out = $id) GROUP ALL);
-    RETURN {
-      memo: $m[0] ?? NONE,
-      subjects: $subj,
-      lineage: $line,
-      contradictions: $contra[0].n ?? 0
-    };
-  `;
-  const results = await db.query(new BoundQuery(sql, { id })).collect();
-  const result = results[results.length - 1];
-  const payload = Array.isArray(result) ? result[0] : result;
-  const memo = payload?.memo;
-  if (!memo) return null;
-  return {
-    ...memo,
-    subjects: payload.subjects ?? [],
-    lineage: payload.lineage ?? [],
-    contradictions: payload.contradictions ?? 0,
-  };
-}
-
-/**
  * HNSW kNN over memos. Filters by kind / scope(s) / tags / since are applied
  * during the SQL query (indexed where applicable). Default excludes ephemeral
  * scopes; pass `scopes: ['*']` to include everything.

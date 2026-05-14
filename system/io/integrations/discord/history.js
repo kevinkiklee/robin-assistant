@@ -57,7 +57,7 @@ export async function fetchHistory(
 
   // Apply caps: keep the most recent maxTurns. Then walk newest→oldest summing
   // chars; drop the oldest as needed so the prompt stays under maxChars.
-  let trimmed = chronological.slice(-maxTurns);
+  const trimmed = chronological.slice(-maxTurns);
   let total = trimmed.reduce((s, t) => s + (t.content?.length ?? 0), 0);
   while (trimmed.length > 1 && total > maxChars) {
     const dropped = trimmed.shift();

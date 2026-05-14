@@ -62,7 +62,7 @@ async function openThreadOrFallback(message, botUserId) {
 }
 
 export async function start(ctx) {
-  const { db, host } = ctx;
+  const { db } = ctx;
 
   const bot_token = requireSecret('DISCORD_BOT_TOKEN');
   const application_id = getSecret('DISCORD_APPLICATION_ID');

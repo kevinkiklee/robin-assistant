@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { createCapture } from '../../io/integrations/_framework/capture.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
+import { createCapture } from '../../io/integrations/_framework/capture.js';
 import {
   buildBotReplyEvent,
   buildMessages,

@@ -12,15 +12,15 @@
 function extractBalancedObject(s, startIdx) {
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let escapeNext = false;
   for (let i = startIdx; i < s.length; i++) {
     const ch = s[i];
-    if (escape) {
-      escape = false;
+    if (escapeNext) {
+      escapeNext = false;
       continue;
     }
     if (inString) {
-      if (ch === '\\') escape = true;
+      if (ch === '\\') escapeNext = true;
       else if (ch === '"') inString = false;
       continue;
     }
