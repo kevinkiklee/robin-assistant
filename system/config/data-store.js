@@ -241,6 +241,12 @@ export const paths = {
     hostIntegrations: () => join(robinHome(), 'runtime', 'install', 'host-integrations.json'),
     marker: () => join(robinHome(), 'runtime', 'install', '.marker.json'),
     installReports: () => join(robinHome(), 'runtime', 'install', 'reports'),
+
+    // Invariants framework (defensive operational reliability layer).
+    invariantsState: () => join(robinHome(), 'runtime', 'invariants-state.json'),
+    invariantsLocks: () => join(robinHome(), 'runtime', 'locks', 'invariants'),
+    divergenceLog: () => join(robinHome(), 'runtime', 'divergence_log.json'),
+    healthAlert: () => join(robinHome(), 'runtime', 'HEALTH_ALERT.md'),
   },
   source: {
     migrations: () => join(_packageRoot, 'system', 'data', 'db', 'migrations'),
