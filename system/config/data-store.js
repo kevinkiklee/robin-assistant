@@ -177,6 +177,14 @@ export function pointerExists() {
   return pointerLocation().read.some((p) => existsSync(p));
 }
 
+/**
+ * Public view of the pointer search paths — exposed for the invariants
+ * framework so `install.pointer_present` can inspect both locations.
+ */
+export function pointerSearchPaths() {
+  return [...pointerLocation().read];
+}
+
 export function readPointer() {
   for (const p of pointerLocation().read) {
     if (!existsSync(p)) continue;

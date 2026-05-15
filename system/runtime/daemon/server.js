@@ -8,6 +8,7 @@ import {
 import { paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
 import { detectHost } from '../hosts/detect.js';
+import { createInvariantsTick, runBootInvariants } from '../invariants/daemon-tick.js';
 import { boot } from './boot.js';
 import { consumePendingTriggers } from './cadence-consumer.js';
 import { createDispatcherTick } from './dispatcher-tick.js';
@@ -129,9 +130,29 @@ export async function startDaemon() {
             }
           },
         },
+        {
+          // Operational-invariants framework (defensive reliability layer).
+          // Gated by config.invariants.enabled (false | 'shadow' | true).
+          // No-op when flag is false. Read each tick — flips take effect inline.
+          name: 'invariants',
+          intervalMs: 60_000,
+          tick: createInvariantsTick({ db: ctx.db }),
+        },
       ],
     });
     await scheduler.start();
+
+    // One-shot boot-time invariants run. Skipped when flag is false.
+    // Failures here log but do not abort daemon boot — the heartbeat bucket
+    // catches the same condition on the next tick.
+    try {
+      const bootReport = await runBootInvariants({ db: ctx.db });
+      if (bootReport && !bootReport.skipped && bootReport.aborted) {
+        console.warn('[invariants/boot] aborted; see invariants-state.json');
+      }
+    } catch (e) {
+      console.warn(`[invariants/boot] failed: ${e.message}`);
+    }
 
     // Per-boot token gates /internal/* endpoints. CLI reads it from
     // runtime/daemon/.state (which is chmod 0600). Loopback binding stops

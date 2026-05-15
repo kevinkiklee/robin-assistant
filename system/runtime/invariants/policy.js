@@ -3,7 +3,8 @@
 
 export const BOOT_REPAIR_ALLOWLIST = ['install.pointer_present'];
 
-export const CLI_BLOCKING_SET = ['install.pointer_present', 'mcp.wiring_project_present'];
+// Stage 2: only install.pointer_present is ported. Stage 3 adds mcp.wiring_project_present.
+export const CLI_BLOCKING_SET = ['install.pointer_present'];
 
 export const PHASES = ['paths', 'db', 'mcp', 'integrations', 'runtime', 'meta'];
 

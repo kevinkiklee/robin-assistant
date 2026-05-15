@@ -7,10 +7,12 @@
 //   4. Run `pnpm test system/tests/unit/invariants/registry-audit.test.js`
 //   5. Run `robin doctor --emit-runbook --write` (or let the precommit hook do it).
 
+import installPointerPresent from './install.pointer-present.js';
 import { PHASES } from './policy.js';
 
 export const INVARIANTS = [
   // Phase order matters; see PHASES in policy.js. Within a phase, registry order is run order.
+  installPointerPresent,
 ];
 
 export const byName = new Map(INVARIANTS.map((i) => [i.name, i]));

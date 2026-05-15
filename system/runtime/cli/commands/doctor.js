@@ -22,6 +22,7 @@ import {
   ensureHome,
   packageRootDir,
   paths,
+  pointerExists,
   readHostIntegrations,
   readPointer,
   robinHome,
@@ -29,6 +30,8 @@ import {
 import { readFileTail } from '../../../config/file-tail.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
+import installPointerPresent from '../../invariants/install.pointer-present.js';
+import { recordDivergence } from '../../invariants/divergence-log.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
 import { detectLayoutVersion, LEGACY_STRAY_DIRS } from '../../install/layout-migrator.js';
@@ -522,6 +525,31 @@ export async function doctorData() {
   return { home: homeResolved, drift };
 }
 
+/**
+ * `--diff-legacy` (stage 2): compare framework's install.pointer_present
+ * verdict against the legacy probe (`pointerExists`). Append disagreements
+ * to the divergence log.
+ */
+async function doDiffLegacy(out, { logPath = paths.data.divergenceLog() } = {}) {
+  const legacyOk = pointerExists();
+  const fw = await installPointerPresent.check();
+  const agree = (legacyOk === true) === (fw.ok === true);
+  out(`legacy pointerExists(): ${legacyOk}`);
+  out(`framework install.pointer_present.ok: ${fw.ok}`);
+  if (fw.error) out(`framework error: ${fw.error}`);
+  if (!agree) {
+    out('DIVERGENCE: legacy and framework disagree');
+    recordDivergence(logPath, {
+      invariant: 'install.pointer_present',
+      legacy: { ok: legacyOk },
+      framework: { ok: fw.ok, error: fw.error, evidence: fw.evidence },
+    });
+    out(`  recorded to ${logPath}`);
+  } else {
+    out('agree');
+  }
+}
+
 export async function doctor(argv = [], deps = {}) {
   const args = parseArgs(argv);
   const out = deps.out ?? ((s) => console.log(s));
@@ -531,6 +559,7 @@ export async function doctor(argv = [], deps = {}) {
   const wantPurge = args.flags['purge-stale-sessions'] === true;
   const wantLint = args.flags['lint-hooks'] === true;
   const wantHealth = args.flags.health === true;
+  const wantDiffLegacy = args.flags['diff-legacy'] === true;
 
   if (wantHealth) {
     const wantJson = args.flags.json === true;
@@ -545,6 +574,11 @@ export async function doctor(argv = [], deps = {}) {
     } finally {
       await closeDb(db).catch(() => {});
     }
+    return;
+  }
+
+  if (wantDiffLegacy) {
+    await doDiffLegacy(out, { logPath: deps.divergenceLogPath });
     return;
   }
 
