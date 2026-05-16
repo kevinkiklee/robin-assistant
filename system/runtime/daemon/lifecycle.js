@@ -70,7 +70,11 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
       }
       if (subsystems?.httpServer?.close) {
         try {
-          subsystems.httpServer.close();
+          // http.Server#close is async via callback — await drain so db.close()
+          // doesn't race in-flight connection writes.
+          await new Promise((resolve) => {
+            subsystems.httpServer.close(() => resolve());
+          });
         } catch (e) {
           console.warn(`http close failed: ${e.message}`);
         }
