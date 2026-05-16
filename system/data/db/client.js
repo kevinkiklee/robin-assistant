@@ -124,8 +124,16 @@ export async function connect({
   // schemes (mem://, surrealkv://, rocksdb://) don't authenticate.
   const isRemote = /^(wss?|https?):\/\//.test(engine);
   const creds = isRemote ? (auth ?? (await defaultDbAuth())) : null;
-  if (creds) await db.signin(creds);
-  await db.use({ namespace, database });
+  // If signin() or use() throws after connect(), the Surreal handle is still
+  // open — close it so NAPI threadsafe handles don't leak (mirrors the
+  // NAPI-handle-leak class documented for `node --test` orphan processes).
+  try {
+    if (creds) await db.signin(creds);
+    await db.use({ namespace, database });
+  } catch (err) {
+    await close(db).catch(() => {});
+    throw err;
+  }
 
   // Re-establish session state on every reconnect — two layers of defense
   // against the "Anonymous access not allowed" daemon-wedge bug.
