@@ -75,9 +75,14 @@ async function uploadOne({ url, sourceDir, slug, userId, blobClient }) {
     // Use deterministic public URL pattern; same URL for re-upload.
     blobUrl = `RESOLVE_DETERMINISTIC:${key}`;
   } else {
+    // Key is content-hash-derived, so same key always means identical bytes —
+    // allowOverwrite is safely idempotent and prevents a TOCTOU race when two
+    // concurrent workers upload duplicate-content frames (e.g. same photo at
+    // two paths) and both see exists=false before either PUT lands.
     const r = await blobClient.putBlob(key, bytes, {
       contentType: sniff.mime,
       cacheControlMaxAge: ASSET_CACHE_MAX_AGE,
+      allowOverwrite: true,
     });
     blobUrl = r.url;
   }
