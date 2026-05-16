@@ -51,13 +51,19 @@ async function readDecayDays(db) {
   }
 }
 
+// All db.query() calls below use .collect() so the reactive
+// "Anonymous access not allowed" retry in installQueryRetry catches stale-auth
+// failures after a WS reconnect. Bare `await db.query(...)` bypasses that
+// wrapper.
 export async function getActionTrust(db, cls) {
-  const [rows] = await db.query(surql`SELECT * FROM action_trust WHERE class = ${cls} LIMIT 1`);
+  const [rows] = await db
+    .query(surql`SELECT * FROM action_trust WHERE class = ${cls} LIMIT 1`)
+    .collect();
   return normalizeRow(rows?.[0] ?? null);
 }
 
 export async function listActionTrust(db) {
-  const [rows] = await db.query(surql`SELECT * FROM action_trust ORDER BY class ASC`);
+  const [rows] = await db.query(surql`SELECT * FROM action_trust ORDER BY class ASC`).collect();
   return (rows ?? []).map(normalizeRow);
 }
 
@@ -73,7 +79,7 @@ export async function checkActionTrust(db, tool, action) {
     correction_count: 0,
     last_state_change_at: new Date(),
   };
-  await db.query(surql`CREATE action_trust CONTENT ${row}`);
+  await db.query(surql`CREATE action_trust CONTENT ${row}`).collect();
   await emitLedger(db, {
     class: cls,
     // old_state omitted (null collides with option<string> in v3)
@@ -90,13 +96,15 @@ export async function setActionTrust(db, cls, state, set_by, reason) {
   const action = parts.slice(1).join(':') || '_default';
   const old = await getActionTrust(db, cls);
   await checkActionTrust(db, tool, action);
-  await db.query(
-    surql`UPDATE action_trust MERGE ${{
-      state,
-      set_by,
-      last_state_change_at: new Date(),
-    }} WHERE class = ${cls}`,
-  );
+  await db
+    .query(
+      surql`UPDATE action_trust MERGE ${{
+        state,
+        set_by,
+        last_state_change_at: new Date(),
+      }} WHERE class = ${cls}`,
+    )
+    .collect();
   const actionKind =
     old?.state === state ? 'success' : state === 'AUTO' ? 'manual_promote' : 'manual_demote';
   const ledger = {
@@ -127,7 +135,7 @@ export async function recordOutcome(db, cls, outcome) {
       stateChanged = true;
     }
   }
-  await db.query(surql`UPDATE action_trust MERGE ${patch} WHERE class = ${cls}`);
+  await db.query(surql`UPDATE action_trust MERGE ${patch} WHERE class = ${cls}`).collect();
 
   await emitLedger(db, {
     class: cls,
@@ -153,13 +161,15 @@ export async function recordOutcome(db, cls, outcome) {
       if (r.kind === 'correction') consecutive++;
     }
     if (consecutive >= limit) {
-      await db.query(
-        surql`UPDATE action_trust MERGE ${{
-          state: 'DENY',
-          set_by: 'correction_loop',
-          last_state_change_at: new Date(),
-        }} WHERE class = ${cls}`,
-      );
+      await db
+        .query(
+          surql`UPDATE action_trust MERGE ${{
+            state: 'DENY',
+            set_by: 'correction_loop',
+            last_state_change_at: new Date(),
+          }} WHERE class = ${cls}`,
+        )
+        .collect();
       await emitLedger(db, {
         class: cls,
         old_state: patch.state ?? oldState,
@@ -186,13 +196,15 @@ export async function demoteOnCorrection(db, cls) {
 export async function resetActionTrust(db, cls) {
   const row = await getActionTrust(db, cls);
   if (!row) return;
-  await db.query(
-    surql`UPDATE action_trust MERGE ${{
-      state: 'ASK',
-      set_by: 'default',
-      last_state_change_at: new Date(),
-    }} WHERE class = ${cls}`,
-  );
+  await db
+    .query(
+      surql`UPDATE action_trust MERGE ${{
+        state: 'ASK',
+        set_by: 'default',
+        last_state_change_at: new Date(),
+      }} WHERE class = ${cls}`,
+    )
+    .collect();
   await emitLedger(db, {
     class: cls,
     old_state: row.state,
@@ -224,9 +236,11 @@ export async function runActionTrustDecay(db) {
   }
   let demoted = 0;
   for (const r of stale) {
-    await db.query(
-      surql`UPDATE action_trust SET state = 'ASK', set_by = 'decay_sweep', last_state_change_at = time::now() WHERE class = ${r.class}`,
-    );
+    await db
+      .query(
+        surql`UPDATE action_trust SET state = 'ASK', set_by = 'decay_sweep', last_state_change_at = time::now() WHERE class = ${r.class}`,
+      )
+      .collect();
     await emitLedger(db, {
       class: r.class,
       old_state: 'AUTO',

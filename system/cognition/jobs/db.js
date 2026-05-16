@@ -13,13 +13,17 @@ const MD_AUTHORITATIVE = [
   'scheduler_driven',
 ];
 
+// All db.query() calls below use .collect() so the reactive
+// "Anonymous access not allowed" retry in installQueryRetry catches stale-auth
+// failures after a WS reconnect. Bare `await db.query(...)` bypasses that
+// wrapper.
 export async function listAllJobs(db) {
-  const [rows] = await db.query(surql`SELECT * FROM runtime_jobs`);
+  const [rows] = await db.query(surql`SELECT * FROM runtime_jobs`).collect();
   return rows ?? [];
 }
 
 export async function getJob(db, name) {
-  const [rows] = await db.query(surql`SELECT * FROM runtime_jobs WHERE name = ${name}`);
+  const [rows] = await db.query(surql`SELECT * FROM runtime_jobs WHERE name = ${name}`).collect();
   return rows?.[0] ?? null;
 }
 
@@ -42,14 +46,14 @@ export async function upsertFromDiscovered(db, discovered) {
       for (const k of MD_AUTHORITATIVE) {
         if (job[k] !== undefined) row[k] = job[k];
       }
-      await db.query(surql`CREATE runtime_jobs CONTENT ${row}`);
+      await db.query(surql`CREATE runtime_jobs CONTENT ${row}`).collect();
       continue;
     }
     const patch = { updated_at: new Date() };
     for (const k of MD_AUTHORITATIVE) {
       if (job[k] !== undefined) patch[k] = job[k];
     }
-    await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${job.name}`);
+    await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${job.name}`).collect();
   }
 }
 
@@ -57,23 +61,29 @@ export async function garbageCollect(db, presentNames) {
   const rows = await listAllJobs(db);
   for (const r of rows) {
     if (!presentNames.has(r.name) && r.enabled !== false) {
-      await db.query(
-        surql`UPDATE runtime_jobs MERGE ${{ enabled: false, updated_at: new Date() }} WHERE name = ${r.name}`,
-      );
+      await db
+        .query(
+          surql`UPDATE runtime_jobs MERGE ${{ enabled: false, updated_at: new Date() }} WHERE name = ${r.name}`,
+        )
+        .collect();
     }
   }
 }
 
 export async function setEnabled(db, name, enabled) {
-  await db.query(
-    surql`UPDATE runtime_jobs MERGE ${{ enabled, updated_at: new Date() }} WHERE name = ${name}`,
-  );
+  await db
+    .query(
+      surql`UPDATE runtime_jobs MERGE ${{ enabled, updated_at: new Date() }} WHERE name = ${name}`,
+    )
+    .collect();
 }
 
 export async function setInFlight(db, name, in_flight) {
-  await db.query(
-    surql`UPDATE runtime_jobs MERGE ${{ in_flight, updated_at: new Date() }} WHERE name = ${name}`,
-  );
+  await db
+    .query(
+      surql`UPDATE runtime_jobs MERGE ${{ in_flight, updated_at: new Date() }} WHERE name = ${name}`,
+    )
+    .collect();
 }
 
 /**
@@ -100,9 +110,11 @@ export async function resetJobInFlightFlags(db) {
 }
 
 export async function setNextRunAt(db, name, next_run_at) {
-  await db.query(
-    surql`UPDATE runtime_jobs MERGE ${{ next_run_at, updated_at: new Date() }} WHERE name = ${name}`,
-  );
+  await db
+    .query(
+      surql`UPDATE runtime_jobs MERGE ${{ next_run_at, updated_at: new Date() }} WHERE name = ${name}`,
+    )
+    .collect();
 }
 
 export async function recordSuccess(db, name, { duration_ms, next_run_at }) {
@@ -116,7 +128,7 @@ export async function recordSuccess(db, name, { duration_ms, next_run_at }) {
     next_run_at,
     updated_at: new Date(),
   };
-  await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${name}`);
+  await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${name}`).collect();
 }
 
 export async function recordFailure(db, name, { error, duration_ms, next_run_at }) {
@@ -131,5 +143,5 @@ export async function recordFailure(db, name, { error, duration_ms, next_run_at 
     next_run_at,
     updated_at: new Date(),
   };
-  await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${name}`);
+  await db.query(surql`UPDATE runtime_jobs MERGE ${patch} WHERE name = ${name}`).collect();
 }
