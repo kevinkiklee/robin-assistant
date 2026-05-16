@@ -17,6 +17,7 @@ import { getCommStyle } from '../../cognition/jobs/comm-style.js';
 import { listAllJobs } from '../../cognition/jobs/db.js';
 import { getCalibration } from '../../cognition/jobs/predictions.js';
 import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
+import { readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { agentsMdContent, mergeAgentsMdContent } from './agents-md.js';
 
 async function readOrEmpty(path) {
@@ -28,7 +29,7 @@ async function readOrEmpty(path) {
   }
 }
 
-export async function loadIntegrationsForAgentsMd() {
+export async function loadIntegrationsForAgentsMd({ intState } = {}) {
   try {
     const { loaded } = await loadManifests(getIntegrationDirs());
     return loaded.map((m) => {
@@ -42,7 +43,20 @@ export async function loadIntegrationsForAgentsMd() {
           if (factory.name) toolNames.push(factory.name);
         }
       }
-      return { name: m.name, kind: m.kind, cadence_ms: m.cadence_ms, tool_names: toolNames };
+      const source = m._source === 'user-data' ? 'user-data' : 'system';
+      // Default to enabled when no state row exists yet (fresh installs). An
+      // explicit `false` from runtime:integrations marks the row disabled.
+      const enabledState = intState?.states?.[m.name]?.enabled;
+      const enabled = enabledState === false ? false : true;
+      return {
+        name: m.name,
+        kind: m.kind,
+        cadence_ms: m.cadence_ms,
+        tool_names: toolNames,
+        source,
+        enabled,
+        write_semantics: m.write_semantics ?? null,
+      };
     });
   } catch {
     return [];
@@ -57,7 +71,13 @@ export async function readDbDataForAgentsMd() {
       const jobs = await listAllJobs(db);
       const commStyle = await getCommStyle(db);
       const calibration = await getCalibration(db);
-      const integrations = await loadIntegrationsForAgentsMd();
+      let intState = null;
+      try {
+        intState = await readIntegrationsState(db);
+      } catch {
+        intState = null;
+      }
+      const integrations = await loadIntegrationsForAgentsMd({ intState });
       return { jobs, commStyle, calibration, integrations };
     } finally {
       await close(db);

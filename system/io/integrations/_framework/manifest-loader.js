@@ -68,6 +68,7 @@ export function validateManifest(m) {
     preflight: typeof m.preflight === 'function' ? m.preflight : null,
     config: m.config ?? {},
     quiet_window,
+    write_semantics: m.write_semantics ?? null,
   };
 }
 

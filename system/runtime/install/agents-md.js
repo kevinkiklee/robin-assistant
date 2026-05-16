@@ -27,28 +27,89 @@ function formatCadence(ms, kind) {
   return `${ms / MINUTE_MS}m`;
 }
 
+function renderIntegrationLine(i) {
+  const cadence = formatCadence(i.cadence_ms, i.kind);
+  const hasTools = (i.tool_names ?? []).length > 0;
+  const tools = hasTools ? i.tool_names.join(', ') : '(no agent-callable tools)';
+  const disabled = i.enabled === false ? ' (disabled)' : '';
+  if (i.kind === 'gateway') {
+    return `- ${i.name} (gateway)${disabled}: bot listens on allowlist; ${hasTools ? tools : 'no agent-callable tools'}`;
+  }
+  if (i.kind === 'tool-only') {
+    return `- ${i.name} (tool-only)${disabled}: ${tools}`;
+  }
+  if (i.cadence_ms === null || i.cadence_ms === undefined) {
+    // Back-compat: old-shape input without kind, null cadence → gateway-style line.
+    return `- ${i.name} (${cadence})${disabled}: bot listens on allowlist; no agent-callable tools`;
+  }
+  if (!hasTools) {
+    return `- ${i.name} (${cadence})${disabled}: no agent-callable tools`;
+  }
+  return `- ${i.name} (${cadence})${disabled}: ${tools}`;
+}
+
 function renderIntegrationsList(integrations) {
+  const lines = integrations.map(renderIntegrationLine);
+  if (lines.length === 0) lines.push('- (none registered)');
+  return lines.join('\n');
+}
+
+function renderGroupedIntegrationsList(integrations) {
+  // If no records carry an explicit `source` tag, fall back to the flat list
+  // (keeps the empty / legacy-test path stable).
+  const anyTagged = integrations.some((i) => i.source !== undefined);
+  if (!anyTagged) {
+    return renderIntegrationsList(integrations);
+  }
+
+  const system = integrations.filter((i) => i.source !== 'user-data');
+  const user = integrations.filter((i) => i.source === 'user-data');
+
+  function group(label, list) {
+    if (list.length === 0) return `### ${label}\n\n(none)`;
+    return `### ${label}\n\n${list.map(renderIntegrationLine).join('\n')}`;
+  }
+
+  return `${group('System integrations', system)}\n\n${group('User integrations', user)}`;
+}
+
+function renderOutboundSection(integrations) {
+  const writers = integrations.filter((i) => i.write_semantics);
+  if (writers.length === 0) return '';
   const lines = [];
-  for (const i of integrations) {
-    const cadence = formatCadence(i.cadence_ms, i.kind);
-    const hasTools = (i.tool_names ?? []).length > 0;
-    const tools = hasTools ? i.tool_names.join(', ') : '(no agent-callable tools)';
-    if (i.kind === 'gateway') {
-      lines.push(
-        `- ${i.name} (gateway): bot listens on allowlist; ${hasTools ? tools : 'no agent-callable tools'}`,
-      );
-    } else if (i.kind === 'tool-only') {
-      lines.push(`- ${i.name} (tool-only): ${tools}`);
-    } else if (i.cadence_ms === null || i.cadence_ms === undefined) {
-      // Back-compat: old-shape input without kind, null cadence → gateway-style line.
-      lines.push(`- ${i.name} (${cadence}): bot listens on allowlist; no agent-callable tools`);
-    } else if (!hasTools) {
-      lines.push(`- ${i.name} (${cadence}): no agent-callable tools`);
-    } else {
-      lines.push(`- ${i.name} (${cadence}): ${tools}`);
+  const toolList = writers.map((w) => `\`${w.write_semantics.tool_name ?? w.name}\``).join(' / ');
+  lines.push('## Outbound writes');
+  lines.push('');
+  lines.push(`Use ${toolList} for the actions below. All go through:`);
+  lines.push('');
+  lines.push(
+    "1. Per-tool rate limit; refuses with `{ ok: false, reason: 'rate_limited', wait_seconds: N }` — wait at least `wait_seconds` before retrying.",
+  );
+  lines.push(
+    '2. Outbound-policy: text content (issue/comment bodies, playlist names, message content) is checked for PII / secret / verbatim-untrusted-quote leakage. Blocks return `{ ok: false, reason: \'outbound_blocked\', blocked_by: \'<policy reason>\' }`; DON\'T retry by paraphrasing to bypass the guard — surface the block to the user.',
+  );
+  lines.push('3. The actual API call.');
+  lines.push('');
+  for (const w of writers) {
+    const ws = w.write_semantics;
+    const name = ws.tool_name ?? w.name;
+    const actions = Array.isArray(ws.actions) ? ws.actions : [];
+    lines.push(
+      `- **${name}** — actions: ${actions.join(', ')}; rate ${ws.rate_limit_per_hour ?? '—'}/hr.`,
+    );
+    const audit = ws.audit_level_per_action ?? {};
+    const events = Object.entries(audit)
+      .filter(([, v]) => v === 'events')
+      .map(([k]) => k);
+    const logs = Object.entries(audit)
+      .filter(([, v]) => v === 'log-only')
+      .map(([k]) => k);
+    if (events.length) lines.push(`  - events-audited (recall-searchable): ${events.join(', ')}`);
+    if (logs.length) lines.push(`  - log-only (no captured content): ${logs.join(', ')}`);
+    if (Array.isArray(ws.extra_gates) && ws.extra_gates.length) {
+      lines.push(`  - extra gates: ${ws.extra_gates.join(', ')}`);
     }
   }
-  if (lines.length === 0) lines.push('- (none registered)');
   return lines.join('\n');
 }
 
@@ -158,6 +219,8 @@ never called on a loop.
 }
 
 function integrationsSection(integrations = []) {
+  const outbound = renderOutboundSection(integrations);
+  const outboundBlock = outbound ? `\n\n${outbound}` : '';
   return `<!-- robin-integrations:start (auto-generated, do not hand-edit) -->
 ## Integration data freshness
 
@@ -173,39 +236,11 @@ running — the tool awaits and returns count/cursor/duration_ms. If it returns
 last_sync_ok. Don't loop more than ~30 polls (~60s).
 
 Don't fabricate fresh data. Don't loop on integration_run — the 30s
-min-interval will refuse, and repeated polling burns API quota.
-
-## Outbound writes (github_write, spotify_write, discord_send)
-
-Use \`github_write\` for create-issue / comment / label / mark-read; use
-\`spotify_write\` for queue / skip / playlist-add; use \`discord_send\` for
-send_dm / send_channel. All three go through:
-
-1. Per-tool rate limit (default 10/hr; refuses with
-   { ok: false, reason: 'rate_limited', wait_seconds: N } — wait at least
-   \`wait_seconds\` before retrying).
-2. Outbound-policy: text content (create-issue body, comment body, playlist
-   name/description, message content) is checked for PII / secret /
-   verbatim-untrusted-quote leakage. If blocked, the tool returns
-   { ok: false, reason: 'outbound_blocked', blocked_by: '<policy reason>' };
-   DON'T retry by paraphrasing to bypass the guard — surface the block to
-   the user and ask for guidance.
-3. The actual API call.
-
-\`discord_send\` adds a 4th gate before the API call: the recipient (DM
-\`user_id\` or channel's \`guild_id\`) must be in the configured allowlist;
-otherwise { ok: false, reason: 'not_allowed' }. Content is capped at 2000
-chars; over-cap returns { ok: false, reason: 'content_too_long' }.
-
-Audit trail differs by action:
-- create-issue, comment, playlist-add, send_dm, send_channel → captured to
-  events (recall searchable).
-- label, mark-read, queue, skip → daemon log only (no text content).
-  Don't expect recall('issue I labeled X') to find anything.
+min-interval will refuse, and repeated polling burns API quota.${outboundBlock}
 
 ## Available integrations
 
-${renderIntegrationsList(integrations)}
+${renderGroupedIntegrationsList(integrations)}
 <!-- robin-integrations:end -->`;
 }
 
