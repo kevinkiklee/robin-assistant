@@ -217,6 +217,21 @@ Port lives in `user-data/config/config.json` under `mcp.port`. After editing, th
 
 To clean up orphan v1 MCP children (each terminal session that ever connected to v1 has its own stdio child server holding file descriptors): `pkill -f "robin-assistant-v1/system/scripts/mcp/server.js"`.
 
+### Concurrent-agent git-index race steals your commit message
+
+**Symptom.** You ran `git add <my-files>` followed by `git commit -m "<my-message>"`, and `git log` shows the new HEAD has your files **plus** an unrelated session's files, all under that other session's commit message. Reflog shows no `reset` or `amend` between yours and the previous commit, just a single new commit at HEAD@{0} — but with the wrong message.
+
+**Cause.** Git's lock file (`.git/index.lock`) serializes individual commands but does **not** compose across two commands. Between your `git add` and `git commit`, another agent session can run `git commit -am "<their-message>"` (or `-a`). The `-a` flag auto-stages all modified tracked files, then atomically commits **everything currently in the index** — including the files you just staged for your own commit. Net effect: your staged content lands in their commit; your subsequent `git commit -m` either fails (nothing staged) or commits something else. Visible in `.claude/worktrees/agent-*` populating during concurrent runs (2026-05-16 incident).
+
+**Fix.** Prevent at write time — there is no clean post-hoc remediation without rewriting history.
+
+- **Use atomic single-command commits:** `git commit -m "msg" -- file1 file2 file3`. The explicit `--` followed by an explicit file list does stage-and-commit in one git operation, sidestepping the race window entirely.
+- **Never use `-a` or `-am`** in any tree that may host concurrent agents — these widen scope to all modified tracked files, including files staged by other sessions.
+- If a two-step `git add` → `git commit` is unavoidable (e.g. partial-file staging via `git add -p`), verify with `git diff --cached --name-only` immediately before committing AND `git show HEAD --stat` immediately after. If the post-commit diff is wider than expected, do **not** push — resolve before any further commits.
+- For invasive multi-file work in a concurrent-agent tree, create a git worktree (`git worktree add ../robin-feat-X`) and operate via `git -C ../robin-feat-X …` so the index lock is scoped to that worktree.
+
+If a commit is already poisoned but unpushed and the user authorizes destructive recovery, `git reset --soft HEAD~1` reveals the staged files and you can re-commit cleanly. Don't do this without explicit authorization — the same race that produced the incident can also race a reset.
+
 <!-- robin:runbook:begin -->
 
 ## Operational invariants (auto-generated)

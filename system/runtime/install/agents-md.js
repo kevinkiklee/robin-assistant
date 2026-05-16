@@ -112,6 +112,31 @@ a multi-step action.
 <!-- robin-actions:end -->`;
 }
 
+function gitHygieneSection() {
+  return `<!-- robin-git-hygiene:start (auto-generated, do not hand-edit) -->
+## Multi-agent git hygiene
+
+Robin is designed for concurrent agent sessions (see \`.claude/worktrees/\`).
+Git's lock file serializes individual commands but does NOT compose across
+two commands, so the standard \`git add\` → \`git commit\` pattern has a race
+window where another session's \`git commit -am …\` can sweep your staged
+files into their commit under their message.
+
+**Rules:**
+
+- **Never use \`-a\` or \`-am\`** in commit commands. These widen scope to all
+  modified tracked files, including files staged by other sessions.
+- **Prefer \`git commit -m "msg" -- file1 file2 file3\`** — a single atomic
+  command that stages and commits the explicit file list in one operation.
+- If a two-step \`git add\` → \`git commit\` is unavoidable, run
+  \`git diff --cached --name-only\` immediately before the commit AND
+  \`git show HEAD --stat\` immediately after. If the post-commit diff is
+  wider than expected, do not push — resolve before any further commits.
+- When unsure whether files are yours, scope to a worktree via
+  \`git -C <worktree-path>\`.
+<!-- robin-git-hygiene:end -->`;
+}
+
 function knowledgeOpsSection() {
   return `<!-- robin-knowledge-ops:start (auto-generated, do not hand-edit) -->
 ## Knowledge ops
@@ -379,6 +404,8 @@ recall..."). Just do the work and answer.
 ${integrationsSection(integrations)}
 
 ${jobsSection(jobs)}
+
+${gitHygieneSection()}
 
 ${knowledgeOpsSection()}
 
