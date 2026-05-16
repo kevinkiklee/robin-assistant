@@ -7,6 +7,7 @@
 //   4. Run `pnpm test system/tests/unit/invariants/registry-audit.test.js`
 //   5. Run `robin doctor --emit-runbook --write` (or let the precommit hook do it).
 
+import daemonHeartbeating from './daemon.heartbeating.js';
 import dbAuthenticated from './db.authenticated.js';
 import dbDaemonReachable from './db.daemon-reachable.js';
 import dbEmbedderProfileMatch from './db.embedder-profile-match.js';
@@ -19,6 +20,8 @@ import mcpDaemonResponds from './mcp.daemon-responds.js';
 import mcpWiringGlobalPresent from './mcp.wiring-global-present.js';
 import mcpWiringProjectPresent from './mcp.wiring-project-present.js';
 import { PHASES } from './policy.js';
+import runtimeHooksSettingsPresent from './runtime.hooks-settings-present.js';
+import runtimeNodeVersionPinned from './runtime.node-version-pinned.js';
 import runtimeNoOrphanNodeTestProcs from './runtime.no-orphan-node-test-procs.js';
 import schedulerNoStuckInFlight from './scheduler.no-stuck-in-flight.js';
 
@@ -40,8 +43,12 @@ export const INVARIANTS = [
   integrationsSyncFreshness,
   integrationsLunchMoneyNoDupes,
   // runtime
+  runtimeHooksSettingsPresent,
+  runtimeNodeVersionPinned,
   runtimeNoOrphanNodeTestProcs,
   schedulerNoStuckInFlight,
+  // meta
+  daemonHeartbeating,
 ];
 
 export const byName = new Map(INVARIANTS.map((i) => [i.name, i]));
