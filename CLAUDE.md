@@ -294,9 +294,11 @@ To clean up orphan v1 MCP children (each terminal session that ever connected to
 
 **Cause.** `~/.claude.json` has no `mcpServers.robin` entry, or the URL drifted from the daemon's configured port. Claude Code itself rewrites this file from an in-memory copy without locking, so an unrelated write can clobber Robin's entry.
 
-**Fix.** Invariant writes the canonical entry via read → modify → tmpfile-rename. We accept the race with Claude Code's writer because the project-local entry (`.mcp.json`) is the source of truth for in-project agents — this is best-effort convenience.
-
-**B-flag (B-2):** drop this invariant entirely once the project-local entry is verified sufficient for all relevant flows.
+**Fix (manual).** Add the entry by hand:
+```json
+{ "mcpServers": { "robin": { "type": "sse", "url": "http://127.0.0.1:<port>/sse" } } }
+```
+Port lives in `runtime:config.mcp.port`. The project-local `.mcp.json` covers in-project sessions; this entry only matters for agent sessions launched outside the project.
 
 ### `mcp.daemon_responds`
 

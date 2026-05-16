@@ -157,14 +157,24 @@ async function backfillCmd(argv, { out, err, request }) {
 // ----------------------------------------------------------------------------
 
 async function activateCmd(argv, { out, err, request }) {
-  const profile = argv[0];
+  // First positional that isn't --force is the profile name.
+  const force = argv.includes('--force');
+  const profile = argv.filter((a) => a !== '--force')[0];
   validateProfile(profile);
-  const result = await request('/internal/embeddings/op', { op: 'activate', profile });
+  const result = await request('/internal/embeddings/op', { op: 'activate', profile, force });
   if (result?.ok) {
     out(`activated ${profile} (read_profile also set to ${profile})`);
     return;
   }
   err(`activate failed: ${result?.reason ?? 'unknown'}`);
+  if (result?.gaps?.length) {
+    err('backfill gaps:');
+    for (const g of result.gaps) {
+      if (g.error) err(`  • ${g.surface}: ${g.error}`);
+      else err(`  • ${g.surface}: ${g.target_count}/${g.source_count} (${g.missing} missing)`);
+    }
+  }
+  if (result?.hint) err(`hint: ${result.hint}`);
   process.exitCode = 1;
 }
 

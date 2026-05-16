@@ -4,13 +4,15 @@
 // outside the project still see Robin's MCP. The project-local invariant
 // is the source of truth for actual function.
 //
-// We accept the race with Claude Code's own writer: it rewrites the file
-// from its in-memory copy without locking. Our tmpfile-rename can still
-// clobber unrelated changes. This is intentionally warn-level, not critical.
+// B-2 applied: detection only. The previous version wrote the entry on
+// repair, which raced with Claude Code's own writer (it rewrites the file
+// from an in-memory copy without locking). Surfacing the drift here is
+// enough — the user can re-add the entry manually if they care, and
+// project-local `.mcp.json` covers in-project sessions either way.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { readConfig } from '../../config/paths.js';
 import { canonicalEntry } from './mcp.wiring-project-present.js';
 
@@ -33,13 +35,6 @@ function readJson(p) {
   } catch {
     return null;
   }
-}
-
-function writeAtomic(p, payload) {
-  mkdirSync(dirname(p), { recursive: true });
-  const tmp = `${p}.tmp.${process.pid}`;
-  writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o600 });
-  renameSync(tmp, p);
 }
 
 export default {
@@ -73,25 +68,10 @@ export default {
     return { ok: true, evidence: { url: entry.url } };
   },
 
-  async repair(ctx) {
-    const p = globalClaudeJsonPath();
-    const port = await readPort();
-    if (port == null) return { repaired: false, error: 'no_configured_port' };
-    const existing = readJson(p) ?? {};
-    const next = {
-      ...existing,
-      mcpServers: { ...(existing.mcpServers ?? {}), [ROBIN_KEY]: canonicalEntry(port) },
-    };
-    if (ctx?.dryRun) {
-      return { repaired: false, action: 'would_write_global_claude_json', plan: { path: p, port } };
-    }
-    try {
-      writeAtomic(p, next);
-      return { repaired: true, action: 'wrote_global_claude_json', evidence: { path: p, port } };
-    } catch (e) {
-      return { repaired: false, error: e.message ?? 'write_failed' };
-    }
-  },
+  // B-2 applied: no repair function. The previous repair wrote
+  // ~/.claude.json's robin entry but raced with Claude Code's writer.
+  // Detection-only surfaces the drift; project-local .mcp.json covers
+  // in-project sessions, which is where Robin's tools matter.
 
   explain(lastResult) {
     const lines = [
@@ -101,9 +81,11 @@ export default {
       '',
       '**Cause.** `~/.claude.json` has no `mcpServers.robin` entry, or the URL drifted from the daemon\'s configured port. Claude Code itself rewrites this file from an in-memory copy without locking, so an unrelated write can clobber Robin\'s entry.',
       '',
-      '**Fix.** Invariant writes the canonical entry via read → modify → tmpfile-rename. We accept the race with Claude Code\'s writer because the project-local entry (`.mcp.json`) is the source of truth for in-project agents — this is best-effort convenience.',
-      '',
-      '**B-flag (B-2):** drop this invariant entirely once the project-local entry is verified sufficient for all relevant flows.',
+      '**Fix (manual).** Add the entry by hand:',
+      '```json',
+      '{ "mcpServers": { "robin": { "type": "sse", "url": "http://127.0.0.1:<port>/sse" } } }',
+      '```',
+      'Port lives in `runtime:config.mcp.port`. The project-local `.mcp.json` covers in-project sessions; this entry only matters for agent sessions launched outside the project.',
     ];
     return lines.join('\n');
   },

@@ -104,13 +104,53 @@ async function prepareProfile(db, { profile }) {
 // Sets read_profile = active_profile by default (the converged steady state).
 // ----------------------------------------------------------------------------
 
-async function activateProfile(db, { profile }) {
+// B-5: atomic embedder profile swap. Refuses activation unless backfill is
+// verified complete for every surface (events, memos, entities). Renders
+// the `db.embedder_profile_match` invariant unreachable through the
+// in-product activate path. Override with body.force=true for operators who
+// know they're in a partial-state (e.g. dual-read with intentional gap).
+async function verifyBackfillComplete(db, profile) {
+  const safe = tableNameSafeProfile(profile);
+  const surfaces = ['events', 'memos', 'entities'];
+  const gaps = [];
+  for (const s of surfaces) {
+    const target = `embeddings_${safe}_${s}`;
+    try {
+      const [srcRows] = await db.query(`SELECT count() AS n FROM ${s} GROUP ALL`).collect();
+      const [tgtRows] = await db.query(`SELECT count() AS n FROM ${target} GROUP ALL`).collect();
+      const srcN = srcRows?.[0]?.n ?? 0;
+      const tgtN = tgtRows?.[0]?.n ?? 0;
+      if (tgtN < srcN) {
+        gaps.push({ surface: s, source_count: srcN, target_count: tgtN, missing: srcN - tgtN });
+      }
+    } catch (e) {
+      // Target table missing → caller's tablesExist check already covers; surface here too.
+      gaps.push({ surface: s, error: e.message });
+    }
+  }
+  return { complete: gaps.length === 0, gaps };
+}
+
+async function activateProfile(db, { profile, force = false }) {
   const v = validateProfile(profile);
   if (!v.ok) return v;
   const names = tableNames(profile);
   const missing = (await tablesExist(db, names)).filter((t) => !t.exists);
   if (missing.length) {
     return { ok: false, reason: `tables missing: ${missing.map((t) => t.name).join(', ')}` };
+  }
+
+  // B-5 precondition: backfill must be complete unless --force.
+  if (!force) {
+    const verify = await verifyBackfillComplete(db, profile);
+    if (!verify.complete) {
+      return {
+        ok: false,
+        reason: 'backfill_incomplete',
+        gaps: verify.gaps,
+        hint: 'run `robin embeddings backfill <profile>` first, or pass --force to flip anyway',
+      };
+    }
   }
 
   const state = (await readEmbedderState(db)) ?? {};
