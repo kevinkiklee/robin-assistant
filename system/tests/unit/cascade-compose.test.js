@@ -7,6 +7,7 @@ import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
+import { surql } from 'surrealdb';
 import { upsertEntityCascade } from '../../cognition/biographer/upsert-entity.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
@@ -88,5 +89,41 @@ test('All stages miss → creates new entity (stage 0)', async () => {
   // signals the create path (vs stage 1/2/3 returning a hit).
   assert.equal(r.created, true);
   assert.equal(r.stage, 0);
+  await close(db);
+});
+
+test('Stage 1 unsafe-key match is skipped, safe sibling is created', async () => {
+  // Regression for the "biographer edge-drop on legacy unsafe-key entities"
+  // bug: an entity row pre-dating entityRecordKey() has a record id like
+  // `entities:⟨thing__nikon zf⟩` (space). Stage 1 used to return that id,
+  // and downstream INSERT RELATION would silently drop every edge slice
+  // referencing it. Now stage 1 short-circuit is gated on isSafeRecordRef,
+  // so a sanitized-key sibling gets created instead.
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  // Pre-seed with an unsafe id key. Surreal will accept this via type::record
+  // and store it as a bracket-rendered id; stage1 will match on name_lower.
+  await db
+    .query(
+      surql`UPSERT type::record('entities', 'thing__nikon zf') CONTENT ${{
+        name: 'Nikon Zf',
+        name_lower: 'nikon zf',
+        type: 'thing',
+        scope: 'global',
+        tags: [],
+      }}`,
+    )
+    .collect();
+  const r = await upsertEntityCascade(db, e, {
+    name: 'Nikon Zf',
+    type: 'thing',
+    config: { stage2_high_threshold: 0.92, stage2_low_threshold: 0.8 },
+  });
+  // Must NOT return the unsafe-key row; must create a safe sibling.
+  assert.equal(r.created, true);
+  assert.equal(r.stage, 0);
+  const idStr = String(r.id);
+  assert.match(idStr, /thing__nikon_zf/);
+  assert.doesNotMatch(idStr, /[^A-Za-z0-9_:]/);
   await close(db);
 });

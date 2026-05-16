@@ -27,7 +27,7 @@ import {
 } from './edge-registry.js';
 import { MEMO_KIND_REGISTRY, validateAttachment, validateMemoKind } from './kind-registry.js';
 import { persistentScopesSqlFilter, validateScope } from './scope-registry.js';
-import { withTxRetry } from './tx.js';
+import { isTxConflict, withTxRetry } from './tx.js';
 
 const PERSISTENT_SCOPES_FILTER = persistentScopesSqlFilter();
 
@@ -282,6 +282,13 @@ export async function relate(db, from, to, kind, opts = {}) {
  * limits. Wrapped in BEGIN/COMMIT so a malformed edge doesn't leave partial state.
  */
 const RELATE_CHUNK = 50;
+// Per-slice transaction-conflict retry. Keeps a smaller cap than the outer
+// withTxRetry (4) because relateAll is hot-path and slices are independent —
+// 2 retries with jittered backoff resolves the common race-on-same-edge case
+// without amplifying latency on terminal errors.
+const TX_CONFLICT_MAX_RETRIES = 2;
+const TX_BASE_BACKOFF_MS = 5;
+const TX_JITTER_MS = 10;
 export async function relateAll(db, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { ids: [] };
   // Pre-filter invalid edges (self-loops, unknown kinds, wrong endpoint tables)
@@ -340,17 +347,35 @@ export async function relateAll(db, rows) {
     // refusing a RecordId with special chars in the bound `out` field) used
     // to bubble up and kill the entire relateAll batch, dropping every other
     // valid edge. Each slice has its own BEGIN/COMMIT, so a failure here is
-    // already atomically scoped to just this 50-edge chunk. Log + continue.
-    try {
-      const results = await db.query(new BoundQuery(stmts.join(';\n'), bindings)).collect();
-      // Each INSERT RELATION returns the (now-existing) row. Flatten and collect ids.
-      for (const r of results) {
-        const row = Array.isArray(r) ? r[0] : r;
-        if (row?.id) ids.push(row.id);
+    // already atomically scoped to just this 50-edge chunk.
+    //
+    // Transaction conflicts (concurrent writer racing the same edge) are
+    // retryable — fail-and-skip would drop ~25 edges per conflict, and they
+    // recur under sustained sync load. Retry transient conflicts a few times
+    // with jittered backoff before giving up; non-conflict errors (parser /
+    // schema reject) skip the slice immediately as before.
+    let sliceErr = null;
+    for (let attempt = 0; attempt <= TX_CONFLICT_MAX_RETRIES; attempt++) {
+      try {
+        const results = await db.query(new BoundQuery(stmts.join(';\n'), bindings)).collect();
+        for (const r of results) {
+          const row = Array.isArray(r) ? r[0] : r;
+          if (row?.id) ids.push(row.id);
+        }
+        sliceErr = null;
+        break;
+      } catch (e) {
+        sliceErr = e;
+        if (!isTxConflict(e)) break;
+        await new Promise((r) =>
+          setTimeout(r, TX_BASE_BACKOFF_MS + Math.floor(Math.random() * TX_JITTER_MS)),
+        );
       }
-    } catch (e) {
+    }
+    if (sliceErr) {
+      const suffix = isTxConflict(sliceErr) ? ' (retried, still conflict)' : '';
       console.warn(
-        `relateAll: slice [${off}..${off + slice.length - 1}] failed, skipping ${slice.length} edges: ${e.message}`,
+        `relateAll: slice [${off}..${off + slice.length - 1}] failed, skipping ${slice.length} edges${suffix}: ${sliceErr.message}`,
       );
     }
   }

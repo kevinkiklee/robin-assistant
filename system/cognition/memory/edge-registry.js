@@ -70,6 +70,19 @@ export function recordStringId(ref) {
 // RELATION parameter (Surreal rejects `'entities:⟨name with &⟩'`).
 const SAFE_ID_KEY = /^[A-Za-z0-9_]+$/;
 
+/**
+ * Returns true when `ref` (a record ref or `tb:id` string) has an id key
+ * composed only of `[A-Za-z0-9_]` — i.e., the form Surreal will round-trip
+ * through bound INSERT RELATION parameters. Pre-sanitizer entity rows
+ * created before `entityRecordKey()` existed return false here, so callers
+ * can filter them out of resolution paths before they poison an edge slice.
+ */
+export function isSafeRecordRef(ref) {
+  const key = recordIdKey(ref);
+  if (key == null) return false;
+  return SAFE_ID_KEY.test(key);
+}
+
 function recordIdKey(ref) {
   if (!ref) return null;
   if (typeof ref === 'string') {

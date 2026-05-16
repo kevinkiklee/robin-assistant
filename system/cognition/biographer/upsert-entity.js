@@ -13,6 +13,7 @@
 // Returns `{ id, created, stage, embedding_source }` so `store.upsertEntity`
 // can decide whether to write the entities embedding row.
 
+import { isSafeRecordRef } from '../memory/edge-registry.js';
 import { stage1Resolve } from './stage1-exact.js';
 import { stage2Resolve } from './stage2-embedding.js';
 import { stage3Disambig } from './stage3-disambig.js';
@@ -44,9 +45,13 @@ export async function upsertEntityCascade(db, embedder, input) {
   const highThreshold = config.stage2_high_threshold ?? DEFAULT_HIGH;
   const lowThreshold = config.stage2_low_threshold ?? DEFAULT_LOW;
 
-  // Stage 1 — exact (no embedding needed).
+  // Stage 1 — exact (no embedding needed). Skip unsafe-key matches: legacy
+  // rows whose id key contains spaces / dots / dashes round-trip-fail in
+  // INSERT RELATION, which silently drops every edge slice that references
+  // them. Falling through to stage 2 / create lets us pair the bad row with
+  // a sanitized-key sibling that future edges can target.
   const s1 = await stage1Resolve(db, { name, type });
-  if (s1) {
+  if (s1 && isSafeRecordRef(s1)) {
     return { id: s1, created: false, stage: 1, embedding_source: null };
   }
 
@@ -75,7 +80,7 @@ export async function upsertEntityCascade(db, embedder, input) {
   } else {
     s2 = { action: 'none' };
   }
-  if (s2.action === 'resolve') {
+  if (s2.action === 'resolve' && isSafeRecordRef(s2.entityId)) {
     return {
       id: s2.entityId,
       created: false,
@@ -86,14 +91,19 @@ export async function upsertEntityCascade(db, embedder, input) {
   }
 
   // Stage 3 — LLM disambig (only when host is provided and stage 2 escalated).
+  // Filter unsafe-key candidates out before sending to the LLM so it can't
+  // pick one that would re-poison the edge writes.
   if (s2.action === 'escalate' && host?.invokeLLM) {
-    const s3 = await stage3Disambig(host, {
-      mention: name,
-      type,
-      candidates: s2.candidates,
-    });
-    if (s3.action === 'resolve') {
-      return { id: s3.entityId, created: false, stage: 3, embedding_source: null };
+    const safeCandidates = (s2.candidates ?? []).filter((c) => isSafeRecordRef(c.id));
+    if (safeCandidates.length > 0) {
+      const s3 = await stage3Disambig(host, {
+        mention: name,
+        type,
+        candidates: safeCandidates,
+      });
+      if (s3.action === 'resolve' && isSafeRecordRef(s3.entityId)) {
+        return { id: s3.entityId, created: false, stage: 3, embedding_source: null };
+      }
     }
   }
 
