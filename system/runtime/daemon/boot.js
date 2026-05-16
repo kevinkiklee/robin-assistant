@@ -317,6 +317,25 @@ export async function boot() {
         const client = await m.start(ctx);
         gatewayClients.set(m.name, client);
         console.log(`integration ${m.name}: gateway started`);
+        // Track that this gateway booted, so the integrations-migrate command
+        // can auto-enable currently-active gateways alongside sync integrations.
+        // Wrapped in its own try/catch so a tracking failure doesn't prevent
+        // the daemon from continuing to boot other integrations.
+        try {
+          const [grows] = await dbHandle
+            .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+            .collect();
+          const gvalue = grows[0]?.value ?? {};
+          const gateways = gvalue.gateways ?? {};
+          gateways[m.name] = { booted_at: new Date() };
+          await dbHandle
+            .query(
+              surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...gvalue, gateways }}`,
+            )
+            .collect();
+        } catch (te) {
+          console.warn(`integration ${m.name}: gateway boot tracking failed: ${te.message}`);
+        }
       } catch (e) {
         console.warn(`integration ${m.name}: gateway start failed: ${e.message}`);
       }
