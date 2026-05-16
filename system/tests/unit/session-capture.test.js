@@ -209,6 +209,32 @@ test('PII guard refuses inbound content with credential shape', async () => {
   }
 });
 
+test('routes agent-internal system-prompt turns to source=agent_internal', async () => {
+  const db = await fresh();
+  try {
+    const path = transcriptPair(
+      'You disambiguate entity mentions. Given a mention and candidates, pick one.',
+      '```json\n{ "pick": null }\n```',
+    );
+    const result = await captureFromTranscript(db, createStubEmbedder(), {
+      transcriptPath: path,
+      sessionId: 's-agent',
+      host: 'claude-code',
+    });
+    assert.equal(result.captured, true);
+    const [conv] = await db
+      .query(surql`SELECT count() AS n FROM events WHERE source = 'conversation' GROUP ALL`)
+      .collect();
+    const [internal] = await db
+      .query(surql`SELECT count() AS n FROM events WHERE source = 'agent_internal' GROUP ALL`)
+      .collect();
+    assert.equal(conv?.[0]?.n ?? 0, 0);
+    assert.equal(internal?.[0]?.n ?? 0, 1);
+  } finally {
+    await close(db);
+  }
+});
+
 test('truncates very long content to 16 KB total', async () => {
   const db = await fresh();
   try {

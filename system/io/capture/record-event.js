@@ -13,6 +13,7 @@ const VALID_SOURCES = new Set([
   'discord',
   'migration',
   'conversation',
+  'agent_internal',
 ]);
 
 export async function recordEvent(db, embedder, input) {

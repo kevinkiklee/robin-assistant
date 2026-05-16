@@ -9,6 +9,23 @@ import { RobinPiiRefusedError } from './errors.js';
 import { recordEvent } from './record-event.js';
 import { extractTurns } from './transcript.js';
 
+// Heuristic: turns whose "user" message is actually a system prompt
+// addressed to the model (e.g. biographer/disambiguator sub-LLM calls
+// surfaced in the transcript) are agent-internal scratch, not conversation.
+// Routing these to source='agent_internal' keeps the conversation surface
+// reflective of real user turns.
+function looksLikeAgentInternal(userText) {
+  if (typeof userText !== 'string') return false;
+  const t = userText.trim();
+  if (t.length === 0) return false;
+  // Sub-LLM system prompts typically open with imperative second-person
+  // instruction ("You disambiguate…", "You extract…", "You are…").
+  if (/^You\s+(disambiguate|extract|are|classify|summarize|identify|return|output)\b/.test(t)) {
+    return true;
+  }
+  return false;
+}
+
 const ACK_WORDS = new Set([
   'ok',
   'okay',
@@ -100,10 +117,11 @@ export async function captureFromTranscript(
 
   const content = formatContent(userText, assistantText);
   const content_hash = sha256(content);
+  const source = looksLikeAgentInternal(userText) ? 'agent_internal' : 'conversation';
 
   const [hits] = await db
     .query(
-      surql`SELECT id FROM events WHERE source = 'conversation' AND content_hash = ${content_hash} LIMIT 1`,
+      surql`SELECT id FROM events WHERE source = ${source} AND content_hash = ${content_hash} LIMIT 1`,
     )
     .collect();
   if (hits.length > 0) {
@@ -113,7 +131,7 @@ export async function captureFromTranscript(
 
   try {
     const { id } = await recordEvent(db, embedder, {
-      source: 'conversation',
+      source,
       content,
       ts: tsAssistant ?? undefined,
       meta: {
