@@ -299,6 +299,11 @@ export const commands = {
         export: 'integrationsEnable',
         help: 'enable one or more integrations',
       },
+      disable: {
+        import: './commands/integrations-disable.js',
+        export: 'integrationsDisable',
+        help: 'disable one or more integrations',
+      },
       discord: {
         help: 'discord-specific',
         subcommands: {
