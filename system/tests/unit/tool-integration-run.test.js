@@ -7,6 +7,7 @@ import { surql } from 'surrealdb';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
+import { setIntegrationEnabled } from '../../data/runtime/integrations-state.js';
 import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
 
 // __robin_test_home_setup__
@@ -57,8 +58,24 @@ test('integration_run rejects tool-only integration', async () => {
   await close(db);
 });
 
+test('integration_run refuses disabled integration', async () => {
+  const db = await fresh();
+  const registry = new Map([['gmail', { cadence_ms: 900_000, sync: async () => ({ count: 0 }) }]]);
+  const t = createIntegrationRunTool({
+    db,
+    registry,
+    runIntegrationSync: async () => ({ ok: true }),
+  });
+  const r = await t.handler({ name: 'gmail' });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'disabled');
+  assert.equal(r.name, 'gmail');
+  await close(db);
+});
+
 test('integration_run refuses too_recent', async () => {
   const db = await fresh();
+  await setIntegrationEnabled(db, 'gmail', { enabled: true, source: 'user-data' });
   await db
     .query(
       surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{
@@ -80,6 +97,7 @@ test('integration_run refuses too_recent', async () => {
 
 test('integration_run delegates to runIntegrationSync with manual: true', async () => {
   const db = await fresh();
+  await setIntegrationEnabled(db, 'gmail', { enabled: true, source: 'user-data' });
   let called;
   const registry = new Map([['gmail', { cadence_ms: 900_000 }]]);
   const t = createIntegrationRunTool({

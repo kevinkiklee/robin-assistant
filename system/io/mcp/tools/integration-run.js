@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { isEnabled, readIntegrationsState } from '../../../data/runtime/integrations-state.js';
 
 const MIN_INTERVAL_MS = 30_000;
 
@@ -6,7 +7,7 @@ export function createIntegrationRunTool({ db, registry, runIntegrationSync }) {
   return {
     name: 'integration_run',
     description:
-      'Trigger an integration sync inline. Refuses on gateway integrations, in-flight syncs, or recent (<30s) successful runs.',
+      'Trigger an integration sync inline. Refuses on disabled integrations, gateway integrations, in-flight syncs, or recent (<30s) successful runs.',
     inputSchema: {
       type: 'object',
       properties: { name: { type: 'string' } },
@@ -20,6 +21,10 @@ export function createIntegrationRunTool({ db, registry, runIntegrationSync }) {
           return { ok: false, reason: 'tool_only_no_sync' };
         }
         return { ok: false, reason: 'gateway_no_sync' };
+      }
+      const intState = await readIntegrationsState(db);
+      if (!isEnabled(intState, args.name)) {
+        return { ok: false, reason: 'disabled', name: args.name };
       }
       const [rows] = await db
         .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)

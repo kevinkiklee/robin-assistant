@@ -7,6 +7,7 @@ import { surql } from 'surrealdb';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
+import { setIntegrationEnabled } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
 import { createIntegrationStatusTool } from '../../io/mcp/tools/integration-status.js';
@@ -28,6 +29,7 @@ async function fresh() {
 
 test('integration_run → runIntegrationSync → integration_status reflects update', async () => {
   const db = await fresh();
+  await setIntegrationEnabled(db, 'gmail', { enabled: true, source: 'user-data' });
   // Seed scheduler row
   await db
     .query(
