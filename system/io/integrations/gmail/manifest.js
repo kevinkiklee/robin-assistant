@@ -1,6 +1,7 @@
 import { sync } from './sync.js';
 import { createGmailGetThreadTool } from './tools/gmail-get-thread.js';
 import { createGmailSearchTool } from './tools/gmail-search.js';
+import { createGmailShipmentsTool } from './tools/gmail-shipments.js';
 
 export const manifest = {
   name: 'gmail',
@@ -15,5 +16,5 @@ export const manifest = {
     ],
   },
   sync,
-  tools: [createGmailSearchTool, createGmailGetThreadTool],
+  tools: [createGmailSearchTool, createGmailGetThreadTool, createGmailShipmentsTool],
 };
