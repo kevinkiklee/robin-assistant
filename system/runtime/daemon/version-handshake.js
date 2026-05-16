@@ -12,11 +12,3 @@ export async function getCliVersion() {
   cachedVersion = pkg.version;
   return cachedVersion;
 }
-
-export function checkVersionMatch(daemonVersion, cliVersion) {
-  if (daemonVersion === cliVersion) return { ok: true };
-  return {
-    ok: false,
-    error: `daemon is running on ${daemonVersion}; you're on ${cliVersion}. Restart with \`robin mcp restart\``,
-  };
-}

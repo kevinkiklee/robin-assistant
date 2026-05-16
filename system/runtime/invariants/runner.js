@@ -11,8 +11,8 @@
 
 import { byPhase, getAllInvariants } from './index.js';
 import { withLock } from './lock.js';
-import { decideRepair } from './policy-decisions.js';
 import { BOOT_REPAIR_ALLOWLIST, CLI_BLOCKING_SET, PHASES } from './policy.js';
+import { decideRepair } from './policy-decisions.js';
 import {
   emptyState,
   getEntry,
@@ -27,7 +27,7 @@ import {
 const PER_CHECK_TIMEOUT_MS = 2_000;
 const BOOT_TOTAL_BUDGET_MS = 5_000;
 const SLOW_CHECK_THRESHOLD_MS = 500;
-const CLI_PREFLIGHT_BUDGET_MS = 30;
+const _CLI_PREFLIGHT_BUDGET_MS = 30;
 const CLI_BLOCKING_RECHECK_BUDGET_MS = 200;
 
 function nowMs() {
@@ -55,7 +55,11 @@ async function evaluateOne(inv, ctx, opts = {}) {
   const start = nowMs();
   let checkResult;
   try {
-    checkResult = await withTimeout(inv.check(ctx), opts.checkTimeoutMs ?? PER_CHECK_TIMEOUT_MS, inv.name);
+    checkResult = await withTimeout(
+      inv.check(ctx),
+      opts.checkTimeoutMs ?? PER_CHECK_TIMEOUT_MS,
+      inv.name,
+    );
   } catch (e) {
     checkResult = { ok: false, error: e.message ?? String(e) };
   }
@@ -67,7 +71,10 @@ async function evaluateOne(inv, ctx, opts = {}) {
 }
 
 async function maybeRepair(inv, entry, ctx, lockDir) {
-  const decision = decideRepair(inv, { ...entry, consecutive_failures: entry.consecutive_failures + 1 });
+  const decision = decideRepair(inv, {
+    ...entry,
+    consecutive_failures: entry.consecutive_failures + 1,
+  });
   if (decision !== 'auto') return { repaired: false, action: 'skipped', decision };
   if (!inv.repair) return { repaired: false, action: 'no_repair_defined', decision };
   if (lockDir) {
@@ -97,7 +104,15 @@ async function shouldRun(inv, triggerCfg, entry, trigger) {
 }
 
 /** Boot: phase-ordered, sequential. Critical failure aborts. */
-async function runBoot({ ctx, state, stateWritePath, lockDir, invariants, repairAllowlist, bootTotalBudgetMs }) {
+async function runBoot({
+  ctx,
+  state,
+  stateWritePath,
+  lockDir,
+  invariants,
+  repairAllowlist,
+  bootTotalBudgetMs,
+}) {
   const started = nowMs();
   const grouped = byPhase(invariants);
   const report = { trigger: 'boot', results: [], aborted: false };
@@ -126,8 +141,14 @@ async function runBoot({ ctx, state, stateWritePath, lockDir, invariants, repair
         entry = recordRepairResult(entry, repairOutcome);
       }
       setEntry(state, inv.name, entry);
-      report.results.push({ name: inv.name, status: checkResult.ok ? 'ok' : 'fail', repaired: repairOutcome?.repaired ?? false, level: inv.level, error: checkResult.error });
-      if (!checkResult.ok && inv.level === 'critical' && !(repairOutcome?.repaired)) {
+      report.results.push({
+        name: inv.name,
+        status: checkResult.ok ? 'ok' : 'fail',
+        repaired: repairOutcome?.repaired ?? false,
+        level: inv.level,
+        error: checkResult.error,
+      });
+      if (!checkResult.ok && inv.level === 'critical' && !repairOutcome?.repaired) {
         report.aborted = true;
         break;
       }
@@ -147,16 +168,25 @@ async function runHeartbeat({ ctx, state, stateWritePath, lockDir, invariants })
     if (await shouldRun(inv, inv.runWhen?.heartbeat, entry, 'heartbeat')) due.push(inv);
   }
 
-  const results = await Promise.allSettled(due.map((inv) => evaluateOne(inv, { ...ctx, trigger: 'heartbeat' })));
+  const results = await Promise.allSettled(
+    due.map((inv) => evaluateOne(inv, { ...ctx, trigger: 'heartbeat' })),
+  );
   const report = { trigger: 'heartbeat', results: [] };
   for (let i = 0; i < due.length; i++) {
     const inv = due[i];
     const settled = results[i];
     let entry = getEntry(state, inv.name);
     if (settled.status === 'rejected') {
-      entry = recordCheckResult(entry, { ok: false, error: settled.reason?.message ?? String(settled.reason) });
+      entry = recordCheckResult(entry, {
+        ok: false,
+        error: settled.reason?.message ?? String(settled.reason),
+      });
       setEntry(state, inv.name, entry);
-      report.results.push({ name: inv.name, status: 'error', error: entry.last_result_summary?.error });
+      report.results.push({
+        name: inv.name,
+        status: 'error',
+        error: entry.last_result_summary?.error,
+      });
       continue;
     }
     const { checkResult } = settled.value;
@@ -170,7 +200,13 @@ async function runHeartbeat({ ctx, state, stateWritePath, lockDir, invariants })
       }
     }
     setEntry(state, inv.name, entry);
-    report.results.push({ name: inv.name, status: checkResult.ok ? 'ok' : 'fail', level: inv.level, repaired: repairOutcome?.repaired ?? false, decision: repairOutcome?.decision });
+    report.results.push({
+      name: inv.name,
+      status: checkResult.ok ? 'ok' : 'fail',
+      level: inv.level,
+      repaired: repairOutcome?.repaired ?? false,
+      decision: repairOutcome?.decision,
+    });
   }
   if (stateWritePath) writeState(stateWritePath, state);
   return report;
@@ -194,14 +230,28 @@ async function runPostInstall({ ctx, state, stateWritePath, lockDir, invariants 
       entry = recordRepairResult(entry, repairOutcome);
     }
     setEntry(state, inv.name, entry);
-    report.results.push({ name: inv.name, status: checkResult.ok ? 'ok' : 'fail', level: inv.level, repaired: repairOutcome?.repaired ?? false });
+    report.results.push({
+      name: inv.name,
+      status: checkResult.ok ? 'ok' : 'fail',
+      level: inv.level,
+      repaired: repairOutcome?.repaired ?? false,
+    });
   }
   if (stateWritePath) writeState(stateWritePath, state);
   return report;
 }
 
 /** Doctor: re-check everything; bypass cooldown. With repair=true, run repair after check. */
-async function runDoctor({ ctx, state, stateWritePath, lockDir, invariants, repair = false, apply = false, namedSet = null }) {
+async function runDoctor({
+  ctx,
+  state,
+  stateWritePath,
+  lockDir,
+  invariants,
+  repair = false,
+  apply = false,
+  namedSet = null,
+}) {
   const report = { trigger: 'doctor', results: [] };
   for (const inv of invariants) {
     if (namedSet && !namedSet.has(inv.name)) continue;
@@ -226,14 +276,21 @@ async function runDoctor({ ctx, state, stateWritePath, lockDir, invariants, repa
       if (apply) entry = recordRepairResult(entry, repairOutcome);
     }
     setEntry(state, inv.name, entry);
-    report.results.push({ name: inv.name, status: checkResult.ok ? 'ok' : 'fail', level: inv.level, evidence: checkResult.evidence, error: checkResult.error, repair: repairOutcome });
+    report.results.push({
+      name: inv.name,
+      status: checkResult.ok ? 'ok' : 'fail',
+      level: inv.level,
+      evidence: checkResult.evidence,
+      error: checkResult.error,
+      repair: repairOutcome,
+    });
   }
   if (stateWritePath && apply) writeState(stateWritePath, state);
   return report;
 }
 
 /** CLI preflight: read-only state file; never re-checks unless cliBlockingSet AND cache stale. */
-async function runCliPreflight({ state, invariants, cliBlockingSet, cacheStaleMs = 30_000, ctx, lockDir }) {
+async function runCliPreflight({ state, invariants, cliBlockingSet, cacheStaleMs = 30_000, ctx }) {
   const report = { trigger: 'cli', results: [], blocked: [] };
   const now = nowMs();
   for (const inv of invariants) {
@@ -242,8 +299,17 @@ async function runCliPreflight({ state, invariants, cliBlockingSet, cacheStaleMs
     const stale = !entry.last_checked_at || now - entry.last_checked_at > cacheStaleMs;
     if (cliBlockingSet.includes(inv.name) && stale) {
       // One fast re-check.
-      const { checkResult } = await evaluateOne(inv, { ...ctx, trigger: 'cli' }, { checkTimeoutMs: CLI_BLOCKING_RECHECK_BUDGET_MS });
-      report.results.push({ name: inv.name, status: checkResult.ok ? 'ok' : 'fail', evidence: checkResult.evidence, error: checkResult.error });
+      const { checkResult } = await evaluateOne(
+        inv,
+        { ...ctx, trigger: 'cli' },
+        { checkTimeoutMs: CLI_BLOCKING_RECHECK_BUDGET_MS },
+      );
+      report.results.push({
+        name: inv.name,
+        status: checkResult.ok ? 'ok' : 'fail',
+        evidence: checkResult.evidence,
+        error: checkResult.error,
+      });
       if (!checkResult.ok) report.blocked.push(inv.name);
       continue;
     }
@@ -302,20 +368,35 @@ export async function run(opts) {
 
   switch (trigger) {
     case 'boot':
-      return runBoot({ ctx, state, stateWritePath: statePath, lockDir, invariants: scoped, repairAllowlist, bootTotalBudgetMs });
+      return runBoot({
+        ctx,
+        state,
+        stateWritePath: statePath,
+        lockDir,
+        invariants: scoped,
+        repairAllowlist,
+        bootTotalBudgetMs,
+      });
     case 'heartbeat':
       return runHeartbeat({ ctx, state, stateWritePath: statePath, lockDir, invariants: scoped });
     case 'doctor': {
       const namedSet = name ? new Set([name]) : null;
-      return runDoctor({ ctx, state, stateWritePath: statePath, lockDir, invariants: scoped, repair, apply, namedSet });
+      return runDoctor({
+        ctx,
+        state,
+        stateWritePath: statePath,
+        lockDir,
+        invariants: scoped,
+        repair,
+        apply,
+        namedSet,
+      });
     }
     case 'postInstall':
       return runPostInstall({ ctx, state, stateWritePath: statePath, lockDir, invariants: scoped });
     case 'cli':
-      return runCliPreflight({ state, invariants: scoped, cliBlockingSet, ctx, lockDir });
+      return runCliPreflight({ state, invariants: scoped, cliBlockingSet, ctx });
     default:
       throw new Error(`unknown trigger: ${trigger}`);
   }
 }
-
-export const __internals = { evaluateOne, maybeRepair, shouldRun, withTimeout };

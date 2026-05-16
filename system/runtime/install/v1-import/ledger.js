@@ -1,7 +1,7 @@
-// ledger.js — read/write helpers for the _v1_imports table.
+// ledger.js — read helpers for the _v1_imports table.
 //
-// Writers call `recordImport` inside their transactional block; passes use
-// `hashExists` and `findByPath` to dedupe and to discover superseded targets.
+// Writers insert ledger rows inline via `tx.js`; passes use `hashExists` and
+// `findByPath` to dedupe and to discover superseded targets.
 
 import { BoundQuery } from 'surrealdb';
 
@@ -66,38 +66,6 @@ export async function findByPath(db, sourcePath, { kind } = {}) {
     .collect();
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return { hash: rows[0].content_hash, target: rows[0].target, kind: rows[0].kind };
-}
-
-/**
- * Insert one ledger row. Caller must be inside a transaction. `target` is a
- * stringified record ID like `"memos:abc123"`.
- */
-export async function recordImport(db, { sourcePath, hash, target, kind, sessionId }) {
-  await db
-    .query(
-      new BoundQuery(
-        'CREATE _v1_imports SET source_path = $sp, content_hash = $h, target = $t, kind = $k, import_session = $s',
-        { sp: sourcePath, h: hash, t: target, k: kind, s: sessionId },
-      ),
-    )
-    .collect();
-}
-
-/**
- * Count ledger rows for a session, grouped by kind. Used by the report.
- */
-export async function summary(db, sessionId) {
-  const [rows] = await db
-    .query(
-      new BoundQuery(
-        'SELECT kind, count() AS n FROM _v1_imports WHERE import_session = $s GROUP BY kind',
-        { s: sessionId },
-      ),
-    )
-    .collect();
-  const out = {};
-  for (const row of rows ?? []) out[row.kind] = row.n;
-  return out;
 }
 
 /**

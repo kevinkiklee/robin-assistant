@@ -9,11 +9,6 @@ export async function input(prompt) {
   }
 }
 
-export async function confirm(prompt) {
-  const a = await input(`${prompt} [y/N] `);
-  return /^y(es)?$/i.test(a.trim());
-}
-
 export async function radio({ question, options, defaultIndex = 0, inputFn = input }) {
   if (!Array.isArray(options) || options.length === 0) {
     throw new TypeError('radio: options must be a non-empty array');

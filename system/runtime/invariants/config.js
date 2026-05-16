@@ -28,7 +28,3 @@ export async function readInvariantsFlag(cfgReader = readConfig) {
 export function isRunnerActive(flag) {
   return flag === true || flag === 'shadow';
 }
-
-export function isAuthoritative(flag) {
-  return flag === true;
-}

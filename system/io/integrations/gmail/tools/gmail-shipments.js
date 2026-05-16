@@ -7,7 +7,10 @@ const CARRIERS = [
   { name: 'FedEx', re: /\bfedex\b|@fedex\.com/i },
   { name: 'USPS', re: /\busps\b|@usps\.com|@email\.usps\.com|@informeddelivery/i },
   { name: 'DHL', re: /\bdhl\b|@dhl\.com/i },
-  { name: 'Amazon', re: /amazon\.com|order-update@amazon|auto-confirm@amazon|shipment-tracking@amazon/i },
+  {
+    name: 'Amazon',
+    re: /amazon\.com|order-update@amazon|auto-confirm@amazon|shipment-tracking@amazon/i,
+  },
   { name: 'B&H', re: /bhphotovideo|@bhphoto/i },
   { name: 'Apple', re: /apple\.com.*order/i },
   { name: 'Etsy', re: /etsy\.com/i },
@@ -21,7 +24,10 @@ const STATUS_PATTERNS = [
   { status: 'out_for_delivery', re: /out for delivery/i },
   { status: 'arriving_today', re: /arriving today|will arrive today|delivery today/i },
   { status: 'arriving_tomorrow', re: /arriving tomorrow|will arrive tomorrow|delivery tomorrow/i },
-  { status: 'arriving_soon', re: /arriving (mon|tue|wed|thu|fri|sat|sun)|will arrive (mon|tue|wed|thu|fri|sat|sun)|arriving on|expected delivery/i },
+  {
+    status: 'arriving_soon',
+    re: /arriving (mon|tue|wed|thu|fri|sat|sun)|will arrive (mon|tue|wed|thu|fri|sat|sun)|arriving on|expected delivery/i,
+  },
   { status: 'shipped', re: /\bshipped\b|on its way|on the way|has shipped|in transit/i },
   { status: 'ordered', re: /order confirm|thanks for your order|order received|order placed/i },
 ];
@@ -43,14 +49,15 @@ function extractStatus(subject, snippet) {
 
 function isShipmentLike(subject, from) {
   const subjLower = subject.toLowerCase();
-  const fromLower = from.toLowerCase();
   // Strong signal: a carrier-recognized sender.
   for (const c of CARRIERS) {
     if (c.re.test(from)) return true;
   }
   // Fallback: subject keywords.
-  return /tracking|ship|deliver|arriv|order|package/i.test(subjLower) &&
-    !/promo|sale|discount|coupon|% off/i.test(subjLower);
+  return (
+    /tracking|ship|deliver|arriv|order|package/i.test(subjLower) &&
+    !/promo|sale|discount|coupon|% off/i.test(subjLower)
+  );
 }
 
 // Extract a short "item proxy" from the subject — usually the order number
@@ -71,7 +78,7 @@ export function parseGmailContent(content) {
   return { subject: match[1] ?? '', from: match[2] ?? '', snippet: match[3] ?? '' };
 }
 
-export function classifyShipment(event, { todayStr, yesterdayStr, tomorrowStr }) {
+export function classifyShipment(event, { todayStr, yesterdayStr }) {
   const { subject, from, snippet } = parseGmailContent(event.content ?? '');
   if (!isShipmentLike(subject, from)) return null;
   const carrier = extractCarrier(from);
@@ -129,7 +136,6 @@ export function createGmailShipmentsTool({ db }) {
       const [rows] = await db.query(new BoundQuery(sql, { since })).collect();
       const todayStr = todayStrInTz();
       const yesterdayStr = shiftDay(todayStr, -1);
-      const tomorrowStr = shiftDay(todayStr, 1);
       const buckets = {
         arrived_yesterday: [],
         arrived_today: [],
@@ -138,7 +144,7 @@ export function createGmailShipmentsTool({ db }) {
         in_transit: [],
       };
       for (const r of rows) {
-        const classified = classifyShipment(r, { todayStr, yesterdayStr, tomorrowStr });
+        const classified = classifyShipment(r, { todayStr, yesterdayStr });
         if (!classified) continue;
         buckets[classified.bucket].push(classified);
       }

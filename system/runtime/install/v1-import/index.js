@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { deleteSession, mostRecentSession, summary } from './ledger.js';
+import { deleteSession, mostRecentSession } from './ledger.js';
 import { buildCanonicalNameTable } from './passes/0-entities-md.js';
 import { passEntities } from './passes/a-entities.js';
 import { passMemos } from './passes/b-memos.js';
@@ -131,8 +131,6 @@ export async function rollbackImport({ db, sessionId }) {
   const counts = await deleteSession(db, session);
   return { rolledBack: true, sessionId: session, counts };
 }
-
-export { summary as sessionSummary };
 
 function newSessionId() {
   return randomUUID().replace(/-/g, '').toUpperCase().slice(0, 26);

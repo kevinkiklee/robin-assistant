@@ -42,11 +42,3 @@ export function renderHelp(commands) {
   ];
   return out.join('\n');
 }
-
-// Back-compat shim: some callers may import { help } from this module.
-// Lazily resolve the registry to avoid a circular import.
-export function help() {
-  import('../commands.js').then(({ commands }) => {
-    console.log(renderHelp(commands));
-  });
-}
