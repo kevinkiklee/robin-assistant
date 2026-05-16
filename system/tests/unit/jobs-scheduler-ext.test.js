@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { setEnabled, upsertFromDiscovered } from '../../cognition/jobs/db.js';
-import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
+import {
+  listDueJobs,
+  planNextRunAt,
+  withRuntimeJobsTracking,
+} from '../../cognition/jobs/scheduler-ext.js';
 import { writeConfig as __wc } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
@@ -111,6 +115,59 @@ test('planNextRunAt — catch_up:true, last_run >1.5× cadence behind → fires 
     .collect();
   const delta = Math.abs(new Date(rows[0].next_run_at).getTime() - now.getTime());
   assert.ok(delta < 1000, `expected immediate fire on catch-up; got ${delta}ms drift`);
+  await close(db);
+});
+
+test('withRuntimeJobsTracking — successful tick writes last_run_at + next_run_at', async () => {
+  const db = await fresh();
+  await upsertFromDiscovered(db, [JOB({ name: 'state-inference', schedule: '*/5 * * * *' })]);
+  const tracked = withRuntimeJobsTracking(db, 'state-inference', 300_000, async () => 'ok');
+  const before = Date.now();
+  const out = await tracked();
+  assert.equal(out, 'ok');
+  const [rows] = await db
+    .query("SELECT last_run_at, last_run_ok, next_run_at, consecutive_failures FROM runtime_jobs WHERE name = 'state-inference'")
+    .collect();
+  const r = rows[0];
+  assert.equal(r.last_run_ok, true);
+  assert.equal(r.consecutive_failures, 0);
+  assert.ok(new Date(r.last_run_at).getTime() >= before, 'last_run_at must be set to ~now');
+  const nextDelta = new Date(r.next_run_at).getTime() - Date.now();
+  // next_run_at ≈ now + 300s — allow ± 5s wiggle for test runtime.
+  assert.ok(
+    Math.abs(nextDelta - 300_000) < 5_000,
+    `next_run_at must be ~now + intervalMs; got delta ${nextDelta}ms`,
+  );
+  await close(db);
+});
+
+test('withRuntimeJobsTracking — failing tick records failure and re-throws', async () => {
+  const db = await fresh();
+  await upsertFromDiscovered(db, [JOB({ name: 'state-inference', schedule: '*/5 * * * *' })]);
+  const tracked = withRuntimeJobsTracking(db, 'state-inference', 300_000, async () => {
+    throw new Error('boom');
+  });
+  await assert.rejects(tracked, /boom/);
+  const [rows] = await db
+    .query("SELECT last_run_ok, last_error, consecutive_failures FROM runtime_jobs WHERE name = 'state-inference'")
+    .collect();
+  const r = rows[0];
+  assert.equal(r.last_run_ok, false);
+  assert.equal(r.last_error, 'boom');
+  assert.equal(r.consecutive_failures, 1);
+  await close(db);
+});
+
+test('withRuntimeJobsTracking — missing runtime_jobs row is a no-op', async () => {
+  const db = await fresh();
+  // Deliberately do not insert a row for 'nonexistent-job'.
+  const tracked = withRuntimeJobsTracking(db, 'nonexistent-job', 60_000, async () => 42);
+  const out = await tracked();
+  assert.equal(out, 42);
+  const [rows] = await db
+    .query("SELECT * FROM runtime_jobs WHERE name = 'nonexistent-job'")
+    .collect();
+  assert.equal(rows.length, 0);
   await close(db);
 });
 

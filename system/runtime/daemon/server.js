@@ -5,6 +5,7 @@ import {
   evaluateStateInference,
   readStateInferenceConfig,
 } from '../../cognition/jobs/internal/state-inference.js';
+import { withRuntimeJobsTracking } from '../../cognition/jobs/scheduler-ext.js';
 import { paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
 import { detectHost } from '../hosts/detect.js';
@@ -104,15 +105,21 @@ export async function startDaemon() {
           // host presence (needs invokeLLM) and on cfg.enabled internally;
           // false→no-op, 'shadow'→runs the pipeline without writing memos,
           // true→full path.
+          //
+          // Wrapped in `withRuntimeJobsTracking` so each tick updates
+          // `runtime_jobs.last_run_at` / `next_run_at` / `last_run_ok` —
+          // otherwise `robin jobs list` shows the job as stuck because
+          // scheduler_driven jobs bypass `runOneJob`.
           name: 'state-inference',
           intervalMs: stateInferenceTickMs,
           gate: () => !!ctx.host,
-          tick: () =>
+          tick: withRuntimeJobsTracking(ctx.db, 'state-inference', stateInferenceTickMs, () =>
             evaluateStateInference({
               db: ctx.db,
               host: ctx.host,
               embedder: ctx.embedder.wrap,
             }),
+          ),
         },
         {
           name: 'host-watchdog',

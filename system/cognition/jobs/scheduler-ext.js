@@ -1,8 +1,58 @@
 import { surql } from 'surrealdb';
 import { expectedIntervalMs, nextFire, parseCron } from './cron.js';
-import { getJob, setNextRunAt } from './db.js';
+import { getJob, recordFailure, recordSuccess, setNextRunAt } from './db.js';
 
 const CATCHUP_FACTOR = 1.5;
+
+/**
+ * Wrap a heartbeat-bucket tick so it updates `runtime_jobs` on every fire.
+ *
+ * Heartbeat-driven jobs (those declared with `scheduler_driven: true` in their
+ * markdown manifest, e.g. `state-inference`) bypass the generic jobs runner —
+ * the bucket in `runtime/daemon/server.js` calls their function directly. That
+ * means `runtime_jobs.last_run_at` / `next_run_at` / `last_run_ok` never get
+ * updated, so `robin jobs list` (and `mcp__robin__list_jobs`) appear to show
+ * a stuck job even when telemetry confirms it's firing on cadence.
+ *
+ * This helper preserves the bucket's existing throw semantics (the scheduler's
+ * own try/catch still logs `[scheduler/<name>] tick failed: …`), but writes
+ * a row-level success/failure record before propagating. The `recordSuccess`
+ * / `recordFailure` writers no-op silently when the named row doesn't exist
+ * — safe to wrap any tick whose name might not correspond to a runtime_jobs
+ * row.
+ *
+ * `intervalMs` is the bucket's cadence; `next_run_at` is computed as
+ * `now + intervalMs`, matching the heartbeat's actual cadence rather than
+ * the markdown cron. That keeps the displayed `next_run_at` accurate even
+ * when the job's `tick_ms` is overridden in `runtime:<name>.config`.
+ */
+export function withRuntimeJobsTracking(db, name, intervalMs, fn) {
+  return async function trackedTick() {
+    const start = Date.now();
+    try {
+      const out = await fn();
+      const duration_ms = Date.now() - start;
+      const next_run_at = new Date(Date.now() + intervalMs);
+      try {
+        await recordSuccess(db, name, { duration_ms, next_run_at });
+      } catch (e) {
+        // Tracking is best-effort. A failed write must not turn a successful
+        // tick into a failure — log and continue.
+        console.warn(`[scheduler/${name}] tracking write failed: ${e.message}`);
+      }
+      return out;
+    } catch (e) {
+      const duration_ms = Date.now() - start;
+      const next_run_at = new Date(Date.now() + intervalMs);
+      try {
+        await recordFailure(db, name, { error: e.message, duration_ms, next_run_at });
+      } catch (te) {
+        console.warn(`[scheduler/${name}] tracking write failed: ${te.message}`);
+      }
+      throw e;
+    }
+  };
+}
 
 export async function planNextRunAt(db, jobs, now = new Date()) {
   for (const j of jobs) {
