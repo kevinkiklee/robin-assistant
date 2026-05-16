@@ -4,6 +4,26 @@ import http from 'node:http';
 import { test } from 'node:test';
 import { startHttp } from '../../runtime/daemon/http.js';
 
+function getJson(port, path, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: '127.0.0.1', port, path, method: 'GET', headers },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode,
+            body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
+          }),
+        );
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 function postJson(port, path, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -412,5 +432,40 @@ test('accepts loopback Origin header', async () => {
   const { port } = server.address();
   const r = await postWithHeaders(port, '/public', {}, { origin: `http://127.0.0.1:${port}` });
   assert.equal(r.status, 200);
+  server.close();
+});
+
+test('GET /healthz returns 200 + {ok:true} without auth (supervisor probe)', async () => {
+  // mcp.daemon_responds invariant SIGTERMs the daemon on /healthz failure.
+  // A missing route here would loop the daemon every heartbeat. Cover both:
+  // (1) no auth required, (2) responds even when no internal routes registered.
+  const server = startHttp({
+    ctx: stubCtx,
+    tools: [],
+    routes: [],
+    port: 0,
+    authToken: 'supervisor-should-not-need-this',
+  });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await getJson(port, '/healthz');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { ok: true });
+  server.close();
+});
+
+test('GET /healthz does not require Authorization header', async () => {
+  const server = startHttp({
+    ctx: stubCtx,
+    tools: [],
+    routes: [],
+    port: 0,
+    authToken: 'token-not-presented',
+  });
+  await once(server, 'listening');
+  const { port } = server.address();
+  const r = await getJson(port, '/healthz', {});
+  assert.equal(r.status, 200);
+  assert.equal(r.body.ok, true);
   server.close();
 });

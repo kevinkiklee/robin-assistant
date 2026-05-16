@@ -144,6 +144,16 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
         await handlePostMessage(req, res);
         return;
       }
+      // Unauthenticated supervisor health probe. mcp.daemon_responds invariant
+      // SIGTERMs the daemon when this probe fails — leaving the route missing
+      // produces a heartbeat-driven SIGTERM/respawn loop. Keep this minimal:
+      // the daemon's mere ability to handle the request is sufficient signal
+      // that it's alive; deep status lives behind the MCP `health` tool.
+      if (req.method === 'GET' && req.url === '/healthz') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
       // Bearer-token gate for /internal/*. Other paths (health probes, /sse)
       // remain unauthenticated — the MCP transport has its own auth surface
       // and probes need to work for supervisors that don't carry the token.
