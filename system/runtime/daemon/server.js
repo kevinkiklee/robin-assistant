@@ -46,7 +46,7 @@ export async function startDaemon() {
 
   try {
     const ctx = await boot();
-    const tools = buildTools(ctx);
+    const tools = await buildTools(ctx);
     const routes = buildRoutes();
     // Preferred-port: read once from config.json so launchd restarts keep
     // the same port, which keeps `~/.claude.json` (and Gemini's settings.json)

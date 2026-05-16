@@ -1,4 +1,5 @@
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
+import { readIntegrationsState, isEnabled } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';
@@ -47,10 +48,11 @@ import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
  * The createRunJobTool `tools: () => tools` thunk is preserved — it
  * dispatches other tools by name during job execution.
  */
-export function buildTools(ctx) {
+export async function buildTools(ctx) {
   const tools = [];
   const getTools = () => tools;
   const dbWrap = { isOpen: () => true, query: (...a) => ctx.db.query(...a) };
+  const intState = await readIntegrationsState(ctx.db);
 
   tools.push(
     createHealthTool({
@@ -119,6 +121,7 @@ export function buildTools(ctx) {
   // Per-manifest integration tools
   const getGatewayClient = (name) => ctx.gatewayClients.get(name) ?? null;
   for (const m of ctx.manifests) {
+    if (!isEnabled(intState, m.name)) continue;
     for (const factory of m.tools ?? []) {
       try {
         const reg = ctx.registry.get(m.name);
