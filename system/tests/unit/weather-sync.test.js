@@ -18,10 +18,17 @@ const fakeForecast = {
     sunset: ['2026-05-10T19:58'],
   },
   hourly: {
-    time: ['2026-05-10T00:00', '2026-05-10T12:00', '2026-05-11T00:00'],
-    temperature_2m: [55, 70, 56],
-    precipitation_probability: [0, 5, 10],
-    weather_code: [1, 1, 2],
+    time: [
+      '2026-05-10T00:00',
+      '2026-05-10T12:00',
+      '2026-05-11T00:00',
+      '2026-05-12T00:00',
+    ],
+    temperature_2m: [55, 70, 56, 50],
+    precipitation_probability: [0, 5, 10, 20],
+    weather_code: [1, 1, 2, 3],
+    wind_speed_10m: [5, 8, 6, 10],
+    wind_direction_10m: [180, 200, 220, 30],
   },
 };
 
@@ -53,7 +60,16 @@ test('buildEventFromForecast shapes content + meta', () => {
   assert.match(e.content, /Mostly clear/);
   assert.equal(e.meta.location_name, 'NYC');
   assert.equal(e.meta.today.high, 72);
-  assert.equal(e.meta.hourly.length, 2); // only hours on 2026-05-10
+  // Today's 2 hours + tomorrow's 1 hour = 3. Day-after-tomorrow row excluded.
+  assert.equal(e.meta.hourly.length, 3);
+});
+
+test('buildEventFromForecast includes wind fields per hourly row', () => {
+  const e = buildEventFromForecast(fakeForecast, { lat: 40.7128, lon: -74.006, name: 'NYC' });
+  assert.equal(e.meta.hourly[0].wind_speed_10m, 5);
+  assert.equal(e.meta.hourly[0].wind_direction_10m, 180);
+  // 3rd kept row is tomorrow's first hour, with south wind for migration verdict.
+  assert.equal(e.meta.hourly[2].wind_direction_10m, 220);
 });
 
 test('weather sync captures one event per day', async () => {

@@ -70,7 +70,13 @@ export async function fetchForecast({ lat, lon, fetchFn = globalThis.fetch, sign
       'sunrise',
       'sunset',
     ].join(','),
-    hourly: ['temperature_2m', 'precipitation_probability', 'weather_code'].join(','),
+    hourly: [
+      'temperature_2m',
+      'precipitation_probability',
+      'weather_code',
+      'wind_speed_10m',
+      'wind_direction_10m',
+    ].join(','),
     temperature_unit: 'fahrenheit',
     wind_speed_unit: 'mph',
     precipitation_unit: 'inch',
@@ -114,18 +120,28 @@ export function buildEventFromForecast(data, location) {
     precip_probability: at('precipitation_probability_max'),
   };
 
-  // Trim hourly to today only — keeps meta size bounded.
+  // Keep today + tomorrow's hourly rows. The overnight migration window
+  // (sunset → next sunrise) crosses midnight, so trimming to today only
+  // would drop the dawn hours that matter most. forecast_days=2 already
+  // fetches both days; ~48 rows in meta is bounded fine.
   const h = data.hourly ?? {};
   const hourly = [];
   const times = h.time ?? [];
+  const tomorrow = new Date(`${date}T00:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
   for (let i = 0; i < times.length; i++) {
     const t = times[i];
-    if (!t || t.slice(0, 10) !== date) continue;
+    if (!t) continue;
+    const d = t.slice(0, 10);
+    if (d !== date && d !== tomorrowStr) continue;
     hourly.push({
       time: t,
       temp: h.temperature_2m?.[i],
       precip_probability: h.precipitation_probability?.[i],
       code: h.weather_code?.[i],
+      wind_speed_10m: h.wind_speed_10m?.[i],
+      wind_direction_10m: h.wind_direction_10m?.[i],
     });
   }
 
