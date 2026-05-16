@@ -326,6 +326,14 @@ Port lives in `runtime:config.mcp.port`. The project-local `.mcp.json` covers in
 
 **Fix.** Prevention is already in tree (`transactionToEvent` uses `plaid_metadata.transaction_id` or a `lm-stable:<key>` composite). For legacy rows, run `node user-data/scripts/dedupe-lunch-money.mjs`. After 30 days with zero firings, B-3 retires this invariant's repair half — the check stays as a regression canary.
 
+### `integrations.no_stuck_in_flight`
+
+**Symptom.** An integration stops producing fresh data but the daemon is alive. Subsequent dispatcher ticks skip it because `in_flight=true`.
+
+**Cause.** The integration's `sync()` returned a promise that never resolved (dead loopback fetch, hung WebSocket, awaited promise on a closed stream). Neither the try/catch's success/failure write nor the defensive `finally` ever fired, so `in_flight` stays true until daemon restart.
+
+**Fix.** Watchdog clears `in_flight`, marks the row, and resets `next_run_at` to "now" so the next dispatcher tick picks it up. Run `pnpm test:file system/tests/unit/integrations-no-stuck-in-flight.test.js` to verify the detection logic if behavior looks off.
+
 ### Runtime (`runtime`)
 
 ### `runtime.hooks_settings_present`

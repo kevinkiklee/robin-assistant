@@ -128,3 +128,57 @@ test('runIntegrationSync rejects gateway integration', async () => {
   assert.equal(r.reason, 'gateway_no_sync');
   await close(db);
 });
+
+test('finally fallback clears in_flight if catch-path write throws', async () => {
+  // Scenario: sync() throws, AND the catch path's writeIntegrationRow throws
+  // (simulated transient DB error). Without the finally fallback, in_flight
+  // would stay true and wedge the dispatcher. With it, the row is restored.
+  const db = await fresh();
+  await seedIntegration(db, 'gmail');
+  const registry = new Map([
+    ['gmail', { cadence_ms: 60_000, sync: async () => { throw new Error('sync boom'); } }],
+  ]);
+
+  // Wrap db so the first UPSERT after the in_flight=true setter (i.e. the
+  // catch-path write) throws once. The finally fallback's UPSERT then
+  // succeeds, restoring the row.
+  const realQuery = db.query.bind(db);
+  let upsertCount = 0;
+  let failedOnce = false;
+  db.query = (sql, ...rest) => {
+    const text = typeof sql === 'string' ? sql : sql?.query ?? '';
+    const isUpsert = /UPSERT|UPDATE/i.test(text);
+    if (isUpsert) {
+      upsertCount++;
+      // 1st upsert = in_flight=true setter (line 78). 2nd = catch path. Fail #2.
+      if (upsertCount === 2 && !failedOnce) {
+        failedOnce = true;
+        return {
+          collect: async () => {
+            throw new Error('simulated catch-path DB failure');
+          },
+        };
+      }
+    }
+    return realQuery(sql, ...rest);
+  };
+
+  // The catch-path write throws inside runIntegrationSync's catch block,
+  // bubbling up. Dispatcher already catches this; what matters is that the
+  // finally fallback ran AND restored in_flight before the throw propagated.
+  await assert.rejects(
+    () => runIntegrationSync(db, registry, 'gmail'),
+    /simulated catch-path DB failure/,
+  );
+
+  db.query = realQuery; // restore so we can read
+  const [rows] = await db
+    .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+    .collect();
+  const row = rows[0].value.integrations.gmail;
+  assert.equal(row.in_flight, false, 'finally fallback must clear in_flight');
+  assert.equal(row.in_flight_started_at, null);
+  assert.match(row.last_sync_error, /finally-cleanup/);
+  assert.equal(failedOnce, true, 'sanity: catch-path failure was simulated');
+  await close(db);
+});

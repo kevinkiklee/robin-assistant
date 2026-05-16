@@ -15,6 +15,7 @@ import dbPendingRecallLogBounded from './db.pending-recall-log-bounded.js';
 import installPointerPresent from './install.pointer-present.js';
 import installUserDataWritable from './install.user-data-writable.js';
 import integrationsLunchMoneyNoDupes from './integrations.lunch-money-no-dupes.js';
+import integrationsNoStuckInFlight from './integrations.no-stuck-in-flight.js';
 import integrationsSyncFreshness from './integrations.sync-freshness.js';
 import mcpDaemonResponds from './mcp.daemon-responds.js';
 import mcpWiringGlobalPresent from './mcp.wiring-global-present.js';
@@ -42,6 +43,7 @@ export const INVARIANTS = [
   // integrations
   integrationsSyncFreshness,
   integrationsLunchMoneyNoDupes,
+  integrationsNoStuckInFlight,
   // runtime
   runtimeHooksSettingsPresent,
   runtimeNodeVersionPinned,

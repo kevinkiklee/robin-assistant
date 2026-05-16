@@ -98,6 +98,7 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
     );
   }
   const startMs = Date.now();
+  let cleared = false;
   try {
     const secrets = {};
     for (const key of integration.secrets?.env_keys ?? []) {
@@ -132,6 +133,7 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
       cursor: result?.cursor ?? null,
       next_run_at,
     });
+    cleared = true;
     return {
       ok: true,
       count: result?.count ?? 0,
@@ -153,8 +155,29 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
       consecutive_failures: failures,
       next_run_at: manual ? cur.next_run_at : new Date(Date.now() + cadence),
     });
+    cleared = true;
     return { ok: false, reason: 'sync_error', error: e.message };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
+    // Defense in depth: if the try/catch writeIntegrationRow itself threw
+    // (DB transient, transaction conflict), in_flight would stay true and
+    // wedge the dispatcher until daemon restart. Force-clear so the next
+    // tick can dispatch. Watchdog invariant catches the case where the
+    // handler never returns at all (this finally never fires).
+    if (!cleared) {
+      try {
+        await writeIntegrationRow(db, name, {
+          in_flight: false,
+          in_flight_started_at: null,
+          last_sync_at: new Date(),
+          last_sync_ok: false,
+          last_sync_error: '[finally-cleanup: bookkeeping write failed]',
+          consecutive_failures: (cur.consecutive_failures ?? 0) + 1,
+          next_run_at: new Date(Date.now() + cur.cadence_ms),
+        });
+      } catch (cleanupErr) {
+        console.warn(`[integrations:${name}] finally-cleanup failed: ${cleanupErr.message}`);
+      }
+    }
   }
 }
