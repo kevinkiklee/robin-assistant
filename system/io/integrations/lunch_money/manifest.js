@@ -1,4 +1,5 @@
 import { sync } from './sync.js';
+import { createLunchMoneyAccountsTool } from './tools/lunch-money-accounts.js';
 import { createLunchMoneyQueryTool } from './tools/lunch-money-query.js';
 
 export const manifest = {
@@ -8,5 +9,5 @@ export const manifest = {
   capture_mode: 'upsert',
   secrets: { env_keys: ['LUNCH_MONEY_API_KEY'] },
   sync,
-  tools: [createLunchMoneyQueryTool],
+  tools: [createLunchMoneyQueryTool, createLunchMoneyAccountsTool],
 };

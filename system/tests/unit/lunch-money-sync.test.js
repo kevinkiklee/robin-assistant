@@ -105,30 +105,64 @@ test('transactionToEvent handles plaid_metadata as a stringified JSON blob', () 
 });
 
 test('sync calls API and returns count + cursor', async () => {
-  const fetchFn = mock.fn(async () => ({
+  // Each LM endpoint returns its own shape; route by URL path.
+  const fetchFn = mock.fn(async (url) => ({
     ok: true,
-    json: async () => ({
-      transactions: [
-        {
-          id: 1,
-          amount: '10',
-          date: '2026-05-09',
-          is_income: false,
-          payee: 'X',
-          category_name: 'Y',
-          currency: 'USD',
-        },
-        {
-          id: 2,
-          amount: '20',
-          date: '2026-05-08',
-          is_income: false,
-          payee: 'Z',
-          category_name: 'Y',
-          currency: 'USD',
-        },
-      ],
-    }),
+    json: async () => {
+      if (url.includes('/transactions')) {
+        return {
+          transactions: [
+            {
+              id: 1,
+              amount: '10',
+              date: '2026-05-09',
+              is_income: false,
+              payee: 'X',
+              category_name: 'Y',
+              currency: 'USD',
+            },
+            {
+              id: 2,
+              amount: '20',
+              date: '2026-05-08',
+              is_income: false,
+              payee: 'Z',
+              category_name: 'Y',
+              currency: 'USD',
+            },
+          ],
+        };
+      }
+      if (url.includes('/assets')) {
+        return {
+          assets: [
+            {
+              id: 100,
+              name: 'Manual HYSA',
+              type_name: 'cash',
+              balance: '20000',
+              currency: 'usd',
+            },
+          ],
+        };
+      }
+      if (url.includes('/plaid_accounts')) {
+        return {
+          plaid_accounts: [
+            {
+              id: 200,
+              display_name: 'Chase Checking',
+              type: 'depository',
+              subtype: 'checking',
+              balance: '5000',
+              currency: 'usd',
+              status: 'active',
+            },
+          ],
+        };
+      }
+      return {};
+    },
   }));
   const captured = [];
   const r = await sync({
@@ -141,6 +175,11 @@ test('sync calls API and returns count + cursor', async () => {
     },
     fetchFn,
   });
-  assert.equal(r.count, 2);
+  // 2 transactions + 1 asset (current + snapshot) + 1 plaid (current + snapshot) = 6.
+  assert.equal(r.count, 6);
+  const sources = captured.map((e) => e.source);
+  assert.equal(sources.filter((s) => s === 'lunch_money').length, 2);
+  assert.equal(sources.filter((s) => s === 'lunch_money_account').length, 2);
+  assert.equal(sources.filter((s) => s === 'lunch_money_account_snapshot').length, 2);
   assert.match(r.cursor.start_date, /^\d{4}-\d{2}-\d{2}$/);
 });

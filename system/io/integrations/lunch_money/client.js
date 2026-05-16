@@ -14,6 +14,14 @@ export async function listTransactions({ apiKey, startDate, endDate, fetchFn, si
   return await lmFetch(`/v1/transactions?${params}`, { apiKey, fetchFn, signal });
 }
 
+export async function listAssets({ apiKey, fetchFn, signal }) {
+  return await lmFetch('/v1/assets', { apiKey, fetchFn, signal });
+}
+
+export async function listPlaidAccounts({ apiKey, fetchFn, signal }) {
+  return await lmFetch('/v1/plaid_accounts', { apiKey, fetchFn, signal });
+}
+
 // Build a stable dedup key that survives Lunch Money's id reassignment
 // when a pending Plaid transaction clears (LM mints a new `id` for the
 // cleared row even though it's the same logical transaction). Earlier
@@ -70,6 +78,66 @@ export function transactionToEvent(t) {
       date: t.date,
       status: t.status,
       plaid_account_id: t.plaid_account_id,
+    },
+  };
+}
+
+// Daily balance snapshot — one row per (kind, account, day). Keeps history
+// so the brief can compute delta vs. yesterday for net position and investments.
+// Distinct `source` keeps these out of the "current balance" tool's
+// query while still living in the events table.
+export function accountToSnapshotEvent(a, { kind, dateStr }) {
+  const balance = Number.parseFloat(a.to_base ?? a.balance ?? '0');
+  const display_name = a.display_name ?? a.name ?? `Account ${a.id}`;
+  const type = a.type_name ?? a.type ?? 'unknown';
+  const subtype = a.subtype_name ?? a.subtype ?? null;
+  return {
+    source: 'lunch_money_account_snapshot',
+    content: `${display_name} · ${balance >= 0 ? '$' : '-$'}${Math.abs(balance).toFixed(2)} · ${dateStr}`,
+    ts: new Date(`${dateStr}T12:00:00Z`),
+    external_id: `lm_account_snap:${kind}:${a.id}:${dateStr}`,
+    meta: {
+      lm_id: a.id,
+      kind,
+      display_name,
+      type,
+      subtype,
+      balance,
+      currency: (a.currency ?? 'usd').toLowerCase(),
+      snapshot_date: dateStr,
+    },
+  };
+}
+
+// Build a unified balance event from either a manual asset or a Plaid account.
+// Manual assets carry `type_name`/`subtype_name`; Plaid accounts carry `type`/`subtype` +
+// `institution_name`. `to_base` is LM's USD-converted balance when available.
+export function accountToEvent(a, { kind }) {
+  const balance = Number.parseFloat(a.to_base ?? a.balance ?? '0');
+  const currency = (a.currency ?? 'usd').toLowerCase();
+  const type = a.type_name ?? a.type ?? 'unknown';
+  const subtype = a.subtype_name ?? a.subtype ?? null;
+  const institution = a.institution_name ?? a.institution ?? null;
+  const display_name = a.display_name ?? a.name ?? `Account ${a.id}`;
+  const status = a.status ?? null;
+  const closedOrInactive = status === 'closed' || status === 'inactive';
+  return {
+    source: 'lunch_money_account',
+    content: `${display_name}${institution ? ` (${institution})` : ''} · ${balance >= 0 ? '$' : '-$'}${Math.abs(balance).toFixed(2)} · ${type}${subtype ? `/${subtype}` : ''}`,
+    ts: new Date(a.balance_as_of ?? Date.now()),
+    external_id: `lm_account:${kind}:${a.id}`,
+    meta: {
+      lm_id: a.id,
+      kind,
+      display_name,
+      institution,
+      type,
+      subtype,
+      balance,
+      currency,
+      balance_as_of: a.balance_as_of ?? null,
+      status,
+      excluded_from_totals: closedOrInactive || !!a.exclude_transactions || !!a.excluded_from_totals,
     },
   };
 }
