@@ -1,3 +1,5 @@
+import { dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { nextFire, parseCron } from './cron.js';
 import { recordFailure, recordSuccess, setInFlight } from './db.js';
 import { dispatchNotify } from './notify.js';
@@ -17,7 +19,19 @@ async function dispatchRuntime({ job, db, host, capture, embedder, tools }) {
     return (llm?.content ?? '').toString();
   }
   if (job.runtime === 'internal') {
-    const mod = await import(new URL(`./internal/${job.name}.js`, import.meta.url));
+    // Resolution order:
+    //   1. User jobs: sibling `<job-dir>/<name>.js` next to the .md (lets
+    //      user-data host its own internal-runtime JS without registering
+    //      anything system-side).
+    //   2. Built-in jobs (and tests): `./internal/<name>.js` relative to this
+    //      module.
+    let modUrl;
+    if (job.source === 'user' && typeof job.path === 'string') {
+      modUrl = pathToFileURL(`${dirname(job.path)}/${job.name}.js`);
+    } else {
+      modUrl = new URL(`./internal/${job.name}.js`, import.meta.url);
+    }
+    const mod = await import(modUrl);
     const fn = mod.default;
     if (typeof fn !== 'function') throw new Error(`internal job ${job.name}: no default export`);
     const out = await fn({ db, host, capture, embedder, tools });

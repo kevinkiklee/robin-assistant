@@ -176,7 +176,7 @@ test('discoverJobs — override target must match filename', () => {
   assert.equal(jobs[0].source, 'builtin');
 });
 
-test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
+test('discoverJobs — daily-briefing is no longer a builtin (moved to user-data)', async () => {
   const { discoverJobs } = await import('../../cognition/jobs/loader.js');
   const { fileURLToPath } = await import('node:url');
   const { dirname, join } = await import('node:path');
@@ -189,11 +189,11 @@ test('discoverJobs — picks up shipped daily-briefing built-in', async () => {
     'builtin',
   );
   const jobs = discoverJobs({ builtinDir, userDir: '/nonexistent' });
-  const briefing = jobs.find((j) => j.name === 'daily-briefing');
-  assert.ok(briefing, 'daily-briefing should be discovered');
-  // Daily-briefing was rewritten in v2 as a deterministic-pregen + ask-time
-  // synthesis hybrid; the JS lives in cognition/jobs/internal/daily-briefing.js.
-  assert.equal(briefing.runtime, 'internal');
-  assert.equal(briefing.enabled, true);
-  assert.equal(briefing.schedule, '30 5-8 * * *');
+  // Task 17: daily-briefing is Kevin-specific composition; the md + JS both
+  // live in `user-data/jobs/` now. With no user dir on disk it must not appear.
+  assert.equal(
+    jobs.find((j) => j.name === 'daily-briefing'),
+    undefined,
+    'daily-briefing should not be discoverable from system/builtin alone',
+  );
 });
