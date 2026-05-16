@@ -71,39 +71,57 @@ export function validateManifest(m) {
   };
 }
 
-export async function loadManifests(integrationsDir) {
-  let entries;
-  try {
-    entries = await readdir(integrationsDir, { withFileTypes: true });
-  } catch {
-    return { loaded: [], unavailable: [] };
-  }
+export async function loadManifests(dirs) {
+  // Accept either a single string (legacy) or an array of dirs.
+  const dirList = typeof dirs === 'string' ? [dirs] : dirs;
   const loaded = [];
   const unavailable = [];
-  for (const ent of entries) {
-    if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
-    const manifestPath = join(integrationsDir, ent.name, 'manifest.js');
-    let validated;
+  const seen = new Map(); // name → index in `loaded`
+  for (let i = 0; i < dirList.length; i += 1) {
+    const integrationsDir = dirList[i];
+    const source = i === 0 ? 'system' : 'user-data';
+    let entries;
     try {
-      const mod = await import(manifestPath);
-      validated = validateManifest(mod.manifest ?? mod.default);
-    } catch (e) {
-      // Invalid / failed-to-import manifests: skip silently with a warning.
-      // Distinct from `unavailable` (which is reserved for valid manifests
-      // whose preflight failed because their local data source is absent).
-      console.warn(`integration ${ent.name}: ${e.message}`);
+      entries = await readdir(integrationsDir, { withFileTypes: true });
+    } catch {
       continue;
     }
-    if (typeof validated.preflight === 'function') {
+    for (const ent of entries) {
+      if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
+      const manifestPath = join(integrationsDir, ent.name, 'manifest.js');
+      let validated;
       try {
-        await validated.preflight();
+        const mod = await import(manifestPath);
+        validated = validateManifest(mod.manifest ?? mod.default);
       } catch (e) {
-        unavailable.push({ name: validated.name, error: e.message });
-        console.warn(`integration ${validated.name}: skipped — ${e.message}`);
+        // Invalid / failed-to-import manifests: skip silently with a warning.
+        // Distinct from `unavailable` (which is reserved for valid manifests
+        // whose preflight failed because their local data source is absent).
+        console.warn(`integration ${ent.name}: ${e.message}`);
         continue;
       }
+      validated._source = source;
+      validated._dir = join(integrationsDir, ent.name);
+      if (typeof validated.preflight === 'function') {
+        try {
+          await validated.preflight();
+        } catch (e) {
+          unavailable.push({ name: validated.name, error: e.message, source });
+          console.warn(`integration ${validated.name}: skipped — ${e.message}`);
+          continue;
+        }
+      }
+      const prev = seen.get(validated.name);
+      if (prev !== undefined) {
+        console.warn(
+          `integration ${validated.name}: collision (already in ${loaded[prev]._source}); using ${source}`,
+        );
+        loaded[prev] = validated; // last-write wins; iteration is system → user-data, so user-data wins
+      } else {
+        seen.set(validated.name, loaded.length);
+        loaded.push(validated);
+      }
     }
-    loaded.push(validated);
   }
   return { loaded, unavailable };
 }
