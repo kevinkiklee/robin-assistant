@@ -560,9 +560,12 @@ export async function install(argv = [], deps = {}) {
     return;
   }
 
-  // --repair: re-apply hook entries from the manifest.
+  // --repair: re-apply hook entries from the manifest. Functionally
+  // identical to --hooks-only; kept as a separate flag because doctor and
+  // the runbook reference "robin install --repair" as the canonical fix
+  // for drifted hook entries.
   if (args.flags.repair) {
-    await repair();
+    await installHooksStep({ skipHooks: false });
     return;
   }
 
