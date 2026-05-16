@@ -4,7 +4,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { byName, INVARIANTS, phaseOrdered } from '../../../runtime/invariants/index.js';
-import { BOOT_REPAIR_ALLOWLIST, CLI_BLOCKING_SET, LEVELS, PHASES } from '../../../runtime/invariants/policy.js';
+import {
+  BOOT_REPAIR_ALLOWLIST,
+  CLI_BLOCKING_SET,
+  LEVELS,
+  PHASES,
+} from '../../../runtime/invariants/policy.js';
 
 test('every BOOT_REPAIR_ALLOWLIST name resolves to a real invariant', () => {
   for (const name of BOOT_REPAIR_ALLOWLIST) {

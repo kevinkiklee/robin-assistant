@@ -88,7 +88,7 @@ export default {
     return [
       '### `mcp.daemon_responds`',
       '',
-      '**Symptom.** `mcp__robin__*` tools fail with connection errors; the agent can\'t reach the daemon despite launchctl showing it loaded.',
+      "**Symptom.** `mcp__robin__*` tools fail with connection errors; the agent can't reach the daemon despite launchctl showing it loaded.",
       '',
       '**Cause.** Daemon process wedged — usually a stuck async operation, embedder hang, or DB lock.',
       '',

@@ -7,7 +7,7 @@ export async function integrationsDiscordRegister() {
   await ensureHome();
   const { loaded } = await loadManifests(getIntegrationDirs());
   const m = loaded.find((x) => x.name === 'discord');
-  if (!m || !m._dir) {
+  if (!m?._dir) {
     console.error('discord integration not installed');
     process.exitCode = 1;
     return;

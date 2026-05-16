@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { readIntegrationsState, setIntegrationEnabled } from '../../data/runtime/integrations-state.js';
+import {
+  readIntegrationsState,
+  setIntegrationEnabled,
+} from '../../data/runtime/integrations-state.js';
 import { runDisable } from '../../runtime/cli/commands/integrations-disable.js';
 
 async function freshDb() {

@@ -6,19 +6,16 @@ import { startHttp } from '../../runtime/daemon/http.js';
 
 function getJson(port, path, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request(
-      { host: '127.0.0.1', port, path, method: 'GET', headers },
-      (res) => {
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () =>
-          resolve({
-            status: res.statusCode,
-            body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
-          }),
-        );
-      },
-    );
+    const req = http.request({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () =>
+        resolve({
+          status: res.statusCode,
+          body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
+        }),
+      );
+    });
     req.on('error', reject);
     req.end();
   });

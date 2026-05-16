@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { mock } from 'node:test';
@@ -14,8 +14,16 @@ test('loadManifests accepts an array of dirs and tags _source', async () => {
   const systemDir = mkdtempSync(join(tmpdir(), 'robin-sys-'));
   const userDir = mkdtempSync(join(tmpdir(), 'robin-user-'));
   try {
-    writeManifest(systemDir, 'foo', `export const manifest = { name: 'foo', cadence: '1h', sync: async () => {}, tools: [] };`);
-    writeManifest(userDir, 'bar', `export const manifest = { name: 'bar', cadence: '1h', sync: async () => {}, tools: [] };`);
+    writeManifest(
+      systemDir,
+      'foo',
+      `export const manifest = { name: 'foo', cadence: '1h', sync: async () => {}, tools: [] };`,
+    );
+    writeManifest(
+      userDir,
+      'bar',
+      `export const manifest = { name: 'bar', cadence: '1h', sync: async () => {}, tools: [] };`,
+    );
     const { loaded } = await loadManifests([systemDir, userDir]);
     const byName = Object.fromEntries(loaded.map((m) => [m.name, m]));
     assert.equal(byName.foo._source, 'system');
@@ -33,8 +41,16 @@ test('on name collision, user-data wins and a warning is logged', async () => {
   const userDir = mkdtempSync(join(tmpdir(), 'robin-user-'));
   const warn = mock.method(console, 'warn');
   try {
-    writeManifest(systemDir, 'dup', `export const manifest = { name: 'dup', cadence: '1h', sync: async () => 'sys', tools: [] };`);
-    writeManifest(userDir, 'dup', `export const manifest = { name: 'dup', cadence: '1h', sync: async () => 'user', tools: [] };`);
+    writeManifest(
+      systemDir,
+      'dup',
+      `export const manifest = { name: 'dup', cadence: '1h', sync: async () => 'sys', tools: [] };`,
+    );
+    writeManifest(
+      userDir,
+      'dup',
+      `export const manifest = { name: 'dup', cadence: '1h', sync: async () => 'user', tools: [] };`,
+    );
     const { loaded } = await loadManifests([systemDir, userDir]);
     const dup = loaded.find((m) => m.name === 'dup');
     assert.equal(dup._source, 'user-data');
@@ -49,7 +65,11 @@ test('on name collision, user-data wins and a warning is logged', async () => {
 test('loadManifests with single-dir array preserves legacy behavior', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'robin-legacy-'));
   try {
-    writeManifest(dir, 'foo', `export const manifest = { name: 'foo', cadence: '1h', sync: async () => {}, tools: [] };`);
+    writeManifest(
+      dir,
+      'foo',
+      `export const manifest = { name: 'foo', cadence: '1h', sync: async () => {}, tools: [] };`,
+    );
     const { loaded } = await loadManifests([dir]);
     assert.equal(loaded.length, 1);
     assert.equal(loaded[0]._source, 'system');
@@ -61,7 +81,11 @@ test('loadManifests with single-dir array preserves legacy behavior', async () =
 test('loadManifests accepts a string for backwards compat (legacy callers)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'robin-string-'));
   try {
-    writeManifest(dir, 'foo', `export const manifest = { name: 'foo', cadence: '1h', sync: async () => {}, tools: [] };`);
+    writeManifest(
+      dir,
+      'foo',
+      `export const manifest = { name: 'foo', cadence: '1h', sync: async () => {}, tools: [] };`,
+    );
     const { loaded } = await loadManifests(dir);
     assert.equal(loaded.length, 1);
     assert.equal(loaded[0]._source, 'system');

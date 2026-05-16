@@ -11,13 +11,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { ensureHome, getIntegrationDirs } from '../../config/data-store.js';
-import { connect, close, defaultDbUrl } from '../../data/db/client.js';
 import { getCommStyle } from '../../cognition/jobs/comm-style.js';
 import { listAllJobs } from '../../cognition/jobs/db.js';
 import { getCalibration } from '../../cognition/jobs/predictions.js';
-import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
+import { ensureHome, getIntegrationDirs } from '../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 import { readIntegrationsState } from '../../data/runtime/integrations-state.js';
+import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
 import { agentsMdContent, mergeAgentsMdContent } from './agents-md.js';
 
 async function readOrEmpty(path) {
@@ -47,7 +47,7 @@ export async function loadIntegrationsForAgentsMd({ intState } = {}) {
       // Default to enabled when no state row exists yet (fresh installs). An
       // explicit `false` from runtime:integrations marks the row disabled.
       const enabledState = intState?.states?.[m.name]?.enabled;
-      const enabled = enabledState === false ? false : true;
+      const enabled = enabledState !== false;
       return {
         name: m.name,
         kind: m.kind,

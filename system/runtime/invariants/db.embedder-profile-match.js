@@ -12,13 +12,13 @@ import { tableNameSafeProfile } from '../../data/embed/profile-router.js';
 
 const PROFILE_DIMENSION = {
   'mxbai-1024': 1024,
-  'mxbai_1024': 1024,
+  mxbai_1024: 1024,
   'bge-large-1024': 1024,
-  'bge_large_1024': 1024,
+  bge_large_1024: 1024,
   'bge-768': 768,
-  'bge_768': 768,
+  bge_768: 768,
   'gemini-3072': 3072,
-  'gemini_3072': 3072,
+  gemini_3072: 3072,
 };
 
 function expectedDimension(profile) {
@@ -89,7 +89,7 @@ export default {
       '',
       '**Symptom.** Recalls return empty or fail with vector-dimension errors; biographer writes succeed but embedding upserts log `embedding failed`.',
       '',
-      '**Cause.** `runtime:embedder.value.active_profile` doesn\'t match the embedding table currently in use — usually because the profile was flipped without a backfill, or the embedder loaded under a different config.',
+      "**Cause.** `runtime:embedder.value.active_profile` doesn't match the embedding table currently in use — usually because the profile was flipped without a backfill, or the embedder loaded under a different config.",
       '',
       '**Fix.** Manual — destructive otherwise. Either:',
       '- `robin embeddings list` to see profiles and dimensions, then',

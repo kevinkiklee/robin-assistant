@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { writeConfig } from '../../../config/paths.js';
-import { canonicalEntry } from '../../../runtime/invariants/mcp.wiring-project-present.js';
-import mcpWiringProjectPresent from '../../../runtime/invariants/mcp.wiring-project-present.js';
+import mcpWiringProjectPresent, {
+  canonicalEntry,
+} from '../../../runtime/invariants/mcp.wiring-project-present.js';
 import { makeTestCtx } from '../../helpers/invariant-fixtures.js';
 
 const tmpRoot = join(tmpdir(), `robin-mcp-${process.pid}-${Math.random().toString(36).slice(2)}`);
@@ -30,7 +31,10 @@ test('check fails when .mcp.json missing', async () => {
 
 test('check fails on URL mismatch', async () => {
   const path = join(tmpRoot, '.mcp.json');
-  writeFileSync(path, JSON.stringify({ mcpServers: { robin: { type: 'sse', url: 'http://127.0.0.1:99999/sse' } } }));
+  writeFileSync(
+    path,
+    JSON.stringify({ mcpServers: { robin: { type: 'sse', url: 'http://127.0.0.1:99999/sse' } } }),
+  );
   const result = await mcpWiringProjectPresent.check();
   assert.equal(result.ok, false);
   assert.equal(result.error, 'url_mismatch');
@@ -56,7 +60,10 @@ test('repair writes canonical entry', async () => {
 
 test('repair dry-run does not write', async () => {
   const path = join(tmpRoot, '.mcp.json');
-  writeFileSync(path, JSON.stringify({ mcpServers: { robin: { type: 'sse', url: 'http://127.0.0.1:1/sse' } } }));
+  writeFileSync(
+    path,
+    JSON.stringify({ mcpServers: { robin: { type: 'sse', url: 'http://127.0.0.1:1/sse' } } }),
+  );
   const r = await mcpWiringProjectPresent.repair(makeTestCtx({ dryRun: true }));
   assert.equal(r.repaired, false);
   assert.equal(r.action, 'would_write_project_mcp');

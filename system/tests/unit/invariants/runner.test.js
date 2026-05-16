@@ -116,7 +116,13 @@ test('heartbeat allSettled isolates one slow invariant from others', () =>
     };
     const ctx = makeCtx({ logFallback: false });
     const start = Date.now();
-    const report = await run({ trigger: 'heartbeat', ctx, statePath, lockDir, invariants: [fast, slow] });
+    const report = await run({
+      trigger: 'heartbeat',
+      ctx,
+      statePath,
+      lockDir,
+      invariants: [fast, slow],
+    });
     const elapsed = Date.now() - start;
     assert.ok(fastChecked, 'fast invariant ran');
     assert.ok(elapsed < 3000, `should not wait for slow check; elapsed=${elapsed}`);
@@ -129,7 +135,22 @@ test('postInstall resets consecutive_failures', () =>
     const inv = makeFakeInvariant({ name: 'test.reset' });
     inv.check = async () => ({ ok: true });
     // Seed state with prior failures
-    const seedState = { invariants: { 'test.reset': { last_checked_at: 100, last_pass_at: null, last_failure_at: 100, consecutive_failures: 5, pending_repair_at: null, last_result_summary: { ok: false }, last_repair_at: null, last_repair_outcome: null, repair_history_30d: [] } }, generated_at: null };
+    const seedState = {
+      invariants: {
+        'test.reset': {
+          last_checked_at: 100,
+          last_pass_at: null,
+          last_failure_at: 100,
+          consecutive_failures: 5,
+          pending_repair_at: null,
+          last_result_summary: { ok: false },
+          last_repair_at: null,
+          last_repair_outcome: null,
+          repair_history_30d: [],
+        },
+      },
+      generated_at: null,
+    };
     const { writeState } = await import('../../../runtime/invariants/state.js');
     writeState(statePath, seedState);
     const ctx = makeCtx({ logFallback: false });
@@ -186,7 +207,14 @@ test('cli preflight reads cached state without re-checking', () =>
     };
     writeState(statePath, seed);
     const ctx = makeCtx({ logFallback: false });
-    await run({ trigger: 'cli', ctx, statePath, lockDir, invariants: [inv], cliBlockingSet: ['cli.cached'] });
+    await run({
+      trigger: 'cli',
+      ctx,
+      statePath,
+      lockDir,
+      invariants: [inv],
+      cliBlockingSet: ['cli.cached'],
+    });
     assert.equal(checks, 0, 'fresh cache, no re-check');
   }));
 

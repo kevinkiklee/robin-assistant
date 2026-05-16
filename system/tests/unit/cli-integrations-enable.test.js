@@ -53,7 +53,13 @@ test('enable: warns on preflight failure but does not block', async () => {
   try {
     const ctx = {
       db,
-      manifests: [fakeManifest('spotify', { preflight: async () => { throw new Error('missing token'); } })],
+      manifests: [
+        fakeManifest('spotify', {
+          preflight: async () => {
+            throw new Error('missing token');
+          },
+        }),
+      ],
     };
     const out = await runEnable(ctx, ['spotify']);
     assert.equal(out.exitCode, 0);
@@ -68,7 +74,10 @@ test('enable: warns on preflight failure but does not block', async () => {
 test('enable: prints restart-hint for gateway integrations', async () => {
   const db = await freshDb();
   try {
-    const ctx = { db, manifests: [fakeManifest('discord', { kind: 'gateway', cadence_ms: null, start: () => {} })] };
+    const ctx = {
+      db,
+      manifests: [fakeManifest('discord', { kind: 'gateway', cadence_ms: null, start: () => {} })],
+    };
     const out = await runEnable(ctx, ['discord']);
     assert.equal(out.exitCode, 0);
     assert.ok(/restart daemon/.test(out.stdout));
@@ -80,7 +89,12 @@ test('enable: prints restart-hint for gateway integrations', async () => {
 test('enable: prints restart-hint for tool-only integrations', async () => {
   const db = await freshDb();
   try {
-    const ctx = { db, manifests: [fakeManifest('github_write', { kind: 'tool-only', cadence_ms: null, tools: [() => {}] })] };
+    const ctx = {
+      db,
+      manifests: [
+        fakeManifest('github_write', { kind: 'tool-only', cadence_ms: null, tools: [() => {}] }),
+      ],
+    };
     const out = await runEnable(ctx, ['github_write']);
     assert.equal(out.exitCode, 0);
     assert.ok(/restart daemon/.test(out.stdout));

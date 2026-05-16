@@ -88,9 +88,7 @@ test('relateAll retries a transient transaction conflict and succeeds', async ()
   assert.equal(r.ids.length, 1);
   // Verify the edge actually landed (occurs_with is symmetric; canonical
   // ordering may flip the in/out, so query by kind only).
-  const [rows] = await real
-    .query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`)
-    .collect();
+  const [rows] = await real.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
   assert.equal(rows.length, 1);
   await close(real);
 });

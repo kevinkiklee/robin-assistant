@@ -33,7 +33,11 @@ export default {
         .collect();
       const stuck = Array.isArray(rows) ? rows : [];
       if (stuck.length > 0) {
-        return { ok: false, error: 'stuck_jobs', evidence: { names: stuck.map((r) => r.name), count: stuck.length } };
+        return {
+          ok: false,
+          error: 'stuck_jobs',
+          evidence: { names: stuck.map((r) => r.name), count: stuck.length },
+        };
       }
       return { ok: true, evidence: { count: 0 } };
     } catch (e) {
@@ -50,7 +54,7 @@ export default {
       '',
       '**Symptom.** A scheduled job stops producing output but the daemon is still up. Subsequent ticks skip it because `in_flight=true`.',
       '',
-      '**Cause.** A job hung mid-execution (LLM call timeout, file lock, etc.) but the wrapper that clears `in_flight` on exit didn\'t run.',
+      "**Cause.** A job hung mid-execution (LLM call timeout, file lock, etc.) but the wrapper that clears `in_flight` on exit didn't run.",
       '',
       '**Fix.** Boot-time logic in the scheduler clears stuck flags. To resume the job without restarting the whole daemon, identify the row in `runtime_jobs` and manually set `in_flight=false`. To restart the daemon: kill the pid; launchd respawns.',
     ];

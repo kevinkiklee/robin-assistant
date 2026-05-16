@@ -4,8 +4,15 @@
 // Contents: { pid, started_at, heartbeat_at }
 // Stale: heartbeat_at older than STALE_AFTER_MS is reclaimed with a warning.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
 
 const STALE_AFTER_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -72,7 +79,12 @@ export function acquire(dir, name, { now = () => Date.now(), pid = process.pid }
  * Wrap an async repair function so the lock heartbeats while it runs.
  * Caps repair at the given timeout (default 30s).
  */
-export async function withLock(dir, name, fn, { timeoutMs = 30_000, intervalMs = HEARTBEAT_INTERVAL_MS } = {}) {
+export async function withLock(
+  dir,
+  name,
+  fn,
+  { timeoutMs = 30_000, intervalMs = HEARTBEAT_INTERVAL_MS } = {},
+) {
   const handle = acquire(dir, name);
   if (!handle) {
     return { acquired: false };

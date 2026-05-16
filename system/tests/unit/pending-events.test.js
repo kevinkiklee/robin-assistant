@@ -27,9 +27,7 @@ async function fresh() {
 }
 
 async function makeEvent(db, source, content) {
-  await db
-    .query(surql`CREATE events CONTENT ${{ source, content }}`)
-    .collect();
+  await db.query(surql`CREATE events CONTENT ${{ source, content }}`).collect();
 }
 
 test('listPendingEvents skips source=agent_internal', async () => {

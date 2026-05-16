@@ -64,7 +64,7 @@ export default {
       '',
       '**Cause.** The SurrealDB process (`surreal start`) is not running, or the loopback port has shifted.',
       '',
-      '**Fix.** No auto-repair. Investigate: `launchctl list io.robin-assistant.surreal`, `ps aux | grep surreal`, the surreal log under `<user-data>/data/snapshots/`. This is correctly user-actionable — Robin should not be silently restarting another process\'s daemon.',
+      "**Fix.** No auto-repair. Investigate: `launchctl list io.robin-assistant.surreal`, `ps aux | grep surreal`, the surreal log under `<user-data>/data/snapshots/`. This is correctly user-actionable — Robin should not be silently restarting another process's daemon.",
     ].join('\n');
   },
 };

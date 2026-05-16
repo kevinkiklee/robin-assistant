@@ -3,8 +3,8 @@
 // interval.
 
 import { paths } from '../../config/data-store.js';
-import { makeCtx } from './ctx.js';
 import { isRunnerActive, readInvariantsFlag } from './config.js';
+import { makeCtx } from './ctx.js';
 import { run } from './runner.js';
 
 /**

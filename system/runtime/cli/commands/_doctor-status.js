@@ -4,12 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readDaemonState } from '../../../config/daemon-state.js';
-import {
-  paths,
-  readHostIntegrations,
-  readPointer,
-  robinHome,
-} from '../../../config/data-store.js';
+import { paths, readHostIntegrations, readPointer, robinHome } from '../../../config/data-store.js';
 import { defaultDbUrl } from '../../../data/db/client.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import {

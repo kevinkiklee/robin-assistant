@@ -136,7 +136,15 @@ test('finally fallback clears in_flight if catch-path write throws', async () =>
   const db = await fresh();
   await seedIntegration(db, 'gmail');
   const registry = new Map([
-    ['gmail', { cadence_ms: 60_000, sync: async () => { throw new Error('sync boom'); } }],
+    [
+      'gmail',
+      {
+        cadence_ms: 60_000,
+        sync: async () => {
+          throw new Error('sync boom');
+        },
+      },
+    ],
   ]);
 
   // Wrap db so the first UPSERT after the in_flight=true setter (i.e. the
@@ -146,7 +154,7 @@ test('finally fallback clears in_flight if catch-path write throws', async () =>
   let upsertCount = 0;
   let failedOnce = false;
   db.query = (sql, ...rest) => {
-    const text = typeof sql === 'string' ? sql : sql?.query ?? '';
+    const text = typeof sql === 'string' ? sql : (sql?.query ?? '');
     const isUpsert = /UPSERT|UPDATE/i.test(text);
     if (isUpsert) {
       upsertCount++;

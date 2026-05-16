@@ -20,7 +20,10 @@ export async function runEnable(ctx, names) {
   const byName = new Map(manifests.map((m) => [m.name, m]));
   const unknown = names.filter((n) => !byName.has(n));
   if (unknown.length > 0) {
-    const available = manifests.map((m) => m.name).sort().join(', ');
+    const available = manifests
+      .map((m) => m.name)
+      .sort()
+      .join(', ');
     stderrLines.push(
       `error: integration '${unknown.join("', '")}' not installed; available: ${available}`,
     );

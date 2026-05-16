@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import installPointerPresent from '../../../runtime/invariants/install.pointer-present.js';
 import { makeTestCtx, withTempStateFile } from '../../helpers/invariant-fixtures.js';
@@ -21,7 +21,10 @@ function clearEnv() {
 }
 
 function writePointer(p, home, version = POINTER_VERSION) {
-  writeFileSync(p, JSON.stringify({ version, home, installedAt: '2026-05-15T00:00:00Z', installedBy: 'test' }));
+  writeFileSync(
+    p,
+    JSON.stringify({ version, home, installedAt: '2026-05-15T00:00:00Z', installedBy: 'test' }),
+  );
 }
 
 test('check passes when single pointer (env override) exists', () =>

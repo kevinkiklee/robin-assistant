@@ -32,7 +32,8 @@ export default {
   level: 'critical',
   surface: 'daemon',
   phase: 'meta',
-  description: 'Daemon heartbeat is writing the invariants-state.json file within 2× the heartbeat interval.',
+  description:
+    'Daemon heartbeat is writing the invariants-state.json file within 2× the heartbeat interval.',
 
   runWhen: {
     // Self-check: cannot run from heartbeat (it IS the heartbeat).
@@ -89,7 +90,7 @@ export default {
       '',
       '**Symptom.** `robin doctor` shows stale data; cached invariant results all say "checked 4h ago"; daemon log silent.',
       '',
-      '**Cause.** Daemon is wedged or has been killed without launchd respawning it. The heartbeat tick — which writes `user-data/runtime/invariants-state.json` every 60s — hasn\'t fired.',
+      "**Cause.** Daemon is wedged or has been killed without launchd respawning it. The heartbeat tick — which writes `user-data/runtime/invariants-state.json` every 60s — hasn't fired.",
       '',
       '**Fix.** Invariant SIGTERMs the daemon PID (read from daemon-state.json). launchd respawns it. One attempt; subsequent failure → manual. This is the same one-shot pattern as `mcp.daemon_responds` and for the same reason: prevent the old plist KeepAlive infinite-respawn loop.',
     ];

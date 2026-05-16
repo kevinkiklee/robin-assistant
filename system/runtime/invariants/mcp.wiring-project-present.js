@@ -81,7 +81,10 @@ export default {
     const port = await readPort();
     if (port == null) return { repaired: false, error: 'no_configured_port' };
     const existing = readJson(p) ?? {};
-    const next = { ...existing, mcpServers: { ...(existing.mcpServers ?? {}), [ROBIN_KEY]: canonicalEntry(port) } };
+    const next = {
+      ...existing,
+      mcpServers: { ...(existing.mcpServers ?? {}), [ROBIN_KEY]: canonicalEntry(port) },
+    };
     if (ctx?.dryRun) {
       return { repaired: false, action: 'would_write_project_mcp', plan: { path: p, port } };
     }
@@ -104,7 +107,10 @@ export default {
       '**Fix.** Invariant writes the canonical entry directly: `{"type": "sse", "url": "http://127.0.0.1:<port>/sse"}` where `<port>` comes from `runtime:config.mcp.port`.',
     ];
     if (lastResult?.evidence?.have && lastResult?.evidence?.want) {
-      lines.push('', `**URL mismatch:** have \`${lastResult.evidence.have}\` want \`${lastResult.evidence.want}\``);
+      lines.push(
+        '',
+        `**URL mismatch:** have \`${lastResult.evidence.have}\` want \`${lastResult.evidence.want}\``,
+      );
     }
     return lines.join('\n');
   },

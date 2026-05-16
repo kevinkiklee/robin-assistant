@@ -71,7 +71,10 @@ export default {
       '**Fix.** Use the pinned Node version directly: `nvm use <pinned>` or `asdf install nodejs <pinned>`. After switching, rebuild native addons: `cd node_modules/better-sqlite3 && node-gyp rebuild --target=<pinned>`.',
     ];
     if (lastResult?.evidence) {
-      lines.push('', `**Versions:** pinned=\`${lastResult.evidence.pinned}\` running=\`${lastResult.evidence.running}\``);
+      lines.push(
+        '',
+        `**Versions:** pinned=\`${lastResult.evidence.pinned}\` running=\`${lastResult.evidence.running}\``,
+      );
     }
     return lines.join('\n');
   },

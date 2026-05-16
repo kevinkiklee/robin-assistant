@@ -12,7 +12,5 @@ import { refreshAgentsMdFiles } from '../../../runtime/install/agents-md-refresh
 
 export default async function refreshClaudeMd() {
   const results = await refreshAgentsMdFiles();
-  return JSON.stringify(
-    Object.fromEntries(results.map((r) => [r.path, r.action])),
-  );
+  return JSON.stringify(Object.fromEntries(results.map((r) => [r.path, r.action])));
 }

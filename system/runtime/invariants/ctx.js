@@ -12,10 +12,12 @@ const noopLog = {
 };
 
 function makeStderrLog(prefix) {
-  const emit = (level) => (...args) => {
-    const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
-    process.stderr.write(`[${prefix}:${level}] ${line}\n`);
-  };
+  const emit =
+    (level) =>
+    (...args) => {
+      const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      process.stderr.write(`[${prefix}:${level}] ${line}\n`);
+    };
   return {
     info: emit('info'),
     warn: emit('warn'),

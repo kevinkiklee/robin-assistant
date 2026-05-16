@@ -55,7 +55,9 @@ function readJsonOrNull(path) {
 function isCommandPresent(settings, phase, command) {
   const arr = settings?.hooks?.[phase];
   if (!Array.isArray(arr)) return false;
-  return arr.some((entry) => Array.isArray(entry?.hooks) && entry.hooks.some((h) => h?.command === command));
+  return arr.some(
+    (entry) => Array.isArray(entry?.hooks) && entry.hooks.some((h) => h?.command === command),
+  );
 }
 
 export default {
@@ -65,7 +67,8 @@ export default {
   level: 'warn',
   surface: 'runtime',
   phase: 'runtime',
-  description: 'Robin\'s SessionStart/Stop/UserPromptSubmit/PreToolUse hooks are present in ~/.claude/settings.json and ~/.gemini/settings.json.',
+  description:
+    "Robin's SessionStart/Stop/UserPromptSubmit/PreToolUse hooks are present in ~/.claude/settings.json and ~/.gemini/settings.json.",
 
   runWhen: {
     boot: { enabled: true },
@@ -124,7 +127,11 @@ export default {
         packageRoot: packageRootDir(),
       });
       const added = Object.values(result?.addedByHost ?? {}).reduce((a, b) => a + b, 0);
-      return { repaired: added > 0, action: 'reinstalled_hooks', evidence: { added, byHost: result?.addedByHost } };
+      return {
+        repaired: added > 0,
+        action: 'reinstalled_hooks',
+        evidence: { added, byHost: result?.addedByHost },
+      };
     } catch (e) {
       return { repaired: false, error: e.message ?? 'reinstall_failed' };
     }
@@ -143,7 +150,10 @@ export default {
       '**B-flag (B-4):** self-installing hooks at SessionStart would drop this invariant to detection-only. Performance budget for SessionStart self-verify must be measured first.',
     ];
     if (lastResult?.evidence?.missing?.length) {
-      lines.push('', `**Missing:** ${lastResult.evidence.missing.map((m) => `${m.host}/${m.phase}`).join(', ')}`);
+      lines.push(
+        '',
+        `**Missing:** ${lastResult.evidence.missing.map((m) => `${m.host}/${m.phase}`).join(', ')}`,
+      );
     }
     return lines.join('\n');
   },

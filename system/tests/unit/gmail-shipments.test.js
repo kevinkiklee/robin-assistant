@@ -100,23 +100,20 @@ test('gmail_shipments tool buckets multiple events and dedupes', async () => {
   const seeds = [
     {
       source: 'gmail',
-      content:
-        'Subject: Out for delivery — order #99 | From: UPS <noreply@ups.com>\nETA today.',
+      content: 'Subject: Out for delivery — order #99 | From: UPS <noreply@ups.com>\nETA today.',
       ts: new Date(),
       meta: { gmail_id: 'a' },
     },
     {
       // Duplicate dispatch from the same carrier+item should collapse.
       source: 'gmail',
-      content:
-        'Subject: Out for delivery — order #99 | From: UPS <noreply@ups.com>\nETA today.',
+      content: 'Subject: Out for delivery — order #99 | From: UPS <noreply@ups.com>\nETA today.',
       ts: new Date(Date.now() - 60_000),
       meta: { gmail_id: 'b' },
     },
     {
       source: 'gmail',
-      content:
-        'Subject: Delivered — your B&H order | From: orders@bhphotovideo.com\n',
+      content: 'Subject: Delivered — your B&H order | From: orders@bhphotovideo.com\n',
       ts: new Date(Date.now() - 86_400_000),
       meta: { gmail_id: 'c' },
     },

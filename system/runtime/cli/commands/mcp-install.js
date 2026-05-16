@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { readDaemonState } from '../../../config/daemon-state.js';
 import {
   packageRootDir,

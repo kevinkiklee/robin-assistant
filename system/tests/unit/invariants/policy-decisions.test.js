@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emptyEntry } from '../../../runtime/invariants/state.js';
 import { decideRepair, manualAlertSet } from '../../../runtime/invariants/policy-decisions.js';
+import { emptyEntry } from '../../../runtime/invariants/state.js';
 
 const inv = (level) => ({ name: `test.${level}`, level, runWhen: {} });
 
@@ -36,7 +36,11 @@ test('manualAlertSet picks failing manual invariants', () => {
   const invariants = [inv('critical'), inv('warn')];
   const state = {
     invariants: {
-      'test.critical': { ...emptyEntry(), consecutive_failures: 4, last_result_summary: { ok: false } },
+      'test.critical': {
+        ...emptyEntry(),
+        consecutive_failures: 4,
+        last_result_summary: { ok: false },
+      },
       'test.warn': { ...emptyEntry(), last_result_summary: { ok: true } },
     },
   };

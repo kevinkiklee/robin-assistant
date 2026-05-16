@@ -126,10 +126,13 @@ export default {
       '',
       '**Cause.** One or more integrations have not synced within 2× their declared cadence — auth expired, dispatcher disabled, host detection failed, or the source API is down.',
       '',
-      '**Fix.** The next dispatcher tick should pick up flagged integrations. If the issue persists past one tick, check `robin integrations status` for the integration\'s last error.',
+      "**Fix.** The next dispatcher tick should pick up flagged integrations. If the issue persists past one tick, check `robin integrations status` for the integration's last error.",
     ];
     if (lastResult?.evidence?.stale_integrations?.length) {
-      lines.push('', `**Stale:** ${lastResult.evidence.stale_integrations.map((s) => s.name).join(', ')}`);
+      lines.push(
+        '',
+        `**Stale:** ${lastResult.evidence.stale_integrations.map((s) => s.name).join(', ')}`,
+      );
     }
     return lines.join('\n');
   },

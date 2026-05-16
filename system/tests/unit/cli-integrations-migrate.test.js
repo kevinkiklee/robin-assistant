@@ -79,11 +79,13 @@ test('migrate moves non-system integrations and auto-enables active ones', async
     seedManifest(sys, 'spotify');
     seedManifest(sys, 'gmail');
     await db
-      .query(surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{
-        integrations: {
-          spotify: { cadence_ms: 60_000, next_run_at: new Date(), consecutive_failures: 0 },
-        },
-      }}`)
+      .query(
+        surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{
+          integrations: {
+            spotify: { cadence_ms: 60_000, next_run_at: new Date(), consecutive_failures: 0 },
+          },
+        }}`,
+      )
       .collect();
 
     const out = await runMigrate({ db, systemDir: sys, userDataDir: user, daemonRunning: false });

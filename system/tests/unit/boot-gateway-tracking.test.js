@@ -17,12 +17,16 @@ test('gateway boot writes runtime:scheduler.gateways[name]', async () => {
     // Simulate what boot.js does after a successful gateway start: read
     // scheduler row, merge gateways[name], upsert.
     const name = 'discord';
-    const [rows] = await db.query(surql`SELECT * FROM type::record('runtime', 'scheduler')`).collect();
+    const [rows] = await db
+      .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+      .collect();
     const value = rows[0]?.value ?? {};
     const gateways = value.gateways ?? {};
     gateways[name] = { booted_at: new Date() };
     await db
-      .query(surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, gateways }}`)
+      .query(
+        surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, gateways }}`,
+      )
       .collect();
     const [verify] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
@@ -31,7 +35,10 @@ test('gateway boot writes runtime:scheduler.gateways[name]', async () => {
     // SurrealDB deserializes datetimes to its own DateTime class, not JS Date —
     // assert that a timestamp value is present and parseable instead.
     assert.ok(bootedAt, 'booted_at should be present');
-    assert.ok(!Number.isNaN(new Date(String(bootedAt)).getTime()), 'booted_at should be a valid timestamp');
+    assert.ok(
+      !Number.isNaN(new Date(String(bootedAt)).getTime()),
+      'booted_at should be a valid timestamp',
+    );
   } finally {
     await close(db);
   }
@@ -41,12 +48,16 @@ test('multiple gateway boots accumulate in runtime:scheduler.gateways', async ()
   const db = await freshDb();
   try {
     for (const name of ['discord', 'foo', 'bar']) {
-      const [rows] = await db.query(surql`SELECT * FROM type::record('runtime', 'scheduler')`).collect();
+      const [rows] = await db
+        .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
+        .collect();
       const value = rows[0]?.value ?? {};
       const gateways = value.gateways ?? {};
       gateways[name] = { booted_at: new Date() };
       await db
-        .query(surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, gateways }}`)
+        .query(
+          surql`UPSERT type::record('runtime', 'scheduler') SET value = ${{ ...value, gateways }}`,
+        )
         .collect();
     }
     const [verify] = await db

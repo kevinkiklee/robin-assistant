@@ -7,7 +7,15 @@
 // renamed to <path>.<iso8601>.old and a fresh file is opened. Files
 // older than RETAIN_DAYS are pruned on each append.
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 const ROTATE_BYTES = 1 * 1024 * 1024; // 1 MB

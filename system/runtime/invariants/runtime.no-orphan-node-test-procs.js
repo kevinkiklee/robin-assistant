@@ -44,7 +44,8 @@ function parseEtime(s) {
   const parts = s.split(/[-:]/).map((p) => Number(p));
   if (parts.length === 2) return (parts[0] * 60 + parts[1]) * 1000;
   if (parts.length === 3) return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
-  if (parts.length === 4) return (parts[0] * 86400 + parts[1] * 3600 + parts[2] * 60 + parts[3]) * 1000;
+  if (parts.length === 4)
+    return (parts[0] * 86400 + parts[1] * 3600 + parts[2] * 60 + parts[3]) * 1000;
   return 0;
 }
 
@@ -86,7 +87,8 @@ export default {
   level: 'info',
   surface: 'runtime',
   phase: 'runtime',
-  description: 'No orphaned (ppid=1) node --test processes older than 10 minutes, and no stale robin-test tmpdirs.',
+  description:
+    'No orphaned (ppid=1) node --test processes older than 10 minutes, and no stale robin-test tmpdirs.',
 
   runWhen: {
     boot: { enabled: false },
@@ -154,7 +156,7 @@ export default {
       '',
       '**Cause.** `@surrealdb/node` v3 embedded engines register NAPI threadsafe handles that prevent the event loop from exiting after the test runner completes. Without `--test-force-exit`, the process hangs forever.',
       '',
-      '**Fix.** Use `pnpm test:file` (or any script in `package.json` — they all include `--test-force-exit`). For cleanup of existing orphans, this invariant\'s `repair --apply` kills processes with `ppid=1` and `--test` in their cmdline older than 10 minutes, plus removes stale `robin-multi-*`, `robin-ws-*`, and `robin-test-*` directories.',
+      "**Fix.** Use `pnpm test:file` (or any script in `package.json` — they all include `--test-force-exit`). For cleanup of existing orphans, this invariant's `repair --apply` kills processes with `ppid=1` and `--test` in their cmdline older than 10 minutes, plus removes stale `robin-multi-*`, `robin-ws-*`, and `robin-test-*` directories.",
     ];
     if (lastResult?.evidence?.procs?.length) {
       lines.push('', `**Orphan PIDs:** ${lastResult.evidence.procs.map((p) => p.pid).join(', ')}`);

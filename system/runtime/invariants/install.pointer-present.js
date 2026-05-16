@@ -19,7 +19,7 @@
 //
 // B-candidate: B-1 (env-var ROBIN_HOME discovery eliminates this invariant).
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { POINTER_VERSION, pointerSearchPaths } from '../../config/data-store.js';
 
@@ -36,7 +36,7 @@ function readPointerFile(p) {
     }
     return { ok: true, payload: parsed };
   } catch (e) {
-    return { ok: false, error: e.code === 'ENOENT' ? 'missing' : e.message ?? 'unreadable' };
+    return { ok: false, error: e.code === 'ENOENT' ? 'missing' : (e.message ?? 'unreadable') };
   }
 }
 
@@ -52,7 +52,8 @@ export default {
   level: 'critical',
   surface: 'install',
   phase: 'paths',
-  description: 'Robin install pointer file exists, parses, and is consistent across primary + fallback locations.',
+  description:
+    'Robin install pointer file exists, parses, and is consistent across primary + fallback locations.',
 
   runWhen: {
     boot: { enabled: true },
@@ -93,7 +94,11 @@ export default {
       return {
         ok: false,
         error: missing.length > 0 ? 'pointer_partial_missing' : 'pointer_partial_malformed',
-        evidence: { canonical: present[0].read.payload.home, missing: missing.map((r) => r.path), malformed: malformed.map((r) => r.path) },
+        evidence: {
+          canonical: present[0].read.payload.home,
+          missing: missing.map((r) => r.path),
+          malformed: malformed.map((r) => r.path),
+        },
       };
     }
 
@@ -110,7 +115,7 @@ export default {
     }
 
     // Canonical = primary (.robin-home, paths[0]) if present, else first survivor.
-    const canonical = (reads[0]?.read.ok ? reads[0].read.payload : present[0].read.payload);
+    const canonical = reads[0]?.read.ok ? reads[0].read.payload : present[0].read.payload;
 
     if (ctx?.dryRun) {
       return {
@@ -118,7 +123,9 @@ export default {
         action: 'would_sync_pointers',
         plan: {
           canonical_home: canonical.home,
-          targets: reads.filter((r) => !r.read.ok || r.read.payload.home !== canonical.home).map((r) => r.path),
+          targets: reads
+            .filter((r) => !r.read.ok || r.read.payload.home !== canonical.home)
+            .map((r) => r.path),
         },
       };
     }
@@ -147,7 +154,14 @@ export default {
       '**Fix.** Robin maintains both pointer files. The invariant auto-syncs missing or divergent pointers from the surviving one. If both are missing, the invariant fails critical — restoring requires `robin install`.',
     ];
     if (lastResult?.evidence) {
-      lines.push('', '**Current evidence:**', '', '```json', JSON.stringify(lastResult.evidence, null, 2), '```');
+      lines.push(
+        '',
+        '**Current evidence:**',
+        '',
+        '```json',
+        JSON.stringify(lastResult.evidence, null, 2),
+        '```',
+      );
     }
     return lines.join('\n');
   },

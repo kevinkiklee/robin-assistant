@@ -14,7 +14,8 @@ export default {
   level: 'critical',
   surface: 'db',
   phase: 'db',
-  description: 'Shared DB client is authenticated (a probe SELECT succeeds without anonymous-access error).',
+  description:
+    'Shared DB client is authenticated (a probe SELECT succeeds without anonymous-access error).',
 
   runWhen: {
     boot: { enabled: true },

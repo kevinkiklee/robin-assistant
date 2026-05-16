@@ -16,7 +16,10 @@ import dbPendingRecallLogBounded from '../../../runtime/invariants/db.pending-re
 import schedulerNoStuckInFlight from '../../../runtime/invariants/scheduler.no-stuck-in-flight.js';
 import { makeTestCtx } from '../../helpers/invariant-fixtures.js';
 
-const tmpRoot = join(tmpdir(), `robin-db-inv-${process.pid}-${Math.random().toString(36).slice(2)}`);
+const tmpRoot = join(
+  tmpdir(),
+  `robin-db-inv-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
 mkdirSync(tmpRoot, { recursive: true });
 process.env.ROBIN_HOME = tmpRoot;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -95,16 +98,29 @@ test('db.embedder_profile_match returns no_active_profile on fresh db', async ()
     // Fresh DB → no runtime:embedder row → no active profile
     assert.equal(r.ok, false);
     // Either 'no_active_profile' or a read error — both indicate unconfigured state
-    assert.ok(['no_active_profile', 'read_active_profile_failed', 'table_missing'].some((e) => r.error?.startsWith(e)) || r.error.includes('failed'),
-      `unexpected error: ${r.error}`);
+    assert.ok(
+      ['no_active_profile', 'read_active_profile_failed', 'table_missing'].some((e) =>
+        r.error?.startsWith(e),
+      ) || r.error.includes('failed'),
+      `unexpected error: ${r.error}`,
+    );
   } finally {
     await close(db);
   }
 });
 
 test('every new invariant exports explain() that returns markdown', () => {
-  for (const inv of [dbDaemonReachable, dbAuthenticated, dbEmbedderProfileMatch, dbPendingRecallLogBounded, schedulerNoStuckInFlight]) {
+  for (const inv of [
+    dbDaemonReachable,
+    dbAuthenticated,
+    dbEmbedderProfileMatch,
+    dbPendingRecallLogBounded,
+    schedulerNoStuckInFlight,
+  ]) {
     const md = inv.explain();
-    assert.ok(typeof md === 'string' && md.includes(inv.name), `${inv.name}.explain missing or wrong shape`);
+    assert.ok(
+      typeof md === 'string' && md.includes(inv.name),
+      `${inv.name}.explain missing or wrong shape`,
+    );
   }
 });

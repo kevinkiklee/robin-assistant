@@ -9,10 +9,10 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { dispatch } from '../../../cognition/jobs/embeddings-ops.js';
 import { writeConfig } from '../../../config/paths.js';
 import { close, connect } from '../../../data/db/client.js';
 import { runMigrations } from '../../../data/db/migrate.js';
-import { dispatch } from '../../../cognition/jobs/embeddings-ops.js';
 import mcpWiringGlobalPresent from '../../../runtime/invariants/mcp.wiring-global-present.js';
 
 const tmpRoot = join(tmpdir(), `robin-bx-${process.pid}-${Math.random().toString(36).slice(2)}`);

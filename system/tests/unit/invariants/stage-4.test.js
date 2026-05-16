@@ -1,21 +1,22 @@
 // Tests for the three brand-new invariants (no legacy probe to compare against).
 
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, utimesSync } from 'node:fs';
+import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import daemonHeartbeating from '../../../runtime/invariants/daemon.heartbeating.js';
 import runtimeHooksSettingsPresent from '../../../runtime/invariants/runtime.hooks-settings-present.js';
 import runtimeNodeVersionPinned from '../../../runtime/invariants/runtime.node-version-pinned.js';
-import { makeTestCtx } from '../../helpers/invariant-fixtures.js';
 
 const tmpRoot = join(tmpdir(), `robin-s4-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(tmpRoot, { recursive: true });
 process.env.ROBIN_HOME = tmpRoot;
 process.env.ROBIN_PACKAGE_ROOT_OVERRIDE = tmpRoot;
 mkdirSync(join(tmpRoot, 'system', 'bin'), { recursive: true });
-writeFileSync(join(tmpRoot, 'system', 'bin', 'robin-hook.sh'), '#!/usr/bin/env bash\n', { mode: 0o755 });
+writeFileSync(join(tmpRoot, 'system', 'bin', 'robin-hook.sh'), '#!/usr/bin/env bash\n', {
+  mode: 0o755,
+});
 
 // --- runtime.hooks_settings_present ---
 
@@ -55,7 +56,9 @@ test('hooks_settings_present: check passes when all expected commands present', 
   const shim = join(tmpRoot, 'system', 'bin', 'robin-hook.sh');
   const settings = {
     hooks: {
-      PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: `${shim} discretion` }] }],
+      PreToolUse: [
+        { matcher: 'Bash', hooks: [{ type: 'command', command: `${shim} discretion` }] },
+      ],
       UserPromptSubmit: [{ hooks: [{ type: 'command', command: `${shim} intuition` }] }],
       SessionStart: [{ hooks: [{ type: 'command', command: `${shim} session-start` }] }],
       Stop: [{ hooks: [{ type: 'command', command: `${shim} stop` }] }],

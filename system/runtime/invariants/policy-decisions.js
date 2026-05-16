@@ -32,7 +32,7 @@ export function manualAlertSet(invariants, state) {
   const alerts = [];
   for (const inv of invariants) {
     const entry = state.invariants[inv.name];
-    if (!entry || !entry.last_result_summary || entry.last_result_summary.ok) continue;
+    if (!entry?.last_result_summary || entry.last_result_summary.ok) continue;
     if (decideRepair(inv, entry) === 'manual') alerts.push(inv);
   }
   return alerts;

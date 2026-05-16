@@ -36,7 +36,11 @@ export default {
         .collect();
       const n = rows?.[0]?.n ?? 0;
       if (n > WARN_THRESHOLD) {
-        return { ok: false, error: 'stale_pending_excessive', evidence: { count: n, threshold: WARN_THRESHOLD, cutoff: cutoff.toISOString() } };
+        return {
+          ok: false,
+          error: 'stale_pending_excessive',
+          evidence: { count: n, threshold: WARN_THRESHOLD, cutoff: cutoff.toISOString() },
+        };
       }
       return { ok: true, evidence: { count: n, threshold: WARN_THRESHOLD } };
     } catch (e) {
@@ -48,14 +52,17 @@ export default {
     const lines = [
       '### `db.pending_recall_log_bounded`',
       '',
-      '**Symptom.** `recall_log` table accumulates rows with `outcome=\'pending\'` older than 7 days.',
+      "**Symptom.** `recall_log` table accumulates rows with `outcome='pending'` older than 7 days.",
       '',
       '**Cause.** The `reinforce-recall` internal job is not running, or is silently failing. Without it, recall hits never get attributed and `signal_count` never increments.',
       '',
       '**Fix.** Investigate. Common causes: scheduler bucket disabled; daemon was down for an extended period; recall_log rows wedged on a malformed payload. Manual triage — purging the rows or restarting reinforcement is destructive without context.',
     ];
     if (lastResult?.evidence?.count != null) {
-      lines.push('', `**Current evidence:** ${lastResult.evidence.count} pending rows older than 7d (threshold ${lastResult.evidence.threshold}).`);
+      lines.push(
+        '',
+        `**Current evidence:** ${lastResult.evidence.count} pending rows older than 7d (threshold ${lastResult.evidence.threshold}).`,
+      );
     }
     return lines.join('\n');
   },

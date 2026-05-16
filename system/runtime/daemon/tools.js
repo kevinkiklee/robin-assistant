@@ -1,5 +1,5 @@
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
-import { readIntegrationsState, isEnabled } from '../../data/runtime/integrations-state.js';
+import { isEnabled, readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';

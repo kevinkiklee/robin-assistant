@@ -42,7 +42,8 @@ export default {
   level: 'warn',
   surface: 'mcp',
   phase: 'mcp',
-  description: 'Global ~/.claude.json has the robin SSE entry (convenience; project-local entry is the source of truth).',
+  description:
+    'Global ~/.claude.json has the robin SSE entry (convenience; project-local entry is the source of truth).',
 
   runWhen: {
     boot: { enabled: false },
@@ -60,7 +61,8 @@ export default {
     if (!parsed) return { ok: false, error: 'unparseable' };
     const entry = parsed?.mcpServers?.[ROBIN_KEY];
     if (!entry) return { ok: false, error: 'robin_entry_missing' };
-    if (entry.type !== 'sse') return { ok: false, error: 'wrong_type', evidence: { type: entry.type } };
+    if (entry.type !== 'sse')
+      return { ok: false, error: 'wrong_type', evidence: { type: entry.type } };
     const wantUrl = canonicalEntry(port).url;
     if (entry.url !== wantUrl) {
       return { ok: false, error: 'url_mismatch', evidence: { have: entry.url, want: wantUrl } };
@@ -73,13 +75,13 @@ export default {
   // Detection-only surfaces the drift; project-local .mcp.json covers
   // in-project sessions, which is where Robin's tools matter.
 
-  explain(lastResult) {
+  explain(_lastResult) {
     const lines = [
       '### `mcp.wiring_global_present`',
       '',
-      '**Symptom.** Robin\'s MCP tools are absent in agent sessions launched outside the project directory.',
+      "**Symptom.** Robin's MCP tools are absent in agent sessions launched outside the project directory.",
       '',
-      '**Cause.** `~/.claude.json` has no `mcpServers.robin` entry, or the URL drifted from the daemon\'s configured port. Claude Code itself rewrites this file from an in-memory copy without locking, so an unrelated write can clobber Robin\'s entry.',
+      "**Cause.** `~/.claude.json` has no `mcpServers.robin` entry, or the URL drifted from the daemon's configured port. Claude Code itself rewrites this file from an in-memory copy without locking, so an unrelated write can clobber Robin's entry.",
       '',
       '**Fix (manual).** Add the entry by hand:',
       '```json',

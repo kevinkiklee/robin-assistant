@@ -86,7 +86,7 @@ function renderOutboundSection(integrations) {
     "1. Per-tool rate limit; refuses with `{ ok: false, reason: 'rate_limited', wait_seconds: N }` — wait at least `wait_seconds` before retrying.",
   );
   lines.push(
-    '2. Outbound-policy: text content (issue/comment bodies, playlist names, message content) is checked for PII / secret / verbatim-untrusted-quote leakage. Blocks return `{ ok: false, reason: \'outbound_blocked\', blocked_by: \'<policy reason>\' }`; DON\'T retry by paraphrasing to bypass the guard — surface the block to the user.',
+    "2. Outbound-policy: text content (issue/comment bodies, playlist names, message content) is checked for PII / secret / verbatim-untrusted-quote leakage. Blocks return `{ ok: false, reason: 'outbound_blocked', blocked_by: '<policy reason>' }`; DON'T retry by paraphrasing to bypass the guard — surface the block to the user.",
   );
   lines.push('3. The actual API call.');
   lines.push('');
