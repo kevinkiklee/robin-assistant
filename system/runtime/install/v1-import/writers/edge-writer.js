@@ -10,6 +10,7 @@
 import { BoundQuery } from 'surrealdb';
 import {
   canonicalEndpoints,
+  recordIdFromString,
   recordStringId,
   validateEdge,
 } from '../../../../cognition/memory/edge-registry.js';
@@ -26,6 +27,10 @@ export async function upsertEdge(db, { from, to, kind, context, meta = {} }) {
   const v = validateEdge(from, to, kind);
   if (!v.ok) throw new Error(`upsertEdge: ${v.errors.join('; ')}`);
   const [cFrom, cTo] = canonicalEndpoints(from, to, kind);
+  // INSERT RELATION rejects string bindings on `in`/`out` — see comment in
+  // `cognition/memory/store.js#relateAll`. Coerce to RecordId before binding.
+  const inRec = recordIdFromString(cFrom);
+  const outRec = recordIdFromString(cTo);
 
   // Compute the merged meta JS-side. For `contexts`, accumulate (set-union).
   // For other meta keys, callsite values overwrite prior.
@@ -38,8 +43,8 @@ export async function upsertEdge(db, { from, to, kind, context, meta = {} }) {
       .query(
         new BoundQuery('SELECT meta FROM type::record("edges", [$kind, $inRec, $outRec])', {
           kind,
-          inRec: cFrom,
-          outRec: cTo,
+          inRec,
+          outRec,
         }),
       )
       .collect();
@@ -55,7 +60,7 @@ export async function upsertEdge(db, { from, to, kind, context, meta = {} }) {
   const mergedMeta = { ...priorMeta, ...baseMeta };
   if (mergedContexts.length > 0) mergedMeta.contexts = mergedContexts;
 
-  const bindings = { kind, inRec: cFrom, outRec: cTo, meta: mergedMeta };
+  const bindings = { kind, inRec, outRec, meta: mergedMeta };
   const sql = `INSERT RELATION INTO edges {
       id: [$kind, $inRec, $outRec],
       in: $inRec, out: $outRec, kind: $kind,

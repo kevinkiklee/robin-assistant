@@ -102,6 +102,16 @@ function recordIdKey(ref) {
  * `FROM "events:foo"` ends up iterating the characters of the string and
  * returning an array-shaped row with numeric keys, not the events row.
  *
+ * Unsafe-key unwrap: SurrealDB renders id keys with chars outside
+ * `[A-Za-z0-9_]` (hyphens, spaces, dots, etc.) as `tb:⟨key⟩` or
+ * ``tb:`key` ``. The naive `slice(idx+1)` form would treat the wrapping
+ * chars as part of the key, producing a different RecordId on round-trip —
+ * a query for `events:⟨daily_briefing_2026-05-16⟩` then looks up
+ * `events:⟨⟨daily_briefing_2026-05-16⟩⟩` (double-wrapped) and gets nothing.
+ * Strip a single layer of `⟨…⟩` or `` `…` `` wrapping if present so
+ * `String(recordId) -> recordIdFromString -> equivalent recordId` is
+ * lossless for any record SurrealDB emits.
+ *
  * Pass-through for non-strings so this helper is safe to wrap any id.
  */
 export function recordIdFromString(ref) {
@@ -109,7 +119,19 @@ export function recordIdFromString(ref) {
   if (typeof ref !== 'string') return ref;
   const idx = ref.indexOf(':');
   if (idx <= 0) throw new Error(`recordIdFromString: malformed record id '${ref}'`);
-  return new RecordId(ref.slice(0, idx), ref.slice(idx + 1));
+  const tb = ref.slice(0, idx);
+  let id = ref.slice(idx + 1);
+  if (id.length >= 2) {
+    const first = id.charCodeAt(0);
+    const last = id.charCodeAt(id.length - 1);
+    // ⟨ U+27E8, ⟩ U+27E9 — SurrealDB's mathematical-bracket unsafe-key form.
+    if (first === 0x27e8 && last === 0x27e9) {
+      id = id.slice(1, -1);
+    } else if (id[0] === '`' && id[id.length - 1] === '`') {
+      id = id.slice(1, -1);
+    }
+  }
+  return new RecordId(tb, id);
 }
 
 /**

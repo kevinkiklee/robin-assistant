@@ -118,3 +118,25 @@ test('relateAll gives up after exhausting retries on persistent conflict', async
 // `if (!isTxConflict(e)) break;` in store.js relateAll. The retry test above
 // already proves the conflict path; the non-conflict path is a single branch
 // that doesn't warrant a separate proxy test.
+
+test('relateAll accepts string endpoints (regression: INSERT RELATION needs RecordId binding)', async () => {
+  // Pre-fix, passing `from`/`to` as strings ("entities:foo") leaked into the
+  // bound `in`/`out` params as Strand values. SurrealDB's INSERT RELATION
+  // rejects Strands with
+  //   "Cannot execute INSERT statement where property 'in' is: 'entities:foo'"
+  // — and because each 50-edge slice runs inside one BEGIN/COMMIT, the failure
+  // dropped every edge in the chunk. The fix coerces strings to RecordId via
+  // `recordIdFromString` at bind time so any caller can pass either form.
+  const db = await fresh();
+  const { aId, bId } = await seedEntities(db);
+  // Stringify both endpoints — emulates the legacy ingest / arc / v1-import
+  // call sites that hand off "tb:id" strings rather than RecordId objects.
+  const fromStr = String(aId);
+  const toStr = String(bId);
+  assert.ok(fromStr.includes(':') && toStr.includes(':'), 'sanity: ids look like tb:id');
+  const r = await relateAll(db, [{ from: fromStr, to: toStr, kind: 'occurs_with' }]);
+  assert.equal(r.ids.length, 1, 'edge must land even when endpoints are strings');
+  const [rows] = await db.query(surql`SELECT * FROM edges WHERE kind = 'occurs_with'`).collect();
+  assert.equal(rows.length, 1);
+  await close(db);
+});

@@ -22,6 +22,7 @@ import {
   canonicalEndpoints,
   EDGE_KIND_REGISTRY,
   isCounterKind,
+  recordIdFromString,
   recordStringId,
   validateEdge,
 } from './edge-registry.js';
@@ -221,6 +222,10 @@ export async function relate(db, from, to, kind, opts = {}) {
   const fromIdStr = recordStringId(cFrom);
   const toIdStr = recordStringId(cTo);
 
+  // Coerce strings to RecordId before binding — see comment in relateAll.
+  const inRec = recordIdFromString(cFrom);
+  const outRec = recordIdFromString(cTo);
+
   if (counter) {
     // TYPE RELATION tables don't accept UPSERT/CREATE for new rows; use
     // INSERT RELATION ... ON DUPLICATE KEY UPDATE for idempotent counter
@@ -235,8 +240,8 @@ export async function relate(db, from, to, kind, opts = {}) {
       .query(
         new BoundQuery(sql, {
           kind,
-          inRec: cFrom,
-          outRec: cTo,
+          inRec,
+          outRec,
         }),
       )
       .collect();
@@ -244,7 +249,7 @@ export async function relate(db, from, to, kind, opts = {}) {
     return { id: row?.id };
   }
 
-  const bindings = { kind, inRec: cFrom, outRec: cTo };
+  const bindings = { kind, inRec, outRec };
   // Build the insert-content map and the on-duplicate update set in parallel,
   // so optional fields like weight/valid_from/etc. apply on both code paths.
   const insertFields = [
@@ -316,8 +321,18 @@ export async function relateAll(db, rows) {
     slice.forEach((row, i) => {
       const [cIn, cOut] = canonicalEndpoints(row.from, row.to, row.kind);
       bindings[`k${i}`] = row.kind;
-      bindings[`i${i}`] = cIn;
-      bindings[`o${i}`] = cOut;
+      // SurrealDB's `INSERT RELATION INTO edges { in: $i, out: $o }` requires
+      // `in` / `out` to bind as Thing (RecordId) values, not plain strings.
+      // A string binding ("entities:foo") triggers
+      //   "Cannot execute INSERT statement where property 'in' is: 'entities:foo'"
+      // — and because each slice runs inside one BEGIN/COMMIT, the failure
+      // cascades into "query was not executed due to a failed transaction"
+      // for every following row, dropping the entire 50-edge chunk.
+      // `recordIdFromString` is a pass-through for non-strings, so safe to
+      // apply unconditionally regardless of which caller (biographer,
+      // ingest, v1-import) produced the row.
+      bindings[`i${i}`] = recordIdFromString(cIn);
+      bindings[`o${i}`] = recordIdFromString(cOut);
       const insertFields = [
         `id: [$k${i}, $i${i}, $o${i}]`,
         `in: $i${i}`,
