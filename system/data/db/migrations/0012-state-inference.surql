@@ -14,8 +14,8 @@
 --
 -- NOTE: fn::freshness mirror is intentionally deferred (spec §3.4) — the
 -- recall pipeline never sorts state_inference by server-side freshness; the
--- client-side decay.js mirror is authoritative. A TODO comment near the
--- HALF_LIFE_BY_KIND_MS function in 0001-init.surql tracks the pairing.
+-- client-side decay.js mirror is authoritative
+-- (system/cognition/memory/decay.js: HALF_LIFE_BY_KIND_MS).
 -- ============================================================================
 
 DEFINE INDEX memos_state_inference_source ON memos FIELDS kind, meta.source, derived_at;
