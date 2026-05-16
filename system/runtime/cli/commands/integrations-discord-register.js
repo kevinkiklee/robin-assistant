@@ -1,7 +1,17 @@
+import { join } from 'node:path';
+import { ensureHome, getIntegrationDirs } from '../../../config/data-store.js';
 import { getSecret, requireSecret } from '../../../config/secrets.js';
-import { registerSlashCommands } from '../../../io/integrations/discord/commands.js';
+import { loadManifests } from '../../../io/integrations/_framework/manifest-loader.js';
 
 export async function integrationsDiscordRegister() {
+  await ensureHome();
+  const { loaded } = await loadManifests(getIntegrationDirs());
+  const m = loaded.find((x) => x.name === 'discord');
+  if (!m || !m._dir) {
+    console.error('discord integration not installed');
+    process.exitCode = 1;
+    return;
+  }
   let bot_token;
   let application_id;
   try {
@@ -26,10 +36,11 @@ export async function integrationsDiscordRegister() {
     );
     process.exit(1);
   }
+  const mod = await import(join(m._dir, 'commands.js'));
   let failures = 0;
   for (const guildId of guildIds) {
     try {
-      await registerSlashCommands({
+      await mod.registerSlashCommands({
         applicationId: application_id,
         guildId,
         botToken: bot_token,
