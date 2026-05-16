@@ -1,6 +1,7 @@
 import { surql } from 'surrealdb';
 import { ensureHome, getIntegrationDirs } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
+import { isEnabled, readIntegrationsState } from '../../../data/runtime/integrations-state.js';
 import { loadManifests } from '../../../io/integrations/_framework/manifest-loader.js';
 
 function formatCadence(m) {
@@ -44,11 +45,13 @@ export async function integrationsList(args = []) {
 
   const db = await connect({ engine: await defaultDbUrl() });
   let rtIntegrations = {};
+  let intState = { states: {}, rev: 0, migrated_at: null };
   try {
     const [rows] = await db
       .query(surql`SELECT * FROM type::record('runtime', 'scheduler')`)
       .collect();
     rtIntegrations = rows[0]?.value?.integrations ?? {};
+    intState = await readIntegrationsState(db);
   } finally {
     await close(db);
   }
@@ -66,6 +69,10 @@ export async function integrationsList(args = []) {
     return;
   }
 
+  console.log(
+    `${'name'.padEnd(15)}  ${'cadence'.padEnd(10)}  ${'status'.padEnd(9)}  ${'source'.padEnd(6)}  last=<timestamp>            ok`,
+  );
+
   for (const m of filteredManifests) {
     const cadence = formatCadence(m);
     const rt = rtIntegrations[m.name];
@@ -75,9 +82,16 @@ export async function integrationsList(args = []) {
         ? 'never'
         : '—';
     const ok = rt?.last_sync_ok === true ? 'OK' : rt?.last_sync_ok === false ? 'FAIL' : '—';
-    console.log(`${m.name.padEnd(15)}  ${cadence.padEnd(10)}  last=${last.padEnd(25)}  ${ok}`);
+    const status = isEnabled(intState, m.name) ? 'enabled' : 'disabled';
+    const source = m._source === 'user-data' ? 'user' : 'system';
+    console.log(
+      `${m.name.padEnd(15)}  ${cadence.padEnd(10)}  ${status.padEnd(9)}  ${source.padEnd(6)}  last=${last.padEnd(25)}  ${ok}`,
+    );
   }
   for (const u of filteredUnavailable) {
-    console.log(`${u.name.padEnd(15)}  ${'unavailable'.padEnd(10)}  ${u.error}`);
+    const source = u.source === 'user-data' ? 'user' : 'system';
+    console.log(
+      `${u.name.padEnd(15)}  ${'—'.padEnd(10)}  ${'unavailable'.padEnd(9)}  ${source.padEnd(6)}  ${u.error}`,
+    );
   }
 }
