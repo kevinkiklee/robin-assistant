@@ -56,15 +56,15 @@ test('approveCandidate (behavior) creates active rule', async () => {
 test('approveCandidate (profile_update) applies payload to profile', async () => {
   const db = await fresh();
   const c = await createCandidate(db, {
-    content: 'name is Kevin',
+    content: 'name is Alice',
     kind: 'profile_update',
     signal_events: [],
-    payload: { fields: { name: 'Kevin' } },
+    payload: { fields: { name: 'Alice' } },
     confidence: 0.9,
   });
   await approveCandidate(db, c.id);
   const p = await getProfile(db);
-  assert.equal(p.name, 'Kevin');
+  assert.equal(p.name, 'Alice');
 
   // History row preserved with kind='profile_update'
   const rules = await listRules(db);

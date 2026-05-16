@@ -17,7 +17,7 @@ test('buildFocusBlock renders frame + body + arc short id', () => {
   const ts = new Date(Date.now() - 23 * 60_000);
   const memo = {
     id: 'memos:abc',
-    content: 'Kevin is refactoring cognition',
+    content: 'Alice is refactoring cognition',
     confidence: 0.8,
     meta: {
       last_active_at: ts.toISOString(),
@@ -28,7 +28,7 @@ test('buildFocusBlock renders frame + body + arc short id', () => {
   assert.match(block, /<!-- current focus -->/);
   assert.match(block, /<!-- \/current focus -->/);
   assert.match(block, /\[focus, last active 23m ago, conf 0\.80\]/);
-  assert.match(block, /Kevin is refactoring cognition/);
+  assert.match(block, /Alice is refactoring cognition/);
   assert.match(block, /arc:arcs:01HZABCDEFGHIJK/);
 });
 
@@ -109,7 +109,7 @@ test('suppression rule 7: scope=private → private', () => {
 test('suppression rule 6: zero keyword overlap → pivot', () => {
   const memo = {
     confidence: 0.8,
-    content: 'Kevin is refactoring cognition layer',
+    content: 'Alice is refactoring cognition layer',
     meta: {
       last_active_at: new Date().toISOString(),
       entities: ['entities:cognition_refactor'],
@@ -127,7 +127,7 @@ test('suppression rule 6: zero keyword overlap → pivot', () => {
 test('all rules pass → suppressed=null', () => {
   const memo = {
     confidence: 0.8,
-    content: 'Kevin is refactoring cognition layer',
+    content: 'Alice is refactoring cognition layer',
     meta: {
       last_active_at: new Date().toISOString(),
       entities: ['entities:cognition_refactor'],

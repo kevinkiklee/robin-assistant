@@ -44,19 +44,19 @@ test('getProfile returns the seeded singleton with no user-set fields on fresh D
 
 test('updateProfileFields creates singleton on first call', async () => {
   const db = await fresh();
-  await updateProfileFields(db, { name: 'Kevin', pronouns: 'he/him' });
+  await updateProfileFields(db, { name: 'Alice', pronouns: 'he/him' });
   const p = await getProfile(db);
-  assert.equal(p.name, 'Kevin');
+  assert.equal(p.name, 'Alice');
   assert.equal(p.pronouns, 'he/him');
   await close(db);
 });
 
 test('updateProfileFields merges into existing singleton', async () => {
   const db = await fresh();
-  await updateProfileFields(db, { name: 'Kevin' });
+  await updateProfileFields(db, { name: 'Alice' });
   await updateProfileFields(db, { timezone: 'America/New_York' });
   const p = await getProfile(db);
-  assert.equal(p.name, 'Kevin');
+  assert.equal(p.name, 'Alice');
   assert.equal(p.timezone, 'America/New_York');
   await close(db);
 });

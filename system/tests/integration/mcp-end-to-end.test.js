@@ -49,7 +49,7 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
     // environment (some integrations are gated by preflight: GA needs
     // GA_PROPERTIES, lrc needs LRC_CATALOG_PATH, chrome needs the local
     // history file). Use a lower-bound assertion so the test stays robust
-    // across CI / dev / Kevin's box.
+    // across CI / dev / local boxes.
     assert.ok(
       state.tool_count >= 30,
       `expected at least 30 registered tools, got ${state.tool_count}`,

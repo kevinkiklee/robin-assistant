@@ -124,7 +124,7 @@ test('I1 — write → recall surfaces the focus block', async () => {
   await composeForSource({
     db,
     embedder: e,
-    host: makeHost('Kevin is refactoring the cognition layer'),
+    host: makeHost('Alice is refactoring the cognition layer'),
     source: TEST_SOURCE,
     cfg: {
       enabled: true,
@@ -143,7 +143,7 @@ test('I1 — write → recall surfaces the focus block', async () => {
     source: TEST_SOURCE,
   });
   assert.match(r.focus_block, /<!-- current focus -->/);
-  assert.match(r.focus_block, /Kevin is refactoring the cognition layer/);
+  assert.match(r.focus_block, /Alice is refactoring the cognition layer/);
   assert.match(r.focus_block, /last active 0m ago/);
   assert.ok(r.focus_tokens > 0);
   await close(db);
@@ -202,7 +202,7 @@ test('I4 — pivot (zero keyword overlap) → suppressed', async () => {
   const ent = await store.upsertEntity(db, e, { type: 'topic', name: 'cognition_refactor' });
   await noteStateInference(db, e, {
     source: TEST_SOURCE,
-    content: 'Kevin is refactoring cognition',
+    content: 'Alice is refactoring cognition',
     confidence: 0.8,
     entities: [ent.id],
     last_active_at: new Date(),
@@ -334,7 +334,7 @@ test('E1 — end-to-end: event → compose → recall surfaces; token count unde
   const composed = await composeForSource({
     db,
     embedder: e,
-    host: makeHost('Kevin is iterating on the cognition layer refactor'),
+    host: makeHost('Alice is iterating on the cognition layer refactor'),
     source: TEST_SOURCE,
     cfg: {
       enabled: true,
@@ -353,7 +353,7 @@ test('E1 — end-to-end: event → compose → recall surfaces; token count unde
     query: 'cognition work',
     source: TEST_SOURCE,
   });
-  assert.match(r.focus_block, /Kevin is iterating on the cognition layer refactor/);
+  assert.match(r.focus_block, /Alice is iterating on the cognition layer refactor/);
   assert.ok(r.focus_tokens <= 200, `expected focus_tokens ≤ 200, got ${r.focus_tokens}`);
   await close(db);
 });

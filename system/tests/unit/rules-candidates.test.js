@@ -85,10 +85,10 @@ test('findIdenticalProfileCandidate returns existing match', async () => {
     content: 'set name',
     kind: 'profile_update',
     signal_events: [],
-    payload: { fields: { name: 'Kevin' } },
+    payload: { fields: { name: 'Alice' } },
     confidence: 0.9,
   });
-  const id = await findIdenticalProfileCandidate(db, { name: 'Kevin' });
+  const id = await findIdenticalProfileCandidate(db, { name: 'Alice' });
   assert.ok(id);
   const id2 = await findIdenticalProfileCandidate(db, { name: 'Different' });
   assert.equal(id2, null);

@@ -670,7 +670,7 @@ async function gateDreamOutputEquivalence(_db) {
   // G19 — Output equivalence between serial and parallel dream runs.
   // Heavyweight (boots two SurrealDB instances, runs the full pipeline
   // twice). Gated on CI: skip outside CI to avoid burning a nightly worth
-  // of dream LLM calls on Kevin's instance.
+  // of dream LLM calls under typical operation.
   if (!process.env.CI) {
     console.log('\nG19 — Output equivalence (parallel ≡ serial) [skipped: CI only]');
     return;

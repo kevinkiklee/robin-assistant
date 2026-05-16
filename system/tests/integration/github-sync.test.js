@@ -4,7 +4,7 @@ import { sync } from '../../io/integrations/github/sync.js';
 
 function makeFetch(routes) {
   // Sort by descending pattern length so more-specific routes match before
-  // shorter prefixes (e.g. '/users/kevin/events' before '/user').
+  // shorter prefixes (e.g. '/users/octocat/events' before '/user').
   const sorted = [...routes].sort((a, b) => b[0].length - a[0].length);
   return async (url) => {
     for (const [pattern, body] of sorted) {
@@ -39,9 +39,9 @@ test('github sync captures one event per object kind', async () => {
   const ctx = {
     secrets: { GITHUB_PAT: 'pat_test' },
     fetchFn: makeFetch([
-      ['/user', { login: 'kevin' }],
+      ['/user', { login: 'octocat' }],
       [
-        '/users/kevin/events',
+        '/users/octocat/events',
         [
           {
             id: '1',

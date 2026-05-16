@@ -62,7 +62,7 @@ test('linear_active_issues filters by assignee', async () => {
         source: 'linear',
         content: 'a',
         ts: new Date(),
-        meta: { identifier: 'A-1', assignee: 'Kevin' },
+        meta: { identifier: 'A-1', assignee: 'Alice' },
       }}`,
     )
     .collect();
@@ -77,7 +77,7 @@ test('linear_active_issues filters by assignee', async () => {
     )
     .collect();
   const t = createLinearActiveIssuesTool({ db });
-  const r = await t.handler({ assignee: 'Kevin' });
+  const r = await t.handler({ assignee: 'Alice' });
   assert.equal(r.issues.length, 1);
   await close(db);
 });

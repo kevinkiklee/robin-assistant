@@ -61,7 +61,7 @@ function isCommandPresent(settings, phase, command) {
 export default {
   name: 'runtime.hooks_settings_present',
   // Initially warn during stage-4 soak. Promote to critical after 7 days
-  // of clean check() behavior on Kevin's instance (see spec §7 stage 4).
+  // of clean check() behavior across instances (see spec §7 stage 4).
   level: 'warn',
   surface: 'runtime',
   phase: 'runtime',

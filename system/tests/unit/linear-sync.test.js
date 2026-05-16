@@ -17,7 +17,7 @@ test('buildEventFromIssue shapes content + meta', () => {
     title: 'Wire up the new dashboard',
     priority: 2,
     state: { name: 'In Progress', type: 'started' },
-    assignee: { name: 'Kevin' },
+    assignee: { name: 'Alice' },
     team: { id: 't1', key: 'ENG', name: 'Engineering' },
     project: { id: 'p1', name: 'Q2 Planning' },
     cycle: { id: 'c1', number: 7, name: 'Cycle 7' },

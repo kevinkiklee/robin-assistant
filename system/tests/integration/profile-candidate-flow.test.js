@@ -23,15 +23,15 @@ test('profile_update candidate → approve → profile:singleton updated', async
   const db = await connect({ engine: 'mem://' });
   await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
   const c = await createCandidate(db, {
-    content: 'set name to Kevin',
+    content: 'set name to Alice',
     kind: 'profile_update',
     signal_events: [],
-    payload: { fields: { name: 'Kevin', pronouns: 'he/him' } },
+    payload: { fields: { name: 'Alice', pronouns: 'he/him' } },
     confidence: 0.9,
   });
   await approveCandidate(db, c.id);
   const p = await getProfile(db);
-  assert.equal(p.name, 'Kevin');
+  assert.equal(p.name, 'Alice');
   assert.equal(p.pronouns, 'he/him');
   await close(db);
 });

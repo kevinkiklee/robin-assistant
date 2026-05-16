@@ -16,8 +16,8 @@ import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
 test('tokensOf lowercases + drops tokens shorter than 3 chars', () => {
-  const out = tokensOf('Kevin and Robin shipped to.io');
-  assert.ok(out.has('kevin'));
+  const out = tokensOf('Alice and Robin shipped to.io');
+  assert.ok(out.has('alice'));
   assert.ok(out.has('robin'));
   assert.ok(out.has('shipped'));
   assert.ok(!out.has('to')); // length 2
@@ -27,13 +27,13 @@ test('tokensOf lowercases + drops tokens shorter than 3 chars', () => {
 
 test('matchCatalogEntities — exact token equality, not substring', () => {
   const catalog = [
-    { id: 'entities:kevin', name: 'Kevin', type: 'person' },
-    { id: 'entities:kevinlee', name: 'Kevinlee', type: 'person' },
+    { id: 'entities:alice', name: 'Alice', type: 'person' },
+    { id: 'entities:alicelee', name: 'Alicelee', type: 'person' },
   ];
-  const queryTokens = tokensOf('did kevin ship today');
+  const queryTokens = tokensOf('did alice ship today');
   const matched = matchCatalogEntities(catalog, queryTokens);
   assert.equal(matched.length, 1);
-  assert.equal(matched[0].id, 'entities:kevin');
+  assert.equal(matched[0].id, 'entities:alice');
 });
 
 test('matchCatalogEntities skips entities whose name tokens are all <3 chars', () => {

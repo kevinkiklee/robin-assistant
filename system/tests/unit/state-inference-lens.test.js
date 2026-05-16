@@ -29,7 +29,7 @@ test('noteStateInference writes a kind=state_inference memo with derived_by=stat
   const e = createStubEmbedder({ dimension: 1024 });
   const { id } = await noteStateInference(db, e, {
     source: 'agent:claude-code',
-    content: 'Kevin is reviewing the cognition refactor.',
+    content: 'Alice is reviewing the cognition refactor.',
     confidence: 0.8,
     entities: [],
     arc_id: null,

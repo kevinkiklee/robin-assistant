@@ -29,7 +29,7 @@ test('loadVectorsForHits returns Float32Arrays keyed by string id', async () => 
   const e = createStubEmbedder({ dimension: 1024 });
   const ev = await recordEvent(db, e, { source: 'cli', content: 'planted tomatoes' });
   const memo = await store.note(db, e, 'knowledge', {
-    content: 'kevin loves sourdough',
+    content: 'alice loves sourdough',
     derived_by: 'manual',
   });
   const map = await loadVectorsForHits(db, {

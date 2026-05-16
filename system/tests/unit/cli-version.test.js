@@ -33,7 +33,7 @@ test('`robin --version` reports the package.json version', () => {
   try {
     const out = runCli(['--version'], {
       // Point pointer + fallback at empty files so we cleanly simulate
-      // "not installed" without depending on Kevin's machine state.
+      // "not installed" without depending on the developer's machine state.
       ROBIN_POINTER_PATH: join(isolatedHome, 'pointer.json'),
       HOME: isolatedHome,
     });
