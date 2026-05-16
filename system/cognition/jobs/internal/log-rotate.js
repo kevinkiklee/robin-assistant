@@ -1,10 +1,14 @@
 // src/jobs/internal/log-rotate.js
-// Rotates daemon.log when it exceeds a size threshold.
+// Rotates daemon.log and biographer.log when each exceeds a size threshold.
 //
-// Strategy: copy-then-truncate so the daemon's open file descriptor
-// (held open by launchd StandardOutPath) stays valid. The daemon keeps
-// writing to the same inode; truncation simply resets the write offset.
-// The copy becomes daemon.log.1 (one historical archive; no compression).
+// Strategy: copy-then-truncate so any open file descriptor (launchd holds
+// daemon.log via StandardOutPath; the biographer pipeline reopens
+// biographer.log per write but a long-running fd elsewhere would stay
+// valid) keeps writing to the same inode. The copy becomes <name>.1 (one
+// historical archive; no compression).
+//
+// biographer.log was previously unrotated, which let stale errors from
+// weeks-old runs surface forever in `robin doctor`'s biographer probe.
 import { copyFileSync, existsSync, statSync, truncateSync } from 'node:fs';
 import { join } from 'node:path';
 import { paths } from '../../../config/data-store.js';
@@ -12,27 +16,22 @@ import { readConfig } from '../../../config/paths.js';
 
 const DEFAULT_THRESHOLD_BYTES = 10 * 1024 * 1024; // 10 MB
 
+function rotateOne(path, threshold) {
+  if (!existsSync(path)) return { rotated: false, reason: 'no_log_file' };
+  const { size } = statSync(path);
+  if (size < threshold) return { rotated: false, sizeBytes: size, threshold };
+  copyFileSync(path, `${path}.1`);
+  truncateSync(path, 0);
+  return { rotated: true, sizeBytes: size, threshold };
+}
+
 export default async function logRotate() {
   const logsDir = paths.data.logs();
-  const daemonLog = join(logsDir, 'daemon.log');
-  const daemonLogArchive = join(logsDir, 'daemon.log.1');
-
-  if (!existsSync(daemonLog)) {
-    return JSON.stringify({ rotated: false, reason: 'no_log_file' });
-  }
-
   const cfg = await readConfig();
   const threshold = cfg?.logs?.rotateAtBytes ?? DEFAULT_THRESHOLD_BYTES;
-
-  const { size } = statSync(daemonLog);
-  if (size < threshold) {
-    return JSON.stringify({ rotated: false, sizeBytes: size, threshold });
-  }
-
-  // Copy current log to .1 (overwrites any existing archive), then truncate
-  // in place to preserve the daemon's open file descriptor.
-  copyFileSync(daemonLog, daemonLogArchive);
-  truncateSync(daemonLog, 0);
-
-  return JSON.stringify({ rotated: true, sizeBytes: size, threshold });
+  const result = {
+    'daemon.log': rotateOne(join(logsDir, 'daemon.log'), threshold),
+    'biographer.log': rotateOne(join(logsDir, 'biographer.log'), threshold),
+  };
+  return JSON.stringify(result);
 }
