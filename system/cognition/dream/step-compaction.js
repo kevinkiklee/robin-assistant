@@ -42,12 +42,16 @@ async function dedupExact(db) {
     const ids = g.ids ?? [];
     if (ids.length < 2) continue;
     clusters++;
-    // Pick canonical: highest signal_count*confidence; tiebreak earliest derived_at
+    // Pick canonical: highest signal_count*confidence; tiebreak earliest derived_at.
+    // SurrealQL v3 rejects arithmetic expressions in ORDER BY; project the
+    // product to a named field first and sort on the alias.
     const [rows] = await db
       .query(
         new BoundQuery(
-          `SELECT id, signal_count, confidence, derived_at FROM memos WHERE id IN $ids
-           ORDER BY (signal_count * confidence) DESC, derived_at ASC`,
+          `SELECT id, signal_count, confidence, derived_at,
+                  signal_count * confidence AS sig_score
+           FROM memos WHERE id IN $ids
+           ORDER BY sig_score DESC, derived_at ASC`,
           { ids },
         ),
       )
