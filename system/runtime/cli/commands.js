@@ -304,6 +304,11 @@ export const commands = {
         export: 'integrationsDisable',
         help: 'disable one or more integrations',
       },
+      migrate: {
+        import: './commands/integrations-migrate.js',
+        export: 'integrationsMigrate',
+        help: 'one-time: move non-system integrations to user-data and seed enable state',
+      },
       discord: {
         help: 'discord-specific',
         subcommands: {
