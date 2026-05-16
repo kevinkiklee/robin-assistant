@@ -1,6 +1,7 @@
 // src/jobs/comm-style.js
 import { surql } from 'surrealdb';
 import { DAY_MS } from '../../config/time.js';
+import { parseLLMJSON } from '../biographer/output.js';
 
 export const DEFAULTS = {
   tone: 'balanced',
@@ -119,9 +120,9 @@ export async function synthesizeCommStyle(db, host) {
     const llm = await host.invokeLLM([{ role: 'user', content: buildPrompt(corrections) }], {
       tier: 'balanced',
     });
-    parsed = JSON.parse(llm?.content ?? '');
+    parsed = parseLLMJSON(llm?.content ?? '');
   } catch (e) {
-    return { ok: false, reason: 'parse_failed', detail: e.message };
+    return { ok: false, reason: `parse_failed: ${e.message}` };
   }
 
   const v = validateCommStyleShape(parsed);
