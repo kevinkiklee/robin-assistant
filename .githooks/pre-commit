@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Robin pre-commit hook
+#
+# When a file under system/runtime/invariants/ is staged, regenerate the
+# auto-generated runbook section in CLAUDE.md and stage the diff. The CI
+# `lint:runbook` script catches drift if this hook isn't installed.
+#
+# To activate: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+# Find staged files (added, copied, modified, renamed)
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Only act if invariants/* changed
+if ! echo "$staged" | grep -q '^system/runtime/invariants/'; then
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+echo "[robin precommit] invariants changed; regenerating runbook..."
+if ! node system/bin/robin doctor --emit-runbook --write >/dev/null; then
+  echo "[robin precommit] runbook generation failed" >&2
+  exit 1
+fi
+
+# Stage the resulting CLAUDE.md diff (if any)
+if ! git diff --quiet CLAUDE.md; then
+  git add CLAUDE.md
+  echo "[robin precommit] staged updated CLAUDE.md"
+fi
+
+exit 0

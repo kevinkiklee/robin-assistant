@@ -12,7 +12,13 @@
 // recent biographer.log errors, and integration freshness rollup.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  renameSync as renameSyncFs,
+  statSync,
+  writeFileSync as writeFileSyncFs,
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -30,8 +36,12 @@ import {
 import { readFileTail } from '../../../config/file-tail.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
+import { phaseOrdered } from '../../invariants/index.js';
 import installPointerPresent from '../../invariants/install.pointer-present.js';
 import { recordDivergence } from '../../invariants/divergence-log.js';
+import { isInSync, renderRunbook, replaceSentinelBlock } from '../../invariants/runbook.js';
+import { run as runInvariants } from '../../invariants/runner.js';
+import { makeCtx as makeInvariantCtx } from '../../invariants/ctx.js';
 import { isPidAlive } from '../../daemon/lock.js';
 import { purgeStaleSessions } from '../../daemon/sessions.js';
 import { detectLayoutVersion, LEGACY_STRAY_DIRS } from '../../install/layout-migrator.js';
@@ -526,6 +536,83 @@ export async function doctorData() {
 }
 
 /**
+ * `--emit-runbook` family. Writes the generated runbook to stdout (no flags),
+ * to a file in-place (--write), or runs a CI drift check (--check).
+ */
+async function doEmitRunbook(out, err, { write = false, check = false, claudeMdPath } = {}) {
+  const body = renderRunbook();
+  if (!write && !check) {
+    out(body);
+    return 0;
+  }
+  const path = claudeMdPath ?? join(packageRootDir(), 'CLAUDE.md');
+  if (!existsSync(path)) {
+    err(`CLAUDE.md not found at ${path}`);
+    return 4;
+  }
+  const existing = readFileSync(path, 'utf8');
+  if (check) {
+    if (isInSync(existing, body)) {
+      out('runbook in sync');
+      return 0;
+    }
+    err('runbook drift detected; run `robin doctor --emit-runbook --write` to regenerate.');
+    return 1;
+  }
+  // write
+  const next = replaceSentinelBlock(existing, body);
+  if (next === existing) {
+    out('runbook already in sync');
+    return 0;
+  }
+  const tmp = `${path}.tmp`;
+  writeFileSyncFs(tmp, next, 'utf8');
+  renameSyncFs(tmp, path);
+  out(`runbook written to ${path}`);
+  return 0;
+}
+
+/**
+ * `--invariants` (stage 5): run the doctor trigger across the registry and
+ * print a compact status table. Read-only; never repairs.
+ */
+async function doInvariantsRender(out) {
+  const ctx = makeInvariantCtx({ paths, trigger: 'doctor', logFallback: false });
+  const report = await runInvariants({
+    trigger: 'doctor',
+    ctx,
+    invariants: phaseOrdered(),
+  });
+  let crit = 0;
+  let warn = 0;
+  let info = 0;
+  let ok = 0;
+  let skipped = 0;
+  for (const r of report.results) {
+    if (r.status === 'skipped') {
+      skipped++;
+      continue;
+    }
+    if (r.status === 'ok') {
+      ok++;
+      out(`✓ ${r.name}`);
+      continue;
+    }
+    // fail
+    if (r.level === 'critical') crit++;
+    else if (r.level === 'warn') warn++;
+    else info++;
+    const tag = r.level === 'critical' ? 'X' : '!';
+    out(`${tag} ${r.name}  [${r.level}]  ${r.error ?? ''}`);
+  }
+  out('');
+  out(`Summary: ${ok} ok · ${warn} warn · ${crit} critical · ${info} info · ${skipped} skipped`);
+  if (crit > 0) return 2;
+  if (warn > 0) return 1;
+  return 0;
+}
+
+/**
  * `--diff-legacy` (stage 2): compare framework's install.pointer_present
  * verdict against the legacy probe (`pointerExists`). Append disagreements
  * to the divergence log.
@@ -560,6 +647,8 @@ export async function doctor(argv = [], deps = {}) {
   const wantLint = args.flags['lint-hooks'] === true;
   const wantHealth = args.flags.health === true;
   const wantDiffLegacy = args.flags['diff-legacy'] === true;
+  const wantEmitRunbook = args.flags['emit-runbook'] === true;
+  const wantInvariants = args.flags.invariants === true;
 
   if (wantHealth) {
     const wantJson = args.flags.json === true;
@@ -579,6 +668,22 @@ export async function doctor(argv = [], deps = {}) {
 
   if (wantDiffLegacy) {
     await doDiffLegacy(out, { logPath: deps.divergenceLogPath });
+    return;
+  }
+
+  if (wantEmitRunbook) {
+    const code = await doEmitRunbook(out, err, {
+      write: args.flags.write === true,
+      check: args.flags.check === true,
+      claudeMdPath: deps.claudeMdPath,
+    });
+    if (typeof process !== 'undefined') process.exitCode = code;
+    return;
+  }
+
+  if (wantInvariants) {
+    const code = await doInvariantsRender(out);
+    if (typeof process !== 'undefined') process.exitCode = code;
     return;
   }
 

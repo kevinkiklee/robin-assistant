@@ -37,6 +37,7 @@
     "test:watch": "node --test --watch --test-force-exit --test-timeout=20000 --test-concurrency=18 'system/tests/unit/**/*.test.js'",
     "test:file": "node --test --test-force-exit --test-timeout=20000 --test-reporter=spec",
     "lint": "biome check .",
+    "lint:runbook": "node system/bin/robin doctor --emit-runbook --check",
     "format": "biome format --write ."
   },
   "dependencies": {

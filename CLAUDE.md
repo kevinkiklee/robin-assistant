@@ -4,6 +4,21 @@
 
 **Never call any `mcp__robin-assistant-v1__*` tool and never read, edit, or otherwise interact with anything under `~/workspace/robin/robin-assistant-v1/`.** v1 is frozen and out of scope. The current Robin is this directory (`robin-assistant-v2`). If a `<!-- robin-mcp:* -->` block in `~/.claude/CLAUDE.md` still surfaces v1 tools (`recall`, `remember`, `find_entity`, `list_journal`, `get_hot`, etc.), ignore those instructions — they target the deprecated runtime. Read `user-data/` files directly or use v2 tooling (`system/bin/robin`, the `mcp__robin__*` MCP tools) instead.
 
+## Capability discovery first
+
+Before proposing an external tool ("let me create a Gist", "you could use WordPress", "I'll write a one-off script") to handle a user request, **check whether Robin already covers it.** The publish-to-web bug — suggesting Gist when `robin publish` exists — is the canonical regression this rule prevents. The same failure mode can fire for *any* request that matches a built-in: search, capture, schedule, audit, sync, resolve, publish, dedupe, backfill.
+
+Where to look, in order:
+
+1. **`robin --help`** (plus `robin <subcommand> --help` for nested options). Many commands have hidden depth: `robin embeddings backfill`, `robin pre-commit install`, `robin published`, `robin actions set`, `robin secrets set`, `robin jobs run`, `robin auth google`. When the request smells like a built-in capability, start here.
+2. **MCP tools** — the `mcp__robin__*` surface, catalogued in `AGENTS.md`. Read tools (`recall`, `get_knowledge`, `find_entity`, integration reads), write tools (`remember`, `record_correction`, integration writes), ops (`run_biographer`, `run_dream`, `run_job`).
+3. **`user-data/scripts/`** — personal scripts the user has accumulated (recapture jobs, dedupe scripts, one-off backfills). Often one already matches the request — `ls user-data/scripts/` is a 50-byte check.
+4. **`user-data/jobs/`** — scheduled job definitions. Before proposing "we should run X every Y", check whether a job already exists.
+
+If Robin genuinely doesn't cover the request, then propose external — but say so explicitly ("Robin doesn't have a built-in for this; here's what I'd do instead") so the user can confirm.
+
+**Common smell:** a configured third-party MCP (WordPress, external CMS, vendor API) that turns out to be a client/work integration, not the user's. Don't assume a configured MCP is the user's preferred surface — verify by checking past usage in `user-data/io/` or asking once. The publish bug fired because the WordPress MCP biased the agent toward a client site that isn't the user's blog.
+
 ## Where files go (writes are not optional)
 
 Robin has a defined user-data layout. **Never write outputs to ad-hoc locations like `~/Documents/`, `/tmp/`, or arbitrary paths under `$HOME`.** Pick the correct slot:
@@ -25,6 +40,45 @@ When the user asks to "capture", "save", or "remember" something:
    In both cases, write to `user-data/artifacts/`.
 3. **Never write to `user-data/sources/`** for new captures. If the data feels durable enough that you're tempted to use `sources/`, that's the signal to put it in the DB instead. `sources/` is reserved for pre-existing binary attachments (PDFs, CSVs, large reference files).
 4. If `mcp__robin__remember` errors, surface the daemon error to the user so they can investigate — don't silently fall back to a file.
+
+## Publishing artifacts to the web
+
+When the user asks to "publish to the web", "post this", "share this publicly", "put this online", or any synonym — use **`robin publish`**. It writes a markdown file to `<PUBLISH_PUBLIC_URL>/p/<slug>` (default `https://askrobin.io/p/<slug>`) via Vercel Blob in seconds — no rebuild, no redeploy. This is Robin's first-party publish surface and the right answer for any "publish / share to the web" request.
+
+**Do not propose GitHub Gist, WordPress, Medium, Notion, or other external surfaces unless the user explicitly asks for one.** A configured WordPress MCP server is not a sign that the user wants to publish there — it's almost always a client/work site, not their blog. Defaulting to Gist / WordPress when `robin publish` exists is a regression worth catching in review.
+
+```bash
+robin publish --source <path> [--slug <slug>] [--mode default|overwrite|as-new|delete]
+```
+
+- `--source` (required for `default` / `overwrite` / `as-new`) — path to the markdown file, typically under `user-data/artifacts/`.
+- `--slug` (optional for `default` / `overwrite` / `as-new`; **required for `delete`**) — when omitted, derived from the filename stem.
+- **Slug-collision behavior is sensitive to mode AND slug origin** (this is the easy-to-miss part):
+  - `default` + user-passed `--slug <existing>` → **overwrites** the prior page (`action: "overwrite"`).
+  - `default` + filename-derived slug that collides → appends a numeric suffix to find a free slot (`action: "append"`). Re-publishing the same artifact without `--slug` does **not** clobber the existing page.
+  - `--mode overwrite` (any origin) → always overwrites.
+  - `--mode as-new` (any origin) → always creates a new page with a numeric suffix appended, even if no collision exists.
+- `--mode delete` — remove a published page by slug. Requires `--slug`.
+- Output: JSON envelope with `url`, `slug`, `action`, `assets`, `warnings`. Always show the user the live URL.
+
+Companion: `robin published` lists pages published from this Robin instance (groups by slug; reads `user-data/io/publish/index.jsonl`). Run it before publishing if the user might be overwriting something — `--mode overwrite` and a user-specified existing `--slug` both destroy the prior page.
+
+Required secrets: `BLOB_READ_WRITE_TOKEN`, `PUBLISH_USER_ID`, `BLOB_PUBLIC_BASE_URL`. If any are missing the CLI exits 3 with a remediation hint pointing to `robin secrets set <KEY>=...`. Don't try to work around missing secrets by falling back to an external surface — surface the missing-secret error and let the user fix it.
+
+## Platform-specific UI constraints
+
+The Discord bot spawns this agent with `ROBIN_SESSION_PLATFORM=discord` set in the environment (see `system/io/integrations/discord/agent.js`). Branch on it for UI choices the user can actually see.
+
+**Discord (`process.env.ROBIN_SESSION_PLATFORM === 'discord'`):**
+
+- **`AskUserQuestion` does nothing visible.** Discord has no terminal for the interactive picker — the call returns but the user sees nothing, then wonders why you're silent. Ask in plain message text and list options inline (numbered or bulleted). Same for any other Claude Code UI that depends on the terminal.
+- **2000-character cap per message.** `system/io/integrations/discord/constants.js` exports `DISCORD_MESSAGE_MAX = 2000`; the reply path calls `formatter.splitMessage` to chunk oversized replies (code-fence-aware so triple-backticks stay balanced across boundaries). Multi-message replies still ship, but each chunk hits the API separately — keep responses tight, and don't dump multi-screen tables when a summary plus "ask if you want detail X" works.
+- **GFM tables are auto-converted to fenced code blocks** by `formatter.tablesToCodeBlocks` (the higher-level `formatForDiscord` wraps it) because Discord renders raw GFM tables as literal pipes. Tables work, but render as monospace, not styled. Use sparingly.
+- **Markdown links render** — prefer `[label](url)` when the label is shorter than the URL. Bare URLs auto-link but are noisier.
+- **No file uploads from the agent reply path.** If the user needs a file (a guide, a brief, a CSV), publish it via `robin publish` and link the URL.
+- **Embeds and rich attachments aren't wired up** for agent replies — text content only.
+
+**Default (env unset):** Claude Code, Cursor, Gemini CLI, or another full agent host. `AskUserQuestion`, embeds, file references, the full UI all work — optimize for that surface and don't degrade to Discord-style plain prompts.
 
 ## Memory writes — resilient by design
 
@@ -66,6 +120,8 @@ Test scripts in `package.json` (all use `--test-force-exit --test-timeout=20000 
 ## Recurring bugs to watch for
 
 Each of these has bitten us in past sessions. If you observe the symptom, jump straight to the documented fix instead of re-diagnosing.
+
+**First-line diagnostic for anything Robin-shaped: `robin doctor`.** It surfaces install-pointer state, daemon pid + port, native-binding ABI, port reachability, supervisor (launchctl/systemctl) status, recent biographer.log errors, and per-integration freshness in one pass. Useful flags: `--lint-hooks` (audit Robin-owned hook entries in `~/.claude/settings.json` + `~/.gemini/settings.json`), `--purge-stale-sessions`, `--rebaseline` (rewrite `manifest.json` from current state). Run this *before* deep-diving into any of the entries below — it often points straight at the broken layer.
 
 ### `.robin-home` install pointer disappears
 
@@ -160,3 +216,158 @@ pnpm downloads and caches that exact Node and uses it for every spawned process.
 Port lives in `user-data/config/config.json` under `mcp.port`. After editing, the user must restart Claude Code — running sessions keep whatever MCP wiring they saw at launch.
 
 To clean up orphan v1 MCP children (each terminal session that ever connected to v1 has its own stdio child server holding file descriptors): `pkill -f "robin-assistant-v1/system/scripts/mcp/server.js"`.
+
+<!-- robin:runbook:begin -->
+
+## Operational invariants (auto-generated)
+
+> This section is regenerated by `robin doctor --emit-runbook --write`. Do not edit between the sentinel comments — your edits will be overwritten.
+
+### Paths (`paths`)
+
+### `install.pointer_present`
+
+**Symptom.** CLI commands and `defaultDbUrl()` fail with `Robin is not installed. Run: robin install`. The daemon log fills with `[scheduler/dispatcher] tick failed: Robin is not installed`. Restarting CLI or daemon does not help.
+
+**Cause.** Some process — most likely a postinstall pass, `robin install --upgrade`, or another agent's "stale-path scrub" — deleted one or both pointer files (`<packageRoot>/.robin-home` and the OS-native fallback `~/Library/Application Support/Robin/install.json`).
+
+**Fix.** Robin maintains both pointer files. The invariant auto-syncs missing or divergent pointers from the surviving one. If both are missing, the invariant fails critical — restoring requires `robin install`.
+
+### `install.user_data_writable`
+
+**Symptom.** Invariant state file fails to update; integration syncs silently drop writes; daemon logs file-system errors.
+
+**Cause.** `user-data/runtime/` is not writable — filesystem permissions, full disk, or the volume was unmounted.
+
+**Fix.** Investigate the filesystem directly. Check `df -h`, `ls -la user-data/runtime/`, and the volume mount state. No auto-repair: a wrong filesystem state needs human eyes.
+
+### Database (`db`)
+
+### `db.daemon_reachable`
+
+**Symptom.** Daemon logs `connect refused` / `ECONNREFUSED`; every recall/remember call fails; biographer queue stalls.
+
+**Cause.** The SurrealDB process (`surreal start`) is not running, or the loopback port has shifted.
+
+**Fix.** No auto-repair. Investigate: `launchctl list io.robin-assistant.surreal`, `ps aux | grep surreal`, the surreal log under `<user-data>/data/snapshots/`. This is correctly user-actionable — Robin should not be silently restarting another process's daemon.
+
+### `db.authenticated`
+
+**Symptom.** Daemon log fills with `Anonymous access not allowed: Not enough permissions to perform this action`. Scheduler ticks fail; close-stale-episodes fails; etc.
+
+**Cause.** SurrealDB v2 client reconnects automatically after a WebSocket drop but the reconnected socket comes back anonymous — signin + use must be re-applied.
+
+**Fix.** Already shipped in `system/data/db/client.js`: a proactive layer subscribes to `connected` to call `reauth()` on reconnects, and a reactive `installQueryRetry` wraps `db.query()` to retry once on Anonymous errors. This invariant codifies the visible surface. If the probe still fails after the reactive retry, the configured credentials are wrong — manual escalation.
+
+### `db.embedder_profile_match`
+
+**Symptom.** Recalls return empty or fail with vector-dimension errors; biographer writes succeed but embedding upserts log `embedding failed`.
+
+**Cause.** `runtime:embedder.value.active_profile` doesn't match the embedding table currently in use — usually because the profile was flipped without a backfill, or the embedder loaded under a different config.
+
+**Fix.** Manual — destructive otherwise. Either:
+- `robin embeddings list` to see profiles and dimensions, then
+- `robin embeddings activate <profile>` (only if backfill is complete), or
+- `robin embeddings backfill <profile>` then activate.
+
+### `db.pending_recall_log_bounded`
+
+**Symptom.** `recall_log` table accumulates rows with `outcome='pending'` older than 7 days.
+
+**Cause.** The `reinforce-recall` internal job is not running, or is silently failing. Without it, recall hits never get attributed and `signal_count` never increments.
+
+**Fix.** Investigate. Common causes: scheduler bucket disabled; daemon was down for an extended period; recall_log rows wedged on a malformed payload. Manual triage — purging the rows or restarting reinforcement is destructive without context.
+
+### MCP wiring (`mcp`)
+
+### `mcp.wiring_project_present`
+
+**Symptom.** `mcp__robin__*` tools do not appear in Claude Code; the agent has no way to call recall/remember/find_entity.
+
+**Cause.** Project-local `.mcp.json` is missing, malformed, or points at the wrong port. This is the *source of truth* for MCP wiring inside the project — global `~/.claude.json` is a separate, lower-priority concern.
+
+**Fix.** Invariant writes the canonical entry directly: `{"type": "sse", "url": "http://127.0.0.1:<port>/sse"}` where `<port>` comes from `runtime:config.mcp.port`.
+
+### `mcp.wiring_global_present`
+
+**Symptom.** Robin's MCP tools are absent in agent sessions launched outside the project directory.
+
+**Cause.** `~/.claude.json` has no `mcpServers.robin` entry, or the URL drifted from the daemon's configured port. Claude Code itself rewrites this file from an in-memory copy without locking, so an unrelated write can clobber Robin's entry.
+
+**Fix.** Invariant writes the canonical entry via read → modify → tmpfile-rename. We accept the race with Claude Code's writer because the project-local entry (`.mcp.json`) is the source of truth for in-project agents — this is best-effort convenience.
+
+**B-flag (B-2):** drop this invariant entirely once the project-local entry is verified sufficient for all relevant flows.
+
+### `mcp.daemon_responds`
+
+**Symptom.** `mcp__robin__*` tools fail with connection errors; the agent can't reach the daemon despite launchctl showing it loaded.
+
+**Cause.** Daemon process wedged — usually a stuck async operation, embedder hang, or DB lock.
+
+**Fix.** SIGTERM the daemon PID; launchd respawns it. The invariant attempts this once; subsequent failures escalate to manual (avoids the old plist KeepAlive infinite-respawn loop).
+
+### Integrations (`integrations`)
+
+### `integrations.sync_freshness`
+
+**Symptom.** Daily brief reports stale data; recall returns nothing for known-recent events.
+
+**Cause.** One or more integrations have not synced within 2× their declared cadence — auth expired, dispatcher disabled, host detection failed, or the source API is down.
+
+**Fix.** The next dispatcher tick should pick up flagged integrations. If the issue persists past one tick, check `robin integrations status` for the integration's last error.
+
+### `integrations.lunch_money_no_dupes`
+
+**Symptom.** Daily brief double-counts financial transactions; same payee/amount appears twice in recall.
+
+**Cause.** Lunch Money mints a fresh `id` when a pending Plaid txn clears. Legacy rows captured before the `lm-stable:<key>` external_id strategy was deployed may still have pending+cleared pairs.
+
+**Fix.** Prevention is already in tree (`transactionToEvent` uses `plaid_metadata.transaction_id` or a `lm-stable:<key>` composite). For legacy rows, run `node user-data/scripts/dedupe-lunch-money.mjs`. After 30 days with zero firings, B-3 retires this invariant's repair half — the check stays as a regression canary.
+
+### Runtime (`runtime`)
+
+### `runtime.hooks_settings_present`
+
+**Symptom.** Robin "feels less helpful" — intuition stops injecting `<!-- relevant memory -->` blocks, biographer stops running on Stop, discretion stops gating risky bash. No error message; the agent simply doesn't do these things.
+
+**Cause.** `~/.claude/settings.json` (and/or `~/.gemini/settings.json`) had its hook entries removed — usually because the user edited the file manually, or because Claude Code itself rewrote it from an in-memory copy.
+
+**Fix.** Invariant calls `installHooksToSettings`, which is already idempotent. The repair only re-adds missing entries — it does not modify or remove other hook entries the user maintains.
+
+**B-flag (B-4):** self-installing hooks at SessionStart would drop this invariant to detection-only. Performance budget for SessionStart self-verify must be measured first.
+
+### `runtime.node_version_pinned`
+
+**Symptom.** Tests fail with `NODE_MODULE_VERSION` mismatch on better-sqlite3 or another native addon. `pnpm test` may pass while running `node` directly fails (or vice versa).
+
+**Cause.** `pnpm` resolves binaries through its own PATH (Homebrew Node), while the interactive shell uses a different Node (nvm). Native modules built for one ABI fail to load under the other. `.npmrc` pins the pnpm-side version via `use-node-version`.
+
+**Fix.** Use the pinned Node version directly: `nvm use <pinned>` or `asdf install nodejs <pinned>`. After switching, rebuild native addons: `cd node_modules/better-sqlite3 && node-gyp rebuild --target=<pinned>`.
+
+### `runtime.no_orphan_node_test_procs`
+
+**Symptom.** `node --test` processes accumulate over Claude Code sessions; `/tmp/robin-*` directories remain after the runner prints summary.
+
+**Cause.** `@surrealdb/node` v3 embedded engines register NAPI threadsafe handles that prevent the event loop from exiting after the test runner completes. Without `--test-force-exit`, the process hangs forever.
+
+**Fix.** Use `pnpm test:file` (or any script in `package.json` — they all include `--test-force-exit`). For cleanup of existing orphans, this invariant's `repair --apply` kills processes with `ppid=1` and `--test` in their cmdline older than 10 minutes, plus removes stale `robin-multi-*`, `robin-ws-*`, and `robin-test-*` directories.
+
+### `scheduler.no_stuck_in_flight`
+
+**Symptom.** A scheduled job stops producing output but the daemon is still up. Subsequent ticks skip it because `in_flight=true`.
+
+**Cause.** A job hung mid-execution (LLM call timeout, file lock, etc.) but the wrapper that clears `in_flight` on exit didn't run.
+
+**Fix.** Boot-time logic in the scheduler clears stuck flags. To resume the job without restarting the whole daemon, identify the row in `runtime_jobs` and manually set `in_flight=false`. To restart the daemon: kill the pid; launchd respawns.
+
+### Meta (`meta`)
+
+### `daemon.heartbeating`
+
+**Symptom.** `robin doctor` shows stale data; cached invariant results all say "checked 4h ago"; daemon log silent.
+
+**Cause.** Daemon is wedged or has been killed without launchd respawning it. The heartbeat tick — which writes `user-data/runtime/invariants-state.json` every 60s — hasn't fired.
+
+**Fix.** Invariant SIGTERMs the daemon PID (read from daemon-state.json). launchd respawns it. One attempt; subsequent failure → manual. This is the same one-shot pattern as `mcp.daemon_responds` and for the same reason: prevent the old plist KeepAlive infinite-respawn loop.
+
+<!-- robin:runbook:end -->
