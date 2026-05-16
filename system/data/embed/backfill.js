@@ -27,8 +27,9 @@ export async function embedBackfillTick({ db, embedder, batch = 64, log = () => 
   let vecs;
   try {
     vecs = await embedder.embedBatch(rows.map((r) => r.content));
-  } catch {
+  } catch (err) {
     vecs = null;
+    log?.(`embedBatch failed; falling back to per-row: ${err.message ?? err}`);
   }
 
   const upsertSql =
