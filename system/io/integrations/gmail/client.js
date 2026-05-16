@@ -34,8 +34,9 @@ export async function getMessage({ accessToken, id, fetchFn, signal }) {
   );
 }
 
-export async function listHistory({ accessToken, startHistoryId, fetchFn, signal }) {
+export async function listHistory({ accessToken, startHistoryId, pageToken, fetchFn, signal }) {
   const params = new URLSearchParams({ startHistoryId, historyTypes: 'messageAdded' });
+  if (pageToken) params.set('pageToken', pageToken);
   return await gmailFetch(`/history?${params}`, { accessToken, fetchFn, signal });
 }
 

@@ -53,6 +53,7 @@ async function deltaSync(ctx, accessToken, startHistoryId) {
       const page = await listHistory({
         accessToken,
         startHistoryId,
+        pageToken,
         fetchFn: ctx.fetchFn,
         signal: ctx.signal,
       });
