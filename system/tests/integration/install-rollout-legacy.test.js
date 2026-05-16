@@ -13,8 +13,8 @@ import {
   writePointer,
 } from '../../config/data-store.js';
 
-test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'robin-kevin-'));
+test('legacy v2 rollout: legacy v2 layout with installed-hooks.json migrates cleanly', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'robin-rollout-'));
   const fakePlistDir = mkdtempSync(join(tmpdir(), 'fake-plist-'));
   const fakePlist = join(fakePlistDir, 'fake-plist');
   const pointerDir = mkdtempSync(join(tmpdir(), 'robin-ptr-'));
@@ -47,7 +47,7 @@ test('Kevin rollout: legacy v2 layout with installed-hooks.json migrates cleanly
       { kind: 'launchd-plist', path: fakePlist, expectedHome: home, label: 'l' },
       () => writeFileSync(fakePlist, '<plist/>'),
     );
-    writePointer({ home, installedBy: 'kevin-rollout-test' });
+    writePointer({ home, installedBy: 'rollout-legacy-test' });
 
     const marker = readMarker();
     assert.strictEqual(marker.user_data_layout_version, 2);

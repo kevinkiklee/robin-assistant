@@ -189,7 +189,7 @@ test('discoverJobs — daily-briefing is no longer a builtin (moved to user-data
     'builtin',
   );
   const jobs = discoverJobs({ builtinDir, userDir: '/nonexistent' });
-  // Task 17: daily-briefing is Kevin-specific composition; the md + JS both
+  // Task 17: daily-briefing is user-specific composition; the md + JS both
   // live in `user-data/jobs/` now. With no user dir on disk it must not appear.
   assert.equal(
     jobs.find((j) => j.name === 'daily-briefing'),
