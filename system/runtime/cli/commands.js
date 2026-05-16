@@ -294,6 +294,11 @@ export const commands = {
         export: 'integrationsRun',
         help: 'force-run an integration tick',
       },
+      enable: {
+        import: './commands/integrations-enable.js',
+        export: 'integrationsEnable',
+        help: 'enable one or more integrations',
+      },
       discord: {
         help: 'discord-specific',
         subcommands: {
