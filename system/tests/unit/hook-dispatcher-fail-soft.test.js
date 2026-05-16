@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -17,14 +17,25 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const dispatcher = resolve(__dirname, '../../io/hooks/dispatcher.js');
 
-function runDispatcher(phase, { debug = false } = {}) {
-  // To reproduce the "Robin is not installed" path, we run from a directory
-  // that has no `.robin-home` pointer file AND we strip ROBIN_HOME from the
-  // child's environment so robinHome()/readConfig() throws.
+function runDispatcher(phase, { debug = false, seedBadConfig = false } = {}) {
+  // To reliably trigger the dispatcher's fail-soft envelope we point
+  // ROBIN_HOME at a tmpdir whose config/config.json is malformed JSON.
+  // readConfig throws `malformed <path>: ...`, hits the dispatcher's
+  // try/catch, and (when ROBIN_DEBUG=1) emits `[hook:<phase>] ...` to
+  // stderr. Previously this test deleted ROBIN_HOME and assumed no pointer
+  // would resolve — fragile, since the package's own .robin-home or the
+  // OS-native install.json can exist on a developer machine and silently
+  // resolve to a real Robin install. Also previously assumed readConfig
+  // throws on missing-config; it does not (returns null) so the seed is
+  // needed to actually exercise the error path.
   const cwd = mkdtempSync(join(tmpdir(), `robin-test-dispatch-${process.pid}-`));
   try {
+    if (seedBadConfig) {
+      mkdirSync(join(cwd, 'config'), { recursive: true });
+      writeFileSync(join(cwd, 'config', 'config.json'), '{this is not json');
+    }
     const env = { ...process.env };
-    delete env.ROBIN_HOME;
+    env.ROBIN_HOME = cwd;
     if (debug) env.ROBIN_DEBUG = '1';
     return spawnSync(process.execPath, [dispatcher, phase], {
       cwd,
@@ -38,20 +49,20 @@ function runDispatcher(phase, { debug = false } = {}) {
   }
 }
 
-test('runHook exits 0 even when ROBIN_HOME has no config (uninstalled Robin)', () => {
-  // No config.json exists under home, so readConfig throws "Robin is not
-  // installed". The dispatcher must swallow this; the host hook line must
-  // see exit 0 and no stderr noise.
-  const r = runDispatcher('intuition');
+test('runHook exits 0 even when config triggers a readConfig throw', () => {
+  // Malformed config.json under ROBIN_HOME makes readConfig throw. The
+  // dispatcher must swallow it; the host hook line must see exit 0 and no
+  // stderr noise without ROBIN_DEBUG.
+  const r = runDispatcher('intuition', { seedBadConfig: true });
   assert.equal(r.status, 0, `expected exit 0, got ${r.status}: stderr=${r.stderr}`);
   assert.equal(r.stderr.trim(), '', 'no stderr without ROBIN_DEBUG');
 });
 
 test('runHook surfaces the error to stderr when ROBIN_DEBUG=1', () => {
-  const r = runDispatcher('intuition', { debug: true });
+  const r = runDispatcher('intuition', { debug: true, seedBadConfig: true });
   assert.equal(r.status, 0, `expected exit 0, got ${r.status}: stderr=${r.stderr}`);
   assert.match(r.stderr, /\[hook:intuition\]/);
-  assert.match(r.stderr, /not installed/);
+  assert.match(r.stderr, /malformed/);
 });
 
 test('runHook exits 0 for an unknown phase (no DISPATCH entry)', () => {
