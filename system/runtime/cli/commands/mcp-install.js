@@ -1,11 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { readDaemonState } from '../../../config/daemon-state.js';
 import {
-  getIntegrationDirs,
   packageRootDir,
   paths,
   recordHostTouchpoint,
@@ -13,7 +12,7 @@ import {
 } from '../../../config/data-store.js';
 import { readConfig, writeConfig } from '../../../config/paths.js';
 import { bindPort } from '../../daemon/port.js';
-import { agentsMdContent, mergeAgentsMdContent } from '../../install/agents-md.js';
+import { refreshAgentsMdFiles } from '../../install/agents-md-refresh.js';
 import { generateLaunchdPlist } from '../../install/launchd-plist.js';
 import { generateSystemdUnit } from '../../install/systemd-unit.js';
 import { parseArgs } from '../args.js';
@@ -40,87 +39,6 @@ async function ensureMcpPort() {
   await writeConfig(cfg);
   console.log(`reserved mcp port ${port} in config.json`);
   return port;
-}
-
-async function readOrEmpty(path) {
-  try {
-    return await readFile(path, 'utf8');
-  } catch (e) {
-    if (e.code === 'ENOENT') return '';
-    throw e;
-  }
-}
-
-// Load installable integration manifests so the auto-generated
-// `<!-- robin-integrations:* -->` block lists what the daemon actually
-// surfaces. Without this the block stays "(none registered)" forever.
-// Shape matches what `renderIntegrationsList` expects:
-// `{ name, kind, cadence_ms, tool_names }`.
-async function loadIntegrationsForAgentsMd() {
-  try {
-    const { loadManifests } = await import(
-      '../../../io/integrations/_framework/manifest-loader.js'
-    );
-    const { loaded } = await loadManifests(getIntegrationDirs());
-    // Manifest `tools:` is an array of factory FUNCTIONS, not built tool
-    // objects. Each factory returns `{ name: 'gmail_search', ... }` when
-    // invoked. Factories accept context (db/embedder/capture) but read it
-    // lazily in their handler — so calling them with no args during render
-    // returns the public tool name without firing any handler side effects.
-    // Wrap in try/catch in case a factory tightens that contract later.
-    return loaded.map((m) => {
-      const toolNames = [];
-      for (const factory of m.tools ?? []) {
-        if (typeof factory !== 'function') continue;
-        try {
-          const built = factory({});
-          if (built?.name) toolNames.push(built.name);
-        } catch {
-          if (factory.name) toolNames.push(factory.name);
-        }
-      }
-      return { name: m.name, kind: m.kind, cadence_ms: m.cadence_ms, tool_names: toolNames };
-    });
-  } catch {
-    return [];
-  }
-}
-
-// Single-pass DB read for all AGENTS.md inputs. Combined to avoid sequential
-// rocksdb open+close cycles, which can deadlock under the @surrealdb/node v3
-// close-hang. Fail-soft: any error returns the per-field "unavailable" value.
-async function readDbDataForAgentsMd() {
-  try {
-    const { ensureHome } = await import('../../../config/data-store.js');
-    const { connect, close, defaultDbUrl } = await import('../../../data/db/client.js');
-    const { listAllJobs } = await import('../../../cognition/jobs/db.js');
-    const { getCommStyle } = await import('../../../cognition/jobs/comm-style.js');
-    const { getCalibration } = await import('../../../cognition/jobs/predictions.js');
-    await ensureHome();
-    const db = await connect({ engine: await defaultDbUrl() });
-    try {
-      const jobs = await listAllJobs(db);
-      const commStyle = await getCommStyle(db);
-      const calibration = await getCalibration(db);
-      const integrations = await loadIntegrationsForAgentsMd();
-      return { jobs, commStyle, calibration, integrations };
-    } finally {
-      await close(db);
-    }
-  } catch {
-    return { jobs: undefined, commStyle: null, calibration: null, integrations: [] };
-  }
-}
-
-async function writeMergedAgentsMd(path, jobs, commStyle, calibration, integrations) {
-  await mkdir(dirname(path), { recursive: true });
-  const existing = await readOrEmpty(path);
-  const merged = mergeAgentsMdContent(
-    existing,
-    agentsMdContent({ jobs, commStyle, calibration, integrations }),
-  );
-  await writeFile(path, merged, 'utf8');
-  console.log(`updated ${path}`);
 }
 
 function which(cmd) {
@@ -284,9 +202,8 @@ export async function mcpInstall(argv) {
   if (!noAgentsMd) {
     const claudePath = join(home, '.claude/CLAUDE.md');
     const geminiPath = join(home, '.gemini/GEMINI.md');
-    const { jobs, commStyle, calibration, integrations } = await readDbDataForAgentsMd();
-    await writeMergedAgentsMd(claudePath, jobs, commStyle, calibration, integrations);
-    await writeMergedAgentsMd(geminiPath, jobs, commStyle, calibration, integrations);
+    const results = await refreshAgentsMdFiles({ targets: [claudePath, geminiPath] });
+    for (const r of results) console.log(`${r.action} ${r.path}`);
   }
 
   // 7. Print summary.

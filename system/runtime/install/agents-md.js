@@ -184,13 +184,24 @@ ${renderIntegrationsList(integrations)}
 <!-- robin-integrations:end -->`;
 }
 
+function stripLeadingH1(body) {
+  return body.replace(/^#\s+[^\n]*\n+/, '');
+}
+
+function shiftHeadingsDown(body) {
+  return body
+    .split('\n')
+    .map((line) => (/^#{2,5}\s/.test(line) ? `#${line}` : line))
+    .join('\n');
+}
+
 function commStyleSection(commStyle) {
+  let scalarBlock;
   if (commStyle?.tone) {
     const ts = commStyle.last_synthesized_at
       ? new Date(commStyle.last_synthesized_at).toISOString()
       : 'unknown';
-    return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
-## Communication style
+    scalarBlock = `## Communication style
 
 Inferred preferences (synthesized nightly from your corrections):
 {
@@ -206,15 +217,40 @@ Inferred preferences (synthesized nightly from your corrections):
 
 If \`confidence\` is low (<0.4), treat these as soft hints; honor explicit
 instructions in the current turn first. Use \`get_comm_style()\` to re-read
-if something might have updated mid-session.
-<!-- robin-comm-style:end -->`;
-  }
-  return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
-## Communication style
+if something might have updated mid-session.`;
+  } else {
+    scalarBlock = `## Communication style
 
 No comm-style inferred yet — too few corrections, or Dream hasn't run.
 Use balanced defaults. Use \`get_comm_style()\` once a session has produced
-corrections to check whether enough signal has accumulated.
+corrections to check whether enough signal has accumulated.`;
+  }
+
+  const longForm = [];
+  const rules = commStyle?.['communication-style'];
+  const character = commStyle?.character;
+  const personality = commStyle?.personality;
+
+  if (typeof rules === 'string' && rules.trim()) {
+    longForm.push(
+      `### Active rules (long form)\n\n${shiftHeadingsDown(stripLeadingH1(rules)).trim()}`,
+    );
+  }
+  if (typeof character === 'string' && character.trim()) {
+    longForm.push(
+      `### Character — integrative read\n\n${shiftHeadingsDown(stripLeadingH1(character)).trim()}`,
+    );
+  }
+  if (typeof personality === 'string' && personality.trim()) {
+    longForm.push(
+      `### Robin's personality\n\n${shiftHeadingsDown(stripLeadingH1(personality)).trim()}`,
+    );
+  }
+
+  const body = [scalarBlock, ...longForm].join('\n\n');
+
+  return `<!-- robin-comm-style:start (auto-generated, do not hand-edit) -->
+${body}
 <!-- robin-comm-style:end -->`;
 }
 

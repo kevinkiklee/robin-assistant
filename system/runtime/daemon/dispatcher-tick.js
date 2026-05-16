@@ -5,6 +5,11 @@ import { runOneJob } from '../../cognition/jobs/runner.js';
 import { listDueJobs, planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
 import { embedBackfillTick } from '../../data/embed/backfill.js';
 import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
+import {
+  isEnabled,
+  readIntegrationsRev,
+  readIntegrationsState,
+} from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 
 /**
@@ -22,6 +27,22 @@ import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js
  */
 export function createDispatcherTick(ctx, tools) {
   const inFlight = new Set();
+
+  // Rev-cached integration enabled state. The dispatcher ticks every few
+  // seconds; re-reading the full `runtime:integrations` record every tick
+  // would be wasteful. `readIntegrationsRev` returns just the rev counter
+  // (one cheap read), and we only refetch the full state when rev advances.
+  let cachedState = null;
+  let cachedRev = -1;
+
+  async function getEnabledState() {
+    const rev = await readIntegrationsRev(ctx.db);
+    if (rev !== cachedRev) {
+      cachedState = await readIntegrationsState(ctx.db);
+      cachedRev = rev;
+    }
+    return cachedState;
+  }
 
   async function runOneItem(name) {
     const job = ctx.jobs.cache.current.find((j) => j.name === name);
@@ -109,7 +130,18 @@ export function createDispatcherTick(ctx, tools) {
     const jobsDue = await listDueJobs(ctx.db, new Date());
     const all = [...due, ...jobsDue];
 
-    for (const item of all) {
+    // Gate on per-integration enabled state. Internal pseudo-names
+    // (__dream__, __embed_backfill__) and job names (from ctx.jobs.cache)
+    // are NOT integrations — they pass through unfiltered.
+    const intState = await getEnabledState();
+    const allEnabled = all.filter((item) => {
+      const name = item.name;
+      if (name.startsWith('__')) return true;
+      if (ctx.jobs?.cache?.current?.some((j) => j.name === name)) return true;
+      return isEnabled(intState, name);
+    });
+
+    for (const item of allEnabled) {
       if (inFlight.has(item.name)) continue;
       inFlight.add(item.name);
       runOneItem(item.name)
