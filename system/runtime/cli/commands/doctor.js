@@ -30,7 +30,7 @@ import { packageRootDir, paths, pointerExists } from '../../../config/data-store
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { makeCtx as makeInvariantCtx } from '../../invariants/ctx.js';
 import { recordDivergence } from '../../invariants/divergence-log.js';
-import { phaseOrdered } from '../../invariants/index.js';
+import { getAllInvariants } from '../../invariants/index.js';
 import installPointerPresent from '../../invariants/install.pointer-present.js';
 import { isInSync, renderRunbook, replaceSentinelBlock } from '../../invariants/runbook.js';
 import { run as runInvariants } from '../../invariants/runner.js';
@@ -46,7 +46,7 @@ export { doctorData };
  * to a file in-place (--write), or runs a CI drift check (--check).
  */
 async function doEmitRunbook(out, err, { write = false, check = false, claudeMdPath } = {}) {
-  const body = renderRunbook();
+  const body = renderRunbook(await getAllInvariants());
   if (!write && !check) {
     out(body);
     return 0;
@@ -86,7 +86,7 @@ async function doInvariantsRender(out) {
   const report = await runInvariants({
     trigger: 'doctor',
     ctx,
-    invariants: phaseOrdered(),
+    invariants: await getAllInvariants(),
   });
   let crit = 0;
   let warn = 0;

@@ -2,8 +2,8 @@
 // markdown block per invariant via its explain() function. Used by
 // `robin doctor --emit-runbook` and the CI/precommit drift guards.
 
-import { PHASES } from './policy.js';
 import { phaseOrdered } from './index.js';
+import { PHASES } from './policy.js';
 
 export const SENTINEL_BEGIN = '<!-- robin:runbook:begin -->';
 export const SENTINEL_END = '<!-- robin:runbook:end -->';

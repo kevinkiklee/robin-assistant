@@ -9,7 +9,7 @@
 //   - 'cli'         : preflight; read-only state file; never re-checks unless in cliBlockingSet
 //                     and cache is stale.
 
-import { byPhase, INVARIANTS, phaseOrdered } from './index.js';
+import { byPhase, getAllInvariants } from './index.js';
 import { withLock } from './lock.js';
 import { decideRepair } from './policy-decisions.js';
 import { BOOT_REPAIR_ALLOWLIST, CLI_BLOCKING_SET, PHASES } from './policy.js';
@@ -280,7 +280,7 @@ export async function run(opts) {
     ctx,
     statePath,
     lockDir,
-    invariants = phaseOrdered(),
+    invariants,
     repairAllowlist = BOOT_REPAIR_ALLOWLIST,
     cliBlockingSet = CLI_BLOCKING_SET,
     name,
@@ -289,12 +289,15 @@ export async function run(opts) {
     apply = false,
     bootTotalBudgetMs = BOOT_TOTAL_BUDGET_MS,
   } = opts;
+  // Default to static + per-integration invariants. Tests that pass an explicit
+  // `invariants` array bypass the filesystem scan entirely.
+  const resolved = invariants ?? (await getAllInvariants());
 
   const state = statePath ? readState(statePath) : emptyState();
   const scoped = (() => {
-    if (name) return invariants.filter((i) => i.name === name);
-    if (surface) return invariants.filter((i) => i.surface === surface);
-    return invariants;
+    if (name) return resolved.filter((i) => i.name === name);
+    if (surface) return resolved.filter((i) => i.surface === surface);
+    return resolved;
   })();
 
   switch (trigger) {
