@@ -7,12 +7,41 @@
 //   4. Run `pnpm test system/tests/unit/invariants/registry-audit.test.js`
 //   5. Run `robin doctor --emit-runbook --write` (or let the precommit hook do it).
 
+import dbAuthenticated from './db.authenticated.js';
+import dbDaemonReachable from './db.daemon-reachable.js';
+import dbEmbedderProfileMatch from './db.embedder-profile-match.js';
+import dbPendingRecallLogBounded from './db.pending-recall-log-bounded.js';
 import installPointerPresent from './install.pointer-present.js';
+import installUserDataWritable from './install.user-data-writable.js';
+import integrationsLunchMoneyNoDupes from './integrations.lunch-money-no-dupes.js';
+import integrationsSyncFreshness from './integrations.sync-freshness.js';
+import mcpDaemonResponds from './mcp.daemon-responds.js';
+import mcpWiringGlobalPresent from './mcp.wiring-global-present.js';
+import mcpWiringProjectPresent from './mcp.wiring-project-present.js';
 import { PHASES } from './policy.js';
+import runtimeNoOrphanNodeTestProcs from './runtime.no-orphan-node-test-procs.js';
+import schedulerNoStuckInFlight from './scheduler.no-stuck-in-flight.js';
 
 export const INVARIANTS = [
   // Phase order matters; see PHASES in policy.js. Within a phase, registry order is run order.
+  // paths
   installPointerPresent,
+  installUserDataWritable,
+  // db
+  dbDaemonReachable,
+  dbAuthenticated,
+  dbEmbedderProfileMatch,
+  dbPendingRecallLogBounded,
+  // mcp
+  mcpWiringProjectPresent,
+  mcpWiringGlobalPresent,
+  mcpDaemonResponds,
+  // integrations
+  integrationsSyncFreshness,
+  integrationsLunchMoneyNoDupes,
+  // runtime
+  runtimeNoOrphanNodeTestProcs,
+  schedulerNoStuckInFlight,
 ];
 
 export const byName = new Map(INVARIANTS.map((i) => [i.name, i]));

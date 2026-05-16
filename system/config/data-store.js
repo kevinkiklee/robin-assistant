@@ -27,7 +27,11 @@ function findPackageRoot() {
 const _packageRoot = findPackageRoot();
 
 export function packageRootDir() {
-  return _packageRoot;
+  // Honors $ROBIN_PACKAGE_ROOT_OVERRIDE so unit tests can redirect
+  // package-root-relative paths (e.g. .mcp.json) to a tempdir without
+  // disturbing the real repo. Symmetric with how pointerLocation() reads
+  // the same env var.
+  return process.env.ROBIN_PACKAGE_ROOT_OVERRIDE ?? _packageRoot;
 }
 
 export const POINTER_VERSION = 1;
