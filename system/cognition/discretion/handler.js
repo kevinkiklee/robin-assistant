@@ -4,6 +4,7 @@
 // defense-in-depth, not the only line.
 
 import { checkBashCommand } from './bash-patterns.js';
+import { isCwdBypassed } from './project-bypass.js';
 
 function extractCommand(stdin) {
   if (!stdin || typeof stdin !== 'object') return undefined;
@@ -15,6 +16,12 @@ function extractCommand(stdin) {
   // Yet-older shape: `input.command`.
   const c = stdin.input?.command;
   if (typeof c === 'string') return c;
+  return undefined;
+}
+
+function extractCwd(stdin) {
+  if (!stdin || typeof stdin !== 'object') return undefined;
+  if (typeof stdin.cwd === 'string') return stdin.cwd;
   return undefined;
 }
 
@@ -37,6 +44,8 @@ export async function discretionHandler({ stdin, exit, stderr } = {}) {
     // Fail-soft: nothing to check.
     return;
   }
+
+  if (isCwdBypassed(extractCwd(stdin))) return;
 
   const verdict = checkBashCommand(cmd);
   if (verdict.blocked) {

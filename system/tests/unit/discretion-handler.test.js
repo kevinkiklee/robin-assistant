@@ -123,3 +123,70 @@ test('discretionHandler: stderr writer is invoked exactly once on block', async 
   assert.equal(h.stderrLines.length, 1);
   assert.equal(h.exitCalls.length, 1);
 });
+
+test('discretionHandler: bypassed cwd skips env-dump rule', async () => {
+  const h = makeHarness();
+  await discretionHandler({
+    stdin: {
+      cwd: '/Users/iser/workspace/leadforge',
+      tool_input: { command: 'vercel env pull .env.local --yes' },
+    },
+    exit: h.exit,
+    stderr: h.stderr,
+  });
+  assert.deepEqual(h.exitCalls, []);
+  assert.deepEqual(h.stderrLines, []);
+});
+
+test('discretionHandler: bypassed cwd subdirectory also skips rules', async () => {
+  const h = makeHarness();
+  await discretionHandler({
+    stdin: {
+      cwd: '/Users/iser/workspace/leadforge/apps/web',
+      tool_input: { command: 'env | grep TOKEN' },
+    },
+    exit: h.exit,
+    stderr: h.stderr,
+  });
+  assert.deepEqual(h.exitCalls, []);
+  assert.deepEqual(h.stderrLines, []);
+});
+
+test('discretionHandler: sibling path with shared prefix still blocked (no prefix-attack)', async () => {
+  const h = makeHarness();
+  await discretionHandler({
+    stdin: {
+      cwd: '/Users/iser/workspace/leadforge-archive',
+      tool_input: { command: 'env' },
+    },
+    exit: h.exit,
+    stderr: h.stderr,
+  });
+  assert.deepEqual(h.exitCalls, [2]);
+  assert.match(h.stderrLines[0], /env-dump/);
+});
+
+test('discretionHandler: missing cwd does NOT bypass (fail-closed)', async () => {
+  const h = makeHarness();
+  await discretionHandler({
+    stdin: { tool_input: { command: 'env' } },
+    exit: h.exit,
+    stderr: h.stderr,
+  });
+  assert.deepEqual(h.exitCalls, [2]);
+  assert.match(h.stderrLines[0], /env-dump/);
+});
+
+test('discretionHandler: non-bypassed cwd still applies rules', async () => {
+  const h = makeHarness();
+  await discretionHandler({
+    stdin: {
+      cwd: '/Users/iser/workspace/other-project',
+      tool_input: { command: 'env' },
+    },
+    exit: h.exit,
+    stderr: h.stderr,
+  });
+  assert.deepEqual(h.exitCalls, [2]);
+  assert.match(h.stderrLines[0], /env-dump/);
+});
