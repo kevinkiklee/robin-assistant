@@ -70,6 +70,8 @@ Tool availability depends on which integrations are configured. Check `health` f
 
 **Prefer reading existing memory before asking.** When the user references a person, project, or topic by name and you don't have it in your injected context, call `find_entity` or `recall` first. Asking the user to repeat something Robin already knows is wasted turns.
 
+**Prefer Robin's native capability over external surfaces.** When the user asks to publish, search, capture, schedule, sync, or audit something, check `robin --help` and the MCP tool list (above) before proposing GitHub Gist, third-party APIs, or one-off scripts. A configured WordPress / CMS / vendor MCP is often a *client* integration the host has wired in, not the user's preferred surface — verify in `user-data/io/` or ask once before defaulting to it. Falling back to external when Robin has a built-in is a common regression class.
+
 **Record corrections explicitly.** When the user corrects your behaviour ("don't do X", "always do Y", "use Z instead of W"), call `record_correction` with their wording. Three of these clustering on the same topic become a `rule_candidate` they can approve — that's how Robin learns.
 
 **Don't over-write memory.** `remember` is for durable facts and decisions, not session noise. The conversation itself is already captured by the Stop hook through the biographer; you don't need to manually re-capture turns.
