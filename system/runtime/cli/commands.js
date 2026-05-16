@@ -114,6 +114,21 @@ export const commands = {
         export: 'briefFeedback',
         help: 'record feedback on a brief insight (mN good|bad|neutral)',
       },
+      calibrate: {
+        import: './commands/brief-calibrate.js',
+        export: 'briefCalibrate',
+        help: 'manually set a category usefulness score (or --list / --clear)',
+      },
+      regenerate: {
+        import: './commands/brief-regenerate.js',
+        export: 'briefRegenerate',
+        help: 'force a fresh synthesis (clears intra-day cache, runs job)',
+      },
+      gallery: {
+        import: './commands/brief-gallery.js',
+        export: 'briefGallery',
+        help: 'manage daily-brief photo galleries (private|public|show)',
+      },
     },
   },
   mcp: {
