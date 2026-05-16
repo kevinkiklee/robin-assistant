@@ -1,5 +1,30 @@
+import { extractMNTokens, recordInsightFeedback } from '../../../cognition/briefing/feedback.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { recordEvent } from '../../capture/record-event.js';
+
+const NEGATIVE_PATTERNS = [
+  /\bnot useful\b/i,
+  /\bwasn['’]?t useful\b/i,
+  /\bwrong\b/i,
+  /\bmiss(ed)?\b/i,
+  /\bbad\b/i,
+  /\bdidn['’]?t (help|land)\b/i,
+];
+const POSITIVE_PATTERNS = [
+  /\buseful\b/i,
+  /\bgood\b/i,
+  /\bhelpful\b/i,
+  /\blanded\b/i,
+  /\bspot ?on\b/i,
+];
+
+function inferVerdict(text) {
+  if (typeof text !== 'string') return 'neutral';
+  // Negative wins ties — corrections lean toward "bad".
+  for (const p of NEGATIVE_PATTERNS) if (p.test(text)) return 'bad';
+  for (const p of POSITIVE_PATTERNS) if (p.test(text)) return 'good';
+  return 'neutral';
+}
 
 export function createRecordCorrectionTool({ db, embedder, processor }) {
   return {
@@ -41,7 +66,39 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         const r = await demoteOnCorrection(db, cls);
         if (r.demoted) demoted_class = cls;
       }
-      return { id: String(result.id), demoted_class };
+
+      // Auto-detect daily-brief insight feedback. When the correction mentions
+      // [mN] tokens, fan out to recordInsightFeedback so the calibration loop
+      // picks up the signal even when the user is correcting Robin via natural
+      // language rather than the explicit CLI.
+      const tokens = [
+        ...extractMNTokens(args.content),
+        ...extractMNTokens(args.prior_response ?? ''),
+      ];
+      const insightFeedback = [];
+      const seen = new Set();
+      for (const id of tokens) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        try {
+          const verdict = inferVerdict(args.content);
+          const fb = await recordInsightFeedback(db, {
+            insightId: id,
+            verdict,
+            source: 'natural_language',
+            freeText: args.content,
+          });
+          if (fb.ok) insightFeedback.push({ id, verdict, category: fb.category });
+        } catch (e) {
+          console.warn(`record_correction insight feedback failed for ${id}: ${e.message}`);
+        }
+      }
+
+      return {
+        id: String(result.id),
+        demoted_class,
+        ...(insightFeedback.length ? { insight_feedback: insightFeedback } : {}),
+      };
     },
   };
 }

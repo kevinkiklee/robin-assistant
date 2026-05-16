@@ -106,6 +106,16 @@ export const commands = {
       },
     },
   },
+  brief: {
+    help: 'daily-brief ops',
+    subcommands: {
+      feedback: {
+        import: './commands/brief-feedback.js',
+        export: 'briefFeedback',
+        help: 'record feedback on a brief insight (mN good|bad|neutral)',
+      },
+    },
+  },
   mcp: {
     help: 'daemon control',
     subcommands: {
