@@ -15,7 +15,7 @@ import {
   EXIT_INPUT,
   EXIT_POLICY,
   EXIT_UPSTREAM,
-  HTML_CACHE_CONTROL,
+  HTML_CACHE_MAX_AGE,
   MARKDOWN_SOURCE_MAX_BYTES,
   PAGE_PAYLOAD_REFUSE_BYTES,
   PAGE_PAYLOAD_WARN_BYTES,
@@ -274,8 +274,10 @@ export async function publish({
     warnings.push(`page payload exceeds ${PAGE_PAYLOAD_WARN_BYTES} bytes (warning only)`);
   }
 
-  // 15. Normalize action name for result (append is internal; callers see 'create')
-  const finalAction = action === 'overwrite' ? 'overwrite' : 'create';
+  // 15. Surface the internal action verbatim. Per CLAUDE.md publish spec,
+  // result.action is one of: 'overwrite' | 'append' | 'as-new', so downstream
+  // tooling can distinguish overwrite-of-existing-slug from suffix-appended.
+  const finalAction = action;
 
   const htmlKey = htmlKeyFor(slug);
   const resultBase = {
@@ -295,7 +297,7 @@ export async function publish({
   // 17. Upload HTML LAST (assets already uploaded by walkLocalImages)
   await blobClient.putBlob(htmlKey, fullHtml, {
     contentType: 'text/html; charset=utf-8',
-    cacheControl: HTML_CACHE_CONTROL,
+    cacheControlMaxAge: HTML_CACHE_MAX_AGE,
     allowOverwrite: action === 'overwrite',
   });
 

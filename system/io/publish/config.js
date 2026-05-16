@@ -27,8 +27,11 @@ export const PAGE_PAYLOAD_REFUSE_BYTES = 50 * 1024 * 1024; // 50 MB
 export const TITLE_MAX_LENGTH = 200;
 export const DESCRIPTION_MAX_LENGTH = 300;
 
-export const HTML_CACHE_CONTROL = 'public, max-age=60, must-revalidate';
-export const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+// @vercel/blob accepts a numeric `cacheControlMaxAge` (seconds) and generates
+// the Cache-Control header itself. The previous string constants were silently
+// dropped by putBlob and pages shipped without Cache-Control.
+export const HTML_CACHE_MAX_AGE = 60;
+export const ASSET_CACHE_MAX_AGE = 31_536_000;
 
 export const BLOB_RETRY_MAX = 3;
 export const BLOB_RETRY_DELAYS_MS = [200, 800, 3200];

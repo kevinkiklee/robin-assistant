@@ -5,7 +5,7 @@ import { fileTypeFromBuffer } from 'file-type';
 import { visit } from 'unist-util-visit';
 import {
   ALLOWED_IMAGE_MIMES,
-  ASSET_CACHE_CONTROL,
+  ASSET_CACHE_MAX_AGE,
   ASSET_CONCURRENCY,
   ASSET_MAX_BYTES,
   ASSETS_PER_PAGE_MAX,
@@ -77,7 +77,7 @@ async function uploadOne({ url, sourceDir, slug, userId, blobClient }) {
   } else {
     const r = await blobClient.putBlob(key, bytes, {
       contentType: sniff.mime,
-      cacheControl: ASSET_CACHE_CONTROL,
+      cacheControlMaxAge: ASSET_CACHE_MAX_AGE,
     });
     blobUrl = r.url;
   }
