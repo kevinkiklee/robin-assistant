@@ -557,3 +557,49 @@ function safeMtime(dir) {
     return null;
   }
 }
+
+/**
+ * Non-throwing variant of `robinHome()`. Returns the configured user-data home
+ * if one is resolvable, or `null` if Robin is not yet installed (no pointer
+ * file, no `$ROBIN_HOME`). Used by callers that need to *probe* for user-data
+ * without forcing the "Robin is not installed" error path — e.g. the
+ * integration loader, which falls back to system-only on fresh installs.
+ *
+ * Honors the same precedence as `resolveHomeStrict()`:
+ *   1. `$ROBIN_HOME` (must point at an existing directory)
+ *   2. Pointer file (`<packageRoot>/.robin-home` or OS-config fallback)
+ *
+ * @returns {string | null}
+ */
+function readHomeFromPointer() {
+  if (process.env.ROBIN_HOME) {
+    const p = resolve(process.env.ROBIN_HOME);
+    return existsSync(p) ? p : null;
+  }
+  const ptr = readPointer();
+  if (!ptr || ptr.version !== POINTER_VERSION || typeof ptr.home !== 'string') return null;
+  const target = resolve(ptr.home);
+  return existsSync(target) ? target : null;
+}
+
+/**
+ * Returns the ordered list of directories the integration loader should scan.
+ *
+ * Always includes the system integrations dir (`system/io/integrations`).
+ * Includes the user-data integrations dir (`<home>/io/integrations`) only if
+ * it exists on disk — fresh installs without user-data won't see a missing-dir
+ * warning from the loader.
+ *
+ * Order matters: system entries are loaded first, then user-data entries can
+ * shadow or extend them.
+ *
+ * @returns {string[]}
+ */
+export function getIntegrationDirs() {
+  const systemDir = join(packageRootDir(), 'system', 'io', 'integrations');
+  const home = readHomeFromPointer();
+  if (!home) return [systemDir];
+  const userDir = join(home, 'io', 'integrations');
+  if (!existsSync(userDir)) return [systemDir];
+  return [systemDir, userDir];
+}
