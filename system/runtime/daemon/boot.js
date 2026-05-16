@@ -16,7 +16,7 @@ import {
 } from '../../cognition/jobs/db.js';
 import { discoverJobs } from '../../cognition/jobs/loader.js';
 import { planNextRunAt } from '../../cognition/jobs/scheduler-ext.js';
-import { ensureHome, paths } from '../../config/data-store.js';
+import { ensureHome, getIntegrationDirs, paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
 import { envFilePath } from '../../config/secrets.js';
 import { close, connect, defaultDbUrl } from '../../data/db/client.js';
@@ -270,8 +270,7 @@ export async function boot() {
       `[daemon] cleared stuck in_flight on ${jobReset.reset} job(s): ${jobReset.names.join(', ')}`,
     );
   }
-  const integrationsDir = new URL('../../io/integrations/', import.meta.url).pathname;
-  const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
+  const { loaded: manifests, unavailable } = await loadManifests(getIntegrationDirs());
   for (const u of unavailable) {
     console.warn(`[daemon] integration ${u.name} unavailable: ${u.error}`);
   }

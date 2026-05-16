@@ -5,6 +5,7 @@ import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { readDaemonState } from '../../../config/daemon-state.js';
 import {
+  getIntegrationDirs,
   packageRootDir,
   paths,
   recordHostTouchpoint,
@@ -60,8 +61,7 @@ async function loadIntegrationsForAgentsMd() {
     const { loadManifests } = await import(
       '../../../io/integrations/_framework/manifest-loader.js'
     );
-    const integrationsDir = new URL('../../../io/integrations/', import.meta.url).pathname;
-    const { loaded } = await loadManifests(integrationsDir);
+    const { loaded } = await loadManifests(getIntegrationDirs());
     // Manifest `tools:` is an array of factory FUNCTIONS, not built tool
     // objects. Each factory returns `{ name: 'gmail_search', ... }` when
     // invoked. Factories accept context (db/embedder/capture) but read it

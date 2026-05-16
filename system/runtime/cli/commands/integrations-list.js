@@ -1,5 +1,5 @@
 import { surql } from 'surrealdb';
-import { ensureHome } from '../../../config/data-store.js';
+import { ensureHome, getIntegrationDirs } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { loadManifests } from '../../../io/integrations/_framework/manifest-loader.js';
 
@@ -40,8 +40,7 @@ export async function integrationsList(args = []) {
   const matches = (name) => (needle ? name.toLowerCase().includes(needle) : true);
 
   await ensureHome();
-  const integrationsDir = new URL('../../../io/integrations/', import.meta.url).pathname;
-  const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
+  const { loaded: manifests, unavailable } = await loadManifests(getIntegrationDirs());
 
   const db = await connect({ engine: await defaultDbUrl() });
   let rtIntegrations = {};

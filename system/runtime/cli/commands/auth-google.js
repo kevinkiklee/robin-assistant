@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline/promises';
+import { getIntegrationDirs } from '../../../config/data-store.js';
 import { requireSecret, saveSecret } from '../../../config/secrets.js';
 import { runHeadlessAuth, runLoopbackAuth } from '../../../io/integrations/_auth/oauth2.js';
 import { loadManifests } from '../../../io/integrations/_framework/manifest-loader.js';
@@ -60,8 +61,7 @@ export function parseCodeArg(argv) {
 }
 
 async function unionScopes(provider) {
-  const dir = new URL('../../../io/integrations/', import.meta.url).pathname;
-  const { loaded: manifests } = await loadManifests(dir);
+  const { loaded: manifests } = await loadManifests(getIntegrationDirs());
   const all = new Set();
   for (const m of manifests) {
     // Forward-compat: pick up scopes if manifests declare `secrets.oauth.{provider, scopes}`.

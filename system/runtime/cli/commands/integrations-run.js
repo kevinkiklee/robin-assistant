@@ -1,6 +1,6 @@
 import { surql } from 'surrealdb';
 import { readDaemonState } from '../../../config/daemon-state.js';
-import { ensureHome, paths } from '../../../config/data-store.js';
+import { ensureHome, getIntegrationDirs, paths } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 import { acquire } from '../../../data/db/lock.js';
 import { createEmbedder } from '../../../data/embed/factory.js';
@@ -27,8 +27,7 @@ export async function integrationsRun(argv) {
   try {
     const db = await connect({ engine: await defaultDbUrl() });
     try {
-      const integrationsDir = new URL('../../../io/integrations/', import.meta.url).pathname;
-      const { loaded: manifests, unavailable } = await loadManifests(integrationsDir);
+      const { loaded: manifests, unavailable } = await loadManifests(getIntegrationDirs());
       const target = manifests.find((m) => m.name === name);
       if (!target) {
         const why = unavailable.find((u) => u.name === name);
