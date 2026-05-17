@@ -80,9 +80,17 @@ test('calibrationBucket: flag on → real path (stub db returns empty result set
   assert.equal(typeof r.buckets_written, 'number');
 });
 
-test('predictionTaxonomy: flag on → skipped phase_1_stub', async () => {
+test('predictionTaxonomy: flag on → real path (stub db has no predictions, null embedder → early error)', async () => {
+  // Phase 1 stub replaced by real weekly-cluster step. The stub DB returns a
+  // non-null row for every query, so the predictions read yields one garbage row
+  // whose content is undefined; the null embedder throws, and the step returns
+  // an error shape (fail-soft). That confirms the real code path runs — it no
+  // longer returns phase_1_stub.
   const r = await dreamStepPredictionTaxonomy(enabledDb, null);
-  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'predictionTaxonomy' });
+  assert.equal(r.skipped, false, 'should not be skipped (flag is on)');
+  assert.equal(r.step, 'predictionTaxonomy');
+  // Error path (embedder=null can't embed undefined content).
+  assert.ok(r.error, 'should return an error field from the embedder failure');
 });
 
 test('selfImprovementRollup: flag on → skipped phase_1_stub', async () => {
