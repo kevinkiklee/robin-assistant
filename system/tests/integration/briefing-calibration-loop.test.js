@@ -14,8 +14,8 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { recordInsightFeedback } from '../../cognition/briefing/feedback.js';
 import insightCalibration from '../../../user-data/jobs/insight-calibration.js';
+import { recordInsightFeedback } from '../../cognition/briefing/feedback.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
@@ -87,7 +87,7 @@ test('end-to-end: 5x bad feedback on speculative_connection suppresses category'
     // The synthesis prompt's suppression threshold is < 0.25 over ≥3 votes;
     // we're just above that, but trending down. 6 bad votes would clinch it.
     const [profile] = await db
-      .query("SELECT VALUE value FROM runtime:`insight_calibration`")
+      .query('SELECT VALUE value FROM runtime:`insight_calibration`')
       .collect();
     assert.ok(profile[0].speculative_connection);
     assert.ok(
@@ -113,9 +113,7 @@ test('end-to-end: 5x good feedback boosts a standard category above prior', asyn
           ts: time::now(),
           meta: ${{
             insights: {
-              watching: [
-                { id: 'm1', category: 'recovery_correlation', text: 'sleep + flight' },
-              ],
+              watching: [{ id: 'm1', category: 'recovery_correlation', text: 'sleep + flight' }],
               learned: [],
               section: {},
               photo_critique: { supportive: [], improvement: [] },
@@ -133,7 +131,7 @@ test('end-to-end: 5x good feedback boosts a standard category above prior', asyn
     await insightCalibration({ db, now });
 
     const [profile] = await db
-      .query("SELECT VALUE value FROM runtime:`insight_calibration`")
+      .query('SELECT VALUE value FROM runtime:`insight_calibration`')
       .collect();
     // standard prior 0.5, alpha 10. With 5 good votes:
     //   score = (5 + 10*0.5) / (5 + 0 + 10) = 10/15 ≈ 0.667

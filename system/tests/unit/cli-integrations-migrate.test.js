@@ -4,10 +4,19 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { surql } from 'surrealdb';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { runMigrate } from '../../runtime/cli/commands/integrations-migrate.js';
+
+const __robinTestHome = join(
+  tmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+mkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 async function freshDb() {
   const db = await connect({ engine: 'mem://' });

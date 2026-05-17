@@ -1,9 +1,24 @@
 import { strict as assert } from 'node:assert';
-import { resolve } from 'node:path';
+import { mkdirSync as __robinMkdirSync } from 'node:fs';
+import { tmpdir as __robinTmpdir } from 'node:os';
+import { join as __robinJoin, resolve } from 'node:path';
 import test from 'node:test';
 import { surql } from 'surrealdb';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
+
+// Test fixture: every test in this file talks to a fresh mem:// DB but
+// still calls runMigrations() which reads ROBIN_HOME/config/config.json.
+// Without this setup the test inherits whatever ROBIN_HOME is in the env
+// (and breaks when the install pointer was deleted by another test).
+const __robinTestHome = __robinJoin(
+  __robinTmpdir(),
+  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+__robinMkdirSync(__robinTestHome, { recursive: true });
+process.env.ROBIN_HOME = __robinTestHome;
+await __robinWriteConfig({ embedder_profile: 'mxbai-1024' });
 
 async function freshDb() {
   const db = await connect({ engine: 'mem://' });

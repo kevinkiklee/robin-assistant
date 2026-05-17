@@ -126,7 +126,9 @@ test('withRuntimeJobsTracking — successful tick writes last_run_at + next_run_
   const out = await tracked();
   assert.equal(out, 'ok');
   const [rows] = await db
-    .query("SELECT last_run_at, last_run_ok, next_run_at, consecutive_failures FROM runtime_jobs WHERE name = 'state-inference'")
+    .query(
+      "SELECT last_run_at, last_run_ok, next_run_at, consecutive_failures FROM runtime_jobs WHERE name = 'state-inference'",
+    )
     .collect();
   const r = rows[0];
   assert.equal(r.last_run_ok, true);
@@ -149,7 +151,9 @@ test('withRuntimeJobsTracking — failing tick records failure and re-throws', a
   });
   await assert.rejects(tracked, /boom/);
   const [rows] = await db
-    .query("SELECT last_run_ok, last_error, consecutive_failures FROM runtime_jobs WHERE name = 'state-inference'")
+    .query(
+      "SELECT last_run_ok, last_error, consecutive_failures FROM runtime_jobs WHERE name = 'state-inference'",
+    )
     .collect();
   const r = rows[0];
   assert.equal(r.last_run_ok, false);

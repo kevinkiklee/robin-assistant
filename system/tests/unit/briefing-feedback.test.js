@@ -41,7 +41,7 @@ async function seedBrief(db, insights) {
 }
 
 test('extractMNTokens finds [mN] tokens with word boundaries', () => {
-  assert.deepEqual(extractMNTokens('the m3 insight wasn\'t useful'), ['m3']);
+  assert.deepEqual(extractMNTokens("the m3 insight wasn't useful"), ['m3']);
   assert.deepEqual(extractMNTokens('M1 was great but m7 missed'), ['m1', 'm7']);
   assert.deepEqual(extractMNTokens('imagined as M9 — m12 too').sort(), ['m12', 'm9']);
   // No false matches inside other words
