@@ -30,7 +30,13 @@ export const BASH_DENY_PATTERNS = [
   },
   {
     name: 'env-dump',
-    pattern: /(?:^|[\s|;&])(?:env|printenv)(?:\s|$|\|)/,
+    // Match only true dump invocations: bare `env` / `printenv`, piped, or
+    // redirected. Skips `env VAR=val cmd` (set-and-run), `env -i cmd`
+    // (clean-env-then-run), `launchctl setenv/getenv/unsetenv`, and avoids
+    // false positives on words containing "env" inside echo strings such as
+    // "launchctl env set" (caught the prior regex because of the space
+    // boundary on both sides).
+    pattern: /(?:^|[\s|;&])(?:env|printenv)(?:\s*$|\s*[|>])/,
     why: 'Dumps environment variables',
   },
   {

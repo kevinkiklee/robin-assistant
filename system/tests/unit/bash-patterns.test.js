@@ -65,6 +65,36 @@ const cases = [
     cmd: 'echo "set up environment vars first"',
     expect: null,
   },
+  {
+    label: 'env-dump: env > file (redirect counts as dump)',
+    cmd: 'env > /tmp/snapshot',
+    expect: 'env-dump',
+  },
+  {
+    label: 'env-dump: negative — env VAR=val cmd (set-and-run)',
+    cmd: 'env FOO=bar node script.js',
+    expect: null,
+  },
+  {
+    label: 'env-dump: negative — env -i clean-env-then-run',
+    cmd: 'env -i HOME=/tmp /bin/bash',
+    expect: null,
+  },
+  {
+    label: 'env-dump: negative — launchctl setenv is not a dump',
+    cmd: 'launchctl setenv OLLAMA_KEEP_ALIVE 2h',
+    expect: null,
+  },
+  {
+    label: 'env-dump: negative — launchctl getenv is not a dump',
+    cmd: 'launchctl getenv OLLAMA_API_BASE',
+    expect: null,
+  },
+  {
+    label: 'env-dump: negative — echo with literal " env " inside string is fine',
+    cmd: 'echo "launchctl env set"',
+    expect: null,
+  },
 
   // ---- destructive-rm -------------------------------------------------
   {
