@@ -56,9 +56,13 @@ test('selfImprovementRollup: flag off → skipped v2_not_enabled', async () => {
 // flag=true → phase_1_stub (Wave 3 not yet implemented)
 // ---------------------------------------------------------------------------
 
-test('outcomeGrading: flag on → skipped phase_1_stub', async () => {
+test('outcomeGrading: flag on → real grading path (no rows → zeroes)', async () => {
+  // Phase 1 stub replaced by real Haiku scorer in Wave 3.
+  // enabledDb has no task_outcome memos, so the step returns immediately with zeroes.
   const r = await dreamStepOutcomeGrading(enabledDb, null, null, {});
-  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'outcomeGrading' });
+  assert.equal(r.skipped, false);
+  assert.equal(r.step, 'outcomeGrading');
+  assert.equal(typeof r.graded, 'number');
 });
 
 test('playbookSynthesis: flag on → skipped phase_1_stub', async () => {
@@ -66,9 +70,14 @@ test('playbookSynthesis: flag on → skipped phase_1_stub', async () => {
   assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'playbookSynthesis' });
 });
 
-test('calibrationBucket: flag on → skipped phase_1_stub', async () => {
+test('calibrationBucket: flag on → real path (stub db returns empty result set, not skipped)', async () => {
+  // Step is no longer a Phase 1 stub — real math runs. The stub DB returns no
+  // resolved predictions, so the step succeeds with zero kinds_processed.
   const r = await dreamStepCalibrationBucket(enabledDb);
-  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'calibrationBucket' });
+  assert.equal(r.skipped, false);
+  assert.equal(r.step, 'calibrationBucket');
+  assert.equal(typeof r.kinds_processed, 'number');
+  assert.equal(typeof r.buckets_written, 'number');
 });
 
 test('predictionTaxonomy: flag on → skipped phase_1_stub', async () => {
