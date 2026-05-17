@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'none'">
+<title>robin</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<aside>
+  <div class="brand">robin →</div>
+  <div class="group">
+    <h2>views</h2>
+    <a href="#view/dashboard" data-route="view/dashboard">dashboard</a>
+    <a href="#view/events" data-route="view/events">events</a>
+    <a href="#view/triggers" data-route="view/triggers">triggers</a>
+    <a href="#view/rules" data-route="view/rules">rules</a>
+    <a href="#view/query" data-route="view/query">query editor</a>
+  </div>
+  <div class="group" id="tables-group">
+    <h2>tables <span id="tables-count" class="count"></span></h2>
+    <div id="tables-list"></div>
+  </div>
+</aside>
+<main id="main"><h1>loading…</h1></main>
+
+<script>
+const $ = (s, root = document) => root.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtTs = (t) => { if (!t) return ''; const d = new Date(t); return isNaN(d) ? String(t) : d.toISOString().replace('T', ' ').slice(0, 19); };
+
+let info = null;
+
+async function fetchJson(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  return r.json();
+}
+
+async function loadInfo() {
+  info = await fetchJson('/api/info');
+  $('#tables-count').textContent = info.tables.length;
+  $('#tables-list').innerHTML = info.tables.map((t) => {
+    const n = info.counts[t];
+    return `<a href="#table/${esc(t)}" data-route="table/${esc(t)}">${esc(t)} <span class="count">${n ?? ''}</span></a>`;
+  }).join('');
+}
+
+function setActive(routeKey) {
+  for (const a of document.querySelectorAll('aside a')) {
+    a.classList.toggle('active', a.dataset.route === routeKey);
+  }
+}
+
+async function renderDashboard() {
+  const m = $('#main');
+  m.innerHTML = '<h1>dashboard</h1><div class="muted">at a glance</div><ul class="tiles" id="tiles"></ul>';
+  const entries = Object.entries(info.counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  $('#tiles').innerHTML = entries.map(([t, n]) =>
+    `<li><a href="#table/${esc(t)}"><strong>${n.toLocaleString()}</strong><span>${esc(t)}</span></a></li>`
+  ).join('') || '<li class="muted">no tables yet</li>';
+}
+
+async function renderTable(name) {
+  const m = $('#main');
+  m.innerHTML = `<h1>${esc(name)} <span class="row-meta">loading…</span></h1>`;
+  const data = await fetchJson(`/api/table/${encodeURIComponent(name)}`);
+  if (data.error) { m.innerHTML = `<div class="error">${esc(data.error)}</div>`; return; }
+  const fields = data.schema?.fields ?? [];
+  const recent = data.recent ?? [];
+  m.innerHTML = `
+    <h1>${esc(name)} <span class="row-meta">${data.count ?? '—'} rows</span></h1>
+    <h2>schema</h2>
+    <table>
+      <thead><tr><th>field</th><th>type</th></tr></thead>
+      <tbody>${fields.map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.def)}</td></tr>`).join('')}</tbody>
+    </table>
+    <h2>recent rows</h2>
+    ${recent.length ? `<pre class="result">${esc(JSON.stringify(recent, null, 2))}</pre>` : '<div class="muted">no rows</div>'}
+  `;
+}
+
+async function renderEvents() {
+  const m = $('#main');
+  m.innerHTML = `<h1>events</h1>
+    <div class="muted">last 50 across all sources</div>
+    <table><thead><tr><th>when</th><th>source</th><th>content</th></tr></thead>
+    <tbody id="ev-body"><tr><td colspan="3" class="muted">loading…</td></tr></tbody></table>`;
+  const data = await fetchJson('/api/events?limit=50');
+  $('#ev-body').innerHTML = (data.rows ?? []).map((r) =>
+    `<tr><td class="ts">${esc(fmtTs(r.ts))}</td><td><span class="badge">${esc(r.source)}</span></td><td class="body">${esc((r.content ?? '').slice(0, 200))}</td></tr>`
+  ).join('') || '<tr><td colspan="3" class="muted">no events</td></tr>';
+}
+
+async function renderTriggers() {
+  const m = $('#main');
+  m.innerHTML = '<h1>triggers</h1><div class="muted">recent fires</div><div id="tf">loading…</div>';
+  const data = await fetchJson('/api/triggers');
+  const rows = data.recent_fires ?? [];
+  $('#tf').innerHTML = rows.length
+    ? `<table><thead><tr><th>name</th><th>status</th><th>when</th><th>reason / error</th></tr></thead>
+      <tbody>${rows.map((r) =>
+        `<tr><td>${esc(r.name)}</td><td><span class="badge">${esc(r.status)}</span></td><td class="ts">${esc(fmtTs(r.fired_at))}</td><td class="body">${esc(r.reason ?? r.error ?? '')}</td></tr>`
+      ).join('')}</tbody></table>`
+    : '<div class="muted">no fires yet — register triggers in user-data/triggers/</div>';
+}
+
+async function renderRules() {
+  const m = $('#main');
+  m.innerHTML = '<h1>rule candidates</h1><div class="muted">pending</div><div id="rl">loading…</div>';
+  const data = await fetchJson('/api/rules?status=pending');
+  const rows = data.rows ?? [];
+  $('#rl').innerHTML = rows.length
+    ? `<table><thead><tr><th>kind</th><th>statement</th></tr></thead>
+      <tbody>${rows.map((r) =>
+        `<tr><td><span class="badge">${esc(r.kind ?? '?')}</span></td><td class="body">${esc(r.statement ?? r.body ?? JSON.stringify(r).slice(0, 200))}</td></tr>`
+      ).join('')}</tbody></table>`
+    : '<div class="muted">no pending candidates</div>';
+}
+
+async function renderQuery() {
+  const m = $('#main');
+  m.innerHTML = `
+    <h1>query editor</h1>
+    <textarea id="query" placeholder="-- SurrealQL\nSELECT * FROM events ORDER BY ts DESC LIMIT 10;"></textarea>
+    <button class="run" id="run">run</button>
+    <div id="result"></div>
+  `;
+  $('#run').addEventListener('click', runQuery);
+  $('#query').addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') runQuery();
+  });
+}
+
+async function runQuery() {
+  const sql = $('#query').value.trim();
+  if (!sql) return;
+  const out = $('#result');
+  out.innerHTML = '<div class="muted">running…</div>';
+  let token = null;
+  try {
+    const t = await fetchJson('/api/csrf-token', { method: 'POST', body: '{}' });
+    token = t.token;
+  } catch { /* csrf may be disabled on socket bind */ }
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['X-CSRF-Token'] = token;
+  try {
+    const r = await fetchJson('/api/query', { method: 'POST', headers, body: JSON.stringify({ sql }) });
+    if (r.error) { out.innerHTML = `<div class="error">${esc(r.error)}</div>`; return; }
+    out.innerHTML = `<div class="muted">${r.ms} ms · ${r.responses?.length ?? 0} statement(s)</div>` +
+      r.responses.map((res, i) => res.success
+        ? `<h2>statement ${i + 1}</h2><pre class="result">${esc(JSON.stringify(res.result, null, 2))}</pre>`
+        : `<h2>statement ${i + 1} failed</h2><div class="error">${esc(res.error)}</div>`
+      ).join('');
+  } catch (e) {
+    out.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+
+async function route() {
+  const hash = (location.hash || '#view/dashboard').slice(1);
+  setActive(hash);
+  if (hash === 'view/dashboard' || hash === '') return renderDashboard();
+  if (hash === 'view/events') return renderEvents();
+  if (hash === 'view/triggers') return renderTriggers();
+  if (hash === 'view/rules') return renderRules();
+  if (hash === 'view/query') return renderQuery();
+  if (hash.startsWith('table/')) return renderTable(hash.slice('table/'.length));
+  $('#main').innerHTML = `<h1>not found</h1><div class="muted">${esc(hash)}</div>`;
+}
+
+window.addEventListener('hashchange', route);
+(async () => {
+  await loadInfo();
+  await route();
+})();
+</script>
+</body>
+</html>

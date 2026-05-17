@@ -421,6 +421,11 @@ export const commands = {
     export: 'publish',
     help: 'publish a markdown file to the web (askrobin.io)',
   },
+  web: {
+    import: './commands/web.js',
+    export: 'web',
+    help: 'start the local web admin UI (UNIX socket by default; --port for TCP)',
+  },
   published: {
     import: './commands/published.js',
     export: 'published',
