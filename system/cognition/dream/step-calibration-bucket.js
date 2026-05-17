@@ -2,6 +2,11 @@
 // L2 step, pure math. Sole writer of `confidence_band` memos.
 // Spec §4b: adaptive per-bucket calibration math with Laplace smoothing.
 // FAIL-SOFT: an error here MUST NOT abort the Dream run.
+//
+// Transaction safety: the delete+create cycle for each statement_kind is wrapped
+// in a single BEGIN TRANSACTION / COMMIT TRANSACTION block so the sole-writer
+// property is genuinely atomic (replaces the previous Promise.all-of-separate-queries
+// pattern which was not atomic).
 import { BoundQuery } from 'surrealdb';
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import {
@@ -56,53 +61,55 @@ export async function runCalibrationBucket(db) {
   let buckets_written = 0;
   const bucketing_modes = { bootstrap: 0, mature: 0 };
 
-  // 3. For each kind: delete existing confidence_band rows + rewrite in one
-  //    transaction (sole-writer property).
+  // 3. For each kind: delete existing confidence_band rows + rewrite atomically.
+  //
+  //    Pattern from system/cognition/memory/store.js (relateAll) and
+  //    system/data/db/migrate.js: build a single BoundQuery string with
+  //    BEGIN TRANSACTION / COMMIT TRANSACTION and per-index bindings, then
+  //    execute in one db.query() call. This is the canonical SurrealDB approach
+  //    for a variable-length atomic batch and replaces the previous
+  //    Promise.all-of-separate-queries pattern (not actually atomic).
   for (const [statement_kind, predictions] of byKind) {
     const buckets = computeBuckets(predictions);
     if (buckets.length === 0) continue;
 
-    // Build the DELETE + CREATE statements for a single transaction.
-    const deleteStmt = new BoundQuery(
+    // Build the transaction: DELETE + one CREATE per bucket.
+    // Use per-index binding keys (f0, f1, …) to avoid collisions.
+    const txB = { sk: statement_kind };
+    const txL = [
+      'BEGIN TRANSACTION',
       `DELETE memos WHERE kind = 'confidence_band' AND meta.statement_kind = $sk`,
-      { sk: statement_kind },
-    );
-
-    // Each bucket becomes one CREATE.
-    const createStmts = buckets.map((b) => {
+    ];
+    for (let i = 0; i < buckets.length; i++) {
+      const b = buckets[i];
       const label =
         b.bucketing_mode === 'bootstrap'
           ? `${statement_kind} @ ${b.bucket}`
           : `${statement_kind} @ ${String(b.bucket.toFixed(1))}`;
       const content = `${label}: ${b.correct}/${b.n} correct, accuracy=${b.accuracy.toFixed(3)} (laplace), raw=${b.raw_accuracy === null ? 'n/a' : b.raw_accuracy.toFixed(3)}`;
-      const meta = {
-        statement_kind,
-        bucket: b.bucket,
-        bucketing_mode: b.bucketing_mode,
-        n: b.n,
-        correct: b.correct,
-        accuracy: b.accuracy,
-        raw_accuracy: b.raw_accuracy,
-        last_recomputed_at: now,
-      };
-      return new BoundQuery(`CREATE memos CONTENT $fields`, {
-        fields: {
-          kind: 'confidence_band',
-          content,
-          derived_by: 'dream',
-          scope: 'global',
-          tags: [],
-          meta,
+      txB[`f${i}`] = {
+        kind: 'confidence_band',
+        content,
+        derived_by: 'dream',
+        scope: 'global',
+        tags: [],
+        meta: {
+          statement_kind,
+          bucket: b.bucket,
+          bucketing_mode: b.bucketing_mode,
+          n: b.n,
+          correct: b.correct,
+          accuracy: b.accuracy,
+          raw_accuracy: b.raw_accuracy,
+          last_recomputed_at: now,
         },
-      });
-    });
+      };
+      txL.push(`CREATE memos CONTENT $f${i}`);
+    }
+    txL.push('COMMIT TRANSACTION');
 
-    // Execute delete + all creates as a block.
-    // SurrealDB supports multiple statements separated by semicolons in one
-    // db.query() call — collect() returns one result array per statement.
-    const allStmts = [deleteStmt, ...createStmts];
     try {
-      await Promise.all(allStmts.map((stmt) => db.query(stmt).collect()));
+      await db.query(new BoundQuery(txL.join(';\n'), txB)).collect();
     } catch (e) {
       console.warn(
         `[dream] step-calibration-bucket: write failed for ${statement_kind}: ${e.message}`,

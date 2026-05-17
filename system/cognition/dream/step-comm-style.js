@@ -14,10 +14,16 @@
 // Convergence: per-context, 2 consecutive synthesizes with matching content_hash →
 // volatile = false. A content_hash mismatch → volatile = true.
 //
+// Snapshots (spec §4d gap): after each successful synthesis (default OR per-context),
+// a comm_style_snapshot memo is written. persona:singleton.comm_style.last_snapshot_id
+// and comm_style_contexts.<ctx>.last_snapshot_id point to the active rows so playbooks
+// can cite via related_comm_style_snapshot. Idempotent: skipped when the input/output
+// hash matches the latest snapshot for that context.
+//
 // FAIL-SOFT: errors here MUST NOT abort the Dream run.
 
 import { createHash } from 'node:crypto';
-import { surql } from 'surrealdb';
+import { BoundQuery, surql } from 'surrealdb';
 import { parseLLMJSON } from '../biographer/output.js';
 import { synthesizeCommStyle, validateCommStyleShape } from '../jobs/comm-style.js';
 import {
@@ -83,6 +89,76 @@ async function setContexts(db, contexts) {
   await db
     .query(surql`UPSERT persona:singleton MERGE ${{ comm_style_contexts: contexts }}`)
     .collect();
+}
+
+/**
+ * Fetch the latest comm_style_snapshot memo for a given context.
+ * Returns the row (id + meta) or null.
+ */
+async function getLatestSnapshot(db, context) {
+  // SurrealDB v3: ORDER BY fields must appear in the SELECT list.
+  const [rows] = await db
+    .query(
+      new BoundQuery(
+        `SELECT id, meta, meta.last_synthesized_at AS last_synthesized_at FROM memos
+         WHERE kind = 'comm_style_snapshot' AND meta.context = $ctx
+         ORDER BY last_synthesized_at DESC LIMIT 1`,
+        { ctx: context },
+      ),
+    )
+    .collect();
+  return rows?.[0] ?? null;
+}
+
+/**
+ * Write a comm_style_snapshot memo and return its id string.
+ * Idempotent: if the latest snapshot for the context already has a matching
+ * content_hash, skip and return the existing id.
+ *
+ * @param {object} opts
+ * @param {object} db
+ * @param {'default'|'discord'|'terminal'|'web'} opts.context
+ * @param {object} opts.synthesizedFields - the validated comm-style shape
+ * @param {string} opts.contentHash - sha256 of the synthesized shape
+ * @param {boolean} opts.volatile
+ * @param {number} opts.evidenceCount
+ * @returns {Promise<string|null>} snapshot memo id string, or null on error
+ */
+async function writeCommStyleSnapshot(db, { context, synthesizedFields, contentHash, volatile, evidenceCount }) {
+  // Idempotency: skip if the latest snapshot for this context has the same content_hash.
+  const latest = await getLatestSnapshot(db, context);
+  if (latest?.meta?.content_hash === contentHash) {
+    return String(latest.id);
+  }
+
+  const now = new Date().toISOString();
+  const summary = `comm_style/${context}: tone=${synthesizedFields.tone ?? '?'} formality=${synthesizedFields.formality ?? '?'} confidence=${synthesizedFields.confidence ?? 0}`;
+  const fields = {
+    kind: 'comm_style_snapshot',
+    content: summary,
+    derived_by: 'comm-style-synthesis',
+    scope: 'global',
+    tags: [],
+    meta: {
+      context,
+      content_hash: contentHash,
+      volatile,
+      evidence_count: evidenceCount,
+      last_synthesized_at: now,
+      synthesized_fields: synthesizedFields,
+    },
+  };
+
+  try {
+    const [rows] = await db
+      .query(new BoundQuery('CREATE memos CONTENT $fields', { fields }))
+      .collect();
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return row?.id ? String(row.id) : null;
+  } catch (e) {
+    console.warn(`[dream] step-comm-style: snapshot write failed (${context}): ${e.message}`);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +274,38 @@ export async function dreamStepCommStyle(db, host) {
     defaultResult = { ok: false, reason: e.message };
   }
 
+  // After default synthesis: write snapshot memo and update last_snapshot_id.
+  // Skip when cached=true (synthesis short-circuited on identical input) — nothing changed.
+  if (defaultResult?.ok && !defaultResult.cached && defaultResult.comm_style) {
+    try {
+      const cs = defaultResult.comm_style;
+      const contentHash = createHash('sha256')
+        .update(JSON.stringify(cs))
+        .digest('hex')
+        .slice(0, 16);
+      const snapshotId = await writeCommStyleSnapshot(db, {
+        context: 'default',
+        synthesizedFields: cs,
+        contentHash,
+        volatile: cs.confidence == null || cs.confidence < 0.4,
+        evidenceCount: defaultResult.signals_used ?? 0,
+      });
+      if (snapshotId) {
+        // Patch persona:singleton.comm_style.last_snapshot_id.
+        const [row] = await db
+          .query(surql`SELECT comm_style FROM persona:singleton`)
+          .collect()
+          .then(([r]) => [r?.[0]]);
+        const updated = { ...(row?.comm_style ?? {}), last_snapshot_id: snapshotId };
+        await db
+          .query(surql`UPSERT persona:singleton MERGE ${{ comm_style: updated }}`)
+          .collect();
+      }
+    } catch (e) {
+      console.warn(`[dream] step-comm-style default snapshot: ${e.message}`);
+    }
+  }
+
   // Layer 2: per-context synthesis.
   let perContextResult;
   try {
@@ -258,7 +366,7 @@ async function runPerContextSynthesis(db, host) {
       continue;
     }
 
-    const { record, tokens_in, tokens_out } = await synthesizeOneContext({
+    const { record: rawRecord, tokens_in, tokens_out } = await synthesizeOneContext({
       events,
       context: ctx,
       prior: prior[ctx],
@@ -268,8 +376,28 @@ async function runPerContextSynthesis(db, host) {
     totalTokensIn += tokens_in;
     totalTokensOut += tokens_out;
 
-    if (record !== null) {
-      updated[ctx] = record;
+    if (rawRecord !== null) {
+      // Write snapshot memo for this context.
+      let ctxRecord = rawRecord;
+      try {
+        const contentHash = ctxRecord.content_hash ?? createHash('sha256')
+          .update(JSON.stringify(ctxRecord))
+          .digest('hex')
+          .slice(0, 16);
+        const snapshotId = await writeCommStyleSnapshot(db, {
+          context: ctx,
+          synthesizedFields: ctxRecord,
+          contentHash,
+          volatile: ctxRecord.volatile ?? true,
+          evidenceCount: ctxRecord.evidence_count ?? events.length,
+        });
+        if (snapshotId) {
+          ctxRecord = { ...ctxRecord, last_snapshot_id: snapshotId };
+        }
+      } catch (e) {
+        console.warn(`[dream] step-comm-style snapshot (${ctx}): ${e.message}`);
+      }
+      updated[ctx] = ctxRecord;
       contextsUpdated++;
     }
   }
