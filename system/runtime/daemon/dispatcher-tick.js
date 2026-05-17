@@ -11,6 +11,7 @@ import {
   readIntegrationsState,
 } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
+import { log } from '../log/index.js';
 
 /**
  * Build the dispatcherTick function used by the heartbeat 'dispatcher' bucket.
@@ -145,7 +146,14 @@ export function createDispatcherTick(ctx, tools) {
       if (inFlight.has(item.name)) continue;
       inFlight.add(item.name);
       runOneItem(item.name)
-        .catch((e) => console.warn(`[scheduler] ${item.name} failed: ${e.message}`))
+        .catch((e) =>
+          log.warn({
+            event: 'scheduler.dispatch_failed',
+            item: item.name,
+            message: e.message,
+            error: e.code ?? e.name,
+          }),
+        )
         .finally(() => inFlight.delete(item.name));
     }
     // Overflow fallback: if nothing else dispatched and biographer backlog ≥ 500, kick dream.
@@ -153,7 +161,14 @@ export function createDispatcherTick(ctx, tools) {
       if ((await countPendingEvents(ctx.db)) >= 500) {
         inFlight.add('__dream__');
         runOneItem('__dream__')
-          .catch((e) => console.warn(`[scheduler] __dream__ failed: ${e.message}`))
+          .catch((e) =>
+            log.warn({
+              event: 'scheduler.dispatch_failed',
+              item: '__dream__',
+              message: e.message,
+              error: e.code ?? e.name,
+            }),
+          )
           .finally(() => inFlight.delete('__dream__'));
       }
     }
