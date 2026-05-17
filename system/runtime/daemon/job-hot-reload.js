@@ -18,6 +18,28 @@ import { watch } from 'node:fs';
 const DEFAULT_DEBOUNCE_MS = 2_000;
 
 /**
+ * Best-effort state writer. Errors are swallowed — losing observability is
+ * preferable to crashing the daemon over a state-row write.
+ */
+async function writeWatcherState(db, fields) {
+  if (!db) return;
+  try {
+    const builder = db.query(
+      `UPSERT runtime_state:hot_reload_watcher CONTENT {
+        active: $active,
+        registered_at: $registered_at
+      };`,
+      fields,
+    );
+    if (builder && typeof builder.collect === 'function') {
+      await builder.collect();
+    }
+  } catch {
+    // intentionally silent — state writes must not crash the watcher
+  }
+}
+
+/**
  * Start a hot-reload watcher. Returns `{ stop }`.
  *
  * @param {{
@@ -25,6 +47,10 @@ const DEFAULT_DEBOUNCE_MS = 2_000;
  *   debounceMs?: number,        // coalesce rapid edits (default 2s)
  *   signalSelf?: () => void,    // injected for tests; defaults to SIGTERM self
  *   log?: (msg: string) => void,
+ *   db?: object,                // OPTIONAL — if provided, watcher writes
+ *                               // runtime:hot_reload_watcher state row on
+ *                               // start/stop for the
+ *                               // runtime.hot_reload_watcher_active invariant
  * }} opts
  */
 export function startJobHotReload({
@@ -32,6 +58,7 @@ export function startJobHotReload({
   debounceMs = DEFAULT_DEBOUNCE_MS,
   signalSelf = () => process.kill(process.pid, 'SIGTERM'),
   log = (msg) => console.log(msg),
+  db = null,
 }) {
   const watchers = [];
   let timer = null;
@@ -76,6 +103,13 @@ export function startJobHotReload({
     }
   }
 
+  // Record presence for the runtime.hot_reload_watcher_active invariant.
+  // Fire-and-forget: avoids forcing every caller to await an async start.
+  writeWatcherState(db, {
+    active: watchers.length > 0,
+    registered_at: new Date().toISOString(),
+  });
+
   return {
     stop() {
       stopped = true;
@@ -91,6 +125,9 @@ export function startJobHotReload({
         }
       }
       watchers.length = 0;
+      // Mark inactive on shutdown so the invariant can distinguish "watcher
+      // running" from "process down".
+      writeWatcherState(db, { active: false, registered_at: new Date().toISOString() });
     },
   };
 }

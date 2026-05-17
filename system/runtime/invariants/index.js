@@ -41,6 +41,7 @@ import mcpWiringGlobalPresent from './mcp.wiring-global-present.js';
 import mcpWiringProjectPresent from './mcp.wiring-project-present.js';
 import { PHASES } from './policy.js';
 import runtimeHooksSettingsPresent from './runtime.hooks-settings-present.js';
+import runtimeHotReloadWatcherActive from './runtime.hot-reload-watcher-active.js';
 import runtimeNoOrphanNodeTestProcs from './runtime.no-orphan-node-test-procs.js';
 import runtimeNodeVersionPinned from './runtime.node-version-pinned.js';
 import schedulerNoStuckInFlight from './scheduler.no-stuck-in-flight.js';
@@ -68,6 +69,7 @@ export const INVARIANTS = [
   runtimeNoOrphanNodeTestProcs,
   schedulerNoStuckInFlight,
   daemonEmbedderLoadAge,
+  runtimeHotReloadWatcherActive,
   // meta
   daemonHeartbeating,
 ];
