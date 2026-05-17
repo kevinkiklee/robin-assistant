@@ -74,7 +74,7 @@ async function readGraceSeconds(db) {
 }
 
 async function queryDuePredictions(db, graceSecs) {
-  // SurrealDB duration::from::secs returns a Duration value.
+  // SurrealDB duration::from_secs returns a Duration value.
   // We add it to expected_resolution_at and compare to time::now().
   const sql = `
     SELECT id, content, confidence, derived_at, meta
@@ -114,7 +114,7 @@ function projectPrediction(row) {
 async function writeAutoResolution(db, prediction, outcome) {
   await foresightResolve(db, prediction.id, {
     correct: outcome.correct,
-    actual_outcome: outcome.actual_outcome ?? `auto-resolved: ${outcome.actual_outcome ?? 'evidence found'}`,
+    actual_outcome: outcome.actual_outcome ?? 'auto-resolved: evidence found',
   });
 }
 
