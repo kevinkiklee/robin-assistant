@@ -1,5 +1,7 @@
-import { randomBytes } from 'node:crypto';
+import { ensureMcpToken } from '../../config/mcp-token.js';
 import { startIntrospection, stopIntrospection } from '../../cognition/introspection/index.js';
+import { createTriggerEngine } from '../../cognition/triggers/engine.js';
+import { createTriggerTick } from '../../cognition/triggers/loop.js';
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
 import {
@@ -19,6 +21,7 @@ import { consumePendingTriggers } from './cadence-consumer.js';
 import { createDispatcherTick } from './dispatcher-tick.js';
 import { createScheduler } from './heartbeat.js';
 import { startHttp } from './http.js';
+import { installLogScrub } from './log-scrub.js';
 import { startJobHotReload } from './job-hot-reload.js';
 import { createLifecycle } from './lifecycle.js';
 import { bindPort } from './port.js';
@@ -39,6 +42,10 @@ import { buildTools } from './tools.js';
  *   dispatcher-tick.js  the 'dispatcher' bucket's tick body
  */
 export async function startDaemon() {
+  // Patch stdout/stderr before anything logs — covers integration syncs,
+  // SurrealDB native binding errors, stack traces, and any third-party
+  // module that writes to the streams directly.
+  installLogScrub();
   const lifecycle = createLifecycle({
     // Process-singleton lock — distinct from `runtime/daemon/.lock`, which is
     // the embedded-DB writer-serialization lock held by CLI subcommands.
@@ -63,7 +70,30 @@ export async function startDaemon() {
     const { server: probe, port } = await bindPort(preferredPort);
     probe.close();
 
+    // Ensure the MCP bearer token exists before invariants run — the
+    // wiring invariant embeds it in .mcp.json's headers, so it must be
+    // readable before the first boot-invariants pass.
+    const authToken = ensureMcpToken();
+
     const dispatcherTick = createDispatcherTick(ctx, tools);
+
+    // M1 trigger engine — empty registration in this commit; M3 adds the
+    // user-data/triggers/*.yaml loader and the JS-builtin registration hook.
+    // The tick early-exits when no triggers are registered, so the substrate
+    // is dormant until something gets registered. Kill switch:
+    // ROBIN_DISABLE_TRIGGERS=1 (gate inline on the bucket).
+    const triggerEngine = createTriggerEngine({ logger: console });
+    const triggerDispatch = async (toolName, args /* , opts */) => {
+      const tool = tools.find((t) => t.name === toolName);
+      if (!tool) throw new Error(`trigger dispatch: unknown tool ${toolName}`);
+      return tool.handler(args ?? {});
+    };
+    const triggerTick = createTriggerTick({
+      db: ctx.db,
+      engine: triggerEngine,
+      dispatchTool: triggerDispatch,
+      logger: console,
+    });
 
     // Cognition D1: per-source state_inference cadence. Read tick_ms once at
     // boot; defaults to 5 minutes. Subsequent flag flips are picked up by
@@ -182,6 +212,16 @@ export async function startDaemon() {
           intervalMs: 5 * 60_000,
           tick: () => runCostMonitor({ db: ctx.db }),
         },
+        {
+          // M1 trigger engine — 5s polling tick. Reads new events since the
+          // persisted cursor, dispatches matching triggers, advances cursor.
+          // No-op when zero triggers are registered. Kill switch:
+          // ROBIN_DISABLE_TRIGGERS=1.
+          name: 'triggers',
+          intervalMs: 5_000,
+          gate: () => process.env.ROBIN_DISABLE_TRIGGERS !== '1',
+          tick: triggerTick,
+        },
       ],
     });
     await scheduler.start();
@@ -212,11 +252,12 @@ export async function startDaemon() {
       console.warn(`[invariants/boot] failed: ${e.message}`);
     }
 
-    // Per-boot token gates /internal/* endpoints. CLI reads it from
-    // runtime/daemon/.state (which is chmod 0600). Loopback binding stops
-    // remote attackers; the token stops co-resident processes (browser tabs,
-    // other user accounts on shared machines) from hitting the daemon.
-    const authToken = randomBytes(32).toString('hex');
+    // Token gates /sse, /messages, and /internal/* endpoints. CLI reads
+    // from runtime/daemon/.state (mode 0600); MCP clients read from
+    // .mcp.json's headers. Loopback binding stops remote attackers; the
+    // token stops co-resident processes (browser tabs that bypass the
+    // origin check, other apps running as the same user that can't read
+    // .mcp.json) from invoking tools.
     const httpServer = startHttp({ ctx, tools, routes, port, authToken });
 
     // Hot-reload: SIGTERM self on user-data .js change so launchctl respawns
