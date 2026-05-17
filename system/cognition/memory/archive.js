@@ -58,6 +58,17 @@ export async function archiveMemo(db, id, reason) {
         .query(new BoundQuery('CREATE archive_edges CONTENT $row', { row: edgeFields }))
         .collect();
     } catch (err) {
+      // KNOWN RISK: this catch is fail-soft, but the DELETE on line 66
+      // runs unconditionally. A failed copy here means the edge is dropped
+      // entirely — copy missed, hot row deleted. Acceptable today because:
+      //   (a) edge data is largely re-derivable (mentions edges come from
+      //       biographer re-runs against retained event content),
+      //   (b) archive happens during compaction of long-cold memos, where
+      //       the realistic failure mode is a parser reject on a malformed
+      //       row that would not be useful to keep anyway.
+      // If archive semantics tighten (e.g. legal/audit retention), this
+      // should become fail-closed: revert to no-op + propagate the error
+      // so the hot delete is also skipped.
       console.warn(`[archive] edge copy failed: ${err.message}`);
     }
   }
