@@ -44,7 +44,10 @@ export async function consumePendingTriggers(db, host) {
   const budget = await currentBudget(db, cfg);
   if (budget.remaining <= 0) return { skipped: 'budget_exceeded' };
 
-  // Expire stale pending
+  // Expire stale pending — best-effort housekeeping. A failure here just
+  // leaves stale rows queued; the next consume tick retries this UPDATE,
+  // and the SELECT below still picks them up in age-order so consumption
+  // proceeds without expiration. No data is lost by skipping.
   try {
     await db
       .query(
