@@ -22,6 +22,7 @@ import { createGetHotTool } from '../../io/mcp/tools/get-hot.js';
 import { createGetKnowledgeTool } from '../../io/mcp/tools/get-knowledge.js';
 import { createGetProfileTool } from '../../io/mcp/tools/get-profile.js';
 import { createHealthTool } from '../../io/mcp/tools/health.js';
+import { createImessageSendTool } from '../../io/mcp/tools/imessage-send.js';
 import { createIngestTool } from '../../io/mcp/tools/ingest.js';
 import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
 import { createIntegrationStatusTool } from '../../io/mcp/tools/integration-status.js';
@@ -160,6 +161,7 @@ export async function buildTools(ctx) {
       getJobs: () => ctx.jobs.cache.current,
     }),
     createIngestTool({ db: ctx.db, embedder: ctx.embedder.wrap, host: ctx.host }),
+    createImessageSendTool(),
     createLintTool({ db: ctx.db }),
     createAuditTool({ db: ctx.db, host: ctx.host }),
     createCheckActionTool({ db: ctx.db }),
