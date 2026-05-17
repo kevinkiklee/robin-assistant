@@ -8,37 +8,33 @@ if [[ "$phase" != "--phase=a" && "$phase" != "--phase=b" ]]; then
   exit 2
 fi
 
-echo "[polish-verify $phase] pnpm test"
-pnpm test
+tmp_mcp=$(mktemp -t polish-mcp.XXXXXX)
+trap 'rm -f "$tmp_mcp"' EXIT
 
-echo "[polish-verify $phase] pnpm test:integration (if present)"
-if pnpm run | grep -q "^  test:integration"; then
-  pnpm test:integration
-else
-  echo "  (no test:integration script; skipping)"
-fi
+echo "[polish-verify $phase] pnpm test:unit"
+pnpm test:unit
 
-echo "[polish-verify $phase] robin doctor --json"
-node system/bin/robin doctor --json | tee /tmp/polish-doctor.json >/dev/null
-if ! jq -e '.exit_code == 0' /tmp/polish-doctor.json > /dev/null; then
-  echo "  doctor returned non-zero exit_code" >&2
-  jq '.' /tmp/polish-doctor.json >&2
-  exit 1
-fi
+echo "[polish-verify $phase] pnpm test:integration"
+pnpm test:integration
+
+echo "[polish-verify $phase] robin doctor"
+node system/bin/robin doctor
 
 echo "[polish-verify $phase] robin --help"
 node system/bin/robin --help > /dev/null
 
 echo "[polish-verify $phase] mcp tool inventory"
 if [[ -f system/scripts/list-mcp-tools.js ]]; then
-  node system/scripts/list-mcp-tools.js > /tmp/polish-mcp-tools.txt
-  echo "  ok ($(wc -l < /tmp/polish-mcp-tools.txt) tools listed)"
+  node system/scripts/list-mcp-tools.js > "$tmp_mcp"
+  echo "  ok ($(wc -l < "$tmp_mcp") tools listed)"
+else
+  echo "  (list-mcp-tools.js not yet present; skipping until Task 4 lands)"
 fi
 
 echo "[polish-verify $phase] git status clean (excluding user-data, .claude, tmp)"
-if git status --porcelain | grep -v "^?? user-data/" | grep -v "^?? .claude/" | grep -v "^?? tmp/" | grep -q "."; then
+if git status --porcelain | grep -vE '^\?\? (user-data|\.claude|tmp)/' | grep -q "."; then
   echo "  unexpected uncommitted changes:" >&2
-  git status --porcelain | grep -v "^?? user-data/" | grep -v "^?? .claude/" | grep -v "^?? tmp/" >&2
+  git status --porcelain | grep -vE '^\?\? (user-data|\.claude|tmp)/' >&2
   exit 1
 fi
 
