@@ -110,58 +110,51 @@ async function runDreamParallel(db, host, embedder, opts, cfg) {
   return summary;
 }
 
-// runDreamSerial — verbatim port of alpha.17 dreamProcess body. Kept
-// byte-equivalent so flag-off behaviour is identical to the pre-C2 pipeline.
-// When C2 graduates and the serial branch is retired, this function is the
-// thing to delete; the call site in dreamProcess collapses to the parallel
-// branch unconditionally. See spec §9.2 step 6.
+// Serial-mode step wrapper. Mirrors what runDag's per-step try/catch +
+// onStepSettled does for the parallel branch: time the step, capture the
+// result, write a per-step telemetry row (tokens-aware on success,
+// error-tagged on failure). Telemetry writes are fail-soft via
+// recordStepTelemetry's internal try/catch.
+async function runStep(db, name, thunk) {
+  const t0 = Date.now();
+  try {
+    const result = await thunk();
+    recordStepTelemetry(db, name, Date.now() - t0, null, {
+      parallel: false,
+      tokens_in: result?.tokens_in ?? 0,
+      tokens_out: result?.tokens_out ?? 0,
+    }).catch(() => {});
+    return result;
+  } catch (e) {
+    recordStepTelemetry(db, name, Date.now() - t0, e, { parallel: false }).catch(() => {});
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// runDreamSerial — alpha.17 dreamProcess body, with per-step telemetry
+// writes added so the budget gate works in flag-off mode too. Output
+// (summary shape) is byte-equivalent to the pre-C2 pipeline; only
+// cadence_telemetry / dream_telemetry rows are new. When C2 graduates and
+// the serial branch is retired, this function is the thing to delete; the
+// call site in dreamProcess collapses to the parallel branch
+// unconditionally. See spec §9.2 step 6.
 async function runDreamSerial(db, host, embedder, opts = {}) {
   const summary = {};
-  try {
-    summary.knowledge = await dreamStepKnowledge(db, host, embedder, opts.knowledge);
-  } catch (e) {
-    summary.knowledge = { error: e.message };
-  }
-  try {
-    summary.patterns = await dreamStepPatterns(db, host);
-  } catch (e) {
-    summary.patterns = { error: e.message };
-  }
-  try {
-    summary.reflection = await dreamStepReflection(db, host, opts.reflection);
-  } catch (e) {
-    summary.reflection = { error: e.message };
-  }
-  try {
-    summary.profile = await dreamStepProfile(db, host, opts.profile);
-  } catch (e) {
-    summary.profile = { error: e.message };
-  }
-  try {
-    summary.arcs = await dreamStepArcs(db, opts.arcs);
-  } catch (e) {
-    summary.arcs = { error: e.message };
-  }
-  try {
-    summary.commStyle = await dreamStepCommStyle(db, host);
-  } catch (e) {
-    summary.commStyle = { error: e.message };
-  }
-  try {
-    summary.calibration = await dreamStepCalibration(db);
-  } catch (e) {
-    summary.calibration = { error: e.message };
-  }
-  try {
-    summary.scopeCleanup = await dreamStepScopeCleanup(db, host, opts.scopeCleanup);
-  } catch (e) {
-    summary.scopeCleanup = { error: e.message };
-  }
-  try {
-    summary.compaction = await dreamStepCompaction(db);
-  } catch (e) {
-    summary.compaction = { error: e.message };
-  }
+  summary.knowledge = await runStep(db, 'knowledge', () =>
+    dreamStepKnowledge(db, host, embedder, opts.knowledge),
+  );
+  summary.patterns = await runStep(db, 'patterns', () => dreamStepPatterns(db, host));
+  summary.reflection = await runStep(db, 'reflection', () =>
+    dreamStepReflection(db, host, opts.reflection),
+  );
+  summary.profile = await runStep(db, 'profile', () => dreamStepProfile(db, host, opts.profile));
+  summary.arcs = await runStep(db, 'arcs', () => dreamStepArcs(db, opts.arcs));
+  summary.commStyle = await runStep(db, 'commStyle', () => dreamStepCommStyle(db, host));
+  summary.calibration = await runStep(db, 'calibration', () => dreamStepCalibration(db));
+  summary.scopeCleanup = await runStep(db, 'scopeCleanup', () =>
+    dreamStepScopeCleanup(db, host, opts.scopeCleanup),
+  );
+  summary.compaction = await runStep(db, 'compaction', () => dreamStepCompaction(db));
 
   await db
     .query(surql`UPDATE events SET dreamed_at = time::now() WHERE dreamed_at IS NONE`)

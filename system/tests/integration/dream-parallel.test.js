@@ -422,10 +422,79 @@ test('token telemetry: per-step usage propagates from host → step result → c
     )
     .collect();
   assert.ok((dt ?? []).length > 0, 'dream_telemetry must also see non-zero tokens');
-  // Every observed row must come from one of the LLM-using steps.
-  const llmSteps = new Set(['reflection', 'commStyle', 'knowledge', 'profile']);
+  // Every observed row must come from one of the LLM-using steps. The
+  // cadence_telemetry writer in dream/telemetry.js prefixes the bare step
+  // name with `dream.` to distinguish dream-fired rows from cadence-consumer
+  // rows that share the same table.
+  const llmSteps = new Set([
+    'dream.reflection',
+    'dream.commStyle',
+    'dream.knowledge',
+    'dream.profile',
+  ]);
   for (const r of rows ?? []) {
     assert.ok(llmSteps.has(r.step), `unexpected step '${r.step}' reporting tokens`);
   }
+  await close(db);
+});
+
+test('serial mode: per-step telemetry rows are written for every step (was dead-silent pre-fix)', async () => {
+  // Regression for the dead serial-branch telemetry bug: runDreamSerial used
+  // to skip recordStepTelemetry entirely, so flag-off operators (and the
+  // serial path's own equivalence tests) had no record of dream cost at all.
+  // Note: freshSerial() alone is not enough — migration 0021 explicitly
+  // UPSERTs parallelism_enabled=true, overriding the in-code default.
+  // Explicit flip here forces the serial code path.
+  const db = await freshSerial();
+  await db.query('UPDATE runtime:`dream.config` SET value.parallelism_enabled = false').collect();
+  const e = createStubEmbedder({ dimension: 1024 });
+  await seedCorpus(db, e);
+  const host = {
+    name: 'fake',
+    isAvailable: async () => true,
+    invokeLLM: async () => ({
+      content: JSON.stringify({
+        propose: true,
+        rule_text: 'Prefer concise',
+        confidence: 0.9,
+        candidates: [],
+        promote: false,
+        tone: 'terse',
+        formality: 'casual',
+        emoji_ok: false,
+        direct_feedback_ok: true,
+        code_comment_density: 'minimal',
+        summary_style: 'bullets',
+      }),
+      usage: { input_tokens: 42, output_tokens: 21 },
+    }),
+  };
+  await dreamProcess(db, host, e);
+  // Every serial-mode step must have written one structured-telemetry row,
+  // tagged parallel=false so it's distinguishable from runDag's rows.
+  const [dt] = await db
+    .query(surql`SELECT step, parallel, tokens_in, tokens_out FROM dream_telemetry`)
+    .collect();
+  const serialRows = (dt ?? []).filter((r) => r.parallel === false);
+  const expectedSteps = new Set([
+    'knowledge',
+    'patterns',
+    'reflection',
+    'profile',
+    'arcs',
+    'commStyle',
+    'calibration',
+    'scopeCleanup',
+    'compaction',
+  ]);
+  const observedSteps = new Set(serialRows.map((r) => r.step));
+  for (const step of expectedSteps) {
+    assert.ok(observedSteps.has(step), `serial mode must emit telemetry for ${step}`);
+  }
+  // At least one row must carry non-zero tokens — the LLM-using steps
+  // (knowledge/profile/reflection/commStyle) all called invokeLLM with
+  // usage=42/21.
+  const nonZero = serialRows.filter((r) => (r.tokens_in ?? 0) + (r.tokens_out ?? 0) > 0);
+  assert.ok(nonZero.length > 0, 'serial mode must propagate token usage from LLM-using steps');
   await close(db);
 });
