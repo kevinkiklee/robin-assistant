@@ -6,7 +6,9 @@ import {
   evaluateStateInference,
   readStateInferenceConfig,
 } from '../../cognition/jobs/internal/state-inference.js';
+import { runCostMonitor } from '../../cognition/jobs/cost-monitor.js';
 import { resolveDuePredictions } from '../../cognition/jobs/resolve-due-predictions.js';
+import { runTaskOutcomeDriftWatchdog } from '../../cognition/jobs/task-outcome-drift-watchdog.js';
 import { withRuntimeJobsTracking } from '../../cognition/jobs/scheduler-ext.js';
 import { paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
@@ -158,6 +160,27 @@ export async function startDaemon() {
           name: 'resolve-due-predictions',
           intervalMs: 5 * 60_000,
           tick: () => resolveDuePredictions({ db: ctx.db }),
+        },
+        {
+          // Cognition E1 — Phase 2 monitoring: task_outcome write-rate drift
+          // watchdog (spec §6). Stamps phase2_started_at on first tick after
+          // flag=true, locks in baseline after 72 h, then auto-disables the v2
+          // flag if the trailing-1h write rate drifts > 50% from baseline.
+          // Gated on runtime:self-improvement-v2.value.enabled; no-op when false.
+          name: 'task-outcome-drift-watchdog',
+          intervalMs: 5 * 60_000,
+          tick: () => runTaskOutcomeDriftWatchdog({ db: ctx.db }),
+        },
+        {
+          // Cognition E1 — Phase 2 monitoring: 6-hour cost sub-tick (spec §6).
+          // Has an internal gate (cost_monitor_last_run_at) so the 5-min bucket
+          // only does real work every 6 h. Sums introspection + dream LLM spend
+          // from telemetry_hourly (or cadence_telemetry fallback), projects daily
+          // cost, and writes a watch-list event if projected > 2× daily budget.
+          // Gated on runtime:self-improvement-v2.value.enabled; no-op when false.
+          name: 'cost-monitor',
+          intervalMs: 5 * 60_000,
+          tick: () => runCostMonitor({ db: ctx.db }),
         },
       ],
     });
