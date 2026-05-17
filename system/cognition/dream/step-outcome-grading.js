@@ -54,7 +54,7 @@ async function fetchUngradedRows(db, batchSize) {
     .query(
       surql`SELECT * FROM memos
             WHERE kind = 'task_outcome'
-              AND meta.score IS NONE
+              AND meta.score IS NULL
               AND derived_at >= ${cutoff}
             ORDER BY derived_at DESC
             LIMIT ${batchSize}`,

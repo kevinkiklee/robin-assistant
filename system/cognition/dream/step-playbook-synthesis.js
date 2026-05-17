@@ -197,7 +197,6 @@ async function synthesizeOnePlaybook(db, host, { taskType, outcomesSince, n, act
     });
     const retrySystem = buildSynthesisSystemPrompt(tighterTokens);
 
-    retried = true;
     const retryResult = await host.invokeLLM([{ role: 'user', content: retryPrompt }], {
       tier: 'deep',
       system: [{ role: 'system', content: retrySystem, cache_control: { type: 'ephemeral' } }],

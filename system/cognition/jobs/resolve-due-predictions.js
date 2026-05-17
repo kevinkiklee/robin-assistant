@@ -211,13 +211,21 @@ export async function resolveEventTiming(db, prediction) {
     const sql = `SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend AND ${clauses} LIMIT 1`;
     [evtRows] = await db.query(new BoundQuery(sql, bindings)).collect();
     if (!evtRows?.[0]) {
-      // Keyword filter produced terms but no match — defer to user rather than
-      // falling back to a content-filterless broad-window query.  A broad query
-      // without content filtering produces false positives when any unrelated
-      // event happens near expected_resolution_at.
+      // Keyword filter produced terms but no match — don't fall back to a
+      // content-filterless broad-window query (false positives on unrelated
+      // events near expected_resolution_at).  Instead: if past the 24h horizon,
+      // auto-resolve false; otherwise defer to user (still within ambiguity window).
       console.warn(
-        `[resolve-due-predictions/event_timing] keyword filter (${keywords.join(', ')}) returned no match; routing to needsUser`,
+        `[resolve-due-predictions/event_timing] keyword filter (${keywords.join(', ')}) returned no match`,
       );
+      const horizon24h = new Date(expectedAt.getTime() + 24 * 60 * 60_000);
+      if (new Date() > horizon24h) {
+        return {
+          resolution: 'auto',
+          correct: false,
+          actual_outcome: 'No event evidence found within 24h past expected_resolution_at',
+        };
+      }
       return needsUser(db, prediction);
     }
   } else {
