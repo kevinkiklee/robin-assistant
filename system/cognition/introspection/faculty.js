@@ -24,9 +24,11 @@
 
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import {
+  autoTuneTurnSamplePct,
   decrementCrashCount,
   incrementCrashCount,
   initBudgetConfig,
+  readBudgetConfig,
   readBudgetState,
 } from './budget.js';
 import { INTROSPECTION_DEFAULTS } from './inference-rules.js';
@@ -35,16 +37,19 @@ import { drainQueueOnce } from './queue-poller.js';
 const DRAIN_INTERVAL_MS = 60_000;
 const DRAIN_WALL_CLOCK_MS = 20_000;
 const DECAY_INTERVAL_MS = 60_000; // 1 decrement/min → 1/60 per second
+const AUTOTUNE_INTERVAL_MS = 60 * 60_000; // recompute turn_sample_pct hourly
 
-/** @type {{ db: object, drainTimer: any, decayTimer: any, rejectionHandler: Function } | null} */
+/** @type {{ db: object, host: object|null, drainTimer: any, decayTimer: any, autoTuneTimer: any, rejectionHandler: Function } | null} */
 let _state = null;
 
 /**
  * Start the introspection faculty.
  *
- * @param {{ db: object }} options
+ * @param {{ db: object, host?: object|null }} options
+ *   host — optional HostAdapter with invokeLLM for inline LLM grading (Wave 3).
+ *           When null/absent, only structural inference runs.
  */
-export async function startIntrospection({ db }) {
+export async function startIntrospection({ db, host = null }) {
   if (_state) {
     // Already running — no-op (idempotent start).
     return;
@@ -60,7 +65,7 @@ export async function startIntrospection({ db }) {
     );
     // Install a minimal state so stopIntrospection() is a no-op rather than
     // throwing. No timers needed when gated off.
-    _state = { db, drainTimer: null, decayTimer: null, rejectionHandler: null };
+    _state = { db, host: null, drainTimer: null, decayTimer: null, autoTuneTimer: null, rejectionHandler: null };
     return;
   }
 
@@ -87,10 +92,10 @@ export async function startIntrospection({ db }) {
   // Drain loop — 1-min tick.
   const drainTimer = setInterval(async () => {
     try {
-      const { processed, written, errors } = await _drainWithTimeout(db);
+      const { processed, written, errors, graded } = await _drainWithTimeout(db, host);
       if (processed > 0) {
         console.log(
-          `[introspection] drain: processed=${processed} written=${written} errors=${errors}`,
+          `[introspection] drain: processed=${processed} written=${written} errors=${errors} graded=${graded ?? 0}`,
         );
       }
     } catch (e) {
@@ -106,8 +111,21 @@ export async function startIntrospection({ db }) {
   }, DECAY_INTERVAL_MS);
   decayTimer.unref?.();
 
-  _state = { db, drainTimer, decayTimer, rejectionHandler };
-  console.log('[introspection] faculty started (self-improvement-v2 enabled)');
+  // Auto-tune turn_sample_pct hourly (spec §2 "turn_sample_pct auto-tune").
+  // Fire once immediately (cold-start init), then on the hourly interval.
+  const _runAutoTune = () => {
+    readBudgetConfig(db)
+      .then((cfg) => autoTuneTurnSamplePct(db, cfg))
+      .catch((e) => console.warn(`[introspection] auto-tune failed: ${e.message}`));
+  };
+  _runAutoTune(); // immediate boot-time run
+  const autoTuneTimer = setInterval(_runAutoTune, AUTOTUNE_INTERVAL_MS);
+  autoTuneTimer.unref?.();
+
+  _state = { db, host, drainTimer, decayTimer, autoTuneTimer, rejectionHandler };
+  console.log(
+    `[introspection] faculty started (self-improvement-v2 enabled, host=${host ? 'present' : 'absent'})`,
+  );
 }
 
 /**
@@ -117,10 +135,11 @@ export async function startIntrospection({ db }) {
  */
 export async function stopIntrospection() {
   if (!_state) return;
-  const { drainTimer, decayTimer, rejectionHandler } = _state;
+  const { drainTimer, decayTimer, autoTuneTimer, rejectionHandler } = _state;
 
   if (drainTimer) clearInterval(drainTimer);
   if (decayTimer) clearInterval(decayTimer);
+  if (autoTuneTimer) clearInterval(autoTuneTimer);
   if (rejectionHandler) process.off('unhandledRejection', rejectionHandler);
 
   _state = null;
@@ -133,9 +152,9 @@ export async function stopIntrospection() {
  * Run drainQueueOnce with a wall-clock cap (DRAIN_WALL_CLOCK_MS).
  * Unfinished grades stay in queue for the next tick.
  */
-async function _drainWithTimeout(db) {
+async function _drainWithTimeout(db, host) {
   return Promise.race([
-    drainQueueOnce(db),
+    drainQueueOnce(db, host),
     new Promise((_, reject) =>
       setTimeout(
         () => reject(new Error('drain wall-clock cap exceeded')),

@@ -164,12 +164,15 @@ export async function startDaemon() {
     await scheduler.start();
 
     // Introspection faculty — polls task_close_queue on a 1-min tick, runs
-    // structural outcome inference (Phase 1), and writes task_outcome memos.
+    // structural outcome inference + inline LLM grading (Wave 3) when budget
+    // allows, and writes task_outcome memos.
     // Gated on runtime:self-improvement-v2.value.enabled (default false), so
     // start() is a no-op on a fresh install.  Fail-soft: a boot failure here
     // logs but does not abort the daemon.
+    // ctx.host may be null here if no host has been detected yet — that's fine;
+    // faculty will run structural-only until the host watchdog fires a restart.
     try {
-      await startIntrospection({ db: ctx.db });
+      await startIntrospection({ db: ctx.db, host: ctx.host ?? null });
     } catch (e) {
       console.warn(`[introspection] faculty start failed (non-fatal): ${e.message}`);
     }
