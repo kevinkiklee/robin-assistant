@@ -94,8 +94,12 @@ export async function remember(db, embedder, input) {
   const row = Array.isArray(created) ? created[0] : created;
   const eventId = row.id;
 
-  // Write embedding into the active profile's events surface.
-  await writeEmbedding(db, embedder, 'events', eventId, content);
+  // Embedding failure must not lose the event. Mirrors recordEvent.
+  try {
+    await writeEmbedding(db, embedder, 'events', eventId, content);
+  } catch (e) {
+    console.warn(`store.remember: embedding failed for ${eventId}: ${e.message}`);
+  }
 
   return { id: eventId, deduped: false };
 }
@@ -149,7 +153,17 @@ export async function note(db, embedder, kind, input) {
   const row = Array.isArray(created) ? created[0] : created;
   const memoId = row.id;
 
-  await writeEmbedding(db, embedder, 'memos', memoId, content);
+  // Embedding failure must not lose the memo. Mirrors recordEvent: the memo
+  // row is already created above; if the embedder is mis-configured or
+  // produces a vector the active table's schema rejects (e.g. mock 1024-d
+  // vector vs gemini-3072 profile), log a warning and continue. Recall by
+  // semantic search will be degraded until the row is back-filled, but
+  // writes don't bubble InternalError to MCP clients.
+  try {
+    await writeEmbedding(db, embedder, 'memos', memoId, content);
+  } catch (e) {
+    console.warn(`store.note: embedding failed for ${memoId}: ${e.message}`);
+  }
 
   // Emit `about` edges for subjects (memo → entity).
   if (subjects.length > 0) {
@@ -805,8 +819,14 @@ export async function upsertEntity(db, embedder, input) {
   const { upsertEntityCascade } = await import('../biographer/upsert-entity.js');
   const result = await upsertEntityCascade(db, embedder, input);
   // Write embedding into the active profile's entities surface.
+  // Mirrors recordEvent/note: entity row already exists (created in the
+  // cascade); a dim-mismatch or embedder outage must not bubble.
   if (result.id && result.embedding_source) {
-    await writeEmbedding(db, embedder, 'entities', result.id, result.embedding_source);
+    try {
+      await writeEmbedding(db, embedder, 'entities', result.id, result.embedding_source);
+    } catch (e) {
+      console.warn(`store.upsertEntity: embedding failed for ${result.id}: ${e.message}`);
+    }
   }
   return result;
 }
