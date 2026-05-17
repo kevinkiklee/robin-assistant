@@ -33,6 +33,7 @@ import { createListJournalTool } from '../../io/mcp/tools/list-journal.js';
 import { createListOpenPredictionsTool } from '../../io/mcp/tools/list-open-predictions.js';
 import { createListPatternsTool } from '../../io/mcp/tools/list-patterns.js';
 import { createListRulesTool } from '../../io/mcp/tools/list-rules.js';
+import { createMacosNotifyTool } from '../../io/mcp/tools/macos-notify.js';
 import { createPredictTool } from '../../io/mcp/tools/predict.js';
 import { createRecallTool } from '../../io/mcp/tools/recall.js';
 import { createRecentRefusalsTool } from '../../io/mcp/tools/recent-refusals.js';
@@ -115,6 +116,7 @@ export async function buildTools(ctx) {
     createListJournalTool({ db: ctx.db }),
     createGetHotTool({ db: ctx.db }),
     createListRulesTool({ db: ctx.db }),
+    createMacosNotifyTool(),
     createUpdateRuleTool({ db: ctx.db }),
     createRunDreamTool({
       db: ctx.db,
