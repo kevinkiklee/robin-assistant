@@ -257,9 +257,19 @@ async function _tryInlineGrade(db, row, taskType, host, cfg, state) {
   };
   const budgetStratum = stratumMap[stratum] ?? 'turns';
 
+  // Refresh budgetState here instead of reusing the once-per-batch snapshot to
+  // bound intra-batch over-spend on the 50-row drain.  cfg is stable (daily
+  // limit doesn't change mid-batch), only state (current spend) needs freshening.
+  let freshState = state;
+  try {
+    freshState = await readBudgetState(db);
+  } catch {
+    // Non-fatal — fall back to the batch-level snapshot.
+  }
+
   // predictions + explicit_correction are structurally graded (score always set).
   // If we reach here with score=null, it's a non-correction row — check strata.
-  const gate = isStratumAllowed(budgetStratum, cfg, state);
+  const gate = isStratumAllowed(budgetStratum, cfg, freshState);
   if (!gate.allowed) return null;
 
   // Probabilistic sampling for recall and turns.

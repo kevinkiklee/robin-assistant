@@ -112,6 +112,9 @@ async function readV2Value(db) {
  * Each field is set individually so concurrent writes don't stomp each other.
  */
 async function upsertV2Fields(db, fields) {
+  for (const k of Object.keys(fields)) {
+    if (!/^[a-z][a-z0-9_]*$/.test(k)) throw new Error(`upsertV2Fields: bad field key: ${k}`);
+  }
   const setClauses = Object.entries(fields)
     .map(([k, v]) => `value.${k} = ${JSON.stringify(v)}`)
     .join(', ');

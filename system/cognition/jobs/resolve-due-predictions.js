@@ -213,18 +213,14 @@ export async function resolveEventTiming(db, prediction) {
     const sql = `SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend AND ${clauses} LIMIT 1`;
     [evtRows] = await db.query(new BoundQuery(sql, bindings)).collect();
     if (!evtRows?.[0]) {
-      // No keyword-filtered match — fall back to broad window query and log.
+      // Keyword filter produced terms but no match — defer to user rather than
+      // falling back to a content-filterless broad-window query.  A broad query
+      // without content filtering produces false positives when any unrelated
+      // event happens near expected_resolution_at.
       console.warn(
-        `[resolve-due-predictions/event_timing] keyword filter (${keywords.join(', ')}) returned no match; falling back to broad window`,
+        `[resolve-due-predictions/event_timing] keyword filter (${keywords.join(', ')}) returned no match; routing to needsUser`,
       );
-      [evtRows] = await db
-        .query(
-          new BoundQuery(
-            'SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend LIMIT 1',
-            { wstart: windowStart, wend: windowEnd },
-          ),
-        )
-        .collect();
+      return needsUser(db, prediction);
     }
   } else {
     // No qualifying keywords — broad query (same as before).
@@ -311,41 +307,16 @@ export async function resolveDuration(db, prediction) {
 /**
  * behavior_continuation — check integration-recent-activity for continued
  * presence. Recognizes: chrome, spotify, whoop.
- * v1: return needsUser if integration name isn't recognized.
+ *
+ * v1: route all known integrations to needsUser.  The events table does not
+ * carry a per-integration tag (no meta.integration_name column), so we can't
+ * distinguish chrome vs spotify vs whoop syncs at query time.  Any source='sync'
+ * match would satisfy the check regardless of which integration produced it —
+ * too coarse to be meaningful.
+ *
+ * Re-enable per integration when meta.integration_name schema lands.
  */
 export async function resolveBehaviorContinuation(db, prediction) {
-  const integration = prediction.meta?.integration;
-  const KNOWN = new Set(['chrome', 'spotify', 'whoop']);
-  if (!integration || !KNOWN.has(integration)) {
-    return needsUser(db, prediction);
-  }
-
-  // All three integrations write events with source='sync'. The events table
-  // does not carry a per-integration tag (no meta.integration_name column), so
-  // we can't distinguish chrome vs spotify vs whoop syncs at query time.
-  // v1 coarseness: any recent sync event satisfies the check regardless of
-  // which integration produced it.  Once integration events are tagged with
-  // meta.integration_name (future schema work), tighten to
-  //   WHERE source = 'sync' AND meta.integration_name = $integration
-  const sinceMs = 24 * 60 * 60_000;
-  const since = new Date(Date.now() - sinceMs);
-  const [rows] = await db
-    .query(
-      new BoundQuery(
-        "SELECT id FROM events WHERE source = 'sync' AND ts >= $since LIMIT 1",
-        { since },
-      ),
-    )
-    .collect();
-  if (rows?.[0]) {
-    return {
-      resolution: 'auto',
-      correct: true,
-      actual_outcome: `Recent ${integration} activity found after ${since.toISOString()}`,
-    };
-  }
-
-  // No recent activity — but we can't be certain the user stopped; defer to user.
   return needsUser(db, prediction);
 }
 
