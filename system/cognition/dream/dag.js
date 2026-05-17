@@ -17,9 +17,10 @@ export const DREAM_DAG_DEPS = {
   // §1.2 — content_hash + delete-then-archive.
   compaction: ['knowledge', 'scopeCleanup'],
   // v2 self-improvement steps (Phase 1 stubs, gated on runtime:self-improvement-v2).
+  // Layer labels reflect topological order under DREAM_DAG_DEPS.
   outcomeGrading: [], // L1, Haiku — fills score on ungraded task_outcome rows
   playbookSynthesis: ['outcomeGrading', 'reflection'], // L2, Opus, K=5/night cap
-  calibrationBucket: [], // L2, pure math — sole writer of confidence_band memos
-  predictionTaxonomy: [], // L2, weekly — clusters kind='other' predictions
-  selfImprovementRollup: ['outcomeGrading', 'playbookSynthesis', 'calibrationBucket', 'predictionTaxonomy'], // L2, writes v2 metrics
+  calibrationBucket: [], // L1, pure math — sole writer of confidence_band memos
+  predictionTaxonomy: [], // L1, weekly — clusters kind='other' predictions
+  selfImprovementRollup: ['outcomeGrading', 'playbookSynthesis', 'calibrationBucket', 'predictionTaxonomy'], // L3, writes v2 metrics
 };
