@@ -172,7 +172,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   // so heavy churn surfaces in operator view without spamming on the steady
   // state.
   const pruned = await gcFailedEvents(db);
-  if (pruned > 0) console.log(`[biographer] gc'd ${pruned} stale failed_event_ids`);
+  if (pruned > 0) console.warn(`[biographer] gc'd ${pruned} stale failed_event_ids`);
   // Normalize ids: callers (queue accumulator, MCP handlers, CLI) may pass
   // either "table:id" strings or SDK RecordId objects. The surql template
   // tag binds plain strings as string LITERALS, so `SELECT * FROM ${strId}`

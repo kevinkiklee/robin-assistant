@@ -112,6 +112,21 @@ const cases = [
     cmd: 'echo "added a new addr field"',
     expect: null,
   },
+  {
+    label: 'low-level-fs: negative — pnpm format (not a disk operation on Unix)',
+    cmd: 'pnpm format',
+    expect: null,
+  },
+  {
+    label: 'low-level-fs: negative — npm run format',
+    cmd: 'npm run format',
+    expect: null,
+  },
+  {
+    label: 'low-level-fs: negative — biome format',
+    cmd: 'biome format --write .',
+    expect: null,
+  },
 
   // ---- git-expose-userdata --------------------------------------------
   {
