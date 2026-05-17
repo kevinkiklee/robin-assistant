@@ -15,6 +15,7 @@ import {
   readEntityCatalog,
   tokensOf,
 } from './entities.js';
+import { getPlaybookForInject } from './playbook-inject.js';
 import { mmrLite, score } from './rank.js';
 import { cosineSim, loadVectorsForHits } from './vectors.js';
 
@@ -547,14 +548,38 @@ export async function intuitionEndpoint({
     /* fail-soft */
   }
 
-  // Wire format: focus block (D1) → conflicts block (B2) → relevant memory.
-  // Block ordering is intentional — focus is highest-priority context, conflicts
-  // come second since they help the agent adjudicate, relevant memory is last.
-  const combined_block = [focus_block, conflictBlock, block].filter(Boolean).join('\n');
+  // E1: playbook inject — fetch the active playbook for the current task_type
+  // and prepend it after memory excerpts. Gated on runtime:self-improvement-v2.
+  // Phase 1: classifier returns 'turn:default' always; playbook table is empty
+  // until Wave 3's step-playbook-synthesis runs. So this is a no-op in Phase 1.
+  // Failure mode: any throw is caught inside getPlaybookForInject; we only
+  // see null here, so the turn never fails because of a playbook fetch error.
+  let playbookContent = null;
+  let playbookTokens = 0;
+  try {
+    playbookContent = await getPlaybookForInject(db, { query: safeQuery });
+    if (typeof playbookContent === 'string' && playbookContent.length > 0) {
+      playbookTokens = estimateTokens(playbookContent);
+    } else {
+      playbookContent = null;
+    }
+  } catch {
+    // Belt-and-suspenders: getPlaybookForInject already swallows throws, but
+    // guard here too so a future refactor can't accidentally surface an error.
+    playbookContent = null;
+  }
+
+  // Wire format: focus block (D1) → conflicts block (B2) → relevant memory
+  //              → playbook (E1, when v2 enabled and playbook found).
+  // Playbook is appended last so memory excerpts remain the primary signal;
+  // the playbook is supplementary task-specific guidance.
+  const combined_block = [focus_block, conflictBlock, block, playbookContent]
+    .filter(Boolean)
+    .join('\n');
   return {
     block: combined_block,
     hits: hits.length,
-    tokens: tokens + conflictTokens + focus_tokens,
+    tokens: tokens + conflictTokens + focus_tokens + playbookTokens,
     latency_ms,
     truncated: truncated || conflictBlockTruncated,
     focus_block,
@@ -569,5 +594,8 @@ export async function intuitionEndpoint({
       conflictSuppressedByRule.both_blocked +
       conflictSuppressedByRule.stale +
       conflictSuppressedByRule.capped,
+    // E1 — exposed for telemetry / tests.
+    playbook_content: playbookContent,
+    playbook_tokens: playbookTokens,
   };
 }
