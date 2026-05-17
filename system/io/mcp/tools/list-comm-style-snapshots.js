@@ -8,7 +8,7 @@ export function createListCommStyleSnapshotsTool({ db }) {
   return {
     name: 'list_comm_style_snapshots',
     description:
-      "List historical comm_style_snapshot memos in reverse chronological order. Each snapshot records the synthesized communication-style preferences at a point in time, enabling trend inspection.",
+      'List historical comm_style_snapshot memos in reverse chronological order. Each snapshot records the synthesized communication-style preferences at a point in time, enabling trend inspection.',
     inputSchema: {
       type: 'object',
       properties: {

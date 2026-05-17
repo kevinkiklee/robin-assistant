@@ -25,10 +25,7 @@ import { dreamStepOutcomeGrading } from '../../cognition/dream/step-outcome-grad
 import { computeScore } from '../../cognition/dream/outcome-grading-prompt.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -141,7 +138,9 @@ test('valid LLM response: both axes → score = mean(completeness, correction_li
   assert.ok(r.cost_usd > 0, 'cost should be positive');
 
   // Verify the memo was updated
-  const [mRows] = await db.query(surql`SELECT meta FROM memos WHERE kind = 'task_outcome'`).collect();
+  const [mRows] = await db
+    .query(surql`SELECT meta FROM memos WHERE kind = 'task_outcome'`)
+    .collect();
   const memos = (Array.isArray(mRows) ? mRows : []).filter(Boolean);
   assert.equal(memos.length, 1);
 
@@ -172,7 +171,9 @@ test('cold-start path: no playbook → completeness=null, score=correction_likel
   const r = await dreamStepOutcomeGrading(db, host, null, { batchSize: 50 });
   assert.equal(r.graded, 1);
 
-  const [mRows] = await db.query(surql`SELECT meta FROM memos WHERE kind = 'task_outcome'`).collect();
+  const [mRows] = await db
+    .query(surql`SELECT meta FROM memos WHERE kind = 'task_outcome'`)
+    .collect();
   const memos = (Array.isArray(mRows) ? mRows : []).filter(Boolean);
   const meta = memos[0].meta;
 
@@ -195,7 +196,9 @@ test('malformed LLM JSON → row skipped, skipped_due_to_error incremented', asy
   assert.equal(r.skipped_due_to_error, 1);
 
   // Verify memo score is still null (not updated)
-  const [mRows] = await db.query(surql`SELECT meta FROM memos WHERE kind = 'task_outcome'`).collect();
+  const [mRows] = await db
+    .query(surql`SELECT meta FROM memos WHERE kind = 'task_outcome'`)
+    .collect();
   const memos = (Array.isArray(mRows) ? mRows : []).filter(Boolean);
   assert.equal(memos[0].meta.score, null, 'score should remain null after LLM error');
 
@@ -273,7 +276,11 @@ test('multiple rows: error on one does not stop others', async () => {
       callCount++;
       if (callCount === 1) throw new Error('first call fails');
       return {
-        content: JSON.stringify({ completeness: 0.9, correction_likelihood: 0.1, rationale: 'Great.' }),
+        content: JSON.stringify({
+          completeness: 0.9,
+          correction_likelihood: 0.1,
+          rationale: 'Great.',
+        }),
         usage: { input_tokens: 100, output_tokens: 50 },
       };
     },

@@ -9,10 +9,7 @@
 // pattern which was not atomic).
 import { BoundQuery } from 'surrealdb';
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
-import {
-  computeBuckets,
-  VALID_STATEMENT_KINDS,
-} from './calibration-bucket-math.js';
+import { computeBuckets, VALID_STATEMENT_KINDS } from './calibration-bucket-math.js';
 
 export async function dreamStepCalibrationBucket(db) {
   if (!(await isSelfImprovementV2Enabled(db))) {

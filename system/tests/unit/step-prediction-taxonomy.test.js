@@ -26,10 +26,7 @@ import { runMigrations } from '../../data/db/migrate.js';
 import { dreamStepPredictionTaxonomy } from '../../cognition/dream/step-prediction-taxonomy.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -178,9 +175,7 @@ test('no other predictions → 0 candidates, last_run_at updated', async () => {
   assert.equal(r.step, 'predictionTaxonomy');
 
   // Verify last_run_at was written.
-  const [rows] = await db
-    .query('SELECT VALUE value FROM runtime:`self-improvement-v2`')
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   const v = rows?.[0];
   assert.ok(v?.prediction_taxonomy_last_run_at, 'last_run_at should be set');
   await close(db);
@@ -247,22 +242,22 @@ test('malformed proposed_kind from LLM is rejected (invalid characters)', async 
   // LLM proposes 3 invalid kinds + 1 valid kind.
   const llmResponse = JSON.stringify([
     {
-      proposed_kind: 'invalid kind!',   // spaces + special char → rejected
+      proposed_kind: 'invalid kind!', // spaces + special char → rejected
       description: 'Bad proposal.',
       source_prediction_ids: [],
     },
     {
-      proposed_kind: 'ab',              // too short (< 3 chars) → rejected
+      proposed_kind: 'ab', // too short (< 3 chars) → rejected
       description: 'Too short.',
       source_prediction_ids: [],
     },
     {
-      proposed_kind: 'other',           // existing enum → rejected
+      proposed_kind: 'other', // existing enum → rejected
       description: 'Already exists.',
       source_prediction_ids: [],
     },
     {
-      proposed_kind: 'valid_new_kind',  // valid
+      proposed_kind: 'valid_new_kind', // valid
       description: 'A valid new kind.',
       source_prediction_ids: [],
     },
@@ -289,13 +284,15 @@ test('existing enum kind rejected', async () => {
   // LLM proposes an existing kind.
   const llmResponse = JSON.stringify([
     {
-      proposed_kind: 'event_timing',   // already in enum
+      proposed_kind: 'event_timing', // already in enum
       description: 'Should be rejected.',
       source_prediction_ids: [],
     },
   ]);
 
-  const r = await dreamStepPredictionTaxonomy(db, fakeHost(llmResponse), embedder, { minCluster: 3 });
+  const r = await dreamStepPredictionTaxonomy(db, fakeHost(llmResponse), embedder, {
+    minCluster: 3,
+  });
   assert.equal(r.candidates_written, 0);
   assert.deepEqual(r.proposed_kinds, []);
 

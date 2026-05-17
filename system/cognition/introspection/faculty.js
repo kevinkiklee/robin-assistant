@@ -70,7 +70,14 @@ export async function startIntrospection({ db, host = null }) {
     );
     // Install a minimal state so stopIntrospection() is a no-op rather than
     // throwing. No timers needed when gated off.
-    _state = { db, host: null, drainTimer: null, decayTimer: null, autoTuneTimer: null, rejectionHandler: null };
+    _state = {
+      db,
+      host: null,
+      drainTimer: null,
+      decayTimer: null,
+      autoTuneTimer: null,
+      rejectionHandler: null,
+    };
     return;
   }
 

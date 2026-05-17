@@ -193,9 +193,7 @@ test('get_comm_style: no context arg picks up ROBIN_SESSION_PLATFORM=discord', a
 
 test('commstyle-show CLI: defaults to terminal context when env unset', async () => {
   // Import here to avoid side-effects at module load.
-  const { commstyleShow } = await import(
-    '../../runtime/cli/commands/commstyle-show.js'
-  );
+  const { commstyleShow } = await import('../../runtime/cli/commands/commstyle-show.js');
   const db = await fresh();
   // Inject a fake getCommStyle that returns a terse row, and context override.
   const lines = [];
@@ -214,8 +212,17 @@ test('commstyle-show CLI: defaults to terminal context when env unset', async ()
       evidence: ['events:1', 'events:2'],
     }),
   });
-  assert.ok(lines.some((l) => l.startsWith('context: terminal')), 'should output context line');
-  assert.ok(lines.some((l) => l.startsWith('tone: terse')), 'should output tone');
-  assert.ok(lines.some((l) => l.startsWith('evidence: 2 event(s)')), 'should output evidence count');
+  assert.ok(
+    lines.some((l) => l.startsWith('context: terminal')),
+    'should output context line',
+  );
+  assert.ok(
+    lines.some((l) => l.startsWith('tone: terse')),
+    'should output tone',
+  );
+  assert.ok(
+    lines.some((l) => l.startsWith('evidence: 2 event(s)')),
+    'should output evidence count',
+  );
   await close(db);
 });

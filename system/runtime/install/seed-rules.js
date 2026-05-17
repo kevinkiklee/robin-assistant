@@ -20,13 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { surql } from 'surrealdb';
 import { packageRootDir } from '../../config/data-store.js';
 
-const SKELETON_RULES_DIR = join(
-  packageRootDir(),
-  'system',
-  'cognition',
-  'skeleton',
-  'rules',
-);
+const SKELETON_RULES_DIR = join(packageRootDir(), 'system', 'cognition', 'skeleton', 'rules');
 
 /**
  * Parse YAML-style frontmatter from a markdown file.

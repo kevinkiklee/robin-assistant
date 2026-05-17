@@ -28,9 +28,7 @@ export async function isSelfImprovementV2Enabled(db) {
 // Upserts the flag.  Pass enabled=true to open v2 surfaces, false to close them.
 export async function setSelfImprovementV2Enabled(db, enabled) {
   await db
-    .query(
-      `UPSERT runtime:\`self-improvement-v2\` SET value.enabled = ${enabled === true}`,
-    )
+    .query(`UPSERT runtime:\`self-improvement-v2\` SET value.enabled = ${enabled === true}`)
     .collect();
 }
 

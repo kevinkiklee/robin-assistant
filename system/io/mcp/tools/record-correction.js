@@ -52,7 +52,9 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
       if (args.rule_id) {
         try {
           const [rows] = await db
-            .query(surql`SELECT meta FROM memos WHERE id = type::record('memos', ${args.rule_id}) LIMIT 1`)
+            .query(
+              surql`SELECT meta FROM memos WHERE id = type::record('memos', ${args.rule_id}) LIMIT 1`,
+            )
             .collect();
           const rule = Array.isArray(rows) ? rows[0] : rows;
           if (rule?.meta?.not_retractable === true) {
@@ -74,7 +76,9 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         guard: guardInboundContent,
       });
       processor(result.id).catch((e) =>
-        console.warn(`[record_correction] biographer enqueue failed for ${result.id}: ${e.message}`),
+        console.warn(
+          `[record_correction] biographer enqueue failed for ${result.id}: ${e.message}`,
+        ),
       );
       let demoted_class = null;
       if (args.tool && args.action) {

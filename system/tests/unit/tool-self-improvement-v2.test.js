@@ -55,7 +55,11 @@ function buildAll(db) {
 
 // Valid args for flag-off tests — task_type must pass validateTaskType
 const VALID_ARGS = {
-  record_outcome: { task_type: 'job:daily-briefing', task_id: 'job:abc', signals: { quality: 0.9 } },
+  record_outcome: {
+    task_type: 'job:daily-briefing',
+    task_id: 'job:abc',
+    signals: { quality: 0.9 },
+  },
   propose_playbook: {
     task_type: 'job:daily-briefing',
     draft: 'Step 1: do X. Step 2: do Y.',
@@ -360,8 +364,16 @@ test('list_playbooks: active_only=false returns all including superseded', async
   const propose = createProposePlaybookTool({ db });
   const list = createListPlaybooksTool({ db });
 
-  await propose.handler({ task_type: 'job:daily-briefing', draft: 'v1', source_outcomes: ['memos:oc1'] });
-  await propose.handler({ task_type: 'job:daily-briefing', draft: 'v2', source_outcomes: ['memos:oc2'] });
+  await propose.handler({
+    task_type: 'job:daily-briefing',
+    draft: 'v1',
+    source_outcomes: ['memos:oc1'],
+  });
+  await propose.handler({
+    task_type: 'job:daily-briefing',
+    draft: 'v2',
+    source_outcomes: ['memos:oc2'],
+  });
 
   const resultActive = await list.handler({ active_only: true });
   assert.equal(resultActive.playbooks.length, 1);
@@ -377,8 +389,16 @@ test('list_playbooks: filters by task_type', async () => {
   const propose = createProposePlaybookTool({ db });
   const list = createListPlaybooksTool({ db });
 
-  await propose.handler({ task_type: 'job:daily-briefing', draft: 'pb1', source_outcomes: ['memos:a'] });
-  await propose.handler({ task_type: 'recall:default', draft: 'pb2', source_outcomes: ['memos:b'] });
+  await propose.handler({
+    task_type: 'job:daily-briefing',
+    draft: 'pb1',
+    source_outcomes: ['memos:a'],
+  });
+  await propose.handler({
+    task_type: 'recall:default',
+    draft: 'pb2',
+    source_outcomes: ['memos:b'],
+  });
 
   const result = await list.handler({ task_type: 'job:daily-briefing' });
   assert.ok(result.ok);
@@ -440,8 +460,16 @@ test('explain_playbook: prior_version set after supersession', async () => {
   const propose = createProposePlaybookTool({ db });
   const explain = createExplainPlaybookTool({ db });
 
-  const v1 = await propose.handler({ task_type: 'job:daily-briefing', draft: 'v1', source_outcomes: ['memos:oc1'] });
-  const v2 = await propose.handler({ task_type: 'job:daily-briefing', draft: 'v2', source_outcomes: ['memos:oc2'] });
+  const v1 = await propose.handler({
+    task_type: 'job:daily-briefing',
+    draft: 'v1',
+    source_outcomes: ['memos:oc1'],
+  });
+  const v2 = await propose.handler({
+    task_type: 'job:daily-briefing',
+    draft: 'v2',
+    source_outcomes: ['memos:oc2'],
+  });
 
   const result = await explain.handler({ id: v2.id });
   assert.ok(result.ok);

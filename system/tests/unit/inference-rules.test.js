@@ -93,7 +93,7 @@ test('OUTCOME_INFERENCE_SCORES has documented values', () => {
 // --- INTROSPECTION_DEFAULTS ---
 
 test('INTROSPECTION_DEFAULTS shape is preserved', () => {
-  assert.equal(INTROSPECTION_DEFAULTS.daily_cost_budget_usd, 0.50);
+  assert.equal(INTROSPECTION_DEFAULTS.daily_cost_budget_usd, 0.5);
   assert.equal(INTROSPECTION_DEFAULTS.turn_sample_pct_floor, 5);
   assert.equal(INTROSPECTION_DEFAULTS.turn_sample_pct_ceiling, 50);
   assert.equal(INTROSPECTION_DEFAULTS.target_turn_spend_fraction, 0.5);
@@ -109,5 +109,5 @@ test('INTROSPECTION_DEFAULTS shape is preserved', () => {
   assert.ok(thresholds && typeof thresholds === 'object');
   assert.equal(thresholds.recall_throttle_at, 0.25);
   assert.equal(thresholds.antecedent_regex_fallback_at, 0.25);
-  assert.equal(thresholds.turn_sample_cutoff_at, 0.10);
+  assert.equal(thresholds.turn_sample_cutoff_at, 0.1);
 });

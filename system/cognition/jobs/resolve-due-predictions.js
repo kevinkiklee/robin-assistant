@@ -10,7 +10,10 @@
 import { BoundQuery } from 'surrealdb';
 import { updateMemoMeta } from '../memory/store.js';
 import { resolve as foresightResolve } from '../memory/foresight.js';
-import { isSelfImprovementV2Enabled, getSelfImprovementV2Config } from '../../runtime/config/self-improvement-v2.js';
+import {
+  isSelfImprovementV2Enabled,
+  getSelfImprovementV2Config,
+} from '../../runtime/config/self-improvement-v2.js';
 
 const DEFAULT_GRACE_SECONDS = 300;
 
@@ -48,9 +51,7 @@ export async function resolveDuePredictions({ db }) {
         needsUser += 1;
       }
     } catch (e) {
-      console.warn(
-        `[resolve-due-predictions] failed on ${String(prediction.id)}: ${e.message}`,
-      );
+      console.warn(`[resolve-due-predictions] failed on ${String(prediction.id)}: ${e.message}`);
     }
   }
 
@@ -84,9 +85,7 @@ async function queryDuePredictions(db, graceSecs) {
       AND meta.expected_resolution_at IS NOT NONE
       AND meta.expected_resolution_at + duration::from_secs($grace) <= time::now()
   `;
-  const [rows] = await db
-    .query(new BoundQuery(sql, { grace: graceSecs }))
-    .collect();
+  const [rows] = await db.query(new BoundQuery(sql, { grace: graceSecs })).collect();
   return (rows ?? []).map(projectPrediction);
 }
 
@@ -181,10 +180,9 @@ export async function resolveEventTiming(db, prediction) {
   if (jobName) {
     const [jobRows] = await db
       .query(
-        new BoundQuery(
-          'SELECT last_run_at FROM runtime_jobs WHERE name = $name LIMIT 1',
-          { name: jobName },
-        ),
+        new BoundQuery('SELECT last_run_at FROM runtime_jobs WHERE name = $name LIMIT 1', {
+          name: jobName,
+        }),
       )
       .collect();
     const lastRun = jobRows?.[0]?.last_run_at;
@@ -226,10 +224,10 @@ export async function resolveEventTiming(db, prediction) {
     // No qualifying keywords — broad query (same as before).
     [evtRows] = await db
       .query(
-        new BoundQuery(
-          'SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend LIMIT 1',
-          { wstart: windowStart, wend: windowEnd },
-        ),
+        new BoundQuery('SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend LIMIT 1', {
+          wstart: windowStart,
+          wend: windowEnd,
+        }),
       )
       .collect();
   }
@@ -335,12 +333,63 @@ export function needsUser(_db, prediction) {
 // ---------------------------------------------------------------------------
 
 const STOPWORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-  'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
-  'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-  'could', 'should', 'may', 'might', 'shall', 'not', 'that', 'this',
-  'it', 'its', 'my', 'your', 'their', 'our', 'i', 'you', 'he', 'she',
-  'we', 'they', 'what', 'which', 'who', 'when', 'where', 'how', 'if',
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'but',
+  'in',
+  'on',
+  'at',
+  'to',
+  'for',
+  'of',
+  'with',
+  'by',
+  'from',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'have',
+  'has',
+  'had',
+  'do',
+  'does',
+  'did',
+  'will',
+  'would',
+  'could',
+  'should',
+  'may',
+  'might',
+  'shall',
+  'not',
+  'that',
+  'this',
+  'it',
+  'its',
+  'my',
+  'your',
+  'their',
+  'our',
+  'i',
+  'you',
+  'he',
+  'she',
+  'we',
+  'they',
+  'what',
+  'which',
+  'who',
+  'when',
+  'where',
+  'how',
+  'if',
 ]);
 
 /**

@@ -21,10 +21,7 @@ import {
 } from '../../cognition/intuition/turn-classifier.js';
 
 // __robin_test_home_setup__
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -134,7 +131,11 @@ test('hasTurnPlaybooks returns false for inactive playbook', async () => {
 });
 
 test('hasTurnPlaybooks returns false on DB error (fail-soft)', async () => {
-  const brokenDb = { query: () => { throw new Error('db down'); } };
+  const brokenDb = {
+    query: () => {
+      throw new Error('db down');
+    },
+  };
   const result = await hasTurnPlaybooks(brokenDb);
   assert.equal(result, false);
 });
@@ -155,7 +156,9 @@ test('isBudgetSufficient returns false when budget is fully spent', async () => 
   const db = await fresh();
   // Inject a state row that exhausts the budget.
   await db
-    .query(`UPSERT runtime:\`introspection.value\` SET value = { daily_spend_usd: 0.50, crash_count: 0, turn_sample_pct: 25 }`)
+    .query(
+      `UPSERT runtime:\`introspection.value\` SET value = { daily_spend_usd: 0.50, crash_count: 0, turn_sample_pct: 25 }`,
+    )
     .collect();
   const result = await isBudgetSufficient(db);
   assert.equal(result, false);
@@ -167,9 +170,17 @@ test('isBudgetSufficient is fail-soft: DB errors cause inner helpers to return d
   // safe defaults on DB error. isBudgetSufficient itself also has an outer try/catch.
   // With defaults: $0.50 budget, $0 spend → $0.50 remaining → sufficient.
   // This test documents the fail-safe contract: a DB error does NOT falsely gate the classifier.
-  const brokenDb = { query: () => { throw new Error('db down'); } };
+  const brokenDb = {
+    query: () => {
+      throw new Error('db down');
+    },
+  };
   const result = await isBudgetSufficient(brokenDb);
-  assert.equal(result, true, 'inner helpers return safe defaults; outer try/catch returns false as last resort');
+  assert.equal(
+    result,
+    true,
+    'inner helpers return safe defaults; outer try/catch returns false as last resort',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -180,7 +191,10 @@ test('classifyTurnType returns declared task_type from turnContext (Tier 1, bypa
   const db = await fresh();
   let llmCallCount = 0;
   const mockHost = {
-    invokeLLM: async () => { llmCallCount++; return { content: 'turn:analyze', usage: {} }; },
+    invokeLLM: async () => {
+      llmCallCount++;
+      return { content: 'turn:analyze', usage: {} };
+    },
   };
 
   const result = await classifyTurnType(
@@ -202,15 +216,13 @@ test('classifyTurnType routes recall query without LLM call', async () => {
   const db = await fresh();
   let llmCallCount = 0;
   const mockHost = {
-    invokeLLM: async () => { llmCallCount++; return { content: 'turn:default', usage: {} }; },
+    invokeLLM: async () => {
+      llmCallCount++;
+      return { content: 'turn:default', usage: {} };
+    },
   };
 
-  const result = await classifyTurnType(
-    db,
-    { query: 'who is my mentor?' },
-    mockHost,
-    null,
-  );
+  const result = await classifyTurnType(db, { query: 'who is my mentor?' }, mockHost, null);
   assert.equal(result, 'recall:person');
   assert.equal(llmCallCount, 0, 'LLM must not be called for Tier 2 recall routing');
   await close(db);
@@ -276,7 +288,9 @@ test('classifyTurnType returns turn:default when budget < $0.05', async () => {
   await seedTurnPlaybook(db);
   // Exhaust the budget.
   await db
-    .query(`UPSERT runtime:\`introspection.value\` SET value = { daily_spend_usd: 0.50, crash_count: 0, turn_sample_pct: 25 }`)
+    .query(
+      `UPSERT runtime:\`introspection.value\` SET value = { daily_spend_usd: 0.50, crash_count: 0, turn_sample_pct: 25 }`,
+    )
     .collect();
   _clearCacheForTest();
 
@@ -427,7 +441,10 @@ test('getPlaybookForInject uses declared task_type and bypasses classifier', asy
     null,
   );
 
-  assert.ok(typeof result === 'string' && result.includes('Job playbook'), `expected job playbook; got: ${result}`);
+  assert.ok(
+    typeof result === 'string' && result.includes('Job playbook'),
+    `expected job playbook; got: ${result}`,
+  );
   assert.equal(llmCallCount, 0, 'LLM must not be called for Tier 1 declared task_type');
   await close(db);
   _clearCacheForTest();
@@ -445,7 +462,7 @@ test('classifyTurnType returns turn:default when no host is provided (no LLM ava
   const result = await classifyTurnType(
     db,
     { query: 'recommend something for me' },
-    null,   // no host
+    null, // no host
     null,
   );
   assert.equal(result, 'turn:default');

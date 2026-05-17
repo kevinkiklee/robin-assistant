@@ -14,7 +14,10 @@ import {
   dreamStepCommStyle,
   getEffectiveContextCommStyle,
 } from '../../cognition/dream/step-comm-style.js';
-import { inferEventContext, partitionByContext } from '../../cognition/dream/comm-style-context-router.js';
+import {
+  inferEventContext,
+  partitionByContext,
+} from '../../cognition/dream/comm-style-context-router.js';
 import { getCommStyle, setCommStyle } from '../../cognition/jobs/comm-style.js';
 import { writeConfig as __wc } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
@@ -80,9 +83,7 @@ function countingStubLLM(output) {
 }
 
 async function readContextsRaw(db) {
-  const [rows] = await db
-    .query(surql`SELECT comm_style_contexts FROM persona:singleton`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT comm_style_contexts FROM persona:singleton`).collect();
   return rows?.[0]?.comm_style_contexts ?? null;
 }
 

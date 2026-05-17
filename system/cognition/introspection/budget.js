@@ -175,9 +175,7 @@ export async function recordActualCost(db, actualCostUsd, estimatedCostUsd) {
   const delta = actualCostUsd - estimatedCostUsd;
   if (Math.abs(delta) < 1e-9) return; // no meaningful difference
   try {
-    await db
-      .query(`UPSERT ${VALUE_RECORD_SQL} SET value.daily_spend_usd += ${delta}`)
-      .collect();
+    await db.query(`UPSERT ${VALUE_RECORD_SQL} SET value.daily_spend_usd += ${delta}`).collect();
   } catch {
     // Best-effort correction; non-fatal.
   }
@@ -240,7 +238,7 @@ export function isStratumAllowed(stratum, cfg, state) {
   const thresholds =
     cfg?.budget_remaining_thresholds ?? INTROSPECTION_DEFAULTS.budget_remaining_thresholds;
   const recallThrottle = thresholds.recall_throttle_at ?? 0.25;
-  const turnCutoff = thresholds.turn_sample_cutoff_at ?? 0.10;
+  const turnCutoff = thresholds.turn_sample_cutoff_at ?? 0.1;
 
   switch (stratum) {
     case 'predictions':

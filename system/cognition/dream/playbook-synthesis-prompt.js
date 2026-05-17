@@ -108,11 +108,20 @@ export function parsePlaybookOutput(text) {
       continue;
     }
     // Boolean
-    if (raw === 'true') { frontmatter[key] = true; continue; }
-    if (raw === 'false') { frontmatter[key] = false; continue; }
+    if (raw === 'true') {
+      frontmatter[key] = true;
+      continue;
+    }
+    if (raw === 'false') {
+      frontmatter[key] = false;
+      continue;
+    }
     // Number
     const n = Number(raw);
-    if (!Number.isNaN(n) && raw !== '') { frontmatter[key] = n; continue; }
+    if (!Number.isNaN(n) && raw !== '') {
+      frontmatter[key] = n;
+      continue;
+    }
     // String (strip optional quotes)
     frontmatter[key] = raw.replace(/^['"]|['"]$/g, '');
   }
@@ -214,7 +223,7 @@ export function buildSynthesisUserPrompt({
   lines.push('');
 
   if (priorPlaybookContent) {
-    lines.push('=== PRIOR PLAYBOOK (for reference — update, don\'t preserve blindly) ===');
+    lines.push("=== PRIOR PLAYBOOK (for reference — update, don't preserve blindly) ===");
     // Cap prior playbook to ~3000 chars to control prompt size
     const capped =
       priorPlaybookContent.length > 3000
@@ -234,9 +243,8 @@ export function buildSynthesisUserPrompt({
       const score = oc.meta?.score != null ? oc.meta.score.toFixed(2) : 'null';
       const taskId = oc.meta?.task_id ?? '';
       // Up to 3 lines of content excerpt
-      const excerpt = typeof oc.content === 'string'
-        ? oc.content.split('\n').slice(0, 3).join(' | ')
-        : '';
+      const excerpt =
+        typeof oc.content === 'string' ? oc.content.split('\n').slice(0, 3).join(' | ') : '';
       lines.push(`- id=${String(oc.id)} task_id=${taskId} score=${score}: ${excerpt}`);
     }
   } else {
@@ -248,9 +256,8 @@ export function buildSynthesisUserPrompt({
     lines.push('=== ACTIVE RULES TO CITE (defer to these rather than duplicating) ===');
     for (const rule of rules) {
       // Up to 2 lines of rule content
-      const excerpt = typeof rule.content === 'string'
-        ? rule.content.split('\n').slice(0, 2).join(' | ')
-        : '';
+      const excerpt =
+        typeof rule.content === 'string' ? rule.content.split('\n').slice(0, 2).join(' | ') : '';
       lines.push(`- Rule id=${String(rule.id)}: ${excerpt}`);
     }
     lines.push('');

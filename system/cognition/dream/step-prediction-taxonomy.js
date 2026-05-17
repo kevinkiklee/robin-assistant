@@ -132,7 +132,12 @@ export async function dreamStepPredictionTaxonomy(db, host, embedder, opts = {})
   const lastRunAt = await readLastRunAt(db);
   if (lastRunAt && Date.now() - lastRunAt.getTime() < WEEKLY_MS) {
     const nextRunAt = new Date(lastRunAt.getTime() + WEEKLY_MS).toISOString();
-    return { skipped: true, reason: 'weekly_cooldown', next_run_at: nextRunAt, step: 'predictionTaxonomy' };
+    return {
+      skipped: true,
+      reason: 'weekly_cooldown',
+      next_run_at: nextRunAt,
+      step: 'predictionTaxonomy',
+    };
   }
 
   // Read kind='other' predictions from last 90 days.
@@ -269,12 +274,18 @@ export async function dreamStepPredictionTaxonomy(db, host, embedder, opts = {})
         kind: 'statement_kind_enum',
         signal_events: [],
         confidence: 0.7,
-        payload: { proposed_kind, description: description.trim(), source_prediction_ids: sourceIds },
+        payload: {
+          proposed_kind,
+          description: description.trim(),
+          source_prediction_ids: sourceIds,
+        },
       });
       proposedKinds.push(proposed_kind);
       candidatesWritten++;
     } catch (e) {
-      console.warn(`[step-prediction-taxonomy] candidate write failed for ${proposed_kind}: ${e.message}`);
+      console.warn(
+        `[step-prediction-taxonomy] candidate write failed for ${proposed_kind}: ${e.message}`,
+      );
     }
   }
 

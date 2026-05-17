@@ -23,17 +23,11 @@ import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
-import {
-  startIntrospection,
-  stopIntrospection,
-} from '../../cognition/introspection/index.js';
+import { startIntrospection, stopIntrospection } from '../../cognition/introspection/index.js';
 import { drainQueueOnce } from '../../cognition/introspection/queue-poller.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });

@@ -22,10 +22,7 @@ import { runMigrations } from '../../data/db/migrate.js';
 import { drainQueueOnce } from '../../cognition/introspection/queue-poller.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -94,7 +91,11 @@ test('outbound-blocked row: writes task_outcome memo with score=0.2 and deletes 
 
   // Queue should be empty.
   const [qRows] = await db.query(surql`SELECT * FROM task_close_queue`).collect();
-  assert.equal((Array.isArray(qRows) ? qRows : [qRows]).filter(Boolean).length, 0, 'queue row deleted');
+  assert.equal(
+    (Array.isArray(qRows) ? qRows : [qRows]).filter(Boolean).length,
+    0,
+    'queue row deleted',
+  );
 
   // task_outcome memo should exist.
   const [mRows] = await db.query(surql`SELECT * FROM memos WHERE kind = 'task_outcome'`).collect();
@@ -165,7 +166,7 @@ test('expired row is not claimed by drain', async () => {
         task_type   = ${'turn:default'},
         task_id     = ${'expired-task'},
         event_id    = ${event.id},
-        payload     = ${{outbound_result: { ok: false, reason: 'expired' }}},
+        payload     = ${{ outbound_result: { ok: false, reason: 'expired' } }},
         enqueued_at = ${past},
         claimed_at  = NONE,
         claimed_by  = NONE,

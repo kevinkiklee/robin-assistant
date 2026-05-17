@@ -179,14 +179,7 @@ async function processRow(db, row, host = null, budgetCfg = null, budgetState = 
   const needsLlmGrade = host !== null && finalScore === null;
 
   if (needsLlmGrade) {
-    const gradeResult = await _tryInlineGrade(
-      db,
-      row,
-      task_type,
-      host,
-      budgetCfg,
-      budgetState,
-    );
+    const gradeResult = await _tryInlineGrade(db, row, task_type, host, budgetCfg, budgetState);
     if (gradeResult) {
       finalScore = gradeResult.score;
       selfGradeSignal = gradeResult.selfGrade;
@@ -344,7 +337,9 @@ async function _tryInlineGrade(db, row, taskType, host, cfg, state) {
 
     return { score, selfGrade };
   } catch (err) {
-    console.warn(`[introspection/queue-poller] inline grade failed for ${row.id}: ${err?.message ?? err}`);
+    console.warn(
+      `[introspection/queue-poller] inline grade failed for ${row.id}: ${err?.message ?? err}`,
+    );
     return null;
   } finally {
     // Correct budget for actual vs estimated spend.

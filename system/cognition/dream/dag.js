@@ -22,5 +22,10 @@ export const DREAM_DAG_DEPS = {
   playbookSynthesis: ['outcomeGrading', 'reflection'], // L2, Opus, K=5/night cap
   calibrationBucket: [], // L1, pure math — sole writer of confidence_band memos
   predictionTaxonomy: [], // L1, weekly — clusters kind='other' predictions
-  selfImprovementRollup: ['outcomeGrading', 'playbookSynthesis', 'calibrationBucket', 'predictionTaxonomy'], // L3, writes v2 metrics
+  selfImprovementRollup: [
+    'outcomeGrading',
+    'playbookSynthesis',
+    'calibrationBucket',
+    'predictionTaxonomy',
+  ], // L3, writes v2 metrics
 };

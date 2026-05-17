@@ -8,10 +8,7 @@
 //   - ≥1 STRONG signal  (ask_user_question_call OR predict_call)
 //   - OR ≥2 WEAK signals (numbered_list_ge2, ends_with_question_mark, outbound_write_performed)
 
-import {
-  ANTECEDENT_KINDS,
-  CORRECTION_REGEXES,
-} from '../introspection/inference-rules.js';
+import { ANTECEDENT_KINDS, CORRECTION_REGEXES } from '../introspection/inference-rules.js';
 
 const OUTBOUND_TOOL_NAMES = new Set([
   'discord_send',

@@ -105,9 +105,7 @@ test('default synthesis: persona.comm_style.last_snapshot_id populated', async (
   const host = stubLLM(validShape());
   await dreamStepCommStyle(db, host);
 
-  const [rows] = await db
-    .query(`SELECT comm_style FROM persona:singleton`)
-    .collect();
+  const [rows] = await db.query(`SELECT comm_style FROM persona:singleton`).collect();
   const cs = rows?.[0]?.comm_style;
   assert.ok(cs, 'persona:singleton.comm_style should exist');
   assert.ok(cs.last_snapshot_id, 'last_snapshot_id should be populated');
@@ -117,7 +115,10 @@ test('default synthesis: persona.comm_style.last_snapshot_id populated', async (
     .query(`SELECT id FROM memos WHERE kind = 'comm_style_snapshot'`)
     .collect();
   const ids = memoRows.map((r) => String(r.id));
-  assert.ok(ids.includes(cs.last_snapshot_id), 'last_snapshot_id should reference an existing memo');
+  assert.ok(
+    ids.includes(cs.last_snapshot_id),
+    'last_snapshot_id should reference an existing memo',
+  );
 
   await close(db);
 });
@@ -148,7 +149,11 @@ test('idempotency: second run with same evidence does not write a new snapshot',
   const [rows2] = await db
     .query(`SELECT id FROM memos WHERE kind = 'comm_style_snapshot'`)
     .collect();
-  assert.equal(rows2.length, count1, 'snapshot count should not increase on identical re-synthesis');
+  assert.equal(
+    rows2.length,
+    count1,
+    'snapshot count should not increase on identical re-synthesis',
+  );
 
   await close(db);
 });
@@ -189,9 +194,7 @@ test('per-context synthesis: comm_style_contexts.<ctx>.last_snapshot_id set', as
   const host = stubLLM(validShape({ confidence: 0.75 }));
   await dreamStepCommStyle(db, host);
 
-  const [rows] = await db
-    .query(`SELECT comm_style_contexts FROM persona:singleton`)
-    .collect();
+  const [rows] = await db.query(`SELECT comm_style_contexts FROM persona:singleton`).collect();
   const ctxs = rows?.[0]?.comm_style_contexts;
   assert.ok(ctxs, 'comm_style_contexts should exist');
   assert.ok(ctxs.discord?.last_snapshot_id, 'discord last_snapshot_id should be set');

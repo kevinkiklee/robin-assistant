@@ -59,10 +59,7 @@ function makeTranscript({
   currentUserText,
   currentAssistantText = 'Understood.',
 }) {
-  const dir = join(
-    tmpdir(),
-    `robin-ci-t-${process.pid}-${Math.random().toString(36).slice(2)}`,
-  );
+  const dir = join(tmpdir(), `robin-ci-t-${process.pid}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   const path = join(dir, 'transcript.jsonl');
 
@@ -81,9 +78,7 @@ function makeTranscript({
       type: 'assistant',
       message: {
         role: 'assistant',
-        content: content.length === 1 && content[0].type === 'text'
-          ? content[0].text
-          : content,
+        content: content.length === 1 && content[0].type === 'text' ? content[0].text : content,
       },
     });
   }
@@ -205,7 +200,11 @@ test('v2 enabled: no correction written when pattern does not match', async () =
     const [corrEvents] = await db
       .query(surql`SELECT * FROM events WHERE source = 'explicit_correction'`)
       .collect();
-    assert.equal(corrEvents.length, 0, 'expected no explicit_correction when pattern does not match');
+    assert.equal(
+      corrEvents.length,
+      0,
+      'expected no explicit_correction when pattern does not match',
+    );
   } finally {
     await close(db);
   }
@@ -231,7 +230,11 @@ test('v2 enabled: no correction written when antecedent does not qualify', async
     const [corrEvents] = await db
       .query(surql`SELECT * FROM events WHERE source = 'explicit_correction'`)
       .collect();
-    assert.equal(corrEvents.length, 0, 'expected no explicit_correction when antecedent unqualified');
+    assert.equal(
+      corrEvents.length,
+      0,
+      'expected no explicit_correction when antecedent unqualified',
+    );
   } finally {
     await close(db);
   }

@@ -150,7 +150,7 @@ function _hashLite(str) {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i);
-    h = (Math.imul(h, 0x01000193) >>> 0);
+    h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h.toString(16).padStart(8, '0');
 }
@@ -211,30 +211,30 @@ export const biographerRoutes = [
                 try {
                   const memoContent = `explicit correction detected (task_type=${taskType})`;
                   await ctx.db
-                    .query(surql`CREATE memos CONTENT ${{
-                      kind: 'task_outcome',
-                      content: memoContent,
-                      content_hash: _hashLite(memoContent),
-                      derived_by: 'correction-inference',
-                      meta: {
-                        task_type: taskType,
-                        task_id: correctionEventId ?? 'unknown',
-                        source_event: correctionEventId,
-                        signals: {
-                          explicit_correction: {
-                            text: currentUserText,
+                    .query(
+                      surql`CREATE memos CONTENT ${{
+                        kind: 'task_outcome',
+                        content: memoContent,
+                        content_hash: _hashLite(memoContent),
+                        derived_by: 'correction-inference',
+                        meta: {
+                          task_type: taskType,
+                          task_id: correctionEventId ?? 'unknown',
+                          source_event: correctionEventId,
+                          signals: {
+                            explicit_correction: {
+                              text: currentUserText,
+                            },
                           },
+                          score: 0,
                         },
-                        score: 0,
-                      },
-                      scope: 'global',
-                      tags: [],
-                    }}`)
+                        scope: 'global',
+                        tags: [],
+                      }}`,
+                    )
                     .collect();
                 } catch (e) {
-                  console.warn(
-                    `[correction-inference] task_outcome write failed: ${e.message}`,
-                  );
+                  console.warn(`[correction-inference] task_outcome write failed: ${e.message}`);
                 }
               }
             }

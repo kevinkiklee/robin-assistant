@@ -70,7 +70,9 @@ test('task_close_queue table accepts spec shape INSERT and SELECT', async () => 
 
   // First create an event row so the record<events> FK resolves.
   const [eventRows] = await db
-    .query(surql`CREATE events SET source = 'agent_internal', content = 'test', content_hash = 'abc'`)
+    .query(
+      surql`CREATE events SET source = 'agent_internal', content = 'test', content_hash = 'abc'`,
+    )
     .collect();
   const eventRow = Array.isArray(eventRows) ? eventRows[0] : eventRows;
   assert.ok(eventRow?.id, 'event created for FK');
@@ -94,9 +96,7 @@ test('task_close_queue table accepts spec shape INSERT and SELECT', async () => 
   const row = Array.isArray(inserted) ? inserted[0] : inserted;
   assert.ok(row?.id, 'task_close_queue row created');
 
-  const [selected] = await db
-    .query(surql`SELECT * FROM ONLY ${row.id}`)
-    .collect();
+  const [selected] = await db.query(surql`SELECT * FROM ONLY ${row.id}`).collect();
   const r = Array.isArray(selected) ? selected[0] : selected;
 
   assert.equal(r.task_type, 'linear_issue');
@@ -105,8 +105,14 @@ test('task_close_queue table accepts spec shape INSERT and SELECT', async () => 
   assert.deepEqual(r.payload, { score: 1 });
   // SurrealDB v3 returns datetimes as its own `DateTime` class, not a plain JS
   // Date — check that the field is a non-null object with a string representation.
-  assert.ok(r.enqueued_at != null && typeof r.enqueued_at === 'object', 'enqueued_at is a datetime object');
-  assert.ok(r.expires_at != null && typeof r.expires_at === 'object', 'expires_at is a datetime object');
+  assert.ok(
+    r.enqueued_at != null && typeof r.enqueued_at === 'object',
+    'enqueued_at is a datetime object',
+  );
+  assert.ok(
+    r.expires_at != null && typeof r.expires_at === 'object',
+    'expires_at is a datetime object',
+  );
   // SurrealDB NONE / option fields come back as undefined in the JS client.
   assert.ok(r.claimed_at == null, 'claimed_at is null/undefined (option<datetime>)');
   assert.ok(r.claimed_by == null, 'claimed_by is null/undefined (option<string>)');

@@ -34,7 +34,10 @@ async function freshDb() {
 }
 
 function makeTmpRulesDir(files) {
-  const dir = join(tmpdir(), `robin-seed-rules-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(
+    tmpdir(),
+    `robin-seed-rules-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(dir, { recursive: true });
   for (const [name, content] of Object.entries(files)) {
     writeFileSync(join(dir, name), content, 'utf8');
@@ -172,7 +175,9 @@ test('existing rule with same version is not touched', async () => {
 
     // Mutate content in DB to simulate user edit
     await db
-      .query("UPDATE rules SET content = 'user-edited content' WHERE meta.id = 'predict-discipline'")
+      .query(
+        "UPDATE rules SET content = 'user-edited content' WHERE meta.id = 'predict-discipline'",
+      )
       .collect();
 
     // Re-run with same version — should not overwrite user edit

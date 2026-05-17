@@ -49,9 +49,7 @@ async function seedPredictions(db, { statement_kind, n }) {
         correct,
       },
     };
-    await db
-      .query(new BoundQuery('CREATE memos CONTENT $fields', { fields }))
-      .collect();
+    await db.query(new BoundQuery('CREATE memos CONTENT $fields', { fields })).collect();
   }
 }
 
@@ -121,7 +119,10 @@ test('mature: N=35 resolved event_timing preds → mature buckets, old bootstrap
   assert.equal(r2.skipped, false);
   assert.equal(r2.kinds_processed, 1);
   // Mature: up to 10 buckets (depends on spread; with 35 evenly spread we get ≤10).
-  assert.ok(r2.buckets_written >= 1 && r2.buckets_written <= 10, `buckets_written=${r2.buckets_written} out of expected range`);
+  assert.ok(
+    r2.buckets_written >= 1 && r2.buckets_written <= 10,
+    `buckets_written=${r2.buckets_written} out of expected range`,
+  );
   assert.deepEqual(r2.bucketing_modes, { bootstrap: 0, mature: 1 });
 
   // Old bootstrap rows must be gone — only mature rows remain.
@@ -162,9 +163,7 @@ test("kind='other' predictions are excluded from confidence_band buckets", async
   assert.equal(r.kinds_processed, 0, "kind='other' should produce 0 kinds_processed");
   assert.equal(r.buckets_written, 0);
 
-  const [cbRows] = await db
-    .query(`SELECT id FROM memos WHERE kind = 'confidence_band'`)
-    .collect();
+  const [cbRows] = await db.query(`SELECT id FROM memos WHERE kind = 'confidence_band'`).collect();
   assert.equal(cbRows.length, 0, 'no confidence_band memos should be written for other');
 
   await close(db);
@@ -236,7 +235,9 @@ test('written confidence_band memos contain accuracy and raw_accuracy fields', a
   await runCalibrationBucket(db);
 
   const [cbRows] = await db
-    .query(`SELECT meta FROM memos WHERE kind = 'confidence_band' AND meta.statement_kind = 'fact_recall'`)
+    .query(
+      `SELECT meta FROM memos WHERE kind = 'confidence_band' AND meta.statement_kind = 'fact_recall'`,
+    )
     .collect();
   assert.equal(cbRows.length, 1, 'one bucket for fact_recall (all in mid)');
 
@@ -246,7 +247,10 @@ test('written confidence_band memos contain accuracy and raw_accuracy fields', a
   // Laplace: (3+1)/(3+2) = 4/5 = 0.8
   assert.ok(Math.abs(m.accuracy - 4 / 5) < 1e-9, `accuracy should be 0.8, got ${m.accuracy}`);
   // raw: 3/3 = 1.0
-  assert.ok(Math.abs(m.raw_accuracy - 1.0) < 1e-9, `raw_accuracy should be 1.0, got ${m.raw_accuracy}`);
+  assert.ok(
+    Math.abs(m.raw_accuracy - 1.0) < 1e-9,
+    `raw_accuracy should be 1.0, got ${m.raw_accuracy}`,
+  );
   assert.ok(m.last_recomputed_at, 'last_recomputed_at should be set');
 
   await close(db);

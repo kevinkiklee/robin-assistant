@@ -40,9 +40,7 @@ async function enableV2(db, extra = {}) {
   const setClauses = Object.entries(fields)
     .map(([k, v]) => `value.${k} = ${JSON.stringify(v)}`)
     .join(', ');
-  await db
-    .query(`UPSERT runtime:\`self-improvement-v2\` SET ${setClauses}`)
-    .collect();
+  await db.query(`UPSERT runtime:\`self-improvement-v2\` SET ${setClauses}`).collect();
 }
 
 /** Seed `n` task_outcome memos at a specific timestamp. */
@@ -97,9 +95,7 @@ test('stamps phase2_started_at on first run when flag is true', async () => {
 
   assert.equal(result, 'phase2_started_at=stamped');
 
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`self-improvement-v2`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   const v = rows?.[0];
   assert.ok(v?.phase2_started_at, 'phase2_started_at should be set');
   const stamped = new Date(v.phase2_started_at).getTime();
@@ -116,9 +112,7 @@ test('does not re-stamp phase2_started_at on subsequent run', async () => {
   const result = await runTaskOutcomeDriftWatchdog({ db });
   assert.match(result, /^baseline=pending/);
 
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`self-improvement-v2`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   assert.equal(rows?.[0]?.phase2_started_at, firstStamp, 'stamp should not change');
   await close(db);
 });
@@ -157,11 +151,12 @@ test('locks baseline_writes_per_hour after 72h', async () => {
   const result = await runTaskOutcomeDriftWatchdog({ db });
   assert.match(result, /^baseline=locked/);
 
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`self-improvement-v2`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   const v = rows?.[0];
-  assert.ok(typeof v?.baseline_writes_per_hour === 'number', 'baseline_writes_per_hour should be set');
+  assert.ok(
+    typeof v?.baseline_writes_per_hour === 'number',
+    'baseline_writes_per_hour should be set',
+  );
   assert.ok(v.baseline_writes_per_hour > 0, 'baseline should be positive');
   await close(db);
 });
@@ -186,9 +181,7 @@ test('returns ok when current rate is within drift threshold', async () => {
   const result = await runTaskOutcomeDriftWatchdog({ db });
   assert.match(result, /^ok drift=/);
   // Flag should still be enabled.
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`self-improvement-v2`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   assert.equal(rows?.[0]?.enabled, true);
   await close(db);
 });
@@ -206,9 +199,7 @@ test('auto-disables flag when drift exceeds threshold', async () => {
   const result = await runTaskOutcomeDriftWatchdog({ db });
   assert.match(result, /^auto_disabled=true/);
 
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`self-improvement-v2`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   const v = rows?.[0];
   assert.equal(v?.enabled, false, 'flag should be disabled');
   assert.ok(v?.auto_disabled_at, 'auto_disabled_at should be set');

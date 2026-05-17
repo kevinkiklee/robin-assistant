@@ -21,9 +21,7 @@ export function createGetPlaybookTool({ db }) {
       // Normalize the ID to a SurrealDB record reference string
       const recordRef = id.startsWith('memos:') ? id : `memos:${id}`;
 
-      const [rows] = await db
-        .query(`SELECT * FROM ${recordRef} WHERE kind = 'playbook'`)
-        .collect();
+      const [rows] = await db.query(`SELECT * FROM ${recordRef} WHERE kind = 'playbook'`).collect();
 
       const row = Array.isArray(rows) ? rows[0] : rows;
       if (!row) {

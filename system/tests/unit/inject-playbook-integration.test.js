@@ -20,10 +20,7 @@ import { recordEvent } from '../../io/capture/record-event.js';
 import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 
 // __robin_test_home_setup__
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -77,7 +74,10 @@ test('intuitionEndpoint does not prepend playbook when v2 flag is false', async 
     tokenBudget: 1500,
   });
 
-  assert.ok(!result.block.includes('PLAYBOOK_SENTINEL_VALUE'), 'playbook must not appear when flag is off');
+  assert.ok(
+    !result.block.includes('PLAYBOOK_SENTINEL_VALUE'),
+    'playbook must not appear when flag is off',
+  );
   assert.equal(result.playbook_content, null, 'playbook_content should be null when flag is off');
   assert.equal(result.playbook_tokens, 0);
   await close(db);
@@ -103,7 +103,11 @@ test('intuitionEndpoint does not add playbook when flag is on but no playbook ex
     tokenBudget: 1500,
   });
 
-  assert.equal(result.playbook_content, null, 'playbook_content should be null with empty playbook table');
+  assert.equal(
+    result.playbook_content,
+    null,
+    'playbook_content should be null with empty playbook table',
+  );
   assert.equal(result.playbook_tokens, 0);
   await close(db);
 });
@@ -214,6 +218,10 @@ test('intuitionEndpoint succeeds and playbook_content is null when no active pla
 
   assert.ok(typeof result === 'object', 'result must be an object');
   assert.ok(typeof result.block === 'string', 'block must be a string');
-  assert.equal(result.playbook_content, null, 'inactive playbook should yield null playbook_content');
+  assert.equal(
+    result.playbook_content,
+    null,
+    'inactive playbook should yield null playbook_content',
+  );
   await close(db);
 });

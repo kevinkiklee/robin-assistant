@@ -97,9 +97,7 @@ async function readV2Value(db) {
 
 async function upsertV2Field(db, key, value) {
   if (!/^[a-z][a-z0-9_]*$/.test(key)) throw new Error(`upsertV2Field: bad field key: ${key}`);
-  await db
-    .query(`UPSERT ${V2_RECORD_SQL} SET value.${key} = ${JSON.stringify(value)}`)
-    .collect();
+  await db.query(`UPSERT ${V2_RECORD_SQL} SET value.${key} = ${JSON.stringify(value)}`).collect();
 }
 
 /**

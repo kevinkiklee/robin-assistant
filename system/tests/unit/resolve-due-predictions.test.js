@@ -34,13 +34,14 @@ async function fresh() {
 
 // Helper: enable self-improvement-v2 flag
 async function enableFlag(db) {
-  await db
-    .query('UPSERT runtime:`self-improvement-v2` SET value.enabled = true')
-    .collect();
+  await db.query('UPSERT runtime:`self-improvement-v2` SET value.enabled = true').collect();
 }
 
 // Helper: create a prediction with expected_resolution_at in the past
-async function pastPrediction(db, { kind, pastMs = 10 * 60_000, statement = 'will it happen?' } = {}) {
+async function pastPrediction(
+  db,
+  { kind, pastMs = 10 * 60_000, statement = 'will it happen?' } = {},
+) {
   const expected_resolution_at = new Date(Date.now() - pastMs).toISOString();
   const { id } = await recordPrediction(db, {
     statement,

@@ -13,10 +13,7 @@ import { surql } from 'surrealdb';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import {
-  COST_MONITOR_INTERVAL_MS,
-  runCostMonitor,
-} from '../../cognition/jobs/cost-monitor.js';
+import { COST_MONITOR_INTERVAL_MS, runCostMonitor } from '../../cognition/jobs/cost-monitor.js';
 
 const TEST_HOME = join(
   tmpdir(),
@@ -37,9 +34,7 @@ async function enableV2(db, extra = {}) {
   const setClauses = Object.entries(fields)
     .map(([k, v]) => `value.${k} = ${JSON.stringify(v)}`)
     .join(', ');
-  await db
-    .query(`UPSERT runtime:\`self-improvement-v2\` SET ${setClauses}`)
-    .collect();
+  await db.query(`UPSERT runtime:\`self-improvement-v2\` SET ${setClauses}`).collect();
 }
 
 // ---------------------------------------------------------------------------
@@ -74,15 +69,10 @@ test('runs on first call and stamps cost_monitor_last_run_at', async () => {
   const after = Date.now();
 
   // Should not be 'skipped=flag_off' or 'skipped=too_soon'.
-  assert.ok(
-    !result.startsWith('skipped'),
-    `expected non-skip on first call, got: ${result}`,
-  );
+  assert.ok(!result.startsWith('skipped'), `expected non-skip on first call, got: ${result}`);
 
   // Stamp should be written.
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`self-improvement-v2`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   const lastRun = rows?.[0]?.cost_monitor_last_run_at;
   assert.ok(lastRun, 'cost_monitor_last_run_at should be stamped');
   const ts = new Date(lastRun).getTime();
@@ -107,10 +97,7 @@ test('runs again after 6h have elapsed', async () => {
   await enableV2(db, { cost_monitor_last_run_at: sevenHoursAgo });
 
   const result = await runCostMonitor({ db });
-  assert.ok(
-    !result.startsWith('skipped'),
-    `expected non-skip after 6h, got: ${result}`,
-  );
+  assert.ok(!result.startsWith('skipped'), `expected non-skip after 6h, got: ${result}`);
   await close(db);
 });
 
@@ -159,11 +146,16 @@ test('writes watch-list event and returns alert when projected cost > 2x budget'
 
   // A watch-list event should have been written.
   const [evts] = await db
-    .query(`SELECT * FROM events WHERE source = 'agent_internal' AND meta.kind = 'cost_monitor_alert'`)
+    .query(
+      `SELECT * FROM events WHERE source = 'agent_internal' AND meta.kind = 'cost_monitor_alert'`,
+    )
     .collect();
   assert.ok(Array.isArray(evts) && evts.length > 0, 'watch-list event should be written');
   assert.ok(evts[0].meta.surface_in_brief === true, 'surface_in_brief should be true');
-  assert.ok(typeof evts[0].content === 'string' && evts[0].content.includes('WARNING'), 'content should contain WARNING');
+  assert.ok(
+    typeof evts[0].content === 'string' && evts[0].content.includes('WARNING'),
+    'content should contain WARNING',
+  );
   await close(db);
 });
 
@@ -193,7 +185,9 @@ test('does not write alert event when cost is within budget', async () => {
   await runCostMonitor({ db });
 
   const [evts] = await db
-    .query(`SELECT * FROM events WHERE source = 'agent_internal' AND meta.kind = 'cost_monitor_alert'`)
+    .query(
+      `SELECT * FROM events WHERE source = 'agent_internal' AND meta.kind = 'cost_monitor_alert'`,
+    )
     .collect();
   assert.ok(!evts || evts.length === 0, 'no alert event should be written within budget');
   await close(db);

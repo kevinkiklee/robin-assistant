@@ -74,7 +74,7 @@ export async function readDbDataForAgentsMd() {
       const jobs = await listAllJobs(db);
       const ctx = resolveSessionContext();
       const perContextStyle = await getEffectiveContextCommStyle(db, ctx);
-      const commStyle = perContextStyle ?? await getCommStyle(db);
+      const commStyle = perContextStyle ?? (await getCommStyle(db));
       const calibration = await getCalibration(db);
       let intState = null;
       try {

@@ -20,7 +20,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_K = 5; // Max task_types to synthesize per night
-const DRIFT_THRESHOLD = 0.10; // Min normalized_drift to be eligible
+const DRIFT_THRESHOLD = 0.1; // Min normalized_drift to be eligible
 const COLD_START_N_THRESHOLD = 5; // Min outcomes to transition cold_start → false
 const COLD_START_AGE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const MIN_OUTCOMES_FOR_ELIGIBILITY = 3;
@@ -76,9 +76,7 @@ async function runPlaybookSynthesis(db, host, opts) {
       : null;
 
     // Count graded since last synthesis (or all-time if no playbook)
-    const outcomesSince = since
-      ? outcomes.filter((o) => new Date(o.derived_at) > since)
-      : outcomes;
+    const outcomesSince = since ? outcomes.filter((o) => new Date(o.derived_at) > since) : outcomes;
     const n = outcomesSince.filter((o) => typeof o?.meta?.score === 'number').length;
 
     if (n < MIN_OUTCOMES_FOR_ELIGIBILITY) continue;
@@ -118,9 +116,7 @@ async function runPlaybookSynthesis(db, host, opts) {
       if (result.overflow) overflows++;
       synthesized++;
     } catch (e) {
-      console.warn(
-        `[dream/playbook-synthesis] ${group.taskType} failed: ${e?.message ?? e}`,
-      );
+      console.warn(`[dream/playbook-synthesis] ${group.taskType} failed: ${e?.message ?? e}`);
       errors++;
     }
   }
@@ -178,13 +174,10 @@ async function synthesizeOnePlaybook(db, host, { taskType, outcomesSince, n, act
   let llmResult;
   let overflow = false;
 
-  llmResult = await host.invokeLLM(
-    [{ role: 'user', content: userPrompt }],
-    {
-      tier: 'deep',
-      system: [{ role: 'system', content: systemPrompt, cache_control: { type: 'ephemeral' } }],
-    },
-  );
+  llmResult = await host.invokeLLM([{ role: 'user', content: userPrompt }], {
+    tier: 'deep',
+    system: [{ role: 'system', content: systemPrompt, cache_control: { type: 'ephemeral' } }],
+  });
 
   let { frontmatter, body } = parsePlaybookOutput(llmResult?.content ?? '');
 
@@ -205,13 +198,10 @@ async function synthesizeOnePlaybook(db, host, { taskType, outcomesSince, n, act
     const retrySystem = buildSynthesisSystemPrompt(tighterTokens);
 
     retried = true;
-    const retryResult = await host.invokeLLM(
-      [{ role: 'user', content: retryPrompt }],
-      {
-        tier: 'deep',
-        system: [{ role: 'system', content: retrySystem, cache_control: { type: 'ephemeral' } }],
-      },
-    );
+    const retryResult = await host.invokeLLM([{ role: 'user', content: retryPrompt }], {
+      tier: 'deep',
+      system: [{ role: 'system', content: retrySystem, cache_control: { type: 'ephemeral' } }],
+    });
     llmResult.usage = llmResult.usage ?? {};
     llmResult.usage.input_tokens =
       (llmResult.usage.input_tokens ?? 0) + (retryResult?.usage?.input_tokens ?? 0);
@@ -243,17 +233,13 @@ async function synthesizeOnePlaybook(db, host, { taskType, outcomesSince, n, act
   // Validate frontmatter
   const validation = validateFrontmatter(frontmatter);
   if (!validation.ok) {
-    throw new Error(
-      `frontmatter validation failed: missing ${validation.missing.join(', ')}`,
-    );
+    throw new Error(`frontmatter validation failed: missing ${validation.missing.join(', ')}`);
   }
 
   // Build the full content string: reconstruct YAML frontmatter + body
   // Code populates evidence_outcomes and related_rules (not LLM)
   const now = new Date().toISOString();
-  const evidenceOutcomeIds = outcomesSince
-    .slice(0, 10)
-    .map((o) => String(o.id));
+  const evidenceOutcomeIds = outcomesSince.slice(0, 10).map((o) => String(o.id));
   // Keep both native RecordId (for DB ops) and string (for content embedding)
   const relatedRuleNativeIds = relatedRules.map((r) => r.id);
   const relatedRuleIds = relatedRules.map((r) => String(r.id));
@@ -317,12 +303,8 @@ function buildPlaybookContent({
   relatedRuleIds,
   body,
 }) {
-  const evidenceStr = evidenceOutcomeIds.length > 0
-    ? `[${evidenceOutcomeIds.join(', ')}]`
-    : '[]';
-  const rulesStr = relatedRuleIds.length > 0
-    ? `[${relatedRuleIds.join(', ')}]`
-    : '[]';
+  const evidenceStr = evidenceOutcomeIds.length > 0 ? `[${evidenceOutcomeIds.join(', ')}]` : '[]';
+  const rulesStr = relatedRuleIds.length > 0 ? `[${relatedRuleIds.join(', ')}]` : '[]';
 
   const frontmatter = [
     '---',
@@ -404,9 +386,7 @@ async function fetchActivePlaybook(db, taskType) {
     if (!Array.isArray(rows) || rows.length === 0) return null;
     return rows[0] ?? null;
   } catch (e) {
-    console.warn(
-      `[dream/playbook-synthesis] fetchActivePlaybook(${taskType}): ${e?.message ?? e}`,
-    );
+    console.warn(`[dream/playbook-synthesis] fetchActivePlaybook(${taskType}): ${e?.message ?? e}`);
     return null;
   }
 }
@@ -446,14 +426,25 @@ async function fetchRelatedRules(db, taskType) {
       return false;
     });
   } catch (e) {
-    console.warn(
-      `[dream/playbook-synthesis] fetchRelatedRules(${taskType}): ${e?.message ?? e}`,
-    );
+    console.warn(`[dream/playbook-synthesis] fetchRelatedRules(${taskType}): ${e?.message ?? e}`);
     return [];
   }
 }
 
-async function writeNewPlaybook(db, { taskType, version, coldStart, signalCount, lengthCap, now, evidenceOutcomeIds, relatedRuleIds, content }) {
+async function writeNewPlaybook(
+  db,
+  {
+    taskType,
+    version,
+    coldStart,
+    signalCount,
+    lengthCap,
+    now,
+    evidenceOutcomeIds,
+    relatedRuleIds,
+    content,
+  },
+) {
   const [rows] = await db
     .query(
       surql`CREATE memos CONTENT ${{
@@ -507,16 +498,12 @@ async function writeCitedByBackpointer(db, ruleId, playbookId) {
     .query(surql`SELECT meta FROM rules WHERE id = ${ruleId} LIMIT 1`)
     .collect();
   const existing = Array.isArray(rows) ? rows[0] : rows;
-  const priorCitedBy = Array.isArray(existing?.meta?.cited_by)
-    ? existing.meta.cited_by
-    : [];
+  const priorCitedBy = Array.isArray(existing?.meta?.cited_by) ? existing.meta.cited_by : [];
 
   const pbStr = String(playbookId);
   if (!priorCitedBy.includes(pbStr)) {
     await db
-      .query(
-        surql`UPDATE ONLY ${ruleId} SET meta.cited_by = ${[...priorCitedBy, pbStr]}`,
-      )
+      .query(surql`UPDATE ONLY ${ruleId} SET meta.cited_by = ${[...priorCitedBy, pbStr]}`)
       .collect();
   }
 }
@@ -561,16 +548,12 @@ async function transitionColdStartPlaybooks(db, allOutcomes) {
       // Count graded outcomes since cold_start synthesis
       const typeOutcomes = outcomesByType.get(taskType) ?? [];
       const gradedSince = typeOutcomes.filter(
-        (o) =>
-          typeof o?.meta?.score === 'number' &&
-          new Date(o.derived_at) > synthesizedAt,
+        (o) => typeof o?.meta?.score === 'number' && new Date(o.derived_at) > synthesizedAt,
       ).length;
 
       if (gradedSince >= COLD_START_N_THRESHOLD) {
         try {
-          await db
-            .query(surql`UPDATE ONLY ${pb.id} SET meta.cold_start = false`)
-            .collect();
+          await db.query(surql`UPDATE ONLY ${pb.id} SET meta.cold_start = false`).collect();
         } catch (e) {
           console.warn(
             `[dream/playbook-synthesis] cold_start transition failed for ${String(pb.id)}: ${e?.message ?? e}`,

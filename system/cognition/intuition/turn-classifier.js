@@ -40,10 +40,23 @@ export function _clearCacheForTest() {
 // Patterns are intentionally specific to memory-recall queries; generic
 // questions ("what is 2 + 2") must NOT match.
 const RECALL_ROUTES = [
-  { pattern: /\b(who is|who was|tell me about|what do (i|you) know about)\b/i, intent: 'recall:person' },
-  { pattern: /\b(last (session|time|week|month)|what did (i|you) (work on|say|mention|discuss)|have (i|you) (mentioned|talked|said|discussed))\b/i, intent: 'recall:past_session' },
-  { pattern: /\b(recall\b|search (my|the) (memory|memories)|look up (in )?(my|the) memory)\b/i, intent: 'recall:domain_facts' },
-  { pattern: /\bdo (i|you) know (my |the )?(preferences?|goals?|settings?|habits?)\b/i, intent: 'recall:domain_facts' },
+  {
+    pattern: /\b(who is|who was|tell me about|what do (i|you) know about)\b/i,
+    intent: 'recall:person',
+  },
+  {
+    pattern:
+      /\b(last (session|time|week|month)|what did (i|you) (work on|say|mention|discuss)|have (i|you) (mentioned|talked|said|discussed))\b/i,
+    intent: 'recall:past_session',
+  },
+  {
+    pattern: /\b(recall\b|search (my|the) (memory|memories)|look up (in )?(my|the) memory)\b/i,
+    intent: 'recall:domain_facts',
+  },
+  {
+    pattern: /\bdo (i|you) know (my |the )?(preferences?|goals?|settings?|habits?)\b/i,
+    intent: 'recall:domain_facts',
+  },
 ];
 
 /**
@@ -150,7 +163,8 @@ export async function checkSessionCache(sessionId, message, embedder) {
 }
 
 // ── Haiku classifier ─────────────────────────────────────────────────────────
-const CLASSIFIER_SYSTEM = 'You are a concise intent classifier. Respond with only the intent string — no explanation, no punctuation.';
+const CLASSIFIER_SYSTEM =
+  'You are a concise intent classifier. Respond with only the intent string — no explanation, no punctuation.';
 const CLASSIFIER_PROMPT =
   'Classify this assistant-turn intent into one of: `turn:recommend`, `turn:analyze`, `turn:plan`, `turn:execute_change`, `turn:default`. Return only the intent string.';
 const MAX_MESSAGE_CHARS = 2000; // ~500 tokens at chars/4

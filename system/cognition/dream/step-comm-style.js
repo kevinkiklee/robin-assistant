@@ -46,9 +46,7 @@ const PER_CONTEXT_MIN_SIGNALS = 10;
 
 /** Stable hash over a sorted list of (id:content) pairs. */
 function hashSignals(events) {
-  const parts = events
-    .map((e) => `${String(e.id)}:${String(e.content ?? '')}`)
-    .sort();
+  const parts = events.map((e) => `${String(e.id)}:${String(e.content ?? '')}`).sort();
   return createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 16);
 }
 
@@ -78,9 +76,7 @@ If a field has no signal, pick "balanced" (or false for booleans). No commentary
 
 /** Read the current comm_style_contexts from persona:singleton. */
 async function getContexts(db) {
-  const [rows] = await db
-    .query(surql`SELECT comm_style_contexts FROM persona:singleton`)
-    .collect();
+  const [rows] = await db.query(surql`SELECT comm_style_contexts FROM persona:singleton`).collect();
   return rows?.[0]?.comm_style_contexts ?? null;
 }
 
@@ -124,7 +120,10 @@ async function getLatestSnapshot(db, context) {
  * @param {number} opts.evidenceCount
  * @returns {Promise<string|null>} snapshot memo id string, or null on error
  */
-async function writeCommStyleSnapshot(db, { context, synthesizedFields, contentHash, volatile, evidenceCount }) {
+async function writeCommStyleSnapshot(
+  db,
+  { context, synthesizedFields, contentHash, volatile, evidenceCount },
+) {
   // Idempotency: skip if the latest snapshot for this context has the same content_hash.
   const latest = await getLatestSnapshot(db, context);
   if (latest?.meta?.content_hash === contentHash) {
@@ -233,9 +232,7 @@ async function synthesizeOneContext({ events, context, prior, host }) {
   // When input_hash changes (new evidence), the streak resets to 1 — this is
   // the first synthesis of the new evidence set, so it's unconverged by
   // definition regardless of whether the shape matches the prior output.
-  const content_hash = hashSignals([
-    { id: 'shape', content: JSON.stringify(v.value) },
-  ]);
+  const content_hash = hashSignals([{ id: 'shape', content: JSON.stringify(v.value) }]);
   const inputChanged = prior?.input_hash !== input_hash;
   const prevConsec =
     !inputChanged && prior?.content_hash === content_hash ? (prior.consecutive_matches ?? 0) : 0;
@@ -297,9 +294,7 @@ export async function dreamStepCommStyle(db, host) {
           .collect()
           .then(([r]) => [r?.[0]]);
         const updated = { ...(row?.comm_style ?? {}), last_snapshot_id: snapshotId };
-        await db
-          .query(surql`UPSERT persona:singleton MERGE ${{ comm_style: updated }}`)
-          .collect();
+        await db.query(surql`UPSERT persona:singleton MERGE ${{ comm_style: updated }}`).collect();
       }
     } catch (e) {
       console.warn(`[dream] step-comm-style default snapshot: ${e.message}`);
@@ -366,7 +361,11 @@ async function runPerContextSynthesis(db, host) {
       continue;
     }
 
-    const { record: rawRecord, tokens_in, tokens_out } = await synthesizeOneContext({
+    const {
+      record: rawRecord,
+      tokens_in,
+      tokens_out,
+    } = await synthesizeOneContext({
       events,
       context: ctx,
       prior: prior[ctx],
@@ -380,10 +379,9 @@ async function runPerContextSynthesis(db, host) {
       // Write snapshot memo for this context.
       let ctxRecord = rawRecord;
       try {
-        const contentHash = ctxRecord.content_hash ?? createHash('sha256')
-          .update(JSON.stringify(ctxRecord))
-          .digest('hex')
-          .slice(0, 16);
+        const contentHash =
+          ctxRecord.content_hash ??
+          createHash('sha256').update(JSON.stringify(ctxRecord)).digest('hex').slice(0, 16);
         const snapshotId = await writeCommStyleSnapshot(db, {
           context: ctx,
           synthesizedFields: ctxRecord,

@@ -41,7 +41,9 @@ async function fresh() {
 /** Seed an events row. */
 async function seedEvent(db) {
   const [rows] = await db
-    .query(surql`CREATE events SET source = 'agent_internal', content = 'test turn', content_hash = 'abc'`)
+    .query(
+      surql`CREATE events SET source = 'agent_internal', content = 'test turn', content_hash = 'abc'`,
+    )
     .collect();
   return Array.isArray(rows) ? rows[0] : rows;
 }
@@ -101,7 +103,7 @@ async function setBudgetState(db, { daily_spend_usd = 0, turn_sample_pct = 20 } 
 }
 
 /** Write budget config to the runtime KV row. */
-async function setBudgetConfig(db, { daily_cost_budget_usd = 0.50 } = {}) {
+async function setBudgetConfig(db, { daily_cost_budget_usd = 0.5 } = {}) {
   await db
     .query(
       `UPSERT runtime:\`introspection.config\` SET
@@ -144,7 +146,7 @@ test('with host: no-signal turn row gets LLM grade written to memo', async () =>
     `../../cognition/introspection/queue-poller.js?cb=${Date.now()}`
   );
 
-  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.5 });
   await setBudgetState(db, { daily_spend_usd: 0, turn_sample_pct: 100 });
 
   const host = makeHost({ completeness: 0.9, correction_likelihood: 0.1 });
@@ -172,7 +174,7 @@ test('structural score takes precedence: LLM NOT called when score already set b
     `../../cognition/introspection/queue-poller.js?cb=${Date.now()}`
   );
 
-  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.5 });
   await setBudgetState(db, { daily_spend_usd: 0, turn_sample_pct: 100 });
 
   const host = makeHost();
@@ -221,7 +223,7 @@ test('turn_sample_pct=0 (below 10% threshold): turns not graded', async () => {
   );
 
   // Budget at 5% remaining → below the 10% turn cutoff.
-  const limit = 0.50;
+  const limit = 0.5;
   const spent = limit * 0.96; // 4% remaining < 10%
   await setBudgetConfig(db, { daily_cost_budget_usd: limit });
   await setBudgetState(db, { daily_spend_usd: spent, turn_sample_pct: 20 });
@@ -243,7 +245,7 @@ test('turn_sample_pct=100: turn always graded', async () => {
     `../../cognition/introspection/queue-poller.js?cb=${Date.now()}`
   );
 
-  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.5 });
   await setBudgetState(db, { daily_spend_usd: 0, turn_sample_pct: 100 });
 
   const host = makeHost();
@@ -264,7 +266,7 @@ test('jobs stratum: graded regardless of recall throttle zone (budget > 0)', asy
   );
 
   // Budget at 20% remaining → below recall_throttle_at (25%) but jobs are always allowed.
-  const limit = 0.50;
+  const limit = 0.5;
   const spent = limit * 0.82;
   await setBudgetConfig(db, { daily_cost_budget_usd: limit });
   await setBudgetState(db, { daily_spend_usd: spent, turn_sample_pct: 0 });
@@ -286,7 +288,7 @@ test('LLM throws: row still deleted (no-signal), graded=0', async () => {
     `../../cognition/introspection/queue-poller.js?cb=${Date.now()}`
   );
 
-  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.5 });
   await setBudgetState(db, { daily_spend_usd: 0, turn_sample_pct: 100 });
 
   const host = makeHost({ shouldThrow: true });
@@ -314,8 +316,8 @@ test('LLM-throw refunds reserved budget (regression for a6a710b)', async () => {
     `../../cognition/introspection/budget.js?cb=${Date.now()}`
   );
 
-  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
-  await setBudgetState(db, { daily_spend_usd: 0.10, turn_sample_pct: 100 });
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.5 });
+  await setBudgetState(db, { daily_spend_usd: 0.1, turn_sample_pct: 100 });
 
   // Record spend before the drain.
   const before = await readBudgetState(db);
@@ -343,7 +345,7 @@ test('multiple strata in one drain: correct graded count', async () => {
     `../../cognition/introspection/queue-poller.js?cb=${Date.now()}`
   );
 
-  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.5 });
   await setBudgetState(db, { daily_spend_usd: 0, turn_sample_pct: 100 });
 
   const host = makeHost();

@@ -34,14 +34,14 @@ export const OUTCOME_INFERENCE_SCORES = {
 
 // Introspection budget knobs (spec §2 / §6 defaults — KV overrides at runtime).
 export const INTROSPECTION_DEFAULTS = {
-  daily_cost_budget_usd: 0.50,
+  daily_cost_budget_usd: 0.5,
   turn_sample_pct_floor: 5,
   turn_sample_pct_ceiling: 50,
   target_turn_spend_fraction: 0.5, // half of daily budget reserved for turns
   budget_remaining_thresholds: {
     recall_throttle_at: 0.25,
     antecedent_regex_fallback_at: 0.25,
-    turn_sample_cutoff_at: 0.10,
+    turn_sample_cutoff_at: 0.1,
   },
   leaky_bucket_decay_per_sec: 1 / 60,
   crash_count_restart_threshold: 5,

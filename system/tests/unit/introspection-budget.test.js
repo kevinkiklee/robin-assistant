@@ -23,10 +23,7 @@ import {
 } from '../../cognition/introspection/budget.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
-const HOME = join(
-  tmpdir(),
-  `robin-budget-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-budget-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -40,7 +37,7 @@ async function fresh() {
 }
 
 /** Write both KV rows for budget. */
-async function initBudget(db, { limit = 0.50, spent = 0, turn_sample_pct = 20 } = {}) {
+async function initBudget(db, { limit = 0.5, spent = 0, turn_sample_pct = 20 } = {}) {
   await db
     .query(
       `UPSERT runtime:\`introspection.config\` SET
@@ -65,41 +62,41 @@ async function initBudget(db, { limit = 0.50, spent = 0, turn_sample_pct = 20 } 
 // ── isStratumAllowed tests ───────────────────────────────────────────────────
 
 const DEFAULT_CFG = {
-  daily_cost_budget_usd: 0.50,
+  daily_cost_budget_usd: 0.5,
   turn_sample_pct_floor: 5,
   turn_sample_pct_ceiling: 50,
   target_turn_spend_fraction: 0.5,
   budget_remaining_thresholds: {
     recall_throttle_at: 0.25,
     antecedent_regex_fallback_at: 0.25,
-    turn_sample_cutoff_at: 0.10,
+    turn_sample_cutoff_at: 0.1,
   },
 };
 
 test('isStratumAllowed: predictions always allowed regardless of budget', () => {
-  const exhausted = { daily_spend_usd: 0.50, turn_sample_pct: 20 };
+  const exhausted = { daily_spend_usd: 0.5, turn_sample_pct: 20 };
   const result = isStratumAllowed('predictions', DEFAULT_CFG, exhausted);
   assert.equal(result.allowed, true);
 });
 
 test('isStratumAllowed: outbound allowed when budget remaining', () => {
-  const state = { daily_spend_usd: 0.30, turn_sample_pct: 20 };
+  const state = { daily_spend_usd: 0.3, turn_sample_pct: 20 };
   assert.equal(isStratumAllowed('outbound', DEFAULT_CFG, state).allowed, true);
 });
 
 test('isStratumAllowed: outbound denied when budget exhausted', () => {
-  const state = { daily_spend_usd: 0.50, turn_sample_pct: 20 };
+  const state = { daily_spend_usd: 0.5, turn_sample_pct: 20 };
   assert.equal(isStratumAllowed('outbound', DEFAULT_CFG, state).allowed, false);
 });
 
 test('isStratumAllowed: jobs allowed in throttle zone (budget > 0)', () => {
   // 20% remaining (< 25% recall_throttle_at but jobs are not recall).
-  const state = { daily_spend_usd: 0.40, turn_sample_pct: 20 };
+  const state = { daily_spend_usd: 0.4, turn_sample_pct: 20 };
   assert.equal(isStratumAllowed('jobs', DEFAULT_CFG, state).allowed, true);
 });
 
 test('isStratumAllowed: recall 100% when above throttle threshold', () => {
-  const state = { daily_spend_usd: 0.20, turn_sample_pct: 20 }; // 60% remaining
+  const state = { daily_spend_usd: 0.2, turn_sample_pct: 20 }; // 60% remaining
   const r = isStratumAllowed('recall', DEFAULT_CFG, state);
   assert.equal(r.allowed, true);
   assert.equal(r.samplePct, 100);
@@ -113,7 +110,7 @@ test('isStratumAllowed: recall throttled to 25% when <= 25% remaining', () => {
 });
 
 test('isStratumAllowed: turns use turn_sample_pct from state', () => {
-  const state = { daily_spend_usd: 0.30, turn_sample_pct: 35 }; // 40% remaining
+  const state = { daily_spend_usd: 0.3, turn_sample_pct: 35 }; // 40% remaining
   const r = isStratumAllowed('turns', DEFAULT_CFG, state);
   assert.equal(r.allowed, true);
   assert.equal(r.samplePct, 35);
@@ -129,7 +126,7 @@ test('isStratumAllowed: turns denied below 10% remaining', () => {
 
 test('tryReserveCost: succeeds when budget has room', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0.10 });
+  await initBudget(db, { limit: 0.5, spent: 0.1 });
 
   const r = await tryReserveCost(db, 0.05);
   assert.equal(r.ok, true);
@@ -143,7 +140,7 @@ test('tryReserveCost: succeeds when budget has room', async () => {
 
 test('tryReserveCost: fails when budget exhausted', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0.50 });
+  await initBudget(db, { limit: 0.5, spent: 0.5 });
 
   const r = await tryReserveCost(db, 0.01);
   assert.equal(r.ok, false);
@@ -153,22 +150,22 @@ test('tryReserveCost: fails when budget exhausted', async () => {
 
 test('tryReserveCost: two sequential calls both succeed when budget allows both', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0 });
+  await initBudget(db, { limit: 0.5, spent: 0 });
 
-  const r1 = await tryReserveCost(db, 0.10);
-  const r2 = await tryReserveCost(db, 0.10);
+  const r1 = await tryReserveCost(db, 0.1);
+  const r2 = await tryReserveCost(db, 0.1);
   assert.equal(r1.ok, true);
   assert.equal(r2.ok, true);
 
   // Total spend should be ~0.20.
   const state = await readBudgetState(db);
-  assert.ok(state.daily_spend_usd >= 0.20 - 1e-9);
+  assert.ok(state.daily_spend_usd >= 0.2 - 1e-9);
   await close(db);
 });
 
 test('tryReserveCost: fails on second call when combined cost exceeds limit', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0.45 });
+  await initBudget(db, { limit: 0.5, spent: 0.45 });
 
   // First call uses 0.04 → total 0.49, ok.
   const r1 = await tryReserveCost(db, 0.04);
@@ -184,7 +181,7 @@ test('tryReserveCost: fails on second call when combined cost exceeds limit', as
 
 test('recordActualCost: adjusts spend when actual > estimated', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0.10 });
+  await initBudget(db, { limit: 0.5, spent: 0.1 });
 
   // Estimated 0.01 was reserved; actual was 0.02 → record +0.01 delta.
   await recordActualCost(db, 0.02, 0.01);
@@ -197,7 +194,7 @@ test('recordActualCost: adjusts spend when actual > estimated', async () => {
 
 test('recordActualCost: adjusts spend when actual < estimated (credit)', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0.20 });
+  await initBudget(db, { limit: 0.5, spent: 0.2 });
 
   // Estimated 0.05, actual 0.03 → record -0.02 delta.
   await recordActualCost(db, 0.03, 0.05);
@@ -212,17 +209,17 @@ test('recordActualCost: adjusts spend when actual < estimated (credit)', async (
 
 test('autoTuneTurnSamplePct: cold start returns 20 (no history)', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0.10 });
+  await initBudget(db, { limit: 0.5, spent: 0.1 });
 
   const cfg = {
-    daily_cost_budget_usd: 0.50,
+    daily_cost_budget_usd: 0.5,
     turn_sample_pct_floor: 5,
     turn_sample_pct_ceiling: 50,
     target_turn_spend_fraction: 0.5,
     budget_remaining_thresholds: {
       recall_throttle_at: 0.25,
       antecedent_regex_fallback_at: 0.25,
-      turn_sample_cutoff_at: 0.10,
+      turn_sample_cutoff_at: 0.1,
     },
   };
 
@@ -234,17 +231,17 @@ test('autoTuneTurnSamplePct: cold start returns 20 (no history)', async () => {
 
 test('autoTuneTurnSamplePct: persists result to runtime:introspection.value', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0 });
+  await initBudget(db, { limit: 0.5, spent: 0 });
 
   const cfg = {
-    daily_cost_budget_usd: 0.50,
+    daily_cost_budget_usd: 0.5,
     turn_sample_pct_floor: 5,
     turn_sample_pct_ceiling: 50,
     target_turn_spend_fraction: 0.5,
     budget_remaining_thresholds: {
       recall_throttle_at: 0.25,
       antecedent_regex_fallback_at: 0.25,
-      turn_sample_cutoff_at: 0.10,
+      turn_sample_cutoff_at: 0.1,
     },
   };
 
@@ -257,17 +254,17 @@ test('autoTuneTurnSamplePct: persists result to runtime:introspection.value', as
 test('autoTuneTurnSamplePct: antecedent_regex_fallback=true when budget < 25%', async () => {
   const db = await fresh();
   // 20% remaining → below 25% recall_throttle_at.
-  await initBudget(db, { limit: 0.50, spent: 0.41 });
+  await initBudget(db, { limit: 0.5, spent: 0.41 });
 
   const cfg = {
-    daily_cost_budget_usd: 0.50,
+    daily_cost_budget_usd: 0.5,
     turn_sample_pct_floor: 5,
     turn_sample_pct_ceiling: 50,
     target_turn_spend_fraction: 0.5,
     budget_remaining_thresholds: {
       recall_throttle_at: 0.25,
       antecedent_regex_fallback_at: 0.25,
-      turn_sample_cutoff_at: 0.10,
+      turn_sample_cutoff_at: 0.1,
     },
   };
 
@@ -285,17 +282,17 @@ test('autoTuneTurnSamplePct: antecedent_regex_fallback=true when budget < 25%', 
 test('autoTuneTurnSamplePct: antecedent_regex_fallback=false when budget > 25%', async () => {
   const db = await fresh();
   // 60% remaining → above 25%.
-  await initBudget(db, { limit: 0.50, spent: 0.20 });
+  await initBudget(db, { limit: 0.5, spent: 0.2 });
 
   const cfg = {
-    daily_cost_budget_usd: 0.50,
+    daily_cost_budget_usd: 0.5,
     turn_sample_pct_floor: 5,
     turn_sample_pct_ceiling: 50,
     target_turn_spend_fraction: 0.5,
     budget_remaining_thresholds: {
       recall_throttle_at: 0.25,
       antecedent_regex_fallback_at: 0.25,
-      turn_sample_cutoff_at: 0.10,
+      turn_sample_cutoff_at: 0.1,
     },
   };
 
@@ -311,7 +308,7 @@ test('autoTuneTurnSamplePct: antecedent_regex_fallback=false when budget > 25%',
 
 test('autoTuneTurnSamplePct: with 7d history, formula produces clamped value', async () => {
   const db = await fresh();
-  await initBudget(db, { limit: 0.50, spent: 0 });
+  await initBudget(db, { limit: 0.5, spent: 0 });
 
   // Seed 7 graded turn memos with known cost (simulating 7d of 1/day turns at $0.001 each).
   // projected_turn_cost = 0.001 * (7/7) = 0.001
@@ -348,14 +345,14 @@ test('autoTuneTurnSamplePct: with 7d history, formula produces clamped value', a
   }
 
   const cfg = {
-    daily_cost_budget_usd: 0.50,
+    daily_cost_budget_usd: 0.5,
     turn_sample_pct_floor: 5,
     turn_sample_pct_ceiling: 50,
     target_turn_spend_fraction: 0.5,
     budget_remaining_thresholds: {
       recall_throttle_at: 0.25,
       antecedent_regex_fallback_at: 0.25,
-      turn_sample_cutoff_at: 0.10,
+      turn_sample_cutoff_at: 0.1,
     },
   };
 

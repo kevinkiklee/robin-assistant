@@ -84,13 +84,7 @@ test('5 vectors: two tight groups + 1 singleton', () => {
   // Group A: 0°, 5°, 8°   → cos between members ≥ 0.99 → merge at 0.75
   // Group B: 90°, 92°     → cos between members ≥ 0.99 → merge at 0.75
   // cos(0°, 90°) = 0 → different clusters
-  const items = [
-    item('a1', 0),
-    item('a2', 5),
-    item('a3', 8),
-    item('b1', 90),
-    item('b2', 92),
-  ];
+  const items = [item('a1', 0), item('a2', 5), item('a3', 8), item('b1', 90), item('b2', 92)];
   const clusters = greedyCluster(items, 0.75);
   assert.equal(clusters.length, 2);
 
@@ -125,7 +119,10 @@ test('singleton stays singleton until a close item arrives', () => {
   // Two far vectors: each starts as a singleton.
   const afterTwo = greedyCluster([item('p', 0), item('q', 80)], 0.75);
   assert.equal(afterTwo.length, 2);
-  assert.ok(afterTwo.every((c) => c.ids.length === 1), 'both should be singletons');
+  assert.ok(
+    afterTwo.every((c) => c.ids.length === 1),
+    'both should be singletons',
+  );
 
   // Adding a near neighbor to p merges into its cluster.
   const afterThree = greedyCluster([item('p', 0), item('q', 80), item('r', 10)], 0.75);

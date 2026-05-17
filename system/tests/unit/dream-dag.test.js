@@ -59,11 +59,7 @@ test('topoLayers(byName, DREAM_DAG_DEPS) returns layers with expected membership
     'reflection',
   ]);
   // Layer 2: steps that depend only on L1 steps
-  assert.deepEqual([...layers[1]].sort(), [
-    'calibration',
-    'playbookSynthesis',
-    'scopeCleanup',
-  ]);
+  assert.deepEqual([...layers[1]].sort(), ['calibration', 'playbookSynthesis', 'scopeCleanup']);
   // Layer 3: steps that depend on L2 steps
   assert.deepEqual([...layers[2]].sort(), ['compaction', 'selfImprovementRollup']);
 });

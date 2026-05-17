@@ -34,10 +34,7 @@ import {
 } from '../../cognition/dream/playbook-synthesis-prompt.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
-const HOME = join(
-  tmpdir(),
-  `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
-);
+const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(HOME, { recursive: true });
 process.env.ROBIN_HOME = HOME;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -129,7 +126,13 @@ function buildMinimalPlaybookContent(taskType, version = 1, coldStart = true) {
 /**
  * Seed an existing active playbook for a task_type.
  */
-async function seedActivePlaybook(db, taskType, version = 1, coldStart = false, lastSynthesizedAt = new Date()) {
+async function seedActivePlaybook(
+  db,
+  taskType,
+  version = 1,
+  coldStart = false,
+  lastSynthesizedAt = new Date(),
+) {
   const content = buildMinimalPlaybookContent(taskType, version, coldStart);
   const [rows] = await db
     .query(
@@ -408,8 +411,10 @@ test('overflow: LLM returns body exceeding cap → one retry → hard truncate +
   const bodyStart = pb.content.indexOf('---\n', pb.content.indexOf('---') + 3);
   const body = bodyStart >= 0 ? pb.content.slice(bodyStart + 4) : pb.content;
   // The body token count should be at or below the cap
-  assert.ok(estimateTokens(body) <= capForOutbound + 10, // +10 for frontmatter delimiter tolerance
-    `body should be truncated to ~${capForOutbound} tokens, got ~${estimateTokens(body)}`);
+  assert.ok(
+    estimateTokens(body) <= capForOutbound + 10, // +10 for frontmatter delimiter tolerance
+    `body should be truncated to ~${capForOutbound} tokens, got ~${estimateTokens(body)}`,
+  );
 
   await close(db);
 });
@@ -500,10 +505,7 @@ test('rule citation: active rule with meta.relates_to_task_types includes task_t
   // The rule's id should appear in the synthesis prompt
   const ruleIdStr = String(rule.id);
   const prompt = capturedPrompts[0];
-  assert.ok(
-    prompt.includes(ruleIdStr),
-    `synthesis prompt should include rule id ${ruleIdStr}`,
-  );
+  assert.ok(prompt.includes(ruleIdStr), `synthesis prompt should include rule id ${ruleIdStr}`);
 
   await close(db);
 });
@@ -569,7 +571,13 @@ test('active playbook → superseded: prior active=false + superseded_by set, ne
   const tt = 'turn:plan';
 
   // Seed an existing active playbook at version 3
-  const prior = await seedActivePlaybook(db, tt, 3, false, new Date(Date.now() - 20 * 24 * 60 * 60 * 1000));
+  const prior = await seedActivePlaybook(
+    db,
+    tt,
+    3,
+    false,
+    new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+  );
 
   // Seed graded outcomes with high drift to trigger synthesis
   for (let i = 0; i < 4; i++) {
@@ -588,10 +596,7 @@ test('active playbook → superseded: prior active=false + superseded_by set, ne
   const updatedPrior = Array.isArray(priorRows) ? (priorRows[0] ?? null) : null;
   assert.ok(updatedPrior, 'prior playbook should still exist');
   assert.equal(updatedPrior.meta.active, false, 'prior playbook should be inactive');
-  assert.ok(
-    updatedPrior.meta.superseded_by,
-    'prior playbook should have superseded_by set',
-  );
+  assert.ok(updatedPrior.meta.superseded_by, 'prior playbook should have superseded_by set');
 
   // New active playbook should be at version 4
   const newPb = await fetchActivePlaybook(db, tt);

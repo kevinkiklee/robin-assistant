@@ -18,17 +18,29 @@ export const RECALL_INTENTS = ['person', 'past_session', 'domain_facts', 'defaul
 export function validateTaskType(taskType) {
   const parsed = parseTaskType(taskType);
   if (!parsed) {
-    return { ok: false, reason: `task_type must be "<prefix>:<rest>"; got: ${JSON.stringify(taskType)}` };
+    return {
+      ok: false,
+      reason: `task_type must be "<prefix>:<rest>"; got: ${JSON.stringify(taskType)}`,
+    };
   }
   const { prefix, rest } = parsed;
   if (!TASK_TYPE_PREFIXES.includes(prefix)) {
-    return { ok: false, reason: `unknown prefix "${prefix}"; allowed: ${TASK_TYPE_PREFIXES.join(', ')}` };
+    return {
+      ok: false,
+      reason: `unknown prefix "${prefix}"; allowed: ${TASK_TYPE_PREFIXES.join(', ')}`,
+    };
   }
   if (prefix === 'turn' && !TURN_INTENTS.includes(rest)) {
-    return { ok: false, reason: `unknown turn intent "${rest}"; allowed: ${TURN_INTENTS.join(', ')}` };
+    return {
+      ok: false,
+      reason: `unknown turn intent "${rest}"; allowed: ${TURN_INTENTS.join(', ')}`,
+    };
   }
   if (prefix === 'recall' && !RECALL_INTENTS.includes(rest)) {
-    return { ok: false, reason: `unknown recall intent "${rest}"; allowed: ${RECALL_INTENTS.join(', ')}` };
+    return {
+      ok: false,
+      reason: `unknown recall intent "${rest}"; allowed: ${RECALL_INTENTS.join(', ')}`,
+    };
   }
   return { ok: true };
 }

@@ -133,9 +133,12 @@ export function createProposePlaybookTool({ db }) {
         };
         await db
           .query(
-            new BoundQuery(`UPDATE ONLY ${existing.id} SET meta = $meta, updated_at = time::now()`, {
-              meta: updatedMeta,
-            }),
+            new BoundQuery(
+              `UPDATE ONLY ${existing.id} SET meta = $meta, updated_at = time::now()`,
+              {
+                meta: updatedMeta,
+              },
+            ),
           )
           .collect();
       }

@@ -78,7 +78,8 @@ export function buildGradingUserPrompt({ taskType, sourceEventContent, playbook,
     }
     if (playbookBody) {
       // Cap at ~2000 chars to stay within Haiku input budget
-      const capped = playbookBody.length > 2000 ? `${playbookBody.slice(0, 2000)}\n[truncated]` : playbookBody;
+      const capped =
+        playbookBody.length > 2000 ? `${playbookBody.slice(0, 2000)}\n[truncated]` : playbookBody;
       lines.push(capped);
     }
     lines.push('');
@@ -118,9 +119,10 @@ export function buildGradingUserPrompt({ taskType, sourceEventContent, playbook,
  * @returns {number|null}
  */
 export function computeScore(completeness, correctionLikelihood) {
-  const cl = typeof correctionLikelihood === 'number' && Number.isFinite(correctionLikelihood)
-    ? Math.min(1, Math.max(0, correctionLikelihood))
-    : null;
+  const cl =
+    typeof correctionLikelihood === 'number' && Number.isFinite(correctionLikelihood)
+      ? Math.min(1, Math.max(0, correctionLikelihood))
+      : null;
   if (cl === null) return null;
 
   if (completeness === null || completeness === undefined) {
@@ -128,9 +130,10 @@ export function computeScore(completeness, correctionLikelihood) {
     return cl;
   }
 
-  const comp = typeof completeness === 'number' && Number.isFinite(completeness)
-    ? Math.min(1, Math.max(0, completeness))
-    : null;
+  const comp =
+    typeof completeness === 'number' && Number.isFinite(completeness)
+      ? Math.min(1, Math.max(0, completeness))
+      : null;
   if (comp === null) return cl;
 
   return (comp + cl) / 2;

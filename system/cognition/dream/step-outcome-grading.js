@@ -13,7 +13,7 @@ import {
 } from './outcome-grading-prompt.js';
 
 // Per-step budget cap (spec §6): $0.20/night
-const STEP_BUDGET_USD = 0.20;
+const STEP_BUDGET_USD = 0.2;
 // Default batch size — overridable via runtime:introspection.config.value.outcome_grading_batch_size
 const DEFAULT_BATCH_SIZE = 50;
 // Haiku model id (from system/runtime/hosts/interface.js CLAUDE_TIER_MAP.fast)
@@ -209,7 +209,8 @@ export async function dreamStepOutcomeGrading(db, host, _embedder, opts = {}) {
     return { skipped: true, reason: 'v2_not_enabled', step: 'outcomeGrading' };
   }
 
-  const stepBudgetUsd = typeof opts.stepBudgetUsd === 'number' ? opts.stepBudgetUsd : STEP_BUDGET_USD;
+  const stepBudgetUsd =
+    typeof opts.stepBudgetUsd === 'number' ? opts.stepBudgetUsd : STEP_BUDGET_USD;
   const batchSize = typeof opts.batchSize === 'number' ? opts.batchSize : await readBatchSize(db);
 
   let rows;
@@ -286,9 +287,7 @@ export async function dreamStepOutcomeGrading(db, host, _embedder, opts = {}) {
       graded++;
     } catch (err) {
       // LLM timeout, malformed JSON, DB write error — log and continue
-      console.warn(
-        `[dream/outcome-grading] row ${String(memoId)} skipped: ${err?.message ?? err}`,
-      );
+      console.warn(`[dream/outcome-grading] row ${String(memoId)} skipped: ${err?.message ?? err}`);
       skippedDueToError++;
     }
   }

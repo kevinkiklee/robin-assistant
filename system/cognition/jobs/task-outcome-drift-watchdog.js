@@ -140,9 +140,7 @@ async function computeWriteRate(db, start, end, windowHours) {
         AND derived_at < $end
       GROUP ALL
     `;
-    const [rows] = await db
-      .query(new BoundQuery(sql, { start, end }))
-      .collect();
+    const [rows] = await db.query(new BoundQuery(sql, { start, end })).collect();
     const n = rows?.[0]?.n ?? 0;
     return n / windowHours;
   } catch {

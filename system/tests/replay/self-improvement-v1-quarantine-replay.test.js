@@ -60,17 +60,14 @@ async function loadCorpus() {
  */
 export async function runReplay(reflectionFn) {
   const corpus = await loadCorpus();
-  const result = reflectionFn
-    ? await reflectionFn(corpus.entries)
-    : { candidates: [] };
+  const result = reflectionFn ? await reflectionFn(corpus.entries) : { candidates: [] };
   const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
 
   const known = corpus.entries.filter((e) => e.expected_rule_id != null).length;
-  const recovered = candidates.filter((c) =>
-    Array.isArray(c.source_ids) &&
-    c.source_ids.some((id) =>
-      corpus.entries.find((e) => e.id === id)?.expected_rule_id != null
-    )
+  const recovered = candidates.filter(
+    (c) =>
+      Array.isArray(c.source_ids) &&
+      c.source_ids.some((id) => corpus.entries.find((e) => e.id === id)?.expected_rule_id != null),
   ).length;
   const recall_vs_known = known === 0 ? null : recovered / known;
 
@@ -88,7 +85,10 @@ export async function runReplay(reflectionFn) {
 test('replay harness loads v1-quarantine fixtures', async () => {
   const corpus = await loadCorpus();
   assert.ok(corpus.entries.length > 0, 'fixtures should have entries');
-  assert.ok(typeof corpus.entries[0].content === 'string', 'first entry should have string content');
+  assert.ok(
+    typeof corpus.entries[0].content === 'string',
+    'first entry should have string content',
+  );
   assert.ok(corpus.entries[0].id, 'first entry should have an id');
   assert.ok(corpus.entries[0].timestamp, 'first entry should have a timestamp');
   assert.ok('context' in corpus.entries[0], 'first entry should have a context block');
@@ -114,14 +114,20 @@ test('runReplay with null reflectionFn skips reflection gracefully', async () =>
 test('corpus entries have required shape', async () => {
   const corpus = await loadCorpus();
   for (const e of corpus.entries) {
-    assert.ok(typeof e.id === 'string' && e.id.length > 0, `entry missing id: ${JSON.stringify(e).slice(0, 80)}`);
+    assert.ok(
+      typeof e.id === 'string' && e.id.length > 0,
+      `entry missing id: ${JSON.stringify(e).slice(0, 80)}`,
+    );
     assert.ok(typeof e.timestamp === 'string', `entry ${e.id} missing timestamp`);
-    assert.ok(typeof e.content === 'string' && e.content.length > 0, `entry ${e.id} missing content`);
+    assert.ok(
+      typeof e.content === 'string' && e.content.length > 0,
+      `entry ${e.id} missing content`,
+    );
     assert.ok(typeof e.context === 'object' && e.context !== null, `entry ${e.id} missing context`);
     // expected_rule_id is allowed to be null (Wave 3 fills these in)
     assert.ok(
       e.expected_rule_id === null || typeof e.expected_rule_id === 'string',
-      `entry ${e.id} expected_rule_id must be null or string`
+      `entry ${e.id} expected_rule_id must be null or string`,
     );
   }
 });
@@ -134,21 +140,20 @@ test('recall_vs_known is correct when some candidates match known entries', asyn
   const patchedCorpus = {
     ...corpus,
     entries: corpus.entries.map((e, i) =>
-      i < 2 ? { ...e, expected_rule_id: `rules:test-${i}` } : e
+      i < 2 ? { ...e, expected_rule_id: `rules:test-${i}` } : e,
     ),
   };
 
   // Mock loadCorpus by passing a pre-patched corpus through a custom fn.
   async function fakeReplay(reflectionFn) {
-    const result = reflectionFn
-      ? await reflectionFn(patchedCorpus.entries)
-      : { candidates: [] };
+    const result = reflectionFn ? await reflectionFn(patchedCorpus.entries) : { candidates: [] };
     const known = patchedCorpus.entries.filter((e) => e.expected_rule_id != null).length;
-    const recovered = result.candidates.filter((c) =>
-      Array.isArray(c.source_ids) &&
-      c.source_ids.some((id) =>
-        patchedCorpus.entries.find((e) => e.id === id)?.expected_rule_id != null
-      )
+    const recovered = result.candidates.filter(
+      (c) =>
+        Array.isArray(c.source_ids) &&
+        c.source_ids.some(
+          (id) => patchedCorpus.entries.find((e) => e.id === id)?.expected_rule_id != null,
+        ),
     ).length;
     return {
       candidates: result,
@@ -290,21 +295,19 @@ test('runReplay with production reflectionFn: mechanical wiring returns corpus_s
 });
 
 // TODO(3-A-5): un-skip once reflection co-dim clustering lands (step-reflection.js refactor).
-test(
-  'runReplay recall_vs_known >= 0.80 against v1-quarantine corpus',
-  { skip: 'awaiting 3-A-5 (reflection co-dim clustering — deferred; step-reflection.js has concurrent unstaged changes)' },
-  async () => {
-    // This test will be un-skipped when 3-A-5 lands and step-reflection.js
-    // gains the 0.70 + task_type co-dimension clustering described in spec §3.
-    //
-    // Expected setup when un-skipping:
-    //   1. Seed a mem:// DB with the fixture corrections (including embeddings).
-    //   2. Call runReplay with dreamStepReflection adapted to return source_ids.
-    //   3. Assert result.recall_vs_known >= 0.80.
-    const result = await runReplay(async () => ({ candidates: [] }));
-    assert.ok(
-      result.recall_vs_known == null || result.recall_vs_known >= 0.8,
-      `recall_vs_known ${result.recall_vs_known} should be >= 0.80`,
-    );
-  },
-);
+test('runReplay recall_vs_known >= 0.80 against v1-quarantine corpus', {
+  skip: 'awaiting 3-A-5 (reflection co-dim clustering — deferred; step-reflection.js has concurrent unstaged changes)',
+}, async () => {
+  // This test will be un-skipped when 3-A-5 lands and step-reflection.js
+  // gains the 0.70 + task_type co-dimension clustering described in spec §3.
+  //
+  // Expected setup when un-skipping:
+  //   1. Seed a mem:// DB with the fixture corrections (including embeddings).
+  //   2. Call runReplay with dreamStepReflection adapted to return source_ids.
+  //   3. Assert result.recall_vs_known >= 0.80.
+  const result = await runReplay(async () => ({ candidates: [] }));
+  assert.ok(
+    result.recall_vs_known == null || result.recall_vs_known >= 0.8,
+    `recall_vs_known ${result.recall_vs_known} should be >= 0.80`,
+  );
+});
