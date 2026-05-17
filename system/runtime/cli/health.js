@@ -36,7 +36,8 @@ async function rollupTokenBudget(db) {
 }
 
 async function rollupFacultyErrors(db, hours = 7 * 24) {
-  let rows = [];
+  const cfg = await readDoctorConfig(db);
+  let rows;
   try {
     const [r] = await db
       .query(
@@ -49,8 +50,12 @@ async function rollupFacultyErrors(db, hours = 7 * 24) {
       )
       .collect();
     rows = r ?? [];
-  } catch {}
-  const cfg = await readDoctorConfig(db);
+  } catch (e) {
+    // Surface the query failure as a single "faculty rollup" fail row so the
+    // operator sees that the section is broken rather than silently
+    // rendering an empty/clean faculty list.
+    return [{ step: 'faculty_rollup', n: 0, errors: 0, rate: 0, status: 'fail', error: e.message }];
+  }
   return rows.map((r) => {
     const rate = r.n === 0 ? 0 : (r.errors ?? 0) / r.n;
     let status = 'ok';
@@ -62,25 +67,32 @@ async function rollupFacultyErrors(db, hours = 7 * 24) {
 
 async function rollupPendingTriggers(db) {
   const cfg = await readDoctorConfig(db);
-  let count = 0;
   try {
     const [r] = await db
       .query(surql`SELECT count() AS n FROM dream_triggers WHERE processed_at IS NONE GROUP ALL`)
       .collect();
-    count = r?.[0]?.n ?? 0;
-  } catch {}
-  return { count, status: count >= cfg.pending_triggers_warn ? 'warn' : 'ok' };
+    const count = r?.[0]?.n ?? 0;
+    return { count, status: count >= cfg.pending_triggers_warn ? 'warn' : 'ok' };
+  } catch (e) {
+    // Surface query failure rather than reporting count=0 + status=ok, which
+    // would falsely indicate a healthy trigger queue.
+    return { count: 0, status: 'fail', error: e.message };
+  }
 }
 
 async function rollupStaleDream(db) {
   const cfg = await readDoctorConfig(db);
-  let lastRun = null;
+  let lastRun;
   try {
     const [r] = await db
       .query(surql`SELECT value.last_run_at_success AS ts FROM runtime:dream`)
       .collect();
     lastRun = r?.[0]?.ts ?? null;
-  } catch {}
+  } catch (e) {
+    // Query failure is distinct from "never ran" — surface both, but only the
+    // former carries an error string.
+    return { hours_since: null, status: 'fail', error: e.message };
+  }
   if (!lastRun) return { hours_since: null, status: 'warn' };
   const hours = (Date.now() - new Date(lastRun).getTime()) / 3_600_000;
   return { hours_since: hours, status: hours >= cfg.stale_dream_warn_hours ? 'warn' : 'ok' };
@@ -127,6 +139,7 @@ export async function rollupStateInference(db) {
   let writes_24h = 0;
   let avg_conf = null;
   let errors_1h = 0;
+  let queryError = null;
   try {
     const [r] = await db
       .query(
@@ -138,7 +151,9 @@ export async function rollupStateInference(db) {
       .collect();
     writes_24h = r?.[0]?.n ?? 0;
     avg_conf = r?.[0]?.c ?? null;
-  } catch {}
+  } catch (e) {
+    queryError = e.message;
+  }
   try {
     const [r] = await db
       .query(
@@ -147,11 +162,16 @@ export async function rollupStateInference(db) {
       )
       .collect();
     errors_1h = r?.[0]?.n ?? 0;
-  } catch {}
+  } catch (e) {
+    queryError = queryError ?? e.message;
+  }
   let status = 'ok';
-  if (errors_1h >= 3) status = 'fail';
+  if (queryError) status = 'fail';
+  else if (errors_1h >= 3) status = 'fail';
   else if (errors_1h >= 1) status = 'warn';
-  return { writes_24h, avg_conf, errors_1h, status };
+  const out = { writes_24h, avg_conf, errors_1h, status };
+  if (queryError) out.error = queryError;
+  return out;
 }
 
 function aggregateExitCode(rollups) {
