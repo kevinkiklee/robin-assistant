@@ -102,7 +102,7 @@ export async function drainQueueOnce(db, host = null) {
     : candidateRows
       ? [candidateRows]
       : [];
-  if (candidates.length === 0) return { processed: 0, written: 0, errors: 0 };
+  if (candidates.length === 0) return { processed: 0, written: 0, errors: 0, graded: 0 };
 
   // Step 2: Claim each row by its specific record ID. SurrealDB serializes
   // writes on the same record, so two concurrent drain calls claiming the same
@@ -123,7 +123,7 @@ export async function drainQueueOnce(db, host = null) {
       // Row may have been deleted or already claimed by a race — skip.
     }
   }
-  if (rows.length === 0) return { processed: 0, written: 0, errors: 0 };
+  if (rows.length === 0) return { processed: 0, written: 0, errors: 0, graded: 0 };
 
   for (const row of rows) {
     processed++;
@@ -324,6 +324,8 @@ async function _tryInlineGrade(db, row, taskType, host, cfg, state) {
     const selfGrade = {
       completeness,
       correction_likelihood: correctionLikelihood,
+      // HAIKU_MODEL is hardcoded because InvokeLLMResult (interface.js) does not
+      // surface the resolved model name — only content + usage are returned.
       model: HAIKU_MODEL,
       ts: new Date().toISOString(),
       rationale: typeof parsed.rationale === 'string' ? parsed.rationale.slice(0, 200) : '',

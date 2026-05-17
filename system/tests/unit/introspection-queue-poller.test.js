@@ -76,7 +76,7 @@ async function seedQueueRow(db, eventId, payload = {}) {
 test('empty queue returns { processed:0, written:0, errors:0 }', async () => {
   const db = await fresh();
   const result = await drainQueueOnce(db);
-  assert.deepEqual(result, { processed: 0, written: 0, errors: 0 });
+  assert.deepEqual(result, { processed: 0, written: 0, errors: 0, graded: 0 });
   await close(db);
 });
 

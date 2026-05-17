@@ -305,6 +305,38 @@ test('LLM throws: row still deleted (no-signal), graded=0', async () => {
   await close(db);
 });
 
+test('LLM-throw refunds reserved budget (regression for a6a710b)', async () => {
+  const db = await fresh();
+  const { drainQueueOnce } = await import(
+    `../../cognition/introspection/queue-poller.js?cb=${Date.now()}`
+  );
+  const { readBudgetState } = await import(
+    `../../cognition/introspection/budget.js?cb=${Date.now()}`
+  );
+
+  await setBudgetConfig(db, { daily_cost_budget_usd: 0.50 });
+  await setBudgetState(db, { daily_spend_usd: 0.10, turn_sample_pct: 100 });
+
+  // Record spend before the drain.
+  const before = await readBudgetState(db);
+
+  const host = makeHost({ shouldThrow: true });
+  const event = await seedEvent(db);
+  await seedQueueRow(db, event.id, { taskType: 'turn:default', payload: {} });
+
+  await drainQueueOnce(db, host);
+
+  // After the LLM throws, the reserved cost must be refunded so spent_today
+  // returns to (approximately) its pre-drain value.
+  const after = await readBudgetState(db);
+  assert.ok(
+    Math.abs(after.daily_spend_usd - before.daily_spend_usd) < 1e-6,
+    `budget should be refunded after LLM throw: before=${before.daily_spend_usd} after=${after.daily_spend_usd}`,
+  );
+
+  await close(db);
+});
+
 test('multiple strata in one drain: correct graded count', async () => {
   const db = await fresh();
   const { drainQueueOnce } = await import(

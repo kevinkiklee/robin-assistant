@@ -201,14 +201,42 @@ export async function resolveEventTiming(db, prediction) {
   }
 
   // Check events table for any event near the expected time.
-  const [evtRows] = await db
-    .query(
-      new BoundQuery(
-        'SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend LIMIT 1',
-        { wstart: windowStart, wend: windowEnd },
-      ),
-    )
-    .collect();
+  // Tighten the query with keywords extracted from the prediction statement so
+  // that arbitrary unrelated events don't falsely resolve the prediction.
+  const keywords = _extractKeywords(prediction.statement ?? '');
+  let evtRows;
+  if (keywords.length > 0) {
+    // Build WHERE … AND content CONTAINS $kN clauses for each keyword token.
+    const clauses = keywords.map((_, i) => `content CONTAINS $k${i}`).join(' AND ');
+    const bindings = { wstart: windowStart, wend: windowEnd };
+    for (let i = 0; i < keywords.length; i++) bindings[`k${i}`] = keywords[i];
+    const sql = `SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend AND ${clauses} LIMIT 1`;
+    [evtRows] = await db.query(new BoundQuery(sql, bindings)).collect();
+    if (!evtRows?.[0]) {
+      // No keyword-filtered match — fall back to broad window query and log.
+      console.warn(
+        `[resolve-due-predictions/event_timing] keyword filter (${keywords.join(', ')}) returned no match; falling back to broad window`,
+      );
+      [evtRows] = await db
+        .query(
+          new BoundQuery(
+            'SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend LIMIT 1',
+            { wstart: windowStart, wend: windowEnd },
+          ),
+        )
+        .collect();
+    }
+  } else {
+    // No qualifying keywords — broad query (same as before).
+    [evtRows] = await db
+      .query(
+        new BoundQuery(
+          'SELECT id, ts FROM events WHERE ts >= $wstart AND ts <= $wend LIMIT 1',
+          { wstart: windowStart, wend: windowEnd },
+        ),
+      )
+      .collect();
+  }
   if (evtRows?.[0]) {
     return {
       resolution: 'auto',
@@ -292,21 +320,20 @@ export async function resolveBehaviorContinuation(db, prediction) {
     return needsUser(db, prediction);
   }
 
-  // Map integration name to event source used by that integration's sync.
-  const SOURCE_MAP = {
-    chrome: 'sync', // chrome events come in as source='sync'
-    spotify: 'sync',
-    whoop: 'sync',
-  };
-  const source = SOURCE_MAP[integration];
-
+  // All three integrations write events with source='sync'. The events table
+  // does not carry a per-integration tag (no meta.integration_name column), so
+  // we can't distinguish chrome vs spotify vs whoop syncs at query time.
+  // v1 coarseness: any recent sync event satisfies the check regardless of
+  // which integration produced it.  Once integration events are tagged with
+  // meta.integration_name (future schema work), tighten to
+  //   WHERE source = 'sync' AND meta.integration_name = $integration
   const sinceMs = 24 * 60 * 60_000;
   const since = new Date(Date.now() - sinceMs);
   const [rows] = await db
     .query(
       new BoundQuery(
-        'SELECT id FROM events WHERE source = $src AND ts >= $since LIMIT 1',
-        { src: source, since },
+        "SELECT id FROM events WHERE source = 'sync' AND ts >= $since LIMIT 1",
+        { since },
       ),
     )
     .collect();
@@ -330,4 +357,37 @@ export function needsUser(_db, prediction) {
     resolution: 'needs_user',
     reason: `${prediction.kind ?? 'unknown'}_requires_user_judgment`,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+  'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+  'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+  'could', 'should', 'may', 'might', 'shall', 'not', 'that', 'this',
+  'it', 'its', 'my', 'your', 'their', 'our', 'i', 'you', 'he', 'she',
+  'we', 'they', 'what', 'which', 'who', 'when', 'where', 'how', 'if',
+]);
+
+/**
+ * Extract 3–5 informative tokens from a prediction statement for use as
+ * content-filter keywords in the event_timing resolver.
+ *
+ * Tokens must be ≥4 chars and not in the stopword list.  Returns an empty
+ * array when no qualifying tokens exist (caller falls back to broad query).
+ *
+ * @param {string} statement
+ * @returns {string[]}
+ */
+export function _extractKeywords(statement) {
+  if (typeof statement !== 'string' || !statement.trim()) return [];
+  return statement
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length >= 4 && !STOPWORDS.has(t))
+    .slice(0, 5);
 }

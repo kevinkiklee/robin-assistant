@@ -14,8 +14,22 @@ import { validateTaskType } from '../introspection/task-taxonomy.js';
 import { cosineSim } from './vectors.js';
 
 // ── Per-session cache ────────────────────────────────────────────────────────
+// Bounded LRU: max 1000 entries.  On overflow, the oldest inserted key is
+// evicted (Map iteration order is insertion order).
 // Map<sessionId, { taskType: string, vector: Float32Array|null, message: string }>
+const CACHE_MAX_SIZE = 1000;
 const _sessionCache = new Map();
+
+function _cacheSet(key, value) {
+  if (_sessionCache.has(key)) {
+    // Refresh insertion order by deleting then re-inserting.
+    _sessionCache.delete(key);
+  } else if (_sessionCache.size >= CACHE_MAX_SIZE) {
+    // Evict the oldest entry (first key in iteration order).
+    _sessionCache.delete(_sessionCache.keys().next().value);
+  }
+  _sessionCache.set(key, value);
+}
 
 export function _clearCacheForTest() {
   _sessionCache.clear();
@@ -79,7 +93,10 @@ const BUDGET_THRESHOLD_USD = 0.05;
 
 /**
  * Returns true when the introspection budget has at least $0.05 remaining.
- * On DB error returns false (budget unknown → skip classifier).
+ * On DB error returns true — readBudgetConfig and readBudgetState both absorb
+ * errors internally and return defaults, so the outer catch rarely fires.
+ * When it does (unexpected throw), we fail open (return true) so a transient
+ * DB hiccup doesn't permanently suppress the classifier.
  *
  * @param {import('surrealdb').Surreal} db
  * @returns {Promise<boolean>}
@@ -90,11 +107,14 @@ export async function isBudgetSufficient(db) {
     const remaining = (cfg.daily_cost_budget_usd ?? 0) - (state.daily_spend_usd ?? 0);
     return remaining >= BUDGET_THRESHOLD_USD;
   } catch {
-    return false;
+    return true;
   }
 }
 
 // ── Cache invalidation ───────────────────────────────────────────────────────
+// 0.3 is intentionally low: we want cache hits on rephrased versions of the
+// same intent (e.g. "what music should I listen to?" ≈ "give me some music"),
+// while still invalidating when the topic shifts (tech → fitness).
 const CACHE_SIMILARITY_THRESHOLD = 0.3;
 
 /**
@@ -233,7 +253,7 @@ export async function classifyTurnType(db, turnContext, host, embedder) {
           // Cache without vector; next call will be cold.
         }
       }
-      _sessionCache.set(sessionId, { taskType, vector, message });
+      _cacheSet(sessionId, { taskType, vector, message });
     }
 
     return taskType;

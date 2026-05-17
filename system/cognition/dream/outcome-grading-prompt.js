@@ -13,6 +13,8 @@
 // Output shape returned by the LLM (JSON):
 //   { completeness: number|null, correction_likelihood: number, rationale: string }
 
+import { estimateCostUsd } from '../../runtime/hosts/pricing.js';
+
 /**
  * Build the system prompt (cacheable).
  *
@@ -134,21 +136,14 @@ export function computeScore(completeness, correctionLikelihood) {
   return (comp + cl) / 2;
 }
 
-// Haiku-4.5 pricing (per 1M tokens) — as of 2026-05-17
-// $0.80 / 1M input tokens, $4.00 / 1M output tokens
-export const HAIKU_PRICE_PER_M_INPUT = 0.80;
-export const HAIKU_PRICE_PER_M_OUTPUT = 4.00;
-
 /**
- * Estimate cost in USD for a single LLM call given token counts.
+ * Estimate cost in USD for a single Haiku LLM call given token counts.
+ * Delegates to the shared pricing module so constants don't drift.
  *
  * @param {number} inputTokens
  * @param {number} outputTokens
  * @returns {number}
  */
 export function estimateCallCost(inputTokens, outputTokens) {
-  return (
-    (inputTokens / 1_000_000) * HAIKU_PRICE_PER_M_INPUT +
-    (outputTokens / 1_000_000) * HAIKU_PRICE_PER_M_OUTPUT
-  );
+  return estimateCostUsd('haiku', inputTokens, outputTokens);
 }

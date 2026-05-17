@@ -1,6 +1,7 @@
 import { extractMNTokens, recordInsightFeedback } from '../../../cognition/briefing/feedback.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { recordEvent } from '../../capture/record-event.js';
+import { surql } from 'surrealdb';
 
 const NEGATIVE_PATTERNS = [
   /\bnot useful\b/i,
@@ -39,10 +40,28 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         meta: { type: 'object' },
         tool: { type: 'string' },
         action: { type: 'string' },
+        rule_id: { type: 'string' },
       },
       required: ['content'],
     },
     handler: async (args) => {
+      // Guard: refuse to deactivate rules marked not_retractable.
+      // The current handler doesn't deactivate rules via this path yet, but
+      // the check is wired here so that any future retraction path encounters
+      // the guard before writing active=false.
+      if (args.rule_id) {
+        try {
+          const [rows] = await db
+            .query(surql`SELECT meta FROM memos WHERE id = type::record('memos', ${args.rule_id}) LIMIT 1`)
+            .collect();
+          const rule = Array.isArray(rows) ? rows[0] : rows;
+          if (rule?.meta?.not_retractable === true) {
+            return { ok: false, reason: 'rule_not_retractable', rule_id: args.rule_id };
+          }
+        } catch {
+          // DB error reading the rule — proceed without blocking.
+        }
+      }
       const meta = {
         kind: 'correction',
         ...(args.prior_response ? { prior_response: args.prior_response } : {}),

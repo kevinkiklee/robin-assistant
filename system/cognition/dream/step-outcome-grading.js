@@ -183,6 +183,8 @@ async function gradeRow(row, playbook, priorGrades, sourceEventContent, host) {
   const selfGrade = {
     completeness,
     correction_likelihood: correctionLikelihood,
+    // HAIKU_MODEL is hardcoded because InvokeLLMResult (interface.js) does not
+    // surface the resolved model name — only content + usage are returned.
     model: HAIKU_MODEL,
     ts: new Date().toISOString(),
     rationale: typeof parsed.rationale === 'string' ? parsed.rationale.slice(0, 200) : '',
@@ -244,12 +246,13 @@ export async function dreamStepOutcomeGrading(db, host, _embedder, opts = {}) {
   for (const row of rows) {
     // Budget check before each call
     if (totalCostUsd >= stepBudgetUsd) {
-      skippedDueToBudget++;
+      // Compute remaining (including this row) before incrementing the counter
+      // so the log message is accurate (skippedDueToBudget++ would make it off-by-one).
+      const remainingCount = rows.length - graded - skippedDueToBudget - skippedDueToError;
+      skippedDueToBudget += remainingCount;
       console.warn(
-        `[dream/outcome-grading] step_halted_at_budget: accumulated $${totalCostUsd.toFixed(4)} >= cap $${stepBudgetUsd}; ${rows.length - graded - skippedDueToBudget - skippedDueToError} rows remain ungraded`,
+        `[dream/outcome-grading] step_halted_at_budget: accumulated $${totalCostUsd.toFixed(4)} >= cap $${stepBudgetUsd}; ${remainingCount} rows remain ungraded`,
       );
-      // Count remaining rows as budget-skipped
-      skippedDueToBudget += rows.length - graded - skippedDueToBudget - skippedDueToError;
       break;
     }
 

@@ -15,11 +15,7 @@
 
 import { parseLLMJSON } from '../biographer/output.js';
 import { createCandidate } from './candidates.js';
-import {
-  estimateCallCost,
-  HAIKU_PRICE_PER_M_INPUT,
-  HAIKU_PRICE_PER_M_OUTPUT,
-} from './outcome-grading-prompt.js';
+import { estimateCallCost } from './outcome-grading-prompt.js';
 import { greedyCluster } from './prediction-taxonomy-cluster.js';
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 
