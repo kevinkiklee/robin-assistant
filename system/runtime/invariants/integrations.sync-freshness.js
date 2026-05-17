@@ -31,14 +31,24 @@ function stalenessReport(value, now = Date.now()) {
     const last = new Date(row.last_sync_at).getTime();
     const thresholdX = row.freshness_threshold_x ?? DEFAULT_FRESHNESS_X;
     const thresholdMs = row.cadence_ms * thresholdX;
-    if (now - last > thresholdMs) {
-      stale.push({
-        name,
-        last_sync_at: row.last_sync_at,
-        threshold_at: new Date(last + thresholdMs).toISOString(),
-        cadence_ms: row.cadence_ms,
-      });
+    if (now - last <= thresholdMs) continue;
+    // Quiet-window aware: an integration with a `quiet_window` legitimately
+    // skips firing outside its active hours (e.g. finance_quote only runs
+    // during NYSE hours, so its last_sync_at can legitimately be 17h old
+    // every night). The dispatcher encodes the next allowed fire in
+    // `next_run_at` — if that's still in the future, the integration is
+    // intentionally paused, not stale. Only flag as stale when next_run_at
+    // is past-due AND the freshness threshold has been crossed.
+    if (row.next_run_at) {
+      const nextRun = new Date(row.next_run_at).getTime();
+      if (Number.isFinite(nextRun) && nextRun > now) continue;
     }
+    stale.push({
+      name,
+      last_sync_at: row.last_sync_at,
+      threshold_at: new Date(last + thresholdMs).toISOString(),
+      cadence_ms: row.cadence_ms,
+    });
   }
   return { stale, enabledCount };
 }
