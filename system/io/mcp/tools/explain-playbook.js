@@ -4,17 +4,16 @@ import { isSelfImprovementV2Enabled } from '../../../runtime/config/self-improve
 const MAX_LINEAGE_DEPTH = 4;
 
 /**
- * Fetch a memo by ID, returns null if not found.
+ * Fetch a memo by ID, returns null if not found. Throws on DB error so the
+ * MCP caller distinguishes "no such id" (handler returns
+ * {ok:false, reason:'not_found'}) from "DB unreachable / query failed"
+ * (propagates as MCP error).
  */
 async function fetchMemo(db, id) {
   if (!id) return null;
   const recordRef = String(id).startsWith('memos:') ? String(id) : `memos:${String(id)}`;
-  try {
-    const [rows] = await db.query(`SELECT * FROM ${recordRef}`).collect();
-    return (Array.isArray(rows) ? rows[0] : rows) ?? null;
-  } catch {
-    return null;
-  }
+  const [rows] = await db.query(`SELECT * FROM ${recordRef}`).collect();
+  return (Array.isArray(rows) ? rows[0] : rows) ?? null;
 }
 
 /**
