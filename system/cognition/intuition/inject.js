@@ -143,11 +143,13 @@ export function evaluateFocusSuppression({ cfg, memo, query, now = new Date() })
  * @param {number} [args.k]               Max hits (default 6).
  * @param {number} [args.recencyDays]     Recency window (default 30).
  * @param {number} [args.tokenBudget]     Total token cap for the block (default 1500).
+ * @param {{invokeLLM: Function}} [args.host]  Optional host adapter for Haiku classifier.
  * @returns {Promise<{block:string, hits:number, tokens:number, latency_ms:number, truncated:boolean}>}
  */
 export async function intuitionEndpoint({
   db,
   embedder,
+  host = null,
   query,
   sessionId,
   source = null,
@@ -557,7 +559,12 @@ export async function intuitionEndpoint({
   let playbookContent = null;
   let playbookTokens = 0;
   try {
-    playbookContent = await getPlaybookForInject(db, { query: safeQuery });
+    playbookContent = await getPlaybookForInject(
+      db,
+      { query: safeQuery, session_id: sessionId },
+      host,
+      embedder,
+    );
     if (typeof playbookContent === 'string' && playbookContent.length > 0) {
       playbookTokens = estimateTokens(playbookContent);
     } else {

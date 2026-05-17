@@ -81,6 +81,7 @@ export const intuitionRoutes = [
       return await intuitionEndpoint({
         db: ctx.db,
         embedder: ctx.embedder.wrap,
+        host: ctx.host ?? null,
         detector: ctx.detector,
         query: body.query ?? '',
         sessionId: body.session_id ?? body.sessionId ?? null,

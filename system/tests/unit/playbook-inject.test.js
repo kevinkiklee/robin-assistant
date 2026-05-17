@@ -13,7 +13,6 @@ import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import {
-  classifyTaskType,
   fetchActivePlaybook,
   getPlaybookForInject,
 } from '../../cognition/intuition/playbook-inject.js';
@@ -34,19 +33,6 @@ async function fresh() {
   await runMigrations(db, MIGRATIONS_DIR);
   return db;
 }
-
-// ---------------------------------------------------------------------------
-// classifyTaskType — Phase 1 stub behavior
-// ---------------------------------------------------------------------------
-
-test('classifyTaskType returns turn:default for any input (Phase 1 stub)', () => {
-  // Assert explicitly so a Wave 3 swap is obvious when this test breaks.
-  assert.equal(classifyTaskType({}), 'turn:default');
-  assert.equal(classifyTaskType({ query: 'analyze this code' }), 'turn:default');
-  assert.equal(classifyTaskType(null), 'turn:default');
-  assert.equal(classifyTaskType(undefined), 'turn:default');
-  assert.equal(classifyTaskType('raw string'), 'turn:default');
-});
 
 // ---------------------------------------------------------------------------
 // fetchActivePlaybook — no playbook present

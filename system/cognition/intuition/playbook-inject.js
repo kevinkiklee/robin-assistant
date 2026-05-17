@@ -1,41 +1,27 @@
-// playbook-inject.js — Phase 1 stub for inject-path playbook fetch.
+// playbook-inject.js — Three-tier task-type classifier + playbook fetch for
+// the inject path.
 //
-// Wires the "fetch active playbook for current task_type and prepend to inject
-// result" path described in spec §3 "Inject-path integration".
+// Tier 1 (declared): jobs and outbound writes carry task_type in the turn
+//   context; use it directly, skip the classifier.
+// Tier 2 (routed): recall queries are bucketed by a pattern table.
+// Tier 3 (classified): general assistant turns hit the Haiku classifier, but
+//   only when at least one turn:* playbook exists AND the per-session cache
+//   is cold or has been invalidated by a low-similarity turn.
 //
-// Phase 1 reality:
-//   - Classifier is a stub that always returns 'turn:default'.
-//   - Playbook table is empty until Wave 3's step-playbook-synthesis runs.
-//   So in practice getPlaybookForInject returns null on every call in Phase 1.
-//   The wiring exists and is tested; the no-op is intentional.
-//
-// Wave 3 follow-ups:
-//   - classifyTaskType: swap stub for Haiku classifier.
-//   - Token counting: optionally swap chars/4 for a real tokenizer.
+// When no host is supplied (e.g. in tests that don't inject a host adapter),
+// classifyTurnType gracefully skips Tier 3 and returns 'turn:default'.
 
 import { surql } from 'surrealdb';
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import { tokenCapForTaskType } from '../introspection/task-taxonomy.js';
-
-/**
- * Phase 1 stub: always returns 'turn:default'.
- * Wave 3 wires the real Haiku classifier here.
- *
- * @param {object} _turnContext  Ignored in Phase 1.
- * @returns {string}
- */
-export function classifyTaskType(_turnContext) {
-  // NOTE: Wave 3 replaces this stub with a Haiku-tier classifier that reads
-  // the current turn's message and returns the appropriate task_type.
-  return 'turn:default';
-}
+import { classifyTurnType } from './turn-classifier.js';
 
 /**
  * Fetch the active playbook memo for the given task_type.
  *
  * Returns the full memo row when exactly one active playbook exists, or null
- * when none match (normal in Phase 1) or when a DB error occurs (caught +
- * logged here so the caller never sees a throw).
+ * when none match or when a DB error occurs (caught + logged here so the
+ * caller never sees a throw).
  *
  * @param {import('surrealdb').Surreal} db
  * @param {string} taskType
@@ -59,7 +45,6 @@ export async function fetchActivePlaybook(db, taskType) {
 /**
  * Cheap token estimator: 1 token ≈ 4 chars.
  * Same heuristic used elsewhere in inject.js.
- * Wave 3 may swap in a real tokenizer.
  */
 function estimateTokens(s) {
   return Math.ceil((typeof s === 'string' ? s.length : 0) / 4);
@@ -77,7 +62,6 @@ function truncateToTokenCap(content, capTokens) {
   if (typeof content !== 'string') return '';
   const currentTokens = estimateTokens(content);
   if (currentTokens <= capTokens) return content;
-  // chars/4 → cap*4 chars gives us exactly capTokens.
   return [...content].slice(0, capTokens * 4).join('');
 }
 
@@ -92,22 +76,29 @@ function truncateToTokenCap(content, capTokens) {
  * NEVER throws — all errors are caught, logged, and silently skipped.
  *
  * @param {import('surrealdb').Surreal} db
- * @param {object} [turnContext]  Passed through to classifyTaskType (Phase 1: ignored).
+ * @param {object} [turnContext]
+ *   Passed through to classifyTurnType.
+ *   Shape: { query?: string, task_type?: string, session_id?: string }
+ * @param {{invokeLLM: Function}} [host]
+ *   Optional host adapter.  When supplied, Tier-3 Haiku classification fires.
+ *   When absent (e.g. in unit tests), the classifier falls back to Tier 1/2
+ *   only and returns 'turn:default' for general turns.
+ * @param {{embed:(t:string)=>Promise<Float32Array>}} [embedder]
+ *   Optional embedder for per-session cache similarity.
  * @returns {Promise<string|null>}
  */
-export async function getPlaybookForInject(db, turnContext) {
+export async function getPlaybookForInject(db, turnContext, host, embedder) {
   try {
     const enabled = await isSelfImprovementV2Enabled(db);
     if (!enabled) return null;
 
-    const taskType = classifyTaskType(turnContext);
+    const taskType = await classifyTurnType(db, turnContext, host, embedder);
     const playbook = await fetchActivePlaybook(db, taskType);
     if (!playbook) return null;
 
     const content = typeof playbook.content === 'string' ? playbook.content : null;
     if (!content) return null;
 
-    // Use the task_type's declared cap; fall back to a safe 800-token default.
     const cap = tokenCapForTaskType(taskType) ?? 800;
     return truncateToTokenCap(content, cap);
   } catch (err) {
