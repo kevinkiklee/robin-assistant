@@ -15,6 +15,7 @@ import { consumePendingTriggers } from './cadence-consumer.js';
 import { createDispatcherTick } from './dispatcher-tick.js';
 import { createScheduler } from './heartbeat.js';
 import { startHttp } from './http.js';
+import { startJobHotReload } from './job-hot-reload.js';
 import { createLifecycle } from './lifecycle.js';
 import { bindPort } from './port.js';
 import { buildRoutes } from './routes/index.js';
@@ -168,9 +169,24 @@ export async function startDaemon() {
     const authToken = randomBytes(32).toString('hex');
     const httpServer = startHttp({ ctx, tools, routes, port, authToken });
 
+    // Hot-reload: SIGTERM self on user-data .js change so launchctl respawns
+    // with a fresh ESM module graph. Without this, edits to
+    // user-data/jobs/**/*.js (and user-data/io/**/*.js) silently use the
+    // cached pre-edit module — the root cause of the 2026-05-16 daily-briefing
+    // schema_version=2 regression. Disabled via env to keep tests + headless
+    // CI runs from surprise-bouncing themselves.
+    const hotReload =
+      process.env.ROBIN_DISABLE_HOT_RELOAD === '1'
+        ? { stop() {} }
+        : startJobHotReload({
+            paths: [paths.data.jobs(), `${paths.data.home()}/io`],
+            log: console.log,
+          });
+
     lifecycle.ready({
       scheduler,
       httpServer,
+      hotReload,
       integrations: {
         stop: async () => {
           for (const [name, client] of ctx.gatewayClients) {

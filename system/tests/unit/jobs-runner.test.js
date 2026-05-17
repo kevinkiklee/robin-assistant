@@ -118,6 +118,69 @@ test('internal runtime — dispatches to src/jobs/internal/<name>.js', async () 
   await close(db);
 });
 
+test('defensive finally — in_flight is cleared even when both record paths throw', async () => {
+  const { db, capture } = await setup();
+  const job = {
+    name: 'test-internal-fixture',
+    schedule: '@daily',
+    runtime: 'internal',
+    enabled: true,
+    catch_up: false,
+    notify: 'none',
+    notify_on_failure: false,
+    timeout_minutes: 1,
+    manually_runnable: true,
+    body: '',
+  };
+  await upsertFromDiscovered(db, [job]);
+
+  // Trap recordSuccess's UPDATE (2nd UPDATE on runtime_jobs after setInFlight)
+  // AND recordFailure's UPDATE (3rd, called from inner catch). The throw must
+  // then escape to the outer scope, the finally must still clear in_flight.
+  // getJob inside finally is a SELECT (not UPDATE), and the final setInFlight
+  // is the 4th UPDATE — both pass through.
+  const origQuery = db.query.bind(db);
+  let updateCount = 0;
+  db.query = (sql, ...rest) => {
+    const s = typeof sql === 'string' ? sql : (sql?.query ?? '');
+    if (/UPDATE runtime_jobs/.test(s)) {
+      updateCount++;
+      // 1=setInFlight(true), 2=recordSuccess, 3=recordFailure, 4=defensive
+      if (updateCount === 2 || updateCount === 3) {
+        return {
+          collect: async () => {
+            throw new Error(`simulated DB failure on update #${updateCount}`);
+          },
+        };
+      }
+    }
+    return origQuery(sql, ...rest);
+  };
+
+  let thrown = null;
+  try {
+    await runOneJob({
+      db,
+      capture,
+      host: null,
+      jobs: [job],
+      tools: [],
+      name: 'test-internal-fixture',
+    });
+  } catch (e) {
+    thrown = e;
+  } finally {
+    db.query = origQuery;
+  }
+
+  assert.ok(thrown, 'when both record paths fail the error should propagate');
+  const [rows] = await db
+    .query("SELECT in_flight FROM runtime_jobs WHERE name = 'test-internal-fixture'")
+    .collect();
+  assert.equal(rows[0].in_flight, false, 'defensive finally must clear in_flight');
+  await close(db);
+});
+
 test('notify_on_failure — failure with notify=capture writes job_notification event', async () => {
   const { db, capture } = await setup();
   await upsertFromDiscovered(db, [SAMPLE_AGENT]);

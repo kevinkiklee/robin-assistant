@@ -1,7 +1,7 @@
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { nextFire, parseCron } from './cron.js';
-import { recordFailure, recordSuccess, setInFlight } from './db.js';
+import { getJob, recordFailure, recordSuccess, setInFlight } from './db.js';
 import { dispatchNotify } from './notify.js';
 
 function withTimeout(promise, ms) {
@@ -69,51 +69,68 @@ export async function runOneJob({
 
   const timeoutMs = Math.max(100, Math.floor(job.timeout_minutes * 60_000));
   try {
-    const output = await withTimeout(
-      dispatchRuntime({ job, db, host, capture, embedder, tools }),
-      timeoutMs,
-    );
-    const next_run_at = nextFire(parsed, now());
-    await recordSuccess(db, name, {
-      duration_ms: Date.now() - start,
-      next_run_at,
-    });
-    if (job.notify !== 'none' && output != null && output.length > 0) {
-      try {
-        await dispatchNotify({
-          db,
-          capture,
-          name,
-          notify: job.notify,
-          output,
-          tools,
-          kind: 'success',
-        });
-      } catch (e) {
-        console.warn(`[jobs] ${name}: notify failed: ${e.message}`);
+    try {
+      const output = await withTimeout(
+        dispatchRuntime({ job, db, host, capture, embedder, tools }),
+        timeoutMs,
+      );
+      const next_run_at = nextFire(parsed, now());
+      await recordSuccess(db, name, {
+        duration_ms: Date.now() - start,
+        next_run_at,
+      });
+      if (job.notify !== 'none' && output != null && output.length > 0) {
+        try {
+          await dispatchNotify({
+            db,
+            capture,
+            name,
+            notify: job.notify,
+            output,
+            tools,
+            kind: 'success',
+          });
+        } catch (e) {
+          console.warn(`[jobs] ${name}: notify failed: ${e.message}`);
+        }
+      }
+    } catch (e) {
+      const next_run_at = nextFire(parsed, now());
+      await recordFailure(db, name, {
+        error: e.message,
+        duration_ms: Date.now() - start,
+        next_run_at,
+      });
+      if (job.notify_on_failure) {
+        try {
+          await dispatchNotify({
+            db,
+            capture,
+            name,
+            notify: job.notify === 'none' ? 'capture' : job.notify,
+            output: `[${name}] failed: ${e.message}`,
+            tools,
+            kind: 'failure',
+          });
+        } catch (notifyErr) {
+          console.warn(`[jobs] ${name}: failure-notify failed: ${notifyErr.message}`);
+        }
       }
     }
-  } catch (e) {
-    const next_run_at = nextFire(parsed, now());
-    await recordFailure(db, name, {
-      error: e.message,
-      duration_ms: Date.now() - start,
-      next_run_at,
-    });
-    if (job.notify_on_failure) {
-      try {
-        await dispatchNotify({
-          db,
-          capture,
-          name,
-          notify: job.notify === 'none' ? 'capture' : job.notify,
-          output: `[${name}] failed: ${e.message}`,
-          tools,
-          kind: 'failure',
-        });
-      } catch (notifyErr) {
-        console.warn(`[jobs] ${name}: failure-notify failed: ${notifyErr.message}`);
+  } finally {
+    // Belt-and-suspenders: recordSuccess/recordFailure already set
+    // in_flight=false, but if THEY throw (e.g. WS reconnect mid-DB-write,
+    // or a SCHEMAFULL constraint violation) the flag stays true until
+    // next daemon boot, which silently wedges the job. A direct
+    // setInFlight here is cheap insurance — if the success/failure path
+    // already cleared it, this is a no-op MERGE.
+    try {
+      const row = await getJob(db, name);
+      if (row?.in_flight === true) {
+        await setInFlight(db, name, false);
       }
+    } catch (e) {
+      console.warn(`[jobs] ${name}: in_flight clear failed: ${e.message}`);
     }
   }
 }

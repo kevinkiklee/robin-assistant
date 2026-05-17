@@ -123,6 +123,22 @@ Each of these has bitten us in past sessions. If you observe the symptom, jump s
 
 **First-line diagnostic for anything Robin-shaped: `robin doctor`.** It surfaces install-pointer state, daemon pid + port, native-binding ABI, port reachability, supervisor (launchctl/systemctl) status, recent biographer.log errors, and per-integration freshness in one pass. Useful flags: `--lint-hooks` (audit Robin-owned hook entries in `~/.claude/settings.json` + `~/.gemini/settings.json`), `--purge-stale-sessions`, `--rebaseline` (rewrite `manifest.json` from current state). Run this *before* deep-diving into any of the entries below — it often points straight at the broken layer.
 
+### Captured `daily_briefing` events emit pre-edit chrome (schema_version drift)
+
+**Symptom.** You edit `user-data/jobs/daily-briefing.js` or `user-data/jobs/briefing/*.js`, the cron continues firing, but every captured `daily_briefing` event still has the old frontmatter (`schema_version: 2`) and no synthesis filled in — even though the on-disk render.js clearly emits v3 chrome with `<!-- AWAITING_SYNTHESIS:* -->` markers replaced by Opus output. Manual `robin jobs run daily-briefing` matches disk; the cron-fired rows don't.
+
+**Cause.** Node's ESM cache pins imported modules for the daemon's lifetime. `runner.js` does `await import(modUrl)` once per job; subsequent invocations reuse the cached module. Edits to `user-data/jobs/**/*.js` (and `user-data/io/**/*.js`) take effect only after a daemon restart.
+
+**Fix.** Already shipped: `system/runtime/daemon/job-hot-reload.js` watches both dirs recursively and SIGTERMs the daemon on debounced (.js-only, non-test) change. launchctl respawns with a fresh module graph; lifecycle.js stops the watcher *before* scheduler drain so a file write during shutdown can't fire a second SIGTERM. Disable via `ROBIN_DISABLE_HOT_RELOAD=1` (e.g. in CI). If the symptom recurs, check whether `[hot-reload] watching <dir>` appears at boot in `user-data/runtime/logs/daemon.log` — if not, the wiring in `system/runtime/daemon/server.js` was reverted.
+
+### Job stays wedged with `in_flight=true` after a DB write failure
+
+**Symptom.** `robin jobs list` shows a job with `in_flight: true` long after its `timeout_minutes` window. The scheduler refuses to fire it (`listDueJobs` filters `in_flight=true`); `run_job` returns `{ ok: false, reason: 'in_flight' }`. The boot-time `resetJobInFlightFlags` would clear it, but the daemon hasn't restarted.
+
+**Cause.** `recordSuccess` / `recordFailure` (in `system/cognition/jobs/db.js`) own `in_flight=false` on the normal paths. If BOTH throw — e.g. the SurrealDB WS drops mid-write twice, or a `SCHEMAFULL` constraint rejects the patch — the throw escapes `runOneJob`'s inner try/catch and the flag stays true.
+
+**Fix.** Already shipped: `runOneJob`'s outer `finally` re-reads the row and clears `in_flight` defensively (`system/cognition/jobs/runner.js`). The clear runs even if both record paths throw. The `scheduler.no_stuck_in_flight` invariant (`system/runtime/invariants/`) still surfaces wedged jobs as a heartbeat warning — if that fires, look for an upstream issue (LLM call truly hung past `timeout_minutes`, not a record-write failure).
+
 ### `.robin-home` install pointer disappears
 
 **Symptom.** CLI commands and `defaultDbUrl()`-using scripts fail with `Error: Robin is not installed. Run: robin install`. The daemon log fills with `[scheduler/dispatcher] tick failed: Robin is not installed`. Restarting CLI or daemon doesn't help.

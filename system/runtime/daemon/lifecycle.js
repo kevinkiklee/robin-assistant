@@ -50,6 +50,16 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
     grace.unref?.();
 
     try {
+      // Stop the hot-reload watcher FIRST. If a file write occurs during the
+      // drain window, we don't want it firing a second SIGTERM and short-
+      // circuiting graceful shutdown.
+      if (subsystems?.hotReload?.stop) {
+        try {
+          subsystems.hotReload.stop();
+        } catch (e) {
+          console.warn(`hot-reload stop failed: ${e.message}`);
+        }
+      }
       if (subsystems?.scheduler?.stop) {
         try {
           console.log('scheduler stopping (draining in-flight ticks)');
