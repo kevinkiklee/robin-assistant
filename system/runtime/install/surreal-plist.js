@@ -6,6 +6,13 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// SurrealKV defaults its block cache to ~50% of system RAM (≈32 GB on a 64 GB
+// Mac) regardless of dataset size. Robin's DB is ~1–2 GB; 512 MB comfortably
+// caches the entire working set while saving 30+ GB of virtual address space
+// and the page-table/macOS-memory-manager overhead that comes with it. Read
+// via the `SURREAL_SURREALKV_BLOCK_CACHE_CAPACITY` env var, value in bytes.
+const SURREALKV_BLOCK_CACHE_CAPACITY_DEFAULT = 512 * 1024 * 1024;
+
 /**
  * Generate launchd plist XML for the standalone SurrealDB server.
  *
@@ -20,6 +27,7 @@ function esc(s) {
  *   storage?: string,
  *   dbDir: string,
  *   logPath: string,
+ *   blockCacheCapacity?: number,
  * }} args
  * @returns {string} plist XML
  */
@@ -31,6 +39,7 @@ export function generateSurrealPlist({
   storage = 'surrealkv',
   dbDir,
   logPath,
+  blockCacheCapacity = SURREALKV_BLOCK_CACHE_CAPACITY_DEFAULT,
 }) {
   if (!surrealBin) throw new TypeError('generateSurrealPlist: surrealBin is required');
   if (!dbDir) throw new TypeError('generateSurrealPlist: dbDir is required');
@@ -71,6 +80,8 @@ export function generateSurrealPlist({
   <dict>
     <key>PATH</key>
     <string>${esc(launchdPath)}</string>
+    <key>SURREAL_SURREALKV_BLOCK_CACHE_CAPACITY</key>
+    <string>${esc(blockCacheCapacity)}</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

@@ -57,6 +57,28 @@ test('generateSurrealPlist throws when required fields are missing', () => {
   );
 });
 
+test('generateSurrealPlist caps SurrealKV block cache (default 512MB; overridable)', () => {
+  const defaultXml = generateSurrealPlist({
+    surrealBin: '/opt/homebrew/bin/surreal',
+    dbDir: '/Users/x/.robin-data/data/db',
+    logPath: '/Users/x/.robin-data/runtime/logs/surreal.log',
+  });
+  assert.match(
+    defaultXml,
+    /<key>SURREAL_SURREALKV_BLOCK_CACHE_CAPACITY<\/key>\s*<string>536870912<\/string>/,
+  );
+  const customXml = generateSurrealPlist({
+    surrealBin: '/opt/homebrew/bin/surreal',
+    dbDir: '/Users/x/.robin-data/data/db',
+    logPath: '/Users/x/.robin-data/runtime/logs/surreal.log',
+    blockCacheCapacity: 268435456,
+  });
+  assert.match(
+    customXml,
+    /<key>SURREAL_SURREALKV_BLOCK_CACHE_CAPACITY<\/key>\s*<string>268435456<\/string>/,
+  );
+});
+
 test('generateSurrealPlist escapes XML special chars in paths', () => {
   const xml = generateSurrealPlist({
     surrealBin: '/opt/r&d/surreal',
