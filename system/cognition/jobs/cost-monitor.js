@@ -159,6 +159,12 @@ async function queryCostUsd(db, windowStart, windowEnd) {
     const tokens = rows?.[0]?.total_tokens ?? 0;
     return tokens * TOKEN_COST_RATE;
   } catch {
+    // KNOWN LIMITATION: when both telemetry sources fail, the job reports
+    // cost=$0 and no alert fires. This is documented as informational-tier:
+    // the budget guard is an alert, not an enforcement. A telemetry outage
+    // long enough to disable the alert will also surface via the broader
+    // db.* invariants (db.daemon_reachable, db.authenticated), so a silent
+    // cost-monitor isn't the only signal.
     return 0;
   }
 }
