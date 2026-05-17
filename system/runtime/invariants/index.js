@@ -36,6 +36,7 @@ import installPointerPresent from './install.pointer-present.js';
 import installUserDataWritable from './install.user-data-writable.js';
 import integrationsNoStuckInFlight from './integrations.no-stuck-in-flight.js';
 import integrationsSyncFreshness from './integrations.sync-freshness.js';
+import mcpDaemonAuthenticatedAfterReconnect from './mcp.daemon-authenticated-after-reconnect.js';
 import mcpDaemonResponds from './mcp.daemon-responds.js';
 import mcpWiringGlobalPresent from './mcp.wiring-global-present.js';
 import mcpWiringProjectPresent from './mcp.wiring-project-present.js';
@@ -60,6 +61,7 @@ export const INVARIANTS = [
   mcpWiringProjectPresent,
   mcpWiringGlobalPresent,
   mcpDaemonResponds,
+  mcpDaemonAuthenticatedAfterReconnect,
   // integrations
   integrationsSyncFreshness,
   integrationsNoStuckInFlight,
