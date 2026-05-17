@@ -2,6 +2,14 @@ import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { isEnabled, readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
+import { createExplainLearningTool } from '../../io/mcp/tools/explain-learning.js';
+import { createExplainPlaybookTool } from '../../io/mcp/tools/explain-playbook.js';
+import { createGetCalibrationTool } from '../../io/mcp/tools/get-calibration.js';
+import { createGetPlaybookTool } from '../../io/mcp/tools/get-playbook.js';
+import { createListCommStyleSnapshotsTool } from '../../io/mcp/tools/list-comm-style-snapshots.js';
+import { createListPlaybooksTool } from '../../io/mcp/tools/list-playbooks.js';
+import { createProposePlaybookTool } from '../../io/mcp/tools/propose-playbook.js';
+import { createRecordOutcomeTool } from '../../io/mcp/tools/record-outcome.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';
 import { createCheckActionTool } from '../../io/mcp/tools/check-action.js';
 import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
@@ -167,6 +175,14 @@ export async function buildTools(ctx) {
     createShowTelemetryRollupTool({ db: ctx.db }),
     createRecentRefusalsTool({ db: ctx.db }),
     createArchiveHistoryTool({ db: ctx.db }),
+    createRecordOutcomeTool({ db: ctx.db }),
+    createProposePlaybookTool({ db: ctx.db }),
+    createListPlaybooksTool({ db: ctx.db }),
+    createGetPlaybookTool({ db: ctx.db }),
+    createExplainPlaybookTool({ db: ctx.db }),
+    createListCommStyleSnapshotsTool({ db: ctx.db }),
+    createGetCalibrationTool({ db: ctx.db }),
+    createExplainLearningTool({ db: ctx.db }),
   );
 
   return tools;
