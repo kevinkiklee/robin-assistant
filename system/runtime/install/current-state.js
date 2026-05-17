@@ -11,8 +11,7 @@
 
 import { BoundQuery } from 'surrealdb';
 
-const CURRENT_STATE_START =
-  '<!-- robin-current-state:start (auto-generated, refreshed hourly) -->';
+const CURRENT_STATE_START = '<!-- robin-current-state:start (auto-generated, refreshed hourly) -->';
 const CURRENT_STATE_END = '<!-- robin-current-state:end -->';
 
 async function latestEvent(db, where) {

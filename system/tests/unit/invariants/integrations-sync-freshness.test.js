@@ -31,10 +31,7 @@ async function fresh() {
 
 async function seedScheduler(db, integrations) {
   await db
-    .query(
-      "UPSERT runtime:scheduler CONTENT { value: $value }",
-      { value: { integrations } },
-    )
+    .query('UPSERT runtime:scheduler CONTENT { value: $value }', { value: { integrations } })
     .collect();
 }
 

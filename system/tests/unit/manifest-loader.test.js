@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -91,15 +91,15 @@ test('loadManifests warns only once per (integration, error) across repeated cal
   writeFileSync(
     join(intDir, 'manifest.js'),
     [
-      "export const manifest = {",
+      'export const manifest = {',
       "  name: 'broken_int',",
       "  cadence: '1h',",
       "  auth: { kind: 'api-key' },",
-      "  tools: [],",
-      "  sync: async () => ({}),",
+      '  tools: [],',
+      '  sync: async () => ({}),',
       "  preflight: () => { throw new Error('missing env BROKEN_KEY'); },",
-      "};",
-      "",
+      '};',
+      '',
     ].join('\n'),
   );
 

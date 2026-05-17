@@ -13,8 +13,8 @@
 // Read-only. Counts and samples. Run as a regression tripwire after
 // schema migrations or post-import.
 
-import { connect, close, defaultDbUrl } from '../../data/db/client.js';
 import { ensureHome } from '../../config/data-store.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 
 const SAFE = /^[A-Za-z0-9_]+$/;
 
