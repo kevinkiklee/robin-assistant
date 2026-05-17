@@ -12,7 +12,7 @@
  * @param {{
  *   ctx?: any,
  *   maxConcurrent?: number,
- *   onStepSettled?: (name: string, ms: number, err?: Error) => void,
+ *   onStepSettled?: (name: string, ms: number, err: Error | null, result?: any) => void,
  *   shouldHalt?: () => Promise<boolean>,
  * }} [opts]
  * @returns {Promise<{
@@ -52,8 +52,9 @@ export async function runDag(steps, deps, opts = {}) {
             return;
           }
           try {
-            summary[name] = await fn(opts.ctx);
-            opts.onStepSettled?.(name, Date.now() - stepT0);
+            const result = await fn(opts.ctx);
+            summary[name] = result;
+            opts.onStepSettled?.(name, Date.now() - stepT0, null, result);
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             summary[name] = { error: msg };

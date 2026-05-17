@@ -110,23 +110,29 @@ export async function synthesizeCommStyle(db, host) {
       ok: true,
       comm_style: { ...DEFAULTS, confidence: 0 },
       signals_used: corrections.length,
+      tokens_in: 0,
+      tokens_out: 0,
     };
   }
 
-  if (!host?.invokeLLM) return { ok: false, reason: 'no_host' };
+  if (!host?.invokeLLM) return { ok: false, reason: 'no_host', tokens_in: 0, tokens_out: 0 };
 
   let parsed;
+  let tokens_in = 0;
+  let tokens_out = 0;
   try {
     const llm = await host.invokeLLM([{ role: 'user', content: buildPrompt(corrections) }], {
       tier: 'balanced',
     });
+    tokens_in = llm?.usage?.input_tokens ?? 0;
+    tokens_out = llm?.usage?.output_tokens ?? 0;
     parsed = parseLLMJSON(llm?.content ?? '');
   } catch (e) {
-    return { ok: false, reason: `parse_failed: ${e.message}` };
+    return { ok: false, reason: `parse_failed: ${e.message}`, tokens_in, tokens_out };
   }
 
   const v = validateCommStyleShape(parsed);
-  if (!v.ok) return { ok: false, reason: `invalid_shape: ${v.reason}` };
+  if (!v.ok) return { ok: false, reason: `invalid_shape: ${v.reason}`, tokens_in, tokens_out };
 
   const evidenceIds = [];
   for (const idx of parsed.evidence_indices ?? []) {
@@ -141,5 +147,7 @@ export async function synthesizeCommStyle(db, host) {
     ok: true,
     comm_style: { ...v.value, evidence: evidenceIds },
     signals_used: corrections.length,
+    tokens_in,
+    tokens_out,
   };
 }

@@ -86,6 +86,8 @@ export async function dreamStepReflection(
     (c) => c.ids.length >= minCluster,
   );
   let proposed = 0;
+  let tokens_in = 0;
+  let tokens_out = 0;
 
   for (const cluster of clusters) {
     const overlap = await findOverlappingPendingCandidate(
@@ -117,6 +119,8 @@ Distill into a behavioral rule.`;
           },
         ],
       });
+      tokens_in += r?.usage?.input_tokens ?? 0;
+      tokens_out += r?.usage?.output_tokens ?? 0;
       result = JSON.parse(r.content);
     } catch {
       continue;
@@ -132,5 +136,5 @@ Distill into a behavioral rule.`;
       proposed++;
     }
   }
-  return { clusters: clusters.length, proposed };
+  return { clusters: clusters.length, proposed, tokens_in, tokens_out };
 }

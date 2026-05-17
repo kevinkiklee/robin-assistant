@@ -53,9 +53,13 @@ async function runDreamParallel(db, host, embedder, opts, cfg) {
       ctx,
       maxConcurrent: cfg.max_concurrent ?? Infinity,
       shouldHalt: () => shouldHalt(db, cfg, cadenceCfg),
-      onStepSettled: (name, ms, err) => {
+      onStepSettled: (name, ms, err, result) => {
         // recordStepTelemetry swallows internally; defence-in-depth.
-        recordStepTelemetry(db, name, ms, err, { parallel: true }).catch(() => {});
+        recordStepTelemetry(db, name, ms, err, {
+          parallel: true,
+          tokens_in: result?.tokens_in ?? 0,
+          tokens_out: result?.tokens_out ?? 0,
+        }).catch(() => {});
       },
     }));
   } catch (e) {

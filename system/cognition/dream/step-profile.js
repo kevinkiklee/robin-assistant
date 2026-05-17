@@ -29,6 +29,8 @@ ${evRows
 Identify possible profile updates.`;
 
   let result;
+  let tokens_in = 0;
+  let tokens_out = 0;
   try {
     const r = await host.invokeLLM([{ role: 'user', content: userPrompt }], {
       tier: 'fast',
@@ -41,9 +43,11 @@ Identify possible profile updates.`;
         },
       ],
     });
+    tokens_in = r?.usage?.input_tokens ?? 0;
+    tokens_out = r?.usage?.output_tokens ?? 0;
     result = JSON.parse(r.content);
   } catch {
-    return { proposed: 0 };
+    return { proposed: 0, tokens_in, tokens_out };
   }
 
   let proposed = 0;
@@ -62,5 +66,5 @@ Identify possible profile updates.`;
     });
     proposed++;
   }
-  return { proposed };
+  return { proposed, tokens_in, tokens_out };
 }

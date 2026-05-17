@@ -367,3 +367,65 @@ test('dream-internal: commStyle and calibration writes settle without clobber', 
   assert.ok(rows[0] !== undefined, 'persona singleton must exist after dream');
   await close(db);
 });
+
+test('token telemetry: per-step usage propagates from host → step result → cadence_telemetry / dream_telemetry', async () => {
+  // Regression for the dead-budget-gate bug: dream steps used to drop
+  // llm.usage on the floor, so cadence_telemetry recorded tokens_in/out = 0
+  // for every run and shouldHalt() was effectively a no-op.
+  const db = await fresh();
+  const e = createStubEmbedder({ dimension: 1024 });
+  // Enough corrections that reflection finds a cluster + commStyle has signal.
+  for (let i = 0; i < 4; i++) {
+    await recordEvent(db, e, {
+      source: 'manual',
+      content: 'be more concise',
+      meta: { kind: 'correction' },
+    });
+  }
+  const host = {
+    name: 'fake',
+    isAvailable: async () => true,
+    invokeLLM: async () => ({
+      content: JSON.stringify({
+        propose: true,
+        rule_text: 'Prefer concise',
+        confidence: 0.9,
+        candidates: [],
+        promote: false,
+        tone: 'terse',
+        formality: 'casual',
+        emoji_ok: false,
+        direct_feedback_ok: true,
+        code_comment_density: 'minimal',
+        summary_style: 'bullets',
+      }),
+      usage: { input_tokens: 100, output_tokens: 50 },
+    }),
+  };
+  await dreamProcess(db, host, e);
+  const [rows] = await db
+    .query(
+      surql`SELECT step, tokens_in, tokens_out FROM cadence_telemetry
+            WHERE tokens_in > 0 OR tokens_out > 0`,
+    )
+    .collect();
+  assert.ok(
+    (rows ?? []).length > 0,
+    'at least one cadence_telemetry row must carry non-zero tokens after a real LLM-using dream',
+  );
+  // Spot-check the structured table too — same data, fed through the same
+  // recordStepTelemetry path.
+  const [dt] = await db
+    .query(
+      surql`SELECT step, tokens_in, tokens_out FROM dream_telemetry
+            WHERE tokens_in > 0 OR tokens_out > 0`,
+    )
+    .collect();
+  assert.ok((dt ?? []).length > 0, 'dream_telemetry must also see non-zero tokens');
+  // Every observed row must come from one of the LLM-using steps.
+  const llmSteps = new Set(['reflection', 'commStyle', 'knowledge', 'profile']);
+  for (const r of rows ?? []) {
+    assert.ok(llmSteps.has(r.step), `unexpected step '${r.step}' reporting tokens`);
+  }
+  await close(db);
+});

@@ -43,6 +43,8 @@ export async function dreamStepKnowledge(
   const eligible = (counts ?? []).filter((c) => (c.mention_count ?? 0) >= minSignals);
   let promoted = 0;
   let superseded = 0;
+  let tokens_in = 0;
+  let tokens_out = 0;
 
   for (const c of eligible) {
     const entityId = c.entity_id;
@@ -103,6 +105,8 @@ Respond JSON only:
           },
         ],
       });
+      tokens_in += r?.usage?.input_tokens ?? 0;
+      tokens_out += r?.usage?.output_tokens ?? 0;
       result = JSON.parse(r.content);
     } catch {
       continue;
@@ -135,5 +139,5 @@ Respond JSON only:
     }
   }
 
-  return { eligible: eligible.length, promoted, superseded };
+  return { eligible: eligible.length, promoted, superseded, tokens_in, tokens_out };
 }
