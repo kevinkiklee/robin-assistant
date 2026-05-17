@@ -22,6 +22,7 @@ import { createGetHotTool } from '../../io/mcp/tools/get-hot.js';
 import { createGetKnowledgeTool } from '../../io/mcp/tools/get-knowledge.js';
 import { createGetProfileTool } from '../../io/mcp/tools/get-profile.js';
 import { createHealthTool } from '../../io/mcp/tools/health.js';
+import { createBrowserExtractTool, createBrowserScreenshotTool, createBrowserVisitTool } from '../../io/mcp/tools/browser.js';
 import { createImessageSendTool } from '../../io/mcp/tools/imessage-send.js';
 import { createIngestTool } from '../../io/mcp/tools/ingest.js';
 import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
@@ -162,6 +163,9 @@ export async function buildTools(ctx) {
     }),
     createIngestTool({ db: ctx.db, embedder: ctx.embedder.wrap, host: ctx.host }),
     createImessageSendTool(),
+    createBrowserVisitTool(),
+    createBrowserScreenshotTool(),
+    createBrowserExtractTool(),
     createLintTool({ db: ctx.db }),
     createAuditTool({ db: ctx.db, host: ctx.host }),
     createCheckActionTool({ db: ctx.db }),

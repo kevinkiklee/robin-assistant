@@ -54,6 +54,7 @@
     "file-type": "^22",
     "gray-matter": "^4",
     "nanoid": "^5",
+    "playwright": "^1.49.0",
     "rehype-raw": "^7",
     "rehype-sanitize": "^6",
     "rehype-slug": "^6",
@@ -78,6 +79,9 @@
       "optional": true
     },
     "nanoid": {
+      "optional": true
+    },
+    "playwright": {
       "optional": true
     },
     "rehype-raw": {
