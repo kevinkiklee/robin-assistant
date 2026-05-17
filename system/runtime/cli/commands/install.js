@@ -22,6 +22,7 @@ import { installHooksToSettings, validateRobinResolvable } from '../../install/h
 import { computeManifest, writeManifest } from '../../install/manifest.js';
 import { migrateHome } from '../../install/migrate-home.js';
 import { validateOllama } from '../../install/ollama-profile.js';
+import { seedRules } from '../../install/seed-rules.js';
 import { parseArgs } from '../args.js';
 import { radio } from '../prompts.js';
 import { mcpInstall } from './mcp-install.js';
@@ -207,6 +208,17 @@ async function applyMigrations({ connectFn, closeFn, onDbReady }) {
     const noun = applied.length === 1 ? 'migration' : 'migrations';
     const suffix = applied.length ? `: ${applied.join(', ')}` : '';
     console.log(`applied ${applied.length} ${noun}${suffix}`);
+    // Install authored seed rules (idempotent — safe on every upgrade).
+    try {
+      const seeded = await seedRules(db);
+      for (const r of seeded) {
+        if (r.action !== 'skipped') {
+          console.log(`seed rule ${r.ruleId}: ${r.action}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`seed rules failed (non-fatal): ${e.message}`);
+    }
     if (onDbReady) await onDbReady(db);
   } finally {
     await closeFn(db);
