@@ -17,6 +17,8 @@
  *
  * Pure module — no DB access here. Daemon wiring builds the buckets.
  */
+import { log } from '../log/index.js';
+
 export function createScheduler({ buckets } = {}) {
   if (!Array.isArray(buckets) || buckets.length === 0) {
     throw new Error('createScheduler: buckets[] is required');
@@ -36,14 +38,24 @@ export function createScheduler({ buckets } = {}) {
           try {
             ok = await b.gate();
           } catch (e) {
-            console.warn(`[scheduler/${b.name}] gate failed: ${e.message}`);
+            log.warn({
+              event: 'scheduler.gate_failed',
+              bucket: b.name,
+              message: e.message,
+              error: e.code ?? e.name,
+            });
             return;
           }
           if (!ok) return;
         }
         await b.tick();
       } catch (e) {
-        console.warn(`[scheduler/${b.name}] tick failed: ${e.message}`);
+        log.warn({
+          event: 'scheduler.tick_failed',
+          bucket: b.name,
+          message: e.message,
+          error: e.code ?? e.name,
+        });
       } finally {
         inFlight.delete(b.name);
       }

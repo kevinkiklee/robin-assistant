@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createScheduler } from '../../runtime/daemon/heartbeat.js';
+import { setSink } from '../../runtime/log/index.js';
 
 function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -95,9 +96,8 @@ test('gate returning false skips the tick', async () => {
 
 test('gate throw is caught and treated as skip', async () => {
   let called = 0;
-  const warnings = [];
-  const origWarn = console.warn;
-  console.warn = (...a) => warnings.push(a.join(' '));
+  const lines = [];
+  setSink((line) => lines.push(line));
   try {
     const sched = createScheduler({
       buckets: [
@@ -117,20 +117,20 @@ test('gate throw is caught and treated as skip', async () => {
     await wait(60);
     sched.stop();
     assert.equal(called, 0);
+    const parsed = lines.map((l) => JSON.parse(l));
     assert.ok(
-      warnings.some((w) => /scheduler\/gate-throws/.test(w)),
-      `expected scheduler/gate-throws warning, got: ${warnings.join('; ')}`,
+      parsed.some((e) => e.event === 'scheduler.gate_failed' && e.bucket === 'gate-throws'),
+      `expected scheduler.gate_failed event for gate-throws, got: ${lines.join('; ')}`,
     );
   } finally {
-    console.warn = origWarn;
+    setSink(null);
   }
 });
 
 test('tick throw is caught and logged; bucket continues', async () => {
   let called = 0;
-  const warnings = [];
-  const origWarn = console.warn;
-  console.warn = (...a) => warnings.push(a.join(' '));
+  const lines = [];
+  setSink((line) => lines.push(line));
   try {
     const sched = createScheduler({
       buckets: [
@@ -148,12 +148,13 @@ test('tick throw is caught and logged; bucket continues', async () => {
     await wait(80);
     sched.stop();
     assert.ok(called >= 2, `expected ≥ 2 ticks, got ${called}`);
+    const parsed = lines.map((l) => JSON.parse(l));
     assert.ok(
-      warnings.some((w) => /scheduler\/crash/.test(w)),
-      `expected scheduler/crash warning, got: ${warnings.join('; ')}`,
+      parsed.some((e) => e.event === 'scheduler.tick_failed' && e.bucket === 'crash'),
+      `expected scheduler.tick_failed event for crash, got: ${lines.join('; ')}`,
     );
   } finally {
-    console.warn = origWarn;
+    setSink(null);
   }
 });
 
