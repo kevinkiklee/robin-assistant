@@ -15,7 +15,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": null
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:b5451a3983194fa989ef89b93244db67",
+      "expected_rule_match": {
+        "score": 0.132,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260427-save-derived-insights-to-memory-automati",
@@ -25,7 +29,11 @@
         "task_type_hint": "turn:analyze",
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:iaok4g8e2wora1k6n43g",
+      "expected_rule_match": {
+        "score": 0.064,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260427-memory-lives-in-this-workspace-never-in-",
@@ -35,7 +43,11 @@
         "task_type_hint": "turn:analyze",
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:166ac1870dd3425dbf8ea991c6abb4d2",
+      "expected_rule_match": {
+        "score": 0.068,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260429-do-not-provide-summaries-of-code-changes",
@@ -45,7 +57,11 @@
         "task_type_hint": null,
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:375e687d932c458c948092a5aa0bc0d8",
+      "expected_rule_match": {
+        "score": 0.333,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260429-when-working-in-robin-assistant-look-in-",
@@ -55,7 +71,11 @@
         "task_type_hint": null,
         "antecedent_hint": "assistant-skipped-verification-step"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:086ace0bc62a4f058941a2a45d72adfb",
+      "expected_rule_match": {
+        "score": 0.069,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260430-discord-bot-must-not-send-unsolicited-st",
@@ -65,7 +85,11 @@
         "task_type_hint": "outbound:discord_send:send_dm",
         "antecedent_hint": null
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:07542390430b4e83904785e807fa9ef7",
+      "expected_rule_match": {
+        "score": 0.063,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260430-never-recommend-or-use-schedule-use-robi",
@@ -75,7 +99,11 @@
         "task_type_hint": "job:daily-briefing",
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:d1c8601dd1d043b7ae2262054934319d",
+      "expected_rule_match": {
+        "score": 0.094,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260430-re-read-claude-md-agents-md-before-editi",
@@ -85,7 +113,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": "assistant-skipped-verification-step"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:911f47c67b83474dabe2a441410c07a6",
+      "expected_rule_match": {
+        "score": 0.054,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260501-don-t-false-alarm-bug-found-before-check",
@@ -95,7 +127,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:98b7605fb42546fb8f7b8fb81ca4eb5e",
+      "expected_rule_match": {
+        "score": 0.052,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260501-use-mv-trash-not-rm-rf-for-cleanup-respe",
@@ -105,7 +141,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": null
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:d1c8601dd1d043b7ae2262054934319d",
+      "expected_rule_match": {
+        "score": 0.066,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260502-for-photo-gear-scenario-recommendations-",
@@ -115,7 +155,11 @@
         "task_type_hint": "turn:recommend",
         "antecedent_hint": "assistant-skipped-verification-step"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:cb9d0077ddf64a4795e5c0521d0134ad",
+      "expected_rule_match": {
+        "score": 0.102,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260502-check-memory-before-recommending-product",
@@ -125,7 +169,11 @@
         "task_type_hint": "turn:analyze",
         "antecedent_hint": "assistant-skipped-verification-step"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:iaok4g8e2wora1k6n43g",
+      "expected_rule_match": {
+        "score": 0.063,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260502-don-t-infer-identity-taste-or-behavior-f",
@@ -165,7 +213,11 @@
         "task_type_hint": null,
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:v1p4qmu6mbdt49i3dz8t",
+      "expected_rule_match": {
+        "score": 0.102,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260503-don-t-push-the-nikon-z-85mm-f-1-8-s-upgr",
@@ -175,7 +227,11 @@
         "task_type_hint": "turn:recommend",
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:ae2db4cbbacd40ae955eca379fa787ca",
+      "expected_rule_match": {
+        "score": 0.085,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260503-don-t-recommend-macro-lenses-or-70-200-z",
@@ -195,7 +251,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": "assistant-skipped-verification-step"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:v1p4qmu6mbdt49i3dz8t",
+      "expected_rule_match": {
+        "score": 0.057,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260503-don-t-pitch-high-megapixel-bodies-z-7-z-",
@@ -215,7 +275,11 @@
         "task_type_hint": null,
         "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:1c976fe056f64e3e80d3924a678de31a",
+      "expected_rule_match": {
+        "score": 0.079,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260506-product-recommendations-must-include-a-p",
@@ -225,7 +289,11 @@
         "task_type_hint": "turn:recommend",
         "antecedent_hint": null
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:710a6de1798f4cfeb8ca2483355f7e63",
+      "expected_rule_match": {
+        "score": 0.113,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260507-trigger-list-shorthand-evades-the-protoc",
@@ -235,7 +303,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": null
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:a2475d608b4048fda2731ba61abf4fae",
+      "expected_rule_match": {
+        "score": 0.107,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-corr-20260506-pull-memory-before-answering-personal-co",
@@ -245,7 +317,11 @@
         "task_type_hint": "turn:analyze",
         "antecedent_hint": null
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:a686c5601275462ca4ca1d8a8fef0f6c",
+      "expected_rule_match": {
+        "score": 0.062,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-quarantine-corr-202605021419583-0",
@@ -255,7 +331,11 @@
         "task_type_hint": "turn:analyze",
         "antecedent_hint": "missing-from-assistant-response"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:a6d1ecaea4d1478587e9d592e2aea332",
+      "expected_rule_match": {
+        "score": 0.057,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-quarantine-corr-202605021419583-1",
@@ -265,7 +345,11 @@
         "task_type_hint": "turn:analyze",
         "antecedent_hint": "missing-from-assistant-response"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:2f77ac5569154dc7b53730468ed5b801",
+      "expected_rule_match": {
+        "score": 0.095,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-quarantine-corr-202605021419583-2",
@@ -295,7 +379,11 @@
         "task_type_hint": "turn:execute_change",
         "antecedent_hint": "derived-from-assistant-output"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:45e1ec9ceeaf4ef2b713162da335d618",
+      "expected_rule_match": {
+        "score": 0.053,
+        "strategy": "jaccard+date"
+      }
     },
     {
       "id": "v1-quarantine-corr-202605071113428-5",
@@ -305,7 +393,18 @@
         "task_type_hint": "turn:recommend",
         "antecedent_hint": "missing-from-assistant-response"
       },
-      "expected_rule_id": null
+      "expected_rule_id": "rules:fda40a17a484431abead4a8e8a5f7be3",
+      "expected_rule_match": {
+        "score": 0.105,
+        "strategy": "jaccard+date"
+      }
     }
-  ]
+  ],
+  "tagging": {
+    "tagged_at": "2026-05-17T19:54:12.846Z",
+    "method": "jaccard token similarity + same-day boost",
+    "rules_considered": 315,
+    "fixtures_tagged": 23,
+    "fixtures_unmatched": 7
+  }
 }

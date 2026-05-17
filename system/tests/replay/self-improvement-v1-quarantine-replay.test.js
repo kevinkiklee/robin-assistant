@@ -102,8 +102,9 @@ test('runReplay with no-op reflection returns the corpus size', async () => {
   assert.equal(typeof result.corpus_size, 'number');
   assert.ok(result.corpus_size > 0, 'corpus_size should be positive');
   assert.equal(result.candidates.length, 0);
-  // No expected_rule_ids are set in the skeleton fixture, so recall_vs_known is null.
-  assert.equal(result.recall_vs_known, null);
+  // Tagged fixtures (tag-fixtures.mjs assigned expected_rule_id) → recall is
+  // numeric. No-op reflection → 0 recovery → 0 recall.
+  assert.equal(result.recall_vs_known, 0);
 });
 
 test('runReplay with null reflectionFn skips reflection gracefully', async () => {
@@ -135,13 +136,13 @@ test('corpus entries have required shape', async () => {
 
 test('recall_vs_known is correct when some candidates match known entries', async () => {
   const corpus = await loadCorpus();
-  // Artificially inject expected_rule_ids for two entries so the math is
-  // testable without a real DB.
+  // Build a synthetic corpus where exactly TWO entries carry expected_rule_id.
+  // (The real corpus has 23 tagged entries; the math test wants a controlled 2.)
   const [first, second] = corpus.entries;
   const patchedCorpus = {
     ...corpus,
     entries: corpus.entries.map((e, i) =>
-      i < 2 ? { ...e, expected_rule_id: `rules:test-${i}` } : e,
+      i < 2 ? { ...e, expected_rule_id: `rules:test-${i}` } : { ...e, expected_rule_id: null },
     ),
   };
 
@@ -295,14 +296,21 @@ test('runReplay with production reflectionFn: mechanical wiring returns corpus_s
   }
 });
 
-// 3-A-5 (reflection co-dim clustering) landed. The assertion now runs but
-// passes trivially because the v1-quarantine fixtures don't carry
-// expected_rule_id tags (all null). When a Wave 3-C follow-up tags the
-// fixtures, this becomes a real recall validation.
-test('runReplay recall_vs_known >= 0.80 against v1-quarantine corpus', async () => {
+// 3-A-5 (reflection co-dim clustering) landed AND the fixtures were tagged
+// (tag-fixtures.mjs assigns expected_rule_id by jaccard+date matching).
+//
+// The full ≥80% recall validation against the real reflection step requires
+// seeding the mem:// DB with the fixture corrections + their embeddings AND
+// using a non-stub embedder so semantic clustering actually works. The stub
+// embedder produces identical vectors only for identical content; the fixtures
+// are mostly long explanatory blobs that wouldn't cluster meaningfully under it.
+//
+// This test verifies the recall MATH against the now-tagged fixtures: a no-op
+// reflectionFn returns 0 candidates → 0 recall → the math correctly reports
+// 0.0 (not null). When a real-embedder reflection integration lands, the
+// assertion threshold can be raised to ≥0.80.
+test('runReplay recall_vs_known against tagged v1-quarantine corpus', async () => {
   const result = await runReplay(async () => ({ candidates: [] }));
-  assert.ok(
-    result.recall_vs_known == null || result.recall_vs_known >= 0.8,
-    `recall_vs_known ${result.recall_vs_known} should be >= 0.80`,
-  );
+  assert.equal(typeof result.recall_vs_known, 'number', 'fixtures are tagged → recall is numeric');
+  assert.equal(result.recall_vs_known, 0, 'no-op reflectionFn → 0 recall');
 });
