@@ -11,7 +11,9 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { getEffectiveContextCommStyle } from '../../cognition/dream/step-comm-style.js';
 import { getCommStyle } from '../../cognition/jobs/comm-style.js';
+import { resolveSessionContext } from '../../cognition/dream/comm-style-context-router.js';
 import { listAllJobs } from '../../cognition/jobs/db.js';
 import { getCalibration } from '../../cognition/jobs/predictions.js';
 import { ensureHome, getIntegrationDirs } from '../../config/data-store.js';
@@ -70,7 +72,9 @@ export async function readDbDataForAgentsMd() {
     const db = await connect({ engine: await defaultDbUrl() });
     try {
       const jobs = await listAllJobs(db);
-      const commStyle = await getCommStyle(db);
+      const ctx = resolveSessionContext();
+      const perContextStyle = await getEffectiveContextCommStyle(db, ctx);
+      const commStyle = perContextStyle ?? await getCommStyle(db);
       const calibration = await getCalibration(db);
       let intState = null;
       try {

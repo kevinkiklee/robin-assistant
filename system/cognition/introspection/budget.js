@@ -344,6 +344,12 @@ export async function autoTuneTurnSamplePct(db, cfg) {
   }
 
   // Compute antecedent_regex_fallback: true when remaining budget < 25%.
+  //
+  // FUTURE HOOK (spec 3-B-2): This flag is written here but has no reader yet.
+  // correction-inference.js is currently pure-structural (regex only; no Haiku
+  // call). When antecedent verification is upgraded to Haiku, the inference
+  // module should read this flag and skip the Haiku call when it is true,
+  // falling back to pure-regex matching. Until then the flag is a no-op write.
   let antecedentRegexFallback = false;
   try {
     const state = await readBudgetState(db);
