@@ -275,7 +275,10 @@ async function _tryInlineGrade(db, row, taskType, host, cfg, state) {
     return null;
   }
 
-  let actualCost = estimatedCost;
+  // Start at 0; only ratchet up on the success path. This way an LLM throw
+  // → finally → recordActualCost(0, estimatedCost) → delta = -estimatedCost
+  // → reserved budget refunded.
+  let actualCost = 0;
   try {
     // Fetch supporting data for the prompt.
     const playbook = taskType ? await fetchActivePlaybook(db, taskType).catch(() => null) : null;
