@@ -15,12 +15,18 @@
 // To add a per-integration invariant: drop a `default`-exporting `.js` file into
 // `<integration_dir>/invariants/`. It is auto-discovered after the integration's
 // manifest is loaded.
+//
+// Invariant shape (additive fields, Phase A polish — A.4):
+//   - remediation: string | string[]  — OPTIONAL. Per-symptom remediation hint(s),
+//     consumed by `robin doctor`'s runbook emitter. Phase B will tighten to
+//     required + backfill all existing invariants. Phase A only opens the door.
 
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getIntegrationDirs } from '../../config/data-store.js';
 import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
+import daemonEmbedderLoadAge from './daemon.embedder-load-age.js';
 import daemonHeartbeating from './daemon.heartbeating.js';
 import dbAuthenticated from './db.authenticated.js';
 import dbDaemonReachable from './db.daemon-reachable.js';
@@ -61,6 +67,7 @@ export const INVARIANTS = [
   runtimeNodeVersionPinned,
   runtimeNoOrphanNodeTestProcs,
   schedulerNoStuckInFlight,
+  daemonEmbedderLoadAge,
   // meta
   daemonHeartbeating,
 ];
