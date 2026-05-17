@@ -1,0 +1,141 @@
+// dream-self-improvement-stubs.test.js — Phase 1 gating + DAG sanity for v2 steps.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { DREAM_DAG_DEPS } from '../../cognition/dream/dag.js';
+import { byName } from '../../cognition/dream/step-registry.js';
+import { dreamStepCalibrationBucket } from '../../cognition/dream/step-calibration-bucket.js';
+import { dreamStepOutcomeGrading } from '../../cognition/dream/step-outcome-grading.js';
+import { dreamStepPlaybookSynthesis } from '../../cognition/dream/step-playbook-synthesis.js';
+import { dreamStepPredictionTaxonomy } from '../../cognition/dream/step-prediction-taxonomy.js';
+import { dreamStepSelfImprovementRollup } from '../../cognition/dream/step-self-improvement-rollup.js';
+
+// ---------------------------------------------------------------------------
+// Minimal stub DB: flag off by default, override with enabledDb.
+// ---------------------------------------------------------------------------
+function makeDb(enabled = false) {
+  return {
+    query: () => ({
+      collect: async () => [enabled ? [{ enabled: true }] : []],
+    }),
+  };
+}
+
+const disabledDb = makeDb(false);
+const enabledDb = makeDb(true);
+
+// ---------------------------------------------------------------------------
+// flag=false → v2_not_enabled
+// ---------------------------------------------------------------------------
+
+test('outcomeGrading: flag off → skipped v2_not_enabled', async () => {
+  const r = await dreamStepOutcomeGrading(disabledDb, null, null, {});
+  assert.deepEqual(r, { skipped: true, reason: 'v2_not_enabled', step: 'outcomeGrading' });
+});
+
+test('playbookSynthesis: flag off → skipped v2_not_enabled', async () => {
+  const r = await dreamStepPlaybookSynthesis(disabledDb, null, {});
+  assert.deepEqual(r, { skipped: true, reason: 'v2_not_enabled', step: 'playbookSynthesis' });
+});
+
+test('calibrationBucket: flag off → skipped v2_not_enabled', async () => {
+  const r = await dreamStepCalibrationBucket(disabledDb);
+  assert.deepEqual(r, { skipped: true, reason: 'v2_not_enabled', step: 'calibrationBucket' });
+});
+
+test('predictionTaxonomy: flag off → skipped v2_not_enabled', async () => {
+  const r = await dreamStepPredictionTaxonomy(disabledDb, null);
+  assert.deepEqual(r, { skipped: true, reason: 'v2_not_enabled', step: 'predictionTaxonomy' });
+});
+
+test('selfImprovementRollup: flag off → skipped v2_not_enabled', async () => {
+  const r = await dreamStepSelfImprovementRollup(disabledDb);
+  assert.deepEqual(r, { skipped: true, reason: 'v2_not_enabled', step: 'selfImprovementRollup' });
+});
+
+// ---------------------------------------------------------------------------
+// flag=true → phase_1_stub (Wave 3 not yet implemented)
+// ---------------------------------------------------------------------------
+
+test('outcomeGrading: flag on → skipped phase_1_stub', async () => {
+  const r = await dreamStepOutcomeGrading(enabledDb, null, null, {});
+  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'outcomeGrading' });
+});
+
+test('playbookSynthesis: flag on → skipped phase_1_stub', async () => {
+  const r = await dreamStepPlaybookSynthesis(enabledDb, null, {});
+  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'playbookSynthesis' });
+});
+
+test('calibrationBucket: flag on → skipped phase_1_stub', async () => {
+  const r = await dreamStepCalibrationBucket(enabledDb);
+  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'calibrationBucket' });
+});
+
+test('predictionTaxonomy: flag on → skipped phase_1_stub', async () => {
+  const r = await dreamStepPredictionTaxonomy(enabledDb, null);
+  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'predictionTaxonomy' });
+});
+
+test('selfImprovementRollup: flag on → skipped phase_1_stub', async () => {
+  const r = await dreamStepSelfImprovementRollup(enabledDb);
+  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'selfImprovementRollup' });
+});
+
+// ---------------------------------------------------------------------------
+// DAG topology — no cycles, new keys present
+// ---------------------------------------------------------------------------
+
+test('DREAM_DAG_DEPS topological sort is cycle-free with new v2 keys', async () => {
+  const { topoLayers } = await import('../../cognition/dream/scheduler.js');
+  // Should not throw.
+  const layers = topoLayers(byName, DREAM_DAG_DEPS);
+  assert.ok(Array.isArray(layers) && layers.length > 0, 'expected at least one layer');
+});
+
+test('DREAM_DAG_DEPS contains all 5 new v2 step keys', () => {
+  const v2Keys = [
+    'outcomeGrading',
+    'playbookSynthesis',
+    'calibrationBucket',
+    'predictionTaxonomy',
+    'selfImprovementRollup',
+  ];
+  for (const k of v2Keys) {
+    assert.ok(k in DREAM_DAG_DEPS, `missing key in DREAM_DAG_DEPS: ${k}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// step-registry byName — all 5 new entries present and callable
+// ---------------------------------------------------------------------------
+
+test('byName has entries for all 5 new v2 step keys', () => {
+  const v2Keys = [
+    'outcomeGrading',
+    'playbookSynthesis',
+    'calibrationBucket',
+    'predictionTaxonomy',
+    'selfImprovementRollup',
+  ];
+  for (const k of v2Keys) {
+    assert.ok(k in byName, `missing key in byName: ${k}`);
+    assert.equal(typeof byName[k], 'function', `byName.${k} should be a function`);
+  }
+});
+
+test('byName v2 entries forward to correct step functions (resolve to skipped under disabled db)', async () => {
+  const ctx = { db: disabledDb, host: null, embedder: null, opts: {} };
+  const v2Keys = [
+    'outcomeGrading',
+    'playbookSynthesis',
+    'calibrationBucket',
+    'predictionTaxonomy',
+    'selfImprovementRollup',
+  ];
+  for (const k of v2Keys) {
+    const r = await byName[k](ctx);
+    assert.equal(r.skipped, true, `byName.${k} should skip when flag is off`);
+    assert.equal(r.reason, 'v2_not_enabled', `byName.${k} should report v2_not_enabled`);
+    assert.equal(r.step, k, `byName.${k} should report step: '${k}'`);
+  }
+});

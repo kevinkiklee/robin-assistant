@@ -23,6 +23,12 @@ test('expected camelCase keys are present', () => {
     'scopeCleanup',
     'calibration',
     'compaction',
+    // v2 self-improvement stubs (Phase 1, gated on runtime:self-improvement-v2)
+    'outcomeGrading',
+    'playbookSynthesis',
+    'calibrationBucket',
+    'predictionTaxonomy',
+    'selfImprovementRollup',
   ].sort();
   assert.deepEqual(Object.keys(DREAM_DAG_DEPS).sort(), expected);
   assert.deepEqual(Object.keys(byName).sort(), expected);
@@ -37,21 +43,27 @@ test('every dep edge references a known step', () => {
   }
 });
 
-test('topoLayers(byName, DREAM_DAG_DEPS) returns three layers with expected membership', async () => {
+test('topoLayers(byName, DREAM_DAG_DEPS) returns layers with expected membership', async () => {
   const { topoLayers } = await import('../../cognition/dream/scheduler.js');
   const layers = topoLayers(byName, DREAM_DAG_DEPS);
-  assert.equal(layers.length, 3);
-  // Layer 1: knowledge, patterns, reflection, profile, arcs, commStyle
+  // Layer 1: all zero-dep steps
   assert.deepEqual([...layers[0]].sort(), [
     'arcs',
+    'calibrationBucket',
     'commStyle',
     'knowledge',
+    'outcomeGrading',
     'patterns',
+    'predictionTaxonomy',
     'profile',
     'reflection',
   ]);
-  // Layer 2: scopeCleanup, calibration
-  assert.deepEqual([...layers[1]].sort(), ['calibration', 'scopeCleanup']);
-  // Layer 3: compaction
-  assert.deepEqual([...layers[2]].sort(), ['compaction']);
+  // Layer 2: steps that depend only on L1 steps
+  assert.deepEqual([...layers[1]].sort(), [
+    'calibration',
+    'playbookSynthesis',
+    'scopeCleanup',
+  ]);
+  // Layer 3: steps that depend on L2 steps
+  assert.deepEqual([...layers[2]].sort(), ['compaction', 'selfImprovementRollup']);
 });
