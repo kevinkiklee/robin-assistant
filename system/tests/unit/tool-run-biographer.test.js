@@ -25,7 +25,7 @@ async function fresh() {
   return db;
 }
 
-test('run_biographer processes pending events via injected processor', async () => {
+test('run_biographer enqueues pending events via injected processor', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'a' });
@@ -36,8 +36,7 @@ test('run_biographer processes pending events via injected processor', async () 
   };
   const tool = createRunBiographerTool({ db, processor });
   const result = await tool.handler({ scope: 'pending', limit: 50 });
-  assert.equal(result.processed, 2);
-  assert.equal(result.failed, 0);
+  assert.equal(result.enqueued, 2);
   assert.equal(processed.length, 2);
   await close(db);
 });
@@ -52,11 +51,11 @@ test('run_biographer respects limit', async () => {
   };
   const tool = createRunBiographerTool({ db, processor });
   const result = await tool.handler({ scope: 'pending', limit: 3 });
-  assert.equal(result.processed, 3);
+  assert.equal(result.enqueued, 3);
   await close(db);
 });
 
-test('run_biographer reports failures with failed_event_ids', async () => {
+test('run_biographer does not throw when processor rejects (fire-and-forget)', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
   await recordEvent(db, e, { source: 'cli', content: 'fail-me' });
@@ -65,8 +64,6 @@ test('run_biographer reports failures with failed_event_ids', async () => {
   };
   const tool = createRunBiographerTool({ db, processor });
   const result = await tool.handler({ scope: 'pending', limit: 1 });
-  assert.equal(result.processed, 0);
-  assert.equal(result.failed, 1);
-  assert.ok(Array.isArray(result.failed_event_ids));
+  assert.equal(result.enqueued, 1);
   await close(db);
 });

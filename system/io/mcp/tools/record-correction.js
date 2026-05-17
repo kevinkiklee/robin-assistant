@@ -54,11 +54,9 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         meta,
         guard: guardInboundContent,
       });
-      try {
-        await processor(result.id);
-      } catch (e) {
-        console.error(`record_correction biographer failed: ${e.message}`);
-      }
+      processor(result.id).catch((e) =>
+        console.warn(`[record_correction] biographer enqueue failed for ${result.id}: ${e.message}`),
+      );
       let demoted_class = null;
       if (args.tool && args.action) {
         const cls = `${args.tool}:${args.action}`;

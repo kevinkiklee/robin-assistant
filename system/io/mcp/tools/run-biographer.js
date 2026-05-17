@@ -4,7 +4,7 @@ export function createRunBiographerTool({ db, processor }) {
   return {
     name: 'run_biographer',
     description:
-      'Process pending events through the biographer pipeline. Normally automatic; call only when user explicitly asks.',
+      'Enqueue pending events for the biographer pipeline (fire-and-forget). Returns immediately with the enqueued count; processing happens in the background. Normally automatic; call only when user explicitly asks. Check progress via health().biographer_queue_depth.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -33,23 +33,15 @@ export function createRunBiographerTool({ db, processor }) {
         const rows = await listPendingEvents(db, { limit });
         pendingIds = rows.map((r) => r.id);
       }
-      let processed = 0;
-      let failed = 0;
-      const failedIds = [];
-      for (const id of pendingIds.slice(0, limit)) {
-        try {
-          await processor(id);
-          processed++;
-        } catch {
-          failed++;
-          failedIds.push(String(id));
-        }
+      const ids = pendingIds.slice(0, limit);
+      let enqueued = 0;
+      for (const id of ids) {
+        processor(id).catch((e) =>
+          console.warn(`[run_biographer] enqueue failed for ${id}: ${e.message}`),
+        );
+        enqueued++;
       }
-      return {
-        processed,
-        failed,
-        ...(failedIds.length ? { failed_event_ids: failedIds } : {}),
-      };
+      return { enqueued };
     },
   };
 }
