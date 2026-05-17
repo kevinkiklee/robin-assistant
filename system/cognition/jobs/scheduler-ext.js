@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { log } from '../../runtime/log/index.js';
 import { expectedIntervalMs, nextFire, parseCron } from './cron.js';
 import { getJob, recordFailure, recordSuccess, setNextRunAt } from './db.js';
 
@@ -38,7 +39,12 @@ export function withRuntimeJobsTracking(db, name, intervalMs, fn) {
       } catch (e) {
         // Tracking is best-effort. A failed write must not turn a successful
         // tick into a failure — log and continue.
-        console.warn(`[scheduler/${name}] tracking write failed: ${e.message}`);
+        log.warn({
+          event: 'scheduler.tracking_write_failed',
+          job: name,
+          message: e.message,
+          error: e.code ?? e.name,
+        });
       }
       return out;
     } catch (e) {
@@ -47,7 +53,12 @@ export function withRuntimeJobsTracking(db, name, intervalMs, fn) {
       try {
         await recordFailure(db, name, { error: e.message, duration_ms, next_run_at });
       } catch (te) {
-        console.warn(`[scheduler/${name}] tracking write failed: ${te.message}`);
+        log.warn({
+          event: 'scheduler.tracking_write_failed',
+          job: name,
+          message: te.message,
+          error: te.code ?? te.name,
+        });
       }
       throw e;
     }
@@ -62,7 +73,13 @@ export async function planNextRunAt(db, jobs, now = new Date()) {
     try {
       parsed = parseCron(j.schedule);
     } catch (e) {
-      console.warn(`[jobs] ${j.name}: bad schedule '${j.schedule}': ${e.message}`);
+      log.warn({
+        event: 'jobs.bad_schedule',
+        job: j.name,
+        schedule: j.schedule,
+        message: e.message,
+        error: e.code ?? e.name,
+      });
       continue;
     }
 
