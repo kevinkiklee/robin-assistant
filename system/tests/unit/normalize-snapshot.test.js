@@ -14,6 +14,18 @@ test('normalize replaces surreal record ids with <ID>', () => {
   assert.strictEqual(out, 'fetched events:<ID> and events:<ID>');
 });
 
+test('normalize does not match URL fragments or inner words', () => {
+  const inputs = [
+    'http://localhost:8000/foo',
+    'tcp:localhost',
+    'my_table:id_value',
+  ];
+  for (const input of inputs) {
+    const out = normalize(input);
+    assert.strictEqual(out, input, `should not transform: ${input}`);
+  }
+});
+
 test('normalize replaces pids', () => {
   const input = 'pid=12345 running; pid=9 idle';
   const out = normalize(input);
