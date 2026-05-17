@@ -148,22 +148,31 @@ export function writePointer({ home, installedBy }) {
     installedBy: installedBy ?? 'unknown',
   };
   const loc = pointerLocation();
-  const target = typeof loc.write === 'string' ? loc.write : loc.write.primary;
+  if (typeof loc.write === 'string') {
+    mkdirSync(dirname(loc.write), { recursive: true });
+    writePointerAtomic(loc.write, payload);
+    return;
+  }
+  // Write BOTH pointer locations when both are writable. install.pointer_present
+  // invariant treats divergence as a failure; a single-location write leaves
+  // the system one delete away from "Robin is not installed" because the
+  // fallback was never populated. Writing both creates the redundancy the
+  // runbook assumes already exists.
+  let primaryWrote = false;
   try {
-    mkdirSync(dirname(target), { recursive: true });
-    writePointerAtomic(target, payload);
+    mkdirSync(dirname(loc.write.primary), { recursive: true });
+    writePointerAtomic(loc.write.primary, payload);
+    primaryWrote = true;
   } catch (e) {
-    if (
-      typeof loc.write === 'object' &&
-      (e.code === 'EACCES' || e.code === 'EROFS' || e.code === 'ENOENT')
-    ) {
-      // Package root is not writable (e.g. npm i -g into a system path).
-      // Fall back to the OS-native user-config location.
-      mkdirSync(dirname(loc.write.fallback), { recursive: true });
-      writePointerAtomic(loc.write.fallback, payload);
-      return;
-    }
-    throw e;
+    if (e.code !== 'EACCES' && e.code !== 'EROFS' && e.code !== 'ENOENT') throw e;
+    // Primary is read-only (e.g. npm i -g into a system path). Fall through.
+  }
+  try {
+    mkdirSync(dirname(loc.write.fallback), { recursive: true });
+    writePointerAtomic(loc.write.fallback, payload);
+  } catch (e) {
+    if (primaryWrote) return; // Primary succeeded; fallback failure is non-fatal.
+    throw e; // Both failed.
   }
 }
 
@@ -238,7 +247,6 @@ export const paths = {
 
     // Runtime realm.
     logs: () => join(robinHome(), 'runtime', 'logs'),
-    daemonStatus: () => join(robinHome(), 'runtime', 'daemon', 'status.json'),
     daemonPid: () => join(robinHome(), 'runtime', 'daemon', '.pid'),
     daemonState: () => join(robinHome(), 'runtime', 'daemon', '.state'),
     // `.daemon.lock` is the *embedded-DB writer-serialization* lock, held
@@ -320,7 +328,7 @@ export async function ensureHome() {
     paths.data.db(),
     paths.data.snapshots(),
     paths.data.logs(),
-    dirname(paths.data.daemonStatus()), // runtime/daemon/
+    dirname(paths.data.daemonPid()), // runtime/daemon/
     dirname(paths.data.manifest()), // runtime/install/
     paths.data.installReports(),
   ]) {

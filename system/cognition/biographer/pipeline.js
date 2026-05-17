@@ -671,12 +671,18 @@ async function _processOne(db, embedder, host, eventId, opts = {}) {
     await recordFailure(db, eventId, e);
     throw e;
   }
-  // 4. Validate output
+  // 4. Validate output. The coercing validator drops bad rows and surfaces
+  // warnings; we only hard-fail on structural problems (e.g. non-object
+  // response). This raised per-event success substantially over the legacy
+  // strict-fail behavior — a stray edge type used to kill the whole event.
   let output;
   try {
     output = parseLLMJSON(response.content);
     const validation = validateBiographerOutput(output);
     if (!validation.ok) throw new Error(`validation failed: ${validation.error}`);
+    if (validation.warnings?.length) {
+      console.warn(`biographer per-event ${eventId}: ${validation.warnings.length} coercions`);
+    }
   } catch (e) {
     await recordFailure(db, eventId, e);
     throw new Error(`biographer LLM returned malformed JSON: ${e.message}`);

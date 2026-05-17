@@ -99,7 +99,6 @@ test('paths.data is under robinHome()', () => {
       'marker',
       'installReports',
       'sqliteSnapshots',
-      'daemonStatus',
       'manifest',
       'publishIndex',
       'reinforcementLastRun',

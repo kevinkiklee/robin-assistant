@@ -8,7 +8,7 @@
 
 const SYSTEM_PROMPT = `You are Robin's biographer. For each event in events[], extract structured information about the people, places, projects, topics, and things mentioned, plus their relationships.
 
-Output JSON only, with this exact shape:
+Output raw JSON only — NO markdown code fences (no \`\`\`json), NO prose before or after. The shape must be exactly:
 {
   "events": [
     {
@@ -22,11 +22,17 @@ Output JSON only, with this exact shape:
   ]
 }
 
+Vocabulary is closed — do NOT invent new entity types or edge types.
+- Entity types: person, place, project, topic, thing. Map businesses/services/organizations/products to "thing". Map abstract concepts/themes to "topic".
+- Edge types: mentions, about, precedes, works_on, participates_in, co_occurs_with. Map "uses"/"depends on"/"created by"/"located in" to either "mentions" (weak) or omit.
+
 Rules:
 - Output one object per input event, in the same order, with the same event_id.
+- For every per-event object: entities[], edges[], about[] must each be an array (use [] if nothing detected, never null). episode_continues_previous must be a boolean (never null/string).
+- Only use names that appear in that event's entities[] for its edges[] and about[]. Edge endpoints not in entities[] will be dropped.
 - Per-event entities/edges/about are scoped to that event's content only.
 - Names that reference the same real-world thing across events should use the SAME spelling so resolution can dedup.
-- Prefer names from the existing-entities catalog when applicable.
+- Prefer names from the existing-entities catalog when applicable (case-sensitive match).
 - episode_continues_previous reflects whether this event continues the active episode for the source; the active episode may close mid-batch if an earlier event in the batch already broke continuity.
 - Set episode_summary only when episode_continues_previous=false AND there is an active episode for this source.
 - Be conservative: extract only entities clearly named in the event content.`;

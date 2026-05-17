@@ -2,6 +2,26 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseCadence } from './cadence.js';
 
+// `loadManifests` runs every time the invariants runner ticks (heartbeat
+// reloads per-integration invariants via the manifest scan). Without
+// per-process dedupe, the same "integration X: skipped — env required"
+// warning fires on every tick and floods daemon.log. Track which
+// (warning-key) we have already emitted so each warning surfaces once per
+// daemon lifetime — long enough to be noticed, short enough to be cleared
+// by a restart.
+const _warnedOnce = new Set();
+function warnOnce(key, message) {
+  if (_warnedOnce.has(key)) return;
+  _warnedOnce.add(key);
+  console.warn(message);
+}
+
+// Test seam — lets unit tests reset the dedupe set without resetting the
+// whole module graph.
+export function _resetManifestLoaderWarnings() {
+  _warnedOnce.clear();
+}
+
 const VALID_AUTH_KINDS = new Set(['oauth2-google', 'api-key', 'discord-bot']);
 const VALID_CAPTURE_MODES = new Set(['insert-or-skip', 'upsert']);
 
@@ -98,7 +118,7 @@ export async function loadManifests(dirs) {
         // Invalid / failed-to-import manifests: skip silently with a warning.
         // Distinct from `unavailable` (which is reserved for valid manifests
         // whose preflight failed because their local data source is absent).
-        console.warn(`integration ${ent.name}: ${e.message}`);
+        warnOnce(`invalid:${ent.name}:${e.message}`, `integration ${ent.name}: ${e.message}`);
         continue;
       }
       validated._source = source;
@@ -108,13 +128,17 @@ export async function loadManifests(dirs) {
           await validated.preflight();
         } catch (e) {
           unavailable.push({ name: validated.name, error: e.message, source });
-          console.warn(`integration ${validated.name}: skipped — ${e.message}`);
+          warnOnce(
+            `skipped:${validated.name}:${e.message}`,
+            `integration ${validated.name}: skipped — ${e.message}`,
+          );
           continue;
         }
       }
       const prev = seen.get(validated.name);
       if (prev !== undefined) {
-        console.warn(
+        warnOnce(
+          `collision:${validated.name}:${source}`,
           `integration ${validated.name}: collision (already in ${loaded[prev]._source}); using ${source}`,
         );
         loaded[prev] = validated; // last-write wins; iteration is system → user-data, so user-data wins

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import {
+  _resetManifestLoaderWarnings,
   loadManifests,
   validateManifest,
 } from '../../io/integrations/_framework/manifest-loader.js';
@@ -75,4 +78,43 @@ test('loadManifests returns { loaded, unavailable } (smoke against real integrat
   const r = await loadManifests(integrationsDir);
   assert.ok(Array.isArray(r.loaded));
   assert.ok(Array.isArray(r.unavailable));
+});
+
+test('loadManifests warns only once per (integration, error) across repeated calls', async (t) => {
+  // Heartbeat-driven invariants re-scan manifest dirs every tick. Without
+  // dedupe, the same "integration X: skipped — env required" warning fires
+  // every tick — 478 lines in 4 days of real daemon.log. This guards the fix.
+  _resetManifestLoaderWarnings();
+  const root = mkdtempSync(join(tmpdir(), 'robin-manifest-warn-'));
+  const intDir = join(root, 'broken_int');
+  mkdirSync(intDir, { recursive: true });
+  writeFileSync(
+    join(intDir, 'manifest.js'),
+    [
+      "export const manifest = {",
+      "  name: 'broken_int',",
+      "  cadence: '1h',",
+      "  auth: { kind: 'api-key' },",
+      "  tools: [],",
+      "  sync: async () => ({}),",
+      "  preflight: () => { throw new Error('missing env BROKEN_KEY'); },",
+      "};",
+      "",
+    ].join('\n'),
+  );
+
+  const calls = [];
+  const origWarn = console.warn;
+  console.warn = (m) => calls.push(m);
+  t.after(() => {
+    console.warn = origWarn;
+    _resetManifestLoaderWarnings();
+  });
+
+  await loadManifests(root);
+  await loadManifests(root);
+  await loadManifests(root);
+
+  const skipped = calls.filter((m) => m.includes('broken_int: skipped'));
+  assert.equal(skipped.length, 1, `expected one skipped warning, got: ${skipped.length}`);
 });

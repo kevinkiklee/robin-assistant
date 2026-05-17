@@ -34,8 +34,14 @@ async function readActiveProfile(db) {
 }
 
 async function tableInfo(db, tableName) {
+  // INFO FOR TABLE returns a single info object (`{events, fields, indexes, …}`),
+  // not an array — the destructure unwraps the per-statement result, so `rows`
+  // IS the object. Treat presence of any `fields` key as "table exists";
+  // SurrealDB returns an empty object for unknown tables on some versions.
   const [rows] = await db.query(`INFO FOR TABLE ${tableName};`).collect();
-  return rows?.[0] ?? null;
+  if (!rows || typeof rows !== 'object') return null;
+  if (rows.fields && Object.keys(rows.fields).length > 0) return rows;
+  return null;
 }
 
 export default {

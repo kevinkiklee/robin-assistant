@@ -91,19 +91,40 @@ test('scheduler.no_stuck_in_flight passes when no stuck jobs', async () => {
   }
 });
 
-test('db.embedder_profile_match returns no_active_profile on fresh db', async () => {
+test('db.embedder_profile_match passes after migrations seed runtime:embedder', async () => {
+  // Migration 0002 sets runtime:embedder.value.active_profile = 'mxbai-1024'
+  // and creates the embeddings_mxbai_1024_events table. The invariant should
+  // recognize both and pass on a freshly migrated DB.
   const db = await fresh();
   try {
     const r = await dbEmbedderProfileMatch.check(makeTestCtx({ db }));
-    // Fresh DB → no runtime:embedder row → no active profile
+    assert.equal(r.ok, true, `expected ok, got error=${r.error}`);
+    assert.equal(r.evidence?.profile, 'mxbai-1024');
+    assert.equal(r.evidence?.expected_dimension, 1024);
+    assert.equal(r.evidence?.table, 'embeddings_mxbai_1024_events');
+  } finally {
+    await close(db);
+  }
+});
+
+test('db.embedder_profile_match table_missing fires when active_profile points at non-existent table', async () => {
+  // Regression: INFO FOR TABLE returns a single info object, not an array. An
+  // earlier implementation destructured `rows?.[0]` and always saw `undefined`,
+  // raising a spurious `table_missing` even when the table held thousands of
+  // rows. After the fix, table_missing should only fire when the table truly
+  // is missing — like when active_profile is flipped to a profile whose
+  // migration hasn't run.
+  const db = await fresh();
+  try {
+    await db
+      .query(
+        "UPDATE runtime:embedder CONTENT { value: { active_profile: 'bge-768', read_profile: 'bge-768', available_profiles: ['bge-768'], dimension: 768, applied_at: time::now() } }",
+      )
+      .collect();
+    const r = await dbEmbedderProfileMatch.check(makeTestCtx({ db }));
     assert.equal(r.ok, false);
-    // Either 'no_active_profile' or a read error — both indicate unconfigured state
-    assert.ok(
-      ['no_active_profile', 'read_active_profile_failed', 'table_missing'].some((e) =>
-        r.error?.startsWith(e),
-      ) || r.error.includes('failed'),
-      `unexpected error: ${r.error}`,
-    );
+    assert.equal(r.error, 'table_missing');
+    assert.equal(r.evidence?.table, 'embeddings_bge_768_events');
   } finally {
     await close(db);
   }

@@ -40,6 +40,12 @@ export function validateBiographerBatchOutput(o, expectedIds) {
       malformed.push({ event_id: id, error: v.error });
       continue;
     }
+    // Coercing validator may have surfaced warnings while keeping the event.
+    // Roll the count into the result so the caller can decide whether to
+    // log; we don't reject otherwise-valid entries because of stray vocab.
+    if (v.warnings?.length) {
+      entry._biographer_warnings = v.warnings;
+    }
     events.set(id, entry);
   }
   const seen = new Set(events.keys());
