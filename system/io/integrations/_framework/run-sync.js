@@ -1,5 +1,6 @@
 import { surql } from 'surrealdb';
 import { requireSecret, saveSecret } from '../../../config/secrets.js';
+import { log } from '../../../runtime/log/index.js';
 
 const BACKOFF_THRESHOLD = 3;
 const BACKOFF_MAX_MS = 24 * 3_600_000;
@@ -176,7 +177,12 @@ export async function runIntegrationSync(db, registry, name, { manual = false } 
           next_run_at: new Date(Date.now() + cur.cadence_ms),
         });
       } catch (cleanupErr) {
-        console.warn(`[integrations:${name}] finally-cleanup failed: ${cleanupErr.message}`);
+        log.warn({
+          event: 'integration.sync_cleanup_failed',
+          integration: name,
+          message: cleanupErr.message,
+          error: cleanupErr.code ?? cleanupErr.name,
+        });
       }
     }
   }
