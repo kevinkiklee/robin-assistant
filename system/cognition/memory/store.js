@@ -28,7 +28,7 @@ import {
 } from './edge-registry.js';
 import { MEMO_KIND_REGISTRY, validateAttachment, validateMemoKind } from './kind-registry.js';
 import { persistentScopesSqlFilter, validateScope } from './scope-registry.js';
-import { isTxConflict, withTxRetry } from './tx.js';
+import { awaitTxBackoff, isTxConflict, withTxRetry } from './tx.js';
 
 const PERSISTENT_SCOPES_FILTER = persistentScopesSqlFilter();
 
@@ -306,8 +306,6 @@ const RELATE_CHUNK = 50;
 // 2 retries with jittered backoff resolves the common race-on-same-edge case
 // without amplifying latency on terminal errors.
 const TX_CONFLICT_MAX_RETRIES = 2;
-const TX_BASE_BACKOFF_MS = 5;
-const TX_JITTER_MS = 10;
 export async function relateAll(db, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { ids: [] };
   // Pre-filter invalid edges (self-loops, unknown kinds, wrong endpoint tables)
@@ -396,9 +394,7 @@ export async function relateAll(db, rows) {
       } catch (e) {
         sliceErr = e;
         if (!isTxConflict(e)) break;
-        await new Promise((r) =>
-          setTimeout(r, TX_BASE_BACKOFF_MS + Math.floor(Math.random() * TX_JITTER_MS)),
-        );
+        await awaitTxBackoff();
       }
     }
     if (sliceErr) {
