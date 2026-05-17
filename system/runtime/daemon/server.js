@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { startIntrospection, stopIntrospection } from '../../cognition/introspection/index.js';
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
 import {
@@ -150,6 +151,17 @@ export async function startDaemon() {
     });
     await scheduler.start();
 
+    // Introspection faculty — polls task_close_queue on a 1-min tick, runs
+    // structural outcome inference (Phase 1), and writes task_outcome memos.
+    // Gated on runtime:self-improvement-v2.value.enabled (default false), so
+    // start() is a no-op on a fresh install.  Fail-soft: a boot failure here
+    // logs but does not abort the daemon.
+    try {
+      await startIntrospection({ db: ctx.db });
+    } catch (e) {
+      console.warn(`[introspection] faculty start failed (non-fatal): ${e.message}`);
+    }
+
     // One-shot boot-time invariants run. Skipped when flag is false.
     // Failures here log but do not abort daemon boot — the heartbeat bucket
     // catches the same condition on the next tick.
@@ -189,6 +201,14 @@ export async function startDaemon() {
       hotReload,
       integrations: {
         stop: async () => {
+          // Introspection faculty stop (sibling to biographer, dream, intuition).
+          // Stopped here — after scheduler drain — so any in-flight drain tick
+          // completes before we close timers and DB.
+          try {
+            await stopIntrospection();
+          } catch (e) {
+            console.warn(`[introspection] stop failed: ${e.message}`);
+          }
           for (const [name, client] of ctx.gatewayClients) {
             const m = ctx.registry.get(name);
             if (m?.stop) {
