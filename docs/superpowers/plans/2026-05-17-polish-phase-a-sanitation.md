@@ -118,6 +118,16 @@ See `docs/superpowers/notes/2026-05-17-polish-phase-a-log-baseline.md`
 | File | Finding | Suggested fix |
 |---|---|---|
 
+## Open for prompt-injection lane
+
+(Authorized by the user's "path 3" decision at execution time: a third lane —
+prompt-injection hardening — was discovered active on main after the spec/plan
+were committed. Phase A defers any files that lane is actively modifying; findings
+against them file here for that lane to triage.)
+
+| File | Finding | Suggested fix |
+|---|---|---|
+
 ## Open for user
 
 | Item | Question | Recommended action |
@@ -129,6 +139,8 @@ See `docs/superpowers/notes/2026-05-17-polish-phase-a-log-baseline.md`
 |---|---|
 
 ## Bridge to Phase B
+
+_Priority enum: `high` (blocker for Phase B) / `med` (do early) / `low` (do later)._
 
 | Phase B target | Type | Provenance | Priority |
 |---|---|---|---|

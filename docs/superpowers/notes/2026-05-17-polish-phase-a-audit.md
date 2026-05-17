@@ -73,5 +73,7 @@ See `docs/superpowers/notes/2026-05-17-polish-phase-a-log-baseline.md`
 
 ## Bridge to Phase B
 
+_Priority enum: `high` (blocker for Phase B) / `med` (do early) / `low` (do later)._
+
 | Phase B target | Type | Provenance | Priority |
 |---|---|---|---|
