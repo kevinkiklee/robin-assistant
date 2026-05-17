@@ -96,7 +96,10 @@ function scanInsights(insights, id) {
  * @param {{ insightId: string, verdict: string, source?: string, freeText?: string }} args
  * @returns {Promise<{ ok: boolean, reason?: string, category?: string, eventId?: string }>}
  */
-export async function recordInsightFeedback(db, { insightId, verdict, source = 'cli', freeText = null }) {
+export async function recordInsightFeedback(
+  db,
+  { insightId, verdict, source = 'cli', freeText = null },
+) {
   if (!/^m\d{1,3}$/i.test(insightId)) {
     return { ok: false, reason: 'invalid_insight_id' };
   }

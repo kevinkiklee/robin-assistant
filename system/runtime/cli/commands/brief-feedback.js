@@ -6,9 +6,9 @@
 // The nightly `insight-calibration` job rolls these up into the usefulness
 // profile that drives next-brief synthesis suppression.
 
+import { recordInsightFeedback } from '../../../cognition/briefing/feedback.js';
 import { ensureHome } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
-import { recordInsightFeedback } from '../../../cognition/briefing/feedback.js';
 
 const VERDICT_ALIASES = {
   '+1': 'good',
@@ -21,7 +21,7 @@ const VERDICT_ALIASES = {
   not: 'bad',
   neutral: 'neutral',
   meh: 'neutral',
-  '0': 'neutral',
+  0: 'neutral',
 };
 
 export async function briefFeedback(argv = [], deps = {}) {

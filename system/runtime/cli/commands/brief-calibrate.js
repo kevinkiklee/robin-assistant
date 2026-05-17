@@ -13,9 +13,7 @@ import { ensureHome } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';
 
 async function readProfile(db) {
-  const [rows] = await db
-    .query("SELECT VALUE value FROM runtime:`insight_calibration`")
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`insight_calibration`').collect();
   return rows[0] ?? {};
 }
 

@@ -31,17 +31,13 @@ function parseDateFlag(args) {
 
 async function readSlot(db, date) {
   const id = `briefing_gallery_slug_${date}`;
-  const [rows] = await db
-    .query(`SELECT VALUE value FROM runtime:\`${id}\``)
-    .collect();
+  const [rows] = await db.query(`SELECT VALUE value FROM runtime:\`${id}\``).collect();
   return rows[0] ?? null;
 }
 
 async function writeSlot(db, date, value) {
   const id = `briefing_gallery_slug_${date}`;
-  await db
-    .query(surql`UPSERT type::record('runtime', ${id}) SET value = ${value}`)
-    .collect();
+  await db.query(surql`UPSERT type::record('runtime', ${id}) SET value = ${value}`).collect();
 }
 
 export async function briefGallery(argv = [], deps = {}) {
