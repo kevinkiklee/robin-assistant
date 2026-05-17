@@ -1,6 +1,6 @@
 import { recordPrediction } from '../../../cognition/jobs/predictions.js';
 
-export function createPredictTool({ db }) {
+export function createPredictTool({ db, embedder }) {
   return {
     name: 'predict',
     description:
@@ -26,12 +26,11 @@ export function createPredictTool({ db }) {
         return { ok: false, reason: 'invalid_confidence' };
       }
 
-      const { id } = await recordPrediction(db, {
-        statement,
-        kind,
-        confidence,
-        expected_resolution_at,
-      });
+      const { id } = await recordPrediction(
+        db,
+        { statement, kind, confidence, expected_resolution_at },
+        { embedder },
+      );
 
       return { ok: true, id };
     },

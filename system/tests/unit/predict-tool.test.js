@@ -76,3 +76,43 @@ test('predict tool refuses with invalid_confidence when confidence is out of [0,
 
   await close(db);
 });
+
+// 4. Embedder dim mismatch: with no embedder injected the mock falls back to
+// 1024-d; under a 3072-d active profile the embedding insert fails. The memo
+// row must still be created and the tool must return {ok: true}. Regression
+// against the silent-write-failure bug where predict() was throwing
+// InternalError for every call on Kevin's gemini-3072 instance.
+test('predict tool succeeds when embedder mismatch crashes the embedding write', async () => {
+  // Build a fresh DB but flip the active profile to 3072-d so the mock
+  // 1024-d embedder triggers a vector::len constraint violation.
+  const db = await connect({ engine: 'mem://' });
+  await runMigrations(db, resolve(import.meta.dirname, '../../data/db/migrations'));
+  await db
+    .query(
+      "UPSERT runtime:embedder CONTENT { value: { profile: 'gemini-3072', active_profile: 'gemini-3072' } }",
+    )
+    .collect();
+  await db
+    .query(`
+    DEFINE TABLE embeddings_gemini_3072_memos SCHEMAFULL TYPE NORMAL;
+    DEFINE FIELD record ON embeddings_gemini_3072_memos TYPE record<memos>;
+    DEFINE FIELD vector ON embeddings_gemini_3072_memos TYPE array<number> ASSERT array::len($value) = 3072;
+    DEFINE FIELD ts ON embeddings_gemini_3072_memos TYPE datetime DEFAULT time::now();
+  `)
+    .collect();
+
+  const tool = createPredictTool({ db });
+  const result = await tool.handler({
+    statement: 'mismatch should not poison the write path',
+    kind: 'duration',
+    confidence: 0.6,
+  });
+  assert.equal(result.ok, true);
+  assert.match(result.id, /^memos:/);
+
+  const row = await getPrediction(db, result.id);
+  assert.ok(row, 'memo row must persist even when embedding fails');
+  assert.equal(row.confidence, 0.6);
+
+  await close(db);
+});

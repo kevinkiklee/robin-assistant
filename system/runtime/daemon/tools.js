@@ -155,7 +155,7 @@ export async function buildTools(ctx) {
     createCheckActionTool({ db: ctx.db }),
     createUpdateActionPolicyTool({ db: ctx.db }),
     createGetCommStyleTool({ db: ctx.db }),
-    createPredictTool({ db: ctx.db }),
+    createPredictTool({ db: ctx.db, embedder: ctx.embedder.wrap }),
     createResolvePredictionTool({ db: ctx.db }),
     createListOpenPredictionsTool({ db: ctx.db }),
     createListArcsTool({ db: ctx.db }),
