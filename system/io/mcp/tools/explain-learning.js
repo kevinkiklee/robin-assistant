@@ -4,50 +4,44 @@ import { isSelfImprovementV2Enabled } from '../../../runtime/config/self-improve
 const MAX_LINEAGE_DEPTH = 4;
 
 /**
- * Fetch a memo by ID string. Returns null if not found.
+ * Fetch a memo by ID string. Returns null if not found. Throws on DB error
+ * so the MCP caller distinguishes "no such id" (returns {ok:false,
+ * reason:'not_found'}) from "DB query failed" (propagates as an MCP error).
  */
 async function fetchMemo(db, id) {
   if (!id) return null;
   const ref = String(id).startsWith('memos:') ? String(id) : `memos:${String(id)}`;
-  try {
-    const [rows] = await db.query(`SELECT * FROM ${ref}`).collect();
-    return (Array.isArray(rows) ? rows[0] : rows) ?? null;
-  } catch {
-    return null;
-  }
+  const [rows] = await db.query(`SELECT * FROM ${ref}`).collect();
+  return (Array.isArray(rows) ? rows[0] : rows) ?? null;
 }
 
 /**
- * Fetch a rule by ID string. Returns null if not found.
+ * Fetch a rule by ID string. Returns null if not found. Throws on DB error
+ * (see fetchMemo for rationale).
  */
 async function fetchRule(db, id) {
   if (!id) return null;
   const ref = String(id).startsWith('rules:') ? String(id) : `rules:${String(id)}`;
-  try {
-    const [rows] = await db.query(`SELECT * FROM ${ref}`).collect();
-    return (Array.isArray(rows) ? rows[0] : rows) ?? null;
-  } catch {
-    return null;
-  }
+  const [rows] = await db.query(`SELECT * FROM ${ref}`).collect();
+  return (Array.isArray(rows) ? rows[0] : rows) ?? null;
 }
 
 /**
- * Fetch a prediction memo. Returns null if not found.
+ * Fetch a prediction memo. Returns null if not found. Throws on DB error
+ * (see fetchMemo for rationale).
  * Predictions are stored as memos with kind='prediction'.
  */
 async function fetchPrediction(db, id) {
   if (!id) return null;
   const ref = String(id).startsWith('memos:') ? String(id) : `memos:${String(id)}`;
-  try {
-    const [rows] = await db.query(`SELECT * FROM ${ref} WHERE kind = 'prediction'`).collect();
-    return (Array.isArray(rows) ? rows[0] : rows) ?? null;
-  } catch {
-    return null;
-  }
+  const [rows] = await db.query(`SELECT * FROM ${ref} WHERE kind = 'prediction'`).collect();
+  return (Array.isArray(rows) ? rows[0] : rows) ?? null;
 }
 
 /**
- * Fetch source event for a task_outcome memo.
+ * Fetch source event for a task_outcome memo. Source-event hydration is
+ * best-effort: a missing/broken source link should not fail the parent
+ * explainTaskOutcome call, so we degrade to null rather than throwing.
  */
 async function fetchSourceEvent(db, eventId) {
   if (!eventId) return null;
@@ -63,6 +57,7 @@ async function fetchSourceEvent(db, eventId) {
       ts: row.ts,
     };
   } catch {
+    // Source-event lineage is informational; tolerate query failure.
     return null;
   }
 }
