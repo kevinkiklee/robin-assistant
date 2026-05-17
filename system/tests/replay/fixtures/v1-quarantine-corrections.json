@@ -1,0 +1,314 @@
+{
+  "extracted_from": [
+    "user-data/runtime/install/reports/v1-import-report-121548C64ACB4369BA58361796.json",
+    "user-data/runtime/install/reports/v1-import-report-5854D662867B4CC7BEA83643A5.json"
+  ],
+  "source_files_read": [
+    "robin-assistant-v1/user-data/memory/self-improvement/corrections.md",
+    "robin-assistant-v1/user-data/memory/quarantine/captures.md"
+  ],
+  "extracted_at": "2026-05-17T12:00:00.000Z",
+  "count": 30,
+  "entries": [
+    {
+      "id": "v1-corr-20260508-all-claude-code-hooks-were-silently-fail",
+      "timestamp": "2026-05-08T00:00:00.000Z",
+      "content": "Discord-spawned `daily brief` returned the partial system briefing because the protocol-override hook never fired. Investigation: `.claude/settings.json` and `.gemini/settings.json` invoked hooks as `node \"$CLAUDE_PROJECT_DIR/system/scripts/hooks/host-hook.js\" ...`, but the host runs hook commands under `/bin/sh -c '<cmd>'`, and `/bin/sh` doesn't load nvm (which exposes node via a `lazy_load_nvm` shell function in `.zshrc`). Every hook returned exit 127 with `\"output\":\"/bin/sh: node: command not found\\n\"` — invisible at the model layer because hook stderr is swallowed in non-stream output. Earlier same-day successes (`recall.log` up to 12:02:40Z) came from launchd-spawned cron jobs whose plist included a node-bearing PATH; user-driven `claude -p` from the Discord bot or interactive `claude` runs all silently no-op'd. Visible symptoms: protocol-override never injected, recall blocks not surfaced, capture/PII guards not running, tamper drift not announced.\n\n**Why:** The hook contract is \"host runs `sh -c '<command>'`,\" which means `<command>` cannot rely on a user-shell-only PATH. Bare `node` works only when the parent process passes a PATH containing node (true for IDE-Claude when nvm has eagerly populated PATH; false for headless `claude -p` spawned by launchd-supervised services that inherit a minimal PATH). Once nvm switches to lazy-load (a common .zshrc optimization), `/bin/sh` no longer has node.\n\n**How to apply:**\n- All hook commands now invoke node via `system/scripts/hooks/with-node.sh`, which resolves a node binary in this order: `$ROBIN_NODE` → `command -v node` → `/opt/homebrew/bin/node` → `/usr/local/bin/node` → `/usr/bin/node` → latest `~/.nvm/versions/node/*/bin/node` → latest `~/.asdf/installs/nodejs/*/bin/node`. On total failure it exits 0 (fail-open) so the host's tool loop keeps working.\n- `.claude/settings.json` and `.gemini/settings.json` were updated together — both files have a `$comment_hook_node` field documenting the invariant. New hook commands MUST go through the wrapper.\n- If hooks ever regress again, run `claude -p \"ping\" --include-hook-events --output-format stream-json --verbose --max-turns 1 2>&1 | grep hook_response` and check `exit_code` + `output`. Exit 127 with \"node: command not found\" is the smoking gun.\n- Set `ROBIN_NODE=/abs/path/to/node` in the environment if all auto-resolution candidates fail (e.g., nodenv installs not in the search list yet).\n\nThis was also the structural reason the 2026-05-07 trigger-shorthand fix (prefix-tolerant matcher + \"daily brief\" trigger entry) appeared to work in tests but didn't fire in practice today — the hook itself was a no-op on this workstation.",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": null
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260427-save-derived-insights-to-memory-automati",
+      "timestamp": "2026-04-27T00:00:00.000Z",
+      "content": "When I produce a multi-step analysis that contains durable, future-applicable insights about Kevin (preferences, patterns, profile facts, gap maps, recurring locations, trip logs derived from data), write the durable distillation to the right capture file in the same turn that I surface the analysis. Do not ask \"want me to save this?\" — that's friction.\n\n**Why:** Kevin had to explicitly tell me twice in this session to commit findings to memory — first for the photo-location analysis, then again with \"i shouldn't have to tell you to commit all these to memory. make the process more automatic.\" This is the second time the same correction has been logged (first incident was an earlier session re a travel-profile analysis).\n\n**How to apply:**\n- If I just derived patterns/preferences/profile facts and stated them in a response → save them in the same turn, then mention briefly that they were saved.\n- Trust my own analysis. If it's useful enough to say in a recap, it's useful enough to persist.\n- Memory holds the **durable distillation**, not the full analysis. Memory points to the artifact path for the long form.\n- Update existing entries when findings overlap. Don't create near-duplicate files.\n- Default = save. Only ask when scope is genuinely ambiguous (e.g., \"save the patterns but not the suggestions\").",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260427-memory-lives-in-this-workspace-never-in-",
+      "timestamp": "2026-04-27T00:00:00.000Z",
+      "content": "Do not write memory to Claude Code's auto-memory directory at `~/.claude/projects/<workspace>/memory/`. All persistent memory belongs in this workspace's capture files (`profile.md`, `knowledge.md`, `self-improvement.md`, `journal.md`, `trips/`, `tasks.md`, `decisions.md`, `inbox.md`).\n\n**Why:** I created a parallel memory tree at `~/.claude/projects/.../memory/` with 9 separate `.md` files when the robin-personal workspace already had a structured capture system. Kevin: *\"why are the memories in ~/.claude/projects/.../memory/? memories should be kept local in this folder.\"* Two memory systems = drift, fragmentation, and memories that don't travel with the repo.\n\n**How to apply:**\n- Always route per `capture-rules.md`. The local files are the only memory.\n- If `~/.claude/projects/<workspace>/memory/` ever contains files, treat them as stale — migrate the content into the workspace and clear the directory.\n- This is now also encoded as `Rule: Local Memory` in `AGENTS.md`.",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260429-do-not-provide-summaries-of-code-changes",
+      "timestamp": "2026-04-29T00:00:00.000Z",
+      "content": "Stop providing summaries of code changes or file operations at the end of responses. The user reads the diffs directly; additional summaries are redundant and noisy.\n\n**How to apply:**\n- Omit any \"I have updated X\" or \"Summary of changes\" sections.\n- Focus on intent and technical rationale.\n- Keep responses concise.",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260429-when-working-in-robin-assistant-look-in-",
+      "timestamp": "2026-04-29T00:00:00.000Z",
+      "content": "When asked about integrations or personal data while working in `robin-assistant/`, look in `robin-assistant/user-data/` (the live Claude Code Robin instance). Do NOT use `robin-personal/` — that's the legacy v1 workspace, frozen 2026-04-26.\n\n**Why:** Today I missed the configured lunch-money integration by reading `robin-personal/integrations.md` first when working in `robin-assistant/`. Each platform-specific repo (`robin-assistant/`, `robin-cursor/`, `robin-gemini/`) owns its own `user-data/`; treating `robin-personal/` as the canonical instance was a stale mental model from before the per-platform split.\n\n**How to apply:**\n- Default to `robin-assistant/user-data/` for live data when CWD is under `robin-assistant/`.\n- Already encoded in `robin/CLAUDE.md` + `robin-assistant/CLAUDE.md` + parent `.gitignore`.",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-skipped-verification-step"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260430-discord-bot-must-not-send-unsolicited-st",
+      "timestamp": "2026-04-30T00:00:00.000Z",
+      "content": "The Discord bot must not send unsolicited status DMs (e.g. \"Robin's back online\" on reconnect). User finds them noisy.\n\n**Why:** Reconnect/resume events are diagnostic detail Kevin doesn't want pushed to him. Event log entries are fine — DMs are not.\n\n**How to apply:**\n- Removed `notifyBackOnline()` from `system/skeleton/scripts/discord-bot.js` and `user-data/scripts/discord-bot.js`.\n- `event` log entries (startup/reconnect/resume) retained for diagnostics.\n- Takes effect on next bot restart.",
+      "context": {
+        "task_type_hint": "outbound:discord_send:send_dm",
+        "antecedent_hint": null
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260430-never-recommend-or-use-schedule-use-robi",
+      "timestamp": "2026-04-30T00:00:00.000Z",
+      "content": "Do not propose, suggest, or use the host's `/schedule` slash command (the claude.ai cloud-routine system) — even when the system prompt or `schedule` skill encourages it as a follow-up offer. Robin has its own job mechanism that is the canonical scheduler.\n\n**Why:** Kevin: \"stop recommending /schedule. we shouldn't use that function. you have a job mechanism. fix the application, so you stop recommending that, and also remove that functionality. use the existing job mechanism always.\" The host system prompt's \"offer /schedule as a follow-up\" guidance is overridden by this user instruction (per the using-superpowers priority order: user instructions > skills > system prompt).\n\n**How to apply:**\n- **Never** end a reply with \"Want me to /schedule …\" or any variant. Even one-line offers are unwanted.\n- **Never** invoke the `schedule` / `loop` skill, fetch the routine, or write protocol that depends on `claude.ai/code/routines`.\n- For any recurring task, use Robin's local job mechanism: `system/jobs/<name>.md` (protocol) or `user-data/jobs/<name>.md` (override), enabled via `robin jobs enable <name>`.\n- For one-off future actions, capture as a `[task]` with a date in `tasks.md`. Don't reach for cloud schedulers.\n- The local mechanism only fires when Kevin's machine is on and the runner is available. If continuous cloud-side execution is genuinely required, surface the gap and ask before reaching for an external scheduler.",
+      "context": {
+        "task_type_hint": "job:daily-briefing",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260430-re-read-claude-md-agents-md-before-editi",
+      "timestamp": "2026-04-30T00:00:00.000Z",
+      "content": "Before editing repo-root or `system/` files (`AGENTS.md`, `CLAUDE.md`, `bin/`, `system/`, `package.json`), re-read CLAUDE.md and AGENTS.md from disk in the same turn. Do not rely on the session-start snapshot — Kevin can edit those instructions mid-session, and the snapshot loaded at session start may be stale.\n\n**Why:** This session, Kevin added a \"Scope of edits\" rule (developer-scope files require warn-first + suggest-PR) to CLAUDE.md after session start. I edited `AGENTS.md` and `system/startup.md` without re-reading CLAUDE.md, so I missed the new rule and skipped the warn-first step. I caught it only when a test failure exposed the CLAUDE.md drift.\n\n**How to apply:**\n- Trigger: before any Write/Edit to a developer-scope path.\n- Action: `Read CLAUDE.md` and `Read AGENTS.md` first, look for new operational rules, then proceed.\n- The cost (one extra read) is trivial; the cost of missing a fresh user-stated rule is real.",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": "assistant-skipped-verification-step"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260501-don-t-false-alarm-bug-found-before-check",
+      "timestamp": "2026-05-01T00:00:00.000Z",
+      "content": "I claimed `discord-bot-health.js` had a path bug (`system/user-data/state/logs/...`) earlier this turn. False alarm: the script computes `ROBIN_ROOT = resolve(__dirname, '../../')` which is correct from its installed location at `user-data/scripts/`. The ENOENT only happens when running it directly from `system/skeleton/scripts/` — that's not the production path.\n\n**How to apply:**\n- Before reporting a path bug in any installed script, check both the source-of-truth path (under `system/skeleton/scripts/`) AND the installed path (under `user-data/scripts/`). Many `__dirname`-relative scripts only resolve correctly at the installed location.\n- Don't \"fix\" the source path — that breaks the install layout.",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260501-use-mv-trash-not-rm-rf-for-cleanup-respe",
+      "timestamp": "2026-05-01T00:00:00.000Z",
+      "content": "The Claude Code `destructive-rm` PreToolUse hook blocks `rm -rf` even on user-owned cleanup paths (e.g. removing app remnants). The hook is correct.\n\n**How to apply:**\n- Use `mv <path> ~/.Trash/<name>-removed-$(date +%s)` instead. Non-destructive, reversible, and doesn't trigger the hook.\n- Don't try to argue around the hook or escalate; it's a deliberate guardrail.",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": null
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260502-for-photo-gear-scenario-recommendations-",
+      "timestamp": "2026-05-02T00:00:00.000Z",
+      "content": "When recommending photo gear for a specific shooting scenario, **read `knowledge/photo-gear-inventory.md` first** for the canonical kit list. Do NOT default to Amazon order history — Amazon is a partial source. Kevin's main camera (Nikon Zf, full frame, \"The Workhorse\") is bought through B&H/elsewhere and isn't in the Amazon export. The Z 50 II that dominates Amazon photo spending is the wildlife/backup body, NOT the main body.\n\n**How to apply:**\n- For low-light interior scenarios (museums, concerts, restaurants), default recommendation is **Zf + 26mm f/2.8 + Viltrox 35mm f/1.8 II EVO + Viltrox 85mm f/2**. Full-frame ISO performance > APS-C in those conditions.\n- The 24/35/85 prime trio is the canonical museum/walk kit.\n- Treat Amazon order history as a supplemental signal only — never as the canonical kit list.",
+      "context": {
+        "task_type_hint": "turn:recommend",
+        "antecedent_hint": "assistant-skipped-verification-step"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260502-check-memory-before-recommending-product",
+      "timestamp": "2026-05-02T00:00:00.000Z",
+      "content": "Before recommending products / services / approaches in any domain (gardening, photography, food, finance, software, etc.), check memory for an existing topic file or context. If `recall <domain-term>` would surface a relevant file, read it first and tailor recommendations to Kevin's actual setup.\n\n**Why:** Kevin asked for granular fertilizer recommendations and I gave a generic list without checking — even though `user-data/memory/knowledge/home/outdoor-space.md` documents a rooftop container garden in Astoria with specific containers (cedar planters, large white planters, fabric grow bags), 2026 plantings (Mammoth Yellow sunflowers + American Meadows wildflower scatter), drip irrigation already installed, and ornamentals-only direction. Generic recommendations are useless when the context says \"container-only, rooftop, ornamentals, sunflowers + wildflowers\" — the right answer is fertilizer suited to those specifics. Auto-recall didn't fire because the entity was aliased only on spatial terms (\"rooftop patio\", \"rear deck\") and not on activity terms (\"garden\") — fixed in same turn by adding activity aliases. Behavioral fix: don't rely solely on auto-recall to surface context — when the topic is one Kevin lives with (his home, his health, his work, his hobbies), proactively check.\n\n**How to apply:**\n- Recommendation request → before listing options, scan: is there a topic file? Run `node bin/robin.js recall <term>` if not already loaded.\n- If a file exists, ground recommendations in its specifics (container vs in-ground, ornamental vs edible, urban vs suburban, etc.). Don't generic-list.\n- This is especially important for: home (garden, kitchen, household items), photography gear, health/medical, finances, food/diet, recurring service providers.",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "assistant-skipped-verification-step"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260502-don-t-infer-identity-taste-or-behavior-f",
+      "timestamp": "2026-05-02T00:00:00.000Z",
+      "content": "When deriving insights from passive data (browsing history, subscriptions, follow lists, app installs), state only what the data literally shows. Do NOT promote correlational signals to identity statements without confirmation. Tag uncertain derivations `[?|origin=derived]` (or `[guess|origin=derived]`), not `[derived|origin=derived]`.\n\n**Why:** From the first sync-chrome + sync-youtube pull (2026-05-02), I asserted \"Active PSN gamer (psnprofiles.com 113 visits)\" and \"subs cluster into … cooking (Ethan Chlebowski)\". User flagged both as wrong — they're not a PSN gamer, they don't watch cooking content. The errors:\n1. **Forum visits ≠ being a member of that community.** A forum subdomain visit can be research, side-project, friend-help, or random reading. Don't generalize to \"active gamer / member / fan.\"\n2. **Subscription ≠ watching.** YouTube subs accumulate over years and most aren't actively watched. A single subscription does not make a \"cluster\" or reflect viewing diet — the only ground truth for what's actually watched is Google Takeout's watch history.\n3. **Heavy traffic to a domain ≠ identity.** doordash.com 165 visits/30d ≠ \"frequent orderer\" (could be browsing, comparison, or window-shopping). mychart.mountsinai.org 115 visits ≠ \"active medical thread\" (could be admin, family member, or insurance).\n\n**How to apply:**\n- Browsing-history derivations: stick to the literal — \"X domain has Y visits in Z days.\" Don't add a behavioral label (\"gamer\", \"fan\", \"frequent orderer\") unless the data unambiguously supports it. When in doubt, tag `[?|origin=derived]` and ask the user.\n- Subscription/follow-list derivations: report counts and clusters, but never use \"watches\", \"consumes\", \"interested in\" — those require watch/listen history. Subscriptions = \"in the sub list\", nothing more.\n- When a single channel/account is the only evidence for a category, don't call it a \"cluster\" or \"interest area\" — it's one item.\n- For team/sport allegiances: multiple team-page visits is suggestive but not conclusive (could be following the bracket / specific players / opponent research). Confirm before changing automation (e.g., daily-briefing filters).\n- Always ask before scaffolding new topic files (`knowledge/health/<provider>/`, `knowledge/interests/<topic>/`) based on browsing alone. The cost of asking once is low; the cost of inventing a wrong identity is durable memory pollution.",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260502-when-planning-multi-museum-photowalks-th",
+      "timestamp": "2026-05-02T00:00:00.000Z",
+      "content": "Original \"Museum Hop\" itinerary slotted the Met at 5:45–7:30pm (1h 45m) for a 7-stop photo route. Kevin extended it (added a 5:30–6:30pm dinner break, pushed the Met to 6:30–8:30pm) because 1h 45m was too tight given Met scale and ticket-counter friction. Per-stop budget landed at ~20 min.\n\n**Why:** Multi-museum photowalk planning needs to weight by museum scale. The Met is not interchangeable with Cooper Hewitt or the Guggenheim on time — it's a different magnitude.\n\n**How to apply:**\n- For any photowalk that includes the Met with 4+ stops, budget ≥ 2 hours at the Met before suggesting an itinerary.\n- For any multi-museum route ≥ 3 stops over a half day, suggest a meal/snack break in the middle — energy and dwell time degrade without it.\n- Always sanity-check per-stop minutes against the photographer's actual cadence (Kevin shoots ~20 min per stop on a planned itinerary, longer on solo unstructured walks).",
+      "context": {
+        "task_type_hint": "turn:recommend",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260502-financial-snapshot-md-backdoor-roth-pro-",
+      "timestamp": "2026-05-02T00:00:00.000Z",
+      "content": "Asserted in `knowledge/finance/financial-snapshot.md` that pro-rata was clean and that GME was 0 shares (Computershare DRS) — both wrong. The Fidelity Rollover IRA `<REDACTED-ACCOUNT>` ($3,930 pre-tax, surfaced 2026-05-02) holds 40 GME shares + 4 warrants and disqualifies a clean Backdoor Roth until liquidated and reverse-rolled into the Vanguard 401(k).\n\n**Why:** The \"Computershare DRS, 0 shares — sold previously\" line and the \"pro-rata clean\" line were inherited from an older snapshot and never reverified after the Rollover IRA surfaced. Any IRA / GME claim in `financial-snapshot.md` should be cross-checked against the latest brokerage statement, not trusted by inheritance.\n\n**How to apply:**\n- Treat any \"no IRA balance\" / \"0 shares\" / \"clean pro-rata\" assertion in finance memory as a verification target whenever a new brokerage statement, transfer, or rollover is mentioned. Don't carry forward the assertion silently.\n- For Backdoor Roth flow specifically, always reconfirm: pre-tax IRA balance is $0 at 12/31, GME holdings are accounted for, and any rollover plan is documented in `tasks.md` with verification steps.\n- When a discrepancy lands, fix `financial-snapshot.md` and `tasks.md` in the same turn — don't leave one trailing.",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-skipped-verification-step"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260503-verify-synced-data-is-from-today-before-",
+      "timestamp": "2026-05-03T00:00:00.000Z",
+      "content": "When a daily-briefing section reads a file populated by a sync job (whoop/nhl/weather/ebird/finance/calendar), check the `last_synced` / `Pulled` timestamp first. If the most recent row isn't from today (or the pull predates the briefing window), kickstart the matching launchd job inline and re-read.\n\n**Why:** Kevin asked for the briefing at ~05:55 EDT. sync-whoop fires at 07:00 EDT and sync-nhl at 06:15 EDT (per their plists), so both files held yesterday's data. I read whoop's last row (5/2 recovery 49 yellow) and called it \"today's recovery\" — but today's actual reading was 26 (red) with 4h35m of sleep. He flagged it: \"my whoop data isn't the latest … make sure that doesn't happen again.\"\n\n**How to apply:**\n- Always check the file timestamp before quoting any \"today\" metric. The freshness table in `user-data/runtime/jobs/daily-briefing.md` lists the threshold per source.\n- Kickstart pattern: `launchctl kickstart -k \"gui/$(id -u)/com.robin.<job>\"` then `sleep 8` before re-reading.\n- If kickstart fails, mark the section \"⚠ data from <date>, sync failed.\"\n- Two structural fixes also landed today: bumped sync-whoop schedule from 07:00 → 04:30 local and sync-nhl from 06:15/12:15 → 05:00/12:00 local, so the morning pull always lands before the briefing window. The runtime check above is the safety net even if the schedule slips.",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260503-don-t-push-the-nikon-z-85mm-f-1-8-s-upgr",
+      "timestamp": "2026-05-03T00:00:00.000Z",
+      "content": "Treat the Viltrox 85mm f/2 as Kevin's canonical 85mm. Don't recommend the Nikon Z 85mm f/1.8 S as a wishlist item, gap, or \"next upgrade.\" It was on the wishlist; Kevin removed it on 2026-05-03 and said the Viltrox is good enough.\n\n**Why:** When Kevin asked whether to buy the Viltrox 55mm f/1.8 II EVO, I steered him toward saving for the Nikon 85/1.8 S as a \"real gap.\" He pushed back — the Viltrox 85mm f/2 already fills the 85mm role and the S-line upgrade isn't a goal.\n\n**How to apply:**\n- For 85mm-prime context (museum/walk kit, portrait recommendations, gear gaps), reference the Viltrox 85mm f/2 — not the Nikon 85/1.8 S.\n- Don't list Nikon 85/1.8 S in alternative-spend suggestions or savings targets. The wishlist is now Z 7 (used) + Nikon 20mm f/1.8 S.\n- General lesson: when steelmanning \"skip this lens\" recommendations, anchor alternatives in the existing wishlist rather than retconning a new \"real gap.\"",
+      "context": {
+        "task_type_hint": "turn:recommend",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260503-don-t-recommend-macro-lenses-or-70-200-z",
+      "timestamp": "2026-05-03T00:00:00.000Z",
+      "content": "Drop both the Laowa 90mm f/2.8 2× Macro APO and any 70-200 f/2.8 (Nikon Z 70-200 S, Z 70-180 f/2.8) from gear-recommendation rotation. Kevin explicitly rejected the macro and said 70-200 is \"far future\" because he doesn't plan professional portrait work for a while.\n\n**Why:** When asked what lenses would be useful additions, I pitched Laowa 90mm macro (new register: industrial texture / signage) and a 70-200 f/2.8 (gap between 85mm and 100-400mm, useful for paid portraits). Kevin shut down both: no macro, and 70-200 is deferred until commercial portrait work resumes.\n\n**How to apply:**\n- Macro is not an interest. Don't suggest macro glass (Laowa 90/100, Nikon 105 MC, Sigma 70 macro, etc.) as a \"new register\" or gap-fill.\n- 70-200 f/2.8 only re-enters the recommendation set if Kevin signals upcoming portrait/commercial work or events that demand telephoto compression for people. Don't speculate on his behalf.\n- Confirmed canonical wishlist remains: Nikon Z 7 (used) + Nikon 20mm f/1.8 S. Anchor alternative-spend math against those two only.\n- General lesson: respect his cull discipline. He doesn't want capability he won't deploy. Skip the \"could open a new mode\" pitch unless he's already showing signal in that direction.",
+      "context": {
+        "task_type_hint": "turn:recommend",
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260504-verify-presence-of-secrets-by-reading-th",
+      "timestamp": "2026-05-04T00:00:00.000Z",
+      "content": "When asked whether a secret is set in `.env`, do not trust an in-process probe (`requireSecret(workspaceDir, KEY)`) until you've confirmed which `workspaceDir` the helper expects. The convention is **repo root** (where `bin/`, `system/`, `user-data/` all live), NOT `.../user-data/`. The library's `envPath` joins `'user-data/runtime/secrets/.env'` to whatever you pass, so passing `.../user-data/` builds a doubled `user-data/user-data/runtime/secrets/.env` that doesn't exist — the probe returns MISSING for every key even when they're populated.\n\n**Why:** Kevin asked me to fix sync-calendar and sync-gmail. I probed with `workspaceDir = .../user-data/` and reported all three Google OAuth secrets MISSING. He told me they were set; I re-probed with the repo root and they were there (CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN). I made him re-run a setup flow he'd already completed.\n\n**How to apply:**\n- For any `requireSecret`/`getSecret`/`getCursor`/`saveSecret` probe, `workspaceDir` is the repo root (the directory containing `bin/`, `system/`, `user-data/`). Same convention for any helper that reads/writes paths beginning with `user-data/...`.\n- Sanity check: if a probe reports \"missing,\" try parsing `<workspaceDir>/user-data/runtime/secrets/.env` directly — if that file exists and has the key, your `workspaceDir` is wrong.\n- Bash hook blocks reading `.env` directly (correct behavior). Don't try to bypass — instead, parse a small whitelist of keys via the in-process helper with the right path.\n- The same bug is mirrored in `user-data/runtime/scripts/sync-{calendar,gmail}.js` + `auth-google.js` and in `system/scaffold/runtime/scripts/`: their `import.meta.url`-relative `workspaceDir = '../..'` lands at `.../user-data/` (wrong); should be `'../../..'` to reach repo root, or use `process.env.ROBIN_WORKSPACE` (set by the runner). Patched user-data on 2026-05-04; scaffold-source needs an upstream PR.",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": "assistant-skipped-verification-step"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260503-don-t-pitch-high-megapixel-bodies-z-7-z-",
+      "timestamp": "2026-05-03T00:00:00.000Z",
+      "content": "Kevin removed the used Nikon Z 7 from his wishlist on 2026-05-03 after I laid out why 45MP doesn't serve his actual practice. Don't re-suggest the Z 7, Z 7 II, Z 7 III, Z 8, Z 9, or any medium-format body (Fuji GFX line) as upgrades or gap-fills.\n\n**Why:**\n- Voice is composition-driven, not detail-driven. His best frames (subway B&W DSC_5115, Pikachu hat, High Bridge containers, Red Cube) work because of light and shape, not micro-detail. Some are explicitly grain-positive (Moriyama-tier).\n- Z f (2023 BSI sensor, 24.5MP) is *newer and cleaner at high ISO* than Z 7 (2018 sensor). For his night street / subway / museum / chiaroscuro work routinely at ISO 3200–6400, Z f is the better camera, not the Z 7.\n- He doesn't crop-to-compose. With 26/35/40/50/85 primes he frames in-camera — the \"more MP = cropping reach\" argument doesn't apply.\n- He doesn't print large. No portfolio site, gallery, or commercial signal of 24×36\"+ printing. At Instagram / web / typical print sizes, 24MP and 45MP are indistinguishable.\n- Storage/edit pressure is real. 21,618 photos, 3× YoY pace, near-zero LRC rating/keyword discipline. 45MP RAWs ~2× file size compounds an already-untended catalog.\n- Wildlife reach already covered by Z 50ii (DX 1.5× crop with 100-400).\n\n**How to apply:**\n- Canonical body remains Nikon Z f. Don't suggest 45MP+ Nikon bodies or medium-format as \"next steps.\"\n- Reconsider only when Kevin signals a specific deployment: a large-print project, gallery show, commercial deliverable that demands resolution. Don't speculate on his behalf.\n- Updated wishlist (2026-05-03): Nikon 20mm f/1.8 S only ($1,050). Anchor alternative-spend math against that single item.\n- General lesson: when evaluating bodies/lenses, weigh against (a) his actual catalog data (lens/body usage %, file count, keyword discipline), (b) his demonstrated voice from `profile/photography.md`, and (c) what he'd actually deploy — not specs in the abstract.",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260504-lead-with-the-smallest-thing-that-works-",
+      "timestamp": "2026-05-04T00:00:00.000Z",
+      "content": "When Kevin asks for a personal feature (\"I want to share outputs as a website\"), propose the minimum-viable surface first, not a full custom stack. Especially when it's clearly personal-scale (single user, low traffic, willing to pay for hosted services), the first proposal should reach for hosted/managed/off-the-shelf options before custom infrastructure. Iterate up only if the simple option genuinely can't meet the requirements.\n\n**Why:** Kevin asked for a way to publish Robin outputs as shareable websites. I proposed a new `apps/share/` workspace inside `robin-assistant-app/`, a new Vercel project, a new Postgres table via `@robin/db`, custom Next.js render pipeline (sanitize + shiki), `@vercel/og` image generation, password gates with HMAC-signed cookies, an outbound-policy extension, audit logging, etc. After two `/iterate` passes I was making the design more complex, not less. He aborted with \"this is too complicated.\" I treated a personal share-a-link feature like a product launch.\n\nThe `/iterate` loop made it worse — I kept finding \"issues\" (XSS, CDN cache, sanitize+pretty-code ordering, noindex headers, slug retry budget) and adding more code instead of asking \"is the simpler approach already enough?\" Each iterate pass should ask whether to **remove** before adding.\n\n**How to apply:**\n- For any \"I want a feature in Robin to do X\" request, the first design should fit on one screen and lean on hosted services (Gist + custom CSS, prose.sh, Hashnode, a markdown-publishing SaaS, a single static-site generator + manual upload, etc.) before any new app/table/route.\n- Only escalate to custom infrastructure when (a) the hosted option fails a real requirement Kevin stated, or (b) Kevin explicitly asks for it.\n- During `/iterate`, default to looking for things to **remove**, not just things to add. Adding XSS/cache/headers fixes is fine; adding them inside a v1 that maybe shouldn't exist is wasted.\n- Personal features ≠ products. Single-user scale eliminates the rate-limiting, OAuth, multi-tenant, and most caching concerns I instinctively reach for.\n- When the user says \"feel free to suggest hosting providers\" early in the chat, the easiest hosting provider IS the least architecture — i.e., \"just use a gist\" or \"just use a hosted service\" should be a first-class option presented at parity with custom builds, not dismissed as \"less control.\"",
+      "context": {
+        "task_type_hint": null,
+        "antecedent_hint": "assistant-generated-response-with-unwanted-behavior"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260506-product-recommendations-must-include-a-p",
+      "timestamp": "2026-05-06T00:00:00.000Z",
+      "content": "When I recommend a specific product, include a purchase link in the same response. Never list a bare product name. Default to Amazon; use WebSearch with `allowed_domains: [\"amazon.com\"]` (or the relevant specialty domain when Amazon doesn't carry it). Every option in a multi-option list gets its own link.\n\n**Why:** This is the second time in five days. Kevin first stated this on 2026-05-02 and it was logged in `preferences.md` only — never promoted to `communication-style.md`, so I didn't follow it. On 2026-05-06 I recommended four back braces with zero links and Kevin had to re-issue the rule verbatim: \"if you are providing me with a product, also provide a product link.\" That re-issue is the second signal — promoted to communication-style this turn.\n\n**How to apply:**\n- Don't pre-compose the recommendation list and then *consider* adding links. Treat the link fetch as part of the recommendation step itself: if I'm naming a product, the WebSearch call to find its purchase URL belongs in the same tool-call batch as everything else I'm doing to answer.\n- This rule overrides \"minimize tool use\" defaults. Links are not optional polish.\n- Apply to single recommendations *and* multi-option lists. Three options ⇒ three links. No \"and a few others\" trailing without links.",
+      "context": {
+        "task_type_hint": "turn:recommend",
+        "antecedent_hint": null
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260507-trigger-list-shorthand-evades-the-protoc",
+      "timestamp": "2026-05-07T00:00:00.000Z",
+      "content": "Kevin asked \"daily brief\" for the morning briefing. The protocol-override hook's trigger list is exact-match (`daily briefing / morning briefing / good morning / brief me / what's today / what do I have today`), so neither the UserPromptSubmit reminder nor the PreToolUse block fired on the shorthand. I read `system/jobs/daily-briefing.md` directly and rendered a partial briefing (missing Shipments, Financials, full Health/Weather/Birding sections, and the Step-0 cache-gate pass-through). Hook only fired the next turn when Kevin's correction message contained \"daily briefing additions.\"\n\nThis is the 5th documented occurrence of `protocol-override-precedence` (patterns.md), and the first in which the structural enforcement layer was bypassed via incomplete trigger coverage rather than via hook absence.\n\n**Why:** Trigger-list maintenance is fragile — natural shorthand (`daily brief`, `weekly rev`, `morn brief`) won't match exact-match strings. The hook is a structural fix, but the matcher's vocabulary is itself another point of drift.\n\n**How to apply:**\n- Default behavior: when ANY user message looks like a protocol invocation (request for briefing/review/dream/lint/ingest/etc.), check `user-data/runtime/jobs/<name>.md` BEFORE reading `system/jobs/<name>.md`, regardless of whether the hook reminder fired. Don't trust the hook to catch every phrasing.\n- Two structural fixes proposed (pending Kevin approval):\n  1. Add `\"daily brief\"`, `\"morning brief\"`, `\"briefing\"` to the trigger list in both the override and system twin.\n  2. Make the protocol-override hook prefix-tolerant so `\"daily brief\"` matches `\"daily briefing\"` (catches future shorthand without per-protocol trigger maintenance).",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": null
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-corr-20260506-pull-memory-before-answering-personal-co",
+      "timestamp": "2026-05-06T00:00:00.000Z",
+      "content": "When the user asks for a recommendation, suggestion, or opinion that depends on facts about them (health, gear inventory, history, preferences, projects), recall the relevant memory file *before* composing the answer — not after they ask \"why didn't you check memory?\"\n\n**Why:** Kevin asked for a back brace recommendation. I answered with generic options without checking `user-data/memory/knowledge/medical/back-spine.md`, which has detailed L5-S1 imaging findings, prior brace history (FEATOL returned, Aspen Quikdraw PRO disliked), and which items he was already browsing. He had to call out the miss explicitly. Root cause: the `recall-domains.md` map had no back/spine domain, so the `onUserPromptSubmit` hook didn't auto-inject the file. Both layers failed: the agent didn't proactively probe medical/, and the recall config didn't surface it.\n\n**How to apply:**\n- If a request mentions any health, body, gear, project, or history topic, list the relevant `knowledge/<topic>/` directories and skim the index *before* writing the response — even if the recall hook didn't auto-inject anything.\n- If recall didn't fire on something it should have, fix the `recall-domains.md` keywords in the same turn (don't just answer and move on). The fix is one Edit; future Robin sessions get it for free.\n- Domain map gaps are infrastructure bugs, not \"Robin should remember harder.\" Treat them as such.",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": null
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-quarantine-corr-202605021419583-0",
+      "timestamp": "2026-05-02T14:19:58.399Z",
+      "content": "[finance] I initially read these as a possible \"Plan 4\" deferred-interest fin...",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "missing-from-assistant-response"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-quarantine-corr-202605021419583-1",
+      "timestamp": "2026-05-02T14:19:58.399Z",
+      "content": "[finance] Existing `financial-snapshot.md` had stale numbers and called this ...",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "missing-from-assistant-response"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-quarantine-corr-202605021419583-2",
+      "timestamp": "2026-05-02T14:19:58.399Z",
+      "content": "[amazon] **My initial Amazon major-purchases list was systematically wrong** ...",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "missing-from-assistant-response"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-quarantine-corr-202605021419584-3",
+      "timestamp": "2026-05-02T14:19:58.400Z",
+      "content": "[self-improvement] **Lesson:** Amazon \"Order Status: Closed\" is NOT a \"kept\" ...",
+      "context": {
+        "task_type_hint": "turn:analyze",
+        "antecedent_hint": "missing-from-assistant-response"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-quarantine-corr-202605021419584-4",
+      "timestamp": "2026-05-02T14:19:58.400Z",
+      "content": "Earlier in this turn I claimed `discord-bot-health.js` had a path bug (`syste...",
+      "context": {
+        "task_type_hint": "turn:execute_change",
+        "antecedent_hint": "derived-from-assistant-output"
+      },
+      "expected_rule_id": null
+    },
+    {
+      "id": "v1-quarantine-corr-202605071113428-5",
+      "timestamp": "2026-05-07T11:13:42.857Z",
+      "content": "STALE / WRONG DATA in `knowledge/photo-gear-inventory.md` (now fixed): the Z ...",
+      "context": {
+        "task_type_hint": "turn:recommend",
+        "antecedent_hint": "missing-from-assistant-response"
+      },
+      "expected_rule_id": null
+    }
+  ]
+}
