@@ -50,18 +50,18 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
       // the check is wired here so that any future retraction path encounters
       // the guard before writing active=false.
       if (args.rule_id) {
-        try {
-          const [rows] = await db
-            .query(
-              surql`SELECT meta FROM memos WHERE id = type::record('memos', ${args.rule_id}) LIMIT 1`,
-            )
-            .collect();
-          const rule = Array.isArray(rows) ? rows[0] : rows;
-          if (rule?.meta?.not_retractable === true) {
-            return { ok: false, reason: 'rule_not_retractable', rule_id: args.rule_id };
-          }
-        } catch {
-          // DB error reading the rule — proceed without blocking.
+        // Fail-closed: a DB error reading the rule must NOT allow the
+        // correction through. Otherwise a transient WS drop during the
+        // retractability check could let a future retraction-path write
+        // through the guard. Surface the error to the caller instead.
+        const [rows] = await db
+          .query(
+            surql`SELECT meta FROM memos WHERE id = type::record('memos', ${args.rule_id}) LIMIT 1`,
+          )
+          .collect();
+        const rule = Array.isArray(rows) ? rows[0] : rows;
+        if (rule?.meta?.not_retractable === true) {
+          return { ok: false, reason: 'rule_not_retractable', rule_id: args.rule_id };
         }
       }
       const meta = {
