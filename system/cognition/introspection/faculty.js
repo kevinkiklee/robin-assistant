@@ -30,6 +30,7 @@ import {
   initBudgetConfig,
   readBudgetConfig,
   readBudgetState,
+  resetCrashCount,
 } from './budget.js';
 import { INTROSPECTION_DEFAULTS } from './inference-rules.js';
 import { drainQueueOnce } from './queue-poller.js';
@@ -41,6 +42,10 @@ const AUTOTUNE_INTERVAL_MS = 60 * 60_000; // recompute turn_sample_pct hourly
 
 /** @type {{ db: object, host: object|null, drainTimer: any, decayTimer: any, autoTuneTimer: any, rejectionHandler: Function } | null} */
 let _state = null;
+
+// Guard flag — prevents fire-and-forget restart re-entry when crash_count
+// is high enough to trigger the threshold on multiple consecutive ticks.
+let _restarting = false;
 
 /**
  * Start the introspection faculty.
@@ -167,20 +172,32 @@ async function _drainWithTimeout(db, host) {
 /**
  * Auto-restart the drain loop if crash_count exceeds threshold.
  * Called after every crash increment.  Reads the state asynchronously.
+ *
+ * Guards against re-entry: if a restart is already in progress (e.g. the
+ * leaky-bucket fires again before the restart completes), this is a no-op.
+ * Also resets crash_count to 0 before restarting so the bucket doesn't
+ * immediately re-trigger on the next increment.
  */
 async function _checkCrashCountAndRestart(db) {
+  if (_restarting) return;
   try {
     const state = await readBudgetState(db);
     if (state.crash_count > INTROSPECTION_DEFAULTS.crash_count_restart_threshold) {
+      _restarting = true;
       console.warn(
         `[introspection] crash_count=${state.crash_count} > threshold=${INTROSPECTION_DEFAULTS.crash_count_restart_threshold} — restarting faculty`,
       );
+      // Reset crash_count to 0 before restart so the leaky-bucket can't
+      // immediately re-trigger on the next unhandledRejection increment.
+      await resetCrashCount(db).catch(() => {});
       await stopIntrospection();
       // Brief pause before restart to avoid tight loops.
       await new Promise((r) => setTimeout(r, 1000).unref());
+      _restarting = false;
       await startIntrospection({ db });
     }
   } catch (e) {
+    _restarting = false;
     console.warn(`[introspection] crash-count restart check failed: ${e.message}`);
   }
 }

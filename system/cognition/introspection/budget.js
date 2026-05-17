@@ -157,7 +157,10 @@ export async function tryReserveCost(db, estimatedCostUsd) {
         .query(`UPSERT ${VALUE_RECORD_SQL} SET value.daily_spend_usd += ${estimatedCostUsd}`)
         .collect();
     } catch {
-      // Non-fatal — the call proceeds; the budget may run over by one call.
+      // Reserve write failed — return ok:false so the caller doesn't proceed
+      // and then refund an amount that was never incremented (would produce a
+      // negative daily_spend_usd via recordActualCost's delta correction).
+      return { ok: false, remaining, reason: 'reserve_write_failed' };
     }
   }
 
@@ -197,6 +200,14 @@ export async function recordActualCost(db, actualCostUsd, estimatedCostUsd) {
  */
 export async function incrementCrashCount(db) {
   await db.query(`UPSERT ${VALUE_RECORD_SQL} SET value.crash_count += 1`).collect();
+}
+
+/**
+ * Reset crash_count to 0.
+ * Called at restart entry so the leaky-bucket can't immediately re-fire.
+ */
+export async function resetCrashCount(db) {
+  await db.query(`UPSERT ${VALUE_RECORD_SQL} SET value.crash_count = 0`).collect();
 }
 
 /**

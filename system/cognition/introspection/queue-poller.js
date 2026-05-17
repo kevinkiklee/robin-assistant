@@ -353,7 +353,7 @@ async function _fetchPriorGrades(db, taskType, excludeId) {
         surql`SELECT meta FROM memos
               WHERE kind = 'task_outcome'
                 AND meta.task_type = ${taskType}
-                AND meta.score IS NOT NULL
+                AND meta.score IS NOT NONE
                 AND id != ${excludeId}
               ORDER BY derived_at DESC
               LIMIT 3`,

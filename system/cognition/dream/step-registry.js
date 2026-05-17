@@ -37,6 +37,6 @@ export const byName = {
   playbookSynthesis: ({ db, host, opts }) =>
     dreamStepPlaybookSynthesis(db, host, opts?.playbookSynthesis),
   calibrationBucket: ({ db }) => dreamStepCalibrationBucket(db),
-  predictionTaxonomy: ({ db, host }) => dreamStepPredictionTaxonomy(db, host),
+  predictionTaxonomy: ({ db, host, embedder }) => dreamStepPredictionTaxonomy(db, host, embedder),
   selfImprovementRollup: ({ db }) => dreamStepSelfImprovementRollup(db),
 };

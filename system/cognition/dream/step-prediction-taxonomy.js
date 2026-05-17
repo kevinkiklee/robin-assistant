@@ -176,7 +176,9 @@ export async function dreamStepPredictionTaxonomy(db, host, embedder, opts = {})
       items.push({ id: pred.id, statement: pred.content, embedding: vec });
     } catch (e) {
       console.warn(`[step-prediction-taxonomy] embedder failed for ${pred.id}: ${e.message}`);
-      // Embedder error — return early per spec.
+      // Embedder error — write last_run_at so a corrupt embedding doesn't
+      // trigger infinite nightly retries, then return early per spec.
+      await writeLastRunAt(db, new Date()).catch(() => {});
       return { skipped: false, error: 'embedder_failed', step: 'predictionTaxonomy' };
     }
   }
