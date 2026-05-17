@@ -100,9 +100,19 @@ test('predictionTaxonomy: flag on → real path (stub db has no predictions, nul
   assert.ok(r.error, 'should return an error field from the embedder failure');
 });
 
-test('selfImprovementRollup: flag on → skipped phase_1_stub', async () => {
+test('selfImprovementRollup: flag on → computes metrics and persists', async () => {
   const r = await dreamStepSelfImprovementRollup(enabledDb);
-  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'selfImprovementRollup' });
+  assert.equal(r.skipped, false, 'should not be skipped (flag is on)');
+  assert.equal(r.step, 'selfImprovementRollup');
+  assert.ok(Array.isArray(r.metrics_keys), 'should return metrics_keys array');
+  assert.ok(
+    r.metrics_keys.includes('pipeline_yield'),
+    'metrics should include pipeline_yield section',
+  );
+  assert.ok(
+    r.metrics_keys.includes('cost_performance'),
+    'metrics should include cost_performance section',
+  );
 });
 
 // ---------------------------------------------------------------------------
