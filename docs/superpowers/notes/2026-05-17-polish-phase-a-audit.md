@@ -136,14 +136,59 @@ Manual full-file read of every in-scope module (cognition-e1 and prompt-injectio
 
 See `docs/superpowers/notes/2026-05-17-polish-phase-a-log-baseline.md`
 
+### Logger module + selective conversions
+
+| Site | Event class | Commit |
+|---|---|---|
+| `system/runtime/log/index.js` (module + test) | n/a — primitive | `9e23b10` |
+| `system/runtime/daemon/heartbeat.js` (gate + tick throw) | `scheduler.gate_failed`, `scheduler.tick_failed` | `7b17d1e` |
+| `system/runtime/daemon/dispatcher-tick.js` (item + __dream__ dispatch catch) | `scheduler.dispatch_failed` | `fd8e453` |
+| `system/io/integrations/_framework/run-sync.js` (finally-cleanup) | `integration.sync_cleanup_failed` | `d656892` |
+| `system/cognition/jobs/scheduler-ext.js` (tracking writes + bad-schedule) | `scheduler.tracking_write_failed`, `jobs.bad_schedule` | `ef30e1b` |
+
+Rate-limit refusals NOT converted: `system/io/outbound/rate-limit.js` does not
+log refusals — it returns structured `{ok:false, reason:'rate_limited'}` to
+callers. No log site to convert.
+
+Embedder failure paths NOT converted: `system/data/embed/factory.js` is on the
+cognition-e1 exclude list. Filed to "Open for cognition-e1 lane" below.
+
+Reauth (proactive + reactive) NOT converted: `system/data/db/client.js` is on
+the cognition-e1 exclude list. Filed below.
+
 ### Log noise decisions
 
 | Pattern | Count | Classification | Action | Commit |
 |---|---|---|---|---|
+| Task 29 (broad noise reduction pass) | n/a | deferred | Task 5 baseline came back empty (helper bug, see "known issue" below). Deltas can't be measured until the helper is rewritten. Bridged to Phase B. | — |
 
 ### Invariant coverage decisions
 
-(populated by A.4 tasks; mirror the table from the spec)
+Mirrors spec A.4 invariant coverage table. `[A]` = added this lane.
+
+| Bug class | Existing invariant | New invariant? | Detect-only first? | Status (Phase A) |
+|---|---|---|---|---|
+| ESM cache drift | none | `runtime.hot_reload_watcher_active` `[A]` | yes | shipped detect-only (`bd6e8e3`) |
+| Job in_flight wedge | `scheduler.no_stuck_in_flight` ✓ | — | — | n/a |
+| `.robin-home` pointer | `install.pointer_present` ✓ | — | — | n/a |
+| LM pending↔cleared dupes | `integrations.lunch_money_no_dupes` ✓ | — | — | n/a |
+| plist KeepAlive loop | structural fix shipped | not invariant-able | — | rationale documented (no daemon-readable post-fix signal) |
+| SurrealDB anon access | `db.authenticated` ✓ | — | — | n/a |
+| pnpm Node mismatch | `runtime.node_version_pinned` ✓ | — | — | n/a |
+| Orphan `node --test` procs | `runtime.no_orphan_node_test_procs` ✓ | — | — | n/a |
+| MCP wiring race | `mcp.wiring_*` ✓ | — | — | n/a |
+| Multi-agent git-index race | none | not invariant-able | — | warning shipped in `.githooks/pre-commit` (`1ab07a8`) |
+| Embedder load staleness | `db.embedder_profile_match` ✓ | `daemon.embedder_load_age` `[A]` | yes | shipped detect-only (`e0d8e1c`); probe writer filed to e1 lane |
+| Reauth handler post-reconnect | `db.authenticated` (reactive) | `mcp.daemon_authenticated_after_reconnect` `[A]` | yes | shipped detect-only, weekly cadence (`a0f676c`) |
+
+Schema extension: invariant interface accepts an optional `remediation: string | string[]`
+field (`52603b7`). Phase B will tighten to required + backfill all existing invariants.
+
+Doctor `--health --json` schema snapshot test landed at `system/tests/unit/doctor-json-schema.test.js` (`9fdf9b2`).
+NOTE: plan referenced `doctor --json`; reality is `doctor --health --json` produces
+the JSON envelope. Locked-in keys: `exit_code`, `ts`, `budget`, `faculties`, `pending`,
+`dream`, `state_inference`, `pending_recall_log`. Test gated behind `ROBIN_SKIP_SLOW`
+since it spawns the CLI subprocess.
 
 ### A.4 known issue carried from Task 5
 
@@ -152,16 +197,19 @@ invokes a CLI subcommand `robin recall` that does not exist (and uses
 JSON-as-arg for `robin remember` which actually accepts positional
 content). Result: both 3-min captures in the initial baseline
 (`docs/superpowers/notes/2026-05-17-polish-phase-a-log-baseline.md`)
-returned zero log lines. The fix lands during A.4 (rewrite the helper
-to use real CLI surfaces like `hot`, `jobs run`, and the correct
-`remember` signature). Plan tasks affected: Task 30 (re-baseline +
-delta check) — this must re-capture against a working helper before
-the deltas can be measured.
+returned zero log lines. **Tasks 29 (log noise reduction pass) and 30
+(re-baseline + delta check) are deferred to Phase B carryover** — the
+baseline can't be compared against itself when it was empty. Helper
+rewrite is filed below.
 
 ## Open for cognition-e1 lane
 
 | File | Finding | Suggested fix |
 |---|---|---|
+| `system/data/embed/factory.js` | A.4 needs a daily synthetic-embed probe to drive `daemon.embedder_load_age`. Currently the invariant ships detect-only and reports `no_probe_record` until wired. | Wire a probe writer: on each daily heartbeat, embed a 1-token sentinel string and UPSERT `runtime_state:embed_probe` with `last_success_ts`. The invariant already reads from that row. |
+| `system/data/db/client.js` | Reauth proactive + reactive paths still use `console.warn` for diagnostic logging. Spec lists these as logger-conversion targets. | Convert `console.warn("[db] reauth …")` etc. to `log.warn({event:'db.reauth_*', …})` using `system/runtime/log/index.js`. |
+| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | Surface an `activeQueryCount` counter from `db/client.js` through `ctx` so the invariant can skip during real traffic. |
+| `system/runtime/daemon/server.js` (prompt-injection lane) | `startJobHotReload` now accepts an optional `db` parameter that writes `runtime:hot_reload_watcher` state. Caller does not pass `db` today — so the new `runtime.hot_reload_watcher_active` invariant will report `watcher_not_registered`. | Pass the daemon's `db` handle to `startJobHotReload({…, db})` in server.js when constructing the watcher. |
 
 ## Open for prompt-injection lane
 
@@ -184,3 +232,8 @@ _Priority enum: `high` (blocker for Phase B) / `med` (do early) / `low` (do late
 
 | Phase B target | Type | Provenance | Priority |
 |---|---|---|---|
+| Tighten `remediation` field on invariant schema to required; backfill existing invariants | invariant-schema | A.4 (`52603b7`) | med |
+| Doctor display must render `daemon.embedder_load_age`, `runtime.hot_reload_watcher_active`, `mcp.daemon_authenticated_after_reconnect` with their `remediation` hints | doctor-display | A.4 | med |
+| Rewrite `system/scripts/log-baseline-traffic.js` to use real CLI surfaces (`hot`, `jobs run`, correct `remember` signature); then re-baseline + delta check (Tasks 29-30 carryover) | log-baseline | A.4 (Task 5 known issue) | med |
+| Promote `daemon.embedder_load_age`, `runtime.hot_reload_watcher_active`, `mcp.daemon_authenticated_after_reconnect` out of detect-only after 7 days of clean runs | invariant-promotion | A.4 | low |
+| Add `repair` actions for the three new detect-only invariants once promoted | invariant-repair | A.4 | low |
