@@ -6,6 +6,7 @@ import {
   evaluateStateInference,
   readStateInferenceConfig,
 } from '../../cognition/jobs/internal/state-inference.js';
+import { resolveDuePredictions } from '../../cognition/jobs/resolve-due-predictions.js';
 import { withRuntimeJobsTracking } from '../../cognition/jobs/scheduler-ext.js';
 import { paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
@@ -146,6 +147,17 @@ export async function startDaemon() {
           name: 'invariants',
           intervalMs: 60_000,
           tick: createInvariantsTick({ db: ctx.db }),
+        },
+        {
+          // Cognition E1 — heartbeat-paced prediction resolution (spec §4a).
+          // Reads memos WHERE kind='prediction' AND resolved_at IS NONE AND
+          // expected_resolution_at + grace <= now(), dispatches per-kind resolvers,
+          // and writes back correct/actual_outcome or sets surface_in_brief=true.
+          // Gated on runtime:self-improvement-v2.value.enabled (default false);
+          // tick is registered but no-ops when flag is false.
+          name: 'resolve-due-predictions',
+          intervalMs: 5 * 60_000,
+          tick: () => resolveDuePredictions({ db: ctx.db }),
         },
       ],
     });
