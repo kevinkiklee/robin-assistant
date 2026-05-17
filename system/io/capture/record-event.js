@@ -11,6 +11,7 @@ export const VALID_SOURCES = new Set([
   'biographer',
   'ingest',
   'discord',
+  'imessage',
   'migration',
   'conversation',
   'agent_internal',

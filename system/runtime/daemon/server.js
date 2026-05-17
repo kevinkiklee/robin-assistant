@@ -2,6 +2,9 @@ import { ensureMcpToken } from '../../config/mcp-token.js';
 import { startIntrospection, stopIntrospection } from '../../cognition/introspection/index.js';
 import { createTriggerEngine } from '../../cognition/triggers/engine.js';
 import { createTriggerTick } from '../../cognition/triggers/loop.js';
+import { recordEvent } from '../../io/capture/record-event.js';
+import { loadAllowlist } from '../../io/integrations/imessage/allowlist.js';
+import { openChatDb, pollOnce as imessagePollOnce } from '../../io/integrations/imessage/inbox.js';
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
 import {
@@ -94,6 +97,56 @@ export async function startDaemon() {
       dispatchTool: triggerDispatch,
       logger: console,
     });
+
+    // M2 iMessage inbox — opt-in via ROBIN_IMESSAGE_ENABLED=1 (macOS only).
+    // chat.db needs Full Disk Access TCC grant. Allowlist file path defaults
+    // to <user-data>/io/integrations/imessage/allowlist.txt; override via
+    // ROBIN_IMESSAGE_ALLOWLIST. Cursor lives in runtime:imessage_cursor.
+    let imessageDb = null;
+    let imessageAllowlist = { directHandles: new Set(), groupChats: new Set() };
+    if (process.env.ROBIN_IMESSAGE_ENABLED === '1' && process.platform === 'darwin') {
+      try {
+        imessageDb = openChatDb();
+        const allowPath =
+          process.env.ROBIN_IMESSAGE_ALLOWLIST ||
+          `${paths.data.home()}/io/integrations/imessage/allowlist.txt`;
+        imessageAllowlist = loadAllowlist(allowPath);
+        console.log(
+          `[imessage] enabled — allowlist: ${imessageAllowlist.directHandles.size} DMs, ${imessageAllowlist.groupChats.size} groups`,
+        );
+      } catch (e) {
+        console.warn(`[imessage] init failed: ${e.message}; bucket will no-op`);
+        imessageDb = null;
+      }
+    }
+    const imessageTick = async () => {
+      if (!imessageDb) return;
+      try {
+        const { surql: sql } = await import('surrealdb');
+        const [rows] = await ctx.db
+          .query(sql`SELECT * FROM type::record('runtime', 'imessage_cursor')`)
+          .collect();
+        const cursor = Number.isInteger(rows?.[0]?.value?.last_rowid) ? rows[0].value.last_rowid : 0;
+        const result = await imessagePollOnce({
+          db: imessageDb,
+          allowlist: imessageAllowlist,
+          recordEvent: (e) => recordEvent(ctx.db, ctx.embedder.wrap, e),
+          getCursor: async () => cursor,
+          setCursor: async (v) =>
+            ctx.db
+              .query(sql`UPSERT type::record('runtime', 'imessage_cursor') SET value = ${{ last_rowid: v }}`)
+              .collect(),
+          logger: console,
+        });
+        if (result.allowed > 0 || result.skipped_self > 5) {
+          console.log(
+            `[imessage] tick: polled=${result.polled} allowed=${result.allowed} self=${result.skipped_self} denied=${result.skipped_allowlist}`,
+          );
+        }
+      } catch (e) {
+        console.warn(`[imessage] tick failed: ${e.message}`);
+      }
+    };
 
     // Cognition D1: per-source state_inference cadence. Read tick_ms once at
     // boot; defaults to 5 minutes. Subsequent flag flips are picked up by
@@ -221,6 +274,15 @@ export async function startDaemon() {
           intervalMs: 5_000,
           gate: () => process.env.ROBIN_DISABLE_TRIGGERS !== '1',
           tick: triggerTick,
+        },
+        {
+          // M2 iMessage inbox poller — gated on ROBIN_IMESSAGE_ENABLED=1 +
+          // successful chat.db open (Full Disk Access). When disabled this
+          // is cheap (gate returns false immediately).
+          name: 'imessage-inbox',
+          intervalMs: 10_000,
+          gate: () => !!imessageDb,
+          tick: imessageTick,
         },
       ],
     });
