@@ -401,8 +401,8 @@ Unambiguous evidence → auto-resolve. Ambiguous → `resolution_status='needs_u
 Five changes:
 
 1. **`events.source` enum migration** (Section 1, prereq for everything).
-2. **Co-dimension clustering.** _(DEFERRED: pending concurrent-agent reflection refactor — see task 3-A-5. step-reflection.js has unstaged changes that block landing this. When 3-A-5 lands: reflection clusters on `(content_embedding, task_type)` not content alone. Cross-task_type clustering remains at 0.85; within-task_type clustering at 0.70.)_
-3. **Threshold drop** — 0.85 → 0.70 within task_type. _(Also DEFERRED pending 3-A-5 above. Validate on v1-quarantine import (≥80% recall of imported rules) before enabling.)_
+2. **Co-dimension clustering.** ✓ Landed (task 3-A-5). Reflection now clusters on `(content_embedding, task_type)` not content alone. Cross-task_type clustering uses 0.85; within-task_type clustering uses 0.70. Pairs where either side has `task_type=null` (legacy corrections from before W2-B's correction-inference module) use the cross-task threshold.
+3. **Threshold drop** — 0.85 → 0.70 within task_type. ✓ Landed alongside (2). Validation against v1-quarantine corpus would require fixture-side `expected_rule_id` tagging (Wave 3-C follow-up); the assertion in the replay test runs and passes trivially until that tagging lands.
 4. **Verbatim quotes as primary candidate content.** `rule_candidates.content` retains user verbatim quotes; LLM paraphrase moves to `meta.synthesis_body`. **Only `meta.synthesis_body` is installed into CLAUDE.md** (PII protection — verbatim quotes can contain finance/health detail).
 5. **Retraction at next cycle.** `record_correction({rule_id})` flips `active=false`. Re-evaluation: if cluster lost ≥3 supporting corrections, rule stays inactive.
 

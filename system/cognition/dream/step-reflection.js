@@ -5,7 +5,8 @@ import { CORRECTION_RULE_SYSTEM } from './prompts.js';
 
 const DEFAULT_LOOKBACK_DAYS = 30;
 const DEFAULT_MIN_CLUSTER = 3;
-const DEFAULT_SIM_THRESHOLD = 0.85;
+const DEFAULT_SIM_THRESHOLD = 0.85; // Cross-task_type threshold (spec §4c).
+const DEFAULT_WITHIN_TASK_SIM_THRESHOLD = 0.7; // Within-same-task_type (spec §4c, 3-A-5).
 const DEFAULT_OVERLAP_THRESHOLD = 0.5;
 
 // Cosine similarity over embeddings that are already L2-normalised at write
@@ -17,26 +18,48 @@ function cosine(a, b) {
 }
 
 /**
- * Single-link agglomerative clustering on event embeddings. Two clusters
- * merge if any pair of embeddings across them has cosine ≥ `threshold`.
+ * Single-link agglomerative clustering on event embeddings with co-dimension
+ * threshold dispatch on `task_type` (spec §4c).
+ *
+ * Per the spec: pairs of items belonging to the SAME task_type merge at a
+ * lower threshold (within-task = 0.70) because terse corrections like "no" /
+ * "1" / "different" cluster well within the same task context. Pairs that
+ * cross task_types use the stricter cross-task threshold (0.85) so that the
+ * rare genuinely cross-cutting rule still surfaces but task-specific
+ * corrections don't fellowship with unrelated ones.
+ *
+ * Items with `task_type === null` (legacy corrections from before W2-B's
+ * correction-inference module) are treated as a distinct null task — they
+ * cluster with each other at the within threshold, but only with non-null
+ * task_types at the cross threshold.
  *
  * Implementation note: a labelled `break outer` would be the natural way
  * to restart the merge scan, but biome flags labelled statements; we use
  * a `merged` flag that's checked after each inner break instead.
  */
-function clusterEvents(events, threshold) {
-  const clusters = events.map((e) => ({ ids: [e.id], embeds: [e.embedding] }));
+function clusterEvents(events, withinThreshold, crossThreshold) {
+  const clusters = events.map((e) => ({
+    ids: [e.id],
+    embeds: [e.embedding],
+    task_types: [e.task_type ?? null],
+  }));
   let merged = true;
   while (merged) {
     merged = false;
     for (let i = 0; i < clusters.length && !merged; i++) {
       for (let j = i + 1; j < clusters.length && !merged; j++) {
-        for (const ea of clusters[i].embeds) {
-          if (merged) break;
-          for (const eb of clusters[j].embeds) {
+        for (let a = 0; a < clusters[i].embeds.length && !merged; a++) {
+          const ea = clusters[i].embeds[a];
+          const taskA = clusters[i].task_types[a];
+          for (let b = 0; b < clusters[j].embeds.length; b++) {
+            const eb = clusters[j].embeds[b];
+            const taskB = clusters[j].task_types[b];
+            const sameTask = taskA !== null && taskB !== null && taskA === taskB;
+            const threshold = sameTask ? withinThreshold : crossThreshold;
             if (cosine(ea, eb) >= threshold) {
               clusters[i].ids.push(...clusters[j].ids);
               clusters[i].embeds.push(...clusters[j].embeds);
+              clusters[i].task_types.push(...clusters[j].task_types);
               clusters.splice(j, 1);
               merged = true;
               break;
@@ -55,14 +78,15 @@ export async function dreamStepReflection(
   {
     lookbackDays = DEFAULT_LOOKBACK_DAYS,
     minCluster = DEFAULT_MIN_CLUSTER,
-    similarityThreshold = DEFAULT_SIM_THRESHOLD,
+    similarityThreshold = DEFAULT_SIM_THRESHOLD, // Cross-task threshold.
+    withinTaskTypeSimilarityThreshold = DEFAULT_WITHIN_TASK_SIM_THRESHOLD,
     overlapThreshold = DEFAULT_OVERLAP_THRESHOLD,
   } = {},
 ) {
   const cutoff = new Date(Date.now() - lookbackDays * 86400_000);
   const [rows] = await db
     .query(
-      surql`SELECT id, content FROM events
+      surql`SELECT id, content, meta FROM events
             WHERE meta.kind = 'correction' AND ts >= ${cutoff}`,
     )
     .collect();
@@ -78,13 +102,20 @@ export async function dreamStepReflection(
     .collect();
   const vecById = new Map((embRows ?? []).map((r) => [String(r.record), r.vector]));
   const hydrated = rows
-    .map((r) => ({ id: r.id, content: r.content, embedding: vecById.get(String(r.id)) }))
+    .map((r) => ({
+      id: r.id,
+      content: r.content,
+      embedding: vecById.get(String(r.id)),
+      task_type: r.meta?.task_type ?? null,
+    }))
     .filter((r) => Array.isArray(r.embedding) || ArrayBuffer.isView(r.embedding));
   if (hydrated.length < minCluster) return { clusters: 0, proposed: 0 };
 
-  const clusters = clusterEvents(hydrated, similarityThreshold).filter(
-    (c) => c.ids.length >= minCluster,
-  );
+  const clusters = clusterEvents(
+    hydrated,
+    withinTaskTypeSimilarityThreshold,
+    similarityThreshold,
+  ).filter((c) => c.ids.length >= minCluster);
   let proposed = 0;
   let tokens_in = 0;
   let tokens_out = 0;

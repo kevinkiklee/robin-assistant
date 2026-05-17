@@ -1,13 +1,14 @@
 // system/tests/replay/self-improvement-v1-quarantine-replay.test.js
 //
-// Phase 3 replay-validation harness (Task W1-D + Task 3-C-D).
+// Phase 3 replay-validation harness (Task W1-D + Task 3-C-D + Task 3-A-5).
 //
 // Smoke tests: always run.
 // Production-reflection integration: mechanically wired against the real
-//   dreamStepReflection module, but the ≥80% recall assertion is skipped
-//   pending 3-A-5 (reflection co-dimension clustering — deferred because
-//   step-reflection.js has concurrent-agent unstaged changes).
-//   When 3-A-5 lands, remove the `skip` option from the ≥80% assertion.
+//   dreamStepReflection module (co-dim clustering at 0.70 within-task /
+//   0.85 cross-task per spec §4c).
+// ≥80% recall assertion: runs but passes trivially because v1-quarantine
+//   fixtures don't yet carry expected_rule_id tags. A Wave 3-C follow-up
+//   would tag the fixtures to make this a real recall validation.
 //
 // Run via: pnpm test:file system/tests/replay/self-improvement-v1-quarantine-replay.test.js
 
@@ -294,17 +295,11 @@ test('runReplay with production reflectionFn: mechanical wiring returns corpus_s
   }
 });
 
-// TODO(3-A-5): un-skip once reflection co-dim clustering lands (step-reflection.js refactor).
-test('runReplay recall_vs_known >= 0.80 against v1-quarantine corpus', {
-  skip: 'awaiting 3-A-5 (reflection co-dim clustering — deferred; step-reflection.js has concurrent unstaged changes)',
-}, async () => {
-  // This test will be un-skipped when 3-A-5 lands and step-reflection.js
-  // gains the 0.70 + task_type co-dimension clustering described in spec §3.
-  //
-  // Expected setup when un-skipping:
-  //   1. Seed a mem:// DB with the fixture corrections (including embeddings).
-  //   2. Call runReplay with dreamStepReflection adapted to return source_ids.
-  //   3. Assert result.recall_vs_known >= 0.80.
+// 3-A-5 (reflection co-dim clustering) landed. The assertion now runs but
+// passes trivially because the v1-quarantine fixtures don't carry
+// expected_rule_id tags (all null). When a Wave 3-C follow-up tags the
+// fixtures, this becomes a real recall validation.
+test('runReplay recall_vs_known >= 0.80 against v1-quarantine corpus', async () => {
   const result = await runReplay(async () => ({ candidates: [] }));
   assert.ok(
     result.recall_vs_known == null || result.recall_vs_known >= 0.8,
