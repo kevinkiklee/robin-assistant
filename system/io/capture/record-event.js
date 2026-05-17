@@ -3,7 +3,7 @@ import { sha256 } from '../../data/embed/hash.js';
 import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
 import { RobinPiiRefusedError } from './errors.js';
 
-const VALID_SOURCES = new Set([
+export const VALID_SOURCES = new Set([
   'cli',
   'stop_hook',
   'manual',
@@ -14,6 +14,12 @@ const VALID_SOURCES = new Set([
   'migration',
   'conversation',
   'agent_internal',
+  'explicit_correction',
+  'task_outcome',
+  'playbook_proposed',
+  'playbook_applied',
+  'introspection_sample',
+  'confidence_resolved',
 ]);
 
 export async function recordEvent(db, embedder, input) {
