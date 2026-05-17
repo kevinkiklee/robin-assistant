@@ -4,7 +4,6 @@
 //   - initBudgetConfig()           — ensure the KV row exists with defaults
 //   - readBudgetConfig()           — return current config (daily_cost_budget_usd etc.)
 //   - readBudgetState()            — return daily spend so far
-//   - decrementBudget(cost)        — record spend (legacy; use tryReserveCost instead)
 //   - tryReserveCost(db, cost)     — atomic check + reserve; returns {ok, remaining}
 //   - recordActualCost(db, actual) — correct the spend after LLM call completes
 //   - isStratumAllowed(...)        — strata-priority gate (spec §2)
@@ -102,16 +101,6 @@ export async function readBudgetState(db) {
   } catch {
     return { daily_spend_usd: 0, crash_count: 0, turn_sample_pct: 25 };
   }
-}
-
-/**
- * Decrement the daily budget by `costUsd`.
- * Legacy helper — prefer tryReserveCost for new callers.
- * Atomic increment via SurrealDB += semantics.
- */
-export async function decrementBudget(db, costUsd) {
-  if (typeof costUsd !== 'number' || costUsd <= 0) return;
-  await db.query(`UPSERT ${VALUE_RECORD_SQL} SET value.daily_spend_usd += ${costUsd}`).collect();
 }
 
 /**

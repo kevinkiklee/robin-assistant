@@ -105,7 +105,6 @@ async function runPlaybookSynthesis(db, host, opts) {
 
   // 5. Synthesize each selected task_type
   let synthesized = 0;
-  let skipped = 0;
   let errors = 0;
   let overflows = 0;
   let tokens_in = 0;
@@ -135,7 +134,7 @@ async function runPlaybookSynthesis(db, host, opts) {
     eligible_count: eligible.length,
     selected_count: selected.length,
     synthesized,
-    skipped_task_types: skipped,
+    skipped_task_types: 0,
     errors,
     overflows,
     tokens_in,
@@ -148,13 +147,12 @@ async function runPlaybookSynthesis(db, host, opts) {
 // Per-task_type synthesis
 // ---------------------------------------------------------------------------
 
-async function synthesizeOnePlaybook(db, host, { taskType, outcomes, outcomesSince, n, drift, activePb }) {
+async function synthesizeOnePlaybook(db, host, { taskType, outcomesSince, n, activePb }) {
   if (!host?.invokeLLM) {
     throw new Error('no host adapter');
   }
 
   const lengthCap = tokenCapForTaskType(taskType) ?? 800;
-  const targetTokens = Math.round(lengthCap * 0.8);
 
   // Determine version number
   const currentVersion = activePb?.meta?.version ?? 0;
@@ -179,7 +177,6 @@ async function synthesizeOnePlaybook(db, host, { taskType, outcomes, outcomesSin
   // LLM call — tier: 'deep' maps to Opus per CLAUDE_TIER_MAP
   let llmResult;
   let overflow = false;
-  let retried = false;
 
   llmResult = await host.invokeLLM(
     [{ role: 'user', content: userPrompt }],
@@ -235,7 +232,7 @@ async function synthesizeOnePlaybook(db, host, { taskType, outcomes, outcomesSin
       // Log overflow event via console — record_event is the right path but we
       // stay within the dream step's own logging layer to avoid coupling.
       console.warn(
-        `[dream/playbook-synthesis] playbook_synthesis_overflow: task_type=${taskType} retried=${retried} truncated to ${lengthCap} tokens`,
+        `[dream/playbook-synthesis] playbook_synthesis_overflow: task_type=${taskType} retried=true truncated to ${lengthCap} tokens`,
       );
     }
   }

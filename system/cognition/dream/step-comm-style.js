@@ -210,7 +210,7 @@ async function synthesizeOneContext({ events, context, prior, host }) {
     tokens_in = llm?.usage?.input_tokens ?? 0;
     tokens_out = llm?.usage?.output_tokens ?? 0;
     parsed = parseLLMJSON(llm?.content ?? '');
-  } catch (e) {
+  } catch {
     return { record: null, tokens_in, tokens_out, cached: false };
   }
 

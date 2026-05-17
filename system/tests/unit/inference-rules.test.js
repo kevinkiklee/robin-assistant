@@ -80,7 +80,6 @@ test('ANTECEDENT_KINDS.WEAK contains documented entries', () => {
 
 test('OUTCOME_INFERENCE_WINDOWS has documented time values', () => {
   assert.equal(OUTCOME_INFERENCE_WINDOWS.correction_followup_window_sec, 600);
-  assert.equal(OUTCOME_INFERENCE_WINDOWS.recall_fingerprint_dedupe_sec, 60);
 });
 
 // --- OUTCOME_INFERENCE_SCORES ---

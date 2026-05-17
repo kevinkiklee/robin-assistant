@@ -22,7 +22,6 @@ export const ANTECEDENT_KINDS = {
 // Outcome inference time windows (seconds).
 export const OUTCOME_INFERENCE_WINDOWS = {
   correction_followup_window_sec: 600, // 10 min
-  recall_fingerprint_dedupe_sec: 60,
   // v1.5 (deferred): reask_window_sec_discord 300, reask_window_sec_terminal 1, abandoned_thread_sec 1800
 };
 
