@@ -1,4 +1,5 @@
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../config/time.js';
+import { currentStateSection } from './current-state.js';
 
 const START_MARKER = '<!-- robin-mcp:start -->';
 const END_MARKER = '<!-- robin-mcp:end -->';
@@ -352,7 +353,13 @@ Common kinds: \`duration\`, \`fact_recall\`, \`preference_guess\`,
 <!-- robin-calibration:end -->`;
 }
 
-export function agentsMdContent({ integrations = [], jobs, commStyle, calibration } = {}) {
+export function agentsMdContent({
+  integrations = [],
+  jobs,
+  commStyle,
+  calibration,
+  currentState,
+} = {}) {
   return `# Robin
 
 You're talking to a user through Robin. Robin gives you a memory layer
@@ -435,6 +442,8 @@ are misbehaving.
 Speak with the warmth and concision of a thoughtful friend who knows you
 well. Don't be servile. Don't summarize your own actions ("I'll now call
 recall..."). Just do the work and answer.
+
+${currentStateSection(currentState)}
 
 ${integrationsSection(integrations)}
 

@@ -19,6 +19,7 @@ import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 import { readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
 import { agentsMdContent, mergeAgentsMdContent } from './agents-md.js';
+import { readCurrentState } from './current-state.js';
 
 async function readOrEmpty(path) {
   try {
@@ -78,12 +79,19 @@ export async function readDbDataForAgentsMd() {
         intState = null;
       }
       const integrations = await loadIntegrationsForAgentsMd({ intState });
-      return { jobs, commStyle, calibration, integrations };
+      const currentState = await readCurrentState(db);
+      return { jobs, commStyle, calibration, integrations, currentState };
     } finally {
       await close(db);
     }
   } catch {
-    return { jobs: undefined, commStyle: null, calibration: null, integrations: [] };
+    return {
+      jobs: undefined,
+      commStyle: null,
+      calibration: null,
+      integrations: [],
+      currentState: null,
+    };
   }
 }
 
@@ -93,12 +101,19 @@ export async function readDbDataForAgentsMd() {
  *
  * @returns {{path: string, action: 'wrote' | 'unchanged' | 'created'}}
  */
-export async function writeMergedAgentsMd(path, jobs, commStyle, calibration, integrations) {
+export async function writeMergedAgentsMd(
+  path,
+  jobs,
+  commStyle,
+  calibration,
+  integrations,
+  currentState,
+) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
   const merged = mergeAgentsMdContent(
     existing,
-    agentsMdContent({ jobs, commStyle, calibration, integrations }),
+    agentsMdContent({ jobs, commStyle, calibration, integrations, currentState }),
   );
   if (merged === existing) return { path, action: 'unchanged' };
   await writeFile(path, merged, 'utf8');
@@ -112,10 +127,13 @@ export async function writeMergedAgentsMd(path, jobs, commStyle, calibration, in
 export async function refreshAgentsMdFiles({ targets } = {}) {
   const home = homedir();
   const paths = targets ?? [join(home, '.claude/CLAUDE.md'), join(home, '.gemini/GEMINI.md')];
-  const { jobs, commStyle, calibration, integrations } = await readDbDataForAgentsMd();
+  const { jobs, commStyle, calibration, integrations, currentState } =
+    await readDbDataForAgentsMd();
   const results = [];
   for (const path of paths) {
-    results.push(await writeMergedAgentsMd(path, jobs, commStyle, calibration, integrations));
+    results.push(
+      await writeMergedAgentsMd(path, jobs, commStyle, calibration, integrations, currentState),
+    );
   }
   return results;
 }
