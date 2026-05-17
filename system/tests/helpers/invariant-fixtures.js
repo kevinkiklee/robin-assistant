@@ -17,21 +17,6 @@ export function makeTestCtx(overrides = {}) {
 }
 
 /**
- * Run check + (optionally) repair + explain against fixtures.
- */
-export async function runOneInvariant(inv, ctx, { repair = false } = {}) {
-  const enabled = typeof inv.enabled === 'function' ? await inv.enabled(ctx) : true;
-  if (!enabled) return { enabled: false };
-  const check = await inv.check(ctx);
-  let repairOutcome = null;
-  if (repair && !check.ok && inv.repair) {
-    repairOutcome = await inv.repair(ctx);
-  }
-  const explain = typeof inv.explain === 'function' ? inv.explain(check) : null;
-  return { enabled: true, check, repair: repairOutcome, explain };
-}
-
-/**
  * Provide a tempdir with state file + lock dir paths for tests. Cleans up after.
  */
 export function withTempStateFile(fn) {
