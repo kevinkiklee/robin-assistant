@@ -65,9 +65,16 @@ test('outcomeGrading: flag on → real grading path (no rows → zeroes)', async
   assert.equal(typeof r.graded, 'number');
 });
 
-test('playbookSynthesis: flag on → skipped phase_1_stub', async () => {
+test('playbookSynthesis: flag on → real synthesis path (stub db has no outcomes → synthesized=0)', async () => {
+  // Phase 1 stub replaced by real Opus synthesis in Wave 3.
+  // The stub DB returns a non-null row for every query, but outcomes have no
+  // meta.task_type so they are filtered out; no eligible groups → synthesized=0.
   const r = await dreamStepPlaybookSynthesis(enabledDb, null, {});
-  assert.deepEqual(r, { skipped: true, reason: 'phase_1_stub', step: 'playbookSynthesis' });
+  assert.equal(r.skipped, false, 'should not be skipped (flag is on)');
+  assert.equal(r.step, 'playbookSynthesis');
+  assert.equal(typeof r.synthesized, 'number');
+  // No eligible task_types → zero synthesized
+  assert.equal(r.synthesized, 0);
 });
 
 test('calibrationBucket: flag on → real path (stub db returns empty result set, not skipped)', async () => {
