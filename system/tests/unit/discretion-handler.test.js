@@ -124,69 +124,117 @@ test('discretionHandler: stderr writer is invoked exactly once on block', async 
   assert.equal(h.exitCalls.length, 1);
 });
 
+// The bypass list is read from ROBIN_BYPASS_PROJECT_PATHS on every hook
+// fire. Each bypass test scopes the env var locally and restores it so
+// concurrent tests in the suite don't leak state.
+function withBypassEnv(value, fn) {
+  const prior = process.env.ROBIN_BYPASS_PROJECT_PATHS;
+  process.env.ROBIN_BYPASS_PROJECT_PATHS = value;
+  return Promise.resolve(fn()).finally(() => {
+    if (prior === undefined) delete process.env.ROBIN_BYPASS_PROJECT_PATHS;
+    else process.env.ROBIN_BYPASS_PROJECT_PATHS = prior;
+  });
+}
+
 test('discretionHandler: bypassed cwd skips env-dump rule', async () => {
   const h = makeHarness();
-  await discretionHandler({
-    stdin: {
-      cwd: '/Users/iser/workspace/leadforge',
-      tool_input: { command: 'vercel env pull .env.local --yes' },
-    },
-    exit: h.exit,
-    stderr: h.stderr,
-  });
+  await withBypassEnv('/tmp/robin-bypass-test-a', () =>
+    discretionHandler({
+      stdin: {
+        cwd: '/tmp/robin-bypass-test-a',
+        tool_input: { command: 'vercel env pull .env.local --yes' },
+      },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
   assert.deepEqual(h.exitCalls, []);
   assert.deepEqual(h.stderrLines, []);
 });
 
 test('discretionHandler: bypassed cwd subdirectory also skips rules', async () => {
   const h = makeHarness();
-  await discretionHandler({
-    stdin: {
-      cwd: '/Users/iser/workspace/leadforge/apps/web',
-      tool_input: { command: 'env | grep TOKEN' },
-    },
-    exit: h.exit,
-    stderr: h.stderr,
-  });
+  await withBypassEnv('/tmp/robin-bypass-test-a', () =>
+    discretionHandler({
+      stdin: {
+        cwd: '/tmp/robin-bypass-test-a/apps/web',
+        tool_input: { command: 'env | grep TOKEN' },
+      },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
   assert.deepEqual(h.exitCalls, []);
   assert.deepEqual(h.stderrLines, []);
 });
 
 test('discretionHandler: sibling path with shared prefix still blocked (no prefix-attack)', async () => {
   const h = makeHarness();
-  await discretionHandler({
-    stdin: {
-      cwd: '/Users/iser/workspace/leadforge-archive',
-      tool_input: { command: 'env' },
-    },
-    exit: h.exit,
-    stderr: h.stderr,
-  });
+  await withBypassEnv('/tmp/robin-bypass-test-a', () =>
+    discretionHandler({
+      stdin: {
+        cwd: '/tmp/robin-bypass-test-a-archive',
+        tool_input: { command: 'env' },
+      },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
   assert.deepEqual(h.exitCalls, [2]);
   assert.match(h.stderrLines[0], /env-dump/);
 });
 
 test('discretionHandler: missing cwd does NOT bypass (fail-closed)', async () => {
   const h = makeHarness();
-  await discretionHandler({
-    stdin: { tool_input: { command: 'env' } },
-    exit: h.exit,
-    stderr: h.stderr,
-  });
+  await withBypassEnv('/tmp/robin-bypass-test-a', () =>
+    discretionHandler({
+      stdin: { tool_input: { command: 'env' } },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
   assert.deepEqual(h.exitCalls, [2]);
   assert.match(h.stderrLines[0], /env-dump/);
 });
 
 test('discretionHandler: non-bypassed cwd still applies rules', async () => {
   const h = makeHarness();
-  await discretionHandler({
-    stdin: {
-      cwd: '/Users/iser/workspace/other-project',
-      tool_input: { command: 'env' },
-    },
-    exit: h.exit,
-    stderr: h.stderr,
-  });
+  await withBypassEnv('/tmp/robin-bypass-test-a', () =>
+    discretionHandler({
+      stdin: {
+        cwd: '/tmp/robin-other-project',
+        tool_input: { command: 'env' },
+      },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
   assert.deepEqual(h.exitCalls, [2]);
   assert.match(h.stderrLines[0], /env-dump/);
+});
+
+test('discretionHandler: empty ROBIN_BYPASS_PROJECT_PATHS means no bypass (default for npm installs)', async () => {
+  const h = makeHarness();
+  await withBypassEnv('', () =>
+    discretionHandler({
+      stdin: { cwd: '/tmp/robin-bypass-test-a', tool_input: { command: 'env' } },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
+  assert.deepEqual(h.exitCalls, [2]);
+  assert.match(h.stderrLines[0], /env-dump/);
+});
+
+test('discretionHandler: colon-separated multi-path bypass', async () => {
+  const h = makeHarness();
+  await withBypassEnv('/tmp/robin-bypass-test-a:/tmp/robin-bypass-test-b', () =>
+    discretionHandler({
+      stdin: { cwd: '/tmp/robin-bypass-test-b/sub', tool_input: { command: 'env' } },
+      exit: h.exit,
+      stderr: h.stderr,
+    }),
+  );
+  assert.deepEqual(h.exitCalls, []);
+  assert.deepEqual(h.stderrLines, []);
 });
