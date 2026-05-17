@@ -19,7 +19,7 @@ import { stage2Resolve } from './stage2-embedding.js';
 import { stage3Disambig } from './stage3-disambig.js';
 
 const DEFAULT_HIGH = 0.92;
-const DEFAULT_LOW = 0.8;
+const DEFAULT_LOW = 0.85;
 
 // SurrealDB renders record IDs outside `[A-Za-z0-9_]` as `tb:⟨…⟩` /
 // backticks, and that bracketed form fails to round-trip through a bound
