@@ -7,7 +7,29 @@
 
 ### Inventory
 
-(populated by A.1 tasks)
+### A1-Inventory (seed scan)
+
+Seed scan run 2026-05-17 against `system/` with cognition-e1 and prompt-injection
+exclude lists applied. Raw output in `tmp/polish-a1-seed.txt` (gitignored).
+
+Suspect-site counts per static pattern:
+
+- EMPTY_CATCHES: 0
+- COMMENTED_CATCHES: 12
+- CATCH_RETURN_FALLBACK: 49
+- PROMISE_CATCH_FALLBACK: 17
+- LOG_AND_SWALLOW: 6
+- PROMISE_ALLSETTLED_DISCARDED: 2
+
+Total raw seed sites: 86 (manual sweep will widen scope beyond grep).
+
+Exclude-list filter confirmed: `OK: no cognition-e1 leakage` and all
+prompt-injection-owned paths (`runtime/daemon/server.js`, `lifecycle.js`,
+`http.js`, `log-scrub.js`, `cli/commands/web.js`, `mcp/tools/ingest.js`,
+`io/integrations/_framework/capture.js`, `config/daemon-state.js`,
+`config/data-store.js`, `config/mcp-token.js`, `runtime/web/server.js`,
+`runtime/invariants/mcp.wiring-{global,project}-present.js`) excluded
+from grep hits.
 
 ### Decisions
 
