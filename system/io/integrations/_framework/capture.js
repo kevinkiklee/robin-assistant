@@ -2,15 +2,28 @@ import { BoundQuery, surql } from 'surrealdb';
 import { sha256 } from '../../../data/embed/hash.js';
 import { activeProfile, embeddingTable } from '../../../data/embed/profile-router.js';
 
-// SurrealDB record-id components only need to survive being passed as a
-// string literal, but historically we restricted to `[a-zA-Z0-9_-]` and
-// hashed everything else. The previous hex-truncation-to-16 was unsafe:
-// any external_id sharing a ≥8-byte prefix (e.g. `nhl:game:<id>`,
-// `ebird:S<id>`) collided, and UPSERT silently kept overwriting one row.
-// Use a sha256 prefix instead — 24 hex chars / 96 bits is comfortably past
-// birthday-collision risk for realistic row counts.
-function sanitizeIdPart(s) {
-  return /^[a-zA-Z0-9_-]+$/.test(s) ? s : `h_${sha256(s).slice(0, 24)}`;
+// Allowed charset must match `cognition/memory/edge-registry.js`'s
+// SAFE_ID_KEY = /^[A-Za-z0-9_]+$/. They WERE different historically —
+// this sanitizer permitted hyphens while validateEdge rejected them — and
+// the drift produced two systemic bugs:
+//   (1) `daily-briefing.js` minted `daily_briefing_${YYYY-MM-DD}_${HH}`
+//       external_ids that capture happily stored as readable row ids;
+//       every subsequent biographer relateAll referencing those rows then
+//       got skipped client-side (`relateAll[N]: skipping invalid edge —
+//       from: unsafe id key '…'`), flooding daemon.log without ever
+//       producing the intended `before` chain edges.
+//   (2) Same shape would fire for any future integration whose external_id
+//       embeds a hyphen — Google Drive file IDs, Letterboxd slugs, NHL
+//       team codes. Keeping the two regexes aligned makes "if capture
+//       accepts it, validateEdge accepts it" a checkable invariant.
+//
+// External_ids outside this set fall back to `h_<sha256[:24]>` — 24 hex
+// chars / 96 bits is comfortably past birthday-collision risk for realistic
+// row counts. The original readable form is preserved on the row's
+// `meta.external_id` field, so recall-by-external_id queries against that
+// field still work; only the surrogate row id loses its readability.
+export function sanitizeIdPart(s) {
+  return /^[A-Za-z0-9_]+$/.test(s) ? s : `h_${sha256(s).slice(0, 24)}`;
 }
 
 function deterministicId(source, external_id) {

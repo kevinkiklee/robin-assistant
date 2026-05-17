@@ -120,6 +120,25 @@ test('capture sanitizes special-char external_id', async () => {
   await close(db);
 });
 
+test('sanitizeIdPart contract matches edge-registry SAFE_ID_KEY (hyphens hash, underscores pass)', async () => {
+  const { sanitizeIdPart } = await import('../../io/integrations/_framework/capture.js');
+  // Passes: only [A-Za-z0-9_]. Same charset that edge-registry's
+  // validateEdge() accepts as edge endpoints. Drift between these two
+  // regexes is the root cause of the daily_briefing relateAll skip storm.
+  assert.equal(sanitizeIdPart('daily_briefing_2026_05_16_04'), 'daily_briefing_2026_05_16_04');
+  assert.equal(sanitizeIdPart('Snowflake123'), 'Snowflake123');
+  // Hashes: anything outside the charset. Hyphens specifically were
+  // permitted by the old regex but rejected by validateEdge — keeping
+  // both in [A-Za-z0-9_] forces them to hash-fallback now.
+  assert.match(sanitizeIdPart('foo-bar'), /^h_[0-9a-f]{24}$/);
+  assert.match(sanitizeIdPart('foo:bar'), /^h_[0-9a-f]{24}$/);
+  assert.match(sanitizeIdPart('foo/bar'), /^h_[0-9a-f]{24}$/);
+  assert.match(sanitizeIdPart('daily_briefing_2026-05-16_04'), /^h_[0-9a-f]{24}$/);
+  // Determinism: same input → same hash (capture relies on this for upsert
+  // dedup; new captures of the same external_id must land on the same row).
+  assert.equal(sanitizeIdPart('foo-bar'), sanitizeIdPart('foo-bar'));
+});
+
 test('capture defaults trust to untrusted (integration data is external)', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
