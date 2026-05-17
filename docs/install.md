@@ -65,7 +65,7 @@ If postinstall was skipped (global install, CI re-run, `--ignore-scripts`) and y
 |---|---|---|
 | `ROBIN_DEBUG` | unset | When set, surface CLI / hook errors with full context (stack traces, hook dispatch failures). |
 | `ROBIN_HOME` | `<repo>/user-data` or OS data dir | Override the user-data root (DB, secrets, logs). |
-| `ROBIN_DB_URL` | `rocksdb://<home>/data/db` | Override the SurrealDB URL (e.g. `mem://` for ephemeral tests). |
+| `ROBIN_DB_URL` | `surrealkv://<home>/data/db` | Override the SurrealDB URL (e.g. `mem://` for ephemeral tests). |
 | `ROBIN_DAEMON_REQUEST_TIMEOUT_MS` | `5000` | HTTP timeout when CLI commands delegate to a running daemon. |
 | `ROBIN_INTEGRATION_TIMEOUT_MS` | per-integration | Cap a single integration sync's wall time. |
 | `ROBIN_DISCORD_AGENT_TIMEOUT_MS` | per-agent default | Cap a Claude-Code agent reply spawned by the Discord bot. |

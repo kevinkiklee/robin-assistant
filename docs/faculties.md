@@ -3,9 +3,9 @@
 Robin's behavior is organized into named faculties. Two categories:
 
 - **Process faculties** (verbs — what Robin *does*): intuition, biographer, heartbeat, discretion, dream, reflection, introspection, reinforcement.
-- **Substrate lenses** (nouns — what Robin *knows*): attention, chronicle, knowledge, habits, persona, narrative, foresight.
+- **Substrate lenses** (nouns — what Robin *knows*): attention, chronicle, knowledge, habits, persona, arcs, foresight.
 
-The two-name convention: **modules are named for cognitive function; memo kinds are named for data shape**. `habits.js` writes `kind='habit'` memos; `foresight.js` writes `kind='prediction'` memos; `narrative.js` writes `kind='thread'` memos. Code does, data is.
+The two-name convention: **modules are named for cognitive function; memo kinds are named for data shape**. `habits.js` writes `kind='habit'` memos; `foresight.js` writes `kind='prediction'` memos; `arcs.js` writes to the `arcs` table (Theme 1b promoted arcs out of memos into their own table). Code does, data is.
 
 ## Substrate lenses (`system/cognition/memory/*.js`)
 
@@ -41,11 +41,11 @@ All lenses read/write through `store.js` — the only writer to events/memos/edg
 - API: `getPersona(db)` / `updatePersonaFields(db, fields)` / `updateCommStyle(db, fields)` / `updateCalibration(db, fields)`
 - Replaces v1's `profile.js` (table renamed from `profile` to `persona`).
 
-### narrative
-**Multi-episode arcs** (memos kind='thread').
-- File: `system/cognition/memory/narrative.js`
-- API: `add(db, embedder, { title?, summary?, episode_ids?, entity_ids? })` / `list(db, opts)`
-- Replaces v1's `threads.js`.
+### arcs
+**Multi-episode containers** (separate `arcs` table; see Theme 1b for the deep dive).
+- File: `system/cognition/memory/arcs.js`
+- API: `createArc(db, ...)` / `getArc(db, id)` / `listArcs(db, { status, limit })` / `extendArc(db, arcId, ...)`
+- Replaces v1's `threads.js` and the alpha.15 `narrative.js`/`kind='thread'` memo shape; arcs are now top-level records, not memos.
 
 ### foresight
 **Predictions and calibration** (memos kind='prediction').

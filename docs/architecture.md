@@ -27,8 +27,9 @@ Claude Code / Gemini CLI session
        │                 (the keystone effectiveness fix; closes the loop)
        ├─ Biographer     per-event LLM call → entities + edges + memos
        │                 (writes through store.relateAll for batched edges)
-       ├─ Dream          nightly 5-step pipeline → knowledge / habits /
-       │                 narrative / persona / rule candidates / scope cleanup
+       ├─ Dream          nightly multi-step pipeline → knowledge / patterns /
+       │                 reflection / profile / arcs / commStyle /
+       │                 calibration / scope cleanup / compaction
        ├─ Heartbeat      60s tick: integration syncs, biographer queue,
        │                 stale-session sweeper, internal jobs (reinforce-recall)
        ├─ Discretion     outbound: PII / secret / verbatim-quote guards +
@@ -40,8 +41,9 @@ Claude Code / Gemini CLI session
    Embedded SurrealDB v3   (surrealkv:// at <robin-home>/db/)
        Substrate (3 tables):
          events    · raw firehose; biographed_at/dreamed_at flags
-         memos     · distilled cognition; kind ∈ {knowledge, habit, thread,
-                     prediction, state_inference, reasoning, session_outcome}
+         memos     · distilled cognition; kind ∈ {knowledge, habit, prediction,
+                     state_inference, reasoning, session_outcome}
+                     (`thread` retired in alpha.16 — arcs are now a separate table)
          entities  · graph nouns; open `type` enum
        Edges (1 generic RELATION table, composite-ID `edges:[kind, in, out]`):
          kind ∈ {mentions, about, before, works_on, participates_in,

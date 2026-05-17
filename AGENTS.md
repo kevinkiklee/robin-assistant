@@ -26,7 +26,7 @@ You interact with Robin in three ways during a session:
 - **`get_profile()`** — the long-running user model (preferences, role, recurring topics).
 - **`get_hot(limit?)`** — top entities by recent mention weight.
 - **`list_episodes(limit?, since?)`** — recent episode summaries.
-- **`list_threads(limit?, status?)`** — active and archived conversation threads.
+- **`list_arcs(status?, limit?)`** — active / paused / closed multi-episode activity arcs. `get_arc(id)` for one arc by id.
 - **`list_journal(limit?)`** — recent captured events as a linear log.
 - **`list_patterns(limit?)`** — dreamed-up recurring patterns.
 - **`list_rules(status?)`** — `pending`, `active`, or `all` rule candidates.
@@ -40,7 +40,7 @@ You interact with Robin in three ways during a session:
 ### Operations
 
 - **`run_biographer()`** — drain the pending-events queue now. Normally fires automatically on the Stop hook.
-- **`run_dream({knowledge?, reflection?, profile?, threads?}?)`** — trigger nightly consolidation now. Normally fires at 4 AM.
+- **`run_dream({knowledge?, reflection?, profile?, arcs?}?)`** — trigger nightly consolidation now. Normally fires at 4 AM.
 - **`run_job(name, args?)`** — manually run an internal job (subject to `manually_runnable` gate).
 - **`update_rule(id, action, ...)`** — approve / reject / deactivate / set-priority on a rule or rule candidate.
 
@@ -48,15 +48,19 @@ You interact with Robin in three ways during a session:
 
 Tool availability depends on which integrations are configured. Check `health` for the live list. Common shapes:
 
-- `gmail_search(query, k?)`, `gmail_thread(id)`
-- `calendar_upcoming(days?)`, `calendar_search(query)`
-- `drive_search(query, k?)`
-- `github_search_issues(query)`, `github_write_*` (writes — rate-limited)
-- `spotify_recent(limit?)`, `spotify_write_*` (writes — rate-limited)
-- `linear_search_issues(query)`
-- `lunch_money_summary({period})`
+- `gmail_search`, `gmail_get_thread`, `gmail_shipments`, `gmail_subscriptions`, `gmail_mail_preview`
+- `calendar_list_events`, `calendar_get_event`
+- `drive_search`, `drive_get_file`
+- `github_recent_activity`, `github_notifications`, `github_write` (rate-limited)
+- `spotify_recently_played`, `spotify_top_items`, `spotify_write` (rate-limited)
+- `linear_active_issues`, `linear_get_issue`
+- `lunch_money_query`, `lunch_money_accounts`
 - `whoop_today`, `whoop_recent`
 - `youtube_list_subscriptions`, `youtube_list_liked`
+- `chrome_recent_visits`, `chrome_top_domains`
+- `letterboxd_recent`, `ebird_recent`, `nhl_recent`, `nhl_standings`
+- `finance_quote_latest`, `photos_recent`, `lrc_summary`
+- `discord_send` (rate-limited)
 
 ### Audit and meta
 

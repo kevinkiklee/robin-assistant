@@ -13,10 +13,10 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the per-phase delta and the design docs u
 ## Key features
 
 - **Short-term memory — the biographer agent.** After each agent turn (Stop hook), the biographer reads the new rows in `events`, makes one LLM call per event, and writes structured `entities`, typed edges (`mentions`, `about`, `works_on`, `participates_in`, `occurs_with`, `before`), and `episode` boundaries. This is the working-memory layer: each raw turn is normalised into who/what was discussed and how it links to prior turns.
-- **Long-term memory — the dream agent.** Nightly at 4 AM (`process.env.TZ`), dream runs a 5-step pipeline over events stamped `dreamed_at IS NONE`: promotes durable facts into `knowledge`, mines recurring `patterns`, updates the user `persona`, segments long-running `threads`, and clusters corrections into `rule_candidates`. Events are then stamped `dreamed_at`, so re-running is idempotent.
+- **Long-term memory — the dream agent.** Nightly at 4 AM (`process.env.TZ`), dream runs a multi-step pipeline over events stamped `dreamed_at IS NONE`: promotes durable facts into `knowledge`, mines recurring `patterns`, updates the user `persona`, segments long-running activity into `arcs`, and clusters corrections into `rule_candidates`. Events are then stamped `dreamed_at`, so re-running is idempotent.
 - **Self-improvement and learning — the reflection loop.** Corrections captured via `record_correction` accumulate in the DB. Reflection (step 3 of the dream pipeline) clusters them (cosine ≥ 0.85, min 3 occurrences, 30-day window) into `rule_candidates`. You approve or reject with `robin rules approve <id>`; approved rules surface in `CLAUDE.md` / `GEMINI.md` on the next session start.
-- **Multi-model storage with a graph database.** Robin runs on embedded SurrealDB v3 (`rocksdb://`). One database and one query language (SurrealQL) cover: documents (`events`, `memos`, `persona`), a single generic `edges` table with composite-ID UPSERT for typed relations (`mentions`, `about`, `before`, `works_on`, `participates_in`, `occurs_with`, `derived_from`, `supersedes`, `contradicts`), per-(profile, surface) HNSW vector indexes, key-value runtime state (`runtime_*`), and time-ordered event streams. Graph traversal, vector kNN, and field filters compose in a single query — no application-level join layer between stores.
-- **MCP as the agent interface.** Every agent-facing operation — `recall`, `remember`, `find_entity`, `related_entities`, `list_episodes`, `list_threads`, `list_journal`, `record_correction`, `run_biographer`, `run_dream`, plus per-integration tools (gmail, calendar, github, spotify, …) — is exposed as an MCP tool over SSE. Claude Code, Gemini CLI, and any other MCP-aware host talk to Robin the same way they talk to any other MCP server.
+- **Multi-model storage with a graph database.** Robin runs on embedded SurrealDB v3 (default `surrealkv://`; `rocksdb://` and `mem://` also supported). One database and one query language (SurrealQL) cover: documents (`events`, `memos`, `persona`), a single generic `edges` table with composite-ID UPSERT for typed relations (`mentions`, `about`, `before`, `works_on`, `participates_in`, `occurs_with`, `derived_from`, `supersedes`, `contradicts`), per-(profile, surface) HNSW vector indexes, key-value runtime state (`runtime_*`), and time-ordered event streams. Graph traversal, vector kNN, and field filters compose in a single query — no application-level join layer between stores.
+- **MCP as the agent interface.** Every agent-facing operation — `recall`, `remember`, `find_entity`, `related_entities`, `list_episodes`, `list_arcs`, `get_arc`, `list_journal`, `record_correction`, `run_biographer`, `run_dream`, plus per-integration tools (gmail, calendar, github, spotify, …) — is exposed as an MCP tool over SSE. Claude Code, Gemini CLI, and any other MCP-aware host talk to Robin the same way they talk to any other MCP server.
 
 ## Faculties at a glance
 
@@ -28,7 +28,7 @@ Robin's behaviour is organised into seven named faculties. Each maps to a specif
 | **biographer** | Per-turn: normalises new events into entities, edges, episodes | `system/cognition/biographer/` (incl. graph pipeline) |
 | **heartbeat** | 60s tick: integration syncs, biographer queue, stale-session sweep | `system/runtime/daemon/heartbeat.js` |
 | **discretion** | Refuses inappropriate writes (inbound), commands (bash), and outbound payloads | `system/cognition/discretion/` |
-| **dream** | Nightly 5-step consolidation into knowledge, patterns, persona, threads, rule candidates | `system/cognition/dream/pipeline.js` |
+| **dream** | Nightly multi-step consolidation into knowledge, patterns, persona, arcs, rule candidates | `system/cognition/dream/pipeline.js` |
 | **reflection** | Step 3 of dream — clusters correction events into rule candidates | `system/cognition/dream/step-reflection.js` |
 | **introspection** | Daemon-boot integrity check against the install manifest baseline | `system/runtime/daemon/introspection.js`, `runtime_introspection_state` |
 
@@ -51,7 +51,7 @@ stop_hook fires after agent turn
         → disambig)                participates_in
 ```
 
-**Dream — long-term memory, nightly 5-step consolidation:**
+**Dream — long-term memory, nightly multi-step consolidation:**
 
 ```
 events WHERE dreamed_at IS NONE
@@ -59,11 +59,13 @@ events WHERE dreamed_at IS NONE
         ▼
 ┌───────────────── Dream pipeline (nightly, 4 AM) ──────────────────┐
 │                                                                    │
-│  1. knowledge    →  durable facts                  →  knowledge    │
-│  2. patterns     →  recurring shapes               →  patterns     │
-│  3. reflection   →  cluster ≥3, cos ≥0.85, 30 day  →  rule_cand.   │
-│  4. profile      →  long-running user model        →  profile      │
-│  5. threads      →  ongoing arcs                   →  threads      │
+│   knowledge     →  durable facts                  →  knowledge     │
+│   patterns      →  recurring shapes               →  patterns      │
+│   reflection    →  cluster ≥3, cos ≥0.85, 30 day  →  rule_cand.    │
+│   profile       →  long-running user model        →  profile       │
+│   arcs          →  multi-episode activity         →  arcs          │
+│   commStyle     →  inferred interaction model     →  persona       │
+│   compaction    →  hot→archive aged-out memos     →  archive_*     │
 │                                                                    │
 └────────────────────────────────────────────────────────────────────┘
         │
