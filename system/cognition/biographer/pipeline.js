@@ -178,7 +178,23 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   // tag binds plain strings as string LITERALS, so `SELECT * FROM ${strId}`
   // returns garbage (string-indexed chars) instead of the row. Always pass
   // RecordId here so internal SELECTs hit the right record.
-  eventIds = eventIds.map(recordIdFromString);
+  //
+  // Defense-in-depth dedupe: the accumulator owns the primary dedupe (per
+  // bucket), but accept duplicates here too so CLI / catchup callers that
+  // assemble id lists from multiple sources don't trigger self-loop edges
+  // when the same id appears twice in their input.
+  {
+    const seen = new Set();
+    const deduped = [];
+    for (const raw of eventIds) {
+      const norm = recordIdFromString(raw);
+      const key = String(norm);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(norm);
+    }
+    eventIds = deduped;
+  }
   const batchStartedAt = Date.now();
 
   // 1. Single-event fast path stays as-is — short-circuits to _processOne for

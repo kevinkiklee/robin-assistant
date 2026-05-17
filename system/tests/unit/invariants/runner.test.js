@@ -105,6 +105,34 @@ test('heartbeat skips invariants with active cooldown', () =>
     assert.equal(checks, 1, 'second run suppressed by cooldown');
   }));
 
+test('heartbeat passes ctx to inv.enabled() so db-gated invariants can read state', () =>
+  // Regression: earlier code called `inv.enabled()` with no args, so invariants
+  // that gated on ctx.db (integrations.sync_freshness, integrations.no_stuck_in_flight,
+  // lunch_money.no_dupes) returned false at every tick and showed NEVER_RUN forever.
+  withTempStateFile(async ({ statePath, lockDir }) => {
+    const seenCtx = [];
+    const inv = {
+      name: 'test.ctx-aware',
+      level: 'warn',
+      phase: 'runtime',
+      surface: 'test',
+      description: 'gates on ctx.db',
+      runWhen: { heartbeat: { enabled: true, cooldownMs: 0 } },
+      async enabled(ctx) {
+        seenCtx.push(ctx);
+        return ctx?.db === SENTINEL_DB;
+      },
+      async check() {
+        return { ok: true };
+      },
+    };
+    const SENTINEL_DB = { _id: 'sentinel-db' };
+    const ctx = makeCtx({ db: SENTINEL_DB, logFallback: false });
+    await run({ trigger: 'heartbeat', ctx, statePath, lockDir, invariants: [inv] });
+    assert.equal(seenCtx.length, 1, 'enabled() was invoked');
+    assert.equal(seenCtx[0]?.db, SENTINEL_DB, 'enabled() received the same ctx the runner uses');
+  }));
+
 test('heartbeat allSettled isolates one slow invariant from others', () =>
   withTempStateFile(async ({ statePath, lockDir }) => {
     const fast = makeFakeInvariant({ name: 'fast' });

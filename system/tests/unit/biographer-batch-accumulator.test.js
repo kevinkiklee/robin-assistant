@@ -131,6 +131,27 @@ test('reads config callback on every flush (operator-tunable at runtime)', async
   assert.deepEqual(fires[1], ['c', 'd', 'e', 'f']);
 });
 
+test('duplicate eventId on the same bucket is deduped (no self-loop edges downstream)', async () => {
+  // Two concurrent capture paths can call accumulator.add for the same event
+  // before the bucket has flushed (Discord adapter + remember tool + the
+  // /internal/biographer/process-pending route). Pre-dedupe, the bucket
+  // shipped `[id, id]` to biographerProcessBatch, which then chained a
+  // self-loop `before` edge between the duplicates and logged "biographer
+  // race detected on 1/N events" every batch.
+  const fires = [];
+  const acc = createBatchAccumulator({
+    config: makeConfig({ debounce_ms: 30 }),
+    fire: async (ids, source) => fires.push({ ids: [...ids], source }),
+  });
+  acc.add('events:foo', 'cli');
+  acc.add('events:foo', 'cli'); // second concurrent path
+  acc.add('events:bar', 'cli');
+  acc.add('events:foo', 'cli'); // third — also deduped
+  await sleep(60);
+  assert.equal(fires.length, 1);
+  assert.deepEqual(fires[0].ids, ['events:foo', 'events:bar']);
+});
+
 test('disable: true short-circuits buckets - each add fires a single-id batch immediately', async () => {
   const fires = [];
   const acc = createBatchAccumulator({

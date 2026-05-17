@@ -66,11 +66,26 @@ export function createBatchAccumulator({ config, fire }) {
 
     let b = buckets.get(source);
     if (!b) {
-      b = { ids: [], firstEnqueuedAt: Date.now(), debounceTimer: null, capTimer: null };
+      b = {
+        ids: [],
+        seen: new Set(),
+        firstEnqueuedAt: Date.now(),
+        debounceTimer: null,
+        capTimer: null,
+      };
       buckets.set(source, b);
       b.capTimer = setTimeout(() => flush(source), maxWaitMs);
     }
-    b.ids.push(String(eventId));
+    // Dedupe within the bucket. Concurrent capture paths (Discord adapter,
+    // /internal/biographer/process-pending, and remember tool) can each call
+    // add() for the same event id while the bucket is still open. Without
+    // this guard the bucket ships duplicates to biographerProcessBatch,
+    // which then chains self-loop `before` edges between the duplicates and
+    // logs "biographer race detected on 1/N events" on every batch.
+    const idStr = String(eventId);
+    if (b.seen.has(idStr)) return;
+    b.seen.add(idStr);
+    b.ids.push(idStr);
     if (b.debounceTimer) clearTimeout(b.debounceTimer);
     b.debounceTimer = setTimeout(() => flush(source), debounceMs);
     if (b.ids.length >= maxBatch) {

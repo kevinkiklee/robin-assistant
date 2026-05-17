@@ -86,11 +86,15 @@ async function maybeRepair(inv, entry, ctx, lockDir) {
   return { ...result, decision };
 }
 
-async function shouldRun(inv, triggerCfg, entry, trigger) {
+async function shouldRun(inv, triggerCfg, entry, trigger, ctx) {
   if (!triggerCfg?.enabled) return false;
   if (typeof inv.enabled === 'function') {
     try {
-      const ok = await inv.enabled();
+      // Pass ctx so invariants that gate on db / host / config availability
+      // can decide. Earlier code called `inv.enabled()` with no args, which
+      // made every db-using gate return false and left integrations.*
+      // invariants permanently in the NEVER_RUN state.
+      const ok = await inv.enabled(ctx);
       if (!ok) return false;
     } catch {
       return false;
@@ -127,7 +131,7 @@ async function runBoot({
       let entry = getEntry(state, inv.name);
       entry = resetFailureCount(entry); // boot resets
       const triggerCfg = inv.runWhen?.boot;
-      const skip = !(await shouldRun(inv, triggerCfg, entry, 'boot'));
+      const skip = !(await shouldRun(inv, triggerCfg, entry, 'boot', ctx));
       if (skip) {
         report.results.push({ name: inv.name, status: 'skipped' });
         setEntry(state, inv.name, entry);
@@ -165,7 +169,7 @@ async function runHeartbeat({ ctx, state, stateWritePath, lockDir, invariants })
   const due = [];
   for (const inv of invariants) {
     const entry = getEntry(state, inv.name);
-    if (await shouldRun(inv, inv.runWhen?.heartbeat, entry, 'heartbeat')) due.push(inv);
+    if (await shouldRun(inv, inv.runWhen?.heartbeat, entry, 'heartbeat', ctx)) due.push(inv);
   }
 
   const results = await Promise.allSettled(
@@ -218,7 +222,7 @@ async function runPostInstall({ ctx, state, stateWritePath, lockDir, invariants 
   for (const inv of invariants) {
     let entry = getEntry(state, inv.name);
     entry = resetFailureCount(entry);
-    if (!(await shouldRun(inv, inv.runWhen?.postInstall, entry, 'postInstall'))) {
+    if (!(await shouldRun(inv, inv.runWhen?.postInstall, entry, 'postInstall', ctx))) {
       setEntry(state, inv.name, entry);
       continue;
     }
