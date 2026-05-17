@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Lists MCP tools registered by the live daemon (if running) and the
-// on-disk inventory under system/io/mcp/tools/. Exits non-zero if the
-// two diverge — used by polish-verify and dead-code-purge smoke tests.
+// Lists MCP tools from the on-disk inventory under system/io/mcp/tools/,
+// one per line, sorted. Intended for smoke-test comparison; future work
+// will cross-check against the live daemon's registered tools (see below).
 
 import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
