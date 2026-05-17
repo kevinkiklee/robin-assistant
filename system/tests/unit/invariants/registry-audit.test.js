@@ -56,3 +56,19 @@ test('explain() returns non-empty markdown for every invariant', () => {
     assert.ok(typeof md === 'string' && md.length > 0, `${inv.name}.explain empty`);
   }
 });
+
+// Phase A polish (A.4) opens the schema for an optional `remediation` field.
+// Phase B will tighten to required + backfill. For now, accept absent OR
+// string OR array-of-string.
+test('optional remediation field accepts string | string[] | undefined', () => {
+  for (const inv of INVARIANTS) {
+    if (inv.remediation === undefined) continue;
+    const ok =
+      typeof inv.remediation === 'string' ||
+      (Array.isArray(inv.remediation) && inv.remediation.every((s) => typeof s === 'string'));
+    assert.ok(
+      ok,
+      `${inv.name}.remediation must be string, string[], or undefined; got ${typeof inv.remediation}`,
+    );
+  }
+});
