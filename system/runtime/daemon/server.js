@@ -1,6 +1,7 @@
 import { ensureMcpToken } from '../../config/mcp-token.js';
 import { startIntrospection, stopIntrospection } from '../../cognition/introspection/index.js';
 import { createTriggerEngine } from '../../cognition/triggers/engine.js';
+import { loadTriggersFromDir } from '../../cognition/triggers/loader.js';
 import { createTriggerTick } from '../../cognition/triggers/loop.js';
 import { recordEvent } from '../../io/capture/record-event.js';
 import { loadAllowlist } from '../../io/integrations/imessage/allowlist.js';
@@ -80,12 +81,31 @@ export async function startDaemon() {
 
     const dispatcherTick = createDispatcherTick(ctx, tools);
 
-    // M1 trigger engine — empty registration in this commit; M3 adds the
-    // user-data/triggers/*.yaml loader and the JS-builtin registration hook.
-    // The tick early-exits when no triggers are registered, so the substrate
-    // is dormant until something gets registered. Kill switch:
+    // M1+M3 trigger engine — loads YAML triggers from user-data/triggers/
+    // at boot. Hot-reload is daemon-restart-on-file-change via the existing
+    // job-hot-reload watcher (paths list below). Kill switch:
     // ROBIN_DISABLE_TRIGGERS=1 (gate inline on the bucket).
     const triggerEngine = createTriggerEngine({ logger: console });
+    try {
+      const builtinDir = new URL('../../cognition/triggers/builtin/', import.meta.url).pathname;
+      const userDir = `${paths.data.home()}/triggers`;
+      for (const dir of [builtinDir, userDir]) {
+        const { triggers, errors } = loadTriggersFromDir(dir, { db: ctx.db });
+        for (const t of triggers) {
+          try {
+            triggerEngine.register(t);
+          } catch (e) {
+            console.warn(`[triggers] register ${t.name} failed: ${e.message}`);
+          }
+        }
+        for (const err of errors) {
+          console.warn(`[triggers] parse ${err.path}: ${err.error}`);
+        }
+        if (triggers.length) console.log(`[triggers] loaded ${triggers.length} from ${dir}`);
+      }
+    } catch (e) {
+      console.warn(`[triggers] loader failed: ${e.message}`);
+    }
     const triggerDispatch = async (toolName, args /* , opts */) => {
       const tool = tools.find((t) => t.name === toolName);
       if (!tool) throw new Error(`trigger dispatch: unknown tool ${toolName}`);
@@ -332,7 +352,11 @@ export async function startDaemon() {
       process.env.ROBIN_DISABLE_HOT_RELOAD === '1'
         ? { stop() {} }
         : startJobHotReload({
-            paths: [paths.data.jobs(), `${paths.data.home()}/io`],
+            paths: [
+              paths.data.jobs(),
+              `${paths.data.home()}/io`,
+              `${paths.data.home()}/triggers`,
+            ],
             log: console.log,
           });
 
