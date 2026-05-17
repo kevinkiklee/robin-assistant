@@ -1,5 +1,5 @@
 // step-self-improvement-rollup.js — Dream step: write v2 metrics rollup.
-// L2 step; depends on all other v2 steps. Writes runtime:self-improvement-v2.metrics.
+// L3 step; depends on all other v2 steps. Writes runtime:self-improvement-v2.metrics.
 // Phase 1 stub — gated on runtime:self-improvement-v2.
 // Wave 3: aggregate outcomes from the upstream v2 steps and upsert the
 //         runtime:self-improvement-v2.metrics row.
