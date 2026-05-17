@@ -31,7 +31,7 @@ export const byName = {
   calibration: ({ db }) => dreamStepCalibration(db),
   scopeCleanup: ({ db, host, opts }) => dreamStepScopeCleanup(db, host, opts?.scopeCleanup),
   compaction: ({ db }) => dreamStepCompaction(db),
-  // v2 self-improvement steps (Phase 1 stubs, gated on runtime:self-improvement-v2).
+  // v2 self-improvement steps (4 real, 1 stub — selfImprovementRollup pending Wave 3 follow-up). Gated on runtime:self-improvement-v2.
   outcomeGrading: ({ db, host, embedder, opts }) =>
     dreamStepOutcomeGrading(db, host, embedder, opts?.outcomeGrading),
   playbookSynthesis: ({ db, host, opts }) =>

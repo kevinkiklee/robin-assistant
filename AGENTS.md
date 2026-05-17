@@ -31,6 +31,12 @@ You interact with Robin in three ways during a session:
 - **`list_patterns(limit?)`** — dreamed-up recurring patterns.
 - **`list_rules(status?)`** — `pending`, `active`, or `all` rule candidates.
 - **`list_jobs()`** — scheduled internal jobs.
+- **`list_playbooks({task_type?, active_only=true}?)`** — playbook headers (frontmatter only) for each task_type. Filter by type or list all active ones.
+- **`get_playbook({id})`** — full playbook body for a specific playbook id.
+- **`explain_playbook({id})`** — playbook lineage: frontmatter + body + diff vs prior + source outcome excerpts + cited rules. Truncates at depth 4.
+- **`list_comm_style_snapshots({limit?})`** — deterministic comm-style snapshot history; use instead of recalling comm-style via embedding search.
+- **`get_calibration({statement_kind?})`** — calibration curve from `confidence_band` rows. Optionally filter by prediction kind.
+- **`explain_learning({memo_id?, rule_id?, prediction_id?})`** — unified provenance for a memo, rule, or prediction; dispatches across the above.
 
 ### Memory — write
 

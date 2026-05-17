@@ -16,8 +16,8 @@ export const DREAM_DAG_DEPS = {
   calibration: ['commStyle'], // §1.2 — persona MERGE serial within a dream run
   // §1.2 — content_hash + delete-then-archive.
   compaction: ['knowledge', 'scopeCleanup'],
-  // v2 self-improvement steps (Phase 1 stubs, gated on runtime:self-improvement-v2).
-  // Layer labels reflect topological order under DREAM_DAG_DEPS.
+  // v2 self-improvement steps (4 real, 1 stub — selfImprovementRollup pending Wave 3 follow-up).
+  // Gated on runtime:self-improvement-v2. Layer labels reflect topological order under DREAM_DAG_DEPS.
   outcomeGrading: [], // L1, Haiku — fills score on ungraded task_outcome rows
   playbookSynthesis: ['outcomeGrading', 'reflection'], // L2, Opus, K=5/night cap
   calibrationBucket: [], // L1, pure math — sole writer of confidence_band memos

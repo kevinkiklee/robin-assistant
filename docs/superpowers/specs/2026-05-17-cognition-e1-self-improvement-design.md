@@ -11,7 +11,7 @@
 
 Robin's six declared learning surfaces (biographer, reflection, reinforcement, comm-style, predictions, dream consolidation) all execute on schedule but yield almost nothing. In 7 days of production use: 0 new rule_candidates from 194 reflection cycles, 0 patterns recorded, 0 active predictions, all 19 arcs unnamed, `calibration.by_kind = {}`. Only comm-style works (confidence 0.93). The other agent's parallel investigation independently traced part of this to a broken `events.source` enum that silently drops every `record_correction` call.
 
-This spec adds an always-on `introspection` faculty that watches the daemon's event stream and writes `task_outcome` memos, plus five new dream steps that synthesize those outcomes into `playbook` memos (capability axis) and `confidence_band` memos (decision calibration axis). Nine new MCP tools surface playbooks, calibration, and provenance (two writes, seven reads). The existing 5-faculty arch gains a 6th (introspection) sibling. Cost: ~$2/day in additional LLM spend at defaults, doubling current Robin costs to ~$120/month.
+This spec adds an always-on `introspection` faculty that watches the daemon's event stream and writes `task_outcome` memos, plus five new dream steps that synthesize those outcomes into `playbook` memos (capability axis) and `confidence_band` memos (decision calibration axis). Eight new MCP tools surface playbooks, calibration, and provenance (two writes, six reads); `show_telemetry_rollup` already covers cost-rollup needs. The existing 5-faculty arch gains a 6th (introspection) sibling. Cost: ~$2/day in additional LLM spend at defaults, doubling current Robin costs to ~$120/month.
 
 Two axes of "smarter over time" are in scope: **capability synthesis** (Robin learns *how* to do recurring tasks better via playbooks) and **decision calibration** (Robin's confidence, comm-style, and behavior rules sharpen via prediction outcomes and corrections). The other two axes — knowledge synthesis and retrieval quality — are out of scope; a parallel investigation is fixing the plumbing layer that those depend on.
 
@@ -189,7 +189,7 @@ Single migration adds:
 
 The `explicit_correction` add unblocks the silent-failure cascade.
 
-### New MCP tools (eight here; `show_cost_rollup` is added in §6, total nine)
+### New MCP tools (eight total; `show_telemetry_rollup` covers cost-rollup needs)
 
 | Tool | Direction | Purpose |
 |---|---|---|
@@ -210,9 +210,9 @@ Added to `DREAM_DAG_DEPS` in `system/cognition/dream/dag.js`:
 
 - **L1: `step-outcome-grading`** — fills `score` on `task_outcome` rows with `score=null`. Haiku-tier, capped by row count. Cold-start safe: writes structural description even when no playbook exists to grade against.
 - **L2: `step-playbook-synthesis`** — depends on `step-reflection`. For each `task_type` with ≥3 graded outcomes since last synthesis AND `normalized_drift > threshold`, re-synthesize. Cap K=5/night ranked by `normalized_drift × n`. Opus-tier.
-- **L2: `step-calibration-bucket`** — pure math. Sole writer of `confidence_band`. Bootstrap (n<30): 3 buckets. Mature (n≥30): 10 buckets. Laplace smoothing.
-- **L2 (weekly): `step-prediction-taxonomy`** — clusters `kind='other'` predictions, proposes new enum entries as rule_candidates.
-- **L2: `step-self-improvement-rollup`** — writes the `runtime:self-improvement-v2.metrics` rollup. Depends on the others.
+- **L1: `step-calibration-bucket`** — pure math, no LLM deps. Sole writer of `confidence_band`. Bootstrap (n<30): 3 buckets. Mature (n≥30): 10 buckets. Laplace smoothing. Layer is L1 (no deps in DAG).
+- **L1 (weekly): `step-prediction-taxonomy`** — clusters `kind='other'` predictions, proposes new enum entries as rule_candidates. Weekly cooldown; no deps in DAG, so L1.
+- **L3: `step-self-improvement-rollup`** — writes the `runtime:self-improvement-v2.metrics` rollup. Depends on all four steps above (L3 by topological depth). _(stub — Wave 3 follow-up pending)_
 
 Ordering: `step-reflection` runs first (existing) so rule candidates exist when `step-playbook-synthesis` runs and can reference them.
 
@@ -273,7 +273,7 @@ turn_sample_pct = clamp(round(target_turn_spend / projected_turn_cost × 100), 5
 
 Floor 5%, ceiling 50%. Never exceeds half the daily budget so jobs / outbound / recall always have headroom. Persisted to `runtime:introspection.value.turn_sample_pct`.
 
-**Antecedent-check budget degradation** — the Haiku antecedent LLM call in `correction-inference.js` consumes from the same daily budget. When budget hits 25% remaining, the antecedent check drops to **regex-only matching** (no LLM verification). Raises false-positive rate but keeps the correction signal flowing through to reflection.
+**Antecedent-check budget degradation** _(DEFERRED: correction-inference.js is currently pure-structural (regex-only; no Haiku verification call). The `antecedent_regex_fallback` flag is written by `autoTuneTurnSamplePct` but has no reader yet — it is a no-op write until the Haiku antecedent path is added as a future hook.)_ When the Haiku antecedent path lands: it consumes from the same daily budget; when budget hits 25% remaining, the check drops to **regex-only matching** (no LLM verification). Raises false-positive rate but keeps the correction signal flowing through to reflection.
 
 ### Self-grading rubric (Haiku-tier)
 
@@ -401,8 +401,8 @@ Unambiguous evidence → auto-resolve. Ambiguous → `resolution_status='needs_u
 Five changes:
 
 1. **`events.source` enum migration** (Section 1, prereq for everything).
-2. **Co-dimension clustering.** Reflection clusters on `(content_embedding, task_type)` not content alone. Cross-task_type clustering remains at 0.85 for rare cross-cutting rules; within-task_type clustering at 0.70.
-3. **Threshold drop** — 0.85 → 0.70 within task_type. Validate on v1-quarantine import (≥80% recall of imported rules).
+2. **Co-dimension clustering.** _(DEFERRED: pending concurrent-agent reflection refactor — see task 3-A-5. step-reflection.js has unstaged changes that block landing this. When 3-A-5 lands: reflection clusters on `(content_embedding, task_type)` not content alone. Cross-task_type clustering remains at 0.85; within-task_type clustering at 0.70.)_
+3. **Threshold drop** — 0.85 → 0.70 within task_type. _(Also DEFERRED pending 3-A-5 above. Validate on v1-quarantine import (≥80% recall of imported rules) before enabling.)_
 4. **Verbatim quotes as primary candidate content.** `rule_candidates.content` retains user verbatim quotes; LLM paraphrase moves to `meta.synthesis_body`. **Only `meta.synthesis_body` is installed into CLAUDE.md** (PII protection — verbatim quotes can contain finance/health detail).
 5. **Retraction at next cycle.** `record_correction({rule_id})` flips `active=false`. Re-evaluation: if cluster lost ≥3 supporting corrections, rule stays inactive.
 

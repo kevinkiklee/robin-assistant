@@ -289,6 +289,7 @@ test('runReplay with production reflectionFn: mechanical wiring returns corpus_s
   }
 });
 
+// TODO(3-A-5): un-skip once reflection co-dim clustering lands (step-reflection.js refactor).
 test(
   'runReplay recall_vs_known >= 0.80 against v1-quarantine corpus',
   { skip: 'awaiting 3-A-5 (reflection co-dim clustering — deferred; step-reflection.js has concurrent unstaged changes)' },
