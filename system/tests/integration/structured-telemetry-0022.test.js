@@ -140,10 +140,12 @@ test('dream_telemetry: recordStepTelemetry writes structured row with layer + pa
   assert.equal(refl.success, false);
   assert.equal(refl.error, 'boom');
 
-  // cadence_telemetry rows still written for back-compat.
+  // cadence_telemetry rows still written for back-compat. Dream-emitted rows
+  // carry a `dream.` prefix on `step` to distinguish them from cadence-
+  // consumer rows that share the table (see telemetry.js).
   const [cadence] = await db
     .query(
-      "SELECT count() AS n FROM cadence_telemetry WHERE step IN ['knowledge','compaction','reflection'] GROUP ALL",
+      "SELECT count() AS n FROM cadence_telemetry WHERE step IN ['dream.knowledge','dream.compaction','dream.reflection'] GROUP ALL",
     )
     .collect();
   assert.equal(cadence[0].n, 3, 'cadence_telemetry continues to receive the same rows');
