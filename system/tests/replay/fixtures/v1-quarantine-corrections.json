@@ -3,10 +3,7 @@
     "user-data/runtime/install/reports/v1-import-report-121548C64ACB4369BA58361796.json",
     "user-data/runtime/install/reports/v1-import-report-5854D662867B4CC7BEA83643A5.json"
   ],
-  "source_files_read": [
-    "robin-assistant-v1/user-data/memory/self-improvement/corrections.md",
-    "robin-assistant-v1/user-data/memory/quarantine/captures.md"
-  ],
+  "extraction_notes": "Correction entries sampled from the v1-import reports listed in extracted_from.",
   "extracted_at": "2026-05-17T12:00:00.000Z",
   "count": 30,
   "entries": [

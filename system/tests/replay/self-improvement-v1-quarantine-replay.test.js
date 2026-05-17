@@ -33,29 +33,26 @@ async function loadCorpus() {
  *   ids so recall_vs_known can be computed. Pass null to skip reflection and
  *   get corpus_size only.
  *
- * @returns {{ candidates: object, recall_vs_known: number|null, corpus_size: number }}
+ * @returns {{ candidates: Array, recall_vs_known: number|null, corpus_size: number }}
  */
 export async function runReplay(reflectionFn) {
   const corpus = await loadCorpus();
   const result = reflectionFn
     ? await reflectionFn(corpus.entries)
     : { candidates: [] };
+  const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
 
-  // How many entries have a known expected_rule_id (the "ground truth" set)?
   const known = corpus.entries.filter((e) => e.expected_rule_id != null).length;
-
-  // How many candidates recover at least one entry from the known set?
-  const recovered = result.candidates.filter((c) =>
+  const recovered = candidates.filter((c) =>
     Array.isArray(c.source_ids) &&
     c.source_ids.some((id) =>
       corpus.entries.find((e) => e.id === id)?.expected_rule_id != null
     )
   ).length;
-
   const recall_vs_known = known === 0 ? null : recovered / known;
 
   return {
-    candidates: result,
+    candidates,
     recall_vs_known,
     corpus_size: corpus.entries.length,
   };
@@ -80,7 +77,7 @@ test('runReplay with no-op reflection returns the corpus size', async () => {
   const result = await runReplay(async () => ({ candidates: [] }));
   assert.equal(typeof result.corpus_size, 'number');
   assert.ok(result.corpus_size > 0, 'corpus_size should be positive');
-  assert.equal(result.candidates.candidates.length, 0);
+  assert.equal(result.candidates.length, 0);
   // No expected_rule_ids are set in the skeleton fixture, so recall_vs_known is null.
   assert.equal(result.recall_vs_known, null);
 });
