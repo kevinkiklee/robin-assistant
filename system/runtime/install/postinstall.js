@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// npm/pnpm/yarn `postinstall` entry. Decides whether to invoke
+// `postinstall` entry (runs under pnpm/npm/yarn). Decides whether to invoke
 // `robin install --auto` (fresh install) or `robin install --upgrade`
 // (already installed — idempotent refresh of migrations, hooks, manifest,
 // supervisor; preserves config). Never fails the install: any error becomes
-// a printed hint and exit 0, so a setup glitch can't brick `npm install`.
+// a printed hint and exit 0, so a setup glitch can't brick `pnpm install`.
 //
 // Gating:
 //   - Skip if ROBIN_SKIP_INSTALL is set (explicit opt-out).
 //   - Skip in CI environments (CI=true).
-//   - Skip on global install (npm_config_global=true). Print a manual hint.
+//   - Skip on global install (npm_config_global=true; pnpm sets this too). Print a manual hint.
 //   - Skip when installed transitively as a dep (INIT_CWD !== process.cwd()).
 //   - Skip on Windows (daemon supervision unsupported).
 //
@@ -41,7 +41,7 @@ async function alreadyInstalled() {
     const { pointerExists } = await import('../../config/data-store.js');
     if (pointerExists()) return true;
   } catch {
-    // data-store import failures in postinstall must never block npm install.
+    // data-store import failures in postinstall must never block pnpm install.
   }
   // Or the default home (<package_root>/user-data/) already has a Robin
   // data marker — covers users who ran `robin install` before the postinstall
@@ -125,7 +125,7 @@ child.on('exit', (code) => {
       `Robin: auto-setup exited ${code}. Run \`node system/bin/robin install\` to retry and see full output.`,
     );
   }
-  // Always exit 0 — never block npm install on setup failure.
+  // Always exit 0 — never block pnpm install on setup failure.
   process.exit(0);
 });
 

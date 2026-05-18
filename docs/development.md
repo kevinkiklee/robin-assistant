@@ -5,12 +5,12 @@ How to work on Robin: run tests, extend memory shape, add an integration, add a 
 ## Test, lint, format
 
 ```sh
-npm install
-npm test                  # node --test on system/tests/**/*.test.js
-npm run test:unit
-npm run test:integration
-npm run lint              # biome check
-npm run format            # biome format --write
+pnpm install
+pnpm test                 # node --test on system/tests/**/*.test.js
+pnpm test:unit
+pnpm test:integration
+pnpm lint                 # biome check
+pnpm format               # biome format --write
 ```
 
 The test runner uses `--test-isolation=process`, so each `*.test.js` file runs as its own subprocess. Tests can use an in-memory SurrealDB (`mem://`) for fast unit tests or a temp `rocksdb://` for integration tests.

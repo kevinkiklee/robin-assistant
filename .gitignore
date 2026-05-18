@@ -28,3 +28,6 @@ tmp/
 # aider AI assistant cache (chat history, input history, ctags). Recreated
 # on next aider run if used; deleting is safe.
 .aider*
+# pnpm-only: prevent accidental commit of an npm-generated lockfile.
+# Belt-and-suspenders with `package-lock=false` in .npmrc.
+package-lock.json

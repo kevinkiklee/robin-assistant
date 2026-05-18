@@ -209,7 +209,7 @@ export function writePointer({ home, installedBy }) {
     primaryWrote = true;
   } catch (e) {
     if (e.code !== 'EACCES' && e.code !== 'EROFS' && e.code !== 'ENOENT') throw e;
-    // Primary is read-only (e.g. npm i -g into a system path). Fall through.
+    // Primary is read-only (e.g. installed globally into a system path). Fall through.
   }
   try {
     mkdirSync(dirname(loc.write.fallback), { recursive: true });

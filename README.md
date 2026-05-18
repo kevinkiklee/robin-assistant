@@ -100,10 +100,10 @@ record_correction(...)  ──┘
 ```sh
 git clone git@github.com:kevinkiklee/robin-assistant.git
 cd robin-assistant
-npm install
+pnpm install
 ```
 
-`npm install` runs a postinstall step that wires Robin up with safe defaults: home at `<repo>/user-data/`, `mxbai-1024` embedder, hooks + daemon supervisor + MCP host registration. To pick a different embedder or location, run `ROBIN_SKIP_INSTALL=1 npm install` and then `node system/bin/robin install` interactively.
+`pnpm install` runs a postinstall step that wires Robin up with safe defaults: home at `<repo>/user-data/`, `mxbai-1024` embedder, hooks + daemon supervisor + MCP host registration. To pick a different embedder or location, run `ROBIN_SKIP_INSTALL=1 pnpm install` and then `node system/bin/robin install` interactively.
 
 Then **restart your Claude Code / Gemini CLI session** so it picks up the new MCP server and hooks. Verify with `robin doctor`.
 
@@ -163,12 +163,12 @@ robin secrets <import|list|set>
 ## Develop
 
 ```sh
-npm install
-npm test                  # node --test on system/tests/**/*.test.js
-npm run test:unit
-npm run test:integration
-npm run lint              # biome check
-npm run format            # biome format --write
+pnpm install
+pnpm test                 # node --test on system/tests/**/*.test.js
+pnpm test:unit
+pnpm test:integration
+pnpm lint                 # biome check
+pnpm format               # biome format --write
 ```
 
 Full development guide — adding tools, integrations, hooks, migrations: [`docs/development.md`](docs/development.md).

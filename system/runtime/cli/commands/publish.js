@@ -87,7 +87,7 @@ export async function publish(argv) {
     process.stderr.write(
       `robin publish requires peer dependencies that aren't installed:\n` +
         missing.map((m) => `  ${m}`).join('\n') +
-        `\n\nInstall in this workspace:\n  npm install ${missing.join(' ')}\n`,
+        `\n\nInstall in this workspace:\n  pnpm add ${missing.join(' ')}\n`,
     );
     process.exit(3);
   }

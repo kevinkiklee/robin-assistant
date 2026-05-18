@@ -49,7 +49,7 @@ export const BASH_DENY_PATTERNS = [
     name: 'low-level-fs',
     // No `format`: on Unix it's not a low-level FS command (that's a DOS/Windows
     // builtin) and it collides with legitimate workflows like `pnpm format`,
-    // `npm run format`, `biome format`, `prettier --format`.
+    // `biome format`, `prettier --format`.
     pattern: /(?:^|[\s|;&])(?:dd|mkfs(?:\.\w+)?|shred|fdisk|wipefs)(?:\s|$)/,
     why: 'Low-level filesystem operations',
   },

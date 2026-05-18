@@ -14,10 +14,10 @@ The full install walkthrough. For the one-liner, see the [README](../README.md).
 ```sh
 git clone git@github.com:kevinkiklee/robin-assistant.git
 cd robin-assistant
-npm install
+pnpm install
 ```
 
-`npm install` triggers a postinstall script that runs `robin install --auto` with safe defaults: home at `<repo>/user-data/`, `mxbai-1024` embedder, all hooks and daemon supervisor wired up, MCP registered with any Claude Code / Gemini CLI on PATH. No prompts.
+`pnpm install` triggers a postinstall script that runs `robin install --auto` with safe defaults: home at `<repo>/user-data/`, `mxbai-1024` embedder, all hooks and daemon supervisor wired up, MCP registered with any Claude Code / Gemini CLI on PATH. No prompts.
 
 Restart your CLI host afterward so it loads the new MCP server. Verify with `robin doctor`.
 
@@ -27,15 +27,15 @@ The postinstall is conservative — it sits out anywhere auto-setup would be a s
 
 | Condition | What happens |
 |---|---|
-| `ROBIN_SKIP_INSTALL=1 npm install` | Skipped silently. Run `node system/bin/robin install` yourself. |
+| `ROBIN_SKIP_INSTALL=1 pnpm install` | Skipped silently. Run `node system/bin/robin install` yourself. |
 | `CI=true` (any CI env) | Skipped silently. |
-| `npm install -g robin-assistant` | Skipped with a hint. Run `robin install` once after global install. |
+| `pnpm add -g robin-assistant` (or `npm install -g`) | Skipped with a hint. Run `robin install` once after global install. |
 | Installed as a transitive dep | Skipped silently. |
 | Windows | Skipped with a hint. Run `node system/bin/robin install` manually. |
 
 ### Per-step skips
 
-Set any of these before `npm install` to skip a single step:
+Set any of these before `pnpm install` to skip a single step:
 
 | Env var | Equivalent flag |
 |---|---|
@@ -53,7 +53,7 @@ embedded NAPI engine. Only safe when you run **one** Robin process at a
 time — the embedded engine is single-writer and concurrent processes
 (daemon + biographer + CLI) will hang on its lockfile.
 
-`ROBIN_HOME=<path> npm install` overrides the home directory without any other ceremony.
+`ROBIN_HOME=<path> pnpm install` overrides the home directory without any other ceremony.
 
 ### First-run safety net
 
@@ -77,7 +77,7 @@ If postinstall was skipped (global install, CI re-run, `--ignore-scripts`) and y
 If you want to pick a different embedder profile or store data outside the repo:
 
 ```sh
-ROBIN_SKIP_INSTALL=1 npm install
+ROBIN_SKIP_INSTALL=1 pnpm install
 node system/bin/robin install
 ```
 

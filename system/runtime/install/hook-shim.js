@@ -6,7 +6,7 @@ import { packageRootDir } from '../../config/data-store.js';
 /**
  * Verify the shipped `system/bin/robin-hook.sh` shim exists and is mode 755 (or at
  * least executable). If present but not executable, chmod 755 it. Modes can
- * be lost on tarball extraction depending on how npm runs.
+ * be lost on tarball extraction depending on how the package manager runs.
  *
  * @returns {Promise<string>} absolute path to the shim
  */
