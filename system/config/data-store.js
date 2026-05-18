@@ -249,6 +249,7 @@ export const paths = {
     logs: () => join(robinHome(), 'runtime', 'logs'),
     daemonPid: () => join(robinHome(), 'runtime', 'daemon', '.pid'),
     daemonState: () => join(robinHome(), 'runtime', 'daemon', '.state'),
+    mcpToken: () => join(robinHome(), 'runtime', 'mcp-token'),
     // `.daemon.lock` is the *embedded-DB writer-serialization* lock, held
     // briefly by CLI subcommands (biographer, dream, ingest, etc.) that
     // open the local store directly. It is NOT the daemon's process-

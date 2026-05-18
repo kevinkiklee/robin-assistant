@@ -191,9 +191,8 @@ export async function backfillDerivedTrust(db) {
 
 // CLI entry point — run directly: node system/scripts/backfill-derived-trust.js
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { connect, close } = await import('../data/db/client.js');
-  const { defaultDbUrl } = await import('../runtime/install/pointer.js');
-  const db = await connect({ engine: defaultDbUrl() });
+  const { connect, close, defaultDbUrl } = await import('../data/db/client.js');
+  const db = await connect({ engine: await defaultDbUrl() });
   try {
     await backfillDerivedTrust(db);
     console.log('backfill complete');
