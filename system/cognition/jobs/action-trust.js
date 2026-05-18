@@ -1,8 +1,51 @@
 // src/jobs/action-trust.js — Theme 2b: ledger emission + decay sweep + consecutive-correction escalation.
 import { surql } from 'surrealdb';
+import { ERROR_REASONS } from '../../io/mcp/error-reasons.js';
 
 function classOf(tool, action) {
   return `${tool}:${action}`;
+}
+
+// Human-readable phrase per (tool, action) class. Used in the prompt_hint
+// field of `requires_permission` refusals so the agent can surface a
+// short, user-facing sentence instead of the raw class string.
+const ACTION_DESCRIPTIONS = Object.freeze({
+  'discord_send:send_dm': 'Send a Discord DM',
+  'discord_send:send_channel': 'Post in a Discord channel',
+  'github_write:create-issue': 'Create a GitHub issue',
+  'github_write:comment': 'Post a GitHub comment',
+  'github_write:label': 'Apply a GitHub label',
+  'github_write:mark-read': 'Mark a GitHub notification read',
+  'spotify_write:playlist-add': 'Add a track to a Spotify playlist',
+  'spotify_write:queue': 'Queue a Spotify track',
+  'spotify_write:skip': 'Skip the current Spotify track',
+  'imessage_send:send_dm': 'Send an iMessage',
+  'imessage_send:send_group': 'Send a group iMessage',
+});
+
+function humanizeClass(actionClass) {
+  // Fallback: turn "tool_name:action-name" into "Tool name — action name".
+  const [tool, ...rest] = String(actionClass).split(':');
+  const action = rest.join(':') || '_default';
+  const titled = (s) => s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return `${titled(tool)} — ${titled(action).toLowerCase()}`;
+}
+
+export function describeAction(actionClass) {
+  return ACTION_DESCRIPTIONS[actionClass] ?? humanizeClass(actionClass);
+}
+
+// Standard refusal shape for outbound writes blocked by action-trust=ASK.
+// Includes a `prompt_hint` agent-facing string so the surfaced question is
+// consistent across tools.
+export function refuseWithPermission({ tool, action }) {
+  const cls = classOf(tool, action);
+  return {
+    ok: false,
+    reason: ERROR_REASONS.REQUIRES_PERMISSION,
+    class: cls,
+    prompt_hint: `${describeAction(cls)}? (Y/n)`,
+  };
 }
 
 const DATETIME_FIELDS = ['last_used_at', 'last_state_change_at', 'updated_at'];

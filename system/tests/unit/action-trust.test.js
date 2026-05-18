@@ -6,10 +6,12 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import {
   checkActionTrust,
+  describeAction,
   demoteOnCorrection,
   getActionTrust,
   listActionTrust,
   recordOutcome,
+  refuseWithPermission,
   resetActionTrust,
   setActionTrust,
 } from '../../cognition/jobs/action-trust.js';
@@ -135,4 +137,23 @@ test('listActionTrust — returns all rows ordered by class', async () => {
   assert.equal(rows[1].class, 'github_write:comment');
   assert.equal(rows[2].class, 'spotify_write:queue');
   await close(db);
+});
+
+test('refuseWithPermission — emits canonical shape with non-empty prompt_hint', () => {
+  const r = refuseWithPermission({ tool: 'discord_send', action: 'send_dm' });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'requires_permission');
+  assert.equal(r.class, 'discord_send:send_dm');
+  assert.equal(typeof r.prompt_hint, 'string');
+  assert.ok(r.prompt_hint.length > 0, 'prompt_hint must be non-empty');
+  assert.match(r.prompt_hint, /Discord DM/);
+});
+
+test('describeAction — falls back to humanized class string when unknown', () => {
+  // Known class hits the table verbatim.
+  assert.match(describeAction('github_write:create-issue'), /GitHub issue/);
+  // Unknown class is humanized.
+  const fallback = describeAction('mystery_tool:do_thing');
+  assert.match(fallback, /Mystery Tool/);
+  assert.match(fallback, /do thing/);
 });
