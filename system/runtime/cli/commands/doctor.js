@@ -14,7 +14,7 @@
 //   --invariants             render the invariants registry status
 //   --diff-legacy            compare framework verdict to the legacy pointer probe
 //   --emit-runbook           print the auto-generated runbook to stdout
-//     +--write               replace the sentinel block in CLAUDE.md in-place
+//     +--write               replace the sentinel block in RUNBOOK.md in-place
 //     +--check               CI mode: exit non-zero on drift
 //
 // With NO flags: print a one-fact-per-line status overview.
@@ -46,15 +46,17 @@ export { doctorData };
  * `--emit-runbook` family. Writes the generated runbook to stdout (no flags),
  * to a file in-place (--write), or runs a CI drift check (--check).
  */
-async function doEmitRunbook(out, err, { write = false, check = false, claudeMdPath } = {}) {
+async function doEmitRunbook(out, err, { write = false, check = false, runbookPath, claudeMdPath } = {}) {
   const body = renderRunbook(await getAllInvariants());
   if (!write && !check) {
     out(body);
     return 0;
   }
-  const path = claudeMdPath ?? join(packageRootDir(), 'CLAUDE.md');
+  // Backwards compat: accept legacy `claudeMdPath` from tests; default target is
+  // now RUNBOOK.md to keep the always-loaded CLAUDE.md lean.
+  const path = runbookPath ?? claudeMdPath ?? join(packageRootDir(), 'RUNBOOK.md');
   if (!existsSync(path)) {
-    err(`CLAUDE.md not found at ${path}`);
+    err(`runbook target not found at ${path}`);
     return 4;
   }
   const existing = readFileSync(path, 'utf8');
@@ -210,6 +212,7 @@ export async function doctor(argv = [], deps = {}) {
     const code = await doEmitRunbook(out, err, {
       write: args.flags.write === true,
       check: args.flags.check === true,
+      runbookPath: deps.runbookPath,
       claudeMdPath: deps.claudeMdPath,
     });
     if (typeof process !== 'undefined') process.exitCode = code;

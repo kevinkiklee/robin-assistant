@@ -10,8 +10,14 @@ system/tests/fixtures/seed-recall-pairs.json
 .robin-home
 # Project-level MCP wiring — port lives in user-data/config/config.json,
 # so it's per-user. Kept locally to survive ~/.claude.json races from
-# concurrent agent sessions (see CLAUDE.md "v2 MCP not exposed").
+# concurrent agent sessions (see RUNBOOK.md "mcp.wiring_*" invariants).
 .mcp.json
+# Auto-generated workspace-local agent context (current state, jobs list,
+# integrations, personality). Regenerated hourly by refresh-claude-md;
+# Claude Code / Gemini auto-load `*.local.md` alongside the tracked
+# CLAUDE.md / GEMINI.md so this never enters git.
+CLAUDE.local.md
+GEMINI.local.md
 # Local CLI scratch — surreal SQL history, paste-in api key files, etc.
 history.txt
 *.apikey

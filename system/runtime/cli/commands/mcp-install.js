@@ -198,11 +198,12 @@ export async function mcpInstall(argv) {
     console.log('skipping host registration (--no-register)');
   }
 
-  // 6. Write/merge CLAUDE.md + GEMINI.md.
+  // 6. Write/merge workspace-local CLAUDE.local.md + GEMINI.local.md.
+  // Auto-content stays project-scoped (Claude Code auto-loads `*.local.md`
+  // siblings as project-local context); keeps the global ~/.claude/CLAUDE.md
+  // clean for other projects.
   if (!noAgentsMd) {
-    const claudePath = join(home, '.claude/CLAUDE.md');
-    const geminiPath = join(home, '.gemini/GEMINI.md');
-    const results = await refreshAgentsMdFiles({ targets: [claudePath, geminiPath] });
+    const results = await refreshAgentsMdFiles();
     for (const r of results) console.log(`${r.action} ${r.path}`);
   }
 
