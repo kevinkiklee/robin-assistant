@@ -89,6 +89,87 @@ test('recall.js module loads without errors', async (t) => {
   assert.equal(typeof createRecallTool, 'function', 'createRecallTool exported');
 });
 
+// ── E2E regression: trust must survive enrichment so wrapHit fires ────────────
+//
+// The bug: enrichedHits.push() in recall.js omitted `trust: hit.trust`, so
+// wrapHit received trust=undefined (== null) and skipped wrapping entirely,
+// returning raw untrusted content to the agent. Fix: add trust: hit.trust to
+// the enrichedHits.push() shape.
+//
+// This test calls the actual createRecallTool handler with a fake db that
+// intercepts all query patterns the search pipeline fires (runtime config,
+// HNSW kNN, events hydration, edges, recall_log). BM25 is fail-soft so
+// unrecognized queries throw and gracefully return [].
+//
+// PRE-FIX: fails — enrichedHits drops trust, wrapHit skips, untrusted body
+//   passes through unwrapped (actual: 'untrusted body').
+// POST-FIX: passes — trust preserved, wrapHit fires on untrusted hits.
+test('recall handler: untrusted hits are wrapped, trusted hits pass through', async () => {
+  __setNonceFactoryForTests(() => 'e2enonce');
+
+  const { createRecallTool } = await import('../../io/mcp/tools/recall.js');
+  const { invalidateProfileCache } = await import('../../data/embed/profile-router.js');
+  const { _resetRecallConfigCache } = await import('../../cognition/memory/store.js');
+
+  // Fake event rows the pipeline should surface.
+  const fakeEvents = [
+    { id: 'events:t1', source: 'note', content: 'trusted body', ts: new Date().toISOString(), trust: 'trusted', scope: 'global', tags: [], meta: {} },
+    { id: 'events:u1', source: 'gmail', content: 'untrusted body', ts: new Date().toISOString(), trust: 'untrusted', scope: 'global', tags: [], meta: {} },
+  ];
+
+  const fakeDb = {
+    query(sqlOrBound) {
+      const sql = typeof sqlOrBound === 'string' ? sqlOrBound
+        : (sqlOrBound?.query ?? sqlOrBound?.sql ?? sqlOrBound?.toString?.() ?? '');
+      return {
+        collect: async () => {
+          if (/runtime:embedder/.test(sql)) return [[{ active_profile: 'test', read_profile: 'test' }]];
+          if (/runtime:recall/.test(sql)) return [[null]];
+          if (/vector\s*<\|/.test(sql)) return [[{ record: 'events:t1', dist: 0.1 }, { record: 'events:u1', dist: 0.2 }]];
+          if (/SELECT \* FROM events/.test(sql)) return [fakeEvents];
+          if (/FROM edges WHERE kind = 'mentions'/.test(sql)) return [[]];
+          if (/FROM entities WHERE id IN/.test(sql)) return [[]];
+          if (/CREATE recall_log/.test(sql)) return [[]];
+          // BM25, conflict queries, etc. — fail-soft
+          throw new Error(`fake db: unhandled query: ${sql.slice(0, 80)}`);
+        },
+      };
+    },
+  };
+
+  invalidateProfileCache(fakeDb);
+  _resetRecallConfigCache();
+
+  const fakeEmbedder = { embed: async () => new Float32Array(4).fill(0.1) };
+  const fakeDetector = { check: () => ({ repeat: false }), observe: () => {} };
+
+  const tool = createRecallTool({
+    db: fakeDb,
+    embedder: fakeEmbedder,
+    detector: fakeDetector,
+    getSessionId: () => null,
+  });
+
+  const result = await tool.handler({ query: 'test query', full: true });
+
+  assert.ok(Array.isArray(result.hits), 'hits is array');
+  const trusted = result.hits.find((h) => h.id === 'events:t1');
+  const untrusted = result.hits.find((h) => h.id === 'events:u1');
+
+  assert.ok(trusted, 'trusted hit present');
+  assert.equal(trusted.content, 'trusted body', 'trusted content unchanged');
+
+  assert.ok(untrusted, 'untrusted hit present');
+  assert.match(
+    untrusted.content,
+    /^<untrusted-content nonce="e2enonce"/,
+    'untrusted content wrapped (would fail pre-fix where trust was dropped from enrichedHits)',
+  );
+  assert.ok(untrusted.content.includes('untrusted body'), 'original body preserved in wrap');
+
+  __setNonceFactoryForTests(null);
+});
+
 // ── DB smoke test: events table trust field survives round-trip ───────────────
 test('events table trust field round-trips through mem:// DB', async (t) => {
   const db = await connect({ engine: 'mem://' });
