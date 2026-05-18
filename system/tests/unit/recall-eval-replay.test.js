@@ -77,14 +77,32 @@ test('replayRow A2 enabled vs disabled produces different scores on overlapping 
     ],
     meta: { from: 'intuition' },
   };
+  // Both memos must share an explicit `decay_anchor` — otherwise freshness()
+  // falls back to `new Date(Date.now())` for each call, and under concurrent
+  // test loads the ms drift between m1's and m2's anchors can flip the sort
+  // order; MMR (identical vectors → cosine 1.0 > 0.92 threshold) then drops
+  // m1 instead of m2, and `find(h => h.id === 'memos:m1')` returns undefined.
+  const anchor = new Date('2026-01-01T00:00:00Z');
   const hydratedRecords = new Map([
     [
       'memos:m1',
-      { id: 'memos:m1', content: 'karen prefers tomatoes', kind: 'knowledge', confidence: 0.8 },
+      {
+        id: 'memos:m1',
+        content: 'karen prefers tomatoes',
+        kind: 'knowledge',
+        confidence: 0.8,
+        decay_anchor: anchor,
+      },
     ],
     [
       'memos:m2',
-      { id: 'memos:m2', content: 'kettlebell program', kind: 'knowledge', confidence: 0.8 },
+      {
+        id: 'memos:m2',
+        content: 'kettlebell program',
+        kind: 'knowledge',
+        confidence: 0.8,
+        decay_anchor: anchor,
+      },
     ],
   ]);
   const currentVectors = new Map([
