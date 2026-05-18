@@ -8,8 +8,8 @@
 // single resolved row.
 
 const DEFAULT_MAX_RETRIES = 4;
-export const TX_BASE_BACKOFF_MS = 5;
-export const TX_JITTER_MS = 10;
+const TX_BASE_BACKOFF_MS = 5;
+const TX_JITTER_MS = 10;
 
 export function isTxConflict(err) {
   return String(err?.message ?? '').includes('Transaction conflict');
