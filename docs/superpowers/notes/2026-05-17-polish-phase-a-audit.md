@@ -112,12 +112,50 @@ Manual full-file read of every in-scope module (cognition-e1 and prompt-injectio
 
 ### Inventory
 
-(populated by A.2 tasks)
+#### A2-Inventory (orphan modules — inventory only, no deletions this pass)
+
+Pass run 2026-05-17 with reduced scope (inventory-only; per-orphan
+deletion loop deferred). Tooling: `pnpm exec madge --orphans --extensions
+js system/`. Allowlist at `system/scripts/dead-code-allowlist.json`
+captures reflection-loaded modules (MCP tools, CLI commands, integration
+manifests, dream steps, invariants, pre-commit hooks).
+
+Filtering applied:
+- Raw madge orphans (incl. tests): 464 entries
+- After stripping test files: 51
+- After allowlist filter: 13 remaining
+- After lane-exclude filter (cognition-e1 + prompt-injection): 10
+- Final A.2-scope orphans: **10** (all flagged for follow-up; nothing
+  deleted in this pass)
+
+| Module | Decision | Note |
+|---|---|---|
+| `system/io/integrations/_local/sqlite.js` | flag-for-follow-up | _local helper — confirm not loaded by a sibling integration before deletion |
+| `system/io/integrations/gmail/manifest.js` | not-actually-orphan | dynamic-imported by `system/io/integrations/_framework/manifest-loader.js` via `import(manifestPath)`; should be allowlisted next pass (`system/io/integrations/*/manifest.js`) |
+| `system/io/integrations/google_calendar/manifest.js` | not-actually-orphan | same as gmail/manifest.js |
+| `system/io/integrations/weather/manifest.js` | not-actually-orphan | same as gmail/manifest.js |
+| `system/runtime/install/postinstall.js` | not-actually-orphan | wired via `package.json` `scripts.postinstall` |
+| `system/runtime/scripts/audit-entity-ids.js` | flag-for-follow-up | runbook-only script; verify no docs reference before deletion |
+| `system/runtime/scripts/dev-recall.js` | flag-for-follow-up | mentioned in `docs/troubleshooting.md` + CHANGELOG — keep; confirm path matches docs |
+| `system/scripts/list-mcp-tools.js` | not-actually-orphan | invoked by `system/scripts/polish-verify.sh` (polish-program harness) |
+| `system/scripts/log-baseline-traffic.js` | flag-for-follow-up | invoked by `polish-verify.sh`; broken (Tasks 29/30 carryover — known issue in A.4) — keep but rewrite later |
+| `system/scripts/log-baseline.js` | not-actually-orphan | invoked by `polish-verify.sh` |
+
+Lane-excluded (not counted as polish orphans; owned by cognition-e1 lane):
+- `system/cognition/jobs/internal/refresh-claude-md.js`
+- `system/cognition/jobs/internal/reinforce-recall.js`
+- `system/cognition/jobs/internal/test-internal-fixture.js`
+
+**Follow-up suggestion**: extend allowlist to include
+`system/io/integrations/*/manifest.js` and
+`system/runtime/install/*.js` so the next madge run produces a cleaner
+signal-to-noise ratio.
 
 ### Decisions
 
 | Item | Decision | Rationale | Commit |
 |---|---|---|---|
+| Per-orphan deletion loop | deferred | First A.2 attempt failed mid-flight; this pass is inventory-only. All 10 final orphans triaged above; only 3 are true follow-up candidates (`_local/sqlite.js`, `audit-entity-ids.js`, `dev-recall.js`). | — |
 
 ## A.3 Test gaps + slow-test cleanup
 
