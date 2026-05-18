@@ -20,7 +20,7 @@ const GFM_TABLE_RX = /(?:^|\n)((?:\|[^\n]+\|\n)\|[\s:|-]+\|\n(?:\|[^\n]+\|(?:\n|
 
 export function tablesToCodeBlocks(md) {
   if (typeof md !== 'string' || md.length === 0) return md;
-  return md.replace(GFM_TABLE_RX, (match, table, offset) => {
+  return md.replace(GFM_TABLE_RX, (_match, table, offset) => {
     const trimmed = table.replace(/\n+$/, '');
     const prefix = offset === 0 ? '' : '\n';
     return `${prefix}\`\`\`\n${trimmed}\n\`\`\`\n`;
@@ -58,20 +58,20 @@ export function splitMessage(text, max = DISCORD_MESSAGE_MAX) {
 
     // If we're inside an open fence at the start of this chunk, prefix with
     // ``` to reopen it.
-    if (openFence) head = '```\n' + head;
+    if (openFence) head = `\`\`\`\n${head}`;
 
     // Count fences in the *original* slice (without the synthetic reopen).
     const fences = countFences(remaining.slice(0, cut));
     const fenceBalance = fences % 2;
     if (fenceBalance === 1) {
       // Odd fence count → we split mid-fence. Close it, open it on the next chunk.
-      head = head + '\n```';
+      head = `${head}\n\`\`\``;
       openFence = !openFence;
     }
     // If we were already inside a fence and this chunk has 0 fences, the
     // chunk is entirely fenced — close it and reopen on the next.
     if (openFence && fences === 0) {
-      head = head + '\n```';
+      head = `${head}\n\`\`\``;
     }
 
     chunks.push(head);
@@ -79,7 +79,7 @@ export function splitMessage(text, max = DISCORD_MESSAGE_MAX) {
   }
 
   if (remaining.length > 0) {
-    if (openFence) remaining = '```\n' + remaining;
+    if (openFence) remaining = `\`\`\`\n${remaining}`;
     chunks.push(remaining);
   }
 

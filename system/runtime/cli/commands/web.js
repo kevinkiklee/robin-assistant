@@ -53,7 +53,7 @@ Defaults to UNIX socket at <home>/runtime/web.sock. Pass --port to bind TCP
       console.log(`robin web: ${url}  (CSRF enforced)`);
     }
     console.log('Press Ctrl-C to stop.');
-    await new Promise((_, reject) => {
+    await new Promise((_, _reject) => {
       process.on('SIGINT', async () => {
         await close(db).catch(() => {});
         process.exit(0);

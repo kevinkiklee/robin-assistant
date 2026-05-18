@@ -68,7 +68,7 @@ function stubLLM(output) {
   return { invokeLLM: async () => ({ content: output }) };
 }
 
-function countingStubLLM(output) {
+function _countingStubLLM(output) {
   let calls = 0;
   const host = {
     invokeLLM: async () => {

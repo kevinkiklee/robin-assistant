@@ -138,7 +138,7 @@ export function compileVarsResolver(varsSpec, { db }) {
         const [rows] = await db.query(query).collect();
         // Most natural: SELECT VALUE returns scalars or array of scalars; pick first.
         out[name] = Array.isArray(rows) ? rows[0] : rows;
-      } catch (e) {
+      } catch (_e) {
         out[name] = null;
       }
     }

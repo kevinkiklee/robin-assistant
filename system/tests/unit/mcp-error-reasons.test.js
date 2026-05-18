@@ -31,6 +31,6 @@ test('canonicalize returns input unchanged when no alias exists', () => {
   assert.strictEqual(canonicalize('already_biographed'), 'already_biographed');
   // REASON_ALIASES is frozen
   assert.throws(() => {
-    REASON_ALIASES['x'] = 'y';
+    REASON_ALIASES.x = 'y';
   });
 });

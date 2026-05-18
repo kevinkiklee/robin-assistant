@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { mock, test } from 'node:test';
+import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
@@ -56,7 +56,7 @@ async function seedQueueRow(db, eventId, { taskType = 'turn:default', payload = 
     .query(
       surql`CREATE task_close_queue SET
         task_type   = ${taskType},
-        task_id     = ${'task-' + Math.random().toString(36).slice(2)},
+        task_id     = ${`task-${Math.random().toString(36).slice(2)}`},
         event_id    = ${eventId},
         payload     = ${payload},
         enqueued_at = ${now},

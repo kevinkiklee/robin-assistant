@@ -28,7 +28,7 @@ export function trimRecallEvents(events, opts = {}) {
     } else if (text.length <= perEventMax) {
       out.push({ ...e, content: text, truncated: false });
     } else {
-      out.push({ ...e, content: text.slice(0, perEventMax) + '…', truncated: true });
+      out.push({ ...e, content: `${text.slice(0, perEventMax)}…`, truncated: true });
     }
   }
   return out;

@@ -73,7 +73,7 @@ async function waitForRateLimit() {
 }
 
 export function escapeApplescript(s) {
-  return String(s).replace(/[\\"]/g, (c) => '\\' + c);
+  return String(s).replace(/[\\"]/g, (c) => `\\${c}`);
 }
 
 function defaultRunCommand(cmd, args, { timeoutMs = 15_000 } = {}) {

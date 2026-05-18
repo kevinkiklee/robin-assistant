@@ -193,7 +193,7 @@ function fakeHost(bodyOverride = null) {
 /**
  * Count playbook memos in DB.
  */
-async function countPlaybooks(db) {
+async function _countPlaybooks(db) {
   const [rows] = await db
     .query(`SELECT count() FROM memos WHERE kind = 'playbook' GROUP ALL`)
     .collect();
@@ -438,7 +438,7 @@ test('cold-start transition: cold_start playbook ≥3 days old + n≥5 outcomes 
   // Run with a host that produces constant-score responses (drift near 0 but fresh playbook check passes
   // because the playbook is OLD — > 14 days? No, oldDate is 4 days. Drift=0 + fresh (4d < 14d) → still skips synthesis.
   // But cold-start transition runs independently of synthesis eligibility.
-  const r = await dreamStepPlaybookSynthesis(db, fakeHost(), { k: 5 });
+  const _r = await dreamStepPlaybookSynthesis(db, fakeHost(), { k: 5 });
 
   // The cold-start transition should flip the playbook
   // (Fetch by id since active may have changed)

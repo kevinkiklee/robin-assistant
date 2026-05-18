@@ -34,7 +34,7 @@ function mergeSignals(existing, incoming) {
  * Merge score: take the minimum (most severe), unless incoming has higher
  * priority signal (explicit_correction always yields score=0).
  */
-function mergeScore(existingScore, incomingScore, existingSignals, incomingSignals) {
+function mergeScore(existingScore, incomingScore, _existingSignals, incomingSignals) {
   // If incoming has explicit_correction, that's authoritative (score=0).
   if (incomingSignals?.explicit_correction !== undefined) {
     return 0;

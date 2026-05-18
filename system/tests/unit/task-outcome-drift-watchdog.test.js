@@ -50,7 +50,7 @@ async function seedMemos(db, n, ts) {
       .query(
         surql`CREATE memos CONTENT {
           kind:       'task_outcome',
-          content:    ${'task_outcome synthetic ' + i},
+          content:    ${`task_outcome synthetic ${i}`},
           derived_by: 'introspection',
           derived_at: ${new Date(ts)},
           meta:       {}

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { after, before, test } from 'node:test';
+import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import { resolveSessionContext } from '../../cognition/dream/comm-style-context-router.js';
 import { getEffectiveContextCommStyle } from '../../cognition/dream/step-comm-style.js';

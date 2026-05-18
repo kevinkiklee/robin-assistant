@@ -165,13 +165,13 @@ test('recall_vs_known is correct when some candidates match known entries', asyn
   }
 
   // Reflection that recovers only the first known entry (1/2 = 0.5).
-  const halfRecovery = await fakeReplay(async (entries) => ({
+  const halfRecovery = await fakeReplay(async (_entries) => ({
     candidates: [{ content: 'candidate A', source_ids: [first.id] }],
   }));
   assert.equal(halfRecovery.recall_vs_known, 0.5);
 
   // Reflection that recovers both known entries (2/2 = 1.0).
-  const fullRecovery = await fakeReplay(async (entries) => ({
+  const fullRecovery = await fakeReplay(async (_entries) => ({
     candidates: [
       { content: 'candidate A', source_ids: [first.id] },
       { content: 'candidate B', source_ids: [second.id] },
@@ -180,7 +180,7 @@ test('recall_vs_known is correct when some candidates match known entries', asyn
   assert.equal(fullRecovery.recall_vs_known, 1.0);
 
   // Reflection that recovers neither (0/2 = 0.0).
-  const noRecovery = await fakeReplay(async (entries) => ({
+  const noRecovery = await fakeReplay(async (_entries) => ({
     candidates: [{ content: 'candidate C', source_ids: ['v1-corr-unknown'] }],
   }));
   assert.equal(noRecovery.recall_vs_known, 0.0);
@@ -276,7 +276,7 @@ test('runReplay with production reflectionFn: mechanical wiring returns corpus_s
     // own corrections — this is the wiring point (production path uses DB,
     // not the in-memory corpus directly).  The result validates shape only.
     const reflectionFn = async (_entries) => {
-      const raw = await dreamStepReflection(db, stubHost, {
+      const _raw = await dreamStepReflection(db, stubHost, {
         lookbackDays: 365,
         minCluster: 3,
       });

@@ -37,7 +37,7 @@ export async function refusalsList(argv, { out = console.log, err = console.erro
 // Schema moved destination/payload_hash into `meta`; project them via aliases.
 // options.policy — if set, filters rows where reason starts with '<policy>:'
 export async function printRefusals(db, out = console.log, { policy } = {}) {
-  const whereClause = policy ? surql`WHERE string::starts_with(reason, ${policy + ':'})` : surql``;
+  const whereClause = policy ? surql`WHERE string::starts_with(reason, ${`${policy}:`})` : surql``;
   const [rows] = await db
     .query(
       surql`SELECT created_at, direction, meta.destination AS destination,

@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -66,7 +66,7 @@ test('ingest accepts a real file under $HOME', async () => {
 test('ingest refuses non-existent files', async () => {
   const tool = makeTool();
   const result = await tool.handler({
-    file_path: join(tmpdir(), 'definitely-not-there-' + Date.now()),
+    file_path: join(tmpdir(), `definitely-not-there-${Date.now()}`),
   });
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'not_found');

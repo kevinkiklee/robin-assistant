@@ -34,9 +34,9 @@ test('recall trims content beyond full-event window via trimRecallEvents', async
   const e = createStubEmbedder({ dimension: 1024 });
   // Seed 8 events with the same query keyword "apple" so all match. The
   // first 5 should stay full, remainder should be truncated to 200 chars.
-  const longText = 'apple ' + 'x'.repeat(500);
+  const longText = `apple ${'x'.repeat(500)}`;
   for (let i = 0; i < 8; i++) {
-    await recordEvent(db, e, { source: 'cli', content: longText + ` #${i}` });
+    await recordEvent(db, e, { source: 'cli', content: `${longText} #${i}` });
   }
   const tool = createRecallTool({
     db,
@@ -62,9 +62,9 @@ test('recall trims content beyond full-event window via trimRecallEvents', async
 test('recall full:true returns untrimmed content', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const longText = 'apple ' + 'x'.repeat(500);
+  const longText = `apple ${'x'.repeat(500)}`;
   for (let i = 0; i < 8; i++) {
-    await recordEvent(db, e, { source: 'cli', content: longText + ` #${i}` });
+    await recordEvent(db, e, { source: 'cli', content: `${longText} #${i}` });
   }
   const tool = createRecallTool({
     db,
@@ -85,9 +85,9 @@ test('recall full:true returns untrimmed content', async () => {
 test('recall respects snippet_budget_chars + snippet_per_event_max overrides', async () => {
   const db = await fresh();
   const e = createStubEmbedder({ dimension: 1024 });
-  const longText = 'apple ' + 'x'.repeat(300);
+  const longText = `apple ${'x'.repeat(300)}`;
   for (let i = 0; i < 6; i++) {
-    await recordEvent(db, e, { source: 'cli', content: longText + ` #${i}` });
+    await recordEvent(db, e, { source: 'cli', content: `${longText} #${i}` });
   }
   const tool = createRecallTool({
     db,

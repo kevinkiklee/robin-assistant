@@ -38,12 +38,12 @@ function makeThread({
 }
 
 // Stub createGmailGetThreadTool so it bypasses real OAuth.
-async function invokeHandler(thread) {
+async function _invokeHandler(_thread) {
   // Import the internal wrap function directly by dynamically loading the module
   // under test, stubbing the dependencies it imports.
   const { wrapThreadMessages } = await import(
     '../../io/integrations/gmail/tools/gmail-get-thread.js'
-  ).then((m) => {
+  ).then((_m) => {
     // The module doesn't export wrapThreadMessages, so we test via the handler
     // by monkey-patching getThread. Use a simpler approach: reconstruct inline.
     return { wrapThreadMessages: null };
@@ -96,7 +96,7 @@ test('gmail wrapUntrusted wraps attacker-controlled Subject header', () => {
 test('gmail_get_thread handler wraps snippet, headers, and body', async () => {
   __setNonceFactoryForTests(() => 'gmailnon');
   try {
-    const thread = makeThread({ subject: INJECTION, bodyText: 'Body: ' + INJECTION });
+    const _thread = makeThread({ subject: INJECTION, bodyText: `Body: ${INJECTION}` });
 
     // We need to call the handler with mocked deps. Import the module and call
     // wrapThreadMessages by loading it. Since the function isn't exported we
@@ -125,10 +125,9 @@ test('gmail_get_thread handler wraps snippet, headers, and body', async () => {
     // import maps. Instead, replicate what the handler does and assert the
     // REQUIRED wrapping is present in the actual module source.
 
-    // Verify the module currently wraps headers (will fail pre-fix):
-    const { createGmailGetThreadTool } = await import(
-      '../../io/integrations/gmail/tools/gmail-get-thread.js'
-    );
+    // Verify the module loads (would throw on import error). Below we
+    // test the contract via source inspection rather than invocation.
+    await import('../../io/integrations/gmail/tools/gmail-get-thread.js');
 
     // Build a tool with a fake token/fetch pipeline.
     // createGmailGetThreadTool() uses requireSecret internally — we need to skip

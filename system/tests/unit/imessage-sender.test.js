@@ -138,7 +138,7 @@ test(
   'sendGroup: invokes chat id form with escaped guid + message',
   withFakeTimers(async () => {
     let scriptCalled = null;
-    const runCommand = async (cmd, args) => {
+    const runCommand = async (_cmd, args) => {
       scriptCalled = args[1];
       return { stdout: '', stderr: '' };
     };

@@ -59,7 +59,7 @@ function isPrivateOrLocalUrl(urlStr) {
   }
 }
 
-async function withContext(profile, fn) {
+async function withContext(_profile, fn) {
   const b = await getBrowser();
   if (!b)
     return {

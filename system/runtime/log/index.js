@@ -11,7 +11,7 @@
 // `log.debug` only emits when `ROBIN_DEBUG=1` — debug calls are otherwise a
 // no-op so silenced sites stay silent in production.
 
-const defaultSink = (line) => process.stdout.write(line + '\n');
+const defaultSink = (line) => process.stdout.write(`${line}\n`);
 let _sink = defaultSink;
 
 export function setSink(fn) {

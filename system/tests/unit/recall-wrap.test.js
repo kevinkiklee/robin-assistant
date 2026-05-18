@@ -90,7 +90,7 @@ test('wrapHit: other fields are preserved on wrapped hit', () => {
 });
 
 // ── verify recall.js module compiles and imports wrapUntrusted ─────────────────
-test('recall.js module loads without errors', async (t) => {
+test('recall.js module loads without errors', async (_t) => {
   // If the import of wrapUntrusted in recall.js fails or the module has syntax
   // errors, this will throw.
   const { createRecallTool } = await import('../../io/mcp/tools/recall.js');
@@ -206,7 +206,7 @@ test('recall handler: untrusted hits are wrapped, trusted hits pass through', as
 });
 
 // ── DB smoke test: events table trust field survives round-trip ───────────────
-test('events table trust field round-trips through mem:// DB', async (t) => {
+test('events table trust field round-trips through mem:// DB', async (_t) => {
   const db = await connect({ engine: 'mem://' });
   try {
     await db

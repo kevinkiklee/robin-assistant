@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -101,7 +101,7 @@ test('compileTrigger requires name, on, do[]', () => {
 });
 
 test('compileTrigger produces runnable trigger', async () => {
-  const stubDb = { query: () => ({ collect: async () => [[]] }) };
+  const _stubDb = { query: () => ({ collect: async () => [[]] }) };
   const trig = compileTrigger(
     {
       name: 'low',
@@ -111,7 +111,7 @@ test('compileTrigger produces runnable trigger', async () => {
       when: 'event.recovery < $vars.threshold',
       do: [{ tool: 'macos_notify', args: { title: 'Recovery {event.recovery}%' } }],
     },
-    { db: { query: (q) => ({ collect: async () => [[50]] }) } },
+    { db: { query: (_q) => ({ collect: async () => [[50]] }) } },
   );
   assert.equal(trig.name, 'low');
   assert.equal(trig.on, 'whoop');

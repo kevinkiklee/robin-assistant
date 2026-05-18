@@ -95,7 +95,7 @@ function makeTranscript({
     message: { role: 'assistant', content: currentAssistantText },
   });
 
-  writeFileSync(path, lines.map((l) => JSON.stringify(l)).join('\n') + '\n', 'utf8');
+  writeFileSync(path, `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`, 'utf8');
   return path;
 }
 

@@ -20,7 +20,7 @@ test('macos_notify prefers terminal-notifier when available', async () => {
     if (cmd === 'command' && args[1] === 'terminal-notifier')
       return { stdout: '/opt/homebrew/bin/terminal-notifier\n', stderr: '' };
     if (cmd === 'terminal-notifier') return { stdout: '', stderr: '' };
-    throw new Error('unexpected cmd: ' + cmd);
+    throw new Error(`unexpected cmd: ${cmd}`);
   };
   const tool = createMacosNotifyTool({ platform: 'darwin', runCommand });
   const r = await tool.handler({
@@ -51,7 +51,7 @@ test('macos_notify falls back to osascript when terminal-notifier missing', asyn
     calls.push({ cmd, args });
     if (cmd === 'command' && args[1] === 'terminal-notifier') throw new Error('not found');
     if (cmd === 'osascript') return { stdout: '', stderr: '' };
-    throw new Error('unexpected cmd: ' + cmd);
+    throw new Error(`unexpected cmd: ${cmd}`);
   };
   const tool = createMacosNotifyTool({ platform: 'darwin', runCommand });
   const r = await tool.handler({ title: 'hi', body: 'body', subtitle: 'sub' });
@@ -68,7 +68,7 @@ test('macos_notify falls back to osascript when terminal-notifier exists but err
       return { stdout: '/usr/local/bin/terminal-notifier\n', stderr: '' };
     if (cmd === 'terminal-notifier') throw new Error('terminal-notifier crashed');
     if (cmd === 'osascript') return { stdout: '', stderr: '' };
-    throw new Error('unexpected cmd: ' + cmd);
+    throw new Error(`unexpected cmd: ${cmd}`);
   };
   const tool = createMacosNotifyTool({ platform: 'darwin', runCommand });
   const r = await tool.handler({ title: 'hi' });
@@ -95,7 +95,7 @@ test('macos_notify escapes double-quotes and backslashes in osascript', async ()
       captured = args[1];
       return { stdout: '', stderr: '' };
     }
-    throw new Error('unexpected: ' + cmd);
+    throw new Error(`unexpected: ${cmd}`);
   };
   const tool = createMacosNotifyTool({ platform: 'darwin', runCommand });
   await tool.handler({ title: 'has "quotes"', body: 'path\\to\\thing' });

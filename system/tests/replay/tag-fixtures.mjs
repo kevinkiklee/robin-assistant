@@ -160,13 +160,13 @@ async function main() {
 
     let bestRule = null;
     let bestScore = MIN_JACCARD;
-    let dateBoost = 0;
+    let _dateBoost = 0;
 
     for (const rule of rules) {
       let score = jaccard(fixtureTokens, rule.tokens);
       if (rule.date && fixtureDate && rule.date === fixtureDate) {
         score += 0.1; // small same-day boost
-        dateBoost++;
+        _dateBoost++;
       }
       if (score > bestScore) {
         bestScore = score;
@@ -192,7 +192,7 @@ async function main() {
     fixtures_unmatched: unmatched,
   };
 
-  await writeFile(FIXTURES_PATH, JSON.stringify(corpus, null, 2) + '\n', 'utf8');
+  await writeFile(FIXTURES_PATH, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
   console.log(`Tagged ${tagged}, left ${unmatched} unmatched. Wrote ${FIXTURES_PATH}.`);
 }
 

@@ -145,7 +145,7 @@ export function truncateBody(body, max = BODY_MAX_BYTES) {
   // is one slice; for emoji-dense content it iterates a few times.
   let out = body;
   while (Buffer.byteLength(out, 'utf8') > max - 16) out = out.slice(0, -64);
-  return out.replace(/\s+$/, '') + '\n…[truncated]';
+  return `${out.replace(/\s+$/, '')}\n…[truncated]`;
 }
 
 export function buildEventFromMessage(msg) {

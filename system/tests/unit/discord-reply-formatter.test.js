@@ -30,7 +30,7 @@ test('splitMessage: oversize without code fences splits on word boundary', () =>
 });
 
 test('splitMessage: code fence spanning boundary stays balanced', () => {
-  const code = '```js\n' + 'a'.repeat(2200) + '\n```';
+  const code = `\`\`\`js\n${'a'.repeat(2200)}\n\`\`\``;
   const chunks = splitMessage(code, MAX);
   let totalFences = 0;
   for (const c of chunks) {

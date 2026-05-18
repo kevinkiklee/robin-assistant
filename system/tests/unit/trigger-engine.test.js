@@ -269,13 +269,13 @@ test('priority controls fire order', async () => {
     name: 'low-prio',
     on: 'whoop',
     priority: 200,
-    do: [{ tool: 'x', args: ({ event }) => ({ src: 'low' }) }],
+    do: [{ tool: 'x', args: () => ({ src: 'low' }) }],
   });
   engine.register({
     name: 'high-prio',
     on: 'whoop',
     priority: 50,
-    do: [{ tool: 'x', args: ({ event }) => ({ src: 'high' }) }],
+    do: [{ tool: 'x', args: () => ({ src: 'high' }) }],
   });
   await engine.processEvent({
     event: { id: 'e1', source: 'whoop' },
