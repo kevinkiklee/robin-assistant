@@ -1,5 +1,8 @@
 import { formatKnowledge } from '../../format/knowledge.js';
 import { listKnowledge, searchKnowledge } from '../../../cognition/memory/knowledge.js';
+// knowledge files are first-party (trusted by construction); no wrap needed.
+// wrapUntrusted is imported defensively in case future entries require wrapping.
+// import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
 
 export function createGetKnowledgeTool({ db, embedder }) {
   return {

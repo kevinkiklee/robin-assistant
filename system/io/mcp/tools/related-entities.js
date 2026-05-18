@@ -7,6 +7,7 @@
 
 import { formatEntity } from '../../format/entity.js';
 import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
+import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
 
 const ENTITY_EDGE_KINDS = ['works_on', 'participates_in', 'occurs_with'];
 
@@ -48,16 +49,23 @@ export function createRelatedEntitiesTool({ db }) {
           ? await depth1(db, idRef, requested, limit)
           : await depthN(db, idRef, requested, depth, limit);
       return {
-        related: raw.related.map((r) => ({
-          entity: formatEntity(
+        related: raw.related.map((r) => {
+          const trust = r.entity.derived_from_trust ?? 'trusted';
+          const formatted = formatEntity(
             { id: r.entity.id, kind: r.entity.type, name: r.entity.name },
             { full },
-          ),
-          // Preserve legacy connector fields:
-          ...(r.edge_type ? { edge_type: r.edge_type } : {}),
-          ...(r.strength != null ? { strength: r.strength } : {}),
-          distance: r.distance,
-        })),
+          );
+          const entity = trust === 'trusted'
+            ? formatted
+            : wrapEntityRecord(formatted, { trust });
+          return {
+            entity,
+            // Preserve legacy connector fields:
+            ...(r.edge_type ? { edge_type: r.edge_type } : {}),
+            ...(r.strength != null ? { strength: r.strength } : {}),
+            distance: r.distance,
+          };
+        }),
       };
     },
   };
@@ -81,7 +89,7 @@ async function depth1(db, idRef, requested, limit) {
     const others = rows ?? [];
     if (others.length === 0) continue;
     const [entRows] = await db
-      .query('SELECT id, name, type FROM entities WHERE id IN $ids', {
+      .query('SELECT id, name, type, derived_from_trust FROM entities WHERE id IN $ids', {
         ids: others.map((r) => r.other),
       })
       .collect();
@@ -91,7 +99,7 @@ async function depth1(db, idRef, requested, limit) {
       const n = entById.get(String(r.other));
       if (!n) continue;
       related.push({
-        entity: { id: String(n.id), name: n.name, type: n.type },
+        entity: { id: String(n.id), name: n.name, type: n.type, derived_from_trust: n.derived_from_trust },
         edge_type: kind,
         ...(r.weight != null ? { strength: r.weight } : {}),
         distance: 1,
@@ -148,7 +156,7 @@ async function depthN(db, idRef, requested, depth, limit) {
 
   if (byDistance.length === 0) return { related: [] };
   const [entRows] = await db
-    .query('SELECT id, name, type FROM entities WHERE id IN $ids', {
+    .query('SELECT id, name, type, derived_from_trust FROM entities WHERE id IN $ids', {
       ids: byDistance.map((r) => r.id),
     })
     .collect();
@@ -158,7 +166,7 @@ async function depthN(db, idRef, requested, depth, limit) {
     const n = entById.get(String(r.id));
     if (!n) continue;
     related.push({
-      entity: { id: String(n.id), name: n.name, type: n.type },
+      entity: { id: String(n.id), name: n.name, type: n.type, derived_from_trust: n.derived_from_trust },
       distance: r.distance,
     });
     if (related.length >= limit) break;

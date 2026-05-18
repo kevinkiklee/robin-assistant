@@ -7,6 +7,7 @@
 
 import { formatEntity } from '../../format/entity.js';
 import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
+import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
 
 const ENTITY_EDGE_KINDS = ['mentions', 'about', 'works_on', 'participates_in', 'occurs_with'];
 const PATH_EDGE_KINDS = ['occurs_with', 'works_on', 'participates_in', 'mentions', 'about'];
@@ -42,7 +43,7 @@ export function createGetEntityTool({ db }) {
     handler: async (args) => {
       const idRef = validateEntityRef(args.id, 'id');
       const [rows] = await db
-        .query(`SELECT id, name, type, created_at, meta FROM ${idRef}`)
+        .query(`SELECT id, name, type, created_at, meta, derived_from_trust FROM ${idRef}`)
         .collect();
       if (!rows || rows.length === 0) {
         throw new Error(`entity not found: ${args.id}`);
@@ -92,17 +93,21 @@ export function createGetEntityTool({ db }) {
         },
         { full },
       );
+      const entityData = {
+        ...formatted,
+        // Preserve legacy fields downstream agents still read.
+        type: entity.type,
+        created_at: entity.created_at,
+        entity_meta: entity.meta ?? null,
+        mention_count: mentionCount[0]?.n ?? 0,
+        last_mentioned_at: lastMention[0]?.ts ?? null,
+        edge_summary: edgeSummary,
+      };
+      const trust = entity.derived_from_trust ?? 'trusted';
       const result = {
-        entity: {
-          ...formatted,
-          // Preserve legacy fields downstream agents still read.
-          type: entity.type,
-          created_at: entity.created_at,
-          entity_meta: entity.meta ?? null,
-          mention_count: mentionCount[0]?.n ?? 0,
-          last_mentioned_at: lastMention[0]?.ts ?? null,
-          edge_summary: edgeSummary,
-        },
+        entity: trust === 'trusted'
+          ? entityData
+          : wrapEntityRecord(entityData, { trust }),
       };
 
       if (args.path_to) {

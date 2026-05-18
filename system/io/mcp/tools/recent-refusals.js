@@ -1,5 +1,20 @@
 // recent-refusals.js — Theme 4.
 import { BoundQuery } from 'surrealdb';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+
+// Wrap the refusal content/payload — refusals are untrusted text by definition.
+function wrapRefusal(row) {
+  if (!row) return row;
+  const result = { ...row };
+  if (row.content != null) {
+    result.content = wrapUntrusted(String(row.content), {
+      source: row.tool ?? 'refusals',
+      eventId: String(row.id ?? ''),
+      trust: 'untrusted',
+    });
+  }
+  return result;
+}
 
 export function createRecentRefusalsTool({ db }) {
   return {
@@ -33,7 +48,7 @@ export function createRecentRefusalsTool({ db }) {
           ),
         )
         .collect();
-      return { refusals: rows ?? [] };
+      return { refusals: (rows ?? []).map(wrapRefusal) };
     },
   };
 }

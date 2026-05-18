@@ -2,6 +2,7 @@ import { surql } from 'surrealdb';
 import { formatEntity } from '../../format/entity.js';
 import { stage1Resolve } from '../../../cognition/biographer/stage1-exact.js';
 import { stage2Resolve } from '../../../cognition/biographer/stage2-embedding.js';
+import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
 
 export function createFindEntityTool({ db, embedder }) {
   return {
@@ -27,8 +28,8 @@ export function createFindEntityTool({ db, embedder }) {
     handler: async (args) => {
       const full = args.full === true;
       const shape = (rows) =>
-        rows.map((r) =>
-          formatEntity(
+        rows.map((r) => {
+          const formatted = formatEntity(
             {
               id: r.id,
               kind: r.type,
@@ -40,8 +41,13 @@ export function createFindEntityTool({ db, embedder }) {
               similarity: r.similarity,
             },
             { full },
-          ),
-        );
+          );
+          const trust = r.derived_from_trust ?? 'trusted';
+          if (trust === 'trusted') return formatted;
+          // Wrap the serialized entity so the agent sees untrusted entity names/summaries
+          // inside a nonce-suffixed isolation block.
+          return wrapEntityRecord(formatted, { trust });
+        });
       const limit = args.limit ?? 5;
       const fuzzy = args.fuzzy !== false;
       if (!fuzzy) {
@@ -51,7 +57,7 @@ export function createFindEntityTool({ db, embedder }) {
           const id = await stage1Resolve(db, { name: args.name, type: t });
           if (id) {
             const [rows] = await db
-              .query(surql`SELECT id, name, type, created_at FROM ${id}`)
+              .query(surql`SELECT id, name, type, created_at, derived_from_trust FROM ${id}`)
               .collect();
             if (rows[0]) matches.push({ ...rows[0], id: String(rows[0].id) });
           }
@@ -77,7 +83,7 @@ export function createFindEntityTool({ db, embedder }) {
       const ids = all.slice(0, limit).map((c) => c.id);
       if (ids.length === 0) return { entities: [] };
       const [rows] = await db
-        .query(surql`SELECT id, name, type, created_at FROM entities WHERE id IN ${ids}`)
+        .query(surql`SELECT id, name, type, created_at, derived_from_trust FROM entities WHERE id IN ${ids}`)
         .collect();
       const byId = new Map(rows.map((r) => [String(r.id), r]));
       const matches = all
@@ -91,6 +97,7 @@ export function createFindEntityTool({ db, embedder }) {
                 type: r.type,
                 created_at: r.created_at,
                 similarity: c.similarity,
+                derived_from_trust: r.derived_from_trust,
               }
             : null;
         })

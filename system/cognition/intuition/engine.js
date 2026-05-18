@@ -35,6 +35,7 @@ export async function recall(db, embedder, query, opts = {}) {
   const { hits } = await store.searchEvents(db, embedder, query, searchOpts);
 
   // Adapt to legacy shape — callers expect `{ hits: [{id, source, content, ts, meta, dist}] }`.
+  // trust is forwarded so MCP tools can wrap untrusted content before returning to the agent.
   return {
     hits: hits.map((h) => ({
       id: h.record.id,
@@ -43,6 +44,7 @@ export async function recall(db, embedder, query, opts = {}) {
       ts: h.record.ts,
       meta: h.record.meta,
       dist: h.distance,
+      ...(h.record.trust != null ? { trust: h.record.trust } : {}),
     })),
   };
 }

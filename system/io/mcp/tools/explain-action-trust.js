@@ -1,5 +1,8 @@
 // explain-action-trust.js — Theme 4. State + ledger history for a tool:action class.
 import { surql } from 'surrealdb';
+// wrapUntrusted available for future use if ledger reason fields contain untrusted content.
+// Currently all action_trust data is first-party (user-set policies); no wrap applied.
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js'; // eslint-disable-line no-unused-vars
 
 export function createExplainActionTrustTool({ db }) {
   return {

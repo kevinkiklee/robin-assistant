@@ -1,6 +1,19 @@
 import { surql } from 'surrealdb';
 import { trimRecallEvents } from '../../format/recall.js';
 import { recall as internalRecall } from '../../../cognition/intuition/engine.js';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+
+function wrapHit(hit) {
+  if (!hit || hit.trust === 'trusted' || hit.trust == null) return hit;
+  return {
+    ...hit,
+    content: wrapUntrusted(hit.content ?? '', {
+      source: hit.source,
+      eventId: String(hit.id ?? hit.event_id ?? ''),
+      trust: hit.trust,
+    }),
+  };
+}
 
 export function createRecallTool({ db, embedder, detector, getSessionId }) {
   return {
@@ -156,7 +169,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
             snippetPerEventMax: args.snippet_per_event_max,
           });
       return {
-        hits: trimmed,
+        hits: trimmed.map(wrapHit),
         ...(r.explain ? { explain: r.explain } : {}),
       };
     },

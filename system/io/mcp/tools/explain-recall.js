@@ -1,6 +1,7 @@
 // explain-recall.js — Theme 4 introspection. Read-only.
 import { BoundQuery, RecordId } from 'surrealdb';
 import { isOutboundBlocked } from '../../../cognition/memory/scope-registry.js';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
 
 export function createExplainRecallTool({ db }) {
   return {

@@ -1,5 +1,6 @@
 import { BoundQuery } from 'surrealdb';
 import { isSelfImprovementV2Enabled } from '../../../runtime/config/self-improvement-v2.js';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
 
 const MAX_LINEAGE_DEPTH = 4;
 
@@ -47,13 +48,18 @@ async function fetchSourceEvent(db, eventId) {
   if (!eventId) return null;
   const ref = String(eventId).startsWith('events:') ? String(eventId) : `events:${String(eventId)}`;
   try {
-    const [rows] = await db.query(`SELECT id, source, content, ts, meta FROM ${ref}`).collect();
+    const [rows] = await db.query(`SELECT id, source, content, ts, meta, trust FROM ${ref}`).collect();
     const row = (Array.isArray(rows) ? rows[0] : rows) ?? null;
     if (!row) return null;
+    const rawExcerpt = (row.content ?? '').slice(0, 200);
+    // Event content may originate from external sources (integrations); wrap if untrusted.
+    const trust = row.trust ?? 'untrusted';
     return {
       id: String(row.id),
       source: row.source,
-      content_excerpt: (row.content ?? '').slice(0, 200),
+      content_excerpt: trust === 'trusted'
+        ? rawExcerpt
+        : wrapUntrusted(rawExcerpt, { source: row.source, eventId: String(row.id), trust }),
       ts: row.ts,
     };
   } catch {

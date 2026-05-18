@@ -1,5 +1,8 @@
 import { BoundQuery } from 'surrealdb';
 import { isSelfImprovementV2Enabled } from '../../../runtime/config/self-improvement-v2.js';
+// wrapUntrusted imported for future source-event citations embedded in playbook explanations.
+// Outer prose (playbook content, rule content) is first-party and stays unwrapped.
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js'; // eslint-disable-line no-unused-vars
 
 const MAX_LINEAGE_DEPTH = 4;
 

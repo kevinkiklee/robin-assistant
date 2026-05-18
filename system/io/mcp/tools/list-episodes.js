@@ -1,5 +1,6 @@
 import { surql } from 'surrealdb';
 import { formatJournal } from '../../format/journal.js';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
 
 export function createListEpisodesTool({ db }) {
   return {
@@ -39,20 +40,25 @@ export function createListEpisodesTool({ db }) {
       }
       if (args.active_only) filters.push('ended_at IS NONE');
       const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-      const sql = `SELECT id, started_at, ended_at, source, summary FROM episodes ${where} ORDER BY started_at DESC LIMIT ${limit}`;
+      const sql = `SELECT id, started_at, ended_at, source, summary, derived_from_trust FROM episodes ${where} ORDER BY started_at DESC LIMIT ${limit}`;
       const [rows] = await db.query(sql, bindings).collect();
       const episodes = [];
       for (const ep of rows) {
         const [c] = await db
           .query(surql`SELECT count() AS n FROM events WHERE episode_id = ${ep.id} GROUP ALL`)
           .collect();
+        const trust = ep.derived_from_trust ?? 'trusted';
+        const rawSummary = ep.summary ?? null;
+        const summary = (trust !== 'trusted' && rawSummary != null)
+          ? wrapUntrusted(rawSummary, { source: ep.source, eventId: String(ep.id), trust })
+          : rawSummary;
         episodes.push({
           id: String(ep.id),
           ts: ep.started_at,
           started_at: ep.started_at,
           ended_at: ep.ended_at ?? null,
           source: ep.source,
-          summary: ep.summary ?? null,
+          summary,
           event_count: c[0]?.n ?? 0,
         });
       }

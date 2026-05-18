@@ -1,5 +1,19 @@
 // archive-history.js — Theme 4.
 import { BoundQuery, RecordId } from 'surrealdb';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+
+// Wrap any user-supplied reason text in an archive_log row.
+function wrapArchiveRow(row) {
+  if (!row || !row.reason) return row;
+  return {
+    ...row,
+    reason: wrapUntrusted(String(row.reason), {
+      source: 'archive_log',
+      eventId: String(row.memo_id ?? ''),
+      trust: 'untrusted',
+    }),
+  };
+}
 
 export function createArchiveHistoryTool({ db }) {
   return {
@@ -40,7 +54,7 @@ export function createArchiveHistoryTool({ db }) {
           .collect();
         rows = r;
       }
-      return { history: rows ?? [] };
+      return { history: (rows ?? []).map(wrapArchiveRow) };
     },
   };
 }
