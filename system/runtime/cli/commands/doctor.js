@@ -80,6 +80,46 @@ async function doEmitRunbook(out, err, { write = false, check = false, runbookPa
   return 0;
 }
 
+// Two independent gates on falling back to the daemon's state file:
+//  - state file itself must be fresh (heartbeat tick writes every ~60s, so a
+//    >10m gap means the daemon is wedged or stopped — don't claim ok from it)
+//  - per-invariant `last_pass_at` must be within 2× that invariant's heartbeat
+//    cadence (60s for db.authenticated, 1h for db.embedder_profile_match, etc.)
+const STATE_FILE_STALE_MS = 10 * 60 * 1000;
+const DEFAULT_INVARIANT_CADENCE_MS = 15 * 60 * 1000;
+
+/**
+ * When an invariant returns `no_db_handle` (the doctor process has no DB
+ * handle by design), check whether the daemon — which evaluates the same
+ * invariants on its heartbeat with a real DB — recently passed it. Returns
+ * `{ ageMs }` if the daemon-evaluated verdict can stand in, otherwise null.
+ *
+ * Pure / no I/O — caller passes the already-loaded state. This is the unit
+ * under test in `doctor-invariants-state-fallback.test.js`.
+ */
+export function maybePromoteWithDaemonState({
+  result,
+  invariant,
+  state,
+  now = Date.now(),
+  fileStaleMs = STATE_FILE_STALE_MS,
+  defaultCadenceMs = DEFAULT_INVARIANT_CADENCE_MS,
+} = {}) {
+  if (!result || result.error !== 'no_db_handle') return null;
+  if (!state || !state.generated_at) return null;
+  const generatedAt = Date.parse(state.generated_at);
+  if (!Number.isFinite(generatedAt)) return null;
+  if (now - generatedAt > fileStaleMs) return null;
+  const entry = state.invariants?.[result.name];
+  if (!entry || !entry.last_pass_at) return null;
+  if (!entry.last_result_summary || entry.last_result_summary.ok !== true) return null;
+  const cadenceMs = invariant?.runWhen?.heartbeat?.cooldownMs ?? defaultCadenceMs;
+  const ageMs = now - entry.last_pass_at;
+  if (ageMs < 0) return null;
+  if (ageMs > 2 * cadenceMs) return null;
+  return { ageMs };
+}
+
 /**
  * `--invariants`: run the doctor trigger across the registry; render
  * realm-grouped output with inline remediation. Read-only; never repairs.
@@ -91,6 +131,12 @@ async function doEmitRunbook(out, err, { write = false, check = false, runbookPa
  * The level→status mapping treats `warn`/`info` invariants as `warn` and
  * `critical` invariants as `fail`; skipped/errored results pass through as
  * `ok`/`fail` so the renderer doesn't count them in the wrong bucket.
+ *
+ * Daemon-state fallback: invariants that touch the DB return `no_db_handle`
+ * when invoked from the doctor process (which is probe-only by design — see
+ * makeInvariantCtx above, no `db`/`dbFactory`). For those, look up the
+ * daemon-written verdict in invariants-state.json and promote to ok when
+ * the daemon recently confirmed health.
  */
 async function doInvariantsRender(out, { verbose = false, colors = false } = {}) {
   const ctx = makeInvariantCtx({ paths, trigger: 'doctor', logFallback: false });
@@ -98,18 +144,17 @@ async function doInvariantsRender(out, { verbose = false, colors = false } = {})
   const byName = new Map(invariants.map((i) => [i.name, i]));
   const report = await runInvariants({ trigger: 'doctor', ctx, invariants });
 
-  // When verbose, attach last-passed provenance from invariants-state.json.
-  // Best-effort: a missing/corrupt state file returns emptyState() and every
-  // result simply gets `lastPassedTs: undefined` → rendered as `never`.
-  let stateByName = new Map();
-  if (verbose) {
-    try {
-      const state = readState(paths.data.invariantsState());
-      stateByName = new Map(Object.entries(state.invariants ?? {}));
-    } catch (e) {
-      out(`  (warning: failed to read invariants-state.json: ${e.message})`);
-    }
+  // Always read invariants-state.json — it's the only signal we have for
+  // DB-touching invariants when ctx.db is null, and it's also the source of
+  // last_passed provenance for verbose mode. Best-effort: missing/corrupt
+  // returns emptyState() so every lookup just yields undefined.
+  let state = { invariants: {}, generated_at: null };
+  try {
+    state = readState(paths.data.invariantsState());
+  } catch (e) {
+    if (verbose) out(`  (warning: failed to read invariants-state.json: ${e.message})`);
   }
+  const stateByName = new Map(Object.entries(state.invariants ?? {}));
 
   const results = [];
   for (const r of report.results) {
@@ -129,7 +174,21 @@ async function doInvariantsRender(out, { verbose = false, colors = false } = {})
     const lastPassedTs = entry?.last_pass_at
       ? new Date(entry.last_pass_at).toISOString()
       : undefined;
-    results.push({ name: r.name, surface, status, error: r.error, remediation, lastPassedTs });
+    let daemonEvaluatedAgoMs;
+    const promote = maybePromoteWithDaemonState({ result: r, invariant: inv, state });
+    if (promote) {
+      status = 'ok';
+      daemonEvaluatedAgoMs = promote.ageMs;
+    }
+    results.push({
+      name: r.name,
+      surface,
+      status,
+      error: r.error,
+      remediation,
+      lastPassedTs,
+      daemonEvaluatedAgoMs,
+    });
   }
 
   const ts = new Date().toISOString();

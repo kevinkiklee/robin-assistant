@@ -29,6 +29,20 @@ const ANSI = {
   reset: '\x1b[0m',
 };
 
+// Compact relative-time formatter for the `(daemon-evaluated Nm ago)`
+// annotation on invariants that fell back to the daemon's heartbeat verdict.
+// Stays integer-coarse so the rendered line is stable across runs separated
+// by a few ms.
+function formatAgo(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '?';
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ago`;
+}
+
 function colorize(s, status, colors) {
   if (!colors) return s;
   if (status === 'ok') return `${ANSI.green}${s}${ANSI.reset}`;
@@ -88,7 +102,11 @@ export function renderDoctor({ results = [], ts, verbose = false, colors = false
     if (verbose) {
       for (const item of oks) {
         const sigil = colorize('✓', 'ok', colors);
-        lines.push(`  ${sigil} ${item.name}`);
+        const annotation =
+          item.daemonEvaluatedAgoMs != null
+            ? ` (daemon-evaluated ${formatAgo(item.daemonEvaluatedAgoMs)})`
+            : '';
+        lines.push(`  ${sigil} ${item.name}${annotation}`);
         lines.push(`    last_passed: ${item.lastPassedTs ?? 'never'}`);
       }
     }
