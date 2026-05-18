@@ -1,6 +1,20 @@
 import { requireSecret, saveSecret } from '../../../../config/secrets.js';
 import { getAccessToken } from '../../_auth/token-cache.js';
 import { getThread } from '../client.js';
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
+
+function wrapThreadMessages(thread) {
+  if (!thread || !Array.isArray(thread.messages)) return thread;
+  return {
+    ...thread,
+    messages: thread.messages.map((msg) => {
+      const snippet = msg.snippet != null
+        ? wrapUntrusted(msg.snippet, { source: 'gmail', eventId: msg.id, trust: 'untrusted' })
+        : msg.snippet;
+      return { ...msg, snippet };
+    }),
+  };
+}
 
 function buildSecrets() {
   return {
@@ -27,7 +41,7 @@ export function createGmailGetThreadTool() {
           saveSecret,
         });
         const thread = await getThread({ accessToken, threadId: args.thread_id });
-        return { thread };
+        return { thread: wrapThreadMessages(thread) };
       } catch (e) {
         if (/missing secret/.test(e.message)) {
           throw new Error(

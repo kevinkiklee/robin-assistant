@@ -1,6 +1,20 @@
 import { requireSecret, saveSecret } from '../../../../config/secrets.js';
 import { getAccessToken } from '../../_auth/token-cache.js';
 import { getEvent } from '../client.js';
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
+
+function wrapCalendarEvent(event) {
+  if (!event) return event;
+  const wrap = (text) =>
+    text != null
+      ? wrapUntrusted(text, { source: 'google_calendar', eventId: event.id, trust: 'untrusted' })
+      : text;
+  return {
+    ...event,
+    summary: wrap(event.summary),
+    description: wrap(event.description),
+  };
+}
 
 function buildSecrets() {
   return {
@@ -27,7 +41,7 @@ export function createCalendarGetEventTool() {
           saveSecret,
         });
         const event = await getEvent({ accessToken, eventId: args.event_id });
-        return { event };
+        return { event: wrapCalendarEvent(event) };
       } catch (e) {
         if (/missing secret/.test(e.message)) {
           throw new Error(

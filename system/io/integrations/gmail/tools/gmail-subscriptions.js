@@ -1,5 +1,6 @@
 import { BoundQuery } from 'surrealdb';
 import { parseGmailContent } from './gmail-shipments.js';
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 
 const RECEIPT_RE =
   /\breceipt\b|\binvoice\b|\bpayment\b|\bsubscription\b|\brenew(?:al|ed|s)?\b|\bbilled\b|\bcharged?\b|\bauto-?pay\b|\byour order\b|\bthanks? for your (?:order|purchase|payment)\b/i;
@@ -173,8 +174,12 @@ export function createGmailSubscriptionsTool({ db }) {
         const c = classifyReceipt(r);
         if (c) receipts.push(c);
       }
-      const all = aggregateSubscriptions(receipts, { now: new Date() });
-      const subs = all.filter((s) => monthlyEquivalent(s.amount, s.cadence) >= minMonthly);
+      const allRaw = aggregateSubscriptions(receipts, { now: new Date() });
+      const allWrapped = allRaw.map((s) => ({
+        ...s,
+        service: wrapUntrusted(s.service ?? '', { source: 'gmail', trust: 'untrusted' }),
+      }));
+      const subs = allWrapped.filter((s) => monthlyEquivalent(s.amount, s.cadence) >= minMonthly);
       const monthlyTotal = subs.reduce((sum, s) => sum + monthlyEquivalent(s.amount, s.cadence), 0);
       return {
         subscriptions: subs,

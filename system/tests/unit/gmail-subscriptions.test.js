@@ -177,7 +177,10 @@ test('gmail_subscriptions tool aggregates and totals across events', async () =>
   const t = createGmailSubscriptionsTool({ db });
   const r = await t.handler({ days_back: 400 });
   assert.equal(r.count, 2);
-  const services = r.subscriptions.map((s) => s.service).sort();
+  // service is wrapped in untrusted-content tags; extract the inner domain for assertion
+  const services = r.subscriptions
+    .map((s) => String(s.service).replace(/^<untrusted-content[^>]*>(.*?)<\/untrusted-content-[^>]+>$/, '$1'))
+    .sort();
   assert.deepEqual(services, ['1password.com', 'spotify.com']);
   // Monthly total ≈ 10.99 + 60/12 = 15.99
   assert.ok(r.monthly_total_estimated >= 15.9 && r.monthly_total_estimated <= 16.1);
@@ -198,6 +201,11 @@ test('gmail_subscriptions tool honors min_monthly filter', async () => {
   const t = createGmailSubscriptionsTool({ db });
   const r = await t.handler({ days_back: 90, min_monthly: 10 });
   assert.equal(r.count, 1);
-  assert.equal(r.subscriptions[0].service, 'expensive.io');
+  // service is wrapped; extract the inner domain for assertion
+  const rawService = String(r.subscriptions[0].service).replace(
+    /^<untrusted-content[^>]*>(.*?)<\/untrusted-content-[^>]+>$/,
+    '$1',
+  );
+  assert.equal(rawService, 'expensive.io');
   await close(db);
 });

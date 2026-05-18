@@ -1,4 +1,16 @@
 import { BoundQuery } from 'surrealdb';
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
+
+function wrapEvent(r) {
+  return {
+    ...r,
+    content: wrapUntrusted(r.content ?? '', {
+      source: r.source ?? 'google_calendar',
+      eventId: r.id,
+      trust: r.trust ?? 'untrusted',
+    }),
+  };
+}
 
 export function createCalendarListEventsTool({ db }) {
   return {
@@ -26,7 +38,7 @@ export function createCalendarListEventsTool({ db }) {
       const limit = Math.min(args.limit ?? 50, 200);
       const sql = `SELECT id, content, ts, meta FROM events WHERE ${filters.join(' AND ')} ORDER BY ts ASC LIMIT ${limit}`;
       const [rows] = await db.query(new BoundQuery(sql, bindings)).collect();
-      return { events: rows.map((r) => ({ ...r, id: String(r.id) })) };
+      return { events: rows.map((r) => wrapEvent({ ...r, id: String(r.id) })) };
     },
   };
 }

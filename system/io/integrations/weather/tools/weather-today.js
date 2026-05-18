@@ -1,4 +1,16 @@
 import { surql } from 'surrealdb';
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
+
+function wrapRow(r) {
+  return {
+    ...r,
+    content: wrapUntrusted(r.content ?? '', {
+      source: r.source ?? 'weather',
+      eventId: r.id,
+      trust: r.trust ?? 'untrusted',
+    }),
+  };
+}
 
 export function createWeatherTodayTool({ db }) {
   return {
@@ -12,7 +24,7 @@ export function createWeatherTodayTool({ db }) {
         )
         .collect();
       const row = rows[0];
-      return { weather: row ? { ...row, id: String(row.id) } : null };
+      return { weather: row ? wrapRow({ ...row, id: String(row.id) }) : null };
     },
   };
 }

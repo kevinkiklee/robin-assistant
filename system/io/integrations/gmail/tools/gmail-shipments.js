@@ -1,4 +1,5 @@
 import { BoundQuery } from 'surrealdb';
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 
 // Carrier signatures matched against the From header. Order matters when a
 // sender domain mentions multiple carriers (e.g., a tracking aggregator).
@@ -155,7 +156,10 @@ export function createGmailShipmentsTool({ db }) {
           const key = `${s.carrier}|${s.item}`;
           if (!seen.has(key)) seen.set(key, s);
         }
-        buckets[k] = [...seen.values()];
+        buckets[k] = [...seen.values()].map((s) => ({
+          ...s,
+          item: wrapUntrusted(s.item ?? '', { source: 'gmail', trust: 'untrusted' }),
+        }));
       }
       return buckets;
     },
