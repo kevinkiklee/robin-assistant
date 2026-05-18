@@ -4,6 +4,8 @@
 // ctx.db may be null (e.g. when the DB itself is the invariant under test).
 // ctx.log falls back to process.stderr when log path is unavailable.
 
+import { getActiveQueryCount } from '../../data/db/client.js';
+
 const noopLog = {
   info: () => {},
   warn: () => {},
@@ -44,5 +46,10 @@ export function makeCtx({
     state,
     dryRun,
     trigger,
+    // Snapshot of in-flight `db.query(...).collect()` calls at tick start.
+    // Read by `mcp.daemon_authenticated_after_reconnect` to skip its
+    // synthetic reconnect probe when real traffic is mid-flight. Module-
+    // scoped in `data/db/client.js`, so any open handle contributes.
+    activeQueryCount: getActiveQueryCount(),
   };
 }
