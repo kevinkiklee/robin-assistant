@@ -349,7 +349,11 @@ export async function ensureHome() {
     if (existsSync(cfgPath)) {
       try {
         cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
-      } catch {
+      } catch (e) {
+        // Malformed config.json on a fresh install or after a partial
+        // write — log so the user sees it, then start from {} so the
+        // hooks-disabled migration can still record the legacy flag.
+        console.warn(`[ensureHome] config.json unreadable at ${cfgPath}: ${e.message}`);
         cfg = {};
       }
     }
