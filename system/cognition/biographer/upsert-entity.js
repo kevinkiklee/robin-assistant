@@ -13,7 +13,8 @@
 // Returns `{ id, created, stage, embedding_source }` so `store.upsertEntity`
 // can decide whether to write the entities embedding row.
 
-import { StringRecordId, surql } from 'surrealdb';
+import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { isSafeRecordRef } from '../memory/edge-registry.js';
 import { stage1Resolve } from './stage1-exact.js';
@@ -53,7 +54,7 @@ async function applyTrustMerge(db, entityId, incomingTrust) {
   // string inputs (the shape stage1Resolve sometimes returns from SELECT
   // when surrealdb hands back the id un-wrapped) to StringRecordId so the
   // surql tag emits a record-typed parameter.
-  const rid = typeof entityId === 'string' ? new StringRecordId(entityId) : entityId;
+  const rid = toRecordRef(entityId);
   const [rows] = await db.query(surql`SELECT derived_from_trust FROM ${rid}`).collect();
   const row = Array.isArray(rows) ? rows[0] : rows;
   const existingTrust = row?.derived_from_trust ?? 'trusted';

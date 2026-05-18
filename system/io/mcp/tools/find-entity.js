@@ -1,9 +1,10 @@
 import { surql } from 'surrealdb';
-import { formatEntity } from '../../format/entity.js';
 import { stage1Resolve } from '../../../cognition/biographer/stage1-exact.js';
 import { stage2Resolve } from '../../../cognition/biographer/stage2-embedding.js';
 import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
+import { toRecordRef } from '../../../data/db/record-ref.js';
 import { markTainted } from '../../../runtime/mcp/session-taint.js';
+import { formatEntity } from '../../format/entity.js';
 
 export function createFindEntityTool({ db, embedder, getSessionId }) {
   return {
@@ -60,7 +61,9 @@ export function createFindEntityTool({ db, embedder, getSessionId }) {
           const id = await stage1Resolve(db, { name: args.name, type: t });
           if (id) {
             const [rows] = await db
-              .query(surql`SELECT id, name, type, created_at, derived_from_trust FROM ${id}`)
+              .query(
+                surql`SELECT id, name, type, created_at, derived_from_trust FROM ${toRecordRef(id)}`,
+              )
               .collect();
             if (rows[0]) matches.push({ ...rows[0], id: String(rows[0].id) });
           }
@@ -86,7 +89,9 @@ export function createFindEntityTool({ db, embedder, getSessionId }) {
       const ids = all.slice(0, limit).map((c) => c.id);
       if (ids.length === 0) return { entities: [] };
       const [rows] = await db
-        .query(surql`SELECT id, name, type, created_at, derived_from_trust FROM entities WHERE id IN ${ids}`)
+        .query(
+          surql`SELECT id, name, type, created_at, derived_from_trust FROM entities WHERE id IN ${ids}`,
+        )
         .collect();
       const byId = new Map(rows.map((r) => [String(r.id), r]));
       const matches = all

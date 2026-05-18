@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 
 export async function findActiveEpisode(db, source) {
   const [rows] = await db
@@ -24,5 +25,5 @@ export async function closeEpisode(db, episodeId, { endedAt, summary }) {
     ended_at: endedAt ?? new Date(),
     ...(summary !== undefined ? { summary } : {}),
   };
-  await db.query(surql`UPDATE ${episodeId} MERGE ${set}`).collect();
+  await db.query(surql`UPDATE ${toRecordRef(episodeId)} MERGE ${set}`).collect();
 }

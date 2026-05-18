@@ -16,6 +16,7 @@
 //      any DB write; failures throw with a structured error message.
 
 import { BoundQuery, surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 import { sha256 } from '../../data/embed/hash.js';
 import { activeProfile, embeddingTable } from '../../data/embed/profile-router.js';
 import {
@@ -199,7 +200,7 @@ export async function upsertMemoByName(db, embedder, kind, input) {
       .query(surql`SELECT id FROM memos WHERE kind = ${kind} AND meta.name = ${name} LIMIT 1`)
       .collect();
     if (existing[0]) {
-      const id = existing[0].id;
+      const id = toRecordRef(existing[0].id);
       await db
         .query(surql`UPDATE ${id} SET signal_count += 1, last_active = time::now()`)
         .collect();
@@ -360,7 +361,14 @@ export async function relateAll(db, rows) {
         insertFields.push(`weight: 1`);
         updateExprs.push(`weight += 1`);
       } else {
-        for (const f of ['weight', 'valid_from', 'valid_until', 'context', 'meta', 'derived_from_trust']) {
+        for (const f of [
+          'weight',
+          'valid_from',
+          'valid_until',
+          'context',
+          'meta',
+          'derived_from_trust',
+        ]) {
           if (row[f] != null) {
             bindings[`${f}${i}`] = row[f];
             insertFields.push(`${f}: $${f}${i}`);
@@ -432,7 +440,7 @@ export async function flagContradiction(db, idA, idB, opts = {}) {
  * record prediction resolution (resolved_at / correct / actual_outcome).
  */
 export async function updateMemoMeta(db, id, patch) {
-  await db.query(surql`UPDATE ${id} MERGE { meta: ${patch} }`).collect();
+  await db.query(surql`UPDATE ${toRecordRef(id)} MERGE { meta: ${patch} }`).collect();
 }
 
 // ============================================================================

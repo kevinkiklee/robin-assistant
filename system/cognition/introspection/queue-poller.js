@@ -25,14 +25,15 @@
 // so two concurrent drain ticks won't double-claim a row.
 
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 import { parseLLMJSON } from '../biographer/output.js';
-import { fetchActivePlaybook } from '../intuition/playbook-inject.js';
 import {
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
   computeScore,
   estimateCallCost,
 } from '../dream/outcome-grading-prompt.js';
+import { fetchActivePlaybook } from '../intuition/playbook-inject.js';
 import {
   isStratumAllowed,
   readBudgetConfig,
@@ -136,7 +137,9 @@ export async function drainQueueOnce(db, host = null) {
       console.warn(`[introspection/queue-poller] row ${row.id} failed: ${e.message}`);
       // Release claim so another tick can retry (or let it expire).
       try {
-        await db.query(surql`UPDATE ${row.id} SET claimed_by = NONE, claimed_at = NONE`).collect();
+        await db
+          .query(surql`UPDATE ${toRecordRef(row.id)} SET claimed_by = NONE, claimed_at = NONE`)
+          .collect();
       } catch {
         /* release is best-effort */
       }

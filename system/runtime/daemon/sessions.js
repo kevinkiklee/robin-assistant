@@ -11,6 +11,7 @@
 // duplicating the row.
 
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 import { HOST_VALUES } from '../hosts/index.js';
 
 /**
@@ -56,7 +57,9 @@ export async function registerSession(db, { sessionId, host, pid, transcriptPath
     if (Number.isInteger(pid)) {
       updates.pid = pid;
     }
-    const [rows] = await db.query(surql`UPDATE ${recordId} MERGE ${updates}`).collect();
+    const [rows] = await db
+      .query(surql`UPDATE ${toRecordRef(recordId)} MERGE ${updates}`)
+      .collect();
     return rows[0];
   }
 

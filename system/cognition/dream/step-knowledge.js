@@ -11,6 +11,7 @@
 //     returns 0 for the old memo thereafter.
 
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 import * as store from '../memory/store.js';
 import { KNOWLEDGE_SYNTHESIS_SYSTEM } from './prompts.js';
 
@@ -47,7 +48,7 @@ export async function dreamStepKnowledge(
   let tokens_out = 0;
 
   for (const c of eligible) {
-    const entityId = c.entity_id;
+    const entityId = toRecordRef(c.entity_id);
     // Pull recent un-dreamed events that mention this entity.
     const [evRows] = await db
       .query(

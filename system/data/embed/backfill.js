@@ -1,4 +1,5 @@
 import { BoundQuery, surql } from 'surrealdb';
+import { toRecordRef } from '../db/record-ref.js';
 import { activeProfile, embeddingTable } from './profile-router.js';
 
 // Backfill embeddings for events that have no row in the active profile's
@@ -46,7 +47,7 @@ export async function embedBackfillTick({ db, embedder, batch = 64, log = () => 
       embedded++;
     } catch {
       try {
-        await db.query(surql`UPDATE ${r.id} SET meta.embed_failed = true`).collect();
+        await db.query(surql`UPDATE ${toRecordRef(r.id)} SET meta.embed_failed = true`).collect();
       } catch {
         /* swallow secondary failure */
       }

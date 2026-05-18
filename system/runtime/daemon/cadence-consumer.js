@@ -10,11 +10,13 @@ import {
 import { advanceCursor, getCursor } from '../../cognition/dream/cursors.js';
 import { dispatchStep } from '../../cognition/dream/dispatch.js';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../config/time.js';
+import { toRecordRef } from '../../data/db/record-ref.js';
 
 async function mark(db, id, outcome, reason) {
+  const rid = toRecordRef(id);
   const set = reason
-    ? surql`UPDATE ${id} SET processed_at = time::now(), outcome = ${outcome}, meta.cap_reason = ${reason}`
-    : surql`UPDATE ${id} SET processed_at = time::now(), outcome = ${outcome}`;
+    ? surql`UPDATE ${rid} SET processed_at = time::now(), outcome = ${outcome}, meta.cap_reason = ${reason}`
+    : surql`UPDATE ${rid} SET processed_at = time::now(), outcome = ${outcome}`;
   try {
     await db.query(set).collect();
   } catch (e) {

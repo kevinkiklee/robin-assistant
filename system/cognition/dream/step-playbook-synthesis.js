@@ -3,6 +3,7 @@
 // Spec §1 "step-playbook-synthesis" + §3 "Playbook content shape".
 // FAIL-SOFT: an error here MUST NOT abort the Dream run.
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import { tokenCapForTaskType } from '../introspection/task-taxonomy.js';
 import {
@@ -478,7 +479,7 @@ async function supersedePlaybook(db, priorId, newId) {
   try {
     await db
       .query(
-        surql`UPDATE ONLY ${priorId} SET
+        surql`UPDATE ONLY ${toRecordRef(priorId)} SET
               meta.active = false,
               meta.superseded_by = ${String(newId)}`,
       )
@@ -502,7 +503,9 @@ async function writeCitedByBackpointer(db, ruleId, playbookId) {
   const pbStr = String(playbookId);
   if (!priorCitedBy.includes(pbStr)) {
     await db
-      .query(surql`UPDATE ONLY ${ruleId} SET meta.cited_by = ${[...priorCitedBy, pbStr]}`)
+      .query(
+        surql`UPDATE ONLY ${toRecordRef(ruleId)} SET meta.cited_by = ${[...priorCitedBy, pbStr]}`,
+      )
       .collect();
   }
 }

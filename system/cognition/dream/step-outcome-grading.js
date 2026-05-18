@@ -2,9 +2,10 @@
 // L1 step, Haiku-tier. Spec §2 "Self-grading rubric" + §6 "Cost budgets".
 // FAIL-SOFT: an error here MUST NOT abort the Dream run.
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
+import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import { parseLLMJSON } from '../biographer/output.js';
 import { fetchActivePlaybook } from '../intuition/playbook-inject.js';
-import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import {
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
@@ -123,7 +124,7 @@ async function fetchSourceEventContent(db, sourceEventId) {
 async function writeGrade(db, memoId, score, selfGrade) {
   await db
     .query(
-      surql`UPDATE ONLY ${memoId} SET
+      surql`UPDATE ONLY ${toRecordRef(memoId)} SET
               meta.score = ${score},
               meta.signals.self_grade = ${selfGrade}`,
     )

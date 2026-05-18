@@ -12,6 +12,8 @@
 //   - `events.biographed_at = time::now()` is still set on the processed event.
 
 import { surql } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { recordIdFromString } from '../memory/edge-registry.js';
 import { closeEpisode, createEpisode, findActiveEpisode } from '../memory/episodes.js';
 import * as store from '../memory/store.js';
@@ -20,7 +22,6 @@ import { validateBiographerBatchOutput } from './batch-output.js';
 import { buildBiographerBatchPrompt } from './batch-prompt.js';
 import { applyDerivedTrust, parseLLMJSON, validateBiographerOutput } from './output.js';
 import { buildBiographerPrompt } from './prompt.js';
-import { mergeTrust } from '../discretion/wrap-untrusted.js';
 
 // Edge kinds the biographer is allowed to emit, normalized to the registry.
 const ENTITY_EDGE_KINDS = new Set(['works_on', 'participates_in']);
@@ -224,7 +225,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   //    old N×(many) shape.
   const events = [];
   for (const id of eventIds) {
-    const [rows] = await db.query(surql`SELECT * FROM ${id}`).collect();
+    const [rows] = await db.query(surql`SELECT * FROM ${toRecordRef(id)}`).collect();
     if (rows.length > 0) events.push(rows[0]);
   }
   const toProcess = events
@@ -331,11 +332,18 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     for (const ent of perOut.entities) {
       const key = `${ent.type}__${ent.name.toLowerCase()}`;
       if (!desiredEntities.has(key)) {
-        desiredEntities.set(key, { name: ent.name, type: ent.type, derived_from_trust: ent.derived_from_trust });
+        desiredEntities.set(key, {
+          name: ent.name,
+          type: ent.type,
+          derived_from_trust: ent.derived_from_trust,
+        });
       } else {
         // Keep worst-case trust across all events that mention this entity.
         const existing = desiredEntities.get(key);
-        const merged = mergeTrust([existing.derived_from_trust ?? 'trusted', ent.derived_from_trust ?? 'trusted']);
+        const merged = mergeTrust([
+          existing.derived_from_trust ?? 'trusted',
+          ent.derived_from_trust ?? 'trusted',
+        ]);
         desiredEntities.set(key, { ...existing, derived_from_trust: merged });
       }
     }
@@ -668,7 +676,7 @@ async function _writeBiographerTelemetry(db, fields) {
 async function _processOne(db, embedder, host, eventId, opts = {}) {
   const retryBaseDelayMs = opts.retryBaseDelayMs ?? 1000;
   // 1. Read event; skip if already biographed
-  const [eventRows] = await db.query(surql`SELECT * FROM ${eventId}`).collect();
+  const [eventRows] = await db.query(surql`SELECT * FROM ${toRecordRef(eventId)}`).collect();
   if (eventRows.length === 0) throw new Error(`event ${eventId} not found`);
   const event = eventRows[0];
   if (event.biographed_at) return { skipped: true, reason: 'already_biographed' };
