@@ -6,6 +6,22 @@ import {
   setRulePriority,
 } from '../../../cognition/memory/rules.js';
 
+// Safe alphabet for rule_candidates record-id suffixes (matches _entity-ref.js convention).
+const CANDIDATE_ID_RE = /^rule_candidates:[A-Za-z0-9_-]+$/;
+
+/**
+ * Validate that `id` is a safe rule_candidates record reference.
+ * Returns true when the id is safe to interpolate into SurrealQL.
+ *
+ * We validate + interpolate (rather than bind via surql/RecordId) because
+ * SurrealDB record-typed columns don't compare equal when the value is bound
+ * as a JS string — record-to-record comparison needs the literal form.
+ * This matches the _entity-ref.js convention: validate alphabet, then interpolate.
+ */
+function isValidCandidateId(id) {
+  return typeof id === 'string' && CANDIDATE_ID_RE.test(id);
+}
+
 export function createUpdateRuleTool({ db }) {
   return {
     name: 'update_rule',
@@ -31,8 +47,13 @@ export function createUpdateRuleTool({ db }) {
       const { id, action, force = false, options = {} } = args;
       switch (action) {
         case 'approve': {
+          // Defense-in-depth: validate id before any DB interaction so a
+          // malicious id string cannot smuggle SurrealQL via interpolation.
+          if (!isValidCandidateId(id)) return { ok: false, reason: 'invalid_id' };
+
           // Taint gate: refuse to approve a candidate derived from untrusted content
           // unless the caller explicitly passes force=true.
+          // id is safe to interpolate — validated against CANDIDATE_ID_RE above.
           const [rows] = await db.query(`SELECT derived_from_trust FROM ${id}`).collect();
           const derived = rows?.[0]?.derived_from_trust;
           if (derived && derived !== 'trusted' && !force) {

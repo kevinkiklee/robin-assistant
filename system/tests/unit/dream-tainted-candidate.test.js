@@ -76,3 +76,30 @@ test('update_rule(approve) on clean candidate succeeds without force', async () 
     await close(db);
   }
 });
+
+test('update_rule rejects malicious id with injection payload', async () => {
+  const db = await setup();
+  try {
+    const tool = createUpdateRuleTool({ db });
+    const out = await tool.handler({
+      id: 'rule_candidates:x; DELETE rule_candidates',
+      action: 'approve',
+    });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'invalid_id');
+  } finally {
+    await close(db);
+  }
+});
+
+test('update_rule rejects id with wrong table prefix', async () => {
+  const db = await setup();
+  try {
+    const tool = createUpdateRuleTool({ db });
+    const out = await tool.handler({ id: 'events:tainted', action: 'approve' });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'invalid_id');
+  } finally {
+    await close(db);
+  }
+});
