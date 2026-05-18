@@ -70,6 +70,12 @@ export default {
   description:
     "Robin's SessionStart/Stop/UserPromptSubmit/PreToolUse hooks are present in ~/.claude/settings.json and ~/.gemini/settings.json.",
 
+  remediation: [
+    'invariant repair re-runs `installHooksToSettings` (idempotent) — adds missing entries only',
+    'if symptom recurs: another tool may be overwriting settings.json on save (Claude Code, VS Code, etc.)',
+    'inspect: `cat ~/.claude/settings.json | jq .hooks`',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: true, cooldownMs: 5 * 60 * 1000 },

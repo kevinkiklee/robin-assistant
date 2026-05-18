@@ -33,6 +33,12 @@ export default {
   phase: 'runtime',
   description: 'process.version matches the version pinned in .npmrc (use-node-version).',
 
+  remediation: [
+    'switch to pinned version: `nvm use <pinned>` or `asdf install nodejs <pinned>`',
+    'rebuild native addons after switching: `cd node_modules/better-sqlite3 && node-gyp rebuild --target=<pinned>`',
+    'inspect: `grep use-node-version .npmrc`',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: false },

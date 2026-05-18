@@ -90,6 +90,12 @@ export default {
   description:
     'No orphaned (ppid=1) node --test processes older than 10 minutes, and no stale robin-test tmpdirs.',
 
+  remediation: [
+    '`robin doctor --repair=runtime.no_orphan_node_test_procs --apply` to kill stale procs + remove tmpdirs',
+    'manual: `pkill -f "node --test"` and `rm -rf $TMPDIR/robin-multi-* $TMPDIR/robin-ws-* /tmp/robin-test-*`',
+    'prevent recurrence: always use `pnpm test:file` (includes `--test-force-exit`) when running a single file',
+  ],
+
   runWhen: {
     boot: { enabled: false },
     heartbeat: { enabled: false },

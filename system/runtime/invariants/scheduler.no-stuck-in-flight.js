@@ -15,6 +15,12 @@ export default {
   phase: 'runtime',
   description: 'No scheduler jobs have been in_flight=true for more than 30 minutes.',
 
+  remediation: [
+    'inspect named job: `SELECT * FROM runtime_jobs WHERE name = "<job>";`',
+    'manual unstick: `UPDATE runtime_jobs SET in_flight = false WHERE name = "<job>";`',
+    'last resort — restart daemon (`kill <pid>`); boot clears all stuck flags',
+  ],
+
   runWhen: {
     boot: { enabled: false },
     heartbeat: { enabled: true, cooldownMs: 15 * 60 * 1000 },
