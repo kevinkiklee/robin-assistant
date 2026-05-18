@@ -64,7 +64,7 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
 
   // Empty-DB smoke: every read tool succeeds with no args.
   const k = await tools[0].handler({});
-  assert.deepEqual(k, { knowledge: [] });
+  assert.deepEqual(k.knowledge, []);
   const p = await tools[1].handler({});
   assert.deepEqual(p, { patterns: [] });
   const prof = await tools[2].handler({});
@@ -78,7 +78,11 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
     assert.equal(prof.profile.display_name, undefined);
   }
   const j = await tools[3].handler({});
-  assert.deepEqual(j, { entries: [] });
+  // list_journal now wraps via formatJournal — entries plus a meta summary.
+  assert.deepEqual(j.entries, []);
+  assert.equal(j.meta.total, 0);
+  assert.equal(j.meta.shown, 0);
+  assert.equal(j.meta.trimmed, false);
   const h = await tools[4].handler({});
   assert.deepEqual(h, { episodes: [], recent_events: [], entities: [] });
   const r = await tools[5].handler({});
@@ -94,7 +98,9 @@ test('get_knowledge with query argument exercises the search path', async () => 
   const e = createStubEmbedder({ dimension: 1024 });
   const tool = createGetKnowledgeTool({ db, embedder: e });
   const r = await tool.handler({ query: 'anything', limit: 5 });
-  assert.deepEqual(r, { knowledge: [] });
+  // formatKnowledge per-row wrapping means the empty-case is just []. Keep
+  // the assertion narrow so future header/meta additions don't break it.
+  assert.deepEqual(r.knowledge, []);
   await close(db);
 });
 
