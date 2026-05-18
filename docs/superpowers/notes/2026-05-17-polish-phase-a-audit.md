@@ -492,6 +492,7 @@ rewrite is filed below.
 |---|---|---|---|
 | `system/data/embed/probe.js` (new) + test | Probe writer module landed: calls `embedFn` against a fixed synthetic input, upserts `runtime_state:embed_probe` with `last_success_ts`; on failure preserves the prior ts and records `last_error`. Drives the `daemon.embedder_load_age` invariant. | shipped module + 5-case test | `75e2ac1` |
 | `system/data/db/client.js` | Reauth proactive + reactive paths converted from `console.warn` to structured logger. Event classes: `db.reauth_triggered`, `db.reauth_succeeded`, `db.reauth_failed`, `db.anonymous_access_observed`. Existing `db-client-reauth.test.js` still passes — logger is additive. | shipped | `4ab88cd` |
+| `system/data/db/client.js` + `system/runtime/invariants/ctx.js` | `activeQueryCount` counter added via `installQueryCounter()` (wraps every `db.query(...).collect()`); exposed via `getActiveQueryCount()`. `makeCtx` reads it at tick build time → `ctx.activeQueryCount`. Closes the "skip during workload" wiring for `mcp.daemon_authenticated_after_reconnect`. | shipped | `18c8399`, `c0270a4` |
 
 ## Deferred pending prompt-injection commit
 
@@ -503,7 +504,7 @@ git-index hazard documented in CLAUDE.md.
 
 | File | Finding | Status |
 |---|---|---|
-| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | **Filed to "Open for cognition-e1 lane"** (2026-05-18) — implementing requires a counter in `system/data/db/client.js` (e1-owned). Daemon-level wrapping would require wrapping every `ctx.db.query(...)` call site (~60 sites) which is too invasive. Current behavior (undefined → 0 → probe always runs) is acceptable but suboptimal. |
+| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | **Resolved 2026-05-18** in `18c8399`, `c0270a4` — `installQueryCounter()` in `system/data/db/client.js` wraps every `db.query(...).collect()`; `makeCtx` forwards `getActiveQueryCount()` as `ctx.activeQueryCount`. Daemon-level wrapping not required — counter is module-scoped, so all handles produced by `connect()` contribute automatically. |
 | `system/runtime/daemon/server.js` (prompt-injection lane) | `startJobHotReload` now accepts an optional `db` parameter that writes `runtime:hot_reload_watcher` state. Caller does not pass `db` today — so the new `runtime.hot_reload_watcher_active` invariant will report `watcher_not_registered`. | **Done 2026-05-18** in `0982b40` — `server.js` now passes `db: ctx.db` to `startJobHotReload`. Invariant test `invariant-hot-reload-watcher.test.js` still green. |
 
 ## Open for cognition-e1 lane
@@ -511,7 +512,7 @@ git-index hazard documented in CLAUDE.md.
 | File | Finding | Suggested fix |
 |---|---|---|
 | `system/runtime/daemon/server.js` (heartbeat scheduler) | `writeEmbedProbe(db, embedFn)` is shipped (`75e2ac1`) but no daily heartbeat bucket invokes it. Until wired, `daemon.embedder_load_age` will continue reporting `no_probe_record`. | Add a daily-cadence bucket in `createScheduler`'s bucket list that calls `writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed)`. Skipped in this pass because server.js is being edited by the prompt-injection lane (concurrent-lane risk). |
-| `system/data/db/client.js` + `system/runtime/invariants/ctx.js` | `mcp.daemon_authenticated_after_reconnect` invariant skips during active workload but `ctx.activeQueryCount` is never populated. The cleanest implementation increments a counter inside `client.js`'s `installQueryRetry` (where every `db.query(...).collect()` already passes through) and exports an accessor that `daemon-tick.js` forwards into `makeCtx`. Daemon-level wrapping is too invasive (~60 call sites). Filed here for the e1 lane to land alongside the embed-probe bucket. | Add `getActiveQueryCount()` to `system/data/db/client.js` backed by `installQueryRetry`'s wrap; forward into `ctx.activeQueryCount` from `daemon-tick.js`. |
+| ~~`system/data/db/client.js` + `system/runtime/invariants/ctx.js`~~ | ~~`mcp.daemon_authenticated_after_reconnect` invariant skips during active workload but `ctx.activeQueryCount` is never populated.~~ | **Resolved 2026-05-18** in `18c8399`, `c0270a4` — `installQueryCounter()` wraps every `db.query(...).collect()` (both embedded and remote handles); `getActiveQueryCount()` accessor exported; `makeCtx` reads it into `ctx.activeQueryCount`. 6 new tests cover the counter; existing reauth invariant + db-client tests still green. |
 
 ## Open for prompt-injection lane
 
