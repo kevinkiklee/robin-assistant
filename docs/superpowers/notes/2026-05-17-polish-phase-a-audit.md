@@ -469,6 +469,57 @@ rewrite is filed below.
 | Item | Question | Recommended action |
 |---|---|---|
 
+### A2 fixtures, migrations, scripts findings (Open for user)
+
+#### Stale fixtures (candidates for deletion)
+
+Three fixtures live under `system/tests/fixtures/` but no test file
+references them (any extension, basename, or path-based match across
+`system/` excluding `fixtures/` itself):
+
+- `system/tests/fixtures/seed-recall-pairs.json` — referenced only by
+  three Phase-1 design/plan docs in `docs/superpowers/`, never loaded by
+  any test.
+- `system/tests/fixtures/discord-events.js` — same: only in old
+  Phase-2d design/plan docs.
+- `system/tests/fixtures/synthetic-events.json` — same: only in old
+  Phase-1 design docs.
+
+All three appear to be legacy fixtures from Phase 1/2 design work that
+never made it into a live test. Recommended: delete in a follow-up
+commit (`chore(polish-a2): drop unused legacy test fixtures`).
+
+#### Unreferenced migrations (DO NOT auto-delete — user decision)
+
+`system/data/db/migrate.js` discovers migrations via `readdir()`, so
+ALL 34 `.surql` files in the directory run at migration time regardless
+of whether their filename appears elsewhere in the tree. The 8 files
+below have no other references (no tests, no docs, no scripts), but
+**that is the normal state** for already-applied migrations and does not
+indicate deadness:
+
+- `system/data/db/migrations/0003-evidence-ledger.surql`
+- `system/data/db/migrations/0004-action-trust-ledger.surql`
+- `system/data/db/migrations/0005-cadence.surql`
+- `system/data/db/migrations/0006-compaction.surql`
+- `system/data/db/migrations/0007-arcs.surql`
+- `system/data/db/migrations/0021-cognition-wave-enable.surql`
+- `system/data/db/migrations/0022-structured-telemetry.surql`
+- `system/data/db/migrations/0025-drop-evidence-system.surql`
+
+Migrations are write-once history; deleting them after they've been
+applied would break checksum validation on any DB that ran them
+(`migrate.js` raises `checksum mismatch ... already-applied migrations
+must not be edited; create a new migration instead`). No action
+recommended.
+
+#### Unreferenced scripts
+
+0 candidates. `system/scripts/` currently contains only polish-program
+helpers (`polish-verify.sh`, `list-mcp-tools.js`, `log-baseline.js`,
+`log-baseline-traffic.js`, `dead-code-allowlist.json`) — all of which
+are referenced by the polish program. Nothing to surface here.
+
 ## Won't fix
 
 | Item | Rationale |
