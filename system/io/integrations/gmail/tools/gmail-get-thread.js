@@ -3,15 +3,48 @@ import { getAccessToken } from '../../_auth/token-cache.js';
 import { getThread } from '../client.js';
 import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 
-function wrapThreadMessages(thread) {
+const SENSITIVE_HEADERS = new Set(['Subject', 'From', 'To', 'Reply-To', 'Cc']);
+
+function wrapField(text, msgId) {
+  return wrapUntrusted(text ?? '', { source: 'gmail', eventId: msgId, trust: 'untrusted' });
+}
+
+function decodeBody(parts) {
+  if (!Array.isArray(parts)) return null;
+  for (const part of parts) {
+    if (part.mimeType === 'text/plain' && part.body?.data) {
+      return Buffer.from(part.body.data, 'base64url').toString('utf8');
+    }
+    // Recurse into multipart
+    if (Array.isArray(part.parts)) {
+      const nested = decodeBody(part.parts);
+      if (nested != null) return nested;
+    }
+  }
+  return null;
+}
+
+export function wrapThreadMessages(thread) {
   if (!thread || !Array.isArray(thread.messages)) return thread;
   return {
     ...thread,
     messages: thread.messages.map((msg) => {
-      const snippet = msg.snippet != null
-        ? wrapUntrusted(msg.snippet, { source: 'gmail', eventId: msg.id, trust: 'untrusted' })
-        : msg.snippet;
-      return { ...msg, snippet };
+      const msgId = msg.id;
+
+      const snippet = msg.snippet != null ? wrapField(msg.snippet, msgId) : msg.snippet;
+
+      const headers = Array.isArray(msg.payload?.headers)
+        ? msg.payload.headers.map((h) =>
+            SENSITIVE_HEADERS.has(h.name) ? { ...h, value: wrapField(h.value, msgId) } : h,
+          )
+        : msg.payload?.headers;
+
+      const rawBody = decodeBody(msg.payload?.parts);
+      const body = rawBody != null ? wrapField(rawBody, msgId) : null;
+
+      const payload = msg.payload != null ? { ...msg.payload, headers } : msg.payload;
+
+      return { ...msg, snippet, payload, body };
     }),
   };
 }
