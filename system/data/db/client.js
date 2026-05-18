@@ -2,6 +2,7 @@ import { createNodeEngines } from '@surrealdb/node';
 import { createRemoteEngines, Surreal } from 'surrealdb';
 import { paths } from '../../config/data-store.js';
 import { readConfig } from '../../config/paths.js';
+import { log } from '../../runtime/log/index.js';
 
 // Default engine when no `db.url`/`db.engine` is set in config.json.
 //
@@ -166,13 +167,24 @@ export async function connect({
   if (!isRemote) return db;
 
   const reauth = singleFlight(async () => {
-    if (creds) await db.signin(creds);
-    await db.use({ namespace, database });
+    log.info({ event: 'db.reauth_triggered' });
+    try {
+      if (creds) await db.signin(creds);
+      await db.use({ namespace, database });
+      log.info({ event: 'db.reauth_succeeded' });
+    } catch (err) {
+      log.warn({
+        event: 'db.reauth_failed',
+        message: err?.message ?? String(err),
+      });
+      throw err;
+    }
   });
 
   db.subscribe('connected', () => {
-    reauth().catch((err) => {
-      console.warn(`[db] post-reconnect re-auth failed: ${err.message ?? err}`);
+    reauth().catch(() => {
+      // reauth() already logged db.reauth_failed; swallow here so the
+      // subscriber doesn't crash on a still-broken connection.
     });
   });
 
@@ -241,6 +253,10 @@ export function installQueryRetry(db, reauth) {
         return await origCollect(...collectArgs);
       } catch (err) {
         if (!isAnonymousError(err)) throw err;
+        log.warn({
+          event: 'db.anonymous_access_observed',
+          message: err?.message ?? String(err),
+        });
         await reauth();
         return boundQuery(...args).collect(...collectArgs);
       }
