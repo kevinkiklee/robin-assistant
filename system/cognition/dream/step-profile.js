@@ -10,14 +10,14 @@ export async function dreamStepProfile(db, host, { minConfidence = DEFAULT_MIN_C
   const cutoff = new Date(Date.now() - 30 * 86400_000);
   const [evRows] = await db
     .query(
-      surql`SELECT content, derived_from_trust FROM events
+      surql`SELECT content, trust FROM events
             WHERE ts >= ${cutoff} AND biographed_at IS NOT NONE
             LIMIT 200`,
     )
     .collect();
   if (!evRows || evRows.length === 0) return { proposed: 0 };
 
-  const sourceTrust = mergeTrust((evRows ?? []).map((r) => r.derived_from_trust ?? 'trusted'));
+  const sourceTrust = mergeTrust((evRows ?? []).map((r) => r.trust ?? 'trusted'));
 
   const existing = await getProfile(db);
   const userPrompt = `Existing profile:

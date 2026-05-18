@@ -160,10 +160,10 @@ Distill into a behavioral rule.`;
 
     if (result?.propose && result.rule_text) {
       const [trustRows] = await db
-        .query(surql`SELECT derived_from_trust FROM events WHERE id IN ${cluster.ids}`)
+        .query(surql`SELECT trust FROM events WHERE id IN ${cluster.ids}`)
         .collect();
       const derived_from_trust = mergeTrust(
-        (trustRows ?? []).map((r) => r.derived_from_trust ?? 'trusted'),
+        (trustRows ?? []).map((r) => r.trust ?? 'trusted'),
       );
       await createCandidate(db, {
         content: result.rule_text,
