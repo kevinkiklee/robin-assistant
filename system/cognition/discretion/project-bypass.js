@@ -22,7 +22,7 @@ function parseBypassPaths(raw) {
     .map((p) => resolve(p));
 }
 
-export function getBypassPaths() {
+function getBypassPaths() {
   return parseBypassPaths(process.env.ROBIN_BYPASS_PROJECT_PATHS);
 }
 
