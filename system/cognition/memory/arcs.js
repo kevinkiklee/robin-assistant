@@ -1,6 +1,7 @@
 // arcs.js — multi-episode containers. Theme 1b. Only writer to `arcs`.
 
 import { BoundQuery } from 'surrealdb';
+import { toRecordRef } from '../../data/db/record-ref.js';
 
 export function jaccard(a, b) {
   const A = new Set((a ?? []).map(String));
@@ -42,7 +43,13 @@ export async function listArcs(db, { status, limit = 20 } = {}) {
 }
 
 export async function extendArc(db, arcId, { entity_ids = [], episode_ids = [] }) {
-  const [rows] = await db.query(new BoundQuery('SELECT * FROM ONLY $id', { id: arcId })).collect();
+  // Coerce string ids ("arcs:foo") to record refs — surrealdb v2's BoundQuery
+  // binds bare strings as string literals, which makes `UPDATE $id` fail with
+  // "Cannot execute UPDATE statement using value: '<id>'". The SDK returns row
+  // ids as plain strings from SELECT, so any caller that round-trips an id
+  // through their own SELECT (the common path) hits this without coercion.
+  const arcRid = toRecordRef(arcId);
+  const [rows] = await db.query(new BoundQuery('SELECT * FROM ONLY $id', { id: arcRid })).collect();
   const arc = rows?.[0] ?? rows;
   if (!arc?.id) return null;
   // Dedup by stringified id (Set), but preserve original RecordId values so
@@ -62,7 +69,7 @@ export async function extendArc(db, arcId, { entity_ids = [], episode_ids = [] }
     .query(
       new BoundQuery(
         'UPDATE $id SET entity_ids = $ids, last_activity_at = time::now(), status = $s',
-        { id: arcId, ids: merged, s: newStatus },
+        { id: arcRid, ids: merged, s: newStatus },
       ),
     )
     .collect();
@@ -70,12 +77,12 @@ export async function extendArc(db, arcId, { entity_ids = [], episode_ids = [] }
     const existing = arc.meta?.episode_ids ?? [];
     const all = Array.from(new Set([...existing.map(String), ...episode_ids.map(String)]));
     await db
-      .query(new BoundQuery('UPDATE $id SET meta.episode_ids = $eids', { id: arcId, eids: all }))
+      .query(new BoundQuery('UPDATE $id SET meta.episode_ids = $eids', { id: arcRid, eids: all }))
       .collect();
     // Also emit `arc_contains` graph edges (registry-validated post-alpha.17).
     // The meta.episode_ids array is preserved above as a defensive mirror.
     const { relateAll } = await import('./store.js');
-    const rows = episode_ids.map((eid) => ({ from: arcId, to: eid, kind: 'arc_contains' }));
+    const rows = episode_ids.map((eid) => ({ from: arcRid, to: eid, kind: 'arc_contains' }));
     await relateAll(db, rows).catch((e) => {
       // fail-soft: meta.episode_ids is authoritative if edges fail; log so the
       // failure isn't completely silent (helps when the edge registry tightens
