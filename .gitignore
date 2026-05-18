@@ -22,3 +22,9 @@ GEMINI.local.md
 history.txt
 *.apikey
 geminapikey
+# Scratch dir used by polish-* loops for intermediate work-product (audit
+# seeds, orphan lists, fixtures-to-rotate). Never reviewed in PRs.
+tmp/
+# aider AI assistant cache (chat history, input history, ctags). Recreated
+# on next aider run if used; deleting is safe.
+.aider*
