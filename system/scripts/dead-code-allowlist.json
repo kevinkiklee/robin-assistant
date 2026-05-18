@@ -1,0 +1,12 @@
+{
+  "comment": "Modules referenced by reflection or dynamic import. Madge sees these as orphans but they are loaded at runtime via reflection. Hand-maintained.",
+  "patterns": [
+    "system/io/mcp/tools/*.js",
+    "system/runtime/cli/commands/*.js",
+    "system/io/integrations/*/index.js",
+    "system/data/db/migrations/*.surql",
+    "system/scripts/pre-commit/*.js",
+    "system/cognition/dream/step-*.js",
+    "system/runtime/invariants/*.js"
+  ]
+}
