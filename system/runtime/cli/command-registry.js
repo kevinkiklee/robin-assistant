@@ -201,6 +201,9 @@ export const COMMAND_REGISTRY = [
     group: 'publishing',
   },
 
+  // web admin UI
+  { name: 'web', summary: 'Start the local web admin UI.', group: 'web' },
+
   // help
   { name: 'help', summary: 'Print top-level help.', group: 'help' },
 ];
