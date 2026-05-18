@@ -1,3 +1,4 @@
+import { formatKnowledge } from '../../format/knowledge.js';
 import { listKnowledge, searchKnowledge } from '../../../cognition/memory/knowledge.js';
 
 export function createGetKnowledgeTool({ db, embedder }) {
@@ -10,28 +11,32 @@ export function createGetKnowledgeTool({ db, embedder }) {
         query: { type: 'string' },
         subject_id: { type: 'string' },
         limit: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+        full: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Return untrimmed related_entities + recent_events per item (default trims).',
+        },
       },
     },
     handler: async (args = {}) => {
       const limit = args.limit ?? 10;
+      const full = args.full === true;
+      const shape = (rows) =>
+        rows.map((k) => {
+          const base = {
+            ...k,
+            id: String(k.id),
+            subject_id: k.subject_id ? String(k.subject_id) : null,
+          };
+          return formatKnowledge(base, { full });
+        });
       if (args.query) {
         const hits = await searchKnowledge(db, embedder, args.query, { limit });
-        return {
-          knowledge: hits.map((h) => ({
-            ...h,
-            id: String(h.id),
-            subject_id: h.subject_id ? String(h.subject_id) : null,
-          })),
-        };
+        return { knowledge: shape(hits) };
       }
       const list = await listKnowledge(db, { subject_id: args.subject_id, limit });
-      return {
-        knowledge: list.map((k) => ({
-          ...k,
-          id: String(k.id),
-          subject_id: k.subject_id ? String(k.subject_id) : null,
-        })),
-      };
+      return { knowledge: shape(list) };
     },
   };
 }
