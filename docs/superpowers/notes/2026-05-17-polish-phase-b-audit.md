@@ -1,7 +1,18 @@
 # Polish Phase B — Audit Notes
 
-**Date range:** 2026-05-17 →
-**Phase B complete:**
+**Date range:** 2026-05-17
+**Phase B complete:** 2026-05-17
+**Total Phase B commits:** ~30 (4 setup + 4 B.1 + 5 B.2 + 6 B.3 + 5 B.4 + finalization)
+**Combined Phase A + B polish commits:** ~74
+
+## Phase B summary
+
+All four sub-areas shipped:
+
+- **B.1 CLI ergonomics** — exit-codes contract (4 canonical values), JSON envelope shape, command-registry (69 commands), help-formatter, central `--help` dispatcher in `dispatchFor()`, omnibus snapshot suite. 66/69 dispatchable commands now show `Related:` footer.
+- **B.2 Doctor + health redesign** — 14 invariants backfilled with `remediation`, schema test now requires it, `renderDoctor()` ships realm-grouped output with inline `→` remediation lines, `--verbose` adds `last_passed` provenance, TTY-gated ANSI color, `reshapeForMCP()` and `reshapeTelemetryRollup()` helpers (wiring to the cognition-e1-owned MCP tools filed below).
+- **B.3 Agent-facing UX** — `ERROR_REASONS` enum (12 canonical values) + alias map (20 legacy strings canonicalized from 86 inventoried); action-trust refusals include `prompt_hint`; Discord formatter scaffold (`constants.js`, `formatter.js`, `sender.js`, `ask-fallback.js`) — Discord transport didn't exist in v2 yet, scaffold is forward-compat for when it lands; recall budget-based snippet trimming.
+- **B.4 Memory output polish** — `formatEntity`, `formatJournal`, `formatArc`, `formatKnowledge` helpers + tests. Per-tool wiring filed as follow-up (table at end of this file).
 
 ## B.1 CLI ergonomics
 

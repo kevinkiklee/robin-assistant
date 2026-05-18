@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Polish program — Phase B (UX polish, 2026-05-17)
+
+Phase B executes UX polish across four sub-areas, informed by Phase A's audit-notes bridge table. ~30 commits.
+
+**Added.** CLI exit-codes contract (`system/runtime/cli/exit-codes.js`); JSON envelope shape for `--json` output (`json-envelope.js`); command-registry of 69 commands with group-based `Related:` footer (`command-registry.js`); help-formatter helper (`help-formatter.js`); central `--help` dispatcher in `cli/index.js::dispatchFor()` — every command now shows summary + Related: footer without per-command edits. Omnibus `--help` snapshot test suite (3 assertions: exit 0, summary present, Related: footer for siblings) with documented skip list for DB-dependent commands. `remediation` field on the invariant schema is now required (backfilled across 14 invariants; the 2 prompt-injection-lane invariants excluded). `renderDoctor()` produces realm-grouped output with inline `→` remediation; `--verbose` adds `last_passed` provenance; TTY-gated ANSI color. Helpers `reshapeForMCP()` (realm-grouped health() response) and `reshapeTelemetryRollup()` (per-faculty rows; hides zero-call faculties unless verbose). MCP error-reasons enum (12 canonical values) + 20-entry legacy alias map (`canonicalize()`); 86 reason strings in current codebase inventoried. Action-trust refusals include `prompt_hint` field. Discord transport scaffold (`constants.js`, `formatter.js`, `sender.js`, `ask-fallback.js`) — Discord adapter didn't exist in v2; scaffold is forward-compat. Recall budget-based snippet trimming (`trimRecallEvents`). Memory format helpers: `formatEntity`, `formatJournal`, `formatArc`, `formatKnowledge`.
+
+**Changed.** Invariant schema now requires `remediation`. Doctor output reshaped from inline-printed status lines to realm-grouped table with summary line + inline remediation. `--help` for every command now sources summary text from `command-registry.js` and appends `Related: <siblings>` footer.
+
+**Deferred to follow-up.** Per-tool wiring of new format helpers into MCP tools (`find_entity`/`get_entity`/`related_entities`/`list_journal`/`list_episodes`/`list_arcs`/`get_arc`/`get_knowledge`/`recall`) — needs per-tool snapshot tests to validate shape changes don't break agent consumers. `health()` and `show_telemetry_rollup` MCP tool wiring (both cognition-e1-owned) — helpers shipped, e1 lane wires them in.
+
+**Audit notes:** `docs/superpowers/notes/2026-05-17-polish-phase-b-audit.md`.
+
 ### Polish program — Phase A (sanitation, 2026-05-17)
 
 Two-phase polish program initiated 2026-05-17, running parallel to cognition-e1 self-improvement v2. Phase A executes sanitation across four sub-areas: silent-failure hunt, dead-code inventory, test gaps + slow-test cleanup, observability + invariant hardening. Phase B (UX polish) will follow, informed by Phase A's audit notes bridge table. A third lane (prompt-injection hardening) emerged at execution time — files owned by it are deferred to a follow-on Phase A2.
