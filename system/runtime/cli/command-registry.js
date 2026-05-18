@@ -136,3 +136,57 @@ export function relatedFor(name) {
   if (entry.siblings) return entry.siblings;
   return (BY_GROUP.get(entry.group) ?? []).filter((n) => n !== name);
 }
+
+// Map registry names (flat, e.g. `jobs-list`) to argv (hierarchical, e.g.
+// `jobs list`). Most entries are derived by replacing the first `-` with a
+// space; exceptions are listed explicitly. Names not in the dispatch tree
+// (e.g. obsolete entries or pure aliases) map to null.
+const ARGV_OVERRIDES = {
+  // top-level commands kept as a single token
+  remember: ['remember'],
+  hot: ['hot'],
+  journal: ['journal'],
+  audit: ['audit'],
+  lint: ['lint'],
+  ingest: ['ingest'],
+  'recall-eval': ['recall-eval'],
+  install: ['install'],
+  uninstall: ['uninstall'],
+  migrate: ['migrate'],
+  'migrate-user-data': ['migrate-user-data'],
+  'import-v1': ['import-v1'],
+  doctor: ['doctor'],
+  embeddings: ['embeddings'],
+  hook: ['hook'],
+  publish: ['publish'],
+  published: ['published'],
+  'biographer-catchup': ['biographer-catchup'],
+  'biographer-process-pending': ['biographer', 'process-pending'],
+  'calibration-show': ['calibration'],
+  'sessions-purge': ['sessions'],
+  'integrations-discord-register': ['integrations', 'discord', 'register-commands'],
+  help: ['--help'],
+  // pre-commit is a two-token group name
+  'pre-commit-install': ['pre-commit', 'install'],
+  'pre-commit-run': ['pre-commit', 'run'],
+  'pre-commit-uninstall': ['pre-commit', 'uninstall'],
+  // commands present in registry but not dispatchable (defunct or top-level
+  // CLI flags handled in index.js); listed for completeness.
+  version: null,
+  'surreal-install': null,
+  'surreal-ensure-running': null,
+  'brief-gallery': null,
+  'mcp-ensure-running': null,
+};
+
+// Derive default argv: split on first dash. e.g. `jobs-list` → ['jobs', 'list'].
+function defaultArgv(name) {
+  const idx = name.indexOf('-');
+  if (idx === -1) return [name];
+  return [name.slice(0, idx), name.slice(idx + 1)];
+}
+
+export function argvFor(name) {
+  if (Object.hasOwn(ARGV_OVERRIDES, name)) return ARGV_OVERRIDES[name];
+  return defaultArgv(name);
+}
