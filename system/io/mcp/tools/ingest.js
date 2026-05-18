@@ -201,12 +201,18 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
         edgeRows.push({ from: fromRec, to: dst, kind, meta: edge.meta, derived_from_trust: trust });
       }
       let edges_created = 0;
+      let edges_error = null;
       if (edgeRows.length > 0) {
         try {
           const { ids } = await store.relateAll(db, edgeRows);
           edges_created = ids.length;
         } catch (e) {
+          // The event + entities have already been written, so propagating
+          // the throw would mislead the caller into thinking nothing
+          // landed. Log + surface in the response envelope instead so the
+          // caller can decide whether to retry just the edges.
           console.warn(`[ingest] edge create failed: ${e.message}`);
+          edges_error = e.message;
         }
       }
 
@@ -232,6 +238,7 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
         entities_created,
         edges_created,
         knowledge_created,
+        ...(edges_error ? { edges_error } : {}),
       };
     },
   };
