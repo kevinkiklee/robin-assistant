@@ -13,7 +13,9 @@
 // Returns `{ id, created, stage, embedding_source }` so `store.upsertEntity`
 // can decide whether to write the entities embedding row.
 
+import { surql } from 'surrealdb';
 import { isSafeRecordRef } from '../memory/edge-registry.js';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { stage1Resolve } from './stage1-exact.js';
 import { stage2Resolve } from './stage2-embedding.js';
 import { stage3Disambig } from './stage3-disambig.js';
@@ -37,6 +39,26 @@ export function entityRecordKey(type, name) {
   return `${type}__${safeName}`;
 }
 
+/**
+ * Worst-case trust merge: fetch the existing entity's derived_from_trust,
+ * compute mergeTrust([existing, incoming]), and UPDATE the row if it changed.
+ * Returns the final (possibly updated) trust value so callers can include it
+ * in the return envelope.
+ */
+async function applyTrustMerge(db, entityId, incomingTrust) {
+  const inTrust = incomingTrust ?? 'trusted';
+  const [rows] = await db
+    .query(surql`SELECT derived_from_trust FROM ${entityId}`)
+    .collect();
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  const existingTrust = row?.derived_from_trust ?? 'trusted';
+  const merged = mergeTrust([existingTrust, inTrust]);
+  if (merged !== existingTrust) {
+    await db.query(surql`UPDATE ${entityId} SET derived_from_trust = ${merged}`).collect();
+  }
+  return merged;
+}
+
 export async function upsertEntityCascade(db, embedder, input) {
   const { name, type, scope = 'global', tags = [], meta, host, config = {}, derived_from_trust } = input;
   if (!name) throw new Error('upsertEntityCascade: name required');
@@ -52,7 +74,8 @@ export async function upsertEntityCascade(db, embedder, input) {
   // a sanitized-key sibling that future edges can target.
   const s1 = await stage1Resolve(db, { name, type });
   if (s1 && isSafeRecordRef(s1)) {
-    return { id: s1, created: false, stage: 1, embedding_source: null };
+    const finalTrust = await applyTrustMerge(db, s1, derived_from_trust);
+    return { id: s1, created: false, stage: 1, embedding_source: null, derived_from_trust: finalTrust };
   }
 
   // Stage 2 — embedding similarity. May fail under the new schema until
@@ -81,12 +104,14 @@ export async function upsertEntityCascade(db, embedder, input) {
     s2 = { action: 'none' };
   }
   if (s2.action === 'resolve' && isSafeRecordRef(s2.entityId)) {
+    const finalTrust = await applyTrustMerge(db, s2.entityId, derived_from_trust);
     return {
       id: s2.entityId,
       created: false,
       stage: 2,
       similarity: s2.similarity,
       embedding_source: null,
+      derived_from_trust: finalTrust,
     };
   }
 
@@ -102,7 +127,8 @@ export async function upsertEntityCascade(db, embedder, input) {
         candidates: safeCandidates,
       });
       if (s3.action === 'resolve' && isSafeRecordRef(s3.entityId)) {
-        return { id: s3.entityId, created: false, stage: 3, embedding_source: null };
+        const finalTrust = await applyTrustMerge(db, s3.entityId, derived_from_trust);
+        return { id: s3.entityId, created: false, stage: 3, embedding_source: null, derived_from_trust: finalTrust };
       }
     }
   }
