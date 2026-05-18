@@ -60,6 +60,12 @@ export default {
   phase: 'integrations',
   description: 'Enabled integrations sync within their freshness threshold (default 2× cadence).',
 
+  remediation: [
+    '`robin integrations status` — see which integration is stale and why',
+    '`robin integrations run <name>` — force a manual sync',
+    'check `user-data/runtime/logs/daemon.log` for sync errors / auth expiry',
+  ],
+
   runWhen: {
     boot: { enabled: false },
     heartbeat: { enabled: true, cooldownMs: 10 * 60 * 1000 },

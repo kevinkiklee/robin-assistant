@@ -67,6 +67,12 @@ export default {
   description:
     'No integration syncs have been in_flight=true for more than max(2× cadence, 30 min).',
 
+  remediation: [
+    'invariant repair clears `in_flight`, marks the row, and resets `next_run_at` so the next tick picks it up',
+    'if symptom recurs: check `user-data/runtime/logs/daemon.log` for hung fetch / WebSocket on the named integration',
+    'last resort — restart daemon (`kill <pid>`); boot-cleanup clears all in_flight flags',
+  ],
+
   runWhen: {
     boot: { enabled: false }, // boot-cleanup.js already clears all in_flight at startup
     heartbeat: { enabled: true, cooldownMs: 15 * 60 * 1000 },
