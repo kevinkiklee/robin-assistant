@@ -9,14 +9,13 @@
 // (no mtime churn, no log noise) when nothing changed.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { getEffectiveContextCommStyle } from '../../cognition/dream/step-comm-style.js';
 import { getCommStyle } from '../../cognition/jobs/comm-style.js';
 import { resolveSessionContext } from '../../cognition/dream/comm-style-context-router.js';
 import { listAllJobs } from '../../cognition/jobs/db.js';
 import { getCalibration } from '../../cognition/jobs/predictions.js';
-import { ensureHome, getIntegrationDirs } from '../../config/data-store.js';
+import { ensureHome, getIntegrationDirs, packageRootDir } from '../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 import { readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
@@ -32,7 +31,7 @@ async function readOrEmpty(path) {
   }
 }
 
-export async function loadIntegrationsForAgentsMd({ intState } = {}) {
+async function loadIntegrationsForAgentsMd({ intState } = {}) {
   try {
     const { loaded } = await loadManifests(getIntegrationDirs());
     return loaded.map((m) => {
@@ -105,7 +104,7 @@ export async function readDbDataForAgentsMd() {
  *
  * @returns {{path: string, action: 'wrote' | 'unchanged' | 'created'}}
  */
-export async function writeMergedAgentsMd(
+async function writeMergedAgentsMd(
   path,
   jobs,
   commStyle,
@@ -125,12 +124,15 @@ export async function writeMergedAgentsMd(
 }
 
 /**
- * Regenerate both ~/.claude/CLAUDE.md and ~/.gemini/GEMINI.md from current
- * DB state. Returns per-path outcomes so callers can log meaningfully.
+ * Regenerate workspace-local CLAUDE.local.md / GEMINI.local.md from current
+ * DB state. Targets default to <packageRoot>/CLAUDE.local.md and GEMINI.local.md
+ * so the auto-content stays workspace-scoped (Claude Code auto-loads
+ * `*.local.md` siblings as project-local context). Returns per-path outcomes
+ * so callers can log meaningfully.
  */
 export async function refreshAgentsMdFiles({ targets } = {}) {
-  const home = homedir();
-  const paths = targets ?? [join(home, '.claude/CLAUDE.md'), join(home, '.gemini/GEMINI.md')];
+  const root = packageRootDir();
+  const paths = targets ?? [join(root, 'CLAUDE.local.md'), join(root, 'GEMINI.local.md')];
   const { jobs, commStyle, calibration, integrations, currentState } =
     await readDbDataForAgentsMd();
   const results = [];
