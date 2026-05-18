@@ -481,16 +481,17 @@ that file, so they must wait until the lane commits — otherwise the
 follow-up edit would race the lane's index and trigger the multi-agent
 git-index hazard documented in CLAUDE.md.
 
-| File | Finding | Suggested fix |
+| File | Finding | Status |
 |---|---|---|
-| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | Surface an `activeQueryCount` counter from `db/client.js` through `ctx` so the invariant can skip during real traffic. |
-| `system/runtime/daemon/server.js` (prompt-injection lane) | `startJobHotReload` now accepts an optional `db` parameter that writes `runtime:hot_reload_watcher` state. Caller does not pass `db` today — so the new `runtime.hot_reload_watcher_active` invariant will report `watcher_not_registered`. | Pass the daemon's `db` handle to `startJobHotReload({…, db})` in server.js when constructing the watcher. |
+| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | **Filed to "Open for cognition-e1 lane"** (2026-05-18) — implementing requires a counter in `system/data/db/client.js` (e1-owned). Daemon-level wrapping would require wrapping every `ctx.db.query(...)` call site (~60 sites) which is too invasive. Current behavior (undefined → 0 → probe always runs) is acceptable but suboptimal. |
+| `system/runtime/daemon/server.js` (prompt-injection lane) | `startJobHotReload` now accepts an optional `db` parameter that writes `runtime:hot_reload_watcher` state. Caller does not pass `db` today — so the new `runtime.hot_reload_watcher_active` invariant will report `watcher_not_registered`. | **Done 2026-05-18** in `0982b40` — `server.js` now passes `db: ctx.db` to `startJobHotReload`. Invariant test `invariant-hot-reload-watcher.test.js` still green. |
 
 ## Open for cognition-e1 lane
 
 | File | Finding | Suggested fix |
 |---|---|---|
 | `system/runtime/daemon/server.js` (heartbeat scheduler) | `writeEmbedProbe(db, embedFn)` is shipped (`75e2ac1`) but no daily heartbeat bucket invokes it. Until wired, `daemon.embedder_load_age` will continue reporting `no_probe_record`. | Add a daily-cadence bucket in `createScheduler`'s bucket list that calls `writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed)`. Skipped in this pass because server.js is being edited by the prompt-injection lane (concurrent-lane risk). |
+| `system/data/db/client.js` + `system/runtime/invariants/ctx.js` | `mcp.daemon_authenticated_after_reconnect` invariant skips during active workload but `ctx.activeQueryCount` is never populated. The cleanest implementation increments a counter inside `client.js`'s `installQueryRetry` (where every `db.query(...).collect()` already passes through) and exports an accessor that `daemon-tick.js` forwards into `makeCtx`. Daemon-level wrapping is too invasive (~60 call sites). Filed here for the e1 lane to land alongside the embed-probe bucket. | Add `getActiveQueryCount()` to `system/data/db/client.js` backed by `installQueryRetry`'s wrap; forward into `ctx.activeQueryCount` from `daemon-tick.js`. |
 
 ## Open for prompt-injection lane
 
