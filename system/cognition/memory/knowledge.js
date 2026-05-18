@@ -49,7 +49,7 @@ export async function listKnowledge(db, { subject_id, limit = 50 } = {}) {
   if (subject_id) {
     // Subject linkage moved from a scalar field to `about` edges.
     const sql = `
-      SELECT id, content, confidence, derived_at AS created_at
+      SELECT id, content, confidence, derived_from_trust, derived_at AS created_at
       FROM memos
       WHERE kind = 'knowledge'
         AND id IN (SELECT VALUE in FROM edges WHERE kind = 'about' AND out = $sid)
@@ -59,7 +59,7 @@ export async function listKnowledge(db, { subject_id, limit = 50 } = {}) {
     return rows;
   }
   const sql = `
-    SELECT id, content, confidence, derived_at AS created_at
+    SELECT id, content, confidence, derived_from_trust, derived_at AS created_at
     FROM memos WHERE kind = 'knowledge'
     ORDER BY derived_at DESC LIMIT ${limit}
   `;
@@ -84,6 +84,7 @@ export async function searchKnowledge(db, embedder, query, { limit = 10 } = {}) 
     id: h.record.id,
     content: h.record.content,
     confidence: h.record.confidence,
+    derived_from_trust: h.record.derived_from_trust,
     dist: h.distance,
   }));
 }

@@ -1,8 +1,6 @@
 import { formatKnowledge } from '../../format/knowledge.js';
 import { listKnowledge, searchKnowledge } from '../../../cognition/memory/knowledge.js';
-// knowledge files are first-party (trusted by construction); no wrap needed.
-// wrapUntrusted is imported defensively in case future entries require wrapping.
-// import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
 
 export function createGetKnowledgeTool({ db, embedder }) {
   return {
@@ -27,10 +25,19 @@ export function createGetKnowledgeTool({ db, embedder }) {
       const full = args.full === true;
       const shape = (rows) =>
         rows.map((k) => {
+          const trust = k.derived_from_trust;
           const base = {
             ...k,
             id: String(k.id),
             subject_id: k.subject_id ? String(k.subject_id) : null,
+            content:
+              trust && trust !== 'trusted'
+                ? wrapUntrusted(k.content ?? '', {
+                    source: 'knowledge',
+                    eventId: String(k.id),
+                    trust,
+                  })
+                : k.content,
           };
           return formatKnowledge(base, { full });
         });
