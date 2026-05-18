@@ -10,15 +10,15 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig } from '../../config/paths.js';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import {
   BASELINE_WINDOW_MS,
   DRIFT_THRESHOLD,
-  TRAILING_WINDOW_MS,
   runTaskOutcomeDriftWatchdog,
+  TRAILING_WINDOW_MS,
 } from '../../cognition/jobs/task-outcome-drift-watchdog.js';
+import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 const TEST_HOME = join(
   tmpdir(),

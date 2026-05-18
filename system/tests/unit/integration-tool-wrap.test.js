@@ -1,8 +1,8 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
+import { __setNonceFactoryForTests } from '../../cognition/discretion/wrap-untrusted.js';
 import { createCalendarListEventsTool } from '../../io/integrations/google_calendar/tools/calendar-list-events.js';
 import { createWeatherTodayTool } from '../../io/integrations/weather/tools/weather-today.js';
-import { __setNonceFactoryForTests } from '../../cognition/discretion/wrap-untrusted.js';
 
 // --- helpers ---
 

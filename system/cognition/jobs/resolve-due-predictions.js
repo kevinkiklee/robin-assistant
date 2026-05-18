@@ -8,12 +8,12 @@
 // Gate: isSelfImprovementV2Enabled — when false, tick is registered but no-ops.
 
 import { BoundQuery } from 'surrealdb';
-import { updateMemoMeta } from '../memory/store.js';
-import { resolve as foresightResolve } from '../memory/foresight.js';
 import {
-  isSelfImprovementV2Enabled,
   getSelfImprovementV2Config,
+  isSelfImprovementV2Enabled,
 } from '../../runtime/config/self-improvement-v2.js';
+import { resolve as foresightResolve } from '../memory/foresight.js';
+import { updateMemoMeta } from '../memory/store.js';
 
 const DEFAULT_GRACE_SECONDS = 300;
 

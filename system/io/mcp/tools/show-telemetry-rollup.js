@@ -46,8 +46,7 @@ export function createShowTelemetryRollupTool({ db }) {
         limit: { type: 'integer', minimum: 1, maximum: 1000, default: 200 },
         verbose: {
           type: 'boolean',
-          description:
-            'Include zero-call faculties in the per-faculty summary. Default false.',
+          description: 'Include zero-call faculties in the per-faculty summary. Default false.',
         },
       },
     },

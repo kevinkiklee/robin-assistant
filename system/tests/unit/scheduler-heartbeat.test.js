@@ -36,7 +36,9 @@ test('a single dispatcher-style bucket fires its tick on cadence', async () => {
           name: 'dispatcher',
           intervalMs: 50,
           fireImmediately: true,
-          tick: async () => { calls++; },
+          tick: async () => {
+            calls++;
+          },
         },
       ],
     });
@@ -66,7 +68,9 @@ test('coalescing prevents overlap when tick is slow', async () => {
           tick: async () => {
             entered++;
             // Block until released so the next interval boundary coalesces.
-            await new Promise((r) => { releaseTick = r; });
+            await new Promise((r) => {
+              releaseTick = r;
+            });
           },
         },
       ],
@@ -98,13 +102,17 @@ test('independent buckets run concurrently', async () => {
           name: 'gmail',
           intervalMs: 50,
           fireImmediately: true,
-          tick: async () => { seen.add('gmail'); },
+          tick: async () => {
+            seen.add('gmail');
+          },
         },
         {
           name: 'lunch',
           intervalMs: 50,
           fireImmediately: true,
-          tick: async () => { seen.add('lunch'); },
+          tick: async () => {
+            seen.add('lunch');
+          },
         },
       ],
     });

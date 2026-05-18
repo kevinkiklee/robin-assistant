@@ -4,8 +4,8 @@
 // will cross-check against the live daemon's registered tools (see below).
 
 import { readdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const toolsDir = resolve(here, '..', 'io', 'mcp', 'tools');

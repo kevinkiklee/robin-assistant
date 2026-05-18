@@ -13,8 +13,8 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { upsertEntityCascade } from '../../cognition/biographer/upsert-entity.js';
+import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 
@@ -78,7 +78,7 @@ test('upsertEntityCascade tolerates a string id from stage1 without UPDATE failu
     assert.equal(r2.derived_from_trust, 'untrusted', 'trust merged to worst-case');
     // Verify the row landed.
     const [rows] = await db
-      .query("SELECT derived_from_trust FROM entities:place__new_york_city")
+      .query('SELECT derived_from_trust FROM entities:place__new_york_city')
       .collect();
     assert.equal(rows[0]?.derived_from_trust, 'untrusted');
   } finally {

@@ -1,6 +1,6 @@
 import { BoundQuery } from 'surrealdb';
-import { parseGmailContent } from './gmail-shipments.js';
 import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
+import { parseGmailContent } from './gmail-shipments.js';
 
 const RECEIPT_RE =
   /\breceipt\b|\binvoice\b|\bpayment\b|\bsubscription\b|\brenew(?:al|ed|s)?\b|\bbilled\b|\bcharged?\b|\bauto-?pay\b|\byour order\b|\bthanks? for your (?:order|purchase|payment)\b/i;

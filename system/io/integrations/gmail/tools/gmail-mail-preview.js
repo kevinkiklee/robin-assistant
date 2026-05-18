@@ -1,6 +1,6 @@
 import { BoundQuery } from 'surrealdb';
-import { parseGmailContent } from './gmail-shipments.js';
 import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
+import { parseGmailContent } from './gmail-shipments.js';
 
 const INFORMED_DELIVERY_SENDER_RE =
   /USPSInformedDelivery|@informeddelivery\.usps|@email\.informeddelivery\.usps|@usps\.com.*informed/i;
@@ -62,9 +62,10 @@ export function createGmailMailPreviewTool({ db }) {
       const rawDays = [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
       const days = rawDays.map((d) => ({
         ...d,
-        subject: d.subject != null
-          ? wrapUntrusted(d.subject, { source: 'gmail', trust: 'untrusted' })
-          : d.subject,
+        subject:
+          d.subject != null
+            ? wrapUntrusted(d.subject, { source: 'gmail', trust: 'untrusted' })
+            : d.subject,
       }));
       const totalPieces = days.reduce((s, d) => s + (d.pieces ?? 0), 0);
       const totalPackages = days.reduce((s, d) => s + (d.packages ?? 0), 0);

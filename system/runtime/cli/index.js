@@ -1,6 +1,6 @@
+import { argvFor, COMMAND_REGISTRY, relatedFor } from './command-registry.js';
 import { renderHelp } from './commands/help.js';
 import { version } from './commands/version.js';
-import { COMMAND_REGISTRY, argvFor, relatedFor } from './command-registry.js';
 import { commands } from './commands.js';
 import { appendRelated } from './help-formatter.js';
 
@@ -97,11 +97,7 @@ function printLeafHelp(entry, path) {
     const e = COMMAND_REGISTRY.find((x) => x.name === regName);
     return e?.summary ?? null;
   })();
-  const helpLines = [
-    `usage: robin ${path.join(' ')} [options]`,
-    '',
-    summary ?? entry.help ?? '',
-  ];
+  const helpLines = [`usage: robin ${path.join(' ')} [options]`, '', summary ?? entry.help ?? ''];
   if (summary && entry.help && entry.help !== summary) {
     helpLines.push(entry.help);
   }
@@ -116,10 +112,7 @@ function wantsHelp(argv) {
 export async function dispatchFor(node, argv, path = []) {
   const [head, ...rest] = argv;
   // Group-level --help: e.g. `robin jobs --help` → list subcommands.
-  if (
-    !path.length &&
-    (head === '--help' || head === '-h')
-  ) {
+  if (!path.length && (head === '--help' || head === '-h')) {
     // Already handled by main(); this is defensive.
     console.log(renderHelp(commands));
     return;

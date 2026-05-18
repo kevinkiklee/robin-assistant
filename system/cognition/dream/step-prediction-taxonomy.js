@@ -13,12 +13,12 @@
 //
 // FAIL-SOFT: any error here MUST NOT abort the Dream run.
 
+import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import { parseLLMJSON } from '../biographer/output.js';
-import { createCandidate } from './candidates.js';
 import { mergeTrust } from '../discretion/wrap-untrusted.js';
+import { createCandidate } from './candidates.js';
 import { estimateCallCost } from './outcome-grading-prompt.js';
 import { greedyCluster } from './prediction-taxonomy-cluster.js';
-import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 
 // Existing enum members — proposals matching any of these are rejected.
 const EXISTING_ENUM = new Set([

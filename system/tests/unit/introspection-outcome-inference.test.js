@@ -8,11 +8,11 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { OUTCOME_INFERENCE_SCORES } from '../../cognition/introspection/inference-rules.js';
 import {
   buildOutcomeSummary,
   inferOutcome,
 } from '../../cognition/introspection/outcome-inference.js';
-import { OUTCOME_INFERENCE_SCORES } from '../../cognition/introspection/inference-rules.js';
 
 // ── Rule 1: outbound_blocked ─────────────────────────────────────────────────
 

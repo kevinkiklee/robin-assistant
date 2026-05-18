@@ -199,9 +199,7 @@ export async function computeMetrics(db) {
  */
 async function writeMetrics(db, metrics) {
   await db
-    .query(
-      surql`UPSERT runtime:\`self-improvement-v2\` SET value.metrics = ${metrics}`,
-    )
+    .query(surql`UPSERT runtime:\`self-improvement-v2\` SET value.metrics = ${metrics}`)
     .collect();
 }
 

@@ -18,11 +18,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
+import { computeScore } from '../../cognition/dream/outcome-grading-prompt.js';
+import { dreamStepOutcomeGrading } from '../../cognition/dream/step-outcome-grading.js';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { dreamStepOutcomeGrading } from '../../cognition/dream/step-outcome-grading.js';
-import { computeScore } from '../../cognition/dream/outcome-grading-prompt.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
 const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);

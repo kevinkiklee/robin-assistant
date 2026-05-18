@@ -98,7 +98,7 @@ export default {
     return [
       '### `db.connection_alive`',
       '',
-      "**Symptom.** Daemon log fills with `ConnectionUnavailableError: You must be connected to a SurrealDB instance` on every scheduler tick. Jobs stop firing; recall/remember fails. Manual daemon restart recovers.",
+      '**Symptom.** Daemon log fills with `ConnectionUnavailableError: You must be connected to a SurrealDB instance` on every scheduler tick. Jobs stop firing; recall/remember fails. Manual daemon restart recovers.',
       '',
       "**Cause.** WebSocket connection to SurrealDB dropped — laptop sleep, network blip, surreal-server restart — and surrealdb v2.0.3's built-in autoreconnect (5 attempts) gave up. The daemon process stays alive but every query throws ConnectionUnavailableError until process restart.",
       '',

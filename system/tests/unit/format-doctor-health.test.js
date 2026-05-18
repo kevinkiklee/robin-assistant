@@ -26,9 +26,7 @@ test('reshapeForMCP groups checks by realm and rolls up worst status', () => {
 
 test('reshapeForMCP omits remediation strings (agent-facing)', () => {
   const r = reshapeForMCP({
-    results: [
-      { name: 'x', surface: 's', status: 'warn', error: 'm', remediation: 'fix it' },
-    ],
+    results: [{ name: 'x', surface: 's', status: 'warn', error: 'm', remediation: 'fix it' }],
     ts: '<ts>',
     summary: { ok: 0, warn: 1, fail: 0 },
   });

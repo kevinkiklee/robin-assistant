@@ -1,9 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import {
+  formatForDiscord,
   splitMessage,
   tablesToCodeBlocks,
-  formatForDiscord,
 } from '../../io/integrations/discord/formatter.js';
 
 const MAX = 2000;

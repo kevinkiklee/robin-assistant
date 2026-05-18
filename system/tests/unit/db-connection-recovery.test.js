@@ -13,10 +13,7 @@
 
 import assert from 'node:assert';
 import { test } from 'node:test';
-import {
-  installConnectionRecovery,
-  isConnectionUnavailableError,
-} from '../../data/db/client.js';
+import { installConnectionRecovery, isConnectionUnavailableError } from '../../data/db/client.js';
 
 function makeFakeBuilder(behavior) {
   return {
@@ -83,10 +80,7 @@ test('installConnectionRecovery does not retry on non-connection errors', async 
       throw new Error('something completely unrelated');
     },
   });
-  await assert.rejects(
-    () => db.query('RETURN 1;').collect(),
-    /something completely unrelated/,
-  );
+  await assert.rejects(() => db.query('RETURN 1;').collect(), /something completely unrelated/);
   assert.strictEqual(calls.collect, 1);
   assert.strictEqual(calls.rebuild, 0);
 });

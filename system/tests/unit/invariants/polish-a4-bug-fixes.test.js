@@ -124,7 +124,7 @@ test('mcp.daemon_authenticated_after_reconnect returns no_stashed_url when __url
   const fakeDb = {
     close: async () => {},
     connect: async () => {
-      throw new Error("must not reach connect() — fail guard should fire first");
+      throw new Error('must not reach connect() — fail guard should fire first');
     },
     query: () => ({ collect: async () => [[1]] }),
   };

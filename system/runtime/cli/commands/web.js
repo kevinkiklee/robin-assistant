@@ -54,8 +54,14 @@ Defaults to UNIX socket at <home>/runtime/web.sock. Pass --port to bind TCP
     }
     console.log('Press Ctrl-C to stop.');
     await new Promise((_, reject) => {
-      process.on('SIGINT', async () => { await close(db).catch(() => {}); process.exit(0); });
-      process.on('SIGTERM', async () => { await close(db).catch(() => {}); process.exit(0); });
+      process.on('SIGINT', async () => {
+        await close(db).catch(() => {});
+        process.exit(0);
+      });
+      process.on('SIGTERM', async () => {
+        await close(db).catch(() => {});
+        process.exit(0);
+      });
     });
   } catch (e) {
     console.error(`robin web failed: ${e.message}`);

@@ -103,8 +103,7 @@ export function createHealthTool({ version, startedAt, db, embedder, biographerQ
       for (const r of results) summary[r.status] += 1;
 
       const shape = reshapeForMCP({ results, ts, summary });
-      const rollup =
-        summary.fail > 0 ? 'degraded' : dbOpen ? 'ok' : 'degraded';
+      const rollup = summary.fail > 0 ? 'degraded' : dbOpen ? 'ok' : 'degraded';
 
       return {
         ...shape,

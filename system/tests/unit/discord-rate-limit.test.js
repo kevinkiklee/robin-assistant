@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { sendWithRetry } from '../../io/integrations/discord/sender.js';
 
 // `sleep: () => Promise.resolve()` keeps these tests under a millisecond

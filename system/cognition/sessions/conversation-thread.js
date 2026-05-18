@@ -23,7 +23,10 @@ export function computeThreadId({ channel, peer_id, bucketStartMs }) {
   if (!channel || !peer_id || !Number.isFinite(bucketStartMs)) {
     throw new Error('computeThreadId: channel, peer_id, bucketStartMs required');
   }
-  const safe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+  const safe = (s) =>
+    String(s)
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 64);
   return `${safe(channel)}__${safe(peer_id)}__${bucketStartMs}`;
 }
 
@@ -119,8 +122,6 @@ export async function pruneStaleThreads(db, { maxAgeMs = 24 * 60 * 60_000, now =
     )
     .collect();
   const deleteCount = rows?.[0]?.n ?? 0;
-  await db
-    .query(surql`DELETE conversation_threads WHERE last_msg_at < ${cutoff}`)
-    .collect();
+  await db.query(surql`DELETE conversation_threads WHERE last_msg_at < ${cutoff}`).collect();
   return { deleted: deleteCount };
 }

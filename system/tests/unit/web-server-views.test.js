@@ -77,8 +77,12 @@ test('GET /api/view/dashboard returns aggregated snapshot', async () => {
   const server = makeWebServer({ db });
   const base = await listenEphemeral(server);
   try {
-    await db.query("CREATE events SET source = 'whoop', content = 'r1', meta = { kind: 'recovery' }").collect();
-    await db.query("CREATE events SET source = 'gmail', content = 'r2', meta = { kind: 'inbox' }").collect();
+    await db
+      .query("CREATE events SET source = 'whoop', content = 'r1', meta = { kind: 'recovery' }")
+      .collect();
+    await db
+      .query("CREATE events SET source = 'gmail', content = 'r2', meta = { kind: 'inbox' }")
+      .collect();
     const r = await fetch(`${base}/api/view/dashboard`);
     assert.equal(r.status, 200);
     const d = await r.json();
@@ -207,7 +211,11 @@ test('POST /api/rule/:id approves a candidate', async () => {
   try {
     // Synthesize a candidate using the actual rule_candidates schema:
     // requires `content`, `kind` (enum), `confidence` (0..1), `status` (enum).
-    await db.query("CREATE rule_candidates:c1 SET kind = 'profile_update', content = 'try this', confidence = 0.7, status = 'pending'").collect();
+    await db
+      .query(
+        "CREATE rule_candidates:c1 SET kind = 'profile_update', content = 'try this', confidence = 0.7, status = 'pending'",
+      )
+      .collect();
     const r = await fetch(`${base}/api/rule/rule_candidates%3Ac1`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -226,7 +234,11 @@ test('GET /api/actions lists action_trust rows', async () => {
   const server = makeWebServer({ db });
   const base = await listenEphemeral(server);
   try {
-    await db.query("CREATE action_trust SET class = 'discord_send:send_dm', state = 'AUTO', set_by = 'user', success_count = 3, correction_count = 0, last_state_change_at = time::now()").collect();
+    await db
+      .query(
+        "CREATE action_trust SET class = 'discord_send:send_dm', state = 'AUTO', set_by = 'user', success_count = 3, correction_count = 0, last_state_change_at = time::now()",
+      )
+      .collect();
     const r = await fetch(`${base}/api/actions`);
     const d = await r.json();
     assert.ok(Array.isArray(d.rows));
@@ -243,7 +255,11 @@ test('POST /api/actions/:cls flips trust state', async () => {
   const server = makeWebServer({ db, allowWrites: true, requireCsrf: false });
   const base = await listenEphemeral(server);
   try {
-    await db.query("CREATE action_trust SET class = 'discord_send:send_dm', state = 'ASK', set_by = 'default', success_count = 0, correction_count = 0, last_state_change_at = time::now()").collect();
+    await db
+      .query(
+        "CREATE action_trust SET class = 'discord_send:send_dm', state = 'ASK', set_by = 'default', success_count = 0, correction_count = 0, last_state_change_at = time::now()",
+      )
+      .collect();
     const r = await fetch(`${base}/api/actions/${encodeURIComponent('discord_send:send_dm')}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -251,7 +267,9 @@ test('POST /api/actions/:cls flips trust state', async () => {
     });
     const d = await r.json();
     assert.equal(d.state, 'AUTO');
-    const [rows] = await db.query("SELECT VALUE state FROM action_trust WHERE class = 'discord_send:send_dm'").collect();
+    const [rows] = await db
+      .query("SELECT VALUE state FROM action_trust WHERE class = 'discord_send:send_dm'")
+      .collect();
     assert.equal(rows?.[0], 'AUTO');
   } finally {
     server.close();
@@ -334,7 +352,11 @@ test('POST /api/rule/:id rejects bad action', async () => {
   const server = makeWebServer({ db, allowWrites: true, requireCsrf: false });
   const base = await listenEphemeral(server);
   try {
-    await db.query("CREATE rule_candidates:c2 SET kind = 'profile_update', content = 's', confidence = 0.5, status = 'pending'").collect();
+    await db
+      .query(
+        "CREATE rule_candidates:c2 SET kind = 'profile_update', content = 's', confidence = 0.5, status = 'pending'",
+      )
+      .collect();
     const r = await fetch(`${base}/api/rule/rule_candidates%3Ac2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

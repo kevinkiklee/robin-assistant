@@ -11,9 +11,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
-import { writeConfig } from '../../config/paths.js';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import {
   autoTuneTurnSamplePct,
   isStratumAllowed,
@@ -21,6 +18,9 @@ import {
   recordActualCost,
   tryReserveCost,
 } from '../../cognition/introspection/budget.js';
+import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 // ── Test home setup ──────────────────────────────────────────────────────────
 const HOME = join(tmpdir(), `robin-budget-${process.pid}-${Math.random().toString(36).slice(2)}`);

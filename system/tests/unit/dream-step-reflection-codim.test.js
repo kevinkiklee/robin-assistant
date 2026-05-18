@@ -10,11 +10,11 @@
 // We test through the public dreamStepReflection by seeding correction events
 // with controlled embeddings via createStubEmbedder.
 
+import assert from 'node:assert/strict';
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
 import { dreamStepReflection } from '../../cognition/dream/step-reflection.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';

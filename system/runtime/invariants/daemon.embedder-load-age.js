@@ -43,9 +43,7 @@ export default {
       // Direct record-id access: writeEmbedProbe UPSERTs `runtime_state:embed_probe`.
       // `WHERE id = "string"` does not match a RecordId in v2.0.3 — use the
       // bare record literal.
-      const builder = ctx.db.query(
-        'SELECT last_success_ts FROM runtime_state:embed_probe;',
-      );
+      const builder = ctx.db.query('SELECT last_success_ts FROM runtime_state:embed_probe;');
       // `.collect()` returns [statementResults, ...]; destructure once to
       // unwrap the SELECT's row array.
       const [results] = await builder.collect();

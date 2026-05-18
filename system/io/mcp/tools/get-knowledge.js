@@ -1,6 +1,6 @@
-import { formatKnowledge } from '../../format/knowledge.js';
-import { listKnowledge, searchKnowledge } from '../../../cognition/memory/knowledge.js';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { listKnowledge, searchKnowledge } from '../../../cognition/memory/knowledge.js';
+import { formatKnowledge } from '../../format/knowledge.js';
 
 export function createGetKnowledgeTool({ db, embedder }) {
   return {

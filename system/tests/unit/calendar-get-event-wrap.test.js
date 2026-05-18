@@ -1,7 +1,7 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapCalendarEvent } from '../../io/integrations/google_calendar/tools/calendar-get-event.js';
+import test from 'node:test';
 import { __setNonceFactoryForTests } from '../../cognition/discretion/wrap-untrusted.js';
+import { wrapCalendarEvent } from '../../io/integrations/google_calendar/tools/calendar-get-event.js';
 
 test('wrapCalendarEvent wraps location as untrusted', () => {
   __setNonceFactoryForTests(() => 'locnonce');

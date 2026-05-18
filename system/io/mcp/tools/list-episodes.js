@@ -1,7 +1,7 @@
 import { surql } from 'surrealdb';
-import { formatJournal } from '../../format/journal.js';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
 import { markTainted } from '../../../runtime/mcp/session-taint.js';
+import { formatJournal } from '../../format/journal.js';
 
 export function createListEpisodesTool({ db, getSessionId }) {
   return {
@@ -52,9 +52,10 @@ export function createListEpisodesTool({ db, getSessionId }) {
         const trust = ep.derived_from_trust ?? 'trusted';
         if (trust !== 'trusted') markTainted(sessionId, String(ep.id));
         const rawSummary = ep.summary ?? null;
-        const summary = (trust !== 'trusted' && rawSummary != null)
-          ? wrapUntrusted(rawSummary, { source: ep.source, eventId: String(ep.id), trust })
-          : rawSummary;
+        const summary =
+          trust !== 'trusted' && rawSummary != null
+            ? wrapUntrusted(rawSummary, { source: ep.source, eventId: String(ep.id), trust })
+            : rawSummary;
         episodes.push({
           id: String(ep.id),
           ts: ep.started_at,

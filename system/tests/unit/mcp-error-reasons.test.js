@@ -1,6 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert';
-import { ERROR_REASONS, REASON_ALIASES, canonicalize } from '../../io/mcp/error-reasons.js';
+import test from 'node:test';
+import { canonicalize, ERROR_REASONS, REASON_ALIASES } from '../../io/mcp/error-reasons.js';
 
 test('ERROR_REASONS has expected canonical values', () => {
   assert.strictEqual(ERROR_REASONS.RATE_LIMITED, 'rate_limited');
@@ -30,5 +30,7 @@ test('canonicalize returns input unchanged when no alias exists', () => {
   // operational state, not MCP failure codes — and should pass through.
   assert.strictEqual(canonicalize('already_biographed'), 'already_biographed');
   // REASON_ALIASES is frozen
-  assert.throws(() => { REASON_ALIASES['x'] = 'y'; });
+  assert.throws(() => {
+    REASON_ALIASES['x'] = 'y';
+  });
 });

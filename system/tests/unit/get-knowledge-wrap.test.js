@@ -15,7 +15,11 @@ function makeDb(rows) {
   };
 }
 
-const embedder = { async embed() { return new Float32Array(1024); } };
+const embedder = {
+  async embed() {
+    return new Float32Array(1024);
+  },
+};
 
 const TRUSTED_MEMO = {
   id: 'memos:t1',

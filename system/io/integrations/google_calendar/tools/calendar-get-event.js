@@ -1,7 +1,7 @@
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 import { requireSecret, saveSecret } from '../../../../config/secrets.js';
 import { getAccessToken } from '../../_auth/token-cache.js';
 import { getEvent } from '../client.js';
-import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 
 export function wrapCalendarEvent(event) {
   if (!event) return event;

@@ -10,10 +10,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
+import { COST_MONITOR_INTERVAL_MS, runCostMonitor } from '../../cognition/jobs/cost-monitor.js';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { COST_MONITOR_INTERVAL_MS, runCostMonitor } from '../../cognition/jobs/cost-monitor.js';
 
 const TEST_HOME = join(
   tmpdir(),

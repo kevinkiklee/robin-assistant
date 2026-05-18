@@ -1,7 +1,7 @@
 import { surql } from 'surrealdb';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { getProfile } from '../memory/persona.js';
 import { createCandidate, findIdenticalProfileCandidate } from './candidates.js';
-import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { PROFILE_INFERENCE_SYSTEM } from './prompts.js';
 
 const DEFAULT_MIN_CONFIDENCE = 0.8;

@@ -15,9 +15,12 @@ export function createImessageSendTool({ runCommand, platform } = {}) {
     inputSchema: {
       type: 'object',
       properties: {
-        handle:    { type: 'string', description: 'Recipient handle (phone or email) for a DM' },
-        chat_guid: { type: 'string', description: 'Group chat GUID (mutually exclusive with handle)' },
-        message:   { type: 'string', minLength: 1, maxLength: 4000 },
+        handle: { type: 'string', description: 'Recipient handle (phone or email) for a DM' },
+        chat_guid: {
+          type: 'string',
+          description: 'Group chat GUID (mutually exclusive with handle)',
+        },
+        message: { type: 'string', minLength: 1, maxLength: 4000 },
       },
       required: ['message'],
     },

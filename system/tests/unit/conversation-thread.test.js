@@ -3,9 +3,6 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __wc } from '../../config/paths.js';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import {
   appendToThread,
   computeThreadId,
@@ -13,6 +10,9 @@ import {
   readThreadContext,
   resolveThreadId,
 } from '../../cognition/sessions/conversation-thread.js';
+import { writeConfig as __wc } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
@@ -26,11 +26,23 @@ async function fresh() {
 }
 
 test('computeThreadId is deterministic and safe', () => {
-  const id1 = computeThreadId({ channel: 'imessage', peer_id: '+15551234567', bucketStartMs: 1000 });
-  const id2 = computeThreadId({ channel: 'imessage', peer_id: '+15551234567', bucketStartMs: 1000 });
+  const id1 = computeThreadId({
+    channel: 'imessage',
+    peer_id: '+15551234567',
+    bucketStartMs: 1000,
+  });
+  const id2 = computeThreadId({
+    channel: 'imessage',
+    peer_id: '+15551234567',
+    bucketStartMs: 1000,
+  });
   assert.equal(id1, id2);
   // Special chars in peer_id are sanitized.
-  const id3 = computeThreadId({ channel: 'imessage', peer_id: 'user@example.com', bucketStartMs: 1000 });
+  const id3 = computeThreadId({
+    channel: 'imessage',
+    peer_id: 'user@example.com',
+    bucketStartMs: 1000,
+  });
   assert.match(id3, /imessage__user_example_com__1000/);
 });
 
@@ -70,7 +82,11 @@ test('resolveThreadId starts new thread after window expires', async () => {
   });
   // Simulate 31 min later — past 30-min window.
   const future = Date.now() + 31 * 60_000;
-  const next = await resolveThreadId(db, { channel: 'imessage', peer_id: 'dad@x.com' }, { now: () => future });
+  const next = await resolveThreadId(
+    db,
+    { channel: 'imessage', peer_id: 'dad@x.com' },
+    { now: () => future },
+  );
   assert.equal(next.resumed, false);
   assert.notEqual(next.thread_id, first.thread_id);
   await close(db);
@@ -127,10 +143,18 @@ test('readThreadContext returns empty for unknown thread', async () => {
 test('pruneStaleThreads deletes threads past max age', async () => {
   const db = await fresh();
   const { thread_id } = await resolveThreadId(db, { channel: 'discord', peer_id: 'kevin' });
-  await appendToThread(db, { thread_id, channel: 'discord', peer_id: 'kevin', role: 'user', content: 'old' });
+  await appendToThread(db, {
+    thread_id,
+    channel: 'discord',
+    peer_id: 'kevin',
+    role: 'user',
+    content: 'old',
+  });
   // Force last_msg_at into the past.
   await db
-    .query(`UPDATE conversation_threads SET last_msg_at = time::now() - 25h WHERE thread_id = '${thread_id}'`)
+    .query(
+      `UPDATE conversation_threads SET last_msg_at = time::now() - 25h WHERE thread_id = '${thread_id}'`,
+    )
     .collect();
   const r = await pruneStaleThreads(db, { maxAgeMs: 24 * 60 * 60_000 });
   assert.equal(r.deleted, 1);

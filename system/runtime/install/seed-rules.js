@@ -15,8 +15,7 @@
 //     edited the DB row; respect it unless the skeleton explicitly supersedes).
 
 import { readdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { surql } from 'surrealdb';
 import { packageRootDir } from '../../config/data-store.js';
 

@@ -1,6 +1,7 @@
 // list-arcs.js — Theme 1b read tool. Returns recent arcs.
-import { formatJournal } from '../../format/journal.js';
+
 import { listArcs } from '../../../cognition/memory/arcs.js';
+import { formatJournal } from '../../format/journal.js';
 
 export function createListArcsTool({ db }) {
   return {

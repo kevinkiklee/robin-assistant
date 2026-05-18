@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { log, setSink } from '../../runtime/log/index.js';
 
 test('log.info emits structured JSON with event + fields', () => {

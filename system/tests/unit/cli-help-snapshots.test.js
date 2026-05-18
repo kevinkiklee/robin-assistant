@@ -13,11 +13,11 @@
 //
 // Tests are gated behind ROBIN_SKIP_SLOW because each spawn costs ~150ms.
 
-import test from 'node:test';
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { COMMAND_REGISTRY, argvFor, relatedFor } from '../../runtime/cli/command-registry.js';
+import test from 'node:test';
+import { argvFor, COMMAND_REGISTRY, relatedFor } from '../../runtime/cli/command-registry.js';
 
 const SKIP_SLOW = process.env.ROBIN_SKIP_SLOW === '1';
 
@@ -83,7 +83,11 @@ test('every registered command --help includes its summary', { skip: SKIP_SLOW }
       failures.push(`${entry.name}: --help output missing summary "${entry.summary}"`);
     }
   }
-  assert.deepStrictEqual(failures, [], `commands missing summary in --help:\n${failures.join('\n')}`);
+  assert.deepStrictEqual(
+    failures,
+    [],
+    `commands missing summary in --help:\n${failures.join('\n')}`,
+  );
 });
 
 test('commands with siblings show Related: in --help (≥30 expected)', { skip: SKIP_SLOW }, () => {

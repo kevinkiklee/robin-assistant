@@ -5,7 +5,7 @@ import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
 // Wrap any user-supplied reason text in an archive_log row.
 function wrapArchiveRow(row) {
-  if (!row || !row.reason) return row;
+  if (!row?.reason) return row;
   return {
     ...row,
     reason: wrapUntrusted(String(row.reason), {

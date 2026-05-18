@@ -2,11 +2,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DREAM_DAG_DEPS } from '../../cognition/dream/dag.js';
-import { byName } from '../../cognition/dream/step-registry.js';
 import { dreamStepCalibrationBucket } from '../../cognition/dream/step-calibration-bucket.js';
 import { dreamStepOutcomeGrading } from '../../cognition/dream/step-outcome-grading.js';
 import { dreamStepPlaybookSynthesis } from '../../cognition/dream/step-playbook-synthesis.js';
 import { dreamStepPredictionTaxonomy } from '../../cognition/dream/step-prediction-taxonomy.js';
+import { byName } from '../../cognition/dream/step-registry.js';
 import { dreamStepSelfImprovementRollup } from '../../cognition/dream/step-self-improvement-rollup.js';
 
 // ---------------------------------------------------------------------------

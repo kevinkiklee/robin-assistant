@@ -5,10 +5,10 @@
 // `edges.kind` field. Optional `path_to` finds the shortest path to a target
 // entity through the requested edge kinds (TYPE RELATION arrow traversal).
 
-import { formatEntity } from '../../format/entity.js';
-import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
 import { markTainted } from '../../../runtime/mcp/session-taint.js';
+import { formatEntity } from '../../format/entity.js';
+import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 
 const ENTITY_EDGE_KINDS = ['mentions', 'about', 'works_on', 'participates_in', 'occurs_with'];
 const PATH_EDGE_KINDS = ['occurs_with', 'works_on', 'participates_in', 'mentions', 'about'];
@@ -108,9 +108,7 @@ export function createGetEntityTool({ db, getSessionId }) {
       const trust = entity.derived_from_trust ?? 'trusted';
       if (trust !== 'trusted') markTainted(sessionId, String(entity.id));
       const result = {
-        entity: trust === 'trusted'
-          ? entityData
-          : wrapEntityRecord(entityData, { trust }),
+        entity: trust === 'trusted' ? entityData : wrapEntityRecord(entityData, { trust }),
       };
 
       if (args.path_to) {

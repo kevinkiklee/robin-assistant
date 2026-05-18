@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 import { loadAllowlist, parseAllowlist } from '../../io/integrations/imessage/allowlist.js';
 
 test('parseAllowlist parses handles and chats, normalizing handles', () => {

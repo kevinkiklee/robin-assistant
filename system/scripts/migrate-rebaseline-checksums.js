@@ -114,9 +114,7 @@ async function main() {
     }
 
     for (const d of drift) {
-      console.log(
-        `drift  v${d.file.version}  ${d.file.name}\n  ${d.prior} → ${d.file.checksum}`,
-      );
+      console.log(`drift  v${d.file.version}  ${d.file.name}\n  ${d.prior} → ${d.file.checksum}`);
       if (!flags.dryRun) {
         await db
           .query(

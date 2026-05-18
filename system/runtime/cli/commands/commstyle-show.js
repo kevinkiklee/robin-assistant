@@ -1,7 +1,7 @@
 // src/cli/commands/commstyle-show.js
 
-import { getEffectiveContextCommStyle } from '../../../cognition/dream/step-comm-style.js';
 import { resolveSessionContext } from '../../../cognition/dream/comm-style-context-router.js';
+import { getEffectiveContextCommStyle } from '../../../cognition/dream/step-comm-style.js';
 import { getCommStyle as defaultGet } from '../../../cognition/jobs/comm-style.js';
 import { ensureHome } from '../../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../../data/db/client.js';

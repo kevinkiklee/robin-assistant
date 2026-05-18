@@ -54,11 +54,11 @@ test('does not promote when state file is stale (>10m generated_at)', () => {
 test('does not promote when state file is missing or has no generated_at', () => {
   const result = fakeResult();
   const invariant = fakeInvariant();
-  assert.strictEqual(maybePromoteWithDaemonState({ result, invariant, state: null, now: NOW }), null);
   assert.strictEqual(
-    maybePromoteWithDaemonState({ result, invariant, state: {}, now: NOW }),
+    maybePromoteWithDaemonState({ result, invariant, state: null, now: NOW }),
     null,
   );
+  assert.strictEqual(maybePromoteWithDaemonState({ result, invariant, state: {}, now: NOW }), null);
   assert.strictEqual(
     maybePromoteWithDaemonState({
       result,
@@ -129,7 +129,9 @@ test('does not promote when generated_at is malformed', () => {
   const invariant = fakeInvariant();
   const state = {
     generated_at: 'not-a-real-iso-string',
-    invariants: { 'db.authenticated': { last_pass_at: NOW - 1000, last_result_summary: { ok: true } } },
+    invariants: {
+      'db.authenticated': { last_pass_at: NOW - 1000, last_result_summary: { ok: true } },
+    },
   };
   const promote = maybePromoteWithDaemonState({ result, invariant, state, now: NOW });
   assert.strictEqual(promote, null);

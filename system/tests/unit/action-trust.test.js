@@ -6,8 +6,8 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import {
   checkActionTrust,
-  describeAction,
   demoteOnCorrection,
+  describeAction,
   getActionTrust,
   listActionTrust,
   recordOutcome,

@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { formatKnowledge } from '../../io/format/knowledge.js';
 
 test('formatKnowledge returns header + body + footer structure with trimming', () => {

@@ -18,8 +18,8 @@ import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
-import { biographerRoutes } from '../../runtime/daemon/routes/biographer.js';
 import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
+import { biographerRoutes } from '../../runtime/daemon/routes/biographer.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(

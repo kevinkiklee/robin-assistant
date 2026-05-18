@@ -11,13 +11,13 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
 import {
-  dreamStepCommStyle,
-  getEffectiveContextCommStyle,
-} from '../../cognition/dream/step-comm-style.js';
-import {
   inferEventContext,
   partitionByContext,
 } from '../../cognition/dream/comm-style-context-router.js';
+import {
+  dreamStepCommStyle,
+  getEffectiveContextCommStyle,
+} from '../../cognition/dream/step-comm-style.js';
 import { getCommStyle, setCommStyle } from '../../cognition/jobs/comm-style.js';
 import { writeConfig as __wc } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';

@@ -1,7 +1,7 @@
 // get-arc.js — Theme 1b. Returns a single arc with hydrated episode + entity refs.
 import { RecordId } from 'surrealdb';
-import { formatArc } from '../../format/arc.js';
 import { getArc } from '../../../cognition/memory/arcs.js';
+import { formatArc } from '../../format/arc.js';
 
 export function createGetArcTool({ db }) {
   return {

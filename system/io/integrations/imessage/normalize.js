@@ -10,10 +10,7 @@ export function appleDateToJsDate(nanos) {
   const n = typeof nanos === 'bigint' ? nanos : BigInt(nanos);
   // Pre-Catalina rows were stored as seconds; the cutover yields some rows
   // with absurdly small values. Heuristic: if < 1e15 treat as seconds.
-  const ms =
-    n < 1_000_000_000_000_000n
-      ? Number(n) * 1000
-      : Number(n / 1_000_000n);
+  const ms = n < 1_000_000_000_000_000n ? Number(n) * 1000 : Number(n / 1_000_000n);
   return new Date(MAC_EPOCH_MS + ms);
 }
 

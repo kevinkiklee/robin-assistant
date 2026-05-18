@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { formatJournal } from '../../io/format/journal.js';
 
 test('formatJournal sorts most-recent-first by ts', () => {
@@ -9,7 +9,10 @@ test('formatJournal sorts most-recent-first by ts', () => {
     { id: 3, ts: '2026-05-10T00:00:00Z' },
   ];
   const out = formatJournal(rows);
-  assert.deepStrictEqual(out.items.map((r) => r.id), [2, 3, 1]);
+  assert.deepStrictEqual(
+    out.items.map((r) => r.id),
+    [2, 3, 1],
+  );
 });
 
 test('formatJournal falls back to created_at when ts missing', () => {
@@ -18,7 +21,10 @@ test('formatJournal falls back to created_at when ts missing', () => {
     { id: 2, created_at: '2026-05-17T00:00:00Z' },
   ];
   const out = formatJournal(rows);
-  assert.deepStrictEqual(out.items.map((r) => r.id), [2, 1]);
+  assert.deepStrictEqual(
+    out.items.map((r) => r.id),
+    [2, 1],
+  );
 });
 
 test('formatJournal trims to limit', () => {

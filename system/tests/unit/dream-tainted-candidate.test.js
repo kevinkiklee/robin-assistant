@@ -1,15 +1,17 @@
 // system/tests/unit/dream-tainted-candidate.test.js
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
-import { connect, close } from '../../data/db/client.js';
-import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
+import test from 'node:test';
 import { __resetCacheForTests } from '../../cognition/discretion/verbatim-scan.js';
 import { dreamStepReflection } from '../../cognition/dream/step-reflection.js';
+import { close, connect } from '../../data/db/client.js';
+import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
 
 async function setup() {
   __resetCacheForTests();
   const db = await connect({ engine: 'mem://' });
-  await db.query(`
+  await db
+    .query(`
     DEFINE TABLE events SCHEMAFULL;
     DEFINE FIELD content ON events TYPE string;
     DEFINE FIELD trust   ON events TYPE string DEFAULT 'trusted';
@@ -40,7 +42,8 @@ async function setup() {
     DEFINE FIELD derived_from_trust  ON rules TYPE string DEFAULT 'trusted';
     CREATE rule_candidates:tainted SET content='evil rule', kind='behavior', derived_from_trust='untrusted';
     CREATE rule_candidates:clean   SET content='good rule', kind='behavior', derived_from_trust='trusted';
-  `).collect();
+  `)
+    .collect();
   return db;
 }
 
@@ -60,7 +63,11 @@ test('update_rule(approve) on tainted candidate succeeds with force=true', async
   const db = await setup();
   try {
     const tool = createUpdateRuleTool({ db });
-    const out = await tool.handler({ id: 'rule_candidates:tainted', action: 'approve', force: true });
+    const out = await tool.handler({
+      id: 'rule_candidates:tainted',
+      action: 'approve',
+      force: true,
+    });
     assert.equal(out.ok, true);
   } finally {
     await close(db);
@@ -85,7 +92,8 @@ test('dreamStepReflection: untrusted event produces untrusted rule_candidate', a
   __resetCacheForTests();
   const db = await connect({ engine: 'mem://' });
   try {
-    await db.query(`
+    await db
+      .query(`
       DEFINE TABLE events SCHEMAFULL;
       DEFINE FIELD content          ON events TYPE string;
       DEFINE FIELD trust            ON events TYPE string DEFAULT 'trusted';
@@ -108,7 +116,8 @@ test('dreamStepReflection: untrusted event produces untrusted rule_candidate', a
       DEFINE TABLE embeddings_test_events SCHEMAFULL;
       DEFINE FIELD record ON embeddings_test_events TYPE record<events>;
       DEFINE FIELD vector ON embeddings_test_events TYPE array<float>;
-    `).collect();
+    `)
+      .collect();
 
     await db
       .query("UPSERT runtime:embedder SET value = { active_profile: 'test', read_profile: 'test' }")
@@ -129,7 +138,10 @@ test('dreamStepReflection: untrusted event produces untrusted rule_candidate', a
       const row = Array.isArray(created) ? created[0] : created;
       ids.push(row.id);
       await db
-        .query('CREATE embeddings_test_events SET record = $id, vector = $v', { id: row.id, v: vec })
+        .query('CREATE embeddings_test_events SET record = $id, vector = $v', {
+          id: row.id,
+          v: vec,
+        })
         .collect();
     }
 

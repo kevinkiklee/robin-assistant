@@ -1,8 +1,8 @@
 import { surql } from 'surrealdb';
-import { readFileTail } from '../../../config/file-tail.js';
 import { listPendingEvents } from '../../../cognition/biographer/pending-events.js';
 import { validateTaskType } from '../../../cognition/introspection/task-taxonomy.js';
 import { inferCorrection } from '../../../cognition/intuition/correction-inference.js';
+import { readFileTail } from '../../../config/file-tail.js';
 import { recordEvent } from '../../../io/capture/record-event.js';
 import { captureFromTranscript } from '../../../io/capture/session-capture.js';
 import { isSelfImprovementV2Enabled } from '../../config/self-improvement-v2.js';

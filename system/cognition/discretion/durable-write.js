@@ -1,13 +1,13 @@
 import { PII_PATTERNS, SECRET_PATTERNS } from './outbound-patterns.js';
-import { scanForVerbatimQuote } from './verbatim-scan.js';
 import { logRefusal } from './refusal-log.js';
+import { scanForVerbatimQuote } from './verbatim-scan.js';
 
 const GATE_BY_DESTINATION = {
-  remember:             { pii: true, secret: true, verbatim: true,  taint: true  },
-  ingest:               { pii: true, secret: true, verbatim: true,  taint: false },
-  record_correction:    { pii: true, secret: true, verbatim: true,  taint: false },
-  update_rule:          { pii: true, secret: true, verbatim: true,  taint: false },
-  update_action_policy: { pii: true, secret: true, verbatim: true,  taint: false },
+  remember: { pii: true, secret: true, verbatim: true, taint: true },
+  ingest: { pii: true, secret: true, verbatim: true, taint: false },
+  record_correction: { pii: true, secret: true, verbatim: true, taint: false },
+  update_rule: { pii: true, secret: true, verbatim: true, taint: false },
+  update_action_policy: { pii: true, secret: true, verbatim: true, taint: false },
 };
 
 let envOverride = null;
@@ -17,7 +17,9 @@ function mode() {
   return process.env.ROBIN_INJECTION_GUARD ?? 'log';
 }
 
-export function __setEnvForTests(m) { envOverride = m; }
+export function __setEnvForTests(m) {
+  envOverride = m;
+}
 
 async function logAndMaybeRefuse(db, { destination, reason, text }) {
   await logRefusal(db, {

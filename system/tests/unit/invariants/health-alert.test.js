@@ -19,7 +19,10 @@ import { emptyEntry, emptyState, setEntry } from '../../../runtime/invariants/st
 const FAILED_CRITICAL_RESULT = { ok: false, error: 'simulated_force_fail' };
 
 function tmpDir() {
-  const d = join(tmpdir(), `robin-alert-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  const d = join(
+    tmpdir(),
+    `robin-alert-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(d, { recursive: true });
   return d;
 }
@@ -135,32 +138,30 @@ test('writeHealthAlert removes a stale file when the alert set becomes empty', (
 // End-to-end: drive a forced-fail invariant through the heartbeat runner three
 // times and confirm the file lands on disk via the alertPath ctx wiring.
 // Gated because it instantiates the runner against a real state file.
-test(
-  'heartbeat runner writes HEALTH_ALERT.md after 3 consecutive critical failures',
-  { skip: process.env.ROBIN_INVARIANT_HEALTH_ALERT_TEST !== '1' && process.env.CI !== 'true' },
-  async () => {
-    const dir = tmpDir();
-    try {
-      const statePath = join(dir, 'state.json');
-      const alertPath = join(dir, 'HEALTH_ALERT.md');
-      const lockDir = join(dir, 'locks');
-      const inv = fakeInvariant();
-      const ctx = { trigger: 'heartbeat', alertPath, log: { warn: () => {} } };
-      for (let i = 0; i < 3; i++) {
-        // eslint-disable-next-line no-await-in-loop
-        await run({
-          trigger: 'heartbeat',
-          ctx,
-          statePath,
-          lockDir,
-          invariants: [inv],
-        });
-      }
-      assert.ok(existsSync(alertPath), 'HEALTH_ALERT.md should exist after 3 fails');
-      const md = readFileSync(alertPath, 'utf8');
-      assert.match(md, new RegExp(inv.name));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+test('heartbeat runner writes HEALTH_ALERT.md after 3 consecutive critical failures', {
+  skip: process.env.ROBIN_INVARIANT_HEALTH_ALERT_TEST !== '1' && process.env.CI !== 'true',
+}, async () => {
+  const dir = tmpDir();
+  try {
+    const statePath = join(dir, 'state.json');
+    const alertPath = join(dir, 'HEALTH_ALERT.md');
+    const lockDir = join(dir, 'locks');
+    const inv = fakeInvariant();
+    const ctx = { trigger: 'heartbeat', alertPath, log: { warn: () => {} } };
+    for (let i = 0; i < 3; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await run({
+        trigger: 'heartbeat',
+        ctx,
+        statePath,
+        lockDir,
+        invariants: [inv],
+      });
     }
-  },
-);
+    assert.ok(existsSync(alertPath), 'HEALTH_ALERT.md should exist after 3 fails');
+    const md = readFileSync(alertPath, 'utf8');
+    assert.match(md, new RegExp(inv.name));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

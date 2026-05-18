@@ -7,7 +7,7 @@
 // Returned shape mirrors what normalize.js#isAllowed consumes:
 //   { directHandles: Set<string>, groupChats: Set<string> }
 
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { normalizeHandle } from './normalize.js';
 
 export function parseAllowlist(text) {

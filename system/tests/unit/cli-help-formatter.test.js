@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { appendRelated } from '../../runtime/cli/help-formatter.js';
 
 test('appendRelated adds Related: line when command has siblings', () => {

@@ -5,10 +5,10 @@
 // or `depth: 3` we use SurrealDB's recursive idiom syntax to walk multiple
 // hops, returning each reached entity with its discovered hop-distance.
 
-import { formatEntity } from '../../format/entity.js';
-import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
 import { markTainted } from '../../../runtime/mcp/session-taint.js';
+import { formatEntity } from '../../format/entity.js';
+import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 
 const ENTITY_EDGE_KINDS = ['works_on', 'participates_in', 'occurs_with'];
 
@@ -58,9 +58,7 @@ export function createRelatedEntitiesTool({ db, getSessionId }) {
             { id: r.entity.id, kind: r.entity.type, name: r.entity.name },
             { full },
           );
-          const entity = trust === 'trusted'
-            ? formatted
-            : wrapEntityRecord(formatted, { trust });
+          const entity = trust === 'trusted' ? formatted : wrapEntityRecord(formatted, { trust });
           return {
             entity,
             // Preserve legacy connector fields:
@@ -102,7 +100,12 @@ async function depth1(db, idRef, requested, limit) {
       const n = entById.get(String(r.other));
       if (!n) continue;
       related.push({
-        entity: { id: String(n.id), name: n.name, type: n.type, derived_from_trust: n.derived_from_trust },
+        entity: {
+          id: String(n.id),
+          name: n.name,
+          type: n.type,
+          derived_from_trust: n.derived_from_trust,
+        },
         edge_type: kind,
         ...(r.weight != null ? { strength: r.weight } : {}),
         distance: 1,
@@ -169,7 +172,12 @@ async function depthN(db, idRef, requested, depth, limit) {
     const n = entById.get(String(r.id));
     if (!n) continue;
     related.push({
-      entity: { id: String(n.id), name: n.name, type: n.type, derived_from_trust: n.derived_from_trust },
+      entity: {
+        id: String(n.id),
+        name: n.name,
+        type: n.type,
+        derived_from_trust: n.derived_from_trust,
+      },
       distance: r.distance,
     });
     if (related.length >= limit) break;

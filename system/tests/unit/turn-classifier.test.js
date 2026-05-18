@@ -7,10 +7,6 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig } from '../../config/paths.js';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
-import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import { getPlaybookForInject } from '../../cognition/intuition/playbook-inject.js';
 import {
   _clearCacheForTest,
@@ -19,6 +15,10 @@ import {
   isBudgetSufficient,
   routeRecallIntent,
 } from '../../cognition/intuition/turn-classifier.js';
+import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
+import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 
 // __robin_test_home_setup__
 const HOME = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);

@@ -83,7 +83,11 @@ test('compileVarsResolver runs each query and returns scalars', async () => {
 
 test('compileVarsResolver returns null for failed queries', async () => {
   const db = {
-    query: () => ({ collect: async () => { throw new Error('db down'); } }),
+    query: () => ({
+      collect: async () => {
+        throw new Error('db down');
+      },
+    }),
   };
   const fn = compileVarsResolver({ x: 'SELECT 1' }, { db });
   const vars = await fn();

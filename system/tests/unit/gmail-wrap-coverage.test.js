@@ -1,9 +1,13 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { __setNonceFactoryForTests } from '../../cognition/discretion/wrap-untrusted.js';
 
 // Minimal fake thread returned by getThread — full format API response shape.
-function makeThread({ subject = 'Hello', from = 'sender@example.com', bodyText = 'Normal body.' } = {}) {
+function makeThread({
+  subject = 'Hello',
+  from = 'sender@example.com',
+  bodyText = 'Normal body.',
+} = {}) {
   const bodyData = Buffer.from(bodyText).toString('base64url');
   return {
     id: 'thread1',
@@ -74,7 +78,11 @@ const WRAPPED_PREFIX = /^<untrusted-content nonce="/;
 test('gmail wrapUntrusted wraps attacker-controlled Subject header', () => {
   __setNonceFactoryForTests(() => 'testnon1');
   try {
-    const result = wrapUntrusted(INJECTION, { source: 'gmail', eventId: 'msg1', trust: 'untrusted' });
+    const result = wrapUntrusted(INJECTION, {
+      source: 'gmail',
+      eventId: 'msg1',
+      trust: 'untrusted',
+    });
     assert.match(result, WRAPPED_PREFIX, 'Subject injection is wrapped');
     assert.ok(result.includes(INJECTION), 'original text preserved inside wrapper');
     assert.match(result, /<\/untrusted-content-testnon1>$/, 'closes with nonce tag');
@@ -182,7 +190,11 @@ test('wrapThreadMessages wraps snippet, headers, and decoded body', async () => 
       assert.fail('wrapThreadMessages not exported — fix not applied');
     }
 
-    const thread = makeThread({ subject: INJECTION, from: 'attacker@evil.com', bodyText: INJECTION });
+    const thread = makeThread({
+      subject: INJECTION,
+      from: 'attacker@evil.com',
+      bodyText: INJECTION,
+    });
     const wrapped = wrapThreadMessages(thread);
     const msg = wrapped.messages[0];
     const headers = msg.payload.headers;

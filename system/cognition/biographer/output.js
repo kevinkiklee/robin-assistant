@@ -1,5 +1,6 @@
 // biographer-output.js — validates the JSON shape the biographer LLM returns.
 import { mergeTrust } from '../discretion/wrap-untrusted.js';
+
 //
 // Edge vocabulary accepts both the new EDGE_KIND_REGISTRY names and the
 // legacy aliases (co_occurs_with, precedes) so existing prompts keep working
@@ -107,12 +108,10 @@ export function parseLLMJSON(content) {
  * and we fall back to mergeTrust over the full batch (worst-case taint).
  */
 export function applyDerivedTrust(records, batchEvents) {
-  const batchById = new Map(batchEvents.map(e => [String(e.id), e.trust ?? 'trusted']));
-  const fallback = mergeTrust(batchEvents.map(e => e.trust ?? 'trusted'));
-  return records.map(r => {
-    const cited = (r.source_event_ids ?? [])
-      .map(id => batchById.get(String(id)))
-      .filter(Boolean);
+  const batchById = new Map(batchEvents.map((e) => [String(e.id), e.trust ?? 'trusted']));
+  const fallback = mergeTrust(batchEvents.map((e) => e.trust ?? 'trusted'));
+  return records.map((r) => {
+    const cited = (r.source_event_ids ?? []).map((id) => batchById.get(String(id))).filter(Boolean);
     const derived = cited.length > 0 ? mergeTrust(cited) : fallback;
     return { ...r, derived_from_trust: derived };
   });

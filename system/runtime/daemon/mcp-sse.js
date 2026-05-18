@@ -1,8 +1,8 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { clearSession } from '../mcp/session-taint.js';
 import { als } from '../mcp/current-call.js';
+import { clearSession } from '../mcp/session-taint.js';
 
 // Active SSE transports keyed by sessionId. Populated in handleSse and
 // drained on the response's `close` event. The MCP SSE protocol splits a

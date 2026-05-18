@@ -6,20 +6,20 @@
 // cost/performance, quality_signals. Seeds the DB with representative rows
 // then asserts the computed metrics shape and key values.
 
+import assert from 'node:assert/strict';
 import { mkdirSync as __robinMkdirSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { surql } from 'surrealdb';
 import {
   computeMetrics,
   dreamStepSelfImprovementRollup,
 } from '../../cognition/dream/step-self-improvement-rollup.js';
-import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { surql } from 'surrealdb';
+import { setSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
@@ -179,9 +179,7 @@ test('dreamStepSelfImprovementRollup persists metrics to runtime KV', async () =
   assert.ok(r.metrics_keys.length >= 4, 'expected 4 metric sections');
 
   // Verify the persisted blob can be read back.
-  const [rows] = await db
-    .query('SELECT VALUE value FROM runtime:`self-improvement-v2`')
-    .collect();
+  const [rows] = await db.query('SELECT VALUE value FROM runtime:`self-improvement-v2`').collect();
   const persisted = rows?.[0]?.metrics;
   assert.ok(persisted, 'metrics should be persisted to runtime:self-improvement-v2.value.metrics');
   assert.ok(persisted.last_computed_at, 'last_computed_at should be present');

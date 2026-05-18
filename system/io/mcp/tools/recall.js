@@ -1,8 +1,8 @@
 import { surql } from 'surrealdb';
-import { trimRecallEvents } from '../../format/recall.js';
-import { recall as internalRecall } from '../../../cognition/intuition/engine.js';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { recall as internalRecall } from '../../../cognition/intuition/engine.js';
 import { markTainted } from '../../../runtime/mcp/session-taint.js';
+import { trimRecallEvents } from '../../format/recall.js';
 
 function wrapHit(hit) {
   if (!hit || hit.trust === 'trusted' || hit.trust == null) return hit;

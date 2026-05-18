@@ -9,25 +9,101 @@
 // Idempotent — safe to re-run; assignments stable for the same DB state.
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { connect, defaultDbUrl, close } from '../../data/db/client.js';
+import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_PATH = join(__dirname, 'fixtures/v1-quarantine-corrections.json');
 
 const STOPWORDS = new Set([
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'to', 'of', 'in', 'on', 'at', 'for', 'with', 'by', 'from', 'about',
-  'and', 'or', 'but', 'not', 'no', 'so', 'as', 'if', 'than', 'then',
-  'this', 'that', 'these', 'those', 'it', 'its', 'their', 'his', 'her',
-  'i', 'me', 'my', 'we', 'us', 'our', 'you', 'your', 'they', 'them',
-  'do', 'does', 'did', 'doing', 'done',
-  'have', 'has', 'had', 'having',
-  'will', 'would', 'should', 'could', 'may', 'might', 'must',
-  'when', 'where', 'why', 'how', 'what', 'who', 'which',
-  'all', 'any', 'each', 'every', 'some', 'one', 'two', 'just',
-  'into', 'over', 'under', 'between', 'after', 'before', 'during',
+  'the',
+  'a',
+  'an',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'to',
+  'of',
+  'in',
+  'on',
+  'at',
+  'for',
+  'with',
+  'by',
+  'from',
+  'about',
+  'and',
+  'or',
+  'but',
+  'not',
+  'no',
+  'so',
+  'as',
+  'if',
+  'than',
+  'then',
+  'this',
+  'that',
+  'these',
+  'those',
+  'it',
+  'its',
+  'their',
+  'his',
+  'her',
+  'i',
+  'me',
+  'my',
+  'we',
+  'us',
+  'our',
+  'you',
+  'your',
+  'they',
+  'them',
+  'do',
+  'does',
+  'did',
+  'doing',
+  'done',
+  'have',
+  'has',
+  'had',
+  'having',
+  'will',
+  'would',
+  'should',
+  'could',
+  'may',
+  'might',
+  'must',
+  'when',
+  'where',
+  'why',
+  'how',
+  'what',
+  'who',
+  'which',
+  'all',
+  'any',
+  'each',
+  'every',
+  'some',
+  'one',
+  'two',
+  'just',
+  'into',
+  'over',
+  'under',
+  'between',
+  'after',
+  'before',
+  'during',
 ]);
 
 function tokenize(text) {
@@ -89,7 +165,7 @@ async function main() {
     for (const rule of rules) {
       let score = jaccard(fixtureTokens, rule.tokens);
       if (rule.date && fixtureDate && rule.date === fixtureDate) {
-        score += 0.10; // small same-day boost
+        score += 0.1; // small same-day boost
         dateBoost++;
       }
       if (score > bestScore) {

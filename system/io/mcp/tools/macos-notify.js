@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 
-export function createMacosNotifyTool({ runCommand = defaultRunCommand, platform = process.platform } = {}) {
+export function createMacosNotifyTool({
+  runCommand = defaultRunCommand,
+  platform = process.platform,
+} = {}) {
   return {
     name: 'macos_notify',
     description:
@@ -8,10 +11,10 @@ export function createMacosNotifyTool({ runCommand = defaultRunCommand, platform
     inputSchema: {
       type: 'object',
       properties: {
-        title:     { type: 'string', minLength: 1, maxLength: 256 },
-        body:      { type: 'string', maxLength: 1024 },
-        subtitle:  { type: 'string', maxLength: 256 },
-        sound:     { type: 'string', maxLength: 32 },
+        title: { type: 'string', minLength: 1, maxLength: 256 },
+        body: { type: 'string', maxLength: 1024 },
+        subtitle: { type: 'string', maxLength: 256 },
+        sound: { type: 'string', maxLength: 32 },
         click_url: { type: 'string', maxLength: 2048 },
       },
       required: ['title'],
@@ -38,7 +41,8 @@ export function createMacosNotifyTool({ runCommand = defaultRunCommand, platform
         return {
           delivered: true,
           backend: 'osascript',
-          limitations: 'no click callback; throttled by Notification Center; bundle ID shows as "Script Editor"',
+          limitations:
+            'no click callback; throttled by Notification Center; bundle ID shows as "Script Editor"',
         };
       } catch (e) {
         return { delivered: false, backend: null, error: String(e?.message ?? e) };
@@ -57,11 +61,11 @@ async function hasTerminalNotifier(runCommand) {
 }
 
 function buildOsascript(args) {
-  const escape = (s) => String(s).replace(/[\\"]/g, (c) => '\\' + c);
-  const title = escape(args.title);
-  const body = escape(args.body ?? '');
-  const subtitle = args.subtitle ? ` subtitle "${escape(args.subtitle)}"` : '';
-  const sound = args.sound ? ` sound name "${escape(args.sound)}"` : '';
+  const escapeArg = (s) => String(s).replace(/[\\"]/g, (c) => `\\${c}`);
+  const title = escapeArg(args.title);
+  const body = escapeArg(args.body ?? '');
+  const subtitle = args.subtitle ? ` subtitle "${escapeArg(args.subtitle)}"` : '';
+  const sound = args.sound ? ` sound name "${escapeArg(args.sound)}"` : '';
   return `display notification "${body}" with title "${title}"${subtitle}${sound}`;
 }
 
@@ -73,13 +77,24 @@ function defaultRunCommand(cmd, args, { timeoutMs = 5000, shell = false } = {}) 
     let timed = false;
     const timer = setTimeout(() => {
       timed = true;
-      try { child.kill('SIGTERM'); } catch { /* already gone */ }
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
       reject(new Error(`${cmd} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     timer.unref?.();
-    child.stdout?.on('data', (c) => { stdout += c; });
-    child.stderr?.on('data', (c) => { stderr += c; });
-    child.on('error', (e) => { clearTimeout(timer); if (!timed) reject(e); });
+    child.stdout?.on('data', (c) => {
+      stdout += c;
+    });
+    child.stderr?.on('data', (c) => {
+      stderr += c;
+    });
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      if (!timed) reject(e);
+    });
     child.on('exit', (code) => {
       clearTimeout(timer);
       if (timed) return;

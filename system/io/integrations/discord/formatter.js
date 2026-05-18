@@ -16,8 +16,7 @@ const CODE_FENCE_RX = /```/g;
 // Detect GFM tables: header row with at least one `|` separator, followed
 // immediately by a separator row of `---` cells. Greedy capture of all
 // subsequent table rows.
-const GFM_TABLE_RX =
-  /(?:^|\n)((?:\|[^\n]+\|\n)\|[\s:|-]+\|\n(?:\|[^\n]+\|(?:\n|$))+)/g;
+const GFM_TABLE_RX = /(?:^|\n)((?:\|[^\n]+\|\n)\|[\s:|-]+\|\n(?:\|[^\n]+\|(?:\n|$))+)/g;
 
 export function tablesToCodeBlocks(md) {
   if (typeof md !== 'string' || md.length === 0) return md;
@@ -55,7 +54,7 @@ export function splitMessage(text, max = DISCORD_MESSAGE_MAX) {
   while (remaining.length > max) {
     const cut = pickSplitPoint(remaining, max - (openFence ? 4 : 0));
     let head = remaining.slice(0, cut);
-    let tail = remaining.slice(cut);
+    const tail = remaining.slice(cut);
 
     // If we're inside an open fence at the start of this chunk, prefix with
     // ``` to reopen it.

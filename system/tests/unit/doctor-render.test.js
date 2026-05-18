@@ -114,7 +114,9 @@ test('renderDoctor with colors:true wraps warn sigil in ANSI yellow', () => {
     },
   ];
   const out = renderDoctor({ results, ts: '<ts>', colors: true });
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching real ANSI escapes
   assert.match(out, /\x1b\[33m/);
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching real ANSI escapes
   assert.match(out, /\x1b\[0m/);
 });
 
@@ -129,5 +131,6 @@ test('renderDoctor with colors:false emits no ANSI escapes', () => {
     },
   ];
   const out = renderDoctor({ results, ts: '<ts>', colors: false });
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching real ANSI escapes
   assert.doesNotMatch(out, /\x1b\[/);
 });

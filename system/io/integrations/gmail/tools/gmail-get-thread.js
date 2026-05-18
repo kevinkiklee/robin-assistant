@@ -1,7 +1,7 @@
+import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 import { requireSecret, saveSecret } from '../../../../config/secrets.js';
 import { getAccessToken } from '../../_auth/token-cache.js';
 import { getThread } from '../client.js';
-import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 
 const SENSITIVE_HEADERS = new Set(['Subject', 'From', 'To', 'Reply-To', 'Cc']);
 

@@ -23,10 +23,14 @@
     "system/data/",
     "system/io/",
     "system/runtime/cli/",
+    "system/runtime/config/",
     "system/runtime/daemon/",
     "system/runtime/hosts/",
     "system/runtime/install/",
-    "system/runtime/invariants/"
+    "system/runtime/invariants/",
+    "system/runtime/log/",
+    "system/runtime/mcp/",
+    "system/runtime/web/"
   ],
   "scripts": {
     "postinstall": "node system/runtime/install/postinstall.js",

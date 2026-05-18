@@ -35,12 +35,8 @@ const EXTRACTED = JSON.stringify({
     { name: 'EvilCorp', type: 'organization' },
     { name: 'Alice', type: 'person' },
   ],
-  edges: [
-    { kind: 'works_on', src_name: 'Alice', dst_name: 'EvilCorp' },
-  ],
-  knowledge: [
-    { content: 'EvilCorp is an adversary', confidence: 0.9, subject_name: 'EvilCorp' },
-  ],
+  edges: [{ kind: 'works_on', src_name: 'Alice', dst_name: 'EvilCorp' }],
+  knowledge: [{ content: 'EvilCorp is an adversary', confidence: 0.9, subject_name: 'EvilCorp' }],
 });
 
 const stubLLM = (output) => ({ invokeLLM: async () => ({ content: output }) });

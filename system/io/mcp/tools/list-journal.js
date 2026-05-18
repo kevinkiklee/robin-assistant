@@ -1,5 +1,5 @@
-import { formatJournal } from '../../format/journal.js';
 import { listJournalEntries } from '../../../cognition/memory/chronicle.js';
+import { formatJournal } from '../../format/journal.js';
 
 export function createListJournalTool({ db }) {
   return {

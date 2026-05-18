@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  bootstrapBucket,
   BOOTSTRAP_THRESHOLD,
+  bootstrapBucket,
   bucketingMode,
   computeBuckets,
   laplaceAccuracy,

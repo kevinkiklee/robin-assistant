@@ -99,7 +99,9 @@ test('listEvents: passes timeMin/timeMax + singleEvents + maxResults', async () 
     fetchFn: fakeFetch,
   });
   assert.deepEqual(result, { items: [], nextPageToken: null });
-  assert.ok(calledUrl.startsWith('https://www.googleapis.com/calendar/v3/calendars/primary/events?'));
+  assert.ok(
+    calledUrl.startsWith('https://www.googleapis.com/calendar/v3/calendars/primary/events?'),
+  );
   assert.match(calledUrl, /timeMin=2026-05-09T00%3A00%3A00Z/);
   assert.match(calledUrl, /timeMax=2026-05-10T00%3A00%3A00Z/);
   assert.match(calledUrl, /singleEvents=true/);
@@ -142,7 +144,10 @@ test('getEvent: URL-encodes eventId + sends bearer token', async () => {
     return { ok: true, json: async () => ({ id: 'weird/id', summary: 'x' }) };
   };
   const r = await getEvent({ accessToken: 'tk', eventId: 'weird/id', fetchFn: fakeFetch });
-  assert.equal(calledUrl, 'https://www.googleapis.com/calendar/v3/calendars/primary/events/weird%2Fid');
+  assert.equal(
+    calledUrl,
+    'https://www.googleapis.com/calendar/v3/calendars/primary/events/weird%2Fid',
+  );
   assert.equal(calledInit.headers.Authorization, 'Bearer tk');
   assert.equal(r.id, 'weird/id');
 });

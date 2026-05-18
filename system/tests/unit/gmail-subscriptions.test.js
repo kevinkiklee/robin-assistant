@@ -179,7 +179,9 @@ test('gmail_subscriptions tool aggregates and totals across events', async () =>
   assert.equal(r.count, 2);
   // service is wrapped in untrusted-content tags; extract the inner domain for assertion
   const services = r.subscriptions
-    .map((s) => String(s.service).replace(/^<untrusted-content[^>]*>(.*?)<\/untrusted-content-[^>]+>$/, '$1'))
+    .map((s) =>
+      String(s.service).replace(/^<untrusted-content[^>]*>(.*?)<\/untrusted-content-[^>]+>$/, '$1'),
+    )
     .sort();
   assert.deepEqual(services, ['1password.com', 'spotify.com']);
   // Monthly total ≈ 10.99 + 60/12 = 15.99

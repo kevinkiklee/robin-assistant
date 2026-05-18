@@ -18,7 +18,8 @@ export function formatArc(raw, { full = false } = {}) {
     linked_entities: full ? linked : linked.slice(0, DEFAULT_LINKED_ENTITIES),
     recent_events: full ? events : events.slice(0, DEFAULT_RECENT_EVENTS),
     meta: {
-      trimmed: !full && (linked.length > DEFAULT_LINKED_ENTITIES || events.length > DEFAULT_RECENT_EVENTS),
+      trimmed:
+        !full && (linked.length > DEFAULT_LINKED_ENTITIES || events.length > DEFAULT_RECENT_EVENTS),
     },
   };
 }

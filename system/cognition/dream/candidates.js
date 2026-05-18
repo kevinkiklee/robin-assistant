@@ -11,7 +11,15 @@ import { surql } from 'surrealdb';
  * events back the candidate yet.
  */
 export async function createCandidate(db, input) {
-  const { content, kind, signal_events, payload, confidence = 0.7, meta, derived_from_trust } = input;
+  const {
+    content,
+    kind,
+    signal_events,
+    payload,
+    confidence = 0.7,
+    meta,
+    derived_from_trust,
+  } = input;
   const fields = {
     content,
     kind,

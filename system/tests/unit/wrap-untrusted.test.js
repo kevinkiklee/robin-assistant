@@ -1,11 +1,12 @@
 // system/tests/unit/wrap-untrusted.test.js
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {
-  wrapUntrusted,
+  __setNonceFactoryForTests,
   wrapDiscordMessage,
   wrapEntityRecord,
-  __setNonceFactoryForTests,
+  wrapUntrusted,
 } from '../../cognition/discretion/wrap-untrusted.js';
 
 test('wrapUntrusted: no-op on trusted', () => {
@@ -18,7 +19,7 @@ test('wrapUntrusted: wraps with per-call nonce', () => {
   const out = wrapUntrusted('hello', { source: 'gmail', eventId: 'e1', trust: 'untrusted' });
   assert.equal(
     out,
-    '<untrusted-content nonce="abc12345" source="gmail" event-id="e1">hello</untrusted-content-abc12345>'
+    '<untrusted-content nonce="abc12345" source="gmail" event-id="e1">hello</untrusted-content-abc12345>',
   );
   __setNonceFactoryForTests(null);
 });
@@ -51,10 +52,14 @@ test('wrapUntrusted: untrusted-mixed also wraps', () => {
 
 test('wrapDiscordMessage: wraps user message', () => {
   __setNonceFactoryForTests(() => 'd0000000');
-  const out = wrapDiscordMessage('hello', { userId: 'u1', channelId: 'c1', ts: '2026-05-17T12:00:00Z' });
+  const out = wrapDiscordMessage('hello', {
+    userId: 'u1',
+    channelId: 'c1',
+    ts: '2026-05-17T12:00:00Z',
+  });
   assert.equal(
     out,
-    '<discord-message-from nonce="d0000000" user="u1" channel="c1" ts="2026-05-17T12:00:00Z">hello</discord-message-from-d0000000>'
+    '<discord-message-from nonce="d0000000" user="u1" channel="c1" ts="2026-05-17T12:00:00Z">hello</discord-message-from-d0000000>',
   );
   __setNonceFactoryForTests(null);
 });

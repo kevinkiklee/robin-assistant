@@ -4,10 +4,10 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { RecordId, surql } from 'surrealdb';
+import { createArc, extendArc } from '../../cognition/memory/arcs.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { createArc, extendArc } from '../../cognition/memory/arcs.js';
 
 const __robinTestHome = __robinJoin(
   __robinTmpdir(),

@@ -1,9 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { connect, close } from '../../data/db/client.js';
-import { createRememberTool } from '../../io/mcp/tools/remember.js';
-import { markTainted, __resetForTests } from '../../runtime/mcp/session-taint.js';
+import test from 'node:test';
 import { __setEnvForTests } from '../../cognition/discretion/durable-write.js';
+import { close, connect } from '../../data/db/client.js';
+import { createRememberTool } from '../../io/mcp/tools/remember.js';
+import { __resetForTests, markTainted } from '../../runtime/mcp/session-taint.js';
 
 test('remember returns outbound_blocked envelope on session-taint refusal', async () => {
   __resetForTests();
@@ -11,7 +11,8 @@ test('remember returns outbound_blocked envelope on session-taint refusal', asyn
   markTainted('s1', 'events:e_evil');
   const db = await connect({ engine: 'mem://' });
   try {
-    await db.query(`
+    await db
+      .query(`
       DEFINE TABLE events SCHEMAFULL;
       DEFINE FIELD content ON events TYPE string;
       DEFINE FIELD trust   ON events TYPE string DEFAULT 'trusted';
@@ -23,7 +24,8 @@ test('remember returns outbound_blocked envelope on session-taint refusal', asyn
       DEFINE FIELD tool        ON refusals TYPE option<string>;
       DEFINE FIELD created_at  ON refusals TYPE datetime DEFAULT time::now() READONLY;
       DEFINE FIELD meta        ON refusals TYPE option<object> FLEXIBLE;
-    `).collect();
+    `)
+      .collect();
     const tool = createRememberTool({
       db,
       embedder: { embed: async () => new Float32Array([0.1]) },

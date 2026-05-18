@@ -9,7 +9,7 @@ import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
 import { createRememberTool } from '../../io/mcp/tools/remember.js';
-import { markTainted, __resetForTests } from '../../runtime/mcp/session-taint.js';
+import { __resetForTests, markTainted } from '../../runtime/mcp/session-taint.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
@@ -61,7 +61,11 @@ test('remember respects explicit source_trust override even when session is tain
   const sessionId = 'session-tainted-3';
   markTainted(sessionId, 'events:xyz456');
   const tool = createRememberTool({ db, embedder: e, queue, getSessionId: () => sessionId });
-  await tool.handler({ content: 'explicit trusted override', source: 'manual', source_trust: 'trusted' });
+  await tool.handler({
+    content: 'explicit trusted override',
+    source: 'manual',
+    source_trust: 'trusted',
+  });
   const [rows] = await db.query(surql`SELECT trust FROM events`).collect();
   assert.equal(rows[0].trust, 'trusted');
   await close(db);

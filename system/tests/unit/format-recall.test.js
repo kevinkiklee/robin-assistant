@@ -1,12 +1,9 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { trimRecallEvents } from '../../io/format/recall.js';
 
 test('keeps short events at full length', () => {
-  const events = [
-    { content: 'hello world' },
-    { content: 'goodbye' },
-  ];
+  const events = [{ content: 'hello world' }, { content: 'goodbye' }];
   const out = trimRecallEvents(events);
   assert.strictEqual(out[0].content, 'hello world');
   assert.strictEqual(out[0].truncated, false);

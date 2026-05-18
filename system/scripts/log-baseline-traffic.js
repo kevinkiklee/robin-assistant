@@ -8,11 +8,7 @@ import process from 'node:process';
 const durationMs = Number(process.argv[2] || '180000');
 const start = Date.now();
 
-const rememberContents = [
-  'baseline test note 1',
-  'baseline test note 2',
-  'baseline test note 3',
-];
+const rememberContents = ['baseline test note 1', 'baseline test note 2', 'baseline test note 3'];
 
 function callCli(args) {
   return new Promise((resolve) => {

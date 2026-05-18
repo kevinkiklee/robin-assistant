@@ -1,6 +1,7 @@
 // src/mcp/tools/get-comm-style.js
-import { getEffectiveContextCommStyle } from '../../../cognition/dream/step-comm-style.js';
+
 import { resolveSessionContext } from '../../../cognition/dream/comm-style-context-router.js';
+import { getEffectiveContextCommStyle } from '../../../cognition/dream/step-comm-style.js';
 import { DEFAULTS, getCommStyle } from '../../../cognition/jobs/comm-style.js';
 
 export function createGetCommStyleTool({ db }) {

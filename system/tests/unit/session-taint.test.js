@@ -1,11 +1,12 @@
 // system/tests/unit/session-taint.test.js
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {
-  markTainted,
-  getSessionTaint,
-  clearSession,
   __resetForTests,
+  clearSession,
+  getSessionTaint,
+  markTainted,
 } from '../../runtime/mcp/session-taint.js';
 
 test('fresh session is clean', () => {

@@ -6,14 +6,14 @@
 // Run via: pnpm test:file system/tests/unit/predict-discipline-seed.test.js
 
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { test, before, after } from 'node:test';
+import { after, before, test } from 'node:test';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { seedRules, parseFrontmatter } from '../../runtime/install/seed-rules.js';
+import { parseFrontmatter, seedRules } from '../../runtime/install/seed-rules.js';
 
 // ─── Shared temp home ───────────────────────────────────────────────────────
 

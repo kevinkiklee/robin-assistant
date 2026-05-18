@@ -47,7 +47,11 @@ export default {
     // stashed by our connect() wrapper in system/data/db/client.js.
     const url = ctx.db.__url;
     if (!url) {
-      return { ok: false, error: 'no_stashed_url', evidence: { hint: 'db.__url missing; connect() wrapper regression' } };
+      return {
+        ok: false,
+        error: 'no_stashed_url',
+        evidence: { hint: 'db.__url missing; connect() wrapper regression' },
+      };
     }
 
     try {

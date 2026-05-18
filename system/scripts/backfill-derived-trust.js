@@ -21,9 +21,7 @@ import { mergeTrust } from '../cognition/discretion/wrap-untrusted.js';
  * through as-is (they're already typed).
  */
 function toRecordIds(ids) {
-  return (ids ?? []).map(id =>
-    typeof id === 'string' ? new StringRecordId(id) : id
-  );
+  return (ids ?? []).map((id) => (typeof id === 'string' ? new StringRecordId(id) : id));
 }
 
 /**
@@ -35,7 +33,7 @@ async function trustOfEvents(db, eventIds) {
   const [rows] = await db
     .query(`SELECT trust FROM events WHERE id IN $ids`, { ids: toRecordIds(eventIds) })
     .collect();
-  return mergeTrust(rows.map(r => r.trust ?? 'trusted'));
+  return mergeTrust(rows.map((r) => r.trust ?? 'trusted'));
 }
 
 /**
@@ -52,9 +50,7 @@ async function trustOfEvents(db, eventIds) {
 async function backfillTable(db, table, eventIdsField) {
   let rows;
   try {
-    [rows] = await db
-      .query(`SELECT id, ${eventIdsField} AS ev FROM ${table}`)
-      .collect();
+    [rows] = await db.query(`SELECT id, ${eventIdsField} AS ev FROM ${table}`).collect();
   } catch {
     // Table may not exist in minimal test fixtures — treat as empty.
     return;
@@ -65,9 +61,7 @@ async function backfillTable(db, table, eventIdsField) {
     // provenance is an object { event_ids: [...] }; event_ids is a direct array.
     const ids = Array.isArray(r.ev) ? r.ev : (r.ev?.event_ids ?? []);
     const trust = await trustOfEvents(db, ids);
-    await db
-      .query(`UPDATE ${r.id} SET derived_from_trust = $t`, { t: trust })
-      .collect();
+    await db.query(`UPDATE ${r.id} SET derived_from_trust = $t`, { t: trust }).collect();
   }
 }
 
@@ -87,16 +81,12 @@ async function backfillEdgesFromEntities(db) {
   for (const e of edges) {
     let endpoints;
     try {
-      [endpoints] = await db
-        .query(`SELECT derived_from_trust FROM ${e.in}, ${e.out}`)
-        .collect();
+      [endpoints] = await db.query(`SELECT derived_from_trust FROM ${e.in}, ${e.out}`).collect();
     } catch {
       endpoints = [];
     }
-    const trust = mergeTrust((endpoints ?? []).map(x => x.derived_from_trust ?? 'trusted'));
-    await db
-      .query(`UPDATE ${e.id} SET derived_from_trust = $t`, { t: trust })
-      .collect();
+    const trust = mergeTrust((endpoints ?? []).map((x) => x.derived_from_trust ?? 'trusted'));
+    await db.query(`UPDATE ${e.id} SET derived_from_trust = $t`, { t: trust }).collect();
   }
 }
 
@@ -126,10 +116,8 @@ async function backfillEpisodes(db) {
     } catch {
       eventRows = [];
     }
-    const trust = mergeTrust((eventRows ?? []).map(r => r.trust ?? 'trusted'));
-    await db
-      .query(`UPDATE ${ep.id} SET derived_from_trust = $t`, { t: trust })
-      .collect();
+    const trust = mergeTrust((eventRows ?? []).map((r) => r.trust ?? 'trusted'));
+    await db.query(`UPDATE ${ep.id} SET derived_from_trust = $t`, { t: trust }).collect();
   }
 }
 
@@ -163,10 +151,8 @@ async function backfillArcs(db) {
     } catch {
       epRows = [];
     }
-    const trust = mergeTrust((epRows ?? []).map(r => r.derived_from_trust ?? 'trusted'));
-    await db
-      .query(`UPDATE ${arc.id} SET derived_from_trust = $t`, { t: trust })
-      .collect();
+    const trust = mergeTrust((epRows ?? []).map((r) => r.derived_from_trust ?? 'trusted'));
+    await db.query(`UPDATE ${arc.id} SET derived_from_trust = $t`, { t: trust }).collect();
   }
 }
 

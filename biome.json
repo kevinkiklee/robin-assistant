@@ -10,6 +10,7 @@
       "!**/.claude",
       "!**/.gemini",
       "!**/.robin",
+      "!**/tmp",
       "!**/user-data",
       "!**/tests/fixtures/**/*.json"
     ]

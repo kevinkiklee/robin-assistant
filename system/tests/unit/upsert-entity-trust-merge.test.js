@@ -4,10 +4,10 @@ import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin, resolve } from 'node:path';
 import { test } from 'node:test';
 import { surql } from 'surrealdb';
+import { upsertEntityCascade } from '../../cognition/biographer/upsert-entity.js';
 import { writeConfig as __robinWriteConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';
-import { upsertEntityCascade } from '../../cognition/biographer/upsert-entity.js';
 
 // __robin_test_home_setup__
 const __robinTestHome = __robinJoin(
@@ -50,14 +50,22 @@ test('upsert-entity: stage1 re-mention from untrusted source downgrades derived_
 
   assert.equal(result.created, false, 'should resolve existing entity, not create');
   assert.equal(result.stage, 1, 'should resolve via stage1 exact match');
-  assert.equal(result.derived_from_trust, 'untrusted', 'returned entity should reflect merged trust');
+  assert.equal(
+    result.derived_from_trust,
+    'untrusted',
+    'returned entity should reflect merged trust',
+  );
 
   // Verify the DB row was actually updated
   const [rows] = await db
     .query(surql`SELECT derived_from_trust FROM type::record('entities', 'person__alice')`)
     .collect();
   const row = Array.isArray(rows) ? rows[0] : rows;
-  assert.equal(row.derived_from_trust, 'untrusted', 'DB row derived_from_trust should be untrusted after merge');
+  assert.equal(
+    row.derived_from_trust,
+    'untrusted',
+    'DB row derived_from_trust should be untrusted after merge',
+  );
 
   await close(db);
 });

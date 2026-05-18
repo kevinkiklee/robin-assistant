@@ -2,25 +2,28 @@
 //
 // Verifies that recall-family tools call markTainted for any returned row
 // whose trust / derived_from_trust is NOT 'trusted'.
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { connect, close } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
+import { join, resolve } from 'node:path';
+import test from 'node:test';
 import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 import { createStubEmbedder } from '../../data/embed/embedder.js';
 import { recordEvent } from '../../io/capture/record-event.js';
-import { createRecallTool } from '../../io/mcp/tools/recall.js';
 import { createFindEntityTool } from '../../io/mcp/tools/find-entity.js';
 import { createListEpisodesTool } from '../../io/mcp/tools/list-episodes.js';
+import { createRecallTool } from '../../io/mcp/tools/recall.js';
 import { createRecentRefusalsTool } from '../../io/mcp/tools/recent-refusals.js';
-import { getSessionTaint, __resetForTests } from '../../runtime/mcp/session-taint.js';
+import { __resetForTests, getSessionTaint } from '../../runtime/mcp/session-taint.js';
 
 // Set up a ROBIN_HOME for config writes
-const testHome = join(tmpdir(), `robin-taint-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
+const testHome = join(
+  tmpdir(),
+  `robin-taint-test-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
 mkdirSync(testHome, { recursive: true });
 process.env.ROBIN_HOME = testHome;
 await writeConfig({ embedder_profile: 'mxbai-1024' });
@@ -50,22 +53,28 @@ test('recall marks session tainted when untrusted row returned', async () => {
     const { activeProfile, embeddingTable } = await import('../../data/embed/profile-router.js');
     const { sha256 } = await import('../../data/embed/hash.js');
     const content = 'injected payload';
-    const [created] = await db.query(
-      new BoundQuery(
-        'CREATE events SET source=$src, content=$c, trust=$t, content_hash=$h',
-        { src: 'sync', c: content, t: 'untrusted', h: sha256(content) },
-      ),
-    ).collect();
+    const [created] = await db
+      .query(
+        new BoundQuery('CREATE events SET source=$src, content=$c, trust=$t, content_hash=$h', {
+          src: 'sync',
+          c: content,
+          t: 'untrusted',
+          h: sha256(content),
+        }),
+      )
+      .collect();
     const eventId = (Array.isArray(created) ? created[0] : created).id;
     const vec = Array.from(await e.embed(content));
     const profile = await activeProfile(db);
     const table = embeddingTable(profile, 'events');
-    await db.query(
-      new BoundQuery(
-        'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()',
-        { tb: table, rec: eventId, vec },
-      ),
-    ).collect();
+    await db
+      .query(
+        new BoundQuery(
+          'UPSERT type::record($tb, [$rec]) SET record = $rec, vector = $vec, ts = time::now()',
+          { tb: table, rec: eventId, vec },
+        ),
+      )
+      .collect();
 
     const tool = createRecallTool({
       db,
@@ -108,13 +117,19 @@ test('find_entity marks session tainted when untrusted entity returned', async (
   const e = createStubEmbedder({ dimension: 1024 });
   try {
     // Insert an untrusted entity directly
-    await db.query(
-      `CREATE entities:untrusted_person SET name='EvilBot', type='person', derived_from_trust='untrusted'`,
-    ).collect();
+    await db
+      .query(
+        `CREATE entities:untrusted_person SET name='EvilBot', type='person', derived_from_trust='untrusted'`,
+      )
+      .collect();
 
     const tool = createFindEntityTool({ db, embedder: e, getSessionId: () => 's3' });
     await tool.handler({ name: 'EvilBot', fuzzy: false });
-    assert.equal(getSessionTaint('s3').tainted, true, 'session should be tainted by untrusted entity');
+    assert.equal(
+      getSessionTaint('s3').tainted,
+      true,
+      'session should be tainted by untrusted entity',
+    );
   } finally {
     await close(db);
   }
@@ -126,13 +141,19 @@ test('list_episodes marks session tainted when untrusted episode returned', asyn
   __resetForTests();
   const db = await fresh();
   try {
-    await db.query(
-      `CREATE episodes:ep1 SET source='gmail', summary='evil summary', derived_from_trust='untrusted', started_at=time::now()`,
-    ).collect();
+    await db
+      .query(
+        `CREATE episodes:ep1 SET source='gmail', summary='evil summary', derived_from_trust='untrusted', started_at=time::now()`,
+      )
+      .collect();
 
     const tool = createListEpisodesTool({ db, getSessionId: () => 's4' });
     await tool.handler({ limit: 10 });
-    assert.equal(getSessionTaint('s4').tainted, true, 'session should be tainted by untrusted episode');
+    assert.equal(
+      getSessionTaint('s4').tainted,
+      true,
+      'session should be tainted by untrusted episode',
+    );
   } finally {
     await close(db);
   }
@@ -144,9 +165,11 @@ test('recent_refusals marks session tainted whenever any refusal row returned', 
   __resetForTests();
   const db = await fresh();
   try {
-    await db.query(
-      `CREATE refusals:r1 SET direction='inbound', reason='blocked', tool='recall', content='bad content', created_at=time::now()`,
-    ).collect();
+    await db
+      .query(
+        `CREATE refusals:r1 SET direction='inbound', reason='blocked', tool='recall', content='bad content', created_at=time::now()`,
+      )
+      .collect();
 
     const tool = createRecentRefusalsTool({ db, getSessionId: () => 's5' });
     await tool.handler({ limit: 10 });

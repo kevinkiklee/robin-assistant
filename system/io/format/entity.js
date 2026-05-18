@@ -18,7 +18,8 @@ export function formatEntity(raw, { full = false } = {}) {
     meta: {
       total_edges: edges.length,
       total_events: events.length,
-      trimmed: !full && (edges.length > DEFAULT_EDGES_LIMIT || events.length > DEFAULT_EVENTS_LIMIT),
+      trimmed:
+        !full && (edges.length > DEFAULT_EDGES_LIMIT || events.length > DEFAULT_EVENTS_LIMIT),
     },
   };
 }

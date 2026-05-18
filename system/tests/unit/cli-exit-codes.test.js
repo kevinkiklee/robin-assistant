@@ -1,6 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert';
-import { EXIT_CODES, describeExit } from '../../runtime/cli/exit-codes.js';
+import test from 'node:test';
+import { describeExit, EXIT_CODES } from '../../runtime/cli/exit-codes.js';
 
 test('EXIT_CODES has the four canonical values', () => {
   assert.strictEqual(EXIT_CODES.OK, 0);

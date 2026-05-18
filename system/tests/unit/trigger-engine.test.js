@@ -52,7 +52,9 @@ test('processEvent skips non-matching triggers', async () => {
   });
   const r = await engine.processEvent({
     event: { id: 'e1', source: 'whoop' },
-    dispatchTool: async () => { invoked += 1; },
+    dispatchTool: async () => {
+      invoked += 1;
+    },
   });
   assert.equal(r.matched, 0);
   assert.equal(r.fired, 0);
@@ -71,7 +73,9 @@ test('when predicate filters events', async () => {
   const fires = [];
   const high = await engine.processEvent({
     event: { id: 'e1', source: 'whoop', recovery: 70 },
-    dispatchTool: async () => { invoked += 1; },
+    dispatchTool: async () => {
+      invoked += 1;
+    },
     recordFire: async (rec) => fires.push(rec),
   });
   assert.equal(high.fired, 0);
@@ -81,7 +85,9 @@ test('when predicate filters events', async () => {
 
   const low = await engine.processEvent({
     event: { id: 'e2', source: 'whoop', recovery: 45 },
-    dispatchTool: async () => { invoked += 1; },
+    dispatchTool: async () => {
+      invoked += 1;
+    },
   });
   assert.equal(low.fired, 1);
   assert.equal(invoked, 1);
@@ -98,7 +104,9 @@ test('async when predicate is awaited', async () => {
   });
   const r = await engine.processEvent({
     event: { id: 'e1', source: 'whoop', recovery: 30 },
-    dispatchTool: async () => { invoked += 1; },
+    dispatchTool: async () => {
+      invoked += 1;
+    },
   });
   assert.equal(r.fired, 1);
   assert.equal(invoked, 1);
@@ -109,7 +117,9 @@ test('when throwing marks fire as failed', async () => {
   engine.register({
     name: 't',
     on: 'whoop',
-    when: () => { throw new Error('boom'); },
+    when: () => {
+      throw new Error('boom');
+    },
     do: [{ tool: 'x' }],
   });
   const fires = [];
@@ -175,11 +185,13 @@ test('action retries on failure then succeeds', async () => {
   engine.register({
     name: 't',
     on: 'whoop',
-    do: [{
-      tool: 'x',
-      args: { v: 1 },
-      retries: 3,
-    }],
+    do: [
+      {
+        tool: 'x',
+        args: { v: 1 },
+        retries: 3,
+      },
+    ],
   });
   const r = await engine.processEvent({
     event: { id: 'e1', source: 'whoop' },
@@ -203,7 +215,10 @@ test('action gives up after exhausting retries', async () => {
   const fires = [];
   const r = await engine.processEvent({
     event: { id: 'e1', source: 'whoop' },
-    dispatchTool: async () => { attempts += 1; throw new Error('permafail'); },
+    dispatchTool: async () => {
+      attempts += 1;
+      throw new Error('permafail');
+    },
     recordFire: async (rec) => fires.push(rec),
   });
   assert.equal(attempts, 3);
@@ -222,7 +237,9 @@ test('triggered_by_chain is propagated to dispatched tools', async () => {
   });
   await engine.processEvent({
     event: { id: 'e1', source: 'whoop' },
-    dispatchTool: async (_tool, _args, opts) => { captured = opts; },
+    dispatchTool: async (_tool, _args, opts) => {
+      captured = opts;
+    },
   });
   assert.deepEqual(captured?.triggered_by_chain, ['t']);
 });
@@ -237,7 +254,9 @@ test('cycle protection skips events at max chain depth', async () => {
   });
   const r = await engine.processEvent({
     event: { id: 'e1', source: 'whoop', triggered_by_chain: ['a', 'b', 'c'] },
-    dispatchTool: async () => { invoked += 1; },
+    dispatchTool: async () => {
+      invoked += 1;
+    },
   });
   assert.equal(r.skipped_cycle, true);
   assert.equal(invoked, 0);
@@ -275,7 +294,9 @@ test('args function receives event and may return promise', async () => {
   });
   await engine.processEvent({
     event: { id: 'e1', source: 'whoop', recovery: 42 },
-    dispatchTool: async (_t, args) => { captured = args; },
+    dispatchTool: async (_t, args) => {
+      captured = args;
+    },
   });
   assert.deepEqual(captured, { recovery: 42 });
 });
@@ -319,8 +340,5 @@ test('unregister removes a trigger', () => {
 
 test('processEvent rejects missing event', async () => {
   const engine = makeEngine();
-  await assert.rejects(
-    engine.processEvent({ dispatchTool: async () => {} }),
-    /event is required/,
-  );
+  await assert.rejects(engine.processEvent({ dispatchTool: async () => {} }), /event is required/);
 });

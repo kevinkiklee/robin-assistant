@@ -35,8 +35,20 @@ test('each bucket runs on its own interval', async () => {
     const calls = { a: 0, b: 0 };
     const sched = createScheduler({
       buckets: [
-        { name: 'a', intervalMs: 30, tick: async () => { calls.a++; } },
-        { name: 'b', intervalMs: 60, tick: async () => { calls.b++; } },
+        {
+          name: 'a',
+          intervalMs: 30,
+          tick: async () => {
+            calls.a++;
+          },
+        },
+        {
+          name: 'b',
+          intervalMs: 60,
+          tick: async () => {
+            calls.b++;
+          },
+        },
       ],
     });
     await sched.start();
@@ -59,7 +71,9 @@ test('fireImmediately runs once at start', async () => {
         {
           name: 'eager',
           intervalMs: 10_000,
-          tick: async () => { called++; },
+          tick: async () => {
+            called++;
+          },
           fireImmediately: true,
         },
       ],
@@ -79,7 +93,13 @@ test('default (no fireImmediately) waits for first interval', async () => {
     let called = 0;
     const sched = createScheduler({
       buckets: [
-        { name: 'lazy', intervalMs: 10_000, tick: async () => { called++; } },
+        {
+          name: 'lazy',
+          intervalMs: 10_000,
+          tick: async () => {
+            called++;
+          },
+        },
       ],
     });
     await sched.start();
@@ -101,7 +121,9 @@ test('gate returning false skips the tick', async () => {
           name: 'gated',
           intervalMs: 20,
           gate: () => false,
-          tick: async () => { called++; },
+          tick: async () => {
+            called++;
+          },
         },
       ],
     });
@@ -128,7 +150,9 @@ test('gate throw is caught and treated as skip', async () => {
           gate: () => {
             throw new Error('gate boom');
           },
-          tick: async () => { called++; },
+          tick: async () => {
+            called++;
+          },
         },
       ],
     });
@@ -195,7 +219,9 @@ test('overlapping ticks within the same bucket are coalesced', async () => {
             // First in-flight: block until released so subsequent intervals coalesce.
             // Subsequent invocations (after release) run fast.
             if (starts === 1) {
-              await new Promise((r) => { release = r; });
+              await new Promise((r) => {
+                release = r;
+              });
             }
           },
         },
@@ -220,7 +246,13 @@ test('stop clears every bucket', async () => {
     const calls = { a: 0 };
     const sched = createScheduler({
       buckets: [
-        { name: 'a', intervalMs: 10, tick: async () => { calls.a++; } },
+        {
+          name: 'a',
+          intervalMs: 10,
+          tick: async () => {
+            calls.a++;
+          },
+        },
       ],
     });
     await sched.start();

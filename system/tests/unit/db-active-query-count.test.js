@@ -3,14 +3,9 @@
 // "skip during workload" gate — when the counter is 0, the weekly probe runs;
 // when > 0, it defers to avoid disturbing real traffic.
 
-import test from 'node:test';
 import assert from 'node:assert';
-import {
-  close,
-  connect,
-  getActiveQueryCount,
-  installQueryCounter,
-} from '../../data/db/client.js';
+import test from 'node:test';
+import { close, connect, getActiveQueryCount, installQueryCounter } from '../../data/db/client.js';
 
 test('getActiveQueryCount starts at 0', () => {
   assert.strictEqual(getActiveQueryCount(), 0);
@@ -101,7 +96,7 @@ test('installQueryCounter counts concurrent queries', async () => {
   const p3 = stub.query().collect();
   assert.strictEqual(getActiveQueryCount(), before + 3);
   // Release in any order; counter must return to baseline.
-  gates.forEach((r) => r());
+  for (const r of gates) r();
   await Promise.all([p1, p2, p3]);
   assert.strictEqual(getActiveQueryCount(), before);
 });

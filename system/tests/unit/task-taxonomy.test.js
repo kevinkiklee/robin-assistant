@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  parseTaskType,
   RECALL_INTENTS,
   TASK_TYPE_PREFIXES,
   TOKEN_CAPS,
   TURN_INTENTS,
-  parseTaskType,
   tokenCapForTaskType,
   validateTaskType,
 } from '../../cognition/introspection/task-taxonomy.js';

@@ -15,11 +15,17 @@
 // Allowed rows are emitted as events via the supplied `recordEvent` adapter
 // with source='imessage' and meta carrying the structured fields.
 
-import Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { appleDateToJsDate, classifyService, isAllowed, isFromMe, normalizeHandle } from './normalize.js';
+import Database from 'better-sqlite3';
+import {
+  appleDateToJsDate,
+  classifyService,
+  isAllowed,
+  isFromMe,
+  normalizeHandle,
+} from './normalize.js';
 
 const DEFAULT_CHAT_DB = join(homedir(), 'Library/Messages/chat.db');
 

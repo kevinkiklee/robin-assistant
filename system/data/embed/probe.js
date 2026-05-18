@@ -34,9 +34,7 @@ export async function writeEmbedProbe(db, embedFn) {
   try {
     // Direct record-id access: write side UPSERTs `runtime_state:embed_probe`.
     // `WHERE id = "string"` does not match a RecordId in v2.0.3.
-    const builder = db.query(
-      'SELECT last_success_ts FROM runtime_state:embed_probe;',
-    );
+    const builder = db.query('SELECT last_success_ts FROM runtime_state:embed_probe;');
     // `.collect()` returns [statementResults, ...]; destructure once.
     const [results] = await builder.collect();
     priorTs = results?.[0]?.last_success_ts ?? null;

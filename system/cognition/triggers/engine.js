@@ -184,7 +184,7 @@ async function tryFireTrigger({
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
         const args =
-          typeof action.args === 'function' ? await action.args({ event }) : action.args ?? {};
+          typeof action.args === 'function' ? await action.args({ event }) : (action.args ?? {});
         await dispatchTool(action.tool, args, { triggered_by_chain: nextChain });
         ok = true;
         break;

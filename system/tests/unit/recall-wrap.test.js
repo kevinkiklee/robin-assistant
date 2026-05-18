@@ -4,13 +4,14 @@
 // event content and leaves trusted content unchanged.  The full recall handler
 // requires a live HNSW index (not available in mem://), so we test the wrap
 // primitive directly and verify it is imported by recall.js at module level.
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
-import { connect, close } from '../../data/db/client.js';
+import test from 'node:test';
 import {
-  wrapUntrusted,
   __setNonceFactoryForTests,
+  wrapUntrusted,
 } from '../../cognition/discretion/wrap-untrusted.js';
+import { close, connect } from '../../data/db/client.js';
 
 // ── wrapHit logic (mirrors recall.js implementation) ─────────────────────────
 
@@ -73,7 +74,14 @@ test('wrapHit: untrusted-mixed also wraps', () => {
 
 test('wrapHit: other fields are preserved on wrapped hit', () => {
   __setNonceFactoryForTests(() => 'n1');
-  const hit = { id: 'events:e5', source: 'discord', content: 'msg', trust: 'untrusted', dist: 0.5, ts: 'now' };
+  const hit = {
+    id: 'events:e5',
+    source: 'discord',
+    content: 'msg',
+    trust: 'untrusted',
+    dist: 0.5,
+    ts: 'now',
+  };
   const out = wrapHit(hit);
   assert.equal(out.source, 'discord');
   assert.equal(out.dist, 0.5);
@@ -113,19 +121,46 @@ test('recall handler: untrusted hits are wrapped, trusted hits pass through', as
 
   // Fake event rows the pipeline should surface.
   const fakeEvents = [
-    { id: 'events:t1', source: 'note', content: 'trusted body', ts: new Date().toISOString(), trust: 'trusted', scope: 'global', tags: [], meta: {} },
-    { id: 'events:u1', source: 'gmail', content: 'untrusted body', ts: new Date().toISOString(), trust: 'untrusted', scope: 'global', tags: [], meta: {} },
+    {
+      id: 'events:t1',
+      source: 'note',
+      content: 'trusted body',
+      ts: new Date().toISOString(),
+      trust: 'trusted',
+      scope: 'global',
+      tags: [],
+      meta: {},
+    },
+    {
+      id: 'events:u1',
+      source: 'gmail',
+      content: 'untrusted body',
+      ts: new Date().toISOString(),
+      trust: 'untrusted',
+      scope: 'global',
+      tags: [],
+      meta: {},
+    },
   ];
 
   const fakeDb = {
     query(sqlOrBound) {
-      const sql = typeof sqlOrBound === 'string' ? sqlOrBound
-        : (sqlOrBound?.query ?? sqlOrBound?.sql ?? sqlOrBound?.toString?.() ?? '');
+      const sql =
+        typeof sqlOrBound === 'string'
+          ? sqlOrBound
+          : (sqlOrBound?.query ?? sqlOrBound?.sql ?? sqlOrBound?.toString?.() ?? '');
       return {
         collect: async () => {
-          if (/runtime:embedder/.test(sql)) return [[{ active_profile: 'test', read_profile: 'test' }]];
+          if (/runtime:embedder/.test(sql))
+            return [[{ active_profile: 'test', read_profile: 'test' }]];
           if (/runtime:recall/.test(sql)) return [[null]];
-          if (/vector\s*<\|/.test(sql)) return [[{ record: 'events:t1', dist: 0.1 }, { record: 'events:u1', dist: 0.2 }]];
+          if (/vector\s*<\|/.test(sql))
+            return [
+              [
+                { record: 'events:t1', dist: 0.1 },
+                { record: 'events:u1', dist: 0.2 },
+              ],
+            ];
           if (/SELECT \* FROM events/.test(sql)) return [fakeEvents];
           if (/FROM edges WHERE kind = 'mentions'/.test(sql)) return [[]];
           if (/FROM entities WHERE id IN/.test(sql)) return [[]];
@@ -174,20 +209,24 @@ test('recall handler: untrusted hits are wrapped, trusted hits pass through', as
 test('events table trust field round-trips through mem:// DB', async (t) => {
   const db = await connect({ engine: 'mem://' });
   try {
-    await db.query(`
+    await db
+      .query(`
       DEFINE TABLE events SCHEMAFULL;
       DEFINE FIELD content ON events TYPE string;
       DEFINE FIELD source  ON events TYPE string;
       DEFINE FIELD trust   ON events TYPE string DEFAULT 'trusted';
       DEFINE FIELD ts      ON events TYPE datetime DEFAULT time::now();
-    `).collect();
-    await db.query(`
+    `)
+      .collect();
+    await db
+      .query(`
       CREATE events:e1 SET content='trusted body', source='note', trust='trusted';
       CREATE events:e2 SET content='untrusted body', source='gmail', trust='untrusted';
-    `).collect();
+    `)
+      .collect();
     const [rows] = await db.query('SELECT id, content, trust FROM events ORDER BY id').collect();
-    const e1 = rows.find(r => String(r.id) === 'events:e1');
-    const e2 = rows.find(r => String(r.id) === 'events:e2');
+    const e1 = rows.find((r) => String(r.id) === 'events:e1');
+    const e2 = rows.find((r) => String(r.id) === 'events:e2');
     assert.equal(e1?.trust, 'trusted');
     assert.equal(e2?.trust, 'untrusted');
 
@@ -196,7 +235,11 @@ test('events table trust field round-trips through mem:// DB', async (t) => {
     const wrapped1 = wrapHit({ ...e1, id: String(e1.id) });
     const wrapped2 = wrapHit({ ...e2, id: String(e2.id) });
     assert.equal(wrapped1.content, 'trusted body', 'trusted event unchanged');
-    assert.match(wrapped2.content, /^<untrusted-content nonce="dbnonce"/, 'untrusted event wrapped');
+    assert.match(
+      wrapped2.content,
+      /^<untrusted-content nonce="dbnonce"/,
+      'untrusted event wrapped',
+    );
     __setNonceFactoryForTests(null);
   } finally {
     await close(db);

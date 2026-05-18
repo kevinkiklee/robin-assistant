@@ -1,6 +1,6 @@
 import { BoundQuery } from 'surrealdb';
-import { isSelfImprovementV2Enabled } from '../../../runtime/config/self-improvement-v2.js';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { isSelfImprovementV2Enabled } from '../../../runtime/config/self-improvement-v2.js';
 
 const MAX_LINEAGE_DEPTH = 4;
 
@@ -48,7 +48,9 @@ async function fetchSourceEvent(db, eventId) {
   if (!eventId) return null;
   const ref = String(eventId).startsWith('events:') ? String(eventId) : `events:${String(eventId)}`;
   try {
-    const [rows] = await db.query(`SELECT id, source, content, ts, meta, trust FROM ${ref}`).collect();
+    const [rows] = await db
+      .query(`SELECT id, source, content, ts, meta, trust FROM ${ref}`)
+      .collect();
     const row = (Array.isArray(rows) ? rows[0] : rows) ?? null;
     if (!row) return null;
     const rawExcerpt = (row.content ?? '').slice(0, 200);
@@ -57,9 +59,10 @@ async function fetchSourceEvent(db, eventId) {
     return {
       id: String(row.id),
       source: row.source,
-      content_excerpt: trust === 'trusted'
-        ? rawExcerpt
-        : wrapUntrusted(rawExcerpt, { source: row.source, eventId: String(row.id), trust }),
+      content_excerpt:
+        trust === 'trusted'
+          ? rawExcerpt
+          : wrapUntrusted(rawExcerpt, { source: row.source, eventId: String(row.id), trust }),
       ts: row.ts,
     };
   } catch {
@@ -230,7 +233,7 @@ async function explainConfidenceBand(db, band) {
         id: String(r.id),
         statement_excerpt: (r.content ?? '').slice(0, 150),
         confidence: r.confidence,
-        resolved: r.meta?.resolved_at ? true : false,
+        resolved: Boolean(r.meta?.resolved_at),
         correct: r.meta?.correct ?? null,
       }));
     } catch {

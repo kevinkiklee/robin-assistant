@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { COMMAND_REGISTRY, relatedFor } from '../../runtime/cli/command-registry.js';
 
 test('every registry entry has name + summary + group', () => {

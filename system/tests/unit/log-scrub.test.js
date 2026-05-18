@@ -1,6 +1,6 @@
-import test from 'node:test';
 import { strict as assert } from 'node:assert';
 import { Writable } from 'node:stream';
+import test from 'node:test';
 
 import { installLogScrub, scrub } from '../../runtime/daemon/log-scrub.js';
 
@@ -12,7 +12,10 @@ test('scrub redacts GitHub PAT', () => {
 });
 
 test('scrub redacts OpenAI/Anthropic keys', () => {
-  assert.match(scrub('Authorization: sk-ant-abc123xyz456_-foobarbaz9999'), /<redacted:anthropic_key>/);
+  assert.match(
+    scrub('Authorization: sk-ant-abc123xyz456_-foobarbaz9999'),
+    /<redacted:anthropic_key>/,
+  );
   assert.match(scrub('failed: sk-proj1234567890abcdefghijklmnopqrstuvwx'), /<redacted:openai_key>/);
 });
 
@@ -71,7 +74,11 @@ test('installLogScrub patches write streams', async () => {
 });
 
 test('installLogScrub is idempotent', () => {
-  const sink = new Writable({ write(_c, _e, cb) { cb(); } });
+  const sink = new Writable({
+    write(_c, _e, cb) {
+      cb();
+    },
+  });
   installLogScrub({ stdout: sink, stderr: sink });
   const firstPatched = sink.write;
   installLogScrub({ stdout: sink, stderr: sink });

@@ -1,8 +1,8 @@
+import { surql } from 'surrealdb';
 import { extractMNTokens, recordInsightFeedback } from '../../../cognition/briefing/feedback.js';
 import { checkDurableWrite } from '../../../cognition/discretion/durable-write.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { recordEvent } from '../../capture/record-event.js';
-import { surql } from 'surrealdb';
 
 const NEGATIVE_PATTERNS = [
   /\bnot useful\b/i,

@@ -3,9 +3,6 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { writeConfig as __wc } from '../../config/paths.js';
-import { close, connect } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import {
   fetchEventsAfter,
   lookupLastFire,
@@ -13,6 +10,9 @@ import {
   recordTriggerFire,
   writeTriggerCursor,
 } from '../../cognition/triggers/persistence.js';
+import { writeConfig as __wc } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 const __h = join(tmpdir(), `robin-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
 mkdirSync(__h, { recursive: true });
@@ -52,7 +52,9 @@ test('recordTriggerFire writes a row with all fields', async () => {
     event_id: 'e1',
     duration_ms: 42,
   });
-  const [rows] = await db.query('SELECT name, status, event_id, duration_ms FROM trigger_fires').collect();
+  const [rows] = await db
+    .query('SELECT name, status, event_id, duration_ms FROM trigger_fires')
+    .collect();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].name, 'low-recovery');
   assert.equal(rows[0].status, 'ok');
@@ -98,7 +100,10 @@ test('fetchEventsAfter returns all events when cursor unset', async () => {
   await db.query('CREATE events SET source = "gmail", content = "b", ts = time::now()').collect();
   const events = await fetchEventsAfter(db, { last_event_ts: null, last_event_id: null });
   assert.equal(events.length, 2);
-  assert.deepEqual(events.map((e) => e.source), ['whoop', 'gmail']);
+  assert.deepEqual(
+    events.map((e) => e.source),
+    ['whoop', 'gmail'],
+  );
   await close(db);
 });
 
@@ -126,7 +131,11 @@ test('fetchEventsAfter respects limit', async () => {
     await db.query(`CREATE events SET source = "x", content = "${i}"`).collect();
     await new Promise((r) => setTimeout(r, 1));
   }
-  const events = await fetchEventsAfter(db, { last_event_ts: null, last_event_id: null }, { limit: 3 });
+  const events = await fetchEventsAfter(
+    db,
+    { last_event_ts: null, last_event_id: null },
+    { limit: 3 },
+  );
   assert.equal(events.length, 3);
   await close(db);
 });

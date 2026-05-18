@@ -46,7 +46,11 @@ export { doctorData };
  * `--emit-runbook` family. Writes the generated runbook to stdout (no flags),
  * to a file in-place (--write), or runs a CI drift check (--check).
  */
-async function doEmitRunbook(out, err, { write = false, check = false, runbookPath, claudeMdPath } = {}) {
+async function doEmitRunbook(
+  out,
+  err,
+  { write = false, check = false, runbookPath, claudeMdPath } = {},
+) {
   const body = renderRunbook(await getAllInvariants());
   if (!write && !check) {
     out(body);
@@ -106,13 +110,13 @@ export function maybePromoteWithDaemonState({
   defaultCadenceMs = DEFAULT_INVARIANT_CADENCE_MS,
 } = {}) {
   if (!result || result.error !== 'no_db_handle') return null;
-  if (!state || !state.generated_at) return null;
+  if (!state?.generated_at) return null;
   const generatedAt = Date.parse(state.generated_at);
   if (!Number.isFinite(generatedAt)) return null;
   if (now - generatedAt > fileStaleMs) return null;
   const entry = state.invariants?.[result.name];
-  if (!entry || !entry.last_pass_at) return null;
-  if (!entry.last_result_summary || entry.last_result_summary.ok !== true) return null;
+  if (!entry?.last_pass_at) return null;
+  if (entry.last_result_summary?.ok !== true) return null;
   const cadenceMs = invariant?.runWhen?.heartbeat?.cooldownMs ?? defaultCadenceMs;
   const ageMs = now - entry.last_pass_at;
   if (ageMs < 0) return null;

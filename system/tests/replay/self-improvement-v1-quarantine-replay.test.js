@@ -12,17 +12,17 @@
 //
 // Run via: pnpm test:file system/tests/replay/self-improvement-v1-quarantine-replay.test.js
 
-import { mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve, dirname } from 'node:path';
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { writeConfig } from '../../config/paths.js';
-import { connect, close } from '../../data/db/client.js';
-import { runMigrations } from '../../data/db/migrate.js';
 import { dreamStepReflection } from '../../cognition/dream/step-reflection.js';
+import { writeConfig } from '../../config/paths.js';
+import { close, connect } from '../../data/db/client.js';
+import { runMigrations } from '../../data/db/migrate.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_PATH = join(__dirname, 'fixtures/v1-quarantine-corrections.json');

@@ -3,8 +3,8 @@
 // Verifies that getSessionId() returns the correct transport.sessionId inside
 // a tool handler dispatch, and null outside of one.
 
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import { als, getSessionId } from '../../../system/runtime/mcp/current-call.js';
 
 describe('mcp session-id threading (AsyncLocalStorage)', () => {

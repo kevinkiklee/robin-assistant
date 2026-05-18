@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { applyDerivedTrust } from '../../cognition/biographer/output.js';
 
 test('per-record derived_from_trust uses cited sources only', () => {
@@ -9,10 +9,10 @@ test('per-record derived_from_trust uses cited sources only', () => {
   ];
   const extraction = {
     entities: [
-      { name: 'Alice', source_event_ids: ['events:e1'] },           // cites trusted
-      { name: 'Bob',   source_event_ids: ['events:e2'] },           // cites untrusted
+      { name: 'Alice', source_event_ids: ['events:e1'] }, // cites trusted
+      { name: 'Bob', source_event_ids: ['events:e2'] }, // cites untrusted
       { name: 'Carol', source_event_ids: ['events:e1', 'events:e2'] }, // mixed
-      { name: 'Dan',   source_event_ids: ['events:bogus'] },        // not in batch → fallback
+      { name: 'Dan', source_event_ids: ['events:bogus'] }, // not in batch → fallback
     ],
   };
   const stamped = applyDerivedTrust(extraction.entities, events);
@@ -26,9 +26,6 @@ test('per-record derived_from_trust uses cited sources only', () => {
 
 test('all-trusted batch produces all-trusted records even on bogus citations', () => {
   const events = [{ id: 'events:e1', trust: 'trusted' }];
-  const stamped = applyDerivedTrust(
-    [{ name: 'X', source_event_ids: ['events:bogus'] }],
-    events,
-  );
+  const stamped = applyDerivedTrust([{ name: 'X', source_event_ids: ['events:bogus'] }], events);
   assert.equal(stamped[0].derived_from_trust, 'trusted');
 });

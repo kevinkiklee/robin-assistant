@@ -7,8 +7,8 @@
 export const EXIT_CODES = Object.freeze({
   OK: 0,
   ERROR: 1,
-  USER_ERROR: 2,    // bad args, missing required flag
-  PRECONDITION: 3,  // missing secret, daemon not running, install not pointed
+  USER_ERROR: 2, // bad args, missing required flag
+  PRECONDITION: 3, // missing secret, daemon not running, install not pointed
 });
 
 const NAMES = new Map([

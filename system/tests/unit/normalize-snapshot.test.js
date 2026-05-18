@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert';
+import test from 'node:test';
 import { normalize, normalizeDoctorOutput } from '../helpers/normalize-snapshot.js';
 
 test('normalize replaces ISO timestamps with <TIMESTAMP>', () => {
@@ -15,11 +15,7 @@ test('normalize replaces surreal record ids with <ID>', () => {
 });
 
 test('normalize does not match URL fragments or inner words', () => {
-  const inputs = [
-    'http://localhost:8000/foo',
-    'tcp:localhost',
-    'my_table:id_value',
-  ];
+  const inputs = ['http://localhost:8000/foo', 'tcp:localhost', 'my_table:id_value'];
   for (const input of inputs) {
     const out = normalize(input);
     assert.strictEqual(out, input, `should not transform: ${input}`);
@@ -39,11 +35,9 @@ test('normalize replaces took_ms durations', () => {
 });
 
 test('normalizeDoctorOutput strips dynamic header timestamp line', () => {
-  const input = [
-    'Robin doctor — 2026-05-17 13:42:01',
-    '',
-    'paths        ok        3 checks',
-  ].join('\n');
+  const input = ['Robin doctor — 2026-05-17 13:42:01', '', 'paths        ok        3 checks'].join(
+    '\n',
+  );
   const out = normalizeDoctorOutput(input);
   assert.match(out, /Robin doctor — <TIMESTAMP>/);
 });

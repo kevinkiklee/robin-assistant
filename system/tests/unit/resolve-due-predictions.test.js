@@ -9,12 +9,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { BoundQuery } from 'surrealdb';
+import { getPrediction, recordPrediction } from '../../cognition/jobs/predictions.js';
 import {
+  needsUser,
   resolveDuePredictions,
   resolveEventTiming,
-  needsUser,
 } from '../../cognition/jobs/resolve-due-predictions.js';
-import { recordPrediction, getPrediction } from '../../cognition/jobs/predictions.js';
 import { writeConfig } from '../../config/paths.js';
 import { close, connect } from '../../data/db/client.js';
 import { runMigrations } from '../../data/db/migrate.js';

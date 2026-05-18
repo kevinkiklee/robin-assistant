@@ -16,7 +16,12 @@ import { spawn } from 'node:child_process';
 const MIN_SEND_INTERVAL_MS = 200;
 let lastSendAt = 0;
 
-export async function sendDm({ handle, message, runCommand = defaultRunCommand, platform = process.platform } = {}) {
+export async function sendDm({
+  handle,
+  message,
+  runCommand = defaultRunCommand,
+  platform = process.platform,
+} = {}) {
   if (platform !== 'darwin') return { ok: false, reason: 'non-macos' };
   if (!handle) throw new Error('sendDm: handle required');
   if (!message || typeof message !== 'string') throw new Error('sendDm: message required (string)');
@@ -35,10 +40,16 @@ export async function sendDm({ handle, message, runCommand = defaultRunCommand, 
   }
 }
 
-export async function sendGroup({ chatGuid, message, runCommand = defaultRunCommand, platform = process.platform } = {}) {
+export async function sendGroup({
+  chatGuid,
+  message,
+  runCommand = defaultRunCommand,
+  platform = process.platform,
+} = {}) {
   if (platform !== 'darwin') return { ok: false, reason: 'non-macos' };
   if (!chatGuid) throw new Error('sendGroup: chatGuid required');
-  if (!message || typeof message !== 'string') throw new Error('sendGroup: message required (string)');
+  if (!message || typeof message !== 'string')
+    throw new Error('sendGroup: message required (string)');
   await waitForRateLimit();
   const script = `
     tell application "Messages"
@@ -73,13 +84,24 @@ function defaultRunCommand(cmd, args, { timeoutMs = 15_000 } = {}) {
     let timed = false;
     const timer = setTimeout(() => {
       timed = true;
-      try { child.kill('SIGTERM'); } catch { /* gone */ }
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* gone */
+      }
       reject(new Error(`${cmd} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     timer.unref?.();
-    child.stdout?.on('data', (c) => { stdout += c; });
-    child.stderr?.on('data', (c) => { stderr += c; });
-    child.on('error', (e) => { clearTimeout(timer); if (!timed) reject(e); });
+    child.stdout?.on('data', (c) => {
+      stdout += c;
+    });
+    child.stderr?.on('data', (c) => {
+      stderr += c;
+    });
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      if (!timed) reject(e);
+    });
     child.on('exit', (code) => {
       clearTimeout(timer);
       if (timed) return;

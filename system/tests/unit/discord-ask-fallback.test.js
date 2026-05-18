@@ -1,6 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert';
-import { renderAskAsText, isDiscordSession } from '../../io/integrations/discord/ask-fallback.js';
+import test from 'node:test';
+import { isDiscordSession, renderAskAsText } from '../../io/integrations/discord/ask-fallback.js';
 
 test('renderAskAsText numbers string options', () => {
   const out = renderAskAsText({

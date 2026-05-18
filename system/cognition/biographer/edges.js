@@ -5,7 +5,12 @@
 
 import * as store from '../memory/store.js';
 
-export async function writeMentionsEdge(db, eventId, entityId, { weight, context, derived_from_trust } = {}) {
+export async function writeMentionsEdge(
+  db,
+  eventId,
+  entityId,
+  { weight, context, derived_from_trust } = {},
+) {
   return store.relate(db, eventId, entityId, 'mentions', { weight, context, derived_from_trust });
 }
 

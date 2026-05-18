@@ -67,15 +67,13 @@ export function writeHealthAlert(alertPath, invariants, state) {
     '',
     `Generated: ${generated}`,
     '',
-    `${alerts.length} invariant${alerts.length === 1 ? '' : 's'} require manual attention. `
-      + 'Auto-repair has escalated past its safety floor — investigate before resuming normal use.',
+    `${alerts.length} invariant${alerts.length === 1 ? '' : 's'} require manual attention. ` +
+      'Auto-repair has escalated past its safety floor — investigate before resuming normal use.',
     '',
     '---',
     '',
   ].join('\n');
-  const body = alerts
-    .map((inv) => renderEntry(inv, state.invariants[inv.name]))
-    .join('\n---\n\n');
+  const body = alerts.map((inv) => renderEntry(inv, state.invariants[inv.name])).join('\n---\n\n');
   writeFileSync(alertPath, header + body, { mode: 0o644 });
   return { wrote: true, removed: false, names: alerts.map((i) => i.name) };
 }

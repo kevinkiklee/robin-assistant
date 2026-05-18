@@ -1,10 +1,5 @@
 import { strict as assert } from 'node:assert';
-import {
-  mkdirSync as __robinMkdirSync,
-  writeFileSync,
-  readFileSync,
-  statSync,
-} from 'node:fs';
+import { mkdirSync as __robinMkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir as __robinTmpdir } from 'node:os';
 import { join as __robinJoin } from 'node:path';
 import test from 'node:test';

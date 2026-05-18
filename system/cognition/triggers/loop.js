@@ -23,7 +23,13 @@ import {
  *   batchSize  — events per tick (default 100)
  *   logger     — console-like; warn/error only used
  */
-export function createTriggerTick({ db, engine, dispatchTool, batchSize = 100, logger = console } = {}) {
+export function createTriggerTick({
+  db,
+  engine,
+  dispatchTool,
+  batchSize = 100,
+  logger = console,
+} = {}) {
   if (!db) throw new Error('createTriggerTick: db is required');
   if (!engine) throw new Error('createTriggerTick: engine is required');
   if (typeof dispatchTool !== 'function') {
@@ -62,9 +68,12 @@ export function createTriggerTick({ db, engine, dispatchTool, batchSize = 100, l
           event: normalizeEvent(ev),
           dispatchTool,
           lookupLastFire: (name) => lookupLastFire(db, name),
-          recordFire: (rec) => recordTriggerFire(db, rec).catch((e) => {
-            logger.warn?.(`[triggers] recordTriggerFire failed for ${rec.name}: ${e?.message ?? e}`);
-          }),
+          recordFire: (rec) =>
+            recordTriggerFire(db, rec).catch((e) => {
+              logger.warn?.(
+                `[triggers] recordTriggerFire failed for ${rec.name}: ${e?.message ?? e}`,
+              );
+            }),
         });
         fired += result.fired ?? 0;
       } catch (e) {

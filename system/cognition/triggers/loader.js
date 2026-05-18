@@ -26,10 +26,9 @@
 // same trust level as user-data scripts. Do NOT load triggers from
 // untrusted sources.
 
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { surql } from 'surrealdb';
 
 export function compileWhen(source) {
   if (source == null) return null;

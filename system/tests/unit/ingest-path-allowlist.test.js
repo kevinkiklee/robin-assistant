@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { strict as assert } from 'node:assert';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { strict as assert } from 'node:assert';
 
 import { createIngestTool } from '../../io/mcp/tools/ingest.js';
 

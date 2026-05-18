@@ -61,10 +61,7 @@ test('explain() returns non-empty markdown for every invariant', () => {
 // invariants are owned by a parallel lane (prompt-injection) and excluded
 // from the assertion until that lane lands their remediation fields:
 // `mcp.wiring_global_present` and `mcp.wiring_project_present`.
-const REMEDIATION_PENDING = new Set([
-  'mcp.wiring_global_present',
-  'mcp.wiring_project_present',
-]);
+const REMEDIATION_PENDING = new Set(['mcp.wiring_global_present', 'mcp.wiring_project_present']);
 
 test('remediation field is required + non-empty string|string[]', () => {
   for (const inv of INVARIANTS) {

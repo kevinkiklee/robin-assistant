@@ -59,9 +59,7 @@ test('extractBody decodes a single-part text/plain message', () => {
 });
 
 test('extractBody prefers text/plain over text/html in multipart/alternative', () => {
-  const body = extractBody(
-    multipartAlt({ plain: 'plain version', html: '<p>html version</p>' }),
-  );
+  const body = extractBody(multipartAlt({ plain: 'plain version', html: '<p>html version</p>' }));
   assert.equal(body, 'plain version');
 });
 

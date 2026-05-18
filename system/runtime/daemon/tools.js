@@ -1,46 +1,49 @@
-import { getSessionId } from '../mcp/current-call.js';
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { isEnabled, readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
 import { createArchiveHistoryTool } from '../../io/mcp/tools/archive-history.js';
-import { createExplainLearningTool } from '../../io/mcp/tools/explain-learning.js';
-import { createExplainPlaybookTool } from '../../io/mcp/tools/explain-playbook.js';
-import { createGetCalibrationTool } from '../../io/mcp/tools/get-calibration.js';
-import { createGetPlaybookTool } from '../../io/mcp/tools/get-playbook.js';
-import { createListCommStyleSnapshotsTool } from '../../io/mcp/tools/list-comm-style-snapshots.js';
-import { createListPlaybooksTool } from '../../io/mcp/tools/list-playbooks.js';
-import { createProposePlaybookTool } from '../../io/mcp/tools/propose-playbook.js';
-import { createRecordOutcomeTool } from '../../io/mcp/tools/record-outcome.js';
 import { createAuditTool } from '../../io/mcp/tools/audit.js';
+import {
+  createBrowserExtractTool,
+  createBrowserScreenshotTool,
+  createBrowserVisitTool,
+} from '../../io/mcp/tools/browser.js';
 import { createCheckActionTool } from '../../io/mcp/tools/check-action.js';
 import { createExplainActionTrustTool } from '../../io/mcp/tools/explain-action-trust.js';
+import { createExplainLearningTool } from '../../io/mcp/tools/explain-learning.js';
+import { createExplainPlaybookTool } from '../../io/mcp/tools/explain-playbook.js';
 import { createExplainRecallTool } from '../../io/mcp/tools/explain-recall.js';
 import { createFindEntityTool } from '../../io/mcp/tools/find-entity.js';
 import { createGetArcTool } from '../../io/mcp/tools/get-arc.js';
+import { createGetCalibrationTool } from '../../io/mcp/tools/get-calibration.js';
 import { createGetCommStyleTool } from '../../io/mcp/tools/get-comm-style.js';
 import { createGetEntityTool } from '../../io/mcp/tools/get-entity.js';
 import { createGetHotTool } from '../../io/mcp/tools/get-hot.js';
 import { createGetKnowledgeTool } from '../../io/mcp/tools/get-knowledge.js';
+import { createGetPlaybookTool } from '../../io/mcp/tools/get-playbook.js';
 import { createGetProfileTool } from '../../io/mcp/tools/get-profile.js';
 import { createHealthTool } from '../../io/mcp/tools/health.js';
-import { createBrowserExtractTool, createBrowserScreenshotTool, createBrowserVisitTool } from '../../io/mcp/tools/browser.js';
 import { createImessageSendTool } from '../../io/mcp/tools/imessage-send.js';
 import { createIngestTool } from '../../io/mcp/tools/ingest.js';
 import { createIntegrationRunTool } from '../../io/mcp/tools/integration-run.js';
 import { createIntegrationStatusTool } from '../../io/mcp/tools/integration-status.js';
 import { createLintTool } from '../../io/mcp/tools/lint.js';
 import { createListArcsTool } from '../../io/mcp/tools/list-arcs.js';
+import { createListCommStyleSnapshotsTool } from '../../io/mcp/tools/list-comm-style-snapshots.js';
 import { createListEpisodesTool } from '../../io/mcp/tools/list-episodes.js';
 import { createListJobsTool } from '../../io/mcp/tools/list-jobs.js';
 import { createListJournalTool } from '../../io/mcp/tools/list-journal.js';
 import { createListOpenPredictionsTool } from '../../io/mcp/tools/list-open-predictions.js';
 import { createListPatternsTool } from '../../io/mcp/tools/list-patterns.js';
+import { createListPlaybooksTool } from '../../io/mcp/tools/list-playbooks.js';
 import { createListRulesTool } from '../../io/mcp/tools/list-rules.js';
 import { createMacosNotifyTool } from '../../io/mcp/tools/macos-notify.js';
 import { createPredictTool } from '../../io/mcp/tools/predict.js';
+import { createProposePlaybookTool } from '../../io/mcp/tools/propose-playbook.js';
 import { createRecallTool } from '../../io/mcp/tools/recall.js';
 import { createRecentRefusalsTool } from '../../io/mcp/tools/recent-refusals.js';
 import { createRecordCorrectionTool } from '../../io/mcp/tools/record-correction.js';
+import { createRecordOutcomeTool } from '../../io/mcp/tools/record-outcome.js';
 import { createRelatedEntitiesTool } from '../../io/mcp/tools/related-entities.js';
 import { createRememberTool } from '../../io/mcp/tools/remember.js';
 import { createResolvePredictionTool } from '../../io/mcp/tools/resolve-prediction.js';
@@ -52,6 +55,7 @@ import { createShowStepHealthTool } from '../../io/mcp/tools/show-step-health.js
 import { createShowTelemetryRollupTool } from '../../io/mcp/tools/show-telemetry-rollup.js';
 import { createUpdateActionPolicyTool } from '../../io/mcp/tools/update-action-policy.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
+import { getSessionId } from '../mcp/current-call.js';
 
 /**
  * Build the MCP tool array from a ctx. Pure: no side effects, no module

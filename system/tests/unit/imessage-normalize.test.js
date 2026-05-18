@@ -66,14 +66,8 @@ test('isFromMe handles 1 / true / falsy', () => {
 
 test('isAllowed: DM matches by handle in directHandles', () => {
   const allow = { directHandles: new Set(['+15551234567']), groupChats: new Set() };
-  assert.equal(
-    isAllowed({ chat_style: 45, handle: '+15551234567' }, allow),
-    true,
-  );
-  assert.equal(
-    isAllowed({ chat_style: 45, handle: '+19999999999' }, allow),
-    false,
-  );
+  assert.equal(isAllowed({ chat_style: 45, handle: '+15551234567' }, allow), true);
+  assert.equal(isAllowed({ chat_style: 45, handle: '+19999999999' }, allow), false);
 });
 
 test('isAllowed: group matches by chat_guid in groupChats', () => {
@@ -82,26 +76,17 @@ test('isAllowed: group matches by chat_guid in groupChats', () => {
     isAllowed({ chat_style: 43, chat_guid: 'CHAT-GUID-1', handle: 'anybody' }, allow),
     true,
   );
-  assert.equal(
-    isAllowed({ chat_style: 43, chat_guid: 'OTHER', handle: 'anybody' }, allow),
-    false,
-  );
+  assert.equal(isAllowed({ chat_style: 43, chat_guid: 'OTHER', handle: 'anybody' }, allow), false);
 });
 
 test('isAllowed: group membership does NOT auto-allow direct messages from same handle', () => {
   const allow = { directHandles: new Set(), groupChats: new Set(['CHAT-1']) };
-  assert.equal(
-    isAllowed({ chat_style: 45, handle: 'someone@x.com' }, allow),
-    false,
-  );
+  assert.equal(isAllowed({ chat_style: 45, handle: 'someone@x.com' }, allow), false);
 });
 
 test('isAllowed normalizes the handle on lookup', () => {
   const allow = { directHandles: new Set(['user@x.com']), groupChats: new Set() };
-  assert.equal(
-    isAllowed({ chat_style: 45, handle: 'e:USER@X.com' }, allow),
-    true,
-  );
+  assert.equal(isAllowed({ chat_style: 45, handle: 'e:USER@X.com' }, allow), true);
 });
 
 test('isAllowed: missing row or allowlist is denied', () => {
