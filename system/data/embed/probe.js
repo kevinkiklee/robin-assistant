@@ -32,11 +32,14 @@ export async function writeEmbedProbe(db, embedFn) {
 
   let priorTs = null;
   try {
+    // Direct record-id access: write side UPSERTs `runtime_state:embed_probe`.
+    // `WHERE id = "string"` does not match a RecordId in v2.0.3.
     const builder = db.query(
-      'SELECT last_success_ts FROM runtime_state WHERE id = "runtime:embed_probe";',
+      'SELECT last_success_ts FROM runtime_state:embed_probe;',
     );
-    const rows = await builder.collect();
-    priorTs = rows?.[0]?.last_success_ts ?? null;
+    // `.collect()` returns [statementResults, ...]; destructure once.
+    const [results] = await builder.collect();
+    priorTs = results?.[0]?.last_success_ts ?? null;
   } catch {
     // No prior row, table missing, or DB transient — fall through. The
     // failure-path UPSERT below still creates the row with priorTs=null.
@@ -46,7 +49,10 @@ export async function writeEmbedProbe(db, embedFn) {
   let errorMessage = null;
   try {
     const vec = await embedFn(PROBE_TEXT);
-    if (!Array.isArray(vec) || vec.length === 0) {
+    // Accept both Array and TypedArray: production embedders (gemini, ollama,
+    // mxbai) return Float32Array, which Array.isArray() rejects. Duck-type on
+    // a numeric .length instead.
+    if (!vec || typeof vec.length !== 'number' || vec.length === 0) {
       throw new Error('embedder returned empty vector');
     }
     ok = true;

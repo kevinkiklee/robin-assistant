@@ -42,9 +42,17 @@ export default {
       return { ok: true, skipped: 'workload_active' };
     }
 
+    // SurrealDB v2.0.3's connect() requires a URL — calling `db.connect()`
+    // without one throws inside parseEndpoint(undefined). `db.__url` is
+    // stashed by our connect() wrapper in system/data/db/client.js.
+    const url = ctx.db.__url;
+    if (!url) {
+      return { ok: false, error: 'no_stashed_url', evidence: { hint: 'db.__url missing; connect() wrapper regression' } };
+    }
+
     try {
       await ctx.db.close();
-      await ctx.db.connect();
+      await ctx.db.connect(url);
     } catch (e) {
       return {
         ok: false,
@@ -55,8 +63,9 @@ export default {
 
     try {
       const builder = ctx.db.query(PROBE_SQL);
-      const rows = await builder.collect();
-      if (!rows || rows.length === 0) {
+      // `.collect()` returns [statementResults]; unwrap before checking empty.
+      const [results] = await builder.collect();
+      if (!results || results.length === 0) {
         return { ok: false, error: 'probe_empty' };
       }
       return { ok: true };

@@ -33,17 +33,22 @@ export default {
   async check(ctx) {
     if (!ctx?.db) return { ok: false, error: 'no_db_handle' };
     try {
+      // Direct record-id access: writers UPSERT `runtime_state:hot_reload_watcher`
+      // (see job-hot-reload.js writeWatcherState). `WHERE id = "string"` does
+      // not match a RecordId in v2.0.3 — use the bare record literal.
       const builder = ctx.db.query(
-        'SELECT active, registered_at FROM runtime_state WHERE id = "runtime:hot_reload_watcher";',
+        'SELECT active, registered_at FROM runtime_state:hot_reload_watcher;',
       );
-      const rows = await builder.collect();
-      if (!rows?.[0]) {
-        return { ok: false, error: 'watcher_not_registered' };
+      // `.collect()` returns [statementResults, ...]; for one SELECT that's
+      // [[row1, row2, ...]]. Destructure once to get the row array, then
+      // index for the first record.
+      const [results] = await builder.collect();
+      const row = results?.[0];
+      if (!row) return { ok: false, error: 'watcher_not_registered' };
+      if (row.active !== true) {
+        return { ok: false, error: 'watcher_inactive', evidence: { row } };
       }
-      if (rows[0].active !== true) {
-        return { ok: false, error: 'watcher_inactive', evidence: { row: rows[0] } };
-      }
-      return { ok: true, evidence: { registered_at: rows[0].registered_at } };
+      return { ok: true, evidence: { registered_at: row.registered_at } };
     } catch (e) {
       return { ok: false, error: e.message ?? 'check_failed' };
     }

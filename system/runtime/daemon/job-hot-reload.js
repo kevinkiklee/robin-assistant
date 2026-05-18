@@ -21,6 +21,10 @@ const DEFAULT_DEBOUNCE_MS = 2_000;
 /**
  * Best-effort state writer. Errors are swallowed — losing observability is
  * preferable to crashing the daemon over a state-row write.
+ *
+ * Returns the promise so callers that need ordering against subsequent
+ * invariant evaluation (e.g. daemon boot calling startJobHotReload before
+ * runBootInvariants) can await it. Other callers can ignore the return.
  */
 async function writeWatcherState(db, fields) {
   if (!db) return;
@@ -160,13 +164,16 @@ export function startJobHotReload({
   }
 
   // Record presence for the runtime.hot_reload_watcher_active invariant.
-  // Fire-and-forget: avoids forcing every caller to await an async start.
-  writeWatcherState(db, {
+  // The returned `ready` promise lets callers (specifically the daemon boot
+  // path) order this write before `runBootInvariants` reads the row. Other
+  // callers can ignore `ready`; the watcher itself does not depend on it.
+  const ready = writeWatcherState(db, {
     active: watchers.length > 0,
     registered_at: new Date().toISOString(),
   });
 
   return {
+    ready,
     stop() {
       stopped = true;
       if (timer) {

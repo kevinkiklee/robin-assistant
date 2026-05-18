@@ -216,11 +216,24 @@ export async function startDaemon() {
           // resilient-by-design: it swallows DB write failures internally
           // and records its own error envelope, so this tick body just
           // surfaces "embedder not loaded yet" as a debug-level skip.
+          //
+          // fireImmediately: writes the probe row at scheduler start so the
+          // `daemon.embedder_load_age` invariant has a baseline within
+          // seconds of daemon boot — otherwise the row stays unwritten for
+          // the first 24h and the invariant falsely warns post-restart.
+          // The gate below still skips when the embedder isn't loaded yet.
           name: 'embed-probe',
           intervalMs: 24 * 60 * 60_000,
+          fireImmediately: true,
           tick: async () => {
-            if (!ctx.embedder?.wrap?.isLoaded?.()) {
-              console.warn('[embed-probe] embedder not loaded; skipping');
+            // Don't gate on isLoaded(): the embedder is lazy and the probe
+            // itself is the right trigger to warm it. writeEmbedProbe
+            // wraps embed() in try/catch and records the failure, so a
+            // broken embedder surfaces via last_error rather than silently
+            // skipping. The defensive guard is only against a missing
+            // wrap (boot misconfigured) — not the cold-but-loadable case.
+            if (typeof ctx.embedder?.wrap?.embed !== 'function') {
+              console.warn('[embed-probe] embedder wrap missing; skipping');
               return;
             }
             try {
@@ -346,6 +359,37 @@ export async function startDaemon() {
       console.warn(`[introspection] faculty start failed (non-fatal): ${e.message}`);
     }
 
+    // Hot-reload: SIGTERM self on user-data .js change so launchctl respawns
+    // with a fresh ESM module graph. Without this, edits to
+    // user-data/jobs/**/*.js (and user-data/io/**/*.js) silently use the
+    // cached pre-edit module — the root cause of the 2026-05-16 daily-briefing
+    // schema_version=2 regression. Disabled via env to keep tests + headless
+    // CI runs from surprise-bouncing themselves.
+    //
+    // Started BEFORE runBootInvariants so its `active: true` state-row write
+    // lands before the boot tick reads `runtime_state:hot_reload_watcher`.
+    // The prior daemon's shutdown stamp sets active=false; if invariants ran
+    // first, runtime.hot_reload_watcher_active would falsely warn.
+    const hotReload =
+      process.env.ROBIN_DISABLE_HOT_RELOAD === '1'
+        ? { stop() {} }
+        : startJobHotReload({
+            paths: [
+              paths.data.jobs(),
+              `${paths.data.home()}/io`,
+              `${paths.data.home()}/triggers`,
+            ],
+            log: console.log,
+            db: ctx.db,
+          });
+    if (hotReload.ready) {
+      try {
+        await hotReload.ready;
+      } catch {
+        // state write failures are non-fatal; the watcher still runs
+      }
+    }
+
     // One-shot boot-time invariants run. Skipped when flag is false.
     // Failures here log but do not abort daemon boot — the heartbeat bucket
     // catches the same condition on the next tick.
@@ -365,25 +409,6 @@ export async function startDaemon() {
     // origin check, other apps running as the same user that can't read
     // .mcp.json) from invoking tools.
     const httpServer = startHttp({ ctx, tools, routes, port, authToken });
-
-    // Hot-reload: SIGTERM self on user-data .js change so launchctl respawns
-    // with a fresh ESM module graph. Without this, edits to
-    // user-data/jobs/**/*.js (and user-data/io/**/*.js) silently use the
-    // cached pre-edit module — the root cause of the 2026-05-16 daily-briefing
-    // schema_version=2 regression. Disabled via env to keep tests + headless
-    // CI runs from surprise-bouncing themselves.
-    const hotReload =
-      process.env.ROBIN_DISABLE_HOT_RELOAD === '1'
-        ? { stop() {} }
-        : startJobHotReload({
-            paths: [
-              paths.data.jobs(),
-              `${paths.data.home()}/io`,
-              `${paths.data.home()}/triggers`,
-            ],
-            log: console.log,
-            db: ctx.db,
-          });
 
     lifecycle.ready({
       scheduler,

@@ -13,13 +13,15 @@ function makeFakeDb({ selectRows = [], onUpsert = () => {} } = {}) {
     query(sql, params) {
       calls.push({ sql, params });
       if (/^\s*SELECT/i.test(sql)) {
-        return { collect: async () => selectRows };
+        // `.collect()` returns [statementResults, ...]; wrap rows so the
+        // fake matches the real Surreal v2.0.3 envelope.
+        return { collect: async () => [selectRows] };
       }
       // UPSERT
       return {
         collect: async () => {
           onUpsert(params ?? {});
-          return [];
+          return [[]];
         },
       };
     },
@@ -34,7 +36,8 @@ test('writeEmbedProbe success path writes last_success_ts and null last_error', 
       upserted = fields;
     },
   });
-  const embedFn = async () => new Array(1024).fill(0.1);
+  // Float32Array matches what production embedders (gemini, ollama, mxbai) return.
+  const embedFn = async () => new Float32Array(1024).fill(0.1);
   const before = Date.now();
   const result = await writeEmbedProbe(db, embedFn);
   const after = Date.now();

@@ -40,11 +40,16 @@ export default {
   async check(ctx) {
     if (!ctx?.db) return { ok: false, error: 'no_db_handle' };
     try {
+      // Direct record-id access: writeEmbedProbe UPSERTs `runtime_state:embed_probe`.
+      // `WHERE id = "string"` does not match a RecordId in v2.0.3 — use the
+      // bare record literal.
       const builder = ctx.db.query(
-        'SELECT last_success_ts FROM runtime_state WHERE id = "runtime:embed_probe";',
+        'SELECT last_success_ts FROM runtime_state:embed_probe;',
       );
-      const rows = await builder.collect();
-      const lastTs = rows?.[0]?.last_success_ts;
+      // `.collect()` returns [statementResults, ...]; destructure once to
+      // unwrap the SELECT's row array.
+      const [results] = await builder.collect();
+      const lastTs = results?.[0]?.last_success_ts;
       if (!lastTs) {
         return {
           ok: false,

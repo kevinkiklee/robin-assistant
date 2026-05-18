@@ -120,6 +120,11 @@ export async function connect({
   } finally {
     clearTimeout(timer);
   }
+  // Stash URL so callers (e.g. mcp.daemon_authenticated_after_reconnect)
+  // can replay it through `connect()` — Surreal.connect() in v2.0.3 requires
+  // a URL argument; calling `db.connect()` without one throws inside
+  // parseEndpoint(undefined).
+  db.__url = engine;
   // Remote schemes need sign-in. Caller can pass `auth` explicitly; otherwise
   // we fall back to config.json's db.user/db.pass via defaultDbAuth(). Embedded
   // schemes (mem://, surrealkv://, rocksdb://) don't authenticate.
