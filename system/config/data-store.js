@@ -128,9 +128,40 @@ export function resolveHomeStrict({ pointerPath } = {}) {
   const searchPaths = pointerPath != null ? [pointerPath] : pointerLocation().read;
 
   // Find the first existing pointer file.
-  const found = searchPaths.find((p) => existsSync(p));
+  let found = searchPaths.find((p) => existsSync(p));
   if (!found) {
-    throw new Error('Robin is not installed. Run: robin install');
+    // Self-heal: when both pointers are missing — the recurring delete race
+    // when multiple concurrent Claude sessions run `robin install --upgrade`
+    // or postinstall passes — try to resynthesise the pointer from the v2
+    // marker (`<home>/runtime/install/.marker.json`) before giving up. This
+    // restores the strict-mode contract for callers (resolveHomeStrict still
+    // either returns a valid home or throws) while making every CLI command
+    // automatically tolerant of the delete race rather than only the
+    // `robin install` path.
+    //
+    // Skip when test overrides are active — `pointerPath` is explicit
+    // injection; `ROBIN_POINTER_PATH` is the env-driven equivalent used by
+    // most invariant tests. Both signal isolation from the real install, so
+    // auto-recovery (which writes the real package-root pointer) would
+    // corrupt the production install during a test run.
+    if (pointerPath == null && !process.env.ROBIN_POINTER_PATH) {
+      const homes = discoverExistingHomes();
+      const bestMarker = homes
+        .filter((h) => h.kind === 'marker')
+        .sort((a, b) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? ''))[0];
+      if (bestMarker) {
+        try {
+          writePointer({ home: bestMarker.path, installedBy: 'resolve-home-recover' });
+          found = searchPaths.find((p) => existsSync(p));
+        } catch {
+          // writePointer's primary may be read-only; fall through to error
+          // below if both writes failed.
+        }
+      }
+    }
+    if (!found) {
+      throw new Error('Robin is not installed. Run: robin install');
+    }
   }
 
   let parsed;
