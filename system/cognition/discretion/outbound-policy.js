@@ -1,36 +1,8 @@
-import { BoundQuery, surql } from 'surrealdb';
-import { DAY_MS } from '../../config/time.js';
+import { BoundQuery } from 'surrealdb';
 import { isOutboundBlocked } from '../memory/scope-registry.js';
 import { PII_PATTERNS, SECRET_PATTERNS } from './outbound-patterns.js';
 import { logRefusal } from './refusal-log.js';
-
-const UNTRUSTED_LOOKBACK_DAYS = 7;
-const MIN_QUOTE_WORDS = 10;
-// Bound the untrusted-event scan to the most recent N rows. Verbatim quotes
-// from older events are unlikely to appear in a write today, and an
-// unbounded scan turns this guard into a worst-case latency footgun once
-// the events table accumulates.
-const UNTRUSTED_SCAN_LIMIT = 500;
-
-function tokenize(text) {
-  return text.toLowerCase().split(/\s+/).filter(Boolean);
-}
-
-function containsVerbatim(replyText, sourceText, minWords = MIN_QUOTE_WORDS) {
-  const reply = tokenize(replyText);
-  const source = tokenize(sourceText);
-  if (source.length < minWords || reply.length < minWords) return false;
-  // Build a set of all N-grams in the reply, then scan source N-grams against it.
-  // O(reply + source) instead of the previous O(reply × source).
-  const replyGrams = new Set();
-  for (let i = 0; i + minWords <= reply.length; i++) {
-    replyGrams.add(reply.slice(i, i + minWords).join(' '));
-  }
-  for (let i = 0; i + minWords <= source.length; i++) {
-    if (replyGrams.has(source.slice(i, i + minWords).join(' '))) return true;
-  }
-  return false;
-}
+import { scanForVerbatimQuote } from './verbatim-scan.js';
 
 function logOutbound(db, destination, reason, payload) {
   return logRefusal(db, { direction: 'outbound', destination, reason, payload });
@@ -76,18 +48,10 @@ export async function checkOutbound(db, { destination, text, origin, trustedOrig
   if (isTrustedOrigin(origin ?? destination, trustedOrigins)) {
     return { ok: true };
   }
-  const cutoff = new Date(Date.now() - UNTRUSTED_LOOKBACK_DAYS * DAY_MS);
-  // SurrealDB v3 needs the field used in ORDER BY to appear in the projection.
-  const [rows] = await db
-    .query(
-      surql`SELECT content, ts FROM events WHERE trust IN ['untrusted', 'untrusted-mixed'] AND ts >= ${cutoff} ORDER BY ts DESC LIMIT ${UNTRUSTED_SCAN_LIMIT}`,
-    )
-    .collect();
-  for (const r of rows) {
-    if (containsVerbatim(text, r.content)) {
-      await logOutbound(db, destination, 'untrusted_quote', text);
-      return { ok: false, reason: 'untrusted_quote' };
-    }
+  const scan = await scanForVerbatimQuote(db, text);
+  if (scan.found) {
+    await logOutbound(db, destination, 'untrusted_quote', text);
+    return { ok: false, reason: 'untrusted_quote' };
   }
   return { ok: true };
 }
