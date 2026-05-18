@@ -109,6 +109,26 @@ Manual full-file read of every in-scope module (cognition-e1 and prompt-injectio
 | `system/io/publish/blob.js:43,82` | keep | not-found-as-success for `head` / `del` are idempotent semantics documented in the comments. | — |
 | `system/io/publish/orchestrate.js:73,383` | keep | Source-file stat failure → null path branch; blob delete idempotent. | — |
 | `system/runtime/daemon/cadence-consumer.js:20-22` (mark) | keep | Best-effort log; the next consume reads pending rows and retries. | — |
+| `system/runtime/daemon/lifecycle.js:99-106` finally cleanup (A2 sweep) | document | Best-effort `clearDaemonState` / `releaseDaemonLock` after subsystem stops. Surfacing here would mask the original failure that triggered shutdown; next boot reconciles via lock.js stale-PID detection + writeDaemonState truncate. Added rationale comment. | 9f3caa3 |
+| `system/runtime/daemon/lifecycle.js:55-91` per-subsystem stops | keep | Each subsystem's stop() is wrapped in try/warn/continue so a failing scheduler.stop() can't block httpServer.close(). Standard graceful-shutdown pattern. | — (A2 sweep) |
+| `system/runtime/daemon/http.js:90-97` isLoopbackOrigin | keep | Malformed URL → not loopback by definition. Fail-closed for the rebinding gate. | — (A2 sweep) |
+| `system/runtime/daemon/http.js:243-245` response-already-sent | keep | Documented "response already sent" — second writeHead would throw. | — (A2 sweep) |
+| `system/runtime/cli/commands/web.js:57-58,62` close(db) on shutdown | keep | Process exits immediately after; close best-effort. | — (A2 sweep) |
+| `system/io/mcp/tools/ingest.js:67-71` realpathSync | keep | Path resolution failure → returns `not_found`, the same code path as `existsSync(file_path) === false`. Sensible fallback. | — (A2 sweep) |
+| `system/io/mcp/tools/ingest.js:159-164` LLM parse | keep | JSON.parse failure → returns `extraction_failed` with detail in the response envelope. | — (A2 sweep) |
+| `system/io/mcp/tools/ingest.js:205-211` relateAll throw (A2 sweep) | fix | Was: console.warn + edges_created=0 silently. Caller saw `ok: true` with no edges but couldn't distinguish "no edges to create" from "edges failed". Now: `edges_error: <message>` is added to the response envelope so the caller can decide whether to retry just the edges. | 1ec7ef5 |
+| `system/io/integrations/_framework/capture.js:99-103` embedding warn (A2 sweep) | keep | Resilient-by-design catch documented in CLAUDE.md ("Memory writes — resilient by design"); event row already written. | — |
+| `system/io/integrations/_framework/capture.js:105-107` per-row error capture | keep | Per-row exception accumulated into `result.errors[]` and returned to caller. Explicit. | — (A2 sweep) |
+| `system/config/daemon-state.js:7-10,27-29` (A2 sweep) | keep | ENOENT → null; unlink idempotent. Both correctly minimal. | — |
+| `system/config/data-store.js:350-360` config.json migration parse (A2 sweep) | fix | Was: parse failure silently fell back to `{}`. Now: warn-logs the failure so the user sees the corrupt-config signal during the hooks migration. | d7d7166 |
+| `system/config/data-store.js:293-297,413-417,565-567,377-381` misc fallbacks | keep | Best-effort legacy-marker cleanup, lock cleanup, mtime probe, legacy-marker readback. All have intent comments or obvious semantics. | — (A2 sweep) |
+| `system/config/data-store.js:162-176` pointer dual-write | keep | Primary `EACCES`/`EROFS`/`ENOENT` falls through to fallback; non-recognized errors propagate. Explicit. | — (A2 sweep) |
+| `system/runtime/web/server.js:101-130` table-info best-effort (A2 sweep) | keep | Catches return error sentinels in the result shape or fall through to `null` for the read-only DB browser. UI degrades gracefully. | — |
+| `system/runtime/web/server.js:252-254` socket-unlink (A2 sweep) | keep | Stale socket cleanup before listen — explicit `/* ignore */` comment. | — |
+| `system/runtime/web/server.js:167-174` getRules | keep | Catch returns `{rows:[], error}` to UI. Surfaced. | — (A2 sweep) |
+| `system/runtime/invariants/mcp.wiring-global-present.js:26,35` (A2 sweep) | keep | `readConfig().catch(() => null)` and JSON parse fallback to `null` both feed the invariant's "no_configured_port" / "unparseable" sentinels. Documented behavior. | — |
+| `system/runtime/invariants/mcp.wiring-project-present.js:22,30` (A2 sweep) | keep | Same sentinel pattern as the global counterpart. | — |
+| `system/runtime/daemon/server.js:72,97,106,137,166,174,243,321,333,375,384,404` (A2 sweep) | keep | All catches log + degrade gracefully, with intent comments at each site (boot fail-soft, host watchdog, integration stop, hot-reload, etc.). Reviewed against the rubric — every site is correctly resilient-by-design. | — |
 
 ## A.2 Dead-code + unused-file purge
 
