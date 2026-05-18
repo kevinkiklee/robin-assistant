@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { trimRecallEvents } from '../../format/recall.js';
 import { recall as internalRecall } from '../../../cognition/intuition/engine.js';
 
 export function createRecallTool({ db, embedder, detector, getSessionId }) {
@@ -28,6 +29,24 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         until: { type: 'string', format: 'date-time' },
         explain: { type: 'boolean', default: false },
         scope_descends_from: { type: 'string', minLength: 1, maxLength: 200 },
+        full: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Return untrimmed event content (default trims via snippet-budget; first 5 events kept full to a 4000-char budget, rest truncated to 200 chars).',
+        },
+        snippet_budget_chars: {
+          type: 'integer',
+          minimum: 100,
+          maximum: 20000,
+          description: 'Cumulative char budget for full-content events. Defaults to 4000.',
+        },
+        snippet_per_event_max: {
+          type: 'integer',
+          minimum: 40,
+          maximum: 2000,
+          description: 'Per-event char limit for truncated events. Defaults to 200.',
+        },
       },
       required: ['query'],
     },
@@ -129,8 +148,15 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
         // recall_log write is advisory — never fail the recall on telemetry errors.
       }
 
+      const full = args.full === true;
+      const trimmed = full
+        ? enrichedHits
+        : trimRecallEvents(enrichedHits, {
+            snippetBudgetChars: args.snippet_budget_chars,
+            snippetPerEventMax: args.snippet_per_event_max,
+          });
       return {
-        hits: enrichedHits,
+        hits: trimmed,
         ...(r.explain ? { explain: r.explain } : {}),
       };
     },
