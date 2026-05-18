@@ -101,7 +101,7 @@ export async function buildTools(ctx) {
         }
       },
     }),
-    createRememberTool({ db: ctx.db, embedder: ctx.embedder.wrap, queue: ctx.queue }),
+    createRememberTool({ db: ctx.db, embedder: ctx.embedder.wrap, queue: ctx.queue, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
     createRunBiographerTool({ db: ctx.db, processor: ctx.queue.enqueue }),
     createFindEntityTool({ db: ctx.db, embedder: ctx.embedder.wrap, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
     createGetEntityTool({ db: ctx.db, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
@@ -161,7 +161,7 @@ export async function buildTools(ctx) {
       tools: getTools,
       getJobs: () => ctx.jobs.cache.current,
     }),
-    createIngestTool({ db: ctx.db, embedder: ctx.embedder.wrap, host: ctx.host }),
+    createIngestTool({ db: ctx.db, embedder: ctx.embedder.wrap, host: ctx.host, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
     createImessageSendTool(),
     createBrowserVisitTool(),
     createBrowserScreenshotTool(),

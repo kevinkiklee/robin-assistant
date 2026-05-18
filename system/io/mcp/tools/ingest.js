@@ -9,12 +9,15 @@
 //   - Edge-kind vocabulary maps the LLM's legacy aliases to EDGE_KIND_REGISTRY
 //     kinds (co_occurs_with → occurs_with, precedes → before).
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { resolve as resolvePath } from 'node:path';
 import { surql } from 'surrealdb';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { buildIngestPrompt } from '../../../cognition/jobs/ingest-prompt.js';
 import * as store from '../../../cognition/memory/store.js';
 import { sha256 } from '../../../data/embed/hash.js';
+import { getSessionTaint } from '../../../runtime/mcp/session-taint.js';
 import { RobinPiiRefusedError } from '../../capture/errors.js';
 import { recordEvent } from '../../capture/record-event.js';
 
@@ -56,16 +59,29 @@ async function acquireContent({ content, url, file_path }) {
   }
   if (file_path !== undefined) {
     if (!existsSync(file_path)) return { error: { reason: 'not_found' } };
-    const st = statSync(file_path);
+    // Resolve symlinks before the boundary check — a symlink at ~/x → /etc/passwd
+    // would otherwise pass the prefix check and read the linked target.
+    // realpathSync also canonicalises ../ traversal.
+    let resolved;
+    try {
+      resolved = realpathSync(resolvePath(file_path));
+    } catch {
+      return { error: { reason: 'not_found' } };
+    }
+    const home = realpathSync(homedir());
+    if (resolved !== home && !resolved.startsWith(`${home}/`)) {
+      return { error: { reason: 'outside_home', resolved } };
+    }
+    const st = statSync(resolved);
     if (!st.isFile()) return { error: { reason: 'not_a_file' } };
     if (st.size > MAX_BYTES)
       return { error: { reason: 'too_large', max_bytes: MAX_BYTES, given: st.size } };
-    return { content: readFileSync(file_path, 'utf8'), source_kind: 'file', source_ref: file_path };
+    return { content: readFileSync(resolved, 'utf8'), source_kind: 'file', source_ref: resolved };
   }
   return { error: { reason: 'missing_arg' } };
 }
 
-export function createIngestTool({ db, embedder, host }) {
+export function createIngestTool({ db, embedder, host, getSessionId }) {
   return {
     name: 'ingest',
     description:
@@ -76,6 +92,7 @@ export function createIngestTool({ db, embedder, host }) {
         content: { type: 'string' },
         url: { type: 'string' },
         file_path: { type: 'string' },
+        source_trust: { type: 'string', enum: ['trusted', 'untrusted'] },
       },
     },
     handler: async (input = {}) => {
@@ -96,6 +113,11 @@ export function createIngestTool({ db, embedder, host }) {
         return { ok: true, deduped: true, event_id: String(existingRows[0].id) };
       }
 
+      // Resolve trust: explicit override > session taint > default trusted.
+      const sessionId = getSessionId?.() ?? null;
+      const taint = getSessionTaint(sessionId);
+      const trust = input.source_trust ?? (taint.tainted ? 'untrusted' : 'trusted');
+
       // Record event (with inbound PII guard). RobinPiiRefusedError thrown on match.
       let eventResult;
       try {
@@ -103,6 +125,7 @@ export function createIngestTool({ db, embedder, host }) {
           source: 'ingest',
           content,
           meta: { kind: 'document', source_kind, source_ref },
+          trust,
           guard: guardInboundContent,
         });
       } catch (e) {

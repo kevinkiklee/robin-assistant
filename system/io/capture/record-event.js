@@ -24,7 +24,7 @@ export const VALID_SOURCES = new Set([
 ]);
 
 export async function recordEvent(db, embedder, input) {
-  const { source, content, ts, meta, external_id, guard } = input;
+  const { source, content, ts, meta, external_id, guard, trust } = input;
   if (!VALID_SOURCES.has(source)) {
     throw new Error(`recordEvent: unknown source "${source}"`);
   }
@@ -56,6 +56,7 @@ export async function recordEvent(db, embedder, input) {
     content_hash,
     ...(tsValue ? { ts: tsValue } : {}),
     ...(normalizedMeta ? { meta: normalizedMeta } : {}),
+    ...(trust != null ? { trust } : {}),
   };
 
   const [created] = await db.query(surql`CREATE events CONTENT ${set}`).collect();

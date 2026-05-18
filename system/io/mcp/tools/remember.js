@@ -1,7 +1,8 @@
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
+import { getSessionTaint } from '../../../runtime/mcp/session-taint.js';
 import { recordEvent } from '../../capture/record-event.js';
 
-export function createRememberTool({ db, embedder, queue }) {
+export function createRememberTool({ db, embedder, queue, getSessionId }) {
   return {
     name: 'remember',
     description:
@@ -13,14 +14,19 @@ export function createRememberTool({ db, embedder, queue }) {
         source: { type: 'string', default: 'manual' },
         meta: { type: 'object' },
         trigger_biographer: { type: 'boolean', default: true },
+        source_trust: { type: 'string', enum: ['trusted', 'untrusted'] },
       },
       required: ['content'],
     },
     handler: async (args) => {
+      const sessionId = getSessionId?.() ?? null;
+      const taint = getSessionTaint(sessionId);
+      const trust = args.source_trust ?? (taint.tainted ? 'untrusted' : 'trusted');
       const result = await recordEvent(db, embedder, {
         source: args.source ?? 'manual',
         content: args.content,
         meta: args.meta,
+        trust,
         guard: guardInboundContent,
       });
       if (args.trigger_biographer !== false) {
