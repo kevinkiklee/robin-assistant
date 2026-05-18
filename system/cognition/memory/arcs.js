@@ -45,9 +45,17 @@ export async function extendArc(db, arcId, { entity_ids = [], episode_ids = [] }
   const [rows] = await db.query(new BoundQuery('SELECT * FROM ONLY $id', { id: arcId })).collect();
   const arc = rows?.[0] ?? rows;
   if (!arc?.id) return null;
-  const merged = Array.from(
-    new Set([...(arc.entity_ids ?? []).map(String), ...entity_ids.map(String)]),
-  );
+  // Dedup by stringified id (Set), but preserve original RecordId values so
+  // the schemafull `array<record<entities>>` UPDATE accepts them. Stringifying
+  // the values themselves loses the record-type tag and trips coercion.
+  const seen = new Set();
+  const merged = [];
+  for (const v of [...(arc.entity_ids ?? []), ...entity_ids]) {
+    const key = String(v);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(v);
+  }
   // Reactivate if paused
   const newStatus = arc.status === 'paused' ? 'active' : arc.status;
   await db

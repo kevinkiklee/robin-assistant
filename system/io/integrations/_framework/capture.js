@@ -1,4 +1,5 @@
 import { BoundQuery, surql } from 'surrealdb';
+import { SECRET_PATTERNS } from '../../../cognition/discretion/outbound-patterns.js';
 import { sha256 } from '../../../data/embed/hash.js';
 import { activeProfile, embeddingTable } from '../../../data/embed/profile-router.js';
 
@@ -44,11 +45,38 @@ async function writeEventEmbedding(db, embedder, eventId, content) {
     .collect();
 }
 
-export function createCapture({ db, embedder, source, embed, mode }) {
+// Default inbound-content guard: refuse any row whose content carries a
+// well-known secret shape (GitHub PAT, OpenAI/Anthropic keys, AWS access
+// keys, Stripe live/test, etc.). The same regex set the outbound policy
+// scans on its way out — applying it on capture keeps secret material out
+// of `events.content` so a later recall + outbound write can never leak a
+// token that was sitting in an inbox or chat the user never expected
+// would land in the embedded store.
+function defaultInboundGuard(_db, content) {
+  if (typeof content !== 'string' || content.length === 0) return { ok: true };
+  for (const p of SECRET_PATTERNS) {
+    if (p.regex.test(content)) {
+      return { ok: false, reason: `inbound_secret:${p.name}` };
+    }
+  }
+  return { ok: true };
+}
+
+export function createCapture({ db, embedder, source, embed, mode, guard }) {
+  // `guard === null` → caller explicitly opts out. `guard === undefined` →
+  // default inbound-secret scanner. Any function → caller-supplied check.
+  const activeGuard = guard === undefined ? defaultInboundGuard : guard;
   return async function capture(rows) {
-    const result = { inserted: 0, skipped: 0, updated: 0, errors: [] };
+    const result = { inserted: 0, skipped: 0, updated: 0, refused: 0, errors: [] };
     for (const row of rows) {
       try {
+        if (activeGuard) {
+          const verdict = await activeGuard(db, row.content);
+          if (verdict && verdict.ok === false) {
+            result.refused += 1;
+            continue;
+          }
+        }
         const idKey = deterministicId(row.source ?? source, row.external_id);
         const tsValue = row.ts ? new Date(row.ts) : undefined;
         // The `events` schema dropped the inline `external_id` and `embedding`

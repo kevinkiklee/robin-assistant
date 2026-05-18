@@ -130,20 +130,6 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
   const server = createServer(async (req, res) => {
     try {
       if (rejectNonLoopback(req, res)) return;
-      if (req.method === 'GET' && req.url.startsWith('/sse')) {
-        await handleSse(req, res, { ctx, tools });
-        return;
-      }
-      // POST /messages?sessionId=… is the client→server half of the MCP
-      // SSE protocol. Must be matched BEFORE readJsonBody runs: the SDK's
-      // handlePostMessage reads the raw body via raw-body, and a body that
-      // has already been drained surfaces as 'Invalid message' from the
-      // JSON-RPC parser. Sits outside the auth gate by design — the SSE
-      // transport is loopback-only and has its own session join key.
-      if (req.method === 'POST' && req.url.startsWith('/messages')) {
-        await handlePostMessage(req, res);
-        return;
-      }
       // Unauthenticated supervisor health probe. mcp.daemon_responds invariant
       // SIGTERMs the daemon when this probe fails — leaving the route missing
       // produces a heartbeat-driven SIGTERM/respawn loop. Keep this minimal:
@@ -154,10 +140,17 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
-      // Bearer-token gate for /internal/*. Other paths (health probes, /sse)
-      // remain unauthenticated — the MCP transport has its own auth surface
-      // and probes need to work for supervisors that don't carry the token.
-      if (authToken && req.url.startsWith('/internal/')) {
+      // Bearer-token gate. When `authToken` is configured, /sse, /messages,
+      // and /internal/* all require a valid token. /healthz stays open for
+      // supervisors that probe without the token. Free-form public routes
+      // registered through the routes table remain ungated by default —
+      // they're explicitly opt-in by virtue of not living under /internal,
+      // /sse, or /messages and predate the SSE-transport hardening.
+      const url = req.url ?? '';
+      const requiresAuth =
+        authToken &&
+        (url.startsWith('/sse') || url.startsWith('/messages') || url.startsWith('/internal/'));
+      if (requiresAuth) {
         const presented = extractBearer(req);
         if (!presented || !safeEqual(presented, authToken)) {
           res.writeHead(401, { 'content-type': 'application/json' });
@@ -171,6 +164,19 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
           );
           return;
         }
+      }
+      if (req.method === 'GET' && req.url.startsWith('/sse')) {
+        await handleSse(req, res, { ctx, tools });
+        return;
+      }
+      // POST /messages?sessionId=… is the client→server half of the MCP
+      // SSE protocol. Matched after the auth gate but before readJsonBody:
+      // the SDK's handlePostMessage reads the raw body via raw-body and a
+      // body that has already been drained surfaces as 'Invalid message'
+      // from the JSON-RPC parser.
+      if (req.method === 'POST' && req.url.startsWith('/messages')) {
+        await handlePostMessage(req, res);
+        return;
       }
       const entry = table.get(`${req.method} ${req.url}`);
       if (!entry) {

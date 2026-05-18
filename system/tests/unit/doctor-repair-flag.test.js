@@ -6,8 +6,27 @@
 // unknown name, check-only invariant (no repair), dry-run vs apply.
 
 import assert from 'node:assert';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { doctor } from '../../runtime/cli/commands/doctor.js';
+
+// doctor() resolves ROBIN_HOME on each call; without it, --repair=... throws
+// "Robin is not installed" before the dispatcher even sees the flag. Seeding a
+// tmp ROBIN_HOME at module load gives every test a fresh, valid install
+// pointer without making each test do its own setup.
+const __testHome = join(
+  tmpdir(),
+  `robin-test-doctor-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+mkdirSync(join(__testHome, 'runtime'), { recursive: true });
+mkdirSync(join(__testHome, 'config'), { recursive: true });
+writeFileSync(
+  join(__testHome, 'config', 'config.json'),
+  JSON.stringify({ embedder_profile: 'mxbai-1024' }),
+);
+process.env.ROBIN_HOME = __testHome;
 
 function captureOut() {
   const lines = [];

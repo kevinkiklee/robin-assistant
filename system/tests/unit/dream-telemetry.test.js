@@ -31,7 +31,9 @@ test('writes a success row with the cadence-consumer field shape', async () => {
                   FROM cadence_telemetry`)
     .collect();
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].step, 'knowledge');
+  // The cadence_telemetry table is shared with the cadence consumer; dream
+  // writers prefix `dream.` so rollups can attribute consumption distinctly.
+  assert.equal(rows[0].step, 'dream.knowledge');
   assert.equal(rows[0].duration_ms, 42);
   assert.equal(rows[0].success, true);
   // option<record<dream_triggers>> with NONE projects to undefined in JS.
@@ -48,7 +50,7 @@ test('writes a failure row when err is provided', async () => {
   const [rows] = await db
     .query(surql`SELECT step, success, error FROM cadence_telemetry`)
     .collect();
-  assert.equal(rows[0].step, 'compaction');
+  assert.equal(rows[0].step, 'dream.compaction');
   assert.equal(rows[0].success, false);
   assert.equal(rows[0].error, 'boom');
   await close(db);

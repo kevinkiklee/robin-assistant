@@ -66,6 +66,12 @@ export async function recordStepTelemetry(db, name, ms, err, usage) {
     /* fail-soft */
   }
 
+  // cadence_telemetry is shared with the cadence consumer; prefix the bare
+  // dream step with `dream.` so rollups can attribute consumption to dream
+  // distinctly from cadence-consumer rows that happen to share a step name.
+  // dream_telemetry above gets the bare name because the table itself is
+  // dream-only — no disambiguation needed.
+  const cadenceStep = `dream.${String(name)}`;
   try {
     if (errorMsg !== null) {
       await db
@@ -77,7 +83,7 @@ export async function recordStepTelemetry(db, name, ms, err, usage) {
                duration_ms: $dur, success: $ok, error: $err
              }`,
             {
-              step: String(name),
+              step: cadenceStep,
               tin: tokens_in,
               tout: tokens_out,
               dur: ms,
@@ -99,7 +105,7 @@ export async function recordStepTelemetry(db, name, ms, err, usage) {
                duration_ms: $dur, success: $ok
              }`,
             {
-              step: String(name),
+              step: cadenceStep,
               tin: tokens_in,
               tout: tokens_out,
               dur: ms,

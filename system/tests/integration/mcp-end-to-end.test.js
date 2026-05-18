@@ -45,6 +45,10 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
   try {
     const state = await waitForState(tmp);
     assert.ok(state.port > 0);
+    // /sse + /messages now require Bearer authToken from .state — the daemon
+    // mints it at boot and Claude Code reads it from this file. Tests have to
+    // do the same to clear the auth gate.
+    const auth = state.auth_token ? { Authorization: `Bearer ${state.auth_token}` } : {};
     // Phase 2b/2c/2d/2e/2f core + integration tools. Exact count depends on
     // environment (some integrations are gated by preflight: GA needs
     // GA_PROPERTIES, lrc needs LRC_CATALOG_PATH, chrome needs the local
@@ -62,7 +66,7 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
     const base = `http://127.0.0.1:${state.port}`;
     const ac = new AbortController();
     try {
-      const sse = await fetch(`${base}/sse`, { signal: ac.signal });
+      const sse = await fetch(`${base}/sse`, { signal: ac.signal, headers: auth });
       assert.equal(sse.status, 200, 'SSE handshake');
       const reader = sse.body.getReader();
       const decoder = new TextDecoder();
@@ -101,7 +105,7 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
       const post = async (body) =>
         await fetch(`${base}${endpointPath}`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...auth },
           body: JSON.stringify(body),
         });
 
@@ -160,7 +164,7 @@ test('daemon boots, MCP transport responds, daemon stops cleanly', async () => {
     // branch in handlePostMessage.
     const stray = await fetch(`${base}/messages?sessionId=does-not-exist`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...auth },
       body: '{}',
     });
     assert.equal(stray.status, 404, 'stray POST /messages 404s');

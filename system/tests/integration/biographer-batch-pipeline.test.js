@@ -161,10 +161,13 @@ test('per-event failure isolation: malformed event #3 of 5 → 4 biographed, 1 i
           episode_continues_previous: true,
           episode_summary: null,
         },
-        // ev3 malformed: bogus entity type.
+        // ev3 malformed: `entities` is not an array — hard structural reject
+        // (not a stray-vocab coercion). Off-vocab entity types like `unicorn`
+        // get coerced to `thing` by validateBiographerOutput; only structural
+        // shape errors actually push the event into failed_event_ids.
         {
           event_id: String(ev3.id),
-          entities: [{ name: 'C', type: 'unicorn' }],
+          entities: 'not_an_array',
           edges: [],
           about: [],
           episode_continues_previous: true,

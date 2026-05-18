@@ -7,24 +7,39 @@
 // Spawns the CLI as a subprocess (>300ms on macOS) — gated behind
 // ROBIN_SKIP_SLOW so the inner-loop `test:fast` skips it.
 
-import test from 'node:test';
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import test from 'node:test';
 
 const skip = process.env.ROBIN_SKIP_SLOW === '1';
+
+// Seed a tmp ROBIN_HOME the subprocess can resolve. `doctor --health`
+// reads from `<home>/runtime/` and `<home>/config/config.json`; without a
+// home pointer the CLI exits 1 with "Robin is not installed".
+const __testHome = join(
+  tmpdir(),
+  `robin-doctor-json-${process.pid}-${Math.random().toString(36).slice(2)}`,
+);
+mkdirSync(join(__testHome, 'runtime'), { recursive: true });
+mkdirSync(join(__testHome, 'config'), { recursive: true });
+writeFileSync(
+  join(__testHome, 'config', 'config.json'),
+  JSON.stringify({ embedder_profile: 'mxbai-1024' }),
+);
+const childEnv = { ...process.env, ROBIN_HOME: __testHome };
 
 test('doctor --health --json output has stable top-level shape', { skip }, () => {
   const robin = resolve(process.cwd(), 'system/bin/robin');
   const r = spawnSync('node', [robin, 'doctor', '--health', '--json'], {
     encoding: 'utf8',
     timeout: 30000,
+    env: childEnv,
   });
   // exit_code 0 (healthy) or 2 (degraded) — both produce valid JSON.
-  assert.ok(
-    r.status === 0 || r.status === 2,
-    `doctor exited ${r.status}: ${r.stderr ?? ''}`,
-  );
+  assert.ok(r.status === 0 || r.status === 2, `doctor exited ${r.status}: ${r.stderr ?? ''}`);
   const parsed = JSON.parse(r.stdout);
 
   // Top-level keys (locked at A.4 baseline).
@@ -52,6 +67,7 @@ test('every faculty entry has step + status', { skip }, () => {
   const r = spawnSync('node', [robin, 'doctor', '--health', '--json'], {
     encoding: 'utf8',
     timeout: 30000,
+    env: childEnv,
   });
   const parsed = JSON.parse(r.stdout);
   assert.ok(Array.isArray(parsed.faculties), 'faculties is an array');

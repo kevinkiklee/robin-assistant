@@ -42,12 +42,18 @@ test('0017 seeds runtime:telemetry.config (post-0021 shadow_mode=false) with exp
   assert.equal(cfg.cursor_fallback_window_hours, 24);
   assert.deepEqual(cfg.cadence_hot_steps, ['belief.', 'dream.']);
   assert.equal(cfg.pending_recall_log_hard_ceiling_days, 30);
+  // 0017 seeds the original five; 0026 layers `biographer`, `dream_layer`,
+  // and `state_inference` on top with array::distinct(array::concat(...)),
+  // so the post-all-migrations view has eight entries.
   assert.deepEqual(cfg.faculties_enabled.sort(), [
     'belief',
+    'biographer',
     'dream',
+    'dream_layer',
     'intuition',
     'meta_cognition',
     'reinforcement',
+    'state_inference',
   ]);
   await close(db);
 });
