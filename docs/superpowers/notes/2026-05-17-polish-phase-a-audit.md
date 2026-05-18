@@ -151,11 +151,84 @@ Lane-excluded (not counted as polish orphans; owned by cognition-e1 lane):
 `system/runtime/install/*.js` so the next madge run produces a cleaner
 signal-to-noise ratio.
 
+#### A2 unused-export inventory (no deletions in this pass)
+
+Tooling: ripgrep-based scan that, for each `export {function|const|class}
+<name>` declaration in `system/**/*.js` (test files and reflection-loaded
+directories excluded), looks for any reference outside the declaring file
+inside `system/**` (also excluding `system/tests/**`). A symbol with zero
+external production references is then classified by checking
+`system/tests/**` separately — exclusive test references mark
+`test-only-export`; zero test refs mark `truly-unused`.
+
+Cognition-e1 and prompt-injection lane files were skipped (per task brief
+exclude list).
+
+Total candidates: **112**
+- truly-unused: **18** (recommended for follow-up deletion)
+- test-only-export: **94** (user decides whether to keep — these are
+  helpers exported solely so tests can reach them; deleting them tightens
+  the public surface but requires touching tests)
+
+##### truly-unused (deletion candidates)
+
+| File | Symbol | Note |
+|---|---|---|
+| `system/cognition/memory/tx.js` | `TX_BASE_BACKOFF_MS` | constant |
+| `system/cognition/memory/tx.js` | `TX_JITTER_MS` | constant |
+| `system/cognition/discretion/project-bypass.js` | `getBypassPaths` | helper |
+| `system/cognition/intuition/turn-classifier.js` | `checkSessionCache` | helper |
+| `system/cognition/intuition/turn-classifier.js` | `classifyWithHaiku` | helper |
+| `system/cognition/sessions/conversation-thread.js` | `DEFAULT_WINDOW_MS` | constant |
+| `system/cognition/sessions/conversation-thread.js` | `DEFAULT_MAX_MESSAGES` | constant |
+| `system/cognition/sessions/conversation-thread.js` | `DEFAULT_MAX_TOKENS` | constant |
+| `system/cognition/jobs/resolve-due-predictions.js` | `resolveOutcomeValue` | resolver |
+| `system/cognition/jobs/resolve-due-predictions.js` | `resolveDuration` | resolver |
+| `system/cognition/jobs/resolve-due-predictions.js` | `resolveBehaviorContinuation` | resolver |
+| `system/cognition/jobs/resolve-due-predictions.js` | `_extractKeywords` | helper |
+| `system/runtime/install/agents-md-refresh.js` | `loadIntegrationsForAgentsMd` | helper |
+| `system/runtime/install/agents-md-refresh.js` | `writeMergedAgentsMd` | helper |
+| `system/runtime/hosts/pricing.js` | `PRICING` | constant table |
+| `system/io/integrations/imessage/normalize.js` | `stripRowidPrefix` | helper |
+| `system/io/integrations/imessage/inbox.js` | `DEFAULT_CHAT_DB` | constant |
+| `system/io/integrations/_local/sqlite.js` | `readSqliteSnapshot` | reinforces orphan flag on file itself |
+
+Notes on the truly-unused set:
+- The `resolve-due-predictions.js` cluster of 4 unused exports looks like
+  internal helpers that were probably refactored from exports to inline
+  use but never trimmed.
+- `_extractKeywords` (underscore prefix) signals intent that the symbol
+  was always internal; safe to inline.
+- `_local/sqlite.js`'s only export being unused agrees with the
+  orphan-module finding above; combined evidence makes this the highest-
+  confidence deletion candidate.
+
+##### test-only-export (94 entries — user decides)
+
+Full classified list lives at `tmp/polish-a2-unused-exports-classified.txt`
+(local-only, not committed). Highest-frequency offenders:
+
+- `system/cognition/memory/store.js` — 5 test-only exports
+  (`flagContradiction`, `_resetRecallConfigCache`,
+  `__resetRecallConfigCacheForTests`, `listMemos`, `neighbors`)
+- `system/cognition/memory/scope-registry.js` — 5 (`policyFor`,
+  `isEphemeral`, `isHierarchical`, `ttlDays`, `scopeMatches`)
+- `system/cognition/triggers/loader.js` — 5 (`compileWhen`,
+  `compileTemplate`, `compileArgs`, `compileVarsResolver`,
+  `compileTrigger`)
+
+Two underscore-prefixed cache-reset helpers
+(`__resetRecallConfigCacheForTests`, `__resetEntityCatalogCacheForTests`,
+`_resetBeliefConfigCacheForTests`) are explicitly test seams; do not
+delete unless the corresponding tests are refactored away from cache
+dependency.
+
 ### Decisions
 
 | Item | Decision | Rationale | Commit |
 |---|---|---|---|
 | Per-orphan deletion loop | deferred | First A.2 attempt failed mid-flight; this pass is inventory-only. All 10 final orphans triaged above; only 3 are true follow-up candidates (`_local/sqlite.js`, `audit-entity-ids.js`, `dev-recall.js`). | — |
+| Per-symbol deletion loop (unused exports) | deferred | Inventory-only pass. 18 truly-unused candidates surfaced for follow-up; 94 test-only exports left for user decision (deletion would require coordinated test refactor). | — |
 
 ## A.3 Test gaps + slow-test cleanup
 
