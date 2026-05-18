@@ -132,6 +132,7 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
             content: hit.content,
             ts: hit.ts,
             dist: hit.dist,
+            trust: hit.trust,
             mentions,
           });
         }
