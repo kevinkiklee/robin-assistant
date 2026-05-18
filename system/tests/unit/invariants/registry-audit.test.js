@@ -57,18 +57,27 @@ test('explain() returns non-empty markdown for every invariant', () => {
   }
 });
 
-// Phase A polish (A.4) opens the schema for an optional `remediation` field.
-// Phase B will tighten to required + backfill. For now, accept absent OR
-// string OR array-of-string.
-test('optional remediation field accepts string | string[] | undefined', () => {
+// Phase B (B.2) tightens `remediation` to required on every invariant. Two
+// invariants are owned by a parallel lane (prompt-injection) and excluded
+// from the assertion until that lane lands their remediation fields:
+// `mcp.wiring_global_present` and `mcp.wiring_project_present`.
+const REMEDIATION_PENDING = new Set([
+  'mcp.wiring_global_present',
+  'mcp.wiring_project_present',
+]);
+
+test('remediation field is required + non-empty string|string[]', () => {
   for (const inv of INVARIANTS) {
-    if (inv.remediation === undefined) continue;
-    const ok =
-      typeof inv.remediation === 'string' ||
-      (Array.isArray(inv.remediation) && inv.remediation.every((s) => typeof s === 'string'));
+    if (REMEDIATION_PENDING.has(inv.name)) continue;
+    assert.ok(inv.remediation !== undefined, `${inv.name}.remediation required`);
+    const isString = typeof inv.remediation === 'string' && inv.remediation.length > 0;
+    const isStringArr =
+      Array.isArray(inv.remediation) &&
+      inv.remediation.length > 0 &&
+      inv.remediation.every((s) => typeof s === 'string' && s.length > 0);
     assert.ok(
-      ok,
-      `${inv.name}.remediation must be string, string[], or undefined; got ${typeof inv.remediation}`,
+      isString || isStringArr,
+      `${inv.name}.remediation must be non-empty string or string[]; got ${typeof inv.remediation} (${JSON.stringify(inv.remediation)})`,
     );
   }
 });
