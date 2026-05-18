@@ -129,6 +129,17 @@ The `discretion` faculty enforces three guards. Knowing what they look like avoi
 
 All refusals are logged to the `refusals` table with `direction in ['inbound', 'outbound']`. The user can audit with `robin refusals list`.
 
+### Durable writes
+
+`remember`, `ingest`, `record_correction`, `update_rule`, and `update_action_policy` also pass through `checkDurableWrite`. Refusals return `{ ok: false, reason: 'outbound_blocked', blocked_by: 'session_tainted' | 'pii:<name>' | 'secret:<name>' | 'untrusted_quote' }`. Surface the block to the user; don't paraphrase the same content to bypass it.
+
+The gate is controlled by `ROBIN_INJECTION_GUARD`:
+- `enforce` — refusals returned to the caller.
+- `log` (default) — refusal logged but write proceeds. Use during calibration.
+- `off` — gate disabled entirely (escape hatch).
+
+Inspect calibration data: `robin refusals list --policy=durable-write`.
+
 ## Behavioural expectations
 
 - **Latency:** MCP calls are local SSE. Treat them as inexpensive — sub-100ms typical, no network. The `intuition` injection has a 300ms hard cap and fails open.
