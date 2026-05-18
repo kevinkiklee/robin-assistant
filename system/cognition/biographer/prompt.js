@@ -2,12 +2,19 @@ const SYSTEM_PROMPT = `You are Robin's biographer. For each event, extract struc
 
 Output raw JSON only — NO markdown code fences (no \`\`\`json), NO prose before or after. The shape must be exactly:
 {
-  "entities": [{ "name": string, "type": "person" | "place" | "project" | "topic" | "thing" }, ...],
-  "edges": [{ "from": entity-name, "type": "mentions" | "about" | "precedes" | "works_on" | "participates_in" | "co_occurs_with", "to": entity-name }, ...],
+  "entities": [{ "name": string, "type": "person" | "place" | "project" | "topic" | "thing", "source_event_ids": [string] }, ...],
+  "edges": [{ "from": entity-name, "type": "mentions" | "about" | "precedes" | "works_on" | "participates_in" | "co_occurs_with", "to": entity-name, "source_event_ids": [string] }, ...],
   "about": [entity-name, ...],
   "episode_continues_previous": boolean,
   "episode_summary": string | null
 }
+
+source_event_ids schema for entities and edges:
+  "source_event_ids": {
+    "type": "array",
+    "items": { "type": "string" },
+    "description": "IDs of input events that this extraction is derived from. Cite only events present in the input."
+  }
 
 Vocabulary is closed — do NOT invent new entity types or edge types.
 - Entity types: person, place, project, topic, thing. Map businesses/services/organizations/products to "thing". Map abstract concepts/themes to "topic".
@@ -22,7 +29,8 @@ Rules:
 - Prefer names from the existing-entities catalog when applicable (case-sensitive match).
 - Set episode_continues_previous=true if the event is a clear continuation of the active episode (same topic + temporal proximity); false otherwise.
 - Set episode_summary only when ending an episode (and only if episode_continues_previous=false AND there's an active episode).
-- Be conservative: extract only entities clearly named in the event content.`;
+- Be conservative: extract only entities clearly named in the event content.
+- For every extracted entity and edge, include the source_event_ids field listing which input events justify the extraction.`;
 
 function formatCatalog(catalog) {
   if (catalog.length === 0) return 'Existing entities catalog: (no existing entities yet)';

@@ -18,8 +18,9 @@ import * as store from '../memory/store.js';
 import { withTxRetry } from '../memory/tx.js';
 import { validateBiographerBatchOutput } from './batch-output.js';
 import { buildBiographerBatchPrompt } from './batch-prompt.js';
-import { parseLLMJSON, validateBiographerOutput } from './output.js';
+import { applyDerivedTrust, parseLLMJSON, validateBiographerOutput } from './output.js';
 import { buildBiographerPrompt } from './prompt.js';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 
 // Edge kinds the biographer is allowed to emit, normalized to the registry.
 const ENTITY_EDGE_KINDS = new Set(['works_on', 'participates_in']);
@@ -286,7 +287,7 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
     );
   }
   const expectedIds = toProcess.map((ev) => String(ev.id));
-  const validation = validateBiographerBatchOutput(parsed, expectedIds);
+  const validation = validateBiographerBatchOutput(parsed, expectedIds, toProcess);
   if (!validation.ok) {
     await _recordBatchFallback(db, 'batch_validation');
     return _fallbackPerEvent(
@@ -324,18 +325,25 @@ export async function biographerProcessBatch(db, embedder, host, eventIds, opts 
   // 6. Entity cascade dedup across the whole batch (spec §5).
   //    Collect unique (type, name_lower) keys; resolve once each via
   //    store.upsertEntity (which runs the existing 3-stage cascade).
-  const desiredEntities = new Map(); // key -> { name, type }
+  const desiredEntities = new Map(); // key -> { name, type, derived_from_trust }
   for (const ev of validEvents) {
     const perOut = validation.events.get(String(ev.id));
     for (const ent of perOut.entities) {
       const key = `${ent.type}__${ent.name.toLowerCase()}`;
-      if (!desiredEntities.has(key)) desiredEntities.set(key, { name: ent.name, type: ent.type });
+      if (!desiredEntities.has(key)) {
+        desiredEntities.set(key, { name: ent.name, type: ent.type, derived_from_trust: ent.derived_from_trust });
+      } else {
+        // Keep worst-case trust across all events that mention this entity.
+        const existing = desiredEntities.get(key);
+        const merged = mergeTrust([existing.derived_from_trust ?? 'trusted', ent.derived_from_trust ?? 'trusted']);
+        desiredEntities.set(key, { ...existing, derived_from_trust: merged });
+      }
     }
   }
   const keyToId = new Map();
-  for (const [key, { name, type }] of desiredEntities) {
+  for (const [key, { name, type, derived_from_trust }] of desiredEntities) {
     const r = await withTxRetry(() =>
-      store.upsertEntity(db, embedder, { name, type, host, config }),
+      store.upsertEntity(db, embedder, { name, type, host, config, derived_from_trust }),
     );
     keyToId.set(key, r.id);
   }
@@ -707,14 +715,17 @@ async function _processOne(db, embedder, host, eventId, opts = {}) {
   // 4-5. Resolve / create entities through store.upsertEntity, which delegates
   // to the 3-stage cascade in src/graph/upsert-entity.js. Embedding rows land
   // in embeddings_<profile>_entities for the active profile.
+  // Stamp derived_from_trust on extracted entities using the single source event.
+  const stampedEntities = applyDerivedTrust(output.entities, [event]);
   const nameToId = new Map();
-  for (const ent of output.entities) {
+  for (const ent of stampedEntities) {
     const r = await withTxRetry(() =>
       store.upsertEntity(db, embedder, {
         name: ent.name,
         type: ent.type,
         host,
         config,
+        derived_from_trust: ent.derived_from_trust,
       }),
     );
     nameToId.set(ent.name, r.id);

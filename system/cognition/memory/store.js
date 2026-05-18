@@ -280,6 +280,7 @@ export async function relate(db, from, to, kind, opts = {}) {
     ['valid_until', opts.valid_until],
     ['context', opts.context],
     ['meta', opts.meta],
+    ['derived_from_trust', opts.derived_from_trust],
   ]) {
     if (val !== undefined && val !== null) {
       bindings[field] = val;
@@ -357,7 +358,7 @@ export async function relateAll(db, rows) {
         insertFields.push(`weight: 1`);
         updateExprs.push(`weight += 1`);
       } else {
-        for (const f of ['weight', 'valid_from', 'valid_until', 'context', 'meta']) {
+        for (const f of ['weight', 'valid_from', 'valid_until', 'context', 'meta', 'derived_from_trust']) {
           if (row[f] != null) {
             bindings[`${f}${i}`] = row[f];
             insertFields.push(`${f}: $${f}${i}`);

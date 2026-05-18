@@ -1,4 +1,5 @@
 // biographer-output.js — validates the JSON shape the biographer LLM returns.
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 //
 // Edge vocabulary accepts both the new EDGE_KIND_REGISTRY names and the
 // legacy aliases (co_occurs_with, precedes) so existing prompts keep working
@@ -98,6 +99,23 @@ export function parseLLMJSON(content) {
     throw new Error('parseLLMJSON: unterminated JSON object (likely truncated by max_tokens cap)');
   }
   return JSON.parse(candidate);
+}
+
+/**
+ * Server-side trust attribution. The LLM's source_event_ids[] can only cite
+ * events present in the input batch — citations to non-batch ids are dropped
+ * and we fall back to mergeTrust over the full batch (worst-case taint).
+ */
+export function applyDerivedTrust(records, batchEvents) {
+  const batchById = new Map(batchEvents.map(e => [String(e.id), e.trust ?? 'trusted']));
+  const fallback = mergeTrust(batchEvents.map(e => e.trust ?? 'trusted'));
+  return records.map(r => {
+    const cited = (r.source_event_ids ?? [])
+      .map(id => batchById.get(String(id)))
+      .filter(Boolean);
+    const derived = cited.length > 0 ? mergeTrust(cited) : fallback;
+    return { ...r, derived_from_trust: derived };
+  });
 }
 
 const ENTITY_TYPES = new Set(['person', 'place', 'project', 'topic', 'thing']);

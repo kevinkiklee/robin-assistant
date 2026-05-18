@@ -38,7 +38,7 @@ export function entityRecordKey(type, name) {
 }
 
 export async function upsertEntityCascade(db, embedder, input) {
-  const { name, type, scope = 'global', tags = [], meta, host, config = {} } = input;
+  const { name, type, scope = 'global', tags = [], meta, host, config = {}, derived_from_trust } = input;
   if (!name) throw new Error('upsertEntityCascade: name required');
   if (!type) throw new Error('upsertEntityCascade: type required');
 
@@ -119,6 +119,7 @@ export async function upsertEntityCascade(db, embedder, input) {
     scope,
     tags,
     ...(meta ? { meta } : {}),
+    ...(derived_from_trust != null ? { derived_from_trust } : {}),
   };
   const [created] = await db
     .query("UPSERT type::record('entities', $key) CONTENT $fields", {

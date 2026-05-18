@@ -6,9 +6,9 @@
 // A non-array `events` (or non-object outer) is a batch-level failure that
 // the caller should treat as the §8 fallback path.
 
-import { validateBiographerOutput } from './output.js';
+import { applyDerivedTrust, validateBiographerOutput } from './output.js';
 
-export function validateBiographerBatchOutput(o, expectedIds) {
+export function validateBiographerBatchOutput(o, expectedIds, batchEvents = []) {
   if (!o || typeof o !== 'object') {
     return { ok: false, error: 'output must be an object' };
   }
@@ -45,6 +45,16 @@ export function validateBiographerBatchOutput(o, expectedIds) {
     // log; we don't reject otherwise-valid entries because of stray vocab.
     if (v.warnings?.length) {
       entry._biographer_warnings = v.warnings;
+    }
+    // Stamp derived_from_trust on entities and edges using the full batch
+    // as the citation universe (LLM may cite any event in the batch).
+    if (batchEvents.length > 0) {
+      if (Array.isArray(entry.entities)) {
+        entry.entities = applyDerivedTrust(entry.entities, batchEvents);
+      }
+      if (Array.isArray(entry.edges)) {
+        entry.edges = applyDerivedTrust(entry.edges, batchEvents);
+      }
     }
     events.set(id, entry);
   }

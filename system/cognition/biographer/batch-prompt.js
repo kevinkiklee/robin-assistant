@@ -13,14 +13,21 @@ Output raw JSON only — NO markdown code fences (no \`\`\`json), NO prose befor
   "events": [
     {
       "event_id": "<copied verbatim from the input>",
-      "entities": [{ "name": string, "type": "person" | "place" | "project" | "topic" | "thing" }],
-      "edges":    [{ "from": entity-name, "type": "mentions" | "about" | "precedes" | "works_on" | "participates_in" | "co_occurs_with", "to": entity-name }],
+      "entities": [{ "name": string, "type": "person" | "place" | "project" | "topic" | "thing", "source_event_ids": [string] }],
+      "edges":    [{ "from": entity-name, "type": "mentions" | "about" | "precedes" | "works_on" | "participates_in" | "co_occurs_with", "to": entity-name, "source_event_ids": [string] }],
       "about":    [entity-name],
       "episode_continues_previous": boolean,
       "episode_summary": string | null
     }
   ]
 }
+
+source_event_ids schema for entities and edges:
+  "source_event_ids": {
+    "type": "array",
+    "items": { "type": "string" },
+    "description": "IDs of input events that this extraction is derived from. Cite only events present in the input."
+  }
 
 Vocabulary is closed — do NOT invent new entity types or edge types.
 - Entity types: person, place, project, topic, thing. Map businesses/services/organizations/products to "thing". Map abstract concepts/themes to "topic".
@@ -35,7 +42,8 @@ Rules:
 - Prefer names from the existing-entities catalog when applicable (case-sensitive match).
 - episode_continues_previous reflects whether this event continues the active episode for the source; the active episode may close mid-batch if an earlier event in the batch already broke continuity.
 - Set episode_summary only when episode_continues_previous=false AND there is an active episode for this source.
-- Be conservative: extract only entities clearly named in the event content.`;
+- Be conservative: extract only entities clearly named in the event content.
+- For every extracted entity and edge, include the source_event_ids field listing which input events justify the extraction.`;
 
 const MAX_EVENT_CONTENT_CHARS = 2000;
 
