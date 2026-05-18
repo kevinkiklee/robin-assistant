@@ -97,6 +97,11 @@ export function createLifecycle({ lockPath, statePath, logDir } = {}) {
         }
       }
     } finally {
+      // Best-effort cleanup of on-disk lifecycle artifacts. Surfacing an
+      // error here would mask the original failure (which is already on its
+      // way to log via the per-subsystem catches above); the next daemon
+      // boot will reconcile any orphaned state/lock files via lock.js's
+      // stale-PID detection and writeDaemonState's truncate-on-write.
       if (statePath) await clearDaemonState(statePath).catch(() => {});
       if (acquired && lockPath) await releaseDaemonLock(lockPath).catch(() => {});
       if (uninstallFatal) uninstallFatal();
