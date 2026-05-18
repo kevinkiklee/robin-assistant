@@ -53,6 +53,12 @@ export default {
   phase: 'mcp',
   description: 'Daemon HTTP /healthz returns ok within 1 second.',
 
+  remediation: [
+    'invariant attempts a one-shot SIGTERM (launchd respawns the daemon)',
+    'if symptom persists: `kill <pid>` and tail `user-data/runtime/logs/daemon.log` for hangs',
+    'check daemon-state.json port matches the configured `mcp.port`',
+  ],
+
   runWhen: {
     boot: { enabled: false },
     heartbeat: { enabled: true, cooldownMs: 60_000 },
