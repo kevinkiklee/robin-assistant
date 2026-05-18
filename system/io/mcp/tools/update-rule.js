@@ -1,3 +1,4 @@
+import { checkDurableWrite } from '../../../cognition/discretion/durable-write.js';
 import {
   approveCandidate,
   deactivateRule,
@@ -37,12 +38,32 @@ export function createUpdateRuleTool({ db }) {
           if (derived && derived !== 'trusted' && !force) {
             return { ok: false, reason: 'tainted_candidate', derived_from_trust: derived };
           }
+          // Durable-write gate: PII/secret/verbatim on the reason text (taint NOT applied).
+          const gate = await checkDurableWrite(db, {
+            destination: 'update_rule',
+            text: options.reason ?? '',
+            sessionTaint: null,
+            force,
+          });
+          if (!gate.ok) {
+            return { ok: false, reason: 'outbound_blocked', blocked_by: gate.reason };
+          }
           const r = await approveCandidate(db, id);
           return { ok: true, rule_id: String(r.id) };
         }
-        case 'reject':
+        case 'reject': {
+          const rejectGate = await checkDurableWrite(db, {
+            destination: 'update_rule',
+            text: options.reason ?? '',
+            sessionTaint: null,
+            force,
+          });
+          if (!rejectGate.ok) {
+            return { ok: false, reason: 'outbound_blocked', blocked_by: rejectGate.reason };
+          }
           await rejectCandidate(db, id, options.reason);
           return { ok: true };
+        }
         case 'deactivate':
           await deactivateRule(db, id);
           return { ok: true };

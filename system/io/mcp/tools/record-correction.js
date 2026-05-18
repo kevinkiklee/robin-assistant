@@ -1,4 +1,5 @@
 import { extractMNTokens, recordInsightFeedback } from '../../../cognition/briefing/feedback.js';
+import { checkDurableWrite } from '../../../cognition/discretion/durable-write.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { recordEvent } from '../../capture/record-event.js';
 import { surql } from 'surrealdb';
@@ -41,6 +42,7 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         tool: { type: 'string' },
         action: { type: 'string' },
         rule_id: { type: 'string' },
+        force: { type: 'boolean', default: false },
       },
       required: ['content'],
     },
@@ -63,6 +65,15 @@ export function createRecordCorrectionTool({ db, embedder, processor }) {
         if (rule?.meta?.not_retractable === true) {
           return { ok: false, reason: 'rule_not_retractable', rule_id: args.rule_id };
         }
+      }
+      const gate = await checkDurableWrite(db, {
+        destination: 'record_correction',
+        text: args.content,
+        sessionTaint: null,
+        force: args.force === true,
+      });
+      if (!gate.ok) {
+        return { ok: false, reason: 'outbound_blocked', blocked_by: gate.reason };
       }
       const meta = {
         kind: 'correction',

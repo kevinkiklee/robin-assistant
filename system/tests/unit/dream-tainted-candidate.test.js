@@ -3,10 +3,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { connect, close } from '../../data/db/client.js';
 import { createUpdateRuleTool } from '../../io/mcp/tools/update-rule.js';
+import { __resetCacheForTests } from '../../cognition/discretion/verbatim-scan.js';
 
 async function setup() {
+  __resetCacheForTests();
   const db = await connect({ engine: 'mem://' });
   await db.query(`
+    DEFINE TABLE events SCHEMAFULL;
+    DEFINE FIELD content ON events TYPE string;
+    DEFINE FIELD trust   ON events TYPE string DEFAULT 'trusted';
+    DEFINE FIELD ts      ON events TYPE datetime DEFAULT time::now();
+    DEFINE TABLE refusals SCHEMAFULL TYPE NORMAL;
+    DEFINE FIELD direction   ON refusals TYPE string DEFAULT 'outbound';
+    DEFINE FIELD content     ON refusals TYPE string;
+    DEFINE FIELD reason      ON refusals TYPE string;
+    DEFINE FIELD tool        ON refusals TYPE option<string>;
+    DEFINE FIELD created_at  ON refusals TYPE datetime DEFAULT time::now() READONLY;
+    DEFINE FIELD meta        ON refusals TYPE option<object> FLEXIBLE;
     DEFINE TABLE rule_candidates SCHEMAFULL;
     DEFINE FIELD content             ON rule_candidates TYPE string;
     DEFINE FIELD kind                ON rule_candidates TYPE string;

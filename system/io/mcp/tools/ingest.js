@@ -13,6 +13,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve as resolvePath } from 'node:path';
 import { surql } from 'surrealdb';
+import { checkDurableWrite } from '../../../cognition/discretion/durable-write.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { buildIngestPrompt } from '../../../cognition/jobs/ingest-prompt.js';
 import * as store from '../../../cognition/memory/store.js';
@@ -93,6 +94,7 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
         url: { type: 'string' },
         file_path: { type: 'string' },
         source_trust: { type: 'string', enum: ['trusted', 'untrusted'] },
+        force: { type: 'boolean', default: false },
       },
     },
     handler: async (input = {}) => {
@@ -117,6 +119,17 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
       const sessionId = getSessionId?.() ?? null;
       const taint = getSessionTaint(sessionId);
       const trust = input.source_trust ?? (taint.tainted ? 'untrusted' : 'trusted');
+
+      // Outbound durable-write gate (PII/secret/verbatim; taint NOT applied for ingest).
+      const gate = await checkDurableWrite(db, {
+        destination: 'ingest',
+        text: content,
+        sessionTaint: taint,
+        force: input.force === true,
+      });
+      if (!gate.ok) {
+        return { ok: false, reason: 'outbound_blocked', blocked_by: gate.reason };
+      }
 
       // Record event (with inbound PII guard). RobinPiiRefusedError thrown on match.
       let eventResult;

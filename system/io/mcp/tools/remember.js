@@ -1,3 +1,4 @@
+import { checkDurableWrite } from '../../../cognition/discretion/durable-write.js';
 import { guardInboundContent } from '../../../cognition/discretion/inbound-guard.js';
 import { getSessionTaint } from '../../../runtime/mcp/session-taint.js';
 import { recordEvent } from '../../capture/record-event.js';
@@ -15,6 +16,7 @@ export function createRememberTool({ db, embedder, queue, getSessionId }) {
         meta: { type: 'object' },
         trigger_biographer: { type: 'boolean', default: true },
         source_trust: { type: 'string', enum: ['trusted', 'untrusted'] },
+        force: { type: 'boolean', default: false },
       },
       required: ['content'],
     },
@@ -22,6 +24,15 @@ export function createRememberTool({ db, embedder, queue, getSessionId }) {
       const sessionId = getSessionId?.() ?? null;
       const taint = getSessionTaint(sessionId);
       const trust = args.source_trust ?? (taint.tainted ? 'untrusted' : 'trusted');
+      const gate = await checkDurableWrite(db, {
+        destination: 'remember',
+        text: args.content,
+        sessionTaint: taint,
+        force: args.force === true,
+      });
+      if (!gate.ok) {
+        return { ok: false, reason: 'outbound_blocked', blocked_by: gate.reason };
+      }
       const result = await recordEvent(db, embedder, {
         source: args.source ?? 'manual',
         content: args.content,
