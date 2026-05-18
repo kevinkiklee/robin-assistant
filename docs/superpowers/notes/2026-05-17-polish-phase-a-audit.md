@@ -229,8 +229,22 @@ dependency.
 
 | Item | Decision | Rationale | Commit |
 |---|---|---|---|
-| Per-orphan deletion loop | deferred | First A.2 attempt failed mid-flight; this pass is inventory-only. All 10 final orphans triaged above; only 3 are true follow-up candidates (`_local/sqlite.js`, `audit-entity-ids.js`, `dev-recall.js`). | — |
-| Per-symbol deletion loop (unused exports) | deferred | Inventory-only pass. 18 truly-unused candidates surfaced for follow-up; 94 test-only exports left for user decision (deletion would require coordinated test refactor). | — |
+| `system/io/integrations/_local/sqlite.js` (orphan module) | delete | Verified no imports in `system/` or `package.json`; only referenced in historical design docs. | `fd4f4e3` |
+| `system/runtime/scripts/audit-entity-ids.js` (orphan module) | delete | Runbook-only script with no live references; only mentioned in audit notes itself. | `611119f` |
+| `system/runtime/scripts/dev-recall.js` (orphan module) | skip | Still referenced in `docs/troubleshooting.md` + `docs/development.md` as a debug helper. Keep. | — |
+| `system/cognition/memory/tx.js` — `TX_BASE_BACKOFF_MS`, `TX_JITTER_MS` | inline | Used internally by `awaitTxBackoff`; converted to non-exported `const`. | `4034b15` |
+| `system/cognition/discretion/project-bypass.js` — `getBypassPaths` | inline | Used as default arg by `isCwdBypassed`; converted to non-exported `function`. | `00d42be` |
+| `system/cognition/intuition/turn-classifier.js` — `checkSessionCache`, `classifyWithHaiku` | inline | Both called internally from the main `classify()` flow; converted to non-exported helpers. | `df626ab` |
+| `system/cognition/sessions/conversation-thread.js` — `DEFAULT_WINDOW_MS`, `DEFAULT_MAX_MESSAGES`, `DEFAULT_MAX_TOKENS` | inline | Used internally as default args; converted to non-exported constants. | `3195a64` |
+| `system/cognition/jobs/resolve-due-predictions.js` — `resolveOutcomeValue`, `resolveDuration`, `resolveBehaviorContinuation`, `_extractKeywords` | inline | All four called internally via the resolver-dispatch table; converted to non-exported functions. | `4be3ef0` |
+| `system/runtime/install/agents-md-refresh.js` — `loadIntegrationsForAgentsMd`, `writeMergedAgentsMd` | inline | Both invoked internally from `refreshAgentsMdFiles`; converted to non-exported async helpers. NOTE: commit `0036399` also captured concurrent unrelated WIP in the same file (CLAUDE.md → CLAUDE.local.md target rename from another session). | `0036399` |
+| `system/runtime/hosts/pricing.js` — `PRICING` | inline | Used internally by `estimateCostUsd`; converted to non-exported const. | `28e1286` |
+| `system/io/integrations/imessage/normalize.js` — `stripRowidPrefix` | delete | Not used internally either; entire helper removed. | `c4622ac` |
+| `system/io/integrations/imessage/inbox.js` — `DEFAULT_CHAT_DB` | inline | Used as default arg by `openChatDb`; converted to non-exported const. | `3d39cb5` |
+| `system/io/integrations/_local/sqlite.js` — `readSqliteSnapshot` | moot | File deleted in `fd4f4e3`. | `fd4f4e3` |
+| `system/tests/fixtures/seed-recall-pairs.json` (stale fixture) | delete (gitignored) | Confirmed unreferenced in `system/`, `user-data/`. Listed in `.gitignore` line 9 (local-only generated). Removed from disk; no commit needed. | — |
+| `system/tests/fixtures/synthetic-events.json` (stale fixture) | delete (gitignored) | Confirmed unreferenced in `system/`, `user-data/`. Listed in `.gitignore` line 8. Removed from disk; no commit needed. | — |
+| `system/tests/fixtures/discord-events.js` (stale fixture) | skip | Audit scan missed `user-data/io/integrations/discord/tests/*.test.js` which imports this fixture. Initial deletion broke 2 tests; restored. | — |
 
 ## A.3 Test gaps + slow-test cleanup
 
