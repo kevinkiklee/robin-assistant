@@ -5,6 +5,7 @@
 // `edges.kind` field. Optional `path_to` finds the shortest path to a target
 // entity through the requested edge kinds (TYPE RELATION arrow traversal).
 
+import { formatEntity } from '../../format/entity.js';
 import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 
 const ENTITY_EDGE_KINDS = ['mentions', 'about', 'works_on', 'participates_in', 'occurs_with'];
@@ -30,6 +31,11 @@ export function createGetEntityTool({ db }) {
             "Edge kinds allowed in path. Default: ['occurs_with', 'works_on', 'participates_in'].",
         },
         path_max_depth: { type: 'integer', minimum: 1, maximum: 6, default: 4 },
+        full: {
+          type: 'boolean',
+          default: false,
+          description: 'Return untrimmed edge/event lists (default trims).',
+        },
       },
       required: ['id'],
     },
@@ -74,13 +80,25 @@ export function createGetEntityTool({ db }) {
         )
         .collect();
 
+      const full = args.full === true;
+      const formatted = formatEntity(
+        {
+          id: String(entity.id),
+          kind: entity.type,
+          name: entity.name,
+          summary: entity.meta?.summary ?? null,
+          edges: [],
+          events: [],
+        },
+        { full },
+      );
       const result = {
         entity: {
-          id: String(entity.id),
-          name: entity.name,
+          ...formatted,
+          // Preserve legacy fields downstream agents still read.
           type: entity.type,
           created_at: entity.created_at,
-          meta: entity.meta ?? null,
+          entity_meta: entity.meta ?? null,
           mention_count: mentionCount[0]?.n ?? 0,
           last_mentioned_at: lastMention[0]?.ts ?? null,
           edge_summary: edgeSummary,
