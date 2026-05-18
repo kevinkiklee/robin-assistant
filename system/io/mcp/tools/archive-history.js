@@ -1,6 +1,7 @@
 // archive-history.js — Theme 4.
 import { BoundQuery, RecordId } from 'surrealdb';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
 // Wrap any user-supplied reason text in an archive_log row.
 function wrapArchiveRow(row) {
@@ -15,7 +16,7 @@ function wrapArchiveRow(row) {
   };
 }
 
-export function createArchiveHistoryTool({ db }) {
+export function createArchiveHistoryTool({ db, getSessionId }) {
   return {
     name: 'archive_history',
     description: 'Audit trail of archive / restore events for memos.',
@@ -27,6 +28,7 @@ export function createArchiveHistoryTool({ db }) {
       },
     },
     handler: async ({ memo_id, limit = 100 }) => {
+      const sessionId = getSessionId?.() ?? null;
       let rows;
       if (memo_id) {
         const id = memo_id.startsWith('memos:')
@@ -54,7 +56,12 @@ export function createArchiveHistoryTool({ db }) {
           .collect();
         rows = r;
       }
-      return { history: (rows ?? []).map(wrapArchiveRow) };
+      const wrapped = (rows ?? []).map(wrapArchiveRow);
+      // archive_log reason text is unconditionally untrusted — mark taint for any row returned.
+      for (const row of wrapped) {
+        if (row.reason != null) markTainted(sessionId, String(row.memo_id ?? ''));
+      }
+      return { history: wrapped };
     },
   };
 }

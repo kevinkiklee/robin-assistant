@@ -8,11 +8,12 @@
 import { formatEntity } from '../../format/entity.js';
 import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
 const ENTITY_EDGE_KINDS = ['mentions', 'about', 'works_on', 'participates_in', 'occurs_with'];
 const PATH_EDGE_KINDS = ['occurs_with', 'works_on', 'participates_in', 'mentions', 'about'];
 
-export function createGetEntityTool({ db }) {
+export function createGetEntityTool({ db, getSessionId }) {
   return {
     name: 'get_entity',
     description:
@@ -41,6 +42,7 @@ export function createGetEntityTool({ db }) {
       required: ['id'],
     },
     handler: async (args) => {
+      const sessionId = getSessionId?.() ?? null;
       const idRef = validateEntityRef(args.id, 'id');
       const [rows] = await db
         .query(`SELECT id, name, type, created_at, meta, derived_from_trust FROM ${idRef}`)
@@ -104,6 +106,7 @@ export function createGetEntityTool({ db }) {
         edge_summary: edgeSummary,
       };
       const trust = entity.derived_from_trust ?? 'trusted';
+      if (trust !== 'trusted') markTainted(sessionId, String(entity.id));
       const result = {
         entity: trust === 'trusted'
           ? entityData

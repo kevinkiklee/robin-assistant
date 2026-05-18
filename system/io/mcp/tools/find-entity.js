@@ -3,8 +3,9 @@ import { formatEntity } from '../../format/entity.js';
 import { stage1Resolve } from '../../../cognition/biographer/stage1-exact.js';
 import { stage2Resolve } from '../../../cognition/biographer/stage2-embedding.js';
 import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
-export function createFindEntityTool({ db, embedder }) {
+export function createFindEntityTool({ db, embedder, getSessionId }) {
   return {
     name: 'find_entity',
     description:
@@ -26,6 +27,7 @@ export function createFindEntityTool({ db, embedder }) {
       required: ['name'],
     },
     handler: async (args) => {
+      const sessionId = getSessionId?.() ?? null;
       const full = args.full === true;
       const shape = (rows) =>
         rows.map((r) => {
@@ -43,6 +45,7 @@ export function createFindEntityTool({ db, embedder }) {
             { full },
           );
           const trust = r.derived_from_trust ?? 'trusted';
+          if (trust !== 'trusted') markTainted(sessionId, r.id);
           if (trust === 'trusted') return formatted;
           // Wrap the serialized entity so the agent sees untrusted entity names/summaries
           // inside a nonce-suffixed isolation block.

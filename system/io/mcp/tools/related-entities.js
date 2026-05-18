@@ -8,10 +8,11 @@
 import { formatEntity } from '../../format/entity.js';
 import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 import { wrapEntityRecord } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
 const ENTITY_EDGE_KINDS = ['works_on', 'participates_in', 'occurs_with'];
 
-export function createRelatedEntitiesTool({ db }) {
+export function createRelatedEntitiesTool({ db, getSessionId }) {
   return {
     name: 'related_entities',
     description:
@@ -32,6 +33,7 @@ export function createRelatedEntitiesTool({ db }) {
       required: ['id'],
     },
     handler: async (args) => {
+      const sessionId = getSessionId?.() ?? null;
       const idRef = validateEntityRef(args.id, 'id');
       // Accept the legacy alias `co_occurs_with` from older callers.
       const requested = validateEdgeKinds(
@@ -51,6 +53,7 @@ export function createRelatedEntitiesTool({ db }) {
       return {
         related: raw.related.map((r) => {
           const trust = r.entity.derived_from_trust ?? 'trusted';
+          if (trust !== 'trusted') markTainted(sessionId, r.entity.id);
           const formatted = formatEntity(
             { id: r.entity.id, kind: r.entity.type, name: r.entity.name },
             { full },

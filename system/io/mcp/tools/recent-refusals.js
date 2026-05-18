@@ -1,6 +1,7 @@
 // recent-refusals.js — Theme 4.
 import { BoundQuery } from 'surrealdb';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
 // Wrap the refusal content/payload — refusals are untrusted text by definition.
 function wrapRefusal(row) {
@@ -16,7 +17,7 @@ function wrapRefusal(row) {
   return result;
 }
 
-export function createRecentRefusalsTool({ db }) {
+export function createRecentRefusalsTool({ db, getSessionId }) {
   return {
     name: 'recent_refusals',
     description: 'List recent discretion refusals (inbound / outbound) with reason and tool.',
@@ -29,6 +30,7 @@ export function createRecentRefusalsTool({ db }) {
       },
     },
     handler: async ({ direction, since, limit = 50 }) => {
+      const sessionId = getSessionId?.() ?? null;
       const filters = [];
       const bindings = { limit };
       if (direction) {
@@ -48,7 +50,12 @@ export function createRecentRefusalsTool({ db }) {
           ),
         )
         .collect();
-      return { refusals: (rows ?? []).map(wrapRefusal) };
+      const wrapped = (rows ?? []).map(wrapRefusal);
+      // Refusals are untrusted by definition — mark tainted for any row returned.
+      for (const row of wrapped) {
+        markTainted(sessionId, String(row.id ?? ''));
+      }
+      return { refusals: wrapped };
     },
   };
 }

@@ -2,6 +2,7 @@ import { surql } from 'surrealdb';
 import { trimRecallEvents } from '../../format/recall.js';
 import { recall as internalRecall } from '../../../cognition/intuition/engine.js';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
 function wrapHit(hit) {
   if (!hit || hit.trust === 'trusted' || hit.trust == null) return hit;
@@ -159,6 +160,14 @@ export function createRecallTool({ db, embedder, detector, getSessionId }) {
           .collect();
       } catch {
         // recall_log write is advisory — never fail the recall on telemetry errors.
+      }
+
+      // Mark session tainted for any hit whose trust value is not 'trusted'.
+      // enrichedHits are built from r.hits which forward the trust field.
+      for (const h of r.hits) {
+        if (h.trust && h.trust !== 'trusted') {
+          markTainted(sessionId, h.id ?? h.event_id);
+        }
       }
 
       const full = args.full === true;

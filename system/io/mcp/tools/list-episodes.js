@@ -1,8 +1,9 @@
 import { surql } from 'surrealdb';
 import { formatJournal } from '../../format/journal.js';
 import { wrapUntrusted } from '../../../cognition/discretion/wrap-untrusted.js';
+import { markTainted } from '../../../runtime/mcp/session-taint.js';
 
-export function createListEpisodesTool({ db }) {
+export function createListEpisodesTool({ db, getSessionId }) {
   return {
     name: 'list_episodes',
     description: 'List episodes (groupings of related events) with optional time/source filters.',
@@ -22,6 +23,7 @@ export function createListEpisodesTool({ db }) {
       },
     },
     handler: async (args) => {
+      const sessionId = getSessionId?.() ?? null;
       const limit = args.limit ?? 20;
       const full = args.full === true;
       const filters = [];
@@ -48,6 +50,7 @@ export function createListEpisodesTool({ db }) {
           .query(surql`SELECT count() AS n FROM events WHERE episode_id = ${ep.id} GROUP ALL`)
           .collect();
         const trust = ep.derived_from_trust ?? 'trusted';
+        if (trust !== 'trusted') markTainted(sessionId, String(ep.id));
         const rawSummary = ep.summary ?? null;
         const summary = (trust !== 'trusted' && rawSummary != null)
           ? wrapUntrusted(rawSummary, { source: ep.source, eventId: String(ep.id), trust })
