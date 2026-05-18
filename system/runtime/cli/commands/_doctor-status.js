@@ -17,6 +17,70 @@ import {
   probeSurreal,
 } from './_doctor-probes.js';
 
+/**
+ * Render the invariant-runner report as a realm-grouped, one-screen status
+ * summary. Each result has `{ name, surface, status: 'ok'|'warn'|'fail',
+ * error?, remediation? }`. Returns a single string ready to print.
+ *
+ * - Realm = `surface`. Iteration order is the first-seen order of `results`.
+ * - Each realm gets a one-line header: `<realm> <status> N check(s)[ (X warn, Y fail)]`.
+ * - Per warn / fail check renders an inline sigil line + indented remediation steps.
+ * - Final `Summary:` line counts across all realms and emits `Exit 0` (no
+ *   fails) or `Exit 1` (any fail) so the caller can `process.exit(...)` off it.
+ */
+export function renderDoctor({ results = [], ts } = {}) {
+  const lines = [`Robin doctor — ${ts ?? new Date().toISOString()}`, ''];
+  const byRealm = new Map();
+  for (const r of results) {
+    const realm = r.surface ?? 'other';
+    if (!byRealm.has(realm)) byRealm.set(realm, []);
+    byRealm.get(realm).push(r);
+  }
+
+  let okCount = 0;
+  let warnCount = 0;
+  let failCount = 0;
+
+  for (const [realm, items] of byRealm) {
+    const warns = items.filter((i) => i.status === 'warn');
+    const fails = items.filter((i) => i.status === 'fail');
+    const oks = items.filter((i) => i.status === 'ok');
+
+    let realmStatus = 'ok';
+    if (fails.length > 0) realmStatus = 'fail';
+    else if (warns.length > 0) realmStatus = 'warn';
+
+    const noun = items.length === 1 ? 'check' : 'checks';
+    const detailParts = [];
+    if (warns.length > 0) detailParts.push(`${warns.length} warn`);
+    if (fails.length > 0) detailParts.push(`${fails.length} fail`);
+    const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+
+    lines.push(`${realm.padEnd(12)} ${realmStatus.padEnd(6)} ${items.length} ${noun}${detailSuffix}`);
+
+    for (const item of [...warns, ...fails]) {
+      const sigil = item.status === 'warn' ? '⚠' : '✖';
+      const errText = item.error ? ` — ${item.error}` : '';
+      lines.push(`  ${sigil} ${item.name}${errText}`);
+      const remediations = Array.isArray(item.remediation)
+        ? item.remediation
+        : item.remediation
+          ? [item.remediation]
+          : [];
+      for (const rem of remediations) lines.push(`    → ${rem}`);
+    }
+
+    okCount += oks.length;
+    warnCount += warns.length;
+    failCount += fails.length;
+  }
+
+  lines.push('');
+  const exit = failCount > 0 ? 1 : 0;
+  lines.push(`Summary: ${okCount} ok, ${warnCount} warn, ${failCount} fail. Exit ${exit}.`);
+  return lines.join('\n');
+}
+
 export async function doStatus(out, deps = {}) {
   out(`ROBIN_HOME: ${paths.data.home()}`);
   const manifestExists = existsSync(paths.data.manifest());

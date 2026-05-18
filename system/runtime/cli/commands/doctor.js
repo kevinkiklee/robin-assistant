@@ -36,7 +36,7 @@ import { isInSync, renderRunbook, replaceSentinelBlock } from '../../invariants/
 import { run as runInvariants } from '../../invariants/runner.js';
 import { parseArgs } from '../args.js';
 import { doLintHooks, doPurgeStaleSessions, doRebaseline } from './_doctor-special-commands.js';
-import { doctorData, doStatus } from './_doctor-status.js';
+import { doctorData, doStatus, renderDoctor } from './_doctor-status.js';
 
 // Re-export for consumers that import { doctorData } from this module.
 export { doctorData };
@@ -78,42 +78,46 @@ async function doEmitRunbook(out, err, { write = false, check = false, claudeMdP
 }
 
 /**
- * `--invariants`: run the doctor trigger across the registry; print a compact
- * status table. Read-only; never repairs.
+ * `--invariants`: run the doctor trigger across the registry; render
+ * realm-grouped output with inline remediation. Read-only; never repairs.
+ *
+ * Maps the runner's report shape onto the renderer contract:
+ *   runner: { name, status: 'ok'|'fail'|'skipped'|'error', level, error, ... }
+ *   render: { name, surface, status: 'ok'|'warn'|'fail', error?, remediation? }
+ *
+ * The level→status mapping treats `warn`/`info` invariants as `warn` and
+ * `critical` invariants as `fail`; skipped/errored results pass through as
+ * `ok`/`fail` so the renderer doesn't count them in the wrong bucket.
  */
 async function doInvariantsRender(out) {
   const ctx = makeInvariantCtx({ paths, trigger: 'doctor', logFallback: false });
-  const report = await runInvariants({
-    trigger: 'doctor',
-    ctx,
-    invariants: await getAllInvariants(),
-  });
-  let crit = 0;
-  let warn = 0;
-  let info = 0;
-  let ok = 0;
-  let skipped = 0;
+  const invariants = await getAllInvariants();
+  const byName = new Map(invariants.map((i) => [i.name, i]));
+  const report = await runInvariants({ trigger: 'doctor', ctx, invariants });
+
+  const results = [];
   for (const r of report.results) {
-    if (r.status === 'skipped') {
-      skipped++;
-      continue;
-    }
+    if (r.status === 'skipped') continue;
+    const inv = byName.get(r.name);
+    const surface = inv?.surface ?? 'other';
+    const remediation = inv?.remediation;
+    let status;
     if (r.status === 'ok') {
-      ok++;
-      out(`✓ ${r.name}`);
-      continue;
+      status = 'ok';
+    } else if (r.status === 'error' || r.level === 'critical') {
+      status = 'fail';
+    } else {
+      status = 'warn';
     }
-    if (r.level === 'critical') crit++;
-    else if (r.level === 'warn') warn++;
-    else info++;
-    const tag = r.level === 'critical' ? 'X' : '!';
-    out(`${tag} ${r.name}  [${r.level}]  ${r.error ?? ''}`);
+    results.push({ name: r.name, surface, status, error: r.error, remediation });
   }
-  out('');
-  out(`Summary: ${ok} ok · ${warn} warn · ${crit} critical · ${info} info · ${skipped} skipped`);
-  if (crit > 0) return 2;
-  if (warn > 0) return 1;
-  return 0;
+
+  const ts = new Date().toISOString();
+  const text = renderDoctor({ results, ts });
+  out(text);
+
+  const exitMatch = /Exit (\d+)\./.exec(text);
+  return exitMatch ? Number(exitMatch[1]) : 0;
 }
 
 /**
@@ -191,7 +195,18 @@ export async function doctor(argv = [], deps = {}) {
   }
 
   if (!wantRebaseline && !wantPurge && !wantLint) {
+    // Default surface keeps the host-status overview (ROBIN_HOME, daemon,
+    // engine, supervisor, biographer log) and then appends the realm-grouped
+    // invariant render with inline remediation. We deliberately do NOT mutate
+    // `process.exitCode` from the default path — tests call `doctor()` in
+    // process and a poisoned exitCode bleeds across test files. Callers that
+    // need exit semantics (CI, scripts) should use `--invariants` (which sets
+    // exitCode) or pipe the output through `grep -q 'Exit 0\.' ` and act on
+    // the grep result.
     await doStatus(out, deps);
+    out('');
+    out('── Invariants ────────────────────────────');
+    await doInvariantsRender(out);
     return;
   }
 
