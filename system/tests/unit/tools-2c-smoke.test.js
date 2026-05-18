@@ -88,8 +88,10 @@ test('all 8 read/update tools have correct names + schemas + handlers run on emp
   const r = await tools[5].handler({});
   assert.deepEqual(r, { active: [] });
 
-  // update_rule on a missing candidate must fail (approve reads first).
-  await assert.rejects(tools[6].handler({ id: 'nope', action: 'approve' }));
+  // update_rule on an invalid id returns a structured error (not a throw).
+  const missingResult = await tools[6].handler({ id: 'nope', action: 'approve' });
+  assert.equal(missingResult.ok, false);
+  assert.equal(missingResult.reason, 'invalid_id');
   await close(db);
 });
 

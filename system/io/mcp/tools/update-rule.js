@@ -19,7 +19,9 @@ const CANDIDATE_ID_RE = /^rule_candidates:[A-Za-z0-9_-]+$/;
  * This matches the _entity-ref.js convention: validate alphabet, then interpolate.
  */
 function isValidCandidateId(id) {
-  return typeof id === 'string' && CANDIDATE_ID_RE.test(id);
+  if (id == null) return false;
+  const s = typeof id === 'string' ? id : String(id);
+  return CANDIDATE_ID_RE.test(s);
 }
 
 export function createUpdateRuleTool({ db }) {
@@ -50,11 +52,12 @@ export function createUpdateRuleTool({ db }) {
           // Defense-in-depth: validate id before any DB interaction so a
           // malicious id string cannot smuggle SurrealQL via interpolation.
           if (!isValidCandidateId(id)) return { ok: false, reason: 'invalid_id' };
+          const safeId = typeof id === 'string' ? id : String(id);
 
           // Taint gate: refuse to approve a candidate derived from untrusted content
           // unless the caller explicitly passes force=true.
-          // id is safe to interpolate — validated against CANDIDATE_ID_RE above.
-          const [rows] = await db.query(`SELECT derived_from_trust FROM ${id}`).collect();
+          // safeId is safe to interpolate — validated against CANDIDATE_ID_RE above.
+          const [rows] = await db.query(`SELECT derived_from_trust FROM ${safeId}`).collect();
           const derived = rows?.[0]?.derived_from_trust;
           if (derived && derived !== 'trusted' && !force) {
             return { ok: false, reason: 'tainted_candidate', derived_from_trust: derived };
@@ -69,7 +72,7 @@ export function createUpdateRuleTool({ db }) {
           if (!gate.ok) {
             return { ok: false, reason: 'outbound_blocked', blocked_by: gate.reason };
           }
-          const r = await approveCandidate(db, id);
+          const r = await approveCandidate(db, safeId);
           return { ok: true, rule_id: String(r.id) };
         }
         case 'reject': {
