@@ -63,3 +63,71 @@ test('renderDoctor exits 0 on warn-only', () => {
   const out = renderDoctor({ results, ts: '2026-05-17T13:42:01Z' });
   assert.match(out, /Exit 0/);
 });
+
+test('renderDoctor verbose shows last_passed provenance under each check', () => {
+  const results = [
+    {
+      name: 'db.authenticated',
+      surface: 'db',
+      status: 'ok',
+      lastPassedTs: '2026-05-17T13:00:00Z',
+    },
+  ];
+  const out = renderDoctor({ results, ts: '2026-05-17T13:42:01Z', verbose: true });
+  assert.match(out, /last_passed: 2026-05-17T13:00:00Z/);
+});
+
+test('renderDoctor verbose falls back to "never" when lastPassedTs is missing', () => {
+  const results = [
+    { name: 'db.fresh', surface: 'db', status: 'ok' },
+    { name: 'db.broken', surface: 'db', status: 'warn', error: 'msg', remediation: ['fix'] },
+  ];
+  const out = renderDoctor({ results, ts: '2026-05-17T13:42:01Z', verbose: true });
+  // Both rendered checks should get a `last_passed:` line. The `ok` row has no
+  // lastPassedTs in this fixture, so it falls back to "never"; the `warn` row
+  // also has no provenance attached, falling back to "never" too.
+  const matches = out.match(/last_passed: never/g) ?? [];
+  assert.strictEqual(matches.length, 2);
+});
+
+test('renderDoctor non-verbose mode omits last_passed lines', () => {
+  const results = [
+    {
+      name: 'db.authenticated',
+      surface: 'db',
+      status: 'ok',
+      lastPassedTs: '2026-05-17T13:00:00Z',
+    },
+  ];
+  const out = renderDoctor({ results, ts: '2026-05-17T13:42:01Z' });
+  assert.doesNotMatch(out, /last_passed/);
+});
+
+test('renderDoctor with colors:true wraps warn sigil in ANSI yellow', () => {
+  const results = [
+    {
+      name: 'db.embedder_profile_match',
+      surface: 'db',
+      status: 'warn',
+      error: 'mismatched',
+      remediation: ['fix'],
+    },
+  ];
+  const out = renderDoctor({ results, ts: '<ts>', colors: true });
+  assert.match(out, /\x1b\[33m/);
+  assert.match(out, /\x1b\[0m/);
+});
+
+test('renderDoctor with colors:false emits no ANSI escapes', () => {
+  const results = [
+    {
+      name: 'db.embedder_profile_match',
+      surface: 'db',
+      status: 'warn',
+      error: 'mismatched',
+      remediation: ['fix'],
+    },
+  ];
+  const out = renderDoctor({ results, ts: '<ts>', colors: false });
+  assert.doesNotMatch(out, /\x1b\[/);
+});

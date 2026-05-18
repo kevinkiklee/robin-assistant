@@ -34,6 +34,7 @@ import { getAllInvariants } from '../../invariants/index.js';
 import installPointerPresent from '../../invariants/install.pointer-present.js';
 import { isInSync, renderRunbook, replaceSentinelBlock } from '../../invariants/runbook.js';
 import { run as runInvariants } from '../../invariants/runner.js';
+import { readState } from '../../invariants/state.js';
 import { parseArgs } from '../args.js';
 import { doLintHooks, doPurgeStaleSessions, doRebaseline } from './_doctor-special-commands.js';
 import { doctorData, doStatus, renderDoctor } from './_doctor-status.js';
@@ -89,11 +90,24 @@ async function doEmitRunbook(out, err, { write = false, check = false, claudeMdP
  * `critical` invariants as `fail`; skipped/errored results pass through as
  * `ok`/`fail` so the renderer doesn't count them in the wrong bucket.
  */
-async function doInvariantsRender(out) {
+async function doInvariantsRender(out, { verbose = false, colors = false } = {}) {
   const ctx = makeInvariantCtx({ paths, trigger: 'doctor', logFallback: false });
   const invariants = await getAllInvariants();
   const byName = new Map(invariants.map((i) => [i.name, i]));
   const report = await runInvariants({ trigger: 'doctor', ctx, invariants });
+
+  // When verbose, attach last-passed provenance from invariants-state.json.
+  // Best-effort: a missing/corrupt state file returns emptyState() and every
+  // result simply gets `lastPassedTs: undefined` → rendered as `never`.
+  let stateByName = new Map();
+  if (verbose) {
+    try {
+      const state = readState(paths.data.invariantsState());
+      stateByName = new Map(Object.entries(state.invariants ?? {}));
+    } catch (e) {
+      out(`  (warning: failed to read invariants-state.json: ${e.message})`);
+    }
+  }
 
   const results = [];
   for (const r of report.results) {
@@ -109,11 +123,15 @@ async function doInvariantsRender(out) {
     } else {
       status = 'warn';
     }
-    results.push({ name: r.name, surface, status, error: r.error, remediation });
+    const entry = stateByName.get(r.name);
+    const lastPassedTs = entry?.last_pass_at
+      ? new Date(entry.last_pass_at).toISOString()
+      : undefined;
+    results.push({ name: r.name, surface, status, error: r.error, remediation, lastPassedTs });
   }
 
   const ts = new Date().toISOString();
-  const text = renderDoctor({ results, ts });
+  const text = renderDoctor({ results, ts, verbose, colors });
   out(text);
 
   const exitMatch = /Exit (\d+)\./.exec(text);
@@ -156,6 +174,16 @@ export async function doctor(argv = [], deps = {}) {
   const wantDiffLegacy = args.flags['diff-legacy'] === true;
   const wantEmitRunbook = args.flags['emit-runbook'] === true;
   const wantInvariants = args.flags.invariants === true;
+  const verbose = args.flags.verbose === true;
+  // Color is on only when stdout is a real TTY AND NO_COLOR is unset AND we're
+  // not emitting JSON. Tests run without a TTY so `colors` collapses to false
+  // by default — `colors:true` is asserted explicitly via the renderDoctor
+  // tests, not by spawning this CLI.
+  const colors =
+    typeof process !== 'undefined' &&
+    process.stdout?.isTTY === true &&
+    !process.env.NO_COLOR &&
+    args.flags.json !== true;
 
   if (wantHealth) {
     const wantJson = args.flags.json === true;
@@ -189,7 +217,7 @@ export async function doctor(argv = [], deps = {}) {
   }
 
   if (wantInvariants) {
-    const code = await doInvariantsRender(out);
+    const code = await doInvariantsRender(out, { verbose, colors });
     if (typeof process !== 'undefined') process.exitCode = code;
     return;
   }
@@ -206,7 +234,7 @@ export async function doctor(argv = [], deps = {}) {
     await doStatus(out, deps);
     out('');
     out('── Invariants ────────────────────────────');
-    await doInvariantsRender(out);
+    await doInvariantsRender(out, { verbose, colors });
     return;
   }
 

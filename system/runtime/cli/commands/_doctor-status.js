@@ -17,18 +17,42 @@ import {
   probeSurreal,
 } from './_doctor-probes.js';
 
+// ANSI color helpers. `colors` boolean is computed by the caller from
+// `process.stdout.isTTY && !process.env.NO_COLOR && !args.includes('--json')`.
+// Tests pass `colors:true` explicitly to assert the wrapping happens — they
+// run without a TTY, so the dispatcher's gating logic collapses to false in
+// the test env and never flakes on a real terminal.
+const ANSI = {
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  reset: '\x1b[0m',
+};
+
+function colorize(s, status, colors) {
+  if (!colors) return s;
+  if (status === 'ok') return `${ANSI.green}${s}${ANSI.reset}`;
+  if (status === 'warn') return `${ANSI.yellow}${s}${ANSI.reset}`;
+  if (status === 'fail') return `${ANSI.red}${s}${ANSI.reset}`;
+  return s;
+}
+
 /**
  * Render the invariant-runner report as a realm-grouped, one-screen status
  * summary. Each result has `{ name, surface, status: 'ok'|'warn'|'fail',
- * error?, remediation? }`. Returns a single string ready to print.
+ * error?, remediation?, lastPassedTs? }`. Returns a single string ready to print.
  *
  * - Realm = `surface`. Iteration order is the first-seen order of `results`.
  * - Each realm gets a one-line header: `<realm> <status> N check(s)[ (X warn, Y fail)]`.
  * - Per warn / fail check renders an inline sigil line + indented remediation steps.
+ * - When `verbose: true`, every check (including `ok`) gets a `    last_passed: <iso|never>`
+ *   provenance line under it.
+ * - When `colors: true`, realm-status tokens and per-check sigils are wrapped in
+ *   ANSI escape codes (green ok / yellow warn / red fail).
  * - Final `Summary:` line counts across all realms and emits `Exit 0` (no
  *   fails) or `Exit 1` (any fail) so the caller can `process.exit(...)` off it.
  */
-export function renderDoctor({ results = [], ts } = {}) {
+export function renderDoctor({ results = [], ts, verbose = false, colors = false } = {}) {
   const lines = [`Robin doctor — ${ts ?? new Date().toISOString()}`, ''];
   const byRealm = new Map();
   for (const r of results) {
@@ -56,10 +80,22 @@ export function renderDoctor({ results = [], ts } = {}) {
     if (fails.length > 0) detailParts.push(`${fails.length} fail`);
     const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
 
-    lines.push(`${realm.padEnd(12)} ${realmStatus.padEnd(6)} ${items.length} ${noun}${detailSuffix}`);
+    const statusToken = colorize(realmStatus.padEnd(6), realmStatus, colors);
+    lines.push(`${realm.padEnd(12)} ${statusToken} ${items.length} ${noun}${detailSuffix}`);
+
+    // In verbose mode, surface `last_passed` provenance for every check (ok + warn + fail),
+    // ordered ok → warn → fail so the realm reads top-to-bottom by severity.
+    if (verbose) {
+      for (const item of oks) {
+        const sigil = colorize('✓', 'ok', colors);
+        lines.push(`  ${sigil} ${item.name}`);
+        lines.push(`    last_passed: ${item.lastPassedTs ?? 'never'}`);
+      }
+    }
 
     for (const item of [...warns, ...fails]) {
-      const sigil = item.status === 'warn' ? '⚠' : '✖';
+      const rawSigil = item.status === 'warn' ? '⚠' : '✖';
+      const sigil = colorize(rawSigil, item.status, colors);
       const errText = item.error ? ` — ${item.error}` : '';
       lines.push(`  ${sigil} ${item.name}${errText}`);
       const remediations = Array.isArray(item.remediation)
@@ -68,6 +104,7 @@ export function renderDoctor({ results = [], ts } = {}) {
           ? [item.remediation]
           : [];
       for (const rem of remediations) lines.push(`    → ${rem}`);
+      if (verbose) lines.push(`    last_passed: ${item.lastPassedTs ?? 'never'}`);
     }
 
     okCount += oks.length;
