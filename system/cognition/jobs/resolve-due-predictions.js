@@ -266,7 +266,7 @@ export async function resolveEventTiming(db, prediction) {
  *
  * For v1, if meta.evidence_source is absent, route to needsUser.
  */
-export async function resolveOutcomeValue(db, prediction) {
+async function resolveOutcomeValue(db, prediction) {
   const src = prediction.meta?.evidence_source;
   if (!src) return needsUser(db, prediction);
 
@@ -305,7 +305,7 @@ export async function resolveOutcomeValue(db, prediction) {
  * duration — measure time delta between predicted start/stop events.
  * v1: return needsUser if start/stop events aren't structured.
  */
-export async function resolveDuration(db, prediction) {
+async function resolveDuration(db, prediction) {
   // v1: structured start/stop events not yet implemented.
   return needsUser(db, prediction);
 }
@@ -322,7 +322,7 @@ export async function resolveDuration(db, prediction) {
  *
  * Re-enable per integration when meta.integration_name schema lands.
  */
-export async function resolveBehaviorContinuation(db, prediction) {
+async function resolveBehaviorContinuation(db, prediction) {
   return needsUser(db, prediction);
 }
 
@@ -410,7 +410,7 @@ const STOPWORDS = new Set([
  * @param {string} statement
  * @returns {string[]}
  */
-export function _extractKeywords(statement) {
+function _extractKeywords(statement) {
   if (typeof statement !== 'string' || !statement.trim()) return [];
   return statement
     .toLowerCase()
