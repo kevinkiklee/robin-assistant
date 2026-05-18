@@ -18,6 +18,12 @@ export default {
   phase: 'db',
   description: 'Pending recall_log rows older than 7 days are bounded (<=100).',
 
+  remediation: [
+    'check reinforce-recall job: `robin jobs list | grep reinforce-recall`',
+    'inspect recall_log rows: `SELECT * FROM recall_log WHERE outcome = "pending" ORDER BY ts ASC LIMIT 10;`',
+    'if scheduler bucket disabled, re-enable; daemon must have been up for at least one tick',
+  ],
+
   runWhen: {
     boot: { enabled: false },
     heartbeat: { enabled: true, cooldownMs: 15 * 60 * 1000 },

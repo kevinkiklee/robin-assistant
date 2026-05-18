@@ -17,6 +17,12 @@ export default {
   description:
     'Shared DB client is authenticated (a probe SELECT succeeds without anonymous-access error).',
 
+  remediation: [
+    'reactive retry in `system/data/db/client.js` re-auths on Anonymous errors',
+    'if symptom persists: verify SurrealDB credentials in user-data config',
+    'restart daemon (kill <pid>) to re-run signin() + use() from boot',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: true, cooldownMs: 60_000 },

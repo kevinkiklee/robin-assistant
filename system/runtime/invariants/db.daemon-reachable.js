@@ -35,6 +35,12 @@ export default {
   phase: 'db',
   description: 'SurrealDB connection succeeds (raw WebSocket open).',
 
+  remediation: [
+    'check SurrealDB process: `pgrep -f "surreal start"`',
+    'launchctl status: `launchctl list io.robin-assistant.surreal`',
+    'inspect surreal logs under `<user-data>/data/snapshots/`',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: true, cooldownMs: 60_000 },

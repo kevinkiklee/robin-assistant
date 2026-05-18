@@ -51,6 +51,12 @@ export default {
   phase: 'db',
   description: 'Active embedder profile matches the dimension of the events embedding table.',
 
+  remediation: [
+    '`robin embeddings list` — confirm profiles and dimensions',
+    '`robin embeddings backfill <profile>` — re-embed events under the new profile',
+    '`robin embeddings activate <profile>` — flip active profile (only after backfill completes)',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: true, cooldownMs: 60 * 60 * 1000 },
