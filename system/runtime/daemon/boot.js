@@ -206,9 +206,18 @@ export async function boot() {
           .then(() => {
             lastBiographerRunAt = new Date().toISOString();
           })
-          .catch((e) =>
-            console.warn(`[biographer] enqueue/process failed for ${tag}: ${e.message}`),
-          );
+          .catch((e) => {
+            // First line carries the message (cheap signal for log scrapers and
+            // dashboards). Stack trace is appended only when the message is one
+            // of the recurring ones whose call site we still don't know — those
+            // failures repeat thousands of times, so noisy stacks would dwarf
+            // the rest of the log. Surrealdb's "Cannot execute UPDATE statement
+            // using value: ..." is the canonical example.
+            const msg = e?.message ?? String(e);
+            const wantsStack = /Cannot execute (UPDATE|INSERT) statement/i.test(msg);
+            const suffix = wantsStack && e?.stack ? `\n${e.stack}` : '';
+            console.warn(`[biographer] enqueue/process failed for ${tag}: ${msg}${suffix}`);
+          });
         return ret;
       }
       return Promise.resolve(ret);

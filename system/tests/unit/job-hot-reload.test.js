@@ -137,6 +137,49 @@ test('phantom fsevents on an unchanged file do not trigger a restart', async () 
   }
 });
 
+test('touch / git checkout that advances mtime but not content does not fire', async () => {
+  // Counterpart to the phantom-mtime guard: `touch`, `git checkout` on the
+  // same branch, and rsync-style refreshes advance mtime without changing
+  // bytes. The watcher must hash the file to avoid bouncing the daemon on
+  // those events. Without this gate, a concurrent agent's git operations
+  // (or a benign nightly cleanup) bounce the daemon mid-sync.
+  const { utimesSync } = await import('node:fs');
+  const dir = makeDir();
+  const content = '// stable content — unchanged across touches';
+  const file = join(dir, 'touched.js');
+  writeFileSync(file, content);
+  // Pin to deep past so any subsequent mtime advance reliably moves forward.
+  const past = new Date('2020-01-01T00:00:00.000Z');
+  utimesSync(file, past, past);
+
+  let calls = 0;
+  const w = startJobHotReload({
+    paths: [dir],
+    debounceMs: 40,
+    signalSelf: () => calls++,
+    log: () => {},
+  });
+  try {
+    await wait(60);
+    // Advance mtime to "now" without changing bytes — canonical `touch`.
+    const now = new Date();
+    utimesSync(file, now, now);
+    await wait(200);
+    assert.equal(calls, 0, 'touch without content change must not fire');
+
+    // Now a real content edit on the same file fires exactly once.
+    // Push mtime slightly into the future so writeFileSync's own mtime
+    // (which is current time, identical to `now` above) reliably advances
+    // past the recorded baseline.
+    writeFileSync(file, '// genuinely new content');
+    utimesSync(file, new Date(Date.now() + 5_000), new Date(Date.now() + 5_000));
+    await wait(200);
+    assert.equal(calls, 1, 'real edit after a no-op touch still fires once');
+  } finally {
+    w.stop();
+  }
+});
+
 test('new files (not in the startup scan) trigger a restart on first write', async () => {
   // Counterpart to the phantom-event guard: when user creates a brand-new
   // .js file post-startup, the first event must fire so the daemon picks

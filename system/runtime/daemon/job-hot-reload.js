@@ -13,7 +13,8 @@
 // .md files are NOT watched — the dispatcher tick re-reads them every minute
 // via ctx.jobs.refresh(), so they don't need a daemon bounce.
 
-import { readdirSync, statSync, watch } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync, watch } from 'node:fs';
 import { join } from 'node:path';
 
 const DEFAULT_DEBOUNCE_MS = 2_000;
@@ -69,14 +70,20 @@ export function startJobHotReload({
   let timer = null;
   let stopped = false;
   let pendingPath = null;
-  // Track last-seen mtime per file. macOS fsevents (and to a lesser degree
-  // Linux inotify under heavy IO) fires `change` for events that don't
-  // actually modify the file — Spotlight indexing, antivirus scans, atime
-  // updates. Without this gate, a SIGTERM-respawn cycle fires every
-  // ~100ms on a single phantom event and cuts in-flight syncs mid-write
-  // (gmail first-sync, lunch_money transaction window). Only restart
-  // when the file's mtime actually advances past what we last saw.
+  // Track last-seen mtime AND content hash per file. macOS fsevents (and to
+  // a lesser degree Linux inotify under heavy IO) fires `change` for events
+  // that don't actually modify the file — Spotlight indexing, antivirus
+  // scans, atime updates. Without this gate, a SIGTERM-respawn cycle fires
+  // every ~100ms on a single phantom event and cuts in-flight syncs
+  // mid-write (gmail first-sync, lunch_money transaction window).
+  //
+  // mtime alone is necessary but not sufficient: `touch <file>`, `git
+  // checkout` on the same branch, and rsync-style refresh-without-change all
+  // advance mtime without changing content. We've seen those produce
+  // pointless daemon bounces. The content-hash check costs one sha256 per
+  // event (~µs for small JS files) and turns those into no-ops.
   const mtimes = new Map();
+  const hashes = new Map();
 
   function fire() {
     if (stopped) return;
@@ -91,6 +98,15 @@ export function startJobHotReload({
     }
   }
 
+  function hashFile(absPath) {
+    try {
+      const buf = readFileSync(absPath);
+      return createHash('sha256').update(buf).digest('hex');
+    } catch {
+      return null;
+    }
+  }
+
   function actuallyChanged(absPath) {
     let mtimeMs;
     try {
@@ -99,12 +115,25 @@ export function startJobHotReload({
       // File deleted between fsevent and stat. Treat as a real change so
       // the daemon picks up the removal.
       mtimes.delete(absPath);
+      hashes.delete(absPath);
       return true;
     }
-    const prev = mtimes.get(absPath);
+    const prevMtime = mtimes.get(absPath);
     mtimes.set(absPath, mtimeMs);
-    // First sighting OR mtime advanced — real change.
-    return prev === undefined || mtimeMs > prev;
+    // First sighting always fires (treat as real to be safe — boot-time
+    // seeding pre-populates the cache so a known file won't false-trigger
+    // here unless it was created since boot).
+    if (prevMtime === undefined) return true;
+    // mtime didn't advance — fsevents phantom; skip without re-reading file.
+    if (mtimeMs <= prevMtime) return false;
+    // mtime advanced — verify content actually changed. `touch`, git
+    // checkout, and atime-style refreshes all bump mtime without changing
+    // bytes; restarting on those is pure cost.
+    const prevHash = hashes.get(absPath);
+    const newHash = hashFile(absPath);
+    if (newHash == null) return true; // read race — fire to be safe
+    hashes.set(absPath, newHash);
+    return prevHash === undefined || newHash !== prevHash;
   }
 
   function schedule(absPath) {
@@ -139,6 +168,8 @@ export function startJobHotReload({
       if (ent.name.endsWith('.test.js')) continue;
       try {
         mtimes.set(full, statSync(full).mtimeMs);
+        const h = hashFile(full);
+        if (h != null) hashes.set(full, h);
       } catch {
         // Race with deletion — leave unset; first real event will fire.
       }

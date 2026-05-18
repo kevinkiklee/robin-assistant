@@ -1,24 +1,24 @@
-import { ensureMcpToken } from '../../config/mcp-token.js';
 import { startIntrospection, stopIntrospection } from '../../cognition/introspection/index.js';
-import { createTriggerEngine } from '../../cognition/triggers/engine.js';
-import { loadTriggersFromDir } from '../../cognition/triggers/loader.js';
-import { createTriggerTick } from '../../cognition/triggers/loop.js';
-import { recordEvent } from '../../io/capture/record-event.js';
-import { loadAllowlist } from '../../io/integrations/imessage/allowlist.js';
-import { openChatDb, pollOnce as imessagePollOnce } from '../../io/integrations/imessage/inbox.js';
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
+import { runCostMonitor } from '../../cognition/jobs/cost-monitor.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
-import { writeEmbedProbe } from '../../data/embed/probe.js';
 import {
   evaluateStateInference,
   readStateInferenceConfig,
 } from '../../cognition/jobs/internal/state-inference.js';
-import { runCostMonitor } from '../../cognition/jobs/cost-monitor.js';
 import { resolveDuePredictions } from '../../cognition/jobs/resolve-due-predictions.js';
-import { runTaskOutcomeDriftWatchdog } from '../../cognition/jobs/task-outcome-drift-watchdog.js';
 import { withRuntimeJobsTracking } from '../../cognition/jobs/scheduler-ext.js';
+import { runTaskOutcomeDriftWatchdog } from '../../cognition/jobs/task-outcome-drift-watchdog.js';
+import { createTriggerEngine } from '../../cognition/triggers/engine.js';
+import { loadTriggersFromDir } from '../../cognition/triggers/loader.js';
+import { createTriggerTick } from '../../cognition/triggers/loop.js';
 import { paths } from '../../config/data-store.js';
+import { ensureMcpToken } from '../../config/mcp-token.js';
 import { readConfig } from '../../config/paths.js';
+import { writeEmbedProbe } from '../../data/embed/probe.js';
+import { recordEvent } from '../../io/capture/record-event.js';
+import { loadAllowlist } from '../../io/integrations/imessage/allowlist.js';
+import { pollOnce as imessagePollOnce, openChatDb } from '../../io/integrations/imessage/inbox.js';
 import { detectHost } from '../hosts/detect.js';
 import { createInvariantsTick, runBootInvariants } from '../invariants/daemon-tick.js';
 import { boot } from './boot.js';
@@ -26,9 +26,9 @@ import { consumePendingTriggers } from './cadence-consumer.js';
 import { createDispatcherTick } from './dispatcher-tick.js';
 import { createScheduler } from './heartbeat.js';
 import { startHttp } from './http.js';
-import { installLogScrub } from './log-scrub.js';
 import { startJobHotReload } from './job-hot-reload.js';
 import { createLifecycle } from './lifecycle.js';
+import { installLogScrub } from './log-scrub.js';
 import { bindPort } from './port.js';
 import { buildRoutes } from './routes/index.js';
 import { markStaleSessions } from './sessions.js';
@@ -147,7 +147,9 @@ export async function startDaemon() {
         const [rows] = await ctx.db
           .query(sql`SELECT * FROM type::record('runtime', 'imessage_cursor')`)
           .collect();
-        const cursor = Number.isInteger(rows?.[0]?.value?.last_rowid) ? rows[0].value.last_rowid : 0;
+        const cursor = Number.isInteger(rows?.[0]?.value?.last_rowid)
+          ? rows[0].value.last_rowid
+          : 0;
         const result = await imessagePollOnce({
           db: imessageDb,
           allowlist: imessageAllowlist,
@@ -155,7 +157,9 @@ export async function startDaemon() {
           getCursor: async () => cursor,
           setCursor: async (v) =>
             ctx.db
-              .query(sql`UPSERT type::record('runtime', 'imessage_cursor') SET value = ${{ last_rowid: v }}`)
+              .query(
+                sql`UPSERT type::record('runtime', 'imessage_cursor') SET value = ${{ last_rowid: v }}`,
+              )
               .collect(),
           logger: console,
         });
@@ -374,11 +378,7 @@ export async function startDaemon() {
       process.env.ROBIN_DISABLE_HOT_RELOAD === '1'
         ? { stop() {} }
         : startJobHotReload({
-            paths: [
-              paths.data.jobs(),
-              `${paths.data.home()}/io`,
-              `${paths.data.home()}/triggers`,
-            ],
+            paths: [paths.data.jobs(), `${paths.data.home()}/io`, `${paths.data.home()}/triggers`],
             log: console.log,
             db: ctx.db,
           });
@@ -457,5 +457,20 @@ export async function startDaemon() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  startDaemon();
+  // Direct invocation path: `node system/runtime/daemon/server.js` (used by
+  // the detached spawn from `mcp-start.js` and by any operator who runs the
+  // file directly). The supervisor path (`robin mcp start --foreground`)
+  // already wraps startDaemon() in its own EALREADY/attach handler in
+  // mcp-start.js — this block exists so the direct path doesn't crash with
+  // an unhandled rejection when another daemon owns the lock.
+  startDaemon().catch((err) => {
+    if (err?.code === 'EALREADY') {
+      const match = /pid (\d+)/.exec(err.message ?? '');
+      const pid = match ? match[1] : '?';
+      console.log(`daemon already running (pid ${pid}); exiting cleanly`);
+      process.exit(0);
+    }
+    console.error(`daemon: fatal: ${err?.stack ?? err?.message ?? err}`);
+    process.exit(1);
+  });
 }
