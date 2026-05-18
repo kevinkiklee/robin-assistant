@@ -3,7 +3,7 @@ import { getAccessToken } from '../../_auth/token-cache.js';
 import { getEvent } from '../client.js';
 import { wrapUntrusted } from '../../../../cognition/discretion/wrap-untrusted.js';
 
-function wrapCalendarEvent(event) {
+export function wrapCalendarEvent(event) {
   if (!event) return event;
   const wrap = (text) =>
     text != null
@@ -13,6 +13,12 @@ function wrapCalendarEvent(event) {
     ...event,
     summary: wrap(event.summary),
     description: wrap(event.description),
+    location: wrap(event.location),
+    attendees: (event.attendees ?? []).map((a) => ({
+      ...a,
+      email: a.email != null ? wrap(a.email) : a.email,
+      displayName: a.displayName != null ? wrap(a.displayName) : a.displayName,
+    })),
   };
 }
 
