@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Polish program — Phase A (sanitation, 2026-05-17)
+
+Two-phase polish program initiated 2026-05-17, running parallel to cognition-e1 self-improvement v2. Phase A executes sanitation across four sub-areas: silent-failure hunt, dead-code inventory, test gaps + slow-test cleanup, observability + invariant hardening. Phase B (UX polish) will follow, informed by Phase A's audit notes bridge table. A third lane (prompt-injection hardening) emerged at execution time — files owned by it are deferred to a follow-on Phase A2.
+
+**Added.** Snapshot-test normalization helper (`system/tests/helpers/normalize-snapshot.js`); polish-program exit-gate verifier (`system/scripts/polish-verify.sh`); MCP tool inventory script (`system/scripts/list-mcp-tools.js`); log baseline harness (`system/scripts/log-baseline.js` + `log-baseline-traffic.js`, active-traffic helper has known CLI-surface bug for follow-up); structured logger module (`system/runtime/log/index.js`); three detect-only invariants — `daemon.embedder_load_age` (synthetic embed probe), `runtime.hot_reload_watcher_active` (user-data/jobs hot-reload watcher), `mcp.daemon_authenticated_after_reconnect` (weekly synthetic disconnect probe); optional `remediation: string | string[]` field on the invariant schema (Phase B will tighten to required); doctor `--health --json` schema snapshot test (gated behind `ROBIN_SKIP_SLOW`); `.githooks/pre-commit` atomic-commit drift warning; madge as devDependency; dead-code allowlist for reflection-loaded modules; unit tests for `google_calendar/client.js` (9 tests) and `imessage/sender.js` (13 tests).
+
+**Changed.** `cli/health.js` rollups (`rollupFacultyErrors`, `rollupPendingTriggers`, `rollupStaleDream`, `rollupStateInference`) now surface DB errors as `{status: 'fail', error}` instead of silently reporting clean — operators no longer get false-clean from the health rollup during DB outages. `explain-learning.js` and `explain-playbook.js` primary fetches propagate DB errors (secondary lineage hydration remains tolerant). `record-correction.js` rule-retractability guard fails closed (was fail-open). Slow tests `scheduler-heartbeat`, `heartbeat-buckets`, `idle-embedder` migrated from real timers to `mock.timers` (combined 2032ms → 303ms). Five console.* sites converted to structured logger.
+
+**Documented.** Resilient-by-design fallbacks annotated inline at `cognition/memory/archive.js`, `runtime/daemon/cadence-consumer.js`, `cognition/jobs/cost-monitor.js`.
+
+**Removed.** Unused `normalizeRecallEvents` export.
+
+**Deferred to Phase A2 / cognition-e1 lane / user.** Phase A2 (post-prompt-injection commit): sweep daemon `server.js`/`lifecycle.js`/`http.js`/`log-scrub.js`, `cli/commands/web.js`, `mcp/tools/ingest.js`, `_framework/capture.js`, `config/{daemon-state,data-store,mcp-token}.js`, `runtime/web/server.js`, two `mcp.wiring-*` invariants. Cognition-e1 follow-ups (filed in audit notes): wire synthetic-embed probe writer; convert reauth `console.warn` to structured logger; pass `db` handle to `startJobHotReload`; surface `activeQueryCount` to invariant ctx. User-decision items: 10 orphan modules flagged for follow-up (3 likely-real, 7 false positives from incomplete allowlist), 16 truly-unused exports + 94 test-only exports flagged for follow-up deletion, 3 stale fixtures, 8 unreferenced migrations.
+
+**Audit notes + bridge to Phase B:** `docs/superpowers/notes/2026-05-17-polish-phase-a-audit.md` (12-entry priority-ranked bridge table at bottom).
+
 ### Removed: evidence system (Theme 2a + Cognition D3 belief gating)
 
 The evidence pipeline was writing data (994 rows in production — 95% from reinforcement, 5% from biographer) but nothing was consuming it in a way that affected user-visible behavior. Three concrete failure modes drove the decision:

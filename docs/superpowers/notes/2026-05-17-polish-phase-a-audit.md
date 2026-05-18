@@ -1,7 +1,9 @@
 # Polish Phase A — Audit Notes
 
-**Date range:** 2026-05-17 → <end>
-**Phase A complete:** <date>
+**Date range:** 2026-05-17
+**Phase A complete:** 2026-05-17
+**Total polish commits in Phase A:** ~30 (spec/plan/audit + 4 setup + 9 A.1 + 5 A.2 + 6 A.3 + 12 A.4)
+**Deferred to Phase A2 (post-prompt-injection-lane):** files in `system/runtime/daemon/{server,lifecycle,http,log-scrub}.js`, `cli/commands/web.js`, `mcp/tools/ingest.js`, `_framework/capture.js`, `config/{daemon-state,data-store,mcp-token}.js`, `web/server.js`, two `mcp.wiring-*` invariants — sweep once that lane commits.
 
 ## A.1 Silent-failure hunt
 
@@ -536,3 +538,9 @@ _Priority enum: `high` (blocker for Phase B) / `med` (do early) / `low` (do late
 | Rewrite `system/scripts/log-baseline-traffic.js` to use real CLI surfaces (`hot`, `jobs run`, correct `remember` signature); then re-baseline + delta check (Tasks 29-30 carryover) | log-baseline | A.4 (Task 5 known issue) | med |
 | Promote `daemon.embedder_load_age`, `runtime.hot_reload_watcher_active`, `mcp.daemon_authenticated_after_reconnect` out of detect-only after 7 days of clean runs | invariant-promotion | A.4 | low |
 | Add `repair` actions for the three new detect-only invariants once promoted | invariant-repair | A.4 | low |
+| `cli/health.js` rollups now surface DB errors with `{status:'fail', error}` — Phase B's `health()` MCP tool reshape must preserve the failure information | mcp-contract | A.1 (`57b511b`) | high |
+| `explain-learning` / `explain-playbook` primary fetches now throw on DB error — MCP tool error-reason enum (B.3) must include `db_error` | mcp-contract | A.1 (`c8018cd`, `6e10c8b`) | high |
+| `record-correction` rule-retractability guard is now fail-closed — MCP `requires_permission` shape (B.3) should surface this as a real reason | mcp-contract | A.1 (`103e65d`) | med |
+| Structured logger events emitted: `scheduler.tick_failed`, `scheduler.gate_failed`, `scheduler.dispatch_failed`, `integration.sync_cleanup_failed`, `scheduler.tracking_write_failed`, `jobs.bad_schedule` — doctor `--verbose` (B.2) can surface last-N occurrences from these | observability | A.4 (logger conversions) | low |
+| New snapshot test pattern established (`normalize-snapshot.js` helper + inline string assertions) — Phase B's CLI `--help` snapshots, doctor JSON shape, recall snippet tests should adopt the same pattern | snapshot-convention | Task 2 (`87575f8`, `fe7343f`) | high |
+| Test files added for `google_calendar/client.js` and `imessage/sender.js` — sets the bar for Phase B's MCP tool result-shape snapshot tests | test-convention | A.3 (`3491be1`, `40da44a`) | low |
