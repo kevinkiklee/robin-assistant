@@ -180,7 +180,22 @@ export function startHttp({ ctx, tools, routes, port, authToken }) {
       }
       const entry = table.get(`${req.method} ${req.url}`);
       if (!entry) {
-        res.writeHead(404).end();
+        // MCP SDK error handler tries to parse 404 bodies as OAuth-shaped
+        // JSON ({ error, error_description, ... }). An empty body surfaces as
+        // "Invalid OAuth error response: SyntaxError: JSON Parse error:
+        // Unexpected EOF. Raw body:" on the client, which is what Claude
+        // Code's `/mcp reconnect` reports when it hits a route that exists
+        // server-side but doesn't match by method/path (e.g. POST /sse,
+        // GET /messages). Always send a small JSON envelope so the
+        // parse-as-OAuth path returns a real error instead of crashing.
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: `no route for ${req.method} ${req.url}`,
+            name: 'RobinNotFoundError',
+          }),
+        );
         return;
       }
 

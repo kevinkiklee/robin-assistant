@@ -84,6 +84,26 @@ function postRaw(port, path, raw) {
 
 const stubCtx = { sessions: { count: 0 } };
 
+test('404 response carries a JSON envelope (not an empty body)', async () => {
+  // Empty 404 bodies make Claude Code's MCP SDK fail with
+  // "Invalid OAuth error response: SyntaxError: JSON Parse error:
+  // Unexpected EOF. Raw body:". The SDK tries to parse non-2xx bodies as
+  // OAuth-shaped JSON; an empty body fails the parser and the user gets a
+  // useless reconnect error.
+  const server = startHttp({ ctx: stubCtx, tools: [], routes: [], port: 0 });
+  await once(server, 'listening');
+  const { port } = server.address();
+  try {
+    const r = await getJson(port, '/this/route/does/not/exist');
+    assert.equal(r.status, 404);
+    assert.equal(r.body.ok, false, '404 body has ok:false');
+    assert.ok(typeof r.body.error === 'string' && r.body.error.length > 0);
+    assert.equal(r.body.name, 'RobinNotFoundError');
+  } finally {
+    server.close();
+  }
+});
+
 test('success response includes ok: true and spreads data', async () => {
   const routes = [
     {
