@@ -88,12 +88,12 @@ Shape-change side-effect: `tools-2c-smoke.test.js` previously asserted bare `{ k
 | File | Finding | Resolution | Commit |
 |---|---|---|---|
 | `system/io/mcp/tools/health.js` | health() MCP tool now wires `reshapeForMCP({results, ts, summary})` — output is realm-grouped (`db`, `runtime`). Flat backward-compat fields preserved (version, db_open, embedder_loaded, pending_events, active_sessions, embed_usage) so existing consumers and the legacy `tool-health.test.js` keep passing. New 4-case snapshot test at `system/tests/unit/mcp-tool-health-shape.test.js`. | shipped | `9cd4a11` |
+| `system/io/mcp/tools/show-telemetry-rollup.js` + `system/io/format/telemetry-rollup.js` | Tool now wires `reshapeTelemetryRollup({buckets, verbose})`. FACULTIES extended from 7 → 12 (added `reinforcement`, `belief`, `dream_layer`, `meta_cognition`, `state_inference`). Tool accepts `verbose: boolean` arg and emits a `buckets` summary alongside the existing `rows`. Existing `telemetry-show-rollup-tool.test.js` (7 tests) still passes; new 3-case `mcp-tool-telemetry-rollup-shape.test.js` covers the helper-driven path. | shipped | `246ffeb` |
 
 ## Open for cognition-e1 lane
 
 | File | Finding | Suggested fix |
 |---|---|---|
-| `system/io/mcp/tools/show-telemetry-rollup.js` | The tool's current contract returns telemetry_hourly rows directly with `event_kind` per row (used by `system/tests/integration/telemetry-show-rollup-tool.test.js`). `reshapeTelemetryRollup` aggregates per-faculty (drops `event_kind` granularity) AND its canonical `FACULTIES` list omits `reinforcement` / `belief` / `dream` / `meta_cognition` — all faculties produced by `rollup-registry.js`'s `NAME_TO_FACULTIES` map. Direct wiring would silently drop those rows and break event_kind filtering. | (1) Extend `FACULTIES` in `system/io/format/telemetry-rollup.js` to include `reinforcement`, `belief`, `dream`, `meta_cognition` (match `NAME_TO_FACULTIES`); (2) decide whether `event_kind` is part of the new per-faculty shape or whether the helper should accept a `groupBy: 'faculty' \| 'faculty+event_kind'` switch; (3) migrate `telemetry-show-rollup-tool.test.js` accordingly. Owner is e1 because the registry → bucket → reshape contract is e1's surface. |
 
 ## Open for prompt-injection lane
 

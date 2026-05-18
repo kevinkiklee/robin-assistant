@@ -493,6 +493,7 @@ rewrite is filed below.
 | `system/data/embed/probe.js` (new) + test | Probe writer module landed: calls `embedFn` against a fixed synthetic input, upserts `runtime_state:embed_probe` with `last_success_ts`; on failure preserves the prior ts and records `last_error`. Drives the `daemon.embedder_load_age` invariant. | shipped module + 5-case test | `75e2ac1` |
 | `system/data/db/client.js` | Reauth proactive + reactive paths converted from `console.warn` to structured logger. Event classes: `db.reauth_triggered`, `db.reauth_succeeded`, `db.reauth_failed`, `db.anonymous_access_observed`. Existing `db-client-reauth.test.js` still passes — logger is additive. | shipped | `4ab88cd` |
 | `system/data/db/client.js` + `system/runtime/invariants/ctx.js` | `activeQueryCount` counter added via `installQueryCounter()` (wraps every `db.query(...).collect()`); exposed via `getActiveQueryCount()`. `makeCtx` reads it at tick build time → `ctx.activeQueryCount`. Closes the "skip during workload" wiring for `mcp.daemon_authenticated_after_reconnect`. | shipped | `18c8399`, `c0270a4` |
+| `system/runtime/daemon/server.js` (heartbeat scheduler) | `writeEmbedProbe(db, embedFn)` is shipped (`75e2ac1`) but no daily heartbeat bucket invoked it — `daemon.embedder_load_age` continued reporting `no_probe_record`. Added an `embed-probe` bucket (24h cadence) that calls `writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed)`. Skips with a warning when the embedder isn't loaded; relies on writeEmbedProbe's resilient internal error handling for the failure path. | shipped | `9c66897` |
 
 ## Deferred pending prompt-injection commit
 
@@ -511,7 +512,7 @@ git-index hazard documented in CLAUDE.md.
 
 | File | Finding | Suggested fix |
 |---|---|---|
-| `system/runtime/daemon/server.js` (heartbeat scheduler) | `writeEmbedProbe(db, embedFn)` is shipped (`75e2ac1`) but no daily heartbeat bucket invokes it. Until wired, `daemon.embedder_load_age` will continue reporting `no_probe_record`. | Add a daily-cadence bucket in `createScheduler`'s bucket list that calls `writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed)`. Skipped in this pass because server.js is being edited by the prompt-injection lane (concurrent-lane risk). |
+| ~~`system/runtime/daemon/server.js` (heartbeat scheduler)~~ | ~~`writeEmbedProbe(db, embedFn)` is shipped (`75e2ac1`) but no daily heartbeat bucket invokes it.~~ | **Resolved 2026-05-18** in `9c66897` — `embed-probe` bucket (24h cadence) wired into the scheduler; calls `writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed)` and skips with a warning when the embedder isn't loaded. |
 | ~~`system/data/db/client.js` + `system/runtime/invariants/ctx.js`~~ | ~~`mcp.daemon_authenticated_after_reconnect` invariant skips during active workload but `ctx.activeQueryCount` is never populated.~~ | **Resolved 2026-05-18** in `18c8399`, `c0270a4` — `installQueryCounter()` wraps every `db.query(...).collect()` (both embedded and remote handles); `getActiveQueryCount()` accessor exported; `makeCtx` reads it into `ctx.activeQueryCount`. 6 new tests cover the counter; existing reauth invariant + db-client tests still green. |
 
 ## Open for prompt-injection lane
@@ -543,6 +544,13 @@ references them (any extension, basename, or path-based match across
 All three appear to be legacy fixtures from Phase 1/2 design work that
 never made it into a live test. Recommended: delete in a follow-up
 commit (`chore(polish-a2): drop unused legacy test fixtures`).
+
+**Resolved 2026-05-18.** Cleanup landed mid-Deferred-1 sweep:
+`seed-recall-pairs.json` and `synthetic-events.json` were already
+gitignored (lines 8–9) and removed from disk — no commit needed.
+`discord-events.js` is *not* stale: `user-data/io/integrations/discord/tests/*.test.js`
+imports it (the original audit scan missed the user-data tree), so it
+stays in place.
 
 #### Unreferenced migrations (DO NOT auto-delete — user decision)
 
