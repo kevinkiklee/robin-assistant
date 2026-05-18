@@ -52,11 +52,6 @@ export function isFromMe(row) {
   return row?.is_from_me === 1 || row?.is_from_me === true;
 }
 
-// Pure id-stripping for cursor advancement.
-export function stripRowidPrefix(rowid) {
-  return rowid == null ? null : Number(rowid);
-}
-
 // Allowlist matching:
 //   - directHandles: Set of normalized handles allowed in DM
 //   - groupChats:    Set of chat GUIDs allowed (any member's messages)
