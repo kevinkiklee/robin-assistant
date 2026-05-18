@@ -466,14 +466,31 @@ returned zero log lines. **Tasks 29 (log noise reduction pass) and 30
 baseline can't be compared against itself when it was empty. Helper
 rewrite is filed below.
 
+## Cognition-e1 follow-ups landed
+
+| File | Finding | Resolution | Commit |
+|---|---|---|---|
+| `system/data/embed/probe.js` (new) + test | Probe writer module landed: calls `embedFn` against a fixed synthetic input, upserts `runtime_state:embed_probe` with `last_success_ts`; on failure preserves the prior ts and records `last_error`. Drives the `daemon.embedder_load_age` invariant. | shipped module + 5-case test | `75e2ac1` |
+| `system/data/db/client.js` | Reauth proactive + reactive paths converted from `console.warn` to structured logger. Event classes: `db.reauth_triggered`, `db.reauth_succeeded`, `db.reauth_failed`, `db.anonymous_access_observed`. Existing `db-client-reauth.test.js` still passes — logger is additive. | shipped | `4ab88cd` |
+
+## Deferred pending prompt-injection commit
+
+The prompt-injection-hardening lane has uncommitted WIP in
+`system/runtime/daemon/server.js`. The two ctx-wiring items below touch
+that file, so they must wait until the lane commits — otherwise the
+follow-up edit would race the lane's index and trigger the multi-agent
+git-index hazard documented in CLAUDE.md.
+
+| File | Finding | Suggested fix |
+|---|---|---|
+| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | Surface an `activeQueryCount` counter from `db/client.js` through `ctx` so the invariant can skip during real traffic. |
+| `system/runtime/daemon/server.js` (prompt-injection lane) | `startJobHotReload` now accepts an optional `db` parameter that writes `runtime:hot_reload_watcher` state. Caller does not pass `db` today — so the new `runtime.hot_reload_watcher_active` invariant will report `watcher_not_registered`. | Pass the daemon's `db` handle to `startJobHotReload({…, db})` in server.js when constructing the watcher. |
+
 ## Open for cognition-e1 lane
 
 | File | Finding | Suggested fix |
 |---|---|---|
-| `system/data/embed/factory.js` | A.4 needs a daily synthetic-embed probe to drive `daemon.embedder_load_age`. Currently the invariant ships detect-only and reports `no_probe_record` until wired. | Wire a probe writer: on each daily heartbeat, embed a 1-token sentinel string and UPSERT `runtime_state:embed_probe` with `last_success_ts`. The invariant already reads from that row. |
-| `system/data/db/client.js` | Reauth proactive + reactive paths still use `console.warn` for diagnostic logging. Spec lists these as logger-conversion targets. | Convert `console.warn("[db] reauth …")` etc. to `log.warn({event:'db.reauth_*', …})` using `system/runtime/log/index.js`. |
-| `system/runtime/daemon/server.js` (prompt-injection lane) + ctx wiring | `mcp.daemon_authenticated_after_reconnect` invariant probes weekly but cannot tell whether a workload is in flight; `ctx.activeQueryCount` is currently undefined (treated as 0). | Surface an `activeQueryCount` counter from `db/client.js` through `ctx` so the invariant can skip during real traffic. |
-| `system/runtime/daemon/server.js` (prompt-injection lane) | `startJobHotReload` now accepts an optional `db` parameter that writes `runtime:hot_reload_watcher` state. Caller does not pass `db` today — so the new `runtime.hot_reload_watcher_active` invariant will report `watcher_not_registered`. | Pass the daemon's `db` handle to `startJobHotReload({…, db})` in server.js when constructing the watcher. |
+| `system/runtime/daemon/server.js` (heartbeat scheduler) | `writeEmbedProbe(db, embedFn)` is shipped (`75e2ac1`) but no daily heartbeat bucket invokes it. Until wired, `daemon.embedder_load_age` will continue reporting `no_probe_record`. | Add a daily-cadence bucket in `createScheduler`'s bucket list that calls `writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed)`. Skipped in this pass because server.js is being edited by the prompt-injection lane (concurrent-lane risk). |
 
 ## Open for prompt-injection lane
 
