@@ -196,10 +196,37 @@ export async function connect({
   });
 
   installQueryRetry(db, reauth);
+
+  // Layer 3: ConnectionUnavailableError recovery. When the WS socket itself
+  // is gone (not just anonymous), rebuild the connection in-process so
+  // scheduler ticks recover without a daemon restart. Single-flighted so
+  // concurrent failed queries don't trigger multiple rebuilds.
+  const rebuild = singleFlight(async () => {
+    log.warn({ event: 'db.connection_rebuild_started', url: db.__url });
+    try {
+      await db.close().catch(() => {
+        // close() may itself throw "not connected" — that's expected when
+        // the WS already dropped. Treat as already-closed.
+      });
+      await db.connect(db.__url);
+      // The 'connected' event subscriber above fires and triggers reauth();
+      // that runs in parallel with the retry, but installQueryRetry catches
+      // any anonymous-error follow-up.
+      log.info({ event: 'db.connection_rebuild_succeeded', url: db.__url });
+    } catch (err) {
+      log.warn({
+        event: 'db.connection_rebuild_failed',
+        message: err?.message ?? String(err),
+      });
+      throw err;
+    }
+  });
+  installConnectionRecovery(db, rebuild);
   return db;
 }
 
 const ANONYMOUS_MARKER = 'Anonymous access not allowed';
+const CONNECTION_UNAVAILABLE_MARKER = 'must be connected to a SurrealDB instance';
 
 // Active-query counter — tracks `.collect()` calls in flight across all DB
 // handles produced by `connect()`. Read by the invariant ctx so weekly
@@ -273,6 +300,26 @@ export function isAnonymousError(err) {
 }
 
 /**
+ * Detect the SurrealDB "ConnectionUnavailable" failure mode. Distinguished
+ * from `isAnonymousError` because the recovery action is different —
+ * anonymous needs reauth on the existing socket; connection-unavailable
+ * needs a full close + connect cycle because the socket itself is gone.
+ *
+ * Surfaced as `ConnectionUnavailableError` (error name) with message
+ * "You must be connected to a SurrealDB instance before performing this
+ * operation." Match on the message substring; the error class isn't a
+ * stable export in surrealdb v2.0.3.
+ *
+ * @internal exported for testing.
+ */
+export function isConnectionUnavailableError(err) {
+  const msg = String(err?.message ?? err ?? '');
+  if (msg.includes(CONNECTION_UNAVAILABLE_MARKER)) return true;
+  if (String(err?.name ?? '') === 'ConnectionUnavailableError') return true;
+  return false;
+}
+
+/**
  * Single-flight wrapper: concurrent callers share the in-flight promise.
  * Prevents reauth stampede when many scheduler ticks fail in the same
  * event-loop turn.
@@ -325,6 +372,61 @@ export function installQueryRetry(db, reauth) {
           message: err?.message ?? String(err),
         });
         await reauth();
+        return boundQuery(...args).collect(...collectArgs);
+      }
+    };
+    return builder;
+  };
+  return db;
+}
+
+/**
+ * Wrap `db.query()` so the returned builder's `.collect()` retries once
+ * after `ConnectionUnavailableError`. Distinct from `installQueryRetry`
+ * (Anonymous-access) because the recovery path is different:
+ *
+ *   - Anonymous-access → existing socket is alive but session is gone →
+ *     `reauth()` re-applies signin + use on the same socket.
+ *   - Connection-unavailable → socket itself is gone, surrealdb client's
+ *     built-in autoreconnect gave up after ~5 attempts → must call
+ *     `db.close() + db.connect(url)` to rebuild from scratch. Then the
+ *     `connected` event subscriber fires and reauth() re-applies session.
+ *
+ * Last night's 8.5h scheduler outage (2026-05-18T03:22→11:58Z, 622 failed
+ * ticks) was this failure mode: WS dropped, autoreconnect gave up, every
+ * scheduler tick threw ConnectionUnavailableError until manual daemon
+ * restart. With this layer installed, the next failed query rebuilds the
+ * connection in-process — no daemon restart needed.
+ *
+ * Order matters: this layer must wrap AFTER `installQueryRetry`, because
+ * post-rebuild the reauth handler needs to apply credentials before the
+ * retry hits. The inner `installQueryRetry` wrapper handles the Anonymous
+ * follow-up if the proactive `connected`-event reauth lost the race.
+ *
+ * @internal exported for testing.
+ */
+export function installConnectionRecovery(db, rebuild) {
+  const origQuery = db.query;
+  if (typeof origQuery !== 'function') return db;
+  const boundQuery = origQuery.bind(db);
+  db.query = function patchedQuery(...args) {
+    const builder = boundQuery(...args);
+    if (!builder || typeof builder.collect !== 'function') return builder;
+    const origCollect = builder.collect.bind(builder);
+    builder.collect = async (...collectArgs) => {
+      try {
+        return await origCollect(...collectArgs);
+      } catch (err) {
+        if (!isConnectionUnavailableError(err)) throw err;
+        log.warn({
+          event: 'db.connection_unavailable_observed',
+          message: err?.message ?? String(err),
+        });
+        await rebuild();
+        // Rebuild via `db.query(...origArgs)` — the connection is fresh,
+        // we want a new builder against the new socket. DispatchedPromise
+        // caches its rejection, so re-calling `.collect()` on the old
+        // builder would re-throw the cached error.
         return boundQuery(...args).collect(...collectArgs);
       }
     };

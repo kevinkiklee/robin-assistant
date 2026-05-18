@@ -29,6 +29,7 @@ import { loadManifests } from '../../io/integrations/_framework/manifest-loader.
 import daemonEmbedderLoadAge from './daemon.embedder-load-age.js';
 import daemonHeartbeating from './daemon.heartbeating.js';
 import dbAuthenticated from './db.authenticated.js';
+import dbConnectionAlive from './db.connection-alive.js';
 import dbDaemonReachable from './db.daemon-reachable.js';
 import dbEmbedderProfileMatch from './db.embedder-profile-match.js';
 import dbPendingRecallLogBounded from './db.pending-recall-log-bounded.js';
@@ -55,6 +56,7 @@ export const INVARIANTS = [
   // db
   dbDaemonReachable,
   dbAuthenticated,
+  dbConnectionAlive,
   dbEmbedderProfileMatch,
   dbPendingRecallLogBounded,
   // mcp
