@@ -10,12 +10,12 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { resolveSessionContext } from '../../cognition/dream/comm-style-context-router.js';
 import { getEffectiveContextCommStyle } from '../../cognition/dream/step-comm-style.js';
 import { getCommStyle } from '../../cognition/jobs/comm-style.js';
-import { resolveSessionContext } from '../../cognition/dream/comm-style-context-router.js';
 import { listAllJobs } from '../../cognition/jobs/db.js';
 import { getCalibration } from '../../cognition/jobs/predictions.js';
-import { ensureHome, getIntegrationDirs, packageRootDir } from '../../config/data-store.js';
+import { ensureHome, getIntegrationDirs, packageRootDir, paths } from '../../config/data-store.js';
 import { close, connect, defaultDbUrl } from '../../data/db/client.js';
 import { readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { loadManifests } from '../../io/integrations/_framework/manifest-loader.js';
@@ -83,7 +83,8 @@ export async function readDbDataForAgentsMd() {
       }
       const integrations = await loadIntegrationsForAgentsMd({ intState });
       const currentState = await readCurrentState(db);
-      return { jobs, commStyle, calibration, integrations, currentState };
+      const pinned = await readPinnedProfile();
+      return { jobs, commStyle, calibration, integrations, currentState, pinned };
     } finally {
       await close(db);
     }
@@ -94,7 +95,17 @@ export async function readDbDataForAgentsMd() {
       calibration: null,
       integrations: [],
       currentState: null,
+      pinned: '',
     };
+  }
+}
+
+async function readPinnedProfile() {
+  try {
+    return await readFile(paths.data.pinned(), 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return '';
+    return '';
   }
 }
 
@@ -111,12 +122,13 @@ async function writeMergedAgentsMd(
   calibration,
   integrations,
   currentState,
+  pinned,
 ) {
   await mkdir(dirname(path), { recursive: true });
   const existing = await readOrEmpty(path);
   const merged = mergeAgentsMdContent(
     existing,
-    agentsMdContent({ jobs, commStyle, calibration, integrations, currentState }),
+    agentsMdContent({ jobs, commStyle, calibration, integrations, currentState, pinned }),
   );
   if (merged === existing) return { path, action: 'unchanged' };
   await writeFile(path, merged, 'utf8');
@@ -132,13 +144,21 @@ async function writeMergedAgentsMd(
  */
 export async function refreshAgentsMdFiles({ targets } = {}) {
   const root = packageRootDir();
-  const paths = targets ?? [join(root, 'CLAUDE.local.md'), join(root, 'GEMINI.local.md')];
-  const { jobs, commStyle, calibration, integrations, currentState } =
+  const targetPaths = targets ?? [join(root, 'CLAUDE.local.md'), join(root, 'GEMINI.local.md')];
+  const { jobs, commStyle, calibration, integrations, currentState, pinned } =
     await readDbDataForAgentsMd();
   const results = [];
-  for (const path of paths) {
+  for (const path of targetPaths) {
     results.push(
-      await writeMergedAgentsMd(path, jobs, commStyle, calibration, integrations, currentState),
+      await writeMergedAgentsMd(
+        path,
+        jobs,
+        commStyle,
+        calibration,
+        integrations,
+        currentState,
+        pinned,
+      ),
     );
   }
   return results;

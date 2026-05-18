@@ -224,6 +224,8 @@ export const paths = {
     // User-content surfaces (top-level for visibility).
     artifacts: () => join(robinHome(), 'artifacts'),
     jobs: () => join(robinHome(), 'jobs'),
+    profile: () => join(robinHome(), 'profile'),
+    pinned: () => join(robinHome(), 'profile', 'pinned.md'),
     skills: () => join(robinHome(), 'skills'),
     sources: () => join(robinHome(), 'sources'),
     upload: () => join(robinHome(), 'upload'),
