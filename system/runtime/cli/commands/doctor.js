@@ -200,6 +200,63 @@ async function doInvariantsRender(out, { verbose = false, colors = false } = {})
 }
 
 /**
+ * `--repair=<name> [--apply]`: run one invariant's `repair()` function. Without
+ * `--apply`, runs in dry-run mode (repair receives `ctx.dryRun=true`, doesn't
+ * commit state). With `--apply`, runs for real and persists the outcome to
+ * invariants-state.json.
+ *
+ * Invariants with check() but no repair() return an explicit message. Db-
+ * touching repairs return `no_db_handle` because doctor is probe-only by design
+ * (see makeInvariantCtx above) — those repairs need the daemon to run them.
+ */
+async function doRepair(out, { name, apply = false } = {}) {
+  const invariants = await getAllInvariants();
+  const inv = invariants.find((i) => i.name === name);
+  if (!inv) {
+    out(`unknown invariant: ${name}`);
+    out(`available: ${invariants.map((i) => i.name).join(', ')}`);
+    return 2;
+  }
+  if (typeof inv.repair !== 'function') {
+    out(`${name}: no repair() defined — check-only invariant`);
+    return 1;
+  }
+  const ctx = makeInvariantCtx({ paths, trigger: 'doctor', logFallback: false });
+  const report = await runInvariants({
+    trigger: 'doctor',
+    ctx,
+    invariants: [inv],
+    name,
+    repair: true,
+    apply,
+    statePath: paths.data.invariantsState(),
+    lockDir: paths.data.invariantsLocks(),
+  });
+  const result = report.results[0];
+  if (!result) {
+    out(`runner returned no result for ${name}`);
+    return 1;
+  }
+  const mode = apply ? 'apply' : 'dry-run';
+  out(`Invariant: ${name} (${mode})`);
+  out(`  check: ${result.status}${result.error ? ` — ${result.error}` : ''}`);
+  if (result.repair) {
+    out(`  repair: ${JSON.stringify(result.repair)}`);
+    if (!apply && result.repair.action !== 'nothing_to_clean') {
+      out('  (dry-run — re-run with --apply to commit)');
+    }
+  } else if (result.status === 'ok') {
+    out('  repair: skipped (check already ok)');
+  } else {
+    out('  repair: not_run');
+  }
+  // Success = check ok OR repair successfully committed.
+  if (result.status === 'ok') return 0;
+  if (apply && result.repair?.repaired) return 0;
+  return 1;
+}
+
+/**
  * `--diff-legacy`: compare framework's install.pointer_present verdict against
  * the legacy probe (pointerExists). Append disagreements to the divergence log.
  */
@@ -235,6 +292,13 @@ export async function doctor(argv = [], deps = {}) {
   const wantDiffLegacy = args.flags['diff-legacy'] === true;
   const wantEmitRunbook = args.flags['emit-runbook'] === true;
   const wantInvariants = args.flags.invariants === true;
+  // `--repair=<invariant-name>`: parseArgs returns the value as a string;
+  // when bare `--repair` is passed it returns `true`, which is invalid here.
+  const wantRepair =
+    typeof args.flags.repair === 'string' && args.flags.repair.length > 0
+      ? args.flags.repair
+      : null;
+  const wantApply = args.flags.apply === true;
   const verbose = args.flags.verbose === true;
   // Color is on only when stdout is a real TTY AND NO_COLOR is unset AND we're
   // not emitting JSON. Tests run without a TTY so `colors` collapses to false
@@ -280,6 +344,12 @@ export async function doctor(argv = [], deps = {}) {
 
   if (wantInvariants) {
     const code = await doInvariantsRender(out, { verbose, colors });
+    if (typeof process !== 'undefined') process.exitCode = code;
+    return;
+  }
+
+  if (wantRepair) {
+    const code = await doRepair(out, { name: wantRepair, apply: wantApply });
     if (typeof process !== 'undefined') process.exitCode = code;
     return;
   }
