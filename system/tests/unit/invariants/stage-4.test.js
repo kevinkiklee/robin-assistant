@@ -82,19 +82,39 @@ test('node_version_pinned: enabled=true when .npmrc has use-node-version', async
   assert.equal(ok, true);
 });
 
-test('node_version_pinned: check fails on mismatch', async () => {
+test('node_version_pinned: check passes on version mismatch when bindings loadable (boot trigger)', async () => {
+  // When versions differ, the invariant probes better-sqlite3 directly;
+  // if the binding loads, the runtime is ABI-compatible and the warning
+  // would be false-positive. Use boot trigger explicitly so the
+  // doctor-trigger short-circuit isn't taken.
   writeFileSync(join(tmpRoot, '.npmrc'), 'use-node-version=99.0.0\n');
-  const r = await runtimeNodeVersionPinned.check();
-  assert.equal(r.ok, false);
-  assert.equal(r.error, 'version_mismatch');
+  const r = await runtimeNodeVersionPinned.check({ trigger: 'boot' });
+  assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.evidence.pinned, '99.0.0');
+  assert.equal(r.evidence.bindings_loadable, true);
+  assert.match(r.evidence.note, /ABI compatible/);
 });
 
-test('node_version_pinned: check passes when versions match', async () => {
+test('node_version_pinned: doctor trigger defers without probing bindings', async () => {
+  // The CLI's `#!/usr/bin/env node` shebang can resolve to a Homebrew node
+  // (different ABI from the daemon's nvm node). The doctor trigger MUST
+  // NOT bias on the CLI's runtime — the boot/postInstall eval (which runs
+  // under the daemon's node) is authoritative. From doctor, return ok with
+  // a note so the renderer doesn't false-warn on the CLI's process.version.
+  writeFileSync(join(tmpRoot, '.npmrc'), 'use-node-version=99.0.0\n');
+  const r = await runtimeNodeVersionPinned.check({ trigger: 'doctor' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.evidence.bindings_loadable, undefined, 'doctor must NOT run the bindings probe');
+  assert.match(r.evidence.note, /doctor trigger runs under CLI node/);
+});
+
+test('node_version_pinned: check passes when versions match (no binding probe needed)', async () => {
   const running = process.version.replace(/^v/, '');
   writeFileSync(join(tmpRoot, '.npmrc'), `use-node-version=${running}\n`);
   const r = await runtimeNodeVersionPinned.check();
   assert.equal(r.ok, true);
+  // No bindings_loadable field when the string matched directly.
+  assert.equal(r.evidence.bindings_loadable, undefined);
 });
 
 // --- daemon.heartbeating ---
