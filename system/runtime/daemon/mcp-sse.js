@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { clearSession } from '../mcp/session-taint.js';
+import { als } from '../mcp/current-call.js';
 
 // Active SSE transports keyed by sessionId. Populated in handleSse and
 // drained on the response's `close` event. The MCP SSE protocol splits a
@@ -47,19 +48,24 @@ export async function handleSse(req, res, { ctx, tools }) {
     if (!tool) {
       return { isError: true, content: [{ type: 'text', text: `unknown tool: ${name}` }] };
     }
-    try {
-      const result = await tool.handler(args ?? {});
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-    } catch (e) {
-      // Sanitise tool errors before returning them to the MCP client: raw
-      // e.message can carry absolute paths, surreal connection strings,
-      // API response bodies, or session/auth tokens. We log the full error
-      // server-side (callers can chase it via runtime/logs/daemon.log) and
-      // hand back a non-revealing summary tagged by name + tool.
-      console.error(`tool ${name} failed: ${e?.name ?? 'Error'}: ${e?.message ?? e}`);
-      const summary = `tool '${name}' failed (${e?.name ?? 'Error'}). See daemon.log for details.`;
-      return { isError: true, content: [{ type: 'text', text: summary }] };
-    }
+    // Thread transport.sessionId into the call via AsyncLocalStorage so every
+    // getSessionId() call anywhere in the tool handler returns the correct ID
+    // without passing it through every argument list.
+    return als.run({ sessionId: transport.sessionId }, async () => {
+      try {
+        const result = await tool.handler(args ?? {});
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      } catch (e) {
+        // Sanitise tool errors before returning them to the MCP client: raw
+        // e.message can carry absolute paths, surreal connection strings,
+        // API response bodies, or session/auth tokens. We log the full error
+        // server-side (callers can chase it via runtime/logs/daemon.log) and
+        // hand back a non-revealing summary tagged by name + tool.
+        console.error(`tool ${name} failed: ${e?.name ?? 'Error'}: ${e?.message ?? e}`);
+        const summary = `tool '${name}' failed (${e?.name ?? 'Error'}). See daemon.log for details.`;
+        return { isError: true, content: [{ type: 'text', text: summary }] };
+      }
+    });
   });
   await mcpServer.connect(transport);
 }

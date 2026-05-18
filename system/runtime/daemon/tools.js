@@ -1,3 +1,4 @@
+import { getSessionId } from '../mcp/current-call.js';
 import { dreamProcess } from '../../cognition/dream/pipeline.js';
 import { isEnabled, readIntegrationsState } from '../../data/runtime/integrations-state.js';
 import { runIntegrationSync } from '../../io/integrations/_framework/run-sync.js';
@@ -78,17 +79,11 @@ export async function buildTools(ctx) {
       db: ctx.db,
       embedder: ctx.embedder.wrap,
       detector: ctx.detector,
-      // B1.0: read from the live sessions context. When future work populates
-      // sessions.active during a hook-bound MCP call, recall_log rows from
-      // MCP recall pick up the session_id. Until then this remains null —
-      // identical to the prior stub — but the wiring is in place.
-      // B1: prefer the in-process active session marker; fall back to the
-      // most-recently-active row in `runtime_sessions` so MCP recall picks
-      // up whichever Claude Code / Gemini CLI session is currently live.
-      // Returns null if no live session — the recall path tolerates that.
-      getSessionId: () => ctx.sessions?.active?.session_id ?? null,
+      // ALS-backed: returns transport.sessionId for the current MCP call.
+      getSessionId,
       getMostRecentSessionId: async () => {
-        if (ctx.sessions?.active?.session_id) return ctx.sessions.active.session_id;
+        const live = getSessionId();
+        if (live) return live;
         try {
           const [rows] = await ctx.db
             .query(
@@ -101,12 +96,12 @@ export async function buildTools(ctx) {
         }
       },
     }),
-    createRememberTool({ db: ctx.db, embedder: ctx.embedder.wrap, queue: ctx.queue, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
+    createRememberTool({ db: ctx.db, embedder: ctx.embedder.wrap, queue: ctx.queue, getSessionId }),
     createRunBiographerTool({ db: ctx.db, processor: ctx.queue.enqueue }),
-    createFindEntityTool({ db: ctx.db, embedder: ctx.embedder.wrap, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
-    createGetEntityTool({ db: ctx.db, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
-    createRelatedEntitiesTool({ db: ctx.db, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
-    createListEpisodesTool({ db: ctx.db, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
+    createFindEntityTool({ db: ctx.db, embedder: ctx.embedder.wrap, getSessionId }),
+    createGetEntityTool({ db: ctx.db, getSessionId }),
+    createRelatedEntitiesTool({ db: ctx.db, getSessionId }),
+    createListEpisodesTool({ db: ctx.db, getSessionId }),
     createRecordCorrectionTool({
       db: ctx.db,
       embedder: ctx.embedder.wrap,
@@ -161,7 +156,7 @@ export async function buildTools(ctx) {
       tools: getTools,
       getJobs: () => ctx.jobs.cache.current,
     }),
-    createIngestTool({ db: ctx.db, embedder: ctx.embedder.wrap, host: ctx.host, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
+    createIngestTool({ db: ctx.db, embedder: ctx.embedder.wrap, host: ctx.host, getSessionId }),
     createImessageSendTool(),
     createBrowserVisitTool(),
     createBrowserScreenshotTool(),
@@ -181,8 +176,8 @@ export async function buildTools(ctx) {
     createShowPendingTriggersTool({ db: ctx.db }),
     createShowStepHealthTool({ db: ctx.db }),
     createShowTelemetryRollupTool({ db: ctx.db }),
-    createRecentRefusalsTool({ db: ctx.db, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
-    createArchiveHistoryTool({ db: ctx.db, getSessionId: () => ctx.sessions?.active?.session_id ?? null }),
+    createRecentRefusalsTool({ db: ctx.db, getSessionId }),
+    createArchiveHistoryTool({ db: ctx.db, getSessionId }),
     createRecordOutcomeTool({ db: ctx.db }),
     createProposePlaybookTool({ db: ctx.db }),
     createListPlaybooksTool({ db: ctx.db }),
