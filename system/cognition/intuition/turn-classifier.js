@@ -140,7 +140,7 @@ const CACHE_SIMILARITY_THRESHOLD = 0.3;
  * @param {{embed:(t:string)=>Promise<Float32Array>}|null} embedder
  * @returns {Promise<{hit: boolean, entry: object|null}>}
  */
-export async function checkSessionCache(sessionId, message, embedder) {
+async function checkSessionCache(sessionId, message, embedder) {
   const entry = _sessionCache.get(sessionId);
   if (!entry) return { hit: false, entry: null };
 
@@ -177,7 +177,7 @@ const MAX_MESSAGE_CHARS = 2000; // ~500 tokens at chars/4
  * @param {{invokeLLM: Function}} host
  * @returns {Promise<string>}
  */
-export async function classifyWithHaiku(message, host) {
+async function classifyWithHaiku(message, host) {
   const truncated = [...message].slice(0, MAX_MESSAGE_CHARS).join('');
   const userPrompt = `${CLASSIFIER_PROMPT}\n\nUser message:\n${truncated}`;
 
