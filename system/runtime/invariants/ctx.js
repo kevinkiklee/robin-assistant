@@ -37,6 +37,7 @@ export function makeCtx({
   dryRun = false,
   trigger = 'doctor',
   logFallback = true,
+  discoverHomes = null,
 } = {}) {
   return {
     db,
@@ -51,5 +52,9 @@ export function makeCtx({
     // synthetic reconnect probe when real traffic is mid-flight. Module-
     // scoped in `data/db/client.js`, so any open handle contributes.
     activeQueryCount: getActiveQueryCount(),
+    // Test-only injection point: lets pointer/discovery invariants stub the
+    // discoverExistingHomes() filesystem scan without monkey-patching modules.
+    // Production callers pass null; the invariant falls back to the real scan.
+    discoverHomes,
   };
 }
