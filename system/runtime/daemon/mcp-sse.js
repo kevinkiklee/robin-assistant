@@ -1,6 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { clearSession } from '../mcp/session-taint.js';
 
 // Active SSE transports keyed by sessionId. Populated in handleSse and
 // drained on the response's `close` event. The MCP SSE protocol splits a
@@ -27,6 +28,7 @@ export async function handleSse(req, res, { ctx, tools }) {
   req.once('close', () => {
     ctx.sessions.count = Math.max(0, ctx.sessions.count - 1);
     transports.delete(transport.sessionId);
+    clearSession(transport.sessionId);
   });
   const mcpServer = new Server(
     { name: 'robin', version: ctx.version },
