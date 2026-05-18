@@ -38,6 +38,22 @@
 | Helper / Tool | Snapshot test | Commit |
 |---|---|---|
 
+### B.4 tool wiring deferred
+
+The following MCP tools should call into the new format helpers. Filing as follow-up — each requires per-tool snapshot tests to validate the shape change doesn't break existing agent consumers:
+
+| Tool | Helper | Notes |
+|---|---|---|
+| `find_entity` | `formatEntity` | trim long edges/events lists; agent can pass `full: true` |
+| `get_entity` | `formatEntity` | same |
+| `related_entities` | `formatEntity` | applied per result |
+| `list_journal` | `formatJournal` | sort most-recent-first; trim to default 50 |
+| `list_episodes` | `formatJournal` | same |
+| `list_arcs` | `formatJournal` | same |
+| `get_arc` | `formatArc` | header+summary+footer shape |
+| `get_knowledge` | `formatKnowledge` | header+body+related shape |
+| `recall` | `trimRecallEvents` (Task 18) | budget-based snippet trimming |
+
 ## Open for cognition-e1 lane
 
 | File | Finding | Suggested fix |
