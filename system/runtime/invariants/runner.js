@@ -9,6 +9,7 @@
 //   - 'cli'         : preflight; read-only state file; never re-checks unless in cliBlockingSet
 //                     and cache is stale.
 
+import { writeHealthAlert } from './health-alert.js';
 import { byPhase, getAllInvariants } from './index.js';
 import { withLock } from './lock.js';
 import { BOOT_REPAIR_ALLOWLIST, CLI_BLOCKING_SET, PHASES } from './policy.js';
@@ -161,7 +162,19 @@ async function runBoot({
   }
 
   if (stateWritePath) writeState(stateWritePath, state);
+  maybeWriteHealthAlert({ ctx, invariants, state });
   return report;
+}
+
+function maybeWriteHealthAlert({ ctx, invariants, state }) {
+  const alertPath = ctx?.paths?.alertPath ?? ctx?.alertPath ?? null;
+  if (!alertPath) return null;
+  try {
+    return writeHealthAlert(alertPath, invariants, state);
+  } catch (e) {
+    ctx?.log?.warn?.(`health_alert_write_failed: ${e.message ?? e}`);
+    return null;
+  }
 }
 
 /** Heartbeat: parallel within phase via allSettled+timeout. Cooldown-gated from state file. */
@@ -213,6 +226,7 @@ async function runHeartbeat({ ctx, state, stateWritePath, lockDir, invariants })
     });
   }
   if (stateWritePath) writeState(stateWritePath, state);
+  maybeWriteHealthAlert({ ctx, invariants, state });
   return report;
 }
 
@@ -242,6 +256,7 @@ async function runPostInstall({ ctx, state, stateWritePath, lockDir, invariants 
     });
   }
   if (stateWritePath) writeState(stateWritePath, state);
+  maybeWriteHealthAlert({ ctx, invariants, state });
   return report;
 }
 
@@ -290,6 +305,7 @@ async function runDoctor({
     });
   }
   if (stateWritePath && apply) writeState(stateWritePath, state);
+  if (apply) maybeWriteHealthAlert({ ctx, invariants, state });
   return report;
 }
 
