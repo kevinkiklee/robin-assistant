@@ -15,6 +15,7 @@
 
 import { parseLLMJSON } from '../biographer/output.js';
 import { createCandidate } from './candidates.js';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { estimateCallCost } from './outcome-grading-prompt.js';
 import { greedyCluster } from './prediction-taxonomy-cluster.js';
 import { isSelfImprovementV2Enabled } from '../../runtime/config/self-improvement-v2.js';
@@ -269,6 +270,16 @@ export async function dreamStepPredictionTaxonomy(db, host, embedder, opts = {})
     const count = sourceIds.length || 1;
 
     try {
+      // Compute derived_from_trust from the source predictions (memos).
+      let derived_from_trust = 'trusted';
+      if (sourceIds.length > 0) {
+        const [memoTrustRows] = await db
+          .query(`SELECT derived_from_trust FROM memos WHERE id IN $ids`, { ids: sourceIds })
+          .collect();
+        derived_from_trust = mergeTrust(
+          (memoTrustRows ?? []).map((r) => r.derived_from_trust ?? 'trusted'),
+        );
+      }
       await createCandidate(db, {
         content: `Propose new statement_kind enum entry: '${proposed_kind}'\n\nDescription: ${description.trim()}\n\nEvidence: ${count} predictions clustered.`,
         kind: 'statement_kind_enum',
@@ -279,6 +290,7 @@ export async function dreamStepPredictionTaxonomy(db, host, embedder, opts = {})
           description: description.trim(),
           source_prediction_ids: sourceIds,
         },
+        derived_from_trust,
       });
       proposedKinds.push(proposed_kind);
       candidatesWritten++;

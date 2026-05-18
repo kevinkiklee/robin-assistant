@@ -1,6 +1,7 @@
 import { surql } from 'surrealdb';
 import { getProfile } from '../memory/persona.js';
 import { createCandidate, findIdenticalProfileCandidate } from './candidates.js';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { PROFILE_INFERENCE_SYSTEM } from './prompts.js';
 
 const DEFAULT_MIN_CONFIDENCE = 0.8;
@@ -9,12 +10,14 @@ export async function dreamStepProfile(db, host, { minConfidence = DEFAULT_MIN_C
   const cutoff = new Date(Date.now() - 30 * 86400_000);
   const [evRows] = await db
     .query(
-      surql`SELECT content FROM events
+      surql`SELECT content, derived_from_trust FROM events
             WHERE ts >= ${cutoff} AND biographed_at IS NOT NONE
             LIMIT 200`,
     )
     .collect();
   if (!evRows || evRows.length === 0) return { proposed: 0 };
+
+  const sourceTrust = mergeTrust((evRows ?? []).map((r) => r.derived_from_trust ?? 'trusted'));
 
   const existing = await getProfile(db);
   const userPrompt = `Existing profile:
@@ -63,6 +66,7 @@ Identify possible profile updates.`;
       signal_events: [],
       payload: { fields, rationale: c.rationale },
       confidence: c.confidence,
+      derived_from_trust: sourceTrust,
     });
     proposed++;
   }

@@ -1,6 +1,7 @@
 import { surql } from 'surrealdb';
 import { embeddingTable, readProfile } from '../../data/embed/profile-router.js';
 import { createCandidate, findOverlappingPendingCandidate } from './candidates.js';
+import { mergeTrust } from '../discretion/wrap-untrusted.js';
 import { CORRECTION_RULE_SYSTEM } from './prompts.js';
 
 const DEFAULT_LOOKBACK_DAYS = 30;
@@ -158,11 +159,18 @@ Distill into a behavioral rule.`;
     }
 
     if (result?.propose && result.rule_text) {
+      const [trustRows] = await db
+        .query(surql`SELECT derived_from_trust FROM events WHERE id IN ${cluster.ids}`)
+        .collect();
+      const derived_from_trust = mergeTrust(
+        (trustRows ?? []).map((r) => r.derived_from_trust ?? 'trusted'),
+      );
       await createCandidate(db, {
         content: result.rule_text,
         kind: 'behavior',
         signal_events: cluster.ids,
         confidence: Math.min(1, Math.max(0, result.confidence ?? 0.7)),
+        derived_from_trust,
       });
       proposed++;
     }

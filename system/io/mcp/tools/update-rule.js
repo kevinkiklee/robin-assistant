@@ -15,6 +15,7 @@ export function createUpdateRuleTool({ db }) {
       properties: {
         id: { type: 'string' },
         action: { type: 'string', enum: ['approve', 'reject', 'deactivate', 'set_priority'] },
+        force: { type: 'boolean', default: false },
         options: {
           type: 'object',
           properties: {
@@ -26,9 +27,16 @@ export function createUpdateRuleTool({ db }) {
       required: ['id', 'action'],
     },
     handler: async (args) => {
-      const { id, action, options = {} } = args;
+      const { id, action, force = false, options = {} } = args;
       switch (action) {
         case 'approve': {
+          // Taint gate: refuse to approve a candidate derived from untrusted content
+          // unless the caller explicitly passes force=true.
+          const [rows] = await db.query(`SELECT derived_from_trust FROM ${id}`).collect();
+          const derived = rows?.[0]?.derived_from_trust;
+          if (derived && derived !== 'trusted' && !force) {
+            return { ok: false, reason: 'tainted_candidate', derived_from_trust: derived };
+          }
           const r = await approveCandidate(db, id);
           return { ok: true, rule_id: String(r.id) };
         }

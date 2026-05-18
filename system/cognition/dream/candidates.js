@@ -11,7 +11,7 @@ import { surql } from 'surrealdb';
  * events back the candidate yet.
  */
 export async function createCandidate(db, input) {
-  const { content, kind, signal_events, payload, confidence = 0.7, meta } = input;
+  const { content, kind, signal_events, payload, confidence = 0.7, meta, derived_from_trust } = input;
   const fields = {
     content,
     kind,
@@ -20,6 +20,7 @@ export async function createCandidate(db, input) {
     status: 'pending',
     ...(payload ? { payload } : {}),
     ...(meta ? { meta } : {}),
+    ...(derived_from_trust ? { derived_from_trust } : {}),
   };
   const [created] = await db.query(surql`CREATE rule_candidates CONTENT ${fields}`).collect();
   const row = Array.isArray(created) ? created[0] : created;
