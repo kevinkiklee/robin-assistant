@@ -165,14 +165,97 @@ test('repair dry-run does not write', () =>
     }
   }));
 
-test('repair refuses when no pointer survives', () =>
+test('repair refuses when no pointer survives and no marker discoverable', () =>
   withTempStateFile(async ({ dir }) => {
     const primary = `${dir}/.robin-home-none`;
     process.env.ROBIN_POINTER_PATH = primary;
     try {
-      const r = await installPointerPresent.repair(makeTestCtx({ dryRun: false }));
+      // Inject an empty discovery result to deterministically exercise the
+      // "no surviving pointer and no marker" branch — the default scan would
+      // otherwise find this repo's real user-data and falsely "recover".
+      const r = await installPointerPresent.repair(
+        makeTestCtx({ dryRun: false, discoverHomes: () => [] }),
+      );
       assert.equal(r.repaired, false);
       assert.match(r.error, /run: robin install/);
+      assert.deepEqual(r.evidence.candidates, []);
+    } finally {
+      clearEnv();
+    }
+  }));
+
+test('repair recovers pointer from .marker.json when both pointers missing', () =>
+  withTempStateFile(async ({ dir }) => {
+    const userData = `${dir}/recovered-user-data`;
+    const primary = `${dir}/.robin-home-recover`;
+    const fallback = `${dir}/install-recover.json`;
+    process.env.ROBIN_POINTER_PATH = primary;
+    process.env.ROBIN_POINTER_FALLBACK_PATH = fallback;
+    try {
+      const r = await installPointerPresent.repair(
+        makeTestCtx({
+          dryRun: false,
+          discoverHomes: () => [
+            { path: userData, kind: 'marker', lastUsed: '2026-05-18T00:00:00Z' },
+          ],
+        }),
+      );
+      assert.equal(r.repaired, true, JSON.stringify(r));
+      assert.equal(r.action, 'pointers_recovered_from_marker');
+      assert.equal(r.evidence.source, userData);
+      // Both pointer files now exist and reference the recovered home.
+      assert.equal(existsSync(primary), true);
+      assert.equal(existsSync(fallback), true);
+      const parsed = JSON.parse(readFileSync(primary, 'utf8'));
+      assert.equal(parsed.home, userData);
+      assert.equal(parsed.installedBy, 'invariant.install.pointer_present');
+    } finally {
+      clearEnv();
+    }
+  }));
+
+test('repair dry-run reports recovery plan without writing', () =>
+  withTempStateFile(async ({ dir }) => {
+    const userData = `${dir}/dry-recovered-user-data`;
+    const primary = `${dir}/.robin-home-dryrun-recover`;
+    process.env.ROBIN_POINTER_PATH = primary;
+    try {
+      const r = await installPointerPresent.repair(
+        makeTestCtx({
+          dryRun: true,
+          discoverHomes: () => [
+            { path: userData, kind: 'marker', lastUsed: '2026-05-18T00:00:00Z' },
+          ],
+        }),
+      );
+      assert.equal(r.repaired, false);
+      assert.equal(r.action, 'would_recover_from_marker');
+      assert.equal(r.plan.canonical_home, userData);
+      assert.equal(existsSync(primary), false, 'dry-run must not write');
+    } finally {
+      clearEnv();
+    }
+  }));
+
+test('repair prefers the most-recent marker when multiple are discovered', () =>
+  withTempStateFile(async ({ dir }) => {
+    const oldHome = `${dir}/old-home`;
+    const newHome = `${dir}/new-home`;
+    const primary = `${dir}/.robin-home-multi`;
+    process.env.ROBIN_POINTER_PATH = primary;
+    try {
+      const r = await installPointerPresent.repair(
+        makeTestCtx({
+          dryRun: false,
+          discoverHomes: () => [
+            { path: oldHome, kind: 'marker', lastUsed: '2025-01-01T00:00:00Z' },
+            { path: newHome, kind: 'marker', lastUsed: '2026-05-18T00:00:00Z' },
+            { path: `${dir}/legacy`, kind: 'legacy', lastUsed: '2026-05-18T00:00:00Z' },
+          ],
+        }),
+      );
+      assert.equal(r.repaired, true);
+      assert.equal(r.evidence.source, newHome, 'should prefer most-recent marker');
     } finally {
       clearEnv();
     }

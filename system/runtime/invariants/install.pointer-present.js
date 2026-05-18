@@ -21,7 +21,11 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { POINTER_VERSION, pointerSearchPaths } from '../../config/data-store.js';
+import {
+  discoverExistingHomes,
+  POINTER_VERSION,
+  pointerSearchPaths,
+} from '../../config/data-store.js';
 
 function readPointerFile(p) {
   try {
@@ -116,12 +120,67 @@ export default {
     const reads = paths.map((p) => ({ path: p, read: readPointerFile(p) }));
     const present = reads.filter((r) => r.read.ok);
 
+    // Both-pointers-missing recovery: discoverExistingHomes scans the
+    // canonical install locations for a v2 marker (`runtime/install/.marker.json`).
+    // When a marker is found we can resynthesise the pointer payload — this
+    // covers the recurring delete race when multiple concurrent agent sessions
+    // exercise `robin install --upgrade` / postinstall, which calls
+    // deletePointer(). Previously a both-missing state required a manual
+    // `robin install`; with discovery we can self-heal as long as the
+    // user-data directory itself is intact.
+    let canonical;
     if (present.length === 0) {
-      return { repaired: false, error: 'no_surviving_pointer; run: robin install' };
+      // Allow tests to inject a discovery function so they can exercise the
+      // "no surviving pointer AND no marker" branch deterministically — the
+      // default scan reaches into legacy home + the package's own user-data,
+      // which makes pure-tmp-dir tests find the operator's real install.
+      const discover =
+        typeof ctx?.discoverHomes === 'function' ? ctx.discoverHomes : discoverExistingHomes;
+      const candidates = discover();
+      // Prefer the most-recently-used marker — multiple historic homes might
+      // exist in a long-lived workstation.
+      const best = candidates
+        .filter((c) => c.kind === 'marker')
+        .sort((a, b) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? ''))[0];
+      if (!best) {
+        return {
+          repaired: false,
+          error: 'no_surviving_pointer; run: robin install',
+          evidence: { candidates: candidates.map((c) => c.path) },
+        };
+      }
+      canonical = {
+        version: POINTER_VERSION,
+        home: best.path,
+        installedAt: new Date().toISOString(),
+        installedBy: 'invariant.install.pointer_present',
+      };
+      if (ctx?.dryRun) {
+        return {
+          repaired: false,
+          action: 'would_recover_from_marker',
+          plan: { canonical_home: canonical.home, targets: paths },
+        };
+      }
+      let writes = 0;
+      for (const r of reads) {
+        try {
+          writeAtomic(r.path, canonical);
+          writes++;
+        } catch (e) {
+          return { repaired: false, error: `write_failed:${r.path}:${e.message}` };
+        }
+      }
+      return {
+        repaired: writes > 0,
+        action: 'pointers_recovered_from_marker',
+        writes,
+        evidence: { source: best.path },
+      };
     }
 
     // Canonical = primary (.robin-home, paths[0]) if present, else first survivor.
-    const canonical = reads[0]?.read.ok ? reads[0].read.payload : present[0].read.payload;
+    canonical = reads[0]?.read.ok ? reads[0].read.payload : present[0].read.payload;
 
     if (ctx?.dryRun) {
       return {

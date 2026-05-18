@@ -76,6 +76,19 @@ export function osConfigPointerPath({
  */
 function pointerLocation() {
   if (process.env.ROBIN_POINTER_PATH) {
+    // Tests that exercise dual-pointer logic (recovery writes BOTH locations)
+    // set ROBIN_POINTER_PATH + ROBIN_POINTER_FALLBACK_PATH together. Honour
+    // both env vars when present so the resolver returns the dual-path shape
+    // production uses; otherwise fall back to single-path collapse semantics.
+    if (process.env.ROBIN_POINTER_FALLBACK_PATH) {
+      return {
+        read: [process.env.ROBIN_POINTER_PATH, process.env.ROBIN_POINTER_FALLBACK_PATH],
+        write: {
+          primary: process.env.ROBIN_POINTER_PATH,
+          fallback: process.env.ROBIN_POINTER_FALLBACK_PATH,
+        },
+      };
+    }
     return {
       read: [process.env.ROBIN_POINTER_PATH],
       write: process.env.ROBIN_POINTER_PATH,
@@ -534,8 +547,12 @@ export async function forgetHostTouchpoint({ kind, path: entryPath }) {
 const LEGACY_HOME_NAME = '.robin';
 
 function defaultDiscoveryCandidates() {
+  // Honor ROBIN_PACKAGE_ROOT_OVERRIDE so tests + temporary installs that
+  // point at a sandboxed package root discover from the sandboxed user-data
+  // rather than the production one.
+  const pkgRoot = process.env.ROBIN_PACKAGE_ROOT_OVERRIDE ?? _packageRoot;
   return [
-    join(_packageRoot, 'user-data'),
+    join(pkgRoot, 'user-data'),
     join(homedir(), LEGACY_HOME_NAME),
     join(homedir(), 'Documents', 'Robin'),
   ];
