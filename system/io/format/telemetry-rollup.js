@@ -26,6 +26,11 @@ export const FACULTIES = [
   'comm_style',
   'predictions',
   'introspection',
+  'reinforcement',
+  'belief',
+  'dream_layer',
+  'meta_cognition',
+  'state_inference',
 ];
 
 export function reshapeTelemetryRollup({ buckets, verbose = false } = {}) {

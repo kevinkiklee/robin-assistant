@@ -44,6 +44,27 @@ test('reshapeTelemetryRollup includes zero-call faculties when verbose:true', ()
   assert.strictEqual(byFaculty.dream.calls, 0);
 });
 
+test('FACULTIES list includes the full cognition-e1 umbrella set', () => {
+  // The reshape helper must cover every faculty rollup-registry can emit so
+  // the show_telemetry_rollup tool doesn't silently drop calls from
+  // reinforcement / belief / dream_layer / meta_cognition / state_inference.
+  // Order is priority-stable: biographer (loudest) first, state_inference last.
+  assert.deepStrictEqual(FACULTIES, [
+    'biographer',
+    'intuition',
+    'dream',
+    'reflection',
+    'comm_style',
+    'predictions',
+    'introspection',
+    'reinforcement',
+    'belief',
+    'dream_layer',
+    'meta_cognition',
+    'state_inference',
+  ]);
+});
+
 test('reshapeTelemetryRollup handles missing buckets argument', () => {
   // No buckets at all → no rows by default (every faculty is zero-call).
   assert.deepStrictEqual(reshapeTelemetryRollup({}), []);

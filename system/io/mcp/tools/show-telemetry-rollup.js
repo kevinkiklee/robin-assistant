@@ -4,6 +4,7 @@
 // permitted in this file).
 
 import { readTelemetryConfig } from '../../../cognition/telemetry/config.js';
+import { reshapeTelemetryRollup } from '../../format/telemetry-rollup.js';
 
 const ISO_DURATION = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?)?$/;
 
@@ -25,7 +26,8 @@ export function createShowTelemetryRollupTool({ db }) {
     description:
       'Return hourly telemetry rollups. Filter by faculty and/or event_kind. ' +
       'Window defaults to last 24h. Returns aggregated counts, sums, and bucket histograms ' +
-      'from telemetry_hourly.',
+      'from telemetry_hourly, plus a per-faculty summary (`buckets`). ' +
+      'Zero-call faculties are hidden from the summary unless `verbose: true`.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -42,6 +44,11 @@ export function createShowTelemetryRollupTool({ db }) {
           description: 'ISO duration: "PT24H", "P7D". Default "PT24H".',
         },
         limit: { type: 'integer', minimum: 1, maximum: 1000, default: 200 },
+        verbose: {
+          type: 'boolean',
+          description:
+            'Include zero-call faculties in the per-faculty summary. Default false.',
+        },
       },
     },
     handler: async (args = {}) => {
@@ -80,11 +87,49 @@ export function createShowTelemetryRollupTool({ db }) {
             ORDER BY hour DESC, faculty, event_kind
             LIMIT $limit`;
       const [rows] = await db.query(sql, params).collect();
+      const verbose = args.verbose === true;
+      // Aggregate raw telemetry_hourly rows into per-faculty buckets so the
+      // agent gets a stable, summary view alongside the row-level data.
+      // metric_sums.latency_ms_sum / count drive avg_latency_ms; metric_sums
+      // .errors_sum (when present) drives errors. Cost columns are not
+      // currently populated by the rollup-registry — left at zero.
+      const accum = new Map();
+      for (const r of rows ?? []) {
+        const faculty = r.faculty;
+        if (typeof faculty !== 'string' || !faculty) continue;
+        const entry = accum.get(faculty) ?? {
+          calls: 0,
+          cost_usd: 0,
+          latency_sum_ms: 0,
+          errors: 0,
+        };
+        const count = Number(r.count ?? 0) || 0;
+        entry.calls += count;
+        const sums = r.metric_sums ?? {};
+        if (typeof sums.latency_ms_sum === 'number') entry.latency_sum_ms += sums.latency_ms_sum;
+        if (typeof sums.cost_usd_sum === 'number') entry.cost_usd += sums.cost_usd_sum;
+        if (typeof sums.errors_sum === 'number') entry.errors += sums.errors_sum;
+        accum.set(faculty, entry);
+      }
+      const bucketInput = {};
+      for (const [faculty, e] of accum) {
+        bucketInput[faculty] = {
+          calls: e.calls,
+          cost_usd: e.cost_usd,
+          avg_latency_ms: e.calls > 0 ? e.latency_sum_ms / e.calls : null,
+          errors: e.errors,
+        };
+      }
+      const buckets = reshapeTelemetryRollup({ buckets: bucketInput, verbose });
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ window: args.window ?? 'PT24H', rows: rows ?? [] }, null, 2),
+            text: JSON.stringify(
+              { window: args.window ?? 'PT24H', rows: rows ?? [], buckets },
+              null,
+              2,
+            ),
           },
         ],
       };
