@@ -164,6 +164,8 @@ export async function connect({
   // entire codebase uses `db.query(sql).collect()`; replacing `query` with
   // an async function would resolve the builder eagerly and break the
   // `.collect()` chain.
+  installQueryCounter(db);
+
   if (!isRemote) return db;
 
   const reauth = singleFlight(async () => {
@@ -193,6 +195,66 @@ export async function connect({
 }
 
 const ANONYMOUS_MARKER = 'Anonymous access not allowed';
+
+// Active-query counter — tracks `.collect()` calls in flight across all DB
+// handles produced by `connect()`. Read by the invariant ctx so weekly
+// reauth probes (mcp.daemon_authenticated_after_reconnect) skip when real
+// traffic is mid-flight.
+//
+// Module-scoped (not per-handle): the daemon owns a single primary handle
+// at a time; bumping a per-handle counter would require threading the
+// handle through ctx-building. Module scope keeps the call sites trivial
+// at the cost of "any open handle counts" — acceptable because the only
+// non-primary openers are short-lived tests and one-shot CLI commands.
+let activeQueryCount = 0;
+
+/**
+ * Number of in-flight `db.query(...).collect()` calls across all handles
+ * produced by this module's `connect()`. Drives the `activeQueryCount`
+ * field on invariant ctx; consult before disturbing live traffic.
+ *
+ * @returns {number}
+ */
+export function getActiveQueryCount() {
+  return activeQueryCount;
+}
+
+/**
+ * Wrap `db.query(...)`'s returned builder so its `.collect()` increments
+ * the module-scoped `activeQueryCount` before awaiting and decrements in
+ * `finally` (success or failure). Installed unconditionally by `connect()`
+ * so embedded handles (mem://, surrealkv://, rocksdb://) also report
+ * activity — needed for the invariant probe's "skip during workload"
+ * gate to work in unit tests and CLI-spawned embedded sessions.
+ *
+ * On remote handles, `installQueryRetry` runs AFTER this wrapper. Its
+ * retry path rebuilds via `boundQuery(...args).collect(...)` — which goes
+ * back through this wrapper, so retries are still counted.
+ *
+ * Mutates `db` in place; returns it.
+ *
+ * @internal exported for testing.
+ */
+export function installQueryCounter(db) {
+  const origQuery = db.query;
+  if (typeof origQuery !== 'function') return db;
+  const boundQuery = origQuery.bind(db);
+  db.query = function countedQuery(...args) {
+    const builder = boundQuery(...args);
+    if (!builder || typeof builder.collect !== 'function') return builder;
+    const origCollect = builder.collect.bind(builder);
+    builder.collect = async (...collectArgs) => {
+      activeQueryCount += 1;
+      try {
+        return await origCollect(...collectArgs);
+      } finally {
+        activeQueryCount -= 1;
+      }
+    };
+    return builder;
+  };
+  return db;
+}
 
 /**
  * Detect the SurrealDB "Anonymous access not allowed" failure mode. Matches
