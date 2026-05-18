@@ -5,6 +5,7 @@
 // or `depth: 3` we use SurrealDB's recursive idiom syntax to walk multiple
 // hops, returning each reached entity with its discovered hop-distance.
 
+import { formatEntity } from '../../format/entity.js';
 import { validateEdgeKinds, validateEntityRef } from './_entity-ref.js';
 
 const ENTITY_EDGE_KINDS = ['works_on', 'participates_in', 'occurs_with'];
@@ -21,6 +22,11 @@ export function createRelatedEntitiesTool({ db }) {
         edge_types: { type: 'array', items: { type: 'string', enum: ENTITY_EDGE_KINDS } },
         depth: { type: 'integer', enum: [1, 2, 3], default: 1 },
         limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+        full: {
+          type: 'boolean',
+          default: false,
+          description: 'Return untrimmed edge/event lists per neighbor entity (default trims).',
+        },
       },
       required: ['id'],
     },
@@ -35,9 +41,24 @@ export function createRelatedEntitiesTool({ db }) {
       );
       const limit = args.limit ?? 20;
       const depth = args.depth ?? 1;
+      const full = args.full === true;
 
-      if (depth === 1) return depth1(db, idRef, requested, limit);
-      return depthN(db, idRef, requested, depth, limit);
+      const raw =
+        depth === 1
+          ? await depth1(db, idRef, requested, limit)
+          : await depthN(db, idRef, requested, depth, limit);
+      return {
+        related: raw.related.map((r) => ({
+          entity: formatEntity(
+            { id: r.entity.id, kind: r.entity.type, name: r.entity.name },
+            { full },
+          ),
+          // Preserve legacy connector fields:
+          ...(r.edge_type ? { edge_type: r.edge_type } : {}),
+          ...(r.strength != null ? { strength: r.strength } : {}),
+          distance: r.distance,
+        })),
+      };
     },
   };
 }
