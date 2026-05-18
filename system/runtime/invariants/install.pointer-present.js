@@ -55,6 +55,12 @@ export default {
   description:
     'Robin install pointer file exists, parses, and is consistent across primary + fallback locations.',
 
+  remediation: [
+    'invariant auto-syncs missing/divergent pointers from the surviving file',
+    'if both pointer files are gone: run `robin install`',
+    'inspect: `cat <packageRoot>/.robin-home` and `cat ~/Library/Application\\ Support/Robin/install.json`',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: true, cooldownMs: 5 * 60 * 1000 },

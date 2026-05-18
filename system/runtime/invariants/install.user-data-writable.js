@@ -23,6 +23,12 @@ export default {
   phase: 'paths',
   description: 'user-data/runtime/ is writable (tmpfile probe).',
 
+  remediation: [
+    'check disk space: `df -h`',
+    'check permissions: `ls -la user-data/runtime/`',
+    'verify the volume hosting user-data is mounted',
+  ],
+
   runWhen: {
     boot: { enabled: true },
     heartbeat: { enabled: false },
