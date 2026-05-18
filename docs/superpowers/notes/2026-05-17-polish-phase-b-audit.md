@@ -65,6 +65,24 @@ The following MCP tools should call into the new format helpers. Filing as follo
 | `get_knowledge` | `formatKnowledge` | header+body+related shape |
 | `recall` | `trimRecallEvents` (Task 18) | budget-based snippet trimming |
 
+### B.4 tool wiring decisions
+
+All 9 tools wired with a `full: true` opt-out and per-tool snapshot tests. Each commit touches only the tool file + its new shape test.
+
+| Tool | Helper | Status | Commit |
+|---|---|---|---|
+| list_arcs | formatJournal | wired | e8c4003 |
+| list_journal | formatJournal | wired | ec44796 |
+| list_episodes | formatJournal | wired | 4dbf2f3 |
+| get_arc | formatArc | wired (header/summary + legacy entity_ids/episode_ids/status preserved) | 0bd1019 |
+| get_knowledge | formatKnowledge | wired (per-row wrap) | f60192a |
+| find_entity | formatEntity | wired (per-match wrap; edges/events placeholders since match results carry neither today) | 7ee11f8 |
+| get_entity | formatEntity | wired (legacy `entity.meta` renamed to `entity.entity_meta` to avoid colliding with helper's `meta`; edge_summary/mention_count/last_mentioned_at preserved) | a26dead |
+| related_entities | formatEntity | wired (per neighbor; distance + edge_type + strength preserved) | 1e687ad |
+| recall | trimRecallEvents | wired (added `snippet_budget_chars` + `snippet_per_event_max` schema params) | 0f2254f |
+
+Shape-change side-effect: `tools-2c-smoke.test.js` previously asserted bare `{ knowledge: [] }` / `{ entries: [] }` returns; widened to `knowledge`/`entries`-only deep-equal with separate meta assertion (commit 8ff874d). No other in-tree consumer of these tool outputs found (`dev-recall.js` reads `r.hits`, still works).
+
 ## Open for cognition-e1 lane
 
 | File | Finding | Suggested fix |
