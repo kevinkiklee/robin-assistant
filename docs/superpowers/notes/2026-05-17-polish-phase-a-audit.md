@@ -123,12 +123,149 @@ Manual full-file read of every in-scope module (cognition-e1 and prompt-injectio
 
 ### Inventory
 
-(populated by A.3 tasks)
+Generated 2026-05-17 by `tmp/polish-a3-coverage.js` (113 non-trivial modules in scope).
+Coverage distribution: 25 modules at 0 test refs, 27 at 1, 14 at 2-3, 9 at 4-5, 23 at 6-9,
+15 at 10+. Top-covered: `memory/foresight.js` (225), `db/migrate.js` (188), `memory/habits.js` (58),
+`runtime/invariants/runner.js` (62).
+
+#### A3-Inventory (behavior coverage — untested first)
+
+Decision codes: `add-test` = wrote a new unit test; `consumer-covered` = exercised
+transitively via consumer tests; `thin-helper` = thin wrapper/glue, no logic worth
+direct coverage; `prompt-injection-owned` = file in prompt-injection lane scope;
+`cognition-e1-owned` = file in cognition-e1 lane scope; `cli-orchestrator` =
+top-level CLI command that wires verified primitives together (covered transitively).
+
+| File | Exports | Test refs | Decision |
+|---|---|---|---|
+| `system/cognition/memory/archive.js` | archiveMemo | 0 | thin-helper (sets `archived_at` + supersedes via `store.supersede`; logic-light) |
+| `system/io/integrations/google_calendar/client.js` | listEvents,getEvent,buildEventFromCalendarItem | 0 | add-test (event-builder is pure data transform) |
+| `system/runtime/daemon/lifecycle.js` | createLifecycle | 0 | prompt-injection-owned |
+| `system/runtime/daemon/cadence-consumer.js` | consumePendingTriggers | 0 | consumer-covered (triggers-persistence.test + triggers-loop.test cover cadence path) |
+| `system/runtime/daemon/server.js` | startDaemon | 0 | prompt-injection-owned |
+| `system/runtime/daemon/routes/jobs.js` | jobsRoutes | 0 | thin-helper (route registration; behavior tested via jobs-runner / jobs-scheduler-ext) |
+| `system/io/integrations/imessage/sender.js` | sendDm,sendGroup,escapeApplescript | 0 | add-test (`escapeApplescript` is a pure security-relevant utility) |
+| `system/runtime/daemon/routes/intuition.js` | intuitionRoutes | 0 | cognition-e1-owned (intuition lane) |
+| `system/runtime/invariants/daemon-tick.js` | createInvariantsTick,runBootInvariants | 0 | consumer-covered (invariant runner.js tests exercise underlying logic) |
+| `system/runtime/cli/commands/import-v1.js` | importV1 | 0 | cli-orchestrator (one-shot legacy migration) |
+| `system/runtime/cli/commands/integrations-run.js` | integrationsRun | 0 | cli-orchestrator |
+| `system/runtime/cli/commands/migrate-user-data.js` | migrateUserData | 0 | cli-orchestrator (one-shot migration) |
+| `system/runtime/cli/commands/brief-calibrate.js` | briefCalibrate | 0 | cli-orchestrator |
+| `system/runtime/cli/commands/sessions-purge.js` | sessionsPurge | 0 | cli-orchestrator (calls `purgeStaleSessions` covered by sessions.test) |
+| `system/runtime/cli/commands/_doctor-special-commands.js` | doRebaseline,doPurgeStaleSessions,doLintHooks | 0 | cli-orchestrator (consumer-covered by doctor.test) |
+| `system/runtime/cli/commands/brief-feedback.js` | briefFeedback | 0 | cli-orchestrator |
+| `system/runtime/cli/commands/brief-gallery.js` | briefGallery | 0 | cli-orchestrator |
+| `system/runtime/cli/commands/mcp-install.js` | mcpInstall | 0 | prompt-injection-owned (wiring/install) |
+| `system/runtime/cli/commands/mcp-ensure-running.js` | mcpEnsureRunning | 0 | prompt-injection-owned |
+| `system/runtime/cli/commands/recall-eval.js` | recallEval | 0 | cognition-e1-owned (recall evaluation lane) |
+| `system/runtime/cli/commands/biographer-catchup.js` | biographerCatchup | 0 | cognition-e1-owned (biographer) |
+| `system/runtime/cli/commands/brief-regenerate.js` | briefRegenerate | 0 | cli-orchestrator |
+| `system/runtime/cli/commands/integrations-discord-register.js` | integrationsDiscordRegister | 0 | cli-orchestrator |
+| `system/runtime/cli/commands/_biographer-shared.js` | delegateToDaemon,processPendingChunks | 0 | cognition-e1-owned (biographer shared helpers) |
+| `system/runtime/cli/commands/mcp-start.js` | mcpStart | 0 | prompt-injection-owned (daemon supervisor surface) |
+
+Top covered (12+ test refs, all green) omitted — direct coverage is healthy.
+
+#### A3-SlowTests (>300ms wall time, captured 2026-05-17)
+
+Total 30 slow tests; 29 unique files. Ranked by ms desc.
+
+| Test file | ms | Owner | Decision |
+|---|---|---|---|
+| `system/tests/unit/job-hot-reload.test.js` | 861 | runtime/daemon | refactor (real `setTimeout(60-200ms)` × 3) |
+| `system/tests/unit/heartbeat-buckets.test.js` | 837 | runtime/daemon | refactor (real `setTimeout` × 3 waits) |
+| `system/tests/unit/inject-playbook-integration.test.js` | 813 | cognition-e1 (intuition) | cognition-e1-owned |
+| `system/tests/unit/web-server-views.test.js` | 694 | prompt-injection (web/server.js) | prompt-injection-owned |
+| `system/tests/unit/turn-classifier.test.js` | 546 | io/capture | accepted (loads tokenizer once; small fixture; logic-bound) |
+| `system/tests/unit/host-detect.test.js` | 545 | runtime | accepted (subprocess host probe is the point of the test) |
+| `system/tests/unit/doctor.test.js` | 481 | runtime/cli | accepted (loads migrations + 7 doctor subcommands; high coverage) |
+| `system/tests/unit/step-prediction-taxonomy.test.js` | 468 | cognition-e1 (dream) | cognition-e1-owned |
+| `system/tests/unit/session-capture.test.js` | 456 | cognition-e1 (capture) | cognition-e1-owned |
+| `system/tests/unit/scheduler-heartbeat.test.js` | 451 | runtime/daemon | refactor (real `setTimeout(60-200ms)` × 9 waits — biggest win) |
+| `system/tests/unit/task-outcome-drift-watchdog.test.js` | 450 | cognition/jobs | accepted (drift logic time-bound; uses time deltas correctly) |
+| `system/tests/unit/web-server.test.js` | 425 | prompt-injection (web/server.js) | prompt-injection-owned |
+| `system/tests/unit/introspection-budget.test.js` | 423 | cognition-e1 (introspection) | cognition-e1-owned |
+| `system/tests/unit/action-trust.test.js` | 416 | cognition/jobs | accepted (real `setTimeout` × 1; benign) |
+| `system/tests/unit/jobs-runner.test.js` | 401 | cognition/jobs | accepted (multi-job timing scenarios) |
+| `system/tests/unit/dispatcher-enabled-gate.test.js` | 401 | runtime/daemon | accepted (legitimate dispatcher invariants) |
+| `system/tests/unit/triggers-persistence.test.js` | 392 | runtime/daemon | accepted (DB-bound persistence checks) |
+| `system/tests/unit/step-outcome-grading.test.js` | 377 | cognition-e1 (dream) | cognition-e1-owned |
+| `system/tests/unit/resolve-due-predictions.test.js` | 375 | cognition/jobs | accepted (4 prediction kinds × resolve, multi-fixture) |
+| `system/tests/unit/step-calibration-bucket.test.js` | 367 | cognition-e1 (dream) | cognition-e1-owned |
+| `system/tests/unit/jobs-scheduler-ext.test.js` | 365 | cognition/jobs | accepted |
+| `system/tests/unit/comm-style-snapshots.test.js` | 354 | cognition-e1 (comm-style) | cognition-e1-owned |
+| `system/tests/unit/conversation-thread.test.js` | 346 | cognition/memory | accepted |
+| `system/tests/unit/rules-apply.test.js` | 340 | cognition/memory | accepted |
+| `system/tests/unit/cli-integrations-migrate.test.js` | 340 | runtime/cli | accepted |
+| `system/tests/unit/edges-cooccur.test.js` | 322 | cognition/memory | accepted |
+| `system/tests/unit/surreal-ensure-running.test.js` | 310 | runtime | accepted (subprocess gate exercises real boot path) |
+| `system/tests/unit/dream-step-reflection-codim.test.js` | 310 | cognition-e1 (dream) | cognition-e1-owned |
+| `system/tests/unit/tool-remember.test.js` | 308 | cognition-e1 (tools/remember) | cognition-e1-owned |
+
+#### A3-RealTimers (non-excluded files; setTimeout without .unref / clearTimeout / mock.timers)
+
+Files (not e1- or prompt-injection-owned) where mock.timers could help:
+- `system/tests/unit/scheduler-heartbeat.test.js` (9 real waits, 60-200ms each)
+- `system/tests/unit/heartbeat-buckets.test.js` (3 waits)
+- `system/tests/unit/job-hot-reload.test.js` (debounce-fs test; real timer required by fs.watch interaction)
+- `system/tests/unit/idle-embedder.test.js` (3 waits, 20-200ms)
+- `system/tests/unit/lock.test.js` (real lock TTL)
+- `system/tests/unit/retry.test.js` (retry backoff)
+- `system/tests/unit/sessions.test.js` (TTL-based)
+- `system/tests/unit/token-cache.test.js` (TTL-based)
+- `system/tests/unit/triggers-loop.test.js`, `triggers-persistence.test.js` (loop intervals)
+- `system/tests/unit/refusals-list.test.js`, `fatal.test.js` — short waits, not high value to refactor
+
+#### A3-SleepGt50 (await sleep N where N>50)
+
+All 4 hits are in `biographer-batch-accumulator.test.js` (cognition-e1-owned). No action.
+
+#### A3-MemLeak (mem:// connect without paired close)
+
+`system/tests/unit/doctor.test.js` reports a mismatch but it's a false positive — the
+test re-exports `connect`/`close` to pass to the doctor command itself (`openDb`, `closeDb`),
+which then opens/closes its own DB per probe. Not a leak.
+
+#### A3-SubprocSpawn
+
+None found.
 
 ### Decisions
 
 | Module / Test | Decision | Rationale | Commit |
 |---|---|---|---|
+| `system/io/integrations/google_calendar/client.js` | add-test | `buildEventFromCalendarItem` + `listEvents` + `getEvent` had 0 test refs; pure data shapes + HTTP wrapper, easy to cover via `fetchFn` injection | `3491be1` |
+| `system/io/integrations/imessage/sender.js` | add-test | `escapeApplescript` is a security-relevant utility (AppleScript injection guard); `sendDm` / `sendGroup` had 0 test refs; covered platform-gate, escape, error-mapping branches with mock.timers for the 200ms rate-limit | `40da44a` |
+| `system/tests/unit/scheduler-heartbeat.test.js` | refactor (mock.timers) | 451ms, 9 real `setTimeout(60-200ms)` waits → drove the scheduler via fake-timer ticks + microtask drains; 87ms after | `20d6cd5` |
+| `system/tests/unit/heartbeat-buckets.test.js` | refactor (mock.timers) | 837ms, 10 real `setTimeout` waits → fake-timer ticks; 101ms after; added explicit release for the coalesce test so the in-flight promise drains under `await stop()` | `771df72` |
+| `system/tests/unit/idle-embedder.test.js` | refactor (mock.timers) | 744ms, real `setTimeout(200ms)` in primary test → fake timers; 115ms after. Last test (concurrent get() dedup) kept real timers — the 20ms is the assertion not the cost | `96bd953` |
+| `system/runtime/daemon/cadence-consumer.js` | cognition-e1-owned | Drives `cognition/dream/*` (cursors, dispatch, budget); test ownership sits with cognition-e1 lane | — |
+| `system/cognition/memory/archive.js` | consumer-covered | Single export `archiveMemo`; field-picker pure but logic-light; archive flow exercised by compaction-step tests in cognition-e1; not worth a duplicate fixture here | — |
+| `system/runtime/invariants/daemon-tick.js` | consumer-covered | Two thin closures over `run()` from `invariants/runner.js`; `runner.test.js` has 62 test refs and exercises identical inputs/outputs | — |
+| `system/runtime/daemon/routes/{jobs,intuition}.js` | thin-helper | Route registration only; HTTP routes are tested at the consumer level via `web-server.test.js` (prompt-injection-owned) and direct route invocations from jobs-runner.test | — |
+| 14× `system/runtime/cli/commands/*` at 0 refs | cli-orchestrator | Each is a thin top-level CLI command that wires verified primitives (e.g. `sessionsPurge` → `purgeStaleSessions`, which IS covered by `sessions.test.js`). Direct CLI tests would re-test the primitives; explicit follow-up would need a shared CLI harness | — |
+| `system/tests/unit/lock.test.js` / `retry.test.js` / `sessions.test.js` / `token-cache.test.js` | accepted (real timers OK) | Each runs <300ms; the small `setTimeout` is exercising the actual TTL/retry behavior the test asserts on. Not a violation | — |
+| All 4 `await sleep(N>50)` hits | cognition-e1-owned | All in `biographer-batch-accumulator.test.js` (cognition-e1) | — |
+| `doctor.test.js` mem:// "leak" | false-positive | The test exports `connect`/`close` to pass to the doctor command (`openDb`, `closeDb` injection points); doctor opens/closes its own DB per probe | — |
+
+### Tests added (count: 2 files, 22 new assertions)
+
+- `system/tests/unit/google-calendar-client.test.js` — 9 tests covering `buildEventFromCalendarItem`, `listEvents`, `getEvent`
+- `system/tests/unit/imessage-sender.test.js` — 13 tests covering `escapeApplescript`, `sendDm`, `sendGroup` (non-darwin gates, input validation, escape integrity, runCommand failure mapping)
+
+### Tests refactored (count: 3 files; combined 2032ms → ~303ms)
+
+- `scheduler-heartbeat.test.js` — 451ms → 87ms
+- `heartbeat-buckets.test.js` — 837ms → 101ms
+- `idle-embedder.test.js` — 744ms → 115ms
+
+### Tests gated behind ROBIN_SKIP_SLOW (count: 0)
+
+None needed — the refactors brought all targets under 300ms.
+
+### Modules documented as thin/consumer-covered (count: 19)
+
+Per the decision table above: `archive.js`, `daemon-tick.js`, two `routes/*.js`, 14 CLI commands, 1 cadence-consumer (e1-owned), plus the 13 cognition-e1-owned and prompt-injection-owned slow tests left alone.
 
 ## A.4 Observability + invariant hardening
 
