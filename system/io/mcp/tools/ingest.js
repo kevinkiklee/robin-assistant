@@ -174,6 +174,7 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
           type: e.type,
           host,
           meta: e.aliases?.length ? { aliases: e.aliases } : undefined,
+          derived_from_trust: trust,
         });
         entityIds[e.name.toLowerCase()] = r.id;
       }
@@ -197,7 +198,7 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
         // new event; for entity↔entity kinds, `from` is the src entity.
         const fromRec = EVENT_SOURCED_KINDS.has(kind) ? event_id : src;
         if (!fromRec) continue;
-        edgeRows.push({ from: fromRec, to: dst, kind, meta: edge.meta });
+        edgeRows.push({ from: fromRec, to: dst, kind, meta: edge.meta, derived_from_trust: trust });
       }
       let edges_created = 0;
       if (edgeRows.length > 0) {
@@ -219,6 +220,7 @@ export function createIngestTool({ db, embedder, host, getSessionId }) {
           confidence: typeof k.confidence === 'number' ? k.confidence : 0.5,
           subjects: subjectId ? [subjectId] : [],
           lineage: [{ id: event_id, kind: 'event' }],
+          derived_from_trust: trust,
         });
         if (result?.id) knowledge_created += 1;
       }

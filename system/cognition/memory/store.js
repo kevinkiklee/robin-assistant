@@ -123,6 +123,7 @@ export async function note(db, embedder, kind, input) {
     derived_by,
     lineage = [],
     meta = {},
+    derived_from_trust,
   } = input;
 
   validateScope(scope);
@@ -148,6 +149,7 @@ export async function note(db, embedder, kind, input) {
     tags,
     meta,
     ...(confidence !== undefined ? { confidence } : {}),
+    ...(derived_from_trust != null ? { derived_from_trust } : {}),
   };
   const [created] = await db.query(surql`CREATE memos CONTENT ${fields}`).collect();
   const row = Array.isArray(created) ? created[0] : created;
