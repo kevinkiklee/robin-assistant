@@ -42,6 +42,7 @@
 
 | File | Finding | Suggested fix |
 |---|---|---|
+| `system/io/mcp/tools/health.js` | health() MCP tool should call into `system/io/format/doctor-health.js::reshapeForMCP()` for realm-grouped output | replace inline shape construction with `reshapeForMCP({ results, ts, summary })` |
 
 ## Open for prompt-injection lane
 
