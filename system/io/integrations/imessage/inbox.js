@@ -21,7 +21,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { appleDateToJsDate, classifyService, isAllowed, isFromMe, normalizeHandle } from './normalize.js';
 
-export const DEFAULT_CHAT_DB = join(homedir(), 'Library/Messages/chat.db');
+const DEFAULT_CHAT_DB = join(homedir(), 'Library/Messages/chat.db');
 
 // Joined query — message + handle + chat (one chat per message via cm.chat_id).
 // LEFT JOIN attachments separately to avoid row-cardinality blowup; we batch
