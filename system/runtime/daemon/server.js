@@ -358,6 +358,7 @@ export async function startDaemon() {
               `${paths.data.home()}/triggers`,
             ],
             log: console.log,
+            db: ctx.db,
           });
 
     lifecycle.ready({
