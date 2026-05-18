@@ -35,6 +35,12 @@ export default {
   description:
     'Daemon heartbeat is writing the invariants-state.json file within 2× the heartbeat interval.',
 
+  remediation: [
+    'invariant attempts a one-shot SIGTERM (launchd respawns the daemon)',
+    'if symptom persists: `kill <daemon-pid>` and tail `user-data/runtime/logs/daemon.log`',
+    'verify launchctl supervision is live: `launchctl list io.robin-assistant.mcp`',
+  ],
+
   runWhen: {
     // Self-check: cannot run from heartbeat (it IS the heartbeat).
     boot: { enabled: false },
