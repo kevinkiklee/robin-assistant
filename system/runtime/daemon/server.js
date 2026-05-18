@@ -8,6 +8,7 @@ import { loadAllowlist } from '../../io/integrations/imessage/allowlist.js';
 import { openChatDb, pollOnce as imessagePollOnce } from '../../io/integrations/imessage/inbox.js';
 import { runActionTrustDecay } from '../../cognition/jobs/action-trust.js';
 import { closeStaleEpisodes } from '../../cognition/jobs/internal/close-stale-episodes.js';
+import { writeEmbedProbe } from '../../data/embed/probe.js';
 import {
   evaluateStateInference,
   readStateInferenceConfig,
@@ -207,6 +208,29 @@ export async function startDaemon() {
           name: 'action-decay',
           intervalMs: 6 * 60 * 60_000,
           tick: () => runActionTrustDecay(ctx.db),
+        },
+        {
+          // Daily synthetic embed probe — writes `runtime_state:embed_probe`
+          // so the `daemon.embedder_load_age` invariant can distinguish
+          // "embedder broken" from "no traffic". writeEmbedProbe is
+          // resilient-by-design: it swallows DB write failures internally
+          // and records its own error envelope, so this tick body just
+          // surfaces "embedder not loaded yet" as a debug-level skip.
+          name: 'embed-probe',
+          intervalMs: 24 * 60 * 60_000,
+          tick: async () => {
+            if (!ctx.embedder?.wrap?.isLoaded?.()) {
+              console.warn('[embed-probe] embedder not loaded; skipping');
+              return;
+            }
+            try {
+              await writeEmbedProbe(ctx.db, ctx.embedder.wrap.embed);
+            } catch (e) {
+              // writeEmbedProbe itself shouldn't throw, but defensively
+              // catch in case a future revision regresses that contract.
+              console.warn(`[embed-probe] tick failed: ${e.message}`);
+            }
+          },
         },
         {
           // Cognition D1 — heartbeat-paced state-inference faculty. Gated on
