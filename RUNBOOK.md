@@ -46,6 +46,14 @@ For context on when to consult this file, see `CLAUDE.md` (project root).
 
 **Fix.** Already shipped in `system/data/db/client.js`: a proactive layer subscribes to `connected` to call `reauth()` on reconnects, and a reactive `installQueryRetry` wraps `db.query()` to retry once on Anonymous errors. This invariant codifies the visible surface. If the probe still fails after the reactive retry, the configured credentials are wrong — manual escalation.
 
+### `db.connection_alive`
+
+**Symptom.** Daemon log fills with `ConnectionUnavailableError: You must be connected to a SurrealDB instance` on every scheduler tick. Jobs stop firing; recall/remember fails. Manual daemon restart recovers.
+
+**Cause.** WebSocket connection to SurrealDB dropped — laptop sleep, network blip, surreal-server restart — and surrealdb v2.0.3's built-in autoreconnect (5 attempts) gave up. The daemon process stays alive but every query throws ConnectionUnavailableError until process restart.
+
+**Fix.** Primary recovery is `installConnectionRecovery` in `system/data/db/client.js`: catches the error inline, calls `db.close()` + `db.connect(url)`, retries the query once. If that fails (or fails to settle), this invariant escalates: after 3 consecutive heartbeat failures the `repair()` sends SIGTERM to self so launchctl respawns the daemon with a fresh connection.
+
 ### `db.embedder_profile_match`
 
 **Symptom.** Recalls return empty or fail with vector-dimension errors; biographer writes succeed but embedding upserts log `embedding failed`.
@@ -95,6 +103,16 @@ Port lives in `runtime:config.mcp.port`. The project-local `.mcp.json` covers in
 
 **Fix.** SIGTERM the daemon PID; launchd respawns it. The invariant attempts this once; subsequent failures escalate to manual (avoids the old plist KeepAlive infinite-respawn loop).
 
+### `mcp.daemon_authenticated_after_reconnect`
+
+**Symptom.** Daemon log fills with `Anonymous access not allowed` after a network blip or laptop sleep. The reactive retry layer (`installQueryRetry`) usually recovers; this invariant catches the case where the proactive reauth handler was silently torn down.
+
+**Cause.** The `connected` event listener that re-applies `signin()` + `use()` after a WS reconnect was either never registered or was removed. Existing reactive retry catches most cases but adds latency per query.
+
+**Fix.** Restart the daemon via `kill <pid>` (launchctl respawns it). The proactive handler re-registers at boot. If symptom recurs, audit `system/data/db/client.js` for handler-subscribe logic.
+
+**Cadence:** weekly heartbeat — chosen to avoid disturbing live workload. Probe is skipped when `activeQueryCount > 0`.
+
 ### Integrations (`integrations`)
 
 ### `integrations.sync_freshness`
@@ -112,14 +130,6 @@ Port lives in `runtime:config.mcp.port`. The project-local `.mcp.json` covers in
 **Cause.** The integration's `sync()` returned a promise that never resolved (dead loopback fetch, hung WebSocket, awaited promise on a closed stream). Neither the try/catch's success/failure write nor the defensive `finally` ever fired, so `in_flight` stays true until daemon restart.
 
 **Fix.** Watchdog clears `in_flight`, marks the row, and resets `next_run_at` to "now" so the next dispatcher tick picks it up. Run `pnpm test:file system/tests/unit/integrations-no-stuck-in-flight.test.js` to verify the detection logic if behavior looks off.
-
-### `integrations.lunch_money_no_dupes`
-
-**Symptom.** Daily brief double-counts financial transactions; same payee/amount appears twice in recall.
-
-**Cause.** Lunch Money mints a fresh `id` when a pending Plaid txn clears. Legacy rows captured before the `lm-stable:<key>` external_id strategy was deployed may still have pending+cleared pairs.
-
-**Fix.** Prevention is already in tree (`transactionToEvent` uses `plaid_metadata.transaction_id` or a `lm-stable:<key>` composite). For legacy rows, run `node user-data/scripts/dedupe-lunch-money.mjs`. After 30 days with zero firings, B-3 retires this invariant's repair half — the check stays as a regression canary.
 
 ### Runtime (`runtime`)
 
@@ -156,6 +166,22 @@ Port lives in `runtime:config.mcp.port`. The project-local `.mcp.json` covers in
 **Cause.** A job hung mid-execution (LLM call timeout, file lock, etc.) but the wrapper that clears `in_flight` on exit didn't run.
 
 **Fix.** Boot-time logic in the scheduler clears stuck flags. To resume the job without restarting the whole daemon, identify the row in `runtime_jobs` and manually set `in_flight=false`. To restart the daemon: kill the pid; launchd respawns.
+
+### `daemon.embedder_load_age`
+
+**Symptom.** Recall returns sparse results even for known-recent topics; daemon log shows embedding failures.
+
+**Cause.** Embedder loaded successfully at boot but a profile mismatch, dimension mismatch, or NAPI handle drop is silently failing every embed since.
+
+**Fix.** Run `robin embeddings list` to see the active profile and configured dimension; if mismatched, `robin embeddings activate <correct-profile>` or `robin embeddings backfill <profile>` to repair.
+
+### `runtime.hot_reload_watcher_active`
+
+**Symptom.** Edits to `user-data/jobs/**/*.js` (e.g., daily-briefing render logic) do not take effect after save. Cron-fired jobs continue using the old code.
+
+**Cause.** Node ESM cache pins imported modules for the daemon's lifetime. The hot-reload watcher SIGTERMs the daemon on `.js` changes so launchd respawns with a fresh module graph. If the watcher is not active, edits silently no-op.
+
+**Fix.** Restart the daemon (kill pid; launchd respawns). If the watcher does not re-register, check `ROBIN_DISABLE_HOT_RELOAD` env var and the daemon boot log for `[hot-reload] watching` lines.
 
 ### Meta (`meta`)
 
