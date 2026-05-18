@@ -118,3 +118,52 @@ test('loadManifests warns only once per (integration, error) across repeated cal
   const skipped = calls.filter((m) => m.includes('broken_int: skipped'));
   assert.equal(skipped.length, 1, `expected one skipped warning, got: ${skipped.length}`);
 });
+
+test('loadManifests silently skips directories with no manifest.js (shared-code dirs)', async (t) => {
+  // system/io/integrations/discord and /imessage hold shared helper code
+  // (formatter, sender, SQLite reader) imported by user-data integrations.
+  // They live in the integrations/ namespace but are not themselves
+  // integrations. They must not trigger "Cannot find module" warnings on
+  // every daemon-lifetime — the warning surfaces as false breakage in
+  // `robin doctor`.
+  _resetManifestLoaderWarnings();
+  const root = mkdtempSync(join(tmpdir(), 'robin-manifest-shared-'));
+  // Real integration with manifest:
+  const realDir = join(root, 'real_int');
+  mkdirSync(realDir, { recursive: true });
+  writeFileSync(
+    join(realDir, 'manifest.js'),
+    [
+      'export const manifest = {',
+      "  name: 'real_int',",
+      "  cadence: '1h',",
+      "  auth: { kind: 'api-key' },",
+      '  tools: [],',
+      '  sync: async () => ({}),',
+      '};',
+      '',
+    ].join('\n'),
+  );
+  // Shared-code dir, no manifest.js — should be skipped silently.
+  const sharedDir = join(root, 'shared_helpers');
+  mkdirSync(sharedDir, { recursive: true });
+  writeFileSync(join(sharedDir, 'formatter.js'), 'export function f(){}\n');
+
+  const calls = [];
+  const origWarn = console.warn;
+  console.warn = (m) => calls.push(m);
+  t.after(() => {
+    console.warn = origWarn;
+    _resetManifestLoaderWarnings();
+  });
+
+  const r = await loadManifests(root);
+  assert.equal(r.loaded.length, 1, 'only real_int should load');
+  assert.equal(r.loaded[0].name, 'real_int');
+  const sharedWarn = calls.filter((m) => m.includes('shared_helpers'));
+  assert.equal(
+    sharedWarn.length,
+    0,
+    `shared_helpers should not warn; got: ${sharedWarn.join(' | ')}`,
+  );
+});

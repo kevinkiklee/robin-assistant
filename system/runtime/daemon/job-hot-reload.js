@@ -13,7 +13,8 @@
 // .md files are NOT watched — the dispatcher tick re-reads them every minute
 // via ctx.jobs.refresh(), so they don't need a daemon bounce.
 
-import { watch } from 'node:fs';
+import { readdirSync, statSync, watch } from 'node:fs';
+import { join } from 'node:path';
 
 const DEFAULT_DEBOUNCE_MS = 2_000;
 
@@ -64,6 +65,14 @@ export function startJobHotReload({
   let timer = null;
   let stopped = false;
   let pendingPath = null;
+  // Track last-seen mtime per file. macOS fsevents (and to a lesser degree
+  // Linux inotify under heavy IO) fires `change` for events that don't
+  // actually modify the file — Spotlight indexing, antivirus scans, atime
+  // updates. Without this gate, a SIGTERM-respawn cycle fires every
+  // ~100ms on a single phantom event and cuts in-flight syncs mid-write
+  // (gmail first-sync, lunch_money transaction window). Only restart
+  // when the file's mtime actually advances past what we last saw.
+  const mtimes = new Map();
 
   function fire() {
     if (stopped) return;
@@ -78,15 +87,62 @@ export function startJobHotReload({
     }
   }
 
-  function schedule(filename) {
+  function actuallyChanged(absPath) {
+    let mtimeMs;
+    try {
+      mtimeMs = statSync(absPath).mtimeMs;
+    } catch {
+      // File deleted between fsevent and stat. Treat as a real change so
+      // the daemon picks up the removal.
+      mtimes.delete(absPath);
+      return true;
+    }
+    const prev = mtimes.get(absPath);
+    mtimes.set(absPath, mtimeMs);
+    // First sighting OR mtime advanced — real change.
+    return prev === undefined || mtimeMs > prev;
+  }
+
+  function schedule(absPath) {
     if (stopped) return;
-    pendingPath = filename;
+    if (!actuallyChanged(absPath)) return;
+    pendingPath = absPath;
     if (timer) clearTimeout(timer);
     timer = setTimeout(fire, debounceMs);
     timer.unref?.();
   }
 
+  // Pre-populate the mtime cache so existing files have a baseline.
+  // Without this, the first fsevent on any pre-existing file fires the
+  // restart unconditionally (treated as "first sighting"). fsevents
+  // frequently emit a phantom event for files in a freshly-watched dir
+  // during the first second after `watch()` registers, which fast-pathed
+  // an immediate restart on every daemon boot.
+  function seedMtimes(dir) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      const full = join(dir, ent.name);
+      if (ent.isDirectory()) {
+        seedMtimes(full);
+        continue;
+      }
+      if (!ent.name.endsWith('.js')) continue;
+      if (ent.name.endsWith('.test.js')) continue;
+      try {
+        mtimes.set(full, statSync(full).mtimeMs);
+      } catch {
+        // Race with deletion — leave unset; first real event will fire.
+      }
+    }
+  }
+
   for (const dir of paths) {
+    seedMtimes(dir);
     try {
       const w = watch(dir, { recursive: true }, (_eventType, filename) => {
         if (!filename) return;

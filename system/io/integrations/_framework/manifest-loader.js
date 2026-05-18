@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseCadence } from './cadence.js';
 
@@ -110,14 +110,26 @@ export async function loadManifests(dirs) {
     for (const ent of entries) {
       if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
       const manifestPath = join(integrationsDir, ent.name, 'manifest.js');
+      // Directories under integrations/ that lack a manifest.js are shared
+      // support code (discord helpers, imessage SQLite reader, etc.) that
+      // happens to live inside the integrations namespace because user-data/
+      // integrations import from them. They're not broken integrations —
+      // they're not integrations at all. Skip silently instead of warning
+      // every daemon-lifetime, which used to surface in `robin doctor` as
+      // false "integration X: Cannot find module" breakage.
+      try {
+        await stat(manifestPath);
+      } catch {
+        continue;
+      }
       let validated;
       try {
         const mod = await import(manifestPath);
         validated = validateManifest(mod.manifest ?? mod.default);
       } catch (e) {
-        // Invalid / failed-to-import manifests: skip silently with a warning.
-        // Distinct from `unavailable` (which is reserved for valid manifests
-        // whose preflight failed because their local data source is absent).
+        // Real failure: manifest.js exists but won't import or validate.
+        // Warn once and move on so one broken manifest can't stop the
+        // others from loading.
         warnOnce(`invalid:${ent.name}:${e.message}`, `integration ${ent.name}: ${e.message}`);
         continue;
       }

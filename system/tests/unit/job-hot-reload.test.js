@@ -96,3 +96,64 @@ test('stop() prevents further signals from queued events', async () => {
   await wait(200);
   assert.equal(calls, 0, 'stop() must cancel the pending debounce timer');
 });
+
+test('phantom fsevents on an unchanged file do not trigger a restart', async () => {
+  // macOS fsevents fires `change` events for Spotlight indexing, atime
+  // updates, etc. The watcher must compare mtimes and only signal when the
+  // file actually changed. Without this gate, a single phantom event tears
+  // down in-flight syncs every ~100ms (the lunch_money / gmail first-sync
+  // mid-write regression).
+  const { utimesSync } = await import('node:fs');
+  const dir = makeDir();
+  // Seed the file BEFORE the watcher starts and pin its mtime to a fixed
+  // value. The watcher's startup scan will record this mtime as the
+  // baseline. If a later fsevent fires and mtime is unchanged, we must
+  // not signal.
+  const pinned = new Date('2026-01-01T00:00:00.000Z');
+  writeFileSync(join(dir, 'stable.js'), '// initial content');
+  utimesSync(join(dir, 'stable.js'), pinned, pinned);
+
+  let calls = 0;
+  const w = startJobHotReload({
+    paths: [dir],
+    debounceMs: 40,
+    signalSelf: () => calls++,
+    log: () => {},
+  });
+  try {
+    // Re-stamp with the SAME mtime — simulating an atime-only or
+    // Spotlight-driven phantom fsevent. The mtime field is unchanged.
+    await wait(60);
+    utimesSync(join(dir, 'stable.js'), new Date(), pinned);
+    await wait(200);
+    assert.equal(calls, 0, 'unchanged mtime should not trigger a restart');
+
+    // Real content edit → mtime advances → must fire exactly once.
+    writeFileSync(join(dir, 'stable.js'), '// real new content');
+    await wait(200);
+    assert.equal(calls, 1, 'real edit should fire one restart');
+  } finally {
+    w.stop();
+  }
+});
+
+test('new files (not in the startup scan) trigger a restart on first write', async () => {
+  // Counterpart to the phantom-event guard: when user creates a brand-new
+  // .js file post-startup, the first event must fire so the daemon picks
+  // up the new module.
+  const dir = makeDir();
+  let calls = 0;
+  const w = startJobHotReload({
+    paths: [dir],
+    debounceMs: 40,
+    signalSelf: () => calls++,
+    log: () => {},
+  });
+  try {
+    writeFileSync(join(dir, 'brand-new.js'), '// new file');
+    await wait(200);
+    assert.equal(calls, 1, 'a new file appearing post-startup must fire');
+  } finally {
+    w.stop();
+  }
+});
