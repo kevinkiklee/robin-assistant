@@ -7,9 +7,9 @@
 
 import { surql } from 'surrealdb';
 
-export const DEFAULT_WINDOW_MS = 30 * 60_000; // 30 min idle
-export const DEFAULT_MAX_MESSAGES = 15;
-export const DEFAULT_MAX_TOKENS = 4_000;
+const DEFAULT_WINDOW_MS = 30 * 60_000; // 30 min idle
+const DEFAULT_MAX_MESSAGES = 15;
+const DEFAULT_MAX_TOKENS = 4_000;
 
 // Pure: derive a stable thread ID from inputs.
 //
