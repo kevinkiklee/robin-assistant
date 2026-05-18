@@ -1,4 +1,5 @@
 import { surql } from 'surrealdb';
+import { formatJournal } from '../../format/journal.js';
 
 export function createListEpisodesTool({ db }) {
   return {
@@ -12,10 +13,16 @@ export function createListEpisodesTool({ db }) {
         until: { type: 'string', format: 'date-time' },
         active_only: { type: 'boolean', default: false },
         limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+        full: {
+          type: 'boolean',
+          default: false,
+          description: 'Return untrimmed list (default trims to limit).',
+        },
       },
     },
     handler: async (args) => {
       const limit = args.limit ?? 20;
+      const full = args.full === true;
       const filters = [];
       const bindings = {};
       if (args.source) {
@@ -41,6 +48,7 @@ export function createListEpisodesTool({ db }) {
           .collect();
         episodes.push({
           id: String(ep.id),
+          ts: ep.started_at,
           started_at: ep.started_at,
           ended_at: ep.ended_at ?? null,
           source: ep.source,
@@ -48,7 +56,8 @@ export function createListEpisodesTool({ db }) {
           event_count: c[0]?.n ?? 0,
         });
       }
-      return { episodes };
+      const { items, meta } = formatJournal(episodes, { limit, full });
+      return { episodes: items, meta };
     },
   };
 }
