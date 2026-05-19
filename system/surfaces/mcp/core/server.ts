@@ -3,12 +3,22 @@ import { z } from 'zod';
 import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
-import { loadModels } from '../../../kernel/config/load.ts';
+import { loadModels, loadPolicies } from '../../../kernel/config/load.ts';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import { recall } from '../../../brain/memory/recall.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { findEntity, getEntity, upsertEntity } from '../../../brain/memory/entity.ts';
+import { runInvariants } from '../../../kernel/invariants/runner.ts';
+import {
+  userDataWritableInvariant,
+  dbReachableInvariant,
+  dbSchemaCurrentInvariant,
+  dbWalSizeBoundedInvariant,
+} from '../../../kernel/invariants/builtins/index.ts';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
 
 export interface CoreServerDeps {
   db: RobinDb;
@@ -140,6 +150,185 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
           break;
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'predict',
+    {
+      description: 'Record a prediction with confidence and optional deadline. Used to track calibration over time.',
+      inputSchema: z.object({
+        claim: z.string().describe('What you are predicting will (or will not) happen'),
+        confidence: z.number().min(0).max(1).describe('Probability assigned to the claim being true (0..1)'),
+        deadline: z.string().optional().describe('ISO date when this can be resolved'),
+        resolution_method: z.string().optional().describe('How to check if it came true'),
+      }),
+    },
+    async ({ claim, confidence, deadline, resolution_method }) => {
+      const info = deps.db.prepare(`
+        INSERT INTO predictions (claim, confidence, deadline, resolution_method)
+        VALUES (?, ?, ?, ?)
+      `).run(claim, confidence, deadline ?? null, resolution_method ?? null);
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) }] };
+    },
+  );
+
+  server.registerTool(
+    'record_correction',
+    {
+      description: 'Record a correction: what Robin said vs what is actually right. Feeds the self-learning loop.',
+      inputSchema: z.object({
+        what: z.string().describe('What Robin said that was wrong'),
+        correction: z.string().describe('What the correct version is'),
+        context: z.string().optional().describe('Optional context: where this happened'),
+      }),
+    },
+    async ({ what, correction, context }) => {
+      const info = deps.db.prepare(`
+        INSERT INTO corrections (what, correction, context) VALUES (?, ?, ?)
+      `).run(what, correction, context ?? null);
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) }] };
+    },
+  );
+
+  server.registerTool(
+    'audit',
+    {
+      description: 'Read audit log: events / refusals / corrections / power transitions / mcp calls. Metadata only by default.',
+      inputSchema: z.object({
+        type: z.enum(['events', 'refusals', 'corrections', 'predictions']).describe('What to audit'),
+        window: z.string().optional().describe('Window like "24h", "7d", "30d". Default 24h.'),
+        limit: z.number().int().optional().describe('Max rows (default 50)'),
+      }),
+    },
+    async ({ type, window, limit }) => {
+      const lim = limit ?? 50;
+      const w = window ?? '24h';
+      const hours = w.endsWith('d') ? Number.parseInt(w) * 24 : Number.parseInt(w);
+      const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+      let rows: unknown[] = [];
+      switch (type) {
+        case 'events':
+          rows = deps.db.prepare(`SELECT id, ts, kind, source, status FROM events WHERE ts > ? ORDER BY ts DESC LIMIT ?`).all(since, lim) as unknown[];
+          break;
+        case 'refusals':
+          rows = deps.db.prepare(`SELECT * FROM refusals WHERE ts > ? ORDER BY ts DESC LIMIT ?`).all(since, lim) as unknown[];
+          break;
+        case 'corrections':
+          rows = deps.db.prepare(`SELECT * FROM corrections WHERE ts > ? ORDER BY ts DESC LIMIT ?`).all(since, lim) as unknown[];
+          break;
+        case 'predictions':
+          rows = deps.db.prepare(`SELECT * FROM predictions WHERE created_at > ? ORDER BY created_at DESC LIMIT ?`).all(since, lim) as unknown[];
+          break;
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'explain',
+    {
+      description: 'Explain a recall result, action, learning step, or playbook decision. Phase 1: explanation stubs by type.',
+      inputSchema: z.object({
+        type: z.enum(['recall', 'action_trust', 'learning', 'playbook']).describe('What kind of decision to explain'),
+        ref: z.string().describe('Reference id, query, or descriptor'),
+      }),
+    },
+    async ({ type, ref }) => {
+      // MVP: stub explanations. Real explanation logic ships in Plan 6.
+      const explanation = `[${type}] explanation for ref="${ref}" is not yet implemented; returning placeholder.`;
+      return { content: [{ type: 'text' as const, text: explanation }] };
+    },
+  );
+
+  server.registerTool(
+    'health',
+    {
+      description: 'Run health invariants and return their status. Quick check on daemon + DB + integrations.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const userData = resolveUserDataDir();
+      const reports = await runInvariants([
+        userDataWritableInvariant(userData),
+        dbReachableInvariant(deps.db),
+        dbSchemaCurrentInvariant(deps.db),
+        dbWalSizeBoundedInvariant(deps.db),
+      ]);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(reports, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'metrics',
+    {
+      description: 'Read learning + perf metrics for a window. Returns {value, n} per metric.',
+      inputSchema: z.object({
+        kind: z.string().optional().describe("Specific metric (e.g. 'brier_30d'); omit for all"),
+        window: z.string().optional().describe('Window like "7d", "30d". Default 30d.'),
+      }),
+    },
+    async ({ kind, window }) => {
+      const w = window ?? '30d';
+      const days = Number.parseInt(w);
+      const since = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
+      let rows: unknown[] = [];
+      if (kind) {
+        rows = deps.db.prepare(`SELECT * FROM metrics_daily WHERE metric = ? AND day >= ? ORDER BY day DESC`).all(kind, since) as unknown[];
+      } else {
+        rows = deps.db.prepare(`SELECT metric, day, value, n FROM metrics_daily WHERE day >= ? ORDER BY day DESC, metric`).all(since) as unknown[];
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'journal',
+    {
+      description: 'Read the day journal — a narrative summary of what happened on a given day.',
+      inputSchema: z.object({
+        date: z.string().optional().describe('YYYY-MM-DD; defaults to today'),
+      }),
+    },
+    async ({ date }) => {
+      const day = date ?? new Date().toISOString().slice(0, 10);
+      const row = deps.db.prepare(`SELECT body, generated_at FROM journals WHERE day = ?`).get(day) as { body: string; generated_at: string } | undefined;
+      if (!row) {
+        return { content: [{ type: 'text' as const, text: `No journal for ${day}. Dream job has not yet generated one — try again after 03:00 local.` }] };
+      }
+      return { content: [{ type: 'text' as const, text: row.body }] };
+    },
+  );
+
+  server.registerTool(
+    'power',
+    {
+      description: 'Read or change Robin power state. Actions: pause, resume, incognito, offline, online, status. Off/on are CLI-only.',
+      inputSchema: z.object({
+        action: z.enum(['pause', 'resume', 'incognito', 'offline', 'online', 'status']).describe('What to do'),
+        duration: z.string().optional().describe('Like "1h", "30m", "permanent" — used by incognito'),
+      }),
+    },
+    async ({ action, duration }) => {
+      const userData = resolveUserDataDir();
+      const policiesPath = join(userData, 'config', 'policies.yaml');
+      const policies = loadPolicies(userData);
+      if (action === 'status') {
+        return { content: [{ type: 'text' as const, text: JSON.stringify(policies, null, 2) }] };
+      }
+      const next = { ...policies };
+      if (action === 'pause') next.power = { ...next.power, state: 'paused' };
+      else if (action === 'resume') next.power = { ...next.power, state: 'active' };
+      else if (action === 'incognito') {
+        next.capture = { ...next.capture, enabled: false };
+        if (duration && duration !== 'permanent') {
+          const ms = duration.endsWith('h') ? Number.parseInt(duration) * 3600 * 1000 : Number.parseInt(duration) * 60 * 1000;
+          (next.capture as { expires_at?: string }).expires_at = new Date(Date.now() + ms).toISOString();
+        }
+      } else if (action === 'offline') next.network = { ...next.network, mode: 'offline' };
+      else if (action === 'online') next.network = { ...next.network, mode: 'online' };
+      writeFileSync(policiesPath, stringifyYaml(next));
+      return { content: [{ type: 'text' as const, text: `power.${action} applied. New state: ${JSON.stringify(next, null, 2)}` }] };
     },
   );
 
