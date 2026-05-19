@@ -28,6 +28,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^11.3.0",
     "chokidar": "^4.0.0",
     "cron-parser": "^5.0.0",
