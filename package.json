@@ -1,0 +1,48 @@
+{
+  "name": "robin-assistant",
+  "version": "3.0.0-alpha.0",
+  "description": "Personal AI assistant with tiered memory, async scheduling, and multi-agent collaboration via MCP",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bin": {
+    "robin": "./dist/surfaces/cli/index.js"
+  },
+  "main": "./dist/surfaces/cli/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts daemon --foreground",
+    "robin": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts",
+    "test": "node --test --test-concurrency=8 --test-timeout=20000 --import tsx 'system/**/*.test.ts' 'tests/**/*.test.ts'",
+    "test:watch": "node --test --watch --import tsx 'system/**/*.test.ts' 'tests/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "sqlite-vec": "0.1.7-alpha.2",
+    "pino": "^9.5.0",
+    "pino-roll": "^3.0.0",
+    "chokidar": "^4.0.0",
+    "cron-parser": "^5.0.0",
+    "zod": "^4.0.0",
+    "yaml": "^2.6.0",
+    "p-queue": "^8.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
