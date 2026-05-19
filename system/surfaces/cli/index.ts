@@ -5,6 +5,11 @@ import { printDoctorHuman, runDoctor } from './doctor.ts';
 
 const VERSION = '3.0.0-alpha.0';
 
+function extractFlag(args: string[], prefix: string): string | undefined {
+  const found = args.find((a) => a.startsWith(prefix));
+  return found?.slice(prefix.length);
+}
+
 function printHelp(): void {
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`robin ${VERSION}
@@ -66,6 +71,18 @@ async function main(): Promise<void> {
       });
       await daemon.start({ foreground: fg });
       return;
+    }
+
+    case 'init': {
+      const { runInit } = await import('./init.ts');
+      runInit({
+        yes: args.includes('--yes') || args.includes('-y'),
+        profile: extractFlag(args, '--profile='),
+        noModels: args.includes('--no-models'),
+        noLaunchd: args.includes('--no-launchd'),
+      });
+      exit(0);
+      break;
     }
 
     default: {
