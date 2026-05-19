@@ -26,39 +26,39 @@ test('migrate: errors when v2 path missing', async () => {
 test('migrate: flatfiles phase copies artifacts + scripts', async () => {
   const v2 = makeFakeV2();
   // Set ROBIN_USER_DATA_DIR to a temp dir so we don't clobber the real one
-  const v3UserData = mkdtempSync(join(tmpdir(), 'robin-v3-fake-'));
-  process.env.ROBIN_USER_DATA_DIR = v3UserData;
+  const targetUserData = mkdtempSync(join(tmpdir(), 'robin-target-fake-'));
+  process.env.ROBIN_USER_DATA_DIR = targetUserData;
   const r = await migrateFromV2({ v2Path: v2 });
   assert.equal(r.phases.flatfiles?.ok, true);
   assert.ok((r.phases.flatfiles?.count ?? 0) >= 2);
   // verify files were copied
-  assert.ok(existsSync(join(v3UserData, 'content', 'artifacts', 'plan.md')));
-  assert.ok(existsSync(join(v3UserData, 'extensions', 'scripts', 'noop.sh')));
+  assert.ok(existsSync(join(targetUserData, 'content', 'artifacts', 'plan.md')));
+  assert.ok(existsSync(join(targetUserData, 'extensions', 'scripts', 'noop.sh')));
   // clean up env
   delete process.env.ROBIN_USER_DATA_DIR;
 });
 
 test('migrate: dry-run does not copy files but counts', async () => {
   const v2 = makeFakeV2();
-  const v3UserData = mkdtempSync(join(tmpdir(), 'robin-v3-fake-'));
-  process.env.ROBIN_USER_DATA_DIR = v3UserData;
+  const targetUserData = mkdtempSync(join(tmpdir(), 'robin-target-fake-'));
+  process.env.ROBIN_USER_DATA_DIR = targetUserData;
   const r = await migrateFromV2({ v2Path: v2, dryRun: true });
   assert.equal(r.dryRun, true);
   assert.ok((r.phases.flatfiles?.count ?? 0) >= 2);
   // verify no files were copied
-  assert.equal(existsSync(join(v3UserData, 'content', 'artifacts', 'plan.md')), false);
+  assert.equal(existsSync(join(targetUserData, 'content', 'artifacts', 'plan.md')), false);
   // clean up env
   delete process.env.ROBIN_USER_DATA_DIR;
 });
 
 test('migrate: writes a report file to state/migrations', async () => {
   const v2 = makeFakeV2();
-  const v3UserData = mkdtempSync(join(tmpdir(), 'robin-v3-fake-'));
-  process.env.ROBIN_USER_DATA_DIR = v3UserData;
+  const targetUserData = mkdtempSync(join(tmpdir(), 'robin-target-fake-'));
+  process.env.ROBIN_USER_DATA_DIR = targetUserData;
   await migrateFromV2({ v2Path: v2 });
   const { readdirSync } = await import('node:fs');
-  const files = existsSync(join(v3UserData, 'state', 'migrations'))
-    ? readdirSync(join(v3UserData, 'state', 'migrations'))
+  const files = existsSync(join(targetUserData, 'state', 'migrations'))
+    ? readdirSync(join(targetUserData, 'state', 'migrations'))
     : [];
   assert.ok(files.some((f) => f.startsWith('migrate-report-')));
   // clean up env
