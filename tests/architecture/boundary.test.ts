@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { test } from 'node:test';
 
 const CONFIG_EXTS = new Set(['.yaml', '.yml', '.json', '.env', '.toml', '.ini']);
 // Files explicitly allowed under system/ despite having a config-shaped extension
-const ALLOWED_FILES = new Set<string>([
-  // none yet; add named schema files here if needed
-]);
+const ALLOWED_BASENAMES = new Set<string>(['integration.yaml']);
 
 function walk(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -23,7 +21,7 @@ test('boundary: no config files under system/', () => {
   const files = walk('system');
   const violations: string[] = [];
   for (const f of files) {
-    if (CONFIG_EXTS.has(extname(f)) && !ALLOWED_FILES.has(f)) {
+    if (CONFIG_EXTS.has(extname(f)) && !ALLOWED_BASENAMES.has(basename(f))) {
       violations.push(f);
     }
   }

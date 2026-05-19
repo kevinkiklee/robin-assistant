@@ -1,0 +1,9 @@
+name: weather
+version: 1.0.0
+schedule: "0 7 * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["weather"]
+  network: ["wttr.in"]
