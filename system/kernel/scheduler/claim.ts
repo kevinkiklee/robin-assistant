@@ -80,3 +80,18 @@ export function completeJob(
     ).run(id);
   }
 }
+
+export function recoverExpiredLeases(db: RobinDb, nowIso?: string): number {
+  const now = nowIso ?? new Date().toISOString();
+  const result = db
+    .prepare(`
+    UPDATE jobs
+       SET state = 'pending',
+           leased_until = NULL,
+           claimed_by = NULL,
+           retry_count = retry_count + 1
+     WHERE state = 'leased' AND leased_until < ?
+  `)
+    .run(now);
+  return result.changes;
+}
