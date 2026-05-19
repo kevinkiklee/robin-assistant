@@ -10,6 +10,7 @@ import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import { recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
 import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidfile.ts';
+import { startHttpServer, type HttpHandle } from '../../surfaces/http/server.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 
 const TICK_INTERVAL_MS = 1000;
@@ -28,6 +29,7 @@ export class Daemon {
   private lastTickAt: Date | null = null;
   private handlers = new Map<string, JobHandler>();
   private llm?: LLMDispatcher;
+  private http?: HttpHandle;
 
   registerHandler(name: string, handler: JobHandler): void {
     this.handlers.set(name, handler);
@@ -87,6 +89,22 @@ export class Daemon {
       onError: (err, job) => this.log.error({ err, job: job.name }, 'job handler error'),
     });
 
+    // HTTP endpoint for hooks + health probe
+    try {
+      this.http = await startHttpServer({
+        db: this.db,
+        port: 41273,
+        isHealthy: () => this.running,
+        onHook: async (kind, payload) => {
+          writeTelemetry(this.db!, 'invariant.check', { name: `hook.${kind}`, ok: true }, { source: 'http' });
+          this.log.info({ kind, payload }, 'hook received');
+        },
+      });
+      this.log.info({ port: this.http.port }, 'http server listening');
+    } catch (err) {
+      this.log.warn({ err }, 'http server start failed; continuing without hooks');
+    }
+
     this.running = true;
     this.startedAt = Date.now();
     this.setupSignals();
@@ -122,6 +140,9 @@ export class Daemon {
     if (!this.running) return;
     this.running = false;
     const uptime = Date.now() - this.startedAt;
+    if (this.http) {
+      await this.http.close();
+    }
     if (this.db) {
       writeTelemetry(
         this.db,
