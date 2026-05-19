@@ -1,3 +1,4 @@
+import { resolve as resolvePath } from 'node:path';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import {
@@ -8,6 +9,7 @@ import {
 } from '../../kernel/invariants/builtins/index.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
 import type { InvariantReport } from '../../kernel/invariants/types.ts';
+import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 export interface DoctorReport {
@@ -114,4 +116,24 @@ export function printDoctorHuman(report: DoctorReport): void {
   console.log(
     `Summary: ${report.summary.ok} ok, ${report.summary.warn} warn, ${report.summary.fail} fail`,
   );
+}
+
+export function emitRunbook(opts: { write: boolean; path?: string }): { path: string; existed: boolean } {
+  const userData = resolveUserDataDir();
+  const db = openDb(dbFilePath(userData));
+  applyMigrations(db, allMigrations);
+  const invariants = [
+    userDataWritableInvariant(userData),
+    dbReachableInvariant(db),
+    dbSchemaCurrentInvariant(db),
+    dbWalSizeBoundedInvariant(db),
+  ];
+  const path = opts.path ?? resolvePath(process.cwd(), 'RUNBOOK.md');
+  if (opts.write) {
+    const r = writeRunbook(path, invariants);
+    closeDb(db);
+    return { path, existed: r.existed };
+  }
+  closeDb(db);
+  return { path, existed: false };
 }

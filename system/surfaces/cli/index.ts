@@ -60,6 +60,13 @@ async function main(): Promise<void> {
     }
 
     case 'doctor': {
+      if (args.includes('--emit-runbook')) {
+        const { emitRunbook } = await import('./doctor.ts');
+        const r = emitRunbook({ write: args.includes('--write') });
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(`Runbook ${r.existed ? 'updated' : 'created'} at ${r.path}`);
+        exit(0);
+      }
       const json = args.includes('--json');
       const report = await runDoctor({ version: VERSION });
       if (json) {
@@ -85,7 +92,7 @@ async function main(): Promise<void> {
 
     case 'init': {
       const { runInit } = await import('./init.ts');
-      runInit({
+      await runInit({
         yes: args.includes('--yes') || args.includes('-y'),
         profile: extractFlag(args, '--profile='),
         noModels: args.includes('--no-models'),

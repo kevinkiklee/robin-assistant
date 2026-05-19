@@ -11,7 +11,7 @@ export interface InitOptions {
   noLaunchd?: boolean;
 }
 
-export function runInit(opts: InitOptions): void {
+export async function runInit(opts: InitOptions): Promise<void> {
   if (!opts.yes) {
     // biome-ignore lint/suspicious/noConsole: CLI output
     console.error(
@@ -44,6 +44,12 @@ export function runInit(opts: InitOptions): void {
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Detect hardware and write hardware.yaml
+  const { detectHardware } = await import('../../lib/hardware/detect.ts');
+  const { writeHardwareYaml } = await import('../../lib/hardware/apply.ts');
+  const hw = detectHardware();
+  writeHardwareYaml(userData, hw);
 
   // Default policies.yaml if not present
   const policiesPath = join(paths.config.root, 'policies.yaml');
@@ -84,6 +90,8 @@ roles: {}
   console.log(`  Database: ${dbFilePath(userData)}`);
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  Config:   ${paths.config.root}`);
+  // biome-ignore lint/suspicious/noConsole: CLI output
+  console.log(`  Hardware: ${hw.profile} (${hw.cpu}, ${hw.ram_gb}GB)`);
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: CLI output

@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@surrealdb/node": "^3.0.3",
     "better-sqlite3": "^11.3.0",
     "chokidar": "^4.0.0",
     "cron-parser": "^5.0.0",
@@ -36,6 +37,8 @@
     "pino": "^9.5.0",
     "pino-roll": "^3.0.0",
     "sqlite-vec": "0.1.7-alpha.2",
+    "surrealdb": "^2.0.3",
+    "tslib": "^2.8.1",
     "yaml": "^2.6.0",
     "zod": "^4.0.0"
   },
