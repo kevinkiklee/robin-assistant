@@ -2,6 +2,8 @@
 import { argv, exit } from 'node:process';
 import { Daemon } from '../../kernel/runtime/daemon.ts';
 import { printDoctorHuman, runDoctor } from './doctor.ts';
+import { runPause, runResume, runIncognito, runOffline, runOnline, runStatus } from './power.ts';
+import { upsertUserScopeMcp, buildRobinMcpEntry } from '../../lib/mcp-config/write.ts';
 
 const VERSION = '3.0.0-alpha.0';
 
@@ -22,6 +24,14 @@ COMMANDS
   doctor      Diagnose daemon + environment
   init        One-time setup (interactive)
   migrate     One-shot operations (from-v2)
+  pause       Pause scheduled work
+  resume      Resume scheduled work
+  incognito   Disable session capture (--for 1h optional)
+  offline     Block outbound network
+  online      Restore outbound network
+  status      Show current state
+  mcp core    Run the robin-core MCP server (called by Claude Code via stdio)
+  mcp install Add/replace robin in ~/.claude.json
   --version
   --help
 `);
@@ -82,6 +92,62 @@ async function main(): Promise<void> {
         noLaunchd: args.includes('--no-launchd'),
       });
       exit(0);
+      break;
+    }
+
+    case 'pause': {
+      runPause();
+      exit(0);
+      break;
+    }
+
+    case 'resume': {
+      runResume();
+      exit(0);
+      break;
+    }
+
+    case 'incognito': {
+      const dur = extractFlag(args, '--for=') ?? (args[1] && !args[1].startsWith('-') ? args[1] : undefined);
+      runIncognito(dur);
+      exit(0);
+      break;
+    }
+
+    case 'offline': {
+      runOffline();
+      exit(0);
+      break;
+    }
+
+    case 'online': {
+      runOnline();
+      exit(0);
+      break;
+    }
+
+    case 'status': {
+      runStatus(args.includes('--json'));
+      exit(0);
+      break;
+    }
+
+    case 'mcp': {
+      const sub = args[1];
+      if (sub === 'core') {
+        const { runMcpCore } = await import('../mcp/core/run.ts');
+        await runMcpCore();
+        return;
+      }
+      if (sub === 'install') {
+        const r = upsertUserScopeMcp(buildRobinMcpEntry({ command: process.argv[1] }));
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(`${r.replaced ? 'Replaced' : 'Added'} robin MCP entry in ${r.path}`);
+        exit(0);
+      }
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.error(`Unknown mcp subcommand: ${sub}`);
+      exit(2);
       break;
     }
 
