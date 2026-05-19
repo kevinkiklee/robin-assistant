@@ -13,7 +13,7 @@ export interface MigrateOptions {
 export interface MigrateReport {
   ts: string;
   v2Path: string;
-  v3UserData: string;
+  targetUserData: string;
   dryRun: boolean;
   phases: Record<string, { ok: boolean; count?: number; message?: string }>;
   errors: string[];
@@ -25,7 +25,7 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
   const report: MigrateReport = {
     ts: new Date().toISOString(),
     v2Path: resolve(opts.v2Path),
-    v3UserData: userData,
+    targetUserData: userData,
     dryRun: !!opts.dryRun,
     phases: {},
     errors: [],
@@ -84,7 +84,7 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
       const events = (db.prepare('SELECT COUNT(*) AS c FROM events').get() as { c: number }).c;
       const entities = (db.prepare('SELECT COUNT(*) AS c FROM entities').get() as { c: number }).c;
       closeDb(db);
-      report.phases.verify = { ok: true, count: events + entities, message: `v3 has ${events} events + ${entities} entities` };
+      report.phases.verify = { ok: true, count: events + entities, message: `target has ${events} events + ${entities} entities` };
     } catch (err) {
       report.phases.verify = { ok: false, message: err instanceof Error ? err.message : String(err) };
     }
@@ -98,7 +98,7 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
   return report;
 }
 
-async function migrateDerivedData(v2UserData: string, _v3UserData: string, _dryRun?: boolean): Promise<{ count: number; message: string }> {
+async function migrateDerivedData(v2UserData: string, _targetUserData: string, _dryRun?: boolean): Promise<{ count: number; message: string }> {
   // Try to load @surrealdb/node and read v2 DB
   let surrealdbAvailable = false;
   try {
@@ -121,10 +121,10 @@ async function migrateDerivedData(v2UserData: string, _v3UserData: string, _dryR
   return { count: 0, message: `derived: v2 RocksDB found with ${dbFiles} entries — full SurrealDB read deferred to richer migration pass; phase reported OK with 0 rows transformed.` };
 }
 
-function migrateFlatFiles(v2UserData: string, v3UserData: string, dryRun?: boolean): number {
+function migrateFlatFiles(v2UserData: string, targetUserData: string, dryRun?: boolean): number {
   const subdirs = ['artifacts', 'skills', 'jobs', 'triggers', 'scripts', 'sources', 'profile'];
   let count = 0;
-  const paths = userDataPaths(v3UserData);
+  const paths = userDataPaths(targetUserData);
   for (const sub of subdirs) {
     const src = join(v2UserData, sub);
     if (!existsSync(src)) continue;
