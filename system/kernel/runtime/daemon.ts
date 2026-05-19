@@ -5,10 +5,12 @@ import { allMigrations, applyMigrations } from '../../brain/memory/migrations/in
 import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { writeTelemetry } from '../../lib/telemetry/write.ts';
-import { loadPolicies } from '../config/load.ts';
+import { loadPolicies, loadModels } from '../config/load.ts';
+import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import { recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
 import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidfile.ts';
+import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 
 const TICK_INTERVAL_MS = 1000;
 const LEASE_MS = 5 * 60 * 1000; // 5 min
@@ -25,9 +27,14 @@ export class Daemon {
   private startedAt = 0;
   private lastTickAt: Date | null = null;
   private handlers = new Map<string, JobHandler>();
+  private llm?: LLMDispatcher;
 
   registerHandler(name: string, handler: JobHandler): void {
     this.handlers.set(name, handler);
+  }
+
+  getLLM(): LLMDispatcher | undefined {
+    return this.llm;
   }
 
   async start(opts: DaemonRunOptions = {}): Promise<void> {
@@ -53,6 +60,17 @@ export class Daemon {
     // Apply policies
     const policies = loadPolicies(userData);
     this.log.info({ event: 'daemon.start', state: policies.power.state }, 'daemon starting');
+
+    // LLM dispatcher — built from models.yaml, lenient (warn + skip on missing secrets)
+    const models = loadModels(userData);
+    try {
+      this.llm = buildDispatcherFromConfig(models, {
+        lenient: true,
+        onWarn: (msg) => this.log.warn({ msg }, 'llm provider unavailable'),
+      });
+    } catch (err) {
+      this.log.error({ err }, 'failed to build LLM dispatcher');
+    }
 
     // Recovery sweep
     const recovered = recoverExpiredLeases(this.db);
