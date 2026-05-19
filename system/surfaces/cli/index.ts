@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { argv, exit } from 'node:process';
+import { Daemon } from '../../kernel/runtime/daemon.ts';
 import { printDoctorHuman, runDoctor } from './doctor.ts';
 
 const VERSION = '3.0.0-alpha.0';
@@ -54,6 +55,17 @@ async function main(): Promise<void> {
       }
       exit(report.summary.exit_code);
       break;
+    }
+
+    case 'daemon': {
+      const fg = args.includes('--foreground') || args.includes('-f');
+      const daemon = new Daemon();
+      // Register a simple test handler so end-to-end tests can verify the loop
+      daemon.registerHandler('test.noop', async () => {
+        /* no-op */
+      });
+      await daemon.start({ foreground: fg });
+      return;
     }
 
     default: {
