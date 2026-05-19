@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { argv, exit } from 'node:process';
+import { printDoctorHuman, runDoctor } from './doctor.ts';
 
 const VERSION = '3.0.0-alpha.0';
 
 function printHelp(): void {
+  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`robin ${VERSION}
 
 USAGE
@@ -19,24 +21,49 @@ COMMANDS
 `);
 }
 
-const args = argv.slice(2);
-const cmd = args[0];
+async function main(): Promise<void> {
+  const args = argv.slice(2);
+  const cmd = args[0];
 
-switch (cmd) {
-  case undefined:
-  case '--help':
-  case '-h':
-  case 'help':
-    printHelp();
-    exit(0);
-    break;
-  case '--version':
-  case '-v':
-    console.log(VERSION);
-    exit(0);
-    break;
-  default:
-    console.error(`Unknown command: ${cmd}`);
-    printHelp();
-    exit(2);
+  switch (cmd) {
+    case undefined:
+    case '--help':
+    case '-h':
+    case 'help': {
+      printHelp();
+      exit(0);
+      break;
+    }
+
+    case '--version':
+    case '-v': {
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.log(VERSION);
+      exit(0);
+      break;
+    }
+
+    case 'doctor': {
+      const json = args.includes('--json');
+      const report = await runDoctor({ version: VERSION });
+      if (json) {
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        printDoctorHuman(report);
+      }
+      exit(report.summary.exit_code);
+      break;
+    }
+
+    default: {
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.error(`Unknown command: ${cmd}`);
+      printHelp();
+      exit(2);
+      break;
+    }
+  }
 }
+
+await main();
