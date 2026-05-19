@@ -67,7 +67,7 @@ network:
     writeFileSync(
       modelsPath,
       `# Robin model adapter routing
-# See docs/specs/2026-05-18-robin-v3-design.md §6
+# Configure provider integrations and role-based model selection here
 roles: {}
 `,
     );
