@@ -41,3 +41,17 @@ export const policiesSchema = z
   }));
 
 export type Policies = z.infer<typeof policiesSchema>;
+
+export const providerConfigSchema = z.object({
+  provider: z.string(),
+  model: z.string().optional(),
+  baseUrl: z.string().optional(),
+  apiKeyEnv: z.string().optional(),
+});
+
+export const modelsSchema = z.object({
+  roles: z.record(z.string(), providerConfigSchema).default({}),
+});
+
+export type ProviderConfig = z.infer<typeof providerConfigSchema>;
+export type ModelsConfig = z.infer<typeof modelsSchema>;
