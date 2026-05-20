@@ -32,6 +32,8 @@ export class Daemon {
   private llm?: LLMDispatcher;
   private http?: HttpHandle;
   private integrationWatcher?: WatcherHandle;
+  private healthMonitor?: import('./health-monitor.ts').HealthMonitor;
+  private powerMonitor?: import('../../lib/power-auto/monitor.ts').PowerAutoMonitor;
 
   registerHandler(name: string, handler: JobHandler): void {
     this.handlers.set(name, handler);
@@ -115,6 +117,29 @@ export class Daemon {
       this.log.warn({ err }, 'http server start failed; continuing without hooks');
     }
 
+    // Health monitor for invariant checks
+    try {
+      const { HealthMonitor } = await import('./health-monitor.ts');
+      this.healthMonitor = new HealthMonitor({
+        db: this.db,
+        getLLM: () => this.llm,
+        getLastTickAt: () => this.lastTickAt,
+        enableNotifications: false, // future: read from policies.yaml
+      });
+      this.healthMonitor.start();
+    } catch (err) {
+      this.log.warn({ err }, 'health monitor failed to start');
+    }
+
+    // Power auto-monitor for battery threshold
+    try {
+      const { PowerAutoMonitor } = await import('../../lib/power-auto/monitor.ts');
+      this.powerMonitor = new PowerAutoMonitor();
+      this.powerMonitor.start();
+    } catch (err) {
+      this.log.warn({ err }, 'power auto-monitor failed to start');
+    }
+
     // Register cognition + integration job handlers + seed cron schedules
     try {
       const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
@@ -186,6 +211,8 @@ export class Daemon {
     if (this.integrationWatcher) {
       await this.integrationWatcher.close();
     }
+    if (this.healthMonitor) this.healthMonitor.stop();
+    if (this.powerMonitor) this.powerMonitor.stop();
     if (this.db) {
       writeTelemetry(
         this.db,
