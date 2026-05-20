@@ -6,6 +6,8 @@ export interface IntegrationManifest {
   name: string;
   version: string;
   schedule?: string;
+  /** IANA timezone the schedule is interpreted in. Defaults to ROBIN_TZ env or system TZ. */
+  tz?: string;
   cpu_intensive?: boolean;
   permissions?: {
     memory?: { read?: boolean; write?: boolean; namespaces?: string[] };

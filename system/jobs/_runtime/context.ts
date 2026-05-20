@@ -21,7 +21,9 @@ export function buildJobContext(
     },
     fetch,
     now: () => new Date(),
-    ingest: (input) => ingest(db, llm, input),
+    // ingest is now sync but the context contract is async — existing jobs await this
+    // call (and jobs may want to chain real async work after), so wrap in Promise.resolve.
+    ingest: (input) => Promise.resolve(ingest(db, llm, input)),
     rootDir,
   };
 }

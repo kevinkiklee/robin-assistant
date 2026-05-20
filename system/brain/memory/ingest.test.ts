@@ -3,8 +3,6 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { LLMDispatcher } from '../llm/dispatcher.ts';
-import type { LLMProvider } from '../llm/types.ts';
 import { closeDb, openDb } from './db.ts';
 import { ingest } from './ingest.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
@@ -17,66 +15,38 @@ function freshDb() {
   return db;
 }
 
-function embedProvider(vec: number[] | null): LLMProvider {
-  return {
-    name: 'embed-mock',
-    capabilities: new Set(['embed']),
-    meta: { contextWindow: 0, inputPricePerM: 0, outputPricePerM: 0 },
-    invoke: async () => {
-      throw new Error('not implemented');
-    },
-    embed: async () => {
-      if (vec) return [vec];
-      throw new Error('embedder unavailable');
-    },
-  };
-}
-
-test('ingest: writes event + content row + embedding (events_content + events_vec)', async () => {
+test('ingest: writes event + content row with embedding NULL (deferred to backfill)', () => {
   const db = freshDb();
-  const llm = new LLMDispatcher();
-  llm.register('e', embedProvider(new Array(4096).fill(0.1)));
-  llm.assign('embed', 'e');
-
-  const r = await ingest(db, llm, { kind: 'test', source: 't', content: 'hello' });
+  const r = ingest(db, null, { kind: 'test', source: 't', content: 'hello' });
   assert.ok(r.eventId > 0);
   assert.ok(r.contentId);
-  assert.equal(r.embedded, true);
 
   const row = db
-    .prepare('SELECT length(embedding) AS len FROM events_content WHERE id = ?')
-    .get(r.contentId) as { len: number };
-  assert.equal(row.len, 4096 * 4);
-  // verify events_vec also populated
+    .prepare('SELECT body, embedding FROM events_content WHERE id = ?')
+    .get(r.contentId) as { body: string; embedding: Buffer | null };
+  assert.equal(row.body, 'hello');
+  assert.equal(row.embedding, null);
+  // events_vec is also empty until the backfill job runs
   const vecRow = db
     .prepare('SELECT COUNT(*) AS c FROM events_vec WHERE rowid = ?')
     .get(r.contentId) as { c: number };
-  assert.equal(vecRow.c, 1);
+  assert.equal(vecRow.c, 0);
   closeDb(db);
 });
 
-test('ingest: event row succeeds even when embed throws', async () => {
+test('ingest: no content → only event row, no content row', () => {
   const db = freshDb();
-  const llm = new LLMDispatcher();
-  llm.register('e', embedProvider(null));
-  llm.assign('embed', 'e');
-
-  const r = await ingest(db, llm, { kind: 'test', source: 't', content: 'world' });
-  assert.ok(r.eventId > 0);
-  assert.equal(r.embedded, false);
-  assert.ok(r.embedError);
-  assert.match(r.embedError, /embedder unavailable/);
-
-  const ev = db.prepare('SELECT id FROM events WHERE id = ?').get(r.eventId);
-  assert.ok(ev);
-  closeDb(db);
-});
-
-test('ingest: no content → only event row', async () => {
-  const db = freshDb();
-  const r = await ingest(db, null, { kind: 'test', source: 't', payload: { foo: 1 } });
+  const r = ingest(db, null, { kind: 'test', source: 't', payload: { foo: 1 } });
   assert.ok(r.eventId > 0);
   assert.equal(r.contentId, undefined);
-  assert.equal(r.embedded, false);
+  closeDb(db);
+});
+
+test('ingest: llm parameter is accepted but unused (kept for API compat)', () => {
+  // The legacy signature took an LLMDispatcher to drive inline embedding. Embedding is
+  // now deferred. Pass anything for compat — it must be ignored without error.
+  const db = freshDb();
+  const r = ingest(db, null, { kind: 'test', source: 't', content: 'still-works' });
+  assert.ok(r.eventId > 0);
   closeDb(db);
 });

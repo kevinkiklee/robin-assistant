@@ -10,9 +10,26 @@ This backlog is the actionable companion to `STATUS.md`. Each item below has sco
 
 ---
 
+## Update — 2026-05-20 (v2 migration + embeddings + integration scaffolding session)
+
+This session shipped the v2 → v3 data migration (rebuilt from scratch as NDJSON pipeline after finding the original SurrealDB-direct migrator broken at three layers), wired qwen3-embedding:8b at 4096-dim, moved embedding off the ingest hot-path into a deferred batch job, fixed the cron-TZ + daemon-install + health-monitor-notification bugs, and removed GA from scope. A parallel agent scaffolded 12 of 13 v2 integrations as extensions. Current test count: **244 passing**.
+
+### Shipped this session (2026-05-20)
+
+- **v2 migration rebuilt** as NDJSON. `tools/v2-export.mjs` (one-off, lives outside v3) dumps surrealkv tables → NDJSON; `robin import <dir>` ingests events/entities/edges/corrections/predictions through the v3 schema in a single outer transaction. Old `system/surfaces/cli/migrate/` deleted. Kevin's full v2 corpus imported (9,463 events, 4,422 entities, 13,722 relations).
+- **Embeddings live** — `qwen3-embedding:8b` at 4096-dim. Migration 005 reshaped `events_vec` from `float[1024]` → `float[4096]`. `embed-content.ts` helper truncates bodies > 30k chars before embedding (qwen3's runtime context is lower than the model's advertised 40k tokens). 9,452 / 9,453 events embedded; only failure was a single 130k-char daily-briefing pre-truncation-helper.
+- **Embedding moved to deferred batch** — `system/brain/cognition/embed-backfill.ts` runs every minute via the scheduler, picks up `events_content WHERE embedding IS NULL` in batches of 200. Ingest no longer blocks on Ollama. Frees high-frequency integration ticks.
+- **`robin reindex`** verb with `--limit`, `--force`, `--ids`, `--batch`, `--json`.
+- **Cron TZ fix** — `system/kernel/scheduler/cron.ts` resolves TZ from per-job `tz:` manifest field → `ROBIN_TZ` env → system IANA → UTC fallback. Pending rows refresh in-place when the TZ change moves the next-run time.
+- **Daemon-install path fix** — `buildDaemonSpecFromEnv` resolves `userDataDir` to absolute (was passing relative paths into the plist; launchd's `/` cwd then made daemon die exit 78).
+- **Health-monitor notifications** wired through `policies.notifications.health` (default on), re-read per tick so toggling the policy takes effect without daemon restart.
+- **Daily-brief job** scheduled, fired today, captured today's brief at $2.17 cost. Lives at `user-data/extensions/jobs/daily-brief/`.
+- **12 v2 integrations** scaffolded by parallel agent under `user-data/extensions/integrations/`: discord, ebird, google_drive, letterboxd, lrc, lunch_money, nhl, photos, spotify, spotify_write, whoop, youtube.
+- **GA removed from scope** — references stripped from daily-brief protocol + this backlog.
+
 ## Update — 2026-05-19 (full backlog sweep)
 
-A follow-up session implemented all P0 items (except hands-on-hardware validation), the highest-leverage P1 items, and the open-source tooling files. Current test count: **178 passing**. Total commits: **60**.
+A follow-up session implemented all P0 items (except hands-on-hardware validation), the highest-leverage P1 items, and the open-source tooling files.
 
 ### Shipped in this sweep
 
@@ -43,13 +60,11 @@ Eight more items shipped:
 
 ### Truly still deferred (the residual list)
 
-- **P0.4 real Ollama validation** — requires hands-on hardware. Cannot be done by an agent.
-- **P1.2 interactive `robin init`** — TTY prompts + OAuth device flow + model pulling. This is a substantial UX project (~2-3 day effort) that needs careful design (cancellation behavior, partial progress, idempotent re-entry). The non-interactive `--yes` path covers all daily-driver use today.
-- **P2.3 APFS snapshots for `robin db backup`** — requires sudo / Time Machine / non-trivial macOS plumbing. Current `wal_checkpoint + VACUUM INTO` backup is operationally fine.
-- **P2.4 DSPy Python sidecar** — large Python integration project. Layer 3 ships as correction-replay few-shot today which covers ~80% of the value.
-- **P2.7 Codex SDK adapter** — gated on upstream `openai/codex#15451` bug fixing. Track upstream.
+- **Integration end-to-end validation** — each of the 12 extension integrations is scaffolded but needs Kevin's tokens (OAuth flows, API keys) to confirm a real tick lands events as expected. Cannot be done by an agent alone.
+- **P1.2 interactive `robin init`** — TTY prompts + OAuth device flow + model pulling. ~2-3 day standalone UX project. The non-interactive `--yes` path covers all daily-driver use today.
+- **P2 items (APFS snapshots, DSPy sidecar, Codex SDK)** — explicitly deferred by the operator. Current `wal_checkpoint + VACUUM INTO` backup, correction-replay few-shot, and Claude-Code CLI adapter all cover the value.
 
-That residual list is the genuine "needs more thought" set — every item there either requires hands-on hardware, is a significant standalone project, or is gated on upstream changes.
+That residual list is the genuine "needs more thought" set — every item either requires hands-on operator participation or is a significant standalone project.
 
 The original section structure below has the full per-item context (scope, files, acceptance criteria) for anyone picking up the remaining work.
 

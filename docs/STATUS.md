@@ -1,11 +1,13 @@
 # Robin Implementation Status
 
-> Snapshot: 2026-05-19, end of automated build session (after deep BACKLOG completion)
-> Build state: **195 tests passing**, typecheck clean, lint clean, 68 commits, no `v3` mentions in code
+> Snapshot: 2026-05-20, end of v2 migration + embeddings + integration scaffolding session
+> Build state: **244 tests passing**, typecheck clean, no `v3` mentions in code
 
 ## Summary
 
-All 7 plans from the design (`docs/specs/2026-05-18-robin-v3-design.md`) have been implemented at MVP scope. The full agent loop works end-to-end: a fresh `robin init` produces a usable Robin install on a clean machine; the daemon starts, runs scheduled jobs, exposes MCP tools to Claude Code, and persists everything in SQLite + sqlite-vec.
+All 7 plans from the design (`docs/specs/2026-05-18-robin-v3-design.md`) are implemented. The full agent loop works end-to-end: a fresh `robin init` produces a usable Robin install on a clean machine; the daemon starts, runs scheduled jobs (biographer, dream, embed-backfill, daily-brief), exposes MCP tools to Claude Code, and persists everything in SQLite + sqlite-vec at 4096-dim against `qwen3-embedding:8b`.
+
+v2 → v3 data migration is shipped via `tools/v2-export.mjs` + `robin import` (NDJSON pipeline); Kevin's v2 corpus is fully imported (9,463 events, 4,422 entities, 13,722 relations, 9,452 embeddings). 12 of 13 v2 integrations are scaffolded as extensions under `user-data/extensions/integrations/`; GA was explicitly removed from scope.
 
 ## What is built
 
@@ -190,15 +192,26 @@ See `git log --oneline` for the full history. Major waypoints:
 - `7a60815` hardware profile detection + auto-generated RUNBOOK (Plan 6 + Plan 7)
 - `40fac74` final scrub of "v3" mentions from code
 
+## Shipped since the 2026-05-19 snapshot
+
+- **v2 migration rebuilt** as NDJSON exporter + `robin import` verb. The original SurrealDB-direct migrator was broken at three independent layers (wrong storage engine, singular vs plural table names, wrong INFO-FOR-DB field key) — replaced wholesale.
+- **Embeddings live**, qwen3-embedding:8b at 4096-dim (Matryoshka-native). Migration 005 reshaped events_vec from float[1024] → float[4096]. Helper `system/brain/memory/embed-content.ts` truncates long bodies to 30k chars before embedding (qwen3's runtime ctx is lower than the model's advertised 40k tokens).
+- **Embedding is now deferred** from the ingest hot-path to a per-minute `embed-backfill` cognition job (batch=200). Frees integration ticks from blocking on Ollama.
+- **`robin reindex`** verb with `--limit`, `--force`, `--ids`, `--batch`, `--json`. Used for bulk backfills.
+- **`robin import`** verb routes NDJSON files (events, entities, edges, corrections, predictions) into the right tables; single outer transaction; honest dry-run; idempotent re-runs.
+- **Cron timezone fix**: schedule expressions now interpret in `ROBIN_TZ` env / system TZ by default. Per-job `tz:` override in manifests. Pending rows refresh in-place when TZ changes the next-run time.
+- **Daemon-install path fix**: `buildDaemonSpecFromEnv` resolves relative paths to absolute before writing the plist, preventing exit-78 deaths under launchd's `/` cwd.
+- **Health-monitor notifications**: gated by `policies.notifications.health` (default on), re-read per tick so toggling policies.yaml takes effect without daemon restart.
+- **Daily-brief job** scheduled, fired, captured today's brief at $2.17 cost.
+- **12 v2 integrations** (whoop, spotify, gmail, ebird, lunch_money, letterboxd, photos, lrc, nhl, youtube, google_drive, discord) scaffolded as extensions by parallel agent. GA explicitly out of scope.
+
 ## Next sessions
 
-To continue from here, the highest-leverage next moves are:
+The architecture is stable and the daemon runs the full loop. Remaining work is operational + UX:
 
-1. **Add the other 6 Tier-1 integrations** (gmail, calendar, github, linear, chrome, finance_quote) — each ~150 LOC following the weather pattern
-2. **Build `robin-extension` MCP server** that surfaces integration tools when projects opt in
-3. **Wire the dream + biographer cron schedules into the daemon** so they actually run nightly
-4. **Implement the SurrealDB read path in `migrate/from-v2.ts`** so derived data (entities, predictions, corrections) carries over from v2 — not just flatfiles
-5. **Add the interactive `robin init` flow** (TTY prompts, model pulling, OAuth)
-6. **Pull a real Ollama model** and validate the full local-path with structured-output biographer end-to-end
+1. **Validate each of the 12 extension integrations end-to-end with real credentials.** Code exists; needs Kevin's tokens to confirm each ticks against the live API. Cannot be done by an agent alone — needs hands-on for OAuth flows.
+2. **Interactive `robin init`** (P1.2). TTY prompts + OAuth device flow + model pulling. Per BACKLOG residual list, this is a 2–3 day standalone UX project. The `--yes` path covers daily-driver use today.
+3. **APFS snapshots for `robin db backup`** (P2.3). Current VACUUM-INTO backup is operationally fine; APFS would be faster but needs sudo plumbing.
+4. **DSPy Python sidecar** (P2.4). Large standalone project; today's correction-replay few-shot covers most of the value.
 
-The architecture and contracts are stable. Adding to them follows established patterns.
+P2 is intentionally deferred per the operator. Adding to the codebase follows established patterns; no new architectural decisions are pending.

@@ -57,6 +57,7 @@ export async function registerIntegrations(
         scheduleCronJob(db, {
           name: `integration.${integration.instanceName}.tick`,
           cron: integration.manifest.schedule,
+          tz: integration.manifest.tz,
         });
         scheduled++;
       }

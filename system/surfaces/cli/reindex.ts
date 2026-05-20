@@ -1,6 +1,6 @@
 import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
-import { closeDb, openDb } from '../../brain/memory/db.ts';
+import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { embedBody } from '../../brain/memory/embed-content.ts';
 import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
@@ -9,6 +9,11 @@ export interface ReindexOptions {
   limit?: number;
   /** When true, re-embeds rows that already have an embedding. */
   force?: boolean;
+  /** Restrict the reindex to a specific set of events_content.id values. Overrides the
+   *  default NULL-embedding filter. Combines with `force` to control whether rows that
+   *  already have an embedding are re-embedded; without `force`, the id-set is intersected
+   *  with the NULL-embedding rows. */
+  ids?: number[];
   /** Batch size for progress reporting; embed calls remain per-row to bound retry blast radius. */
   batchSize?: number;
   onProgress?: (info: { processed: number; embedded: number; failed: number }) => void;
@@ -23,6 +28,14 @@ export interface ReindexReport {
   duration_ms: number;
 }
 
+/**
+ * Top-level entry: builds the dispatcher from on-disk config, opens the DB, runs
+ * the reindex loop. Used by the `robin reindex` CLI verb.
+ *
+ * For in-process callers that already have a dispatcher and db (e.g. the embed-backfill
+ * cognition job), use `runReindexCore` directly to skip the YAML reload + provider rebuild
+ * on every invocation.
+ */
 export async function runReindex(opts: ReindexOptions = {}): Promise<ReindexReport> {
   const t0 = Date.now();
   const report: ReindexReport = {
@@ -45,6 +58,33 @@ export async function runReindex(opts: ReindexOptions = {}): Promise<ReindexRepo
     return report;
   }
 
+  const db = openDb(dbFilePath(userData));
+  try {
+    return await runReindexCore(db, dispatcher, opts, t0, report);
+  } finally {
+    closeDb(db);
+  }
+}
+
+/**
+ * Reindex loop against an already-open db and dispatcher. Caller owns DB lifecycle.
+ * Returns the same `ReindexReport` shape regardless of failure mode (errors are
+ * accumulated into `report.errors`, never thrown).
+ */
+export async function runReindexCore(
+  db: RobinDb,
+  dispatcher: LLMDispatcher,
+  opts: ReindexOptions = {},
+  t0: number = Date.now(),
+  report: ReindexReport = {
+    ts: new Date().toISOString(),
+    total_eligible: 0,
+    embedded: 0,
+    failed: 0,
+    errors: [],
+    duration_ms: 0,
+  },
+): Promise<ReindexReport> {
   let provider: ReturnType<LLMDispatcher['getProvider']>;
   try {
     provider = dispatcher.getProvider('embed');
@@ -59,18 +99,29 @@ export async function runReindex(opts: ReindexOptions = {}): Promise<ReindexRepo
     return report;
   }
 
-  const db = openDb(dbFilePath(userData));
-  try {
-    // Eligible = rows in events_content whose embedding is NULL (or any row if --force).
+  {
+    // Eligible = rows in events_content whose embedding is NULL (or any row if --force or --ids).
     // We don't filter on events_vec here because the canonical "is embedded" signal is the
     // events_content.embedding BLOB; events_vec is a derived shadow that follows it.
-    const eligibleQ = opts.force
-      ? db.prepare(`SELECT id, body FROM events_content ORDER BY id`)
-      : db.prepare(`SELECT id, body FROM events_content WHERE embedding IS NULL ORDER BY id`);
-    const rows = (opts.limit ? eligibleQ.all().slice(0, opts.limit) : eligibleQ.all()) as Array<{
-      id: number;
-      body: string;
-    }>;
+    let rows: Array<{ id: number; body: string }>;
+    if (opts.ids && opts.ids.length > 0) {
+      // Parameterized IN-clause; safe since ids are numbers we coerce explicitly.
+      const placeholders = opts.ids.map(() => '?').join(',');
+      const whereEmbed = opts.force ? '' : ' AND embedding IS NULL';
+      rows = db
+        .prepare(
+          `SELECT id, body FROM events_content WHERE id IN (${placeholders})${whereEmbed} ORDER BY id`,
+        )
+        .all(...opts.ids.map((n) => Number(n))) as Array<{ id: number; body: string }>;
+    } else {
+      const eligibleQ = opts.force
+        ? db.prepare(`SELECT id, body FROM events_content ORDER BY id`)
+        : db.prepare(`SELECT id, body FROM events_content WHERE embedding IS NULL ORDER BY id`);
+      rows = (opts.limit ? eligibleQ.all().slice(0, opts.limit) : eligibleQ.all()) as Array<{
+        id: number;
+        body: string;
+      }>;
+    }
     report.total_eligible = rows.length;
 
     const updateContent = db.prepare(`UPDATE events_content SET embedding = ? WHERE id = ?`);
@@ -81,7 +132,10 @@ export async function runReindex(opts: ReindexOptions = {}): Promise<ReindexRepo
     // JS Number for rowid bindings — see ingest.ts for the same workaround).
     const insertVec = db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)`);
     const deleteVec = db.prepare(`DELETE FROM events_vec WHERE rowid = ?`);
-    if (opts.force) db.exec('DELETE FROM events_vec');
+    // `--force` wipes existing vec rows so they re-emerge with a known-current vector.
+    // When `--ids` is also set, only the targeted ids get wiped (full DELETE would erase
+    // unrelated rows). The per-row `deleteVec` below handles cleanup either way.
+    if (opts.force && !opts.ids) db.exec('DELETE FROM events_vec');
 
     for (const row of rows) {
       try {
@@ -118,8 +172,6 @@ export async function runReindex(opts: ReindexOptions = {}): Promise<ReindexRepo
         });
       }
     }
-  } finally {
-    closeDb(db);
   }
 
   report.duration_ms = Date.now() - t0;

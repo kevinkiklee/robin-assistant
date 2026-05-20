@@ -40,3 +40,21 @@ test('health-monitor: stop is idempotent', () => {
   m.stop();
   closeDb(db);
 });
+
+test('health-monitor: enableNotifications accepts a getter (re-evaluated per tick)', () => {
+  const db = freshDb();
+  let toggle = false;
+  const m = new HealthMonitor({
+    db,
+    getLLM: () => null,
+    getLastTickAt: () => new Date(),
+    enableNotifications: () => toggle,
+  });
+  // Just construct + start + stop — actually firing notifications would invoke osascript.
+  // The test here is that the option shape compiles and accepts a function. The wired-up
+  // tick path is exercised by the daemon's end-to-end smoke test.
+  m.start();
+  toggle = true;
+  m.stop();
+  closeDb(db);
+});

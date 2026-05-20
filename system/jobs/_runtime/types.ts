@@ -7,6 +7,8 @@ export interface JobManifest {
   version: string;
   /** Cron expression, or 'manual' for jobs only run via CLI / explicit trigger. */
   schedule?: string;
+  /** IANA timezone the schedule is interpreted in. Defaults to ROBIN_TZ env or system TZ. */
+  tz?: string;
   description?: string;
   permissions?: {
     memory?: { read?: boolean; write?: boolean; namespaces?: string[] };

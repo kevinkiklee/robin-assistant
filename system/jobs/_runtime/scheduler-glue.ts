@@ -47,6 +47,7 @@ export async function registerJobs(
         scheduleCronJob(db, {
           name: `job.${j.instanceName}.run`,
           cron: j.manifest.schedule,
+          tz: j.manifest.tz,
         });
         scheduled++;
       }

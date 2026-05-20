@@ -131,14 +131,15 @@ export class Daemon {
       this.log.warn({ err }, 'http server start failed; continuing without hooks');
     }
 
-    // Health monitor for invariant checks
+    // Health monitor for invariant checks. Notifications gate is re-read each tick
+    // via the closure, so flipping policies.yaml takes effect without a daemon restart.
     try {
       const { HealthMonitor } = await import('./health-monitor.ts');
       this.healthMonitor = new HealthMonitor({
         db: this.db,
         getLLM: () => this.llm,
         getLastTickAt: () => this.lastTickAt,
-        enableNotifications: false, // future: read from policies.yaml
+        enableNotifications: () => loadPolicies(userData).notifications.health,
       });
       this.healthMonitor.start();
     } catch (err) {

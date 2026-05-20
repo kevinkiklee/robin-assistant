@@ -141,4 +141,62 @@ describe('robin reindex', () => {
     assert.equal(report.embedded, 0);
     assert.match(report.errors[0] ?? '', /no embed role configured/);
   });
+
+  it('--ids restricts embed to the named rows', async () => {
+    const db = openDb(dbFilePath(dataDir));
+    const ins = db.prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`);
+    for (let i = 0; i < 5; i++) ins.run('2026-05-19T00:00:00Z', `row-${i}`);
+    closeDb(db);
+
+    const report = await runReindex({ ids: [2, 4] });
+    assert.equal(report.total_eligible, 2);
+    assert.equal(report.embedded, 2);
+    assert.equal(stub.callCount(), 2);
+
+    const db2 = openDb(dbFilePath(dataDir));
+    const filledIds = db2
+      .prepare(`SELECT id FROM events_content WHERE embedding IS NOT NULL ORDER BY id`)
+      .all() as Array<{ id: number }>;
+    closeDb(db2);
+    assert.deepEqual(
+      filledIds.map((r) => r.id),
+      [2, 4],
+    );
+  });
+
+  it('--ids without --force skips already-embedded rows in the set', async () => {
+    const db = openDb(dbFilePath(dataDir));
+    const dummy = Buffer.alloc(4096 * 4);
+    db.prepare(`INSERT INTO events_content (ts, body, embedding) VALUES (?, ?, ?)`).run(
+      '2026-05-19T00:00:00Z',
+      'already-embedded',
+      dummy,
+    );
+    db.prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`).run(
+      '2026-05-19T00:01:00Z',
+      'still-null',
+    );
+    closeDb(db);
+
+    const report = await runReindex({ ids: [1, 2] });
+    assert.equal(report.total_eligible, 1, 'id=1 is already embedded → excluded');
+    assert.equal(report.embedded, 1);
+    assert.equal(stub.callCount(), 1);
+  });
+
+  it('--ids with --force re-embeds even rows that already have an embedding', async () => {
+    const db = openDb(dbFilePath(dataDir));
+    const dummy = Buffer.alloc(4096 * 4);
+    db.prepare(`INSERT INTO events_content (ts, body, embedding) VALUES (?, ?, ?)`).run(
+      '2026-05-19T00:00:00Z',
+      'already-embedded',
+      dummy,
+    );
+    closeDb(db);
+
+    const report = await runReindex({ ids: [1], force: true });
+    assert.equal(report.total_eligible, 1);
+    assert.equal(report.embedded, 1);
+    assert.equal(stub.callCount(), 1);
+  });
 });

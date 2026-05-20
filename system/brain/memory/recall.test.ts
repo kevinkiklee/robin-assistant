@@ -36,9 +36,8 @@ function mockLLM(vec: number[]): LLMDispatcher {
 
 test('recall: lex mode returns FTS hits', async () => {
   const db = freshDb();
-  const llm = mockLLM(new Array(4096).fill(0.1));
-  await ingest(db, llm, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
-  await ingest(db, llm, { kind: 't', source: 's', content: 'the weather today is sunny' });
+  ingest(db, null, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
+  ingest(db, null, { kind: 't', source: 's', content: 'the weather today is sunny' });
 
   const hits = await recall(db, null, 'Lisbon', { mode: 'lex' });
   assert.equal(hits.length, 1);
@@ -54,11 +53,27 @@ test('recall: lex returns empty when no matches', async () => {
 });
 
 test('recall: vec mode finds the row whose embedding the dispatcher returned', async () => {
+  // ingest no longer embeds inline (deferred to the embed-backfill job), so this test
+  // writes the vector directly into events_content + events_vec to set up the recall
+  // surface, then verifies vec recall works against the seeded data.
   const db = freshDb();
   const targetVec = new Array(4096).fill(0.0);
   targetVec[0] = 1.0;
   const llm = mockLLM(targetVec);
-  await ingest(db, llm, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
+  const r = ingest(db, llm, {
+    kind: 't',
+    source: 's',
+    content: 'kevin loves photography in Lisbon',
+  });
+  assert.ok(r.contentId);
+  const buf = Buffer.from(new Float32Array(targetVec).buffer);
+  db.prepare('UPDATE events_content SET embedding = ? WHERE id = ?').run(buf, r.contentId);
+  // vec0 requires BigInt rowid binding (rejects JS Number with "only integers allowed").
+  db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)').run(
+    BigInt(r.contentId),
+    buf,
+  );
+
   const hits = await recall(db, llm, 'unrelated query', { mode: 'vec' });
   assert.equal(hits.length, 1);
   assert.match(hits[0].body, /Lisbon/);

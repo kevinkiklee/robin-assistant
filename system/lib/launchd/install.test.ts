@@ -8,6 +8,7 @@ import {
   LAUNCHD_LABEL,
   plistPath,
   renderDaemonPlist,
+  resolveUserDataDirForLaunchd,
   uninstallDaemonLaunchd,
 } from './install.ts';
 
@@ -102,4 +103,15 @@ test('uninstallDaemonLaunchd: removes plist file when present', () => {
   // We can't reliably test launchctl unload (the plist was never actually
   // loaded into launchd), so we only assert the file removal half.
   assert.equal(r.removed, true);
+});
+
+test('resolveUserDataDirForLaunchd: resolves relative path to absolute', () => {
+  // launchd starts the agent with cwd `/`; a relative path like ./user-data resolves
+  // to /user-data and the daemon exits 78. The spec must be absolute before the plist.
+  const out = resolveUserDataDirForLaunchd('./user-data');
+  assert.ok(out.startsWith('/'), `expected absolute path, got ${out}`);
+});
+
+test('resolveUserDataDirForLaunchd: preserves an already-absolute path', () => {
+  assert.equal(resolveUserDataDirForLaunchd('/already/absolute/data'), '/already/absolute/data');
 });

@@ -30,16 +30,25 @@ export const networkSchema = z.object({
   on_metered: z.enum(['online', 'local-only', 'offline']).optional(),
 });
 
+// Notifications surface here are operational, not content — daemon-unhealthy alerts,
+// critical invariant failures, things the daemon couldn't recover from on its own.
+// User-facing reminders / journal pings live elsewhere (the daily-brief job, etc.).
+export const notificationsSchema = z.object({
+  health: z.boolean().default(true),
+});
+
 export const policiesSchema = z
   .object({
     power: powerSchema.optional(),
     capture: captureSchema.optional(),
     network: networkSchema.optional(),
+    notifications: notificationsSchema.optional(),
   })
   .transform((data) => ({
     power: powerSchema.parse(data.power ?? {}),
     capture: captureSchema.parse(data.capture ?? {}),
     network: networkSchema.parse(data.network ?? {}),
+    notifications: notificationsSchema.parse(data.notifications ?? {}),
   }));
 
 export type Policies = z.infer<typeof policiesSchema>;

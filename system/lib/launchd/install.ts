@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { resolveRunnableCommand } from '../mcp-config/write.ts';
 import { resolveUserDataDir } from '../paths.ts';
 
@@ -125,10 +125,20 @@ export function uninstallDaemonLaunchd(opts?: { home?: string }): UninstallResul
   return { plistPath: path, unloaded, removed: true };
 }
 
+/**
+ * Resolve userDataDir to an absolute path. launchd starts the agent with cwd `/`, so a
+ * relative path like `./user-data` would resolve to `/user-data` and the daemon dies
+ * at boot with exit 78. Extracted for unit testing without needing a built dist/.
+ */
+export function resolveUserDataDirForLaunchd(raw: string): string {
+  return isAbsolute(raw) ? raw : resolve(raw);
+}
+
 /** Build a spec from the running CLI process. Requires a built dist/. */
 export function buildDaemonSpecFromEnv(opts?: { userDataDir?: string }): DaemonLaunchdSpec {
   const cliPath = resolveRunnableCommand(process.argv[1] ?? '');
   const nodePath = process.execPath;
-  const userDataDir = opts?.userDataDir ?? resolveUserDataDir();
+  const raw = opts?.userDataDir ?? resolveUserDataDir();
+  const userDataDir = resolveUserDataDirForLaunchd(raw);
   return { nodePath, cliPath, userDataDir };
 }

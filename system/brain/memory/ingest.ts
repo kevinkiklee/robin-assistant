@@ -1,6 +1,5 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
-import { embedBody } from './embed-content.ts';
 
 export interface IngestInput {
   kind: string;
@@ -13,15 +12,24 @@ export interface IngestInput {
 export interface IngestResult {
   eventId: number;
   contentId?: number;
-  embedded: boolean;
-  embedError?: string;
 }
 
-export async function ingest(
-  db: RobinDb,
-  llm: LLMDispatcher | null,
-  input: IngestInput,
-): Promise<IngestResult> {
+/**
+ * Persist an event + its content row. Embeddings are NOT computed inline — that's the
+ * job of `embed-backfill` (runs every minute via the cognition scheduler), which picks
+ * up content rows with `embedding IS NULL` and embeds them in batches.
+ *
+ * The earlier inline-embed path blocked every ingest on a ~600ms Ollama call. Fine for
+ * a low-volume conversation event, painful for high-frequency integration ticks (a
+ * lunch_money backfill of 5,000 transactions becomes 50 minutes of inline blocking).
+ * Vector recall now lags new events by up to one batch interval (~60s), which is
+ * invisible for personal-memory use — FTS5 keyword recall stays instant either way.
+ *
+ * The `llm` parameter is kept for API compatibility but is unused. If a caller genuinely
+ * needs sync embedding (rare), they should compute the vector themselves and write it
+ * directly to `events_content.embedding` + `events_vec` with the rowid-as-BigInt idiom.
+ */
+export function ingest(db: RobinDb, _llm: LLMDispatcher | null, input: IngestInput): IngestResult {
   let contentId: number | undefined;
   const eventId = db.transaction(() => {
     if (input.content) {
@@ -48,28 +56,5 @@ export async function ingest(
     return Number(eInfo.lastInsertRowid);
   })();
 
-  let embedded = false;
-  let embedError: string | undefined;
-  if (input.content && contentId !== undefined && llm) {
-    try {
-      const vec = await embedBody(llm, input.content);
-      const buf = Buffer.from(new Float32Array(vec).buffer);
-      db.transaction(() => {
-        db.prepare(`UPDATE events_content SET embedding = ? WHERE id = ?`).run(buf, contentId);
-        // events_vec.rowid must equal events_content.id — recall.ts JOINs on that. Auto-assigned
-        // rowids only happen to line up when every content insert is paired with a successful
-        // embed, in order; any embed failure (or a reindex pass) breaks the invariant.
-        // Bind as BigInt: sqlite-vec rejects JS Number for vec0 rowids with "only integers
-        // allowed" (better-sqlite3 binds Number as REAL affinity by default; BigInt forces INTEGER).
-        db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)`).run(
-          BigInt(contentId as number),
-          buf,
-        );
-      })();
-      embedded = true;
-    } catch (err) {
-      embedError = err instanceof Error ? err.message : String(err);
-    }
-  }
-  return { eventId, contentId, embedded, embedError };
+  return { eventId, contentId };
 }

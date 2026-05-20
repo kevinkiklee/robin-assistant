@@ -18,7 +18,9 @@ interface HealthMonitorOptions {
   db: RobinDb;
   getLLM: () => LLMDispatcher | null | undefined;
   getLastTickAt: () => Date | null;
-  enableNotifications?: boolean;
+  /** Pass a getter (re-evaluated per tick) when the value can change without a daemon restart
+   *  (e.g. driven from policies.yaml). Boolean is also accepted for tests / static configs. */
+  enableNotifications?: boolean | (() => boolean);
 }
 
 export class HealthMonitor {
@@ -63,7 +65,11 @@ export class HealthMonitor {
         if (Date.now() - last < NOTIFY_COOLDOWN_MS) continue; // cooldown
         this.lastNotifiedAt.set(r.name, Date.now());
         this.log.error({ name: r.name, message: r.message }, 'invariant CRITICAL');
-        if (this.opts.enableNotifications) {
+        const notifyOn =
+          typeof this.opts.enableNotifications === 'function'
+            ? this.opts.enableNotifications()
+            : !!this.opts.enableNotifications;
+        if (notifyOn) {
           try {
             const llm = this.opts.getLLM() ?? null;
             // Future: use ctx for richer integrations; for now, just call notifyMacOSAction

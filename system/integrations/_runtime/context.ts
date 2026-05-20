@@ -22,6 +22,8 @@ export function buildContext(
     },
     fetch: fetch,
     now: () => new Date(),
-    ingest: (input) => ingest(db, llm, input),
+    // ingest is now sync but the context contract is async — existing extensions
+    // await this call, so wrap in a resolved promise rather than breaking that shape.
+    ingest: (input) => Promise.resolve(ingest(db, llm, input)),
   };
 }
