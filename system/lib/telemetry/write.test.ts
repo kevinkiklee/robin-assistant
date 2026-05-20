@@ -31,10 +31,10 @@ test('telemetry: writes a valid event', () => {
 
 test('telemetry: rejects invalid payload', () => {
   const db = freshDb();
-  // version is required by schema; passing object missing it should throw
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // version is required by schema; passing object missing it should throw.
+  // Cast to `never` to deliberately pass an invalid payload past the type system.
   assert.throws(
-    () => writeTelemetry(db, 'daemon.start', {} as any, { source: 'test' }),
+    () => writeTelemetry(db, 'daemon.start', {} as never, { source: 'test' }),
     /Invalid payload/,
   );
   closeDb(db);

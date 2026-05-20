@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { startMockServer } from './_test-server.ts';
 import { OllamaProvider } from './ollama.ts';
 
@@ -35,6 +35,9 @@ test('ollama: invoke throws on non-OK status', async () => {
     { method: 'POST', path: '/api/chat', status: 500, body: { error: 'broken' } },
   ]);
   const p = new OllamaProvider({ baseUrl: url, chatModel: 'm' });
-  await assert.rejects(p.invoke({ messages: [{ role: 'user', content: 'hi' }] }), /ollama chat 500/);
+  await assert.rejects(
+    p.invoke({ messages: [{ role: 'user', content: 'hi' }] }),
+    /ollama chat 500/,
+  );
   server.close();
 });

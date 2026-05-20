@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../../brain/memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { startHttpServer } from './server.ts';
 
@@ -24,7 +24,7 @@ test('http: GET /health returns 200 with ok=true when healthy', async () => {
     const res = await fetch(`http://${h.host}:${h.port}/health`, { signal: controller.signal });
     clearTimeout(timeoutId);
     assert.equal(res.status, 200);
-    const data = await res.json() as { ok: boolean };
+    const data = (await res.json()) as { ok: boolean };
     assert.equal(data.ok, true);
   } finally {
     await h.close();
@@ -51,7 +51,8 @@ test('http: POST /hooks/<kind> dispatches to onHook with parsed payload', async 
   const db = freshDb();
   const captured: { kind: string; payload: unknown } = { kind: '', payload: {} };
   const h = await startHttpServer({
-    db, port: 0,
+    db,
+    port: 0,
     isHealthy: () => true,
     onHook: async (kind, payload) => {
       captured.kind = kind;

@@ -1,12 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../../../brain/memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../_runtime/context.ts';
-import { integration as linear, actions } from './index.ts';
+import { actions, integration as linear } from './index.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-linear-'));
@@ -17,7 +17,9 @@ function freshDb() {
 }
 
 const FAKE_ISSUE = {
-  id: 'iss_1', identifier: 'ENG-42', title: 'Fix the bug',
+  id: 'iss_1',
+  identifier: 'ENG-42',
+  title: 'Fix the bug',
   description: 'detailed description',
   url: 'https://linear.app/x/issue/ENG-42',
   state: { name: 'In Progress', type: 'started' },
@@ -29,7 +31,8 @@ test('linear: tick skips without LINEAR_API_KEY', async () => {
   const db = freshDb();
   const ctx = buildContext('linear', db, null);
   delete process.env.LINEAR_API_KEY;
-  const r = await linear.tick!(ctx);
+  assert.ok(linear.tick);
+  const r = await linear.tick(ctx);
   assert.equal(r.status, 'skipped');
   closeDb(db);
 });
@@ -38,17 +41,21 @@ test('linear: tick ingests active issues and dedupes by id+updatedAt', async () 
   const db = freshDb();
   const ctx = buildContext('linear', db, null);
   process.env.LINEAR_API_KEY = 'fake';
-  let callCount = 0;
+  let _callCount = 0;
   ctx.fetch = (async (url: string, opts: { headers?: Record<string, string>; body?: string }) => {
-    callCount++;
+    _callCount++;
     assert.equal(url, 'https://api.linear.app/graphql');
-    assert.equal(opts.headers!.Authorization, 'fake');
-    return new Response(JSON.stringify({ data: { viewer: { assignedIssues: { nodes: [FAKE_ISSUE] } } } }), { status: 200 });
+    assert.equal(opts.headers?.Authorization, 'fake');
+    return new Response(
+      JSON.stringify({ data: { viewer: { assignedIssues: { nodes: [FAKE_ISSUE] } } } }),
+      { status: 200 },
+    );
   }) as typeof fetch;
-  const r1 = await linear.tick!(ctx);
+  assert.ok(linear.tick);
+  const r1 = await linear.tick(ctx);
   assert.equal(r1.status, 'ok');
   assert.equal(r1.ingested, 1);
-  const r2 = await linear.tick!(ctx);
+  const r2 = await linear.tick(ctx);
   assert.equal(r2.ingested, 0); // dedup
   delete process.env.LINEAR_API_KEY;
   closeDb(db);
@@ -58,7 +65,11 @@ test('linear: actions.active_issues returns parsed nodes', async () => {
   const db = freshDb();
   const ctx = buildContext('linear', db, null);
   process.env.LINEAR_API_KEY = 'fake';
-  ctx.fetch = (async () => new Response(JSON.stringify({ data: { viewer: { assignedIssues: { nodes: [FAKE_ISSUE] } } } }), { status: 200 })) as typeof fetch;
+  ctx.fetch = (async () =>
+    new Response(
+      JSON.stringify({ data: { viewer: { assignedIssues: { nodes: [FAKE_ISSUE] } } } }),
+      { status: 200 },
+    )) as typeof fetch;
   const issues = await actions.active_issues({ limit: 5 }, ctx);
   assert.equal(issues.length, 1);
   assert.equal(issues[0].identifier, 'ENG-42');
@@ -70,8 +81,13 @@ test('linear: tick surfaces graphql errors as thrown', async () => {
   const db = freshDb();
   const ctx = buildContext('linear', db, null);
   process.env.LINEAR_API_KEY = 'fake';
-  ctx.fetch = (async () => new Response(JSON.stringify({ errors: [{ message: 'rate limited' }] }), { status: 200 })) as typeof fetch;
-  await assert.rejects(linear.tick!(ctx), /rate limited/);
+  ctx.fetch = (async () =>
+    new Response(JSON.stringify({ errors: [{ message: 'rate limited' }] }), {
+      status: 200,
+    })) as typeof fetch;
+  assert.ok(linear.tick);
+  const tick = linear.tick;
+  await assert.rejects(async () => tick(ctx), /rate limited/);
   delete process.env.LINEAR_API_KEY;
   closeDb(db);
 });

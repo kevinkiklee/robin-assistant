@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { buildDispatcherFromConfig } from './build-dispatcher.ts';
 
 test('buildDispatcher: builds providers from models config', () => {
@@ -17,7 +17,11 @@ test('buildDispatcher: builds providers from models config', () => {
 
 test('buildDispatcher: throws on missing secret in strict mode', () => {
   assert.throws(
-    () => buildDispatcherFromConfig({ roles: { reasoning: { provider: 'deepseek', apiKeyEnv: 'NEVER_SET' } } }, { env: {} }),
+    () =>
+      buildDispatcherFromConfig(
+        { roles: { reasoning: { provider: 'deepseek', apiKeyEnv: 'NEVER_SET' } } },
+        { env: {} },
+      ),
     /NEVER_SET/,
   );
 });
@@ -26,7 +30,13 @@ test('buildDispatcher: skips broken provider in lenient mode', () => {
   let warned = '';
   const d = buildDispatcherFromConfig(
     { roles: { reasoning: { provider: 'deepseek', apiKeyEnv: 'NEVER_SET' } } },
-    { env: {}, lenient: true, onWarn: (m) => { warned = m; } },
+    {
+      env: {},
+      lenient: true,
+      onWarn: (m) => {
+        warned = m;
+      },
+    },
   );
   assert.match(warned, /NEVER_SET/);
   assert.throws(() => d.getProvider('reasoning'), /No provider assigned/);

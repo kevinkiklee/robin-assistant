@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { buildCoreServer, buildCoreDeps } from './server.ts';
+import { buildCoreDeps, buildCoreServer } from './server.ts';
 
 export async function runMcpCore(): Promise<void> {
   const deps = buildCoreDeps();

@@ -1,5 +1,5 @@
-import { arch, totalmem, cpus, platform } from 'node:os';
 import { execSync } from 'node:child_process';
+import { arch, cpus, platform, totalmem } from 'node:os';
 
 export interface HardwareProfile {
   cpu: string;
@@ -10,7 +10,7 @@ export interface HardwareProfile {
 }
 
 export function detectHardware(): HardwareProfile {
-  const ramGb = Math.round(totalmem() / (1024 ** 3));
+  const ramGb = Math.round(totalmem() / 1024 ** 3);
   const cpuModel = cpus()[0]?.model ?? 'unknown';
   const os = `${platform()}-${getOsVersion()}`;
   const a = arch();

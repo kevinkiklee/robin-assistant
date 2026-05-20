@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, chmodSync, mkdtempSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
 import { ClaudeCodeProvider } from './claude-code.ts';
 
 function makeFakeClaude(output: string, exitCode = 0): string {

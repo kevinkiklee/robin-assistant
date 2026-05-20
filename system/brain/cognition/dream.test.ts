@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { runDream } from './dream.ts';
 
@@ -44,7 +44,9 @@ test('dream: writes metrics_daily counts', async () => {
   const db = freshDb();
   await runDream(db, null);
   const day = new Date().toISOString().slice(0, 10);
-  const rows = db.prepare(`SELECT metric, value FROM metrics_daily WHERE day = ?`).all(day) as Array<{
+  const rows = db
+    .prepare(`SELECT metric, value FROM metrics_daily WHERE day = ?`)
+    .all(day) as Array<{
     metric: string;
     value: number;
   }>;

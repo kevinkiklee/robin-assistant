@@ -1,14 +1,14 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../memory/db.ts';
-import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
-import { captureSession } from './capture.ts';
+import { closeDb, openDb } from '../memory/db.ts';
+import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { runBiographer } from './biographer.ts';
+import { captureSession } from './capture.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-bio-'));
@@ -66,7 +66,9 @@ test('biographer: processes captured session and writes entities + relations', a
   assert.equal(r.processed, 1);
   assert.equal(r.entitiesCreated, 2);
   assert.equal(r.relationsCreated, 1);
-  const ents = db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>;
+  const ents = db.prepare('SELECT canonical_name FROM entities').all() as Array<{
+    canonical_name: string;
+  }>;
   assert.ok(ents.some((e) => e.canonical_name === 'Kevin'));
   assert.ok(ents.some((e) => e.canonical_name === 'Lisbon'));
   closeDb(db);

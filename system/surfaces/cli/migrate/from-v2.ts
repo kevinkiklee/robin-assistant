@@ -1,8 +1,8 @@
-import { existsSync, readdirSync, statSync, cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { openDb, closeDb } from '../../../brain/memory/db.ts';
+import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import { resolveUserDataDir, dbFilePath, userDataPaths } from '../../../lib/paths.ts';
+import { dbFilePath, resolveUserDataDir, userDataPaths } from '../../../lib/paths.ts';
 
 export interface MigrateOptions {
   v2Path: string;
@@ -50,7 +50,10 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
       closeDb(db);
       report.phases.schema = { ok: true };
     } catch (err) {
-      report.phases.schema = { ok: false, message: err instanceof Error ? err.message : String(err) };
+      report.phases.schema = {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
       report.errors.push(`schema: ${err instanceof Error ? err.message : err}`);
     }
   }
@@ -61,7 +64,10 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
       const r = await migrateDerivedData(v2UserData, userData, opts.dryRun);
       report.phases.derived = { ok: true, ...r };
     } catch (err) {
-      report.phases.derived = { ok: false, message: err instanceof Error ? err.message : String(err) };
+      report.phases.derived = {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
       report.errors.push(`derived: ${err instanceof Error ? err.message : err}`);
     }
   }
@@ -72,7 +78,10 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
       const r = migrateFlatFiles(v2UserData, userData, opts.dryRun);
       report.phases.flatfiles = { ok: true, count: r };
     } catch (err) {
-      report.phases.flatfiles = { ok: false, message: err instanceof Error ? err.message : String(err) };
+      report.phases.flatfiles = {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
       report.errors.push(`flatfiles: ${err instanceof Error ? err.message : err}`);
     }
   }
@@ -84,21 +93,37 @@ export async function migrateFromV2(opts: MigrateOptions): Promise<MigrateReport
       const events = (db.prepare('SELECT COUNT(*) AS c FROM events').get() as { c: number }).c;
       const entities = (db.prepare('SELECT COUNT(*) AS c FROM entities').get() as { c: number }).c;
       closeDb(db);
-      report.phases.verify = { ok: true, count: events + entities, message: `target has ${events} events + ${entities} entities` };
+      report.phases.verify = {
+        ok: true,
+        count: events + entities,
+        message: `target has ${events} events + ${entities} entities`,
+      };
     } catch (err) {
-      report.phases.verify = { ok: false, message: err instanceof Error ? err.message : String(err) };
+      report.phases.verify = {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 
   // Write report
-  const reportPath = join(userData, 'state', 'migrations', `migrate-report-${report.ts.replace(/[:.]/g, '-')}.json`);
+  const reportPath = join(
+    userData,
+    'state',
+    'migrations',
+    `migrate-report-${report.ts.replace(/[:.]/g, '-')}.json`,
+  );
   mkdirSync(join(userData, 'state', 'migrations'), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
   return report;
 }
 
-async function migrateDerivedData(v2UserData: string, _targetUserData: string, _dryRun?: boolean): Promise<{ count: number; message: string }> {
+async function migrateDerivedData(
+  v2UserData: string,
+  _targetUserData: string,
+  _dryRun?: boolean,
+): Promise<{ count: number; message: string }> {
   // Try to load @surrealdb/node and read v2 DB
   let surrealdbAvailable = false;
   try {
@@ -108,17 +133,27 @@ async function migrateDerivedData(v2UserData: string, _targetUserData: string, _
     // Not installed — fall through with empty derive
   }
   if (!surrealdbAvailable) {
-    return { count: 0, message: 'derived: @surrealdb/node not available — skipped. Run pnpm add @surrealdb/node and rerun.' };
+    return {
+      count: 0,
+      message:
+        'derived: @surrealdb/node not available — skipped. Run pnpm add @surrealdb/node and rerun.',
+    };
   }
   // Even if available, full SurrealDB read is complex. For MVP, just open v2 SQLite if any exists; otherwise skip with a note.
   const v2DbDir = join(v2UserData, 'data', 'db');
   if (!existsSync(v2DbDir)) {
-    return { count: 0, message: `derived: v2 data dir not found at ${v2DbDir} — nothing to migrate` };
+    return {
+      count: 0,
+      message: `derived: v2 data dir not found at ${v2DbDir} — nothing to migrate`,
+    };
   }
   // Real implementation: connect to SurrealDB rocksdb://<v2DbDir>, SELECT events, entities, etc., transform.
   // For MVP placeholder, count files and return a message.
   const dbFiles = readdirSync(v2DbDir).length;
-  return { count: 0, message: `derived: v2 RocksDB found with ${dbFiles} entries — full SurrealDB read deferred to richer migration pass; phase reported OK with 0 rows transformed.` };
+  return {
+    count: 0,
+    message: `derived: v2 RocksDB found with ${dbFiles} entries — full SurrealDB read deferred to richer migration pass; phase reported OK with 0 rows transformed.`,
+  };
 }
 
 function migrateFlatFiles(v2UserData: string, targetUserData: string, dryRun?: boolean): number {

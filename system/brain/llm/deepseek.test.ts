@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { startMockServer } from './_test-server.ts';
 import { DeepSeekProvider } from './deepseek.ts';
 

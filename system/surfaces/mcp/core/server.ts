@@ -1,24 +1,24 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
-import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
-import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
-import { loadModels, loadPolicies } from '../../../kernel/config/load.ts';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
-import { recall } from '../../../brain/memory/recall.ts';
-import { ingest } from '../../../brain/memory/ingest.ts';
+import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
 import { findEntity, getEntity, upsertEntity } from '../../../brain/memory/entity.ts';
-import { runInvariants } from '../../../kernel/invariants/runner.ts';
+import { ingest } from '../../../brain/memory/ingest.ts';
+import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
+import { recall } from '../../../brain/memory/recall.ts';
+import { loadModels, loadPolicies } from '../../../kernel/config/load.ts';
 import {
-  userDataWritableInvariant,
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
+  userDataWritableInvariant,
 } from '../../../kernel/invariants/builtins/index.ts';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
+import { runInvariants } from '../../../kernel/invariants/runner.ts';
+import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
 
 export interface CoreServerDeps {
   db: RobinDb;
@@ -74,7 +74,14 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         source: source ?? 'mcp',
         content,
       });
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ eventId: r.eventId, embedded: r.embedded }) }] };
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ eventId: r.eventId, embedded: r.embedded }),
+          },
+        ],
+      };
     },
   );
 
@@ -112,7 +119,11 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         const e = upsertEntity(deps.db, type, key);
         return { content: [{ type: 'text' as const, text: JSON.stringify(e) }] };
       }
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'must provide id or key' }) }] };
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify({ error: 'must provide id or key' }) },
+        ],
+      };
     },
   );
 
@@ -121,7 +132,9 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     {
       description: 'Generic lister for entities, events, jobs, predictions, corrections.',
       inputSchema: z.object({
-        type: z.enum(['entities', 'events', 'jobs', 'predictions', 'corrections']).describe('What to list'),
+        type: z
+          .enum(['entities', 'events', 'jobs', 'predictions', 'corrections'])
+          .describe('What to list'),
         limit: z.number().int().optional().describe('Max rows (default 20)'),
       }),
     },
@@ -130,23 +143,43 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       let rows: unknown[] = [];
       switch (type) {
         case 'entities':
-          rows = deps.db.prepare('SELECT * FROM entities ORDER BY updated_at DESC LIMIT ?').all(lim) as unknown[];
+          rows = deps.db
+            .prepare('SELECT * FROM entities ORDER BY updated_at DESC LIMIT ?')
+            .all(lim) as unknown[];
           break;
         case 'events':
-          rows = deps.db.prepare('SELECT id, ts, kind, source, status FROM events ORDER BY ts DESC LIMIT ?').all(lim) as unknown[];
+          rows = deps.db
+            .prepare('SELECT id, ts, kind, source, status FROM events ORDER BY ts DESC LIMIT ?')
+            .all(lim) as unknown[];
           break;
         case 'jobs':
-          rows = deps.db.prepare('SELECT * FROM jobs ORDER BY scheduled_at DESC LIMIT ?').all(lim) as unknown[];
+          rows = deps.db
+            .prepare('SELECT * FROM jobs ORDER BY scheduled_at DESC LIMIT ?')
+            .all(lim) as unknown[];
           break;
         case 'predictions':
-          rows = (deps.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='predictions'").all() as unknown[]).length > 0
-            ? (deps.db.prepare('SELECT * FROM predictions ORDER BY created_at DESC LIMIT ?').all(lim) as unknown[])
-            : [];
+          rows =
+            (
+              deps.db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='predictions'")
+                .all() as unknown[]
+            ).length > 0
+              ? (deps.db
+                  .prepare('SELECT * FROM predictions ORDER BY created_at DESC LIMIT ?')
+                  .all(lim) as unknown[])
+              : [];
           break;
         case 'corrections':
-          rows = (deps.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='corrections'").all() as unknown[]).length > 0
-            ? (deps.db.prepare('SELECT * FROM corrections ORDER BY ts DESC LIMIT ?').all(lim) as unknown[])
-            : [];
+          rows =
+            (
+              deps.db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='corrections'")
+                .all() as unknown[]
+            ).length > 0
+              ? (deps.db
+                  .prepare('SELECT * FROM corrections ORDER BY ts DESC LIMIT ?')
+                  .all(lim) as unknown[])
+              : [];
           break;
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
@@ -156,27 +189,39 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
   server.registerTool(
     'predict',
     {
-      description: 'Record a prediction with confidence and optional deadline. Used to track calibration over time.',
+      description:
+        'Record a prediction with confidence and optional deadline. Used to track calibration over time.',
       inputSchema: z.object({
         claim: z.string().describe('What you are predicting will (or will not) happen'),
-        confidence: z.number().min(0).max(1).describe('Probability assigned to the claim being true (0..1)'),
+        confidence: z
+          .number()
+          .min(0)
+          .max(1)
+          .describe('Probability assigned to the claim being true (0..1)'),
         deadline: z.string().optional().describe('ISO date when this can be resolved'),
         resolution_method: z.string().optional().describe('How to check if it came true'),
       }),
     },
     async ({ claim, confidence, deadline, resolution_method }) => {
-      const info = deps.db.prepare(`
+      const info = deps.db
+        .prepare(`
         INSERT INTO predictions (claim, confidence, deadline, resolution_method)
         VALUES (?, ?, ?, ?)
-      `).run(claim, confidence, deadline ?? null, resolution_method ?? null);
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) }] };
+      `)
+        .run(claim, confidence, deadline ?? null, resolution_method ?? null);
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) },
+        ],
+      };
     },
   );
 
   server.registerTool(
     'record_correction',
     {
-      description: 'Record a correction: what Robin said vs what is actually right. Feeds the self-learning loop.',
+      description:
+        'Record a correction: what Robin said vs what is actually right. Feeds the self-learning loop.',
       inputSchema: z.object({
         what: z.string().describe('What Robin said that was wrong'),
         correction: z.string().describe('What the correct version is'),
@@ -184,19 +229,28 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       }),
     },
     async ({ what, correction, context }) => {
-      const info = deps.db.prepare(`
+      const info = deps.db
+        .prepare(`
         INSERT INTO corrections (what, correction, context) VALUES (?, ?, ?)
-      `).run(what, correction, context ?? null);
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) }] };
+      `)
+        .run(what, correction, context ?? null);
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) },
+        ],
+      };
     },
   );
 
   server.registerTool(
     'audit',
     {
-      description: 'Read audit log: events / refusals / corrections / power transitions / mcp calls. Metadata only by default.',
+      description:
+        'Read audit log: events / refusals / corrections / power transitions / mcp calls. Metadata only by default.',
       inputSchema: z.object({
-        type: z.enum(['events', 'refusals', 'corrections', 'predictions']).describe('What to audit'),
+        type: z
+          .enum(['events', 'refusals', 'corrections', 'predictions'])
+          .describe('What to audit'),
         window: z.string().optional().describe('Window like "24h", "7d", "30d". Default 24h.'),
         limit: z.number().int().optional().describe('Max rows (default 50)'),
       }),
@@ -204,21 +258,33 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     async ({ type, window, limit }) => {
       const lim = limit ?? 50;
       const w = window ?? '24h';
-      const hours = w.endsWith('d') ? Number.parseInt(w) * 24 : Number.parseInt(w);
+      const hours = w.endsWith('d') ? Number.parseInt(w, 10) * 24 : Number.parseInt(w, 10);
       const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
       let rows: unknown[] = [];
       switch (type) {
         case 'events':
-          rows = deps.db.prepare(`SELECT id, ts, kind, source, status FROM events WHERE ts > ? ORDER BY ts DESC LIMIT ?`).all(since, lim) as unknown[];
+          rows = deps.db
+            .prepare(
+              `SELECT id, ts, kind, source, status FROM events WHERE ts > ? ORDER BY ts DESC LIMIT ?`,
+            )
+            .all(since, lim) as unknown[];
           break;
         case 'refusals':
-          rows = deps.db.prepare(`SELECT * FROM refusals WHERE ts > ? ORDER BY ts DESC LIMIT ?`).all(since, lim) as unknown[];
+          rows = deps.db
+            .prepare(`SELECT * FROM refusals WHERE ts > ? ORDER BY ts DESC LIMIT ?`)
+            .all(since, lim) as unknown[];
           break;
         case 'corrections':
-          rows = deps.db.prepare(`SELECT * FROM corrections WHERE ts > ? ORDER BY ts DESC LIMIT ?`).all(since, lim) as unknown[];
+          rows = deps.db
+            .prepare(`SELECT * FROM corrections WHERE ts > ? ORDER BY ts DESC LIMIT ?`)
+            .all(since, lim) as unknown[];
           break;
         case 'predictions':
-          rows = deps.db.prepare(`SELECT * FROM predictions WHERE created_at > ? ORDER BY created_at DESC LIMIT ?`).all(since, lim) as unknown[];
+          rows = deps.db
+            .prepare(
+              `SELECT * FROM predictions WHERE created_at > ? ORDER BY created_at DESC LIMIT ?`,
+            )
+            .all(since, lim) as unknown[];
           break;
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
@@ -228,9 +294,12 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
   server.registerTool(
     'explain',
     {
-      description: 'Explain a recall result, action, learning step, or playbook decision. Phase 1: explanation stubs by type.',
+      description:
+        'Explain a recall result, action, learning step, or playbook decision. Phase 1: explanation stubs by type.',
       inputSchema: z.object({
-        type: z.enum(['recall', 'action_trust', 'learning', 'playbook']).describe('What kind of decision to explain'),
+        type: z
+          .enum(['recall', 'action_trust', 'learning', 'playbook'])
+          .describe('What kind of decision to explain'),
         ref: z.string().describe('Reference id, query, or descriptor'),
       }),
     },
@@ -244,7 +313,8 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
   server.registerTool(
     'health',
     {
-      description: 'Run health invariants and return their status. Quick check on daemon + DB + integrations.',
+      description:
+        'Run health invariants and return their status. Quick check on daemon + DB + integrations.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -270,13 +340,19 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     },
     async ({ kind, window }) => {
       const w = window ?? '30d';
-      const days = Number.parseInt(w);
+      const days = Number.parseInt(w, 10);
       const since = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
       let rows: unknown[] = [];
       if (kind) {
-        rows = deps.db.prepare(`SELECT * FROM metrics_daily WHERE metric = ? AND day >= ? ORDER BY day DESC`).all(kind, since) as unknown[];
+        rows = deps.db
+          .prepare(`SELECT * FROM metrics_daily WHERE metric = ? AND day >= ? ORDER BY day DESC`)
+          .all(kind, since) as unknown[];
       } else {
-        rows = deps.db.prepare(`SELECT metric, day, value, n FROM metrics_daily WHERE day >= ? ORDER BY day DESC, metric`).all(since) as unknown[];
+        rows = deps.db
+          .prepare(
+            `SELECT metric, day, value, n FROM metrics_daily WHERE day >= ? ORDER BY day DESC, metric`,
+          )
+          .all(since) as unknown[];
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
     },
@@ -292,9 +368,18 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     },
     async ({ date }) => {
       const day = date ?? new Date().toISOString().slice(0, 10);
-      const row = deps.db.prepare(`SELECT body, generated_at FROM journals WHERE day = ?`).get(day) as { body: string; generated_at: string } | undefined;
+      const row = deps.db
+        .prepare(`SELECT body, generated_at FROM journals WHERE day = ?`)
+        .get(day) as { body: string; generated_at: string } | undefined;
       if (!row) {
-        return { content: [{ type: 'text' as const, text: `No journal for ${day}. Dream job has not yet generated one — try again after 03:00 local.` }] };
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `No journal for ${day}. Dream job has not yet generated one — try again after 03:00 local.`,
+            },
+          ],
+        };
       }
       return { content: [{ type: 'text' as const, text: row.body }] };
     },
@@ -303,10 +388,16 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
   server.registerTool(
     'power',
     {
-      description: 'Read or change Robin power state. Actions: pause, resume, incognito, offline, online, status. Off/on are CLI-only.',
+      description:
+        'Read or change Robin power state. Actions: pause, resume, incognito, offline, online, status. Off/on are CLI-only.',
       inputSchema: z.object({
-        action: z.enum(['pause', 'resume', 'incognito', 'offline', 'online', 'status']).describe('What to do'),
-        duration: z.string().optional().describe('Like "1h", "30m", "permanent" — used by incognito'),
+        action: z
+          .enum(['pause', 'resume', 'incognito', 'offline', 'online', 'status'])
+          .describe('What to do'),
+        duration: z
+          .string()
+          .optional()
+          .describe('Like "1h", "30m", "permanent" — used by incognito'),
       }),
     },
     async ({ action, duration }) => {
@@ -322,13 +413,24 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       else if (action === 'incognito') {
         next.capture = { ...next.capture, enabled: false };
         if (duration && duration !== 'permanent') {
-          const ms = duration.endsWith('h') ? Number.parseInt(duration) * 3600 * 1000 : Number.parseInt(duration) * 60 * 1000;
-          (next.capture as { expires_at?: string }).expires_at = new Date(Date.now() + ms).toISOString();
+          const ms = duration.endsWith('h')
+            ? Number.parseInt(duration, 10) * 3600 * 1000
+            : Number.parseInt(duration, 10) * 60 * 1000;
+          (next.capture as { expires_at?: string }).expires_at = new Date(
+            Date.now() + ms,
+          ).toISOString();
         }
       } else if (action === 'offline') next.network = { ...next.network, mode: 'offline' };
       else if (action === 'online') next.network = { ...next.network, mode: 'online' };
       writeFileSync(policiesPath, stringifyYaml(next));
-      return { content: [{ type: 'text' as const, text: `power.${action} applied. New state: ${JSON.stringify(next, null, 2)}` }] };
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `power.${action} applied. New state: ${JSON.stringify(next, null, 2)}`,
+          },
+        ],
+      };
     },
   );
 

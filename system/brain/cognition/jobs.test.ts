@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { COGNITION_JOBS, registerCognitionJobs } from './jobs.ts';
 
@@ -23,9 +23,13 @@ test('cognition jobs: COGNITION_JOBS lists biographer + dream', () => {
 
 test('cognition jobs: registerCognitionJobs seeds cron rows for each', () => {
   const db = freshDb();
-  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<typeof registerCognitionJobs>[0];
+  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<
+    typeof registerCognitionJobs
+  >[0];
   registerCognitionJobs(fakeDaemon, db, () => null);
-  const rows = db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{ name: string }>;
+  const rows = db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{
+    name: string;
+  }>;
   const names = rows.map((r) => r.name);
   assert.ok(names.includes('biographer.run'));
   assert.ok(names.includes('dream.run'));

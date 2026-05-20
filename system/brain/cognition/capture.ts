@@ -1,6 +1,6 @@
+import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { ingest } from '../memory/ingest.ts';
-import type { LLMDispatcher } from '../llm/dispatcher.ts';
 
 export interface SessionTurn {
   role: 'user' | 'assistant' | 'tool';
@@ -30,10 +30,15 @@ export async function captureSession(
 
   if (assistantTurns.length === 0) return { captured: false, skipReason: 'no_assistant_turn' };
 
-  const allText = capture.turns.map((t) => t.content).join('').trim();
+  const allText = capture.turns
+    .map((t) => t.content)
+    .join('')
+    .trim();
   if (allText.length === 0) return { captured: false, skipReason: 'empty_turn' };
 
-  const hasNonToolAssistant = capture.turns.some((t) => t.role === 'assistant' && t.content.trim().length > 0);
+  const hasNonToolAssistant = capture.turns.some(
+    (t) => t.role === 'assistant' && t.content.trim().length > 0,
+  );
   const onlyToolTurns = !hasNonToolAssistant && capture.turns.some((t) => t.role === 'tool');
   if (onlyToolTurns) return { captured: false, skipReason: 'pure_tool_turn' };
 
@@ -43,15 +48,15 @@ export async function captureSession(
   }
 
   // Dedup: hash the user turns; check recent events for a match
-  const hash = Buffer.from(userTurns.map((t) => t.content).join('|')).toString('base64').slice(0, 64);
-  const existing = db.prepare(
-    `SELECT id FROM events WHERE kind = 'session.captured' AND payload LIKE ? LIMIT 1`,
-  ).get(`%"hash":"${hash}"%`);
+  const hash = Buffer.from(userTurns.map((t) => t.content).join('|'))
+    .toString('base64')
+    .slice(0, 64);
+  const existing = db
+    .prepare(`SELECT id FROM events WHERE kind = 'session.captured' AND payload LIKE ? LIMIT 1`)
+    .get(`%"hash":"${hash}"%`);
   if (existing) return { captured: false, skipReason: 'dedup_hit' };
 
-  const content = capture.turns
-    .map((t) => `[${t.role.toUpperCase()}]\n${t.content}`)
-    .join('\n\n');
+  const content = capture.turns.map((t) => `[${t.role.toUpperCase()}]\n${t.content}`).join('\n\n');
 
   const r = await ingest(db, llm, {
     kind: 'session.captured',

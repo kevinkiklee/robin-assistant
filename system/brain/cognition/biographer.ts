@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { RobinDb } from '../memory/db.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
-import { upsertEntity, addRelation } from '../memory/entity.ts';
+import type { RobinDb } from '../memory/db.ts';
+import { addRelation, upsertEntity } from '../memory/entity.ts';
 
 const extractionSchema = z.object({
   entities: z
@@ -41,10 +41,16 @@ export async function runBiographer(
   llm: LLMDispatcher | null,
   limit: number = 10,
 ): Promise<BiographerRunResult> {
-  const result: BiographerRunResult = { processed: 0, entitiesCreated: 0, relationsCreated: 0, errors: [] };
+  const result: BiographerRunResult = {
+    processed: 0,
+    entitiesCreated: 0,
+    relationsCreated: 0,
+    errors: [],
+  };
 
   // Find session.captured events with content that biographer has not yet processed
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(`
     SELECT events.id AS eventId, events_content.id AS contentId, events_content.body AS body
       FROM events
       JOIN events_content ON events_content.id = events.content_ref
@@ -52,7 +58,8 @@ export async function runBiographer(
        AND events.id NOT IN (SELECT json_extract(payload, '$.source_event_id') FROM events WHERE kind = 'biographer.extracted')
      ORDER BY events.ts DESC
      LIMIT ?
-  `).all(limit) as Array<{ eventId: number; contentId: number; body: string }>;
+  `)
+    .all(limit) as Array<{ eventId: number; contentId: number; body: string }>;
 
   for (const row of rows) {
     result.processed++;
@@ -66,7 +73,10 @@ export async function runBiographer(
         });
         const text = inv.text.trim();
         // Tolerate leading ```json fences
-        const jsonText = text.replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
+        const jsonText = text
+          .replace(/^```(?:json)?/, '')
+          .replace(/```$/, '')
+          .trim();
         const parsed = JSON.parse(jsonText);
         const validated = extractionSchema.safeParse(parsed);
         if (validated.success) extracted = validated.data;
@@ -75,7 +85,9 @@ export async function runBiographer(
             `event ${row.eventId}: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
           );
       } catch (err) {
-        result.errors.push(`event ${row.eventId}: ${err instanceof Error ? err.message : String(err)}`);
+        result.errors.push(
+          `event ${row.eventId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 

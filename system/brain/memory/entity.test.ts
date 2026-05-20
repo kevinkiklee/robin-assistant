@@ -1,11 +1,11 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from './db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from './db.ts';
+import { addRelation, findEntity, getEntity, relatedEntities, upsertEntity } from './entity.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
-import { upsertEntity, findEntity, getEntity, addRelation, relatedEntities } from './entity.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-entity-'));

@@ -1,4 +1,4 @@
-import type { LLMProvider, LLMRole, InvokeRequest, InvokeResult } from './types.ts';
+import type { InvokeRequest, InvokeResult, LLMProvider, LLMRole } from './types.ts';
 
 export class LLMDispatcher {
   private providers = new Map<string, LLMProvider>();

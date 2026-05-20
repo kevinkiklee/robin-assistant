@@ -16,13 +16,17 @@ export function relevantCorrections(
 ): CorrectionExample[] {
   const limit = opts.limit ?? 5;
   if (opts.topic) {
-    return db.prepare(`
+    return db
+      .prepare(`
       SELECT what, correction, context FROM corrections
        WHERE what LIKE ? OR correction LIKE ? OR (context IS NOT NULL AND context LIKE ?)
        ORDER BY ts DESC LIMIT ?
-    `).all(`%${opts.topic}%`, `%${opts.topic}%`, `%${opts.topic}%`, limit) as CorrectionExample[];
+    `)
+      .all(`%${opts.topic}%`, `%${opts.topic}%`, `%${opts.topic}%`, limit) as CorrectionExample[];
   }
-  return db.prepare(`
+  return db
+    .prepare(`
     SELECT what, correction, context FROM corrections ORDER BY ts DESC LIMIT ?
-  `).all(limit) as CorrectionExample[];
+  `)
+    .all(limit) as CorrectionExample[];
 }

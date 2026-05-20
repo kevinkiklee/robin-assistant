@@ -1,5 +1,5 @@
-import type { RobinDb } from '../../brain/memory/db.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
+import type { RobinDb } from '../../brain/memory/db.ts';
 
 export interface IntegrationManifest {
   name: string;
@@ -32,7 +32,9 @@ export interface Integration {
   init?: (ctx: IntegrationContext) => Promise<void> | void;
   tick?: (ctx: IntegrationContext) => Promise<TickResult> | TickResult;
   cleanup?: (ctx: IntegrationContext) => Promise<void> | void;
-  health?: (ctx: IntegrationContext) => Promise<{ ok: boolean; message?: string }> | { ok: boolean; message?: string };
+  health?: (
+    ctx: IntegrationContext,
+  ) => Promise<{ ok: boolean; message?: string }> | { ok: boolean; message?: string };
 }
 
 export interface KvStore {

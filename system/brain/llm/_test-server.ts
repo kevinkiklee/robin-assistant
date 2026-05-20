@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
 export interface MockRoute {
   method: 'POST' | 'GET';
@@ -7,7 +7,9 @@ export interface MockRoute {
   body: unknown;
 }
 
-export async function startMockServer(routes: MockRoute[]): Promise<{ url: string; server: Server }> {
+export async function startMockServer(
+  routes: MockRoute[],
+): Promise<{ url: string; server: Server }> {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const route = routes.find((r) => r.method === req.method && r.path === req.url);
     if (!route) {

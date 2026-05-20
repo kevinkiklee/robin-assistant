@@ -1,11 +1,11 @@
-import type { Daemon } from '../../kernel/runtime/daemon.ts';
-import type { RobinDb } from '../../brain/memory/db.ts';
-import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { join } from 'node:path';
+import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
+import type { RobinDb } from '../../brain/memory/db.ts';
+import type { Daemon } from '../../kernel/runtime/daemon.ts';
 import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
-import { loadIntegrations } from './loader.ts';
-import { buildContext } from './context.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
+import { buildContext } from './context.ts';
+import { loadIntegrations } from './loader.ts';
 
 /**
  * Load integrations from system/integrations/builtin and user-data/extensions/integrations,

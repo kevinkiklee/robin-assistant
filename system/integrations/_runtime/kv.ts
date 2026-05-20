@@ -17,7 +17,10 @@ export function createKvStore(db: RobinDb, integrationName: string): KvStore {
       `).run(integrationName, key, value);
     },
     delete(key: string): void {
-      db.prepare(`DELETE FROM integration_state WHERE integration_name = ? AND key = ?`).run(integrationName, key);
+      db.prepare(`DELETE FROM integration_state WHERE integration_name = ? AND key = ?`).run(
+        integrationName,
+        key,
+      );
     },
   };
 }

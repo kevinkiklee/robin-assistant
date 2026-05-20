@@ -1,5 +1,5 @@
-import type { RobinDb } from '../memory/db.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import type { RobinDb } from '../memory/db.ts';
 
 export interface DreamResult {
   predictionsResolved: number;
@@ -21,9 +21,11 @@ export async function runDream(
   const result: DreamResult = { predictionsResolved: 0, brierDeltaSum: 0, journalGenerated: false };
 
   // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
-  const overdue = db.prepare(`
+  const overdue = db
+    .prepare(`
     SELECT id, confidence FROM predictions WHERE outcome IS NULL AND deadline IS NOT NULL AND deadline < ?
-  `).all(now.toISOString()) as Array<{ id: number; confidence: number }>;
+  `)
+    .all(now.toISOString()) as Array<{ id: number; confidence: number }>;
   const resolveStmt = db.prepare(
     `
     UPDATE predictions SET outcome = ?, resolved_at = ?, brier_delta = NULL WHERE id = ?
@@ -37,11 +39,15 @@ export async function runDream(
   // 2. Metrics rollup for today
   const today = now.toISOString().slice(0, 10);
   const since = `${today}T00:00:00.000Z`;
-  const eventsToday = (db.prepare(`SELECT COUNT(*) AS c FROM events WHERE ts >= ?`).get(since) as {
-    c: number;
-  }).c;
+  const eventsToday = (
+    db.prepare(`SELECT COUNT(*) AS c FROM events WHERE ts >= ?`).get(since) as {
+      c: number;
+    }
+  ).c;
   const capturesToday = (
-    db.prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured' AND ts >= ?`).get(since) as {
+    db
+      .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured' AND ts >= ?`)
+      .get(since) as {
       c: number;
     }
   ).c;

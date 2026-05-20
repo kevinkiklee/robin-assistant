@@ -1,5 +1,5 @@
-import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
+import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const ENDPOINT = 'https://api.linear.app/graphql';
 
@@ -20,7 +20,11 @@ function requireKey(): string {
   return k;
 }
 
-async function gql<T>(ctx: IntegrationContext, query: string, variables: Record<string, unknown> = {}): Promise<T> {
+async function gql<T>(
+  ctx: IntegrationContext,
+  query: string,
+  variables: Record<string, unknown> = {},
+): Promise<T> {
   const key = requireKey();
   const res = await ctx.fetch(ENDPOINT, {
     method: 'POST',
@@ -32,7 +36,8 @@ async function gql<T>(ctx: IntegrationContext, query: string, variables: Record<
   });
   if (!res.ok) throw new Error(`linear graphql returned ${res.status}: ${await res.text()}`);
   const body = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
-  if (body.errors && body.errors.length) throw new Error(`linear graphql errors: ${body.errors.map((e) => e.message).join('; ')}`);
+  if (body.errors?.length)
+    throw new Error(`linear graphql errors: ${body.errors.map((e) => e.message).join('; ')}`);
   if (!body.data) throw new Error('linear graphql returned no data');
   return body.data;
 }
@@ -65,7 +70,11 @@ query SearchIssue($q: String!) {
 
 export const integration: Integration = {
   async tick(ctx) {
-    try { requireKey(); } catch (err) { return { status: 'skipped', message: err instanceof Error ? err.message : String(err) }; }
+    try {
+      requireKey();
+    } catch (err) {
+      return { status: 'skipped', message: err instanceof Error ? err.message : String(err) };
+    }
 
     type ActiveResult = { viewer: { assignedIssues: { nodes: LinearIssue[] } } };
     const data = await gql<ActiveResult>(ctx, ACTIVE_QUERY, { limit: 30 });
@@ -81,7 +90,13 @@ export const integration: Integration = {
         kind: 'integration.linear.issue',
         source: 'linear',
         content: `[${issue.identifier}] ${issue.title} (${issue.state.name}, team ${issue.team.key})${issue.description ? `\n\n${issue.description.slice(0, 500)}` : ''}`,
-        payload: { identifier: issue.identifier, state: issue.state.name, team: issue.team.key, url: issue.url, updatedAt: issue.updatedAt },
+        payload: {
+          identifier: issue.identifier,
+          state: issue.state.name,
+          team: issue.team.key,
+          url: issue.url,
+          updatedAt: issue.updatedAt,
+        },
       });
       ingested++;
     }
@@ -104,9 +119,16 @@ export const actions = {
     const data = await gql<Result>(ctx, ACTIVE_QUERY, { limit: params.limit ?? 20 });
     return data.viewer.assignedIssues.nodes;
   },
-  async get_issue(params: { identifier: string }, ctx: IntegrationContext): Promise<LinearIssue | null> {
+  async get_issue(
+    params: { identifier: string },
+    ctx: IntegrationContext,
+  ): Promise<LinearIssue | null> {
     type Result = { issueSearch: { nodes: LinearIssue[] } };
     const data = await gql<Result>(ctx, ISSUE_SEARCH_QUERY, { q: params.identifier });
-    return data.issueSearch.nodes.find((i) => i.identifier === params.identifier) ?? data.issueSearch.nodes[0] ?? null;
+    return (
+      data.issueSearch.nodes.find((i) => i.identifier === params.identifier) ??
+      data.issueSearch.nodes[0] ??
+      null
+    );
   },
 };

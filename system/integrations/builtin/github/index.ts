@@ -1,5 +1,5 @@
-import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
+import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const API_BASE = 'https://api.github.com';
 
@@ -56,9 +56,17 @@ function requireToken(): string {
 export const integration: Integration = {
   async tick(ctx) {
     let token: string;
-    try { token = requireToken(); } catch (err) { return { status: 'skipped', message: err instanceof Error ? err.message : String(err) }; }
+    try {
+      token = requireToken();
+    } catch (err) {
+      return { status: 'skipped', message: err instanceof Error ? err.message : String(err) };
+    }
 
-    const notifications = await gh<GhNotification[]>(ctx, '/notifications?all=false&per_page=20', token);
+    const notifications = await gh<GhNotification[]>(
+      ctx,
+      '/notifications?all=false&per_page=20',
+      token,
+    );
     let ingested = 0;
     const seen = new Set(JSON.parse(ctx.state.get('seen_notification_ids') ?? '[]'));
     for (const n of notifications) {
@@ -68,7 +76,13 @@ export const integration: Integration = {
         kind: 'integration.github.notification',
         source: 'github',
         content: `[${n.repository.full_name}] ${n.subject.title} (${n.subject.type}, reason: ${n.reason})`,
-        payload: { id: n.id, repo: n.repository.full_name, reason: n.reason, type: n.subject.type, updated_at: n.updated_at },
+        payload: {
+          id: n.id,
+          repo: n.repository.full_name,
+          reason: n.reason,
+          type: n.subject.type,
+          updated_at: n.updated_at,
+        },
       });
       ingested++;
     }
@@ -88,7 +102,10 @@ export const integration: Integration = {
 
 // MCP action handlers (called from robin-extension when implemented)
 export const actions = {
-  async notifications(params: { limit?: number }, ctx: IntegrationContext): Promise<GhNotification[]> {
+  async notifications(
+    params: { limit?: number },
+    ctx: IntegrationContext,
+  ): Promise<GhNotification[]> {
     const token = requireToken();
     const limit = params.limit ?? 20;
     return gh<GhNotification[]>(ctx, `/notifications?all=false&per_page=${limit}`, token);

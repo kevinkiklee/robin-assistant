@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { type Policies, policiesSchema, modelsSchema, type ModelsConfig } from './schema.ts';
+import { type ModelsConfig, modelsSchema, type Policies, policiesSchema } from './schema.ts';
 
 export function loadPolicies(userDataDir: string): Policies {
   const file = join(userDataDir, 'config', 'policies.yaml');
@@ -26,7 +26,9 @@ export function loadModels(userDataDir: string): ModelsConfig {
   }
   const parsed = modelsSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error(`Invalid models.yaml: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+    throw new Error(
+      `Invalid models.yaml: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
+    );
   }
   return parsed.data;
 }

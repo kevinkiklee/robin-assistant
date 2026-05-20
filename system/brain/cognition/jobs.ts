@@ -1,7 +1,7 @@
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
-import type { RobinDb } from '../memory/db.ts';
-import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
+import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import type { RobinDb } from '../memory/db.ts';
 import { runBiographer } from './biographer.ts';
 import { runDream } from './dream.ts';
 
@@ -12,12 +12,24 @@ export interface CognitionJob {
 }
 
 export const COGNITION_JOBS: CognitionJob[] = [
-  { name: 'biographer.run', cron: '*/15 * * * *', description: 'Extract entities + relations from captured sessions' },
-  { name: 'dream.run', cron: '0 3 * * *', description: 'Nightly consolidation: resolve overdue predictions + metrics + journal' },
+  {
+    name: 'biographer.run',
+    cron: '*/15 * * * *',
+    description: 'Extract entities + relations from captured sessions',
+  },
+  {
+    name: 'dream.run',
+    cron: '0 3 * * *',
+    description: 'Nightly consolidation: resolve overdue predictions + metrics + journal',
+  },
 ];
 
 /** Register cognition handlers on the daemon and seed their cron schedules. */
-export function registerCognitionJobs(daemon: Daemon, db: RobinDb, getLLM: () => LLMDispatcher | null | undefined): void {
+export function registerCognitionJobs(
+  daemon: Daemon,
+  db: RobinDb,
+  getLLM: () => LLMDispatcher | null | undefined,
+): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
     await runBiographer(db, llm);

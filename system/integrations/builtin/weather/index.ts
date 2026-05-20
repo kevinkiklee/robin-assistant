@@ -1,5 +1,5 @@
-import type { Integration } from '../../_runtime/types.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
+import type { Integration } from '../../_runtime/types.ts';
 
 export const integration: Integration = {
   async tick(ctx) {

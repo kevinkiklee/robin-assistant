@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { RobinDb } from '../../brain/memory/db.ts';
 
 export interface HttpServerDeps {
@@ -36,7 +36,11 @@ export async function startHttpServer(deps: HttpServerDeps): Promise<HttpHandle>
           const body = await readBody(req);
           let payload: unknown = {};
           if (body) {
-            try { payload = JSON.parse(body); } catch { payload = { raw: body }; }
+            try {
+              payload = JSON.parse(body);
+            } catch {
+              payload = { raw: body };
+            }
           }
           if (deps.onHook) await deps.onHook(kind, payload);
           res.statusCode = 200;

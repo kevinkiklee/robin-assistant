@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { detectHardware } from './detect.ts';
 
 test('detect: returns a profile name', () => {

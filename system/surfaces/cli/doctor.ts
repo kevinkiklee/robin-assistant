@@ -7,9 +7,9 @@ import {
   dbWalSizeBoundedInvariant,
   userDataWritableInvariant,
 } from '../../kernel/invariants/builtins/index.ts';
+import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
 import type { InvariantReport } from '../../kernel/invariants/types.ts';
-import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 export interface DoctorReport {
@@ -118,7 +118,10 @@ export function printDoctorHuman(report: DoctorReport): void {
   );
 }
 
-export function emitRunbook(opts: { write: boolean; path?: string }): { path: string; existed: boolean } {
+export function emitRunbook(opts: { write: boolean; path?: string }): {
+  path: string;
+  existed: boolean;
+} {
   const userData = resolveUserDataDir();
   const db = openDb(dbFilePath(userData));
   applyMigrations(db, allMigrations);

@@ -1,5 +1,5 @@
-import type { RobinDb } from './db.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import type { RobinDb } from './db.ts';
 
 export interface IngestInput {
   kind: string;
@@ -24,22 +24,26 @@ export async function ingest(
   let contentId: number | undefined;
   const eventId = db.transaction(() => {
     if (input.content) {
-      const cInfo = db.prepare(`
+      const cInfo = db
+        .prepare(`
         INSERT INTO events_content (ts, body) VALUES (?, ?)
-      `).run(new Date().toISOString(), input.content);
+      `)
+        .run(new Date().toISOString(), input.content);
       contentId = Number(cInfo.lastInsertRowid);
     }
-    const eInfo = db.prepare(`
+    const eInfo = db
+      .prepare(`
       INSERT INTO events (ts, kind, source, actor, status, payload, content_ref)
       VALUES (?, ?, ?, ?, 'ok', ?, ?)
-    `).run(
-      new Date().toISOString(),
-      input.kind,
-      input.source,
-      input.actor ?? null,
-      JSON.stringify(input.payload ?? {}),
-      contentId ?? null,
-    );
+    `)
+      .run(
+        new Date().toISOString(),
+        input.kind,
+        input.source,
+        input.actor ?? null,
+        JSON.stringify(input.payload ?? {}),
+        contentId ?? null,
+      );
     return Number(eInfo.lastInsertRowid);
   })();
 

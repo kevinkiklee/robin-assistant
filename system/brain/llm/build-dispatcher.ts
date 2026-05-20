@@ -1,10 +1,10 @@
-import { LLMDispatcher } from './dispatcher.ts';
-import { OllamaProvider } from './ollama.ts';
+import type { ModelsConfig, ProviderConfig } from '../../kernel/config/schema.ts';
 import { ClaudeCodeProvider } from './claude-code.ts';
 import { DeepSeekProvider } from './deepseek.ts';
+import { LLMDispatcher } from './dispatcher.ts';
 import { GroqProvider } from './groq.ts';
-import type { LLMRole, LLMProvider } from './types.ts';
-import type { ModelsConfig, ProviderConfig } from '../../kernel/config/schema.ts';
+import { OllamaProvider } from './ollama.ts';
+import type { LLMProvider, LLMRole } from './types.ts';
 
 function resolveSecret(env: NodeJS.ProcessEnv, key?: string): string {
   if (!key) return '';
@@ -16,14 +16,26 @@ function resolveSecret(env: NodeJS.ProcessEnv, key?: string): string {
 function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMProvider {
   switch (cfg.provider) {
     case 'ollama':
-      return new OllamaProvider({ baseUrl: cfg.baseUrl, chatModel: cfg.model ?? 'qwen3:8b', embedModel: cfg.model });
+      return new OllamaProvider({
+        baseUrl: cfg.baseUrl,
+        chatModel: cfg.model ?? 'qwen3:8b',
+        embedModel: cfg.model,
+      });
     case 'claude-code':
     case 'claude-code-cli':
       return new ClaudeCodeProvider({});
     case 'deepseek':
-      return new DeepSeekProvider({ baseUrl: cfg.baseUrl, apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'DEEPSEEK_API_KEY'), model: cfg.model });
+      return new DeepSeekProvider({
+        baseUrl: cfg.baseUrl,
+        apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'DEEPSEEK_API_KEY'),
+        model: cfg.model,
+      });
     case 'groq':
-      return new GroqProvider({ baseUrl: cfg.baseUrl, apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'GROQ_API_KEY'), model: cfg.model });
+      return new GroqProvider({
+        baseUrl: cfg.baseUrl,
+        apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'GROQ_API_KEY'),
+        model: cfg.model,
+      });
     default:
       throw new Error(`Unknown provider '${cfg.provider}' for role '${name}'`);
   }
@@ -35,7 +47,10 @@ export interface BuildOptions {
   onWarn?: (msg: string) => void;
 }
 
-export function buildDispatcherFromConfig(models: ModelsConfig, opts: BuildOptions = {}): LLMDispatcher {
+export function buildDispatcherFromConfig(
+  models: ModelsConfig,
+  opts: BuildOptions = {},
+): LLMDispatcher {
   const env = opts.env ?? process.env;
   const d = new LLMDispatcher();
   const providersByName = new Map<string, LLMProvider>();

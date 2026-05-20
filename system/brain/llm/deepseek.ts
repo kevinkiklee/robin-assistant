@@ -57,7 +57,9 @@ export class DeepSeekProvider implements LLMProvider {
     const text = data.choices[0]?.message?.content ?? '';
     const inputTokens = data.usage.prompt_tokens;
     const outputTokens = data.usage.completion_tokens;
-    const costUsd = (inputTokens / 1_000_000) * this.meta.inputPricePerM + (outputTokens / 1_000_000) * this.meta.outputPricePerM;
+    const costUsd =
+      (inputTokens / 1_000_000) * this.meta.inputPricePerM +
+      (outputTokens / 1_000_000) * this.meta.outputPricePerM;
     return {
       text,
       usage: { inputTokens, outputTokens },

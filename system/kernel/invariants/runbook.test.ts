@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { writeRunbook, emitRunbookSection } from './runbook.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { emitRunbookSection, writeRunbook } from './runbook.ts';
 import type { Invariant } from './types.ts';
 
 const inv: Invariant = {
@@ -36,7 +36,10 @@ test('runbook: writes new RUNBOOK.md if absent', () => {
 test('runbook: replaces between sentinels if already present', () => {
   const dir = mkdtempSync(join(tmpdir(), 'robin-rb-'));
   const path = join(dir, 'RUNBOOK.md');
-  writeFileSync(path, `# Robin Runbook\n\nOLD CONTENT\n\n<!-- robin:runbook:begin -->\n\nstale auto-gen\n\n<!-- robin:runbook:end -->\n\nFOOTER\n`);
+  writeFileSync(
+    path,
+    `# Robin Runbook\n\nOLD CONTENT\n\n<!-- robin:runbook:begin -->\n\nstale auto-gen\n\n<!-- robin:runbook:end -->\n\nFOOTER\n`,
+  );
   writeRunbook(path, [inv]);
   const body = readFileSync(path, 'utf8');
   assert.match(body, /OLD CONTENT/);

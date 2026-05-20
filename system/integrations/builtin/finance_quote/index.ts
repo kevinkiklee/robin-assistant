@@ -1,5 +1,5 @@
-import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
+import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
 const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
@@ -19,13 +19,32 @@ interface QuoteResponse {
 }
 
 interface ChartResponse {
-  chart: { result?: Array<{ meta: { symbol: string }; timestamp: number[]; indicators: { quote: Array<{ open: number[]; high: number[]; low: number[]; close: number[]; volume: number[] }> } }>; error?: unknown };
+  chart: {
+    result?: Array<{
+      meta: { symbol: string };
+      timestamp: number[];
+      indicators: {
+        quote: Array<{
+          open: number[];
+          high: number[];
+          low: number[];
+          close: number[];
+          volume: number[];
+        }>;
+      };
+    }>;
+    error?: unknown;
+  };
 }
 
 function getTickers(ctx: IntegrationContext): string[] {
   const raw = ctx.state.get('tickers');
   if (raw) {
-    try { return JSON.parse(raw) as string[]; } catch { /* fall through */ }
+    try {
+      return JSON.parse(raw) as string[];
+    } catch {
+      /* fall through */
+    }
   }
   return DEFAULT_TICKERS;
 }
@@ -56,7 +75,12 @@ export const integration: Integration = {
         kind: 'integration.finance_quote.tick',
         source: 'finance_quote',
         content: summary,
-        payload: { symbol: q.symbol, price: q.regularMarketPrice, change_pct: q.regularMarketChangePercent, name: q.shortName ?? q.longName },
+        payload: {
+          symbol: q.symbol,
+          price: q.regularMarketPrice,
+          change_pct: q.regularMarketChangePercent,
+          name: q.shortName ?? q.longName,
+        },
       });
       ingested++;
     }
@@ -74,15 +98,31 @@ export const actions = {
   async quote_latest(params: { symbols: string[] }, ctx: IntegrationContext): Promise<Quote[]> {
     return fetchQuotes(ctx, params.symbols);
   },
-  async history(params: { symbol: string; range?: string }, ctx: IntegrationContext): Promise<{ symbol: string; bars: Array<{ ts: number; o: number; h: number; l: number; c: number; v: number }> }> {
+  async history(
+    params: { symbol: string; range?: string },
+    ctx: IntegrationContext,
+  ): Promise<{
+    symbol: string;
+    bars: Array<{ ts: number; o: number; h: number; l: number; c: number; v: number }>;
+  }> {
     const range = params.range ?? '1mo';
-    const res = await ctx.fetch(`${CHART_URL}/${encodeURIComponent(params.symbol)}?range=${range}&interval=1d`, { headers: { 'User-Agent': 'robin-assistant' } });
+    const res = await ctx.fetch(
+      `${CHART_URL}/${encodeURIComponent(params.symbol)}?range=${range}&interval=1d`,
+      { headers: { 'User-Agent': 'robin-assistant' } },
+    );
     if (!res.ok) throw new Error(`yahoo chart returned ${res.status}`);
     const data = (await res.json()) as ChartResponse;
     const result = data.chart.result?.[0];
     if (!result) return { symbol: params.symbol, bars: [] };
     const quote = result.indicators.quote[0];
-    const bars = result.timestamp.map((ts, i) => ({ ts, o: quote.open[i], h: quote.high[i], l: quote.low[i], c: quote.close[i], v: quote.volume[i] }));
+    const bars = result.timestamp.map((ts, i) => ({
+      ts,
+      o: quote.open[i],
+      h: quote.high[i],
+      l: quote.low[i],
+      c: quote.close[i],
+      v: quote.volume[i],
+    }));
     return { symbol: params.symbol, bars };
   },
 };

@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { LLMDispatcher } from './dispatcher.ts';
 import type { LLMProvider } from './types.ts';
 
@@ -8,7 +8,13 @@ function mockProvider(name: string, text: string): LLMProvider {
     name,
     capabilities: new Set(['classify']),
     meta: { contextWindow: 4096, inputPricePerM: 0, outputPricePerM: 0 },
-    invoke: async () => ({ text, usage: { inputTokens: 0, outputTokens: 0 }, costUsd: 0, latencyMs: 0, provider: name }),
+    invoke: async () => ({
+      text,
+      usage: { inputTokens: 0, outputTokens: 0 },
+      costUsd: 0,
+      latencyMs: 0,
+      provider: name,
+    }),
   };
 }
 

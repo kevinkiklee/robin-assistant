@@ -1,13 +1,13 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from './db.ts';
-import { allMigrations, applyMigrations } from './migrations/index.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
+import { closeDb, openDb } from './db.ts';
 import { ingest } from './ingest.ts';
+import { allMigrations, applyMigrations } from './migrations/index.ts';
 import { recall } from './recall.ts';
 
 function freshDb() {
@@ -23,7 +23,9 @@ function mockLLM(vec: number[]): LLMDispatcher {
     name: 'mock',
     capabilities: new Set(['embed']),
     meta: { contextWindow: 0, inputPricePerM: 0, outputPricePerM: 0 },
-    invoke: async () => { throw new Error('nope'); },
+    invoke: async () => {
+      throw new Error('nope');
+    },
     embed: async () => [vec],
   };
   const d = new LLMDispatcher();

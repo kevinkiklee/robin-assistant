@@ -45,9 +45,7 @@ export class ClaudeCodeProvider implements LLMProvider {
 
   private buildPrompt(req: InvokeRequest): string {
     const sys = req.systemPrompt ? `[SYSTEM]\n${req.systemPrompt}\n\n` : '';
-    const turns = req.messages
-      .map((m) => `[${m.role.toUpperCase()}]\n${m.content}`)
-      .join('\n\n');
+    const turns = req.messages.map((m) => `[${m.role.toUpperCase()}]\n${m.content}`).join('\n\n');
     return `${sys}${turns}`;
   }
 
@@ -56,8 +54,12 @@ export class ClaudeCodeProvider implements LLMProvider {
       const child = spawn(this.command, args);
       let stdout = '';
       let stderr = '';
-      child.stdout.on('data', (d) => { stdout += d.toString(); });
-      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.stdout.on('data', (d) => {
+        stdout += d.toString();
+      });
+      child.stderr.on('data', (d) => {
+        stderr += d.toString();
+      });
       child.on('error', reject);
       child.on('close', (code) => {
         if (code === 0) resolve(stdout);
