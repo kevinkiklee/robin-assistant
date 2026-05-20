@@ -1,0 +1,27 @@
+name: linear
+version: 1.0.0
+schedule: "*/30 * * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["linear"]
+  secrets: [LINEAR_API_KEY]
+  network: ["api.linear.app"]
+mcp:
+  description: "Read Linear: active issues + per-issue lookup"
+  actions:
+    active_issues:
+      description: "Issues assigned to the authenticated user, unstarted or in progress"
+      input_schema:
+        type: object
+        properties:
+          limit: { type: integer }
+        required: []
+    get_issue:
+      description: "Fetch a single issue by identifier (e.g. ENG-123)"
+      input_schema:
+        type: object
+        properties:
+          identifier: { type: string }
+        required: [identifier]
