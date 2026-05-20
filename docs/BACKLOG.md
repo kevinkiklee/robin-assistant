@@ -28,15 +28,28 @@ A follow-up session implemented all P0 items (except hands-on-hardware validatio
 - **T.7 README + CONTRIBUTING + SECURITY** (`d722c5a`) — full project documentation surface
 - **Bonus: `robin mcp install` + launchd autostart** (`33deb49`) — runnable MCP install path that wires Robin into `~/.claude.json` AND registers daemon as launchd user agent (covers most of T.3 launchd plist generator)
 
-### Still deferred (carry forward)
+### Update — second full sweep
 
-- **P0.4 real Ollama validation** — requires hands-on hardware testing on the M5 Max with real models pulled. Cannot be done by an agent.
-- **P1.2 interactive `robin init`** — TTY prompts, OAuth device flow, model pulling. Large UX project; non-interactive `--yes` path covers daily-driver use today.
-- **P1.4 biographer stage 3 (LLM disambiguation)** — Phase 2 per design doc; defer until structured-output discipline is exercised in real workloads
-- **P1.5 remaining: auto-fire notify on daemon unhealthy** — the `notify` integration exists; the auto-trigger loop in `runtime/health-monitor.ts` was not built. ~1 task to add.
-- **All P2 items** — Kuzu graph projection, OTel exporter, APFS snapshot integration, DSPy Python sidecar, multi-account integrations, battery-threshold auto-pause. All Phase 2 per design doc §20.
-- **T.4 `robin upgrade` CLI verb** — migrations run automatically on daemon boot today; a user-facing `robin upgrade` wrapper that prints what will change before applying was not built.
-- **T.6 companion repo template** — design doc references a `robin-personal` private repo pattern; example skeleton was not generated.
+Eight more items shipped:
+
+- **P1.4 biographer stage 3** (`ac7f774`) — LLM-driven entity disambiguation when multiple candidates match; falls back gracefully without LLM
+- **P1.5 auto-fire on daemon unhealthy** (`b97f1c2`) — `HealthMonitor` polls invariants every 60s; on critical failure with 1h cooldown, calls notify integration (opt-in via flag)
+- **P2.1 Kuzu graph projection** (`cacb8f0`) — `rebuildKuzuProjection()` + `queryKuzu()` library functions; nightly rebuild job can land later
+- **P2.2 OTel exporter** (`260fd44`) — `exportRecentEventsAsOtel()` posts events as OTLP HTTP spans to any compatible collector (Honeycomb, Grafana Cloud, etc.)
+- **P2.5 multi-account integrations** (`1fcd75d`) — `<name>--<instance>` directory naming pattern; loader and scheduler-glue both honor `instanceName`
+- **P2.6 battery threshold auto-pause** (`ba7568d`) — `PowerAutoMonitor` reads `pmset -g batt` every 30s; pauses on `on_battery_below_pct`, auto-resumes on AC
+- **T.4 `robin upgrade` CLI verb** (`a247fb0`) — applies pending migrations with backup + `--dry-run`
+- **T.6 companion repo template** — `docs/companion-repo-template.md` documents the full `robin-personal` skeleton including age-encrypted secrets + restic state sync
+
+### Truly still deferred (the residual list)
+
+- **P0.4 real Ollama validation** — requires hands-on hardware. Cannot be done by an agent.
+- **P1.2 interactive `robin init`** — TTY prompts + OAuth device flow + model pulling. This is a substantial UX project (~2-3 day effort) that needs careful design (cancellation behavior, partial progress, idempotent re-entry). The non-interactive `--yes` path covers all daily-driver use today.
+- **P2.3 APFS snapshots for `robin db backup`** — requires sudo / Time Machine / non-trivial macOS plumbing. Current `wal_checkpoint + VACUUM INTO` backup is operationally fine.
+- **P2.4 DSPy Python sidecar** — large Python integration project. Layer 3 ships as correction-replay few-shot today which covers ~80% of the value.
+- **P2.7 Codex SDK adapter** — gated on upstream `openai/codex#15451` bug fixing. Track upstream.
+
+That residual list is the genuine "needs more thought" set — every item there either requires hands-on hardware, is a significant standalone project, or is gated on upstream changes.
 
 The original section structure below has the full per-item context (scope, files, acceptance criteria) for anyone picking up the remaining work.
 
