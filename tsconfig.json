@@ -17,6 +17,6 @@
     "isolatedModules": true,
     "resolveJsonModule": true
   },
-  "include": ["system/**/*.ts", "tests/**/*.ts"],
+  "include": ["system/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
