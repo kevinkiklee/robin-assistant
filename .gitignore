@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 user-data/
+docs/
 *.log
 .DS_Store
 .env
