@@ -1,0 +1,10 @@
+name: notify
+version: 1.0.0
+schedule: manual
+permissions:
+  memory:
+    read: false
+    write: false
+    namespaces: []
+  secrets: []
+  network: []
