@@ -1,5 +1,6 @@
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
+import { ingest } from '../../brain/memory/ingest.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { createKvStore } from './kv.ts';
 import type { IntegrationContext } from './types.ts';
@@ -21,5 +22,6 @@ export function buildContext(
     },
     fetch: fetch,
     now: () => new Date(),
+    ingest: (input) => ingest(db, llm, input),
   };
 }

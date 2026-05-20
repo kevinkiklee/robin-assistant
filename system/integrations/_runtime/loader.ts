@@ -11,6 +11,12 @@ export interface LoadedIntegration {
   instanceName: string;
 }
 
+// Production (dist) loaders import .ts via dynamic `import()` and crash on
+// `ERR_UNKNOWN_FILE_EXTENSION`. Detect the runtime by inspecting the loader's
+// own URL — if we're a compiled .js, prefer the extension's .js; if we're TS
+// (running via tsx in `pnpm dev`), prefer the .ts source so edits live-reload.
+const LOADER_IS_COMPILED = import.meta.url.endsWith('.js');
+
 async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   const manifestPath = join(dir, 'integration.yaml');
   if (!existsSync(manifestPath)) return null;
@@ -20,7 +26,17 @@ async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   const instanceName = dirName.includes('--') ? dirName : manifest.name;
   const entryTs = join(dir, 'index.ts');
   const entryJs = join(dir, 'index.js');
-  const entry = existsSync(entryTs) ? entryTs : existsSync(entryJs) ? entryJs : null;
+  const entry = LOADER_IS_COMPILED
+    ? existsSync(entryJs)
+      ? entryJs
+      : existsSync(entryTs)
+        ? entryTs
+        : null
+    : existsSync(entryTs)
+      ? entryTs
+      : existsSync(entryJs)
+        ? entryJs
+        : null;
   if (!entry) throw new Error(`integration ${manifest.name}: missing index.ts/index.js`);
   // Use file:// URL for dynamic ESM import
   const url = `file://${resolve(entry)}`;

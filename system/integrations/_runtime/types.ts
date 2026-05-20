@@ -1,5 +1,6 @@
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
+import type { IngestInput, IngestResult } from '../../brain/memory/ingest.ts';
 
 export interface IntegrationManifest {
   name: string;
@@ -26,6 +27,8 @@ export interface IntegrationContext {
   log: Logger;
   fetch: typeof fetch;
   now: () => Date;
+  /** Write an event (and optional content/embedding) to the firehose. Decouples extensions from system memory internals. */
+  ingest: (input: IngestInput) => Promise<IngestResult>;
 }
 
 export interface Integration {

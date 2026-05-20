@@ -77,6 +77,72 @@ test('scheduler-glue: skips event: schedules', async () => {
   closeDb(db);
 });
 
+test('scheduler-glue: runs integration.init on registration and cleanup on teardown', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-init-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-init-user-'));
+  const dir = join(userRoot, 'gateway-demo');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: gateway-demo\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(dir, 'index.js'),
+    `
+    let initCalls = 0;
+    let cleanupCalls = 0;
+    export const integration = {
+      init: async () => { initCalls++; globalThis.__gwInit = initCalls; },
+      cleanup: async () => { cleanupCalls++; globalThis.__gwCleanup = cleanupCalls; },
+    };
+    `,
+  );
+
+  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<
+    typeof registerIntegrations
+  >[0];
+  const r = await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+  assert.equal(r.registered, 1);
+  assert.equal(r.initialized, 1);
+  assert.equal((globalThis as unknown as { __gwInit: number }).__gwInit, 1);
+
+  await r.cleanup();
+  assert.equal((globalThis as unknown as { __gwCleanup: number }).__gwCleanup, 1);
+  closeDb(db);
+});
+
+test('scheduler-glue: integration.init failure does not block other integrations', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-initfail-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-initfail-user-'));
+  const failDir = join(userRoot, 'broken');
+  mkdirSync(failDir, { recursive: true });
+  writeFileSync(
+    join(failDir, 'integration.yaml'),
+    'name: broken\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(failDir, 'index.js'),
+    `export const integration = { init: async () => { throw new Error('boom'); } };\n`,
+  );
+  makeIntegration(userRoot, 'healthy');
+
+  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<
+    typeof registerIntegrations
+  >[0];
+  const r = await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+  assert.equal(r.registered, 2);
+  assert.equal(r.initialized, 0); // broken's init threw; healthy has no init
+  closeDb(db);
+});
+
 test('scheduler-glue: multi-instance integrations get distinct handler + cron names', async () => {
   const db = freshDb();
   const sysRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-sys-'));
@@ -85,7 +151,11 @@ test('scheduler-glue: multi-instance integrations get distinct handler + cron na
   makeIntegration(userRoot, 'demo--alpha', '*/5 * * * *');
   makeIntegration(userRoot, 'demo--beta', '*/5 * * * *');
   const registered: string[] = [];
-  const fakeDaemon = { registerHandler: (name: string) => { registered.push(name); } } as unknown as Parameters<typeof registerIntegrations>[0];
+  const fakeDaemon = {
+    registerHandler: (name: string) => {
+      registered.push(name);
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
   const r = await registerIntegrations(fakeDaemon, db, () => null, {
     systemRoot: sysRoot,
     userDataRoot: userRoot,
