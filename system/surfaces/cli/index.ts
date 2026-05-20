@@ -33,6 +33,7 @@ COMMANDS
   online            Restore outbound network
   status            Show current state
   mcp core          Run the robin-core MCP server (called by Claude Code via stdio)
+  mcp extension     Run the robin-extension MCP server (called by Claude Code via stdio)
   mcp install       Add/replace robin in ~/.claude.json
   --version
   --help
@@ -185,6 +186,11 @@ async function main(): Promise<void> {
       if (sub === 'core') {
         const { runMcpCore } = await import('../mcp/core/run.ts');
         await runMcpCore();
+        return;
+      }
+      if (sub === 'extension') {
+        const { runMcpExtension } = await import('../mcp/extension/run.ts');
+        await runMcpExtension();
         return;
       }
       if (sub === 'install') {
