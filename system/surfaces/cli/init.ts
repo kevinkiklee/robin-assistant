@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { platform } from 'node:os';
 import { join } from 'node:path';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
+import { buildDaemonSpecFromEnv, installDaemonLaunchd } from '../../lib/launchd/install.ts';
 import { dbFilePath, resolveUserDataDir, userDataPaths } from '../../lib/paths.ts';
 
 export interface InitOptions {
@@ -92,12 +94,37 @@ roles: {}
   console.log(`  Config:   ${paths.config.root}`);
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  Hardware: ${hw.profile} (${hw.cpu}, ${hw.ram_gb}GB)`);
+
+  // Install + load launchd agent so the daemon autostarts (macOS only).
+  // `--no-launchd` opts out; non-macOS platforms silently skip.
+  let launchdInstalled = false;
+  if (!opts.noLaunchd && platform() === 'darwin') {
+    try {
+      const spec = buildDaemonSpecFromEnv({ userDataDir: userData });
+      const r = installDaemonLaunchd(spec);
+      launchdInstalled = true;
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.log(`  Launchd:  ${r.alreadyLoaded ? 'reloaded' : 'loaded'} ${r.plistPath}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.warn(`  Launchd:  skipped (${msg})`);
+    }
+  }
+
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Next steps:');
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('  - robin doctor                 # verify');
-  // biome-ignore lint/suspicious/noConsole: CLI output
-  console.log('  - pnpm dev                     # foreground daemon (dev mode)');
+  if (launchdInstalled) {
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.log('  - robin status                 # confirm daemon is active+online');
+  } else {
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.log('  - robin daemon install         # install launchd autostart (macOS)');
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.log('  - pnpm dev                     # or run foreground daemon manually');
+  }
 }

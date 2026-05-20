@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { argv, exit } from 'node:process';
 import { Daemon } from '../../kernel/runtime/daemon.ts';
+import { buildRobinMcpEntry, upsertUserScopeMcp } from '../../lib/mcp-config/write.ts';
 import { printDoctorHuman, runDoctor } from './doctor.ts';
-import { runPause, runResume, runIncognito, runOffline, runOnline, runStatus } from './power.ts';
-import { upsertUserScopeMcp, buildRobinMcpEntry } from '../../lib/mcp-config/write.ts';
+import { runIncognito, runOffline, runOnline, runPause, runResume, runStatus } from './power.ts';
 
 const VERSION = '3.0.0-alpha.0';
 
@@ -20,18 +20,20 @@ USAGE
   robin <command> [options]
 
 COMMANDS
-  daemon      Run the Robin daemon (called by launchd; not for habitual use)
-  doctor      Diagnose daemon + environment
-  init        One-time setup (interactive)
-  migrate     One-shot operations (from-v2)
-  pause       Pause scheduled work
-  resume      Resume scheduled work
-  incognito   Disable session capture (--for 1h optional)
-  offline     Block outbound network
-  online      Restore outbound network
-  status      Show current state
-  mcp core    Run the robin-core MCP server (called by Claude Code via stdio)
-  mcp install Add/replace robin in ~/.claude.json
+  daemon            Run the Robin daemon (called by launchd; not for habitual use)
+  daemon install    Install + load the launchd agent so the daemon autostarts
+  daemon uninstall  Unload + remove the launchd agent
+  doctor            Diagnose daemon + environment
+  init              One-time setup (interactive)
+  migrate           One-shot operations (from-v2)
+  pause             Pause scheduled work
+  resume            Resume scheduled work
+  incognito         Disable session capture (--for 1h optional)
+  offline           Block outbound network
+  online            Restore outbound network
+  status            Show current state
+  mcp core          Run the robin-core MCP server (called by Claude Code via stdio)
+  mcp install       Add/replace robin in ~/.claude.json
   --version
   --help
 `);
@@ -80,6 +82,44 @@ async function main(): Promise<void> {
     }
 
     case 'daemon': {
+      const sub = args[1];
+      if (sub === 'install') {
+        const { installDaemonLaunchd, buildDaemonSpecFromEnv } = await import(
+          '../../lib/launchd/install.ts'
+        );
+        try {
+          const spec = buildDaemonSpecFromEnv();
+          const r = installDaemonLaunchd(spec);
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.log(`${r.alreadyLoaded ? 'Reloaded' : 'Loaded'} launchd agent at ${r.plistPath}`);
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.log(`  Daemon: ${spec.nodePath} ${spec.cliPath} daemon --foreground`);
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.log(`  Data:   ${spec.userDataDir}`);
+          exit(0);
+        } catch (err) {
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.error(err instanceof Error ? err.message : String(err));
+          exit(1);
+        }
+      }
+      if (sub === 'uninstall') {
+        const { uninstallDaemonLaunchd } = await import('../../lib/launchd/install.ts');
+        try {
+          const r = uninstallDaemonLaunchd();
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.log(
+            r.removed
+              ? `Removed launchd agent at ${r.plistPath}`
+              : `No launchd agent at ${r.plistPath}`,
+          );
+          exit(0);
+        } catch (err) {
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.error(err instanceof Error ? err.message : String(err));
+          exit(1);
+        }
+      }
       const fg = args.includes('--foreground') || args.includes('-f');
       const daemon = new Daemon();
       // Register a simple test handler so end-to-end tests can verify the loop
@@ -115,7 +155,8 @@ async function main(): Promise<void> {
     }
 
     case 'incognito': {
-      const dur = extractFlag(args, '--for=') ?? (args[1] && !args[1].startsWith('-') ? args[1] : undefined);
+      const dur =
+        extractFlag(args, '--for=') ?? (args[1] && !args[1].startsWith('-') ? args[1] : undefined);
       runIncognito(dur);
       exit(0);
       break;
@@ -147,10 +188,16 @@ async function main(): Promise<void> {
         return;
       }
       if (sub === 'install') {
-        const r = upsertUserScopeMcp(buildRobinMcpEntry({ command: process.argv[1] }));
-        // biome-ignore lint/suspicious/noConsole: CLI output
-        console.log(`${r.replaced ? 'Replaced' : 'Added'} robin MCP entry in ${r.path}`);
-        exit(0);
+        try {
+          const r = upsertUserScopeMcp(buildRobinMcpEntry());
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.log(`${r.replaced ? 'Replaced' : 'Added'} robin MCP entry in ${r.path}`);
+          exit(0);
+        } catch (err) {
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.error(err instanceof Error ? err.message : String(err));
+          exit(1);
+        }
       }
       // biome-ignore lint/suspicious/noConsole: CLI output
       console.error(`Unknown mcp subcommand: ${sub}`);

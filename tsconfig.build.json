@@ -5,8 +5,8 @@
     "outDir": "./dist",
     "rootDir": "./system",
     "declaration": true,
-    "emitDeclarationOnly": true,
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },

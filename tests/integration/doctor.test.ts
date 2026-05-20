@@ -14,13 +14,21 @@ test('robin doctor: runs against a fresh user-data and reports JSON', () => {
   // pnpm wraps stdout; find the JSON braces
   const start = out.indexOf('{');
   const end = out.lastIndexOf('}');
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic JSON parsing
-  const json = JSON.parse(out.slice(start, end + 1)) as any;
+  interface DoctorCheck {
+    name: string;
+    status: 'ok' | 'warn' | 'fail';
+  }
+  interface DoctorReport {
+    robin_version: string;
+    checks: DoctorCheck[];
+    summary: { fail: number };
+  }
+  const json = JSON.parse(out.slice(start, end + 1)) as DoctorReport;
   assert.equal(typeof json.robin_version, 'string');
   assert.ok(Array.isArray(json.checks));
   assert.equal(
     json.summary.fail,
     0,
-    `unexpected failures: ${JSON.stringify(json.checks.filter((c: any) => c.status === 'fail'))}`,
+    `unexpected failures: ${JSON.stringify(json.checks.filter((c) => c.status === 'fail'))}`,
   );
 });

@@ -1,14 +1,14 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { resolveUserDataDir } from '../../lib/paths.ts';
 import { loadPolicies } from '../../kernel/config/load.ts';
+import { resolveUserDataDir } from '../../lib/paths.ts';
 
 function parseDurationMs(s: string): number {
-  if (s.endsWith('h')) return Number.parseInt(s) * 3600 * 1000;
-  if (s.endsWith('m')) return Number.parseInt(s) * 60 * 1000;
-  if (s.endsWith('s')) return Number.parseInt(s) * 1000;
-  return Number.parseInt(s);
+  if (s.endsWith('h')) return Number.parseInt(s, 10) * 3600 * 1000;
+  if (s.endsWith('m')) return Number.parseInt(s, 10) * 60 * 1000;
+  if (s.endsWith('s')) return Number.parseInt(s, 10) * 1000;
+  return Number.parseInt(s, 10);
 }
 
 function writePolicies(userData: string, next: unknown): void {
@@ -75,11 +75,14 @@ export function runStatus(json: boolean = false): void {
     console.log(JSON.stringify(p, null, 2));
     return;
   }
-  // biome-ignore lint/suspicious/noConsole: CLI output
+  const expiresAt = (p.capture as { expires_at?: string }).expires_at;
+  const captureLine = `  capture: ${p.capture.enabled ? 'on' : 'off'}${
+    expiresAt ? ` (until ${expiresAt})` : ''
+  }`;
+  /* biome-ignore-start lint/suspicious/noConsole: CLI output */
   console.log('Robin status:');
   console.log(`  power:   ${p.power.state}`);
-  console.log(
-    `  capture: ${p.capture.enabled ? 'on' : 'off'}${(p.capture as { expires_at?: string }).expires_at ? ` (until ${(p.capture as { expires_at?: string }).expires_at})` : ''}`,
-  );
+  console.log(captureLine);
   console.log(`  network: ${p.network.mode}`);
+  /* biome-ignore-end lint/suspicious/noConsole: CLI output */
 }

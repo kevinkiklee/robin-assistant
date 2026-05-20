@@ -14,11 +14,15 @@ test('foundation smoke: init → doctor → daemon → claim a queued job → st
   const userData = mkdtempSync(join(tmpdir(), 'robin-smoke-'));
   const env = { ...process.env, ROBIN_USER_DATA_DIR: userData };
 
-  // 1. robin init --yes (invoke tsx directly to respect env)
-  const initOut = execFileSync('tsx', ['system/surfaces/cli/index.ts', 'init', '--yes'], {
-    env,
-    encoding: 'utf8',
-  });
+  // 1. robin init --yes (invoke tsx directly to respect env).
+  // `--no-launchd` is critical for tests: production `init` installs a real
+  // launchd agent into the user's ~/Library/LaunchAgents pointing at this tmp
+  // dir, which would leak past the test and KeepAlive-restart forever.
+  const initOut = execFileSync(
+    'tsx',
+    ['system/surfaces/cli/index.ts', 'init', '--yes', '--no-launchd'],
+    { env, encoding: 'utf8' },
+  );
   assert.ok(initOut.includes('Initialized Robin'), `init failed: ${initOut}`);
   assert.ok(
     existsSync(dbFilePath(userData)),

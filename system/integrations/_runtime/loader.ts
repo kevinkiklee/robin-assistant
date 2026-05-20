@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { Integration, IntegrationManifest } from './types.ts';
@@ -21,7 +21,8 @@ async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   const url = `file://${resolve(entry)}`;
   const mod = await import(url);
   const integration: Integration = mod.integration ?? mod.default;
-  if (!integration) throw new Error(`integration ${manifest.name}: index must export 'integration' or default`);
+  if (!integration)
+    throw new Error(`integration ${manifest.name}: index must export 'integration' or default`);
   return { manifest, module: integration, rootDir: dir };
 }
 
@@ -37,7 +38,10 @@ export async function loadIntegrations(rootDirs: string[]): Promise<LoadedIntegr
         const loaded = await loadOne(full);
         if (loaded) result.push(loaded);
       } catch (err) {
-        console.error(`integration loader: failed to load ${full}: ${err instanceof Error ? err.message : err}`);
+        // biome-ignore lint/suspicious/noConsole: surface load failures to the operator
+        console.error(
+          `integration loader: failed to load ${full}: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
   }

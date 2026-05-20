@@ -1,11 +1,12 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 export interface McpEntry {
   type: 'stdio';
   command: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 /**
@@ -29,18 +30,45 @@ export function upsertUserScopeMcp(
   }
   if (!config.mcpServers) config.mcpServers = {};
   const replaced = 'robin' in config.mcpServers;
-  config.mcpServers['robin'] = entry;
-  // Write atomically: write to tmp then rename
+  config.mcpServers.robin = entry;
   writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2));
   return { path: claudeConfigPath, replaced };
 }
 
 /**
- * Build the canonical Robin MCP entry that points at the installed binary path.
- * For dev mode, the user can override via opts.command.
+ * Resolve a script path into a runnable absolute command. If the script is a
+ * `.ts` source file (dev mode under tsx), derive the matching compiled `.js`
+ * under `dist/`. Throws if the compiled output is missing.
+ */
+export function resolveRunnableCommand(input: string): string {
+  if (!input) {
+    throw new Error('Cannot resolve MCP command: empty script path');
+  }
+  const abs = resolve(input);
+  if (!abs.endsWith('.ts')) return abs;
+  const distPath = abs.replace('/system/', '/dist/').replace(/\.ts$/, '.js');
+  if (!existsSync(distPath)) {
+    throw new Error(
+      `Cannot install MCP entry from ${abs}: run \`pnpm build\` first ` +
+        `(expected compiled binary at ${distPath}).`,
+    );
+  }
+  return distPath;
+}
+
+/**
+ * Build the canonical Robin MCP entry. The command resolves to the absolute
+ * path of the running CLI binary (falling back to argv[1]); the env field
+ * pins ROBIN_USER_DATA_DIR so the spawned server uses the same user-data the
+ * installer was pointed at.
  */
 export function buildRobinMcpEntry(opts?: { command?: string; userDataDir?: string }): McpEntry {
-  const command = opts?.command ?? join(process.cwd(), 'node_modules', '.bin', 'robin');
-  const args = ['mcp', 'core'];
-  return { type: 'stdio', command, args };
+  const rawCommand = opts?.command ?? process.argv[1] ?? '';
+  const command = resolveRunnableCommand(rawCommand);
+  const userDataDir = opts?.userDataDir ?? process.env.ROBIN_USER_DATA_DIR;
+  const entry: McpEntry = { type: 'stdio', command, args: ['mcp', 'core'] };
+  if (userDataDir) {
+    entry.env = { ROBIN_USER_DATA_DIR: userDataDir };
+  }
+  return entry;
 }

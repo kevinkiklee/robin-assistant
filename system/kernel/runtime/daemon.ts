@@ -1,17 +1,17 @@
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
+import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { writeTelemetry } from '../../lib/telemetry/write.ts';
-import { loadPolicies, loadModels } from '../config/load.ts';
-import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
+import { type HttpHandle, startHttpServer } from '../../surfaces/http/server.ts';
+import { loadModels, loadPolicies } from '../config/load.ts';
 import { recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
 import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidfile.ts';
-import { startHttpServer, type HttpHandle } from '../../surfaces/http/server.ts';
-import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 
 const TICK_INTERVAL_MS = 1000;
 const LEASE_MS = 5 * 60 * 1000; // 5 min
@@ -91,12 +91,20 @@ export class Daemon {
 
     // HTTP endpoint for hooks + health probe
     try {
+      // Capture db in a local binding so the closure doesn't depend on
+      // `this.db` (which TS narrows as possibly-undefined at closure time).
+      const db = this.db;
       this.http = await startHttpServer({
-        db: this.db,
+        db,
         port: 41273,
         isHealthy: () => this.running,
         onHook: async (kind, payload) => {
-          writeTelemetry(this.db!, 'invariant.check', { name: `hook.${kind}`, ok: true }, { source: 'http' });
+          writeTelemetry(
+            db,
+            'invariant.check',
+            { name: `hook.${kind}`, ok: true },
+            { source: 'http' },
+          );
           this.log.info({ kind, payload }, 'hook received');
         },
       });
@@ -110,9 +118,14 @@ export class Daemon {
       const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
       registerCognitionJobs(this, this.db, () => this.llm);
 
-      const { registerIntegrations } = await import('../../integrations/_runtime/scheduler-glue.ts');
+      const { registerIntegrations } = await import(
+        '../../integrations/_runtime/scheduler-glue.ts'
+      );
       const r = await registerIntegrations(this, this.db, () => this.llm);
-      this.log.info({ registered: r.registered, scheduled: r.scheduled }, 'integrations wired into scheduler');
+      this.log.info(
+        { registered: r.registered, scheduled: r.scheduled },
+        'integrations wired into scheduler',
+      );
     } catch (err) {
       this.log.error({ err }, 'failed to wire cognition/integrations into scheduler');
     }
