@@ -105,6 +105,18 @@ export class Daemon {
       this.log.warn({ err }, 'http server start failed; continuing without hooks');
     }
 
+    // Register cognition + integration job handlers + seed cron schedules
+    try {
+      const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
+      registerCognitionJobs(this, this.db, () => this.llm);
+
+      const { registerIntegrations } = await import('../../integrations/_runtime/scheduler-glue.ts');
+      const r = await registerIntegrations(this, this.db, () => this.llm);
+      this.log.info({ registered: r.registered, scheduled: r.scheduled }, 'integrations wired into scheduler');
+    } catch (err) {
+      this.log.error({ err }, 'failed to wire cognition/integrations into scheduler');
+    }
+
     this.running = true;
     this.startedAt = Date.now();
     this.setupSignals();
