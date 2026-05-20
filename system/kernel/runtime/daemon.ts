@@ -4,11 +4,12 @@ import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
+import type { WatcherHandle } from '../../integrations/_runtime/watch.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 import { writeTelemetry } from '../../lib/telemetry/write.ts';
 import { type HttpHandle, startHttpServer } from '../../surfaces/http/server.ts';
-import type { WatcherHandle } from '../../integrations/_runtime/watch.ts';
 import { loadModels, loadPolicies } from '../config/load.ts';
 import { recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
@@ -32,6 +33,7 @@ export class Daemon {
   private llm?: LLMDispatcher;
   private http?: HttpHandle;
   private integrationWatcher?: WatcherHandle;
+  private integrationCleanup?: () => Promise<void>;
   private healthMonitor?: import('./health-monitor.ts').HealthMonitor;
   private powerMonitor?: import('../../lib/power-auto/monitor.ts').PowerAutoMonitor;
 
@@ -46,6 +48,18 @@ export class Daemon {
   async start(opts: DaemonRunOptions = {}): Promise<void> {
     const userData = resolveUserDataDir();
     const pidPath = pidFilePath(userData);
+
+    // Populate process.env from user-data/config/secrets/.env before any
+    // integration or LLM provider tries to read process.env. Shell-provided
+    // values win; missing file is fine (launchd/1Password setups inject env
+    // a different way).
+    const envResult = loadEnvFile(userData);
+    if (envResult.loaded > 0) {
+      this.log.info(
+        { loaded: envResult.loaded, overwritten: envResult.overwritten, path: envResult.path },
+        'secrets/.env loaded',
+      );
+    }
 
     // Check for an existing live daemon
     const existing = readPidfile(pidPath);
@@ -149,19 +163,34 @@ export class Daemon {
         '../../integrations/_runtime/scheduler-glue.ts'
       );
       const r = await registerIntegrations(this, this.db, () => this.llm);
+      this.integrationCleanup = r.cleanup;
       this.log.info(
-        { registered: r.registered, scheduled: r.scheduled },
+        { registered: r.registered, scheduled: r.scheduled, initialized: r.initialized },
         'integrations wired into scheduler',
       );
 
-      // Hot-reload watcher
+      // User-extension jobs (daily-brief, etc.)
+      try {
+        const { registerJobs } = await import('../../jobs/_runtime/scheduler-glue.ts');
+        const jr = await registerJobs(this, this.db, () => this.llm);
+        this.log.info(
+          { registered: jr.registered, scheduled: jr.scheduled },
+          'jobs wired into scheduler',
+        );
+      } catch (err) {
+        this.log.warn({ err }, 'jobs registration failed');
+      }
+
+      // Hot-reload watcher (integrations + jobs)
       try {
         const { watchIntegrations } = await import('../../integrations/_runtime/watch.ts');
         const sysIntegrationsPath = join(process.cwd(), 'system/integrations/builtin');
         const userIntegrationsPath = join(userData, 'extensions/integrations');
+        const userJobsPath = join(userData, 'extensions/jobs');
         this.integrationWatcher = watchIntegrations(this, this.db, () => this.llm, [
           sysIntegrationsPath,
           userIntegrationsPath,
+          userJobsPath,
         ]);
       } catch (err) {
         this.log.warn({ err }, 'integration watcher failed to start');
@@ -210,6 +239,9 @@ export class Daemon {
     }
     if (this.integrationWatcher) {
       await this.integrationWatcher.close();
+    }
+    if (this.integrationCleanup) {
+      await this.integrationCleanup();
     }
     if (this.healthMonitor) this.healthMonitor.stop();
     if (this.powerMonitor) this.powerMonitor.stop();
