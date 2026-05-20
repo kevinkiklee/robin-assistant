@@ -8,6 +8,7 @@ import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { writeTelemetry } from '../../lib/telemetry/write.ts';
 import { type HttpHandle, startHttpServer } from '../../surfaces/http/server.ts';
+import type { WatcherHandle } from '../../integrations/_runtime/watch.ts';
 import { loadModels, loadPolicies } from '../config/load.ts';
 import { recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
@@ -30,6 +31,7 @@ export class Daemon {
   private handlers = new Map<string, JobHandler>();
   private llm?: LLMDispatcher;
   private http?: HttpHandle;
+  private integrationWatcher?: WatcherHandle;
 
   registerHandler(name: string, handler: JobHandler): void {
     this.handlers.set(name, handler);
@@ -126,6 +128,19 @@ export class Daemon {
         { registered: r.registered, scheduled: r.scheduled },
         'integrations wired into scheduler',
       );
+
+      // Hot-reload watcher
+      try {
+        const { watchIntegrations } = await import('../../integrations/_runtime/watch.ts');
+        const sysIntegrationsPath = join(process.cwd(), 'system/integrations/builtin');
+        const userIntegrationsPath = join(userData, 'extensions/integrations');
+        this.integrationWatcher = watchIntegrations(this, this.db, () => this.llm, [
+          sysIntegrationsPath,
+          userIntegrationsPath,
+        ]);
+      } catch (err) {
+        this.log.warn({ err }, 'integration watcher failed to start');
+      }
     } catch (err) {
       this.log.error({ err }, 'failed to wire cognition/integrations into scheduler');
     }
@@ -167,6 +182,9 @@ export class Daemon {
     const uptime = Date.now() - this.startedAt;
     if (this.http) {
       await this.http.close();
+    }
+    if (this.integrationWatcher) {
+      await this.integrationWatcher.close();
     }
     if (this.db) {
       writeTelemetry(
