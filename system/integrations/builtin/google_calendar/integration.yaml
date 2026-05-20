@@ -1,0 +1,31 @@
+name: google_calendar
+version: 1.0.0
+schedule: "*/30 * * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["google_calendar"]
+  secrets: [GOOGLE_CALENDAR_REFRESH_TOKEN, GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET]
+  network: ["www.googleapis.com", "oauth2.googleapis.com"]
+mcp:
+  description: "Read Google Calendar: list events, fetch event details"
+  actions:
+    list_events:
+      description: "List events in a window (default: next 7 days from primary calendar)"
+      input_schema:
+        type: object
+        properties:
+          timeMin: { type: string }
+          timeMax: { type: string }
+          calendarId: { type: string }
+          maxResults: { type: integer }
+        required: []
+    get_event:
+      description: "Fetch a single event by id"
+      input_schema:
+        type: object
+        properties:
+          eventId: { type: string }
+          calendarId: { type: string }
+        required: [eventId]
