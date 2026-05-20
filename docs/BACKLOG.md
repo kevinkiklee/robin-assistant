@@ -10,11 +10,24 @@ This backlog is the actionable companion to `STATUS.md`. Each item below has sco
 
 ---
 
+## Update — 2026-05-19
+
+In a follow-up session, these P0 items shipped:
+
+- **P0.1 (scheduler wiring)** — `feat(daemon): wire cognition + integrations into scheduler on boot` (commit `1093a4f`). Daemon now registers `biographer.run`, `dream.run`, and `integration.<name>.tick` handlers and seeds cron jobs for each on startup. Tests added: 4.
+- **P0.2 partial** — github (`7995a90`), linear (`5b7efb3`), finance_quote (`f9cb7fe`) integrations shipped (+12 tests). gmail / google_calendar / chrome remain.
+
+Current test count: **153 passing**. Backlog items still open are clearly enumerated below.
+
+If you're picking this up, the highest-leverage remaining P0 is **gmail + google_calendar** (they share an OAuth helper that needs to be built once, then both integrations use it).
+
+---
+
 ## P0 — Required to make Robin a daily driver
 
 These unblock the user's actual workflow. Without these, the daemon runs but doesn't *do* anything autonomously.
 
-### P0.1 — Wire cognition + integrations into the scheduler
+### P0.1 — Wire cognition + integrations into the scheduler — ✓ SHIPPED (commit `1093a4f`)
 
 **Why deferred:** Plan 4 (biographer/dream) and Plan 5 (weather) shipped as functions you can call but the daemon doesn't register them as scheduled handlers. The scheduler infrastructure (Plan 1) supports cron + manual triggers but no jobs are currently registered.
 
@@ -39,9 +52,11 @@ These unblock the user's actual workflow. Without these, the daemon runs but doe
 
 ---
 
-### P0.2 — The other 6 Tier-1 integrations
+### P0.2 — Tier-1 integrations — PARTIAL (3 of 6 shipped)
 
-**Why deferred:** Only `weather` shipped as a working example. The other 6 are mechanical — same shape, different APIs.
+**Status:** github (`7995a90`), linear (`5b7efb3`), finance_quote (`f9cb7fe`) are in. **Remaining: gmail, google_calendar, chrome.**
+
+**Why partially deferred:** gmail + calendar share Google OAuth — needs a small `system/integrations/_auth/oauth-google.ts` helper built once. chrome reads `~/Library/Application Support/Google/Chrome/Default/History` (a SQLite file Chrome writes) and has no network at all — independent of the others.
 
 **Scope:** Build each integration following the `system/integrations/builtin/weather/` pattern. Each is `integration.yaml` + `index.ts` + `index.test.ts`. ~150-300 LOC apiece.
 
