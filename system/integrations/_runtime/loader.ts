@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { Integration, IntegrationManifest } from './types.ts';
 
@@ -7,12 +7,17 @@ export interface LoadedIntegration {
   manifest: IntegrationManifest;
   module: Integration;
   rootDir: string;
+  /** Effective unique name used for scheduling + KV namespacing. Equals manifest.name unless dir is <name>--<instance>. */
+  instanceName: string;
 }
 
 async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   const manifestPath = join(dir, 'integration.yaml');
   if (!existsSync(manifestPath)) return null;
   const manifest = parseYaml(readFileSync(manifestPath, 'utf8')) as IntegrationManifest;
+  const dirName = basename(dir);
+  // Allow multi-instance via <base>--<instance> directory naming
+  const instanceName = dirName.includes('--') ? dirName : manifest.name;
   const entryTs = join(dir, 'index.ts');
   const entryJs = join(dir, 'index.js');
   const entry = existsSync(entryTs) ? entryTs : existsSync(entryJs) ? entryJs : null;
@@ -23,7 +28,7 @@ async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   const integration: Integration = mod.integration ?? mod.default;
   if (!integration)
     throw new Error(`integration ${manifest.name}: index must export 'integration' or default`);
-  return { manifest, module: integration, rootDir: dir };
+  return { manifest, module: integration, rootDir: dir, instanceName };
 }
 
 export async function loadIntegrations(rootDirs: string[]): Promise<LoadedIntegration[]> {

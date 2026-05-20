@@ -76,3 +76,28 @@ test('scheduler-glue: skips event: schedules', async () => {
   assert.equal(r.scheduled, 0);
   closeDb(db);
 });
+
+test('scheduler-glue: multi-instance integrations get distinct handler + cron names', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-user-'));
+  // Create two instances of the same base integration name
+  makeIntegration(userRoot, 'demo--alpha', '*/5 * * * *');
+  makeIntegration(userRoot, 'demo--beta', '*/5 * * * *');
+  const registered: string[] = [];
+  const fakeDaemon = { registerHandler: (name: string) => { registered.push(name); } } as unknown as Parameters<typeof registerIntegrations>[0];
+  const r = await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+  assert.equal(r.registered, 2);
+  assert.ok(registered.includes('integration.demo--alpha.tick'));
+  assert.ok(registered.includes('integration.demo--beta.tick'));
+  const jobs = db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{
+    name: string;
+  }>;
+  const jobNames = jobs.map((j) => j.name);
+  assert.ok(jobNames.includes('integration.demo--alpha.tick'));
+  assert.ok(jobNames.includes('integration.demo--beta.tick'));
+  closeDb(db);
+});

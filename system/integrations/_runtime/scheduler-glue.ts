@@ -26,9 +26,9 @@ export async function registerIntegrations(
 
   let scheduled = 0;
   for (const integration of loaded) {
-    daemon.registerHandler(`integration.${integration.manifest.name}.tick`, async () => {
+    daemon.registerHandler(`integration.${integration.instanceName}.tick`, async () => {
       const llm = getLLM() ?? null;
-      const ctx = buildContext(integration.manifest.name, db, llm);
+      const ctx = buildContext(integration.instanceName, db, llm);
       if (integration.module.tick) {
         await integration.module.tick(ctx);
       }
@@ -37,7 +37,7 @@ export async function registerIntegrations(
       // cron schedule string; skip 'event:*' entries (no cron seeding for those)
       if (!integration.manifest.schedule.startsWith('event:')) {
         scheduleCronJob(db, {
-          name: `integration.${integration.manifest.name}.tick`,
+          name: `integration.${integration.instanceName}.tick`,
           cron: integration.manifest.schedule,
         });
         scheduled++;
