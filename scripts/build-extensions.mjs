@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { readdirSync, statSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdirSync, readdirSync, statSync } from 'node:fs';
+import { copyFile, readFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
 // Build all user-data extensions (integrations + jobs) in one pass.
 // Compiles each *.ts (excluding *.test.ts) to *.js, rewriting relative `.ts`
 // imports to `.js` so the compiled output resolves under the dist daemon.
@@ -79,3 +79,41 @@ for (const [outdir, entryPoints] of groups) {
 }
 
 console.log(`Built ${totalCount} extension file(s) across ${groups.size} dir(s)`);
+
+// Builtin integrations and jobs ship via the published npm package — but tsc only
+// emits .js/.d.ts, so `integration.yaml` / `job.yaml` manifests don't reach `dist/`
+// without explicit copy. The runtime loader skips any dir missing a manifest, which
+// silently disables every builtin. Mirror system/{integrations,jobs}/builtin/**/*.yaml
+// into the matching dist tree so the loader can find them.
+const MANIFEST_MIRRORS = [
+  {
+    from: join(ROOT, 'system', 'integrations', 'builtin'),
+    to: join(ROOT, 'dist', 'integrations', 'builtin'),
+  },
+  { from: join(ROOT, 'system', 'jobs', 'builtin'), to: join(ROOT, 'dist', 'jobs', 'builtin') },
+];
+
+let manifestsCopied = 0;
+for (const { from, to } of MANIFEST_MIRRORS) {
+  let dirs;
+  try {
+    dirs = readdirSync(from);
+  } catch {
+    continue;
+  }
+  for (const d of dirs) {
+    const srcDir = join(from, d);
+    if (!statSync(srcDir).isDirectory()) continue;
+    for (const f of readdirSync(srcDir)) {
+      if (!f.endsWith('.yaml')) continue;
+      const srcPath = join(srcDir, f);
+      const dstPath = join(to, d, f);
+      mkdirSync(dirname(dstPath), { recursive: true });
+      await copyFile(srcPath, dstPath);
+      manifestsCopied++;
+    }
+  }
+}
+if (manifestsCopied > 0) {
+  console.log(`Mirrored ${manifestsCopied} builtin manifest(s) to dist/`);
+}

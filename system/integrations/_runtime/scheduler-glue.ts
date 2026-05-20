@@ -1,4 +1,6 @@
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
@@ -8,6 +10,25 @@ import { resolveUserDataDir } from '../../lib/paths.ts';
 import { buildContext } from './context.ts';
 import { loadIntegrations } from './loader.ts';
 import type { Integration, IntegrationContext } from './types.ts';
+
+/**
+ * Resolve the builtin-integrations root by walking up from this module's location, NOT
+ * from process.cwd(). Under launchd the daemon's cwd is user-data/ (so cwd-relative
+ * paths land in the wrong place and the builtin loader silently finds nothing).
+ *
+ * This module lives at `<root>/{system|dist}/integrations/_runtime/scheduler-glue.{ts|js}`.
+ * Walk up three levels to get to <root>, then look for builtins next to wherever we are.
+ * Both layouts are tried so the same code path works for `pnpm dev` (tsx → system/) and
+ * the published binary (node → dist/).
+ */
+function resolveBuiltinIntegrationsRoot(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  // here = .../system/integrations/_runtime  or  .../dist/integrations/_runtime
+  const candidate = join(here, '..', 'builtin');
+  if (existsSync(candidate)) return candidate;
+  // Last-ditch fallback to cwd-relative; preserves pre-fix behavior for unusual layouts.
+  return join(process.cwd(), 'system/integrations/builtin');
+}
 
 interface ActiveIntegration {
   name: string;
@@ -35,7 +56,7 @@ export async function registerIntegrations(
   getLLM: () => LLMDispatcher | null | undefined,
   opts: { systemRoot?: string; userDataRoot?: string } = {},
 ): Promise<RegisterResult> {
-  const systemRoot = opts.systemRoot ?? join(process.cwd(), 'system/integrations/builtin');
+  const systemRoot = opts.systemRoot ?? resolveBuiltinIntegrationsRoot();
   const userDataRoot = opts.userDataRoot ?? join(resolveUserDataDir(), 'extensions/integrations');
   const log = createLogger({ module: 'integrations' });
 

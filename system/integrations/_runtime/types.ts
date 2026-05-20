@@ -1,6 +1,7 @@
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import type { IngestInput, IngestResult } from '../../brain/memory/ingest.ts';
+import type { CheckOutboundInput, DiscretionDecision } from '../../lib/discretion/policy.ts';
 
 export interface IntegrationManifest {
   name: string;
@@ -31,6 +32,8 @@ export interface IntegrationContext {
   now: () => Date;
   /** Write an event (and optional content/embedding) to the firehose. Decouples extensions from system memory internals. */
   ingest: (input: IngestInput) => Promise<IngestResult>;
+  /** Pre-flight discretion check for outbound writes (Discord reply, spotify_write, etc.). Refuses on PII shapes (credit card with Luhn / SSN / SIN) and credential shapes (OpenAI / Anthropic / GitHub / AWS / Google / Slack / Stripe). Trusted-origin shortcut skips the (future) verbatim-quote layer but PII + secret guards always apply. */
+  checkOutbound: (input: CheckOutboundInput) => DiscretionDecision;
 }
 
 export interface Integration {

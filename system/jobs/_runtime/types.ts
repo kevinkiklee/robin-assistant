@@ -1,6 +1,7 @@
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import type { IngestInput, IngestResult } from '../../brain/memory/ingest.ts';
+import type { CheckOutboundInput, DiscretionDecision } from '../../lib/discretion/policy.ts';
 
 export interface JobManifest {
   name: string;
@@ -34,6 +35,8 @@ export interface JobContext {
   fetch: typeof fetch;
   now: () => Date;
   ingest: (input: IngestInput) => Promise<IngestResult>;
+  /** Pre-flight discretion check for outbound writes. See IntegrationContext.checkOutbound. */
+  checkOutbound: (input: CheckOutboundInput) => DiscretionDecision;
   /** Absolute path to the job's own directory (so the job can read sibling files like prompt.md). */
   rootDir: string;
 }

@@ -1,4 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve as resolvePath } from 'node:path';
 import { z } from 'zod';
 import { runBiographer } from '../../../brain/cognition/biographer.ts';
 import { runDream } from '../../../brain/cognition/dream.ts';
@@ -343,5 +345,69 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
     },
   );
 
+  registerUserExtensionActions(server, deps);
   return server;
+}
+
+/**
+ * Discover user-data extensions that export an `actions` map and register each
+ * as an MCP tool. Lets user-authored integrations (e.g. spotify_write) expose
+ * callable actions to Claude without statically importing from the gitignored
+ * user-data tree. Safe on fresh installs: silently no-ops when the dir doesn't
+ * exist or no extensions export actions.
+ */
+function registerUserExtensionActions(server: McpServer, deps: ExtensionServerDeps): void {
+  const userDataRoot = resolveUserDataDir();
+  const integrationsRoot = join(userDataRoot, 'extensions', 'integrations');
+  if (!existsSync(integrationsRoot)) return;
+
+  const compiled = import.meta.url.endsWith('.js');
+
+  for (const entry of readdirSync(integrationsRoot)) {
+    if (entry.startsWith('_') || entry.startsWith('.')) continue;
+    const dir = join(integrationsRoot, entry);
+    try {
+      if (!statSync(dir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    const ts = join(dir, 'index.ts');
+    const js = join(dir, 'index.js');
+    const entryFile = compiled
+      ? existsSync(js)
+        ? js
+        : existsSync(ts)
+          ? ts
+          : null
+      : existsSync(ts)
+        ? ts
+        : existsSync(js)
+          ? js
+          : null;
+    if (!entryFile) continue;
+
+    // Fire-and-forget — server is sync, dynamic import is async. The MCP server
+    // returns to the client immediately; user-extension tools register a tick
+    // or two later. Acceptable for boot-time discovery.
+    void (async () => {
+      try {
+        const url = `file://${resolvePath(entryFile)}`;
+        const mod = (await import(url)) as { actions?: Record<string, unknown> };
+        const actions = mod.actions;
+        if (!actions || typeof actions !== 'object') return;
+        const names = Object.keys(actions).filter((k) => typeof actions[k] === 'function');
+        if (names.length === 0) return;
+        makeIntegrationTool(
+          server,
+          deps,
+          entry,
+          actions as unknown as IntegrationActions,
+          names,
+          `User-extension ${entry}: ${names.join(', ')}`,
+        );
+      } catch {
+        // best-effort — fail silently on broken extensions
+      }
+    })();
+  }
 }

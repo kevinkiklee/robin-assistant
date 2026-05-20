@@ -50,3 +50,69 @@ test('ingest: llm parameter is accepted but unused (kept for API compat)', () =>
   assert.ok(r.eventId > 0);
   closeDb(db);
 });
+
+test('ingest: payload.external_id triggers upsert on second call', () => {
+  const db = freshDb();
+  const first = ingest(db, null, {
+    kind: 'integration.tick',
+    source: 'demo',
+    content: 'original body',
+    payload: { external_id: 'demo:item:1', n: 1 },
+  });
+  assert.equal(first.upserted, false);
+
+  const second = ingest(db, null, {
+    kind: 'integration.tick',
+    source: 'demo',
+    content: 'updated body',
+    payload: { external_id: 'demo:item:1', n: 2 },
+  });
+  assert.equal(second.upserted, true);
+  assert.equal(second.eventId, first.eventId);
+  assert.equal(second.contentId, first.contentId);
+
+  const rowCount = db
+    .prepare(`SELECT COUNT(*) AS c FROM events WHERE source = 'demo'`)
+    .get() as { c: number };
+  assert.equal(rowCount.c, 1, 'second call must update, not append');
+
+  const ev = db
+    .prepare(`SELECT payload, content_ref FROM events WHERE id = ?`)
+    .get(first.eventId) as { payload: string; content_ref: number };
+  assert.equal(JSON.parse(ev.payload).n, 2);
+
+  const content = db
+    .prepare(`SELECT body, embedding FROM events_content WHERE id = ?`)
+    .get(ev.content_ref) as { body: string; embedding: Buffer | null };
+  assert.equal(content.body, 'updated body');
+  assert.equal(content.embedding, null, 'upsert must invalidate the prior embedding');
+  closeDb(db);
+});
+
+test('ingest: different sources with same external_id stay distinct', () => {
+  const db = freshDb();
+  const a = ingest(db, null, {
+    kind: 'integration.tick',
+    source: 'src_a',
+    payload: { external_id: 'shared:id' },
+  });
+  const b = ingest(db, null, {
+    kind: 'integration.tick',
+    source: 'src_b',
+    payload: { external_id: 'shared:id' },
+  });
+  assert.notEqual(a.eventId, b.eventId);
+  assert.equal(a.upserted, false);
+  assert.equal(b.upserted, false);
+  closeDb(db);
+});
+
+test('ingest: payload without external_id never upserts', () => {
+  const db = freshDb();
+  const a = ingest(db, null, { kind: 'x', source: 's', content: 'one', payload: { n: 1 } });
+  const b = ingest(db, null, { kind: 'x', source: 's', content: 'two', payload: { n: 2 } });
+  assert.notEqual(a.eventId, b.eventId);
+  assert.equal(a.upserted, false);
+  assert.equal(b.upserted, false);
+  closeDb(db);
+});

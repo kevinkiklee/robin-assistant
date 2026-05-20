@@ -1,4 +1,6 @@
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
@@ -7,6 +9,19 @@ import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { buildJobContext } from './context.ts';
 import { loadJobs } from './loader.ts';
+
+/**
+ * Resolve the builtin-jobs root from this module's location, not process.cwd().
+ * See system/integrations/_runtime/scheduler-glue.ts for the rationale — same launchd
+ * cwd-mismatch bug class. No builtin jobs exist today (daily-brief lives as an extension),
+ * but the path matters whenever a future job ships in the published package.
+ */
+function resolveBuiltinJobsRoot(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidate = join(here, '..', 'builtin');
+  if (existsSync(candidate)) return candidate;
+  return join(process.cwd(), 'system/jobs/builtin');
+}
 
 export interface JobsRegisterResult {
   registered: number;
@@ -23,7 +38,7 @@ export async function registerJobs(
   getLLM: () => LLMDispatcher | null | undefined,
   opts: { systemRoot?: string; userDataRoot?: string } = {},
 ): Promise<JobsRegisterResult> {
-  const systemRoot = opts.systemRoot ?? join(process.cwd(), 'system/jobs/builtin');
+  const systemRoot = opts.systemRoot ?? resolveBuiltinJobsRoot();
   const userDataRoot = opts.userDataRoot ?? join(resolveUserDataDir(), 'extensions/jobs');
   const log = createLogger({ module: 'jobs' });
 
