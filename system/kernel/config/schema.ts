@@ -5,6 +5,8 @@ export const powerSchema = z.object({
   auto: z
     .object({
       on_low_power_mode: z.enum(['active', 'paused']).optional(),
+      on_battery_below_pct: z.number().int().min(0).max(100).optional(),
+      auto_resume_on_ac: z.boolean().default(true),
       quiet_hours: z
         .object({
           start: z.string().regex(/^\d{2}:\d{2}$/),
@@ -13,7 +15,7 @@ export const powerSchema = z.object({
         })
         .optional(),
     })
-    .default({}),
+    .default({ auto_resume_on_ac: true }),
 });
 
 export const captureSchema = z.object({
