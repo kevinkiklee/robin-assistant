@@ -10,16 +10,35 @@ This backlog is the actionable companion to `STATUS.md`. Each item below has sco
 
 ---
 
-## Update — 2026-05-19
+## Update — 2026-05-19 (full backlog sweep)
 
-In a follow-up session, these P0 items shipped:
+A follow-up session implemented all P0 items (except hands-on-hardware validation), the highest-leverage P1 items, and the open-source tooling files. Current test count: **178 passing**. Total commits: **60**.
 
-- **P0.1 (scheduler wiring)** — `feat(daemon): wire cognition + integrations into scheduler on boot` (commit `1093a4f`). Daemon now registers `biographer.run`, `dream.run`, and `integration.<name>.tick` handlers and seeds cron jobs for each on startup. Tests added: 4.
-- **P0.2 partial** — github (`7995a90`), linear (`5b7efb3`), finance_quote (`f9cb7fe`) integrations shipped (+12 tests). gmail / google_calendar / chrome remain.
+### Shipped in this sweep
 
-Current test count: **153 passing**. Backlog items still open are clearly enumerated below.
+- **P0.1 scheduler wiring** (`1093a4f`) — daemon registers `biographer.run`, `dream.run`, `integration.<name>.tick` handlers and seeds cron schedules on boot
+- **P0.2 all 6 remaining Tier-1 integrations** (`7995a90`, `5b7efb3`, `f9cb7fe`, `3e6569a`, `37957a9`, `951b198`) — github, linear, finance_quote, gmail, chrome, google_calendar + shared Google OAuth helper. Each has tick + health + MCP actions + tests.
+- **P0.3 SurrealDB read path in migrate** (`28a98cf`) — `migrateDerivedData()` connects to v2 RocksDB, discovers tables, transforms event/entity/relation/prediction/correction rows with table-level error tolerance
+- **P1.1 robin-extension MCP server** (`9ee1ed1`) — 6 integration action-dispatchers + 7 ops tools (run, integration_status, ingest, related_entities, resolve_prediction, check_action, update)
+- **P1.3 hot-reload watcher** (`1c84756`) — chokidar with 200ms debounce, wired into daemon lifecycle
+- **P1.5 (partial) notify built-in** (`56c0148`) — macOS osascript notification integration. Full unhealthy-trigger path (auto-fire on restart-loop) still deferred — see remaining items below.
+- **T.1 GitHub Actions CI** (`d722c5a`) — `.github/workflows/tests.yml`: typecheck + lint + test + gitleaks + smoke
+- **T.2 Docker image** (`d722c5a`) — `Dockerfile` + `.dockerignore`, Node 24 base, multi-arch via standard `node:24-slim`
+- **T.5 db backup/restore/vacuum CLI verbs** (`2005161`) — `robin db backup [--path=…]`, `robin db restore --from=…`, `robin db vacuum`
+- **T.7 README + CONTRIBUTING + SECURITY** (`d722c5a`) — full project documentation surface
+- **Bonus: `robin mcp install` + launchd autostart** (`33deb49`) — runnable MCP install path that wires Robin into `~/.claude.json` AND registers daemon as launchd user agent (covers most of T.3 launchd plist generator)
 
-If you're picking this up, the highest-leverage remaining P0 is **gmail + google_calendar** (they share an OAuth helper that needs to be built once, then both integrations use it).
+### Still deferred (carry forward)
+
+- **P0.4 real Ollama validation** — requires hands-on hardware testing on the M5 Max with real models pulled. Cannot be done by an agent.
+- **P1.2 interactive `robin init`** — TTY prompts, OAuth device flow, model pulling. Large UX project; non-interactive `--yes` path covers daily-driver use today.
+- **P1.4 biographer stage 3 (LLM disambiguation)** — Phase 2 per design doc; defer until structured-output discipline is exercised in real workloads
+- **P1.5 remaining: auto-fire notify on daemon unhealthy** — the `notify` integration exists; the auto-trigger loop in `runtime/health-monitor.ts` was not built. ~1 task to add.
+- **All P2 items** — Kuzu graph projection, OTel exporter, APFS snapshot integration, DSPy Python sidecar, multi-account integrations, battery-threshold auto-pause. All Phase 2 per design doc §20.
+- **T.4 `robin upgrade` CLI verb** — migrations run automatically on daemon boot today; a user-facing `robin upgrade` wrapper that prints what will change before applying was not built.
+- **T.6 companion repo template** — design doc references a `robin-personal` private repo pattern; example skeleton was not generated.
+
+The original section structure below has the full per-item context (scope, files, acceptance criteria) for anyone picking up the remaining work.
 
 ---
 
