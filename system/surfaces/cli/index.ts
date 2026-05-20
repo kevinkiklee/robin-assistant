@@ -23,6 +23,9 @@ COMMANDS
   daemon            Run the Robin daemon (called by launchd; not for habitual use)
   daemon install    Install + load the launchd agent so the daemon autostarts
   daemon uninstall  Unload + remove the launchd agent
+  db backup         Back up the database (--path=<path> optional)
+  db restore        Restore database from backup (--from=<path>)
+  db vacuum         Vacuum the database
   doctor            Diagnose daemon + environment
   init              One-time setup (interactive)
   migrate           One-shot operations (from-v2)
@@ -179,6 +182,30 @@ async function main(): Promise<void> {
       runStatus(args.includes('--json'));
       exit(0);
       break;
+    }
+
+    case 'db': {
+      const sub = args[1];
+      const { runDbBackup, runDbRestore, runDbVacuum } = await import('./db.ts');
+      if (sub === 'backup') {
+        runDbBackup({ path: extractFlag(args, '--path=') });
+        exit(0);
+      }
+      if (sub === 'restore') {
+        const path = extractFlag(args, '--from=') ?? args[2];
+        if (!path) {
+          console.error('usage: robin db restore --from=<path>');
+          exit(2);
+        }
+        runDbRestore({ path });
+        exit(0);
+      }
+      if (sub === 'vacuum') {
+        runDbVacuum();
+        exit(0);
+      }
+      console.error(`Unknown db subcommand: ${sub}`);
+      exit(2);
     }
 
     case 'mcp': {
