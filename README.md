@@ -49,7 +49,38 @@ robin doctor                  # diagnostic + invariant check (also --json, --emi
 robin upgrade                 # apply pending schema migrations (with backup)
 robin db backup/restore/vacuum  # local backup ops
 robin import <dir>            # ingest NDJSON dumps (see Portability below)
+robin publish --source <md>   # publish a markdown file to the web (askrobin.io)
+robin published               # list published pages
 ```
+
+## Publishing to the web
+
+`robin publish` uploads a markdown file as a sanitized HTML page served from your configured domain (default `askrobin.io`). Local images referenced from the markdown are uploaded to Vercel Blob with content-hash-derived keys (idempotent on re-upload) and rewritten in-place.
+
+```bash
+robin publish --source path/to/post.md             # default: derive slug; suffix on collision
+robin publish --source path/to/post.md --slug foo  # explicit slug; overwrites if it exists
+robin publish --mode delete --slug foo             # remove HTML + tracked assets
+robin publish --source path/to/post.md --dry-run   # render + size-check without uploading
+```
+
+Required secrets in `user-data/config/secrets/.env`:
+- `BLOB_READ_WRITE_TOKEN` — Vercel Blob token with write access
+- `PUBLISH_USER_ID` — namespace for blob keys (`users/<id>/pages/<slug>/index.html`)
+- `BLOB_PUBLIC_BASE_URL` — public Blob CDN base URL
+- `PUBLISH_PUBLIC_URL` (optional, defaults to `https://askrobin.io`) — canonical URL prefix
+
+`trust: untrusted` (or `untrusted-mixed`) frontmatter blocks publication unless `--force-untrusted` is set. Inline `<!-- UNTRUSTED-START -->` / `<!-- UNTRUSTED-END -->` blocks are stripped regardless.
+
+## Scheduled jobs (extensions)
+
+In addition to integrations (which read external data into the event store), v3 has a **jobs runtime** for cognitive work that doesn't fit the read-tick model.
+
+A job lives in `user-data/extensions/jobs/<name>/` with:
+- `job.yaml` — manifest with `schedule` (cron expression or `manual`) and optional `tz`
+- `index.ts` — exports `job: Job` with a `run(ctx)` method
+
+The daemon loads jobs at startup (and on hot-reload when files change), registers cron schedules, and runs `job.<name>.run` on the scheduler. The shipped example is `daily-brief` — spawns the Claude agent with the protocol prompt and captures the rendered brief as a `daily_briefing` event.
 
 ## Portability
 

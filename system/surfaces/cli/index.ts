@@ -40,6 +40,8 @@ COMMANDS
   mcp core          Run the robin-core MCP server (called by Claude Code via stdio)
   mcp extension     Run the robin-extension MCP server (called by Claude Code via stdio)
   mcp install       Add/replace robin in ~/.claude.json
+  publish           Publish a markdown file to the web (--source <path> [--slug <s>] [--mode default|overwrite|as-new|delete] [--dry-run])
+  published         List published pages from this Robin instance
   --version
   --help
 `);
@@ -244,9 +246,17 @@ async function main(): Promise<void> {
       const { runReindex, printReindexHuman } = await import('./reindex.ts');
       const limitFlag = extractFlag(args, '--limit=');
       const batchFlag = extractFlag(args, '--batch=');
+      const idsFlag = extractFlag(args, '--ids=');
+      const ids = idsFlag
+        ? idsFlag
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isFinite(n))
+        : undefined;
       const report = await runReindex({
         limit: limitFlag ? Number(limitFlag) : undefined,
         force: args.includes('--force'),
+        ids,
         batchSize: batchFlag ? Number(batchFlag) : 50,
         onProgress: ({ processed, embedded, failed }) => {
           process.stderr.write(`  ${processed} processed (${embedded} ok, ${failed} fail)\n`);
@@ -266,6 +276,18 @@ async function main(): Promise<void> {
       runUpgrade({ dryRun: args.includes('--dry-run'), skipBackup: args.includes('--no-backup') });
       exit(0);
       break;
+    }
+
+    case 'publish': {
+      const { runPublishCli } = await import('./publish.ts');
+      await runPublishCli(args.slice(1));
+      return;
+    }
+
+    case 'published': {
+      const { runPublishedCli } = await import('./publish.ts');
+      await runPublishedCli(args.slice(1));
+      return;
     }
 
     case 'mcp': {

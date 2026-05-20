@@ -24,7 +24,10 @@ for (const root of ROOTS) {
     continue;
   }
   for (const entry of entries) {
-    if (entry.startsWith('_') || entry.startsWith('.')) continue;
+    // `_`-prefixed dirs are sibling helpers (e.g. `_shared/`) — compiled so
+    // integrations can import from them, but the runtime loader skips them as
+    // integrations themselves. Hidden dirs (`.foo`) are always skipped.
+    if (entry.startsWith('.')) continue;
     const dir = join(root, entry);
     if (!statSync(dir).isDirectory()) continue;
     for (const f of readdirSync(dir)) {
