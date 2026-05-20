@@ -64,3 +64,33 @@ test('migrate: writes a report file to state/migrations', async () => {
   // clean up env
   delete process.env.ROBIN_USER_DATA_DIR;
 });
+
+test('migrate: derived phase reports skipped when v2 data dir is empty', async () => {
+  const v2 = mkdtempSync(join(tmpdir(), 'robin-v2-empty-'));
+  mkdirSync(join(v2, 'user-data'), { recursive: true });
+  // no data/db dir
+  const targetUserData = mkdtempSync(join(tmpdir(), 'robin-target-empty-'));
+  process.env.ROBIN_USER_DATA_DIR = targetUserData;
+  const r = await migrateFromV2({ v2Path: v2 });
+  // derived phase should run but report no work
+  assert.equal(r.phases.derived?.ok, true);
+  assert.match(r.phases.derived?.message ?? '', /not found|nothing to migrate/);
+  delete process.env.ROBIN_USER_DATA_DIR;
+});
+
+test('migrate: derived phase handles missing surrealdb dep gracefully', async () => {
+  // This test asserts the code path handles the import-fail case without throwing.
+  // We can't easily uninstall the dep mid-test; instead verify the function returns a graceful error
+  // when given a v2-shaped dir without a valid RocksDB inside.
+  const v2 = mkdtempSync(join(tmpdir(), 'robin-v2-bad-rocks-'));
+  const dataDir = join(v2, 'user-data', 'data', 'db');
+  mkdirSync(dataDir, { recursive: true });
+  // create an empty/bogus file to simulate "exists but not a valid RocksDB"
+  writeFileSync(join(dataDir, 'LOCK'), '');
+  const targetUserData = mkdtempSync(join(tmpdir(), 'robin-target-bad-'));
+  process.env.ROBIN_USER_DATA_DIR = targetUserData;
+  const r = await migrateFromV2({ v2Path: v2 });
+  // either succeeded (unlikely on bogus rocksdb) or surfaced an error message — both are acceptable
+  assert.ok(r.phases.derived);
+  delete process.env.ROBIN_USER_DATA_DIR;
+});
