@@ -48,8 +48,24 @@ robin status                  # show current power/capture/network state
 robin doctor                  # diagnostic + invariant check (also --json, --emit-runbook --write)
 robin upgrade                 # apply pending schema migrations (with backup)
 robin db backup/restore/vacuum  # local backup ops
-robin migrate from-v2 <path>  # one-shot import from a v2 install
+robin import <dir>            # ingest NDJSON dumps (see Portability below)
 ```
+
+## Portability
+
+Robin's data has two layers: **content** (the source of truth) and **state** (a derivable cache).
+
+- **Content** lives in flatfiles under `user-data/content/`. Anything Robin will reason over — captured sessions, imported messages, journal entries, integration ticks — has a flatfile origin.
+- **State** lives in `user-data/state/db/robin.sqlite` (events firehose, entities, relations, predictions, corrections, embeddings, indexes). Any Robin install can rebuild state from content; the DB is never the system of record.
+
+This means migrating between Robin versions is a content move, not a schema map. The pattern:
+
+1. Export from the old install as NDJSON (one file per kind).
+2. Drop the files into `user-data/content/imported-from-<source>/`.
+3. `robin import <dir>` writes them into the new install's tables.
+4. Scheduled biographer runs derive entities/embeddings under the new install's model.
+
+The repo's `tools/v2-export.mjs` is the throwaway exporter for the v2→v3 jump. v3 only knows how to ingest NDJSON, not where it came from — every future migration follows the same shape.
 
 ## Configuration
 

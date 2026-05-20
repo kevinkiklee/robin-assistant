@@ -74,8 +74,19 @@ network:
   if (!existsSync(modelsPath)) {
     writeFileSync(
       modelsPath,
-      `# Robin model adapter routing
-# Configure provider integrations and role-based model selection here
+      `# Robin model adapter routing — role -> provider mapping.
+# See docs/specs/2026-05-18-robin-v3-design.md §6 for the role taxonomy.
+#
+# Example (uncomment to enable local embeddings via Ollama):
+#
+# roles:
+#   embed:
+#     provider: ollama
+#     model: qwen3-embedding:8b
+#
+# Robin's events_vec is float[4096] to match qwen3-embedding:8b native output.
+# If you pick a different embedder, run \`robin upgrade\` after editing the
+# events_vec schema; vectors from different models are NOT comparable.
 roles: {}
 `,
     );

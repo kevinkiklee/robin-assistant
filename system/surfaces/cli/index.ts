@@ -27,9 +27,10 @@ COMMANDS
   db restore        Restore database from backup (--from=<path>)
   db vacuum         Vacuum the database
   doctor            Diagnose daemon + environment
+  import            Import NDJSON dumps from content/imported-from-<source>/
   init              One-time setup (interactive)
-  migrate           One-shot operations (from-v2)
   pause             Pause scheduled work
+  reindex           Backfill embeddings for events_content rows missing one
   resume            Resume scheduled work
   incognito         Disable session capture (--for 1h optional)
   offline           Block outbound network
@@ -207,6 +208,57 @@ async function main(): Promise<void> {
       }
       console.error(`Unknown db subcommand: ${sub}`);
       exit(2);
+      break;
+    }
+
+    case 'import': {
+      const { runImport, printImportHuman, ALL_KINDS } = await import('./import.ts');
+      const dir = args[1] && !args[1].startsWith('-') ? args[1] : extractFlag(args, '--dir=');
+      if (!dir) {
+        console.error(
+          'usage: robin import <dir> [--kinds=events,entities,...] [--limit=N] [--dry-run] [--json]',
+        );
+        exit(2);
+      }
+      const kindsFlag = extractFlag(args, '--kinds=');
+      const limitFlag = extractFlag(args, '--limit=');
+      const kinds = kindsFlag
+        ? (kindsFlag.split(',').filter((k) => ALL_KINDS.includes(k as never)) as typeof ALL_KINDS)
+        : undefined;
+      const report = await runImport({
+        dir: dir as string,
+        kinds,
+        limit: limitFlag ? Number(limitFlag) : undefined,
+        dryRun: args.includes('--dry-run'),
+      });
+      if (args.includes('--json')) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        printImportHuman(report);
+      }
+      exit(report.errors.length > 0 ? 1 : 0);
+      break;
+    }
+
+    case 'reindex': {
+      const { runReindex, printReindexHuman } = await import('./reindex.ts');
+      const limitFlag = extractFlag(args, '--limit=');
+      const batchFlag = extractFlag(args, '--batch=');
+      const report = await runReindex({
+        limit: limitFlag ? Number(limitFlag) : undefined,
+        force: args.includes('--force'),
+        batchSize: batchFlag ? Number(batchFlag) : 50,
+        onProgress: ({ processed, embedded, failed }) => {
+          process.stderr.write(`  ${processed} processed (${embedded} ok, ${failed} fail)\n`);
+        },
+      });
+      if (args.includes('--json')) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        printReindexHuman(report);
+      }
+      exit(report.errors.length > 0 && report.embedded === 0 ? 1 : 0);
+      break;
     }
 
     case 'upgrade': {

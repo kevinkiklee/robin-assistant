@@ -1,5 +1,6 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
+import { embedBody } from './embed-content.ts';
 
 export interface IngestInput {
   kind: string;
@@ -51,12 +52,19 @@ export async function ingest(
   let embedError: string | undefined;
   if (input.content && contentId !== undefined && llm) {
     try {
-      const [vec] = await llm.embed('embed', input.content);
+      const vec = await embedBody(llm, input.content);
       const buf = Buffer.from(new Float32Array(vec).buffer);
       db.transaction(() => {
         db.prepare(`UPDATE events_content SET embedding = ? WHERE id = ?`).run(buf, contentId);
-        // Note: vec0 virtual table auto-assigns rowid, don't specify it explicitly
-        db.prepare(`INSERT INTO events_vec(embedding) VALUES (?)`).run(buf);
+        // events_vec.rowid must equal events_content.id — recall.ts JOINs on that. Auto-assigned
+        // rowids only happen to line up when every content insert is paired with a successful
+        // embed, in order; any embed failure (or a reindex pass) breaks the invariant.
+        // Bind as BigInt: sqlite-vec rejects JS Number for vec0 rowids with "only integers
+        // allowed" (better-sqlite3 binds Number as REAL affinity by default; BigInt forces INTEGER).
+        db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)`).run(
+          BigInt(contentId as number),
+          buf,
+        );
       })();
       embedded = true;
     } catch (err) {

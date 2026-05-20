@@ -35,7 +35,7 @@ function embedProvider(vec: number[] | null): LLMProvider {
 test('ingest: writes event + content row + embedding (events_content + events_vec)', async () => {
   const db = freshDb();
   const llm = new LLMDispatcher();
-  llm.register('e', embedProvider(new Array(1024).fill(0.1)));
+  llm.register('e', embedProvider(new Array(4096).fill(0.1)));
   llm.assign('embed', 'e');
 
   const r = await ingest(db, llm, { kind: 'test', source: 't', content: 'hello' });
@@ -46,7 +46,7 @@ test('ingest: writes event + content row + embedding (events_content + events_ve
   const row = db
     .prepare('SELECT length(embedding) AS len FROM events_content WHERE id = ?')
     .get(r.contentId) as { len: number };
-  assert.equal(row.len, 1024 * 4);
+  assert.equal(row.len, 4096 * 4);
   // verify events_vec also populated
   const vecRow = db
     .prepare('SELECT COUNT(*) AS c FROM events_vec WHERE rowid = ?')

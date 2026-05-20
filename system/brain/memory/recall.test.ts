@@ -36,7 +36,7 @@ function mockLLM(vec: number[]): LLMDispatcher {
 
 test('recall: lex mode returns FTS hits', async () => {
   const db = freshDb();
-  const llm = mockLLM(new Array(1024).fill(0.1));
+  const llm = mockLLM(new Array(4096).fill(0.1));
   await ingest(db, llm, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
   await ingest(db, llm, { kind: 't', source: 's', content: 'the weather today is sunny' });
 
@@ -55,7 +55,7 @@ test('recall: lex returns empty when no matches', async () => {
 
 test('recall: vec mode finds the row whose embedding the dispatcher returned', async () => {
   const db = freshDb();
-  const targetVec = new Array(1024).fill(0.0);
+  const targetVec = new Array(4096).fill(0.0);
   targetVec[0] = 1.0;
   const llm = mockLLM(targetVec);
   await ingest(db, llm, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
