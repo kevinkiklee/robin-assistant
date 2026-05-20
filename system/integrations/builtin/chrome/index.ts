@@ -1,9 +1,9 @@
-import { cpSync, existsSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, unlinkSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
+import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 function defaultHistoryPath(): string | null {
   const home = homedir();
@@ -38,20 +38,34 @@ function readVisits(historyPath: string, sinceMicros: number, limit: number): Ch
     // Convert: chrome_ts = unix_ts_micros + 11644473600000000
     // sinceMicros is unix-epoch microseconds; convert to chrome epoch:
     const chromeSince = sinceMicros + 11644473600_000_000;
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(`
       SELECT urls.url AS url, urls.title AS title, MAX(visits.visit_time) AS visit_time, urls.visit_count AS visit_count
         FROM visits JOIN urls ON urls.id = visits.url
        WHERE visits.visit_time > ?
        GROUP BY urls.id
        ORDER BY visit_time DESC
        LIMIT ?
-    `).all(chromeSince, limit) as ChromeVisit[];
+    `)
+      .all(chromeSince, limit) as ChromeVisit[];
     db.close();
     return rows;
   } finally {
-    try { unlinkSync(copy); } catch { /* ignore */ }
-    try { unlinkSync(`${copy}-wal`); } catch { /* ignore */ }
-    try { unlinkSync(`${copy}-shm`); } catch { /* ignore */ }
+    try {
+      unlinkSync(copy);
+    } catch {
+      /* ignore */
+    }
+    try {
+      unlinkSync(`${copy}-wal`);
+    } catch {
+      /* ignore */
+    }
+    try {
+      unlinkSync(`${copy}-shm`);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -64,7 +78,8 @@ function chromeTimeToIso(chromeTime: number): string {
 export const integration: Integration = {
   async tick(ctx) {
     const historyPath = ctx.state.get('history_path') ?? defaultHistoryPath();
-    if (!historyPath) return { status: 'skipped', message: 'no Chrome history path for this platform' };
+    if (!historyPath)
+      return { status: 'skipped', message: 'no Chrome history path for this platform' };
 
     const since = Number.parseInt(ctx.state.get('last_sync_micros') ?? '0', 10);
     let visits: ChromeVisit[];
@@ -81,7 +96,12 @@ export const integration: Integration = {
         kind: 'integration.chrome.visit',
         source: 'chrome',
         content: summary,
-        payload: { url: v.url, title: v.title, visit_count: v.visit_count, visit_time: chromeTimeToIso(v.visit_time) },
+        payload: {
+          url: v.url,
+          title: v.title,
+          visit_count: v.visit_count,
+          visit_time: chromeTimeToIso(v.visit_time),
+        },
       });
       ingested++;
     }
@@ -94,7 +114,11 @@ export const integration: Integration = {
   async health(ctx) {
     const historyPath = ctx.state.get('history_path') ?? defaultHistoryPath();
     if (!historyPath) return { ok: false, message: 'unsupported platform' };
-    if (!existsSync(historyPath)) return { ok: false, message: `Chrome history not found at ${historyPath} — is Chrome installed?` };
+    if (!existsSync(historyPath))
+      return {
+        ok: false,
+        message: `Chrome history not found at ${historyPath} — is Chrome installed?`,
+      };
     return { ok: true, message: `reading ${historyPath}` };
   },
 };

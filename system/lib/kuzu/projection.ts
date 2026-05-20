@@ -1,4 +1,4 @@
-import { existsSync, rmSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import { createLogger } from '../logging/logger.ts';
@@ -22,12 +22,9 @@ export async function rebuildKuzuProjection(
     rmSync(kuzuPath, { recursive: true, force: true });
   }
 
-  // Dynamic import — kuzu is heavy
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: kuzu has no published types and isn't a hard dep
   let kuzu: any;
   try {
-    // biome-ignore lint/security/noDynamicImport: Heavy module loaded on-demand
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,global-require,@typescript-eslint/ban-ts-comment
     // @ts-expect-error kuzu not in devDependencies; loaded on-demand
     kuzu = await import('kuzu');
   } catch (err) {
@@ -35,18 +32,22 @@ export async function rebuildKuzuProjection(
     return { entities: 0, relations: 0, durationMs: Date.now() - start };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   const db = new kuzu.Database(kuzuPath);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   const conn = new kuzu.Connection(db);
 
   try {
     // Schema
-    await conn.query('CREATE NODE TABLE Entity(id INT64 PRIMARY KEY, type STRING, canonical_name STRING)');
-    await conn.query('CREATE REL TABLE Relation(FROM Entity TO Entity, predicate STRING, ts STRING)');
+    await conn.query(
+      'CREATE NODE TABLE Entity(id INT64 PRIMARY KEY, type STRING, canonical_name STRING)',
+    );
+    await conn.query(
+      'CREATE REL TABLE Relation(FROM Entity TO Entity, predicate STRING, ts STRING)',
+    );
 
     // Copy entities
-    const entityRows = sqliteDb.prepare('SELECT id, type, canonical_name FROM entities').all() as Array<{
+    const entityRows = sqliteDb
+      .prepare('SELECT id, type, canonical_name FROM entities')
+      .all() as Array<{
       id: number;
       type: string;
       canonical_name: string;
@@ -55,8 +56,6 @@ export async function rebuildKuzuProjection(
       // Escape single quotes in strings
       const ename = e.canonical_name.replace(/'/g, "\\'");
       const etype = e.type.replace(/'/g, "\\'");
-      // biome-ignore lint/security/noImplicitInject: Escaping single quotes; input from trusted internal schema
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await conn.query(
         `CREATE (e:Entity {id: ${e.id}, type: '${etype}', canonical_name: '${ename}'})`,
       );
@@ -74,14 +73,16 @@ export async function rebuildKuzuProjection(
     for (const r of relRows) {
       const pred = r.predicate.replace(/'/g, "\\'");
       const ts = (r.ts ?? '').replace(/'/g, "\\'");
-      // biome-ignore lint/security/noImplicitInject: Escaping single quotes; input from trusted internal schema
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await conn.query(
         `MATCH (a:Entity {id: ${r.subject_id}}), (b:Entity {id: ${r.object_id}}) CREATE (a)-[:Relation {predicate: '${pred}', ts: '${ts}'}]->(b)`,
       );
     }
 
-    return { entities: entityRows.length, relations: relRows.length, durationMs: Date.now() - start };
+    return {
+      entities: entityRows.length,
+      relations: relRows.length,
+      durationMs: Date.now() - start,
+    };
   } finally {
     // kuzu has no explicit close; let GC handle
   }
@@ -96,22 +97,16 @@ export async function queryKuzu<T = Record<string, unknown>>(
   cypher: string,
 ): Promise<T[]> {
   if (!existsSync(kuzuPath)) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: kuzu has no published types and isn't a hard dep
   let kuzu: any;
   try {
-    // biome-ignore lint/security/noDynamicImport: Heavy module loaded on-demand
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,global-require,@typescript-eslint/ban-ts-comment
     // @ts-expect-error kuzu not in devDependencies; loaded on-demand
     kuzu = await import('kuzu');
   } catch {
     return [];
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   const db = new kuzu.Database(kuzuPath);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   const conn = new kuzu.Connection(db);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   const result = await conn.query(cypher);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   return (await result.getAll()) as T[];
 }

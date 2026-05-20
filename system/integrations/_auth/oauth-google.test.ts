@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../../brain/memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { buildContext } from '../_runtime/context.ts';
 import { getGoogleAccessToken } from './oauth-google.ts';
@@ -43,7 +43,10 @@ test('oauth-google: refreshes token and caches', async () => {
   let calls = 0;
   ctx.fetch = (async () => {
     calls++;
-    return new Response(JSON.stringify({ access_token: 'access-1', expires_in: 3600, token_type: 'Bearer' }), { status: 200 });
+    return new Response(
+      JSON.stringify({ access_token: 'access-1', expires_in: 3600, token_type: 'Bearer' }),
+      { status: 200 },
+    );
   }) as typeof fetch;
   const t1 = await getGoogleAccessToken(ctx, 'GMAIL');
   assert.equal(t1, 'access-1');
@@ -62,7 +65,11 @@ test('oauth-google: refetches when cached token is expired', async () => {
   setEnv('GMAIL');
   ctx.state.set('google_access_token', 'stale');
   ctx.state.set('google_access_token_expiry', String(Date.now() - 1000));
-  ctx.fetch = (async () => new Response(JSON.stringify({ access_token: 'fresh', expires_in: 3600, token_type: 'Bearer' }), { status: 200 })) as typeof fetch;
+  ctx.fetch = (async () =>
+    new Response(
+      JSON.stringify({ access_token: 'fresh', expires_in: 3600, token_type: 'Bearer' }),
+      { status: 200 },
+    )) as typeof fetch;
   const t = await getGoogleAccessToken(ctx, 'GMAIL');
   assert.equal(t, 'fresh');
   clearEnv('GMAIL');

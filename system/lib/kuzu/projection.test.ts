@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { openDb, closeDb } from '../../brain/memory/db.ts';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
+import { addRelation, upsertEntity } from '../../brain/memory/entity.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import { upsertEntity, addRelation } from '../../brain/memory/entity.ts';
-import { rebuildKuzuProjection, queryKuzu } from './projection.ts';
+import { queryKuzu, rebuildKuzuProjection } from './projection.ts';
 
 function freshSqlite() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-kuzu-'));

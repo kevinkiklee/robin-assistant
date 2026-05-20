@@ -1,12 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../../../brain/memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../_runtime/context.ts';
-import { integration as cal, actions } from './index.ts';
+import { actions, integration as cal } from './index.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-cal-'));
@@ -42,22 +42,34 @@ test('google_calendar: tick fetches + ingests upcoming events', async () => {
   setEnv();
   ctx.fetch = (async (url: string) => {
     if (url.includes('oauth2.googleapis.com/token')) {
-      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), {
+        status: 200,
+      });
     }
     if (url.includes('/calendars/primary/events')) {
-      return new Response(JSON.stringify({
-        items: [
-          {
-            id: 'evt1', summary: 'Lunch with Sarah', updated: '2026-05-19T08:00:00Z',
-            start: { dateTime: '2026-05-19T12:00:00Z' }, end: { dateTime: '2026-05-19T13:00:00Z' },
-            location: 'Restaurant', attendees: [{ email: 'sarah@example.com', displayName: 'Sarah' }],
-          },
-          {
-            id: 'evt2', summary: 'Team standup', updated: '2026-05-19T07:00:00Z',
-            start: { dateTime: '2026-05-19T15:00:00Z' }, end: { dateTime: '2026-05-19T15:30:00Z' },
-          },
-        ],
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 'evt1',
+              summary: 'Lunch with Sarah',
+              updated: '2026-05-19T08:00:00Z',
+              start: { dateTime: '2026-05-19T12:00:00Z' },
+              end: { dateTime: '2026-05-19T13:00:00Z' },
+              location: 'Restaurant',
+              attendees: [{ email: 'sarah@example.com', displayName: 'Sarah' }],
+            },
+            {
+              id: 'evt2',
+              summary: 'Team standup',
+              updated: '2026-05-19T07:00:00Z',
+              start: { dateTime: '2026-05-19T15:00:00Z' },
+              end: { dateTime: '2026-05-19T15:30:00Z' },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
     }
     return new Response('', { status: 404 });
   }) as typeof fetch;
@@ -65,7 +77,9 @@ test('google_calendar: tick fetches + ingests upcoming events', async () => {
   const r = await cal.tick!(ctx);
   assert.equal(r.status, 'ok');
   assert.equal(r.ingested, 2);
-  const rows = db.prepare("SELECT body FROM events_content WHERE body LIKE '%Lunch with Sarah%'").all();
+  const rows = db
+    .prepare("SELECT body FROM events_content WHERE body LIKE '%Lunch with Sarah%'")
+    .all();
   assert.equal(rows.length, 1);
 
   // Second tick dedupes
@@ -81,7 +95,9 @@ test('google_calendar: actions.list_events returns event array', async () => {
   setEnv();
   ctx.fetch = (async (url: string) => {
     if (url.includes('oauth2.googleapis.com/token')) {
-      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), {
+        status: 200,
+      });
     }
     return new Response(JSON.stringify({ items: [{ id: 'a', summary: 'X' }] }), { status: 200 });
   }) as typeof fetch;

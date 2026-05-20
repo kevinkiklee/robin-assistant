@@ -1,13 +1,13 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
 import Database from 'better-sqlite3';
-import { openDb, closeDb } from '../../../brain/memory/db.ts';
+import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../_runtime/context.ts';
-import { integration as chrome, actions } from './index.ts';
+import { actions, integration as chrome } from './index.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-chr-'));
@@ -27,8 +27,18 @@ function makeFakeChromeHistory(): string {
     CREATE TABLE visits (id INTEGER PRIMARY KEY, url INTEGER NOT NULL, visit_time INTEGER NOT NULL);
   `);
   const chromeNow = Date.now() * 1000 + 11644473600_000_000;
-  db.prepare(`INSERT INTO urls (id, url, title, visit_count) VALUES (?, ?, ?, ?)`).run(1, 'https://example.com', 'Example', 3);
-  db.prepare(`INSERT INTO urls (id, url, title, visit_count) VALUES (?, ?, ?, ?)`).run(2, 'https://wikipedia.org', 'Wikipedia', 5);
+  db.prepare(`INSERT INTO urls (id, url, title, visit_count) VALUES (?, ?, ?, ?)`).run(
+    1,
+    'https://example.com',
+    'Example',
+    3,
+  );
+  db.prepare(`INSERT INTO urls (id, url, title, visit_count) VALUES (?, ?, ?, ?)`).run(
+    2,
+    'https://wikipedia.org',
+    'Wikipedia',
+    5,
+  );
   db.prepare(`INSERT INTO visits (url, visit_time) VALUES (?, ?)`).run(1, chromeNow - 1000);
   db.prepare(`INSERT INTO visits (url, visit_time) VALUES (?, ?)`).run(2, chromeNow);
   db.close();
@@ -51,7 +61,11 @@ test('chrome: tick reads visits from fake history and ingests them', async () =>
   const r = await chrome.tick!(ctx);
   assert.equal(r.status, 'ok');
   assert.equal(r.ingested, 2);
-  const rows = db.prepare("SELECT body FROM events_content WHERE body LIKE '%example.com%' OR body LIKE '%wikipedia%'").all();
+  const rows = db
+    .prepare(
+      "SELECT body FROM events_content WHERE body LIKE '%example.com%' OR body LIKE '%wikipedia%'",
+    )
+    .all();
   assert.equal(rows.length, 2);
   closeDb(db);
 });

@@ -60,7 +60,11 @@ export async function disambiguateEntity(
   const candidates = findEntity(db, ctx.name, ctx.type);
   if (candidates.length === 0) return { matchedId: null, reason: 'no candidates' };
   if (candidates.length === 1) return { matchedId: candidates[0].id, reason: 'single candidate' };
-  if (!llm) return { matchedId: candidates[0].id, reason: 'multiple candidates; LLM unavailable; picked oldest' };
+  if (!llm)
+    return {
+      matchedId: candidates[0].id,
+      reason: 'multiple candidates; LLM unavailable; picked oldest',
+    };
 
   const candidateLines = candidates
     .map(
@@ -76,10 +80,17 @@ export async function disambiguateEntity(
       messages: [{ role: 'user', content: userPrompt }],
       temperature: 0,
     });
-    const text = res.text.trim().replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
+    const text = res.text
+      .trim()
+      .replace(/^```(?:json)?/, '')
+      .replace(/```$/, '')
+      .trim();
     const parsed = disambiguationSchema.safeParse(JSON.parse(text));
     if (!parsed.success) {
-      return { matchedId: candidates[0].id, reason: `LLM returned invalid JSON; fell back to oldest` };
+      return {
+        matchedId: candidates[0].id,
+        reason: `LLM returned invalid JSON; fell back to oldest`,
+      };
     }
     if (parsed.data.create_new) return { matchedId: null, reason: parsed.data.reason };
     if (parsed.data.matched_id && candidates.some((c) => c.id === parsed.data.matched_id)) {

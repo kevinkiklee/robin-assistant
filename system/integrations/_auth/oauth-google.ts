@@ -15,7 +15,10 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
  * Required env: <prefix>_REFRESH_TOKEN, <prefix>_CLIENT_ID, <prefix>_CLIENT_SECRET
  * Where <prefix> is e.g. 'GMAIL' or 'GOOGLE_CALENDAR'.
  */
-export async function getGoogleAccessToken(ctx: IntegrationContext, envPrefix: string): Promise<string> {
+export async function getGoogleAccessToken(
+  ctx: IntegrationContext,
+  envPrefix: string,
+): Promise<string> {
   const refreshToken = process.env[`${envPrefix}_REFRESH_TOKEN`];
   const clientId = process.env[`${envPrefix}_CLIENT_ID`];
   const clientSecret = process.env[`${envPrefix}_CLIENT_SECRET`];

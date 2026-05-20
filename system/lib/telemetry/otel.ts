@@ -17,7 +17,10 @@ interface OtlpSpan {
   kind: number;
   startTimeUnixNano: string;
   endTimeUnixNano: string;
-  attributes: Array<{ key: string; value: { stringValue?: string; intValue?: string; doubleValue?: number } }>;
+  attributes: Array<{
+    key: string;
+    value: { stringValue?: string; intValue?: string; doubleValue?: number };
+  }>;
   status: { code: number };
 }
 
@@ -27,10 +30,7 @@ function rand(len: number): string {
   return s;
 }
 
-function attr(
-  key: string,
-  value: unknown,
-): OtlpSpan['attributes'][0] {
+function attr(key: string, value: unknown): OtlpSpan['attributes'][0] {
   if (typeof value === 'number') {
     return Number.isInteger(value)
       ? { key, value: { intValue: String(value) } }

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { test } from 'node:test';
 import { createServer, type Server } from 'node:http';
-import { openDb, closeDb } from '../../brain/memory/db.ts';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { exportRecentEventsAsOtel } from './otel.ts';
 
@@ -62,9 +62,10 @@ test('otel: exports recent events to mock collector', async () => {
     });
     assert.equal(r.sent, 2);
     assert.equal(collector.received.length, 1);
-    const body = collector.received[0]
-      .body as {
-      resourceSpans: Array<{ scopeSpans: Array<{ spans: Array<{ name: string; status: { code: number } }> }> }>;
+    const body = collector.received[0].body as {
+      resourceSpans: Array<{
+        scopeSpans: Array<{ spans: Array<{ name: string; status: { code: number } }> }>;
+      }>;
     };
     const spans = body.resourceSpans[0].scopeSpans[0].spans;
     assert.equal(spans.length, 2);
@@ -77,9 +78,13 @@ test('otel: exports recent events to mock collector', async () => {
 
 test('otel: graceful failure on non-OK collector response', async () => {
   const db = freshDb();
-  db.prepare(
-    'INSERT INTO events (ts, kind, source, status, payload) VALUES (?, ?, ?, ?, ?)',
-  ).run(new Date().toISOString(), 't', 't', 'ok', '{}');
+  db.prepare('INSERT INTO events (ts, kind, source, status, payload) VALUES (?, ?, ?, ?, ?)').run(
+    new Date().toISOString(),
+    't',
+    't',
+    'ok',
+    '{}',
+  );
   const server = createServer((_req, res) => {
     res.statusCode = 500;
     res.end('busted');

@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 import { PowerAutoMonitor } from './monitor.ts';
 
@@ -52,8 +52,8 @@ test('power-auto: auto-resumes when AC reconnected after auto-pause', async () =
     readBattery: async () => ({ available: true, charging: false, percent: 20 }),
   });
   await m.tick(); // pauses
-  // Simulate AC connect
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Simulate AC connect by swapping the readBattery override on the private opts field.
+  // biome-ignore lint/suspicious/noExplicitAny: test reaches into private opts to swap the battery reader
   (m as any).opts.readBattery = async () => ({ available: true, charging: true, percent: 22 });
   await m.tick(); // should resume
   const after = parseYaml(readFileSync(join(dir, 'config', 'policies.yaml'), 'utf8'));

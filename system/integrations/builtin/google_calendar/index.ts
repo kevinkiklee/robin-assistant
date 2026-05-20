@@ -1,6 +1,6 @@
-import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { getGoogleAccessToken } from '../../_auth/oauth-google.ts';
+import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const API_BASE = 'https://www.googleapis.com/calendar/v3';
 
@@ -55,7 +55,11 @@ export const integration: Integration = {
       orderBy: 'startTime',
       maxResults: '50',
     });
-    const list = await calGet<EventsListResponse>(ctx, `/calendars/${encodeURIComponent(calendarId)}/events?${params}`, token);
+    const list = await calGet<EventsListResponse>(
+      ctx,
+      `/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+      token,
+    );
     const events = list.items ?? [];
 
     let ingested = 0;
@@ -65,7 +69,8 @@ export const integration: Integration = {
       if (seen.has(key)) continue;
       seen.add(key);
       const attendeeNames = (ev.attendees ?? []).map((a) => a.displayName ?? a.email).join(', ');
-      const summary = `[calendar] ${ev.summary ?? '(no title)'}\n  When: ${formatEventTime(ev)}` +
+      const summary =
+        `[calendar] ${ev.summary ?? '(no title)'}\n  When: ${formatEventTime(ev)}` +
         (ev.location ? `\n  Where: ${ev.location}` : '') +
         (attendeeNames ? `\n  With: ${attendeeNames}` : '') +
         (ev.description ? `\n\n${ev.description.slice(0, 500)}` : '');
@@ -101,7 +106,10 @@ export const integration: Integration = {
 };
 
 export const actions = {
-  async list_events(params: { timeMin?: string; timeMax?: string; calendarId?: string; maxResults?: number }, ctx: IntegrationContext): Promise<CalendarEvent[]> {
+  async list_events(
+    params: { timeMin?: string; timeMax?: string; calendarId?: string; maxResults?: number },
+    ctx: IntegrationContext,
+  ): Promise<CalendarEvent[]> {
     const token = await getGoogleAccessToken(ctx, 'GOOGLE_CALENDAR');
     const calendarId = params.calendarId ?? 'primary';
     const now = ctx.now();
@@ -112,12 +120,23 @@ export const actions = {
       orderBy: 'startTime',
       maxResults: String(params.maxResults ?? 50),
     });
-    const r = await calGet<EventsListResponse>(ctx, `/calendars/${encodeURIComponent(calendarId)}/events?${qs}`, token);
+    const r = await calGet<EventsListResponse>(
+      ctx,
+      `/calendars/${encodeURIComponent(calendarId)}/events?${qs}`,
+      token,
+    );
     return r.items ?? [];
   },
-  async get_event(params: { eventId: string; calendarId?: string }, ctx: IntegrationContext): Promise<CalendarEvent> {
+  async get_event(
+    params: { eventId: string; calendarId?: string },
+    ctx: IntegrationContext,
+  ): Promise<CalendarEvent> {
     const token = await getGoogleAccessToken(ctx, 'GOOGLE_CALENDAR');
     const calendarId = params.calendarId ?? 'primary';
-    return calGet<CalendarEvent>(ctx, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}`, token);
+    return calGet<CalendarEvent>(
+      ctx,
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}`,
+      token,
+    );
   },
 };

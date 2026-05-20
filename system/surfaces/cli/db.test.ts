@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../../brain/memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { dbFilePath } from '../../lib/paths.ts';
 import { runDbBackup, runDbVacuum } from './db.ts';
@@ -14,8 +14,13 @@ function freshUserData(): string {
   const db = openDb(dbFilePath(dir));
   applyMigrations(db, allMigrations);
   // Insert a couple rows so vacuum has data to compact
-  db.prepare(`INSERT INTO events (ts, kind, source, status, payload) VALUES (?, ?, ?, ?, ?)`)
-    .run(new Date().toISOString(), 'test', 't', 'ok', '{}');
+  db.prepare(`INSERT INTO events (ts, kind, source, status, payload) VALUES (?, ?, ?, ?, ?)`).run(
+    new Date().toISOString(),
+    'test',
+    't',
+    'ok',
+    '{}',
+  );
   closeDb(db);
   return dir;
 }
@@ -26,7 +31,10 @@ test('db backup: writes a copy to <db>.bak-<ts>', () => {
   runDbBackup();
   const dbDir = join(dir, 'state', 'db');
   const files = readdirSync(dbDir);
-  assert.ok(files.some((f) => f.startsWith('robin.sqlite.bak-')), `expected a .bak- file, got ${files.join(', ')}`);
+  assert.ok(
+    files.some((f) => f.startsWith('robin.sqlite.bak-')),
+    `expected a .bak- file, got ${files.join(', ')}`,
+  );
 });
 
 test('db backup: respects custom --path', () => {

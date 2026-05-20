@@ -1,12 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { openDb, closeDb } from '../../../brain/memory/db.ts';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../_runtime/context.ts';
-import { integration as gmail, actions } from './index.ts';
+import { actions, integration as gmail } from './index.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-gmail-'));
@@ -43,22 +43,52 @@ test('gmail: tick fetches and ingests unread messages', async () => {
   setEnv();
   ctx.fetch = (async (url: string) => {
     if (url.includes('oauth2.googleapis.com/token')) {
-      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), {
+        status: 200,
+      });
     }
     if (url.includes('/messages?q=')) {
-      return new Response(JSON.stringify({ messages: [{ id: 'm1', threadId: 't1' }, { id: 'm2', threadId: 't1' }] }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          messages: [
+            { id: 'm1', threadId: 't1' },
+            { id: 'm2', threadId: 't1' },
+          ],
+        }),
+        { status: 200 },
+      );
     }
     if (url.includes('/messages/m1')) {
-      return new Response(JSON.stringify({
-        id: 'm1', threadId: 't1', snippet: 'hello there',
-        payload: { headers: [{ name: 'From', value: 'sarah@example.com' }, { name: 'Subject', value: 'Lunch?' }] },
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          id: 'm1',
+          threadId: 't1',
+          snippet: 'hello there',
+          payload: {
+            headers: [
+              { name: 'From', value: 'sarah@example.com' },
+              { name: 'Subject', value: 'Lunch?' },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
     }
     if (url.includes('/messages/m2')) {
-      return new Response(JSON.stringify({
-        id: 'm2', threadId: 't1', snippet: 'follow up',
-        payload: { headers: [{ name: 'From', value: 'sarah@example.com' }, { name: 'Subject', value: 'Re: Lunch?' }] },
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          id: 'm2',
+          threadId: 't1',
+          snippet: 'follow up',
+          payload: {
+            headers: [
+              { name: 'From', value: 'sarah@example.com' },
+              { name: 'Subject', value: 'Re: Lunch?' },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
     }
     return new Response('not found', { status: 404 });
   }) as typeof fetch;
@@ -87,9 +117,13 @@ test('gmail: actions.search returns message list items', async () => {
   setEnv();
   ctx.fetch = (async (url: string) => {
     if (url.includes('oauth2.googleapis.com/token')) {
-      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), {
+        status: 200,
+      });
     }
-    return new Response(JSON.stringify({ messages: [{ id: 'a', threadId: 't' }] }), { status: 200 });
+    return new Response(JSON.stringify({ messages: [{ id: 'a', threadId: 't' }] }), {
+      status: 200,
+    });
   }) as typeof fetch;
   const r = await actions.search({ q: 'from:sarah' }, ctx);
   assert.equal(r.length, 1);

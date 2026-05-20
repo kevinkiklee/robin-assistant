@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import { resolveUserDataDir, dbFilePath } from '../../lib/paths.ts';
-import { openDb, closeDb } from '../../brain/memory/db.ts';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
+import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 export interface UpgradeResult {
   beforeVersion: number;
@@ -34,11 +34,7 @@ export function runUpgrade(opts: { dryRun?: boolean; skipBackup?: boolean } = {}
     return { beforeVersion, afterVersion: beforeVersion, applied: [] };
   }
 
-  console.log(
-    `Pending migrations: ${pending
-      .map((m) => `${m.version} (${m.name})`)
-      .join(', ')}`,
-  );
+  console.log(`Pending migrations: ${pending.map((m) => `${m.version} (${m.name})`).join(', ')}`);
   if (opts.dryRun) {
     closeDb(db);
     console.log('(dry-run; no changes applied)');

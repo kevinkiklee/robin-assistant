@@ -1,6 +1,6 @@
-import { existsSync, copyFileSync, statSync } from 'node:fs';
-import { resolveUserDataDir, dbFilePath } from '../../lib/paths.ts';
+import { copyFileSync, existsSync, statSync } from 'node:fs';
 import Database from 'better-sqlite3';
+import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 export function runDbBackup(opts: { path?: string } = {}): void {
   const userData = resolveUserDataDir();
@@ -52,7 +52,9 @@ export function runDbVacuum(): void {
     db.pragma('wal_checkpoint(TRUNCATE)');
     db.exec('VACUUM');
     const after = statSync(path).size;
-    console.log(`✓ Vacuum complete: ${(before / 1024 / 1024).toFixed(1)} MB → ${(after / 1024 / 1024).toFixed(1)} MB`);
+    console.log(
+      `✓ Vacuum complete: ${(before / 1024 / 1024).toFixed(1)} MB → ${(after / 1024 / 1024).toFixed(1)} MB`,
+    );
   } finally {
     db.close();
   }

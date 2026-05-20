@@ -1,10 +1,11 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { resolveUserDataDir } from '../paths.ts';
 import { loadPolicies } from '../../kernel/config/load.ts';
-import { readBatteryStateMacOS, type BatteryState } from './macos.ts';
+import type { Policies } from '../../kernel/config/schema.ts';
 import { createLogger } from '../logging/logger.ts';
+import { resolveUserDataDir } from '../paths.ts';
+import { type BatteryState, readBatteryStateMacOS } from './macos.ts';
 
 const CHECK_INTERVAL_MS = 30_000; // every 30s
 
@@ -39,7 +40,7 @@ export class PowerAutoMonitor {
 
   async tick(): Promise<void> {
     const userData = resolveUserDataDir();
-    let policies;
+    let policies: Policies;
     try {
       policies = loadPolicies(userData);
     } catch {
@@ -59,10 +60,7 @@ export class PowerAutoMonitor {
     if (lowAndUnplugged && policies.power.state !== 'paused') {
       this.applyState(userData, policies, 'paused');
       this.lastAuto = 'paused';
-      this.log.warn(
-        { percent: battery.percent, threshold },
-        'auto-pause: battery below threshold',
-      );
+      this.log.warn({ percent: battery.percent, threshold }, 'auto-pause: battery below threshold');
     } else if (!lowAndUnplugged && currentlyAuto && autoResume) {
       this.applyState(userData, policies, 'active');
       this.lastAuto = null;

@@ -1,15 +1,15 @@
-import type { RobinDb } from '../../brain/memory/db.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
+import type { RobinDb } from '../../brain/memory/db.ts';
+import { buildContext } from '../../integrations/_runtime/context.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
-import { runInvariants } from '../invariants/runner.ts';
+import { resolveUserDataDir } from '../../lib/paths.ts';
 import {
-  userDataWritableInvariant,
+  daemonHeartbeatingInvariant,
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
-  daemonHeartbeatingInvariant,
+  userDataWritableInvariant,
 } from '../invariants/builtins/index.ts';
-import { resolveUserDataDir } from '../../lib/paths.ts';
-import { buildContext } from '../../integrations/_runtime/context.ts';
+import { runInvariants } from '../invariants/runner.ts';
 
 const CHECK_INTERVAL_MS = 60_000; // every minute
 const NOTIFY_COOLDOWN_MS = 60 * 60_000; // 1 hour: don't spam the same failure

@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
 import { closeDb, openDb } from '../memory/db.ts';
-import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { upsertEntity } from '../memory/entity.ts';
+import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { runBiographer } from './biographer.ts';
 import { captureSession } from './capture.ts';
 
