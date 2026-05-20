@@ -7,6 +7,7 @@ import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import { upsertEntity } from '../memory/entity.ts';
 import { runBiographer } from './biographer.ts';
 import { captureSession } from './capture.ts';
 
@@ -107,5 +108,52 @@ test('biographer: does NOT reprocess events it already handled (idempotent)', as
   await runBiographer(db, llm);
   const r2 = await runBiographer(db, llm);
   assert.equal(r2.processed, 0);
+  closeDb(db);
+});
+
+test('biographer: disambiguates between multiple entity candidates via LLM', async () => {
+  const db = freshDb();
+  // Pre-seed two "Kevin" entities
+  const a = upsertEntity(db, 'person', 'Kevin Lee');
+  upsertEntity(db, 'person', 'Kevin Chen');
+  // LLM extracts "Kevin Lee" — disambiguation should match it
+  const disambiguation = JSON.stringify({
+    matched_id: a.id,
+    create_new: false,
+    reason: 'matches context about product engineering',
+  });
+  const dispatchLLM = mockLLM(JSON.stringify({ entities: [], relations: [] }));
+  // Override invoke to return our disambiguation response when asked
+  const originalInvoke = dispatchLLM.invoke;
+  let invocationCount = 0;
+  dispatchLLM.invoke = async (capability, options) => {
+    invocationCount++;
+    // Second invocation is the disambiguation
+    if (invocationCount === 2) {
+      return {
+        text: disambiguation,
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'mock',
+      };
+    }
+    return originalInvoke.call(dispatchLLM, capability, options);
+  };
+  await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      { role: 'user', content: 'tell me about Kevin Lee' },
+      { role: 'assistant', content: 'Kevin Lee is the product engineer.' },
+    ],
+  });
+  const r = await runBiographer(db, dispatchLLM);
+  assert.equal(r.processed, 1);
+  // Should have matched Kevin Lee (no NEW entity created, just relation references existing)
+  const ents = db.prepare('SELECT id, canonical_name FROM entities').all() as Array<{
+    id: number;
+    canonical_name: string;
+  }>;
+  assert.equal(ents.length, 2); // still just Kevin Lee and Kevin Chen
   closeDb(db);
 });
