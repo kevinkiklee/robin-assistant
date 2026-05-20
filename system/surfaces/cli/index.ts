@@ -35,6 +35,7 @@ COMMANDS
   offline           Block outbound network
   online            Restore outbound network
   status            Show current state
+  upgrade           Apply pending schema migrations (--dry-run optional)
   mcp core          Run the robin-core MCP server (called by Claude Code via stdio)
   mcp extension     Run the robin-extension MCP server (called by Claude Code via stdio)
   mcp install       Add/replace robin in ~/.claude.json
@@ -206,6 +207,13 @@ async function main(): Promise<void> {
       }
       console.error(`Unknown db subcommand: ${sub}`);
       exit(2);
+    }
+
+    case 'upgrade': {
+      const { runUpgrade } = await import('./upgrade.ts');
+      runUpgrade({ dryRun: args.includes('--dry-run'), skipBackup: args.includes('--no-backup') });
+      exit(0);
+      break;
     }
 
     case 'mcp': {
