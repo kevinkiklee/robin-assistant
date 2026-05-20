@@ -1,0 +1,24 @@
+name: chrome
+version: 1.0.0
+schedule: "0 */3 * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["chrome"]
+  secrets: []
+  network: []
+  fs:
+    read:
+      - "~/Library/Application Support/Google/Chrome/Default/History"
+      - "~/.config/google-chrome/Default/History"
+mcp:
+  description: "Read Chrome browsing history (local SQLite)"
+  actions:
+    recent_visits:
+      description: "Most recent N visits from Chrome history"
+      input_schema:
+        type: object
+        properties:
+          limit: { type: integer }
+        required: []
