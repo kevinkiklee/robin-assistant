@@ -1,0 +1,29 @@
+name: github
+version: 1.0.0
+schedule: "*/30 * * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["github"]
+  secrets: [GITHUB_TOKEN]
+  network: ["api.github.com"]
+mcp:
+  description: "Read GitHub: notifications + recent activity"
+  actions:
+    notifications:
+      description: "List unread notifications"
+      input_schema:
+        type: object
+        properties:
+          limit:
+            type: integer
+        required: []
+    recent_activity:
+      description: "User's recent events"
+      input_schema:
+        type: object
+        properties:
+          limit:
+            type: integer
+        required: []
