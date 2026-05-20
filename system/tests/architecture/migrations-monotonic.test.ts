@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { allMigrations } from '../../system/brain/memory/migrations/index.ts';
+import { allMigrations } from '../../brain/memory/migrations/index.ts';
 
 test('migrations: versions are sequential starting at 1', () => {
   for (let i = 0; i < allMigrations.length; i++) {

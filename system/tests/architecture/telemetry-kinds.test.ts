@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { eventKindSchemas } from '../../system/lib/telemetry/kinds.ts';
+import { eventKindSchemas } from '../../lib/telemetry/kinds.ts';
 
 test('telemetry kinds: every kind has a zod schema', () => {
   const kinds = Object.keys(eventKindSchemas);

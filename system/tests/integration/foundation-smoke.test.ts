@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { closeDb, openDb } from '../../system/brain/memory/db.ts';
-import { allMigrations, applyMigrations } from '../../system/brain/memory/migrations/index.ts';
-import { enqueueJob } from '../../system/kernel/scheduler/claim.ts';
-import { dbFilePath } from '../../system/lib/paths.ts';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
+import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
+import { enqueueJob } from '../../kernel/scheduler/claim.ts';
+import { dbFilePath } from '../../lib/paths.ts';
 
 test('foundation smoke: init → doctor → daemon → claim a queued job → stop cleanly', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'robin-smoke-'));
