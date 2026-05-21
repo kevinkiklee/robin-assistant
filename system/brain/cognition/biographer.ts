@@ -25,6 +25,41 @@ const extractionSchema = z.object({
 
 export type ExtractionResult = z.infer<typeof extractionSchema>;
 
+/**
+ * Split a captured session body on turn boundaries into chunks of <= maxChars.
+ * Body shape (from capture.ts): `[ROLE]\n<content>` separated by `\n\n`.
+ * Returns the original body in a single-element array if it already fits.
+ * A single turn longer than maxChars is sliced — no turn can block progress.
+ */
+export function chunkBody(body: string, maxChars: number): string[] {
+  if (body.length <= maxChars) return [body];
+  const turns = body.split(/\n\n(?=\[(?:USER|ASSISTANT|TOOL)\]\n)/);
+  const chunks: string[] = [];
+  let current = '';
+  for (const turn of turns) {
+    if (turn.length > maxChars) {
+      if (current) {
+        chunks.push(current);
+        current = '';
+      }
+      for (let i = 0; i < turn.length; i += maxChars) {
+        chunks.push(turn.slice(i, i + maxChars));
+      }
+      continue;
+    }
+    if (current && current.length + 2 + turn.length > maxChars) {
+      chunks.push(current);
+      current = turn;
+    } else {
+      current = current ? `${current}\n\n${turn}` : turn;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+const CHUNK_CHARS = 6000;
+
 const disambiguationSchema = z.object({
   matched_id: z.number().int().nullable(),
   create_new: z.boolean(),
@@ -131,30 +166,50 @@ export async function runBiographer(
     result.processed++;
     let extracted: ExtractionResult = { entities: [], relations: [] };
     if (llm) {
-      try {
-        const inv = await llm.invoke('reasoning', {
-          systemPrompt: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: row.body.slice(0, 8000) }],
-          temperature: 0,
-        });
-        const text = inv.text.trim();
-        // Tolerate leading ```json fences
-        const jsonText = text
-          .replace(/^```(?:json)?/, '')
-          .replace(/```$/, '')
-          .trim();
-        const parsed = JSON.parse(jsonText);
-        const validated = extractionSchema.safeParse(parsed);
-        if (validated.success) extracted = validated.data;
-        else
+      const chunks = chunkBody(row.body, CHUNK_CHARS);
+      const mergedEntities = new Map<string, { type: string; name: string }>();
+      const mergedRelations = new Map<
+        string,
+        { subject: string; predicate: string; object: string }
+      >();
+      for (let ci = 0; ci < chunks.length; ci++) {
+        try {
+          const inv = await llm.invoke('reasoning', {
+            systemPrompt: SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: chunks[ci] }],
+            temperature: 0,
+          });
+          const jsonText = inv.text
+            .trim()
+            .replace(/^```(?:json)?/, '')
+            .replace(/```$/, '')
+            .trim();
+          const parsed = JSON.parse(jsonText);
+          const validated = extractionSchema.safeParse(parsed);
+          if (!validated.success) {
+            result.errors.push(
+              `event ${row.eventId} chunk ${ci}: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
+            );
+            continue;
+          }
+          for (const e of validated.data.entities) {
+            const key = `${e.type.toLowerCase()}:${e.name.toLowerCase()}`;
+            if (!mergedEntities.has(key)) mergedEntities.set(key, e);
+          }
+          for (const r of validated.data.relations) {
+            const key = `${r.subject.toLowerCase()}:${r.predicate.toLowerCase()}:${r.object.toLowerCase()}`;
+            if (!mergedRelations.has(key)) mergedRelations.set(key, r);
+          }
+        } catch (err) {
           result.errors.push(
-            `event ${row.eventId}: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
+            `event ${row.eventId} chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
           );
-      } catch (err) {
-        result.errors.push(
-          `event ${row.eventId}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        }
       }
+      extracted = {
+        entities: Array.from(mergedEntities.values()),
+        relations: Array.from(mergedRelations.values()),
+      };
     }
 
     // Upsert entities with LLM-driven disambiguation
