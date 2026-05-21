@@ -71,9 +71,9 @@ test('ingest: payload.external_id triggers upsert on second call', () => {
   assert.equal(second.eventId, first.eventId);
   assert.equal(second.contentId, first.contentId);
 
-  const rowCount = db
-    .prepare(`SELECT COUNT(*) AS c FROM events WHERE source = 'demo'`)
-    .get() as { c: number };
+  const rowCount = db.prepare(`SELECT COUNT(*) AS c FROM events WHERE source = 'demo'`).get() as {
+    c: number;
+  };
   assert.equal(rowCount.c, 1, 'second call must update, not append');
 
   const ev = db

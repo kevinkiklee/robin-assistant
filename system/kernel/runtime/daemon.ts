@@ -124,6 +124,31 @@ export class Daemon {
             { source: 'http' },
           );
           this.log.info({ kind, payload }, 'hook received');
+
+          // session_end is the wire for Claude Code → Robin capture. The hook posts the
+          // JSON Claude Code sends on stdin (session_id + transcript_path); we read the
+          // .jsonl, project it into SessionTurn[], and run it through captureSession's
+          // skip-rules + dedup. Without this branch the hook was silently no-op'ing the
+          // entire session-capture pipeline — every Claude Code session was being logged
+          // as "hook received" and then forgotten.
+          if (kind === 'session_end') {
+            try {
+              const p = payload as { session_id?: string; transcript_path?: string };
+              if (p.session_id && p.transcript_path) {
+                const { captureSession, transcriptFileToCapture } = await import(
+                  '../../brain/cognition/capture.ts'
+                );
+                const cap = transcriptFileToCapture(p.session_id, p.transcript_path);
+                const r = await captureSession(db, this.llm ?? null, cap);
+                this.log.info(
+                  { sessionId: p.session_id, captured: r.captured, skipReason: r.skipReason },
+                  'session_end processed',
+                );
+              }
+            } catch (err) {
+              this.log.warn({ err }, 'session_end capture failed');
+            }
+          }
         },
       });
       this.log.info({ port: this.http.port }, 'http server listening');

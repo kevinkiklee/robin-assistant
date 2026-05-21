@@ -56,8 +56,9 @@ export function ingest(db: RobinDb, _llm: LLMDispatcher | null, input: IngestInp
         let contentRef: number | null = existing.content_ref;
         if (input.content) {
           if (contentRef != null) {
-            db.prepare(`UPDATE events_content SET ts = ?, body = ?, embedding = NULL WHERE id = ?`)
-              .run(ts, input.content, contentRef);
+            db.prepare(
+              `UPDATE events_content SET ts = ?, body = ?, embedding = NULL WHERE id = ?`,
+            ).run(ts, input.content, contentRef);
             // Drop the stale embedding from the vec virtual table — the next embed-backfill
             // tick will re-embed and re-insert. `events_vec` rowid mirrors content id.
             try {

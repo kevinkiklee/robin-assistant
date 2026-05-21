@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { ingest } from '../memory/ingest.ts';
@@ -11,6 +12,48 @@ export interface SessionCapture {
   sessionId: string;
   turns: SessionTurn[];
   endedAt?: string;
+}
+
+/**
+ * Read a Claude Code transcript .jsonl file and project it into SessionTurn[] for capture.
+ *
+ * Claude Code transcript lines are JSON objects with shape `{type, message: {role, content}}`
+ * where content is either a string (text-only turns) or an array of typed blocks (text /
+ * tool_use / tool_result). We flatten to one SessionTurn per line, preferring readable text
+ * content and falling back to a stringified block for non-text turns so the capture has
+ * something to dedup/embed against.
+ */
+export function transcriptFileToCapture(sessionId: string, transcriptPath: string): SessionCapture {
+  const raw = readFileSync(transcriptPath, 'utf8');
+  const turns: SessionTurn[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let parsed: { type?: string; message?: { role?: string; content?: unknown } };
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const role = parsed.message?.role;
+    if (role !== 'user' && role !== 'assistant') continue;
+    const content = parsed.message?.content;
+    let text = '';
+    if (typeof content === 'string') {
+      text = content;
+    } else if (Array.isArray(content)) {
+      const parts: string[] = [];
+      for (const block of content) {
+        if (block && typeof block === 'object') {
+          const b = block as { type?: string; text?: string };
+          if (b.type === 'text' && typeof b.text === 'string') parts.push(b.text);
+        }
+      }
+      text = parts.join('\n');
+    }
+    if (!text.trim()) continue;
+    turns.push({ role, content: text });
+  }
+  return { sessionId, turns };
 }
 
 export interface CaptureResult {

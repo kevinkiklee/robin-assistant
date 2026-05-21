@@ -61,7 +61,12 @@ export async function startHttpServer(deps: HttpServerDeps): Promise<HttpHandle>
   });
 
   const requestedPort = deps.port ?? 41273;
-  const host = 'localhost';
+  // Bind explicitly to IPv4 loopback. `localhost` resolves dual-stack but Node's HTTP
+  // server binds to whatever the OS returns first — on macOS that's `::1` (IPv6-only),
+  // which silently breaks any client that connects via 127.0.0.1 with no IPv6 fallback
+  // (curl, simple POSTs from shell hooks, etc.). The daemon only ever receives
+  // localhost traffic, so 127.0.0.1 is sufficient and predictable.
+  const host = '127.0.0.1';
 
   return await new Promise<HttpHandle>((resolve, reject) => {
     server.once('error', reject);

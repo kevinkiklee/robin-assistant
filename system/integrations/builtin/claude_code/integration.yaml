@@ -1,0 +1,10 @@
+name: claude_code
+version: 1.0.0
+schedule: '*/5 * * * *'
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: [events, capture]
+  secrets: []
+  network: []
