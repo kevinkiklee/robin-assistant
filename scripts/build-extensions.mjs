@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, readdirSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { copyFile, readFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 // Build all user-data extensions (integrations + jobs) in one pass.
@@ -116,4 +116,15 @@ for (const { from, to } of MANIFEST_MIRRORS) {
 }
 if (manifestsCopied > 0) {
   console.log(`Mirrored ${manifestsCopied} builtin manifest(s) to dist/`);
+}
+
+// chmod +x the CLI binary. Without this, Claude Code's MCP loader can't spawn
+// `dist/surfaces/cli/index.js` directly — exec() fails with EACCES and the
+// robin / robin-extension MCP servers show up as "Failed" in claude-mcp probes.
+// npm/pnpm publish-time install sets this automatically via the `bin` field;
+// in local dev (tsc-only) the bit doesn't get set.
+const CLI_BIN = join(ROOT, 'dist', 'surfaces', 'cli', 'index.js');
+if (existsSync(CLI_BIN)) {
+  chmodSync(CLI_BIN, 0o755);
+  console.log(`Marked ${relative(ROOT, CLI_BIN)} executable`);
 }
