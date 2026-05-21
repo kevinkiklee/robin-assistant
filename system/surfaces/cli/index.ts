@@ -40,6 +40,8 @@ COMMANDS
   mcp core          Run the robin-core MCP server (called by Claude Code via stdio)
   mcp extension     Run the robin-extension MCP server (called by Claude Code via stdio)
   mcp install       Add/replace robin in ~/.claude.json
+  hooks install     Add the SessionEnd hook to ~/.claude/settings.json so every Claude Code session gets captured automatically
+  hooks uninstall   Remove the SessionEnd hook from ~/.claude/settings.json
   publish           Publish a markdown file to the web (--source <path> [--slug <s>] [--mode default|overwrite|as-new|delete] [--dry-run])
   published         List published pages from this Robin instance
   --version
@@ -288,6 +290,30 @@ async function main(): Promise<void> {
       const { runPublishedCli } = await import('./publish.ts');
       await runPublishedCli(args.slice(1));
       return;
+    }
+
+    case 'hooks': {
+      const sub = args[1];
+      if (sub === 'install') {
+        const { installSessionEndHook } = await import('../../lib/claude-hooks/install.ts');
+        const portFlag = extractFlag(args, '--port=');
+        const port = portFlag ? Number(portFlag) : undefined;
+        const r = installSessionEndHook(port !== undefined ? { port } : {});
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(`${r.replaced ? 'Updated' : 'Installed'} SessionEnd hook in ${r.path}`);
+        exit(0);
+      }
+      if (sub === 'uninstall') {
+        const { uninstallSessionEndHook } = await import('../../lib/claude-hooks/install.ts');
+        const r = uninstallSessionEndHook();
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(r.replaced ? `Removed SessionEnd hook from ${r.path}` : 'No Robin hook found');
+        exit(0);
+      }
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.error(`Unknown hooks subcommand: ${sub}`);
+      exit(2);
+      break;
     }
 
     case 'mcp': {

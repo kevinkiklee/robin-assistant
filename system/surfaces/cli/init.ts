@@ -123,6 +123,20 @@ roles: {}
     }
   }
 
+  // Install the Claude Code SessionEnd hook so every session is captured automatically.
+  // Without this, capture falls back to the 5-min polling claude_code integration (which
+  // requires 10-min idle), so sessions land in Robin with up to a 15-min lag.
+  try {
+    const { installSessionEndHook } = await import('../../lib/claude-hooks/install.ts');
+    const r = installSessionEndHook();
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.log(`  Hooks:    ${r.replaced ? 'updated' : 'installed'} ${r.path}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.warn(`  Hooks:    skipped (${msg})`);
+  }
+
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: CLI output

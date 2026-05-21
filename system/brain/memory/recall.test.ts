@@ -52,6 +52,41 @@ test('recall: lex returns empty when no matches', async () => {
   closeDb(db);
 });
 
+test('recall: logs every query to recall_log with result count', async () => {
+  const db = freshDb();
+  ingest(db, null, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
+
+  await recall(db, null, 'Lisbon', { mode: 'lex' });
+  // Hyphen would crash a naive FTS5 query (treated as NOT operator) — the sanitizer
+  // strips it. Combined with the never-seen word, this asserts both "logs even when
+  // no hits" and "doesn't crash on natural-language punctuation."
+  await recall(db, null, 'nonexistent-thing-xyz', { mode: 'lex' });
+
+  const rows = db
+    .prepare(`SELECT query_hash, result_count, outcome FROM recall_log ORDER BY id`)
+    .all() as Array<{ query_hash: string; result_count: number; outcome: string }>;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].result_count, 1);
+  assert.equal(rows[0].outcome, 'pending');
+  assert.equal(rows[1].result_count, 0);
+  // Distinct hashes for distinct queries
+  assert.notEqual(rows[0].query_hash, rows[1].query_hash);
+  closeDb(db);
+});
+
+test('recall: repeat queries share the same query_hash so aggregation is meaningful', async () => {
+  const db = freshDb();
+  ingest(db, null, { kind: 't', source: 's', content: 'a body about Lisbon' });
+  await recall(db, null, 'Lisbon', { mode: 'lex' });
+  await recall(db, null, 'Lisbon', { mode: 'lex' });
+  const rows = db.prepare(`SELECT query_hash FROM recall_log`).all() as Array<{
+    query_hash: string;
+  }>;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].query_hash, rows[1].query_hash);
+  closeDb(db);
+});
+
 test('recall: vec mode finds the row whose embedding the dispatcher returned', async () => {
   // ingest no longer embeds inline (deferred to the embed-backfill job), so this test
   // writes the vector directly into events_content + events_vec to set up the recall

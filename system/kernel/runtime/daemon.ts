@@ -190,25 +190,26 @@ export class Daemon {
       const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
       registerCognitionJobs(this, this.db, () => this.llm);
 
-      // Drain biographer backlog on boot so a fresh start catches up on any captures
-      // that piled up while the daemon was down. Bounded by limit so this can't dominate
-      // the boot timeline; cron continues to chip away at any remainder.
+      // Drain biographer backlog on boot. Loops in batches of 25 with brief pauses
+      // until either the backlog is gone or MAX_ITERATIONS is hit. Non-blocking — runs
+      // in the background so the rest of boot continues. The cron tick (also limit=25)
+      // is idempotent with this, so even if a tick fires mid-drain there's no fan-out
+      // (each session has at most one biographer.extracted event).
       try {
         const { runBiographer } = await import('../../brain/cognition/biographer.ts');
         const drainDb = this.db;
         const drainLlm = this.llm ?? null;
-        runBiographer(drainDb, drainLlm, 50)
-          .then((r) =>
-            this.log.info(
-              {
-                processed: r.processed,
-                entities: r.entitiesCreated,
-                relations: r.relationsCreated,
-              },
-              'biographer backlog drained on boot',
-            ),
-          )
-          .catch((err) => this.log.warn({ err }, 'biographer boot-drain failed'));
+        const MAX_ITERATIONS = 20; // 20 × 25 = 500 sessions max per boot
+        (async () => {
+          let total = 0;
+          for (let i = 0; i < MAX_ITERATIONS; i++) {
+            const r = await runBiographer(drainDb, drainLlm, 25);
+            total += r.processed;
+            if (r.processed === 0) break;
+            await sleep(2000);
+          }
+          this.log.info({ total }, 'biographer backlog drained on boot');
+        })().catch((err) => this.log.warn({ err }, 'biographer boot-drain failed'));
       } catch (err) {
         this.log.warn({ err }, 'biographer boot-drain skipped');
       }

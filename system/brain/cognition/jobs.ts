@@ -42,7 +42,11 @@ export function registerCognitionJobs(
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
-    await runBiographer(db, llm);
+    // 25 per 15-min tick = ceiling of ~100/hr; LLM bandwidth is the true bottleneck so
+    // realistic throughput is lower, but giving the SELECT room makes single-tick burns
+    // of a backlog meaningfully faster. The cron is idempotent (no overlap), so this
+    // can't fan out and saturate ollama beyond one tick at a time.
+    await runBiographer(db, llm, 25);
   });
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;
