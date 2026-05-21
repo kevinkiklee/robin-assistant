@@ -44,6 +44,7 @@ COMMANDS
   hooks uninstall   Remove the SessionEnd hook from ~/.claude/settings.json
   publish           Publish a markdown file to the web (--source <path> [--slug <s>] [--mode default|overwrite|as-new|delete] [--dry-run])
   published         List published pages from this Robin instance
+  brief             Run the daily-brief job once on demand (writes a daily_briefing event)
   --version
   --help
 `);
@@ -290,6 +291,14 @@ async function main(): Promise<void> {
       const { runPublishedCli } = await import('./publish.ts');
       await runPublishedCli(args.slice(1));
       return;
+    }
+
+    case 'brief': {
+      const { runBrief, printBriefHuman } = await import('./brief.ts');
+      const result = await runBrief();
+      printBriefHuman(result);
+      exit(result.status === 'ok' ? 0 : 1);
+      break;
     }
 
     case 'hooks': {
