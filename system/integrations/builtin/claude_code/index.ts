@@ -9,6 +9,10 @@ import type { Integration, IntegrationContext, TickResult } from '../../_runtime
 // session that's still being appended to would either (a) get captured early and miss its tail or
 // (b) get re-captured repeatedly as a new dedup hash on each tick. SESSION_IDLE_MS is the wait.
 // HOME is read at tick time, not module-load time, so tests can isolate to a tmpdir via process.env.HOME.
+//
+// State key is `session:<project-slug>:<sessionId>`. Namespacing by project guards against
+// any collision if Claude Code ever reuses a session UUID across projects (unlikely, but the
+// per-file mtime check is the only thing standing between us and a re-capture loop, so cheap to be safe).
 const SESSION_IDLE_MS = 10 * 60 * 1000;
 const STATE_KEY_PREFIX = 'session:';
 
@@ -73,7 +77,7 @@ export const integration: Integration = {
         const mtimeMs = sessionStat.mtimeMs;
         const idleMs = now - mtimeMs;
         const sessionId = sessionFile.replace(/\.jsonl$/, '');
-        const stateKey = `${STATE_KEY_PREFIX}${sessionId}`;
+        const stateKey = `${STATE_KEY_PREFIX}${projectDir}:${sessionId}`;
         const lastCapturedMtime = Number(ctx.state.get(stateKey) ?? 0);
 
         // Already processed this session at this exact mtime — skip without parsing.

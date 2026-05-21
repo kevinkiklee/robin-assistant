@@ -20,6 +20,8 @@ const LEASE_MS = 5 * 60 * 1000; // 5 min
 
 export interface DaemonRunOptions {
   foreground?: boolean;
+  /** Override the HTTP hook/health port. Falls back to ROBIN_DAEMON_HTTP_PORT, then 41273. Use 0 to bind an OS-assigned port (useful in tests). */
+  httpPort?: number;
 }
 
 export class Daemon {
@@ -112,9 +114,12 @@ export class Daemon {
       // Capture db in a local binding so the closure doesn't depend on
       // `this.db` (which TS narrows as possibly-undefined at closure time).
       const db = this.db;
+      const httpPort =
+        opts.httpPort ??
+        (process.env.ROBIN_DAEMON_HTTP_PORT ? Number(process.env.ROBIN_DAEMON_HTTP_PORT) : 41273);
       this.http = await startHttpServer({
         db,
-        port: 41273,
+        port: httpPort,
         isHealthy: () => this.running,
         onHook: async (kind, payload) => {
           writeTelemetry(
@@ -184,6 +189,29 @@ export class Daemon {
     try {
       const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
       registerCognitionJobs(this, this.db, () => this.llm);
+
+      // Drain biographer backlog on boot so a fresh start catches up on any captures
+      // that piled up while the daemon was down. Bounded by limit so this can't dominate
+      // the boot timeline; cron continues to chip away at any remainder.
+      try {
+        const { runBiographer } = await import('../../brain/cognition/biographer.ts');
+        const drainDb = this.db;
+        const drainLlm = this.llm ?? null;
+        runBiographer(drainDb, drainLlm, 50)
+          .then((r) =>
+            this.log.info(
+              {
+                processed: r.processed,
+                entities: r.entitiesCreated,
+                relations: r.relationsCreated,
+              },
+              'biographer backlog drained on boot',
+            ),
+          )
+          .catch((err) => this.log.warn({ err }, 'biographer boot-drain failed'));
+      } catch (err) {
+        this.log.warn({ err }, 'biographer boot-drain skipped');
+      }
 
       const { registerIntegrations } = await import(
         '../../integrations/_runtime/scheduler-glue.ts'
@@ -287,5 +315,9 @@ export class Daemon {
 
   getLastTickAt(): Date | null {
     return this.lastTickAt;
+  }
+
+  getHttpPort(): number | undefined {
+    return this.http?.port;
   }
 }

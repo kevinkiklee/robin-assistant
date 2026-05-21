@@ -1,6 +1,6 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runBiographer } from '../../../brain/cognition/biographer.ts';
 import { runDream } from '../../../brain/cognition/dream.ts';
