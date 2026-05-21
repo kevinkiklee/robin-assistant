@@ -133,15 +133,28 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
   server.registerTool(
     'list',
     {
-      description: 'Generic lister for entities, events, jobs, predictions, corrections.',
+      description:
+        "Generic lister for entities, events, jobs, predictions, corrections. For events, supports optional `kind` and `since` filters so callers can pull e.g. the last 3 `v2.whoop` ticks or today's `v2.lunch_money` transactions.",
       inputSchema: z.object({
         type: z
           .enum(['entities', 'events', 'jobs', 'predictions', 'corrections'])
           .describe('What to list'),
         limit: z.number().int().optional().describe('Max rows (default 20)'),
+        kind: z
+          .string()
+          .optional()
+          .describe(
+            "When type=events: filter by event kind (e.g. 'v2.whoop', 'session.captured'). Ignored otherwise.",
+          ),
+        since: z
+          .string()
+          .optional()
+          .describe(
+            "When type=events: ISO timestamp lower bound (e.g. '2026-05-21T00:00:00Z'). Ignored otherwise.",
+          ),
       }),
     },
-    async ({ type, limit }) => {
+    async ({ type, limit, kind, since }) => {
       const lim = limit ?? 20;
       let rows: unknown[] = [];
       switch (type) {
@@ -150,11 +163,44 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
             .prepare('SELECT * FROM entities ORDER BY updated_at DESC LIMIT ?')
             .all(lim) as unknown[];
           break;
-        case 'events':
-          rows = deps.db
-            .prepare('SELECT id, ts, kind, source, status FROM events ORDER BY ts DESC LIMIT ?')
-            .all(lim) as unknown[];
+        case 'events': {
+          // Build WHERE clauses + matching parameter list together so positional
+          // binding stays in lockstep — no string-interpolated user input ever
+          // reaches the SQL.
+          const where: string[] = [];
+          const params: (string | number)[] = [];
+          if (kind) {
+            where.push('kind = ?');
+            params.push(kind);
+          }
+          if (since) {
+            where.push('ts >= ?');
+            params.push(since);
+          }
+          const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+          // When kind is filtered, also surface the content body so a single call
+          // gets both metadata + the event payload the caller actually wants. Without
+          // this, daily-brief would need a second `recall` call per source which
+          // doesn't filter by kind at all.
+          if (kind) {
+            params.push(lim);
+            rows = deps.db
+              .prepare(
+                `SELECT events.id, events.ts, events.kind, events.source, events.status, events.payload, events_content.body
+                 FROM events LEFT JOIN events_content ON events_content.id = events.content_ref
+                 ${whereClause} ORDER BY events.ts DESC LIMIT ?`,
+              )
+              .all(...params) as unknown[];
+          } else {
+            params.push(lim);
+            rows = deps.db
+              .prepare(
+                `SELECT id, ts, kind, source, status FROM events ${whereClause} ORDER BY ts DESC LIMIT ?`,
+              )
+              .all(...params) as unknown[];
+          }
           break;
+        }
         case 'jobs':
           rows = deps.db
             .prepare('SELECT * FROM jobs ORDER BY scheduled_at DESC LIMIT ?')

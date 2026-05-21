@@ -339,9 +339,20 @@ async function main(): Promise<void> {
       }
       if (sub === 'install') {
         try {
-          const r = upsertUserScopeMcp(buildRobinMcpEntry());
+          // Install both surfaces so Claude sees mcp__robin__* (memory ops) and
+          // mcp__robin-extension__* (integration ops + user-extension actions).
+          // Without the extension entry, jobs like daily-brief can't reach gmail,
+          // calendar, github, linear, chrome, or finance integration data.
+          const coreResult = upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'core' }), {
+            name: 'robin',
+          });
+          const extResult = upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'extension' }), {
+            name: 'robin-extension',
+          });
           // biome-ignore lint/suspicious/noConsole: CLI output
-          console.log(`${r.replaced ? 'Replaced' : 'Added'} robin MCP entry in ${r.path}`);
+          console.log(
+            `${coreResult.replaced ? 'Replaced' : 'Added'} robin MCP entry; ${extResult.replaced ? 'replaced' : 'added'} robin-extension entry in ${coreResult.path}`,
+          );
           exit(0);
         } catch (err) {
           // biome-ignore lint/suspicious/noConsole: CLI output

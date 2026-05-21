@@ -1,9 +1,9 @@
 import { join } from 'node:path';
 import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
-import { loadModels } from '../../kernel/config/load.ts';
 import { buildJobContext } from '../../jobs/_runtime/context.ts';
 import { loadJobs } from '../../jobs/_runtime/loader.ts';
+import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 export interface BriefRunResult {
@@ -41,7 +41,10 @@ export async function runBrief(): Promise<BriefRunResult> {
     const loaded = await loadJobs([jobsRoot]);
     const briefJob = loaded.find((j) => j.instanceName === 'daily-brief');
     if (!briefJob) {
-      return { status: 'error', message: 'daily-brief job not found under user-data/extensions/jobs' };
+      return {
+        status: 'error',
+        message: 'daily-brief job not found under user-data/extensions/jobs',
+      };
     }
     const ctx = buildJobContext(briefJob.instanceName, briefJob.rootDir, db, llm);
     const result = await briefJob.module.run(ctx);

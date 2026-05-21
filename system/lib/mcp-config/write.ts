@@ -10,15 +10,16 @@ export interface McpEntry {
 }
 
 /**
- * Update ~/.claude.json (user-scope) with Robin's MCP entry under name 'robin'.
- * If an existing 'robin' entry exists (from v2 or otherwise), it is REPLACED.
- * Returns { path, replaced } where replaced=true if there was a prior entry.
+ * Update ~/.claude.json (user-scope) with an MCP entry under the given name.
+ * Defaults to 'robin' for backwards compatibility. If an entry with the same
+ * name already exists, it is REPLACED.
  */
 export function upsertUserScopeMcp(
   entry: McpEntry,
-  opts?: { home?: string },
+  opts?: { home?: string; name?: string },
 ): { path: string; replaced: boolean } {
   const home = opts?.home ?? homedir();
+  const name = opts?.name ?? 'robin';
   const claudeConfigPath = join(home, '.claude.json');
   let config: { mcpServers?: Record<string, unknown> } = {};
   if (existsSync(claudeConfigPath)) {
@@ -29,8 +30,8 @@ export function upsertUserScopeMcp(
     }
   }
   if (!config.mcpServers) config.mcpServers = {};
-  const replaced = 'robin' in config.mcpServers;
-  config.mcpServers.robin = entry;
+  const replaced = name in config.mcpServers;
+  config.mcpServers[name] = entry;
   writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2));
   return { path: claudeConfigPath, replaced };
 }
@@ -60,13 +61,24 @@ export function resolveRunnableCommand(input: string): string {
  * Build the canonical Robin MCP entry. The command resolves to the absolute
  * path of the running CLI binary (falling back to argv[1]); the env field
  * pins ROBIN_USER_DATA_DIR so the spawned server uses the same user-data the
- * installer was pointed at.
+ * installer was pointed at. `surface` picks between the two MCP servers:
+ *   - 'core' (default): memory ops — recall, remember, find_entity, journal, etc.
+ *   - 'extension': integration ops + per-source tools — gmail, calendar, github,
+ *     linear, chrome, finance, plus user-extension actions
+ *
+ * Both surfaces are registered separately so Claude sees tool names like
+ * `mcp__robin__recall` (core) and `mcp__robin-extension__gmail` (extension).
  */
-export function buildRobinMcpEntry(opts?: { command?: string; userDataDir?: string }): McpEntry {
+export function buildRobinMcpEntry(opts?: {
+  command?: string;
+  userDataDir?: string;
+  surface?: 'core' | 'extension';
+}): McpEntry {
   const rawCommand = opts?.command ?? process.argv[1] ?? '';
   const command = resolveRunnableCommand(rawCommand);
   const userDataDir = opts?.userDataDir ?? process.env.ROBIN_USER_DATA_DIR;
-  const entry: McpEntry = { type: 'stdio', command, args: ['mcp', 'core'] };
+  const surface = opts?.surface ?? 'core';
+  const entry: McpEntry = { type: 'stdio', command, args: ['mcp', surface] };
   if (userDataDir) {
     entry.env = { ROBIN_USER_DATA_DIR: userDataDir };
   }

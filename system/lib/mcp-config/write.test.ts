@@ -80,6 +80,27 @@ test('buildRobinMcpEntry: inherits ROBIN_USER_DATA_DIR from process env', () => 
   }
 });
 
+test('buildRobinMcpEntry: surface=core (default) emits args [mcp, core]', () => {
+  const entry = buildRobinMcpEntry({ command: '/r' });
+  assert.deepEqual(entry.args, ['mcp', 'core']);
+});
+
+test('buildRobinMcpEntry: surface=extension emits args [mcp, extension]', () => {
+  const entry = buildRobinMcpEntry({ command: '/r', surface: 'extension' });
+  assert.deepEqual(entry.args, ['mcp', 'extension']);
+});
+
+test('upsertUserScopeMcp: opts.name lets caller install under a non-default key', () => {
+  const home = fakeHome();
+  const coreEntry = buildRobinMcpEntry({ command: '/r', surface: 'core' });
+  const extEntry = buildRobinMcpEntry({ command: '/r', surface: 'extension' });
+  upsertUserScopeMcp(coreEntry, { home, name: 'robin' });
+  upsertUserScopeMcp(extEntry, { home, name: 'robin-extension' });
+  const config = JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8'));
+  assert.deepEqual(config.mcpServers.robin.args, ['mcp', 'core']);
+  assert.deepEqual(config.mcpServers['robin-extension'].args, ['mcp', 'extension']);
+});
+
 test('resolveRunnableCommand: passes through non-.ts paths', () => {
   assert.equal(resolveRunnableCommand('/usr/local/bin/robin'), '/usr/local/bin/robin');
 });
