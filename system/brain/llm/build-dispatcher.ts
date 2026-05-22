@@ -2,6 +2,7 @@ import type { ModelsConfig, ProviderConfig } from '../../kernel/config/schema.ts
 import { ClaudeCodeProvider } from './claude-code.ts';
 import { DeepSeekProvider } from './deepseek.ts';
 import { LLMDispatcher } from './dispatcher.ts';
+import { GeminiProvider } from './gemini.ts';
 import { GroqProvider } from './groq.ts';
 import { OllamaProvider } from './ollama.ts';
 import type { LLMProvider, LLMRole } from './types.ts';
@@ -24,6 +25,11 @@ function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
     case 'claude-code':
     case 'claude-code-cli':
       return new ClaudeCodeProvider({});
+    case 'gemini':
+    case 'gemini-cli':
+      return new GeminiProvider({
+        model: cfg.model,
+      });
     case 'deepseek':
       return new DeepSeekProvider({
         baseUrl: cfg.baseUrl,
