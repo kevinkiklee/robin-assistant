@@ -11,12 +11,17 @@ import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 import { writeTelemetry } from '../../lib/telemetry/write.ts';
 import { type HttpHandle, startHttpServer } from '../../surfaces/http/server.ts';
 import { loadModels, loadPolicies } from '../config/load.ts';
-import { recoverExpiredLeases } from '../scheduler/claim.ts';
+import { recoverDeadWorkerLeases, recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
 import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidfile.ts';
 
 const TICK_INTERVAL_MS = 1000;
 const LEASE_MS = 5 * 60 * 1000; // 5 min
+// Bug B fix — periodic in-process sweep so abandoned leases don't pile up between
+// boots. Boot-time `recoverExpiredLeases` only fires on cold start; without this
+// interval, a stuck handler that the scheduler eventually times-out would leave its
+// row in `leased` indefinitely until the next daemon restart.
+const LEASE_REAPER_INTERVAL_MS = 60_000;
 
 export interface DaemonRunOptions {
   foreground?: boolean;
@@ -38,6 +43,7 @@ export class Daemon {
   private integrationCleanup?: () => Promise<void>;
   private healthMonitor?: import('./health-monitor.ts').HealthMonitor;
   private powerMonitor?: import('../../lib/power-auto/monitor.ts').PowerAutoMonitor;
+  private leaseReaperTimer: NodeJS.Timeout | null = null;
 
   registerHandler(name: string, handler: JobHandler): void {
     this.handlers.set(name, handler);
@@ -94,20 +100,52 @@ export class Daemon {
       this.log.error({ err }, 'failed to build LLM dispatcher');
     }
 
-    // Recovery sweep
-    const recovered = recoverExpiredLeases(this.db);
-    if (recovered > 0) this.log.warn({ count: recovered }, 'recovered expired leases');
+    // Recovery sweep — two passes:
+    //   1. `recoverExpiredLeases` cleans up rows whose lease has already expired
+    //      (the "we crashed mid-handler" path).
+    //   2. `recoverDeadWorkerLeases` cleans up rows still leased to a predecessor
+    //      worker after a controlled restart (`launchctl kickstart -k`). Without
+    //      this, the new daemon idles up to LEASE_MS waiting for the predecessor's
+    //      lease to expire naturally even though that process is already gone.
+    const workerId = `daemon-${process.pid}`;
+    const recoveredExpired = recoverExpiredLeases(this.db);
+    const recoveredDead = recoverDeadWorkerLeases(this.db, workerId);
+    const recovered = recoveredExpired + recoveredDead;
+    if (recovered > 0) {
+      this.log.warn(
+        { count: recovered, expired: recoveredExpired, dead: recoveredDead },
+        'recovered expired/dead leases',
+      );
+    }
 
     writeTelemetry(this.db, 'daemon.start', { version: '3.0.0-alpha.0' }, { source: 'daemon' });
 
     this.scheduler = new Scheduler({
       db: this.db,
       handlers: this.handlers,
-      workerId: `daemon-${process.pid}`,
+      workerId,
       leaseMs: LEASE_MS,
       isPaused: () => loadPolicies(userData).power.state !== 'active',
       onError: (err, job) => this.log.error({ err, job: job.name }, 'job handler error'),
     });
+
+    // Bug B fix — periodic in-process lease reaper. The boot-time sweep above
+    // catches leases left behind by a crashed daemon, but says nothing about
+    // leases that expire while the same daemon is still alive (e.g. a handler
+    // that hangs indefinitely on an external call). setInterval runs on its own
+    // microtask cycle, so it fires even while `runLoop` is awaiting a wedged
+    // handler — keeping the jobs table accurate and enabling lease handoff if
+    // a second worker is ever added.
+    const db = this.db;
+    this.leaseReaperTimer = setInterval(() => {
+      try {
+        const reaped = recoverExpiredLeases(db);
+        if (reaped > 0) this.log.warn({ count: reaped }, 'reaped expired leases (in-process)');
+      } catch (err) {
+        this.log.warn({ err }, 'lease reaper threw');
+      }
+    }, LEASE_REAPER_INTERVAL_MS);
+    if (typeof this.leaseReaperTimer.unref === 'function') this.leaseReaperTimer.unref();
 
     // HTTP endpoint for hooks + health probe
     try {
@@ -138,15 +176,24 @@ export class Daemon {
           // as "hook received" and then forgotten.
           if (kind === 'session_end') {
             try {
-              const p = payload as { session_id?: string; transcript_path?: string };
+              const p = payload as {
+                session_id?: string;
+                transcript_path?: string;
+                cwd?: string;
+              };
               if (p.session_id && p.transcript_path) {
                 const { captureSession, transcriptFileToCapture } = await import(
                   '../../brain/cognition/capture.ts'
                 );
-                const cap = transcriptFileToCapture(p.session_id, p.transcript_path);
+                const cap = transcriptFileToCapture(p.session_id, p.transcript_path, p.cwd);
                 const r = await captureSession(db, this.llm ?? null, cap);
                 this.log.info(
-                  { sessionId: p.session_id, captured: r.captured, skipReason: r.skipReason },
+                  {
+                    sessionId: p.session_id,
+                    cwd: p.cwd,
+                    captured: r.captured,
+                    skipReason: r.skipReason,
+                  },
                   'session_end processed',
                 );
               }
@@ -170,6 +217,16 @@ export class Daemon {
         getLLM: () => this.llm,
         getLastTickAt: () => this.lastTickAt,
         enableNotifications: () => loadPolicies(userData).notifications.health,
+        getStartedAt: () => this.startedAt,
+        // Bug A fix — when heartbeating fails, the scheduler is stuck awaiting a
+        // handler call. No graceful path can recover (the runLoop's `await
+        // tickOnce()` won't return). Exit hard so launchd respawns; the boot-time
+        // lease sweep + cron re-arm at the next boot will resume work.
+        onHeartbeatCritical: () => {
+          this.log.error('heartbeat-recovery: exit(1) for launchd respawn');
+          // Force-exit on next tick so the error log line flushes first.
+          setImmediate(() => process.exit(1));
+        },
       });
       this.healthMonitor.start();
     } catch (err) {
@@ -190,29 +247,14 @@ export class Daemon {
       const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
       registerCognitionJobs(this, this.db, () => this.llm);
 
-      // Drain biographer backlog on boot. Loops in batches of 25 with brief pauses
-      // until either the backlog is gone or MAX_ITERATIONS is hit. Non-blocking — runs
-      // in the background so the rest of boot continues. The cron tick (also limit=25)
-      // is idempotent with this, so even if a tick fires mid-drain there's no fan-out
-      // (each session has at most one biographer.extracted event).
-      try {
-        const { runBiographer } = await import('../../brain/cognition/biographer.ts');
-        const drainDb = this.db;
-        const drainLlm = this.llm ?? null;
-        const MAX_ITERATIONS = 20; // 20 × 25 = 500 sessions max per boot
-        (async () => {
-          let total = 0;
-          for (let i = 0; i < MAX_ITERATIONS; i++) {
-            const r = await runBiographer(drainDb, drainLlm, 25);
-            total += r.processed;
-            if (r.processed === 0) break;
-            await sleep(2000);
-          }
-          this.log.info({ total }, 'biographer backlog drained on boot');
-        })().catch((err) => this.log.warn({ err }, 'biographer boot-drain failed'));
-      } catch (err) {
-        this.log.warn({ err }, 'biographer boot-drain skipped');
-      }
+      // Boot-drain disabled 2026-05-21 Turn 4. The original boot-drain ran
+      // `runBiographer(25)` in a parallel async task, intending to chew through
+      // backlog faster than the */15 cron. In practice it duplicated the cron's work
+      // and serialized through single-flight Ollama, so the parallel task starved the
+      // scheduler runLoop's tickOnce → `lastTickAt` stopped updating → Bug A's
+      // sustained-CRITICAL gate fired and restarted the daemon in a loop. Now the
+      // cron handler (batch=1, ~11 min per session) is the only biographer driver.
+      // Backlog drain is steady at ~4/hr; not fast, but recovery-loop-free.
 
       const { registerIntegrations } = await import(
         '../../integrations/_runtime/scheduler-glue.ts'
@@ -300,6 +342,10 @@ export class Daemon {
     }
     if (this.healthMonitor) this.healthMonitor.stop();
     if (this.powerMonitor) this.powerMonitor.stop();
+    if (this.leaseReaperTimer) {
+      clearInterval(this.leaseReaperTimer);
+      this.leaseReaperTimer = null;
+    }
     if (this.db) {
       writeTelemetry(
         this.db,

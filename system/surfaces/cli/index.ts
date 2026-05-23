@@ -29,6 +29,7 @@ COMMANDS
   doctor            Diagnose daemon + environment
   import            Import NDJSON dumps from content/imported-from-<source>/
   init              One-time setup (interactive)
+  integrations      Per-integration health table (status, last attempt, errors)
   pause             Pause scheduled work
   reindex           Backfill embeddings for events_content rows missing one
   resume            Resume scheduled work
@@ -45,6 +46,7 @@ COMMANDS
   publish           Publish a markdown file to the web (--source <path> [--slug <s>] [--mode default|overwrite|as-new|delete] [--dry-run])
   published         List published pages from this Robin instance
   brief             Run the daily-brief job once on demand (writes a daily_briefing event)
+  reauth <name>     Refresh an integration's OAuth refresh token (gmail | google_calendar). Opens consent in browser, captures the new token, writes it to .env, signals the daemon. Use --port=<n> if 8089 is taken.
   --version
   --help
 `);
@@ -245,6 +247,18 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'integrations': {
+      const { runIntegrationsReport, printIntegrationsHuman } = await import('./integrations.ts');
+      const report = runIntegrationsReport();
+      if (args.includes('--json')) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        printIntegrationsHuman(report);
+      }
+      exit(0);
+      break;
+    }
+
     case 'reindex': {
       const { runReindex, printReindexHuman } = await import('./reindex.ts');
       const limitFlag = extractFlag(args, '--limit=');
@@ -298,6 +312,29 @@ async function main(): Promise<void> {
       const result = await runBrief();
       printBriefHuman(result);
       exit(result.status === 'ok' ? 0 : 1);
+      break;
+    }
+
+    case 'reauth': {
+      const integration = args[1];
+      if (!integration) {
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.error('Usage: robin reauth <integration>   (gmail | google_calendar)');
+        exit(2);
+      }
+      const portFlag = extractFlag(args, '--port=');
+      const { runReauth } = await import('./reauth.ts');
+      try {
+        await runReauth({
+          integration,
+          port: portFlag ? Number(portFlag) : undefined,
+        });
+        exit(0);
+      } catch (err) {
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.error(`reauth failed: ${err instanceof Error ? err.message : String(err)}`);
+        exit(1);
+      }
       break;
     }
 

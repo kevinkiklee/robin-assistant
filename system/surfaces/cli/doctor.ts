@@ -5,6 +5,8 @@ import {
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
+  integrationsHealthyInvariant,
+  jobsDiscoverableInvariant,
   userDataWritableInvariant,
 } from '../../kernel/invariants/builtins/index.ts';
 import { writeRunbook } from '../../kernel/invariants/runbook.ts';
@@ -60,6 +62,8 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
     dbReachableInvariant(db),
     dbSchemaCurrentInvariant(db),
     dbWalSizeBoundedInvariant(db),
+    integrationsHealthyInvariant(db),
+    jobsDiscoverableInvariant(db),
   ]);
 
   closeDb(db);

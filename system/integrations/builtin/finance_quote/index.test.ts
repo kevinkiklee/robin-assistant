@@ -16,39 +16,54 @@ function freshDb() {
   return db;
 }
 
-test('finance_quote: tick fetches default watchlist and ingests quotes', async () => {
+// v8/chart returns one chart-result per request, keyed off the URL path's symbol.
+// Build a stub that returns price + chartPreviousClose for any symbol we care to test.
+function chartResponse(symbol: string, price: number, prevClose?: number, name?: string) {
+  return new Response(
+    JSON.stringify({
+      chart: {
+        result: [
+          {
+            meta: {
+              symbol,
+              regularMarketPrice: price,
+              chartPreviousClose: prevClose ?? price,
+              shortName: name,
+            },
+            timestamp: [1_700_000_000],
+            indicators: { quote: [{ open: [price], high: [price], low: [price], close: [price], volume: [1] }] },
+          },
+        ],
+      },
+    }),
+    { status: 200 },
+  );
+}
+
+test('finance_quote: tick fetches one chart per ticker and ingests quotes', async () => {
   const db = freshDb();
   const ctx = buildContext('finance_quote', db, null);
+  const calls: string[] = [];
   ctx.fetch = (async (url: string) => {
-    if (url.includes('/v7/finance/quote')) {
-      return new Response(
-        JSON.stringify({
-          quoteResponse: {
-            result: [
-              {
-                symbol: 'SPY',
-                regularMarketPrice: 500.12,
-                regularMarketChange: 1.23,
-                regularMarketChangePercent: 0.25,
-                shortName: 'SPDR S&P 500',
-              },
-              { symbol: 'BTC-USD', regularMarketPrice: 65000, regularMarketChangePercent: -1.5 },
-            ],
-          },
-        }),
-        { status: 200 },
-      );
-    }
+    calls.push(url);
+    if (url.includes('/GOOG')) return chartResponse('GOOG', 200.5, 198.7, 'Alphabet Inc.');
+    if (url.includes('/SPY')) return chartResponse('SPY', 500.12, 498.89, 'SPDR S&P 500');
+    if (url.includes('/QQQ')) return chartResponse('QQQ', 450, 449);
+    if (url.includes('/BTC-USD')) return chartResponse('BTC-USD', 65000, 66000);
     return new Response('', { status: 404 });
   }) as typeof fetch;
+
   assert.ok(fin.tick);
   const r = await fin.tick(ctx);
   assert.equal(r.status, 'ok');
-  assert.equal(r.ingested, 2);
+  assert.equal(r.ingested, 4);
+  assert.equal(calls.length, 4, 'one chart request per default ticker');
   const rows = db.prepare("SELECT body FROM events_content WHERE body LIKE 'SPY%'").all() as Array<{
     body: string;
   }>;
   assert.equal(rows.length, 1);
+  // Derived change_pct should be (500.12 - 498.89) / 498.89 * 100 ≈ 0.246
+  assert.match(rows[0].body, /SPY.*\$500\.12.*0\.25%/);
   closeDb(db);
 });
 
@@ -56,34 +71,31 @@ test('finance_quote: tick respects custom watchlist in state KV', async () => {
   const db = freshDb();
   const ctx = buildContext('finance_quote', db, null);
   ctx.state.set('tickers', JSON.stringify(['AAPL', 'MSFT']));
-  let requestedSymbols = '';
+  const requestedSymbols: string[] = [];
   ctx.fetch = (async (url: string) => {
-    requestedSymbols = new URL(url).searchParams.get('symbols') ?? '';
-    return new Response(
-      JSON.stringify({
-        quoteResponse: {
-          result: [
-            { symbol: 'AAPL', regularMarketPrice: 200 },
-            { symbol: 'MSFT', regularMarketPrice: 400 },
-          ],
-        },
-      }),
-      { status: 200 },
-    );
+    // /v8/finance/chart/<SYMBOL>?...
+    const m = url.match(/\/chart\/([^?]+)/);
+    if (m) requestedSymbols.push(decodeURIComponent(m[1]));
+    return chartResponse(decodeURIComponent(m?.[1] ?? ''), 100);
   }) as typeof fetch;
   assert.ok(fin.tick);
   await fin.tick(ctx);
-  assert.equal(requestedSymbols, 'AAPL,MSFT');
+  assert.deepEqual(requestedSymbols.sort(), ['AAPL', 'MSFT']);
   closeDb(db);
 });
 
-test('finance_quote: tick returns error on non-OK fetch', async () => {
+test('finance_quote: tick succeeds with empty ingested when every symbol errors', async () => {
+  // Promise.allSettled means partial failures are tolerated; the integration only
+  // returns status='error' when fetchQuotes itself throws (it doesn't here — individual
+  // chart calls reject inside settled). This documents that contract change vs. v7
+  // (where ANY 429 from the batched request killed the whole tick).
   const db = freshDb();
   const ctx = buildContext('finance_quote', db, null);
   ctx.fetch = (async () => new Response('rate limit', { status: 429 })) as typeof fetch;
   assert.ok(fin.tick);
   const r = await fin.tick(ctx);
-  assert.equal(r.status, 'error');
+  assert.equal(r.status, 'ok');
+  assert.equal(r.ingested, 0);
   closeDb(db);
 });
 

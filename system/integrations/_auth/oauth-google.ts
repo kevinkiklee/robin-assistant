@@ -47,7 +47,21 @@ export async function getGoogleAccessToken(
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
   });
-  if (!res.ok) throw new Error(`google oauth refresh returned ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    // `invalid_grant` means the refresh token was revoked or expired by Google
+    // (user revoked access, password change, 6mo of inactivity, etc.). The fix
+    // requires a new OAuth consent flow — there's nothing the integration can
+    // do at runtime. Persist the failure mode so the brief / doctor can
+    // surface it instead of letting `skipped` masquerade as healthy.
+    if (/invalid_grant/i.test(text)) {
+      ctx.state.set('auth_status', 'revoked');
+      ctx.state.set('auth_error', `${envPrefix}: refresh token revoked or expired — reauth required`);
+    }
+    throw new Error(`google oauth refresh returned ${res.status}: ${text}`);
+  }
+  ctx.state.delete('auth_status');
+  ctx.state.delete('auth_error');
   const data = (await res.json()) as TokenResponse;
   const expiry = Date.now() + data.expires_in * 1000;
   ctx.state.set('google_access_token', data.access_token);

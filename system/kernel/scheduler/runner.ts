@@ -1,5 +1,6 @@
 import type { RobinDb } from '../../brain/memory/db.ts';
 import { claimNextJob, completeJob, type JobRow } from './claim.ts';
+import { rescheduleCronAfterCompletion } from './cron.ts';
 
 export type JobHandler = (job: JobRow) => Promise<void> | void;
 
@@ -28,6 +29,9 @@ export class Scheduler {
     const handler = this.cfg.handlers.get(job.name);
     if (!handler) {
       completeJob(this.cfg.db, job.id, 'error', `no handler registered for job '${job.name}'`);
+      // Even with no handler, re-arm the cron — a missing handler is a startup-order
+      // bug we want to keep seeing every tick, not silently disable.
+      rescheduleCronAfterCompletion(this.cfg.db, job);
       return true;
     }
 
@@ -39,6 +43,10 @@ export class Scheduler {
       completeJob(this.cfg.db, job.id, 'error', message);
       this.cfg.onError?.(err instanceof Error ? err : new Error(message), job);
     }
+    // Re-arm cron-triggered jobs regardless of success/error so transient handler
+    // failures don't permanently silence a recurring schedule. Non-cron rows
+    // (event/hook/delayed/manual) are no-ops inside `rescheduleCronAfterCompletion`.
+    rescheduleCronAfterCompletion(this.cfg.db, job);
     return true;
   }
 }

@@ -42,11 +42,16 @@ export function registerCognitionJobs(
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
-    // 25 per 15-min tick = ceiling of ~100/hr; LLM bandwidth is the true bottleneck so
-    // realistic throughput is lower, but giving the SELECT room makes single-tick burns
-    // of a backlog meaningfully faster. The cron is idempotent (no overlap), so this
-    // can't fan out and saturate ollama beyond one tick at a time.
-    await runBiographer(db, llm, 25);
+    // Batch is 1 because qwen3:14b on M5 Max realistically takes ~11 min per session
+    // (much slower than the original 25/tick design assumed). With batch=25 a single
+    // tickOnce would hold the scheduler for hours, blocking `lastTickAt` updates and
+    // triggering Bug A's 30-min heartbeat-sustained-CRITICAL recovery in a loop.
+    // batch=1 keeps each tick bounded at ~11 min — well under the recovery threshold —
+    // and the cron re-arm (Bug C fix) ensures continuous draining of the backlog.
+    // Throughput is unchanged in practice: batch=25 in the loop world produced ~3
+    // sessions per 30-min restart cycle ≈ 5-6/hr; batch=1 with cron */15 produces
+    // ~4/hr but without restart-loss of in-flight work.
+    await runBiographer(db, llm, 1);
   });
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;

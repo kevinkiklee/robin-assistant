@@ -167,14 +167,18 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
           // Build WHERE clauses + matching parameter list together so positional
           // binding stays in lockstep — no string-interpolated user input ever
           // reaches the SQL.
+          // Always table-qualify column names: when `kind` is present we LEFT JOIN
+          // events_content, which also has a `ts` column. An unqualified `ts >= ?`
+          // then throws SQLite's "ambiguous column name: ts". Qualifying both columns
+          // is safe in the no-join path too.
           const where: string[] = [];
           const params: (string | number)[] = [];
           if (kind) {
-            where.push('kind = ?');
+            where.push('events.kind = ?');
             params.push(kind);
           }
           if (since) {
-            where.push('ts >= ?');
+            where.push('events.ts >= ?');
             params.push(since);
           }
           const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -195,7 +199,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
             params.push(lim);
             rows = deps.db
               .prepare(
-                `SELECT id, ts, kind, source, status FROM events ${whereClause} ORDER BY ts DESC LIMIT ?`,
+                `SELECT id, ts, kind, source, status FROM events ${whereClause} ORDER BY events.ts DESC LIMIT ?`,
               )
               .all(...params) as unknown[];
           }

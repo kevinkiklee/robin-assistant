@@ -1,9 +1,17 @@
 import { ingest } from '../../../brain/memory/ingest.ts';
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
-const QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
+// Yahoo killed v7/quote for non-browser UAs in 2025 — returns 401 for unknown
+// UAs and 429 for browser UAs without a session crumb cookie. The v8/chart
+// endpoint still serves price data without auth or cookies; `meta` on each
+// result has the same fields we previously read from quoteResponse.result.
+// Trade-off: one request per symbol instead of one batched request, but Yahoo's
+// per-IP throughput easily handles our handful of tickers.
 const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
-const DEFAULT_TICKERS = ['SPY', 'QQQ', 'BTC-USD'];
+// GOOG is included by default because Kevin's compensation and 401(k) are
+// GOOG-concentrated — the daily brief's Markets section can't render
+// RSU-vest-eve context without it. Override via state.tickers if needed.
+const DEFAULT_TICKERS = ['GOOG', 'SPY', 'QQQ', 'BTC-USD'];
 
 interface Quote {
   symbol: string;
@@ -14,14 +22,19 @@ interface Quote {
   longName?: string;
 }
 
-interface QuoteResponse {
-  quoteResponse?: { result?: Quote[]; error?: unknown };
+interface ChartMeta {
+  symbol?: string;
+  regularMarketPrice?: number;
+  chartPreviousClose?: number;
+  previousClose?: number;
+  shortName?: string;
+  longName?: string;
 }
 
 interface ChartResponse {
   chart: {
     result?: Array<{
-      meta: { symbol: string };
+      meta: ChartMeta;
       timestamp: number[];
       indicators: {
         quote: Array<{
@@ -49,12 +62,44 @@ function getTickers(ctx: IntegrationContext): string[] {
   return DEFAULT_TICKERS;
 }
 
-async function fetchQuotes(ctx: IntegrationContext, symbols: string[]): Promise<Quote[]> {
-  const url = `${QUOTE_URL}?symbols=${encodeURIComponent(symbols.join(','))}`;
+async function fetchQuote(ctx: IntegrationContext, symbol: string): Promise<Quote | null> {
+  // range=1d&interval=1d gives a single bar (today's session) which is enough
+  // to read meta.regularMarketPrice. Larger ranges work but waste payload.
+  const url = `${CHART_URL}/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
   const res = await ctx.fetch(url, { headers: { 'User-Agent': 'robin-assistant' } });
-  if (!res.ok) throw new Error(`yahoo quote returned ${res.status}`);
-  const data = (await res.json()) as QuoteResponse;
-  return data.quoteResponse?.result ?? [];
+  if (!res.ok) throw new Error(`yahoo chart ${symbol} returned ${res.status}`);
+  const data = (await res.json()) as ChartResponse;
+  const meta = data.chart.result?.[0]?.meta;
+  if (!meta || meta.regularMarketPrice == null) return null;
+  // chart endpoint doesn't expose change/changePercent directly; derive from
+  // chartPreviousClose. previousClose may also exist but is unreliable for
+  // crypto and after-hours — chartPreviousClose is the value chart UIs use.
+  const prev = meta.chartPreviousClose ?? meta.previousClose;
+  const change = prev != null ? meta.regularMarketPrice - prev : undefined;
+  const changePct =
+    prev != null && prev !== 0
+      ? ((meta.regularMarketPrice - prev) / prev) * 100
+      : undefined;
+  return {
+    symbol: meta.symbol ?? symbol,
+    regularMarketPrice: meta.regularMarketPrice,
+    regularMarketChange: change,
+    regularMarketChangePercent: changePct,
+    shortName: meta.shortName,
+    longName: meta.longName,
+  };
+}
+
+async function fetchQuotes(ctx: IntegrationContext, symbols: string[]): Promise<Quote[]> {
+  // Parallel — Yahoo handles a handful of concurrent chart requests fine, and the
+  // tick latency drops from N×roundtrip to one roundtrip. If we ever ticker > 20
+  // symbols a Promise.all this wide could hit rate limits; not a problem today.
+  const settled = await Promise.allSettled(symbols.map((s) => fetchQuote(ctx, s)));
+  const out: Quote[] = [];
+  for (const r of settled) {
+    if (r.status === 'fulfilled' && r.value) out.push(r.value);
+  }
+  return out;
 }
 
 export const integration: Integration = {

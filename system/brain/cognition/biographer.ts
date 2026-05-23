@@ -1,7 +1,25 @@
 import { z } from 'zod';
+import { withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
+
+// Bug E mitigation — bound any single chunk's LLM call. Real qwen3:14b chunks finish
+// in 30-60s; anything past 2 min is a hang (observed 2026-05-21: biographer wedged
+// the daemon for 3+ hours awaiting Ollama). Without this ceiling, one stuck chunk
+// blocks the entire scheduler loop. Per-chunk timeout (not per-session) so each
+// chunk failure is independent and partial progress is preserved on retry. 2 min is
+// 2× expected worst-case for legitimate slow chunks; tighter than that risks
+// flagging cold-model or thermal-throttle as failures.
+const BIOGRAPHER_CHUNK_TIMEOUT_MS = 2 * 60_000;
+
+// Bug F mitigation — disambiguation is a smaller prompt (a few candidate lines +
+// 2KB of source text) so it should finish well under a minute. The ceiling here
+// matters because each extracted entity triggers an LLM call, and a session can
+// have 5-50 entities — one hung disambiguation hangs the whole biographer.run.
+// 1 min is generous for the prompt size; falls back to the catch path in
+// disambiguateEntity which picks the oldest candidate.
+const DISAMBIGUATION_TIMEOUT_MS = 60_000;
 
 const extractionSchema = z.object({
   entities: z
@@ -60,6 +78,29 @@ export function chunkBody(body: string, maxChars: number): string[] {
 
 const CHUNK_CHARS = 6000;
 
+// Multi-tick bound — the biographer processes at most this many chunks per
+// `runBiographer` call, persisting a cursor in `biographer_progress` so a large
+// session resumes on the next cron tick. This is the structural fix for the
+// restart loop: previously a session was processed all-or-nothing in one tick,
+// so any session whose cumulative chunk-time exceeded the daemon's 30-min
+// sustained-CRITICAL gate could never complete — the daemon force-restarted
+// mid-session and re-claimed the same row forever. With a per-tick cap, no
+// session (regardless of size) can hold the scheduler past the gate. 4 chunks ×
+// the 2-min per-chunk ceiling = 8 min worst case (well under the 30-min gate);
+// the typical 30-60s/chunk keeps a tick under the 5-min heartbeat entirely.
+const MAX_CHUNKS_PER_TICK = 4;
+
+// Sanity ceiling — sessions whose body exceeds this are skipped with a
+// `biographer.extracted` marker so they stop being re-selected. This used to be
+// the *stability* floor (200k), because a large session would restart-loop the
+// daemon. Multi-tick processing (MAX_CHUNKS_PER_TICK) removed that failure mode:
+// a large session now drains safely across many ticks. So this is now just a
+// guard against pathological inputs (e.g. a multi-MB tool-output paste) that
+// would monopolize the biographer for many hours. 1M chars ≈ 167 chunks ≈ 42
+// ticks at */15 — generous enough to cover every real capture observed
+// (largest: ~501k) while still rejecting absurd outliers.
+const MAX_SESSION_BODY_CHARS = 1_000_000;
+
 const disambiguationSchema = z.object({
   matched_id: z.number().int().nullable(),
   create_new: z.boolean(),
@@ -79,9 +120,205 @@ export interface BiographerRunResult {
   errors: string[];
 }
 
+export interface RunBiographerOptions {
+  /** Per-chunk extraction LLM timeout. Defaults to `BIOGRAPHER_CHUNK_TIMEOUT_MS`. */
+  chunkTimeoutMs?: number;
+  /** Per-entity disambiguation LLM timeout. Defaults to `DISAMBIGUATION_TIMEOUT_MS`. */
+  disambiguationTimeoutMs?: number;
+  /** Max chunks to extract per call before persisting progress. Defaults to `MAX_CHUNKS_PER_TICK`. */
+  maxChunksPerTick?: number;
+  /** Body-size ceiling above which a fresh session is skipped. Defaults to `MAX_SESSION_BODY_CHARS`. */
+  maxSessionBodyChars?: number;
+}
+
+type EntityRecord = { type: string; name: string };
+type RelationRecord = { subject: string; predicate: string; object: string };
+
+function entityKey(e: EntityRecord): string {
+  return `${e.type.toLowerCase()}:${e.name.toLowerCase()}`;
+}
+
+function relationKey(r: RelationRecord): string {
+  return `${r.subject.toLowerCase()}:${r.predicate.toLowerCase()}:${r.object.toLowerCase()}`;
+}
+
+interface BiographerTarget {
+  eventId: number;
+  body: string;
+  /** Next chunk index to process (0 for a fresh session). */
+  nextChunk: number;
+  /** True if a `biographer_progress` row already exists (a resumed session). */
+  isResume: boolean;
+  entities: Map<string, EntityRecord>;
+  relations: Map<string, RelationRecord>;
+}
+
+/**
+ * Pick the session to work on this tick. An in-progress session (one with a
+ * `biographer_progress` row whose cursor hasn't reached the end) takes priority
+ * so partially-extracted work always finishes before a new session is started.
+ * Otherwise the newest unprocessed `session.captured` event is selected.
+ */
+function selectBiographerTarget(db: RobinDb): BiographerTarget | null {
+  const resume = db
+    .prepare(`
+      SELECT bp.source_event_id AS eventId, bp.next_chunk AS nextChunk,
+             bp.entities_json AS entitiesJson, bp.relations_json AS relationsJson,
+             events_content.body AS body
+        FROM biographer_progress bp
+        JOIN events ON events.id = bp.source_event_id
+        JOIN events_content ON events_content.id = events.content_ref
+       WHERE bp.next_chunk < bp.total_chunks
+       ORDER BY bp.created_at
+       LIMIT 1
+    `)
+    .get() as
+    | {
+        eventId: number;
+        nextChunk: number;
+        entitiesJson: string;
+        relationsJson: string;
+        body: string;
+      }
+    | undefined;
+
+  if (resume) {
+    const entities = new Map<string, EntityRecord>();
+    for (const e of JSON.parse(resume.entitiesJson) as EntityRecord[])
+      entities.set(entityKey(e), e);
+    const relations = new Map<string, RelationRecord>();
+    for (const r of JSON.parse(resume.relationsJson) as RelationRecord[])
+      relations.set(relationKey(r), r);
+    return {
+      eventId: resume.eventId,
+      body: resume.body,
+      nextChunk: resume.nextChunk,
+      isResume: true,
+      entities,
+      relations,
+    };
+  }
+
+  const fresh = db
+    .prepare(`
+      SELECT events.id AS eventId, events_content.body AS body
+        FROM events
+        JOIN events_content ON events_content.id = events.content_ref
+       WHERE events.kind = 'session.captured'
+         AND events.id NOT IN (SELECT json_extract(payload, '$.source_event_id') FROM events WHERE kind = 'biographer.extracted')
+         AND events.id NOT IN (SELECT source_event_id FROM biographer_progress)
+       ORDER BY events.ts DESC
+       LIMIT 1
+    `)
+    .get() as { eventId: number; body: string } | undefined;
+
+  if (!fresh) return null;
+  return {
+    eventId: fresh.eventId,
+    body: fresh.body,
+    nextChunk: 0,
+    isResume: false,
+    entities: new Map(),
+    relations: new Map(),
+  };
+}
+
+function saveBiographerProgress(
+  db: RobinDb,
+  eventId: number,
+  totalChunks: number,
+  nextChunk: number,
+  entities: Map<string, EntityRecord>,
+  relations: Map<string, RelationRecord>,
+): void {
+  db.prepare(`
+    INSERT INTO biographer_progress (source_event_id, total_chunks, next_chunk, entities_json, relations_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(source_event_id) DO UPDATE SET
+      total_chunks = excluded.total_chunks,
+      next_chunk = excluded.next_chunk,
+      entities_json = excluded.entities_json,
+      relations_json = excluded.relations_json,
+      updated_at = excluded.updated_at
+  `).run(
+    eventId,
+    totalChunks,
+    nextChunk,
+    JSON.stringify([...entities.values()]),
+    JSON.stringify([...relations.values()]),
+  );
+}
+
+function writeExtractedMarker(
+  db: RobinDb,
+  eventId: number,
+  entities: number,
+  relations: number,
+): void {
+  db.prepare(`
+    INSERT INTO events (ts, kind, source, status, payload)
+    VALUES (?, 'biographer.extracted', 'biographer', 'ok', ?)
+  `).run(
+    new Date().toISOString(),
+    JSON.stringify({ source_event_id: eventId, entities, relations }),
+  );
+}
+
 const SYSTEM_PROMPT = `You extract structured entities and relations from a transcript. Reply ONLY with JSON matching:
-{"entities":[{"type":"person|place|topic|thing","name":"..."}, ...], "relations":[{"subject":"name","predicate":"verb","object":"name"}, ...]}
+{"entities":[{"type":"<type>","name":"..."}, ...], "relations":[{"subject":"name","predicate":"verb","object":"name"}, ...]}
+
+Valid <type> values: person, place, organization, service, library, tool, repository, env_var, error, topic, thing.
+Prefer the most specific type that fits; use "thing" only when nothing more specific applies.
+
+Do NOT extract:
+- Transcript role markers (USER, ASSISTANT, TOOL, SYSTEM) — they are not real entities.
+- Bare numbers, state flags (ON, OFF, TRUE, FALSE, ENABLED, DISABLED), or git SHA fragments.
+- Single-character or empty names.
+
 If nothing is worth extracting, reply {"entities":[],"relations":[]}.`;
+
+/**
+ * Defensive filter applied AFTER LLM extraction to drop noise that the model
+ * sometimes emits despite the prompt rules above. The prompt is a soft contract;
+ * this is the hard one. Returning true means "drop this entity".
+ *
+ * Companion: any relation whose subject or object matches a dropped entity is
+ * also dropped (a relation pointing at noise is itself noise).
+ */
+export function isLowQualityEntity(name: string): boolean {
+  const trimmed = name?.trim() ?? '';
+  if (trimmed.length < 2 || trimmed.length > 200) return true;
+  // Pure numbers (e.g. "10", "404") — usually counters, status codes, or version
+  // fragments captured out of context. If a real entity needs a number, it should
+  // have surrounding words ("HTTP 404").
+  if (/^[0-9]+$/.test(trimmed)) return true;
+  // Git SHA fragment — 7-40 hex chars, no other content.
+  if (/^[a-f0-9]{7,40}$/i.test(trimmed)) return true;
+  // Transcript role markers — appear in chunked bodies like "[USER]\n..." and
+  // sometimes get extracted as entities. Match case variants.
+  const lower = trimmed.toLowerCase();
+  if (ROLE_MARKER_NAMES.has(lower)) return true;
+  // Boolean / state-flag tokens. Length-gated to avoid clobbering legitimate
+  // entities like "Disabled by maintenance window" — only catch the bare flag.
+  if (STATE_FLAG_NAMES.has(lower) && trimmed.length <= 10) return true;
+  return false;
+}
+
+const ROLE_MARKER_NAMES = new Set(['user', 'assistant', 'tool', 'system', 'human', 'ai']);
+const STATE_FLAG_NAMES = new Set([
+  'on',
+  'off',
+  'yes',
+  'no',
+  'true',
+  'false',
+  'enabled',
+  'disabled',
+  'enable',
+  'disable',
+  'null',
+  'undefined',
+]);
 
 /**
  * If multiple candidates exist for the extracted name, ask the LLM to pick one or
@@ -91,6 +328,7 @@ export async function disambiguateEntity(
   db: RobinDb,
   llm: LLMDispatcher | null,
   ctx: DisambiguationContext,
+  timeoutMs: number = DISAMBIGUATION_TIMEOUT_MS,
 ): Promise<{ matchedId: number | null; reason: string }> {
   const candidates = findEntity(db, ctx.name, ctx.type);
   if (candidates.length === 0) return { matchedId: null, reason: 'no candidates' };
@@ -114,6 +352,7 @@ export async function disambiguateEntity(
       systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
       temperature: 0,
+      timeoutMs,
     });
     const text = res.text
       .trim()
@@ -141,7 +380,14 @@ export async function runBiographer(
   db: RobinDb,
   llm: LLMDispatcher | null,
   limit: number = 10,
+  options: RunBiographerOptions = {},
 ): Promise<BiographerRunResult> {
+  const chunkTimeoutMs = options.chunkTimeoutMs ?? BIOGRAPHER_CHUNK_TIMEOUT_MS;
+  const disambiguationTimeoutMs = options.disambiguationTimeoutMs ?? DISAMBIGUATION_TIMEOUT_MS;
+
+  const maxChunksPerTick = options.maxChunksPerTick ?? MAX_CHUNKS_PER_TICK;
+  const maxSessionBodyChars = options.maxSessionBodyChars ?? MAX_SESSION_BODY_CHARS;
+
   const result: BiographerRunResult = {
     processed: 0,
     entitiesCreated: 0,
@@ -149,36 +395,68 @@ export async function runBiographer(
     errors: [],
   };
 
-  // Find session.captured events with content that biographer has not yet processed
-  const rows = db
-    .prepare(`
-    SELECT events.id AS eventId, events_content.id AS contentId, events_content.body AS body
-      FROM events
-      JOIN events_content ON events_content.id = events.content_ref
-     WHERE events.kind = 'session.captured'
-       AND events.id NOT IN (SELECT json_extract(payload, '$.source_event_id') FROM events WHERE kind = 'biographer.extracted')
-     ORDER BY events.ts DESC
-     LIMIT ?
-  `)
-    .all(limit) as Array<{ eventId: number; contentId: number; body: string }>;
+  // Hard cap on extraction LLM calls across this whole call, independent of
+  // `limit`. This is what guarantees a bounded tick: a single huge session
+  // advances at most `maxChunksPerTick` chunks before yielding, so it can never
+  // hold the scheduler past the daemon's restart gate.
+  let chunkBudget = maxChunksPerTick;
 
-  for (const row of rows) {
-    result.processed++;
-    let extracted: ExtractionResult = { entities: [], relations: [] };
+  for (let s = 0; s < limit; s++) {
+    if (chunkBudget <= 0) break;
+
+    const target = selectBiographerTarget(db);
+    if (!target) break;
+
+    // Bug G — a fresh session whose body is absurdly large is skipped with a
+    // marker so it stops being re-selected. Multi-tick handles ordinary large
+    // sessions; this guard only catches pathological outliers. (A resumed
+    // session already cleared this gate when it was first selected.)
+    if (!target.isResume && target.body.length > maxSessionBodyChars) {
+      db.prepare(`
+        INSERT INTO events (ts, kind, source, status, payload)
+        VALUES (?, 'biographer.extracted', 'biographer', 'skipped', ?)
+      `).run(
+        new Date().toISOString(),
+        JSON.stringify({
+          source_event_id: target.eventId,
+          entities: 0,
+          relations: 0,
+          skipped: true,
+          reason: 'session_too_large',
+          body_chars: target.body.length,
+          threshold: maxSessionBodyChars,
+        }),
+      );
+      result.errors.push(
+        `event ${target.eventId}: skipped (${target.body.length} chars > ${maxSessionBodyChars})`,
+      );
+      result.processed++;
+      continue;
+    }
+
+    const chunks = chunkBody(target.body, CHUNK_CHARS);
+    const totalChunks = chunks.length;
+    const startChunk = target.nextChunk;
+    const mergedEntities = target.entities;
+    const mergedRelations = target.relations;
+
+    // Extract this tick's slice of chunks. With no LLM there is nothing to
+    // extract, so the session finalizes immediately with an empty result
+    // (preserves the historical no-LLM marker behavior).
+    let endChunk = totalChunks;
     if (llm) {
-      const chunks = chunkBody(row.body, CHUNK_CHARS);
-      const mergedEntities = new Map<string, { type: string; name: string }>();
-      const mergedRelations = new Map<
-        string,
-        { subject: string; predicate: string; object: string }
-      >();
-      for (let ci = 0; ci < chunks.length; ci++) {
+      endChunk = Math.min(startChunk + chunkBudget, totalChunks);
+      for (let ci = startChunk; ci < endChunk; ci++) {
         try {
-          const inv = await llm.invoke('reasoning', {
-            systemPrompt: SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: chunks[ci] }],
-            temperature: 0,
-          });
+          const inv = await withTimeout(
+            llm.invoke('reasoning', {
+              systemPrompt: SYSTEM_PROMPT,
+              messages: [{ role: 'user', content: chunks[ci] }],
+              temperature: 0,
+            }),
+            chunkTimeoutMs,
+            `biographer event=${target.eventId} chunk=${ci}/${totalChunks}`,
+          );
           const jsonText = inv.text
             .trim()
             .replace(/^```(?:json)?/, '')
@@ -188,39 +466,79 @@ export async function runBiographer(
           const validated = extractionSchema.safeParse(parsed);
           if (!validated.success) {
             result.errors.push(
-              `event ${row.eventId} chunk ${ci}: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
+              `event ${target.eventId} chunk ${ci}: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
             );
             continue;
           }
           for (const e of validated.data.entities) {
-            const key = `${e.type.toLowerCase()}:${e.name.toLowerCase()}`;
+            const key = entityKey(e);
             if (!mergedEntities.has(key)) mergedEntities.set(key, e);
           }
           for (const r of validated.data.relations) {
-            const key = `${r.subject.toLowerCase()}:${r.predicate.toLowerCase()}:${r.object.toLowerCase()}`;
+            const key = relationKey(r);
             if (!mergedRelations.has(key)) mergedRelations.set(key, r);
           }
         } catch (err) {
           result.errors.push(
-            `event ${row.eventId} chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
+            `event ${target.eventId} chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
-      extracted = {
-        entities: Array.from(mergedEntities.values()),
-        relations: Array.from(mergedRelations.values()),
-      };
+      chunkBudget -= endChunk - startChunk;
     }
+
+    // Not finished — persist progress and yield. The next tick resumes from
+    // `endChunk` with the merged entities/relations restored from the row.
+    if (endChunk < totalChunks) {
+      saveBiographerProgress(
+        db,
+        target.eventId,
+        totalChunks,
+        endChunk,
+        mergedEntities,
+        mergedRelations,
+      );
+      continue;
+    }
+
+    // All chunks extracted → filter, disambiguate, upsert, mark done.
+    let extracted: ExtractionResult = {
+      entities: [...mergedEntities.values()],
+      relations: [...mergedRelations.values()],
+    };
+
+    // Post-extraction quality filter. Drop entities that match the stop-word
+    // patterns (role markers, bare numbers, SHAs, state flags), then drop any
+    // relation whose subject or object pointed at a dropped entity. Done
+    // BEFORE disambiguation so we don't burn LLM calls on garbage.
+    const droppedNames = new Set<string>();
+    const filteredEntities = [];
+    for (const e of extracted.entities) {
+      if (isLowQualityEntity(e.name)) {
+        droppedNames.add(e.name.toLowerCase());
+        continue;
+      }
+      filteredEntities.push(e);
+    }
+    const filteredRelations = extracted.relations.filter(
+      (r) =>
+        !droppedNames.has(r.subject.toLowerCase()) &&
+        !droppedNames.has(r.object.toLowerCase()) &&
+        !isLowQualityEntity(r.subject) &&
+        !isLowQualityEntity(r.object),
+    );
+    extracted = { entities: filteredEntities, relations: filteredRelations };
 
     // Upsert entities with LLM-driven disambiguation
     const idByName = new Map<string, number>();
     for (const e of extracted.entities) {
       try {
-        const { matchedId } = await disambiguateEntity(db, llm, {
-          type: e.type,
-          name: e.name,
-          sourceText: row.body,
-        });
+        const { matchedId } = await disambiguateEntity(
+          db,
+          llm,
+          { type: e.type, name: e.name, sourceText: target.body },
+          disambiguationTimeoutMs,
+        );
         if (matchedId !== null) {
           idByName.set(e.name, matchedId);
         } else {
@@ -236,22 +554,15 @@ export async function runBiographer(
     for (const r of extracted.relations) {
       const sId = idByName.get(r.subject) ?? upsertEntity(db, 'thing', r.subject).id;
       const oId = idByName.get(r.object) ?? upsertEntity(db, 'thing', r.object).id;
-      addRelation(db, sId, r.predicate, oId, row.eventId);
+      addRelation(db, sId, r.predicate, oId, target.eventId);
       result.relationsCreated++;
     }
 
-    // Write a 'biographer.extracted' event linking back to the source
-    db.prepare(`
-      INSERT INTO events (ts, kind, source, status, payload)
-      VALUES (?, 'biographer.extracted', 'biographer', 'ok', ?)
-    `).run(
-      new Date().toISOString(),
-      JSON.stringify({
-        source_event_id: row.eventId,
-        entities: extracted.entities.length,
-        relations: extracted.relations.length,
-      }),
-    );
+    writeExtractedMarker(db, target.eventId, extracted.entities.length, extracted.relations.length);
+    if (target.isResume) {
+      db.prepare(`DELETE FROM biographer_progress WHERE source_event_id = ?`).run(target.eventId);
+    }
+    result.processed++;
   }
 
   return result;

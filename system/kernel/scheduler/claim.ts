@@ -95,3 +95,27 @@ export function recoverExpiredLeases(db: RobinDb, nowIso?: string): number {
     .run(now);
   return result.changes;
 }
+
+/**
+ * Boot-only sweep: reset any lease NOT held by the current worker, regardless
+ * of lease expiry. Pairs with `recoverExpiredLeases` to bridge the gap between
+ * a controlled restart (`launchctl kickstart -k`) and the predecessor's lease
+ * expiring naturally — without this, the new daemon waits up to LEASE_MS idle.
+ *
+ * Single-worker safety: in a single-daemon deployment, any `claimed_by` that
+ * isn't us is by definition stale. If a future deployment runs multiple
+ * concurrent workers, call this with care (or not at all).
+ */
+export function recoverDeadWorkerLeases(db: RobinDb, currentWorkerId: string): number {
+  const result = db
+    .prepare(`
+    UPDATE jobs
+       SET state = 'pending',
+           leased_until = NULL,
+           claimed_by = NULL,
+           retry_count = retry_count + 1
+     WHERE state = 'leased' AND claimed_by != ?
+  `)
+    .run(currentWorkerId);
+  return result.changes;
+}

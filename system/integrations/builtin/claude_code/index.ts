@@ -50,7 +50,7 @@ export const integration: Integration = {
 
     for (const projectDir of projectDirs) {
       const fullProjectPath = join(projectsDir(), projectDir);
-      let projectStat;
+      let projectStat: ReturnType<typeof statSync>;
       try {
         projectStat = statSync(fullProjectPath);
       } catch {
@@ -67,7 +67,7 @@ export const integration: Integration = {
 
       for (const sessionFile of sessionFiles) {
         const sessionPath = join(fullProjectPath, sessionFile);
-        let sessionStat;
+        let sessionStat: ReturnType<typeof statSync>;
         try {
           sessionStat = statSync(sessionPath);
         } catch {

@@ -3,6 +3,7 @@ import { migration002 } from './002-entities-relations.ts';
 import { migration003 } from './003-fts.ts';
 import { migration004 } from './004-lifecycle.ts';
 import { migration005 } from './005-events-vec-4096.ts';
+import { migration006 } from './006-biographer-progress.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -11,6 +12,7 @@ export const allMigrations: Migration[] = [
   migration003,
   migration004,
   migration005,
+  migration006,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

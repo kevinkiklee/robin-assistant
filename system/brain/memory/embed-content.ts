@@ -1,4 +1,12 @@
+import { withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+
+// Bug D/E mitigation — bound a single embed call. qwen3-embedding:8b on healthy
+// Ollama returns in under a second; observed degradation on 2026-05-21 pushed a
+// single embed call to 6+ seconds and a sibling biographer call hung indefinitely.
+// 60s is generous (15× steady-state) but tight enough that a wedged call fails
+// fast and the embed-backfill batch keeps moving.
+const EMBED_CALL_TIMEOUT_MS = 60_000;
 
 // qwen3-embedding:8b advertises a 40,960-token context, but Ollama's default num_ctx for
 // embedding models is lower in practice — a 130k-char (~32k token) document failed during
@@ -22,7 +30,11 @@ export function prepareForEmbed(body: string): string {
 }
 
 export async function embedBody(dispatcher: LLMDispatcher, body: string): Promise<number[]> {
-  const [vec] = await dispatcher.embed('embed', prepareForEmbed(body));
+  const [vec] = await withTimeout(
+    dispatcher.embed('embed', prepareForEmbed(body)),
+    EMBED_CALL_TIMEOUT_MS,
+    'embed-content',
+  );
   if (!vec || vec.length === 0) throw new Error('empty embedding returned');
   return vec;
 }

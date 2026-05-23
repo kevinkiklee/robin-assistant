@@ -40,6 +40,14 @@ export interface InvokeRequest {
   maxTokens?: number;
   temperature?: number;
   cacheable?: boolean;
+  /**
+   * Per-call invocation timeout (ms). Overrides the LLMDispatcher's default
+   * ceiling for this single call. Use for handlers that want a tighter bound
+   * than the platform default (e.g. biographer disambiguation at 60s vs the
+   * 5-min dispatcher default). Falls back to the dispatcher default when
+   * unset.
+   */
+  timeoutMs?: number;
 }
 
 export interface InvokeUsage {

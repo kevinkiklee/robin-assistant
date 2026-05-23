@@ -1,4 +1,3 @@
-import { ingest } from '../../../brain/memory/ingest.ts';
 import type { Integration } from '../../_runtime/types.ts';
 
 export const integration: Integration = {
@@ -13,11 +12,16 @@ export const integration: Integration = {
     };
     const cond = data.current_condition?.[0];
     const summary = `Weather (${location}): ${cond?.temp_F ?? '?'}°F, ${cond?.weatherDesc?.[0]?.value ?? 'unknown'}`;
-    await ingest(ctx.db, ctx.llm, {
+    await ctx.ingest({
       kind: 'integration.tick',
       source: 'weather',
       content: summary,
-      payload: { location, temp_f: cond?.temp_F, desc: cond?.weatherDesc?.[0]?.value },
+      payload: {
+        kind: 'current',
+        location,
+        temp_f: cond?.temp_F,
+        desc: cond?.weatherDesc?.[0]?.value,
+      },
     });
     ctx.state.set('last_sync', ctx.now().toISOString());
     return { status: 'ok', ingested: 1 };

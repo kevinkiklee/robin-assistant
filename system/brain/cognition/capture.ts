@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { ingest } from '../memory/ingest.ts';
 
@@ -12,6 +14,41 @@ export interface SessionCapture {
   sessionId: string;
   turns: SessionTurn[];
   endedAt?: string;
+  /**
+   * Working directory the Claude Code session ran in (from the SessionEnd hook
+   * payload). Used to scope capture to Robin's own folder. Omit for programmatic
+   * callers (CLI, tests) that don't have a meaningful cwd — the allowlist check
+   * is skipped when this is undefined.
+   */
+  cwd?: string;
+}
+
+/**
+ * Default cwd allowlist: the directory containing Robin's user-data dir (i.e.
+ * `~/workspace/robin/robin-assistant-v3`). Override via `ROBIN_ALLOWED_CWDS`
+ * env var (comma-separated absolute paths). A session is allowed if its cwd
+ * exactly matches an entry or is a descendant of one.
+ */
+function getAllowedCwds(): string[] {
+  const env = process.env.ROBIN_ALLOWED_CWDS;
+  if (env) {
+    return env
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  try {
+    return [dirname(resolveUserDataDir())];
+  } catch {
+    return [];
+  }
+}
+
+/** Returns true if cwd is undefined (skip check), or matches the allowlist. */
+function isCwdAllowed(cwd: string | undefined, allowedCwds: string[]): boolean {
+  if (cwd === undefined) return true;
+  if (allowedCwds.length === 0) return true; // failed to resolve default → fail-open
+  return allowedCwds.some((prefix) => cwd === prefix || cwd.startsWith(`${prefix}/`));
 }
 
 /**
@@ -23,7 +60,11 @@ export interface SessionCapture {
  * content and falling back to a stringified block for non-text turns so the capture has
  * something to dedup/embed against.
  */
-export function transcriptFileToCapture(sessionId: string, transcriptPath: string): SessionCapture {
+export function transcriptFileToCapture(
+  sessionId: string,
+  transcriptPath: string,
+  cwd?: string,
+): SessionCapture {
   const raw = readFileSync(transcriptPath, 'utf8');
   const turns: SessionTurn[] = [];
   for (const line of raw.split('\n')) {
@@ -53,7 +94,7 @@ export function transcriptFileToCapture(sessionId: string, transcriptPath: strin
     if (!text.trim()) continue;
     turns.push({ role, content: text });
   }
-  return { sessionId, turns };
+  return { sessionId, turns, cwd };
 }
 
 export interface CaptureResult {
@@ -62,12 +103,31 @@ export interface CaptureResult {
   eventId?: number;
 }
 
+export interface CaptureSessionOptions {
+  /**
+   * Override the cwd allowlist. Tests pass this to verify scoping behavior.
+   * Production omits it, letting captureSession resolve via `ROBIN_ALLOWED_CWDS`
+   * env or the default (Robin's project root).
+   */
+  allowedCwds?: string[];
+}
+
 /** Apply skip rules and (if not skipped) write a 'session.captured' event for biographer to process. */
 export async function captureSession(
   db: RobinDb,
   llm: LLMDispatcher | null,
   capture: SessionCapture,
+  options: CaptureSessionOptions = {},
 ): Promise<CaptureResult> {
+  // Scope check first — cheapest skip rule, and the one Kevin asked for: Robin
+  // should only capture sessions running from within its own folder. Programmatic
+  // callers without a cwd (CLI invocations, tests not exercising this path) pass
+  // through.
+  const allowedCwds = options.allowedCwds ?? getAllowedCwds();
+  if (!isCwdAllowed(capture.cwd, allowedCwds)) {
+    return { captured: false, skipReason: 'cwd_not_allowed' };
+  }
+
   const userTurns = capture.turns.filter((t) => t.role === 'user' && t.content.trim());
   const assistantTurns = capture.turns.filter((t) => t.role === 'assistant' && t.content.trim());
 

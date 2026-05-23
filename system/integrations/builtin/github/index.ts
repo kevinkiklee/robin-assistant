@@ -47,9 +47,12 @@ async function resolveUsername(ctx: IntegrationContext, token: string): Promise<
 }
 
 function requireToken(): string {
-  // We rely on the caller (daemon's secrets loader) to populate GITHUB_TOKEN into process.env.
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error('GITHUB_TOKEN not set in environment');
+  // Accept either GITHUB_TOKEN (the canonical name per integration.yaml + the
+  // gh CLI convention) or GITHUB_PAT (the name many users assign for personal
+  // access tokens). Allowing both means Kevin's .env doesn't have to choose
+  // between Robin and whatever other tooling already reads GITHUB_PAT.
+  const token = process.env.GITHUB_TOKEN ?? process.env.GITHUB_PAT;
+  if (!token) throw new Error('GITHUB_TOKEN (or GITHUB_PAT) not set in environment');
   return token;
 }
 
@@ -95,7 +98,9 @@ export const integration: Integration = {
 
   async health(ctx) {
     const last = ctx.state.get('last_sync');
-    if (!process.env.GITHUB_TOKEN) return { ok: false, message: 'GITHUB_TOKEN not set' };
+    if (!process.env.GITHUB_TOKEN && !process.env.GITHUB_PAT) {
+      return { ok: false, message: 'GITHUB_TOKEN (or GITHUB_PAT) not set' };
+    }
     return { ok: true, message: last ? `last sync: ${last}` : 'never synced' };
   },
 };

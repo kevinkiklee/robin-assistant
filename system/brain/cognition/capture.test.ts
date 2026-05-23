@@ -76,3 +76,92 @@ test('capture: dedup_hit prevents identical capture', async () => {
   assert.equal(r2.skipReason, 'dedup_hit');
   closeDb(db);
 });
+
+// ─── cwd allowlist (Kevin's "robin only works in robin's folder" scoping) ────
+
+const validCapture = {
+  sessionId: 's-cwd',
+  turns: [
+    { role: 'user' as const, content: 'hello robin' },
+    { role: 'assistant' as const, content: 'hi! how can I help?' },
+  ],
+};
+
+test('capture: rejects cwd outside the allowlist', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/Users/iser/workspace/photo-tools' },
+    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+  );
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'cwd_not_allowed');
+  closeDb(db);
+});
+
+test('capture: accepts cwd that exactly matches an allowlist entry', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/Users/iser/workspace/robin/robin-assistant-v3' },
+    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+  );
+  assert.equal(r.captured, true);
+  closeDb(db);
+});
+
+test('capture: accepts cwd that is a descendant of an allowlist entry', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    {
+      ...validCapture,
+      cwd: '/Users/iser/workspace/robin/robin-assistant-v3/user-data/scripts',
+    },
+    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+  );
+  assert.equal(r.captured, true);
+  closeDb(db);
+});
+
+test('capture: rejects sibling path that prefixes share a parent (no slash boundary)', async () => {
+  // Defends against `/Users/iser/workspace/robin/robin-assistant-v3-fork` being
+  // matched as a descendant of `/Users/iser/workspace/robin/robin-assistant-v3`.
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/Users/iser/workspace/robin/robin-assistant-v3-fork' },
+    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+  );
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'cwd_not_allowed');
+  closeDb(db);
+});
+
+test('capture: skips the check when cwd is undefined (programmatic callers)', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    validCapture, // no cwd field
+    { allowedCwds: ['/some/strict/allowlist'] },
+  );
+  assert.equal(r.captured, true, 'undefined cwd should bypass the allowlist check');
+  closeDb(db);
+});
+
+test('capture: empty allowlist is fail-open (default could not resolve)', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/anywhere' },
+    { allowedCwds: [] },
+  );
+  assert.equal(r.captured, true, 'empty allowlist should not reject');
+  closeDb(db);
+});

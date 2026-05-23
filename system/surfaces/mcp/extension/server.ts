@@ -211,22 +211,28 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
   server.registerTool(
     'integration_status',
     {
-      description: 'Per-integration health: last sync, error state, etc.',
+      description:
+        'Per-integration health: last sync, error state, status. With `name`, returns full per-key state for that integration. Without `name`, returns a compact one-row-per-integration summary (same shape as the `robin integrations` CLI) — earlier the no-arg path dumped every KV row including 200-item seen-sets and could exceed 7 MB.',
       inputSchema: {
         name: z.string().optional().describe('Specific integration, or omit for all'),
       },
     },
     async ({ name }) => {
-      const rows = name
-        ? (deps.db
-            .prepare(
-              'SELECT integration_name, key, value, updated_at FROM integration_state WHERE integration_name = ?',
-            )
-            .all(name) as unknown[])
-        : (deps.db
-            .prepare('SELECT integration_name, key, value, updated_at FROM integration_state')
-            .all() as unknown[]);
-      return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] };
+      if (name) {
+        // Per-integration full detail: caller asked explicitly, so they want everything.
+        // Still cap value length so a runaway extension can't push megabytes.
+        const rows = deps.db
+          .prepare(
+            'SELECT integration_name, key, substr(value, 1, 4096) AS value, updated_at FROM integration_state WHERE integration_name = ?',
+          )
+          .all(name) as unknown[];
+        return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] };
+      }
+      // All-integrations: compact summary via the shared report builder. One row per
+      // integration with status + standardized health fields; no raw KV blobs.
+      const { runIntegrationsReport } = await import('../../cli/integrations.ts');
+      const report = runIntegrationsReport();
+      return { content: [{ type: 'text', text: JSON.stringify(report, null, 2) }] };
     },
   );
 

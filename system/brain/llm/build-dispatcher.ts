@@ -1,9 +1,6 @@
 import type { ModelsConfig, ProviderConfig } from '../../kernel/config/schema.ts';
-import { ClaudeCodeProvider } from './claude-code.ts';
 import { DeepSeekProvider } from './deepseek.ts';
 import { LLMDispatcher } from './dispatcher.ts';
-import { GeminiProvider } from './gemini.ts';
-import { GroqProvider } from './groq.ts';
 import { OllamaProvider } from './ollama.ts';
 import type { LLMProvider, LLMRole } from './types.ts';
 
@@ -14,6 +11,14 @@ function resolveSecret(env: NodeJS.ProcessEnv, key?: string): string {
   return v;
 }
 
+// Supported providers:
+// - ollama: local-only, the default and the path the daemon uses today.
+// - deepseek: dormant cloud escape hatch. Not routed by any role in
+//   models.yaml; kept opt-in for future agentic-CLI experiments.
+//
+// Cloud agentic CLIs (claude-code, gemini-cli, groq) were removed in the
+// 2026-05-22 cleanup. Robin's daemon is local-only by construction; manual
+// LLM work runs through the user's interactive Claude Code subscription.
 function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMProvider {
   switch (cfg.provider) {
     case 'ollama':
@@ -22,24 +27,10 @@ function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
         chatModel: cfg.model ?? 'qwen3:8b',
         embedModel: cfg.model,
       });
-    case 'claude-code':
-    case 'claude-code-cli':
-      return new ClaudeCodeProvider({});
-    case 'gemini':
-    case 'gemini-cli':
-      return new GeminiProvider({
-        model: cfg.model,
-      });
     case 'deepseek':
       return new DeepSeekProvider({
         baseUrl: cfg.baseUrl,
         apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'DEEPSEEK_API_KEY'),
-        model: cfg.model,
-      });
-    case 'groq':
-      return new GroqProvider({
-        baseUrl: cfg.baseUrl,
-        apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'GROQ_API_KEY'),
         model: cfg.model,
       });
     default:
