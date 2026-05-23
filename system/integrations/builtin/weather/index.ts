@@ -1,3 +1,4 @@
+import { solarTimes } from '../../../lib/solar.ts';
 import type { Integration } from '../../_runtime/types.ts';
 
 export const integration: Integration = {
@@ -9,9 +10,42 @@ export const integration: Integration = {
     }
     const data = (await res.json()) as {
       current_condition?: Array<{ temp_F?: string; weatherDesc?: Array<{ value: string }> }>;
+      nearest_area?: Array<{ latitude?: string; longitude?: string }>;
     };
     const cond = data.current_condition?.[0];
     const summary = `Weather (${location}): ${cond?.temp_F ?? '?'}°F, ${cond?.weatherDesc?.[0]?.value ?? 'unknown'}`;
+
+    // Derive sun/light windows from the response's nearest_area lat/long. wttr.in
+    // returns these as strings; if absent or non-finite, the sun fields stay null.
+    const lat = Number(data.nearest_area?.[0]?.latitude);
+    const lng = Number(data.nearest_area?.[0]?.longitude);
+    let sun: {
+      sunrise: string | null;
+      sunset: string | null;
+      golden_hour_morning_end: string | null;
+      golden_hour_evening_start: string | null;
+      blue_hour_morning_start: string | null;
+      blue_hour_evening_end: string | null;
+    } = {
+      sunrise: null,
+      sunset: null,
+      golden_hour_morning_end: null,
+      golden_hour_evening_start: null,
+      blue_hour_morning_start: null,
+      blue_hour_evening_end: null,
+    };
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      const s = solarTimes(lat, lng, ctx.now());
+      sun = {
+        sunrise: s.sunrise?.toISOString() ?? null,
+        sunset: s.sunset?.toISOString() ?? null,
+        golden_hour_morning_end: s.goldenHourMorningEnd?.toISOString() ?? null,
+        golden_hour_evening_start: s.goldenHourEveningStart?.toISOString() ?? null,
+        blue_hour_morning_start: s.blueHourMorningStart?.toISOString() ?? null,
+        blue_hour_evening_end: s.blueHourEveningEnd?.toISOString() ?? null,
+      };
+    }
+
     await ctx.ingest({
       kind: 'integration.tick',
       source: 'weather',
@@ -21,6 +55,7 @@ export const integration: Integration = {
         location,
         temp_f: cond?.temp_F,
         desc: cond?.weatherDesc?.[0]?.value,
+        ...sun,
       },
     });
     ctx.state.set('last_sync', ctx.now().toISOString());
