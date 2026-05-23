@@ -39,6 +39,8 @@ export interface JobContext {
   checkOutbound: (input: CheckOutboundInput) => DiscretionDecision;
   /** Absolute path to the job's own directory (so the job can read sibling files like prompt.md). */
   rootDir: string;
+  /** When true, bypass idempotency guards (e.g. daily-brief once-per-day skip). */
+  force?: boolean;
 }
 
 export interface Job {

@@ -21,7 +21,7 @@ export interface BriefRunResult {
  * Claude-Code session calling another Claude-Code session — a recursion risk and a cost
  * multiplier. CLI invocation keeps the call graph shallow and one-shot.
  */
-export async function runBrief(): Promise<BriefRunResult> {
+export async function runBrief(options: { force?: boolean } = {}): Promise<BriefRunResult> {
   const userData = resolveUserDataDir();
   const jobsRoot = join(userData, 'extensions/jobs');
 
@@ -46,7 +46,9 @@ export async function runBrief(): Promise<BriefRunResult> {
         message: 'daily-brief job not found under user-data/extensions/jobs',
       };
     }
-    const ctx = buildJobContext(briefJob.instanceName, briefJob.rootDir, db, llm);
+    const ctx = buildJobContext(briefJob.instanceName, briefJob.rootDir, db, llm, {
+      force: options.force,
+    });
     const result = await briefJob.module.run(ctx);
     if (result.status === 'ok') {
       return { status: 'ok', eventId: result.eventId };
