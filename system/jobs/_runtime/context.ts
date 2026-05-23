@@ -10,7 +10,6 @@ export function buildJobContext(
   rootDir: string,
   db: RobinDb,
   llm: LLMDispatcher | null,
-  options?: { force?: boolean },
 ): JobContext {
   const pinoLog = createLogger({ module: `job:${jobName}` });
   return {
@@ -28,6 +27,5 @@ export function buildJobContext(
     ingest: (input) => Promise.resolve(ingest(db, llm, input)),
     checkOutbound,
     rootDir,
-    force: options?.force ?? false,
   };
 }

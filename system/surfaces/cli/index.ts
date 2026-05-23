@@ -45,7 +45,7 @@ COMMANDS
   hooks uninstall   Remove the SessionEnd hook from ~/.claude/settings.json
   publish           Publish a markdown file to the web (--source <path> [--slug <s>] [--mode default|overwrite|as-new|delete] [--dry-run])
   published         List published pages from this Robin instance
-  brief [--force]   Run the daily-brief job once on demand (writes a daily_briefing event). --force bypasses the once-per-day skip guard.
+  brief             Run the daily-brief job once on demand (writes a daily_briefing event)
   reauth <name>     Refresh an integration's OAuth refresh token (gmail | google_calendar). Opens consent in browser, captures the new token, writes it to .env, signals the daemon. Use --port=<n> if 8089 is taken.
   --version
   --help
@@ -309,8 +309,7 @@ async function main(): Promise<void> {
 
     case 'brief': {
       const { runBrief, printBriefHuman } = await import('./brief.ts');
-      const force = args.includes('--force');
-      const result = await runBrief({ force });
+      const result = await runBrief();
       printBriefHuman(result);
       exit(result.status === 'ok' ? 0 : 1);
       break;
