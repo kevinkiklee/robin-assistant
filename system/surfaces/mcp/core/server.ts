@@ -5,6 +5,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
+import { believe, recallBelief } from '../../../brain/memory/belief.ts';
 import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
 import { findEntity, getEntity, upsertEntity } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
@@ -253,20 +254,84 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
           .describe('Probability assigned to the claim being true (0..1)'),
         deadline: z.string().optional().describe('ISO date when this can be resolved'),
         resolution_method: z.string().optional().describe('How to check if it came true'),
+        external_id: z.string().optional().describe('Idempotency key; same key upserts'),
       }),
     },
-    async ({ claim, confidence, deadline, resolution_method }) => {
+    async ({ claim, confidence, deadline, resolution_method, external_id }) => {
+      if (external_id) {
+        const existing = deps.db
+          .prepare('SELECT id FROM predictions WHERE external_id = ?')
+          .get(external_id) as { id: number } | undefined;
+        if (existing) {
+          deps.db
+            .prepare(
+              'UPDATE predictions SET claim=?, confidence=?, deadline=?, resolution_method=? WHERE id=?',
+            )
+            .run(claim, confidence, deadline ?? null, resolution_method ?? null, existing.id);
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({ id: existing.id, upserted: true }),
+              },
+            ],
+          };
+        }
+      }
       const info = deps.db
-        .prepare(`
-        INSERT INTO predictions (claim, confidence, deadline, resolution_method)
-        VALUES (?, ?, ?, ?)
-      `)
-        .run(claim, confidence, deadline ?? null, resolution_method ?? null);
+        .prepare(
+          'INSERT INTO predictions (claim, confidence, deadline, resolution_method, external_id) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run(claim, confidence, deadline ?? null, resolution_method ?? null, external_id ?? null);
       return {
         content: [
           { type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) },
         ],
       };
+    },
+  );
+
+  server.registerTool(
+    'believe',
+    {
+      description:
+        'Persist a topic-keyed belief-update. Auto-supersedes the prior belief for the topic; same-day repeats upsert in place. Topic is normalized (lowercase/dash). Use recall_belief to read current truth.',
+      inputSchema: z.object({
+        topic: z.string().describe('Dotted topic key, e.g. whoop.recovery.after_redeye_jfk'),
+        claim: z.string().describe('The belief, in natural language'),
+        supersedes: z.number().int().optional().describe('Override: event_id of the prior belief'),
+        confidence: z.number().min(0).max(1).optional().describe('0..1, metadata only'),
+        sources: z.array(z.number().int()).optional().describe("Today's event_ids that drove this"),
+        retracted: z.boolean().optional().describe('True = no longer hold a belief here'),
+      }),
+    },
+    async ({ topic, claim, supersedes, confidence, sources, retracted }) => {
+      const r = believe(deps.db, deps.llm, {
+        topic,
+        claim,
+        supersedes,
+        confidence,
+        sources,
+        retracted,
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(r) }] };
+    },
+  );
+
+  server.registerTool(
+    'recall_belief',
+    {
+      description:
+        'Read current belief truth. With topic: the latest belief (or full chain if history=true). Without topic: latest belief per topic (enumerate what Robin currently believes).',
+      inputSchema: z.object({
+        topic: z.string().optional().describe('Topic key; omit to enumerate all topics'),
+        history: z.boolean().optional().describe('With topic: return the full supersedes chain'),
+        limit: z.number().int().optional().describe('Enumerate mode: max topics (default 50)'),
+      }),
+    },
+    async ({ topic, history, limit }) => {
+      const r = recallBelief(deps.db, { topic, history, limit });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(r, null, 2) }] };
     },
   );
 

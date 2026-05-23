@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { believe, recallBelief } from '../../../brain/memory/belief.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { upsertEntity } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
@@ -61,5 +62,60 @@ test('robin-core: lifecycle tables (predictions, corrections, refusals, etc.) ex
   ]) {
     assert.ok(names.includes(t), `${t} missing`);
   }
+  closeDb(db);
+});
+
+test('robin-core: believe + recall_belief round trip through DB', () => {
+  const db = freshDb();
+  // Mirror the MCP tools, which delegate to believe/recallBelief directly.
+  believe(db, null, {
+    topic: 'whoop.recovery',
+    claim: 'dips after redeye',
+    date: '2026-05-23',
+  });
+  const head = recallBelief(db, { topic: 'whoop.recovery' });
+  assert.ok(head && !Array.isArray(head));
+  assert.equal((head as { claim: string }).claim, 'dips after redeye');
+  closeDb(db);
+});
+
+test('robin-core: predict with same external_id upserts (one row, not two)', () => {
+  const db = freshDb();
+  // Mirror the predict tool's idempotency contract: first call inserts, a
+  // repeat with the same external_id updates in place rather than appending.
+  const externalId = 'daily-brief:2026-05-23:goog-up';
+  const upsertPredict = (claim: string, confidence: number) => {
+    const existing = db
+      .prepare('SELECT id FROM predictions WHERE external_id = ?')
+      .get(externalId) as { id: number } | undefined;
+    if (existing) {
+      db.prepare(
+        'UPDATE predictions SET claim=?, confidence=?, deadline=?, resolution_method=? WHERE id=?',
+      ).run(claim, confidence, null, null, existing.id);
+      return { id: existing.id, upserted: true };
+    }
+    const info = db
+      .prepare(
+        'INSERT INTO predictions (claim, confidence, deadline, resolution_method, external_id) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(claim, confidence, null, null, externalId);
+    return { id: Number(info.lastInsertRowid), upserted: false };
+  };
+
+  const first = upsertPredict('GOOG closes up', 0.6);
+  const second = upsertPredict('GOOG closes up by EOD', 0.7);
+  assert.equal(second.upserted, true);
+  assert.equal(second.id, first.id);
+
+  const count = db
+    .prepare('SELECT COUNT(*) AS c FROM predictions WHERE external_id = ?')
+    .get(externalId) as { c: number };
+  assert.equal(count.c, 1, 'same external_id must update, not append');
+
+  const row = db
+    .prepare('SELECT claim, confidence FROM predictions WHERE id = ?')
+    .get(first.id) as { claim: string; confidence: number };
+  assert.equal(row.claim, 'GOOG closes up by EOD');
+  assert.equal(row.confidence, 0.7);
   closeDb(db);
 });
