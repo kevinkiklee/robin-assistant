@@ -1,157 +1,136 @@
 # Robin
 
-> Personal AI assistant with tiered memory, async scheduling, and multi-agent collaboration via MCP.
+> Local-first personal AI assistant with long-term memory, background integrations, and a skills system — driven by Claude Code via MCP.
 
-Robin is a long-lived local daemon that captures your Claude Code sessions, ingests data from your accounts (Gmail, Calendar, GitHub, Linear, Chrome, finance, weather, and more), builds an entity/relation knowledge graph in SQLite, and exposes itself as MCP servers that Claude Code — and any other MCP client — can talk to.
-
-After `robin init`, the daemon runs in the background. You don't habitually type `robin` commands; Claude does the day-to-day driving through MCP, and Robin remembers across sessions.
+Robin is a daemon that runs on your machine. It captures your Claude Code sessions, pulls data from your accounts (Gmail, Calendar, GitHub, Linear, Spotify, and more), builds an entity–relation knowledge graph in SQLite, and exposes everything as MCP servers that Claude Code talks to. After setup, Robin works in the background — you don't type `robin` commands; Claude does the driving through MCP, and Robin remembers across sessions.
 
 ## Quick start
 
 ```bash
-nvm use 24                                # native better-sqlite3 + sqlite-vec require this
-pnpm add -g robin-assistant               # or: npm i -g robin-assistant
-robin init --yes                          # one-time non-interactive setup
-robin daemon install                      # launchd agent (auto-starts on login, macOS)
-robin mcp install                         # register robin in ~/.claude.json (replaces v2 entry)
+nvm use 24                       # Node 24 required (.nvmrc)
+pnpm add -g robin-assistant      # or: npm i -g robin-assistant
+robin init --yes                 # one-time setup
+robin daemon install             # launchd agent — auto-starts on login (macOS)
 ```
 
-That's it. Open Claude Code anywhere on your system; `mcp__robin__*` tools will be available.
+Open Claude Code anywhere on your machine. Robin's MCP tools (`mcp__robin__*`) are available automatically.
 
 ## Requirements
 
-- **Node 24** — pinned via `.nvmrc`. `better-sqlite3` is a native binding; ABI must match.
-- **macOS or Linux** — Windows tracked but not launch-blocking. `robin daemon install` (launchd) is macOS-only; on Linux, run the daemon under your supervisor of choice (`systemd --user`, `runit`, etc.).
-- **Apple Silicon recommended** for local model inference via Ollama; cloud-only configs work on any platform.
-- Optional: [**Ollama**](https://ollama.com) for local models on the M-series reference platform (`brew install ollama`). The default embedding model is `qwen3-embedding:8b` at 4096 dims.
+| Requirement | Notes |
+|---|---|
+| **Node 24** | Pinned via `.nvmrc`. `better-sqlite3` is a native binding; the ABI must match. |
+| **macOS or Linux** | `robin daemon install` is launchd (macOS). On Linux, run the daemon under systemd/runit/etc. |
+| **Ollama** (optional) | For local model inference. Default embedding model: `qwen3-embedding:8b`. Install via `brew install ollama` or [ollama.com](https://ollama.com). |
 
-## Architecture
+Apple Silicon recommended for local inference. Cloud-only configs work on any platform.
 
-- **Single Node daemon** owns the schedule, memory, brain-slot dispatcher, and integration lifecycle.
-- **SQLite + sqlite-vec + FTS5** — tiered memory: events firehose, content with embeddings (4096-dim Matryoshka), entities, relations, predictions, corrections, refusals, journals. Optional **Kuzu** projection for graph-walk queries.
-- **Pluggable LLM providers** — Ollama, Claude Code (subprocess), DeepSeek, Groq behind one interface, swappable per role (`interactive` / `agentic` / `reasoning` / `summarize` / `classify` / `embed` / `rerank`).
-- **Two MCP servers** —
-  - `robin-core` (13 tools): `recall`, `remember`, `find_entity`, `get`, `list`, `predict`, `record_correction`, `audit`, `explain`, `health`, `metrics`, `journal`, `power`.
-  - `robin-extension` (13 tools, per-project opt-in): one action-dispatcher per integration (gmail, google_calendar, github, linear, chrome, finance) + `run`, `integration_status`, `ingest`, `related_entities`, `resolve_prediction`, `check_action`, `update`.
-- **Capture pipeline** with v2-proven skip rules; zod-validated biographer (the v2 JSON-parse failure class is structurally prevented).
-- **Cognition jobs** —
-  - `biographer.run` every 15 min — extract entities + relations from captured sessions
-  - `embed-backfill.run` every minute — embed pending `events_content` rows (deferred off the ingest hot-path, single-flight against Ollama)
-  - `dream.run` daily at 03:00 local — resolve overdue predictions, write daily metrics, generate journal entry
-  - `daily-brief` (user extension) — morning briefing rendered by the Claude agent
-- **9 built-in integrations** — `gmail`, `google_calendar`, `github`, `linear`, `chrome`, `weather`, `finance_quote`, `claude_code` (session capture), `notify` (macOS notifications). Additional integrations live as user extensions under `user-data/extensions/integrations/`.
-- **Health monitor + power auto-pause** — invariants run every 60s; battery threshold auto-pauses on macOS; toggling `policies.yaml` takes effect without a daemon restart.
-- **Telemetry** — typed event writer with zod-validated kinds; optional OTLP HTTP exporter for downstream collectors.
+## How it works
 
-See `docs/specs/2026-05-18-robin-v3-design.md` for the full architectural spec, and `docs/STATUS.md` for the current implementation snapshot.
+Robin has three layers:
 
-## Day-to-day operations
-
-Robin is designed to be invisible after install. Everything below is rare:
-
-```bash
-robin status                     # current power/capture/network state
-robin pause / resume             # pause scheduled work
-robin incognito --for 1h         # disable session capture for a window
-robin offline / online           # toggle outbound network
-robin doctor                     # diagnostic + invariant check (--json, --emit-runbook --write)
-robin upgrade                    # apply pending schema migrations (with backup)
-robin reindex                    # backfill embeddings (--limit, --force, --ids, --batch)
-robin db backup | restore | vacuum
-robin import <dir>               # ingest NDJSON dumps (see Portability)
-robin daemon install | uninstall # launchd agent management (macOS)
-robin publish --source <md>      # publish markdown to the web (askrobin.io)
-robin published                  # list published pages
+```
+system/        Framework: kernel (daemon + scheduler), brain (memory + cognition),
+               integrations runtime, surfaces (CLI, HTTP, MCP), skills
+user-data/     Per-user instance: memory, secrets, extensions, knowledge files (gitignored)
+dist/          Compiled output (gitignored); pnpm build to regenerate
 ```
 
-## Publishing to the web
+The **daemon** owns the schedule, the health monitor, and the integration lifecycle. It runs cognition jobs in the background — extracting entities from your conversations (biographer), embedding content for vector search, and writing a daily journal (dream). A power-auto system pauses on battery and respects quiet hours.
 
-`robin publish` uploads a markdown file as a sanitized HTML page served from your configured domain (default `askrobin.io`). Local images referenced from the markdown are uploaded to Vercel Blob with content-hash-derived keys (idempotent on re-upload) and rewritten in-place.
+**Memory** is tiered: an event firehose, FTS5 full-text search, 4096-dim vector embeddings (Matryoshka), an entity/relation graph, topic-keyed beliefs, predictions with Brier calibration, and corrections. Everything lives in a single SQLite database (`user-data/state/db/robin.sqlite`) backed by `sqlite-vec`.
 
-```bash
-robin publish --source path/to/post.md             # default: derive slug; suffix on collision
-robin publish --source path/to/post.md --slug foo  # explicit slug; overwrites if it exists
-robin publish --mode delete --slug foo             # remove HTML + tracked assets
-robin publish --source path/to/post.md --dry-run   # render + size-check without uploading
-```
+**LLM dispatch** is role-based: `reasoning`, `summarize`, `embed` — each mapped to a provider + model in `user-data/config/models.yaml`. Default provider is Ollama (local). A dormant DeepSeek provider exists for cloud fallback.
 
-Required secrets in `user-data/config/secrets/.env`:
+For the full architectural deep dive, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-- `BLOB_READ_WRITE_TOKEN` — Vercel Blob token with write access
-- `PUBLISH_USER_ID` — namespace for blob keys (`users/<id>/pages/<slug>/index.html`)
-- `BLOB_PUBLIC_BASE_URL` — public Blob CDN base URL
-- `PUBLISH_PUBLIC_URL` (optional, defaults to `https://askrobin.io`) — canonical URL prefix
+## MCP servers
 
-`trust: untrusted` (or `untrusted-mixed`) frontmatter blocks publication unless `--force-untrusted` is set. Inline `<!-- UNTRUSTED-START -->` / `<!-- UNTRUSTED-END -->` blocks are stripped regardless.
+Robin exposes two MCP servers (stdio transport, configured via `.mcp.json`):
 
-## Extensions: jobs and integrations
+**robin-core** — memory + cognition:
+`recall`, `remember`, `believe`, `recall_belief`, `find_entity`, `get`, `list`, `predict`, `record_correction`, `audit`, `explain`, `health`, `metrics`, `journal`, `power`, `skill`
 
-In addition to integrations (which read external data into the event store), v3 has a **jobs runtime** for cognitive work that doesn't fit the read-tick model.
+**robin-extension** — integrations + actions:
+`gmail`, `google_calendar`, `github`, `linear`, `chrome`, `finance`, `spotify_write`, `run`, `integration_status`, `ingest`, `related_entities`, `resolve_prediction`, `check_action`, `update`
 
-A job lives in `user-data/extensions/jobs/<name>/` with:
+Copy `.mcp.json.example` to `.mcp.json` and adjust paths to set up.
 
-- `job.yaml` — manifest with `schedule` (cron expression or `manual`) and optional `tz`
-- `index.ts` — exports `job: Job` with a `run(ctx)` method
+## Skills
 
-The daemon loads jobs at startup (and on hot-reload when files change), registers cron schedules, and runs `job.<name>.run` on the scheduler. The shipped example is `daily-brief` — spawns the Claude agent with the protocol prompt and captures the rendered brief as a `daily_briefing` event.
+Robin has a skills system for reusable, named methodologies. A skill is a directory with a `SKILL.md` (plus optional reference files or scripts). Robin serves the skill content via the `skill` MCP tool — it never executes anything; Claude Code reads and runs bundled scripts itself.
 
-Integration extensions follow the same shape under `user-data/extensions/integrations/<name>/` and are loaded the same way. See `user-data/extensions/AUTHORING.md` for the contract.
+Skills live in two places:
+- **System skills** (`system/skills/builtin/`) — ship with the package.
+- **User skills** (`user-data/extensions/skills/`) — personal, gitignored. A user skill with the same name shadows a system skill.
 
-## Portability
+Shipped system skills: `skill-authoring`, `memory-curation`, `web-research`.
 
-Robin's data has two layers: **content** (the source of truth) and **state** (a derivable cache).
+To create a skill: `skill({ name: "skill-authoring" })` and follow the instructions.
 
-- **Content** lives in flatfiles under `user-data/content/`. Anything Robin will reason over — captured sessions, imported messages, journal entries, integration ticks — has a flatfile origin.
-- **State** lives in `user-data/state/db/robin.sqlite` (events firehose, entities, relations, predictions, corrections, embeddings, indexes). Any Robin install can rebuild state from content; the DB is never the system of record.
+## Extensions
 
-Migrating between Robin versions is therefore a content move, not a schema map:
+**Integrations** (`user-data/extensions/integrations/<name>/`) connect Robin to external data sources. Each has an `integration.yaml` manifest and an `index.ts` with a `tick()` function. The daemon runs them on a cron schedule. 9 integrations ship built-in; user extensions are loaded identically.
 
-1. Export from the old install as NDJSON (one file per kind).
-2. Drop the files into `user-data/content/imported-from-<source>/`.
-3. `robin import <dir>` writes them into the new install's tables.
-4. Scheduled biographer + embed-backfill runs derive entities and embeddings under the new install's model.
+**Jobs** (`user-data/extensions/jobs/<name>/`) handle cognitive work that doesn't fit the read-tick model (e.g. the daily brief). Each has a `job.yaml` manifest and a `run(ctx)` method. The daemon's file watcher hot-reloads both integrations and jobs on change.
 
-`~/workspace/robin/tools/v2-export.mjs` is the throwaway exporter for the v2→v3 jump. v3 only knows how to ingest NDJSON, not where it came from — every future migration follows the same shape.
+See `user-data/extensions/AUTHORING.md` for the extension contract.
+
+## CLI
+
+Robin is designed to be invisible after install. These commands are rare:
+
+| Command | What it does |
+|---|---|
+| `robin status` | Power, capture, and network state |
+| `robin pause` / `resume` | Pause or resume scheduled work |
+| `robin incognito --for 1h` | Disable session capture temporarily |
+| `robin offline` / `online` | Toggle outbound network |
+| `robin doctor` | Diagnostic + invariant check |
+| `robin integrations` | List integrations and their health |
+| `robin reauth <name>` | Re-run OAuth for an integration |
+| `robin reindex` | Backfill embeddings |
+| `robin db backup` / `restore` / `vacuum` | Database maintenance |
+| `robin upgrade` | Apply pending schema migrations |
+| `robin publish --source <file>` | Publish markdown to the web |
+| `robin daemon install` / `uninstall` | Manage the launchd agent |
+
+For the `robin publish` workflow details, see [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
 
 ## Configuration
 
-All user-editable configuration lives in `user-data/config/`:
+All user-editable config lives in `user-data/config/`:
 
-- `models.yaml` — role → provider mapping (see design doc §6)
-- `integrations.yaml` — which integrations are enabled, secret refs, granted permissions
-- `policies.yaml` — power/capture/network state, auto-policies (battery threshold, low-power-mode, quiet hours, notification gates)
-- `hardware.yaml` — detected hardware profile + runtime defaults (written by `robin init`)
-- `profile.yaml` — user identity hints
-- `secrets/.env` (mode 0600) — environment-style secret file. Also supports `secrets.age` for committed encrypted form.
+- `models.yaml` — LLM role → provider + model mapping
+- `policies.yaml` — power/capture/network state, auto-policies (battery threshold, quiet hours)
+- `hardware.yaml` — detected hardware profile (written by `robin init`)
+- `secrets/.env` — environment-style secrets (mode 0600); loaded by the daemon at startup
 
-The `system/` directory ships **no config files** — only TypeScript code. The boundary is enforced by `tests/architecture/boundary.test.ts`.
+The `system/` directory ships no config files — only TypeScript code.
 
 ## Development
 
 ```bash
-cd robin-assistant-v3
-nvm use                                     # picks Node 24 via .nvmrc
+cd robin-assistant
+nvm use                                     # Node 24 via .nvmrc
 pnpm install
 ROBIN_USER_DATA_DIR=./user-data pnpm dev    # daemon in foreground
-pnpm test                                   # 335 tests, ~20s
-pnpm typecheck && pnpm lint
+pnpm test                                   # ~413 tests
+pnpm typecheck && pnpm lint                 # tsc --noEmit + biome
 ```
 
-Read these in order before contributing:
-
-1. `docs/specs/2026-05-18-robin-v3-design.md` — architectural baseline (what's locked, why)
-2. `docs/STATUS.md` — current implementation snapshot
-3. `docs/BACKLOG.md` — deferred work organized for future contributors
-4. `docs/CONTRIBUTING.md` — workflow, code style, architectural invariants enforced by CI
-
-`docs/companion-repo-template.md` describes the recommended `robin-personal` private-repo pattern for multi-machine sync.
+Before contributing, read:
+1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how Robin is built
+2. [`docs/STATUS.md`](docs/STATUS.md) — current implementation snapshot
+3. [`docs/BACKLOG.md`](docs/BACKLOG.md) — deferred work
+4. [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — workflow, code style, CI
 
 ## Open-source posture
 
 - **License:** MIT
-- **Reference platform:** M5 Max 64GB (Apple Silicon, MLX backend for Ollama). Other profiles degrade gracefully into smaller defaults or cloud-only mode.
-- **Personal data** lives in `user-data/` (gitignored at the package level). For multi-machine sync, the recommended pattern is a private companion repo (`robin-personal`) that contains the whole `user-data/` tree minus `state/db/` (use `restic` for those — see `docs/companion-repo-template.md`).
-- **Security:** report issues via GitHub private security advisories (see `docs/SECURITY.md`).
+- **Reference platform:** M5 Max 64 GB (Apple Silicon, Ollama). Other hardware degrades into smaller models or cloud-only mode.
+- **Personal data** lives in `user-data/` (gitignored). For multi-machine sync, use a private companion repo containing `user-data/` minus `state/db/`.
+- **Security:** report issues via GitHub private security advisories (see [`docs/SECURITY.md`](docs/SECURITY.md)).
 
 ## License
 
