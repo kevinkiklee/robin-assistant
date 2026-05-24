@@ -58,6 +58,12 @@ export const providerConfigSchema = z.object({
   model: z.string().optional(),
   baseUrl: z.string().optional(),
   apiKeyEnv: z.string().optional(),
+  // Optional Ollama tuning. numCtx caps the context window (smaller = less KV-cache
+  // memory + faster) — extraction/summary chunks are small, so the model's default
+  // 256K context just wastes ~10GB of unified memory. think toggles qwen3.x thinking
+  // mode; false skips the reasoning phase for big speed wins on structured tasks.
+  numCtx: z.number().int().positive().optional(),
+  think: z.boolean().optional(),
 });
 
 export const modelsSchema = z.object({

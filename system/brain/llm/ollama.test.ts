@@ -30,6 +30,30 @@ test('ollama: embed returns 1d arrays per input', async () => {
   server.close();
 });
 
+test('ollama: invoke sends num_ctx + think when configured', async () => {
+  const { url, server, received } = await startMockServer([
+    { method: 'POST', path: '/api/chat', body: { message: { content: 'x' }, eval_count: 1 } },
+  ]);
+  const p = new OllamaProvider({ baseUrl: url, chatModel: 'm', numCtx: 32768, think: false });
+  await p.invoke({ messages: [{ role: 'user', content: 'hi' }] });
+  const sent = received[0].body as { options: { num_ctx?: number }; think?: boolean };
+  assert.equal(sent.options.num_ctx, 32768);
+  assert.equal(sent.think, false);
+  server.close();
+});
+
+test('ollama: omits num_ctx + think when not configured', async () => {
+  const { url, server, received } = await startMockServer([
+    { method: 'POST', path: '/api/chat', body: { message: { content: 'x' }, eval_count: 1 } },
+  ]);
+  const p = new OllamaProvider({ baseUrl: url, chatModel: 'm' });
+  await p.invoke({ messages: [{ role: 'user', content: 'hi' }] });
+  const sent = received[0].body as { options: Record<string, unknown>; think?: boolean };
+  assert.equal('num_ctx' in sent.options, false);
+  assert.equal('think' in sent, false);
+  server.close();
+});
+
 test('ollama: invoke throws on non-OK status', async () => {
   const { url, server } = await startMockServer([
     { method: 'POST', path: '/api/chat', status: 500, body: { error: 'broken' } },

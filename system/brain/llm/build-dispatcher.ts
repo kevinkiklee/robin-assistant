@@ -26,6 +26,8 @@ function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
         baseUrl: cfg.baseUrl,
         chatModel: cfg.model ?? 'qwen3:8b',
         embedModel: cfg.model,
+        numCtx: cfg.numCtx,
+        think: cfg.think,
       });
     case 'deepseek':
       return new DeepSeekProvider({
