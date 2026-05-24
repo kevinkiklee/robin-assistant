@@ -15,11 +15,22 @@ export function upsertEntity(
   canonicalName: string,
   profile?: string,
 ): EntityRow {
-  const existing = db
-    .prepare(`
-    SELECT * FROM entities WHERE type = ? AND canonical_name = ?
-  `)
-    .get(type, canonicalName) as EntityRow | undefined;
+  const name = canonicalName.trim();
+  // Deduplicate on the NORMALIZED name (case-insensitive), regardless of type.
+  // Deterministic backstop behind the LLM disambiguation step: collapses variants
+  // disambiguation misses — "leadforge" (project), "LeadForge" (tool), "Leadforge"
+  // (thing) all resolve to one row. Prefer an exact (type, name) match; otherwise
+  // reuse the oldest same-normalized-name entity (first-seen type wins). Without
+  // this, dedup relied only on a type-scoped LIKE search + a flaky local LLM,
+  // which produced thousands of case/type duplicates.
+  const exact = db
+    .prepare(`SELECT * FROM entities WHERE type = ? AND canonical_name = ?`)
+    .get(type, name) as EntityRow | undefined;
+  const existing =
+    exact ??
+    (db
+      .prepare(`SELECT * FROM entities WHERE lower(canonical_name) = lower(?) ORDER BY id LIMIT 1`)
+      .get(name) as EntityRow | undefined);
   if (existing) {
     if (profile && profile !== existing.profile) {
       db.prepare(`UPDATE entities SET profile = ?, updated_at = datetime('now') WHERE id = ?`).run(
@@ -34,7 +45,7 @@ export function upsertEntity(
     .prepare(`
     INSERT INTO entities (type, canonical_name, profile) VALUES (?, ?, ?)
   `)
-    .run(type, canonicalName, profile ?? null);
+    .run(type, name, profile ?? null);
   return db
     .prepare('SELECT * FROM entities WHERE id = ?')
     .get(Number(info.lastInsertRowid)) as EntityRow;
