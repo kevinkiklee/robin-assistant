@@ -1,5 +1,6 @@
 import type { ModelsConfig, ProviderConfig } from '../../kernel/config/schema.ts';
 import { AnthropicProvider } from './anthropic.ts';
+import { ClaudeAgentProvider } from './claude-agent.ts';
 import { DeepSeekProvider } from './deepseek.ts';
 import { LLMDispatcher } from './dispatcher.ts';
 import { GoogleProvider } from './google.ts';
@@ -20,6 +21,8 @@ function resolveSecret(env: NodeJS.ProcessEnv, key?: string): string {
 //   post-cloud-migration (Ollama uninstalled from disk 2026-05-24; reinstall +
 //   repoint models.yaml to revert).
 // - deepseek: dormant cloud escape hatch; not routed by any role.
+// - claude-agent: cloud, pool-/subscription-billed via the Claude Agent SDK on a pinned
+//   cheap model; reports costUsd:0 so prepaid pool dollars don't inflate the metered cap.
 function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMProvider {
   switch (cfg.provider) {
     case 'ollama':
@@ -36,6 +39,11 @@ function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
         model: cfg.model,
         maxTokens: cfg.maxTokens,
       });
+    case 'claude-agent':
+      // Pool-/subscription-billed via the Claude Agent SDK. Pinned to a cheap model
+      // (the SDK preamble makes a default-Opus call expensive). Reports costUsd:0 to
+      // the dispatcher cap; real spend is recorded to the UsageLedger when wired in.
+      return new ClaudeAgentProvider({ model: cfg.model ?? 'claude-haiku-4-5' });
     case 'google':
       return new GoogleProvider({
         apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'GEMINI_API_KEY'),
