@@ -21,14 +21,14 @@ function isLlmUnavailableError(err: unknown): boolean {
   );
 }
 
-// Bug E mitigation — bound any single chunk's LLM call. Real qwen3:14b chunks finish
-// in 30-60s; anything past 2 min is a hang (observed 2026-05-21: biographer wedged
-// the daemon for 3+ hours awaiting Ollama). Without this ceiling, one stuck chunk
-// blocks the entire scheduler loop. Per-chunk timeout (not per-session) so each
-// chunk failure is independent and partial progress is preserved on retry. 2 min is
-// 2× expected worst-case for legitimate slow chunks; tighter than that risks
-// flagging cold-model or thermal-throttle as failures.
-const BIOGRAPHER_CHUNK_TIMEOUT_MS = 2 * 60_000;
+// Bug E mitigation — bound any single chunk's LLM call so one stuck chunk can't
+// block the scheduler forever. With thinking ON + 20K chunks, legitimate
+// extractions routinely take 2-3 min (thinking overhead + prefill + JSON
+// generation). 4 min gives headroom without masking real hangs. Combined with
+// MAX_CHUNKS_PER_TICK=6, the worst-case tick = 6 × 4 = 24 min (under the
+// 30-min heartbeat gate). Raised from 2 min on 2026-05-24 after confirming
+// real extractions were hitting the 120s ceiling on every session.
+const BIOGRAPHER_CHUNK_TIMEOUT_MS = 4 * 60_000;
 
 // Bug F mitigation — disambiguation is a smaller prompt (a few candidate lines +
 // 2KB of source text) so it should finish well under a minute. The ceiling here
@@ -108,12 +108,10 @@ const CHUNK_CHARS = 20000;
 // so any session whose cumulative chunk-time exceeded the daemon's 30-min
 // sustained-CRITICAL gate could never complete — the daemon force-restarted
 // mid-session and re-claimed the same row forever. With a per-tick cap, no
-// session (regardless of size) can hold the scheduler past the gate. 10 chunks ×
-// the 2-min per-chunk ceiling = 20 min worst case (under the 30-min gate);
-// the typical 30s/chunk on qwen3:14b keeps a tick under 5 min.
-// Raised from 4 (2026-05-23) to drain the backlog faster — at */5 cron × batch 5,
-// throughput goes from ~0.27 to ~2 chunks/min.
-const MAX_CHUNKS_PER_TICK = 10;
+// session (regardless of size) can hold the scheduler past the gate. 6 chunks ×
+// the 4-min per-chunk ceiling = 24 min worst case (under the 30-min gate).
+// Reduced from 10 (when timeout was 2 min) to compensate for the longer timeout.
+const MAX_CHUNKS_PER_TICK = 6;
 
 // Sanity ceiling — sessions whose body exceeds this are skipped with a
 // `biographer.extracted` marker so they stop being re-selected. This used to be
