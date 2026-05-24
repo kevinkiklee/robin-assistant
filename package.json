@@ -17,8 +17,8 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node ./scripts/build-extensions.mjs",
-    "build:extensions": "node ./scripts/build-extensions.mjs",
+    "build": "tsc -p tsconfig.build.json && node ./system/scripts/build-extensions.mjs",
+    "build:extensions": "node ./system/scripts/build-extensions.mjs",
     "dev": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts daemon --foreground",
     "robin": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts",
     "test": "node --test --test-concurrency=8 --test-timeout=20000 --import tsx 'system/**/*.test.ts' 'user-data/extensions/**/*.test.ts'",

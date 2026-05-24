@@ -155,10 +155,13 @@ export function recallBelief(
     .prepare(
       `${SELECT} AND e.id IN (
          SELECT id FROM (
-           SELECT e2.id AS id, MAX(e2.ts)
+           SELECT e2.id AS id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(e2.payload,'$.topic')
+                    ORDER BY e2.ts DESC, e2.id DESC
+                  ) AS rn
            FROM events e2 WHERE e2.kind='belief.update'
-           GROUP BY json_extract(e2.payload,'$.topic')
-         )
+         ) WHERE rn = 1
        ) ORDER BY e.ts DESC, e.id DESC LIMIT ?`,
     )
     .all(limit) as RawRow[];

@@ -142,7 +142,7 @@ Read these in order before contributing:
 1. `docs/specs/2026-05-18-robin-v3-design.md` — architectural baseline (what's locked, why)
 2. `docs/STATUS.md` — current implementation snapshot
 3. `docs/BACKLOG.md` — deferred work organized for future contributors
-4. `CONTRIBUTING.md` — workflow, code style, architectural invariants enforced by CI
+4. `docs/CONTRIBUTING.md` — workflow, code style, architectural invariants enforced by CI
 
 `docs/companion-repo-template.md` describes the recommended `robin-personal` private-repo pattern for multi-machine sync.
 
@@ -151,7 +151,7 @@ Read these in order before contributing:
 - **License:** MIT
 - **Reference platform:** M5 Max 64GB (Apple Silicon, MLX backend for Ollama). Other profiles degrade gracefully into smaller defaults or cloud-only mode.
 - **Personal data** lives in `user-data/` (gitignored at the package level). For multi-machine sync, the recommended pattern is a private companion repo (`robin-personal`) that contains the whole `user-data/` tree minus `state/db/` (use `restic` for those — see `docs/companion-repo-template.md`).
-- **Security:** report issues via GitHub private security advisories (see `SECURITY.md`).
+- **Security:** report issues via GitHub private security advisories (see `docs/SECURITY.md`).
 
 ## License
 

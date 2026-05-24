@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "robin": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/surfaces/cli/index.js", "mcp", "core"],
+      "env": {
+        "ROBIN_USER_DATA_DIR": "./user-data"
+      }
+    },
+    "robin-extension": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/surfaces/cli/index.js", "mcp", "extension"],
+      "env": {
+        "ROBIN_USER_DATA_DIR": "./user-data"
+      }
+    }
+  }
+}

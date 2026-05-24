@@ -2,7 +2,7 @@ node_modules/
 dist/
 build/
 user-data/
-docs/
+docs/superpowers/
 *.log
 .DS_Store
 .env
@@ -12,3 +12,4 @@ docs/
 .vscode/
 *.tsbuildinfo
 .claude/settings.local.json
+.mcp.json

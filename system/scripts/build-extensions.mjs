@@ -9,7 +9,8 @@ import { dirname, join, relative } from 'node:path';
 // Usage: pnpm build:extensions
 import { build } from 'esbuild';
 
-const ROOT = new URL('../', import.meta.url).pathname;
+// This script lives at system/scripts/ — repo root is two levels up.
+const ROOT = new URL('../../', import.meta.url).pathname;
 const ROOTS = [
   join(ROOT, 'user-data', 'extensions', 'integrations'),
   join(ROOT, 'user-data', 'extensions', 'jobs'),
