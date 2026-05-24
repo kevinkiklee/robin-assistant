@@ -46,14 +46,19 @@ splitting persistence between two stores defeats the purpose.
 - At session start, read `user-data/content/knowledge/` for user preferences
   and project follow-ups.
 
-## No nested `claude -p`
+## Sanctioned agentic execution
 
-Robin's code must never shell out to the Claude Code CLI (`claude -p`). No
-nested agentic sessions — not in jobs, integrations, surfaces, or workarounds.
+Agentic `query()` (the SDK tool-loop) is allowed **only** through
+`system/agent/runAgent`. That one primitive is ledger-accounted (one
+`agent_usage` row per run), tool-allowlisted (explicit `allowedTools`, no
+"all"), turn/time/budget-capped (`maxTurns` + `timeoutMs` + `maxBudgetUsd` +
+per-surface daily cap), and worktree-isolated for write work. Every run leaves a
+full JSONL transcript on disk, so the loop is auditable, not opaque.
 
-When a job needs LLM work, use `llm.invoke(role, …)` through the dispatcher
-(local Ollama). Reason: recursion cost, non-determinism, and opacity of a
-nested agent's tool loop.
+Direct `claude -p` shell-outs, and any path that reaches `query()` without going
+through `runAgent`, remain **banned** — no ad-hoc nested sessions in jobs,
+integrations, surfaces, or workarounds. For plain (non-agentic) LLM work, use
+`llm.invoke(role, …)` through the dispatcher.
 
 ## Code conventions
 
