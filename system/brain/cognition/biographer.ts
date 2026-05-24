@@ -22,13 +22,12 @@ function isLlmUnavailableError(err: unknown): boolean {
 }
 
 // Bug E mitigation — bound any single chunk's LLM call so one stuck chunk can't
-// block the scheduler forever. With thinking ON + 20K chunks, legitimate
-// extractions routinely take 2-3 min (thinking overhead + prefill + JSON
-// generation). 4 min gives headroom without masking real hangs. Combined with
-// MAX_CHUNKS_PER_TICK=6, the worst-case tick = 6 × 4 = 24 min (under the
-// 30-min heartbeat gate). Raised from 2 min on 2026-05-24 after confirming
-// real extractions were hitting the 120s ceiling on every session.
-const BIOGRAPHER_CHUNK_TIMEOUT_MS = 4 * 60_000;
+// block the scheduler forever. With maxTokens=4096 on the invoke, generation is
+// bounded to ~77s at 53 tok/s regardless of thinking length — so 2 min is
+// generous (catches genuine hangs without flagging real work). Combined with
+// MAX_CHUNKS_PER_TICK=10 → worst-case tick = 10 × 2 = 20 min (under the
+// 30-min heartbeat gate).
+const BIOGRAPHER_CHUNK_TIMEOUT_MS = 2 * 60_000;
 
 // Bug F mitigation — disambiguation is a smaller prompt (a few candidate lines +
 // 2KB of source text) so it should finish well under a minute. The ceiling here
@@ -108,10 +107,10 @@ const CHUNK_CHARS = 20000;
 // so any session whose cumulative chunk-time exceeded the daemon's 30-min
 // sustained-CRITICAL gate could never complete — the daemon force-restarted
 // mid-session and re-claimed the same row forever. With a per-tick cap, no
-// session (regardless of size) can hold the scheduler past the gate. 6 chunks ×
-// the 4-min per-chunk ceiling = 24 min worst case (under the 30-min gate).
-// Reduced from 10 (when timeout was 2 min) to compensate for the longer timeout.
-const MAX_CHUNKS_PER_TICK = 6;
+// session (regardless of size) can hold the scheduler past the gate. 10 chunks ×
+// the 2-min per-chunk ceiling = 20 min worst case (under the 30-min gate).
+// With maxTokens=4096, real chunks finish in ~77s, so a tick takes ~13 min.
+const MAX_CHUNKS_PER_TICK = 10;
 
 // Sanity ceiling — sessions whose body exceeds this are skipped with a
 // `biographer.extracted` marker so they stop being re-selected. This used to be
@@ -565,6 +564,7 @@ export async function runBiographer(
               systemPrompt: SYSTEM_PROMPT,
               messages: [{ role: 'user', content: batchText }],
               temperature: 0,
+              maxTokens: 4096,
             }),
             chunkTimeoutMs * batch.length,
             `biographer event=${target.eventId} chunks=${batch.join(',')}/${totalChunks}`,
