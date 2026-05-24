@@ -27,53 +27,41 @@ Apple Silicon recommended for local inference. Cloud-only configs work on any pl
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Claude Code (MCP client)                     │
-│              ┌──────────────┐          ┌───────────────┐            │
-│              │  robin-core  │          │robin-extension│            │
-│              │  (16 tools)  │          │  (14 tools)   │            │
-│              └──────┬───────┘          └───────┬───────┘            │
-└─────────────────────┼──────────────────────────┼────────────────────┘
-                      │          stdio           │
-┌─────────────────────┼──────────────────────────┼────────────────────┐
-│                     ▼          DAEMON          ▼                    │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │                      SCHEDULER                              │    │
-│  │  tick loop (1s) → claim job → run handler → re-arm cron     │    │
-│  │  lease TTL (5m) · reaper (60s) · withTimeout (120s/handler) │    │
-│  └───────┬────────────────┬───────────────────┬────────────────┘    │
-│          │                │                   │                     │
-│  ┌───────▼──────┐ ┌──────▼───────┐  ┌────────▼────────┐           │
-│  │  COGNITION   │ │ INTEGRATIONS │  │     JOBS         │           │
-│  │              │ │              │  │                   │           │
-│  │ biographer   │ │ gmail        │  │ daily-brief       │           │
-│  │ embed-backfill│ │ calendar     │  │ (user-defined)    │           │
-│  │ dream        │ │ github, etc  │  │                   │           │
-│  └───────┬──────┘ └──────┬───────┘  └────────┬────────┘           │
-│          │               │                    │                     │
-│  ┌───────▼───────────────▼────────────────────▼────────────────┐   │
-│  │                       BRAIN                                  │   │
-│  │                                                              │   │
-│  │  Memory         LLM Dispatch        Entity Graph             │   │
-│  │  ┌───────────┐  ┌─────────────┐     ┌──────────────────┐    │   │
-│  │  │ events    │  │ reasoning   │     │ entities         │    │   │
-│  │  │ FTS5      │  │ summarize   │     │ relations        │    │   │
-│  │  │ vec 4096d │  │ embed       │     │ biographer       │    │   │
-│  │  │ beliefs   │  │   ↓         │     │ disambiguation   │    │   │
-│  │  │ predictions│  │ Ollama/cloud│     └──────────────────┘    │   │
-│  │  │ corrections│  └─────────────┘                              │   │
-│  │  └───────────┘                                                │   │
-│  │           ↕                                                   │   │
-│  │    SQLite + sqlite-vec (single file, WAL mode)                │   │
-│  └───────────────────────────────────────────────────────────────┘   │
-│                                                                      │
-│  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │  Health Monitor   │  │ Power Auto   │  │ HTTP (hooks, health) │   │
-│  │  invariants (60s) │  │ battery/quiet│  │ :41273               │   │
-│  │  30m CRIT → exit  │  │ pause/resume │  │ session capture      │   │
-│  └──────────────────┘  └──────────────┘  └──────────────────────┘   │
-└──────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    CC["Claude Code (MCP client)"] -->|stdio| Core["robin-core · 16 tools"]
+    CC -->|stdio| Ext["robin-extension · 14 tools"]
+
+    subgraph Daemon["DAEMON (single Node.js process, launchd-supervised)"]
+        direction TB
+
+        subgraph Scheduler["SCHEDULER · tick loop 1s · lease TTL 5m · 120s handler timeout"]
+            direction LR
+            Cog["COGNITION<br/>biographer · embed-backfill · dream"]
+            Int["INTEGRATIONS<br/>gmail · calendar · github<br/>whoop · finance · ebird · ..."]
+            Jobs["JOBS<br/>daily-brief · user-defined"]
+        end
+
+        subgraph Brain["BRAIN"]
+            direction LR
+            Mem["Memory<br/>events · FTS5 · vec 4096d<br/>beliefs · predictions · corrections"]
+            LLM["LLM Dispatch<br/>reasoning · summarize · embed<br/>↓ Ollama / cloud"]
+            Graph["Entity Graph<br/>entities · relations<br/>biographer · disambiguation"]
+        end
+
+        DB[("SQLite + sqlite-vec<br/>single file · WAL mode")]
+
+        Health["Health Monitor<br/>invariants 60s · 30m CRIT → exit"]
+        Power["Power Auto<br/>battery / quiet hours"]
+        HTTP["HTTP :41273<br/>hooks · health · session capture"]
+    end
+
+    Core --> Scheduler
+    Ext --> Scheduler
+    Cog --> Brain
+    Int --> Brain
+    Jobs --> Brain
+    Brain --> DB
 ```
 
 ### Three layers
