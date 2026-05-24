@@ -49,6 +49,41 @@ export const biographerConfigSchema = z.object({
   draftClaims: z.boolean().default(true),
 });
 
+// Claude Agent SDK execution policy: master kill-switch, per-surface daily spend
+// caps, default session bounds (model/turns/timeout/budget), write-isolation toggle,
+// pool-credit-exhaustion notification toggle, and the pool-billing switch. Nested
+// blocks each carry per-field defaults so a partial override fills in siblings.
+export const agentSchema = z.object({
+  enabled: z.boolean().default(true),
+  // prefault({}) (not default({})) so a missing or partial nested block still runs
+  // the inner per-field defaults — default({}) would store the bare {} verbatim.
+  caps: z
+    .object({
+      agentic_on_demand_daily_usd: z.number().nonnegative().default(50),
+      agentic_autonomous_daily_usd: z.number().nonnegative().default(25),
+    })
+    .prefault({}),
+  session: z
+    .object({
+      default_model: z.string().default('claude-sonnet-4-6'),
+      default_max_turns: z.number().int().positive().default(30),
+      default_timeout_ms: z.number().int().positive().default(1_800_000),
+      default_max_budget_usd: z.number().nonnegative().default(5),
+    })
+    .prefault({}),
+  write: z
+    .object({
+      file_checkpointing: z.boolean().default(true),
+    })
+    .prefault({}),
+  credit: z
+    .object({
+      notify_on_exhaustion: z.boolean().default(true),
+    })
+    .prefault({}),
+  bill_to_pool: z.boolean().default(true),
+});
+
 export const policiesSchema = z
   .object({
     power: powerSchema.optional(),
@@ -57,6 +92,7 @@ export const policiesSchema = z
     notifications: notificationsSchema.optional(),
     linear: linearConfigSchema.optional(),
     biographer: biographerConfigSchema.optional(),
+    agent: agentSchema.optional(),
   })
   .transform((data) => ({
     power: powerSchema.parse(data.power ?? {}),
@@ -65,6 +101,7 @@ export const policiesSchema = z
     notifications: notificationsSchema.parse(data.notifications ?? {}),
     linear: linearConfigSchema.parse(data.linear ?? {}),
     biographer: biographerConfigSchema.parse(data.biographer ?? {}),
+    agent: agentSchema.parse(data.agent ?? {}),
   }));
 
 export type Policies = z.infer<typeof policiesSchema>;
