@@ -599,17 +599,16 @@ export async function runBiographer(
         }
       }
 
-      // Circuit breaker — if every attempted chunk failed because the LLM was
-      // unreachable (Ollama down / timing out) and none succeeded, do NOT advance
-      // the cursor or finalize. Marking the session done here would record it as
-      // biographed with zero entities (silent data loss). Leave it untouched so it
-      // retries once the LLM is back, and stop this run (no point hammering a dead
-      // backend across the rest of the backlog).
+      // When all chunks in a session timed out, log it but DO NOT break — let the
+      // cursor advance past the failed chunks and finalize the session with whatever
+      // succeeded (possibly 0 entities). The per-chunk timeout (2 min) is the safety
+      // net. The old circuit-breaker used `break` here, which caused a permanent stall:
+      // one session whose content hung the model would be re-selected every tick,
+      // timeout, break, re-select — blocking the entire pipeline forever.
       if (llmUnavailable && successes === 0) {
         result.errors.push(
-          `event ${target.eventId}: LLM unreachable — aborted without advancing (will retry)`,
+          `event ${target.eventId}: all chunks timed out — advancing cursor past them`,
         );
-        break;
       }
       chunkBudget -= endChunk - startChunk;
     }
