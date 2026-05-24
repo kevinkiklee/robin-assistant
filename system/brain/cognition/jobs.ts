@@ -15,7 +15,7 @@ export interface CognitionJob {
 export const COGNITION_JOBS: CognitionJob[] = [
   {
     name: 'biographer.run',
-    cron: '*/15 * * * *',
+    cron: '*/5 * * * *',
     description: 'Extract entities + relations from captured sessions',
   },
   {
@@ -42,16 +42,13 @@ export function registerCognitionJobs(
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
-    // Batch is 1 because qwen3:14b on M5 Max realistically takes ~11 min per session
-    // (much slower than the original 25/tick design assumed). With batch=25 a single
-    // tickOnce would hold the scheduler for hours, blocking `lastTickAt` updates and
-    // triggering Bug A's 30-min heartbeat-sustained-CRITICAL recovery in a loop.
-    // batch=1 keeps each tick bounded at ~11 min — well under the recovery threshold —
-    // and the cron re-arm (Bug C fix) ensures continuous draining of the backlog.
-    // Throughput is unchanged in practice: batch=25 in the loop world produced ~3
-    // sessions per 30-min restart cycle ≈ 5-6/hr; batch=1 with cron */15 produces
-    // ~4/hr but without restart-loss of in-flight work.
-    await runBiographer(db, llm, 1);
+    // Batch = 5 sessions per tick. The chunk budget (MAX_CHUNKS_PER_TICK=10) is
+    // the real time guard (~30s/chunk on 14b → ~5 min worst case per tick, well
+    // under the 30-min heartbeat gate). Raising batch from 1 lets the biographer
+    // drain multiple small sessions per tick instead of wasting leftover budget.
+    // Combined with the */5 cron, throughput is ~2 chunks/min (was ~0.27 at
+    // batch=1/*/15/4-chunk).
+    await runBiographer(db, llm, 5);
   });
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;

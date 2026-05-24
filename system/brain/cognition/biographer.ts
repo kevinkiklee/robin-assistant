@@ -108,10 +108,12 @@ const CHUNK_CHARS = 10000;
 // so any session whose cumulative chunk-time exceeded the daemon's 30-min
 // sustained-CRITICAL gate could never complete — the daemon force-restarted
 // mid-session and re-claimed the same row forever. With a per-tick cap, no
-// session (regardless of size) can hold the scheduler past the gate. 4 chunks ×
-// the 2-min per-chunk ceiling = 8 min worst case (well under the 30-min gate);
-// the typical 30-60s/chunk keeps a tick under the 5-min heartbeat entirely.
-const MAX_CHUNKS_PER_TICK = 4;
+// session (regardless of size) can hold the scheduler past the gate. 10 chunks ×
+// the 2-min per-chunk ceiling = 20 min worst case (under the 30-min gate);
+// the typical 30s/chunk on qwen3:14b keeps a tick under 5 min.
+// Raised from 4 (2026-05-23) to drain the backlog faster — at */5 cron × batch 5,
+// throughput goes from ~0.27 to ~2 chunks/min.
+const MAX_CHUNKS_PER_TICK = 10;
 
 // Sanity ceiling — sessions whose body exceeds this are skipped with a
 // `biographer.extracted` marker so they stop being re-selected. This used to be
