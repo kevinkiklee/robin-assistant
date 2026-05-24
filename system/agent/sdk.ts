@@ -55,6 +55,18 @@ function buildEnv(input: RunSdkInput): Record<string, string> {
   return out;
 }
 
+/**
+ * The SDK accepts a full `AbortController`, not a bare signal. Wrap the caller's
+ * `abortSignal` in a controller that aborts in lockstep so callers keep passing a
+ * plain `AbortSignal` (deadline timers, etc.) without owning the controller.
+ */
+function abortControllerFor(signal: AbortSignal): AbortController {
+  const controller = new AbortController();
+  if (signal.aborted) controller.abort(signal.reason);
+  else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+  return controller;
+}
+
 export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
   const queryFn = input.queryFn ?? realQuery;
   const stream = queryFn({
@@ -70,11 +82,14 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       ...(input.additionalDirectories
         ? { additionalDirectories: input.additionalDirectories }
         : {}),
-      ...(input.mcpServers ? { mcpServers: input.mcpServers } : {}),
+      ...(input.mcpServers
+        ? // biome-ignore lint/suspicious/noExplicitAny: the public input keeps mcpServers loosely typed; the SDK narrows it
+          { mcpServers: input.mcpServers as Record<string, any> }
+        : {}),
       ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
       ...(input.enableFileCheckpointing ? { enableFileCheckpointing: true } : {}),
       ...(input.loadProjectSettings ? { settingSources: ['project'] } : {}),
-      ...(input.abortSignal ? { abortController: { signal: input.abortSignal } } : {}),
+      ...(input.abortSignal ? { abortController: abortControllerFor(input.abortSignal) } : {}),
       env: buildEnv(input),
     },
   });
