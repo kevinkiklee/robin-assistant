@@ -7,7 +7,7 @@
 
 Robin runs as a single-process daemon on macOS via launchd (KeepAlive). Current reference setup: M5 Max 64 GB, Ollama with qwen3.5:35b-a3b (MoE, 3B active params) for reasoning/summarize and qwen3-embedding:8b for embeddings.
 
-The full loop is operational: Claude Code sessions are captured via a session-end hook, the biographer extracts entities and relations, embed-backfill indexes content for vector search, the dream job runs nightly for prediction resolution + journal generation, and 18 integrations tick on their cron schedules.
+The full loop is operational: Claude Code sessions are captured via a session-end hook, the biographer extracts entities and relations, embedder indexes content for vector search, the dream job runs nightly for prediction resolution + journal generation, and 18 integrations tick on their cron schedules.
 
 ## Subsystems
 
@@ -21,7 +21,7 @@ The full loop is operational: Claude Code sessions are captured via a session-en
 
 ### Cognition jobs
 - **biographer.run** — multi-tick entity/relation extraction from captured sessions. Chunks sessions at 10k chars, processes ≤10 chunks per tick, persists progress in `biographer_progress`. Circuit-breaks on unreachable LLM (no empty markers on Ollama outage).
-- **embed-backfill.run** — deferred embedding of events_content rows (every minute, single-flight Ollama)
+- **embedder.run** — deferred embedding of events_content rows (every minute, single-flight Ollama)
 - **dream.run** — nightly at 03:00 local: prediction resolution, metrics rollup, journal generation
 
 ### Surfaces
@@ -62,7 +62,7 @@ The full loop is operational: Claude Code sessions are captured via a session-en
 - **Interactive `robin init`** — TTY prompts + OAuth device flow + model pulling. `--yes` (non-interactive) covers daily use.
 - **Kuzu graph projection** — scaffolded in paths.ts; not wired. Use once SQL traversal becomes a bottleneck.
 - **APFS snapshots** for `robin db backup` — current VACUUM-INTO backup works; APFS needs elevated permissions.
-- **Job retention/pruning** — completed job rows accumulate (~1500/day from embed-backfill). No auto-prune yet.
+- **Job retention/pruning** — completed job rows accumulate (~1500/day from embedder). No auto-prune yet.
 - **Multi-account integrations** — one instance per integration name.
 
 ## Recent changes (2026-05-23)

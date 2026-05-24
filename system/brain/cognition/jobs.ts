@@ -4,7 +4,7 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { runBiographer } from './biographer.ts';
 import { runDream } from './dream.ts';
-import { runEmbedBackfill } from './embed-backfill.ts';
+import { runEmbedder } from './embedder.ts';
 
 export interface CognitionJob {
   name: string;
@@ -25,10 +25,10 @@ export const COGNITION_JOBS: CognitionJob[] = [
   },
   {
     // Every minute. Embedding is deferred from the ingest hot-path; this job picks up
-    // events_content rows whose embedding is NULL in batches of EMBED_BACKFILL_BATCH (200).
+    // events_content rows whose embedding is NULL in batches of EMBEDDER_BATCH (200).
     // scheduleCronJob is idempotent — if a tick is still running, the next one queues
     // rather than overlapping, so Ollama stays single-flight.
-    name: 'embed-backfill.run',
+    name: 'embedder.run',
     cron: '* * * * *',
     description: 'Embed events_content rows with NULL embedding (deferred from ingest)',
   },
@@ -54,9 +54,9 @@ export function registerCognitionJobs(
     const llm = getLLM() ?? null;
     await runDream(db, llm);
   });
-  daemon.registerHandler('embed-backfill.run', async () => {
+  daemon.registerHandler('embedder.run', async () => {
     const llm = getLLM() ?? null;
-    await runEmbedBackfill(db, llm);
+    await runEmbedder(db, llm);
   });
   for (const job of COGNITION_JOBS) {
     scheduleCronJob(db, { name: job.name, cron: job.cron });

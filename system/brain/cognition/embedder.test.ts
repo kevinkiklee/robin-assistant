@@ -7,7 +7,7 @@ import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { runEmbedBackfill } from './embed-backfill.ts';
+import { runEmbedder } from './embedder.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-backfill-'));
@@ -29,10 +29,10 @@ function embedProvider(): LLMProvider {
   };
 }
 
-describe('embed-backfill', () => {
+describe('embedder', () => {
   it('returns no-embed when no LLM dispatcher is provided', async () => {
     const db = freshDb();
-    const r = await runEmbedBackfill(db, null);
+    const r = await runEmbedder(db, null);
     assert.equal(r.status, 'no-embed');
     assert.equal(r.embedded, 0);
     closeDb(db);
@@ -41,7 +41,7 @@ describe('embed-backfill', () => {
   it('returns no-embed when the embed role is missing', async () => {
     const db = freshDb();
     const llm = new LLMDispatcher(); // no providers registered
-    const r = await runEmbedBackfill(db, llm);
+    const r = await runEmbedder(db, llm);
     assert.equal(r.status, 'no-embed');
     closeDb(db);
   });
@@ -55,7 +55,7 @@ describe('embed-backfill', () => {
     llm.register('e', embedProvider());
     llm.assign('embed', 'e');
 
-    const r = await runEmbedBackfill(db, llm, 3);
+    const r = await runEmbedder(db, llm, 3);
     assert.equal(r.status, 'ok');
     assert.equal(r.embedded, 3);
     assert.equal(r.failed, 0);
@@ -74,7 +74,7 @@ describe('embed-backfill', () => {
     const llm = new LLMDispatcher();
     llm.register('e', embedProvider());
     llm.assign('embed', 'e');
-    const r = await runEmbedBackfill(db, llm);
+    const r = await runEmbedder(db, llm);
     assert.equal(r.status, 'ok');
     assert.equal(r.embedded, 0);
     assert.equal(r.total_eligible, 0);

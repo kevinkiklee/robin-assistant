@@ -18,7 +18,7 @@ This session shipped the v2 → v3 data migration (rebuilt from scratch as NDJSO
 
 - **v2 migration rebuilt** as NDJSON. `tools/v2-export.mjs` (one-off, lives outside v3) dumps surrealkv tables → NDJSON; `robin import <dir>` ingests events/entities/edges/corrections/predictions through the v3 schema in a single outer transaction. Old `system/surfaces/cli/migrate/` deleted.
 - **Embeddings live** — `qwen3-embedding:8b` at 4096-dim. Migration 005 reshaped `events_vec` from `float[1024]` → `float[4096]`. `embed-content.ts` helper truncates bodies > 30k chars before embedding (qwen3's runtime context is lower than the model's advertised 40k tokens). 9,452 / 9,453 events embedded; only failure was a single 130k-char daily-briefing pre-truncation-helper.
-- **Embedding moved to deferred batch** — `system/brain/cognition/embed-backfill.ts` runs every minute via the scheduler, picks up `events_content WHERE embedding IS NULL` in batches of 200. Ingest no longer blocks on Ollama. Frees high-frequency integration ticks.
+- **Embedding moved to deferred batch** — `system/brain/cognition/embedder.ts` runs every minute via the scheduler, picks up `events_content WHERE embedding IS NULL` in batches of 200. Ingest no longer blocks on Ollama. Frees high-frequency integration ticks.
 - **`robin reindex`** verb with `--limit`, `--force`, `--ids`, `--batch`, `--json`.
 - **Cron TZ fix** — `system/kernel/scheduler/cron.ts` resolves TZ from per-job `tz:` manifest field → `ROBIN_TZ` env → system IANA → UTC fallback. Pending rows refresh in-place when the TZ change moves the next-run time.
 - **Daemon-install path fix** — `buildDaemonSpecFromEnv` resolves `userDataDir` to absolute (was passing relative paths into the plist; launchd's `/` cwd then made daemon die exit 78).

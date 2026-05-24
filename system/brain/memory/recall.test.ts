@@ -88,7 +88,7 @@ test('recall: repeat queries share the same query_hash so aggregation is meaning
 });
 
 test('recall: vec mode finds the row whose embedding the dispatcher returned', async () => {
-  // ingest no longer embeds inline (deferred to the embed-backfill job), so this test
+  // ingest no longer embeds inline (deferred to the embedder job), so this test
   // writes the vector directly into events_content + events_vec to set up the recall
   // surface, then verifies vec recall works against the seeded data.
   const db = freshDb();

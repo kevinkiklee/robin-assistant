@@ -8,7 +8,7 @@ Robin is a single-process Node.js daemon that owns scheduling, memory, LLM dispa
 system/                    Framework source (TypeScript, compiled to dist/)
 ├── kernel/                Daemon runtime, scheduler, health monitor, config, invariants
 ├── brain/                 Memory (DB, entities, recall, beliefs), cognition (biographer,
-│                          dream, capture, embed-backfill), LLM dispatcher
+│                          dream, capture, embedder), LLM dispatcher
 ├── integrations/          Built-in integrations + runtime loader
 ├── skills/                Built-in skills + runtime loader
 ├── jobs/                  Job runner
@@ -64,7 +64,7 @@ The daemon's `runLoop` calls `Scheduler.tickOnce()` every second, which claims a
 
 **Cognition jobs:**
 - `biographer.run` — entity/relation extraction from captured sessions. Multi-tick: processes a bounded number of chunks per tick, persisting progress in `biographer_progress`. A session resumes across cron ticks; no session can hold the scheduler past the daemon's 30-min heartbeat recovery gate.
-- `embed-backfill.run` — embeds `events_content` rows with null embeddings (deferred from the ingest hot-path, single-flight against Ollama).
+- `embedder.run` — embeds `events_content` rows with null embeddings (deferred from the ingest hot-path, single-flight against Ollama).
 - `dream.run` — nightly: resolves overdue predictions, rolls up metrics, generates a journal entry.
 
 ## Health monitor

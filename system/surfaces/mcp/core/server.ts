@@ -78,7 +78,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         content,
       });
       // `embedded` used to round-trip through this response when embedding was inline.
-      // It's now deferred to the embed-backfill job, so the response reports only the
+      // It's now deferred to the embedder job, so the response reports only the
       // event id; callers shouldn't expect immediate vector recall on the new row.
       return {
         content: [

@@ -11,10 +11,10 @@ import type { RobinDb } from '../memory/db.ts';
  * qwen3-embedding:8b. Backlogs drain over multiple ticks; the cron is idempotent
  * (only one pending row per name) so ticks never overlap.
  *
- * Skips cleanly with `embed-backfill: no-embed-role` when models.yaml lacks an `embed`
+ * Skips cleanly with `embedder: no-embed-role` when models.yaml lacks an `embed`
  * role — same behavior as `robin reindex` would have on the CLI.
  */
-export interface EmbedBackfillResult {
+export interface EmbedderResult {
   status: 'ok' | 'skipped' | 'no-embed';
   embedded: number;
   failed: number;
@@ -22,13 +22,13 @@ export interface EmbedBackfillResult {
   message?: string;
 }
 
-export const EMBED_BACKFILL_BATCH = 200;
+export const EMBEDDER_BATCH = 200;
 
-export async function runEmbedBackfill(
+export async function runEmbedder(
   db: RobinDb,
   llm: LLMDispatcher | null,
-  batch: number = EMBED_BACKFILL_BATCH,
-): Promise<EmbedBackfillResult> {
+  batch: number = EMBEDDER_BATCH,
+): Promise<EmbedderResult> {
   if (!llm) {
     return { status: 'no-embed', embedded: 0, failed: 0, total_eligible: 0, message: 'no LLM' };
   }

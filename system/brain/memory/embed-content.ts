@@ -5,7 +5,7 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 // Ollama returns in under a second; observed degradation on 2026-05-21 pushed a
 // single embed call to 6+ seconds and a sibling biographer call hung indefinitely.
 // 60s is generous (15× steady-state) but tight enough that a wedged call fails
-// fast and the embed-backfill batch keeps moving.
+// fast and the embedder batch keeps moving.
 const EMBED_CALL_TIMEOUT_MS = 60_000;
 
 // qwen3-embedding:8b advertises a 40,960-token context, but Ollama's default num_ctx for

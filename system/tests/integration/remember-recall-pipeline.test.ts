@@ -13,7 +13,7 @@ import { runReindexCore } from '../../surfaces/cli/reindex.ts';
 
 // End-to-end coverage of the remember/recall pipeline. The MCP `remember` tool calls
 // ingest(); the MCP `recall` tool calls recall(). Between them sit the FTS5 trigger
-// (instant) and the embed-backfill job (async, deferred from ingest). This file walks
+// (instant) and the embedder job (async, deferred from ingest). This file walks
 // every hop in one test so nothing can silently regress in isolation.
 
 function freshDb() {
@@ -64,7 +64,7 @@ test('pipeline: remember → ingest writes events + content + FTS index instantl
   closeDb(db);
 });
 
-test('pipeline: embed-backfill picks up content with NULL embedding and makes vec recall work', async () => {
+test('pipeline: embedder picks up content with NULL embedding and makes vec recall work', async () => {
   const db = freshDb();
 
   // Step 1: remember
@@ -80,7 +80,7 @@ test('pipeline: embed-backfill picks up content with NULL embedding and makes ve
   };
   assert.equal(before.embedding, null);
 
-  // Step 2: embed-backfill runs (simulated with a fixed-vec mock LLM)
+  // Step 2: embedder runs (simulated with a fixed-vec mock LLM)
   const vec = new Array(4096).fill(0);
   vec[0] = 1;
   const llm = mockEmbedLLM(vec);
@@ -173,7 +173,7 @@ test('pipeline: ingest upsert path replaces embedding so vec stays current', asy
   };
   assert.equal(after.embedding, null, 'embedding should be cleared after upsert so it re-embeds');
 
-  // Second pass of embed-backfill picks it up
+  // Second pass of embedder picks it up
   const vec2 = new Array(4096).fill(0);
   vec2[1] = 1;
   const llm2 = mockEmbedLLM(vec2);

@@ -32,7 +32,7 @@ export interface ReindexReport {
  * Top-level entry: builds the dispatcher from on-disk config, opens the DB, runs
  * the reindex loop. Used by the `robin reindex` CLI verb.
  *
- * For in-process callers that already have a dispatcher and db (e.g. the embed-backfill
+ * For in-process callers that already have a dispatcher and db (e.g. the embedder
  * cognition job), use `runReindexCore` directly to skip the YAML reload + provider rebuild
  * on every invocation.
  */

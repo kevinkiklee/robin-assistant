@@ -18,7 +18,7 @@ export interface IngestResult {
 
 /**
  * Persist an event + its content row. Embeddings are NOT computed inline — that's the
- * job of `embed-backfill` (runs every minute via the cognition scheduler), which picks
+ * job of `embedder` (runs every minute via the cognition scheduler), which picks
  * up content rows with `embedding IS NULL` and embeds them in batches.
  *
  * The earlier inline-embed path blocked every ingest on a ~600ms Ollama call. Fine for
@@ -59,7 +59,7 @@ export function ingest(db: RobinDb, _llm: LLMDispatcher | null, input: IngestInp
             db.prepare(
               `UPDATE events_content SET ts = ?, body = ?, embedding = NULL WHERE id = ?`,
             ).run(ts, input.content, contentRef);
-            // Drop the stale embedding from the vec virtual table — the next embed-backfill
+            // Drop the stale embedding from the vec virtual table — the next embedder
             // tick will re-embed and re-insert. `events_vec` rowid mirrors content id.
             try {
               db.prepare(`DELETE FROM events_vec WHERE rowid = ?`).run(contentRef);

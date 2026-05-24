@@ -1,7 +1,7 @@
 /**
  * Promise.race-based timeout wrapper for long-running async operations.
  *
- * Used to bound LLM calls (biographer chunk extraction, embed-backfill row
+ * Used to bound LLM calls (biographer chunk extraction, embedder row
  * embedding) so a hung Ollama request cannot wedge the daemon's scheduler
  * loop indefinitely. The HTTP request itself is not cancelled — this only
  * rejects the wrapping promise. Server-side work continues until Ollama

@@ -37,7 +37,7 @@ graph TD
 
         subgraph Scheduler["SCHEDULER · tick loop 1s · lease TTL 5m · 120s handler timeout"]
             direction LR
-            Cog["COGNITION<br/>biographer · embed-backfill · dream"]
+            Cog["COGNITION<br/>biographer · embedder · dream"]
             Int["INTEGRATIONS<br/>gmail · calendar · github<br/>whoop · finance · ebird · ..."]
             Jobs["JOBS<br/>daily-brief · user-defined"]
         end
@@ -81,27 +81,25 @@ The **scheduler** claims one pending job per tick (1s interval), runs the handle
 
 ### Memory
 
-All memory lives in a single SQLite file (`robin.sqlite`) with `sqlite-vec` for vector search:
+Everything Robin knows lives in a single SQLite file, with three ways to find it again:
 
-| Layer | What it stores |
-|---|---|
-| **Events** | Append-only firehose — every captured session, integration tick, belief-update, prediction, daily briefing |
-| **FTS5** | Full-text search index over event content bodies |
-| **Vector (4096-dim)** | Matryoshka embeddings via `qwen3-embedding:8b`, deferred from the ingest hot-path into a batch job |
-| **Entity graph** | ~5000+ entities (person, place, tool, service) and ~14000+ relations, extracted by the biographer |
-| **Beliefs** | Topic-keyed claims with auto-supersession — queryable current truth via `recall_belief` |
-| **Predictions** | Confidence-calibrated forecasts with Brier scoring, resolved by the dream job |
-| **Corrections** | What Robin said wrong + the correction — feeds the self-learning loop |
+- **Events** — the raw log. Every session, integration tick, belief, prediction, and daily briefing is an event. Append-only — nothing is deleted, only superseded.
+- **Search** — full-text (FTS5) for keyword lookup, vector embeddings (4096-dim, via Ollama) for semantic similarity, and entity-graph traversal for "who is connected to what." When you call `recall`, Robin picks the best mode or blends all three.
+- **Entity graph** — people, places, tools, and services, connected by relations the biographer extracts from your conversations. This is how Robin knows "Jake Lee" is connected to "HostMind" and "Monday evening sync."
 
-**Recall** is hybrid: lexical (FTS5) + vector (cosine similarity) + entity-graph traversal, with mode selection (`lex`, `vec`, `hybrid`). When the embedder is unavailable, recall degrades to FTS5-only rather than failing.
+On top of the event stream, Robin maintains three structured stores for reasoning:
+
+- **Beliefs** — what Robin currently thinks is true, organized by topic. When new data contradicts an old belief, the new one auto-supersedes it. You can query current truth with `recall_belief`.
+- **Predictions** — forecasts with confidence levels and deadlines. The dream job grades them and tracks calibration over time.
+- **Corrections** — what Robin said wrong and the correction. These feed back into the biographer's prompts as few-shot examples.
 
 ### Cognition
 
-Three background jobs run on cron schedules:
+Three background jobs do Robin's thinking:
 
-- **Biographer** — extracts entities and relations from captured Claude Code sessions. Multi-tick: chunks sessions at 10k chars, processes ≤10 chunks per tick, and persists progress so sessions resume across cron fires. A circuit breaker aborts without advancing the cursor when the LLM is unreachable, preventing empty-marker corruption.
-- **Embed-backfill** — deferred embedding of new content rows. Runs every minute, single-flight against Ollama.
-- **Dream** — nightly at 03:00: resolves overdue predictions, rolls up daily metrics, generates a narrative journal entry.
+- **Biographer** — reads your Claude Code sessions and extracts who/what/where into the entity graph. Processes sessions in chunks across multiple cron ticks, so a long conversation doesn't block everything else. If Ollama goes down, the biographer pauses rather than writing empty results.
+- **Embedder** — turns event content into vector embeddings for semantic search. Runs every minute, picking up anything the ingest path left un-embedded.
+- **Dream** — runs nightly: grades overdue predictions, rolls up daily metrics, and writes a journal entry summarizing the day.
 
 ### LLM dispatch
 
