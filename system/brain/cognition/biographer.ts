@@ -130,7 +130,7 @@ const MAX_SESSION_BODY_CHARS = 1_000_000;
 // Very short sessions (debugging one-liners, tool-only invocations) rarely
 // contain entities worth extracting; skipping them saves ~80s/session of LLM
 // time and avoids injecting noise into the graph.
-const MIN_SESSION_BODY_CHARS = 2_000;
+const MIN_SESSION_BODY_CHARS = 1_000;
 
 const disambiguationSchema = z.object({
   matched_id: z.number().int().nullable(),
