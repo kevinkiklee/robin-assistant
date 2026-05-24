@@ -8,6 +8,7 @@ import { migration007 } from './007-predictions-external-id.ts';
 import { migration008 } from './008-linear-issue-map.ts';
 import { migration009 } from './009-belief-candidates.ts';
 import { migration010 } from './010-events-vec-3072.ts';
+import { migration011 } from './011-agent-usage.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -21,6 +22,7 @@ export const allMigrations: Migration[] = [
   migration008,
   migration009,
   migration010,
+  migration011,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

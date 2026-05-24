@@ -47,11 +47,11 @@ test('schema 001: events table has expected columns', () => {
   closeDb(db);
 });
 
-test('migrations apply cleanly up to version 10', () => {
+test('migrations apply cleanly up to version 11', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const row = db.prepare('SELECT MAX(version) AS v FROM _migrations').get() as { v: number };
-  assert.equal(row.v, 10);
+  assert.equal(row.v, 11);
   closeDb(db);
 });
 
@@ -71,6 +71,36 @@ test('migration 010: events_vec is a 3072-dim vec0 table', () => {
     () => insert.run(2n, Buffer.from(new Float32Array(4096).buffer)),
     /Dimension mismatch/,
   );
+  closeDb(db);
+});
+
+test('migration 011: agent_usage table + ts index exist', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const def = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='agent_usage'")
+    .get() as { sql: string } | undefined;
+  assert.ok(def, 'agent_usage table missing after migrations');
+
+  const cols = db.prepare('PRAGMA table_info(agent_usage)').all() as Array<{ name: string }>;
+  const colNames = cols.map((c) => c.name).sort();
+  assert.deepEqual(colNames, [
+    'cost_usd',
+    'id',
+    'input_tokens',
+    'label',
+    'output_tokens',
+    'status',
+    'subtype',
+    'surface',
+    'ts',
+    'turns',
+  ]);
+
+  const idx = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='agent_usage'")
+    .all() as Array<{ name: string }>;
+  assert.ok(idx.map((i) => i.name).includes('idx_agent_usage_ts'));
   closeDb(db);
 });
 
