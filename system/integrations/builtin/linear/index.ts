@@ -151,6 +151,23 @@ export const integration: Integration = {
     const seenArr = Array.from(seen).slice(-500);
     ctx.state.set('seen_issue_ids', JSON.stringify(seenArr));
     ctx.state.set('last_sync', ctx.now().toISOString());
+
+    // Clear circuit-breaker: successful read proves the key works
+    if (ctx.state.get('auth_failed') === 'true') {
+      ctx.state.delete('auth_failed');
+    }
+
+    // Phase 2a: autonomous issue creation from deterministic signals
+    try {
+      const { runAutonomousLoop } = await import('./autonomous.ts');
+      const autoResult = await runAutonomousLoop(ctx);
+      if (autoResult.proposed > 0 || autoResult.created > 0) {
+        ctx.log.info(autoResult, 'autonomous loop result');
+      }
+    } catch (err) {
+      ctx.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'autonomous loop failed (non-fatal)');
+    }
+
     return { status: 'ok', ingested };
   },
 
