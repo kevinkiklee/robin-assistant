@@ -60,6 +60,67 @@ const extractionSchema = z.object({
 export type ExtractionResult = z.infer<typeof extractionSchema>;
 
 /**
+ * Clean a captured session body before LLM extraction. Strips noise that wastes
+ * model time, inflates chunk counts, and can trigger model hangs:
+ * - [TOOL] blocks (file reads, bash output, JSON blobs — zero entities)
+ * - Code blocks (triple-backtick fences — rarely contain entities)
+ * - Consecutive [ASSISTANT] turns collapsed into one (prevents many-turn degeneracy)
+ * - Very short turns (<50 chars — "Done.", "Starting." — no entity content)
+ */
+export function preprocessForExtraction(body: string): string {
+  // Split on turn boundaries
+  const turns = body.split(/\n\n(?=\[(?:USER|ASSISTANT|TOOL)\]\n)/);
+
+  // Count assistant turns — if many (>10), the session is likely an automated
+  // audit/refactor with dense mechanical steps that can hang the model. In that
+  // case, keep only USER turns + the LAST assistant turn (the summary/conclusion).
+  const assistantTurns = turns.filter((t) => /^\[ASSISTANT\]/i.test(t));
+  const aggressive = assistantTurns.length > 10;
+
+  const kept: string[] = [];
+  let lastRole = '';
+  let lastAssistantIdx = -1;
+
+  // Find the index of the last assistant turn (for aggressive mode)
+  if (aggressive) {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (/^\[ASSISTANT\]/i.test(turns[i])) {
+        lastAssistantIdx = i;
+        break;
+      }
+    }
+  }
+
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i];
+    // Drop [TOOL] blocks entirely
+    if (/^\[TOOL\]\n/i.test(turn)) continue;
+
+    // In aggressive mode, drop intermediate assistant turns (keep only the last)
+    if (aggressive && /^\[ASSISTANT\]/i.test(turn) && i !== lastAssistantIdx) continue;
+
+    // Strip triple-backtick code blocks within turns
+    const stripped = turn.replace(/```[\s\S]*?```/g, '').trim();
+
+    // Drop very short turns (after code removal)
+    const contentAfterMarker = stripped.replace(/^\[(?:USER|ASSISTANT|TOOL)\]\n/, '');
+    if (contentAfterMarker.length < 50) continue;
+
+    // Collapse consecutive same-role turns
+    const roleMatch = stripped.match(/^\[(USER|ASSISTANT|TOOL)\]/i);
+    const role = roleMatch ? roleMatch[1].toUpperCase() : '';
+    if (role === lastRole && role === 'ASSISTANT' && kept.length > 0) {
+      kept[kept.length - 1] += '\n' + contentAfterMarker;
+    } else {
+      kept.push(stripped);
+      lastRole = role;
+    }
+  }
+
+  return kept.join('\n\n');
+}
+
+/**
  * Split a captured session body on turn boundaries into chunks of <= maxChars.
  * Body shape (from capture.ts): `[ROLE]\n<content>` separated by `\n\n`.
  * Returns the original body in a single-element array if it already fits.
@@ -517,7 +578,8 @@ export async function runBiographer(
       continue;
     }
 
-    const chunks = chunkBody(target.body, CHUNK_CHARS);
+    const cleanedBody = preprocessForExtraction(target.body);
+    const chunks = chunkBody(cleanedBody, CHUNK_CHARS);
     const totalChunks = chunks.length;
     const startChunk = target.nextChunk;
     const mergedEntities = target.entities;
