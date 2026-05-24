@@ -92,8 +92,8 @@ test('capture: rejects cwd outside the allowlist', async () => {
   const r = await captureSession(
     db,
     null,
-    { ...validCapture, cwd: '/Users/iser/workspace/photo-tools' },
-    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+    { ...validCapture, cwd: '/home/dev/workspace/photo-tools' },
+    { allowedCwds: ['/home/dev/workspace/robin/robin-assistant'] },
   );
   assert.equal(r.captured, false);
   assert.equal(r.skipReason, 'cwd_not_allowed');
@@ -105,8 +105,8 @@ test('capture: accepts cwd that exactly matches an allowlist entry', async () =>
   const r = await captureSession(
     db,
     null,
-    { ...validCapture, cwd: '/Users/iser/workspace/robin/robin-assistant-v3' },
-    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+    { ...validCapture, cwd: '/home/dev/workspace/robin/robin-assistant' },
+    { allowedCwds: ['/home/dev/workspace/robin/robin-assistant'] },
   );
   assert.equal(r.captured, true);
   closeDb(db);
@@ -119,23 +119,23 @@ test('capture: accepts cwd that is a descendant of an allowlist entry', async ()
     null,
     {
       ...validCapture,
-      cwd: '/Users/iser/workspace/robin/robin-assistant-v3/user-data/scripts',
+      cwd: '/home/dev/workspace/robin/robin-assistant/user-data/scripts',
     },
-    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+    { allowedCwds: ['/home/dev/workspace/robin/robin-assistant'] },
   );
   assert.equal(r.captured, true);
   closeDb(db);
 });
 
 test('capture: rejects sibling path that prefixes share a parent (no slash boundary)', async () => {
-  // Defends against `/Users/iser/workspace/robin/robin-assistant-v3-fork` being
-  // matched as a descendant of `/Users/iser/workspace/robin/robin-assistant-v3`.
+  // Defends against `/home/dev/workspace/robin/robin-assistant-fork` being
+  // matched as a descendant of `/home/dev/workspace/robin/robin-assistant`.
   const db = freshDb();
   const r = await captureSession(
     db,
     null,
-    { ...validCapture, cwd: '/Users/iser/workspace/robin/robin-assistant-v3-fork' },
-    { allowedCwds: ['/Users/iser/workspace/robin/robin-assistant-v3'] },
+    { ...validCapture, cwd: '/home/dev/workspace/robin/robin-assistant-fork' },
+    { allowedCwds: ['/home/dev/workspace/robin/robin-assistant'] },
   );
   assert.equal(r.captured, false);
   assert.equal(r.skipReason, 'cwd_not_allowed');

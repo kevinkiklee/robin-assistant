@@ -7,7 +7,7 @@
 
 All 7 plans from the design (`docs/specs/2026-05-18-robin-v3-design.md`) are implemented. The full agent loop works end-to-end: a fresh `robin init` produces a usable Robin install on a clean machine; the daemon starts, runs scheduled jobs (biographer, dream, embed-backfill, daily-brief), exposes MCP tools to Claude Code, and persists everything in SQLite + sqlite-vec at 4096-dim against `qwen3-embedding:8b`.
 
-v2 → v3 data migration is shipped via `tools/v2-export.mjs` + `robin import` (NDJSON pipeline); Kevin's v2 corpus is fully imported (9,463 events, 4,422 entities, 13,722 relations, 9,452 embeddings). 12 of 13 v2 integrations are scaffolded as extensions under `user-data/extensions/integrations/`; GA was explicitly removed from scope.
+v2 → v3 data migration is shipped via `tools/v2-export.mjs` + `robin import` (NDJSON pipeline). 12 of 13 v2 integrations are scaffolded as extensions under `user-data/extensions/integrations/`; GA was explicitly removed from scope.
 
 ## What is built
 
@@ -145,7 +145,7 @@ robin-assistant-v3/
 ## Run it
 
 ```bash
-cd /Users/iser/workspace/robin/robin-assistant-v3
+cd robin-assistant  # or wherever you cloned it
 
 # Install + verify
 pnpm install
@@ -209,7 +209,7 @@ See `git log --oneline` for the full history. Major waypoints:
 
 The architecture is stable and the daemon runs the full loop. Remaining work is operational + UX:
 
-1. **Validate each of the 12 extension integrations end-to-end with real credentials.** Code exists; needs Kevin's tokens to confirm each ticks against the live API. Cannot be done by an agent alone — needs hands-on for OAuth flows.
+1. **Validate each of the 12 extension integrations end-to-end with real credentials.** Code exists; needs the user's tokens to confirm each ticks against the live API. Cannot be done by an agent alone — needs hands-on for OAuth flows.
 2. **Interactive `robin init`** (P1.2). TTY prompts + OAuth device flow + model pulling. Per BACKLOG residual list, this is a 2–3 day standalone UX project. The `--yes` path covers daily-driver use today.
 3. **APFS snapshots for `robin db backup`** (P2.3). Current VACUUM-INTO backup is operationally fine; APFS would be faster but needs sudo plumbing.
 4. **DSPy Python sidecar** (P2.4). Large standalone project; today's correction-replay few-shot covers most of the value.

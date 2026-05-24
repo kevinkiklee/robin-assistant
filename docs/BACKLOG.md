@@ -16,7 +16,7 @@ This session shipped the v2 → v3 data migration (rebuilt from scratch as NDJSO
 
 ### Shipped this session (2026-05-20)
 
-- **v2 migration rebuilt** as NDJSON. `tools/v2-export.mjs` (one-off, lives outside v3) dumps surrealkv tables → NDJSON; `robin import <dir>` ingests events/entities/edges/corrections/predictions through the v3 schema in a single outer transaction. Old `system/surfaces/cli/migrate/` deleted. Kevin's full v2 corpus imported (9,463 events, 4,422 entities, 13,722 relations).
+- **v2 migration rebuilt** as NDJSON. `tools/v2-export.mjs` (one-off, lives outside v3) dumps surrealkv tables → NDJSON; `robin import <dir>` ingests events/entities/edges/corrections/predictions through the v3 schema in a single outer transaction. Old `system/surfaces/cli/migrate/` deleted.
 - **Embeddings live** — `qwen3-embedding:8b` at 4096-dim. Migration 005 reshaped `events_vec` from `float[1024]` → `float[4096]`. `embed-content.ts` helper truncates bodies > 30k chars before embedding (qwen3's runtime context is lower than the model's advertised 40k tokens). 9,452 / 9,453 events embedded; only failure was a single 130k-char daily-briefing pre-truncation-helper.
 - **Embedding moved to deferred batch** — `system/brain/cognition/embed-backfill.ts` runs every minute via the scheduler, picks up `events_content WHERE embedding IS NULL` in batches of 200. Ingest no longer blocks on Ollama. Frees high-frequency integration ticks.
 - **`robin reindex`** verb with `--limit`, `--force`, `--ids`, `--batch`, `--json`.
@@ -60,7 +60,7 @@ Eight more items shipped:
 
 ### Truly still deferred (the residual list)
 
-- **Integration end-to-end validation** — each of the 12 extension integrations is scaffolded but needs Kevin's tokens (OAuth flows, API keys) to confirm a real tick lands events as expected. Cannot be done by an agent alone.
+- **Integration end-to-end validation** — each of the 12 extension integrations is scaffolded but needs the user's tokens (OAuth flows, API keys) to confirm a real tick lands events as expected. Cannot be done by an agent alone.
 - **P1.2 interactive `robin init`** — TTY prompts + OAuth device flow + model pulling. ~2-3 day standalone UX project. The non-interactive `--yes` path covers all daily-driver use today.
 - **P2 items (APFS snapshots, DSPy sidecar, Codex SDK)** — explicitly deferred by the operator. Current `wal_checkpoint + VACUUM INTO` backup, correction-replay few-shot, and Claude-Code CLI adapter all cover the value.
 
@@ -177,7 +177,7 @@ For each v2 row class, write a transformer that produces v3 rows. The shape will
 
 **Why deferred:** All adapters are tested against mocks. The full agent loop — Claude Code → robin-core MCP → biographer extract via real Ollama → SQLite write — has not been exercised.
 
-**Scope:** Smoke verify on Kevin's M5 Max with real Ollama models.
+**Scope:** Smoke verify on a real machine with real Ollama models.
 
 **Steps:**
 1. `ollama pull qwen3.6:35b-a3b-mlx-q4` (or whatever the current best Qwen 3.x is)
@@ -438,4 +438,4 @@ These are by design (do not pick up):
 
 ## Suggested next session opener for an agent
 
-> "Read `docs/STATUS.md` and `docs/BACKLOG.md` in `/Users/iser/workspace/robin/robin-assistant-v3/`. Then pick the highest-priority unblocked P0 item and execute it via the `subagent-driven-development` skill. After each item, update both STATUS.md and BACKLOG.md to reflect what shipped."
+> "Read `docs/STATUS.md` and `docs/BACKLOG.md`. Then pick the highest-priority unblocked P0 item and execute it via the `subagent-driven-development` skill. After each item, update both STATUS.md and BACKLOG.md to reflect what shipped."

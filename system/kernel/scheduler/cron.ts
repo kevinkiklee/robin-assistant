@@ -96,8 +96,7 @@ export function scheduleCronJob(db: RobinDb, spec: CronJobSpec, from: Date = new
  * Called by the scheduler after a cron-triggered job completes (success or error).
  * Parses the row's payload to recover the cron expression, then re-enqueues the
  * next instance. Without this, `scheduleCronJob` would only ever fire once per
- * daemon boot — the cron schedule would be decorative. See Bug C in
- * `user-data/content/knowledge/project-followups-2026-05-21.md`.
+ * daemon boot — the cron schedule would be decorative (Bug C).
  *
  * Re-enqueues even on error, because transient handler failures should not
  * permanently silence a cron. `retry_count` on the completed row records the

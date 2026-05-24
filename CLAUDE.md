@@ -1,26 +1,92 @@
-# CLAUDE.md — robin-assistant-v3
+# CLAUDE.md — robin-assistant
+
+Guidance for Claude Code (and any LLM-powered coding agent) working on this
+repository.
+
+## Architecture overview
+
+Robin is a local-first personal AI assistant. The codebase has three layers:
+
+```
+system/                 ← framework: kernel (daemon + scheduler), brain (memory +
+                          cognition), integrations runtime, surfaces (CLI, HTTP, MCP)
+user-data/              ← per-user instance data (gitignored): memory, secrets,
+                          extensions, jobs, knowledge files
+dist/                   ← compiled output (gitignored); `pnpm build` to regenerate
+```
+
+Runtime: Node.js 24+, ES modules, TypeScript (tsx for dev, tsc for build).
+Database: SQLite via better-sqlite3 + sqlite-vec for vector search.
+Package manager: pnpm.
+
+## Common commands
+
+```bash
+pnpm install              # install dependencies
+pnpm build                # tsc + build extensions → dist/
+pnpm test                 # node --test across system/
+pnpm lint                 # biome lint
+pnpm typecheck            # tsc --noEmit
+```
+
+Run a single test file:
+```bash
+pnpm exec tsx --test system/path/to/file.test.ts
+```
 
 ## Memory & persistence
 
-**All cross-session memory for conversations in this folder goes into Robin's user-data, never into Claude Code's own memory system.**
+Robin manages its own memory in `user-data/content/knowledge/`. When working
+on this repo as a contributor, **prefer Robin's user-data for cross-session
+memory over Claude Code's own memory system** — Robin IS the memory system, and
+splitting persistence between two stores defeats the purpose.
 
-- Save substantive context to `user-data/content/knowledge/<descriptive-name>.md` with `node_type: memory` frontmatter.
-- Do **not** write to `~/.claude/projects/-Users-iser-workspace-robin-robin-assistant-v3/memory/`. That directory is unused by design here — keep it empty.
-- At session start, read `user-data/content/knowledge/` for Kevin's preferences, photographer profile, project follow-ups, and any other durable memory. Specifically:
-  - `kevin-preferences.md` — three explicit behavioral preferences (no-Claude-memory rule, plain URLs, proactive capture)
-  - `kevin-as-photographer.md` — photographer profile if anything photo-related comes up
-  - The most recent `project-followups-*.md` for in-flight work
+- Save context to `user-data/content/knowledge/<descriptive-name>.md` with
+  `node_type: memory` frontmatter.
+- At session start, read `user-data/content/knowledge/` for user preferences
+  and project follow-ups.
 
-This overrides the auto-memory system documented in `~/CLAUDE.md` *for this folder only*. Robin IS Kevin's memory system; splitting persistence between Robin's user-data and Claude Code's memory tree defeats the purpose.
+## No nested `claude -p`
 
-## Never spawn or suggest `claude -p`
+Robin's code must never shell out to the Claude Code CLI (`claude -p`). No
+nested agentic sessions — not in jobs, integrations, surfaces, or workarounds.
 
-**Robin's own code must never shell out to the Claude Code CLI (`claude -p`), and never suggest doing so.** No nested Claude Code agent sessions, ever — not in jobs, integrations, surfaces, or as a suggested workaround.
+When a job needs LLM work, use `llm.invoke(role, …)` through the dispatcher
+(local Ollama). Reason: recursion cost, non-determinism, and opacity of a
+nested agent's tool loop.
 
-When a job or task needs LLM work, do it in code: gather data with direct function calls, make a single bounded `llm.invoke(role, …)` through the dispatcher (local Ollama by construction), and do write-backs in code. Robin's daemon is local-only; there is no cloud agentic-CLI escape hatch.
+## Code conventions
 
-Reason: recursion + cost (a Claude Code session spawning another full agentic session), plus the non-determinism and opacity of a nested agent's tool loop. Stated by Kevin 2026-05-23. See `user-data/content/knowledge/no-nested-claude-p.md`.
+- Match the surrounding code's style — comment density, naming, idiom.
+- Integration handlers live in `system/integrations/builtin/<name>/` (shipped
+  with the package) or `user-data/extensions/integrations/<name>/` (per-user,
+  gitignored).
+- Every integration has an `integration.yaml` manifest + `index.ts` with a
+  `tick()` function and optional `actions` for MCP.
+- Tests are collocated: `foo.ts` → `foo.test.ts`, using `node:test` + `assert`.
+- The scheduler runs handlers inside a 120s timeout (`withTimeout`) — a hung
+  handler cannot wedge the tick loop.
 
-## Other conventions
+## MCP servers
 
-See `user-data/content/knowledge/kevin-preferences.md` for plain-URL formatting and proactive-capture rules.
+Robin exposes two MCP servers (stdio transport):
+
+- `robin mcp core` — read/write memory: list, recall, remember, believe,
+  predict, find_entity, journal, health, metrics.
+- `robin mcp extension` — integration actions, run, update, chrome, finance,
+  gmail, google_calendar, linear, github, spotify, ingest.
+
+Configure via `.mcp.json` (copy `.mcp.json.example` and adjust paths).
+
+## Secrets
+
+Secrets live in `user-data/config/secrets/.env` (gitignored). The daemon loads
+them at startup via `loadEnvFile()`. OAuth tokens for Google integrations
+rotate; use `robin reauth <integration>` to refresh them.
+
+## Per-user instance
+
+After cloning, run `robin init` for one-time setup (creates `user-data/`,
+seeds config, optionally installs the launchd daemon). The `user-data/`
+directory is fully gitignored — it contains personal data, secrets, and
+instance-specific configuration that must never be committed.
