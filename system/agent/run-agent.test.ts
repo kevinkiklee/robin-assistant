@@ -106,6 +106,23 @@ test('runAgent: success writes a transcript file + one ledger row', async () => 
   assert.equal(led.dailyTotalUsd('agentic-on-demand'), 0.05);
 });
 
+test('runAgent: forwards outputFormat to the sdk + propagates structured result', async () => {
+  const { ledger: led } = ledger();
+  const schema = { type: 'json_schema', schema: { type: 'object' } };
+  let sawOutputFormat: unknown;
+  const res = await runAgent(baseInput({ outputFormat: schema }), {
+    ledger: led,
+    cap: 50,
+    transcriptDir: tmpTranscriptDir(),
+    runSdk: async (input) => {
+      sawOutputFormat = (input as { outputFormat?: unknown }).outputFormat;
+      return { ...okResult, structured: { frontMatter: { decisions: ['x'] } } };
+    },
+  });
+  assert.deepEqual(sawOutputFormat, schema, 'outputFormat must reach the sdk');
+  assert.deepEqual(res.structured, { frontMatter: { decisions: ['x'] } }, 'structured must propagate');
+});
+
 test('runAgent: an aborted signal maps to timeout', async () => {
   const { ledger: led } = ledger();
 

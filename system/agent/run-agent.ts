@@ -20,6 +20,8 @@ export interface RunAgentInput {
   loadProjectSettings?: boolean;
   enableFileCheckpointing?: boolean;
   model?: string;
+  /** SDK structured-output schema (`{ type:'json_schema', schema }`); result lands in `structured`. */
+  outputFormat?: unknown;
 }
 
 export type RunAgentStatus = 'success' | 'capped' | 'denied' | 'timeout' | 'error';
@@ -27,6 +29,8 @@ export type RunAgentStatus = 'success' | 'capped' | 'denied' | 'timeout' | 'erro
 export interface RunAgentResult {
   status: RunAgentStatus;
   summary: string;
+  /** Parsed structured output when an `outputFormat` schema was requested (else undefined). */
+  structured?: unknown;
   turns: number;
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number };
   costUsd: number;
@@ -114,6 +118,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
     ...(input.loadProjectSettings ? { loadProjectSettings: true } : {}),
     ...(input.enableFileCheckpointing ? { enableFileCheckpointing: true } : {}),
+    ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
   };
 
   let result: SdkResult;
@@ -155,6 +160,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
   return {
     status,
     summary: result.text,
+    ...(result.structured !== undefined ? { structured: result.structured } : {}),
     turns: result.turns,
     usage: result.usage,
     costUsd: result.costUsd,
