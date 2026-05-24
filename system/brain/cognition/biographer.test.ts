@@ -63,7 +63,7 @@ test('biographer: processes captured session and writes entities + relations', a
       { role: 'assistant', content: 'Kevin visited Lisbon in March; really enjoyed the food.' },
     ],
   });
-  const r = await runBiographer(db, llm);
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
   assert.equal(r.processed, 1);
   assert.equal(r.entitiesCreated, 2);
   assert.equal(r.relationsCreated, 1);
@@ -89,7 +89,7 @@ test('biographer: tolerates ```json fenced output (the v2 bug fix)', async () =>
       { role: 'assistant', content: 'Sarah is a friend.' },
     ],
   });
-  const r = await runBiographer(db, llm);
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
   assert.equal(r.processed, 1);
   assert.equal(r.entitiesCreated, 1);
   closeDb(db);
@@ -143,7 +143,7 @@ test('biographer: chunks long sessions and merges entities across chunks (dedup)
   const db = freshDb();
   // Build a body just over the threshold so chunking kicks in
   const turn = (role: string, content: string) => `[${role}]\n${content}`;
-  const longContent = 'x'.repeat(3000);
+  const longContent = 'x'.repeat(8000);
   const body = [
     turn('USER', `talking about Lisbon — ${longContent}`),
     turn('ASSISTANT', `Kevin visited Lisbon — ${longContent}`),
@@ -195,7 +195,7 @@ test('biographer: chunks long sessions and merges entities across chunks (dedup)
     `INSERT INTO events (ts, kind, source, status, payload, content_ref) VALUES (?, 'session.captured', 'capture', 'ok', '{}', ?)`,
   ).run(nowIso, Number(contentInfo.lastInsertRowid));
 
-  const r = await runBiographer(db, dispatchLLM);
+  const r = await runBiographer(db, dispatchLLM, 10, { batchChunks: 1 });
   assert.equal(r.processed, 1);
   assert.ok(callIdx >= 2, `expected at least 2 chunk LLM calls, got ${callIdx}`);
 
@@ -270,15 +270,15 @@ test('biographer: disambiguates between multiple entity candidates via LLM', asy
 test('biographer: processes a large session across multiple ticks (multi-tick)', async () => {
   const db = freshDb();
 
-  // Body that chunks into several pieces at CHUNK_CHARS=6000: 6 turns, each ~5500
-  // chars, so each becomes its own chunk.
+  // Body that chunks into several pieces at CHUNK_CHARS=20000: 6 turns, each ~22K
+  // chars, so it produces multiple chunks.
   const turn = (role: string, content: string) => `[${role}]\n${content}`;
-  const seg = 'word '.repeat(1100); // ~5500 chars
+  const seg = 'word '.repeat(4400); // ~22000 chars
   const body = Array.from({ length: 6 }, (_, i) =>
     turn(i % 2 === 0 ? 'USER' : 'ASSISTANT', `segment ${i} ${seg}`),
   ).join('\n\n');
-  const chunks = chunkBody(body, 6000);
-  assert.ok(chunks.length >= 5, `need a multi-chunk body for this test, got ${chunks.length}`);
+  const chunks = chunkBody(body, 20000);
+  assert.ok(chunks.length >= 4, `need a multi-chunk body for this test, got ${chunks.length}`);
 
   // Count extraction LLM calls so we can assert each chunk is processed exactly once.
   let extractionCalls = 0;
@@ -583,7 +583,7 @@ test('biographer: filters role markers, numbers, SHAs from extraction', async ()
       { role: 'assistant', content: 'Kevin set up Vercel with VERCEL_OIDC_TOKEN.' },
     ],
   });
-  const r = await runBiographer(db, llm);
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
   assert.equal(r.processed, 1);
   // 3 legitimate entities, 2 legitimate relations
   assert.equal(r.entitiesCreated, 3, `expected 3 entities, got ${r.entitiesCreated}`);

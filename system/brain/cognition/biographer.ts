@@ -162,6 +162,10 @@ export interface RunBiographerOptions {
   maxSessionBodyChars?: number;
   /** Body-size floor below which a fresh session is skipped. Defaults to `MIN_SESSION_BODY_CHARS`. */
   minSessionBodyChars?: number;
+  /** How many non-tool chunks to batch per LLM invoke (amortizes thinking overhead). Defaults to 1 (no batching). */
+  batchChunks?: number;
+  /** Skip chunks that are pure tool/assistant output (no [USER] marker). Defaults to false. */
+  skipToolChunks?: boolean;
 }
 
 type EntityRecord = { type: string; name: string };
@@ -421,6 +425,8 @@ export async function runBiographer(
   const maxChunksPerTick = options.maxChunksPerTick ?? MAX_CHUNKS_PER_TICK;
   const maxSessionBodyChars = options.maxSessionBodyChars ?? MAX_SESSION_BODY_CHARS;
   const minSessionBodyChars = options.minSessionBodyChars ?? MIN_SESSION_BODY_CHARS;
+  const batchChunks = options.batchChunks ?? 1;
+  const skipToolChunks = options.skipToolChunks ?? false;
 
   const result: BiographerRunResult = {
     processed: 0,
@@ -490,6 +496,30 @@ export async function runBiographer(
       continue;
     }
 
+    // Skip sessions with no human input — purely automated/tool captures
+    // (e.g. daemon-fired or hook-captured sessions with no [USER] marker).
+    // Only applies to transcript-format bodies (those with role markers);
+    // raw text (no markers) is always processed.
+    const bodyHasRoleMarkers = /\[(USER|ASSISTANT|TOOL|SYSTEM)\]/i.test(target.body);
+    if (!target.isResume && bodyHasRoleMarkers && !/\[USER\]/i.test(target.body)) {
+      db.prepare(`
+        INSERT INTO events (ts, kind, source, status, payload)
+        VALUES (?, 'biographer.extracted', 'biographer', 'skipped', ?)
+      `).run(
+        new Date().toISOString(),
+        JSON.stringify({
+          source_event_id: target.eventId,
+          entities: 0,
+          relations: 0,
+          skipped: true,
+          reason: 'no_human_content',
+          body_chars: target.body.length,
+        }),
+      );
+      result.processed++;
+      continue;
+    }
+
     const chunks = chunkBody(target.body, CHUNK_CHARS);
     const totalChunks = chunks.length;
     const startChunk = target.nextChunk;
@@ -504,16 +534,44 @@ export async function runBiographer(
       endChunk = Math.min(startChunk + chunkBudget, totalChunks);
       let successes = 0;
       let llmUnavailable = false;
-      for (let ci = startChunk; ci < endChunk; ci++) {
+
+      // Levers 2+3: skip tool-only chunks (no [USER] marker = pure tool output
+      // with no user-initiated entities) and batch adjacent content chunks to
+      // amortize the per-invoke thinking overhead (~60s) across multiple chunks.
+      for (let ci = startChunk; ci < endChunk; ) {
+        // Collect the next batch of non-tool chunks. A chunk is "tool-only"
+        // (skippable) if it's a transcript-format chunk (has [TOOL]/[ASSISTANT]
+        // markers) but lacks [USER] input. Raw text (no markers) is always
+        // processed — the filter only applies to Claude Code transcripts.
+        const batch: number[] = [];
+        while (batch.length < batchChunks && ci < endChunk) {
+          const c = chunks[ci];
+          if (skipToolChunks) {
+            const cLower = c.toLowerCase();
+            const hasRoleMarkers = cLower.includes('[tool]') || cLower.includes('[assistant]');
+            const isToolOnly = hasRoleMarkers && !cLower.includes('[user]');
+            if (!isToolOnly) batch.push(ci);
+          } else {
+            batch.push(ci);
+          }
+          ci++;
+        }
+        if (batch.length === 0) continue;
+
+        const batchText =
+          batch.length === 1
+            ? chunks[batch[0]]
+            : batch.map((i) => chunks[i]).join('\n---\n');
+
         try {
           const inv = await withTimeout(
             llm.invoke('reasoning', {
               systemPrompt: SYSTEM_PROMPT,
-              messages: [{ role: 'user', content: chunks[ci] }],
+              messages: [{ role: 'user', content: batchText }],
               temperature: 0,
             }),
-            chunkTimeoutMs,
-            `biographer event=${target.eventId} chunk=${ci}/${totalChunks}`,
+            chunkTimeoutMs * batch.length,
+            `biographer event=${target.eventId} chunks=${batch.join(',')}/${totalChunks}`,
           );
           const jsonText = inv.text
             .trim()
@@ -524,11 +582,11 @@ export async function runBiographer(
           const validated = extractionSchema.safeParse(parsed);
           if (!validated.success) {
             result.errors.push(
-              `event ${target.eventId} chunk ${ci}: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
+              `event ${target.eventId} batch [${batch}]: schema mismatch — ${validated.error.issues.map((i) => i.message).join('; ')}`,
             );
             continue;
           }
-          successes++;
+          successes += batch.length;
           for (const e of validated.data.entities) {
             const key = entityKey(e);
             if (!mergedEntities.has(key)) mergedEntities.set(key, e);
@@ -540,7 +598,7 @@ export async function runBiographer(
         } catch (err) {
           if (isLlmUnavailableError(err)) llmUnavailable = true;
           result.errors.push(
-            `event ${target.eventId} chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
+            `event ${target.eventId} batch [${batch}]: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }

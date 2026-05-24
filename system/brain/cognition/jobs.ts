@@ -48,7 +48,7 @@ export function registerCognitionJobs(
     // drain multiple small sessions per tick instead of wasting leftover budget.
     // Combined with the */5 cron, throughput is ~2 chunks/min (was ~0.27 at
     // batch=1/*/15/4-chunk).
-    await runBiographer(db, llm, 5);
+    await runBiographer(db, llm, 5, { batchChunks: 3, skipToolChunks: true });
   });
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;
