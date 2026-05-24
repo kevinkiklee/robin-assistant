@@ -48,7 +48,7 @@ export async function recall(
 
   const lexHits: RecallHit[] = [];
   // FTS5 treats hyphen, colon, asterisk, and bare AND/OR/NOT/NEAR as operators. A natural
-  // query like "next-step" or "kevin's photos" raises SQLITE_ERROR. Strip the operators so
+  // query like "next-step" or "user's photos" raises SQLITE_ERROR. Strip the operators so
   // conversational queries don't crash — power-user operator queries are not a real use case
   // for personal-memory recall and can be added later if needed.
   const sanitized = query

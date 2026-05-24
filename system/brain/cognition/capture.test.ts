@@ -77,7 +77,7 @@ test('capture: dedup_hit prevents identical capture', async () => {
   closeDb(db);
 });
 
-// ─── cwd allowlist (Kevin's "robin only works in robin's folder" scoping) ────
+// ─── cwd allowlist ("robin only works in robin's folder" scoping) ────
 
 const validCapture = {
   sessionId: 's-cwd',

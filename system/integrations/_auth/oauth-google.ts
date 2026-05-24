@@ -56,7 +56,10 @@ export async function getGoogleAccessToken(
     // surface it instead of letting `skipped` masquerade as healthy.
     if (/invalid_grant/i.test(text)) {
       ctx.state.set('auth_status', 'revoked');
-      ctx.state.set('auth_error', `${envPrefix}: refresh token revoked or expired — reauth required`);
+      ctx.state.set(
+        'auth_error',
+        `${envPrefix}: refresh token revoked or expired — reauth required`,
+      );
     }
     throw new Error(`google oauth refresh returned ${res.status}: ${text}`);
   }

@@ -10,7 +10,7 @@ import { join } from 'node:path';
  * Why a curl-based hook instead of a node script:
  *   1. curl ships with macOS; no PATH issues at hook-fire time (v1's hooks died on PATH).
  *   2. The daemon already owns the parsing + skip-rules logic. The hook stays trivial so
- *      a daemon update never breaks Kevin's settings.json — there's nothing here that
+ *      a daemon update never breaks the user's settings.json — there's nothing here that
  *      needs to evolve with the schema.
  *   3. --max-time 2 keeps the hook from blocking session shutdown if the daemon is down.
  *

@@ -1,5 +1,5 @@
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
-import { gql, requireKey, type LinearIssue } from './gql.ts';
+import { gql, type LinearIssue, requireKey } from './gql.ts';
 import { openMappedIssueIds, refreshStateTypes } from './map.ts';
 
 const ASSIGNED_ISSUES_QUERY = `
@@ -79,7 +79,9 @@ export const integration: Integration = {
     const cap = 200;
 
     type TeamIssuesResult = {
-      viewer: { teamMemberships: { nodes: Array<{ team: { id: string; key: string; name: string } }> } };
+      viewer: {
+        teamMemberships: { nodes: Array<{ team: { id: string; key: string; name: string } }> };
+      };
       issues: {
         nodes: LinearIssue[];
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -136,7 +138,13 @@ export const integration: Integration = {
       if (openIds.length > 0) {
         for (let i = 0; i < openIds.length; i += 50) {
           const batch = openIds.slice(i, i + 50);
-          type NodesResult = { nodes: Array<{ id: string; identifier: string; state: { name: string; type: string } } | null> };
+          type NodesResult = {
+            nodes: Array<{
+              id: string;
+              identifier: string;
+              state: { name: string; type: string };
+            } | null>;
+          };
           const data = await gql<NodesResult>(ctx, ISSUES_BY_IDS_QUERY, { ids: batch });
           const updates = data.nodes
             .filter((n): n is NonNullable<typeof n> => n !== null && 'state' in n)
@@ -165,7 +173,10 @@ export const integration: Integration = {
         ctx.log.info(autoResult, 'autonomous loop result');
       }
     } catch (err) {
-      ctx.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'autonomous loop failed (non-fatal)');
+      ctx.log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'autonomous loop failed (non-fatal)',
+      );
     }
 
     return { status: 'ok', ingested };

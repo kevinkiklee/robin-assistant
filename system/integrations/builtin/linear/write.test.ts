@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import type { RobinDb } from '../../../brain/memory/db.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import type { RobinDb } from '../../../brain/memory/db.ts';
-import {
-  addCommentedRef,
-  hasCommentedRef,
-  isSatisfied,
-  lookupByRef,
-  upsertMap,
-} from './map.ts';
+import { addCommentedRef, hasCommentedRef, isSatisfied, lookupByRef, upsertMap } from './map.ts';
 
 describe('linear write idempotency', () => {
   let db: RobinDb;

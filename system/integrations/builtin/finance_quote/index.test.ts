@@ -31,7 +31,9 @@ function chartResponse(symbol: string, price: number, prevClose?: number, name?:
               shortName: name,
             },
             timestamp: [1_700_000_000],
-            indicators: { quote: [{ open: [price], high: [price], low: [price], close: [price], volume: [1] }] },
+            indicators: {
+              quote: [{ open: [price], high: [price], low: [price], close: [price], volume: [1] }],
+            },
           },
         ],
       },

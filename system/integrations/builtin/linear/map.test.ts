@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import type { RobinDb } from '../../../brain/memory/db.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import type { RobinDb } from '../../../brain/memory/db.ts';
 import {
   addCommentedRef,
   hasCommentedRef,
@@ -49,7 +49,12 @@ describe('linear_issue_map', () => {
 
   it('upsert updates existing row', () => {
     upsertMap(db, { robin_ref: 'test:1', linear_issue_id: 'a', last_action: 'create' });
-    upsertMap(db, { robin_ref: 'test:1', linear_issue_id: 'a', last_state_type: 'started', last_action: 'transition' });
+    upsertMap(db, {
+      robin_ref: 'test:1',
+      linear_issue_id: 'a',
+      last_state_type: 'started',
+      last_action: 'transition',
+    });
     const row = lookupByRef(db, 'test:1');
     assert.ok(row);
     assert.equal(row.last_state_type, 'started');
@@ -72,7 +77,12 @@ describe('linear_issue_map', () => {
   });
 
   it('isSatisfied returns true for completed/cancelled', () => {
-    upsertMap(db, { robin_ref: 'x:done', linear_issue_id: 'i2', last_state_type: 'completed', last_action: 'transition' });
+    upsertMap(db, {
+      robin_ref: 'x:done',
+      linear_issue_id: 'i2',
+      last_state_type: 'completed',
+      last_action: 'transition',
+    });
     assert.equal(isSatisfied(db, 'x:done'), true);
     assert.equal(isSatisfied(db, 'x:nonexistent'), false);
   });
@@ -90,8 +100,18 @@ describe('linear_issue_map', () => {
 
   it('openMappedIssueIds excludes completed', () => {
     upsertMap(db, { robin_ref: 'b:1', linear_issue_id: 'open1', last_action: 'create' });
-    upsertMap(db, { robin_ref: 'b:2', linear_issue_id: 'done1', last_state_type: 'completed', last_action: 'create' });
-    upsertMap(db, { robin_ref: 'b:3', linear_issue_id: 'open2', last_state_type: 'started', last_action: 'create' });
+    upsertMap(db, {
+      robin_ref: 'b:2',
+      linear_issue_id: 'done1',
+      last_state_type: 'completed',
+      last_action: 'create',
+    });
+    upsertMap(db, {
+      robin_ref: 'b:3',
+      linear_issue_id: 'open2',
+      last_state_type: 'started',
+      last_action: 'create',
+    });
     const ids = openMappedIssueIds(db);
     assert.ok(ids.includes('open1'));
     assert.ok(ids.includes('open2'));

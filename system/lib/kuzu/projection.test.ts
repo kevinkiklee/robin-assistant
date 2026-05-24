@@ -35,7 +35,7 @@ test('kuzu projection: rebuild from sqlite entities + relations', async () => {
     assert.equal(r.relations, 2);
     assert.ok(r.durationMs >= 0);
 
-    // Query: Kevin's 1-hop neighbors
+    // Query: 1-hop neighbors of a test entity
     const hits = await queryKuzu<{ name: string; pred: string }>(
       kuzuPath,
       "MATCH (a:Entity {canonical_name: 'Kevin'})-[r:Relation]->(b:Entity) RETURN b.canonical_name AS name, r.predicate AS pred",

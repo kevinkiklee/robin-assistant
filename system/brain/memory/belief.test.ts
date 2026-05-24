@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { believe, normalizeTopic, recallBelief } from './belief.ts';
+import { type BeliefRecord, believe, normalizeTopic, recallBelief } from './belief.ts';
 import { closeDb, openDb } from './db.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 
@@ -20,7 +20,7 @@ test('belief: write then recall current truth', () => {
   believe(db, null, { topic: 'whoop.recovery', claim: 'dips after redeye', date: '2026-05-23' });
   const b = recallBelief(db, { topic: 'whoop.recovery' });
   assert.ok(b && !Array.isArray(b));
-  assert.equal((b as any).claim, 'dips after redeye');
+  assert.equal((b as BeliefRecord).claim, 'dips after redeye');
   closeDb(db);
 });
 
@@ -37,7 +37,7 @@ test('belief: same-day re-write upserts (no new row, no self-supersede)', () => 
   };
   assert.equal(rows.c, 1);
   assert.equal(b.supersededEventId, null);
-  const cur = recallBelief(db, { topic: 't' }) as any;
+  const cur = recallBelief(db, { topic: 't' }) as BeliefRecord;
   assert.equal(cur.claim, 'v2');
   closeDb(db);
 });
@@ -47,7 +47,7 @@ test('belief: cross-day write supersedes yesterday', () => {
   const a = believe(db, null, { topic: 't', claim: 'v1', date: '2026-05-23' });
   const b = believe(db, null, { topic: 't', claim: 'v2', date: '2026-05-24' });
   assert.equal(b.supersededEventId, a.eventId);
-  const chain = recallBelief(db, { topic: 't', history: true }) as any[];
+  const chain = recallBelief(db, { topic: 't', history: true }) as BeliefRecord[];
   assert.equal(chain.length, 2);
   closeDb(db);
 });
@@ -66,9 +66,10 @@ test('belief: enumerate latest per topic', () => {
   believe(db, null, { topic: 'a', claim: 'a1', date: '2026-05-23' });
   believe(db, null, { topic: 'b', claim: 'b1', date: '2026-05-23' });
   believe(db, null, { topic: 'a', claim: 'a2', date: '2026-05-24' });
-  const all = recallBelief(db, {}) as any[];
+  const all = recallBelief(db, {}) as BeliefRecord[];
   assert.equal(all.length, 2);
-  const a = all.find((x) => x.topic === 'a');
+  const a = all.find((x: BeliefRecord) => x.topic === 'a');
+  assert.ok(a);
   assert.equal(a.claim, 'a2');
   closeDb(db);
 });
@@ -77,7 +78,7 @@ test('belief: retraction becomes head', () => {
   const db = freshDb();
   believe(db, null, { topic: 't', claim: 'real', date: '2026-05-23' });
   believe(db, null, { topic: 't', claim: 'no longer', retracted: true, date: '2026-05-24' });
-  const cur = recallBelief(db, { topic: 't' }) as any;
+  const cur = recallBelief(db, { topic: 't' }) as BeliefRecord;
   assert.equal(cur.retracted, true);
   closeDb(db);
 });

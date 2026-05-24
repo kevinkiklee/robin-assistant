@@ -1,7 +1,7 @@
-import type { IntegrationContext } from '../../_runtime/types.ts';
-import type { Policies } from '../../../kernel/config/schema.ts';
 import { loadPolicies } from '../../../kernel/config/load.ts';
+import type { Policies } from '../../../kernel/config/schema.ts';
 import { resolveUserDataDir } from '../../../lib/paths.ts';
+import type { IntegrationContext } from '../../_runtime/types.ts';
 import { isSatisfied, lookupByRef } from './map.ts';
 import { writeActions } from './write.ts';
 
@@ -39,10 +39,7 @@ function sanitizeForRef(raw: string): string {
     .replace(/^-|-$/g, '');
 }
 
-function detectIntegrationErrors(
-  ctx: IntegrationContext,
-  config: LinearConfig,
-): Signal[] {
+function detectIntegrationErrors(ctx: IntegrationContext, config: LinearConfig): Signal[] {
   const signals: Signal[] = [];
 
   // Find integrations with >= 3 consecutive errors
@@ -116,9 +113,7 @@ function recordCreate(ctx: IntegrationContext, timestamps: number[]): void {
 
 /* ---------- main loop ---------- */
 
-export async function runAutonomousLoop(
-  ctx: IntegrationContext,
-): Promise<LoopResult> {
+export async function runAutonomousLoop(ctx: IntegrationContext): Promise<LoopResult> {
   const zeros: LoopResult = { proposed: 0, created: 0, skipped: 0 };
 
   const config = loadLinearConfig();
@@ -145,10 +140,7 @@ export async function runAutonomousLoop(
     if (tickCreates >= config.rate_limit.per_tick) break;
 
     // Daily rate limit
-    const { allowed, timestamps } = pruneAndCheckDaily(
-      ctx,
-      config.rate_limit.per_day,
-    );
+    const { allowed, timestamps } = pruneAndCheckDaily(ctx, config.rate_limit.per_day);
     if (!allowed) {
       skipped++;
       continue;
@@ -209,16 +201,12 @@ export async function runAutonomousLoop(
       }
     } catch (err: unknown) {
       // Circuit-breaker on auth failures
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : String(err);
       if (/\b40[13]\b/.test(message)) {
         ctx.state.set('auth_failed', 'true');
         break;
       }
-      ctx.log.warn(
-        { err: message, robin_ref: signal.robin_ref },
-        'autonomous create failed',
-      );
+      ctx.log.warn({ err: message, robin_ref: signal.robin_ref }, 'autonomous create failed');
     }
   }
 

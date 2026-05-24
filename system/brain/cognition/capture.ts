@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
+import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { ingest } from '../memory/ingest.ts';
 

@@ -4,8 +4,8 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { isProcessAlive, readPidfile } from '../../kernel/runtime/pidfile.ts';
-import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 import { pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 
 const execFileAsync = promisify(execFile);
 const LAUNCHD_LABEL = 'io.robin-assistant.daemon';
@@ -19,10 +19,7 @@ const LAUNCHD_LABEL = 'io.robin-assistant.daemon';
  * scopes minimal — broader scopes flip Google into "sensitive" review even
  * though we're not publishing.
  */
-const PRESETS: Record<
-  string,
-  { envPrefix: string; scopes: string[]; label: string }
-> = {
+const PRESETS: Record<string, { envPrefix: string; scopes: string[]; label: string }> = {
   gmail: {
     envPrefix: 'GMAIL',
     scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
@@ -31,8 +28,8 @@ const PRESETS: Record<
   google_calendar: {
     envPrefix: 'GOOGLE_CALENDAR',
     // calendar.events grants read + write on event data without ACL/calendar-
-    // list management. If Kevin ever needs to create calendars themselves
-    // (rare), upgrade to `calendar`.
+    // list management. To also create/delete calendars (rare), upgrade to
+    // the broader `calendar` scope.
     scopes: ['https://www.googleapis.com/auth/calendar.events'],
     label: 'Google Calendar (read + write)',
   },
@@ -87,7 +84,7 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`Listening on ${redirectUri}\n`);
   // biome-ignore lint/suspicious/noConsole: CLI output
-  console.log('If the browser doesn\'t open, paste this URL manually:\n');
+  console.log("If the browser doesn't open, paste this URL manually:\n");
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  ${consentUrl.toString()}\n`);
 
@@ -241,9 +238,7 @@ export function upsertEnvKey(path: string, key: string, value: string): void {
   const literal = needsQuote ? `"${value.replace(/"/g, '\\"')}"` : value;
   const line = `${key}=${literal}`;
   const re = new RegExp(`^(?:export\\s+)?${key}=.*$`, 'm');
-  const next = re.test(original)
-    ? original.replace(re, line)
-    : `${original.trimEnd()}\n${line}\n`;
+  const next = re.test(original) ? original.replace(re, line) : `${original.trimEnd()}\n${line}\n`;
   writeFileSync(path, next, 'utf8');
 }
 
@@ -278,10 +273,7 @@ async function bounceDaemonIfRunning(userData: string): Promise<boolean> {
 async function isLaunchdManaged(): Promise<boolean> {
   try {
     const uid = process.getuid?.() ?? 501;
-    const { stdout } = await execFileAsync('launchctl', [
-      'print',
-      `gui/${uid}/${LAUNCHD_LABEL}`,
-    ]);
+    const { stdout } = await execFileAsync('launchctl', ['print', `gui/${uid}/${LAUNCHD_LABEL}`]);
     return /state\s*=\s*(running|active|waiting)/i.test(stdout);
   } catch {
     return false;

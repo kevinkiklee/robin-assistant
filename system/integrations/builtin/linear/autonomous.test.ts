@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { stringify as stringifyYaml } from 'yaml';
+import type { RobinDb } from '../../../brain/memory/db.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import type { RobinDb } from '../../../brain/memory/db.ts';
 import { buildContext } from '../../_runtime/context.ts';
 import type { IntegrationContext } from '../../_runtime/types.ts';
-import { upsertMap } from './map.ts';
 import { runAutonomousLoop } from './autonomous.ts';
+import { upsertMap } from './map.ts';
 
 /* ---------- helpers ---------- */
 

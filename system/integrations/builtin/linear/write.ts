@@ -1,12 +1,6 @@
 import type { IntegrationContext } from '../../_runtime/types.ts';
 import { gql, type LinearIssue } from './gql.ts';
-import {
-  addCommentedRef,
-  hasCommentedRef,
-  isSatisfied,
-  lookupByRef,
-  upsertMap,
-} from './map.ts';
+import { addCommentedRef, hasCommentedRef, isSatisfied, lookupByRef, upsertMap } from './map.ts';
 
 /* ---------- GraphQL ---------- */
 
@@ -85,7 +79,10 @@ function getCachedTeams(ctx: IntegrationContext): CachedTeam[] {
 function resolveTeamId(ctx: IntegrationContext, teamKey: string): string {
   const teams = getCachedTeams(ctx);
   const team = teams.find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
-  if (!team) throw new Error(`team '${teamKey}' not found in cached teams (have: ${teams.map((t) => t.key).join(', ') || 'none'})`);
+  if (!team)
+    throw new Error(
+      `team '${teamKey}' not found in cached teams (have: ${teams.map((t) => t.key).join(', ') || 'none'})`,
+    );
   return team.id;
 }
 
@@ -112,7 +109,10 @@ async function resolveStateId(
     ctx.state.set(cacheKey, JSON.stringify(states));
   }
   const match = states.find((s) => s.type === intentType);
-  if (!match) throw new Error(`no state with type '${intentType}' for team ${teamId} (have: ${states.map((s) => `${s.name}[${s.type}]`).join(', ')})`);
+  if (!match)
+    throw new Error(
+      `no state with type '${intentType}' for team ${teamId} (have: ${states.map((s) => `${s.name}[${s.type}]`).join(', ')})`,
+    );
   return match.id;
 }
 
@@ -123,9 +123,7 @@ async function ensureRobinLabel(ctx: IntegrationContext, teamId: string): Promis
 
   type LabelsR = { team: { labels: { nodes: Array<{ id: string; name: string }> } } };
   const data = await gql<LabelsR>(ctx, TEAM_LABELS, { teamId });
-  const existing = data.team.labels.nodes.find(
-    (l) => l.name.toLowerCase() === 'robin',
-  );
+  const existing = data.team.labels.nodes.find((l) => l.name.toLowerCase() === 'robin');
   if (existing) {
     ctx.state.set(cacheKey, existing.id);
     return existing.id;
@@ -160,8 +158,7 @@ async function resolveIssueId(
   type R = { issueSearch: { nodes: LinearIssue[] } };
   const data = await gql<R>(ctx, ISSUE_SEARCH, { q: ref });
   const issue =
-    data.issueSearch.nodes.find((i) => i.identifier === ref) ??
-    data.issueSearch.nodes[0];
+    data.issueSearch.nodes.find((i) => i.identifier === ref) ?? data.issueSearch.nodes[0];
   if (!issue) throw new Error(`issue not found for ref '${ref}'`);
   return {
     issueId: issue.id,
@@ -190,11 +187,17 @@ async function createIssue(
   // Idempotency: if robin_ref is provided and already satisfied, skip
   if (params.robin_ref) {
     if (isSatisfied(ctx.db, params.robin_ref)) {
-      return { created: false, skipped_reason: 'robin_ref already satisfied (completed/cancelled)' };
+      return {
+        created: false,
+        skipped_reason: 'robin_ref already satisfied (completed/cancelled)',
+      };
     }
     const existing = lookupByRef(ctx.db, params.robin_ref);
     if (existing) {
-      return { created: false, skipped_reason: `robin_ref already mapped to ${existing.identifier ?? existing.linear_issue_id}` };
+      return {
+        created: false,
+        skipped_reason: `robin_ref already mapped to ${existing.identifier ?? existing.linear_issue_id}`,
+      };
     }
   }
 
@@ -307,7 +310,8 @@ async function transition(
     // Re-fetch the issue to get team info
     type R = { issueSearch: { nodes: LinearIssue[] } };
     const data = await gql<R>(ctx, ISSUE_SEARCH, { q: identifier });
-    const issue = data.issueSearch.nodes.find((i) => i.identifier === identifier) ?? data.issueSearch.nodes[0];
+    const issue =
+      data.issueSearch.nodes.find((i) => i.identifier === identifier) ?? data.issueSearch.nodes[0];
     if (!issue) throw new Error(`cannot resolve team for '${params.ref}'`);
     teamId = resolveTeamId(ctx, issue.team.key);
   }
@@ -363,7 +367,10 @@ async function comment(
     // Find the issue's map row (by the issue ref, not the comment ref)
     const mapRow = lookupByRef(ctx.db, params.ref);
     if (mapRow && hasCommentedRef(ctx.db, params.ref, params.robin_ref)) {
-      return { commented: false, skipped_reason: `comment robin_ref '${params.robin_ref}' already posted` };
+      return {
+        commented: false,
+        skipped_reason: `comment robin_ref '${params.robin_ref}' already posted`,
+      };
     }
   }
 

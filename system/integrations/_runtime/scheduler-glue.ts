@@ -77,9 +77,7 @@ function writeHeartbeat(
     VALUES (?, ?, ?, ?)
     ON CONFLICT(integration_name, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `);
-  const delKv = db.prepare(
-    `DELETE FROM integration_state WHERE integration_name = ? AND key = ?`,
-  );
+  const delKv = db.prepare(`DELETE FROM integration_state WHERE integration_name = ? AND key = ?`);
   setKv.run(integrationName, 'last_attempt_at', now, now);
   if (outcome.ok) {
     setKv.run(integrationName, 'consecutive_errors', '0', now);
@@ -149,10 +147,7 @@ async function tickWithRetryAndHeartbeat(
           'integration tick reported error',
         );
       } else if (skipReason) {
-        log.warn(
-          { integration: integrationName, msg: skipReason },
-          'integration tick skipped',
-        );
+        log.warn({ integration: integrationName, msg: skipReason }, 'integration tick skipped');
       }
       return;
     } catch (err) {

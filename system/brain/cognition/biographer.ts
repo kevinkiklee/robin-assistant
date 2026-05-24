@@ -559,9 +559,7 @@ export async function runBiographer(
         if (batch.length === 0) continue;
 
         const batchText =
-          batch.length === 1
-            ? chunks[batch[0]]
-            : batch.map((i) => chunks[i]).join('\n---\n');
+          batch.length === 1 ? chunks[batch[0]] : batch.map((i) => chunks[i]).join('\n---\n');
 
         try {
           const inv = await withTimeout(

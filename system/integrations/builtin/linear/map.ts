@@ -14,11 +14,19 @@ export interface MapRow {
 }
 
 export function lookupByRef(db: RobinDb, robinRef: string): MapRow | null {
-  return (db.prepare('SELECT * FROM linear_issue_map WHERE robin_ref = ?').get(robinRef) as MapRow | undefined) ?? null;
+  return (
+    (db.prepare('SELECT * FROM linear_issue_map WHERE robin_ref = ?').get(robinRef) as
+      | MapRow
+      | undefined) ?? null
+  );
 }
 
 export function lookupByIssueId(db: RobinDb, linearIssueId: string): MapRow | null {
-  return (db.prepare('SELECT * FROM linear_issue_map WHERE linear_issue_id = ?').get(linearIssueId) as MapRow | undefined) ?? null;
+  return (
+    (db.prepare('SELECT * FROM linear_issue_map WHERE linear_issue_id = ?').get(linearIssueId) as
+      | MapRow
+      | undefined) ?? null
+  );
 }
 
 export function upsertMap(
@@ -61,8 +69,9 @@ export function addCommentedRef(db: RobinDb, robinRef: string, commentRef: strin
   const refs: string[] = JSON.parse(row.commented_refs);
   if (refs.includes(commentRef)) return false;
   refs.push(commentRef);
-  db.prepare("UPDATE linear_issue_map SET commented_refs = ?, last_action = ?, last_action_at = datetime('now') WHERE robin_ref = ?")
-    .run(JSON.stringify(refs), 'comment', robinRef);
+  db.prepare(
+    "UPDATE linear_issue_map SET commented_refs = ?, last_action = ?, last_action_at = datetime('now') WHERE robin_ref = ?",
+  ).run(JSON.stringify(refs), 'comment', robinRef);
   return true;
 }
 
@@ -77,7 +86,9 @@ export function refreshStateTypes(
   db: RobinDb,
   updates: Array<{ linear_issue_id: string; state_type: string }>,
 ): void {
-  const stmt = db.prepare('UPDATE linear_issue_map SET last_state_type = ? WHERE linear_issue_id = ?');
+  const stmt = db.prepare(
+    'UPDATE linear_issue_map SET last_state_type = ? WHERE linear_issue_id = ?',
+  );
   const txn = db.transaction((rows: typeof updates) => {
     for (const { linear_issue_id, state_type } of rows) {
       stmt.run(state_type, linear_issue_id);
@@ -87,9 +98,11 @@ export function refreshStateTypes(
 }
 
 export function openMappedIssueIds(db: RobinDb): string[] {
-  const rows = db.prepare(
-    "SELECT linear_issue_id FROM linear_issue_map WHERE last_state_type IS NULL OR last_state_type NOT IN ('completed', 'cancelled')",
-  ).all() as Array<{ linear_issue_id: string }>;
+  const rows = db
+    .prepare(
+      "SELECT linear_issue_id FROM linear_issue_map WHERE last_state_type IS NULL OR last_state_type NOT IN ('completed', 'cancelled')",
+    )
+    .all() as Array<{ linear_issue_id: string }>;
   return rows.map((r) => r.linear_issue_id);
 }
 

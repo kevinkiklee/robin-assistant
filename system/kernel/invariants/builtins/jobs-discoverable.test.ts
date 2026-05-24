@@ -56,7 +56,10 @@ test('jobs.discoverable: ok when both manifest and entry exist under user-data/e
   const jobDir = join(dir, 'extensions', 'jobs', 'real-job');
   mkdirSync(jobDir, { recursive: true });
   writeFileSync(join(jobDir, 'job.yaml'), 'name: real-job\nversion: 1.0.0\n');
-  writeFileSync(join(jobDir, 'index.ts'), 'export const job = { async run() { return { status: "ok" }; } };\n');
+  writeFileSync(
+    join(jobDir, 'index.ts'),
+    'export const job = { async run() { return { status: "ok" }; } };\n',
+  );
   db.prepare(
     `INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES (?, 'cron', datetime('now'), 'pending')`,
   ).run('job.real-job.run');

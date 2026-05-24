@@ -16,6 +16,10 @@ function defaultHistoryPath(): string | null {
   return null;
 }
 
+// Chrome stores timestamps as microseconds since 1601-01-01 (Windows FILETIME epoch).
+// This offset converts between that and Unix epoch (1970-01-01) microseconds.
+const CHROME_EPOCH_OFFSET_MICROS = 11644473600_000_000;
+
 export interface ChromeVisit {
   url: string;
   title: string;
@@ -37,7 +41,7 @@ function readVisits(historyPath: string, sinceMicros: number, limit: number): Ch
     // Chrome's visit_time is microseconds since 1601-01-01 (Windows epoch).
     // Convert: chrome_ts = unix_ts_micros + 11644473600000000
     // sinceMicros is unix-epoch microseconds; convert to chrome epoch:
-    const chromeSince = sinceMicros + 11644473600_000_000;
+    const chromeSince = sinceMicros + CHROME_EPOCH_OFFSET_MICROS;
     const rows = db
       .prepare(`
       SELECT urls.url AS url, urls.title AS title, MAX(visits.visit_time) AS visit_time, urls.visit_count AS visit_count
@@ -71,7 +75,7 @@ function readVisits(historyPath: string, sinceMicros: number, limit: number): Ch
 
 function chromeTimeToIso(chromeTime: number): string {
   // chrome_time micros since 1601-01-01 → unix micros since 1970-01-01
-  const unixMicros = chromeTime - 11644473600_000_000;
+  const unixMicros = chromeTime - CHROME_EPOCH_OFFSET_MICROS;
   return new Date(unixMicros / 1000).toISOString();
 }
 
@@ -106,7 +110,7 @@ export const integration: Integration = {
       ingested++;
     }
     if (visits.length > 0) {
-      ctx.state.set('last_sync_micros', String(visits[0].visit_time - 11644473600_000_000));
+      ctx.state.set('last_sync_micros', String(visits[0].visit_time - CHROME_EPOCH_OFFSET_MICROS));
     }
     return { status: 'ok', ingested };
   },

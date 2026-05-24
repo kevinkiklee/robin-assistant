@@ -49,7 +49,7 @@ async function resolveUsername(ctx: IntegrationContext, token: string): Promise<
 function requireToken(): string {
   // Accept either GITHUB_TOKEN (the canonical name per integration.yaml + the
   // gh CLI convention) or GITHUB_PAT (the name many users assign for personal
-  // access tokens). Allowing both means Kevin's .env doesn't have to choose
+  // access tokens). Allowing both means the user's .env doesn't have to choose
   // between Robin and whatever other tooling already reads GITHUB_PAT.
   const token = process.env.GITHUB_TOKEN ?? process.env.GITHUB_PAT;
   if (!token) throw new Error('GITHUB_TOKEN (or GITHUB_PAT) not set in environment');
@@ -95,7 +95,10 @@ export const integration: Integration = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('403')) {
-        ctx.log.warn({ err: msg }, 'GitHub /notifications returned 403 — PAT likely missing notifications scope; skipping');
+        ctx.log.warn(
+          { err: msg },
+          'GitHub /notifications returned 403 — PAT likely missing notifications scope; skipping',
+        );
       } else {
         throw err;
       }
@@ -126,7 +129,10 @@ export const integration: Integration = {
       }
     } catch (err) {
       // Events are best-effort; don't fail the tick if this secondary source errors
-      ctx.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'GitHub /events failed (non-fatal)');
+      ctx.log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'GitHub /events failed (non-fatal)',
+      );
     }
     const seenEventsArr = Array.from(seenEvents).slice(-200);
     ctx.state.set('seen_event_ids', JSON.stringify(seenEventsArr));
