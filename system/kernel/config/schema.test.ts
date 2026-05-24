@@ -4,7 +4,7 @@ import { policiesSchema } from './schema.ts';
 
 test('policiesSchema: applies agent block defaults when absent', () => {
   const p = policiesSchema.parse({});
-  assert.equal(p.agent.enabled, true);
+  assert.equal(p.agent.enabled, false); // opt-in: agentic runs cost real money
   assert.equal(p.agent.caps.agentic_on_demand_daily_usd, 50);
   assert.equal(p.agent.caps.agentic_autonomous_daily_usd, 25);
   assert.equal(p.agent.session.default_model, 'claude-sonnet-4-6');
@@ -19,12 +19,12 @@ test('policiesSchema: applies agent block defaults when absent', () => {
 test('policiesSchema: merges partial agent overrides with defaults', () => {
   const p = policiesSchema.parse({
     agent: {
-      enabled: false,
+      enabled: true, // override the opt-in default off
       caps: { agentic_on_demand_daily_usd: 10 },
       session: { default_max_turns: 5 },
     },
   });
-  assert.equal(p.agent.enabled, false);
+  assert.equal(p.agent.enabled, true);
   assert.equal(p.agent.caps.agentic_on_demand_daily_usd, 10);
   // Sibling default preserved within a partially-specified sub-object.
   assert.equal(p.agent.caps.agentic_autonomous_daily_usd, 25);

@@ -54,7 +54,10 @@ export const biographerConfigSchema = z.object({
 // pool-credit-exhaustion notification toggle, and the pool-billing switch. Nested
 // blocks each carry per-field defaults so a partial override fills in siblings.
 export const agentSchema = z.object({
-  enabled: z.boolean().default(true),
+  // OFF by default: agentic runs make real, paid SDK calls and the feature needs
+  // live activation (route a provider role, wire MCP servers, validate pool
+  // billing post-2026-06-15). Operators opt in by setting `enabled: true`.
+  enabled: z.boolean().default(false),
   // prefault({}) (not default({})) so a missing or partial nested block still runs
   // the inner per-field defaults — default({}) would store the bare {} verbatim.
   caps: z

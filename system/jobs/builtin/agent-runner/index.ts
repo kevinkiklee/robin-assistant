@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquire } from '../../../agent/single-flight.ts';
+import { loadPolicies } from '../../../kernel/config/load.ts';
 import { resolveUserDataDir } from '../../../lib/paths.ts';
 import type { Job, JobContext, JobResult } from '../../_runtime/types.ts';
 
@@ -36,6 +37,8 @@ export interface AgentRunnerDeps {
   userDataDir?: string;
   /** Resolves the runner-entry script path; overridable in tests. */
   runnerEntryPath?: () => string;
+  /** Master kill-switch check; defaults to reading `agent.enabled` from policies. */
+  isEnabled?: () => boolean;
 }
 
 /**
@@ -89,6 +92,14 @@ export async function runAgentRunner(
   deps: AgentRunnerDeps = {},
 ): Promise<JobResult> {
   const userDataDir = deps.userDataDir ?? resolveUserDataDir();
+
+  // Master kill-switch: agentic runs make real, paid SDK calls, so the feature is
+  // OFF unless explicitly enabled. A disabled tick is a clean no-op (never spawns).
+  const isEnabled = deps.isEnabled ?? (() => loadPolicies(userDataDir).agent.enabled);
+  if (!isEnabled()) {
+    return { status: 'skipped', message: 'agent.enabled is false' };
+  }
+
   const spawnFn = deps.spawn ?? spawn;
   const runnerEntry = (deps.runnerEntryPath ?? defaultRunnerEntryPath)();
 

@@ -6,7 +6,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { acquire } from '../../../agent/single-flight.ts';
 import type { JobContext } from '../../_runtime/types.ts';
-import { AUTONOMOUS_HANDLERS, lockExists, runAgentRunner, type SpawnFn } from './index.ts';
+import {
+  type AgentRunnerDeps,
+  AUTONOMOUS_HANDLERS,
+  lockExists,
+  runAgentRunner,
+  type SpawnFn,
+} from './index.ts';
 
 /** A throwaway user-data dir; state/runtime is created lazily by the job. */
 function tmpUserData(): string {
@@ -46,7 +52,24 @@ function spySpawn() {
 
 const RUNNER_ENTRY = '/fake/system/agent/runner-entry.ts';
 
-test('agent-runner: spawns a detached child + returns ok', async () => {
+/** Deps with the kill-switch forced ON (the default reads policies from disk). */
+function enabledDeps(ud: string, spawn: SpawnFn): AgentRunnerDeps {
+  return { userDataDir: ud, spawn, runnerEntryPath: () => RUNNER_ENTRY, isEnabled: () => true };
+}
+
+test('agent-runner: skipped (no spawn) when agent.enabled is false', async () => {
+  const ud = tmpUserData();
+  const { calls, fn } = spySpawn();
+  const r = await runAgentRunner(fakeCtx(), {
+    ...enabledDeps(ud, fn),
+    isEnabled: () => false,
+  });
+  assert.equal(r.status, 'skipped');
+  assert.equal(calls.length, 0, 'a disabled runner must never spawn');
+});
+
+test('agent-runner: defaults to disabled when no policies/config exists', async () => {
+  // No isEnabled override → reads agent.enabled from policies, which defaults OFF.
   const ud = tmpUserData();
   const { calls, fn } = spySpawn();
   const r = await runAgentRunner(fakeCtx(), {
@@ -54,6 +77,14 @@ test('agent-runner: spawns a detached child + returns ok', async () => {
     spawn: fn,
     runnerEntryPath: () => RUNNER_ENTRY,
   });
+  assert.equal(r.status, 'skipped');
+  assert.equal(calls.length, 0, 'agent is opt-in: a config-less instance never spawns');
+});
+
+test('agent-runner: spawns a detached child + returns ok', async () => {
+  const ud = tmpUserData();
+  const { calls, fn } = spySpawn();
+  const r = await runAgentRunner(fakeCtx(), enabledDeps(ud, fn));
   assert.equal(r.status, 'ok');
   assert.equal(calls.length, 1, 'exactly one detached child per tick');
   // Detached + no stdio inheritance — the daemon never blocks on the child.
@@ -63,11 +94,7 @@ test('agent-runner: spawns a detached child + returns ok', async () => {
 test('agent-runner: argv targets runner-entry with a handler id', async () => {
   const ud = tmpUserData();
   const { calls, fn } = spySpawn();
-  await runAgentRunner(fakeCtx(), {
-    userDataDir: ud,
-    spawn: fn,
-    runnerEntryPath: () => RUNNER_ENTRY,
-  });
+  await runAgentRunner(fakeCtx(), enabledDeps(ud, fn));
   const call = calls[0];
   assert.ok(call, 'spawn should have been called');
   assert.equal(call.cmd, 'pnpm');
@@ -92,11 +119,7 @@ test('agent-runner: returns skipped (no spawn) when the lock is held', async () 
   const { calls, fn } = spySpawn();
   const r = await runAgentRunner(
     fakeCtx(() => new Date(60_000)),
-    {
-      userDataDir: ud,
-      spawn: fn,
-      runnerEntryPath: () => RUNNER_ENTRY,
-    },
+    enabledDeps(ud, fn),
   );
   assert.equal(r.status, 'skipped');
   assert.equal(calls.length, 0, 'a held lock must prevent any spawn');
@@ -112,11 +135,7 @@ test('agent-runner: round-robin advances the handler across ticks', async () => 
     // Each tick uses a time far past any prior lock so acquire steals/succeeds.
     await runAgentRunner(
       fakeCtx(() => new Date(i * 60 * 60_000)),
-      {
-        userDataDir: ud,
-        spawn: fn,
-        runnerEntryPath: () => RUNNER_ENTRY,
-      },
+      enabledDeps(ud, fn),
     );
     const flag = calls[0]?.args[3] ?? '';
     ids.push(flag.split('=')[1] ?? '');
@@ -130,11 +149,7 @@ test('agent-runner: spawn failure returns error (lock recovered via stale-steal)
   const throwingSpawn = (() => {
     throw new Error('spawn ENOENT');
   }) as unknown as SpawnFn;
-  const r = await runAgentRunner(fakeCtx(), {
-    userDataDir: ud,
-    spawn: throwingSpawn,
-    runnerEntryPath: () => RUNNER_ENTRY,
-  });
+  const r = await runAgentRunner(fakeCtx(), enabledDeps(ud, throwingSpawn));
   assert.equal(r.status, 'error');
   // Lock is left held in this impl only if acquired; assert it still exists so a
   // stale-steal (not a permanent wedge) is what recovers it next tick.
@@ -144,11 +159,7 @@ test('agent-runner: spawn failure returns error (lock recovered via stale-steal)
 test('agent-runner: cursor file persists the next position', async () => {
   const ud = tmpUserData();
   const { fn } = spySpawn();
-  await runAgentRunner(fakeCtx(), {
-    userDataDir: ud,
-    spawn: fn,
-    runnerEntryPath: () => RUNNER_ENTRY,
-  });
+  await runAgentRunner(fakeCtx(), enabledDeps(ud, fn));
   const cursor = readFileSync(join(ud, 'state', 'runtime', 'agent-runner-cursor'), 'utf8').trim();
   assert.equal(cursor, '1', 'after one tick the cursor advances to 1');
 });
