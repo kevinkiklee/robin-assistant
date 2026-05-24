@@ -329,12 +329,25 @@ export async function composeJournal(
 
   if (!llm) return metricsBlock;
 
-  // Gather narrative inputs: today's arcs, recent corrections, entities created today
-  const todaysArcs = db
+  // Gather CONCRETE narrative inputs — real entity names, not abstract counts.
+  // Feeding the model named topics (what the day was actually about) instead of
+  // figures like "an arc of 253 entities" is what keeps the narrative grounded;
+  // sparse numeric inputs make a small model confabulate (it once dramatized
+  // entity counts into "movements clustered near the eastern perimeter").
+
+  // The day's most-active entities by relation count — what Robin actually
+  // engaged with today. These are the spine of the narrative.
+  const topEntities = db
     .prepare(`
-      SELECT payload FROM events WHERE kind = 'arc' AND ts >= ? ORDER BY ts DESC LIMIT 5
+      SELECT e.canonical_name, e.type, COUNT(*) AS signals
+        FROM entities e
+        JOIN relations r ON r.subject_id = e.id OR r.object_id = e.id
+       WHERE r.ts >= ?
+       GROUP BY e.id
+       ORDER BY signals DESC
+       LIMIT 12
     `)
-    .all(ctx.since) as Array<{ payload: string }>;
+    .all(ctx.since) as Array<{ canonical_name: string; type: string; signals: number }>;
   const recentCorrections = db
     .prepare(`
       SELECT what, correction FROM corrections WHERE ts >= ? ORDER BY ts DESC LIMIT 5
@@ -346,42 +359,35 @@ export async function composeJournal(
     `)
     .all(ctx.since) as Array<{ canonical_name: string; type: string }>;
 
-  const arcLines = todaysArcs
-    .map((a) => {
-      try {
-        const p = JSON.parse(a.payload) as { summary?: string };
-        return `- ${p.summary ?? '(unsummarized arc)'}`;
-      } catch {
-        return `- (unparseable arc)`;
-      }
-    })
-    .join('\n');
+  const topLines = topEntities.map((e) => `- ${e.canonical_name} (${e.type})`).join('\n');
   const correctionLines = recentCorrections.map((c) => `- ${c.what}: ${c.correction}`).join('\n');
   const entityLines = emergentEntities.map((e) => `- ${e.canonical_name} (${e.type})`).join('\n');
 
   const userPrompt = [
     `Date: ${ctx.today}`,
     ``,
-    `Today's metrics:`,
-    `- Events: ${ctx.eventsToday}`,
-    `- Captures: ${ctx.capturesToday}`,
-    `- Corrections: ${ctx.correctionsToday}`,
-    `- Predictions resolved: ${ctx.predictionsResolved}`,
+    `Activity volume: ${ctx.capturesToday} sessions captured, ${ctx.correctionsToday} corrections, ${ctx.predictionsResolved} predictions resolved.`,
     ``,
-    arcLines ? `Today's arcs:\n${arcLines}` : 'No new arcs today.',
+    topLines ? `Most-engaged topics/people/tools today:\n${topLines}` : 'Quiet day — little entity activity.',
     ``,
-    correctionLines ? `Recent corrections:\n${correctionLines}` : 'No corrections today.',
+    correctionLines ? `Corrections made:\n${correctionLines}` : 'No corrections today.',
     ``,
-    entityLines ? `Emergent entities:\n${entityLines}` : 'No new entities today.',
+    entityLines ? `New to memory today:\n${entityLines}` : 'No new entities today.',
     ``,
-    `Write a 3-5 sentence narrative journal entry synthesizing today. Past tense, first-person from Robin's perspective. Be specific; reference entities and corrections by name when relevant. No preamble.`,
+    `Write the journal entry now.`,
   ].join('\n');
 
   try {
     const res = await llm.invoke('summarize', {
-      systemPrompt: `You write Robin's nightly journal in first-person. 3-5 sentences. Specific, not generic. No bullet lists in output — just prose.`,
+      systemPrompt: [
+        `You write Robin's nightly journal — first-person ("I"), past tense, plain prose (no lists, no headers, no preamble). 3-5 sentences.`,
+        `Robin is a personal AI assistant. "Entities" are people, projects, tools, and topics from the user's software and knowledge work — NOT physical objects, places, or events.`,
+        `Ground every sentence in the data provided. NEVER invent activities, locations, movements, threats, or events that are not in the inputs. Reference the named topics/people/tools directly.`,
+        `If the day was quiet, say so plainly rather than embellishing.`,
+      ].join(' '),
       messages: [{ role: 'user', content: userPrompt }],
       temperature: 0.3,
+      maxTokens: 2048,
     });
     const narrative = res.text.trim();
     if (!narrative) return metricsBlock;
