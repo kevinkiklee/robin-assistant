@@ -383,6 +383,59 @@ test('biographer: skips oversized sessions and writes a skip marker (Bug G)', as
   closeDb(db);
 });
 
+// Silent-failure regression — when the LLM is unreachable (Ollama down), every
+// chunk call fails fast with a connection error. The biographer must NOT advance
+// the cursor or write a `biographer.extracted` marker (which would falsely record
+// the session as done with zero entities). It must leave the session untouched
+// for retry once the LLM is back. Observed live 2026-05-23 after a reboot left
+// Ollama down: ~30 sessions got empty "ok" markers in seconds.
+test('biographer: does not advance or mark done when the LLM is unreachable', async () => {
+  const db = freshDb();
+
+  const turn = (role: string, content: string) => `[${role}]\n${content}`;
+  const seg = 'word '.repeat(1100);
+  const body = Array.from({ length: 4 }, (_, i) =>
+    turn(i % 2 === 0 ? 'USER' : 'ASSISTANT', `segment ${i} ${seg}`),
+  ).join('\n\n');
+  const contentInfo = db
+    .prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`)
+    .run(new Date().toISOString(), body);
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload, content_ref) VALUES (?, 'session.captured', 'capture', 'ok', '{}', ?)`,
+  ).run(new Date().toISOString(), Number(contentInfo.lastInsertRowid));
+
+  // Provider simulating Ollama being down: every call throws a connection error.
+  const provider: LLMProvider = {
+    name: 'down',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async () => {
+      throw new TypeError('fetch failed');
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('p', provider);
+  d.assign('reasoning', 'p');
+
+  const r = await runBiographer(db, d, 1, { maxChunksPerTick: 2 });
+
+  // No marker written — the session is NOT falsely completed.
+  const markers = db
+    .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'biographer.extracted'`)
+    .get() as { c: number };
+  assert.equal(markers.c, 0, 'no extraction marker when the LLM is unreachable');
+  // Cursor must not advance (no progress row, or still at 0).
+  const prog = db.prepare(`SELECT next_chunk FROM biographer_progress`).get() as
+    | { next_chunk: number }
+    | undefined;
+  assert.ok(
+    !prog || prog.next_chunk === 0,
+    `cursor must not advance when all chunks fail on connection error (got ${prog?.next_chunk})`,
+  );
+  assert.equal(r.processed, 0, 'session not counted as processed');
+  closeDb(db);
+});
+
 // Bug F regression — a session with ambiguous entities causes disambiguateEntity
 // to call llm.invoke once per candidate. Before the dispatcher-level timeout,
 // any one of those calls hanging would block runBiographer forever, which

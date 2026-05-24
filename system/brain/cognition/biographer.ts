@@ -1,8 +1,25 @@
 import { z } from 'zod';
-import { withTimeout } from '../../lib/with-timeout.ts';
+import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
+
+/**
+ * True when an error means the LLM was unreachable / didn't respond (Ollama down,
+ * connection refused/reset, or a timeout) — as opposed to the LLM responding with
+ * bad output (JSON parse / schema failure). The distinction is load-bearing in the
+ * biographer chunk loop: an unreachable LLM must NOT advance the cursor (else a
+ * session gets marked "done" with empty extraction — observed 2026-05-23 when a
+ * reboot left Ollama down and ~30 sessions were silently emptied), whereas a
+ * bad-output chunk SHOULD advance so one poison chunk can't block the session.
+ */
+function isLlmUnavailableError(err: unknown): boolean {
+  if (err instanceof TimeoutError) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /fetch failed|ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|network|failed to connect|connection refused|terminated|fetch is not defined/i.test(
+    msg,
+  );
+}
 
 // Bug E mitigation — bound any single chunk's LLM call. Real qwen3:14b chunks finish
 // in 30-60s; anything past 2 min is a hang (observed 2026-05-21: biographer wedged
@@ -76,7 +93,13 @@ export function chunkBody(body: string, maxChars: number): string[] {
   return chunks;
 }
 
-const CHUNK_CHARS = 6000;
+// Larger chunks = fewer LLM round-trips per session (less repeated system-prompt
+// processing, fewer merge/disambiguation passes). 10k chars (~2.5k tokens) leaves
+// ample headroom under qwen3's 32k context even with the system prompt. Raised
+// from 6000 on 2026-05-23 to cut the per-session chunk count ~40% during a large
+// backlog drain. NOTE: changing this invalidates in-flight biographer_progress
+// cursors (they index chunks at the old size) — clear that table when changing it.
+const CHUNK_CHARS = 10000;
 
 // Multi-tick bound — the biographer processes at most this many chunks per
 // `runBiographer` call, persisting a cursor in `biographer_progress` so a large
@@ -446,6 +469,8 @@ export async function runBiographer(
     let endChunk = totalChunks;
     if (llm) {
       endChunk = Math.min(startChunk + chunkBudget, totalChunks);
+      let successes = 0;
+      let llmUnavailable = false;
       for (let ci = startChunk; ci < endChunk; ci++) {
         try {
           const inv = await withTimeout(
@@ -470,6 +495,7 @@ export async function runBiographer(
             );
             continue;
           }
+          successes++;
           for (const e of validated.data.entities) {
             const key = entityKey(e);
             if (!mergedEntities.has(key)) mergedEntities.set(key, e);
@@ -479,10 +505,24 @@ export async function runBiographer(
             if (!mergedRelations.has(key)) mergedRelations.set(key, r);
           }
         } catch (err) {
+          if (isLlmUnavailableError(err)) llmUnavailable = true;
           result.errors.push(
             `event ${target.eventId} chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
+      }
+
+      // Circuit breaker — if every attempted chunk failed because the LLM was
+      // unreachable (Ollama down / timing out) and none succeeded, do NOT advance
+      // the cursor or finalize. Marking the session done here would record it as
+      // biographed with zero entities (silent data loss). Leave it untouched so it
+      // retries once the LLM is back, and stop this run (no point hammering a dead
+      // backend across the rest of the backlog).
+      if (llmUnavailable && successes === 0) {
+        result.errors.push(
+          `event ${target.eventId}: LLM unreachable — aborted without advancing (will retry)`,
+        );
+        break;
       }
       chunkBudget -= endChunk - startChunk;
     }
