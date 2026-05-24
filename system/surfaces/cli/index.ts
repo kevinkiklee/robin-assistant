@@ -20,6 +20,7 @@ USAGE
   robin <command> [options]
 
 COMMANDS
+  agent "<goal>"    Run a guarded agentic task (--handler=A..L | --write [defaults to A], --cwd=, --max-turns=N, --budget=N, --force)
   beliefs review    List pending belief candidates (alias: list; --status= --limit=)
   beliefs promote   Promote a candidate into a belief: beliefs promote <id> [--reason=...]
   beliefs reject    Reject a candidate: beliefs reject <id> [--reason=...]
@@ -76,6 +77,12 @@ async function main(): Promise<void> {
       console.log(VERSION);
       exit(0);
       break;
+    }
+
+    case 'agent': {
+      const { runAgentCommand } = await import('./agent.ts');
+      await runAgentCommand(args.slice(1));
+      return;
     }
 
     case 'beliefs': {
