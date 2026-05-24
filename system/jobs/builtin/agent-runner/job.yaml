@@ -1,0 +1,15 @@
+name: agent-runner
+version: 1.0.0
+# Every 3 hours → 8 ticks/day. One autonomous handler is dispatched per tick in
+# round-robin order (B,D,E,F,G,H,K,L), so the full set cycles roughly once a day.
+# Conservative on purpose: each tick spawns a detached agent run that can cost
+# real money, and the per-surface daily cap (agentic_autonomous_daily_usd) is the
+# hard spend ceiling regardless of how often this fires.
+schedule: "0 */3 * * *"
+description: >-
+  Dispatches one autonomous agent handler per tick as a detached child process,
+  so long agent runs execute outside the scheduler's 120s tick budget.
+permissions:
+  memory:
+    read: true
+    write: true
