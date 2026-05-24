@@ -22,6 +22,7 @@ import { actions as linearActions } from '../../../integrations/builtin/linear/i
 import { writeActions as linearWriteActions } from '../../../integrations/builtin/linear/write.ts';
 import { loadModels } from '../../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
+import { runAgentAction } from './agent-action.ts';
 
 export interface ExtensionServerDeps {
   db: RobinDb;
@@ -350,6 +351,29 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
           },
         ],
       };
+    },
+  );
+
+  server.registerTool(
+    'agent',
+    {
+      description:
+        'Run a guarded agentic task through runAgent. Only on-demand handlers are reachable here; autonomous handlers run via the detached runner. Handler I (life-executor) requires confirm:true for irreversible actions.',
+      inputSchema: {
+        handler: z.string().describe('Handler id, A..L (only on-demand handlers are allowed)'),
+        goal: z.string().describe('The task prompt for the agent'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required true for handler I (life-executor) — confirms irreversible actions'),
+      },
+    },
+    async ({ handler, goal, confirm }) => {
+      const out = await runAgentAction(
+        { handler, goal, ...(confirm !== undefined ? { confirm } : {}) },
+        { db: deps.db },
+      );
+      return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] };
     },
   );
 
