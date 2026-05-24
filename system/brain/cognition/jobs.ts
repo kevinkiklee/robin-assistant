@@ -34,11 +34,18 @@ export const COGNITION_JOBS: CognitionJob[] = [
   },
 ];
 
-/** Register cognition handlers on the daemon and seed their cron schedules. */
+/**
+ * Register cognition handlers on the daemon and seed their cron schedules.
+ *
+ * `getDraftClaims` resolves the `biographer.draftClaims` policy at handler time
+ * (so flipping policies.yaml takes effect without a daemon restart). Defaults to
+ * `true` — the schema default — when the daemon does not supply one.
+ */
 export function registerCognitionJobs(
   daemon: Daemon,
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
+  getDraftClaims: () => boolean = () => true,
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
@@ -48,7 +55,11 @@ export function registerCognitionJobs(
     // drain multiple small sessions per tick instead of wasting leftover budget.
     // Combined with the */5 cron, throughput is ~2 chunks/min (was ~0.27 at
     // batch=1/*/15/4-chunk).
-    await runBiographer(db, llm, 5, { batchChunks: 3, skipToolChunks: true });
+    await runBiographer(db, llm, 5, {
+      batchChunks: 3,
+      skipToolChunks: true,
+      draftClaims: getDraftClaims(),
+    });
   });
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;

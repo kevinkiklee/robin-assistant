@@ -6,6 +6,11 @@ import { z } from 'zod';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import { believe, recallBelief } from '../../../brain/memory/belief.ts';
+import {
+  countPendingCandidates,
+  listBeliefCandidates,
+  resolveBeliefCandidate,
+} from '../../../brain/memory/belief-candidate.ts';
 import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
 import { findEntity, getEntity, upsertEntity } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
@@ -334,6 +339,52 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     async ({ topic, history, limit }) => {
       const r = recallBelief(deps.db, { topic, history, limit });
       return { content: [{ type: 'text' as const, text: JSON.stringify(r, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'review_beliefs',
+    {
+      description:
+        'List machine-drafted belief candidates awaiting review (the biographer drafts these from sessions; they are NOT truth until promoted). Read-only. Defaults to pending. Returns the candidate list plus the count still pending. Use resolve_belief_candidate to promote (keep as durable truth) or reject (noise/duplicate/transient).',
+      inputSchema: z.object({
+        status: z
+          .enum(['pending', 'promoted', 'rejected'])
+          .optional()
+          .describe('Filter by status (default: pending)'),
+        limit: z.number().int().optional().describe('Max candidates (default 50)'),
+      }),
+    },
+    async ({ status, limit }) => {
+      const candidates = listBeliefCandidates(deps.db, {
+        status: status ?? 'pending',
+        ...(limit !== undefined ? { limit } : {}),
+      });
+      const pending = countPendingCandidates(deps.db);
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify({ pending, candidates }, null, 2) },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    'resolve_belief_candidate',
+    {
+      description:
+        'Resolve a pending belief candidate. action=promote when the claim is a durable declarative fact worth keeping as truth — it routes through believe() (inheriting supersession) and returns the new belief event id. action=reject when the claim is noise, a duplicate, or transient. Resolving an already-resolved or missing candidate errors.',
+      inputSchema: z.object({
+        id: z.number().int().describe('Candidate id (from review_beliefs)'),
+        action: z
+          .enum(['promote', 'reject'])
+          .describe('promote = durable truth; reject = noise/duplicate/transient'),
+        reason: z.string().optional().describe('Optional note recorded with the resolution'),
+      }),
+    },
+    async ({ id, action, reason }) => {
+      const r = resolveBeliefCandidate(deps.db, deps.llm, id, action, reason);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(r) }] };
     },
   );
 

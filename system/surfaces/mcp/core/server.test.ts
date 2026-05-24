@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { believe, recallBelief } from '../../../brain/memory/belief.ts';
+import {
+  countPendingCandidates,
+  insertBeliefCandidate,
+  listBeliefCandidates,
+  resolveBeliefCandidate,
+} from '../../../brain/memory/belief-candidate.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { upsertEntity } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
@@ -76,6 +82,48 @@ test('robin-core: believe + recall_belief round trip through DB', () => {
   const head = recallBelief(db, { topic: 'whoop.recovery' });
   assert.ok(head && !Array.isArray(head));
   assert.equal((head as { claim: string }).claim, 'dips after redeye');
+  closeDb(db);
+});
+
+test('robin-core: review_beliefs lists pending candidates + reports pending count', () => {
+  const db = freshDb();
+  // Mirror the review_beliefs tool, which delegates to listBeliefCandidates +
+  // countPendingCandidates directly.
+  insertBeliefCandidate(db, { topic: 'google.role', claim: 'works on Ad Experiences' });
+  insertBeliefCandidate(db, { topic: 'travel.afghanistan', claim: 'served in Afghanistan' });
+
+  const candidates = listBeliefCandidates(db, { status: 'pending' });
+  const pending = countPendingCandidates(db);
+  assert.equal(candidates.length, 2);
+  assert.equal(pending, 2);
+  // Topic is normalized; both land as pending.
+  assert.ok(candidates.every((c) => c.status === 'pending'));
+  closeDb(db);
+});
+
+test('robin-core: resolve_belief_candidate promote → believe head; reject → no head', () => {
+  const db = freshDb();
+  // Mirror the resolve_belief_candidate tool, which delegates to
+  // resolveBeliefCandidate directly (promote routes through believe()).
+  const a = insertBeliefCandidate(db, { topic: 'google.role', claim: 'works on Ad Experiences' });
+  const b = insertBeliefCandidate(db, { topic: 'noise.topic', claim: 'transient junk' });
+
+  const promoted = resolveBeliefCandidate(db, null, a.id, 'promote');
+  assert.equal(promoted.action, 'promote');
+  assert.ok(promoted.promotedBeliefEventId !== null, 'promote should yield a belief event id');
+
+  const head = recallBelief(db, { topic: 'google.role' });
+  assert.ok(head && !Array.isArray(head));
+  assert.equal((head as { claim: string }).claim, 'works on Ad Experiences');
+
+  const rejected = resolveBeliefCandidate(db, null, b.id, 'reject');
+  assert.equal(rejected.action, 'reject');
+  assert.equal(rejected.promotedBeliefEventId, null);
+  assert.equal(recallBelief(db, { topic: 'noise.topic' }), null);
+
+  // Both candidates are now resolved → zero pending; re-resolving errors.
+  assert.equal(countPendingCandidates(db), 0);
+  assert.throws(() => resolveBeliefCandidate(db, null, a.id, 'reject'), /already promoted/);
   closeDb(db);
 });
 

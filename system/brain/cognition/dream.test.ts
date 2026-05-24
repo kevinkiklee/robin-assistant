@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
+import { believe } from '../memory/belief.ts';
+import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
@@ -16,6 +18,36 @@ function freshDb() {
   const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
   applyMigrations(db, allMigrations);
   return db;
+}
+
+/**
+ * Fresh DB plus an isolated user-data dir wired via ROBIN_USER_DATA_DIR, so
+ * `flagStaleNarrativeDocs` reads `<dir>/content/profile/` from a temp tree.
+ * Returns a teardown that closes the DB and restores the env var.
+ */
+function freshDbWithUserDataDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-dream-ud-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
+  applyMigrations(db, allMigrations);
+  const prev = process.env.ROBIN_USER_DATA_DIR;
+  process.env.ROBIN_USER_DATA_DIR = dir;
+  const teardown = () => {
+    closeDb(db);
+    if (prev === undefined) delete process.env.ROBIN_USER_DATA_DIR;
+    else process.env.ROBIN_USER_DATA_DIR = prev;
+  };
+  return { db, dir, teardown };
+}
+
+/** Write a profile doc and force its mtime to `at` (epoch ms). */
+function writeProfileDoc(dir: string, name: string, body: string, at: number) {
+  const profileDir = join(dir, 'content', 'profile');
+  mkdirSync(profileDir, { recursive: true });
+  const path = join(profileDir, name);
+  writeFileSync(path, body);
+  const secs = at / 1000;
+  utimesSync(path, secs, secs);
 }
 
 test('dream: resolves overdue predictions as unverifiable', async () => {
@@ -197,4 +229,124 @@ test('dream: journal falls back to metrics-only when LLM null', async () => {
   // No narrative section when LLM unavailable
   assert.doesNotMatch(row.body, /Narrative/);
   closeDb(db);
+});
+
+test('dream: expires pending belief candidates older than 14 days', async () => {
+  const db = freshDb();
+  const fresh = insertBeliefCandidate(db, { topic: 'fresh', claim: 'recent claim' });
+  const old = insertBeliefCandidate(db, { topic: 'stale', claim: 'old claim' });
+  // Backdate the old candidate well past the 14-day window.
+  db.prepare(`UPDATE belief_candidates SET created_at = '2020-01-01 00:00:00' WHERE id = ?`).run(
+    old.id,
+  );
+
+  const r = await runDream(db, null);
+  assert.equal(r.candidatesExpired, 1);
+
+  const oldRow = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(old.id) as {
+    status: string;
+  };
+  const freshRow = db
+    .prepare(`SELECT status FROM belief_candidates WHERE id = ?`)
+    .get(fresh.id) as {
+    status: string;
+  };
+  assert.equal(oldRow.status, 'rejected');
+  assert.equal(freshRow.status, 'pending');
+  closeDb(db);
+});
+
+test('dream: candidatesExpired is 0 (no crash) when belief_candidates table is missing', async () => {
+  const db = freshDb();
+  db.exec(`DROP TABLE belief_candidates`);
+  const r = await runDream(db, null);
+  assert.equal(r.candidatesExpired, 0);
+  // The rest of dream still ran.
+  assert.equal(r.journalGenerated, true);
+  closeDb(db);
+});
+
+test('dream: staleFlagsRaised is 0 when content/profile dir is missing', async () => {
+  const { db, teardown } = freshDbWithUserDataDir();
+  // No content/profile dir created.
+  believe(db, null, { topic: 'google-role', claim: 'Ad Experiences' });
+  const r = await runDream(db, null);
+  assert.equal(r.staleFlagsRaised, 0);
+  teardown();
+});
+
+test('dream: flags a prose doc older than the newest belief signal', async () => {
+  const { db, dir, teardown } = freshDbWithUserDataDir();
+  // Doc mtime in the past; a belief is written "now" (newer), so it is stale.
+  writeProfileDoc(dir, 'character.md', '# Character', Date.now() - 7 * 86_400_000);
+  believe(db, null, { topic: 'google-role', claim: 'Ad Experiences' });
+
+  const r = await runDream(db, null);
+  assert.equal(r.staleFlagsRaised, 1);
+
+  const flag = db.prepare(`SELECT payload FROM events WHERE kind = 'narrative.stale'`).get() as {
+    payload: string;
+  };
+  const payload = JSON.parse(flag.payload);
+  assert.equal(payload.doc, 'character.md');
+  assert.equal(payload.reason, 'beliefs/corrections updated after doc');
+  assert.ok(payload.newest_signal_ts);
+  assert.ok(payload.doc_mtime);
+  teardown();
+});
+
+test('dream: does NOT flag a prose doc newer than all belief/correction signals', async () => {
+  const { db, dir, teardown } = freshDbWithUserDataDir();
+  believe(db, null, { topic: 'google-role', claim: 'Ad Experiences' });
+  // Doc mtime well in the future — newer than the just-written belief.
+  writeProfileDoc(dir, 'character.md', '# Character', Date.now() + 86_400_000);
+
+  const r = await runDream(db, null);
+  assert.equal(r.staleFlagsRaised, 0);
+  teardown();
+});
+
+test('dream: also flags against newer corrections, not just beliefs', async () => {
+  const { db, dir, teardown } = freshDbWithUserDataDir();
+  writeProfileDoc(dir, 'voice.md', '# Voice', Date.now() - 7 * 86_400_000);
+  db.prepare(`INSERT INTO corrections (what, correction) VALUES (?, ?)`).run(
+    'tone',
+    'be more concise',
+  );
+
+  const r = await runDream(db, null);
+  assert.equal(r.staleFlagsRaised, 1);
+  const flag = db.prepare(`SELECT payload FROM events WHERE kind = 'narrative.stale'`).get() as {
+    payload: string;
+  };
+  assert.equal(JSON.parse(flag.payload).doc, 'voice.md');
+  teardown();
+});
+
+test('dream: does not re-flag the same doc twice the same day (dedup)', async () => {
+  const { db, dir, teardown } = freshDbWithUserDataDir();
+  writeProfileDoc(dir, 'character.md', '# Character', Date.now() - 7 * 86_400_000);
+  believe(db, null, { topic: 'google-role', claim: 'Ad Experiences' });
+
+  const now = new Date();
+  const r1 = await runDream(db, null, now);
+  const r2 = await runDream(db, null, now);
+  assert.equal(r1.staleFlagsRaised, 1);
+  assert.equal(r2.staleFlagsRaised, 0);
+
+  const count = (
+    db.prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'narrative.stale'`).get() as {
+      c: number;
+    }
+  ).c;
+  assert.equal(count, 1);
+  teardown();
+});
+
+test('dream: raises 0 stale flags when no beliefs or corrections exist', async () => {
+  const { db, dir, teardown } = freshDbWithUserDataDir();
+  writeProfileDoc(dir, 'character.md', '# Character', Date.now() - 7 * 86_400_000);
+  const r = await runDream(db, null);
+  assert.equal(r.staleFlagsRaised, 0);
+  teardown();
 });

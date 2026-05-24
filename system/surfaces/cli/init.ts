@@ -41,6 +41,9 @@ export async function runInit(opts: InitOptions): Promise<void> {
     paths.extensions.skills,
     paths.content.artifacts,
     paths.content.sources,
+    // Narrative-layer profile prose (character.md, voice.md, topic docs). Seeded empty —
+    // personal prose is authored by the live session / hand-edited, never by init.
+    join(userData, 'content', 'profile'),
     paths.observability.logs,
     paths.observability.eval,
   ]) {
@@ -126,11 +129,18 @@ roles: {}
   // Install the Claude Code SessionEnd hook so every session is captured automatically.
   // Without this, capture falls back to the 5-min polling claude_code integration (which
   // requires 10-min idle), so sessions land in Robin with up to a 15-min lag.
+  // Also install the SessionStart hook so each session opens with the LLM-free primer
+  // (corrections, belief heads, profile prose) injected as context.
   try {
-    const { installSessionEndHook } = await import('../../lib/claude-hooks/install.ts');
-    const r = installSessionEndHook();
+    const { installSessionEndHook, installSessionStartHook } = await import(
+      '../../lib/claude-hooks/install.ts'
+    );
+    const end = installSessionEndHook();
+    const start = installSessionStartHook();
     // biome-ignore lint/suspicious/noConsole: CLI output
-    console.log(`  Hooks:    ${r.replaced ? 'updated' : 'installed'} ${r.path}`);
+    console.log(
+      `  Hooks:    ${end.replaced ? 'updated' : 'installed'} SessionEnd, ${start.replaced ? 'updated' : 'installed'} SessionStart in ${end.path}`,
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // biome-ignore lint/suspicious/noConsole: CLI output

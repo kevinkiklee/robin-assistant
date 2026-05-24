@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
 
@@ -59,6 +60,78 @@ const extractionSchema = z.object({
 
 export type ExtractionResult = z.infer<typeof extractionSchema>;
 
+// ─── Second-pass claim drafting ────────────────────────────────────────────────
+// A SEPARATE extraction pass, fully decoupled from the entity/relation flow
+// above, so it can never threaten that pass's hard-won maxTokens=4096 / 2-min
+// stability ceilings. It drafts durable declarative facts about the user into
+// the belief_candidates review queue (never the truth stream directly), gated by
+// the `draftClaims` config flag and bounded by its own small per-session budget.
+
+const claimsSchema = z.object({
+  claims: z
+    .array(
+      z.object({
+        topic: z.string(),
+        claim: z.string(),
+        confidence: z.number().nullable().optional(),
+      }),
+    )
+    .default([]),
+});
+
+export type ClaimsResult = z.infer<typeof claimsSchema>;
+
+const CLAIMS_SYSTEM_PROMPT = `You extract DURABLE FACTS about the user (and their world) from a transcript. Reply ONLY with JSON matching:
+{"claims":[{"topic":"<short-kebab-topic>","claim":"<one declarative sentence>","confidence":<0..1>}, ...]}
+
+A claim is a stable, declarative fact that would still be true in a future session — e.g. "kevin's google role is ad experiences", "kevin lives in bergen county nj", "kevin's main camera is a nikon z8".
+
+Do NOT emit:
+- Imperatives or behavior rules ("never pitch X", "always do Y") — those are not claims.
+- Transient session details (what was debugged today, a command that was run, a file that was edited).
+- Speculation, questions, or anything you are not reasonably confident is a durable fact.
+- Facts about the assistant itself rather than the user.
+
+topic: a short kebab-case key for the fact (e.g. "google-role", "home-location", "primary-camera").
+confidence: your confidence 0..1 that this is a durable, correct fact.
+If nothing durable is present, reply {"claims":[]}.`;
+
+// Hard cap on candidate claims drafted per session — keeps a chatty model from
+// flooding the review queue from a single transcript.
+const MAX_CLAIMS_PER_SESSION = 20;
+
+/**
+ * Run the claim-drafting pass on a single chunk. Returns the validated claims
+ * (possibly empty). Individually timeout-bounded by the caller's chunk timeout
+ * and capped at a small maxTokens so it can never blow the tick. Tolerant of
+ * fenced/invalid output — a bad chunk yields zero claims rather than throwing.
+ */
+export async function extractClaims(
+  llm: LLMDispatcher,
+  chunkText: string,
+  timeoutMs: number,
+  label: string,
+): Promise<ClaimsResult['claims']> {
+  const inv = await withTimeout(
+    llm.invoke('reasoning', {
+      systemPrompt: CLAIMS_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: chunkText }],
+      temperature: 0,
+      maxTokens: 2048,
+    }),
+    timeoutMs,
+    label,
+  );
+  const jsonText = inv.text
+    .trim()
+    .replace(/^```(?:json)?/, '')
+    .replace(/```$/, '')
+    .trim();
+  const parsed = claimsSchema.safeParse(JSON.parse(jsonText));
+  if (!parsed.success) return [];
+  return parsed.data.claims;
+}
+
 /**
  * Clean a captured session body before LLM extraction. Strips noise that wastes
  * model time, inflates chunk counts, and can trigger model hangs:
@@ -110,7 +183,7 @@ export function preprocessForExtraction(body: string): string {
     const roleMatch = stripped.match(/^\[(USER|ASSISTANT|TOOL)\]/i);
     const role = roleMatch ? roleMatch[1].toUpperCase() : '';
     if (role === lastRole && role === 'ASSISTANT' && kept.length > 0) {
-      kept[kept.length - 1] += '\n' + contentAfterMarker;
+      kept[kept.length - 1] += `\n${contentAfterMarker}`;
     } else {
       kept.push(stripped);
       lastRole = role;
@@ -206,6 +279,8 @@ export interface BiographerRunResult {
   processed: number;
   entitiesCreated: number;
   relationsCreated: number;
+  /** Candidate beliefs drafted into the review queue (second pass). */
+  claimsDrafted: number;
   errors: string[];
 }
 
@@ -224,6 +299,12 @@ export interface RunBiographerOptions {
   batchChunks?: number;
   /** Skip chunks that are pure tool/assistant output (no [USER] marker). Defaults to false. */
   skipToolChunks?: boolean;
+  /**
+   * Run the second-pass claim-drafting extraction (durable declarative facts →
+   * belief_candidates queue). Defaults to false here; production wiring
+   * (jobs.ts) defaults it to the `biographer.draftClaims` config flag (true).
+   */
+  draftClaims?: boolean;
 }
 
 type EntityRecord = { type: string; name: string };
@@ -485,11 +566,13 @@ export async function runBiographer(
   const minSessionBodyChars = options.minSessionBodyChars ?? MIN_SESSION_BODY_CHARS;
   const batchChunks = options.batchChunks ?? 1;
   const skipToolChunks = options.skipToolChunks ?? false;
+  const draftClaims = options.draftClaims ?? false;
 
   const result: BiographerRunResult = {
     processed: 0,
     entitiesCreated: 0,
     relationsCreated: 0,
+    claimsDrafted: 0,
     errors: [],
   };
 
@@ -673,6 +756,58 @@ export async function runBiographer(
         );
       }
       chunkBudget -= endChunk - startChunk;
+
+      // ─── Second pass: claim drafting ───────────────────────────────────────
+      // Fully separate from the entity/relation flow above. Runs only on this
+      // tick's chunks that contain [USER] content, each individually timeout-
+      // bounded, against its OWN small budget so it can never blow the tick.
+      // Drafts land as pending belief_candidates (never the truth stream). The
+      // per-session cap counts already-queued pending candidates for this source
+      // so it holds across ticks without extra state.
+      if (draftClaims) {
+        let claimsBudget = maxChunksPerTick;
+        let sessionPending = (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM belief_candidates
+                WHERE status = 'pending' AND source_event_id = ?`,
+            )
+            .get(target.eventId) as { c: number }
+        ).c;
+        for (let ci = startChunk; ci < endChunk && claimsBudget > 0; ci++) {
+          if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
+          const chunk = chunks[ci];
+          // Only chunks with user-authored content can carry durable user facts.
+          if (!/\[USER\]/i.test(chunk)) continue;
+          claimsBudget--;
+          try {
+            const claims = await extractClaims(
+              llm,
+              chunk,
+              chunkTimeoutMs,
+              `biographer-claims event=${target.eventId} chunk=${ci}/${totalChunks}`,
+            );
+            for (const c of claims) {
+              if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
+              if (!c.topic?.trim() || !c.claim?.trim()) continue;
+              insertBeliefCandidate(db, {
+                topic: c.topic,
+                claim: c.claim,
+                confidence: c.confidence ?? null,
+                sourceEventId: target.eventId,
+              });
+              sessionPending++;
+              result.claimsDrafted++;
+            }
+          } catch (err) {
+            // A failed claims chunk never blocks the session — entity/relation
+            // extraction already advanced the cursor; claims are best-effort.
+            result.errors.push(
+              `event ${target.eventId} claims chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+      }
     }
 
     // Not finished — persist progress and yield. The next tick resumes from
