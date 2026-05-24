@@ -20,6 +20,8 @@ import {
 } from '../../../kernel/invariants/builtins/index.ts';
 import { runInvariants } from '../../../kernel/invariants/runner.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
+import { defaultSkillRoots } from '../../../skills/_runtime/loader.ts';
+import { runSkillTool, type SkillToolArgs, skillCatalogDescription } from './skill-tool.ts';
 
 export interface CoreServerDeps {
   db: RobinDb;
@@ -549,6 +551,31 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
           },
         ],
       };
+    },
+  );
+
+  // Skills — reusable methodologies (system + user). The tool description embeds
+  // the catalog of valid skills (generated now, at server start) so Robin can see
+  // what's available without a separate list call; `{ name }` loads one on demand.
+  const skillRoots = defaultSkillRoots();
+  server.registerTool(
+    'skill',
+    {
+      description: skillCatalogDescription(skillRoots),
+      inputSchema: z.object({
+        name: z
+          .string()
+          .optional()
+          .describe('Skill to load — the directory name shown in the catalog above.'),
+        action: z
+          .enum(['list'])
+          .optional()
+          .describe('`list` returns the full catalog as data, including invalid skills + errors.'),
+      }),
+    },
+    async (args) => {
+      const result = runSkillTool(skillRoots, args as SkillToolArgs);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
   );
 

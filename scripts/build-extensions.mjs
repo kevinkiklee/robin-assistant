@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { chmodSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import { copyFile, readFile } from 'node:fs/promises';
+import { copyFile, cp, readFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 // Build all user-data extensions (integrations + jobs) in one pass.
 // Compiles each *.ts (excluding *.test.ts) to *.js, rewriting relative `.ts`
@@ -116,6 +116,16 @@ for (const { from, to } of MANIFEST_MIRRORS) {
 }
 if (manifestsCopied > 0) {
   console.log(`Mirrored ${manifestsCopied} builtin manifest(s) to dist/`);
+}
+
+// Builtin skills are markdown (+ optional bundled reference/scripts), never
+// compiled — tsc won't emit them. Mirror the whole tree into dist so the skills
+// loader (and the `skill` MCP tool) resolve `dist/skills/builtin` at runtime.
+const SKILLS_FROM = join(ROOT, 'system', 'skills', 'builtin');
+const SKILLS_TO = join(ROOT, 'dist', 'skills', 'builtin');
+if (existsSync(SKILLS_FROM)) {
+  await cp(SKILLS_FROM, SKILLS_TO, { recursive: true });
+  console.log(`Mirrored builtin skills to ${relative(ROOT, SKILLS_TO)}`);
 }
 
 // chmod +x the CLI binary. Without this, Claude Code's MCP loader can't spawn
