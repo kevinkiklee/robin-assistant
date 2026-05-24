@@ -22,6 +22,7 @@ import {
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
   userDataWritableInvariant,
+  vecIndexSyncedInvariant,
 } from '../../../kernel/invariants/builtins/index.ts';
 import { runInvariants } from '../../../kernel/invariants/runner.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
@@ -495,6 +496,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         dbReachableInvariant(deps.db),
         dbSchemaCurrentInvariant(deps.db),
         dbWalSizeBoundedInvariant(deps.db),
+        vecIndexSyncedInvariant(deps.db),
       ]);
       return { content: [{ type: 'text' as const, text: JSON.stringify(reports, null, 2) }] };
     },

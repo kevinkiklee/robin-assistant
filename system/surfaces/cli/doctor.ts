@@ -8,6 +8,7 @@ import {
   integrationsHealthyInvariant,
   jobsDiscoverableInvariant,
   userDataWritableInvariant,
+  vecIndexSyncedInvariant,
 } from '../../kernel/invariants/builtins/index.ts';
 import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
@@ -62,6 +63,7 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
     dbReachableInvariant(db),
     dbSchemaCurrentInvariant(db),
     dbWalSizeBoundedInvariant(db),
+    vecIndexSyncedInvariant(db),
     integrationsHealthyInvariant(db),
     jobsDiscoverableInvariant(db),
   ]);
