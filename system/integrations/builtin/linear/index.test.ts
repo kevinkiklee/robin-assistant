@@ -47,7 +47,19 @@ test('linear: tick ingests active issues and dedupes by id+updatedAt', async () 
     assert.equal(url, 'https://api.linear.app/graphql');
     assert.equal(opts.headers?.Authorization, 'fake');
     return new Response(
-      JSON.stringify({ data: { viewer: { assignedIssues: { nodes: [FAKE_ISSUE] } } } }),
+      JSON.stringify({
+        data: {
+          viewer: {
+            teamMemberships: {
+              nodes: [{ team: { id: 'team-1', key: 'ENG', name: 'Engineering' } }],
+            },
+          },
+          issues: {
+            nodes: [FAKE_ISSUE],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      }),
       { status: 200 },
     );
   }) as typeof fetch;
