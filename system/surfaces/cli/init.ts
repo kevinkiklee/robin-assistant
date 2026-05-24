@@ -3,8 +3,17 @@ import { platform } from 'node:os';
 import { join } from 'node:path';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import { buildDaemonSpecFromEnv, installDaemonLaunchd } from '../../lib/launchd/install.ts';
-import { dbFilePath, resolveUserDataDir, userDataPaths } from '../../lib/paths.ts';
+import {
+  buildDaemonSpecFromEnv,
+  installDaemonLaunchd,
+  resolveUserDataDirForLaunchd,
+} from '../../lib/launchd/install.ts';
+import {
+  dbFilePath,
+  resolveUserDataDir,
+  userDataPaths,
+  writeUserDataPointer,
+} from '../../lib/paths.ts';
 
 export interface InitOptions {
   yes?: boolean;
@@ -99,6 +108,11 @@ roles: {}
   const db = openDb(dbFilePath(userData));
   applyMigrations(db, allMigrations);
   closeDb(db);
+
+  // Record the instance pointer so future bare CLI invocations (a shell without
+  // ROBIN_USER_DATA_DIR set) resolve to this instance instead of the empty XDG
+  // stub. Store an absolute path — launchd/CLI both read it verbatim.
+  writeUserDataPointer(resolveUserDataDirForLaunchd(userData));
 
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`✓ Initialized Robin at ${userData}`);

@@ -79,10 +79,24 @@ export class OllamaProvider implements LLMProvider {
     const inputs = Array.isArray(text) ? text : [text];
     const out: number[][] = [];
     for (const input of inputs) {
+      // Defense-in-depth: Ollama's /api/embeddings `prompt` field is a Go `string`. Passing a
+      // non-string (e.g. a Buffer read back from a BLOB-affinity body row) serializes to an
+      // object and Ollama rejects it with a cryptic `400: cannot unmarshal object … of type
+      // string`. Coerce here so a bad caller can never reach the wire with an object; a string
+      // input is passed through byte-for-byte identical (no behavior change for the normal path).
+      // `input` is typed `string`, but the guard is runtime defense against mistyped callers
+      // (e.g. a Buffer from a BLOB-affinity row), so we widen to `unknown` before narrowing.
+      const raw = input as unknown;
+      const prompt =
+        typeof raw === 'string'
+          ? raw
+          : Buffer.isBuffer(raw) || raw instanceof Uint8Array
+            ? Buffer.from(raw).toString('utf8')
+            : String(raw);
       const res = await fetch(`${this.baseUrl}/api/embeddings`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ model: this.embedModel, prompt: input }),
+        body: JSON.stringify({ model: this.embedModel, prompt }),
       });
       if (!res.ok) throw new Error(`ollama embeddings ${res.status}: ${await res.text()}`);
       const data = (await res.json()) as { embedding: number[] };

@@ -103,6 +103,39 @@ describe('robin reindex', () => {
     assert.equal(filled.n, 3);
   });
 
+  it('embeds a body stored as a BLOB (Buffer) — the box-drawing-char regression', async () => {
+    // Reproduces content_ids 13466/13467: bodies written with a Buffer binding land with
+    // BLOB affinity despite the TEXT column, and read back as Node Buffers. Before the fix,
+    // the Buffer reached Ollama as a JSON object and the embed call 400'd. The stub here
+    // reads `parsed.prompt.length`, so a non-string prompt would crash → 500 → failed row.
+    const db = openDb(dbFilePath(dataDir));
+    const blobBody = Buffer.from('━'.repeat(2000), 'utf8');
+    db.prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`).run(
+      '2026-05-19T00:00:00Z',
+      blobBody,
+    );
+    // Confirm the row really has BLOB affinity, mirroring the live DB.
+    const stored = db
+      .prepare(`SELECT typeof(body) AS t FROM events_content WHERE id = 1`)
+      .get() as { t: string };
+    assert.equal(stored.t, 'blob');
+    closeDb(db);
+
+    const report = await runReindex();
+    assert.equal(report.total_eligible, 1);
+    assert.equal(report.embedded, 1);
+    assert.equal(report.failed, 0);
+    assert.equal(report.errors.length, 0);
+    assert.equal(stub.callCount(), 1);
+
+    const db2 = openDb(dbFilePath(dataDir));
+    const filled = db2
+      .prepare(`SELECT COUNT(*) AS n FROM events_content WHERE embedding IS NOT NULL`)
+      .get() as { n: number };
+    closeDb(db2);
+    assert.equal(filled.n, 1);
+  });
+
   it('skips rows that already have an embedding', async () => {
     const db = openDb(dbFilePath(dataDir));
     const dummy = Buffer.alloc(4096 * 4); // zero-filled float32[4096]

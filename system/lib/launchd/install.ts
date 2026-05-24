@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { resolveRunnableCommand } from '../mcp-config/write.ts';
-import { resolveUserDataDir } from '../paths.ts';
+import { resolveUserDataDir, writeUserDataPointer } from '../paths.ts';
 
 export const LAUNCHD_LABEL = 'io.robin-assistant.daemon';
 
@@ -92,6 +92,10 @@ export function installDaemonLaunchd(
   mkdirSync(dirname(path), { recursive: true });
   mkdirSync(join(spec.userDataDir, 'observability', 'logs'), { recursive: true });
   writeFileSync(path, renderDaemonPlist(spec));
+  // Record the instance pointer so bare CLI invocations (without ROBIN_USER_DATA_DIR
+  // in their environment, e.g. a plain shell) resolve to this installed instance
+  // rather than the empty XDG stub. The plist already sets the same value via env.
+  writeUserDataPointer(spec.userDataDir, { home: opts?.home });
   if (opts?.skipLoad) return { plistPath: path, loaded: false, alreadyLoaded: false };
   let alreadyLoaded = false;
   try {

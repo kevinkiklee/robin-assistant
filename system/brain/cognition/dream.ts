@@ -4,6 +4,7 @@ import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { expireStaleCandidates } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
+import { ingestContentDocs } from './ingest-docs.ts';
 
 export interface DreamResult {
   predictionsResolved: number;
@@ -13,6 +14,8 @@ export interface DreamResult {
   arcsCreated: number;
   candidatesExpired: number;
   staleFlagsRaised: number;
+  /** content/* docs ingested or updated into events_content for recall this run. */
+  docsIngested: number;
 }
 
 const CANDIDATE_EXPIRY_DAYS = 14;
@@ -47,6 +50,7 @@ export async function runDream(
     arcsCreated: 0,
     candidatesExpired: 0,
     staleFlagsRaised: 0,
+    docsIngested: 0,
   };
 
   // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
@@ -120,6 +124,16 @@ export async function runDream(
 
   // 7. Narrative staleness flags — prose docs older than the newest belief/correction signal.
   result.staleFlagsRaised = flagStaleNarrativeDocs(db, now);
+
+  // 8. Keep content/* markdown docs indexed for recall. Idempotent — unchanged files
+  //    are skipped, so this is cheap on a quiet night. Best-effort: a doc-ingest failure
+  //    must never sink the rest of the dream pass.
+  try {
+    const docs = ingestContentDocs(db, llm);
+    result.docsIngested = docs.ingested + docs.updated;
+  } catch {
+    result.docsIngested = 0;
+  }
 
   return result;
 }

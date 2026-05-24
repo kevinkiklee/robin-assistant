@@ -103,7 +103,13 @@ export async function runReindexCore(
     // Eligible = rows in events_content whose embedding is NULL (or any row if --force or --ids).
     // We don't filter on events_vec here because the canonical "is embedded" signal is the
     // events_content.embedding BLOB; events_vec is a derived shadow that follows it.
-    let rows: Array<{ id: number; body: string }>;
+    //
+    // `body` is declared TEXT but SQLite stores dynamically — historical ingest writes that
+    // bound a Buffer left some rows with BLOB affinity, so better-sqlite3 hands those back as
+    // a Node `Buffer`, not a string. The type reflects that; `embedBody`/`prepareForEmbed`
+    // normalize the value (UTF-8 decode) before it reaches the embed call.
+    type ContentRow = { id: number; body: string | Buffer };
+    let rows: ContentRow[];
     if (opts.ids && opts.ids.length > 0) {
       // Parameterized IN-clause; safe since ids are numbers we coerce explicitly.
       const placeholders = opts.ids.map(() => '?').join(',');
@@ -112,15 +118,12 @@ export async function runReindexCore(
         .prepare(
           `SELECT id, body FROM events_content WHERE id IN (${placeholders})${whereEmbed} ORDER BY id`,
         )
-        .all(...opts.ids.map((n) => Number(n))) as Array<{ id: number; body: string }>;
+        .all(...opts.ids.map((n) => Number(n))) as ContentRow[];
     } else {
       const eligibleQ = opts.force
         ? db.prepare(`SELECT id, body FROM events_content ORDER BY id`)
         : db.prepare(`SELECT id, body FROM events_content WHERE embedding IS NULL ORDER BY id`);
-      rows = (opts.limit ? eligibleQ.all().slice(0, opts.limit) : eligibleQ.all()) as Array<{
-        id: number;
-        body: string;
-      }>;
+      rows = (opts.limit ? eligibleQ.all().slice(0, opts.limit) : eligibleQ.all()) as ContentRow[];
     }
     report.total_eligible = rows.length;
 

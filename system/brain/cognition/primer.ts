@@ -22,8 +22,12 @@ import type { RobinDb } from '../memory/db.ts';
 
 /** ~10,000 chars ≈ 2,500 tokens — the session-start context budget. */
 const DEFAULT_MAX_CHARS = 10_000;
-/** Corrections get their own sub-cap so they can't crowd out everything else. */
-const CORRECTIONS_SUBCAP = 3_000;
+/**
+ * Corrections get their own sub-cap so they can't crowd out everything else. Sized to
+ * comfortably hold the current behavioral-rule set (~16 short directives) with headroom,
+ * while still bounding unbounded future growth — overflow falls back to recall-on-demand.
+ */
+const CORRECTIONS_SUBCAP = 5_000;
 
 export interface BuildPrimerOptions {
   maxChars?: number;
@@ -52,7 +56,10 @@ function renderCorrections(db: RobinDb, subCap: number): string {
   let used = 0;
   for (const r of rows) {
     const ctx = r.context?.trim() ? ` (${r.context.trim()})` : '';
-    const line = `- ${r.what.trim()} → ${r.correction.trim()}${ctx}`;
+    // Render the corrective DIRECTIVE only — that's what changes behavior. Dropping the
+    // verbose "what Robin said wrong → " prefix roughly halves per-line length so the full
+    // current rule set fits without the oldest (often most important) rules getting dropped.
+    const line = `- ${r.correction.trim()}${ctx}`;
     // Stop once adding this line would exceed the sub-cap; overflow falls back to
     // recall-on-demand (the table is still fully queryable mid-session).
     if (used + line.length + 1 > subCap) break;
