@@ -1,4 +1,8 @@
+import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import { expireStaleCandidates } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 
 export interface DreamResult {
@@ -7,7 +11,11 @@ export interface DreamResult {
   journalGenerated: boolean;
   entitiesSummarized: number;
   arcsCreated: number;
+  candidatesExpired: number;
+  staleFlagsRaised: number;
 }
+
+const CANDIDATE_EXPIRY_DAYS = 14;
 
 const ENTITY_SUMMARY_MIN_SIGNALS = 3;
 const ENTITY_SUMMARY_MAX_PER_RUN = 25;
@@ -23,6 +31,8 @@ const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
  * - Summarizes hot entities (signal_count >= threshold among today's relations)
  * - Detects narrative arcs from session.captured events in the last 14 days
  * - Generates a narrative journal (falls back to metrics-only if no LLM)
+ * - Expires stale belief candidates (pending > 14 days)
+ * - Flags prose docs in content/profile that are older than the newest belief/correction signal
  */
 export async function runDream(
   db: RobinDb,
@@ -35,6 +45,8 @@ export async function runDream(
     journalGenerated: false,
     entitiesSummarized: 0,
     arcsCreated: 0,
+    candidatesExpired: 0,
+    staleFlagsRaised: 0,
   };
 
   // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
@@ -98,7 +110,99 @@ export async function runDream(
   `).run(today, journal);
   result.journalGenerated = true;
 
+  // 6. Expire stale belief candidates. Guarded so an older DB without the
+  //    belief_candidates table can't crash the whole dream pass.
+  try {
+    result.candidatesExpired = expireStaleCandidates(db, CANDIDATE_EXPIRY_DAYS, now);
+  } catch {
+    result.candidatesExpired = 0;
+  }
+
+  // 7. Narrative staleness flags — prose docs older than the newest belief/correction signal.
+  result.staleFlagsRaised = flagStaleNarrativeDocs(db, now);
+
   return result;
+}
+
+/**
+ * Epoch-ms of a timestamp string. The truth substrate stores two formats:
+ * belief.update events use ISO (`…T…Z`, via ingest), corrections use SQLite's
+ * space form (`YYYY-MM-DD HH:MM:SS`, UTC). `Date.parse` reads the ISO form
+ * natively; the space form is normalized to ISO+Z first so it parses as UTC.
+ * Returns NaN for an unparseable value.
+ */
+function tsToMillis(ts: string): number {
+  const direct = Date.parse(ts);
+  if (!Number.isNaN(direct)) return direct;
+  return Date.parse(`${ts.replace(' ', 'T')}Z`);
+}
+
+/**
+ * For each `*.md` prose doc under `<userDataDir>/content/profile/`, raise a
+ * `narrative.stale` event when the newest belief or correction timestamp is
+ * newer than the doc's file mtime — a signal that the curated prose may lag
+ * the structured truth. Flag only; no generation. Dedups against an unresolved
+ * `narrative.stale` event for the same doc raised earlier today. Missing
+ * content/profile dir → 0 flags.
+ */
+function flagStaleNarrativeDocs(db: RobinDb, now: Date): number {
+  const profileDir = join(resolveUserDataDir(), 'content', 'profile');
+  let docs: string[];
+  try {
+    docs = readdirSync(profileDir).filter((f) => f.endsWith('.md'));
+  } catch {
+    return 0;
+  }
+  if (docs.length === 0) return 0;
+
+  // Newest belief and correction timestamps across the whole substrate.
+  const newestBelief = (
+    db.prepare(`SELECT MAX(ts) AS ts FROM events WHERE kind = 'belief.update'`).get() as {
+      ts: string | null;
+    }
+  ).ts;
+  const newestCorrection = (
+    db.prepare(`SELECT MAX(ts) AS ts FROM corrections`).get() as { ts: string | null }
+  ).ts;
+  const signalMillis = [newestBelief, newestCorrection]
+    .filter((t): t is string => !!t)
+    .map(tsToMillis)
+    .filter((m) => !Number.isNaN(m));
+  if (signalMillis.length === 0) return 0;
+  const newestSignalMillis = Math.max(...signalMillis);
+
+  const today = now.toISOString().slice(0, 10);
+  const dayStart = `${today}T00:00:00.000Z`;
+  const existsToday = db.prepare(`
+    SELECT 1 FROM events
+     WHERE kind = 'narrative.stale' AND ts >= ? AND status != 'resolved'
+       AND json_extract(payload, '$.doc') = ?
+     LIMIT 1
+  `);
+  const insertFlag = db.prepare(`
+    INSERT INTO events (ts, kind, source, status, payload)
+    VALUES (?, 'narrative.stale', 'dream', 'ok', ?)
+  `);
+
+  let raised = 0;
+  for (const doc of docs) {
+    const mtimeMs = statSync(join(profileDir, doc)).mtimeMs;
+    if (newestSignalMillis <= mtimeMs) continue;
+
+    if (existsToday.get(dayStart, doc)) continue;
+
+    insertFlag.run(
+      now.toISOString(),
+      JSON.stringify({
+        doc,
+        reason: 'beliefs/corrections updated after doc',
+        newest_signal_ts: new Date(newestSignalMillis).toISOString(),
+        doc_mtime: new Date(mtimeMs).toISOString(),
+      }),
+    );
+    raised++;
+  }
+  return raised;
 }
 
 /**
@@ -368,7 +472,9 @@ export async function composeJournal(
     ``,
     `Activity volume: ${ctx.capturesToday} sessions captured, ${ctx.correctionsToday} corrections, ${ctx.predictionsResolved} predictions resolved.`,
     ``,
-    topLines ? `Most-engaged topics/people/tools today:\n${topLines}` : 'Quiet day — little entity activity.',
+    topLines
+      ? `Most-engaged topics/people/tools today:\n${topLines}`
+      : 'Quiet day — little entity activity.',
     ``,
     correctionLines ? `Corrections made:\n${correctionLines}` : 'No corrections today.',
     ``,

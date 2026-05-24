@@ -41,6 +41,14 @@ export const linearConfigSchema = z.object({
   read_window_days: z.number().int().positive().default(14),
 });
 
+// Biographer (entity/relation extraction + claim drafting) tuning.
+export const biographerConfigSchema = z.object({
+  // Second-pass claim drafting: extract durable declarative facts into the
+  // belief_candidates review queue. Separately gated so it can be disabled
+  // without touching the hard-won entity/relation extraction stability ceilings.
+  draftClaims: z.boolean().default(true),
+});
+
 export const policiesSchema = z
   .object({
     power: powerSchema.optional(),
@@ -48,6 +56,7 @@ export const policiesSchema = z
     network: networkSchema.optional(),
     notifications: notificationsSchema.optional(),
     linear: linearConfigSchema.optional(),
+    biographer: biographerConfigSchema.optional(),
   })
   .transform((data) => ({
     power: powerSchema.parse(data.power ?? {}),
@@ -55,6 +64,7 @@ export const policiesSchema = z
     network: networkSchema.parse(data.network ?? {}),
     notifications: notificationsSchema.parse(data.notifications ?? {}),
     linear: linearConfigSchema.parse(data.linear ?? {}),
+    biographer: biographerConfigSchema.parse(data.biographer ?? {}),
   }));
 
 export type Policies = z.infer<typeof policiesSchema>;

@@ -20,6 +20,9 @@ USAGE
   robin <command> [options]
 
 COMMANDS
+  beliefs review    List pending belief candidates (alias: list; --status= --limit=)
+  beliefs promote   Promote a candidate into a belief: beliefs promote <id> [--reason=...]
+  beliefs reject    Reject a candidate: beliefs reject <id> [--reason=...]
   daemon            Run the Robin daemon (called by launchd; not for habitual use)
   daemon install    Install + load the launchd agent so the daemon autostarts
   daemon uninstall  Unload + remove the launchd agent
@@ -31,6 +34,7 @@ COMMANDS
   init              One-time setup (interactive)
   integrations      Per-integration health table (status, last attempt, errors)
   pause             Pause scheduled work
+  primer            Print the session-start primer (--write [--path=<p>] to materialize)
   reindex           Backfill embeddings for events_content rows missing one
   resume            Resume scheduled work
   incognito         Disable session capture (--for 1h optional)
@@ -70,6 +74,50 @@ async function main(): Promise<void> {
       // biome-ignore lint/suspicious/noConsole: CLI output
       console.log(VERSION);
       exit(0);
+      break;
+    }
+
+    case 'beliefs': {
+      const sub = args[1];
+      const beliefs = await import('./beliefs.ts');
+      const { runBeliefsReview, runBeliefsPromote, runBeliefsReject } = beliefs;
+      const limitFlag = extractFlag(args, '--limit=');
+      const reason = extractFlag(args, '--reason=');
+      const statusFlag = extractFlag(args, '--status=');
+      const status =
+        statusFlag === 'pending' || statusFlag === 'promoted' || statusFlag === 'rejected'
+          ? statusFlag
+          : undefined;
+      const opts: import('./beliefs.ts').BeliefsCliOptions = {
+        ...(status ? { status } : {}),
+        ...(limitFlag ? { limit: Number(limitFlag) } : {}),
+        ...(reason ? { reason } : {}),
+      };
+      if (sub === undefined || sub === 'review' || sub === 'list') {
+        runBeliefsReview(opts);
+        exit(0);
+      }
+      if (sub === 'promote' || sub === 'reject') {
+        const idArg = args[2];
+        const id = idArg ? Number(idArg) : NaN;
+        if (!Number.isInteger(id)) {
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.error(`usage: robin beliefs ${sub} <id> [--reason=...]`);
+          exit(2);
+        }
+        try {
+          if (sub === 'promote') runBeliefsPromote(id, opts);
+          else runBeliefsReject(id, opts);
+          exit(0);
+        } catch (err) {
+          // biome-ignore lint/suspicious/noConsole: CLI output
+          console.error(err instanceof Error ? err.message : String(err));
+          exit(1);
+        }
+      }
+      // biome-ignore lint/suspicious/noConsole: CLI output
+      console.error(`Unknown beliefs subcommand: ${sub}`);
+      exit(2);
       break;
     }
 
@@ -156,6 +204,13 @@ async function main(): Promise<void> {
 
     case 'pause': {
       runPause();
+      exit(0);
+      break;
+    }
+
+    case 'primer': {
+      const { runPrimer } = await import('./primer.ts');
+      runPrimer({ write: args.includes('--write'), path: extractFlag(args, '--path=') });
       exit(0);
       break;
     }

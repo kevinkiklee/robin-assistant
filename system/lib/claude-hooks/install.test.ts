@@ -5,9 +5,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   HOOK_SIGNATURE,
+  HOOK_SIGNATURE_SESSION_START,
   installSessionEndHook,
+  installSessionStartHook,
   robinHookCommand,
+  robinSessionStartHookCommand,
   uninstallSessionEndHook,
+  uninstallSessionStartHook,
 } from './install.ts';
 
 function freshHome() {
@@ -141,4 +145,109 @@ test('robinHookCommand: includes the chosen port and stdin pipe', () => {
   const cmd = robinHookCommand(41999);
   assert.match(cmd, /127\.0\.0\.1:41999/);
   assert.match(cmd, /--data-binary @-/);
+});
+
+test('robinSessionStartHookCommand: posts to /hooks/session_start with chosen port', () => {
+  const cmd = robinSessionStartHookCommand(41999);
+  assert.match(cmd, /127\.0\.0\.1:41999/);
+  assert.match(cmd, /\/hooks\/session_start/);
+  assert.match(cmd, /--data-binary @-/);
+  assert.ok(cmd.includes(HOOK_SIGNATURE_SESSION_START));
+});
+
+test('installSessionStartHook: creates settings.json from scratch when absent', () => {
+  const home = freshHome();
+  const r = installSessionStartHook({ home });
+  assert.equal(r.replaced, false);
+  const settings = JSON.parse(readFileSync(r.path, 'utf8'));
+  const cmd = settings.hooks.SessionStart[0].hooks[0].command;
+  assert.ok(
+    cmd.includes(HOOK_SIGNATURE_SESSION_START),
+    `expected hook to contain ${HOOK_SIGNATURE_SESSION_START}; got ${cmd}`,
+  );
+});
+
+test('installSessionStartHook: preserves SessionEnd and third-party SessionStart hooks', () => {
+  const home = freshHome();
+  // SessionEnd hook present (the sibling lifecycle) — must be untouched.
+  installSessionEndHook({ home });
+  const settingsPath = join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.hooks.SessionStart = [{ hooks: [{ type: 'command', command: 'echo other-start' }] }];
+  writeFileSync(settingsPath, JSON.stringify(settings));
+
+  installSessionStartHook({ home });
+  const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  // SessionEnd's robin hook still present.
+  const endCommands = after.hooks.SessionEnd.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.map((h) => h.command),
+  );
+  assert.ok(endCommands.some((c: string) => c.includes(HOOK_SIGNATURE)));
+  // SessionStart has both the third-party hook AND robin's.
+  const startCommands = after.hooks.SessionStart.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.map((h) => h.command),
+  );
+  assert.ok(startCommands.some((c: string) => c === 'echo other-start'));
+  assert.ok(startCommands.some((c: string) => c.includes(HOOK_SIGNATURE_SESSION_START)));
+});
+
+test('installSessionStartHook: idempotent — running twice does not duplicate', () => {
+  const home = freshHome();
+  installSessionStartHook({ home });
+  const second = installSessionStartHook({ home });
+  assert.equal(second.replaced, true, 'second install should report replaced=true');
+
+  const settings = JSON.parse(readFileSync(second.path, 'utf8'));
+  const robinHooks = settings.hooks.SessionStart.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.filter((h) => h.command.includes(HOOK_SIGNATURE_SESSION_START)),
+  );
+  assert.equal(robinHooks.length, 1, 'should be exactly one Robin hook after re-install');
+});
+
+test('installSessionStartHook: updating port replaces the prior entry', () => {
+  const home = freshHome();
+  installSessionStartHook({ home, port: 41273 });
+  installSessionStartHook({ home, port: 41999 });
+
+  const settingsPath = join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  const allCommands = settings.hooks.SessionStart.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.map((h) => h.command),
+  );
+  assert.ok(!allCommands.some((c: string) => c.includes(':41273/')));
+  assert.ok(allCommands.some((c: string) => c.includes(':41999/')));
+});
+
+test('uninstallSessionStartHook: removes Robin entry, preserves others', () => {
+  const home = freshHome();
+  installSessionStartHook({ home });
+  const settingsPath = join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'echo unrelated' }] });
+  writeFileSync(settingsPath, JSON.stringify(settings));
+
+  const r = uninstallSessionStartHook({ home });
+  assert.equal(r.replaced, true);
+
+  const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  const allCommands = (after.hooks?.SessionStart ?? []).flatMap(
+    (g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command),
+  );
+  assert.ok(!allCommands.some((c: string) => c.includes(HOOK_SIGNATURE_SESSION_START)));
+  assert.ok(allCommands.some((c: string) => c === 'echo unrelated'));
+});
+
+test('uninstallSessionStartHook: deletes SessionStart key when no entries remain', () => {
+  const home = freshHome();
+  installSessionStartHook({ home });
+  uninstallSessionStartHook({ home });
+  const settingsPath = join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  assert.equal(settings.hooks?.SessionStart, undefined);
+});
+
+test('uninstallSessionStartHook: noop when settings.json absent', () => {
+  const home = freshHome();
+  const r = uninstallSessionStartHook({ home });
+  assert.equal(r.replaced, false);
 });

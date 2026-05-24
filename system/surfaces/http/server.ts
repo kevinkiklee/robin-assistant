@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { buildPrimer } from '../../brain/cognition/primer.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 
 export interface HttpServerDeps {
@@ -29,6 +30,32 @@ export async function startHttpServer(deps: HttpServerDeps): Promise<HttpHandle>
           res.statusCode = deps.isHealthy() ? 200 : 503;
           res.setHeader('content-type', 'application/json');
           res.end(JSON.stringify({ ok: deps.isHealthy(), ts: new Date().toISOString() }));
+          return;
+        }
+        // SessionStart: build the LLM-free primer and return it as Claude Code's
+        // `additionalContext` so the hook's stdout becomes injected session context.
+        // buildPrimer is cheap (SQL + small file reads) and must never throw on the
+        // hot path — an empty primer degrades gracefully to no injected context.
+        if (req.method === 'POST' && req.url === '/hooks/session_start') {
+          // Drain the request body (Claude Code posts session metadata) even though the
+          // primer doesn't need it — leaving it unread can wedge the socket.
+          await readBody(req);
+          let additionalContext = '';
+          try {
+            additionalContext = buildPrimer(deps.db);
+          } catch {
+            additionalContext = '';
+          }
+          res.statusCode = 200;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: 'SessionStart',
+                additionalContext,
+              },
+            }),
+          );
           return;
         }
         if (req.method === 'POST' && req.url?.startsWith('/hooks/')) {

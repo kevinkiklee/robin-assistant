@@ -8,7 +8,7 @@ import type { LLMProvider } from '../llm/types.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { chunkBody, isLowQualityEntity, runBiographer } from './biographer.ts';
+import { chunkBody, extractClaims, isLowQualityEntity, runBiographer } from './biographer.ts';
 import { captureSession } from './capture.ts';
 
 function freshDb() {
@@ -594,5 +594,208 @@ test('biographer: filters role markers, numbers, SHAs from extraction', async ()
   assert.ok(!names.includes('User'), 'User should have been filtered');
   assert.ok(!names.includes('ASSISTANT'), 'ASSISTANT should have been filtered');
   assert.ok(!names.includes('93f6c9c'), 'SHA should have been filtered');
+  closeDb(db);
+});
+
+// ─── claim-drafting second pass ────────────────────────────────────────────────
+
+/**
+ * Dispatcher whose response depends on the system prompt: the entity/relation
+ * pass and the claims pass use distinct prompts, so we route by a substring
+ * match. Lets a single mock drive both passes in one runBiographer call.
+ */
+function dualLLM(entityRelJson: string, claimsJson: string): LLMDispatcher {
+  const p: LLMProvider = {
+    name: 'dual',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => {
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      return {
+        text: isClaims ? claimsJson : entityRelJson,
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'dual',
+      };
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('d', p);
+  d.assign('reasoning', 'd');
+  return d;
+}
+
+test('extractClaims: parses fenced JSON and tolerates invalid output', async () => {
+  const ok = mockLLM(
+    '```json\n' +
+      JSON.stringify({
+        claims: [{ topic: 'google-role', claim: 'Ad Experiences', confidence: 0.9 }],
+      }) +
+      '\n```',
+  );
+  const claims = await extractClaims(ok, '[USER]\nmy role is Ad Experiences', 5000, 'test');
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0].topic, 'google-role');
+
+  const bad = mockLLM('not json at all');
+  await assert.rejects(() => extractClaims(bad, 'x', 5000, 'test')); // JSON.parse throws
+});
+
+test('biographer: draftClaims off by default → no candidates', async () => {
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    JSON.stringify({ claims: [{ topic: 'home', claim: 'lives in NJ', confidence: 0.8 }] }),
+  );
+  await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      { role: 'user', content: 'I live in New Jersey' },
+      { role: 'assistant', content: 'Kevin lives in NJ.' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1);
+  assert.equal(r.claimsDrafted, 0, 'no claims when draftClaims is off');
+  const c = db.prepare(`SELECT COUNT(*) AS c FROM belief_candidates`).get() as { c: number };
+  assert.equal(c.c, 0);
+  closeDb(db);
+});
+
+test('biographer: draftClaims on → inserts pending candidates linked to the session', async () => {
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    JSON.stringify({
+      claims: [
+        { topic: 'Google Role', claim: 'Ad Experiences', confidence: 0.9 },
+        { topic: 'home-location', claim: 'Bergen County NJ', confidence: 0.7 },
+      ],
+    }),
+  );
+  await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      { role: 'user', content: 'my role at Google is Ad Experiences and I live in Bergen County' },
+      { role: 'assistant', content: 'Got it.' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
+  assert.equal(r.processed, 1);
+  assert.equal(r.claimsDrafted, 2);
+
+  const cands = db
+    .prepare(`SELECT topic, claim, confidence, source_event_id, status FROM belief_candidates`)
+    .all() as Array<{
+    topic: string;
+    claim: string;
+    confidence: number | null;
+    source_event_id: number | null;
+    status: string;
+  }>;
+  assert.equal(cands.length, 2);
+  // topic is normalized
+  assert.ok(cands.some((c) => c.topic === 'google-role'));
+  assert.ok(cands.some((c) => c.topic === 'home-location'));
+  // all pending, linked to the captured session event
+  for (const c of cands) {
+    assert.equal(c.status, 'pending');
+    assert.ok(c.source_event_id && c.source_event_id > 0);
+  }
+  closeDb(db);
+});
+
+test('biographer: claims pass skips chunks with no [USER] content', async () => {
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [], relations: [] }),
+    JSON.stringify({ claims: [{ topic: 'x', claim: 'should not appear', confidence: 0.5 }] }),
+  );
+  // Assistant/tool-only body — has role markers but no [USER]. The biographer's
+  // no-human-content guard skips it entirely; either way no claims should land.
+  const body = `[ASSISTANT]\n${'this is a long assistant-only turn. '.repeat(50)}`;
+  const contentInfo = db
+    .prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`)
+    .run(new Date().toISOString(), body);
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload, content_ref) VALUES (?, 'session.captured', 'capture', 'ok', '{}', ?)`,
+  ).run(new Date().toISOString(), Number(contentInfo.lastInsertRowid));
+
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
+  assert.equal(r.claimsDrafted, 0);
+  const c = db.prepare(`SELECT COUNT(*) AS c FROM belief_candidates`).get() as { c: number };
+  assert.equal(c.c, 0);
+  closeDb(db);
+});
+
+test('biographer: claims pass caps drafts per session', async () => {
+  const db = freshDb();
+  // Claims pass returns 30 distinct claims; the session cap is 20.
+  const manyClaims = JSON.stringify({
+    claims: Array.from({ length: 30 }, (_, i) => ({
+      topic: `topic-${i}`,
+      claim: `claim ${i}`,
+      confidence: 0.5,
+    })),
+  });
+  const llm = dualLLM(JSON.stringify({ entities: [], relations: [] }), manyClaims);
+  await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      {
+        role: 'user',
+        content: 'here are a lot of durable facts about me and my world that should be drafted',
+      },
+      { role: 'assistant', content: 'noted all of those durable facts about you' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
+  assert.equal(r.claimsDrafted, 20, 'should cap at MAX_CLAIMS_PER_SESSION');
+  const c = db.prepare(`SELECT COUNT(*) AS c FROM belief_candidates`).get() as { c: number };
+  assert.equal(c.c, 20);
+  closeDb(db);
+});
+
+test('biographer: a failing claims pass does not block entity/relation extraction', async () => {
+  const db = freshDb();
+  // Entity/relation pass succeeds; claims pass returns garbage that fails to parse.
+  const p: LLMProvider = {
+    name: 'claims-bad',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => {
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      return {
+        text: isClaims
+          ? 'totally not json'
+          : JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'claims-bad',
+      };
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('p', p);
+  d.assign('reasoning', 'p');
+
+  await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      { role: 'user', content: 'tell me everything you know about Kevin and his background' },
+      { role: 'assistant', content: 'Kevin is a person with a notable background and history.' },
+    ],
+  });
+  const r = await runBiographer(db, d, 10, { minSessionBodyChars: 0, draftClaims: true });
+  // Entity extraction still succeeded despite the claims pass throwing.
+  assert.equal(r.processed, 1);
+  assert.equal(r.entitiesCreated, 1);
+  assert.equal(r.claimsDrafted, 0);
+  assert.ok(
+    r.errors.some((e) => e.includes('claims chunk')),
+    'a claims-chunk error should be recorded',
+  );
   closeDb(db);
 });

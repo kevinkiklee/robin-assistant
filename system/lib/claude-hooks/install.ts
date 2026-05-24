@@ -19,6 +19,12 @@ import { join } from 'node:path';
  * may share the SessionEnd lifecycle.
  */
 export const HOOK_SIGNATURE = '/hooks/session_end';
+/**
+ * SessionStart's signature substring. The daemon's /hooks/session_start route returns the
+ * session-start primer as Claude Code `additionalContext`, so this hook *injects* context
+ * at session start (whereas SessionEnd *captures* the finished session).
+ */
+export const HOOK_SIGNATURE_SESSION_START = '/hooks/session_start';
 export const DEFAULT_PORT = 41273;
 
 export interface InstallOptions {
@@ -46,6 +52,7 @@ interface MatcherGroup {
 interface SettingsShape {
   hooks?: {
     SessionEnd?: MatcherGroup[];
+    SessionStart?: MatcherGroup[];
     [k: string]: MatcherGroup[] | undefined;
   };
   [k: string]: unknown;
@@ -55,6 +62,13 @@ export function robinHookCommand(port: number = DEFAULT_PORT): string {
   // --max-time 2: don't block session shutdown if the daemon is down.
   // --data-binary @-: stream Claude Code's stdin payload through verbatim.
   return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/session_end -H 'Content-Type: application/json' --data-binary @-`;
+}
+
+export function robinSessionStartHookCommand(port: number = DEFAULT_PORT): string {
+  // Same PATH-safe curl style as SessionEnd. The daemon answers with the primer JSON, and
+  // curl's stdout becomes Claude Code's injected SessionStart context. --max-time 2 keeps a
+  // down daemon from delaying session start (curl returns nothing → no primer, graceful).
+  return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/session_start -H 'Content-Type: application/json' --data-binary @-`;
 }
 
 /**
@@ -137,6 +151,90 @@ export function uninstallSessionEndHook(opts: InstallOptions = {}): InstallResul
     delete settings.hooks.SessionEnd;
   } else {
     settings.hooks.SessionEnd = cleaned;
+  }
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  return { path: settingsPath, replaced };
+}
+
+/**
+ * Add (or replace) Robin's SessionStart hook entry in ~/.claude/settings.json. Mirrors
+ * installSessionEndHook exactly for the SessionStart lifecycle: signature-based, idempotent,
+ * and preserving third-party SessionStart hooks.
+ */
+export function installSessionStartHook(opts: InstallOptions = {}): InstallResult {
+  const home = opts.home ?? homedir();
+  const port = opts.port ?? DEFAULT_PORT;
+  const settingsPath = join(home, '.claude', 'settings.json');
+
+  let settings: SettingsShape = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as SettingsShape;
+    } catch {
+      // Corrupt JSON — start fresh rather than blow up (the original is still on disk).
+      settings = {};
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  const existingGroups: MatcherGroup[] = settings.hooks.SessionStart ?? [];
+
+  const command = robinSessionStartHookCommand(port);
+  let replaced = false;
+
+  // Strip any prior Robin SessionStart entries (by signature substring) so an updated port
+  // never leaves stale duplicates, then drop groups that become empty.
+  const cleanedGroups: MatcherGroup[] = [];
+  for (const group of existingGroups) {
+    const filtered = (group.hooks ?? []).filter((h) => {
+      const isRobin =
+        typeof h.command === 'string' && h.command.includes(HOOK_SIGNATURE_SESSION_START);
+      if (isRobin) replaced = true;
+      return !isRobin;
+    });
+    if (filtered.length > 0) cleanedGroups.push({ ...group, hooks: filtered });
+  }
+
+  cleanedGroups.push({ hooks: [{ type: 'command', command }] });
+  settings.hooks.SessionStart = cleanedGroups;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  return { path: settingsPath, replaced };
+}
+
+/**
+ * Remove Robin's SessionStart hook entry from settings.json (idempotent — a no-op if none
+ * was installed). Other SessionStart hook entries are preserved.
+ */
+export function uninstallSessionStartHook(opts: InstallOptions = {}): InstallResult {
+  const home = opts.home ?? homedir();
+  const settingsPath = join(home, '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) return { path: settingsPath, replaced: false };
+
+  let settings: SettingsShape;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as SettingsShape;
+  } catch {
+    return { path: settingsPath, replaced: false };
+  }
+
+  const existingGroups: MatcherGroup[] = settings.hooks?.SessionStart ?? [];
+  let replaced = false;
+  const cleaned: MatcherGroup[] = [];
+  for (const group of existingGroups) {
+    const filtered = (group.hooks ?? []).filter((h) => {
+      const isRobin =
+        typeof h.command === 'string' && h.command.includes(HOOK_SIGNATURE_SESSION_START);
+      if (isRobin) replaced = true;
+      return !isRobin;
+    });
+    if (filtered.length > 0) cleaned.push({ ...group, hooks: filtered });
+  }
+  if (!settings.hooks) settings.hooks = {};
+  if (cleaned.length === 0) {
+    delete settings.hooks.SessionStart;
+  } else {
+    settings.hooks.SessionStart = cleaned;
   }
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   return { path: settingsPath, replaced };
