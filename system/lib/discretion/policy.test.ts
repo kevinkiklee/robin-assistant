@@ -32,7 +32,7 @@ test('checkOutbound: refuses common credential shapes', () => {
     ['github_token', 'token ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA here'],
     ['aws_access_key', 'access AKIAIOSFODNN7EXAMPLE'],
     ['google_api_key', 'key AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'],
-    ['stripe_key', 'use sk_live_AAAAAAAAAAAAAAAAAAAAAAAA in prod'],
+    ['stripe_key', 'use sk_test_AAAAAAAAAAAAAAAAAAAAAAAA in prod'],
   ];
   for (const [name, text] of cases) {
     const r = checkOutbound({ text });
