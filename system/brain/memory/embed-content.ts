@@ -25,11 +25,33 @@ const EMBED_CALL_TIMEOUT_MS = 60_000;
 // no callers need to change.
 export const EMBED_MAX_CHARS = 30_000;
 
-export function prepareForEmbed(body: string): string {
-  return body.length > EMBED_MAX_CHARS ? body.slice(0, EMBED_MAX_CHARS) : body;
+/**
+ * Normalize a content body to a string before truncation/embedding.
+ *
+ * `events_content.body` is declared `TEXT NOT NULL`, but SQLite is dynamically typed:
+ * a row written with a Buffer binding (some historical ingest paths did this for bodies
+ * that were runs of box-drawing/non-ASCII bytes) is stored with BLOB affinity and read
+ * back by better-sqlite3 as a Node `Buffer`, not a string. Feeding a Buffer straight to
+ * the Ollama embed call serialized it as `{"type":"Buffer","data":[…]}` — an OBJECT — and
+ * Ollama rejected it with `400: cannot unmarshal object … of type string`. We decode
+ * Buffers as UTF-8 (recovering the original text) and coerce any other non-string defensively.
+ */
+function bodyToString(body: unknown): string {
+  if (typeof body === 'string') return body;
+  if (Buffer.isBuffer(body)) return body.toString('utf8');
+  if (body instanceof Uint8Array) return Buffer.from(body).toString('utf8');
+  return String(body);
 }
 
-export async function embedBody(dispatcher: LLMDispatcher, body: string): Promise<number[]> {
+export function prepareForEmbed(body: string | Buffer | Uint8Array): string {
+  const text = bodyToString(body);
+  return text.length > EMBED_MAX_CHARS ? text.slice(0, EMBED_MAX_CHARS) : text;
+}
+
+export async function embedBody(
+  dispatcher: LLMDispatcher,
+  body: string | Buffer | Uint8Array,
+): Promise<number[]> {
   const [vec] = await withTimeout(
     dispatcher.embed('embed', prepareForEmbed(body)),
     EMBED_CALL_TIMEOUT_MS,

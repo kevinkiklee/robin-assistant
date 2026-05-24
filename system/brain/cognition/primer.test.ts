@@ -60,6 +60,39 @@ test('buildPrimer: renders corrections newest-first', () => {
   closeDb(db);
 });
 
+test('buildPrimer: corrections render the directive only, compact (no "what → " prefix)', () => {
+  const { db } = freshDb();
+  addCorrection(db, 'pitched high-MP body', 'never pitch high-MP bodies', 'photography');
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  // Compact format: `- <correction> (<context>)`, no `what` text and no arrow.
+  assert.match(out, /- never pitch high-MP bodies \(photography\)/);
+  assert.doesNotMatch(out, /pitched high-MP body/, 'verbose "what" prefix must be dropped');
+  assert.doesNotMatch(out, /→/, 'arrow separator must be dropped');
+  closeDb(db);
+});
+
+test('buildPrimer: all ~16 short corrections fit — none silently dropped', () => {
+  const { db } = freshDb();
+  // 16 short behavioral rules; the two most important (oldest) were written first.
+  addCorrection(db, 'offered /schedule unprompted', 'never offer /schedule unprompted');
+  addCorrection(db, 'over-praised an idea', 'do not over-praise; be measured');
+  for (let i = 0; i < 14; i++) {
+    addCorrection(db, `mistake ${i}`, `behavioral rule number ${i}`);
+  }
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  // The oldest two (most important) rules must survive under the sub-cap.
+  assert.match(out, /never offer \/schedule unprompted/);
+  assert.match(out, /do not over-praise; be measured/);
+  // Every one of the 14 generated rules must also appear — nothing dropped.
+  for (let i = 0; i < 14; i++) {
+    assert.match(out, new RegExp(`behavioral rule number ${i}\\b`), `rule ${i} should appear`);
+  }
+  // 16 correction bullet lines total.
+  const bulletCount = (out.match(/^- /gm) ?? []).length;
+  assert.equal(bulletCount, 16, 'all 16 corrections should render');
+  closeDb(db);
+});
+
 test('buildPrimer: renders belief heads as topic: claim', () => {
   const { db } = freshDb();
   believe(db, null, { topic: 'google.role', claim: 'Ad Experiences', date: '2026-05-23' });
@@ -171,7 +204,8 @@ test('buildPrimer: hard cap drops lowest-priority sections first', () => {
   assert.equal(correctionsOnlyLen, 0);
 
   // Cap that fits Corrections but not the joiner+Beliefs that follows.
-  const correctionsSection = '## Corrections (behavioral rules)\n- rule-what → rule-correction';
+  // Compact rendering: the directive only, no "what → " prefix.
+  const correctionsSection = '## Corrections (behavioral rules)\n- rule-correction';
   const cap = correctionsSection.length + 1;
   const out = buildPrimer(db, { profileDir, knowledgeDir, maxChars: cap });
   assert.match(out, /## Corrections/);

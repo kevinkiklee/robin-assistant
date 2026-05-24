@@ -31,6 +31,7 @@ COMMANDS
   db vacuum         Vacuum the database
   doctor            Diagnose daemon + environment
   import            Import NDJSON dumps from content/imported-from-<source>/
+  ingest-docs       Index content/knowledge/ + content/profile/ *.md for recall (idempotent; --json)
   init              One-time setup (interactive)
   integrations      Per-integration health table (status, last attempt, errors)
   pause             Pause scheduled work
@@ -298,6 +299,19 @@ async function main(): Promise<void> {
         printImportHuman(report);
       }
       exit(report.errors.length > 0 ? 1 : 0);
+      break;
+    }
+
+    case 'ingest-docs': {
+      const { runIngestDocs, printIngestDocsHuman } = await import('./ingest-docs.ts');
+      const r = runIngestDocs();
+      if (args.includes('--json')) {
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(JSON.stringify(r, null, 2));
+      } else {
+        printIngestDocsHuman(r);
+      }
+      exit(0);
       break;
     }
 
