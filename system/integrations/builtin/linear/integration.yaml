@@ -37,7 +37,6 @@ mcp:
           project_id: { type: string }
           priority: { type: integer, description: "0=none, 1=urgent, 2=high, 3=medium, 4=low" }
           source_event_id: { type: integer }
-          autonomous: { type: boolean }
         required: [team, title]
     update_issue:
       description: "Update an issue by identifier or robin_ref"
@@ -48,7 +47,6 @@ mcp:
           title: { type: string }
           description: { type: string }
           priority: { type: integer }
-          autonomous: { type: boolean }
         required: [ref]
     transition:
       description: "Transition an issue to a state type (completed, started, unstarted, etc.)"
@@ -57,7 +55,6 @@ mcp:
         properties:
           ref: { type: string, description: "Issue identifier or robin_ref" }
           intent: { type: string, description: "Target state type: completed, started, unstarted, cancelled" }
-          autonomous: { type: boolean }
         required: [ref, intent]
     comment:
       description: "Add a comment to an issue"
@@ -67,5 +64,4 @@ mcp:
           ref: { type: string, description: "Issue identifier or robin_ref" }
           body: { type: string }
           robin_ref: { type: string, description: "Comment-level robin_ref for idempotency" }
-          autonomous: { type: boolean }
         required: [ref, body]

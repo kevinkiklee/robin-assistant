@@ -38,17 +38,7 @@ export const notificationsSchema = z.object({
 });
 
 export const linearConfigSchema = z.object({
-  writable_teams: z.array(z.string()).default([]),
-  autonomous_enabled: z.boolean().default(false),
-  dry_run: z.boolean().default(true),
   read_window_days: z.number().int().positive().default(14),
-  integration_team_map: z.record(z.string(), z.string()).default({}),
-  rate_limit: z
-    .object({
-      per_tick: z.number().int().positive().default(3),
-      per_day: z.number().int().positive().default(20),
-    })
-    .default({ per_tick: 3, per_day: 20 }),
 });
 
 export const policiesSchema = z

@@ -177,7 +177,6 @@ interface CreateIssueParams {
   project_id?: string;
   priority?: number;
   source_event_id?: number;
-  autonomous?: boolean;
 }
 
 async function createIssue(
@@ -239,7 +238,6 @@ async function createIssue(
       identifier: issue.identifier,
       robin_ref: params.robin_ref,
       url: issue.url,
-      autonomous: params.autonomous ?? false,
     },
   });
 
@@ -251,7 +249,6 @@ interface UpdateIssueParams {
   title?: string;
   description?: string;
   priority?: number;
-  autonomous?: boolean;
 }
 
 async function updateIssue(
@@ -282,7 +279,6 @@ async function updateIssue(
       identifier,
       ref: params.ref,
       fields: Object.keys(input),
-      autonomous: params.autonomous ?? false,
     },
   });
 
@@ -292,7 +288,6 @@ async function updateIssue(
 interface TransitionParams {
   ref: string;
   intent: string;
-  autonomous?: boolean;
 }
 
 async function transition(
@@ -342,7 +337,6 @@ async function transition(
       identifier,
       ref: params.ref,
       intent: params.intent,
-      autonomous: params.autonomous ?? false,
     },
   });
 
@@ -353,7 +347,6 @@ interface CommentParams {
   ref: string;
   body: string;
   robin_ref?: string;
-  autonomous?: boolean;
 }
 
 async function comment(
@@ -397,7 +390,6 @@ async function comment(
       identifier,
       ref: params.ref,
       comment_robin_ref: params.robin_ref,
-      autonomous: params.autonomous ?? false,
     },
   });
 
