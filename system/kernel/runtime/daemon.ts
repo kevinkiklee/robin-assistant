@@ -125,7 +125,14 @@ export class Daemon {
       handlers: this.handlers,
       workerId,
       leaseMs: LEASE_MS,
-      isPaused: () => loadPolicies(userData).power.state !== 'active',
+      // Pause the whole scheduler when power isn't active OR the network is
+      // offline. Post-cloud-migration (2026-05-24) all cognition + integrations
+      // are outbound, so `network: offline` must cleanly halt scheduled work —
+      // not let cloud cognition fire and error/circuit-break every tick.
+      isPaused: () => {
+        const p = loadPolicies(userData);
+        return p.power.state !== 'active' || p.network.mode === 'offline';
+      },
       onError: (err, job) => this.log.error({ err, job: job.name }, 'job handler error'),
     });
 

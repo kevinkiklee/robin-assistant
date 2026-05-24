@@ -96,9 +96,11 @@ network:
 #     provider: ollama
 #     model: qwen3-embedding:8b
 #
-# Robin's events_vec is float[4096] to match qwen3-embedding:8b native output.
-# If you pick a different embedder, run \`robin upgrade\` after editing the
-# events_vec schema; vectors from different models are NOT comparable.
+# Robin's events_vec dimension is fixed by migration (currently float[3072],
+# sized for Gemini Embedding 2). Your embed model MUST output that dimension
+# (most modern embedders are Matryoshka and can target it). Vectors from
+# different models are NOT comparable — switching embedders requires a fresh
+# \`robin reindex --force\`.
 roles: {}
 `,
     );

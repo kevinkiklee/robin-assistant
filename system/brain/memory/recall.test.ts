@@ -92,7 +92,7 @@ test('recall: vec mode finds the row whose embedding the dispatcher returned', a
   // writes the vector directly into events_content + events_vec to set up the recall
   // surface, then verifies vec recall works against the seeded data.
   const db = freshDb();
-  const targetVec = new Array(4096).fill(0.0);
+  const targetVec = new Array(3072).fill(0.0);
   targetVec[0] = 1.0;
   const llm = mockLLM(targetVec);
   const r = ingest(db, llm, {

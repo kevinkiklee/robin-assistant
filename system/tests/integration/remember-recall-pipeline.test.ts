@@ -81,7 +81,7 @@ test('pipeline: embedder picks up content with NULL embedding and makes vec reca
   assert.equal(before.embedding, null);
 
   // Step 2: embedder runs (simulated with a fixed-vec mock LLM)
-  const vec = new Array(4096).fill(0);
+  const vec = new Array(3072).fill(0);
   vec[0] = 1;
   const llm = mockEmbedLLM(vec);
   const report = await runReindexCore(db, llm);
@@ -105,7 +105,7 @@ test('pipeline: hybrid mode merges lex and vec into one ranked list', async () =
   ingest(db, null, { kind: 'memory.remember', source: 'mcp', content: 'Belgium pastoral 04-18' });
 
   // Same embedding for both rows so vec returns both
-  const vec = new Array(4096).fill(0);
+  const vec = new Array(3072).fill(0);
   vec[0] = 1;
   const llm = mockEmbedLLM(vec);
   const report = await runReindexCore(db, llm);
@@ -126,7 +126,7 @@ test('pipeline: every recall call writes a recall_log row regardless of mode or 
   await recall(db, null, 'a', { mode: 'lex' });
   await recall(db, null, 'something-with-fts5-special-chars', { mode: 'lex' });
   // Vec call also logs (fallback path under no-llm returns lex; with llm it's a real vec path).
-  const vec = new Array(4096).fill(0);
+  const vec = new Array(3072).fill(0);
   vec[0] = 1;
   const llm = mockEmbedLLM(vec);
   await runReindexCore(db, llm);
@@ -154,7 +154,7 @@ test('pipeline: ingest upsert path replaces embedding so vec stays current', asy
   });
 
   // Embed it
-  const vec1 = new Array(4096).fill(0);
+  const vec1 = new Array(3072).fill(0);
   vec1[0] = 1;
   const llm1 = mockEmbedLLM(vec1);
   await runReindexCore(db, llm1);
@@ -174,7 +174,7 @@ test('pipeline: ingest upsert path replaces embedding so vec stays current', asy
   assert.equal(after.embedding, null, 'embedding should be cleared after upsert so it re-embeds');
 
   // Second pass of embedder picks it up
-  const vec2 = new Array(4096).fill(0);
+  const vec2 = new Array(3072).fill(0);
   vec2[1] = 1;
   const llm2 = mockEmbedLLM(vec2);
   const report = await runReindexCore(db, llm2);

@@ -80,6 +80,13 @@ export const providerConfigSchema = z.object({
   // mode; false skips the reasoning phase for big speed wins on structured tasks.
   numCtx: z.number().int().positive().optional(),
   think: z.boolean().optional(),
+  // Cloud-provider tuning. maxTokens bounds output (prevents runaway cost/generation —
+  // load-bearing for cloud where output is billed). embedModel/embedDims are used by
+  // providers that serve both chat + embeddings (google) when the embed role needs a
+  // different model/dimension than the chat model.
+  maxTokens: z.number().int().positive().optional(),
+  embedModel: z.string().optional(),
+  embedDims: z.number().int().positive().optional(),
 });
 
 export const modelsSchema = z.object({

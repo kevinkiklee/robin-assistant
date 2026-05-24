@@ -18,7 +18,7 @@ interface StubServer {
   callCount: () => number;
 }
 
-async function startStubOllama(dim = 4096): Promise<StubServer> {
+async function startStubOllama(dim = 3072): Promise<StubServer> {
   const { createServer } = await import('node:http');
   let calls = 0;
   const server = createServer((req, res) => {
@@ -61,7 +61,7 @@ describe('robin reindex', () => {
     mkdirSync(join(dataDir, 'config'), { recursive: true });
     mkdirSync(join(dataDir, 'state', 'db'), { recursive: true });
     process.env.ROBIN_USER_DATA_DIR = dataDir;
-    stub = await startStubOllama(4096);
+    stub = await startStubOllama(3072);
     writeFileSync(
       join(dataDir, 'config', 'models.yaml'),
       `roles:\n  embed:\n    provider: ollama\n    baseUrl: http://127.0.0.1:${stub.port}\n    model: stub-embed\n`,
@@ -138,7 +138,7 @@ describe('robin reindex', () => {
 
   it('skips rows that already have an embedding', async () => {
     const db = openDb(dbFilePath(dataDir));
-    const dummy = Buffer.alloc(4096 * 4); // zero-filled float32[4096]
+    const dummy = Buffer.alloc(3072 * 4); // zero-filled float32[3072]
     db.prepare(`INSERT INTO events_content (ts, body, embedding) VALUES (?, ?, ?)`).run(
       '2026-05-19T00:00:00Z',
       'already-done',
@@ -199,7 +199,7 @@ describe('robin reindex', () => {
 
   it('--ids without --force skips already-embedded rows in the set', async () => {
     const db = openDb(dbFilePath(dataDir));
-    const dummy = Buffer.alloc(4096 * 4);
+    const dummy = Buffer.alloc(3072 * 4);
     db.prepare(`INSERT INTO events_content (ts, body, embedding) VALUES (?, ?, ?)`).run(
       '2026-05-19T00:00:00Z',
       'already-embedded',
@@ -219,7 +219,7 @@ describe('robin reindex', () => {
 
   it('--ids with --force re-embeds even rows that already have an embedding', async () => {
     const db = openDb(dbFilePath(dataDir));
-    const dummy = Buffer.alloc(4096 * 4);
+    const dummy = Buffer.alloc(3072 * 4);
     db.prepare(`INSERT INTO events_content (ts, body, embedding) VALUES (?, ?, ?)`).run(
       '2026-05-19T00:00:00Z',
       'already-embedded',

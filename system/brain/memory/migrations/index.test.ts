@@ -47,6 +47,33 @@ test('schema 001: events table has expected columns', () => {
   closeDb(db);
 });
 
+test('migrations apply cleanly up to version 10', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const row = db.prepare('SELECT MAX(version) AS v FROM _migrations').get() as { v: number };
+  assert.equal(row.v, 10);
+  closeDb(db);
+});
+
+test('migration 010: events_vec is a 3072-dim vec0 table', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const def = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events_vec'")
+    .get() as { sql: string } | undefined;
+  assert.ok(def, 'events_vec table missing after migrations');
+  assert.match(def.sql, /vec0\(embedding float\[3072\]\)/);
+
+  // vec0 enforces the declared width: a 3072-dim vector inserts, a 4096-dim one is rejected.
+  const insert = db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)');
+  insert.run(1n, Buffer.from(new Float32Array(3072).buffer));
+  assert.throws(
+    () => insert.run(2n, Buffer.from(new Float32Array(4096).buffer)),
+    /Dimension mismatch/,
+  );
+  closeDb(db);
+});
+
 test('schema 001: indexes on events are created', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);

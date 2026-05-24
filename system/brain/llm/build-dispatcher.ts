@@ -1,6 +1,8 @@
 import type { ModelsConfig, ProviderConfig } from '../../kernel/config/schema.ts';
+import { AnthropicProvider } from './anthropic.ts';
 import { DeepSeekProvider } from './deepseek.ts';
 import { LLMDispatcher } from './dispatcher.ts';
+import { GoogleProvider } from './google.ts';
 import { OllamaProvider } from './ollama.ts';
 import type { LLMProvider, LLMRole } from './types.ts';
 
@@ -12,13 +14,12 @@ function resolveSecret(env: NodeJS.ProcessEnv, key?: string): string {
 }
 
 // Supported providers:
-// - ollama: local-only, the default and the path the daemon uses today.
-// - deepseek: dormant cloud escape hatch. Not routed by any role in
-//   models.yaml; kept opt-in for future agentic-CLI experiments.
-//
-// Cloud agentic CLIs (claude-code, gemini-cli, groq) were removed in the
-// 2026-05-22 cleanup. Robin's daemon is local-only by construction; manual
-// LLM work runs through the user's interactive Claude Code subscription.
+// - google: cloud, the daemon's default reasoning + embedding path (2026-05-24).
+// - anthropic: cloud, the summarize/complex-cognition path (Claude Opus).
+// - ollama: local. Adapter kept in place for swap-back, but no role routes to it
+//   post-cloud-migration (Ollama uninstalled from disk 2026-05-24; reinstall +
+//   repoint models.yaml to revert).
+// - deepseek: dormant cloud escape hatch; not routed by any role.
 function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMProvider {
   switch (cfg.provider) {
     case 'ollama':
@@ -28,6 +29,23 @@ function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
         embedModel: cfg.model,
         numCtx: cfg.numCtx,
         think: cfg.think,
+      });
+    case 'anthropic':
+      return new AnthropicProvider({
+        apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'CLAUDE_API_KEY'),
+        model: cfg.model,
+        maxTokens: cfg.maxTokens,
+      });
+    case 'google':
+      return new GoogleProvider({
+        apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'GEMINI_API_KEY'),
+        model: cfg.model,
+        // For the embed role, cfg.model is the embedding model; carry it into
+        // embedModel too so a google-embed role resolves correctly. embedDims
+        // sizes the vector to match the events_vec schema (migration 010 = 3072).
+        embedModel: cfg.embedModel ?? cfg.model,
+        embedDims: cfg.embedDims,
+        maxTokens: cfg.maxTokens,
       });
     case 'deepseek':
       return new DeepSeekProvider({
@@ -51,7 +69,15 @@ export function buildDispatcherFromConfig(
   opts: BuildOptions = {},
 ): LLMDispatcher {
   const env = opts.env ?? process.env;
-  const d = new LLMDispatcher();
+  // Daily cloud-spend cap (USD). Disabled (0) unless ROBIN_LLM_DAILY_USD_CAP is set;
+  // defaults to $10/day once any cloud provider is in play. Trips SpendCapError,
+  // which the biographer circuit breaker treats as an outage (no data loss).
+  const capRaw = env.ROBIN_LLM_DAILY_USD_CAP;
+  const usesCloud = Object.values(models.roles).some(
+    (c) => c.provider === 'anthropic' || c.provider === 'google' || c.provider === 'deepseek',
+  );
+  const dailyCostCapUsd = capRaw !== undefined ? Number(capRaw) : usesCloud ? 10 : 0;
+  const d = new LLMDispatcher({ dailyCostCapUsd });
   const providersByName = new Map<string, LLMProvider>();
 
   for (const [role, cfg] of Object.entries(models.roles)) {

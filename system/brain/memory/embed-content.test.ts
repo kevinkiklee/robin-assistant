@@ -5,6 +5,10 @@ import type { LLMProvider } from '../llm/types.ts';
 import { EMBED_MAX_CHARS, embedBody, prepareForEmbed } from './embed-content.ts';
 
 describe('embed-content', () => {
+  it('caps input at 8000 chars (~2048-token cloud embedder limit)', () => {
+    assert.equal(EMBED_MAX_CHARS, 8_000);
+  });
+
   it('passes through bodies under the cap unchanged', () => {
     const body = 'short body';
     assert.equal(prepareForEmbed(body), body);
@@ -25,7 +29,7 @@ describe('embed-content', () => {
       meta: { contextWindow: 8192, inputPricePerM: 0, outputPricePerM: 0 },
       embed: async (text) => {
         received = Array.isArray(text) ? text[0] : text;
-        return [new Array(4096).fill(0)];
+        return [new Array(3072).fill(0)];
       },
       invoke: async () => {
         throw new Error('not used');
@@ -37,7 +41,7 @@ describe('embed-content', () => {
 
     const body = 'a'.repeat(EMBED_MAX_CHARS + 1000);
     const vec = await embedBody(d, body);
-    assert.equal(vec.length, 4096);
+    assert.equal(vec.length, 3072);
     assert.equal(received.length, EMBED_MAX_CHARS);
   });
 
@@ -66,7 +70,7 @@ describe('embed-content', () => {
       meta: { contextWindow: 8192, inputPricePerM: 0, outputPricePerM: 0 },
       embed: async (text) => {
         received = Array.isArray(text) ? text[0] : text;
-        return [new Array(4096).fill(0)];
+        return [new Array(3072).fill(0)];
       },
       invoke: async () => {
         throw new Error('not used');

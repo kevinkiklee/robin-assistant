@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TimeoutError } from '../../lib/with-timeout.ts';
-import { LLMDispatcher } from './dispatcher.ts';
+import { LLMDispatcher, SpendCapError } from './dispatcher.ts';
 import type { LLMProvider } from './types.ts';
 
-function mockProvider(name: string, text: string): LLMProvider {
+function mockProvider(name: string, text: string, costUsd = 0): LLMProvider {
   return {
     name,
     capabilities: new Set(['classify']),
@@ -12,7 +12,7 @@ function mockProvider(name: string, text: string): LLMProvider {
     invoke: async () => ({
       text,
       usage: { inputTokens: 0, outputTokens: 0 },
-      costUsd: 0,
+      costUsd,
       latencyMs: 0,
       provider: name,
     }),
@@ -79,6 +79,35 @@ test('dispatcher: invoke honors per-request timeoutMs override', async () => {
   );
   // Sanity: rejected against the override, not the default.
   assert.ok(Date.now() - started < 500, 'timeout fired against override, not default');
+});
+
+// Cloud-spend safety — once the rolling daily total reaches the cap, further
+// invokes throw SpendCapError (message contains "spend cap exceeded" so the
+// biographer circuit breaker reads it as an outage and won't lose data).
+test('dispatcher: trips SpendCapError after the daily cap is reached', async () => {
+  const d = new LLMDispatcher({ dailyCostCapUsd: 1 });
+  d.register('p', mockProvider('p', 'ok', 0.6)); // $0.60 per call
+  d.assign('classify', 'p');
+
+  // First two calls succeed (0 → 0.60 → 1.20); the cap is checked BEFORE each
+  // call, so the third — when the prior total (1.20) ≥ 1 — is rejected.
+  await d.invoke('classify', { messages: [{ role: 'user', content: 'a' }] });
+  await d.invoke('classify', { messages: [{ role: 'user', content: 'b' }] });
+  assert.ok(d.getDailySpendUsd() >= 1);
+  await assert.rejects(
+    () => d.invoke('classify', { messages: [{ role: 'user', content: 'c' }] }),
+    (err: unknown) => err instanceof SpendCapError && /spend cap exceeded/i.test(err.message),
+  );
+});
+
+test('dispatcher: no cap (0) never blocks and does not track spend', async () => {
+  const d = new LLMDispatcher(); // cap defaults to 0 = disabled
+  d.register('p', mockProvider('p', 'ok', 5));
+  d.assign('classify', 'p');
+  for (let i = 0; i < 5; i++) {
+    await d.invoke('classify', { messages: [{ role: 'user', content: 'x' }] });
+  }
+  assert.equal(d.getDailySpendUsd(), 0);
 });
 
 test('dispatcher: embed wraps provider call with default timeout', async () => {

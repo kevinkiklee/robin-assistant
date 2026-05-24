@@ -8,11 +8,11 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 // fast and the embedder batch keeps moving.
 const EMBED_CALL_TIMEOUT_MS = 60_000;
 
-// qwen3-embedding:8b advertises a 40,960-token context, but Ollama's default num_ctx for
-// embedding models is lower in practice — a 130k-char (~32k token) document failed during
-// the v2 backfill with "input length exceeds the context length". 30,000 characters is a
-// conservative cap at ~7,500 tokens, well under any reasonable embedder limit, and only
-// affects 12 rows of the v2 corpus (largest legitimate doc was a 130k-char daily briefing).
+// Gemini Embedding 2 caps input at ~2,048 tokens. At a conservative ~4 chars/token that is
+// ~8,000 characters, so we truncate to 8,000 chars to stay safely under the cloud embedder's
+// limit (the previous 30,000-char cap was sized for qwen3-embedding:8b's much larger context
+// and would overflow Gemini's input). Truncation only affects long-tail documents; the
+// largest legitimate doc in the v2 corpus was a 130k-char daily briefing.
 //
 // We embed the head of the document rather than chunk-and-pool because:
 //   1. Document topic + structure live in the first few KB for nearly all our event kinds
@@ -23,7 +23,7 @@ const EMBED_CALL_TIMEOUT_MS = 60_000;
 //
 // If recall on long documents becomes a real complaint, the upgrade is chunk-and-pool here;
 // no callers need to change.
-export const EMBED_MAX_CHARS = 30_000;
+export const EMBED_MAX_CHARS = 8_000;
 
 /**
  * Normalize a content body to a string before truncation/embedding.

@@ -17,7 +17,10 @@ import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
 function isLlmUnavailableError(err: unknown): boolean {
   if (err instanceof TimeoutError) return true;
   const msg = err instanceof Error ? err.message : String(err);
-  return /fetch failed|ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|network|failed to connect|connection refused|terminated|fetch is not defined/i.test(
+  // `spend cap exceeded` = the dispatcher's SpendCapError; treat a tripped daily
+  // cloud-spend cap like an outage (abort the tick, don't advance the cursor or
+  // write empty extraction) so a runaway loop stops without losing data.
+  return /fetch failed|ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|network|failed to connect|connection refused|terminated|fetch is not defined|spend cap exceeded/i.test(
     msg,
   );
 }
@@ -508,15 +511,69 @@ const ROLE_MARKER_NAMES = new Set(['user', 'assistant', 'tool', 'system', 'human
 // Generic nouns + Claude Code tool names that get mis-extracted as entities.
 const GENERIC_NOISE_NAMES = new Set([
   // generic programming/content nouns
-  'file', 'files', 'code', 'function', 'functions', 'value', 'values', 'data',
-  'error', 'errors', 'test', 'tests', 'result', 'results', 'output', 'input',
-  'text', 'line', 'lines', 'table', 'tables', 'list', 'lists', 'item', 'items',
-  'step', 'steps', 'note', 'notes', 'todo', 'todos', 'example', 'examples',
-  'content', 'config', 'json', 'thing', 'things', 'stuff', 'object', 'objects',
-  'field', 'fields', 'row', 'rows', 'column', 'columns', 'string', 'strings',
+  'file',
+  'files',
+  'code',
+  'function',
+  'functions',
+  'value',
+  'values',
+  'data',
+  'error',
+  'errors',
+  'test',
+  'tests',
+  'result',
+  'results',
+  'output',
+  'input',
+  'text',
+  'line',
+  'lines',
+  'table',
+  'tables',
+  'list',
+  'lists',
+  'item',
+  'items',
+  'step',
+  'steps',
+  'note',
+  'notes',
+  'todo',
+  'todos',
+  'example',
+  'examples',
+  'content',
+  'config',
+  'json',
+  'thing',
+  'things',
+  'stuff',
+  'object',
+  'objects',
+  'field',
+  'fields',
+  'row',
+  'rows',
+  'column',
+  'columns',
+  'string',
+  'strings',
   // Claude Code tool names
-  'read', 'edit', 'write', 'bash', 'grep', 'glob', 'task', 'ls', 'multiedit',
-  'todowrite', 'webfetch', 'websearch', 'notebookedit',
+  'read',
+  'edit',
+  'write',
+  'bash',
+  'grep',
+  'glob',
+  'task',
+  'ls',
+  'multiedit',
+  'todowrite',
+  'webfetch',
+  'websearch',
+  'notebookedit',
 ]);
 const STATE_FLAG_NAMES = new Set([
   'on',

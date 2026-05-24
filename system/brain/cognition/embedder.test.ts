@@ -25,7 +25,7 @@ function embedProvider(): LLMProvider {
     invoke: async () => {
       throw new Error('not used');
     },
-    embed: async () => [new Array(4096).fill(0.1)],
+    embed: async () => [new Array(3072).fill(0.1)],
   };
 }
 
