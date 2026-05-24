@@ -1,46 +1,6 @@
 import { ingest } from '../../../brain/memory/ingest.ts';
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
-
-const ENDPOINT = 'https://api.linear.app/graphql';
-
-interface LinearIssue {
-  id: string;
-  identifier: string;
-  title: string;
-  description: string | null;
-  url: string;
-  state: { name: string; type: string };
-  team: { key: string; name: string };
-  updatedAt: string;
-}
-
-function requireKey(): string {
-  const k = process.env.LINEAR_API_KEY;
-  if (!k) throw new Error('LINEAR_API_KEY not set in environment');
-  return k;
-}
-
-async function gql<T>(
-  ctx: IntegrationContext,
-  query: string,
-  variables: Record<string, unknown> = {},
-): Promise<T> {
-  const key = requireKey();
-  const res = await ctx.fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: key,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) throw new Error(`linear graphql returned ${res.status}: ${await res.text()}`);
-  const body = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
-  if (body.errors?.length)
-    throw new Error(`linear graphql errors: ${body.errors.map((e) => e.message).join('; ')}`);
-  if (!body.data) throw new Error('linear graphql returned no data');
-  return body.data;
-}
+import { gql, requireKey, type LinearIssue } from './gql.ts';
 
 const ACTIVE_QUERY = `
 query ActiveIssues($limit: Int!) {
