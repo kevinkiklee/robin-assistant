@@ -99,7 +99,7 @@ export function chunkBody(body: string, maxChars: number): string[] {
 // from 6000 on 2026-05-23 to cut the per-session chunk count ~40% during a large
 // backlog drain. NOTE: changing this invalidates in-flight biographer_progress
 // cursors (they index chunks at the old size) — clear that table when changing it.
-const CHUNK_CHARS = 10000;
+const CHUNK_CHARS = 20000;
 
 // Multi-tick bound — the biographer processes at most this many chunks per
 // `runBiographer` call, persisting a cursor in `biographer_progress` so a large
@@ -125,6 +125,12 @@ const MAX_CHUNKS_PER_TICK = 10;
 // ticks at */15 — generous enough to cover every real capture observed
 // (largest: ~501k) while still rejecting absurd outliers.
 const MAX_SESSION_BODY_CHARS = 1_000_000;
+
+// Sessions under this floor are skipped with an empty extraction marker.
+// Very short sessions (debugging one-liners, tool-only invocations) rarely
+// contain entities worth extracting; skipping them saves ~80s/session of LLM
+// time and avoids injecting noise into the graph.
+const MIN_SESSION_BODY_CHARS = 2_000;
 
 const disambiguationSchema = z.object({
   matched_id: z.number().int().nullable(),
@@ -154,6 +160,8 @@ export interface RunBiographerOptions {
   maxChunksPerTick?: number;
   /** Body-size ceiling above which a fresh session is skipped. Defaults to `MAX_SESSION_BODY_CHARS`. */
   maxSessionBodyChars?: number;
+  /** Body-size floor below which a fresh session is skipped. Defaults to `MIN_SESSION_BODY_CHARS`. */
+  minSessionBodyChars?: number;
 }
 
 type EntityRecord = { type: string; name: string };
@@ -232,7 +240,7 @@ function selectBiographerTarget(db: RobinDb): BiographerTarget | null {
        WHERE events.kind = 'session.captured'
          AND events.id NOT IN (SELECT json_extract(payload, '$.source_event_id') FROM events WHERE kind = 'biographer.extracted')
          AND events.id NOT IN (SELECT source_event_id FROM biographer_progress)
-       ORDER BY events.ts DESC
+       ORDER BY length(events_content.body) ASC
        LIMIT 1
     `)
     .get() as { eventId: number; body: string } | undefined;
@@ -412,6 +420,7 @@ export async function runBiographer(
 
   const maxChunksPerTick = options.maxChunksPerTick ?? MAX_CHUNKS_PER_TICK;
   const maxSessionBodyChars = options.maxSessionBodyChars ?? MAX_SESSION_BODY_CHARS;
+  const minSessionBodyChars = options.minSessionBodyChars ?? MIN_SESSION_BODY_CHARS;
 
   const result: BiographerRunResult = {
     processed: 0,
@@ -454,6 +463,28 @@ export async function runBiographer(
       );
       result.errors.push(
         `event ${target.eventId}: skipped (${target.body.length} chars > ${maxSessionBodyChars})`,
+      );
+      result.processed++;
+      continue;
+    }
+
+    // Skip tiny sessions — too short to contain meaningful entities, and
+    // processing them wastes ~80s of LLM time per session for near-zero value.
+    if (!target.isResume && target.body.length < minSessionBodyChars) {
+      db.prepare(`
+        INSERT INTO events (ts, kind, source, status, payload)
+        VALUES (?, 'biographer.extracted', 'biographer', 'skipped', ?)
+      `).run(
+        new Date().toISOString(),
+        JSON.stringify({
+          source_event_id: target.eventId,
+          entities: 0,
+          relations: 0,
+          skipped: true,
+          reason: 'session_too_small',
+          body_chars: target.body.length,
+          threshold: minSessionBodyChars,
+        }),
       );
       result.processed++;
       continue;
