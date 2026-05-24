@@ -1,5 +1,5 @@
 name: linear
-version: 1.0.0
+version: 2.0.0
 schedule: "*/30 * * * *"
 permissions:
   memory:
@@ -9,7 +9,7 @@ permissions:
   secrets: [LINEAR_API_KEY]
   network: ["api.linear.app"]
 mcp:
-  description: "Read Linear: active issues + per-issue lookup"
+  description: "Linear: read issues + create/update/transition/comment"
   actions:
     active_issues:
       description: "Issues assigned to the authenticated user, unstarted or in progress"
@@ -25,3 +25,47 @@ mcp:
         properties:
           identifier: { type: string }
         required: [identifier]
+    create_issue:
+      description: "Create an issue in a Linear team. Set robin_ref for idempotency."
+      input_schema:
+        type: object
+        properties:
+          team: { type: string, description: "Team key (e.g. ENG)" }
+          title: { type: string }
+          description: { type: string }
+          robin_ref: { type: string, description: "Stable key for idempotency" }
+          project_id: { type: string }
+          priority: { type: integer, description: "0=none, 1=urgent, 2=high, 3=medium, 4=low" }
+          source_event_id: { type: integer }
+          autonomous: { type: boolean }
+        required: [team, title]
+    update_issue:
+      description: "Update an issue by identifier or robin_ref"
+      input_schema:
+        type: object
+        properties:
+          ref: { type: string, description: "Issue identifier (ENG-123) or robin_ref" }
+          title: { type: string }
+          description: { type: string }
+          priority: { type: integer }
+          autonomous: { type: boolean }
+        required: [ref]
+    transition:
+      description: "Transition an issue to a state type (completed, started, unstarted, etc.)"
+      input_schema:
+        type: object
+        properties:
+          ref: { type: string, description: "Issue identifier or robin_ref" }
+          intent: { type: string, description: "Target state type: completed, started, unstarted, cancelled" }
+          autonomous: { type: boolean }
+        required: [ref, intent]
+    comment:
+      description: "Add a comment to an issue"
+      input_schema:
+        type: object
+        properties:
+          ref: { type: string, description: "Issue identifier or robin_ref" }
+          body: { type: string }
+          robin_ref: { type: string, description: "Comment-level robin_ref for idempotency" }
+          autonomous: { type: boolean }
+        required: [ref, body]

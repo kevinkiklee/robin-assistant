@@ -19,6 +19,7 @@ import { actions as githubActions } from '../../../integrations/builtin/github/i
 import { actions as gmailActions } from '../../../integrations/builtin/gmail/index.ts';
 import { actions as gcalActions } from '../../../integrations/builtin/google_calendar/index.ts';
 import { actions as linearActions } from '../../../integrations/builtin/linear/index.ts';
+import { writeActions as linearWriteActions } from '../../../integrations/builtin/linear/write.ts';
 import { loadModels } from '../../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
 
@@ -128,13 +129,14 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
     ['notifications', 'recent_activity'],
     'Read GitHub: unread notifications + recent activity',
   );
+  const allLinearActions = { ...linearActions, ...linearWriteActions };
   makeIntegrationTool(
     server,
     deps,
     'linear',
-    linearActions as unknown as IntegrationActions,
-    ['active_issues', 'get_issue'],
-    'Read Linear: active issues + per-issue lookup',
+    allLinearActions as unknown as IntegrationActions,
+    ['active_issues', 'get_issue', 'create_issue', 'update_issue', 'transition', 'comment'],
+    'Linear: read issues + create/update/transition/comment',
   );
   makeIntegrationTool(
     server,
