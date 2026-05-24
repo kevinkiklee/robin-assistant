@@ -1,7 +1,7 @@
 import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
-import { embedBody } from '../../brain/memory/embed-content.ts';
+import { embedBodies, embedBody } from '../../brain/memory/embed-content.ts';
 import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
@@ -140,39 +140,60 @@ export async function runReindexCore(
     // unrelated rows). The per-row `deleteVec` below handles cleanup either way.
     if (opts.force && !opts.ids) db.exec('DELETE FROM events_vec');
 
-    for (const row of rows) {
+    // Embed in windows of EMBED_BATCH via one batched API call (Gemini
+    // batchEmbedContents), then write each row in its own transaction. The batch
+    // collapses N network round-trips into one — the dominant cost — while the
+    // per-row tx keeps a single bad write from rolling back the whole window. If
+    // the batch call fails wholesale (or returns a short/empty result for a row),
+    // that row falls back to a single embed so a transient batch error never loses
+    // a window.
+    const EMBED_BATCH = 64;
+    for (let i = 0; i < rows.length; i += EMBED_BATCH) {
+      const window = rows.slice(i, i + EMBED_BATCH);
+      let vecs: number[][] = [];
       try {
-        const vec = await embedBody(dispatcher, row.body);
-        const buf = Buffer.from(new Float32Array(vec).buffer);
-        // One tx per row keeps a single failure from rolling back the whole batch.
-        // SQLite handles this cheaply; the embedder is the real time cost, not the writes.
-        db.exec('BEGIN');
-        try {
-          const rowidBig = BigInt(row.id);
-          updateContent.run(buf, row.id);
-          // Idempotent: an existing vec row at this rowid (from a partial prior run, or
-          // because the row had an embedding but got --force'd through) is replaced.
-          deleteVec.run(rowidBig);
-          insertVec.run(rowidBig, buf);
-          db.exec('COMMIT');
-        } catch (txErr) {
-          db.exec('ROLLBACK');
-          throw txErr;
-        }
-        report.embedded++;
-      } catch (err) {
-        report.failed++;
-        const msg = err instanceof Error ? err.message : String(err);
-        // Bound the errors array; one row's failure mode often reflects all rows' failures.
-        if (report.errors.length < 5) report.errors.push(`content_id=${row.id}: ${msg}`);
+        vecs = await embedBodies(
+          dispatcher,
+          window.map((r) => r.body),
+        );
+      } catch {
+        vecs = []; // whole-batch failure → per-row fallback below
       }
-      const processed = report.embedded + report.failed;
-      if (opts.batchSize && processed % opts.batchSize === 0) {
-        opts.onProgress?.({
-          processed,
-          embedded: report.embedded,
-          failed: report.failed,
-        });
+
+      for (let j = 0; j < window.length; j++) {
+        const row = window[j];
+        try {
+          let vec = vecs[j];
+          if (!vec || vec.length === 0) vec = await embedBody(dispatcher, row.body);
+          const buf = Buffer.from(new Float32Array(vec).buffer);
+          db.exec('BEGIN');
+          try {
+            const rowidBig = BigInt(row.id);
+            updateContent.run(buf, row.id);
+            // Idempotent: an existing vec row at this rowid (partial prior run, or a
+            // row that had an embedding but got --force'd through) is replaced.
+            deleteVec.run(rowidBig);
+            insertVec.run(rowidBig, buf);
+            db.exec('COMMIT');
+          } catch (txErr) {
+            db.exec('ROLLBACK');
+            throw txErr;
+          }
+          report.embedded++;
+        } catch (err) {
+          report.failed++;
+          const msg = err instanceof Error ? err.message : String(err);
+          // Bound the errors array; one row's failure mode often reflects all rows'.
+          if (report.errors.length < 5) report.errors.push(`content_id=${row.id}: ${msg}`);
+        }
+        const processed = report.embedded + report.failed;
+        if (opts.batchSize && processed % opts.batchSize === 0) {
+          opts.onProgress?.({
+            processed,
+            embedded: report.embedded,
+            failed: report.failed,
+          });
+        }
       }
     }
   }

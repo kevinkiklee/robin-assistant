@@ -60,3 +60,27 @@ export async function embedBody(
   if (!vec || vec.length === 0) throw new Error('empty embedding returned');
   return vec;
 }
+
+// Cloud embedders (Gemini batchEmbedContents) embed many texts in ONE HTTP call,
+// collapsing N network round-trips into one — the dominant cost when re-embedding
+// thousands of rows or draining the embed-backfill queue. The Ollama fallback loops
+// internally, so this is a no-op speedup there but a large one on cloud. A bigger
+// per-call timeout than the single-row path since the batch does more work.
+const EMBED_BATCH_CALL_TIMEOUT_MS = 120_000;
+
+/**
+ * Embed a batch of bodies in a single dispatcher call. Returns one vector per
+ * input, in input order (the provider contract). Truncates each body to the
+ * embedder's input cap first. Empty input → empty array.
+ */
+export async function embedBodies(
+  dispatcher: LLMDispatcher,
+  bodies: Array<string | Buffer | Uint8Array>,
+): Promise<number[][]> {
+  if (bodies.length === 0) return [];
+  return withTimeout(
+    dispatcher.embed('embed', bodies.map(prepareForEmbed)),
+    EMBED_BATCH_CALL_TIMEOUT_MS,
+    `embed-content-batch(${bodies.length})`,
+  );
+}
