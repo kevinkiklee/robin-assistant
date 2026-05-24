@@ -1,26 +1,31 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
-import type { RobinDb } from '../../brain/memory/db.ts';
-import { migration011 } from '../../brain/memory/migrations/011-agent-usage.ts';
 import type { RunAgentInput, RunAgentResult } from '../../agent/run-agent.ts';
 import { UsageLedger } from '../../agent/usage-ledger.ts';
-import {
-  createWorktree,
-  parseAgentArgs,
-  runAgentCli,
-  writeLearningRecord,
-} from './agent.ts';
+import type { RobinDb } from '../../brain/memory/db.ts';
+import { migration011 } from '../../brain/memory/migrations/011-agent-usage.ts';
+import { createWorktree, parseAgentArgs, runAgentCli, writeLearningRecord } from './agent.ts';
 
 /** A user-data dir with a minimal policies.yaml so loadPolicies returns defaults. */
 function tmpUserData(): string {
   const dir = mkdtempSync(join(tmpdir(), 'robin-agent-cli-'));
   mkdirSync(join(dir, 'config'), { recursive: true });
-  writeFileSync(join(dir, 'config', 'policies.yaml'), 'agent:\n  caps:\n    agentic_on_demand_daily_usd: 50\n');
+  writeFileSync(
+    join(dir, 'config', 'policies.yaml'),
+    'agent:\n  caps:\n    agentic_on_demand_daily_usd: 50\n',
+  );
   return dir;
 }
 
@@ -36,6 +41,24 @@ const okResult: RunAgentResult = {
   turns: 3,
   usage: { inputTokens: 100, outputTokens: 20 },
   costUsd: 0.12,
+};
+
+/**
+ * Fake MCP-server resolver injected so tests never resolve the real CLI binary
+ * (no `pnpm build` needed). Returns the robin / robin-extension configs the
+ * handler's allowlist references; built-in-only handlers get {}.
+ */
+const fakeMcpServers: typeof import('../../agent/mcp-servers.ts')['mcpServersForRun'] = (
+  allowedTools,
+) => {
+  const out: Record<string, { type: 'stdio'; command: string; args: string[] }> = {};
+  if (allowedTools.some((t) => t.startsWith('mcp__robin__'))) {
+    out.robin = { type: 'stdio', command: '/r', args: ['mcp', 'core'] };
+  }
+  if (allowedTools.some((t) => t.startsWith('mcp__robin-extension__'))) {
+    out['robin-extension'] = { type: 'stdio', command: '/r', args: ['mcp', 'extension'] };
+  }
+  return out;
 };
 
 // ── arg parsing ─────────────────────────────────────────────────────────────
@@ -91,6 +114,7 @@ test('runAgentCli: --force lets an autonomous handler through', async () => {
   const r = await runAgentCli(['remediate', '--handler=K', '--force'], {
     userDataDir: tmpUserData(),
     repoRoot: '/repo',
+    mcpServers: fakeMcpServers,
     runAgent: async () => {
       ran = true;
       return okResult;
@@ -112,6 +136,7 @@ test('runAgentCli: read handler (C) does not create a worktree', async () => {
   await runAgentCli(['triage my inbox', '--handler=C'], {
     userDataDir: tmpUserData(),
     repoRoot: '/repo',
+    mcpServers: fakeMcpServers,
     runAgent: async (input) => {
       seenInput = input;
       return okResult;
@@ -125,6 +150,8 @@ test('runAgentCli: read handler (C) does not create a worktree', async () => {
   });
   assert.equal(worktreeCalls, 0, 'no worktree for a read handler');
   assert.equal(seenInput?.surface, 'agentic-on-demand');
+  // C's allowlist is mcp__robin-extension__* tools → that server is wired in.
+  assert.deepEqual(Object.keys(seenInput?.mcpServers ?? {}), ['robin-extension']);
 });
 
 // ── worktree path construction (write handler A) ─────────────────────────────
@@ -150,6 +177,8 @@ test('runAgentCli: write handler (A) builds a worktree + passes it as cwd', asyn
   assert.equal(r.status, 'success');
   assert.equal(seenInput?.cwd, '/repo/.worktrees/2026-05-24T12-00-00-000Z');
   assert.equal(seenInput?.permissionMode, 'acceptEdits');
+  // A is built-in tools only (Read/Glob/Grep/Edit/Write/Bash) → no MCP servers wired.
+  assert.deepEqual(seenInput?.mcpServers, {});
 });
 
 test('runAgentCli: write handler prunes worktree when no changes were made', async () => {
@@ -198,6 +227,7 @@ test('runAgentCli: non-A handler does NOT write a learning record', async () => 
   await runAgentCli(['triage my inbox', '--handler=C'], {
     userDataDir,
     repoRoot: '/repo',
+    mcpServers: fakeMcpServers,
     runAgent: async () => okResult,
     openLedger: fakeLedger,
     log: () => {},

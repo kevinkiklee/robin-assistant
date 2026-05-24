@@ -4,6 +4,7 @@ import { allMigrations, applyMigrations } from '../brain/memory/migrations/index
 import { loadPolicies } from '../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../lib/paths.ts';
 import { REGISTRY } from './handlers/index.ts';
+import { mcpServersForRun } from './mcp-servers.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from './run-agent.ts';
 import { UsageLedger } from './usage-ledger.ts';
 
@@ -50,6 +51,8 @@ export interface RunnerEntryDeps {
   log?: (msg: string) => void;
   /** Open + migrate the ledger DB. Injected by tests to avoid the real DB. */
   openLedger?: (userDataDir: string) => { ledger: UsageLedger; close: () => void };
+  /** Resolve the handler's Robin MCP servers. Injected by tests to skip the build. */
+  mcpServers?: typeof mcpServersForRun;
 }
 
 export interface RunnerEntryResult {
@@ -84,6 +87,7 @@ export async function runRunnerEntry(
   const repoRoot = deps.repoRoot ?? process.cwd();
   const run = deps.runAgent ?? runAgent;
   const openLedger = deps.openLedger ?? defaultOpenLedger;
+  const buildMcpServers = deps.mcpServers ?? mcpServersForRun;
 
   if (!parsed.handler) {
     return { status: 'error', message: 'usage: runner-entry --handler=<B..L>', exitCode: 2 };
@@ -110,7 +114,10 @@ export async function runRunnerEntry(
 
   const goal = parsed.goal ?? DEFAULT_GOALS[def.id] ?? `Run autonomous handler ${def.id}.`;
   const built = def.build(goal, { repoRoot });
-  const input: RunAgentInput = { ...built, surface: 'agentic-autonomous' };
+  // Give the run Robin's own MCP servers for any mcp__robin__* / mcp__robin-extension__*
+  // tool in the handler's allowlist; built-in-only handlers get an empty map.
+  const mcpServers = buildMcpServers(built.allowedTools, { repoRoot, userDataDir });
+  const input: RunAgentInput = { ...built, surface: 'agentic-autonomous', mcpServers };
 
   const cap = loadPolicies(userDataDir).agent.caps.agentic_autonomous_daily_usd;
   const { ledger, close } = openLedger(userDataDir);

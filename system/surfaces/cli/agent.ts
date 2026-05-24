@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REGISTRY } from '../../agent/handlers/index.ts';
+import { mcpServersForRun } from '../../agent/mcp-servers.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from '../../agent/run-agent.ts';
 import { UsageLedger } from '../../agent/usage-ledger.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
@@ -151,6 +152,8 @@ export interface AgentCliDeps {
   log?: (msg: string) => void;
   /** Open + migrate the ledger DB. Injected by tests to avoid the real DB. */
   openLedger?: (userDataDir: string) => { ledger: UsageLedger; close: () => void };
+  /** Resolve the handler's Robin MCP servers. Injected by tests to skip the build. */
+  mcpServers?: typeof mcpServersForRun;
 }
 
 export interface AgentCliResult {
@@ -186,6 +189,7 @@ export async function runAgentCli(
   const rmWorktree = deps.pruneWorktree ?? pruneWorktree;
   const hasChanges = deps.worktreeHasChanges ?? worktreeHasChanges;
   const openLedger = deps.openLedger ?? defaultOpenLedger;
+  const buildMcpServers = deps.mcpServers ?? mcpServersForRun;
 
   if (!parsed.goal) {
     return {
@@ -251,9 +255,13 @@ export async function runAgentCli(
     ...(effectiveWorktree ? { worktree: effectiveWorktree } : {}),
   };
   const built = def.build(parsed.goal, ctx);
+  // Wire Robin's own MCP servers for any mcp__robin__* / mcp__robin-extension__*
+  // tool the handler allows; built-in-only handlers (e.g. A) get an empty map.
+  const mcpServers = buildMcpServers(built.allowedTools, { repoRoot, userDataDir });
   const input: RunAgentInput = {
     ...built,
     surface: 'agentic-on-demand',
+    mcpServers,
     ...(parsed.maxTurns ? { maxTurns: parsed.maxTurns } : {}),
     ...(parsed.budget !== undefined ? { maxBudgetUsd: parsed.budget } : {}),
   };

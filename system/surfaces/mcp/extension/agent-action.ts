@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { REGISTRY } from '../../../agent/handlers/index.ts';
+import { mcpServersForRun } from '../../../agent/mcp-servers.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from '../../../agent/run-agent.ts';
 import { UsageLedger } from '../../../agent/usage-ledger.ts';
 import type { RobinDb } from '../../../brain/memory/db.ts';
@@ -18,6 +19,8 @@ export interface AgentActionDeps {
   runAgent?: typeof runAgent;
   userDataDir?: string;
   repoRoot?: string;
+  /** Resolve the handler's Robin MCP servers. Injected by tests to skip the build. */
+  mcpServers?: typeof mcpServersForRun;
 }
 
 export type AgentActionResult =
@@ -70,9 +73,13 @@ export async function runAgentAction(
   const userDataDir = deps.userDataDir ?? resolveUserDataDir();
   const repoRoot = deps.repoRoot ?? process.cwd();
   const run = deps.runAgent ?? runAgent;
+  const buildMcpServers = deps.mcpServers ?? mcpServersForRun;
 
   const built = def.build(params.goal, { repoRoot });
-  const input: RunAgentInput = { ...built, surface: 'agentic-on-demand' };
+  // Wire Robin's own MCP servers for the handler's mcp__robin__* /
+  // mcp__robin-extension__* tools; built-in-only handlers get an empty map.
+  const mcpServers = buildMcpServers(built.allowedTools, { repoRoot, userDataDir });
+  const input: RunAgentInput = { ...built, surface: 'agentic-on-demand', mcpServers };
 
   const cap = loadPolicies(userDataDir).agent.caps.agentic_on_demand_daily_usd;
   const ledger = new UsageLedger(deps.db);

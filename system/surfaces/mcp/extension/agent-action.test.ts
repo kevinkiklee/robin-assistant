@@ -36,6 +36,24 @@ const okResult: RunAgentResult = {
   costUsd: 0.08,
 };
 
+/**
+ * Fake MCP-server resolver injected so tests never resolve the real CLI binary
+ * (no `pnpm build` needed). Mirrors the real shape: returns the robin-extension
+ * config when the handler allows an `mcp__robin-extension__*` tool, else {}.
+ */
+const fakeMcpServers: typeof import('../../../agent/mcp-servers.ts')['mcpServersForRun'] = (
+  allowedTools,
+) => {
+  const out: Record<string, { type: 'stdio'; command: string; args: string[] }> = {};
+  if (allowedTools.some((t) => t.startsWith('mcp__robin__'))) {
+    out.robin = { type: 'stdio', command: '/r', args: ['mcp', 'core'] };
+  }
+  if (allowedTools.some((t) => t.startsWith('mcp__robin-extension__'))) {
+    out['robin-extension'] = { type: 'stdio', command: '/r', args: ['mcp', 'extension'] };
+  }
+  return out;
+};
+
 test('agent action: rejects an unknown handler', async () => {
   const db = freshDb();
   const out = await runAgentAction(
@@ -97,6 +115,7 @@ test('agent action: handler I runs with confirm:true', async () => {
       db,
       userDataDir: tmpUserData(),
       repoRoot: '/repo',
+      mcpServers: fakeMcpServers,
       runAgent: async (input) => {
         seenInput = input;
         return okResult;
@@ -119,6 +138,7 @@ test('agent action: on-demand handler C runs through runAgent', async () => {
       db,
       userDataDir: tmpUserData(),
       repoRoot: '/repo',
+      mcpServers: fakeMcpServers,
       runAgent: async (input) => {
         seenInput = input;
         return okResult;
@@ -129,5 +149,7 @@ test('agent action: on-demand handler C runs through runAgent', async () => {
   assert.equal(out.turns, 4);
   assert.equal(out.costUsd, 0.08);
   assert.equal(seenInput?.surface, 'agentic-on-demand');
+  // C's allowlist is all mcp__robin-extension__* tools → that server is wired in.
+  assert.deepEqual(Object.keys(seenInput?.mcpServers ?? {}), ['robin-extension']);
   closeDb(db);
 });

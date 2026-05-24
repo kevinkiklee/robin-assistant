@@ -35,6 +35,22 @@ const okResult: RunAgentResult = {
   costUsd: 0.05,
 };
 
+/**
+ * Fake MCP-server resolver injected so tests never resolve the real CLI binary
+ * (no `pnpm build` needed). Returns the robin / robin-extension configs the
+ * handler's allowlist references; built-in-only handlers get {}.
+ */
+const fakeMcpServers: typeof import('./mcp-servers.ts')['mcpServersForRun'] = (allowedTools) => {
+  const out: Record<string, { type: 'stdio'; command: string; args: string[] }> = {};
+  if (allowedTools.some((t) => t.startsWith('mcp__robin__'))) {
+    out.robin = { type: 'stdio', command: '/r', args: ['mcp', 'core'] };
+  }
+  if (allowedTools.some((t) => t.startsWith('mcp__robin-extension__'))) {
+    out['robin-extension'] = { type: 'stdio', command: '/r', args: ['mcp', 'extension'] };
+  }
+  return out;
+};
+
 // ── arg parsing ─────────────────────────────────────────────────────────────
 
 test('parseRunnerArgs: handler is parsed + uppercased', () => {
@@ -72,6 +88,8 @@ test('runRunnerEntry: runs an autonomous handler with the autonomous surface + c
   // The handler's own build() ran — B is read-only research (plan mode).
   assert.equal(captured.input?.permissionMode, 'plan');
   assert.ok((captured.input?.goal.length ?? 0) > 0, 'a default goal should be supplied');
+  // B's allowlist is built-in tools only (WebSearch/WebFetch/Read) → no MCP servers.
+  assert.deepEqual(captured.input?.mcpServers, {});
 });
 
 test('runRunnerEntry: --goal overrides the default goal', async () => {
@@ -92,17 +110,22 @@ test('runRunnerEntry: --goal overrides the default goal', async () => {
 test('runRunnerEntry: passes the transcriptDir under user-data/agent-runs', async () => {
   const ud = tmpUserData();
   let transcriptDir: string | undefined;
+  let seenInput: RunAgentInput | undefined;
   await runRunnerEntry(['--handler=H'], {
     userDataDir: ud,
     repoRoot: '/repo',
     log: () => {},
     openLedger: fakeLedger,
-    runAgent: async (_input, deps) => {
+    mcpServers: fakeMcpServers,
+    runAgent: async (input, deps) => {
+      seenInput = input;
       transcriptDir = deps.transcriptDir;
       return okResult;
     },
   });
   assert.equal(transcriptDir, join(ud, 'agent-runs'));
+  // H is dream-enrich over mcp__robin__* tools → the robin core server is wired in.
+  assert.deepEqual(Object.keys(seenInput?.mcpServers ?? {}), ['robin']);
 });
 
 // ── autonomous-only validation ───────────────────────────────────────────────
