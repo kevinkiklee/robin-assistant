@@ -477,10 +477,47 @@ export function isLowQualityEntity(name: string): boolean {
   // Boolean / state-flag tokens. Length-gated to avoid clobbering legitimate
   // entities like "Disabled by maintenance window" — only catch the bare flag.
   if (STATE_FLAG_NAMES.has(lower) && trimmed.length <= 10) return true;
+  // Generic programming nouns + Claude Code tool names — high-frequency words
+  // with no entity value ("file", "config", "data", "Read", "Bash", "TodoWrite").
+  if (GENERIC_NOISE_NAMES.has(lower)) return true;
+  // Money amounts ("$120", "$2,900/mo", "$300-554/mo") — transaction figures, not entities.
+  if (/^\$[\d,]/.test(trimmed)) return true;
+  // CLI flags ("--force", "--skip-mcp").
+  if (/^--/.test(trimmed)) return true;
+  // Dotfiles / extension fragments (".env", ".git", ".com", ".nvmrc").
+  if (/^\./.test(trimmed)) return true;
+  // All-lowercase snake_case = code variables ("opt_out_requested", "send_channel").
+  // Uppercase/mixed snake (VERCEL_OIDC_TOKEN) is a legit env-var entity, so keep it.
+  if (/^[a-z][a-z0-9]*(_[a-z0-9]+)+$/.test(trimmed)) return true;
+  // File paths / npm package names / repo slugs: whitespace-free tokens with a
+  // path structure — ≥2 slashes, an @scope or ./ / leading prefix, or a file
+  // extension. Single-slash tech shorthand ("CI/CD", "TCP/IP", "A/B") is spared.
+  if (
+    !/\s/.test(trimmed) &&
+    /\//.test(trimmed) &&
+    ((trimmed.match(/\//g)?.length ?? 0) >= 2 ||
+      /^[@/]/.test(trimmed) ||
+      /\.\w{1,5}$/.test(trimmed))
+  ) {
+    return true;
+  }
   return false;
 }
 
 const ROLE_MARKER_NAMES = new Set(['user', 'assistant', 'tool', 'system', 'human', 'ai']);
+// Generic nouns + Claude Code tool names that get mis-extracted as entities.
+const GENERIC_NOISE_NAMES = new Set([
+  // generic programming/content nouns
+  'file', 'files', 'code', 'function', 'functions', 'value', 'values', 'data',
+  'error', 'errors', 'test', 'tests', 'result', 'results', 'output', 'input',
+  'text', 'line', 'lines', 'table', 'tables', 'list', 'lists', 'item', 'items',
+  'step', 'steps', 'note', 'notes', 'todo', 'todos', 'example', 'examples',
+  'content', 'config', 'json', 'thing', 'things', 'stuff', 'object', 'objects',
+  'field', 'fields', 'row', 'rows', 'column', 'columns', 'string', 'strings',
+  // Claude Code tool names
+  'read', 'edit', 'write', 'bash', 'grep', 'glob', 'task', 'ls', 'multiedit',
+  'todowrite', 'webfetch', 'websearch', 'notebookedit',
+]);
 const STATE_FLAG_NAMES = new Set([
   'on',
   'off',
