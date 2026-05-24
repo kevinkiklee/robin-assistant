@@ -16,6 +16,14 @@
     "LICENSE"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevinkiklee/robin-assistant.git"
+  },
+  "homepage": "https://github.com/kevinkiklee/robin-assistant#readme",
+  "bugs": {
+    "url": "https://github.com/kevinkiklee/robin-assistant/issues"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node ./system/scripts/build-extensions.mjs",
     "build:extensions": "node ./system/scripts/build-extensions.mjs",
