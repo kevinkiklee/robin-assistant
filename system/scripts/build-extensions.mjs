@@ -55,9 +55,22 @@ const rewriteTsToJs = {
   setup(b) {
     b.onLoad({ filter: /\.ts$/ }, async (args) => {
       let src = await readFile(args.path, 'utf8');
+      // 1) Relative `.ts` import specifiers → `.js` (the compiled siblings).
       src = src.replace(
         /(from\s+['"])(\.\.?\/[^'"]*?)\.ts(['"])/g,
         (_m, pre, path, post) => `${pre}${path}.js${post}`,
+      );
+      // 2) Relative imports that reach UP into the framework source tree
+      // (`…/system/…`) must point at the COMPILED tree (`…/dist/…`) at runtime:
+      // user-data extensions live in place (not under dist), and the compiled
+      // daemon `node`s `dist/`, so `system/foo.js` does not exist on disk —
+      // only `dist/foo.js` does. Type-only imports are erased and unaffected;
+      // this rewrite is what lets a user-data extension import system RUNTIME
+      // values (e.g. a job calling `runAgent` / `acquire`). The `.ts→.js` pass
+      // above has already run, so we match the final `/system/` path segment.
+      src = src.replace(
+        /(from\s+['"])(\.\.?(?:\/\.\.)*)\/system\//g,
+        (_m, pre, dots) => `${pre}${dots}/dist/`,
       );
       return { contents: src, loader: 'ts' };
     });
