@@ -446,7 +446,7 @@ async function main(): Promise<void> {
           // Install both surfaces so Claude sees mcp__robin__* (memory ops) and
           // mcp__robin-extension__* (integration ops + user-extension actions).
           // Without the extension entry, jobs like daily-brief can't reach gmail,
-          // calendar, github, linear, chrome, or finance integration data.
+          // calendar, linear, chrome, or finance integration data.
           const coreResult = upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'core' }), {
             name: 'robin',
           });

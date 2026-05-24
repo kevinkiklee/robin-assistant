@@ -63,7 +63,7 @@ export function resolveRunnableCommand(input: string): string {
  * pins ROBIN_USER_DATA_DIR so the spawned server uses the same user-data the
  * installer was pointed at. `surface` picks between the two MCP servers:
  *   - 'core' (default): memory ops — recall, remember, find_entity, journal, etc.
- *   - 'extension': integration ops + per-source tools — gmail, calendar, github,
+ *   - 'extension': integration ops + per-source tools — gmail, calendar,
  *     linear, chrome, finance, plus user-extension actions
  *
  * Both surfaces are registered separately so Claude sees tool names like

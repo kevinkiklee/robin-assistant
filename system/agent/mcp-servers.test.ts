@@ -62,11 +62,7 @@ const ALL: Record<string, McpServerConfigLike> = {
 };
 
 test('serversForTools: extension-only tool list → just robin-extension', () => {
-  const tools = [
-    'mcp__robin-extension__gmail',
-    'mcp__robin-extension__google_calendar',
-    'mcp__robin-extension__github',
-  ];
+  const tools = ['mcp__robin-extension__gmail', 'mcp__robin-extension__google_calendar'];
   const subset = serversForTools(tools, ALL);
   assert.deepEqual(Object.keys(subset), ['robin-extension']);
   assert.equal(subset['robin-extension'], ALL['robin-extension']);

@@ -15,7 +15,6 @@ test('C: build() config — trigger, permissionMode, allowedTools', () => {
     'mcp__robin-extension__gmail',
     'mcp__robin-extension__google_calendar',
     'mcp__robin-extension__linear',
-    'mcp__robin-extension__github',
     'mcp__robin-extension__chrome',
   ]);
   assert.equal(out.maxTurns, 25);

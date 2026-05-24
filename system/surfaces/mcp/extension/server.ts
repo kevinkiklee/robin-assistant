@@ -14,7 +14,6 @@ import { allMigrations, applyMigrations } from '../../../brain/memory/migrations
 import { buildContext } from '../../../integrations/_runtime/context.ts';
 import { actions as chromeActions } from '../../../integrations/builtin/chrome/index.ts';
 import { actions as financeActions } from '../../../integrations/builtin/finance_quote/index.ts';
-import { actions as githubActions } from '../../../integrations/builtin/github/index.ts';
 // Static imports of integration action maps so type-checks catch breakage.
 import { actions as gmailActions } from '../../../integrations/builtin/gmail/index.ts';
 import { actions as gcalActions } from '../../../integrations/builtin/google_calendar/index.ts';
@@ -121,14 +120,6 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
     gcalActions as unknown as IntegrationActions,
     ['list_events', 'get_event'],
     'Read Google Calendar: list upcoming events, fetch event details',
-  );
-  makeIntegrationTool(
-    server,
-    deps,
-    'github',
-    githubActions as unknown as IntegrationActions,
-    ['notifications', 'recent_activity'],
-    'Read GitHub: unread notifications + recent activity',
   );
   const allLinearActions = { ...linearActions, ...linearWriteActions };
   makeIntegrationTool(
