@@ -25,9 +25,58 @@ Open Claude Code anywhere on your machine. Robin's MCP tools (`mcp__robin__*`) a
 
 Apple Silicon recommended for local inference. Cloud-only configs work on any platform.
 
-## How it works
+## Architecture
 
-Robin has three layers:
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Claude Code (MCP client)                     │
+│              ┌──────────────┐          ┌───────────────┐            │
+│              │  robin-core  │          │robin-extension│            │
+│              │  (16 tools)  │          │  (14 tools)   │            │
+│              └──────┬───────┘          └───────┬───────┘            │
+└─────────────────────┼──────────────────────────┼────────────────────┘
+                      │          stdio           │
+┌─────────────────────┼──────────────────────────┼────────────────────┐
+│                     ▼          DAEMON          ▼                    │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                      SCHEDULER                              │    │
+│  │  tick loop (1s) → claim job → run handler → re-arm cron     │    │
+│  │  lease TTL (5m) · reaper (60s) · withTimeout (120s/handler) │    │
+│  └───────┬────────────────┬───────────────────┬────────────────┘    │
+│          │                │                   │                     │
+│  ┌───────▼──────┐ ┌──────▼───────┐  ┌────────▼────────┐           │
+│  │  COGNITION   │ │ INTEGRATIONS │  │     JOBS         │           │
+│  │              │ │              │  │                   │           │
+│  │ biographer   │ │ gmail        │  │ daily-brief       │           │
+│  │ embed-backfill│ │ calendar     │  │ (user-defined)    │           │
+│  │ dream        │ │ github, etc  │  │                   │           │
+│  └───────┬──────┘ └──────┬───────┘  └────────┬────────┘           │
+│          │               │                    │                     │
+│  ┌───────▼───────────────▼────────────────────▼────────────────┐   │
+│  │                       BRAIN                                  │   │
+│  │                                                              │   │
+│  │  Memory         LLM Dispatch        Entity Graph             │   │
+│  │  ┌───────────┐  ┌─────────────┐     ┌──────────────────┐    │   │
+│  │  │ events    │  │ reasoning   │     │ entities         │    │   │
+│  │  │ FTS5      │  │ summarize   │     │ relations        │    │   │
+│  │  │ vec 4096d │  │ embed       │     │ biographer       │    │   │
+│  │  │ beliefs   │  │   ↓         │     │ disambiguation   │    │   │
+│  │  │ predictions│  │ Ollama/cloud│     └──────────────────┘    │   │
+│  │  │ corrections│  └─────────────┘                              │   │
+│  │  └───────────┘                                                │   │
+│  │           ↕                                                   │   │
+│  │    SQLite + sqlite-vec (single file, WAL mode)                │   │
+│  └───────────────────────────────────────────────────────────────┘   │
+│                                                                      │
+│  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │  Health Monitor   │  │ Power Auto   │  │ HTTP (hooks, health) │   │
+│  │  invariants (60s) │  │ battery/quiet│  │ :41273               │   │
+│  │  30m CRIT → exit  │  │ pause/resume │  │ session capture      │   │
+│  └──────────────────┘  └──────────────┘  └──────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Three layers
 
 ```
 system/        Framework: kernel (daemon + scheduler), brain (memory + cognition),
@@ -36,68 +85,92 @@ user-data/     Per-user instance: memory, secrets, extensions, knowledge files (
 dist/          Compiled output (gitignored); pnpm build to regenerate
 ```
 
-The **daemon** owns the schedule, the health monitor, and the integration lifecycle. It runs cognition jobs in the background — extracting entities from your conversations (biographer), embedding content for vector search, and writing a daily journal (dream). A power-auto system pauses on battery and respects quiet hours.
+### The daemon
 
-**Memory** is tiered: an event firehose, FTS5 full-text search, 4096-dim vector embeddings (Matryoshka), an entity/relation graph, topic-keyed beliefs, predictions with Brier calibration, and corrections. Everything lives in a single SQLite database (`user-data/state/db/robin.sqlite`) backed by `sqlite-vec`.
+A single Node.js process, supervised by launchd (macOS). It owns the scheduler, health monitor, integration lifecycle, and HTTP hook receiver. On startup it loads secrets from `user-data/config/secrets/.env`, applies migrations, wires integrations into cron jobs, and starts the tick loop.
 
-**LLM dispatch** is role-based: `reasoning`, `summarize`, `embed` — each mapped to a provider + model in `user-data/config/models.yaml`. Default provider is Ollama (local). A dormant DeepSeek provider exists for cloud fallback.
+The **scheduler** claims one pending job per tick (1s interval), runs the handler inside a 120s timeout, and re-arms cron jobs on completion — even on failure, so transient errors can't permanently silence a schedule. A 60s lease reaper recovers jobs abandoned by crashed handlers. If the tick loop itself hangs (handler blocks past the timeout), the health monitor escalates through a 30-minute sustained-CRITICAL gate and then `exit(1)`s for launchd respawn.
 
-For the full architectural deep dive, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+### Memory
 
-## MCP servers
+All memory lives in a single SQLite file (`robin.sqlite`) with `sqlite-vec` for vector search:
+
+| Layer | What it stores |
+|---|---|
+| **Events** | Append-only firehose — every captured session, integration tick, belief-update, prediction, daily briefing |
+| **FTS5** | Full-text search index over event content bodies |
+| **Vector (4096-dim)** | Matryoshka embeddings via `qwen3-embedding:8b`, deferred from the ingest hot-path into a batch job |
+| **Entity graph** | ~5000+ entities (person, place, tool, service) and ~14000+ relations, extracted by the biographer |
+| **Beliefs** | Topic-keyed claims with auto-supersession — queryable current truth via `recall_belief` |
+| **Predictions** | Confidence-calibrated forecasts with Brier scoring, resolved by the dream job |
+| **Corrections** | What Robin said wrong + the correction — feeds the self-learning loop |
+
+**Recall** is hybrid: lexical (FTS5) + vector (cosine similarity) + entity-graph traversal, with mode selection (`lex`, `vec`, `hybrid`). When the embedder is unavailable, recall degrades to FTS5-only rather than failing.
+
+### Cognition
+
+Three background jobs run on cron schedules:
+
+- **Biographer** — extracts entities and relations from captured Claude Code sessions. Multi-tick: chunks sessions at 10k chars, processes ≤10 chunks per tick, and persists progress so sessions resume across cron fires. A circuit breaker aborts without advancing the cursor when the LLM is unreachable, preventing empty-marker corruption.
+- **Embed-backfill** — deferred embedding of new content rows. Runs every minute, single-flight against Ollama.
+- **Dream** — nightly at 03:00: resolves overdue predictions, rolls up daily metrics, generates a narrative journal entry.
+
+### LLM dispatch
+
+Role-based routing defined in `user-data/config/models.yaml`:
+
+```yaml
+roles:
+  embed:     { provider: ollama, model: qwen3-embedding:8b }
+  reasoning: { provider: ollama, model: qwen3.5:35b-a3b }
+  summarize: { provider: ollama, model: qwen3.5:35b-a3b }
+```
+
+Every call is wrapped in `withTimeout` (default 5 min, overridable per-call). Providers are registered at startup with `lenient: true` — missing secrets produce a warning, not a crash.
+
+### Capture pipeline
+
+A Claude Code hook (`~/.claude/settings.json`, installed via `robin hooks install`) POSTs session transcripts to the daemon's HTTP server on session end. The daemon projects the JSONL into turns, applies skip rules (short sessions, out-of-scope CWD), deduplicates by content hash, and writes a `session.captured` event. The biographer picks these up on its next cron tick.
+
+For the full deep dive — database schema, integration contract, scheduler internals, and all invariants — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+### Integrations
+
+Integrations connect Robin to external data sources. Each is a directory with an `integration.yaml` manifest and an `index.ts` exporting a `tick()` function. The daemon runs them on their cron schedule — every 15 minutes for Gmail, every 30 for Calendar, every 12 hours for eBird, etc.
+
+An integration tick pulls data from an API, normalizes it, and calls `ingest()` to write events into the database. The ingest path handles content-hash dedup, so a tick that returns the same data twice doesn't create duplicate events. Each tick records a heartbeat (`last_attempt_at`, `last_ingest_count`, `consecutive_errors`) that the health monitor and the daily brief read to detect degradation.
+
+**9 ship built-in** (Gmail, Calendar, GitHub, Linear, Chrome history, weather, finance quotes, Claude Code session capture, notifications). **User extensions** live in `user-data/extensions/integrations/` and are loaded identically — the daemon's file watcher hot-reloads them on change, no restart required.
+
+OAuth integrations (Gmail, Calendar) rotate tokens on Google's 7-day testing-mode cycle. `robin reauth <name>` opens a one-shot local OAuth flow: browser consent → localhost callback → new refresh token written to `.env` → daemon bounced.
+
+### Skills
+
+Skills are reusable, named methodologies — a directory with a `SKILL.md` (plus optional reference files). Robin serves skill content via the `skill` MCP tool; it never executes anything — the MCP client (Claude Code) reads and runs bundled scripts itself.
+
+- **System skills** (`system/skills/builtin/`) ship with the package.
+- **User skills** (`user-data/extensions/skills/`) are personal, gitignored. A user skill with the same name shadows a system skill.
+
+### MCP servers
 
 Robin exposes two MCP servers (stdio transport, configured via `.mcp.json`):
 
-**robin-core** — memory + cognition:
-`recall`, `remember`, `believe`, `recall_belief`, `find_entity`, `get`, `list`, `predict`, `record_correction`, `audit`, `explain`, `health`, `metrics`, `journal`, `power`, `skill`
+| Server | Tools | Purpose |
+|---|---|---|
+| **robin-core** | `recall`, `remember`, `believe`, `recall_belief`, `find_entity`, `get`, `list`, `predict`, `record_correction`, `audit`, `explain`, `health`, `metrics`, `journal`, `power`, `skill` | Memory, cognition, and self-model |
+| **robin-extension** | `gmail`, `google_calendar`, `github`, `linear`, `chrome`, `finance`, `spotify_write`, `run`, `integration_status`, `ingest`, `related_entities`, `resolve_prediction`, `check_action`, `update` | Integration actions + daemon control |
 
-**robin-extension** — integrations + actions:
-`gmail`, `google_calendar`, `github`, `linear`, `chrome`, `finance`, `spotify_write`, `run`, `integration_status`, `ingest`, `related_entities`, `resolve_prediction`, `check_action`, `update`
+Copy `.mcp.json.example` to `.mcp.json` and adjust paths to connect.
 
-Copy `.mcp.json.example` to `.mcp.json` and adjust paths to set up.
+### The self-learning loop
 
-## Skills
+Robin improves over time through three feedback mechanisms:
 
-Robin has a skills system for reusable, named methodologies. A skill is a directory with a `SKILL.md` (plus optional reference files or scripts). Robin serves the skill content via the `skill` MCP tool — it never executes anything; Claude Code reads and runs bundled scripts itself.
+1. **Corrections** — when Robin says something wrong, `record_correction` logs the error and the fix. The biographer's prompt includes recent corrections as few-shot examples, so the same mistake tends not to recur.
+2. **Beliefs** — `believe` persists a topic-keyed claim that auto-supersedes the prior belief for that topic. `recall_belief` returns current truth without embedding search. Wrong predictions fold into belief-updates as retractions.
+3. **Predictions** — `predict` logs a confidence-calibrated forecast with a deadline. The dream job resolves overdue predictions and computes Brier scores for calibration tracking.
 
-Skills live in two places:
-- **System skills** (`system/skills/builtin/`) — ship with the package.
-- **User skills** (`user-data/extensions/skills/`) — personal, gitignored. A user skill with the same name shadows a system skill.
-
-Shipped system skills: `skill-authoring`, `memory-curation`, `web-research`.
-
-To create a skill: `skill({ name: "skill-authoring" })` and follow the instructions.
-
-## Extensions
-
-**Integrations** (`user-data/extensions/integrations/<name>/`) connect Robin to external data sources. Each has an `integration.yaml` manifest and an `index.ts` with a `tick()` function. The daemon runs them on a cron schedule. 9 integrations ship built-in; user extensions are loaded identically.
-
-**Jobs** (`user-data/extensions/jobs/<name>/`) handle cognitive work that doesn't fit the read-tick model (e.g. the daily brief). Each has a `job.yaml` manifest and a `run(ctx)` method. The daemon's file watcher hot-reloads both integrations and jobs on change.
-
-See `user-data/extensions/AUTHORING.md` for the extension contract.
-
-## CLI
-
-Robin is designed to be invisible after install. These commands are rare:
-
-| Command | What it does |
-|---|---|
-| `robin status` | Power, capture, and network state |
-| `robin pause` / `resume` | Pause or resume scheduled work |
-| `robin incognito --for 1h` | Disable session capture temporarily |
-| `robin offline` / `online` | Toggle outbound network |
-| `robin doctor` | Diagnostic + invariant check |
-| `robin integrations` | List integrations and their health |
-| `robin reauth <name>` | Re-run OAuth for an integration |
-| `robin reindex` | Backfill embeddings |
-| `robin db backup` / `restore` / `vacuum` | Database maintenance |
-| `robin upgrade` | Apply pending schema migrations |
-| `robin publish --source <file>` | Publish markdown to the web |
-| `robin daemon install` / `uninstall` | Manage the launchd agent |
-
-For the `robin publish` workflow details, see [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
-
-## Configuration
+### Configuration
 
 All user-editable config lives in `user-data/config/`:
 
