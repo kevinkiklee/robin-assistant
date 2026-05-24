@@ -65,33 +65,72 @@ export const integration: Integration = {
       return { status: 'skipped', message: err instanceof Error ? err.message : String(err) };
     }
 
-    const notifications = await gh<GhNotification[]>(
-      ctx,
-      '/notifications?all=false&per_page=20',
-      token,
-    );
     let ingested = 0;
-    const seen = new Set(JSON.parse(ctx.state.get('seen_notification_ids') ?? '[]'));
-    for (const n of notifications) {
-      if (seen.has(n.id)) continue;
-      seen.add(n.id);
-      await ingest(ctx.db, ctx.llm, {
-        kind: 'integration.github.notification',
-        source: 'github',
-        content: `[${n.repository.full_name}] ${n.subject.title} (${n.subject.type}, reason: ${n.reason})`,
-        payload: {
-          id: n.id,
-          repo: n.repository.full_name,
-          reason: n.reason,
-          type: n.subject.type,
-          updated_at: n.updated_at,
-        },
-      });
-      ingested++;
+
+    // --- Notifications (may 403 if PAT lacks the notifications scope) ---
+    const seenNotifs = new Set(JSON.parse(ctx.state.get('seen_notification_ids') ?? '[]'));
+    try {
+      const notifications = await gh<GhNotification[]>(
+        ctx,
+        '/notifications?all=false&per_page=20',
+        token,
+      );
+      for (const n of notifications) {
+        if (seenNotifs.has(n.id)) continue;
+        seenNotifs.add(n.id);
+        await ingest(ctx.db, ctx.llm, {
+          kind: 'integration.github.notification',
+          source: 'github',
+          content: `[${n.repository.full_name}] ${n.subject.title} (${n.subject.type}, reason: ${n.reason})`,
+          payload: {
+            id: n.id,
+            repo: n.repository.full_name,
+            reason: n.reason,
+            type: n.subject.type,
+            updated_at: n.updated_at,
+          },
+        });
+        ingested++;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('403')) {
+        ctx.log.warn({ err: msg }, 'GitHub /notifications returned 403 — PAT likely missing notifications scope; skipping');
+      } else {
+        throw err;
+      }
     }
-    // Truncate seen-set to 200 most recent to keep state KV small
-    const seenArr = Array.from(seen).slice(-200);
-    ctx.state.set('seen_notification_ids', JSON.stringify(seenArr));
+    const seenNotifsArr = Array.from(seenNotifs).slice(-200);
+    ctx.state.set('seen_notification_ids', JSON.stringify(seenNotifsArr));
+
+    // --- Recent activity (user events — always works with basic PAT scopes) ---
+    const seenEvents = new Set(JSON.parse(ctx.state.get('seen_event_ids') ?? '[]'));
+    try {
+      const username = await resolveUsername(ctx, token);
+      const events = await gh<GhEvent[]>(ctx, `/users/${username}/events?per_page=20`, token);
+      for (const e of events) {
+        if (seenEvents.has(e.id)) continue;
+        seenEvents.add(e.id);
+        await ingest(ctx.db, ctx.llm, {
+          kind: 'integration.github.event',
+          source: 'github',
+          content: `[${e.repo.name}] ${e.type} at ${e.created_at}`,
+          payload: {
+            id: e.id,
+            type: e.type,
+            repo: e.repo.name,
+            created_at: e.created_at,
+          },
+        });
+        ingested++;
+      }
+    } catch (err) {
+      // Events are best-effort; don't fail the tick if this secondary source errors
+      ctx.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'GitHub /events failed (non-fatal)');
+    }
+    const seenEventsArr = Array.from(seenEvents).slice(-200);
+    ctx.state.set('seen_event_ids', JSON.stringify(seenEventsArr));
+
     ctx.state.set('last_sync', ctx.now().toISOString());
     return { status: 'ok', ingested };
   },
