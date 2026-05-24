@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { REGISTRY } from './types.ts';
 import { denyUnsafe, handler } from './a-self-improvement.ts';
+import { REGISTRY } from './types.ts';
 
 const ctx = { repoRoot: '/repo', worktree: '/repo/.worktrees/x' };
 
@@ -33,10 +33,7 @@ test('denyUnsafe: denies destructive / push / commit Bash', () => {
   assert.equal(denyUnsafe('Bash', { command: 'git push origin main' }, cwd).behavior, 'deny');
   assert.equal(denyUnsafe('Bash', { command: 'git commit -m wip' }, cwd).behavior, 'deny');
   assert.equal(denyUnsafe('Bash', { command: 'rm -rf node_modules' }, cwd).behavior, 'deny');
-  assert.equal(
-    denyUnsafe('Bash', { command: 'pnpm build && git push' }, cwd).behavior,
-    'deny',
-  );
+  assert.equal(denyUnsafe('Bash', { command: 'pnpm build && git push' }, cwd).behavior, 'deny');
 });
 
 test('denyUnsafe: allows safe Bash (test/lint)', () => {
@@ -45,19 +42,13 @@ test('denyUnsafe: allows safe Bash (test/lint)', () => {
 });
 
 test('denyUnsafe: denies Write/Edit escaping cwd', () => {
-  assert.equal(
-    denyUnsafe('Write', { file_path: '/etc/passwd' }, cwd).behavior,
-    'deny',
-  );
+  assert.equal(denyUnsafe('Write', { file_path: '/etc/passwd' }, cwd).behavior, 'deny');
   assert.equal(
     denyUnsafe('Edit', { file_path: '/repo/.worktrees/x/../../secret.ts' }, cwd).behavior,
     'deny',
   );
   // Relative path traversal also escapes when resolved against cwd.
-  assert.equal(
-    denyUnsafe('Write', { file_path: '../../outside.ts' }, cwd).behavior,
-    'deny',
-  );
+  assert.equal(denyUnsafe('Write', { file_path: '../../outside.ts' }, cwd).behavior, 'deny');
 });
 
 test('denyUnsafe: allows in-cwd Edit', () => {
@@ -66,10 +57,7 @@ test('denyUnsafe: allows in-cwd Edit', () => {
     'allow',
   );
   // Relative in-cwd path resolves inside cwd.
-  assert.equal(
-    denyUnsafe('Edit', { file_path: 'system/agent/sdk.ts' }, cwd).behavior,
-    'allow',
-  );
+  assert.equal(denyUnsafe('Edit', { file_path: 'system/agent/sdk.ts' }, cwd).behavior, 'allow');
 });
 
 test('denyUnsafe: passes through unrelated tools', () => {

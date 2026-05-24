@@ -5,6 +5,7 @@ export type SdkStatus = 'success' | 'max_turns' | 'max_budget' | 'error';
 export interface SdkResult {
   status: SdkStatus;
   text: string;
+  structured?: unknown; // result.structured_output when an outputFormat schema was requested
   turns: number;
   costUsd: number;
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number };
@@ -26,6 +27,7 @@ export interface RunSdkInput {
   canUseTool?: any;
   enableFileCheckpointing?: boolean;
   loadProjectSettings?: boolean;
+  outputFormat?: unknown; // { type: 'json_schema', schema } — structured-output roles
   abortSignal?: AbortSignal;
   // Auth hygiene
   billToPool?: boolean; // strip ANTHROPIC_API_KEY/CLAUDE_API_KEY from env
@@ -89,6 +91,10 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
       ...(input.enableFileCheckpointing ? { enableFileCheckpointing: true } : {}),
       ...(input.loadProjectSettings ? { settingSources: ['project'] } : {}),
+      ...(input.outputFormat
+        ? // biome-ignore lint/suspicious/noExplicitAny: outputFormat kept loosely typed at the public edge; SDK narrows it
+          { outputFormat: input.outputFormat as any }
+        : {}),
       ...(input.abortSignal ? { abortController: abortControllerFor(input.abortSignal) } : {}),
       env: buildEnv(input),
     },
@@ -114,6 +120,7 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
   return {
     status: SUBTYPE_STATUS[result.subtype] ?? 'error',
     text: result.result ?? '',
+    structured: result.structured_output,
     turns: result.num_turns ?? 0,
     costUsd: result.total_cost_usd ?? 0,
     usage: {

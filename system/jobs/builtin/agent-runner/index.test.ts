@@ -90,11 +90,14 @@ test('agent-runner: returns skipped (no spawn) when the lock is held', async () 
     pid: 999,
   });
   const { calls, fn } = spySpawn();
-  const r = await runAgentRunner(fakeCtx(() => new Date(60_000)), {
-    userDataDir: ud,
-    spawn: fn,
-    runnerEntryPath: () => RUNNER_ENTRY,
-  });
+  const r = await runAgentRunner(
+    fakeCtx(() => new Date(60_000)),
+    {
+      userDataDir: ud,
+      spawn: fn,
+      runnerEntryPath: () => RUNNER_ENTRY,
+    },
+  );
   assert.equal(r.status, 'skipped');
   assert.equal(calls.length, 0, 'a held lock must prevent any spawn');
 });
@@ -107,11 +110,14 @@ test('agent-runner: round-robin advances the handler across ticks', async () => 
   for (let i = 0; i < AUTONOMOUS_HANDLERS.length; i++) {
     const { calls, fn } = spySpawn();
     // Each tick uses a time far past any prior lock so acquire steals/succeeds.
-    await runAgentRunner(fakeCtx(() => new Date(i * 60 * 60_000)), {
-      userDataDir: ud,
-      spawn: fn,
-      runnerEntryPath: () => RUNNER_ENTRY,
-    });
+    await runAgentRunner(
+      fakeCtx(() => new Date(i * 60 * 60_000)),
+      {
+        userDataDir: ud,
+        spawn: fn,
+        runnerEntryPath: () => RUNNER_ENTRY,
+      },
+    );
     const flag = calls[0]?.args[3] ?? '';
     ids.push(flag.split('=')[1] ?? '');
   }

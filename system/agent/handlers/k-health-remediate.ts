@@ -5,9 +5,9 @@
 // sharing A's write-isolation safety model (worktree cwd, checkpointing, deny
 // callback).
 
+import { denyUnsafe } from './a-self-improvement.ts';
 import type { HandlerCtx, HandlerDef } from './types.ts';
 import { register } from './types.ts';
-import { denyUnsafe } from './a-self-improvement.ts';
 
 export const handler: HandlerDef = {
   id: 'K',

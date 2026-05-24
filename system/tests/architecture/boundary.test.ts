@@ -4,8 +4,9 @@ import { basename, extname, join } from 'node:path';
 import { test } from 'node:test';
 
 const CONFIG_EXTS = new Set(['.yaml', '.yml', '.json', '.env', '.toml', '.ini']);
-// Files explicitly allowed under system/ despite having a config-shaped extension
-const ALLOWED_BASENAMES = new Set<string>(['integration.yaml']);
+// Files explicitly allowed under system/ despite having a config-shaped extension:
+// framework manifests the runtime loaders read by fixed name.
+const ALLOWED_BASENAMES = new Set<string>(['integration.yaml', 'job.yaml']);
 
 function walk(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

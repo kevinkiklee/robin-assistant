@@ -18,8 +18,5 @@ test('D: build() config — trigger, permissionMode, allowedTools', () => {
 });
 
 test('D: cwd is scoped to user-data/content/knowledge under repoRoot', () => {
-  assert.equal(
-    handler.build('g', { repoRoot: '/repo' }).cwd,
-    '/repo/user-data/content/knowledge',
-  );
+  assert.equal(handler.build('g', { repoRoot: '/repo' }).cwd, '/repo/user-data/content/knowledge');
 });

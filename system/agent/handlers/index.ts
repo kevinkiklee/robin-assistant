@@ -13,5 +13,5 @@ import './j-integration-author.ts';
 import './k-health-remediate.ts';
 import './l-daily-brief.ts';
 
+export type { HandlerCtx, HandlerDef } from './types.ts';
 export { REGISTRY, register } from './types.ts';
-export type { HandlerDef, HandlerCtx } from './types.ts';

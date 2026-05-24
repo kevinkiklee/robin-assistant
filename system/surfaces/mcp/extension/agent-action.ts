@@ -47,7 +47,9 @@ export async function runAgentAction(
   const handler = (params.handler ?? '').toUpperCase();
   const def = REGISTRY[handler];
   if (!def) {
-    return { error: `unknown handler '${params.handler}' (known: ${Object.keys(REGISTRY).sort().join(', ')})` };
+    return {
+      error: `unknown handler '${params.handler}' (known: ${Object.keys(REGISTRY).sort().join(', ')})`,
+    };
   }
 
   // Only on-demand handlers are reachable from MCP; autonomous run via the runner.
@@ -60,7 +62,8 @@ export async function runAgentAction(
   // Handler I is the hard risk gate: confirm irreversible life actions (spec §11).
   if (def.id === 'I' && params.confirm !== true) {
     return {
-      error: 'handler I (life-executor) takes irreversible actions — pass { confirm: true } to proceed',
+      error:
+        'handler I (life-executor) takes irreversible actions — pass { confirm: true } to proceed',
     };
   }
 

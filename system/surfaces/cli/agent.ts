@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
-import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { REGISTRY } from '../../agent/handlers/index.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from '../../agent/run-agent.ts';
 import { UsageLedger } from '../../agent/usage-ledger.ts';
+import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
+import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { loadPolicies } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
@@ -190,7 +190,8 @@ export async function runAgentCli(
   if (!parsed.goal) {
     return {
       status: 'error',
-      message: 'usage: robin agent "<goal>" [--handler=A] [--write] [--cwd=<path>] [--max-turns=N] [--budget=N]',
+      message:
+        'usage: robin agent "<goal>" [--handler=A] [--write] [--cwd=<path>] [--max-turns=N] [--budget=N]',
       exitCode: 2,
     };
   }

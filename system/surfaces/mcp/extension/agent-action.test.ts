@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import type { RunAgentInput, RunAgentResult } from '../../../agent/run-agent.ts';
 import type { RobinDb } from '../../../brain/memory/db.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import type { RunAgentInput, RunAgentResult } from '../../../agent/run-agent.ts';
 import { runAgentAction } from './agent-action.ts';
 
 function freshDb(): RobinDb {
@@ -21,7 +21,10 @@ function freshDb(): RobinDb {
 function tmpUserData(): string {
   const dir = mkdtempSync(join(tmpdir(), 'robin-agent-action-ud-'));
   mkdirSync(join(dir, 'config'), { recursive: true });
-  writeFileSync(join(dir, 'config', 'policies.yaml'), 'agent:\n  caps:\n    agentic_on_demand_daily_usd: 50\n');
+  writeFileSync(
+    join(dir, 'config', 'policies.yaml'),
+    'agent:\n  caps:\n    agentic_on_demand_daily_usd: 50\n',
+  );
   return dir;
 }
 
