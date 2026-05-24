@@ -17,7 +17,7 @@ query ActiveIssues($limit: Int!) {
 }`;
 
 const TEAM_ISSUES_QUERY = `
-query TeamIssues($updatedAfter: DateTime!, $limit: Int!, $after: String) {
+query TeamIssues($updatedAfter: DateTimeOrDuration!, $limit: Int!, $after: String) {
   viewer {
     teamMemberships {
       nodes {
