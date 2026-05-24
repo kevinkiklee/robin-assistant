@@ -11,3 +11,4 @@ docs/
 .idea/
 .vscode/
 *.tsbuildinfo
+.claude/settings.local.json
