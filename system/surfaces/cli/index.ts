@@ -38,6 +38,7 @@ ADVANCED
   beliefs review        Manage the belief-candidate queue (promote <id> | reject <id>)
   publish / published   Publish a markdown file to the web / list published pages
   import <dir>          Import NDJSON dumps from content/imported-from-<source>/
+  biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
   ingest-docs           Index content/* now (also runs automatically every 10 min)
   db backup|restore|vacuum   Database maintenance
@@ -307,6 +308,23 @@ async function main(): Promise<void> {
         console.log(JSON.stringify(report, null, 2));
       } else {
         printImportHuman(report);
+      }
+      exit(report.errors.length > 0 ? 1 : 0);
+      break;
+    }
+
+    case 'biographer': {
+      const { runBiographerCli, printBiographerHuman } = await import('./biographer.ts');
+      const limitFlag = extractFlag(args, '--limit=');
+      const report = await runBiographerCli({
+        limit: limitFlag ? Number(limitFlag) : undefined,
+        dryRun: args.includes('--dry-run'),
+      });
+      if (args.includes('--json')) {
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        printBiographerHuman(report);
       }
       exit(report.errors.length > 0 ? 1 : 0);
       break;
