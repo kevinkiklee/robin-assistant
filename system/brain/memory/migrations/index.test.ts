@@ -48,11 +48,22 @@ test('schema 001: events table has expected columns', () => {
   closeDb(db);
 });
 
-test('migrations apply cleanly up to version 12', () => {
+test('migrations apply cleanly up to version 13', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const row = db.prepare('SELECT MAX(version) AS v FROM _migrations').get() as { v: number };
-  assert.equal(row.v, 12);
+  assert.equal(row.v, 13);
+  closeDb(db);
+});
+
+test('migration 013: belief_candidates has a provenance column', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const cols = db.prepare(`PRAGMA table_info(belief_candidates)`).all() as Array<{ name: string }>;
+  assert.ok(
+    cols.some((c) => c.name === 'provenance'),
+    'expected provenance column on belief_candidates',
+  );
   closeDb(db);
 });
 

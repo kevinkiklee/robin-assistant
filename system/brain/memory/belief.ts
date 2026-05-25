@@ -1,6 +1,7 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
 import { ingest } from './ingest.ts';
+import type { ProvenanceClass } from './provenance.ts';
 
 const BELIEF_KIND = 'belief.update';
 const BELIEF_SOURCE = 'belief';
@@ -12,6 +13,10 @@ export interface BelieveInput {
   confidence?: number;
   sources?: number[];
   retracted?: boolean;
+  /** provenance class of the evidence; defaults to 'unknown'. */
+  provenance?: ProvenanceClass;
+  /** ISO timestamp this claim was last confirmed true; defaults to now. */
+  verifiedAt?: string;
   /** local date YYYY-MM-DD for idempotency scoping; defaults to today (local). */
   date?: string;
 }
@@ -30,6 +35,12 @@ export interface BeliefRecord {
   retracted: boolean;
   supersedes: number | null;
   ts: string;
+  /** provenance class of the evidence ('unknown' for pre-spine beliefs). */
+  provenance: ProvenanceClass;
+  /** ISO timestamp this claim was last confirmed true (null if unrecorded). */
+  verifiedAt: string | null;
+  /** source event ids backing this claim. */
+  sources: number[];
 }
 
 export interface RecallBeliefOptions {
@@ -57,6 +68,20 @@ interface RawRow {
   retracted: number | null;
   supersedes: number | null;
   claim: string | null;
+  provenance: string | null;
+  verified_at: string | null;
+  sources: string | null;
+}
+
+/** Parse the payload's `sources` JSON text into a number[] (tolerant of nulls/garbage). */
+function parseSources(raw: string | null): number[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n): n is number => typeof n === 'number') : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapRow(r: RawRow): BeliefRecord {
@@ -68,6 +93,9 @@ function mapRow(r: RawRow): BeliefRecord {
     retracted: r.retracted === 1,
     supersedes: r.supersedes,
     ts: r.ts,
+    provenance: (r.provenance as ProvenanceClass | null) ?? 'unknown',
+    verifiedAt: r.verified_at,
+    sources: parseSources(r.sources),
   };
 }
 
@@ -114,6 +142,8 @@ export function believe(
       confidence: input.confidence ?? null,
       sources: input.sources ?? [],
       retracted: input.retracted === true,
+      provenance: input.provenance ?? 'unknown',
+      verified_at: input.verifiedAt ?? new Date().toISOString(),
       external_id: externalId,
     },
   });
@@ -125,6 +155,9 @@ const SELECT = `SELECT e.id AS eventId, e.ts AS ts,
   json_extract(e.payload,'$.confidence') AS confidence,
   json_extract(e.payload,'$.retracted') AS retracted,
   json_extract(e.payload,'$.supersedes') AS supersedes,
+  json_extract(e.payload,'$.provenance') AS provenance,
+  json_extract(e.payload,'$.verified_at') AS verified_at,
+  json_extract(e.payload,'$.sources') AS sources,
   c.body AS claim
   FROM events e LEFT JOIN events_content c ON c.id = e.content_ref
   WHERE e.kind = 'belief.update'`;
