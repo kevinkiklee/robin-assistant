@@ -108,7 +108,19 @@ export function believe(
   if (!topic) throw new Error('believe: topic required');
   if (!input.claim?.trim()) throw new Error('believe: claim required');
   const date = input.date ?? localDate();
-  const externalId = `belief:${date}:${topic}`;
+  // Same-day idempotency: a plain "set belief" upserts in place via ingest's
+  // (source, external_id) dedup, so repeated sets on a topic in one day don't
+  // pile up. But an EXPLICIT supersede (a retraction or re-confirmation, e.g.
+  // from the nightly freshness / corrections-replay passes) MUST append a new
+  // event — if it shared the head's external_id it would collapse onto the very
+  // row it supersedes, producing a self-reference (`supersedes = own id`) and
+  // dropping the prior claim from history. Key those writes by the superseded
+  // id so ingest appends instead of upserting, while same-day re-runs of the
+  // identical supersede stay idempotent.
+  const externalId =
+    input.supersedes != null
+      ? `belief:${date}:${topic}:s${input.supersedes}`
+      : `belief:${date}:${topic}`;
 
   const head = db
     .prepare(

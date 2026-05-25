@@ -82,3 +82,47 @@ test('belief: retraction becomes head', () => {
   assert.equal(cur.retracted, true);
   closeDb(db);
 });
+
+test('belief: same-day explicit supersede APPENDS, never self-references (append-only)', () => {
+  // Regression: a same-day retraction/re-confirm must not collapse onto the row
+  // it supersedes via external_id upsert (which produced supersedes===own-id and
+  // dropped history). The nightly freshness + corrections-replay passes hit this.
+  const db = freshDb();
+  const first = believe(db, null, {
+    topic: 'kevin.city',
+    claim: 'lives in NYC',
+    date: '2026-05-25',
+  });
+  const second = believe(db, null, {
+    topic: 'kevin.city',
+    claim: 'lives in NYC',
+    retracted: true,
+    supersedes: first.eventId,
+    date: '2026-05-25',
+  });
+  assert.notEqual(second.eventId, first.eventId);
+  const history = recallBelief(db, { topic: 'kevin.city', history: true }) as BeliefRecord[];
+  assert.equal(
+    history.length,
+    2,
+    'expected 2 history rows — the supersede appended, did not upsert',
+  );
+  const head = recallBelief(db, { topic: 'kevin.city' }) as BeliefRecord;
+  assert.equal(head.eventId, second.eventId);
+  assert.equal(head.supersedes, first.eventId);
+  assert.notEqual(head.supersedes, head.eventId);
+  assert.equal(head.retracted, true);
+  closeDb(db);
+});
+
+test('belief: same-day plain re-set still upserts in place (no history pileup)', () => {
+  // The append-on-supersede fix must NOT break plain same-day idempotency: two
+  // "set" calls (no explicit supersedes) on one topic/day collapse to one row.
+  const db = freshDb();
+  believe(db, null, { topic: 'mood', claim: 'ok', date: '2026-05-25' });
+  believe(db, null, { topic: 'mood', claim: 'great', date: '2026-05-25' });
+  const history = recallBelief(db, { topic: 'mood', history: true }) as BeliefRecord[];
+  assert.equal(history.length, 1, 'same-day plain re-set should upsert, not append');
+  assert.equal(history[0].claim, 'great');
+  closeDb(db);
+});

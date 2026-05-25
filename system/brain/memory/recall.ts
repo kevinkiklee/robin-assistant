@@ -46,6 +46,9 @@ function enrichHits(db: RobinDb, hits: RecallHit[]): RecallHit[] {
           const p = JSON.parse(row.payload) as Record<string, unknown>;
           enriched.confidence = typeof p.confidence === 'number' ? p.confidence : null;
           enriched.provenance = (p.provenance as ProvenanceClass | undefined) ?? 'unknown';
+          // Epistemic age tracks last-verified, not creation — keep this in step
+          // with the primer/freshness surfaces (which use verified_at ?? ts).
+          if (typeof p.verified_at === 'string') enriched.ageDays = ageDaysFrom(p.verified_at);
         } catch {
           // malformed payload — leave confidence/provenance absent
         }

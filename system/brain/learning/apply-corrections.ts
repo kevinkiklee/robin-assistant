@@ -53,6 +53,7 @@ export function applyCorrections(
         believe(db, llm, {
           topic: row.topic,
           claim: record.claim,
+          confidence: record.confidence ?? undefined,
           retracted: true,
           supersedes: record.eventId,
           provenance: 'first-party',
