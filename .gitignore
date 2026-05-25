@@ -13,3 +13,9 @@ docs/superpowers/
 *.tsbuildinfo
 .claude/settings.local.json
 .mcp.json
+
+# Throwaway git worktrees created by agentic write-runs (system/surfaces/cli/agent.ts)
+.worktrees/
+
+# Local developer scratch harnesses (manual one-off runs, never shipped)
+/brief-fullrun.ts

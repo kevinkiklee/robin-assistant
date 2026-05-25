@@ -208,25 +208,47 @@ test('detectArcs: idempotent — re-running same day does not duplicate arcs', (
   closeDb(db);
 });
 
-test('dream: writes narrative journal section when LLM available', async () => {
+test('dream: journal is metrics-only and does NOT call the LLM even when one is available', async () => {
+  // dream.run is now deterministic substrate maintenance: the journal it writes
+  // is always the metrics block. The richer narrative is upserted later by the
+  // 4:00am dream-synthesis pass over the same day key. Pass an LLM whose invoke
+  // throws if reached — the journal must not depend on it.
+  let invoked = false;
+  const llm = mockLLM('this narrative must never appear in the journal');
+  const orig = llm.invoke.bind(llm);
+  llm.invoke = ((role, opts) => {
+    // summarizeHotEntities + ingest-docs may legitimately call the LLM; only the
+    // journal narrative is forbidden. With no hot entities / docs here, the only
+    // call that COULD happen is the (now removed) journal narrative.
+    invoked = true;
+    return orig(role, opts);
+  }) as typeof llm.invoke;
+
   const db = freshDb();
-  const llm = mockLLM('Today I learned about Kevin and Lisbon. Worked through 3 sessions.');
   await runDream(db, llm);
   const day = new Date().toISOString().slice(0, 10);
   const row = db.prepare(`SELECT body FROM journals WHERE day = ?`).get(day) as { body: string };
   assert.ok(row);
-  assert.match(row.body, /Narrative/);
-  assert.match(row.body, /Kevin and Lisbon/);
+  // Metrics-only block: header + metric lines, no Narrative section, no LLM text.
+  assert.match(row.body, /Robin Journal/);
+  assert.match(row.body, /\*\*Captured:\*\*/);
+  assert.match(row.body, /\*\*Arcs created:\*\*/);
+  assert.doesNotMatch(row.body, /Narrative/);
+  assert.doesNotMatch(row.body, /this narrative must never appear/);
+  // No hot entities and no content docs in this fresh DB, so the journal change
+  // means nothing in dream should have reached the LLM at all.
+  assert.equal(invoked, false, 'dream journal must not invoke the LLM');
   closeDb(db);
 });
 
-test('dream: journal falls back to metrics-only when LLM null', async () => {
+test('dream: journal is metrics-only when LLM is null', async () => {
   const db = freshDb();
   const r = await runDream(db, null);
   assert.equal(r.entitiesSummarized, 0);
   const day = new Date().toISOString().slice(0, 10);
   const row = db.prepare(`SELECT body FROM journals WHERE day = ?`).get(day) as { body: string };
-  // No narrative section when LLM unavailable
+  assert.match(row.body, /Robin Journal/);
+  assert.match(row.body, /\*\*Captured:\*\*/);
   assert.doesNotMatch(row.body, /Narrative/);
   closeDb(db);
 });

@@ -114,4 +114,3 @@ export function userDataPaths(root: string) {
 
 export const dbFilePath = (root: string) => join(root, 'state', 'db', 'robin.sqlite');
 export const pidFilePath = (root: string) => join(root, 'state', 'runtime', 'daemon.pid');
-export const socketFilePath = (root: string) => join(root, 'state', 'runtime', 'robin.sock');

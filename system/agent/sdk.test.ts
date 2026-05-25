@@ -48,6 +48,65 @@ test('runSdk: maps error subtypes to status', async () => {
   assert.equal(r.costUsd, 0.02);
 });
 
+test('runSdk: forwards sandbox settings to the query options', async () => {
+  let seenSandbox: unknown;
+  const q = (opts: { options?: { sandbox?: unknown } }) => {
+    seenSandbox = opts.options?.sandbox;
+    return fakeQuery([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'ok',
+        total_cost_usd: 0,
+        num_turns: 1,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]);
+  };
+  const sandbox = { enabled: true, autoAllowBashIfSandboxed: true, failIfUnavailable: true };
+  await runSdk({ prompt: 'x', queryFn: q, sandbox });
+  assert.deepEqual(seenSandbox, sandbox);
+});
+
+test('runSdk: a mid-stream throw surfaces accumulated partial usage, not zero', async () => {
+  const q = () =>
+    (async function* () {
+      yield {
+        type: 'assistant',
+        message: { usage: { input_tokens: 12, output_tokens: 4, cache_read_input_tokens: 3 } },
+      };
+      throw new Error('aborted');
+    })();
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.status, 'error');
+  assert.equal(r.usage.inputTokens, 12, 'partial input tokens must survive the throw');
+  assert.equal(r.usage.outputTokens, 4);
+  assert.equal(r.usage.cachedInputTokens, 3);
+  assert.equal(r.costUsd, 0, 'USD is best-effort: 0 when no result message arrived');
+});
+
+test('runSdk: a result message before a throw still wins over accumulated usage', async () => {
+  const q = () =>
+    (async function* () {
+      yield { type: 'assistant', message: { usage: { input_tokens: 5, output_tokens: 1 } } };
+      yield {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'done',
+        total_cost_usd: 0.03,
+        num_turns: 2,
+        usage: { input_tokens: 20, output_tokens: 8 },
+      };
+      throw new Error('late throw after result');
+    })();
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.status, 'success');
+  assert.equal(r.costUsd, 0.03);
+  assert.equal(r.usage.inputTokens, 20, 'authoritative result usage wins over the running tally');
+});
+
 test('runSdk: strips API-key env vars to force subscription billing', async () => {
   let seenEnv: Record<string, string> | undefined;
   const q = (opts: { options?: { env?: Record<string, string> } }) => {

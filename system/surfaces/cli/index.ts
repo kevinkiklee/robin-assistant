@@ -12,49 +12,48 @@ function extractFlag(args: string[], prefix: string): string | undefined {
   return found?.slice(prefix.length);
 }
 
-function printHelp(): void {
-  // biome-ignore lint/suspicious/noConsole: CLI output
-  console.log(`robin ${VERSION}
+function printHelp(all = false): void {
+  // Robin runs as a daemon and is driven through Claude (the MCP tools). The CLI
+  // is deliberately tiny: setup, re-auth, and a health check are the only things a
+  // user normally runs. Everything else is automatic, conversational (MCP), or
+  // host-invoked — shown only under `robin help --all`.
+  const primary = `robin ${VERSION}
 
 USAGE
   robin <command> [options]
 
+Robin runs in the background and is driven through Claude (the MCP tools).
+You rarely need the CLI — typically just these:
+
 COMMANDS
-  agent "<goal>"    Run a guarded agentic task (--handler=A..L | --write [defaults to A], --cwd=, --max-turns=N, --budget=N, --force)
-  beliefs review    List pending belief candidates (alias: list; --status= --limit=)
-  beliefs promote   Promote a candidate into a belief: beliefs promote <id> [--reason=...]
-  beliefs reject    Reject a candidate: beliefs reject <id> [--reason=...]
-  daemon            Run the Robin daemon (called by launchd; not for habitual use)
-  daemon install    Install + load the launchd agent so the daemon autostarts
-  daemon uninstall  Unload + remove the launchd agent
-  db backup         Back up the database (--path=<path> optional)
-  db restore        Restore database from backup (--from=<path>)
-  db vacuum         Vacuum the database
-  doctor            Diagnose daemon + environment
-  import            Import NDJSON dumps from content/imported-from-<source>/
-  ingest-docs       Index content/knowledge/ + content/profile/ *.md for recall (idempotent; --json)
-  init              One-time setup (interactive)
-  integrations      Per-integration health table (status, last attempt, errors)
-  pause             Pause scheduled work
-  primer            Print the session-start primer (--write [--path=<p>] to materialize)
-  reindex           Backfill embeddings for events_content rows missing one
-  resume            Resume scheduled work
-  incognito         Disable session capture (--for 1h optional)
-  offline           Block outbound network
-  online            Restore outbound network
-  status            Show current state
-  upgrade           Apply pending schema migrations (--dry-run optional)
-  mcp core          Run the robin-core MCP server (called by Claude Code via stdio)
-  mcp extension     Run the robin-extension MCP server (called by Claude Code via stdio)
-  mcp install       Add/replace robin in ~/.claude.json
-  hooks install     Add the SessionEnd hook to ~/.claude/settings.json so every Claude Code session gets captured automatically
-  hooks uninstall   Remove the SessionEnd hook from ~/.claude/settings.json
-  publish           Publish a markdown file to the web (--source <path> [--slug <s>] [--mode default|overwrite|as-new|delete] [--dry-run])
-  published         List published pages from this Robin instance
-  reauth <name>     Refresh an integration's OAuth refresh token (gmail | google_calendar). Opens consent in browser, captures the new token, writes it to .env, signals the daemon. Use --port=<n> if 8089 is taken.
-  --version
-  --help
-`);
+  init              One-time setup: daemon, MCP servers, capture hooks, schema
+  reauth <name>     Re-authorize an integration's OAuth (gmail | google_calendar)
+  doctor            Health check: daemon, environment, integrations, runtime state
+
+Run \`robin help --all\` for advanced + maintenance commands.`;
+
+  const advanced = `
+ADVANCED
+  agent "<goal>"        Run a guarded agentic task (--handler=A..L | --write, --cwd=, --max-turns=, --budget=, --force)
+  beliefs review        Manage the belief-candidate queue (promote <id> | reject <id>)
+  publish / published   Publish a markdown file to the web / list published pages
+  import <dir>          Import NDJSON dumps from content/imported-from-<source>/
+  reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
+  ingest-docs           Index content/* now (also runs automatically every 10 min)
+  db backup|restore|vacuum   Database maintenance
+  pause | resume        Pause / resume scheduled work
+  offline | online      Block / restore outbound network
+  incognito [--for=1h]  Disable session capture
+
+MAINTENANCE / INTERNAL (run automatically or by the host — init handles setup)
+  daemon [install|uninstall]   The daemon (launchd-managed)
+  mcp core | extension         MCP servers (Claude Code spawns these over stdio)
+  mcp install                  Register MCP servers in ~/.claude.json
+  hooks install | uninstall    Claude Code capture hooks
+  primer                       Print the session-start primer (used by the hook)`;
+
+  // biome-ignore lint/suspicious/noConsole: CLI output
+  console.log(all ? `${primary}\n${advanced}\n` : `${primary}\n`);
 }
 
 async function main(): Promise<void> {
@@ -66,7 +65,7 @@ async function main(): Promise<void> {
     case '--help':
     case '-h':
     case 'help': {
-      printHelp();
+      printHelp(args.includes('--all') || args.includes('-a'));
       exit(0);
       break;
     }
@@ -144,6 +143,16 @@ async function main(): Promise<void> {
         console.log(JSON.stringify(report, null, 2));
       } else {
         printDoctorHuman(report);
+        // Consolidated view: doctor also shows per-integration health and the
+        // current runtime state (formerly the separate `integrations`/`status`
+        // commands), so one command answers "is everything OK?".
+        const { runIntegrationsReport, printIntegrationsHuman } = await import('./integrations.ts');
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log('');
+        printIntegrationsHuman(runIntegrationsReport());
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log('');
+        runStatus(false);
       }
       exit(report.summary.exit_code);
       break;
@@ -249,12 +258,6 @@ async function main(): Promise<void> {
       break;
     }
 
-    case 'status': {
-      runStatus(args.includes('--json'));
-      exit(0);
-      break;
-    }
-
     case 'db': {
       const sub = args[1];
       const { runDbBackup, runDbRestore, runDbVacuum } = await import('./db.ts');
@@ -322,18 +325,6 @@ async function main(): Promise<void> {
       break;
     }
 
-    case 'integrations': {
-      const { runIntegrationsReport, printIntegrationsHuman } = await import('./integrations.ts');
-      const report = runIntegrationsReport();
-      if (args.includes('--json')) {
-        console.log(JSON.stringify(report, null, 2));
-      } else {
-        printIntegrationsHuman(report);
-      }
-      exit(0);
-      break;
-    }
-
     case 'reindex': {
       const { runReindex, printReindexHuman } = await import('./reindex.ts');
       const limitFlag = extractFlag(args, '--limit=');
@@ -360,13 +351,6 @@ async function main(): Promise<void> {
         printReindexHuman(report);
       }
       exit(report.errors.length > 0 && report.embedded === 0 ? 1 : 0);
-      break;
-    }
-
-    case 'upgrade': {
-      const { runUpgrade } = await import('./upgrade.ts');
-      runUpgrade({ dryRun: args.includes('--dry-run'), skipBackup: args.includes('--no-backup') });
-      exit(0);
       break;
     }
 

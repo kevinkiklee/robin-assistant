@@ -22,7 +22,10 @@ function isInsideCwd(target: string, cwd: string): boolean {
 }
 
 /**
- * Pure deny-callback core for handler A. Denies:
+ * Pure deny-callback core for handler A. Defense-in-depth behind the OS sandbox
+ * (see `build()`), NOT the primary write-isolation guard — `canUseTool` only ever
+ * sees Write/Edit tool inputs, never what a Bash command actually writes, so it
+ * cannot confine Bash on its own. It denies:
  *  - Bash commands containing `git push`, `git commit`, or `rm -rf`;
  *  - Write/Edit whose target path escapes `cwd`.
  * Everything else is allowed (the coarse `allowedTools` allowlist gates the rest).
@@ -65,6 +68,17 @@ export const handler: HandlerDef = {
       maxBudgetUsd: 5,
       loadProjectSettings: true,
       enableFileCheckpointing: true,
+      // OS-level sandbox (seatbelt on macOS, bubblewrap on Linux) confines every
+      // command — Bash redirections, `tee`, `cp`, `python -c`, `git -C /other`,
+      // etc. — to the worktree `cwd`. This is the real enforcement of write
+      // isolation; `canUseTool` below is only a secondary guard. `failIfUnavailable`
+      // is fail-closed: if the host can't sandbox, the run errors rather than
+      // writing unconfined and pretending to be isolated.
+      sandbox: {
+        enabled: true,
+        autoAllowBashIfSandboxed: true,
+        failIfUnavailable: true,
+      },
       canUseTool: (toolName: string, input: Record<string, unknown>) =>
         denyUnsafe(toolName, input, cwd),
     };

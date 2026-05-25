@@ -143,7 +143,7 @@ export async function extractClaims(
  * - Consecutive [ASSISTANT] turns collapsed into one (prevents many-turn degeneracy)
  * - Very short turns (<50 chars — "Done.", "Starting." — no entity content)
  */
-export function preprocessForExtraction(body: string): string {
+function preprocessForExtraction(body: string): string {
   // Split on turn boundaries
   const turns = body.split(/\n\n(?=\[(?:USER|ASSISTANT|TOOL)\]\n)/);
 

@@ -63,7 +63,15 @@ export const integration: Integration = {
     const events = list.items ?? [];
 
     let ingested = 0;
-    const seen = new Set(JSON.parse(ctx.state.get('seen_event_ids') ?? '[]'));
+    // Dedup cache is self-managed state; a corrupt value should reset + warn,
+    // never throw and wedge the tick.
+    let seenIds: string[] = [];
+    try {
+      seenIds = JSON.parse(ctx.state.get('seen_event_ids') ?? '[]');
+    } catch {
+      ctx.log.warn({ key: 'seen_event_ids' }, 'corrupt dedup state; resetting to empty');
+    }
+    const seen = new Set(seenIds);
     for (const ev of events) {
       const key = `${ev.id}:${ev.updated ?? ''}`;
       if (seen.has(key)) continue;

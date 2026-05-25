@@ -89,6 +89,31 @@ test('google_calendar: tick fetches + ingests upcoming events', async () => {
   closeDb(db);
 });
 
+test('google_calendar: tick tolerates corrupt dedup state (resets, does not throw)', async () => {
+  const db = freshDb();
+  const ctx = buildContext('google_calendar', db, null);
+  setEnv();
+  ctx.state.set('seen_event_ids', '{not valid json'); // simulate on-disk corruption
+  ctx.fetch = (async (url: string) => {
+    if (url.includes('oauth2.googleapis.com/token')) {
+      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), {
+        status: 200,
+      });
+    }
+    if (url.includes('/calendars/primary/events')) {
+      return new Response(JSON.stringify({ items: [{ id: 'evt1', summary: 'Solo event' }] }), {
+        status: 200,
+      });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+  const r = await cal.tick!(ctx);
+  assert.equal(r.status, 'ok'); // corrupt cache treated as empty, not a crash
+  assert.equal(r.ingested, 1);
+  clearEnv();
+  closeDb(db);
+});
+
 test('google_calendar: actions.list_events returns event array', async () => {
   const db = freshDb();
   const ctx = buildContext('google_calendar', db, null);

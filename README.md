@@ -9,18 +9,17 @@ Robin is a daemon that runs on your machine. It captures your Claude Code sessio
 ```bash
 nvm use 24                       # Node 24 required (.nvmrc)
 pnpm add -g robin-assistant      # or: npm i -g robin-assistant
-robin init --yes                 # one-time setup
-robin daemon install             # launchd agent — auto-starts on login (macOS)
+robin init --yes                 # one-time setup: daemon, MCP servers, capture hooks, schema
 ```
 
-Open Claude Code anywhere on your machine. Robin's MCP tools (`mcp__robin__*`) are available automatically.
+That's the only command you run. `init` installs the launchd daemon (macOS), registers Robin's MCP servers in `~/.claude.json`, and installs the Claude Code capture hooks. Open Claude Code anywhere on your machine and Robin's MCP tools (`mcp__robin__*`) are available automatically. Run `robin doctor` any time to check health.
 
 ## Requirements
 
 | Requirement | Notes |
 |---|---|
 | **Node 24** | Pinned via `.nvmrc`. `better-sqlite3` is a native binding; the ABI must match. |
-| **macOS or Linux** | `robin daemon install` is launchd (macOS). On Linux, run the daemon under systemd/runit/etc. |
+| **macOS or Linux** | On macOS, `robin init` installs the launchd autostart. On Linux, run the daemon under systemd/runit/etc. |
 | **Ollama** (optional) | For local model inference. Default embedding model: `qwen3-embedding:8b`. Install via `brew install ollama` or [ollama.com](https://ollama.com). |
 
 Apple Silicon recommended for local inference. Cloud-only configs work on any platform.
@@ -116,7 +115,7 @@ Every call is wrapped in `withTimeout` (default 5 min, overridable per-call). Pr
 
 ### Capture pipeline
 
-A Claude Code hook (`~/.claude/settings.json`, installed via `robin hooks install`) POSTs session transcripts to the daemon's HTTP server on session end. The daemon projects the JSONL into turns, applies skip rules (short sessions, out-of-scope CWD), deduplicates by content hash, and writes a `session.captured` event. The biographer picks these up on its next cron tick.
+A Claude Code hook (`~/.claude/settings.json`, installed by `robin init`) POSTs session transcripts to the daemon's HTTP server on session end. The daemon projects the JSONL into turns, applies skip rules (short sessions, out-of-scope CWD), deduplicates by content hash, and writes a `session.captured` event. The biographer picks these up on its next cron tick.
 
 For the full deep dive — database schema, integration contract, scheduler internals, and all invariants — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 

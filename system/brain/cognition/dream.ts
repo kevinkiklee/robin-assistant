@@ -33,7 +33,8 @@ const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
  * - Rolls up daily metric counts
  * - Summarizes hot entities (signal_count >= threshold among today's relations)
  * - Detects narrative arcs from session.captured events in the last 14 days
- * - Generates a narrative journal (falls back to metrics-only if no LLM)
+ * - Writes a deterministic metrics-only journal (the 4:00am dream-synthesis
+ *   pass upserts a richer narrative over the same day key later)
  * - Expires stale belief candidates (pending > 14 days)
  * - Flags prose docs in content/profile that are older than the newest belief/correction signal
  */
@@ -97,10 +98,11 @@ export async function runDream(
   // 4. Arc detection — cluster recent captured events by shared entities
   result.arcsCreated = detectArcs(db, now);
 
-  // 5. Compose journal — narrative if LLM available, fallback to metrics otherwise
-  const journal = await composeJournal(db, llm, {
+  // 5. Compose journal — deterministic metrics-only block. The 4:00am
+  //    dream-synthesis pass upserts a richer narrative over this same day key
+  //    later; dream.run only guarantees the row exists as a fallback.
+  const journal = composeJournal({
     today,
-    since,
     eventsToday,
     capturesToday,
     correctionsToday,
@@ -420,7 +422,6 @@ function jaccard(a: Set<number>, b: Set<number>): number {
 
 interface JournalContext {
   today: string;
-  since: string;
   eventsToday: number;
   capturesToday: number;
   correctionsToday: number;
@@ -429,12 +430,15 @@ interface JournalContext {
   arcsCreated: number;
 }
 
-export async function composeJournal(
-  db: RobinDb,
-  llm: LLMDispatcher | null,
-  ctx: JournalContext,
-): Promise<string> {
-  const metricsBlock = [
+/**
+ * Deterministic metrics-only journal. This is the substrate fallback: the
+ * nightly dream-synthesis pass (4:00am, user-data job) upserts a richer
+ * narrative over the same `journals` day key (ON CONFLICT DO UPDATE) once it
+ * has reasoned on the consolidated substrate. dream.run owns no LLM narrative —
+ * it only guarantees a journal row exists for the day.
+ */
+function composeJournal(ctx: JournalContext): string {
+  return [
     `# Robin Journal — ${ctx.today}`,
     ``,
     `**Captured:** ${ctx.capturesToday} sessions`,
@@ -444,75 +448,4 @@ export async function composeJournal(
     `**Entities summarized:** ${ctx.entitiesSummarized}`,
     `**Arcs created:** ${ctx.arcsCreated}`,
   ].join('\n');
-
-  if (!llm) return metricsBlock;
-
-  // Gather CONCRETE narrative inputs — real entity names, not abstract counts.
-  // Feeding the model named topics (what the day was actually about) instead of
-  // figures like "an arc of 253 entities" is what keeps the narrative grounded;
-  // sparse numeric inputs make a small model confabulate (it once dramatized
-  // entity counts into "movements clustered near the eastern perimeter").
-
-  // The day's most-active entities by relation count — what Robin actually
-  // engaged with today. These are the spine of the narrative.
-  const topEntities = db
-    .prepare(`
-      SELECT e.canonical_name, e.type, COUNT(*) AS signals
-        FROM entities e
-        JOIN relations r ON r.subject_id = e.id OR r.object_id = e.id
-       WHERE r.ts >= ?
-       GROUP BY e.id
-       ORDER BY signals DESC
-       LIMIT 12
-    `)
-    .all(ctx.since) as Array<{ canonical_name: string; type: string; signals: number }>;
-  const recentCorrections = db
-    .prepare(`
-      SELECT what, correction FROM corrections WHERE ts >= ? ORDER BY ts DESC LIMIT 5
-    `)
-    .all(ctx.since) as Array<{ what: string; correction: string }>;
-  const emergentEntities = db
-    .prepare(`
-      SELECT canonical_name, type FROM entities WHERE created_at >= ? ORDER BY created_at DESC LIMIT 10
-    `)
-    .all(ctx.since) as Array<{ canonical_name: string; type: string }>;
-
-  const topLines = topEntities.map((e) => `- ${e.canonical_name} (${e.type})`).join('\n');
-  const correctionLines = recentCorrections.map((c) => `- ${c.what}: ${c.correction}`).join('\n');
-  const entityLines = emergentEntities.map((e) => `- ${e.canonical_name} (${e.type})`).join('\n');
-
-  const userPrompt = [
-    `Date: ${ctx.today}`,
-    ``,
-    `Activity volume: ${ctx.capturesToday} sessions captured, ${ctx.correctionsToday} corrections, ${ctx.predictionsResolved} predictions resolved.`,
-    ``,
-    topLines
-      ? `Most-engaged topics/people/tools today:\n${topLines}`
-      : 'Quiet day — little entity activity.',
-    ``,
-    correctionLines ? `Corrections made:\n${correctionLines}` : 'No corrections today.',
-    ``,
-    entityLines ? `New to memory today:\n${entityLines}` : 'No new entities today.',
-    ``,
-    `Write the journal entry now.`,
-  ].join('\n');
-
-  try {
-    const res = await llm.invoke('summarize', {
-      systemPrompt: [
-        `You write Robin's nightly journal — first-person ("I"), past tense, plain prose (no lists, no headers, no preamble). 3-5 sentences.`,
-        `Robin is a personal AI assistant. "Entities" are people, projects, tools, and topics from the user's software and knowledge work — NOT physical objects, places, or events.`,
-        `Ground every sentence in the data provided. NEVER invent activities, locations, movements, threats, or events that are not in the inputs. Reference the named topics/people/tools directly.`,
-        `If the day was quiet, say so plainly rather than embellishing.`,
-      ].join(' '),
-      messages: [{ role: 'user', content: userPrompt }],
-      temperature: 0.3,
-      maxTokens: 2048,
-    });
-    const narrative = res.text.trim();
-    if (!narrative) return metricsBlock;
-    return [metricsBlock, ``, `## Narrative`, ``, narrative].join('\n');
-  } catch {
-    return metricsBlock;
-  }
 }

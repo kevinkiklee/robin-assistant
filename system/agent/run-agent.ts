@@ -10,6 +10,10 @@ export interface RunAgentInput {
   goal: string;
   cwd: string;
   allowedTools: string[];
+  /** Tools to deny even if otherwise available. `allowedTools` does not gate
+   * builtins (Read/Write/Edit/Bash), so a read-only run passes the write builtins
+   * here (e.g. `['Write','Edit','MultiEdit','NotebookEdit','Bash','KillBash']`). */
+  disallowedTools?: string[];
   permissionMode: 'plan' | 'default' | 'acceptEdits';
   maxTurns: number;
   timeoutMs: number;
@@ -22,6 +26,8 @@ export interface RunAgentInput {
   model?: string;
   /** SDK structured-output schema (`{ type:'json_schema', schema }`); result lands in `structured`. */
   outputFormat?: unknown;
+  /** SDK sandbox settings — OS-level isolation that confines Bash + file writes (write handlers). */
+  sandbox?: unknown;
 }
 
 export type RunAgentStatus = 'success' | 'capped' | 'denied' | 'timeout' | 'error';
@@ -107,6 +113,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     prompt: input.goal,
     cwd: input.cwd,
     allowedTools: input.allowedTools,
+    ...(input.disallowedTools ? { disallowedTools: input.disallowedTools } : {}),
     permissionMode: input.permissionMode,
     maxTurns: input.maxTurns,
     maxBudgetUsd: input.maxBudgetUsd,
@@ -119,6 +126,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     ...(input.loadProjectSettings ? { loadProjectSettings: true } : {}),
     ...(input.enableFileCheckpointing ? { enableFileCheckpointing: true } : {}),
     ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
+    ...(input.sandbox ? { sandbox: input.sandbox } : {}),
   };
 
   let result: SdkResult;

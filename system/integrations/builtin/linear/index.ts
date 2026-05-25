@@ -89,7 +89,15 @@ export const integration: Integration = {
     };
 
     let ingested = 0;
-    const seen = new Set(JSON.parse(ctx.state.get('seen_issue_ids') ?? '[]'));
+    // Dedup cache is self-managed state; a corrupt value should reset + warn,
+    // never throw and wedge the tick.
+    let seenIds: string[] = [];
+    try {
+      seenIds = JSON.parse(ctx.state.get('seen_issue_ids') ?? '[]');
+    } catch {
+      ctx.log.warn({ key: 'seen_issue_ids' }, 'corrupt dedup state; resetting to empty');
+    }
+    const seen = new Set(seenIds);
     let after: string | undefined;
     let totalFetched = 0;
 

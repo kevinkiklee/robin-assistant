@@ -22,6 +22,15 @@ test('A: build() config — trigger, permissionMode, allowedTools', () => {
   assert.equal(typeof out.canUseTool, 'function');
 });
 
+test('A: build() enables a fail-closed OS sandbox (real write isolation, not just canUseTool)', () => {
+  const out = handler.build('refactor the ledger', ctx);
+  assert.deepEqual(out.sandbox, {
+    enabled: true,
+    autoAllowBashIfSandboxed: true,
+    failIfUnavailable: true,
+  });
+});
+
 test('A: cwd prefers the worktree, falls back to repoRoot', () => {
   assert.equal(handler.build('g', ctx).cwd, '/repo/.worktrees/x');
   assert.equal(handler.build('g', { repoRoot: '/repo' }).cwd, '/repo');

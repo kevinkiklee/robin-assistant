@@ -24,7 +24,7 @@ export function integrationsHealthyInvariant(db: RobinDb): Invariant {
       'One or more integrations are erroring on every tick (e.g. expired OAuth, revoked API key).',
     cause:
       'consecutive_errors >= 5 for at least one integration in integration_state. Most common: a refresh token has been revoked by the upstream provider.',
-    fix: 'Run `robin integrations` to see which ones, then re-grant the affected provider (e.g. re-run the OAuth flow, paste a new API key into user-data/config/secrets/.env, restart the daemon).',
+    fix: 'Run `robin doctor` to see which ones, then re-grant the affected provider (e.g. re-run the OAuth flow via `robin reauth <name>`, paste a new API key into user-data/config/secrets/.env, restart the daemon).',
     check: () => {
       try {
         const broken = db
@@ -42,7 +42,7 @@ export function integrationsHealthyInvariant(db: RobinDb): Invariant {
         return {
           ok: false,
           message: `broken: ${names}`,
-          remediation: 'see `robin integrations` for last_error per integration',
+          remediation: 'run `robin doctor` for last_error per integration',
         };
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : String(err) };

@@ -1,10 +1,12 @@
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
 import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
+import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { runBiographer } from './biographer.ts';
 import { runDream } from './dream.ts';
 import { runEmbedder } from './embedder.ts';
+import { ingestContentDocs } from './ingest-docs.ts';
 
 export interface CognitionJob {
   name: string;
@@ -20,8 +22,14 @@ export const COGNITION_JOBS: CognitionJob[] = [
   },
   {
     name: 'dream.run',
-    cron: '0 3 * * *',
-    description: 'Nightly consolidation: resolve overdue predictions + metrics + journal',
+    // 3:50am — runs FIRST, before the 4:00am dream-synthesis deep pass, to
+    // consolidate the deterministic substrate that pass reasons on. No explicit
+    // tz: so it resolves via ROBIN_TZ → system TZ → UTC, the SAME precedence the
+    // daily-brief (4:30am) and dream-synthesis (4:00am) jobs use — keeping the
+    // 3:50/4:00/4:30 ordering intact under any single configured timezone.
+    cron: '50 3 * * *',
+    description:
+      'Nightly substrate maintenance (deterministic): resolve overdue predictions + metrics rollup + arc detection + staleness flags + candidate expiry + doc ingest + metrics-only journal fallback',
   },
   {
     // Every minute. Embedding is deferred from the ingest hot-path; this job picks up
@@ -31,6 +39,15 @@ export const COGNITION_JOBS: CognitionJob[] = [
     name: 'embedder.run',
     cron: '* * * * *',
     description: 'Embed events_content rows with NULL embedding (deferred from ingest)',
+  },
+  {
+    // Indexes content/knowledge + content/profile *.md into recall so the user
+    // never has to run `robin ingest-docs` by hand. Idempotent + content-hashed:
+    // unchanged files are skipped, so a frequent cron is cheap. Embedding is
+    // deferred to embedder.run, so this stays fast even on first index.
+    name: 'ingest-docs.run',
+    cron: '*/10 * * * *',
+    description: 'Index content/knowledge + content/profile *.md into recall (idempotent)',
   },
 ];
 
@@ -68,6 +85,10 @@ export function registerCognitionJobs(
   daemon.registerHandler('embedder.run', async () => {
     const llm = getLLM() ?? null;
     await runEmbedder(db, llm);
+  });
+  daemon.registerHandler('ingest-docs.run', () => {
+    const llm = getLLM() ?? null;
+    ingestContentDocs(db, llm, { userDataDir: resolveUserDataDir() });
   });
   for (const job of COGNITION_JOBS) {
     scheduleCronJob(db, { name: job.name, cron: job.cron });

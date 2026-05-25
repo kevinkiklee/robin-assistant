@@ -28,7 +28,7 @@ export function jobsDiscoverableInvariant(db: RobinDb): Invariant {
     symptom: 'A scheduled job has no loadable code — every fire silently no-ops.',
     cause:
       "The job's index.ts/index.js or job.yaml was deleted (e.g. mid-restructure) while its cron row in the jobs table remained.",
-    fix: 'Either restore the missing files under user-data/extensions/jobs/<name>/ (or system/jobs/builtin/<name>/) OR run `robin upgrade` after deleting the orphan cron row from the jobs table.',
+    fix: 'Either restore the missing files under user-data/extensions/jobs/<name>/ (or system/jobs/builtin/<name>/) OR delete the orphan cron row from the jobs table and restart the daemon.',
     check: () => {
       try {
         const here = dirname(fileURLToPath(import.meta.url));

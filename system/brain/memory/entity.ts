@@ -71,15 +71,6 @@ export function getEntity(db: RobinDb, id: number): EntityRow | null {
   return row ?? null;
 }
 
-export interface RelationRow {
-  id: number;
-  subject_id: number;
-  predicate: string;
-  object_id: number;
-  ts: string;
-  source_event_id: number | null;
-}
-
 export function addRelation(
   db: RobinDb,
   subjectId: number,

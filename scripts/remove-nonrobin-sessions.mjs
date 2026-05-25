@@ -3,16 +3,20 @@
 // guard existed (the 5/21 bulk import). Robin memory should only hold robin work.
 // Run: ROBIN_USER_DATA_DIR=./user-data node --import tsx scripts/remove-nonrobin-sessions.mjs
 import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { openDb, closeDb } from '../system/brain/memory/db.ts';
+import { join } from 'node:path';
+import { closeDb, openDb } from '../system/brain/memory/db.ts';
 import { dbFilePath, resolveUserDataDir } from '../system/lib/paths.ts';
 
 const projDir = join(homedir(), '.claude', 'projects');
 const sidToFolder = new Map();
 for (const folder of readdirSync(projDir)) {
   let files;
-  try { files = readdirSync(join(projDir, folder)); } catch { continue; }
+  try {
+    files = readdirSync(join(projDir, folder));
+  } catch {
+    continue;
+  }
   for (const f of files) if (f.endsWith('.jsonl')) sidToFolder.set(f.replace('.jsonl', ''), folder);
 }
 const isRobin = (folder) => folder && /^-Users-iser-workspace-robin/.test(folder);
@@ -20,7 +24,9 @@ const isRobin = (folder) => folder && /^-Users-iser-workspace-robin/.test(folder
 const db = openDb(dbFilePath(resolveUserDataDir()));
 
 const sessions = db
-  .prepare(`SELECT id, content_ref, json_extract(payload,'$.sessionId') sid FROM events WHERE kind='session.captured'`)
+  .prepare(
+    `SELECT id, content_ref, json_extract(payload,'$.sessionId') sid FROM events WHERE kind='session.captured'`,
+  )
   .all();
 
 // Non-robin session event IDs (transcript exists and its folder is not robin)
@@ -50,7 +56,8 @@ db.exec('BEGIN');
 const protectedEntities = new Set();
 const nonRobinEntities = new Set();
 for (const r of db.prepare('SELECT subject_id, object_id, source_event_id FROM relations').all()) {
-  const target = r.source_event_id != null && S.has(r.source_event_id) ? nonRobinEntities : protectedEntities;
+  const target =
+    r.source_event_id != null && S.has(r.source_event_id) ? nonRobinEntities : protectedEntities;
   target.add(r.subject_id);
   target.add(r.object_id);
 }
@@ -69,7 +76,9 @@ for (const eid of nonRobinEntities) {
 
 // 4. Delete biographer.extracted markers for these sessions (+ their content)
 const extractedRows = db
-  .prepare(`SELECT id, content_ref FROM events WHERE kind='biographer.extracted' AND json_extract(payload,'$.source_event_id') IN (${[...S].join(',') || 'NULL'})`)
+  .prepare(
+    `SELECT id, content_ref FROM events WHERE kind='biographer.extracted' AND json_extract(payload,'$.source_event_id') IN (${[...S].join(',') || 'NULL'})`,
+  )
   .all();
 const delEvent = db.prepare('DELETE FROM events WHERE id = ?');
 const delContent = db.prepare('DELETE FROM events_content WHERE id = ?');
@@ -77,16 +86,22 @@ const delVec = db.prepare('DELETE FROM events_vec WHERE rowid = ?');
 let extractedDeleted = 0;
 for (const e of extractedRows) {
   delEvent.run(e.id);
-  if (e.content_ref) { delContent.run(e.content_ref); try { delVec.run(e.content_ref); } catch {} }
+  if (e.content_ref) {
+    delContent.run(e.content_ref);
+    try {
+      delVec.run(e.content_ref);
+    } catch {}
+  }
   extractedDeleted++;
 }
 
 // 5. Delete the session.captured events themselves (+ content + embeddings)
-let sessDeleted = 0;
-for (const id of S) sessDeleted += delEvent.run(id).changes;
+for (const id of S) delEvent.run(id);
 for (const cref of sessionContentRefs) {
   delContent.run(cref);
-  try { delVec.run(cref); } catch {}
+  try {
+    delVec.run(cref);
+  } catch {}
 }
 
 // 6. Clean any biographer_progress rows for these sessions
@@ -101,14 +116,20 @@ const after = {
   extracted: db.prepare(`SELECT COUNT(*) c FROM events WHERE kind='biographer.extracted'`).get().c,
 };
 
-console.log(JSON.stringify({
-  non_robin_sessions_removed: S.size,
-  relations_deleted: relDeleted,
-  entities_deleted: entDeleted,
-  extracted_markers_deleted: extractedDeleted,
-  sessions: `${before.sessions} -> ${after.sessions}`,
-  entities: `${before.entities} -> ${after.entities}`,
-  relations: `${before.relations} -> ${after.relations}`,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      non_robin_sessions_removed: S.size,
+      relations_deleted: relDeleted,
+      entities_deleted: entDeleted,
+      extracted_markers_deleted: extractedDeleted,
+      sessions: `${before.sessions} -> ${after.sessions}`,
+      entities: `${before.entities} -> ${after.entities}`,
+      relations: `${before.relations} -> ${after.relations}`,
+    },
+    null,
+    2,
+  ),
+);
 
 closeDb(db);

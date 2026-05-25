@@ -55,6 +55,15 @@ Agentic `query()` (the SDK tool-loop) is allowed **only** through
 per-surface daily cap), and worktree-isolated for write work. Every run leaves a
 full JSONL transcript on disk, so the loop is auditable, not opaque.
 
+Write isolation is enforced by the SDK's **OS-level sandbox** (`sandbox.enabled`
+— seatbelt on macOS, bubblewrap on Linux), which confines every command,
+including arbitrary Bash (`>`, `tee`, `cp`, `python -c`, `git -C …`), to the
+run's `cwd` (the throwaway worktree). The handler's `canUseTool` deny-callback is
+only secondary defense-in-depth — it sees Write/Edit tool inputs, never what a
+Bash command actually writes, so it can't confine Bash on its own. The sandbox is
+fail-closed (`failIfUnavailable: true`): a host that can't sandbox makes the
+write-run error rather than write unconfined.
+
 Direct `claude -p` shell-outs, and any path that reaches `query()` without going
 through `runAgent`, remain **banned** — no ad-hoc nested sessions in jobs,
 integrations, surfaces, or workarounds. For plain (non-agentic) LLM work, use
@@ -69,8 +78,11 @@ integrations, surfaces, or workarounds. For plain (non-agentic) LLM work, use
 - Every integration has an `integration.yaml` manifest + `index.ts` with a
   `tick()` function and optional `actions` for MCP.
 - Tests are collocated: `foo.ts` → `foo.test.ts`, using `node:test` + `assert`.
-- The scheduler runs handlers inside a 120s timeout (`withTimeout`) — a hung
-  handler cannot wedge the tick loop.
+- Integration ticks run inside a 120s `withTimeout`, so a hung integration
+  cannot wedge the tick loop. Cognition jobs (biographer/dream/embedder) and
+  user jobs are not blanket-wrapped — they intentionally run longer and are
+  bounded by their own per-LLM-call timeouts and (for agentic runs) the SDK
+  `timeoutMs`, not a scheduler-level cap.
 
 ## MCP servers
 

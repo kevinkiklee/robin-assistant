@@ -10,5 +10,11 @@
   "linter": {
     "enabled": true,
     "rules": { "recommended": true, "suspicious": { "noConsole": "warn" } }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts"],
+      "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }
+    }
+  ]
 }

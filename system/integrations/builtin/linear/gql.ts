@@ -1,6 +1,6 @@
 import type { IntegrationContext } from '../../_runtime/types.ts';
 
-export const ENDPOINT = 'https://api.linear.app/graphql';
+const ENDPOINT = 'https://api.linear.app/graphql';
 
 export interface LinearIssue {
   id: string;
@@ -11,18 +11,6 @@ export interface LinearIssue {
   state: { name: string; type: string };
   team: { key: string; name: string };
   updatedAt: string;
-}
-
-export interface LinearTeam {
-  id: string;
-  key: string;
-  name: string;
-}
-
-export interface LinearState {
-  id: string;
-  name: string;
-  type: string;
 }
 
 export function requireKey(): string {

@@ -70,6 +70,22 @@ test('runAgent: cap pre-flight returns capped WITHOUT calling the sdk', async ()
   assert.equal(called, false, 'sdk must not be invoked when already over cap');
 });
 
+test('runAgent: forwards sandbox settings through to the sdk input', async () => {
+  const { ledger: led } = ledger();
+  let seenSandbox: unknown;
+  const sandbox = { enabled: true, autoAllowBashIfSandboxed: true, failIfUnavailable: true };
+  await runAgent(baseInput({ sandbox }), {
+    ledger: led,
+    cap: 50,
+    transcriptDir: tmpTranscriptDir(),
+    runSdk: async (input) => {
+      seenSandbox = input.sandbox;
+      return okResult;
+    },
+  });
+  assert.deepEqual(seenSandbox, sandbox);
+});
+
 test('runAgent: success writes a transcript file + one ledger row', async () => {
   const { ledger: led } = ledger();
   const dir = tmpTranscriptDir();
@@ -120,7 +136,11 @@ test('runAgent: forwards outputFormat to the sdk + propagates structured result'
     },
   });
   assert.deepEqual(sawOutputFormat, schema, 'outputFormat must reach the sdk');
-  assert.deepEqual(res.structured, { frontMatter: { decisions: ['x'] } }, 'structured must propagate');
+  assert.deepEqual(
+    res.structured,
+    { frontMatter: { decisions: ['x'] } },
+    'structured must propagate',
+  );
 });
 
 test('runAgent: an aborted signal maps to timeout', async () => {

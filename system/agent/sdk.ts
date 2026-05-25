@@ -19,6 +19,10 @@ export interface RunSdkInput {
   maxTurns?: number;
   maxBudgetUsd?: number;
   allowedTools?: string[];
+  /** Tools to deny even when otherwise available. `allowedTools` gates MCP tools
+   * but NOT builtins (Read/Write/Edit/Bash), so this is the real lever for a
+   * structurally read-only run (e.g. `['Write','Edit','Bash']`). */
+  disallowedTools?: string[];
   permissionMode?: 'plan' | 'default' | 'acceptEdits';
   cwd?: string;
   additionalDirectories?: string[];
@@ -28,6 +32,7 @@ export interface RunSdkInput {
   enableFileCheckpointing?: boolean;
   loadProjectSettings?: boolean;
   outputFormat?: unknown; // { type: 'json_schema', schema } — structured-output roles
+  sandbox?: unknown; // SDK SandboxSettings — OS-level command isolation, passed through verbatim
   abortSignal?: AbortSignal;
   // Auth hygiene
   billToPool?: boolean; // strip ANTHROPIC_API_KEY/CLAUDE_API_KEY from env
@@ -69,6 +74,15 @@ function abortControllerFor(signal: AbortSignal): AbortController {
   return controller;
 }
 
+/** Shape accumulated partial usage into the `SdkResult.usage` form. */
+function partialUsage(r: { inputTokens: number; outputTokens: number; cachedInputTokens: number }) {
+  return {
+    inputTokens: r.inputTokens,
+    outputTokens: r.outputTokens,
+    ...(r.cachedInputTokens ? { cachedInputTokens: r.cachedInputTokens } : {}),
+  };
+}
+
 export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
   const queryFn = input.queryFn ?? realQuery;
   const stream = queryFn({
@@ -79,6 +93,7 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       ...(input.maxTurns !== undefined ? { maxTurns: input.maxTurns } : {}),
       ...(input.maxBudgetUsd !== undefined ? { maxBudgetUsd: input.maxBudgetUsd } : {}),
       ...(input.allowedTools ? { allowedTools: input.allowedTools } : {}),
+      ...(input.disallowedTools ? { disallowedTools: input.disallowedTools } : {}),
       ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(input.additionalDirectories
@@ -95,6 +110,10 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
         ? // biome-ignore lint/suspicious/noExplicitAny: outputFormat kept loosely typed at the public edge; SDK narrows it
           { outputFormat: input.outputFormat as any }
         : {}),
+      ...(input.sandbox
+        ? // biome-ignore lint/suspicious/noExplicitAny: sandbox kept loosely typed at the public edge; SDK narrows it
+          { sandbox: input.sandbox as any }
+        : {}),
       ...(input.abortSignal ? { abortController: abortControllerFor(input.abortSignal) } : {}),
       env: buildEnv(input),
     },
@@ -102,10 +121,38 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
 
   // biome-ignore lint/suspicious/noExplicitAny: result message shape is narrowed by hand below
   let result: any;
-  for await (const m of stream) {
-    input.onMessage?.(m);
-    // biome-ignore lint/suspicious/noExplicitAny: message union is wide; we only key on `type`
-    if ((m as any).type === 'result') result = m;
+  // Per-turn usage accumulated from assistant messages. The authoritative totals
+  // + cost ride on the final `result` message, but an abort (deadline) or a
+  // mid-stream throw can stop iteration before it arrives — this fallback keeps
+  // the ledger from zeroing partial spend.
+  const running = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
+  try {
+    for await (const m of stream) {
+      input.onMessage?.(m);
+      // biome-ignore lint/suspicious/noExplicitAny: message union is wide; we only key on `type`
+      const msg = m as any;
+      if (msg.type === 'result') {
+        result = msg;
+      } else if (msg.type === 'assistant' && msg.message?.usage) {
+        running.inputTokens += msg.message.usage.input_tokens ?? 0;
+        running.outputTokens += msg.message.usage.output_tokens ?? 0;
+        running.cachedInputTokens += msg.message.usage.cache_read_input_tokens ?? 0;
+      }
+    }
+  } catch (err) {
+    // Abort or mid-stream failure. Prefer a `result` message if one already
+    // arrived; otherwise surface accumulated partial usage instead of throwing
+    // away the run's spend.
+    if (!result) {
+      return {
+        status: 'error',
+        text: err instanceof Error ? err.message : String(err),
+        turns: 0,
+        costUsd: 0,
+        usage: partialUsage(running),
+        raw: null,
+      };
+    }
   }
   if (!result) {
     return {
@@ -113,7 +160,7 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       text: '',
       turns: 0,
       costUsd: 0,
-      usage: { inputTokens: 0, outputTokens: 0 },
+      usage: partialUsage(running),
       raw: null,
     };
   }

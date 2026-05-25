@@ -32,22 +32,30 @@ export function parseAgentArgs(args: string[]): AgentCliArgs {
     const found = args.find((a) => a.startsWith(prefix));
     return found?.slice(prefix.length);
   };
+  // Parse a numeric flag, ignoring non-finite garbage (`--budget=abc` → NaN) so a
+  // bad value can't slip through as a cap that silently disables the SDK ceiling.
+  const finiteFlag = (prefix: string): number | undefined => {
+    const raw = flag(prefix);
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  };
   const goal = args.find((a) => !a.startsWith('-')) ?? '';
   const write = args.includes('--write');
   const force = args.includes('--force');
   const handlerFlag = flag('--handler=');
   const handler = (handlerFlag ?? (write ? 'A' : '')).toUpperCase();
   const cwd = flag('--cwd=');
-  const maxTurnsFlag = flag('--max-turns=');
-  const budgetFlag = flag('--budget=');
+  const maxTurns = finiteFlag('--max-turns=');
+  const budget = finiteFlag('--budget=');
   return {
     goal,
     handler,
     write,
     force,
     ...(cwd ? { cwd } : {}),
-    ...(maxTurnsFlag ? { maxTurns: Number(maxTurnsFlag) } : {}),
-    ...(budgetFlag ? { budget: Number(budgetFlag) } : {}),
+    ...(maxTurns !== undefined ? { maxTurns } : {}),
+    ...(budget !== undefined ? { budget } : {}),
   };
 }
 

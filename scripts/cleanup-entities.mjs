@@ -1,7 +1,8 @@
 // One-time entity cleanup: prune noise + merge case/type duplicates.
 // Run: ROBIN_USER_DATA_DIR=./user-data node --import tsx scripts/cleanup-entities.mjs
-import { openDb, closeDb } from '../system/brain/memory/db.ts';
+
 import { isLowQualityEntity } from '../system/brain/cognition/biographer.ts';
+import { closeDb, openDb } from '../system/brain/memory/db.ts';
 import { dbFilePath, resolveUserDataDir } from '../system/lib/paths.ts';
 
 const db = openDb(dbFilePath(resolveUserDataDir()));
@@ -87,16 +88,24 @@ const after = {
   relations: db.prepare('SELECT COUNT(*) c FROM relations').get().c,
 };
 
-console.log(JSON.stringify({
-  pruned_noise: pruned,
-  merged_duplicates: merged,
-  entities: `${before.entities} -> ${after.entities}`,
-  relations: `${before.relations} -> ${after.relations}`,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      pruned_noise: pruned,
+      merged_duplicates: merged,
+      entities: `${before.entities} -> ${after.entities}`,
+      relations: `${before.relations} -> ${after.relations}`,
+    },
+    null,
+    2,
+  ),
+);
 
 // Show the leadforge/robin/kevin groups post-cleanup as a sanity check
 for (const name of ['leadforge', 'robin', 'kevin']) {
-  const rows = db.prepare(`SELECT id, type, canonical_name FROM entities WHERE lower(canonical_name) = ?`).all(name);
+  const rows = db
+    .prepare(`SELECT id, type, canonical_name FROM entities WHERE lower(canonical_name) = ?`)
+    .all(name);
   console.log(`${name}:`, rows.map((r) => `${r.canonical_name}(${r.type})`).join(', ') || '(none)');
 }
 

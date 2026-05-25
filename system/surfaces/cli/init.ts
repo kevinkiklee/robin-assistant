@@ -142,6 +142,23 @@ roles: {}
     }
   }
 
+  // Register Robin's MCP servers in ~/.claude.json so Claude can reach memory
+  // (mcp__robin__*) and integration ops (mcp__robin-extension__*) without a
+  // separate `robin mcp install` step.
+  try {
+    const { buildRobinMcpEntry, upsertUserScopeMcp } = await import(
+      '../../lib/mcp-config/write.ts'
+    );
+    const core = upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'core' }), { name: 'robin' });
+    upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'extension' }), { name: 'robin-extension' });
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.log(`  MCP:      registered robin + robin-extension in ${core.path}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // biome-ignore lint/suspicious/noConsole: CLI output
+    console.warn(`  MCP:      skipped (${msg})`);
+  }
+
   // Install the Claude Code SessionEnd hook so every session is captured automatically.
   // Without this, capture falls back to the 5-min polling claude_code integration (which
   // requires 10-min idle), so sessions land in Robin with up to a 15-min lag.
@@ -167,15 +184,13 @@ roles: {}
   console.log('');
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Next steps:');
-  // biome-ignore lint/suspicious/noConsole: CLI output
-  console.log('  - robin doctor                 # verify');
   if (launchdInstalled) {
     // biome-ignore lint/suspicious/noConsole: CLI output
-    console.log('  - robin status                 # confirm daemon is active+online');
+    console.log('  - robin doctor                 # verify the daemon is active + online');
   } else {
     // biome-ignore lint/suspicious/noConsole: CLI output
-    console.log('  - robin daemon install         # install launchd autostart (macOS)');
+    console.log('  - pnpm dev                     # run the foreground daemon (non-macOS)');
     // biome-ignore lint/suspicious/noConsole: CLI output
-    console.log('  - pnpm dev                     # or run foreground daemon manually');
+    console.log('  - robin doctor                 # verify');
   }
 }

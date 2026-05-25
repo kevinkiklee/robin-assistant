@@ -73,6 +73,33 @@ test('linear: tick ingests active issues and dedupes by id+updatedAt', async () 
   closeDb(db);
 });
 
+test('linear: tick tolerates corrupt dedup state (resets, does not throw)', async () => {
+  const db = freshDb();
+  const ctx = buildContext('linear', db, null);
+  process.env.LINEAR_API_KEY = 'fake';
+  ctx.state.set('seen_issue_ids', 'not-json{{{'); // simulate on-disk corruption
+  ctx.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: {
+          viewer: {
+            teamMemberships: {
+              nodes: [{ team: { id: 'team-1', key: 'ENG', name: 'Engineering' } }],
+            },
+          },
+          issues: { nodes: [FAKE_ISSUE], pageInfo: { hasNextPage: false, endCursor: null } },
+        },
+      }),
+      { status: 200 },
+    )) as typeof fetch;
+  assert.ok(linear.tick);
+  const r = await linear.tick(ctx);
+  assert.equal(r.status, 'ok'); // corrupt cache treated as empty, not a crash
+  assert.equal(r.ingested, 1);
+  delete process.env.LINEAR_API_KEY;
+  closeDb(db);
+});
+
 test('linear: actions.active_issues returns parsed nodes', async () => {
   const db = freshDb();
   const ctx = buildContext('linear', db, null);

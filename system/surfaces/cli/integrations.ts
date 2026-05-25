@@ -142,7 +142,7 @@ export function printIntegrationsHuman(report: IntegrationsReport): void {
   // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(header);
   // biome-ignore lint/suspicious/noConsole: CLI output
-  console.log('  ' + '─'.repeat(header.length - 2));
+  console.log(`  ${'─'.repeat(header.length - 2)}`);
   for (const r of report.rows) {
     const icon = STATUS_ICON[r.status];
     const name = r.name.padEnd(20);

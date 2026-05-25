@@ -14,7 +14,7 @@ import type { InvokeRequest, InvokeResult, LLMProvider, LLMRole } from './types.
  * flagging real work as failures; looser leaves Scheduler.tickOnce blocked
  * past the lease TTL.
  */
-export const DEFAULT_INVOKE_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_INVOKE_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_EMBED_TIMEOUT_MS = 2 * 60_000;
 
 /**
