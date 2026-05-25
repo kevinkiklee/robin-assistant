@@ -134,8 +134,10 @@ export function listBeliefCandidates(
  *   1. `external` provenance — external readings are live state (read from the
  *      integration on demand), never durable beliefs; the request is re-routed to
  *      `reject` with blockedReason='external-not-durable'.
- *   2. confidence below the class threshold — below-bar candidates cannot promote;
- *      re-routed to `reject` with blockedReason='below-threshold-for-class'.
+ *   2. a *present* confidence below the class threshold — self-flagged weak
+ *      candidates cannot promote; re-routed to `reject` with
+ *      blockedReason='below-threshold-for-class'. A NULL confidence is reviewer's
+ *      discretion (promotion is the explicit review action) and is honored.
  *
  * Intentional design decision: we do NOT apply an additional confidence ceiling
  * when promoting weak-class beliefs. Read-time decay (effectiveConfidence, applied
@@ -190,9 +192,13 @@ export function resolveBeliefCandidate(
     };
   }
 
-  if ((row.confidence ?? 0) < PROMOTION_THRESHOLD[cls]) {
-    // Confidence is below the class's minimum bar. Reject rather than promote
-    // a weakly-supported belief into the truth stream.
+  if (row.confidence != null && row.confidence < PROMOTION_THRESHOLD[cls]) {
+    // The extractor assigned a confidence and it is below the class's minimum
+    // bar — reject rather than promote a self-flagged weak belief. A NULL
+    // confidence is left to reviewer discretion (promotion is itself the
+    // explicit review action): we honor the promote and tag it with its class
+    // rather than block it, since `external` — the only categorical block — was
+    // already routed out above.
     db.prepare(
       `UPDATE belief_candidates SET status = 'rejected', resolved_at = ? WHERE id = ?`,
     ).run(now, id);
