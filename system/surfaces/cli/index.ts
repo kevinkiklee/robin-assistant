@@ -41,6 +41,7 @@ ADVANCED
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
   ingest-docs           Index content/* now (also runs automatically every 10 min)
+  ingest-archive <dir>  Index a bulk text archive into recall (--source=name)
   db backup|restore|vacuum   Database maintenance
   pause | resume        Pause / resume scheduled work
   offline | online      Block / restore outbound network
@@ -343,6 +344,24 @@ async function main(): Promise<void> {
         printBiographerHuman(report);
       }
       exit(report.errors.length > 0 ? 1 : 0);
+      break;
+    }
+
+    case 'ingest-archive': {
+      const { runIngestArchive, printIngestArchiveHuman } = await import('./ingest-archive.ts');
+      const dir = args[1] && !args[1].startsWith('-') ? args[1] : extractFlag(args, '--dir=');
+      if (!dir) {
+        console.error('usage: robin ingest-archive <dir> [--source=name] [--json]');
+        exit(2);
+      }
+      const r = runIngestArchive(dir as string, extractFlag(args, '--source='));
+      if (args.includes('--json')) {
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(JSON.stringify(r, null, 2));
+      } else {
+        printIngestArchiveHuman(r);
+      }
+      exit(0);
       break;
     }
 
