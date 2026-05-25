@@ -40,7 +40,9 @@ test('scheduler-glue: gcOrphanIntegrationTicks drops removed-integration ticks, 
   const removed = gcOrphanIntegrationTicks(db, new Set(['integration.live.tick']));
   assert.equal(removed, 1, 'only the orphaned github tick is deleted');
 
-  const names = (db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{ name: string }>)
+  const names = (
+    db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{ name: string }>
+  )
     .map((r) => r.name)
     .sort();
   assert.deepEqual(
