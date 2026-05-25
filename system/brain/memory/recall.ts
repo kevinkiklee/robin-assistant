@@ -1,5 +1,6 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
+import { ageDaysFrom, type ProvenanceClass } from './provenance.ts';
 
 export interface RecallOptions {
   limit?: number;
@@ -12,6 +13,48 @@ export interface RecallHit {
   body: string;
   score: number;
   source: 'lex' | 'vec';
+  /** Event kind tag (e.g. 'belief.update', 'session.captured'). */
+  kind?: string;
+  /** Days since the event was recorded. */
+  ageDays?: number;
+  /** Stored confidence — belief.update hits only. */
+  confidence?: number | null;
+  /** Provenance class — belief.update hits only. */
+  provenance?: ProvenanceClass;
+}
+
+/**
+ * Enrich a hit set with kind, ageDays, and (for belief.update) confidence + provenance.
+ * ONE query over the final result set only — never touches the hot FTS/vec scan.
+ * Best-effort: any error returns the hits unmodified.
+ */
+function enrichHits(db: RobinDb, hits: RecallHit[]): RecallHit[] {
+  if (hits.length === 0) return hits;
+  try {
+    const ids = hits.map((h) => h.eventId);
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db
+      .prepare(`SELECT id, kind, ts, payload FROM events WHERE id IN (${placeholders})`)
+      .all(...ids) as Array<{ id: number; kind: string; ts: string; payload: string | null }>;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return hits.map((h) => {
+      const row = byId.get(h.eventId);
+      if (!row) return h;
+      const enriched: RecallHit = { ...h, kind: row.kind, ageDays: ageDaysFrom(row.ts) };
+      if (row.kind === 'belief.update' && row.payload) {
+        try {
+          const p = JSON.parse(row.payload) as Record<string, unknown>;
+          enriched.confidence = typeof p.confidence === 'number' ? p.confidence : null;
+          enriched.provenance = (p.provenance as ProvenanceClass | undefined) ?? 'unknown';
+        } catch {
+          // malformed payload — leave confidence/provenance absent
+        }
+      }
+      return enriched;
+    });
+  } catch {
+    return hits;
+  }
 }
 
 /** Same idiom as capture.ts dedup hash — base64-truncated so repeat queries collide intentionally. */
@@ -92,8 +135,9 @@ export async function recall(
     }
   }
   if (mode === 'lex' || !llm) {
-    logRecall(db, query, lexHits.length);
-    return lexHits;
+    const enriched = enrichHits(db, lexHits);
+    logRecall(db, query, enriched.length);
+    return enriched;
   }
 
   const vecHits: RecallHit[] = [];
@@ -127,13 +171,15 @@ export async function recall(
       }
     }
   } catch {
-    logRecall(db, query, lexHits.length);
-    return lexHits;
+    const enriched = enrichHits(db, lexHits);
+    logRecall(db, query, enriched.length);
+    return enriched;
   }
 
   if (mode === 'vec') {
-    logRecall(db, query, vecHits.length);
-    return vecHits;
+    const enriched = enrichHits(db, vecHits);
+    logRecall(db, query, enriched.length);
+    return enriched;
   }
 
   const merged = new Map<number, RecallHit>();
@@ -145,6 +191,7 @@ export async function recall(
   const result = Array.from(merged.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
-  logRecall(db, query, result.length);
-  return result;
+  const enriched = enrichHits(db, result);
+  logRecall(db, query, enriched.length);
+  return enriched;
 }

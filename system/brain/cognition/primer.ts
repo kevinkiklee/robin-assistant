@@ -3,6 +3,13 @@ import { dirname, join } from 'node:path';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { recallBelief } from '../memory/belief.ts';
 import type { RobinDb } from '../memory/db.ts';
+import {
+  ageDaysFrom,
+  effectiveConfidence,
+  isStale,
+  SUSPECT_CONFIDENCE_THRESHOLD,
+  WEAK_PROVENANCE,
+} from '../memory/provenance.ts';
 
 /**
  * The session-start primer is a derived, materialized view — never authoritative. It
@@ -80,7 +87,29 @@ function renderBeliefs(db: RobinDb): string {
   if (!Array.isArray(heads) || heads.length === 0) return '';
   const lines = heads
     .filter((b) => !b.retracted && b.claim.trim())
-    .map((b) => `- ${b.topic}: ${b.claim.trim()}`);
+    .map((b) => {
+      const base = `- ${b.topic}: ${b.claim.trim()}`;
+      try {
+        const age = ageDaysFrom(b.verifiedAt ?? b.ts);
+        const eff = effectiveConfidence(b.confidence, age, b.provenance);
+        const stale = isStale(age, b.provenance);
+        const suspect =
+          (eff !== null && eff < SUSPECT_CONFIDENCE_THRESHOLD) ||
+          stale ||
+          WEAK_PROVENANCE.has(b.provenance);
+        if (!suspect) return base;
+        // Build terse tag: confidence (if non-null), provenance, age, stale marker
+        const parts: string[] = [];
+        if (eff !== null) parts.push(eff.toFixed(1));
+        parts.push(b.provenance);
+        parts.push(`${Math.round(age)}d`);
+        if (stale) parts.push('stale');
+        return `${base} ⟨${parts.join(' · ')}⟩`;
+      } catch {
+        // provenance logic must never throw and break the hot path
+        return base;
+      }
+    });
   if (lines.length === 0) return '';
   return `## Beliefs (current truth)\n${lines.join('\n')}`;
 }

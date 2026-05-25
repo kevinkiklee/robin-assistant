@@ -233,6 +233,72 @@ test('buildPrimer: priority order — corrections before beliefs before profile'
   closeDb(db);
 });
 
+test('buildPrimer: suspect belief (weak provenance) gets a tag', () => {
+  const { db } = freshDb();
+  // third-party provenance → WEAK_PROVENANCE → always suspect
+  believe(db, null, {
+    topic: 'kevin.google.role',
+    claim: 'Ad Experiences',
+    confidence: 0.6,
+    provenance: 'third-party',
+    date: '2026-05-23',
+  });
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  // Should contain the tag indicator characters
+  assert.match(out, /kevin\.google\.role: Ad Experiences/);
+  assert.match(out, /third-party/);
+  closeDb(db);
+});
+
+test('buildPrimer: suspect belief (low effective confidence) gets a tag', () => {
+  const { db } = freshDb();
+  // inferred with low confidence → eff < SUSPECT_CONFIDENCE_THRESHOLD → suspect
+  believe(db, null, {
+    topic: 'test.inferred',
+    claim: 'some inferred fact',
+    confidence: 0.5,
+    provenance: 'inferred',
+    date: '2026-05-23',
+  });
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  assert.match(out, /test\.inferred: some inferred fact/);
+  // Inferred is WEAK_PROVENANCE so it gets a tag
+  assert.match(out, /inferred/);
+  closeDb(db);
+});
+
+test('buildPrimer: clean first-party belief renders without tag', () => {
+  const { db } = freshDb();
+  believe(db, null, {
+    topic: 'sport',
+    claim: 'plays hockey',
+    confidence: 0.95,
+    provenance: 'first-party',
+    date: '2026-05-23',
+  });
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  assert.match(out, /sport: plays hockey/);
+  // No tag characters (no angle brackets from the suspect tag format)
+  assert.doesNotMatch(out, /sport: plays hockey.*⟨/);
+  closeDb(db);
+});
+
+test('buildPrimer: null confidence + first-party + fresh → no tag', () => {
+  const { db } = freshDb();
+  // null confidence alone must NOT trigger a tag
+  believe(db, null, {
+    topic: 'name',
+    claim: 'Kevin',
+    confidence: undefined, // null confidence
+    provenance: 'first-party',
+    date: '2026-05-23',
+  });
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  assert.match(out, /name: Kevin/);
+  assert.doesNotMatch(out, /name: Kevin.*⟨/);
+  closeDb(db);
+});
+
 test('writePrimerFile: writes to given path and reports bytes', () => {
   const { db, dir } = freshDb();
   addCorrection(db, 'w', 'c');
