@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import { registerIntegrations } from './scheduler-glue.ts';
+import { gcOrphanIntegrationTicks, registerIntegrations } from './scheduler-glue.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-glue-'));
@@ -27,6 +27,29 @@ function makeIntegration(rootDir: string, name: string, schedule = '*/5 * * * *'
     `export const integration = { tick: async () => ({ status: 'ok' }) };\n`,
   );
 }
+
+test('scheduler-glue: gcOrphanIntegrationTicks drops removed-integration ticks, keeps live + cognition jobs', () => {
+  const db = freshDb();
+  const ins = db.prepare(
+    "INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES (?, 'cron', ?, 'pending')",
+  );
+  ins.run('integration.live.tick', '2026-01-01T00:00:00.000Z'); // a loaded integration
+  ins.run('integration.github.tick', '2026-01-01T00:00:00.000Z'); // removed integration → orphan
+  ins.run('dream.run', '2026-01-01T00:00:00.000Z'); // cognition job — must NOT be GC'd
+
+  const removed = gcOrphanIntegrationTicks(db, new Set(['integration.live.tick']));
+  assert.equal(removed, 1, 'only the orphaned github tick is deleted');
+
+  const names = (db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{ name: string }>)
+    .map((r) => r.name)
+    .sort();
+  assert.deepEqual(
+    names,
+    ['dream.run', 'integration.live.tick'],
+    'orphan tick gone; live integration tick + cognition job untouched',
+  );
+  closeDb(db);
+});
 
 test('scheduler-glue: registers integrations and seeds cron jobs', async () => {
   const db = freshDb();
