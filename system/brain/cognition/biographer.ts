@@ -461,10 +461,20 @@ If nothing is worth extracting, reply {"entities":[],"relations":[]}.`;
  * sometimes emits despite the prompt rules above. The prompt is a soft contract;
  * this is the hard one. Returning true means "drop this entity".
  *
+ * `type` is optional (back-compat with name-only callers) but, when supplied,
+ * unlocks a stricter pass for the noise-prone types `thing`/`error`/`topic`:
+ * coding-session captures routinely yield engineering-internal artifacts
+ * (`lock-cleanup`, `PID-liveness`, `CI on main`, `learning-queue.md over cap`,
+ * bare verbs like `Disagree`) that have no real-world referent and only pollute
+ * Kevin's personal memory graph. Concrete types (person/place/organization/
+ * service/repository/library/tool/env_var) are NOT subjected to that pass, so
+ * legitimate kebab-case repos (`landstar-construction`) and services (`OpenTable`)
+ * survive.
+ *
  * Companion: any relation whose subject or object matches a dropped entity is
  * also dropped (a relation pointing at noise is itself noise).
  */
-export function isLowQualityEntity(name: string): boolean {
+export function isLowQualityEntity(name: string, type?: string): boolean {
   const trimmed = name?.trim() ?? '';
   if (trimmed.length < 2 || trimmed.length > 200) return true;
   // Pure numbers (e.g. "10", "404") — usually counters, status codes, or version
@@ -504,8 +514,77 @@ export function isLowQualityEntity(name: string): boolean {
   ) {
     return true;
   }
+  // Source-file references with an extension ("learning-queue.md", "biographer.ts",
+  // "dream.test.ts") — dev/build artifacts, never real-world entities. Caught even
+  // when embedded in a phrase ("learning-queue.md over cap"). The path heuristic
+  // above only fires on slash-bearing tokens, so this covers bare file names.
+  if (
+    /(^|\s)[\w.-]+\.(md|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|sh|py|toml)(\s|$|:)/i.test(trimmed)
+  )
+    return true;
+
+  // ─── Type-aware engineering-internal pass ─────────────────────────────────
+  // Only the noise-prone, low-specificity types. Concrete types (person, place,
+  // organization, service, repository, library, tool, env_var) are spared so a
+  // real repo/service that happens to read like jargon ("landstar-construction",
+  // "OpenTable") is never dropped here.
+  if (type && DEV_NOISE_TYPES.has(type.toLowerCase())) {
+    // Dev/build jargon: CI/CD, lock/PID/dispatch/cron/daemon/cursor/script/hash/
+    // protocol/queue/cap process-internals. Word-boundary matched so it only
+    // fires on the jargon token, not any substring (e.g. won't hit "Pidgeon").
+    if (DEV_JARGON_RE.test(trimmed)) return true;
+    // Bare conversational verbs/words with no referent ("Disagree", "Stress Test",
+    // "Refactor") — captured as a `topic`/`thing` from a coding back-and-forth.
+    // Gated to 1-2 short title/lower-case word tokens so multi-word real topics
+    // ("Bergen County zoning", "Nikon Z8 autofocus") are untouched.
+    const words = trimmed.split(/\s+/);
+    if (words.length <= 2 && words.every((w) => GENERIC_VERB_NOISE.has(w.toLowerCase())))
+      return true;
+  }
   return false;
 }
+
+// Types that lack a real-world referent and disproportionately carry dev-internal
+// noise out of coding-session captures. Used to gate the stricter heuristics above.
+const DEV_NOISE_TYPES = new Set(['thing', 'error', 'topic']);
+
+// Dev/build/process jargon tokens. Word-boundary matched so a legit name that
+// merely contains one of these as a substring is unaffected. Catches the observed
+// junk class: lock-cleanup, PID-liveness, dispatch hash early-exit, CI on main,
+// check-protocol-triggers script missing, learning-queue.md over cap, cron/daemon
+// internals. Hyphen and space both count as separators.
+const DEV_JARGON_RE =
+  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule)(?:$|[\s-])/i;
+
+// Single bare verbs / generic non-entities that a model emits as `topic`/`thing`
+// from a chat exchange. Kept tight — only words that are never themselves a
+// durable real-world entity.
+const GENERIC_VERB_NOISE = new Set([
+  'disagree',
+  'agree',
+  'confirm',
+  'confirmed',
+  'reject',
+  'rejected',
+  'approve',
+  'approved',
+  'review',
+  'reviewed',
+  'refactor',
+  'cleanup',
+  'fix',
+  'fixes',
+  'bug',
+  'bugs',
+  'stress',
+  'test',
+  'retry',
+  'rollback',
+  'merge',
+  'rebase',
+  'commit',
+  'revert',
+]);
 
 const ROLE_MARKER_NAMES = new Set(['user', 'assistant', 'tool', 'system', 'human', 'ai']);
 // Generic nouns + Claude Code tool names that get mis-extracted as entities.
@@ -931,7 +1010,7 @@ export async function runBiographer(
     const droppedNames = new Set<string>();
     const filteredEntities = [];
     for (const e of extracted.entities) {
-      if (isLowQualityEntity(e.name)) {
+      if (isLowQualityEntity(e.name, e.type)) {
         droppedNames.add(e.name.toLowerCase());
         continue;
       }

@@ -547,6 +547,46 @@ test('isLowQualityEntity: keeps legitimate entities including tech-shorthand', (
   }
 });
 
+test('isLowQualityEntity: drops engineering-internal noise from coding captures', () => {
+  // The junk class observed polluting the personal graph — all carry the
+  // noise-prone types thing/error/topic.
+  const noise: Array<[string, string]> = [
+    ['lock-cleanup', 'thing'],
+    ['PID-liveness', 'thing'],
+    ['dispatch hash early-exit', 'thing'],
+    ['CI on main', 'topic'],
+    ['check-protocol-triggers script missing', 'error'],
+    ['learning-queue.md over cap', 'thing'],
+    ['Disagree', 'thing'],
+    ['Stress Test', 'topic'],
+  ];
+  for (const [name, type] of noise) {
+    assert.equal(isLowQualityEntity(name, type), true, `${name} (${type}) should be dropped`);
+  }
+});
+
+test('isLowQualityEntity: drops bare source-file references regardless of type', () => {
+  for (const name of ['biographer.ts', 'dream.test.ts', 'learning-queue.md', 'config.yaml']) {
+    assert.equal(isLowQualityEntity(name), true, `${name} should be dropped`);
+  }
+});
+
+test('isLowQualityEntity: keeps real entities that read like dev jargon', () => {
+  // These are legitimate and must survive — concrete types are NOT subjected to
+  // the dev-internal pass even when the name resembles jargon/kebab.
+  const real: Array<[string, string]> = [
+    ['OpenTable', 'service'],
+    ['Antonucci Cafe', 'organization'],
+    ['The Met', 'place'],
+    ['landstar-construction', 'repository'], // kebab-case like lock-cleanup, but a real repo
+    ['photo-tools', 'repository'],
+    ['Bergen County zoning', 'topic'], // 3-word real topic, no jargon
+  ];
+  for (const [name, type] of real) {
+    assert.equal(isLowQualityEntity(name, type), false, `${name} (${type}) should be kept`);
+  }
+});
+
 // ─── filter integration: runBiographer drops noise + propagates to relations ───
 
 test('biographer: filters role markers, numbers, SHAs from extraction', async () => {
