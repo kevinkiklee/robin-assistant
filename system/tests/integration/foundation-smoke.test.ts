@@ -12,7 +12,16 @@ import { dbFilePath } from '../../lib/paths.ts';
 
 test('foundation smoke: init → doctor → daemon → claim a queued job → stop cleanly', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'robin-smoke-'));
-  const env = { ...process.env, ROBIN_USER_DATA_DIR: userData };
+  // Isolate BOTH the user-data dir and the config dir. `init` writes the instance
+  // pointer (<configDir>/user-data-dir) via writeUserDataPointer; without overriding
+  // XDG_CONFIG_HOME it clobbers the developer's real ~/.config/robin/user-data-dir with
+  // this throwaway temp path, which then dangles once the temp dir is cleaned. Same class
+  // of leak that `--no-launchd` prevents below.
+  const env = {
+    ...process.env,
+    ROBIN_USER_DATA_DIR: userData,
+    XDG_CONFIG_HOME: join(userData, 'xdg-config'),
+  };
 
   // 1. robin init --yes (invoke tsx directly to respect env).
   // `--no-launchd` is critical for tests: production `init` installs a real
