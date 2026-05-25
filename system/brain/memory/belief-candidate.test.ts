@@ -179,3 +179,164 @@ test('belief-candidate: expireStaleCandidates respects a custom window', () => {
   assert.equal(expireStaleCandidates(db, 3, now), 1);
   closeDb(db);
 });
+
+// ─── P3 formation gate tests ──────────────────────────────────────────────────
+
+test('belief-candidate P3: insertBeliefCandidate persists and reads back provenance', () => {
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'test-topic',
+    claim: 'some claim',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  const candidates = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].id, id);
+  assert.equal(candidates[0].provenance, 'first-party');
+  closeDb(db);
+});
+
+test('belief-candidate P3: insertBeliefCandidate stores null provenance when omitted', () => {
+  const db = freshDb();
+  insertBeliefCandidate(db, { topic: 'no-prov', claim: 'claim without provenance' });
+  const candidates = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(candidates[0].provenance, null);
+  closeDb(db);
+});
+
+test('belief-candidate P3: promoting an external candidate writes NO belief and marks rejected', () => {
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'gh-stars',
+    claim: 'repo has 1234 stars',
+    confidence: 0.99,
+    provenance: 'external',
+  });
+  const res = resolveBeliefCandidate(db, null, id, 'promote');
+  // Gate should block — actual action is reject, not promote.
+  assert.equal(res.action, 'reject');
+  assert.equal(res.promotedBeliefEventId, null);
+  assert.equal(res.blockedReason, 'external-not-durable');
+  // Candidate is marked rejected in the DB.
+  const row = listBeliefCandidates(db, {})[0];
+  assert.equal(row.status, 'rejected');
+  assert.ok(row.resolvedAt);
+  // No belief event written.
+  const belief = recallBelief(db, { topic: 'gh-stars' });
+  assert.equal(belief, null);
+  closeDb(db);
+});
+
+test('belief-candidate P3: promoting inferred below 0.85 is blocked with blockedReason', () => {
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'user-pref',
+    claim: 'prefers dark mode',
+    confidence: 0.7, // below 0.85 threshold for inferred
+    provenance: 'inferred',
+  });
+  const res = resolveBeliefCandidate(db, null, id, 'promote');
+  assert.equal(res.action, 'reject');
+  assert.equal(res.promotedBeliefEventId, null);
+  assert.equal(res.blockedReason, 'below-threshold-for-class');
+  const row = listBeliefCandidates(db, {})[0];
+  assert.equal(row.status, 'rejected');
+  const belief = recallBelief(db, { topic: 'user-pref' });
+  assert.equal(belief, null);
+  closeDb(db);
+});
+
+test('belief-candidate P3: promoting inferred at exactly 0.85 succeeds', () => {
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'user-pref',
+    claim: 'prefers dark mode',
+    confidence: 0.85, // exactly at threshold
+    provenance: 'inferred',
+  });
+  const res = resolveBeliefCandidate(db, null, id, 'promote');
+  assert.equal(res.action, 'promote');
+  assert.ok(res.promotedBeliefEventId && res.promotedBeliefEventId > 0);
+  assert.equal(res.blockedReason, undefined);
+  const row = listBeliefCandidates(db, {})[0];
+  assert.equal(row.status, 'promoted');
+  closeDb(db);
+});
+
+test('belief-candidate P3: promoted belief carries the correct provenance tag', () => {
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'home-location',
+    claim: 'lives in Bergen County NJ',
+    confidence: 0.95,
+    provenance: 'first-party',
+  });
+  resolveBeliefCandidate(db, null, id, 'promote');
+  const belief = recallBelief(db, { topic: 'home-location' }) as import('./belief.ts').BeliefRecord;
+  assert.ok(belief);
+  assert.equal(belief.claim, 'lives in Bergen County NJ');
+  assert.equal(belief.provenance, 'first-party');
+  closeDb(db);
+});
+
+test('belief-candidate P3: promoted belief carries the provenance from an inferred candidate', () => {
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'work-style',
+    claim: 'prefers async communication',
+    confidence: 0.9, // above 0.85 inferred threshold
+    provenance: 'inferred',
+  });
+  resolveBeliefCandidate(db, null, id, 'promote');
+  const belief = recallBelief(db, { topic: 'work-style' }) as import('./belief.ts').BeliefRecord;
+  assert.ok(belief);
+  assert.equal(belief.provenance, 'inferred');
+  closeDb(db);
+});
+
+test('belief-candidate P3: null provenance falls back to unknown class (threshold 0.8)', () => {
+  const db = freshDb();
+  // Below unknown threshold (0.8) — should be blocked
+  const { id: lowId } = insertBeliefCandidate(db, {
+    topic: 'some-fact',
+    claim: 'weak unknown claim',
+    confidence: 0.75,
+    provenance: null,
+  });
+  const resLow = resolveBeliefCandidate(db, null, lowId, 'promote');
+  assert.equal(resLow.action, 'reject');
+  assert.equal(resLow.blockedReason, 'below-threshold-for-class');
+
+  // At/above unknown threshold (0.8) — should promote
+  const { id: highId } = insertBeliefCandidate(db, {
+    topic: 'some-fact-2',
+    claim: 'strong unknown claim',
+    confidence: 0.8,
+    provenance: null,
+  });
+  const resHigh = resolveBeliefCandidate(db, null, highId, 'promote');
+  assert.equal(resHigh.action, 'promote');
+  assert.ok(resHigh.promotedBeliefEventId);
+  closeDb(db);
+});
+
+test('belief-candidate P3: existing promote test still works with first-party provenance (>= 0.5)', () => {
+  // Regression guard: the pre-P3 promote test inserted confidence=0.9 with no
+  // provenance, which now falls back to 'unknown' (threshold 0.8). Explicitly
+  // set provenance='first-party' here to assert the happy path remains intact.
+  const db = freshDb();
+  const { id } = insertBeliefCandidate(db, {
+    topic: 'fp-topic',
+    claim: 'a first-party claim',
+    confidence: 0.6, // above first-party threshold of 0.5
+    provenance: 'first-party',
+  });
+  const res = resolveBeliefCandidate(db, null, id, 'promote');
+  assert.equal(res.action, 'promote');
+  assert.ok(res.promotedBeliefEventId && res.promotedBeliefEventId > 0);
+  const belief = recallBelief(db, { topic: 'fp-topic' }) as import('./belief.ts').BeliefRecord;
+  assert.ok(belief);
+  assert.equal(belief.provenance, 'first-party');
+  closeDb(db);
+});

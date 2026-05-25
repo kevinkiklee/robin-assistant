@@ -1,6 +1,7 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { believe, normalizeTopic } from './belief.ts';
 import type { RobinDb } from './db.ts';
+import { PROMOTION_THRESHOLD, type ProvenanceClass } from './provenance.ts';
 
 /**
  * Render a Date in SQLite's `datetime('now')` format (`YYYY-MM-DD HH:MM:SS`,
@@ -26,6 +27,7 @@ export interface BeliefCandidate {
   claim: string;
   confidence: number | null;
   sourceEventId: number | null;
+  provenance: ProvenanceClass | null;
   status: 'pending' | 'promoted' | 'rejected';
   createdAt: string;
   resolvedAt: string | null;
@@ -37,6 +39,7 @@ interface RawRow {
   claim: string;
   confidence: number | null;
   source_event_id: number | null;
+  provenance: ProvenanceClass | null;
   status: 'pending' | 'promoted' | 'rejected';
   created_at: string;
   resolved_at: string | null;
@@ -49,6 +52,7 @@ function mapRow(r: RawRow): BeliefCandidate {
     claim: r.claim,
     confidence: r.confidence,
     sourceEventId: r.source_event_id,
+    provenance: r.provenance,
     status: r.status,
     createdAt: r.created_at,
     resolvedAt: r.resolved_at,
@@ -68,6 +72,7 @@ export function insertBeliefCandidate(
     claim: string;
     confidence?: number | null;
     sourceEventId?: number | null;
+    provenance?: ProvenanceClass | null;
   },
 ): { id: number } {
   const topic = normalizeTopic(input.topic);
@@ -86,10 +91,16 @@ export function insertBeliefCandidate(
 
   const info = db
     .prepare(
-      `INSERT INTO belief_candidates (topic, claim, confidence, source_event_id)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO belief_candidates (topic, claim, confidence, source_event_id, provenance)
+       VALUES (?, ?, ?, ?, ?)`,
     )
-    .run(topic, claim, input.confidence ?? null, input.sourceEventId ?? null);
+    .run(
+      topic,
+      claim,
+      input.confidence ?? null,
+      input.sourceEventId ?? null,
+      input.provenance ?? null,
+    );
   return { id: Number(info.lastInsertRowid) };
 }
 
@@ -118,6 +129,18 @@ export function listBeliefCandidates(
  * new belief event id. `reject` marks it `rejected` with no truth-stream write.
  * Resolving a non-pending (or missing) candidate is a no-op aside from the
  * `believe()` call being skipped.
+ *
+ * P3 formation gate: when `action === 'promote'`, two checks gate actual promotion:
+ *   1. `external` provenance — external readings are live state (read from the
+ *      integration on demand), never durable beliefs; the request is re-routed to
+ *      `reject` with blockedReason='external-not-durable'.
+ *   2. confidence below the class threshold — below-bar candidates cannot promote;
+ *      re-routed to `reject` with blockedReason='below-threshold-for-class'.
+ *
+ * Intentional design decision: we do NOT apply an additional confidence ceiling
+ * when promoting weak-class beliefs. Read-time decay (effectiveConfidence, applied
+ * to inferred beliefs) plus the provenance tag already de-weight weak beliefs when
+ * surfaced; adding a stored-confidence cap here would double-discount them.
  */
 export function resolveBeliefCandidate(
   db: RobinDb,
@@ -125,7 +148,12 @@ export function resolveBeliefCandidate(
   id: number,
   action: 'promote' | 'reject',
   reason?: string,
-): { candidateId: number; action: 'promote' | 'reject'; promotedBeliefEventId: number | null } {
+): {
+  candidateId: number;
+  action: 'promote' | 'reject';
+  promotedBeliefEventId: number | null;
+  blockedReason?: string;
+} {
   void reason;
   const row = db.prepare(`SELECT * FROM belief_candidates WHERE id = ?`).get(id) as
     | RawRow
@@ -144,16 +172,50 @@ export function resolveBeliefCandidate(
     return { candidateId: id, action, promotedBeliefEventId: null };
   }
 
+  // P3 formation gate — check provenance class before allowing promotion.
+  const cls: ProvenanceClass = row.provenance ?? 'unknown';
+
+  if (cls === 'external') {
+    // External readings are live state (fetched from integrations on demand).
+    // They are NOT durable beliefs — promoting one would create a stale snapshot
+    // that drifts from the live source. Re-route to rejected.
+    db.prepare(
+      `UPDATE belief_candidates SET status = 'rejected', resolved_at = ? WHERE id = ?`,
+    ).run(now, id);
+    return {
+      candidateId: id,
+      action: 'reject',
+      promotedBeliefEventId: null,
+      blockedReason: 'external-not-durable',
+    };
+  }
+
+  if ((row.confidence ?? 0) < PROMOTION_THRESHOLD[cls]) {
+    // Confidence is below the class's minimum bar. Reject rather than promote
+    // a weakly-supported belief into the truth stream.
+    db.prepare(
+      `UPDATE belief_candidates SET status = 'rejected', resolved_at = ? WHERE id = ?`,
+    ).run(now, id);
+    return {
+      candidateId: id,
+      action: 'reject',
+      promotedBeliefEventId: null,
+      blockedReason: 'below-threshold-for-class',
+    };
+  }
+
   const res = believe(db, llm, {
     topic: row.topic,
     claim: row.claim,
     confidence: row.confidence ?? undefined,
+    provenance: cls,
+    sources: row.source_event_id != null ? [row.source_event_id] : [],
   });
   db.prepare(`UPDATE belief_candidates SET status = 'promoted', resolved_at = ? WHERE id = ?`).run(
     now,
     id,
   );
-  return { candidateId: id, action, promotedBeliefEventId: res.eventId };
+  return { candidateId: id, action: 'promote', promotedBeliefEventId: res.eventId };
 }
 
 /** Count candidates still awaiting review. */
