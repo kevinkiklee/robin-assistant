@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -145,8 +146,12 @@ function makeHandler(
 
     case 'edges': {
       if (!entityMap) throw new Error('edges import requires entityMap');
+      // INSERT OR IGNORE on the unique import_key → re-importing the same dump is a
+      // no-op (returns 0 changes, counted as skipped). Key is the v2 edge id if
+      // present, else a content hash of the resolved (subject, predicate, object).
       const ins = db.prepare(
-        `INSERT INTO relations (subject_id, predicate, object_id, ts) VALUES (?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO relations (subject_id, predicate, object_id, ts, import_key)
+         VALUES (?, ?, ?, ?, ?)`,
       );
       return (row) => {
         // v2 edges can connect events↔entities; v3 relations only connect entities.
@@ -169,15 +174,18 @@ function makeHandler(
             : typeof row.created_at === 'string'
               ? row.created_at
               : new Date().toISOString();
-        ins.run(sId, predicate, oId, ts);
-        return true;
+        const importKey = stableKey(row.id, `edge:${sId}:${predicate}:${oId}`);
+        const r = ins.run(sId, predicate, oId, ts, importKey);
+        return r.changes > 0;
       };
     }
 
     case 'events': {
       const insContent = db.prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`);
+      const delContent = db.prepare(`DELETE FROM events_content WHERE id = ?`);
       const insEvent = db.prepare(
-        `INSERT INTO events (ts, kind, source, status, payload, content_ref) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO events (ts, kind, source, status, payload, content_ref, import_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       );
       return (row) => {
         const ts = typeof row.ts === 'string' ? row.ts : new Date().toISOString();
@@ -189,12 +197,22 @@ function makeHandler(
             : null;
         const kind = host ? `${source}.${host}` : `v2.${source}`;
         const body = typeof row.content === 'string' ? row.content : null;
+        const payload = JSON.stringify(row);
+        // Dedup key: the v2 event id if present, else a hash of the row's stable
+        // fields. INSERT OR IGNORE makes re-import a no-op on the unique index.
+        const importKey = stableKey(row.id, `event:${ts}:${kind}:${source}:${body ?? ''}`);
+        // Insert content first so we can set content_ref; if the event turns out to
+        // be a duplicate (0 changes), roll back the orphaned content row.
         let contentRef: number | null = null;
         if (body) {
           const r = insContent.run(ts, body);
           contentRef = Number(r.lastInsertRowid);
         }
-        insEvent.run(ts, kind, source, 'imported', JSON.stringify(row), contentRef);
+        const r = insEvent.run(ts, kind, source, 'imported', payload, contentRef, importKey);
+        if (r.changes === 0) {
+          if (contentRef !== null) delContent.run(contentRef);
+          return false;
+        }
         return true;
       };
     }
@@ -238,6 +256,15 @@ function makeHandler(
 function asEntityRef(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   return v.startsWith('entities:') ? v : null;
+}
+
+// A stable dedup key for an imported row: prefer the source record's own id (a v2
+// `events:`/`edges:` ref), else a sha256 of the row's content fingerprint. Same
+// input → same key, so a second import of the same dump collides on the unique
+// index and is ignored.
+function stableKey(externalId: unknown, fingerprint: string): string {
+  if (typeof externalId === 'string' && externalId.length > 0) return externalId;
+  return `sha256:${createHash('sha256').update(fingerprint).digest('hex')}`;
 }
 
 // Build v2-id → v3-id by replaying the inserted entities. We round-tripped each v2 row's

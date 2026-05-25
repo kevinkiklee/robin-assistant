@@ -145,6 +145,69 @@ describe('robin import', () => {
     assert.equal(rows.length, 0);
   });
 
+  it('is idempotent: re-importing the same dump adds 0 events and 0 edges', async () => {
+    writeFileSync(
+      join(importDir, 'entities.ndjson'),
+      makeNdjson([
+        { id: 'entities:person__kevin', type: 'person', name: 'Kevin' },
+        { id: 'entities:topic__robin', type: 'topic', name: 'Robin' },
+      ]),
+    );
+    writeFileSync(
+      join(importDir, 'edges.ndjson'),
+      makeNdjson([
+        {
+          id: 'edges:a',
+          in: 'entities:person__kevin',
+          out: 'entities:topic__robin',
+          kind: 'works_on',
+        },
+        // No `id` → dedup falls back to a content hash; must still de-dup.
+        { in: 'entities:topic__robin', out: 'entities:person__kevin', kind: 'owned_by' },
+      ]),
+    );
+    writeFileSync(
+      join(importDir, 'events.ndjson'),
+      makeNdjson([
+        {
+          id: 'events:1',
+          ts: '2026-05-19T10:00:00Z',
+          source: 'conversation',
+          content: 'hello',
+          meta: { host: 'claude-code' },
+        },
+        // No `id` → content-hash dedup.
+        { ts: '2026-05-19T10:01:00Z', source: 'integration', content: 'tick' },
+      ]),
+    );
+
+    const first = await runImport({ dir: importDir });
+    assert.equal(first.files['edges.ndjson']?.inserted, 2);
+    assert.equal(first.files['events.ndjson']?.inserted, 2);
+
+    const second = await runImport({ dir: importDir });
+    assert.equal(second.files['edges.ndjson']?.inserted, 0, 'second edges import must add nothing');
+    assert.equal(second.files['edges.ndjson']?.skipped, 2);
+    assert.equal(
+      second.files['events.ndjson']?.inserted,
+      0,
+      'second events import must add nothing',
+    );
+    assert.equal(second.files['events.ndjson']?.skipped, 2);
+
+    const db = openDb(dbFilePath(dataDir));
+    const relCount = (db.prepare('SELECT COUNT(*) AS c FROM relations').get() as { c: number }).c;
+    const evtCount = (db.prepare('SELECT COUNT(*) AS c FROM events').get() as { c: number }).c;
+    const contentCount = (
+      db.prepare('SELECT COUNT(*) AS c FROM events_content').get() as { c: number }
+    ).c;
+    db.close();
+    assert.equal(relCount, 2, 'relations should not be duplicated');
+    assert.equal(evtCount, 2, 'events should not be duplicated');
+    // The duplicate-event path inserts content then rolls it back — no orphans.
+    assert.equal(contentCount, 2, 'events_content should not accumulate orphans');
+  });
+
   it('--kinds filters which files run', async () => {
     writeFileSync(
       join(importDir, 'entities.ndjson'),

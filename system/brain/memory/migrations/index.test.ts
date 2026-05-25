@@ -38,6 +38,7 @@ test('schema 001: events table has expected columns', () => {
     'content_ref',
     'duration_ms',
     'id',
+    'import_key', // added in migration 012 (idempotent import dedup key)
     'kind',
     'payload',
     'source',
@@ -47,11 +48,23 @@ test('schema 001: events table has expected columns', () => {
   closeDb(db);
 });
 
-test('migrations apply cleanly up to version 11', () => {
+test('migrations apply cleanly up to version 12', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const row = db.prepare('SELECT MAX(version) AS v FROM _migrations').get() as { v: number };
-  assert.equal(row.v, 11);
+  assert.equal(row.v, 12);
+  closeDb(db);
+});
+
+test('migration 012: import_key dedup indexes exist on events and relations', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const idx = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as Array<{
+    name: string;
+  }>;
+  const names = idx.map((i) => i.name);
+  assert.ok(names.includes('events_import_key'), 'events_import_key index missing');
+  assert.ok(names.includes('relations_import_key'), 'relations_import_key index missing');
   closeDb(db);
 });
 
