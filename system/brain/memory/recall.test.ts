@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
+import { believe } from './belief.ts';
 import { closeDb, openDb } from './db.ts';
 import { ingest } from './ingest.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
@@ -84,6 +85,52 @@ test('recall: repeat queries share the same query_hash so aggregation is meaning
   }>;
   assert.equal(rows.length, 2);
   assert.equal(rows[0].query_hash, rows[1].query_hash);
+  closeDb(db);
+});
+
+test('recall: belief.update hit carries confidence, provenance, ageDays; non-belief hit does not', async () => {
+  const db = freshDb();
+  // Seed a belief.update event
+  believe(db, null, {
+    topic: 'test.role',
+    claim: 'Software Engineer',
+    confidence: 0.9,
+    provenance: 'first-party',
+    date: '2026-05-23',
+  });
+  // Seed a non-belief event
+  ingest(db, null, { kind: 'memory.remember', source: 's', content: 'Software Engineer at Acme' });
+
+  const hits = await recall(db, null, 'Software Engineer', { mode: 'lex' });
+  // At least one hit
+  assert.ok(hits.length >= 1);
+
+  const beliefHit = hits.find((h) => h.kind === 'belief.update');
+  assert.ok(beliefHit, 'should have a belief.update hit');
+  assert.ok(typeof beliefHit.ageDays === 'number' && beliefHit.ageDays >= 0);
+  assert.equal(typeof beliefHit.confidence, 'number');
+  assert.equal(beliefHit.provenance, 'first-party');
+
+  const nonBeliefHit = hits.find((h) => h.kind !== 'belief.update');
+  assert.ok(nonBeliefHit, 'should have a non-belief hit');
+  assert.equal(typeof nonBeliefHit.ageDays, 'number');
+  assert.equal(nonBeliefHit.confidence, undefined);
+  assert.equal(nonBeliefHit.provenance, undefined);
+
+  closeDb(db);
+});
+
+test('recall: enrichment is best-effort — non-belief hits carry kind + ageDays only', async () => {
+  const db = freshDb();
+  ingest(db, null, { kind: 'session.captured', source: 's', content: 'favorite color is blue' });
+
+  const hits = await recall(db, null, 'favorite color', { mode: 'lex' });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].kind, 'session.captured');
+  assert.equal(typeof hits[0].ageDays, 'number');
+  assert.equal(hits[0].confidence, undefined);
+  assert.equal(hits[0].provenance, undefined);
+
   closeDb(db);
 });
 

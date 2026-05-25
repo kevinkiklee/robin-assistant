@@ -35,7 +35,7 @@ Run \`robin help --all\` for advanced + maintenance commands.`;
   const advanced = `
 ADVANCED
   agent "<goal>"        Run a guarded agentic task (--handler=A..L | --write, --cwd=, --max-turns=, --budget=, --force)
-  beliefs review        Manage the belief-candidate queue (promote <id> | reject <id>)
+  beliefs review        Manage the belief-candidate queue (promote <id> | reject <id> | backfill-provenance)
   publish / published   Publish a markdown file to the web / list published pages
   import <dir>          Import NDJSON dumps from content/imported-from-<source>/
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
@@ -122,6 +122,22 @@ async function main(): Promise<void> {
           console.error(err instanceof Error ? err.message : String(err));
           exit(1);
         }
+      }
+      if (sub === 'backfill-provenance') {
+        const { backfillProvenance } = await import('../../brain/memory/backfill-provenance.ts');
+        const { openDb } = await import('../../brain/memory/db.ts');
+        const { allMigrations, applyMigrations } = await import(
+          '../../brain/memory/migrations/index.ts'
+        );
+        const { dbFilePath, resolveUserDataDir } = await import('../../lib/paths.ts');
+        const userData = resolveUserDataDir();
+        const db = openDb(dbFilePath(userData));
+        applyMigrations(db, allMigrations);
+        const result = backfillProvenance(db);
+        db.close();
+        // biome-ignore lint/suspicious/noConsole: CLI output
+        console.log(JSON.stringify(result));
+        exit(0);
       }
       // biome-ignore lint/suspicious/noConsole: CLI output
       console.error(`Unknown beliefs subcommand: ${sub}`);
