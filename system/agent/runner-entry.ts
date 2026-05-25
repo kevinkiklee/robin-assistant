@@ -17,7 +17,7 @@ import { UsageLedger } from './usage-ledger.ts';
 const DEFAULT_GOALS: Record<string, string> = {
   B: 'Pick the most valuable open research thread for Robin and produce a concise, sourced brief.',
   D: 'Curate the knowledge base: fix stale, duplicated, or low-quality notes in scope.',
-  E: 'Reconcile conflicting or stale beliefs against current evidence and update confidence.',
+  E: 'Detect CROSS-TOPIC conflicts — contradictions between beliefs on different topics or between a belief and an entity relation (same-topic cannot conflict; supersession already guarantees one live head per topic). Propose resolutions only: write belief candidates or record corrections; never auto-promote or directly overwrite beliefs.',
   F: 'Calibrate open predictions: resolve any that are now decidable and adjust the rest.',
   G: 'Find the highest-value knowledge gap and fill it with a well-sourced note.',
   H: 'Enrich recent memory: surface non-obvious connections and journal a consolidation.',

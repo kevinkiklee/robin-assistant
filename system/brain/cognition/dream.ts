@@ -1,6 +1,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveUserDataDir } from '../../lib/paths.ts';
+import { applyCorrections } from '../learning/apply-corrections.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { expireStaleCandidates } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
@@ -21,6 +22,10 @@ export interface DreamResult {
   beliefsRefreshed: number;
   /** content/* docs ingested or updated into events_content for recall this run. */
   docsIngested: number;
+  /** Topic-linked corrections processed (applied=1) this run. */
+  correctionsApplied: number;
+  /** Belief heads retracted due to a topic-linked correction this run. */
+  beliefsRetracted: number;
 }
 
 const CANDIDATE_EXPIRY_DAYS = 14;
@@ -45,6 +50,7 @@ const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
  *    (bounded) or flags with belief.stale events (idempotent)
  * 8. Flags prose docs in content/profile that are older than the newest belief/correction signal
  * 9. Indexes content/* markdown docs for recall (idempotent)
+ * 10. Replays topic-linked corrections: retracts contradicted belief heads (P4 close-the-loop)
  */
 export async function runDream(
   db: RobinDb,
@@ -62,6 +68,8 @@ export async function runDream(
     staleBeliefsFlagged: 0,
     beliefsRefreshed: 0,
     docsIngested: 0,
+    correctionsApplied: 0,
+    beliefsRetracted: 0,
   };
 
   // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
@@ -157,6 +165,19 @@ export async function runDream(
     result.docsIngested = docs.ingested + docs.updated;
   } catch {
     result.docsIngested = 0;
+  }
+
+  // 10. Apply topic-linked corrections → auto-retract contradicted belief heads.
+  //     Only corrections with an explicit `topic` link are replayed; behavioral/global
+  //     corrections (NULL topic) are left untouched. Best-effort: a failure here must
+  //     never sink the rest of the dream pass.
+  try {
+    const corrections = applyCorrections(db, llm, now);
+    result.correctionsApplied = corrections.processed;
+    result.beliefsRetracted = corrections.retracted;
+  } catch {
+    result.correctionsApplied = 0;
+    result.beliefsRetracted = 0;
   }
 
   return result;

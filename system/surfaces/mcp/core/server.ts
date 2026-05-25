@@ -5,7 +5,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
-import { believe, recallBelief } from '../../../brain/memory/belief.ts';
+import { believe, normalizeTopic, recallBelief } from '../../../brain/memory/belief.ts';
 import {
   countPendingCandidates,
   listBeliefCandidates,
@@ -398,14 +398,21 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         what: z.string().describe('What Robin said that was wrong'),
         correction: z.string().describe('What the correct version is'),
         context: z.string().optional().describe('Optional context: where this happened'),
+        topic: z
+          .string()
+          .optional()
+          .describe(
+            'Belief topic this correction refutes, if any — enables auto-retraction of the contradicted belief',
+          ),
       }),
     },
-    async ({ what, correction, context }) => {
+    async ({ what, correction, context, topic }) => {
+      const normalizedTopic = topic ? normalizeTopic(topic) : null;
       const info = deps.db
         .prepare(`
-        INSERT INTO corrections (what, correction, context) VALUES (?, ?, ?)
+        INSERT INTO corrections (what, correction, context, topic) VALUES (?, ?, ?, ?)
       `)
-        .run(what, correction, context ?? null);
+        .run(what, correction, context ?? null, normalizedTopic);
       return {
         content: [
           { type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) },

@@ -11,6 +11,7 @@ import { migration010 } from './010-events-vec-3072.ts';
 import { migration011 } from './011-agent-usage.ts';
 import { migration012 } from './012-import-dedup-keys.ts';
 import { migration013 } from './013-belief-candidate-provenance.ts';
+import { migration014 } from './014-correction-topic.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -27,6 +28,7 @@ export const allMigrations: Migration[] = [
   migration011,
   migration012,
   migration013,
+  migration014,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';
