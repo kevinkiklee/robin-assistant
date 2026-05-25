@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install build tools (native modules: better-sqlite3, sqlite-vec)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential python3
+
       - name: Install pnpm
         run: npm install -g pnpm@10
 
