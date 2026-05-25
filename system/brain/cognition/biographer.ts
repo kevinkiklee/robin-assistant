@@ -518,7 +518,14 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
   // "dream.test.ts") — dev/build artifacts, never real-world entities. Caught even
   // when embedded in a phrase ("learning-queue.md over cap"). The path heuristic
   // above only fires on slash-bearing tokens, so this covers bare file names.
+  // JS frameworks follow a `<Capitalized>.js` convention (Three.js, Next.js,
+  // Node.js, Discord.js, NextAuth.js) — real entities, NOT source-file refs.
+  // Exempt them from the file-extension heuristic; lowercase/hyphenated source
+  // files ("event-bus.js") and non-.js files ("biographer.ts", "Board.tsx") are
+  // still caught.
+  const isFrameworkName = /^[A-Z][a-zA-Z0-9]*\.js\b/.test(trimmed);
   if (
+    !isFrameworkName &&
     /(^|\s)[\w.-]+\.(md|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|sh|py|toml)(\s|$|:)/i.test(trimmed)
   )
     return true;

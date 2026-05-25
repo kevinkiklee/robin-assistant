@@ -571,6 +571,17 @@ test('isLowQualityEntity: drops bare source-file references regardless of type',
   }
 });
 
+test('isLowQualityEntity: keeps <Capitalized>.js frameworks but still drops .js source files', () => {
+  // Framework names follow `<Cap>.js` — real entities, not source-file noise.
+  for (const name of ['Three.js', 'Next.js 16', 'Node.js 24', 'Discord.js', 'NextAuth.js v5']) {
+    assert.equal(isLowQualityEntity(name, 'library'), false, `${name} framework should be kept`);
+  }
+  // Lowercase/hyphenated .js source files + non-.js files are still dropped.
+  for (const name of ['event-bus.js:37', 'browse.js', 'Board.tsx', 'biographer.ts']) {
+    assert.equal(isLowQualityEntity(name), true, `${name} source file should be dropped`);
+  }
+});
+
 test('isLowQualityEntity: keeps real entities that read like dev jargon', () => {
   // These are legitimate and must survive — concrete types are NOT subjected to
   // the dev-internal pass even when the name resembles jargon/kebab.
