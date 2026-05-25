@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { z } from 'zod';
-import { GoogleProvider } from './google.ts';
+import { GoogleProvider, jsonSchemaToGeminiSchema } from './google.ts';
 
 type FetchCall = { url: string; init: RequestInit | undefined };
 
@@ -128,6 +128,42 @@ test('google: outputSchema sets responseMimeType application/json', async () => 
   assert.equal(gen.responseMimeType, 'application/json');
 });
 
+test('google: outputSchema wires a Gemini responseSchema into the request body', async () => {
+  const calls: FetchCall[] = [];
+  mockFetch(
+    [{ body: { candidates: [{ content: { parts: [{ text: '{}' }] } }], usageMetadata: {} } }],
+    calls,
+  );
+  const p = new GoogleProvider({ apiKey: 'k', sleep: zeroSleep });
+  await p.invoke({
+    messages: [{ role: 'user', content: 'hi' }],
+    outputSchema: z.object({
+      entities: z.array(z.object({ type: z.string(), name: z.string() })),
+      status: z.enum(['ok', 'fail']),
+      note: z.string().nullable(),
+    }),
+  });
+  const gen = bodyOf(calls[0]).generationConfig as Record<string, unknown>;
+  assert.equal(gen.responseMimeType, 'application/json');
+  // The full schema is enforced via responseSchema (OpenAPI subset, UPPERCASE types).
+  assert.deepEqual(gen.responseSchema, {
+    type: 'OBJECT',
+    properties: {
+      entities: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { type: { type: 'STRING' }, name: { type: 'STRING' } },
+          required: ['type', 'name'],
+        },
+      },
+      status: { type: 'STRING', enum: ['ok', 'fail'] },
+      note: { type: 'STRING', nullable: true },
+    },
+    required: ['entities', 'status', 'note'],
+  });
+});
+
 test('google: embed(single string) returns one vector', async () => {
   const calls: FetchCall[] = [];
   const vec = [0.1, 0.2, 0.3];
@@ -202,4 +238,55 @@ test('google: defaults match spec', async () => {
   const p = new GoogleProvider({ apiKey: 'k' });
   assert.equal(p.name, 'google');
   assert.deepEqual([...p.capabilities].sort(), ['agentic', 'embed', 'reasoning', 'summarize']);
+});
+
+// ─── jsonSchemaToGeminiSchema unit tests ───────────────────────────────────────
+
+test('jsonSchemaToGeminiSchema: maps primitive types to UPPERCASE', () => {
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: 'string' }), { type: 'STRING' });
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: 'integer' }), { type: 'INTEGER' });
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: 'number' }), { type: 'NUMBER' });
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: 'boolean' }), { type: 'BOOLEAN' });
+});
+
+test('jsonSchemaToGeminiSchema: folds anyOf [T, null] into nullable', () => {
+  assert.deepEqual(jsonSchemaToGeminiSchema({ anyOf: [{ type: 'string' }, { type: 'null' }] }), {
+    type: 'STRING',
+    nullable: true,
+  });
+});
+
+test('jsonSchemaToGeminiSchema: handles type arrays with null', () => {
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: ['string', 'null'] }), {
+    type: 'STRING',
+    nullable: true,
+  });
+});
+
+test('jsonSchemaToGeminiSchema: carries enum, description, and array items', () => {
+  assert.deepEqual(
+    jsonSchemaToGeminiSchema({
+      type: 'array',
+      description: 'a list',
+      items: { type: 'string', enum: ['a', 'b'] },
+    }),
+    { type: 'ARRAY', description: 'a list', items: { type: 'STRING', enum: ['a', 'b'] } },
+  );
+});
+
+test('jsonSchemaToGeminiSchema: drops unrecognized formats but keeps date-time', () => {
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: 'string', format: 'email' }), {
+    type: 'STRING',
+  });
+  assert.deepEqual(jsonSchemaToGeminiSchema({ type: 'string', format: 'date-time' }), {
+    type: 'STRING',
+    format: 'date-time',
+  });
+});
+
+test('jsonSchemaToGeminiSchema: returns null for unusable schemas', () => {
+  assert.equal(jsonSchemaToGeminiSchema(undefined), null);
+  assert.equal(jsonSchemaToGeminiSchema({}), null);
+  // Genuine multi-branch unions are not expressible in the subset.
+  assert.equal(jsonSchemaToGeminiSchema({ anyOf: [{ type: 'string' }, { type: 'number' }] }), null);
 });

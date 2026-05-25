@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type {
   InvokeRequest,
   InvokeResult,
@@ -49,6 +50,107 @@ interface EmbedResponse {
   embeddings?: Array<{ values?: number[] }>;
 }
 
+// Gemini's responseSchema is an OpenAPI-3.0 Schema subset: UPPERCASE `type`
+// strings (STRING/NUMBER/INTEGER/BOOLEAN/ARRAY/OBJECT), `nullable` instead of a
+// `[..,null]` union, and a limited keyword set (type, format, description, enum,
+// items, properties, required, nullable). We carry only those.
+interface GeminiSchema {
+  type?: string;
+  format?: string;
+  description?: string;
+  nullable?: boolean;
+  enum?: string[];
+  items?: GeminiSchema;
+  properties?: Record<string, GeminiSchema>;
+  required?: string[];
+}
+
+const JSON_TYPE_TO_GEMINI: Record<string, string> = {
+  string: 'STRING',
+  number: 'NUMBER',
+  integer: 'INTEGER',
+  boolean: 'BOOLEAN',
+  array: 'ARRAY',
+  object: 'OBJECT',
+};
+
+// Formats Gemini's responseSchema recognizes. JSON Schema emits many more
+// (email, uri, uuid, …); passing an unrecognized one is rejected, so we drop them.
+const GEMINI_FORMATS = new Set(['date-time', 'enum', 'int32', 'int64', 'float', 'double']);
+
+type JsonSchema = Record<string, unknown>;
+
+/**
+ * Convert a JSON Schema (as produced by `z.toJSONSchema`) into Gemini's
+ * OpenAPI-subset responseSchema. Returns null when there's nothing usable to map
+ * (e.g. an empty/typeless schema) so the caller can fall back to JSON-only mode.
+ *
+ * Handles the shapes zod 4 emits for our extraction schemas: typed primitives,
+ * objects with properties+required, arrays with `items`, enums, and the
+ * `anyOf: [<schema>, {type:'null'}]` union that optionals/nullables compile to
+ * (folded into `nullable: true`).
+ */
+export function jsonSchemaToGeminiSchema(schema: JsonSchema | undefined): GeminiSchema | null {
+  if (!schema || typeof schema !== 'object') return null;
+
+  // Nullable union: `anyOf`/`oneOf` of [<real schema>, {type:'null'}]. Collapse the
+  // null branch into `nullable` and convert the single remaining branch.
+  const union = (schema.anyOf ?? schema.oneOf) as JsonSchema[] | undefined;
+  if (Array.isArray(union)) {
+    const isNull = (s: JsonSchema) => s?.type === 'null';
+    const nonNull = union.filter((s) => !isNull(s));
+    const hasNull = union.some(isNull);
+    if (nonNull.length === 1) {
+      const inner = jsonSchemaToGeminiSchema(nonNull[0]);
+      if (!inner) return null;
+      if (hasNull) inner.nullable = true;
+      if (typeof schema.description === 'string') inner.description ??= schema.description;
+      return inner;
+    }
+    // Genuine multi-branch unions aren't expressible in the subset — skip enforcement.
+    return null;
+  }
+
+  const rawType = schema.type;
+  // JSON Schema permits `type: [...]` (e.g. ["string","null"]); take the non-null one.
+  let typeStr: string | undefined;
+  let nullable = false;
+  if (Array.isArray(rawType)) {
+    nullable = rawType.includes('null');
+    typeStr = rawType.find((t) => t !== 'null');
+  } else if (typeof rawType === 'string') {
+    typeStr = rawType;
+  }
+  if (!typeStr || !JSON_TYPE_TO_GEMINI[typeStr]) return null;
+
+  const out: GeminiSchema = { type: JSON_TYPE_TO_GEMINI[typeStr] };
+  if (nullable) out.nullable = true;
+  if (typeof schema.description === 'string') out.description = schema.description;
+  if (typeof schema.format === 'string' && GEMINI_FORMATS.has(schema.format))
+    out.format = schema.format;
+  if (Array.isArray(schema.enum)) out.enum = (schema.enum as unknown[]).map((v) => String(v));
+
+  if (typeStr === 'array') {
+    const items = jsonSchemaToGeminiSchema(schema.items as JsonSchema | undefined);
+    if (items) out.items = items;
+  }
+
+  if (typeStr === 'object' && schema.properties && typeof schema.properties === 'object') {
+    const props: Record<string, GeminiSchema> = {};
+    for (const [key, value] of Object.entries(schema.properties as Record<string, JsonSchema>)) {
+      const converted = jsonSchemaToGeminiSchema(value);
+      if (converted) props[key] = converted;
+    }
+    if (Object.keys(props).length > 0) out.properties = props;
+    if (Array.isArray(schema.required))
+      out.required = (schema.required as unknown[]).filter(
+        (r): r is string => typeof r === 'string' && r in props,
+      );
+  }
+
+  return out;
+}
+
 export class GoogleProvider implements LLMProvider {
   readonly name = 'google';
   readonly capabilities: Set<LLMRole>;
@@ -94,9 +196,13 @@ export class GoogleProvider implements LLMProvider {
     };
     if (req.outputSchema) {
       generationConfig.responseMimeType = 'application/json';
-      // TODO: set generationConfig.responseSchema by converting the zod schema
-      // to a JSON schema. `zod-to-json-schema` is not a dependency, so we only
-      // request JSON output for now and let the caller validate downstream.
+      // Convert the zod schema → JSON Schema (zod 4 ships this natively) → Gemini's
+      // OpenAPI-subset responseSchema, so the model enforces the shape instead of us
+      // only hoping for JSON. `target: 'draft-7'` keeps optionals as `anyOf:[…,null]`
+      // unions, which jsonSchemaToGeminiSchema folds back into `nullable: true`.
+      const jsonSchema = z.toJSONSchema(req.outputSchema, { target: 'draft-7' });
+      const responseSchema = jsonSchemaToGeminiSchema(jsonSchema);
+      if (responseSchema) generationConfig.responseSchema = responseSchema;
     }
 
     const body: Record<string, unknown> = { contents, generationConfig };
