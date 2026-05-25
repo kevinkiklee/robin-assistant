@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
+import { insertBeliefCandidate, listBeliefCandidates } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import { classifyProvenance } from '../memory/provenance.ts';
 import { chunkBody, extractClaims, isLowQualityEntity, runBiographer } from './biographer.ts';
 import { captureSession } from './capture.ts';
 
@@ -848,5 +850,84 @@ test('biographer: a failing claims pass does not block entity/relation extractio
     r.errors.some((e) => e.includes('claims chunk')),
     'a claims-chunk error should be recorded',
   );
+  closeDb(db);
+});
+
+// ─── P3 biographer provenance tagging tests ───────────────────────────────────
+
+test('biographer P3: candidates from session.captured source get provenance first-party', async () => {
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [], relations: [] }),
+    JSON.stringify({
+      claims: [{ topic: 'home', claim: 'lives in Bergen County NJ', confidence: 0.9 }],
+    }),
+  );
+  // captureSession inserts a 'session.captured' event — classifyProvenance(['session.captured'])
+  // → 'first-party'. Use a long enough body to pass the preprocessForExtraction
+  // 50-char turn filter, otherwise the cleaned body is empty and no chunks run.
+  await captureSession(db, null, {
+    sessionId: 's-fp',
+    turns: [
+      {
+        role: 'user',
+        content: 'I live in Bergen County, New Jersey and have been here for several years now.',
+      },
+      {
+        role: 'assistant',
+        content: 'Noted. Bergen County NJ is recorded as your home location for future reference.',
+      },
+    ],
+  });
+  await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
+  const cands = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(cands.length, 1);
+  assert.equal(cands[0].provenance, 'first-party');
+  closeDb(db);
+});
+
+test('biographer P3: classifyProvenance maps integration.* kind to external', () => {
+  // Unit test of the classification helper that biographer now uses to tag
+  // each candidate with the correct provenance class.
+  assert.equal(classifyProvenance(['integration.github']), 'external');
+  assert.equal(classifyProvenance(['integration.linear']), 'external');
+  assert.equal(classifyProvenance(['integration.google_calendar']), 'external');
+  // first-party wins even when mixed with external
+  assert.equal(classifyProvenance(['session.captured', 'integration.github']), 'first-party');
+});
+
+test('biographer P3: insertBeliefCandidate with integration.* source stores provenance external', () => {
+  // Verifies that the biographer's pattern of:
+  //   1. SELECT kind FROM events WHERE id = ? (→ 'integration.github')
+  //   2. classifyProvenance(['integration.github']) (→ 'external')
+  //   3. insertBeliefCandidate(..., provenance: 'external')
+  // correctly persists the provenance field — isolating the storage side from
+  // the runBiographer path (which only processes session.captured events).
+  const db = freshDb();
+  const nowIso = new Date().toISOString();
+  const evInfo = db
+    .prepare(
+      `INSERT INTO events (ts, kind, source, status, payload) VALUES (?, 'integration.github', 'github', 'ok', '{}')`,
+    )
+    .run(nowIso);
+  const sourceEventId = Number(evInfo.lastInsertRowid);
+
+  // Simulate the biographer's provenance lookup:
+  const sourceRow = db.prepare(`SELECT kind FROM events WHERE id = ?`).get(sourceEventId) as {
+    kind: string;
+  };
+  const prov = classifyProvenance([sourceRow.kind]);
+  assert.equal(prov, 'external');
+
+  insertBeliefCandidate(db, {
+    topic: 'gh-stars',
+    claim: 'repo has 42 stars',
+    confidence: 0.99,
+    sourceEventId,
+    provenance: prov,
+  });
+  const cands = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(cands.length, 1);
+  assert.equal(cands[0].provenance, 'external');
   closeDb(db);
 });

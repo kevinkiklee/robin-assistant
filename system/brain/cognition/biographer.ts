@@ -4,6 +4,7 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
+import { classifyProvenance } from '../memory/provenance.ts';
 
 /**
  * True when an error means the LLM was unreachable / didn't respond (Ollama down,
@@ -954,6 +955,16 @@ export async function runBiographer(
             )
             .get(target.eventId) as { c: number }
         ).c;
+
+        // Compute provenance class once per target event — fetch the source
+        // event's kind and classify it so every candidate from this session
+        // carries the correct class tag. Done here (not per-claim) to avoid
+        // N redundant DB reads for a session that may produce many claims.
+        const sourceEventRow = db
+          .prepare(`SELECT kind FROM events WHERE id = ?`)
+          .get(target.eventId) as { kind: string } | undefined;
+        const targetProvenance = classifyProvenance(sourceEventRow ? [sourceEventRow.kind] : []);
+
         for (let ci = startChunk; ci < endChunk && claimsBudget > 0; ci++) {
           if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
           const chunk = chunks[ci];
@@ -975,6 +986,7 @@ export async function runBiographer(
                 claim: c.claim,
                 confidence: c.confidence ?? null,
                 sourceEventId: target.eventId,
+                provenance: targetProvenance,
               });
               sessionPending++;
               result.claimsDrafted++;
