@@ -97,6 +97,33 @@ test('backfillProvenance: re-running is a no-op (idempotent)', () => {
   closeDb(db);
 });
 
+test('backfillProvenance: processes ALL heads, not just the recallBelief default cap', () => {
+  // Regression: recallBelief defaults to 50 heads. A backfill must see every
+  // head — on a real instance with >50 topics the cap would silently skip the
+  // rest. Seed 60 distinct topics and assert all are scanned + reclassified.
+  const db = freshDb();
+  const N = 60;
+  for (let i = 0; i < N; i++) {
+    const src = ingest(db, null, {
+      kind: 'integration.whoop',
+      source: 'whoop',
+      content: `metric ${i}`,
+    });
+    believe(db, null, {
+      topic: `whoop.metric-${i}`,
+      claim: `metric ${i}`,
+      sources: [src.eventId],
+      date: '2026-05-23',
+    });
+  }
+
+  const result = backfillProvenance(db);
+  assert.equal(result.scanned, N, 'every head must be scanned, not just 50');
+  assert.equal(result.updated, N);
+
+  closeDb(db);
+});
+
 test('backfillProvenance: skips already-classified beliefs (non-unknown provenance)', () => {
   const db = freshDb();
   const src = ingest(db, null, {

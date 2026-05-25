@@ -8,6 +8,13 @@ export interface BackfillProvenanceResult {
 }
 
 /**
+ * recallBelief defaults to 50 heads; a one-time backfill must see ALL of them.
+ * Belief heads are one-per-topic and bounded (dozens–hundreds), so a high cap
+ * loads the full set without risk.
+ */
+const ALL_HEADS = 1_000_000;
+
+/**
  * One-time data-migration: for each live belief head whose provenance is 'unknown' and that
  * has source event ids, reclassify provenance from those sources' kinds and persist in-place.
  *
@@ -15,7 +22,7 @@ export interface BackfillProvenanceResult {
  * is a safe no-op (nothing is 'unknown' + has sources anymore).
  */
 export function backfillProvenance(db: RobinDb): BackfillProvenanceResult {
-  const heads = recallBelief(db, {});
+  const heads = recallBelief(db, { limit: ALL_HEADS });
   if (!Array.isArray(heads)) return { scanned: 0, updated: 0 };
 
   let scanned = 0;
