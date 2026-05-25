@@ -4,6 +4,7 @@ import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { expireStaleCandidates } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
+import { runBeliefFreshness } from './belief-freshness.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
 
 export interface DreamResult {
@@ -14,6 +15,10 @@ export interface DreamResult {
   arcsCreated: number;
   candidatesExpired: number;
   staleFlagsRaised: number;
+  /** Stale belief heads flagged with a belief.stale event this run. */
+  staleBeliefsFlagged: number;
+  /** Stale belief heads successfully re-verified via a registered resolver. */
+  beliefsRefreshed: number;
   /** content/* docs ingested or updated into events_content for recall this run. */
   docsIngested: number;
 }
@@ -29,14 +34,17 @@ const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
 
 /**
  * Nightly consolidation job:
- * - Resolves overdue predictions as 'unverifiable'
- * - Rolls up daily metric counts
- * - Summarizes hot entities (signal_count >= threshold among today's relations)
- * - Detects narrative arcs from session.captured events in the last 14 days
- * - Writes a deterministic metrics-only journal (the 4:00am dream-synthesis
- *   pass upserts a richer narrative over the same day key later)
- * - Expires stale belief candidates (pending > 14 days)
- * - Flags prose docs in content/profile that are older than the newest belief/correction signal
+ * 1. Resolves overdue predictions as 'unverifiable'
+ * 2. Rolls up daily metric counts
+ * 3. Summarizes hot entities (signal_count >= threshold among today's relations)
+ * 4. Detects narrative arcs from session.captured events in the last 14 days
+ * 5. Writes a deterministic metrics-only journal (the 4:00am dream-synthesis
+ *    pass upserts a richer narrative over the same day key later)
+ * 6. Expires stale belief candidates (pending > 14 days)
+ * 7. Scans live belief heads for staleness; re-queries via registered resolvers
+ *    (bounded) or flags with belief.stale events (idempotent)
+ * 8. Flags prose docs in content/profile that are older than the newest belief/correction signal
+ * 9. Indexes content/* markdown docs for recall (idempotent)
  */
 export async function runDream(
   db: RobinDb,
@@ -51,6 +59,8 @@ export async function runDream(
     arcsCreated: 0,
     candidatesExpired: 0,
     staleFlagsRaised: 0,
+    staleBeliefsFlagged: 0,
+    beliefsRefreshed: 0,
     docsIngested: 0,
   };
 
@@ -124,10 +134,22 @@ export async function runDream(
     result.candidatesExpired = 0;
   }
 
-  // 7. Narrative staleness flags — prose docs older than the newest belief/correction signal.
+  // 7. Belief freshness — scan live belief heads, re-query via registered resolvers
+  //    (bounded by maxRequeries) and/or flag stale heads with belief.stale events.
+  //    Guarded so a failure here never sinks the rest of the dream pass.
+  try {
+    const freshness = await runBeliefFreshness(db, llm, { now });
+    result.staleBeliefsFlagged = freshness.flagged;
+    result.beliefsRefreshed = freshness.requeried;
+  } catch {
+    result.staleBeliefsFlagged = 0;
+    result.beliefsRefreshed = 0;
+  }
+
+  // 8. Narrative staleness flags — prose docs older than the newest belief/correction signal.
   result.staleFlagsRaised = flagStaleNarrativeDocs(db, now);
 
-  // 8. Keep content/* markdown docs indexed for recall. Idempotent — unchanged files
+  // 9. Keep content/* markdown docs indexed for recall. Idempotent — unchanged files
   //    are skipped, so this is cheap on a quiet night. Best-effort: a doc-ingest failure
   //    must never sink the rest of the dream pass.
   try {
