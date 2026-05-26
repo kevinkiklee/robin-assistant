@@ -39,8 +39,8 @@ jobs:
       - name: Smoke
         run: |
           DIR=$(mktemp -d)
-          ROBIN_USER_DATA_DIR=$DIR pnpm robin init --yes
-          ROBIN_USER_DATA_DIR=$DIR pnpm robin doctor --json | tee /tmp/doctor.json
+          ROBIN_USER_DATA_DIR=$DIR pnpm --silent robin init --yes
+          ROBIN_USER_DATA_DIR=$DIR pnpm --silent robin doctor --json | tee /tmp/doctor.json
           # critical fails fail the build
           node -e "const r=require('/tmp/doctor.json'); if(r.summary.fail>0){console.error('doctor failed');process.exit(1)}"
 
