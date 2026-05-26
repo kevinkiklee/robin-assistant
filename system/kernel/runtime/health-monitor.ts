@@ -87,7 +87,13 @@ export class HealthMonitor {
         jobsDiscoverableInvariant(this.opts.db),
         daemonHeartbeatingInvariant({
           lastTickAt: this.opts.getLastTickAt,
-          maxIntervalMs: 5 * 60_000,
+          // 7 min: the claude-agent provider (subscription-billed via the Agent
+          // SDK) boots the full Claude Code runtime per call, adding ~20-40s of
+          // subprocess overhead vs a direct REST provider. A 5-min ceiling trips
+          // on normal biographer ticks (~5:20). 7 min gives headroom without
+          // hiding a genuinely stuck scheduler. Reverts to 5 min when reasoning
+          // cuts back to Gemini (direct REST) on 2026-06-15.
+          maxIntervalMs: 7 * 60_000,
         }),
       ]);
 
