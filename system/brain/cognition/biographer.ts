@@ -94,7 +94,8 @@ Do NOT emit:
 - Imperatives or behavior rules ("never pitch X", "always do Y") — those are not claims.
 - Transient session details (what was debugged today, a command that was run, a file that was edited).
 - Speculation, questions, or anything you are not reasonably confident is a durable fact.
-- Facts about the assistant itself rather than the user.
+- Facts about the assistant itself rather than the user — this includes Robin's own internals (job schedules, protocols, env vars, integration wiring, daemon behavior, code architecture).
+- Engineering or dev artifacts: library versions, framework configs, code bugs, CLI commands, repo structure, build systems, environment variables, schema details, tool internals — unless the fact reflects a durable user *preference* (e.g. "kevin prefers pnpm over npm").
 
 topic: a short kebab-case key for the fact (e.g. "google-role", "home-location", "primary-camera").
 confidence: your confidence 0..1 that this is a durable, correct fact.
@@ -314,6 +315,28 @@ export interface RunBiographerOptions {
 type EntityRecord = { type: string; name: string };
 type RelationRecord = { subject: string; predicate: string; object: string };
 
+/**
+ * Canonicalize a relation predicate so variant phrasings of the same relationship
+ * don't produce duplicate edges. Maps synonym clusters to a single canonical form.
+ */
+const PREDICATE_SYNONYMS: Record<string, string> = {
+  employed_by: 'works_at', employed_at: 'works_at', works_for: 'works_at',
+  resides_at: 'lives_in', resides_in: 'lives_in', located_at: 'located_in',
+  possesses: 'owns', has: 'owns',
+  utilizes: 'uses', employs: 'uses', leverages: 'uses',
+  wrote: 'authored', created: 'authored', developed: 'authored', built: 'authored',
+  purchased: 'bought', acquired: 'bought',
+  visited: 'traveled_to', went_to: 'traveled_to',
+  manages: 'leads', supervises: 'leads',
+  prescribed: 'takes', taking: 'takes',
+  co_founded: 'co-founded', cofounded: 'co-founded',
+};
+
+export function normalizePredicate(raw: string): string {
+  const trimmed = raw.trim().toLowerCase().replace(/\s+/g, '_');
+  return PREDICATE_SYNONYMS[trimmed] ?? trimmed;
+}
+
 function entityKey(e: EntityRecord): string {
   return `${e.type.toLowerCase()}:${e.name.toLowerCase()}`;
 }
@@ -384,7 +407,8 @@ function selectBiographerTarget(db: RobinDb): BiographerTarget | null {
       SELECT events.id AS eventId, events_content.body AS body
         FROM events
         JOIN events_content ON events_content.id = events.content_ref
-       WHERE events.kind = 'session.captured'
+       WHERE events.kind IN ('session.captured', 'knowledge.doc', 'conversation.claude-code')
+         AND COALESCE(json_extract(events.payload, '$.category'), 'personal') != 'dev'
          AND events.id NOT IN (SELECT json_extract(payload, '$.source_event_id') FROM events WHERE kind = 'biographer.extracted')
          AND events.id NOT IN (SELECT source_event_id FROM biographer_progress)
        ORDER BY length(events_content.body) ASC
@@ -444,16 +468,43 @@ function writeExtractedMarker(
   );
 }
 
-const SYSTEM_PROMPT = `You extract structured entities and relations from a transcript. Reply ONLY with JSON matching:
+// Kevin-context: the biographer knows WHO the user is, so it picks the right
+// entity types (Nikon Zf → gear, not thing; Antonucci Cafe → restaurant, not org).
+const USER_CONTEXT = `Context: The user is Kevin, a Google DevRel engineer (Ad Experiences, NYC), photographer (Nikon Zf/Z50 II, street + events), and investor. He lives in Astoria, Queens. Key domains: finance (RSUs, 401k, HYSA, Lunch Money), health (Whoop, running), birding (eBird, Central Park), music (Spotify, Last.fm), photography (Lightroom), and software projects (Robin, leadforge, hostmind, photo-tools).`;
+
+const SYSTEM_PROMPT = `You extract structured entities and relations from a transcript about Kevin's life. Reply ONLY with JSON matching:
 {"entities":[{"type":"<type>","name":"..."}, ...], "relations":[{"subject":"name","predicate":"verb","object":"name"}, ...]}
 
-Valid <type> values: person, place, organization, service, library, tool, repository, env_var, error, topic, thing.
-Prefer the most specific type that fits; use "thing" only when nothing more specific applies.
+${USER_CONTEXT}
+
+Valid <type> values (use the MOST SPECIFIC that fits):
+  person, place, restaurant, organization, company, service, product, gear,
+  camera, lens, financial_account, medication, event, project, library, tool,
+  book, film, album, artist, species, topic, thing.
+Use "thing" ONLY when nothing more specific applies. Examples:
+  "Nikon Zf" → gear (not thing), "Antonucci Cafe" → restaurant (not organization),
+  "Marcus HYSA" → financial_account, "Three.js" → library, "Olive-sided Flycatcher" → species,
+  "Google I/O" → event, "ibuprofen" → medication.
+
+Relation rules:
+- Use a SPECIFIC, MEANINGFUL predicate — a verb phrase describing a real directed
+  relationship (e.g. "lives_in", "works_at", "owns", "photographed_at", "prescribed").
+- Subject = the actor/owner; object = the target/thing acted upon. Always maintain
+  this direction so "Kevin works_at Google" and "Google employs Kevin" aren't both
+  emitted — pick one canonical direction (prefer Kevin as subject for his actions).
+- Do NOT use vague co-occurrence predicates: "related_to", "associated_with",
+  "mentioned_with", "appears_with", "occurs_with". If no clear directed
+  relationship exists, omit the relation entirely.
+- NORMALIZE predicates to a canonical form: use "works_at" not "employed_by",
+  "lives_in" not "resides_at", "owns" not "possesses", "uses" not "utilizes".
 
 Do NOT extract:
-- Transcript role markers (USER, ASSISTANT, TOOL, SYSTEM) — they are not real entities.
-- Bare numbers, state flags (ON, OFF, TRUE, FALSE, ENABLED, DISABLED), or git SHA fragments.
+- Transcript role markers (USER, ASSISTANT, TOOL, SYSTEM).
+- Bare numbers, state flags (ON, OFF, TRUE, FALSE, ENABLED, DISABLED), git SHAs.
 - Single-character or empty names.
+- Engineering artifacts: commit messages, PR titles, build flags, task/phase codenames,
+  subagent instructions, code variable names, schema fields, CLI flags.
+- Robin's own internals: job schedules, daemon behavior, integration wiring, env vars.
 
 If nothing is worth extracting, reply {"entities":[],"relations":[]}.`;
 
@@ -476,6 +527,15 @@ If nothing is worth extracting, reply {"entities":[],"relations":[]}.`;
  * also dropped (a relation pointing at noise is itself noise).
  */
 export function isLowQualityEntity(name: string, type?: string): boolean {
+  // ─── Blocked types: dev/engineering-internal ─────────────────────────────
+  // These entity types are inherently about code, not the user's life. Blocking
+  // them at extraction time is the structural prevention that keeps dev noise out
+  // of user-data. The biographer's LLM freely assigns these types from coding
+  // sessions; we drop them wholesale. Real-world things that occasionally share a
+  // type name (e.g. a photography "tool") get captured under `thing`/`topic` by
+  // the LLM anyway, so the loss is negligible.
+  if (type && BLOCKED_ENTITY_TYPES.has(type.toLowerCase())) return true;
+
   const trimmed = name?.trim() ?? '';
   if (trimmed.length < 2 || trimmed.length > 200) return true;
   // Pure numbers (e.g. "10", "404") — usually counters, status codes, or version
@@ -527,16 +587,33 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
   const isFrameworkName = /^[A-Z][a-zA-Z0-9]*\.js\b/.test(trimmed);
   if (
     !isFrameworkName &&
-    /(^|\s)[\w.-]+\.(md|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|sh|py|toml)(\s|$|:)/i.test(trimmed)
+    /(^|\s)[\w.-]+\.(md|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|sh|py|toml|log|ndjson|csv|html|plist|nef|cr[23]|arw|raf|orf|dng)(\s|$|:)/i.test(trimmed)
   )
     return true;
+  // Image/media filenames (DSC_1234.jpg, IMG_001.png, screenshot.gif).
+  if (/(^|\s)[\w.-]+\.(jpg|jpeg|png|gif|webp|svg|mp4|mov|wav|mp3|pdf|zip|tar)(\s|$)/i.test(trimmed))
+    return true;
+  // IP addresses / localhost.
+  if (/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(trimmed)) return true;
+  // Robin internal state keys (runtime:*, batch(*), entities:*).
+  if (/^(runtime|batch|entities|events|integration|cognition)[:(]/.test(trimmed)) return true;
+  // MCP tool names (mcp__robin__recall, mcp__robin__*, mcp__chrome-devtools__*).
+  if (/^mcp__/.test(trimmed)) return true;
+  // Decimal numbers without context ("0.62", "3.14") — not entities.
+  if (/^\d+\.\d+$/.test(trimmed)) return true;
 
   // ─── Type-aware engineering-internal pass ─────────────────────────────────
   // Only the noise-prone, low-specificity types. Concrete types (person, place,
-  // organization, service, repository, library, tool, env_var) are spared so a
-  // real repo/service that happens to read like jargon ("landstar-construction",
-  // "OpenTable") is never dropped here.
+  // organization, service) are spared so a real service that happens to read
+  // like jargon ("OpenTable") is never dropped here.
   if (type && DEV_NOISE_TYPES.has(type.toLowerCase())) {
+    // camelCase identifiers (fetchHistory, redactString, sessionIds) — code
+    // function/variable names. Real-world entities are never camelCase.
+    if (/^[a-z]+[A-Z]/.test(trimmed)) return true;
+    // PascalCase multi-word without spaces (CreatePrivateThreads,
+    // UpsertProfileOpts) — code class/type names. Not natural language.
+    // Single PascalCase words are exempt (could be a proper noun like "Datadog").
+    if (/^[A-Z][a-z]+[A-Z][a-zA-Z]+$/.test(trimmed) && !/\s/.test(trimmed)) return true;
     // Dev/build jargon: CI/CD, lock/PID/dispatch/cron/daemon/cursor/script/hash/
     // protocol/queue/cap process-internals. Word-boundary matched so it only
     // fires on the jargon token, not any substring (e.g. won't hit "Pidgeon").
@@ -548,9 +625,54 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
     const words = trimmed.split(/\s+/);
     if (words.length <= 2 && words.every((w) => GENERIC_VERB_NOISE.has(w.toLowerCase())))
       return true;
+    // Sentence-length "entities" — the LLM sometimes extracts instructions,
+    // task descriptions, or commit messages as entity names (e.g. "Implementer
+    // subagent fixes quality issues"). Real entity names are short noun phrases.
+    if (words.length >= 6) return true;
+    // Conventional-commit prefixes: "chore(deps): ...", "feat(linear): ...",
+    // "fix(shell): ..." — git commit messages, not entities.
+    if (/^(?:chore|feat|fix|refactor|ci|build|docs|style|perf|test)\b/i.test(trimmed))
+      return true;
+    // Project-internal phase/track codenames: "Phase 0", "Phase 4a edge",
+    // "Track B Phase 4e", "W2-C", "cognition-e1", "M-shield". These are
+    // internal roadmap labels, not real-world entities.
+    if (/^(?:Phase|Track|Stage|Sprint|Milestone)\s/i.test(trimmed)) return true;
+    // Database table references: "edges table", "refusals table", "users table".
+    if (/\b(?:table|column|index|migration|constraint|foreign key)$/i.test(trimmed)) return true;
+    // Code output / config values: "output: 'standalone'", "GREEN" (status).
+    if (/^output:\s/.test(trimmed)) return true;
+    // Import/require statements: "import { ... } from '...'".
+    if (/^(?:import|require|export)\s/.test(trimmed)) return true;
   }
+
+  // ─── Type-aware: 'project' type noise ──────────────────────────────────────
+  // `project` entities are legitimate when they name a real product ("Palisade
+  // Stays", "leadforge") but the LLM also emits internal codenames like
+  // "cognition-e1", "Phase 4a edge", "Agentic Form Builder" from dev sessions.
+  // Drop project entities whose names are kebab-case with a version/codename
+  // suffix — real products use proper-noun casing.
+  if (type?.toLowerCase() === 'project') {
+    if (/^[a-z][\w-]*-[a-z]\d/i.test(trimmed)) return true; // cognition-e1, phase-4a
+  }
+
   return false;
 }
+
+// Entity types that are inherently dev/engineering-internal — dropped wholesale by
+// isLowQualityEntity so they never enter the graph. Covers code constructs, Robin
+// internals, and infrastructure artifacts. Personal entities the LLM might mis-type
+// as one of these (e.g. a photography "tool") get re-extracted under `thing`/`topic`.
+// Blocked types: purely engineering/code-internal types that never describe
+// Kevin's real world. `library` and `tool` are NOT blocked — they hold real
+// frameworks (Three.js, Next.js, Discord.js) and real-world tools; the noise
+// filter (`isLowQualityEntity`) handles dev-jargon within those types.
+const BLOCKED_ENTITY_TYPES = new Set([
+  'error', 'env_var', 'surface', 'table', 'directory', 'function',
+  'field', 'schema', 'method', 'command', 'system_component', 'pipeline',
+  'mechanism', 'configuration', 'specification', 'log', 'file', 'database',
+  'variable', 'test case', 'alias', 'format',
+  'effort_level', 'attribute', 'tag', 'version', 'os', 'software',
+]);
 
 // Types that lack a real-world referent and disproportionately carry dev-internal
 // noise out of coding-session captures. Used to gate the stricter heuristics above.
@@ -562,7 +684,7 @@ const DEV_NOISE_TYPES = new Set(['thing', 'error', 'topic']);
 // check-protocol-triggers script missing, learning-queue.md over cap, cron/daemon
 // internals. Hyphen and space both count as separators.
 const DEV_JARGON_RE =
-  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule)(?:$|[\s-])/i;
+  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|cache|route|schema|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|migration|worktree|wrappers|prune|singleton|crud)(?:$|[\s-])/i;
 
 // Single bare verbs / generic non-entities that a model emits as `topic`/`thing`
 // from a chat exchange. Kept tight — only words that are never themselves a
@@ -592,7 +714,45 @@ const GENERIC_VERB_NOISE = new Set([
   'rebase',
   'commit',
   'revert',
+  // Bare generic nouns from dev sessions — no real-world referent on their own.
+  'publish',
+  'publishing',
+  'sync',
+  'delete',
+  'auditor',
+  'notable',
+  'proceed',
+  'state',
+  'first',
 ]);
+
+// ─── Low-information relation predicates ─────────────────────────────────────
+// The LLM emits these as a fallback when two entities co-occur in a transcript
+// but have no real directional relationship. They carry zero recall value and
+// flood the graph (observed: `occurs_with` alone was 49% of all relations).
+// Blocked post-extraction, parallel to BLOCKED_ENTITY_TYPES for entities.
+const BLOCKED_PREDICATES = new Set([
+  'occurs_with',
+  'related_to',
+  'associated_with',
+  'mentioned_with',
+  'appears_with',
+  'co-occurs_with',
+  'co_occurs_with',
+  'linked_to',
+  'connected_to',
+  'seen_with',
+  'alongside',
+]);
+
+/**
+ * Returns true when a relation predicate is too vague to carry useful meaning.
+ * Keeps the graph's signal-to-noise ratio high by blocking co-occurrence
+ * fallbacks that the LLM emits when it can't find a real relationship.
+ */
+export function isLowQualityPredicate(predicate: string): boolean {
+  return BLOCKED_PREDICATES.has(predicate.toLowerCase().trim());
+}
 
 const ROLE_MARKER_NAMES = new Set(['user', 'assistant', 'tool', 'system', 'human', 'ai']);
 // Generic nouns + Claude Code tool names that get mis-extracted as entities.
@@ -661,6 +821,30 @@ const GENERIC_NOISE_NAMES = new Set([
   'webfetch',
   'websearch',
   'notebookedit',
+  // Generic dev nouns that appear as thing/topic extractions
+  'git',
+  'widget',
+  'widgets',
+  'wrappers',
+  'handler',
+  'handlers',
+  'module',
+  'modules',
+  'token',
+  'tokens',
+  'endpoint',
+  'endpoints',
+  'migration',
+  'migrations',
+  'accessor',
+  'accessors',
+  'bundle',
+  'bundles',
+  'payload',
+  'payloads',
+  'matcher',
+  'matchers',
+  'matches',
 ]);
 const STATE_FLAG_NAMES = new Set([
   'on',
@@ -965,11 +1149,18 @@ export async function runBiographer(
           .get(target.eventId) as { kind: string } | undefined;
         const targetProvenance = classifyProvenance(sourceEventRow ? [sourceEventRow.kind] : []);
 
+        // Knowledge docs (from ingestContentDocs) are plain markdown without
+        // transcript role markers — they are inherently user-authored content.
+        // Only require the [USER] marker for transcript-format bodies.
+        const bodyIsTranscript = /\[(USER|ASSISTANT|TOOL|SYSTEM)\]/i.test(cleanedBody);
+
         for (let ci = startChunk; ci < endChunk && claimsBudget > 0; ci++) {
           if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
           const chunk = chunks[ci];
           // Only chunks with user-authored content can carry durable user facts.
-          if (!/\[USER\]/i.test(chunk)) continue;
+          // For transcripts, require a [USER] marker; for knowledge docs (plain
+          // markdown), all content is user-authored.
+          if (bodyIsTranscript && !/\[USER\]/i.test(chunk)) continue;
           claimsBudget--;
           try {
             const claims = await extractClaims(
@@ -1037,6 +1228,7 @@ export async function runBiographer(
     }
     const filteredRelations = extracted.relations.filter(
       (r) =>
+        !isLowQualityPredicate(r.predicate) &&
         !droppedNames.has(r.subject.toLowerCase()) &&
         !droppedNames.has(r.object.toLowerCase()) &&
         !isLowQualityEntity(r.subject) &&
@@ -1065,11 +1257,12 @@ export async function runBiographer(
         result.errors.push(`entity ${e.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    // Add relations
+    // Add relations (with predicate normalization + directionality dedup)
     for (const r of extracted.relations) {
       const sId = idByName.get(r.subject) ?? upsertEntity(db, 'thing', r.subject).id;
       const oId = idByName.get(r.object) ?? upsertEntity(db, 'thing', r.object).id;
-      addRelation(db, sId, r.predicate, oId, target.eventId);
+      const pred = normalizePredicate(r.predicate);
+      addRelation(db, sId, pred, oId, target.eventId);
       result.relationsCreated++;
     }
 
