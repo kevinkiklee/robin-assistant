@@ -12,6 +12,7 @@ import { migration011 } from './011-agent-usage.ts';
 import { migration012 } from './012-import-dedup-keys.ts';
 import { migration013 } from './013-belief-candidate-provenance.ts';
 import { migration014 } from './014-correction-topic.ts';
+import { migration015 } from './015-hygiene.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -29,6 +30,7 @@ export const allMigrations: Migration[] = [
   migration012,
   migration013,
   migration014,
+  migration015,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';
