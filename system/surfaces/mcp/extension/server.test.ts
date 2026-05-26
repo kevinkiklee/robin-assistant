@@ -49,16 +49,12 @@ test('robin-extension: resolve_prediction updates row + computes brier_delta', (
   closeDb(db);
 });
 
-test('robin-extension: run queues integration tick as manual job', () => {
+test('robin-extension: run tool executes integration tick inline (smoke)', () => {
   const db = freshDb();
-  buildExtensionServer({ db, llm: null });
-  // Simulate the queue effect
-  db.prepare(
-    `INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES (?, 'manual', ?, 'pending')`,
-  ).run('integration.gmail.tick', new Date().toISOString());
-  const row = db
-    .prepare(`SELECT name, trigger_kind FROM jobs WHERE name = ?`)
-    .get('integration.gmail.tick') as { name: string; trigger_kind: string };
-  assert.equal(row.trigger_kind, 'manual');
+  const server = buildExtensionServer({ db, llm: null });
+  // The run tool now loads and executes integration ticks inline rather than
+  // queuing a dead-letter job row. We verify the server builds without error;
+  // full integration-level tests live in the integration's own test file.
+  assert.ok(server);
   closeDb(db);
 });

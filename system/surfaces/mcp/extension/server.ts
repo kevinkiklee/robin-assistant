@@ -12,6 +12,7 @@ import { relatedEntities } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../../integrations/_runtime/context.ts';
+import { loadIntegrations } from '../../../integrations/_runtime/loader.ts';
 import { actions as chromeActions } from '../../../integrations/builtin/chrome/index.ts';
 import { actions as financeActions } from '../../../integrations/builtin/finance_quote/index.ts';
 // Static imports of integration action maps so type-checks catch breakage.
@@ -177,17 +178,26 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
                 { type: 'text', text: JSON.stringify({ error: 'integration name required' }) },
               ],
             };
-          // Queue a manual job; the daemon will pick it up. For MVP, just report queued.
-          deps.db
-            .prepare(
-              `INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES (?, 'manual', ?, 'pending')`,
-            )
-            .run(`integration.${name}.tick`, new Date().toISOString());
-          return {
-            content: [
-              { type: 'text', text: JSON.stringify({ queued: `integration.${name}.tick` }) },
-            ],
-          };
+          const userData = resolveUserDataDir();
+          const builtinRoot = join(resolvePath(import.meta.dirname ?? '.'), '..', '..', '..', 'integrations', 'builtin');
+          const userRoot = join(userData, 'extensions/integrations');
+          const loaded = await loadIntegrations([builtinRoot, userRoot]);
+          const match = loaded.find((i) => i.instanceName === name || i.manifest.name === name);
+          if (!match)
+            return {
+              content: [
+                { type: 'text', text: JSON.stringify({ error: `integration '${name}' not found` }) },
+              ],
+            };
+          if (!match.module.tick)
+            return {
+              content: [
+                { type: 'text', text: JSON.stringify({ error: `integration '${name}' has no tick()` }) },
+              ],
+            };
+          const ctx = buildContext(match.instanceName, deps.db, deps.llm);
+          const r = await match.module.tick(ctx);
+          return { content: [{ type: 'text', text: JSON.stringify(r) }] };
         }
         return { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown type' }) }] };
       } catch (err) {
