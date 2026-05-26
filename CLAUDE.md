@@ -34,6 +34,15 @@ Run a single test file:
 pnpm exec tsx --test system/path/to/file.test.ts
 ```
 
+## CLI usage
+
+The user does not run `robin` CLI commands directly except when absolutely
+necessary. When building features that ingest data, run jobs, or perform
+maintenance, **call the underlying functions programmatically** (via scripts,
+the daemon scheduler, or MCP actions) rather than adding user-facing CLI
+subcommands. The CLI exists for one-time setup (`init`, `reauth`, `doctor`)
+and internal plumbing — not as a daily interface.
+
 ## Memory & persistence
 
 Robin manages its own memory in `user-data/content/knowledge/`. When working

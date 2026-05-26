@@ -104,6 +104,11 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     const ts = now().toISOString().replace(/[:.]/g, '-');
     transcriptPath = join(deps.transcriptDir, `${ts}-${input.surface}.jsonl`);
     stream = createWriteStream(transcriptPath, { flags: 'a' });
+    // Prevent unhandled 'error' events (disk full, permission denied) from crashing
+    // the daemon. A failed transcript is non-fatal — the agent run should continue.
+    stream.on('error', () => {
+      stream = undefined;
+    });
   }
   const onMessage = (m: unknown) => {
     stream?.write(`${JSON.stringify(m)}\n`);
@@ -177,6 +182,9 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
 }
 
 function closeStream(stream?: ReturnType<typeof createWriteStream>): Promise<void> {
-  if (!stream) return Promise.resolve();
-  return new Promise((resolve) => stream.end(resolve));
+  if (!stream || stream.destroyed) return Promise.resolve();
+  return new Promise((resolve) => {
+    stream.once('error', () => resolve()); // don't reject on close-time errors
+    stream.end(resolve);
+  });
 }

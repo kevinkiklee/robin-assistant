@@ -155,8 +155,9 @@ export const actions = {
     if (!res.ok) throw new Error(`yahoo chart returned ${res.status}`);
     const data = (await res.json()) as ChartResponse;
     const result = data.chart.result?.[0];
-    if (!result) return { symbol: params.symbol, bars: [] };
-    const quote = result.indicators.quote[0];
+    if (!result?.timestamp) return { symbol: params.symbol, bars: [] };
+    const quote = result.indicators?.quote?.[0];
+    if (!quote?.open) return { symbol: params.symbol, bars: [] };
     const bars = result.timestamp.map((ts, i) => ({
       ts,
       o: quote.open[i],
