@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+
+/** Tests calling launchd APIs require macOS; skip gracefully on Linux CI. */
+const darwinOnly = platform() !== 'darwin' ? 'requires macOS (launchd)' : undefined;
+
 import {
   installDaemonLaunchd,
   LAUNCHD_LABEL,
@@ -69,7 +73,9 @@ test('plistPath: places plist under ~/Library/LaunchAgents with canonical label'
   assert.equal(path, `/Users/test/Library/LaunchAgents/${LAUNCHD_LABEL}.plist`);
 });
 
-test('installDaemonLaunchd (skipLoad=true): writes plist without invoking launchctl', () => {
+test('installDaemonLaunchd (skipLoad=true): writes plist without invoking launchctl', {
+  skip: darwinOnly,
+}, () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-launchd-'));
   const userDataDir = mkdtempSync(join(tmpdir(), 'robin-ud-'));
   const r = installDaemonLaunchd(
@@ -86,14 +92,16 @@ test('installDaemonLaunchd (skipLoad=true): writes plist without invoking launch
   assert.match(xml, /<string>\/repo\/dist\/surfaces\/cli\/index\.js<\/string>/);
 });
 
-test('uninstallDaemonLaunchd: returns removed=false when plist absent', () => {
+test('uninstallDaemonLaunchd: returns removed=false when plist absent', {
+  skip: darwinOnly,
+}, () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-launchd-'));
   const r = uninstallDaemonLaunchd({ home });
   assert.equal(r.removed, false);
   assert.equal(r.unloaded, false);
 });
 
-test('uninstallDaemonLaunchd: removes plist file when present', () => {
+test('uninstallDaemonLaunchd: removes plist file when present', { skip: darwinOnly }, () => {
   const home = mkdtempSync(join(tmpdir(), 'robin-launchd-'));
   const agentDir = join(home, 'Library', 'LaunchAgents');
   mkdirSync(agentDir, { recursive: true });
