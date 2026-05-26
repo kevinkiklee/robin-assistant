@@ -39,7 +39,6 @@ export function runIngestDocs(): IngestDocsCliResult {
 }
 
 export function printIngestDocsHuman(r: IngestDocsCliResult): void {
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(
     `Ingest docs: ${r.ingested} new, ${r.updated} updated, ${r.skipped} unchanged (embeddings backfill on next embedder tick)`,
   );

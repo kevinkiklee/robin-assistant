@@ -39,7 +39,6 @@ export function runIngestArchive(dir: string, source?: string): IngestArchiveCli
 }
 
 export function printIngestArchiveHuman(r: IngestArchiveCliResult): void {
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(
     `Ingest archive [${r.source}] from ${r.dir}: ${r.files} files → ${r.chunksIngested} new, ${r.chunksUpdated} updated, ${r.chunksSkipped} unchanged chunks (embeddings backfill on next embedder tick)`,
   );

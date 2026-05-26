@@ -133,15 +133,12 @@ const STATUS_ICON: Record<IntegrationStatusRow['status'], string> = {
 
 export function printIntegrationsHuman(report: IntegrationsReport): void {
   if (report.rows.length === 0) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log('No integrations loaded.');
     return;
   }
   const now = new Date();
   const header = '  STATUS  NAME                  LAST ATTEMPT   LAST INGEST    ERRS  RECENT 24H';
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(header);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  ${'─'.repeat(header.length - 2)}`);
   for (const r of report.rows) {
     const icon = STATUS_ICON[r.status];
@@ -150,7 +147,6 @@ export function printIntegrationsHuman(report: IntegrationsReport): void {
     const ingest = relTime(r.last_ingest_at, now).padEnd(13);
     const errs = String(r.consecutive_errors).padStart(4);
     const recent = `${r.recent_ok} ok / ${r.recent_err} err`;
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(
       `  ${icon} ${r.status.padEnd(6)} ${name}  ${attempt}  ${ingest}  ${errs}  ${recent}`,
     );
@@ -160,7 +156,6 @@ export function printIntegrationsHuman(report: IntegrationsReport): void {
   // the same OAuth message repeated across every integration of one provider.
   const broken = report.rows.find((r) => r.status === 'broken' && r.last_error);
   if (broken) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(`\n  Last error for "${broken.name}":\n  ${broken.last_error?.slice(0, 200)}`);
   }
 }

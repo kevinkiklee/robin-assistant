@@ -21,7 +21,6 @@ export function runPause(): void {
   const p = loadPolicies(userData);
   p.power.state = 'paused';
   writePolicies(userData, p);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Robin paused. Scheduled jobs will not run until `robin resume`.');
 }
 
@@ -30,7 +29,6 @@ export function runResume(): void {
   const p = loadPolicies(userData);
   p.power.state = 'active';
   writePolicies(userData, p);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Robin active.');
 }
 
@@ -45,7 +43,6 @@ export function runIncognito(durationStr?: string): void {
     delete (p.capture as { expires_at?: string }).expires_at;
   }
   writePolicies(userData, p);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`Incognito ${durationStr ?? 'permanent'} — capture disabled.`);
 }
 
@@ -54,7 +51,6 @@ export function runOffline(): void {
   const p = loadPolicies(userData);
   p.network.mode = 'offline';
   writePolicies(userData, p);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Robin offline — no outbound network calls.');
 }
 
@@ -63,7 +59,6 @@ export function runOnline(): void {
   const p = loadPolicies(userData);
   p.network.mode = 'online';
   writePolicies(userData, p);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Robin online.');
 }
 
@@ -71,7 +66,6 @@ export function runStatus(json: boolean = false): void {
   const userData = resolveUserDataDir();
   const p = loadPolicies(userData);
   if (json) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(JSON.stringify(p, null, 2));
     return;
   }

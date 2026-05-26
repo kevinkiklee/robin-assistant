@@ -20,12 +20,10 @@ export function runPrimer(opts: PrimerCliOptions = {}): void {
   try {
     if (opts.write) {
       const r = writePrimerFile(db, opts.path ? { path: opts.path } : {});
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.log(`Wrote ${r.bytes} bytes to ${r.path}`);
       return;
     }
     const primer = buildPrimer(db);
-    // biome-ignore lint/suspicious/noConsole: CLI output — stdout is the payload
     console.log(primer);
   } finally {
     closeDb(db);

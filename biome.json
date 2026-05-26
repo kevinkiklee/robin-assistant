@@ -15,6 +15,10 @@
     {
       "includes": ["**/*.test.ts"],
       "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }
+    },
+    {
+      "includes": ["scripts/**", "system/scripts/**", "system/surfaces/cli/**"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
     }
   ]
 }

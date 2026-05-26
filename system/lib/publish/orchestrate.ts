@@ -279,8 +279,8 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
   };
   try {
     await appendLogEntry(opts.logPath, logRow);
-  } catch (e) {
-    warnings.push(`log append failed: ${(e as Error).message}`);
+  } catch (err) {
+    warnings.push(`log append failed: ${(err as Error).message}`);
   }
   const telemetry: TelemetryRow = {
     ts: logRow.ts,

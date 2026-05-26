@@ -84,7 +84,15 @@ export async function startHttpServer(deps: HttpServerDeps): Promise<HttpHandle>
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
         }
       }
-    })();
+    })().catch(() => {
+      // Guard: if the try/catch block itself throws (shouldn't happen, but
+      // defensive), prevent an unhandled promise rejection from crashing the
+      // daemon. The inner catch already handles all known error paths.
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.end('internal error');
+      }
+    });
   });
 
   const requestedPort = deps.port ?? 41273;

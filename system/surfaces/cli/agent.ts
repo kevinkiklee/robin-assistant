@@ -333,7 +333,6 @@ export async function runAgentCli(
 export async function runAgentCommand(args: string[]): Promise<void> {
   const r = await runAgentCli(args);
   if (r.status === 'error' && r.message) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.error(r.message);
   }
   process.exit(r.exitCode);

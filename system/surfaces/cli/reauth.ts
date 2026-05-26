@@ -79,13 +79,9 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
   consentUrl.searchParams.set('prompt', 'consent');
   consentUrl.searchParams.set('state', state);
 
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`\nReauthorizing ${preset.label}.`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`Listening on ${redirectUri}\n`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log("If the browser doesn't open, paste this URL manually:\n");
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  ${consentUrl.toString()}\n`);
 
   const code = await captureCodeViaLocalServer({
@@ -93,7 +89,6 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
     expectedState: state,
     openUrl: consentUrl.toString(),
   });
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('\nGot consent code. Exchanging for refresh token...');
 
   const tokens = await exchangeCodeForTokens({
@@ -111,14 +106,12 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
   const envPath = join(userData, 'config', 'secrets', '.env');
   upsertEnvKey(envPath, `${preset.envPrefix}_REFRESH_TOKEN`, tokens.refresh_token);
 
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`\n✓ Wrote new ${preset.envPrefix}_REFRESH_TOKEN to ${envPath}`);
 
   // Try to nudge the daemon so the new token is picked up. The daemon reads
   // process.env at start, so we have to bounce it. If launchd is supervising
   // it'll respawn automatically; otherwise the user needs to restart by hand.
   const restarted = await bounceDaemonIfRunning(userData);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(
     restarted
       ? 'Sent SIGTERM to running daemon (launchd should respawn it). Verify with `robin status`.'

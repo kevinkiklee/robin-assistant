@@ -291,19 +291,15 @@ function buildEntityMapFromDb(db: Database.Database): Map<string, number> {
 }
 
 export function printImportHuman(report: ImportReport): void {
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`Import ${report.dryRun ? '(dry-run) ' : ''}from ${report.dir}`);
   for (const [file, r] of Object.entries(report.files)) {
     if (r.missing) {
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.log(`  ${file}: skipped (not present)`);
       continue;
     }
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(`  ${file}: ${r.inserted} inserted, ${r.skipped} skipped`);
   }
   if (report.errors.length > 0) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(`Errors: ${report.errors.join('; ')}`);
   }
 }

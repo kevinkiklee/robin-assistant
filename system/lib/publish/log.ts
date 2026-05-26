@@ -16,9 +16,9 @@ export async function readLog(logPath: string): Promise<ReadLogResult> {
   let raw: string;
   try {
     raw = await readFile(logPath, 'utf8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { entries: [], skipped: 0 };
-    throw e;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { entries: [], skipped: 0 };
+    throw err;
   }
   const entries: LogRow[] = [];
   let skipped = 0;

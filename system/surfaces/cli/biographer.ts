@@ -118,13 +118,11 @@ export async function runBiographerCliCore(
 
 export function printBiographerHuman(report: BiographerCliReport): void {
   const prefix = report.dryRun ? 'Biographer (dry-run): would extract' : 'Biographer: extracted';
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(
     `${prefix} ${report.entitiesCreated} entities, ${report.relationsCreated} relations, ${report.claimsDrafted} claims from ${report.processed} session(s) in ${(report.duration_ms / 1000).toFixed(1)}s`,
   );
   if (report.errors.length > 0) {
     for (const e of report.errors) {
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.log(`  ! ${e}`);
     }
   }

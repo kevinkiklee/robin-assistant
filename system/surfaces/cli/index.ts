@@ -54,7 +54,6 @@ MAINTENANCE / INTERNAL (run automatically or by the host — init handles setup)
   hooks install | uninstall    Claude Code capture hooks
   primer                       Print the session-start primer (used by the hook)`;
 
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(all ? `${primary}\n${advanced}\n` : `${primary}\n`);
 }
 
@@ -74,7 +73,6 @@ async function main(): Promise<void> {
 
     case '--version':
     case '-v': {
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.log(VERSION);
       exit(0);
       break;
@@ -110,7 +108,6 @@ async function main(): Promise<void> {
         const idArg = args[2];
         const id = idArg ? Number(idArg) : NaN;
         if (!Number.isInteger(id)) {
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.error(`usage: robin beliefs ${sub} <id> [--reason=...]`);
           exit(2);
         }
@@ -119,7 +116,6 @@ async function main(): Promise<void> {
           else runBeliefsReject(id, opts);
           exit(0);
         } catch (err) {
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.error(err instanceof Error ? err.message : String(err));
           exit(1);
         }
@@ -136,11 +132,9 @@ async function main(): Promise<void> {
         applyMigrations(db, allMigrations);
         const result = backfillProvenance(db);
         db.close();
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(JSON.stringify(result));
         exit(0);
       }
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.error(`Unknown beliefs subcommand: ${sub}`);
       exit(2);
       break;
@@ -150,14 +144,12 @@ async function main(): Promise<void> {
       if (args.includes('--emit-runbook')) {
         const { emitRunbook } = await import('./doctor.ts');
         const r = emitRunbook({ write: args.includes('--write') });
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(`Runbook ${r.existed ? 'updated' : 'created'} at ${r.path}`);
         exit(0);
       }
       const json = args.includes('--json');
       const report = await runDoctor({ version: VERSION });
       if (json) {
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(JSON.stringify(report, null, 2));
       } else {
         printDoctorHuman(report);
@@ -165,10 +157,8 @@ async function main(): Promise<void> {
         // current runtime state (formerly the separate `integrations`/`status`
         // commands), so one command answers "is everything OK?".
         const { runIntegrationsReport, printIntegrationsHuman } = await import('./integrations.ts');
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log('');
         printIntegrationsHuman(runIntegrationsReport());
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log('');
         runStatus(false);
       }
@@ -185,15 +175,11 @@ async function main(): Promise<void> {
         try {
           const spec = buildDaemonSpecFromEnv();
           const r = installDaemonLaunchd(spec);
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.log(`${r.alreadyLoaded ? 'Reloaded' : 'Loaded'} launchd agent at ${r.plistPath}`);
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.log(`  Daemon: ${spec.nodePath} ${spec.cliPath} daemon --foreground`);
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.log(`  Data:   ${spec.userDataDir}`);
           exit(0);
         } catch (err) {
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.error(err instanceof Error ? err.message : String(err));
           exit(1);
         }
@@ -202,7 +188,6 @@ async function main(): Promise<void> {
         const { uninstallDaemonLaunchd } = await import('../../lib/launchd/install.ts');
         try {
           const r = uninstallDaemonLaunchd();
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.log(
             r.removed
               ? `Removed launchd agent at ${r.plistPath}`
@@ -210,7 +195,6 @@ async function main(): Promise<void> {
           );
           exit(0);
         } catch (err) {
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.error(err instanceof Error ? err.message : String(err));
           exit(1);
         }
@@ -338,7 +322,6 @@ async function main(): Promise<void> {
         dryRun: args.includes('--dry-run'),
       });
       if (args.includes('--json')) {
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(JSON.stringify(report, null, 2));
       } else {
         printBiographerHuman(report);
@@ -356,7 +339,6 @@ async function main(): Promise<void> {
       }
       const r = runIngestArchive(dir as string, extractFlag(args, '--source='));
       if (args.includes('--json')) {
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(JSON.stringify(r, null, 2));
       } else {
         printIngestArchiveHuman(r);
@@ -369,7 +351,6 @@ async function main(): Promise<void> {
       const { runIngestDocs, printIngestDocsHuman } = await import('./ingest-docs.ts');
       const r = runIngestDocs();
       if (args.includes('--json')) {
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(JSON.stringify(r, null, 2));
       } else {
         printIngestDocsHuman(r);
@@ -422,7 +403,6 @@ async function main(): Promise<void> {
     case 'reauth': {
       const integration = args[1];
       if (!integration) {
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.error('Usage: robin reauth <integration>   (gmail | google_calendar)');
         exit(2);
       }
@@ -435,7 +415,6 @@ async function main(): Promise<void> {
         });
         exit(0);
       } catch (err) {
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.error(`reauth failed: ${err instanceof Error ? err.message : String(err)}`);
         exit(1);
       }
@@ -449,18 +428,15 @@ async function main(): Promise<void> {
         const portFlag = extractFlag(args, '--port=');
         const port = portFlag ? Number(portFlag) : undefined;
         const r = installSessionEndHook(port !== undefined ? { port } : {});
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(`${r.replaced ? 'Updated' : 'Installed'} SessionEnd hook in ${r.path}`);
         exit(0);
       }
       if (sub === 'uninstall') {
         const { uninstallSessionEndHook } = await import('../../lib/claude-hooks/install.ts');
         const r = uninstallSessionEndHook();
-        // biome-ignore lint/suspicious/noConsole: CLI output
         console.log(r.replaced ? `Removed SessionEnd hook from ${r.path}` : 'No Robin hook found');
         exit(0);
       }
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.error(`Unknown hooks subcommand: ${sub}`);
       exit(2);
       break;
@@ -490,25 +466,21 @@ async function main(): Promise<void> {
           const extResult = upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'extension' }), {
             name: 'robin-extension',
           });
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.log(
             `${coreResult.replaced ? 'Replaced' : 'Added'} robin MCP entry; ${extResult.replaced ? 'replaced' : 'added'} robin-extension entry in ${coreResult.path}`,
           );
           exit(0);
         } catch (err) {
-          // biome-ignore lint/suspicious/noConsole: CLI output
           console.error(err instanceof Error ? err.message : String(err));
           exit(1);
         }
       }
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.error(`Unknown mcp subcommand: ${sub}`);
       exit(2);
       break;
     }
 
     default: {
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.error(`Unknown command: ${cmd}`);
       printHelp();
       exit(2);

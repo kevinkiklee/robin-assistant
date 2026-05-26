@@ -203,12 +203,10 @@ export async function runReindexCore(
 }
 
 export function printReindexHuman(report: ReindexReport): void {
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(
     `Reindex: ${report.embedded}/${report.total_eligible} embedded, ${report.failed} failed in ${(report.duration_ms / 1000).toFixed(1)}s`,
   );
   if (report.errors.length > 0) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     for (const e of report.errors) console.log(`  ! ${e}`);
   }
 }

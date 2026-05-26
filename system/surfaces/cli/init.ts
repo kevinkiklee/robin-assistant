@@ -24,7 +24,6 @@ export interface InitOptions {
 
 export async function runInit(opts: InitOptions): Promise<void> {
   if (!opts.yes) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.error(
       'Interactive init not yet implemented. Use `robin init --yes` for non-interactive setup.',
     );
@@ -116,13 +115,9 @@ roles: {}
   // stub. Store an absolute path — launchd/CLI both read it verbatim.
   writeUserDataPointer(resolveUserDataDirForLaunchd(userData));
 
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`✓ Initialized Robin at ${userData}`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  Database: ${dbFilePath(userData)}`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  Config:   ${paths.config.root}`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`  Hardware: ${hw.profile} (${hw.cpu}, ${hw.ram_gb}GB)`);
 
   // Install + load launchd agent so the daemon autostarts (macOS only).
@@ -133,11 +128,9 @@ roles: {}
       const spec = buildDaemonSpecFromEnv({ userDataDir: userData });
       const r = installDaemonLaunchd(spec);
       launchdInstalled = true;
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.log(`  Launchd:  ${r.alreadyLoaded ? 'reloaded' : 'loaded'} ${r.plistPath}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // biome-ignore lint/suspicious/noConsole: CLI output
       console.warn(`  Launchd:  skipped (${msg})`);
     }
   }
@@ -151,11 +144,9 @@ roles: {}
     );
     const core = upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'core' }), { name: 'robin' });
     upsertUserScopeMcp(buildRobinMcpEntry({ surface: 'extension' }), { name: 'robin-extension' });
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(`  MCP:      registered robin + robin-extension in ${core.path}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.warn(`  MCP:      skipped (${msg})`);
   }
 
@@ -170,27 +161,20 @@ roles: {}
     );
     const end = installSessionEndHook();
     const start = installSessionStartHook();
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(
       `  Hooks:    ${end.replaced ? 'updated' : 'installed'} SessionEnd, ${start.replaced ? 'updated' : 'installed'} SessionStart in ${end.path}`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.warn(`  Hooks:    skipped (${msg})`);
   }
 
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('');
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('Next steps:');
   if (launchdInstalled) {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log('  - robin doctor                 # verify the daemon is active + online');
   } else {
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log('  - pnpm dev                     # run the foreground daemon (non-macOS)');
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log('  - robin doctor                 # verify');
   }
 }

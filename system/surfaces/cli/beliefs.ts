@@ -85,7 +85,6 @@ export function runBeliefsPromote(id: number, opts: BeliefsCliOptions = {}): voi
   const llm = buildLlm(userData);
   try {
     const r = resolveBeliefCandidate(db, llm, id, 'promote', opts.reason);
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(
       `Promoted candidate #${r.candidateId} → belief event ${r.promotedBeliefEventId ?? '(none)'}.`,
     );
@@ -101,7 +100,6 @@ export function runBeliefsReject(id: number, opts: BeliefsCliOptions = {}): void
   const llm = buildLlm(userData);
   try {
     const r = resolveBeliefCandidate(db, llm, id, 'reject', opts.reason);
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(`Rejected candidate #${r.candidateId}.`);
   } finally {
     closeDb(db);

@@ -57,8 +57,8 @@ async function uploadOne(input: UploadOneInput): Promise<UploadOneResult> {
   let abs: string;
   try {
     abs = resolveLocalPath(input.url, input.sourceDir);
-  } catch (e) {
-    return { ok: false, warning: `dropped image (${input.url}): ${(e as Error).message}` };
+  } catch (err) {
+    return { ok: false, warning: `dropped image (${input.url}): ${(err as Error).message}` };
   }
   let bytes: Buffer;
   try {

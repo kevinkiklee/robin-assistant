@@ -101,24 +101,17 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
 }
 
 export function printDoctorHuman(report: DoctorReport): void {
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`Robin Doctor — robin v${report.robin_version} on Node ${report.node_version}`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(`User data: ${report.user_data_dir}`);
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('');
   for (const c of report.checks) {
     const icon = c.status === 'ok' ? '✓' : c.severity === 'critical' ? '✗' : '⚠';
     let line = `${icon} ${c.name}`;
     if (c.message) line += ` — ${c.message}`;
-    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(line);
-    // biome-ignore lint/suspicious/noConsole: CLI output
     if (c.remediation && c.status === 'fail') console.log(`    → ${c.remediation}`);
   }
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log('');
-  // biome-ignore lint/suspicious/noConsole: CLI output
   console.log(
     `Summary: ${report.summary.ok} ok, ${report.summary.warn} warn, ${report.summary.fail} fail`,
   );
