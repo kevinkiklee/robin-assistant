@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { latestLearningDigest } from '../brain/cognition/dream.ts';
 import { closeDb, openDb, type RobinDb } from '../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../brain/memory/migrations/index.ts';
 import { loadPolicies } from '../kernel/config/load.ts';
@@ -112,15 +113,33 @@ export async function runRunnerEntry(
     };
   }
 
-  const goal = parsed.goal ?? DEFAULT_GOALS[def.id] ?? `Run autonomous handler ${def.id}.`;
+  const cap = loadPolicies(userDataDir).agent.caps.agentic_autonomous_daily_usd;
+  const { ledger, close } = openLedger(userDataDir);
+
+  // Inject the latest learning digest so the handler knows Robin's current
+  // performance state: calibration, belief lifecycle, recent corrections, and
+  // any failed runs. This closes the feedback loop — handlers no longer start
+  // from scratch each time.
+  const baseGoal = parsed.goal ?? DEFAULT_GOALS[def.id] ?? `Run autonomous handler ${def.id}.`;
+  let digest: string | null = null;
+  try {
+    const db: RobinDb = openDb(dbFilePath(userDataDir));
+    try {
+      digest = latestLearningDigest(db);
+    } finally {
+      closeDb(db);
+    }
+  } catch {
+    // Digest unavailable — degrade gracefully, handler runs without it.
+  }
+  const goal = digest
+    ? `${baseGoal}\n\n--- ROBIN LEARNING DIGEST (your current state) ---\n${digest}`
+    : baseGoal;
   const built = def.build(goal, { repoRoot });
   // Give the run Robin's own MCP servers for any mcp__robin__* / mcp__robin-extension__*
   // tool in the handler's allowlist; built-in-only handlers get an empty map.
   const mcpServers = buildMcpServers(built.allowedTools, { repoRoot, userDataDir });
   const input: RunAgentInput = { ...built, surface: 'agentic-autonomous', mcpServers };
-
-  const cap = loadPolicies(userDataDir).agent.caps.agentic_autonomous_daily_usd;
-  const { ledger, close } = openLedger(userDataDir);
 
   let result: RunAgentResult;
   try {
