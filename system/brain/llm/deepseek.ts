@@ -49,7 +49,12 @@ export class DeepSeekProvider implements LLMProvider {
         max_tokens: req.maxTokens,
       }),
     });
-    if (!res.ok) throw new Error(`deepseek ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(
+        `deepseek ${res.status}: ${errText.length > 500 ? `${errText.slice(0, 500)}…` : errText}`,
+      );
+    }
     const data = (await res.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage: { prompt_tokens: number; completion_tokens: number };

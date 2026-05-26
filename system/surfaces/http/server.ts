@@ -16,14 +16,26 @@ export interface HttpHandle {
   close: () => Promise<void>;
 }
 
+/** Max request body size (1 MB). Prevents DoS from oversized payloads. */
+const MAX_BODY_BYTES = 1024 * 1024;
+
 async function readBody(req: IncomingMessage): Promise<string> {
   let body = '';
-  for await (const chunk of req) body += chunk;
+  let bytes = 0;
+  for await (const chunk of req) {
+    const str = typeof chunk === 'string' ? chunk : (chunk as Buffer).toString();
+    bytes += Buffer.byteLength(str);
+    if (bytes > MAX_BODY_BYTES) throw new Error('request body too large');
+    body += str;
+  }
   return body;
 }
 
 export async function startHttpServer(deps: HttpServerDeps): Promise<HttpHandle> {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    // Security headers — this is a localhost-only daemon, but defense in depth.
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('x-frame-options', 'DENY');
     (async () => {
       try {
         if (req.method === 'GET' && req.url === '/health') {

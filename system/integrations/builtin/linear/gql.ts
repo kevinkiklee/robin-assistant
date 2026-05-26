@@ -30,7 +30,13 @@ export async function gql<T>(
     headers: { Authorization: key, 'content-type': 'application/json' },
     body: JSON.stringify({ query, variables }),
   });
-  if (!res.ok) throw new Error(`linear graphql returned ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    // Truncate error body to prevent leaking tokens or bloating logs.
+    const errText = await res.text();
+    throw new Error(
+      `linear graphql returned ${res.status}: ${errText.length > 500 ? `${errText.slice(0, 500)}…` : errText}`,
+    );
+  }
   const body = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
   if (body.errors?.length)
     throw new Error(`linear graphql errors: ${body.errors.map((e) => e.message).join('; ')}`);

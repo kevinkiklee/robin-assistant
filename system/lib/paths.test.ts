@@ -128,3 +128,13 @@ test('paths: writeUserDataPointer creates the config dir if missing', () => {
     rmSync(xdgConfig, { recursive: true, force: true });
   }
 });
+
+test('paths: writeUserDataPointer rejects relative paths', () => {
+  const xdgConfig = mkdtempSync(join(tmpdir(), 'robin-cfg-'));
+  try {
+    const opts = { env: { XDG_CONFIG_HOME: xdgConfig }, home: '/Users/x' };
+    assert.throws(() => writeUserDataPointer('relative/path', opts), /must be absolute/);
+  } finally {
+    rmSync(xdgConfig, { recursive: true, force: true });
+  }
+});

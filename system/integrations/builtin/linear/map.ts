@@ -63,10 +63,20 @@ export function upsertMap(
   );
 }
 
+/** Safely parse the JSON array in commented_refs; defaults to [] on corrupt data. */
+function parseCommentedRefs(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((r): r is string => typeof r === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function addCommentedRef(db: RobinDb, robinRef: string, commentRef: string): boolean {
   const row = lookupByRef(db, robinRef);
   if (!row) return false;
-  const refs: string[] = JSON.parse(row.commented_refs);
+  const refs = parseCommentedRefs(row.commented_refs);
   if (refs.includes(commentRef)) return false;
   refs.push(commentRef);
   db.prepare(
@@ -78,8 +88,7 @@ export function addCommentedRef(db: RobinDb, robinRef: string, commentRef: strin
 export function hasCommentedRef(db: RobinDb, robinRef: string, commentRef: string): boolean {
   const row = lookupByRef(db, robinRef);
   if (!row) return false;
-  const refs: string[] = JSON.parse(row.commented_refs);
-  return refs.includes(commentRef);
+  return parseCommentedRefs(row.commented_refs).includes(commentRef);
 }
 
 export function refreshStateTypes(

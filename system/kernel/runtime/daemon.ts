@@ -9,6 +9,7 @@ import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 import { writeTelemetry } from '../../lib/telemetry/write.ts';
+import { VERSION } from '../../lib/version.ts';
 import { type HttpHandle, startHttpServer } from '../../surfaces/http/server.ts';
 import { loadModels, loadPolicies } from '../config/load.ts';
 import { recoverDeadWorkerLeases, recoverExpiredLeases } from '../scheduler/claim.ts';
@@ -54,6 +55,7 @@ export class Daemon {
   }
 
   async start(opts: DaemonRunOptions = {}): Promise<void> {
+    if (this.running) return;
     const userData = resolveUserDataDir();
     const pidPath = pidFilePath(userData);
 
@@ -118,7 +120,7 @@ export class Daemon {
       );
     }
 
-    writeTelemetry(this.db, 'daemon.start', { version: '3.0.0-alpha.0' }, { source: 'daemon' });
+    writeTelemetry(this.db, 'daemon.start', { version: VERSION }, { source: 'daemon' });
 
     this.scheduler = new Scheduler({
       db: this.db,
@@ -159,9 +161,11 @@ export class Daemon {
       // Capture db in a local binding so the closure doesn't depend on
       // `this.db` (which TS narrows as possibly-undefined at closure time).
       const db = this.db;
+      const envPort = process.env.ROBIN_DAEMON_HTTP_PORT
+        ? Number.parseInt(process.env.ROBIN_DAEMON_HTTP_PORT, 10)
+        : undefined;
       const httpPort =
-        opts.httpPort ??
-        (process.env.ROBIN_DAEMON_HTTP_PORT ? Number(process.env.ROBIN_DAEMON_HTTP_PORT) : 41273);
+        opts.httpPort ?? (envPort != null && envPort >= 0 && envPort <= 65535 ? envPort : 41273);
       this.http = await startHttpServer({
         db,
         port: httpPort,
@@ -316,7 +320,12 @@ export class Daemon {
   private setupSignals(): void {
     const shutdown = async (sig: NodeJS.Signals) => {
       this.log.info({ signal: sig }, 'shutdown signal received');
-      await this.stop(`signal:${sig}`);
+      try {
+        await this.stop(`signal:${sig}`);
+      } catch (err) {
+        this.log.error({ err, signal: sig }, 'shutdown failed');
+      }
+      process.exit(0);
     };
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);

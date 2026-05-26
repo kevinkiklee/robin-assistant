@@ -26,6 +26,7 @@ import {
 } from '../../../kernel/invariants/builtins/index.ts';
 import { runInvariants } from '../../../kernel/invariants/runner.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
+import { VERSION } from '../../../lib/version.ts';
 import { defaultSkillRoots } from '../../../skills/_runtime/loader.ts';
 import { runSkillTool, type SkillToolArgs, skillCatalogDescription } from './skill-tool.ts';
 
@@ -49,7 +50,7 @@ export function buildCoreDeps(): CoreServerDeps {
 }
 
 export function buildCoreServer(deps: CoreServerDeps): McpServer {
-  const server = new McpServer({ name: 'robin-core', version: '3.0.0-alpha.0' });
+  const server = new McpServer({ name: 'robin-core', version: VERSION });
 
   server.registerTool(
     'recall',

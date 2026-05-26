@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { acquire } from '../../../agent/single-flight.ts';
+import { acquire, release } from '../../../agent/single-flight.ts';
 import { loadPolicies } from '../../../kernel/config/load.ts';
 import { resolveUserDataDir } from '../../../lib/paths.ts';
 import type { Job, JobContext, JobResult } from '../../_runtime/types.ts';
@@ -62,11 +62,11 @@ function lockPath(userDataDir: string): string {
   return join(userDataDir, 'state', 'runtime', 'agent-runner.lock');
 }
 
-/** Read the persisted cursor; defaults to 0 on missing/corrupt. */
+/** Read the persisted cursor; defaults to 0 on missing/corrupt/out-of-bounds. */
 function readCursor(userDataDir: string): number {
   try {
     const n = Number.parseInt(readFileSync(cursorPath(userDataDir), 'utf8').trim(), 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
+    return Number.isFinite(n) && n >= 0 && n < AUTONOMOUS_HANDLERS.length ? n : 0;
   } catch {
     return 0;
   }
@@ -124,7 +124,9 @@ export async function runAgentRunner(
     child = spawnFn('pnpm', args, { detached: true, stdio: 'ignore' });
     child.unref();
   } catch (err) {
-    // If the spawn itself fails, release the lock so the next tick can retry.
+    // If the spawn itself fails, release the lock so the next tick can retry
+    // instead of waiting for the stale-ms window to expire.
+    release(lock);
     ctx.log.error({ err, handler }, 'agent-runner: failed to spawn detached runner');
     return { status: 'error', message: `failed to spawn runner for handler ${handler}` };
   }

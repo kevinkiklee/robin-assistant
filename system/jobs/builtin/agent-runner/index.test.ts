@@ -144,16 +144,16 @@ test('agent-runner: round-robin advances the handler across ticks', async () => 
   assert.deepEqual(ids, [...AUTONOMOUS_HANDLERS]);
 });
 
-test('agent-runner: spawn failure returns error (lock recovered via stale-steal)', async () => {
+test('agent-runner: spawn failure returns error and releases lock for immediate retry', async () => {
   const ud = tmpUserData();
   const throwingSpawn = (() => {
     throw new Error('spawn ENOENT');
   }) as unknown as SpawnFn;
   const r = await runAgentRunner(fakeCtx(), enabledDeps(ud, throwingSpawn));
   assert.equal(r.status, 'error');
-  // Lock is left held in this impl only if acquired; assert it still exists so a
-  // stale-steal (not a permanent wedge) is what recovers it next tick.
-  assert.equal(lockExists(ud), true);
+  // Lock is released on spawn failure so the next tick can retry immediately
+  // instead of waiting for the stale-ms window to expire.
+  assert.equal(lockExists(ud), false, 'lock should be released on spawn failure');
 });
 
 test('agent-runner: cursor file persists the next position', async () => {

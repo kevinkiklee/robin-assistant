@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 interface Env {
   ROBIN_USER_DATA_DIR?: string;
@@ -66,6 +66,7 @@ export function resolveUserDataDir(opts?: Resolver): string {
  * caller is responsible for passing an absolute path.
  */
 export function writeUserDataPointer(dir: string, opts?: Resolver): string {
+  if (!isAbsolute(dir)) throw new Error(`writeUserDataPointer: dir must be absolute, got '${dir}'`);
   const pointerPath = userDataPointerPath(opts);
   mkdirSync(resolveConfigDir(opts), { recursive: true });
   writeFileSync(pointerPath, `${dir}\n`);

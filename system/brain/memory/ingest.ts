@@ -63,8 +63,10 @@ export function ingest(db: RobinDb, _llm: LLMDispatcher | null, input: IngestInp
             // tick will re-embed and re-insert. `events_vec` rowid mirrors content id.
             try {
               db.prepare(`DELETE FROM events_vec WHERE rowid = ?`).run(contentRef);
-            } catch {
-              // vec table not initialized in this env (tests); safe to ignore.
+            } catch (err) {
+              // Only ignore "no such table" errors (vec table not initialized in tests).
+              // Re-throw unexpected errors (corruption, I/O) so they don't silently poison state.
+              if (!(err instanceof Error && err.message.includes('no such table'))) throw err;
             }
           } else {
             const cInfo = db

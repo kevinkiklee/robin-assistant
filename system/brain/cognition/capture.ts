@@ -155,8 +155,10 @@ export async function captureSession(
     .toString('base64')
     .slice(0, 64);
   const existing = db
-    .prepare(`SELECT id FROM events WHERE kind = 'session.captured' AND payload LIKE ? LIMIT 1`)
-    .get(`%"hash":"${hash}"%`);
+    .prepare(
+      `SELECT id FROM events WHERE kind = 'session.captured' AND json_extract(payload, '$.hash') = ? LIMIT 1`,
+    )
+    .get(hash);
   if (existing) return { captured: false, skipReason: 'dedup_hit' };
 
   const content = capture.turns.map((t) => `[${t.role.toUpperCase()}]\n${t.content}`).join('\n\n');

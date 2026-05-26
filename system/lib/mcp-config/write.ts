@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 export interface McpEntry {
   type: 'stdio';
@@ -47,7 +47,14 @@ export function resolveRunnableCommand(input: string): string {
   }
   const abs = resolve(input);
   if (!abs.endsWith('.ts')) return abs;
-  const distPath = abs.replace('/system/', '/dist/').replace(/\.ts$/, '.js');
+  // Locate the `system/` directory component and swap it for `dist/`. Uses the
+  // separator-delimited marker so `/other/system/` in the prefix doesn't match.
+  const marker = `${sep}system${sep}`;
+  const idx = abs.lastIndexOf(marker);
+  const distPath =
+    idx >= 0
+      ? `${abs.slice(0, idx)}${sep}dist${sep}${abs.slice(idx + marker.length).replace(/\.ts$/, '.js')}`
+      : abs.replace(/\.ts$/, '.js');
   if (!existsSync(distPath)) {
     throw new Error(
       `Cannot install MCP entry from ${abs}: run \`pnpm build\` first ` +

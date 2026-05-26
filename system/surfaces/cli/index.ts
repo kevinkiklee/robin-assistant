@@ -2,10 +2,9 @@
 import { argv, exit } from 'node:process';
 import { Daemon } from '../../kernel/runtime/daemon.ts';
 import { buildRobinMcpEntry, upsertUserScopeMcp } from '../../lib/mcp-config/write.ts';
+import { VERSION } from '../../lib/version.ts';
 import { printDoctorHuman, runDoctor } from './doctor.ts';
 import { runIncognito, runOffline, runOnline, runPause, runResume, runStatus } from './power.ts';
-
-const VERSION = '3.0.0-alpha.0';
 
 function extractFlag(args: string[], prefix: string): string | undefined {
   const found = args.find((a) => a.startsWith(prefix));
@@ -41,7 +40,6 @@ ADVANCED
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
   ingest-docs           Index content/* now (also runs automatically every 10 min)
-  ingest-archive <dir>  Index a bulk text archive into recall (--source=name)
   db backup|restore|vacuum   Database maintenance
   pause | resume        Pause / resume scheduled work
   offline | online      Block / restore outbound network
@@ -327,23 +325,6 @@ async function main(): Promise<void> {
         printBiographerHuman(report);
       }
       exit(report.errors.length > 0 ? 1 : 0);
-      break;
-    }
-
-    case 'ingest-archive': {
-      const { runIngestArchive, printIngestArchiveHuman } = await import('./ingest-archive.ts');
-      const dir = args[1] && !args[1].startsWith('-') ? args[1] : extractFlag(args, '--dir=');
-      if (!dir) {
-        console.error('usage: robin ingest-archive <dir> [--source=name] [--json]');
-        exit(2);
-      }
-      const r = runIngestArchive(dir as string, extractFlag(args, '--source='));
-      if (args.includes('--json')) {
-        console.log(JSON.stringify(r, null, 2));
-      } else {
-        printIngestArchiveHuman(r);
-      }
-      exit(0);
       break;
     }
 

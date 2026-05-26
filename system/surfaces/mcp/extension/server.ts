@@ -21,6 +21,7 @@ import { actions as linearActions } from '../../../integrations/builtin/linear/i
 import { writeActions as linearWriteActions } from '../../../integrations/builtin/linear/write.ts';
 import { loadModels } from '../../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
+import { VERSION } from '../../../lib/version.ts';
 import { runAgentAction } from './agent-action.ts';
 
 export interface ExtensionServerDeps {
@@ -102,7 +103,7 @@ function makeIntegrationTool(
 }
 
 export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
-  const server = new McpServer({ name: 'robin-extension', version: '3.0.0-alpha.0' });
+  const server = new McpServer({ name: 'robin-extension', version: VERSION });
 
   // Integration action-dispatchers
   makeIntegrationTool(
