@@ -35,6 +35,47 @@ export interface DreamResult {
   candidatesMerged: number;
   /** Non-empty depth synthesis sections appended to the journal. */
   depthInsightsGenerated: number;
+  /** Whether a learning digest event was persisted this run. */
+  digestGenerated: boolean;
+}
+
+// ── Learning digest types ────────────────────────────────────────────────────
+
+export interface HandlerActivityRow {
+  surface: string;
+  runs: number;
+  cost: number;
+  turns: number;
+  handlers: string;
+}
+
+export interface LearningDigest {
+  /** Handler activity summary (last 24h) grouped by surface. */
+  handlerActivity: HandlerActivityRow[];
+  /** Prediction calibration: resolved counts by outcome. */
+  predictionsByOutcome: Array<{ outcome: string; n: number }>;
+  /** Overall Brier score (lower = better). null if no resolved predictions with brier_delta. */
+  overallBrier: number | null;
+  /** Open (unresolved) predictions count and nearest deadline. */
+  openPredictions: { count: number; nearestDeadline: string | null };
+  /** Belief lifecycle snapshot from this dream run. */
+  beliefLifecycle: {
+    promoted: number;
+    conflicted: number;
+    merged: number;
+    expired: number;
+    pendingCandidates: number;
+    activeBeliefHeads: number;
+  };
+  /** Correction coverage. */
+  corrections: {
+    total: number;
+    behavioral: number;
+    topicLinked: number;
+    unapplied: number;
+  };
+  /** Recent agent runs with non-success status (capped, timeout, error). */
+  failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }>;
 }
 
 const CANDIDATE_EXPIRY_DAYS = 14;
@@ -83,6 +124,7 @@ export async function runDream(
     candidatesConflicted: 0,
     candidatesMerged: 0,
     depthInsightsGenerated: 0,
+    digestGenerated: false,
   };
 
   // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
@@ -227,6 +269,16 @@ export async function runDream(
   } catch {
     result.correctionsApplied = 0;
     result.beliefsRetracted = 0;
+  }
+
+  // 11. Compose and persist a learning digest — closes feedback loops by
+  //     summarizing handler outcomes, calibration, belief lifecycle, corrections,
+  //     and agent-run failure signals into a single event. Best-effort.
+  try {
+    composeLearningDigest(db, result, now);
+    result.digestGenerated = true;
+  } catch {
+    result.digestGenerated = false;
   }
 
   return result;
@@ -808,4 +860,243 @@ function composeJournal(ctx: JournalContext): string {
   }
 
   return lines.join('\n');
+}
+
+// ── Learning digest ─────────────────────────────────────────────────────────
+
+/**
+ * Compute a structured learning digest from deterministic SQL queries (no LLM)
+ * and persist it as a `dream.learning_digest` event. Deduplicates by day via
+ * `payload.external_id = 'learning-digest:YYYY-MM-DD'` — the ingest module's
+ * upsert path ensures at most one digest per day.
+ */
+export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Date): LearningDigest {
+  const today = now.toISOString().slice(0, 10);
+  const cutoff24h = new Date(now.getTime() - 24 * 3600_000).toISOString();
+
+  // a. Handler activity summary (last 24h)
+  let handlerActivity: HandlerActivityRow[] = [];
+  try {
+    handlerActivity = db
+      .prepare(
+        `SELECT surface, count(*) AS runs, COALESCE(sum(cost_usd), 0) AS cost,
+                COALESCE(sum(turns), 0) AS turns, group_concat(DISTINCT label) AS handlers
+         FROM agent_usage WHERE ts > ? GROUP BY surface`,
+      )
+      .all(cutoff24h) as HandlerActivityRow[];
+  } catch {
+    // agent_usage table may not exist on older DBs
+  }
+
+  // b. Prediction calibration snapshot
+  let predictionsByOutcome: Array<{ outcome: string; n: number }> = [];
+  let overallBrier: number | null = null;
+  let openPredictions = { count: 0, nearestDeadline: null as string | null };
+  try {
+    predictionsByOutcome = db
+      .prepare(
+        `SELECT outcome, count(*) AS n FROM predictions WHERE outcome IS NOT NULL GROUP BY outcome`,
+      )
+      .all() as Array<{ outcome: string; n: number }>;
+
+    const brierRow = db
+      .prepare(
+        `SELECT avg(brier_delta) AS avg_brier FROM predictions WHERE brier_delta IS NOT NULL`,
+      )
+      .get() as { avg_brier: number | null } | undefined;
+    overallBrier = brierRow?.avg_brier ?? null;
+
+    const openRow = db
+      .prepare(
+        `SELECT count(*) AS cnt, min(deadline) AS nearest FROM predictions WHERE outcome IS NULL`,
+      )
+      .get() as { cnt: number; nearest: string | null } | undefined;
+    openPredictions = {
+      count: openRow?.cnt ?? 0,
+      nearestDeadline: openRow?.nearest ?? null,
+    };
+  } catch {
+    // predictions table may not exist on older DBs
+  }
+
+  // c. Belief lifecycle snapshot
+  let pendingCandidates = 0;
+  let activeBeliefHeads = 0;
+  try {
+    pendingCandidates = (
+      db.prepare(`SELECT count(*) AS n FROM belief_candidates WHERE status = 'pending'`).get() as {
+        n: number;
+      }
+    ).n;
+  } catch {
+    // belief_candidates may not exist
+  }
+  try {
+    activeBeliefHeads = (
+      db
+        .prepare(
+          `SELECT count(DISTINCT json_extract(payload, '$.topic')) AS n FROM events
+           WHERE kind = 'belief.update'
+             AND (json_extract(payload, '$.retracted') IS NULL
+               OR json_extract(payload, '$.retracted') = 0
+               OR json_extract(payload, '$.retracted') = false)`,
+        )
+        .get() as { n: number }
+    ).n;
+  } catch {
+    // best-effort
+  }
+
+  // d. Correction coverage
+  let corrections = { total: 0, behavioral: 0, topicLinked: 0, unapplied: 0 };
+  try {
+    const totalRow = db.prepare(`SELECT count(*) AS n FROM corrections`).get() as { n: number };
+    const behavioralRow = db
+      .prepare(`SELECT count(*) AS n FROM corrections WHERE topic IS NULL`)
+      .get() as { n: number };
+    const topicLinkedRow = db
+      .prepare(`SELECT count(*) AS n FROM corrections WHERE topic IS NOT NULL`)
+      .get() as { n: number };
+    const unappliedRow = db
+      .prepare(`SELECT count(*) AS n FROM corrections WHERE topic IS NOT NULL AND applied = 0`)
+      .get() as { n: number };
+    corrections = {
+      total: totalRow.n,
+      behavioral: behavioralRow.n,
+      topicLinked: topicLinkedRow.n,
+      unapplied: unappliedRow.n,
+    };
+  } catch {
+    // corrections table or topic column may not exist
+  }
+
+  // e. Recent agent-run failures (last 24h)
+  let failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }> = [];
+  try {
+    failedRuns = db
+      .prepare(
+        `SELECT surface, label, status, ts FROM agent_usage
+         WHERE ts > ? AND status IS NOT NULL AND status != 'success'
+         ORDER BY ts DESC LIMIT 20`,
+      )
+      .all(cutoff24h) as typeof failedRuns;
+  } catch {
+    // agent_usage may not exist
+  }
+
+  const digest: LearningDigest = {
+    handlerActivity,
+    predictionsByOutcome,
+    overallBrier,
+    openPredictions,
+    beliefLifecycle: {
+      promoted: result.candidatesPromoted,
+      conflicted: result.candidatesConflicted,
+      merged: result.candidatesMerged,
+      expired: result.candidatesExpired,
+      pendingCandidates,
+      activeBeliefHeads,
+    },
+    corrections,
+    failedRuns,
+  };
+
+  // Persist as an event with external_id-based dedup (one per day).
+  const externalId = `learning-digest:${today}`;
+  const existing = db
+    .prepare(
+      `SELECT id FROM events
+       WHERE source = 'dream' AND json_extract(payload, '$.external_id') = ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(externalId) as { id: number } | undefined;
+
+  const payload = JSON.stringify({ external_id: externalId, digest });
+  if (existing) {
+    db.prepare(`UPDATE events SET ts = ?, payload = ? WHERE id = ?`).run(
+      now.toISOString(),
+      payload,
+      existing.id,
+    );
+  } else {
+    db.prepare(
+      `INSERT INTO events (ts, kind, source, status, payload)
+       VALUES (?, 'dream.learning_digest', 'dream', 'ok', ?)`,
+    ).run(now.toISOString(), payload);
+  }
+
+  return digest;
+}
+
+/**
+ * Render a learning digest as a compact text summary suitable for the primer
+ * or handler goal injection.
+ */
+export function renderLearningDigest(digest: LearningDigest): string {
+  const lines: string[] = [];
+
+  // Predictions
+  const outcomeStrs = digest.predictionsByOutcome.map((o) => `${o.n} ${o.outcome}`);
+  const brierStr =
+    digest.overallBrier != null ? `Brier: ${digest.overallBrier.toFixed(2)} (lower=better)` : '';
+  const predParts = [...outcomeStrs, brierStr].filter(Boolean);
+  if (predParts.length > 0) lines.push(`- Predictions: ${predParts.join(', ')}`);
+  if (digest.openPredictions.count > 0) {
+    const deadlineStr = digest.openPredictions.nearestDeadline
+      ? `, nearest deadline: ${digest.openPredictions.nearestDeadline.slice(0, 10)}`
+      : '';
+    lines.push(`- ${digest.openPredictions.count} open predictions${deadlineStr}`);
+  }
+
+  // Beliefs
+  const bl = digest.beliefLifecycle;
+  lines.push(
+    `- Beliefs: ${bl.promoted} promoted, ${bl.conflicted} conflicted, ${bl.merged} merged; ${bl.pendingCandidates} candidates pending`,
+  );
+
+  // Agent runs
+  if (digest.handlerActivity.length > 0) {
+    const parts = digest.handlerActivity.map(
+      (h) => `${h.runs} ${h.surface} ($${h.cost.toFixed(2)})`,
+    );
+    const failures = digest.failedRuns.length;
+    const failStr = failures > 0 ? `; ${failures} failed` : '';
+    lines.push(`- Agent runs: ${parts.join(', ')}${failStr}`);
+  }
+
+  // Corrections
+  const c = digest.corrections;
+  if (c.total > 0) {
+    const topicStr =
+      c.topicLinked > 0 ? `, ${c.topicLinked} topic-linked (${c.unapplied} unapplied)` : '';
+    lines.push(`- Corrections: ${c.total} total (${c.behavioral} behavioral${topicStr})`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Read the latest learning digest from the events table and return a compact
+ * text summary. Returns null if no digest has been computed yet.
+ */
+export function latestLearningDigest(db: RobinDb): string | null {
+  let row: { payload: string } | undefined;
+  try {
+    row = db
+      .prepare(
+        `SELECT payload FROM events WHERE kind = 'dream.learning_digest' ORDER BY ts DESC LIMIT 1`,
+      )
+      .get() as { payload: string } | undefined;
+  } catch {
+    return null;
+  }
+  if (!row) return null;
+
+  try {
+    const parsed = JSON.parse(row.payload) as { digest?: LearningDigest };
+    if (!parsed.digest) return null;
+    return renderLearningDigest(parsed.digest);
+  } catch {
+    return null;
+  }
 }

@@ -10,12 +10,16 @@ import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import type { DreamResult, LearningDigest } from './dream.ts';
 import {
+  composeLearningDigest,
   detectArcs,
+  latestLearningDigest,
   promoteStableCandidates,
   queryApproachingDeadlines,
   queryDecisionReplays,
   queryPredictionCalibration,
+  renderLearningDigest,
   runDream,
   summarizeHotEntities,
 } from './dream.ts';
@@ -731,4 +735,235 @@ test('dream: journal has no depth sections when no depth data', async () => {
   assert.doesNotMatch(journal.body, /Prediction calibration/);
   assert.doesNotMatch(journal.body, /Approaching deadlines/);
   closeDb(db);
+});
+
+// ── Learning digest tests ──────────────────────────────────────────────────
+
+function baseDreamResult(): DreamResult {
+  return {
+    predictionsResolved: 0,
+    brierDeltaSum: 0,
+    journalGenerated: false,
+    entitiesSummarized: 0,
+    arcsCreated: 0,
+    candidatesExpired: 1,
+    staleFlagsRaised: 0,
+    staleBeliefsFlagged: 0,
+    beliefsRefreshed: 0,
+    docsIngested: 0,
+    correctionsApplied: 0,
+    beliefsRetracted: 0,
+    candidatesPromoted: 2,
+    candidatesConflicted: 1,
+    candidatesMerged: 0,
+    depthInsightsGenerated: 0,
+    digestGenerated: false,
+  };
+}
+
+function seedDigestDb(db: ReturnType<typeof freshDb>) {
+  const now = new Date();
+  const recentTs = new Date(now.getTime() - 3600_000).toISOString();
+
+  // 3 agent_usage rows: 1 success, 1 capped, 1 error
+  db.prepare(
+    `INSERT INTO agent_usage (ts, surface, label, input_tokens, output_tokens, cost_usd, turns, status)
+     VALUES (?, 'autonomous', 'biographer', 100, 50, 1.50, 5, 'success')`,
+  ).run(recentTs);
+  db.prepare(
+    `INSERT INTO agent_usage (ts, surface, label, input_tokens, output_tokens, cost_usd, turns, status)
+     VALUES (?, 'autonomous', 'dream-synthesis', 200, 100, 3.00, 10, 'capped')`,
+  ).run(recentTs);
+  db.prepare(
+    `INSERT INTO agent_usage (ts, surface, label, input_tokens, output_tokens, cost_usd, turns, status)
+     VALUES (?, 'on-demand', 'user-query', 50, 25, 0.50, 3, 'error')`,
+  ).run(recentTs);
+
+  // 3 predictions: 1 right, 1 wrong, 1 open with deadline
+  db.prepare(
+    `INSERT INTO predictions (claim, confidence, outcome, resolved_at, brier_delta)
+     VALUES ('it will rain', 0.8, 'right', ?, 0.04)`,
+  ).run(now.toISOString());
+  db.prepare(
+    `INSERT INTO predictions (claim, confidence, outcome, resolved_at, brier_delta)
+     VALUES ('market up', 0.6, 'wrong', ?, 0.36)`,
+  ).run(now.toISOString());
+  const in3days = new Date(now.getTime() + 3 * 86_400_000).toISOString();
+  db.prepare(
+    `INSERT INTO predictions (claim, confidence, deadline) VALUES ('new feature ships', 0.7, ?)`,
+  ).run(in3days);
+
+  // 5 corrections: all NULL topic (behavioral)
+  for (let i = 0; i < 5; i++) {
+    db.prepare(`INSERT INTO corrections (what, correction) VALUES (?, ?)`).run(
+      `mistake ${i}`,
+      `rule ${i}`,
+    );
+  }
+
+  return { now, in3days };
+}
+
+test('composeLearningDigest: returns correct structured object', () => {
+  const db = freshDb();
+  const { now } = seedDigestDb(db);
+  const result = baseDreamResult();
+  const digest = composeLearningDigest(db, result, now);
+
+  // Handler activity
+  assert.ok(digest.handlerActivity.length >= 1);
+  const autonomous = digest.handlerActivity.find((h) => h.surface === 'autonomous');
+  assert.ok(autonomous);
+  assert.equal(autonomous!.runs, 2);
+
+  // Predictions
+  assert.ok(digest.predictionsByOutcome.length >= 2);
+  const right = digest.predictionsByOutcome.find((p) => p.outcome === 'right');
+  assert.ok(right);
+  assert.equal(right!.n, 1);
+
+  // Overall Brier
+  assert.ok(digest.overallBrier != null);
+  assert.ok(digest.overallBrier! > 0);
+
+  // Open predictions
+  assert.equal(digest.openPredictions.count, 1);
+  assert.ok(digest.openPredictions.nearestDeadline);
+
+  // Belief lifecycle from DreamResult
+  assert.equal(digest.beliefLifecycle.promoted, 2);
+  assert.equal(digest.beliefLifecycle.conflicted, 1);
+  assert.equal(digest.beliefLifecycle.expired, 1);
+
+  // Corrections
+  assert.equal(digest.corrections.total, 5);
+  assert.equal(digest.corrections.behavioral, 5);
+  assert.equal(digest.corrections.topicLinked, 0);
+
+  // Failed runs
+  assert.ok(digest.failedRuns.length >= 2); // capped + error
+  closeDb(db);
+});
+
+test('composeLearningDigest: persists a dream.learning_digest event', () => {
+  const db = freshDb();
+  const { now } = seedDigestDb(db);
+  const result = baseDreamResult();
+  composeLearningDigest(db, result, now);
+
+  const row = db
+    .prepare(`SELECT payload FROM events WHERE kind = 'dream.learning_digest'`)
+    .get() as { payload: string };
+  assert.ok(row);
+  const parsed = JSON.parse(row.payload);
+  assert.ok(parsed.digest);
+  assert.ok(parsed.external_id.startsWith('learning-digest:'));
+  closeDb(db);
+});
+
+test('composeLearningDigest: idempotent — re-running same day does not duplicate', () => {
+  const db = freshDb();
+  const { now } = seedDigestDb(db);
+  const result = baseDreamResult();
+  composeLearningDigest(db, result, now);
+  composeLearningDigest(db, result, now);
+
+  const count = (
+    db.prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'dream.learning_digest'`).get() as {
+      c: number;
+    }
+  ).c;
+  assert.equal(count, 1);
+  closeDb(db);
+});
+
+test('runDream: sets digestGenerated=true and persists digest event', async () => {
+  const db = freshDb();
+  const now = new Date();
+  seedDigestDb(db);
+  const r = await runDream(db, null, now);
+  assert.equal(r.digestGenerated, true);
+
+  const row = db.prepare(`SELECT payload FROM events WHERE kind = 'dream.learning_digest'`).get() as
+    | { payload: string }
+    | undefined;
+  assert.ok(row, 'digest event should exist after runDream');
+  closeDb(db);
+});
+
+test('latestLearningDigest: returns rendered text after digest is persisted', () => {
+  const db = freshDb();
+  const { now } = seedDigestDb(db);
+  const result = baseDreamResult();
+  composeLearningDigest(db, result, now);
+
+  const text = latestLearningDigest(db);
+  assert.ok(text);
+  assert.match(text, /Predictions/);
+  assert.match(text, /Beliefs/);
+  assert.match(text, /Corrections/);
+  closeDb(db);
+});
+
+test('latestLearningDigest: returns null when no digest exists', () => {
+  const db = freshDb();
+  const text = latestLearningDigest(db);
+  assert.equal(text, null);
+  closeDb(db);
+});
+
+test('renderLearningDigest: formats digest into compact bullet list', () => {
+  const digest: LearningDigest = {
+    handlerActivity: [
+      {
+        surface: 'autonomous',
+        runs: 16,
+        cost: 16.64,
+        turns: 80,
+        handlers: 'biographer,dream-synthesis',
+      },
+      { surface: 'on-demand', runs: 3, cost: 10.21, turns: 15, handlers: 'user-query' },
+    ],
+    predictionsByOutcome: [
+      { outcome: 'right', n: 2 },
+      { outcome: 'wrong', n: 1 },
+      { outcome: 'unverifiable', n: 4 },
+    ],
+    overallBrier: 0.23,
+    openPredictions: { count: 5, nearestDeadline: '2026-05-27T00:00:00.000Z' },
+    beliefLifecycle: {
+      promoted: 3,
+      conflicted: 1,
+      merged: 0,
+      expired: 2,
+      pendingCandidates: 2330,
+      activeBeliefHeads: 45,
+    },
+    corrections: { total: 16, behavioral: 16, topicLinked: 0, unapplied: 0 },
+    failedRuns: [
+      { surface: 'autonomous', label: 'biographer', status: 'capped', ts: '2026-05-25T03:00:00Z' },
+      {
+        surface: 'autonomous',
+        label: 'dream-synthesis',
+        status: 'capped',
+        ts: '2026-05-25T04:00:00Z',
+      },
+    ],
+  };
+
+  const text = renderLearningDigest(digest);
+  assert.match(text, /2 right/);
+  assert.match(text, /1 wrong/);
+  assert.match(text, /4 unverifiable/);
+  assert.match(text, /Brier: 0\.23/);
+  assert.match(text, /5 open predictions/);
+  assert.match(text, /nearest deadline: 2026-05-27/);
+  assert.match(text, /3 promoted/);
+  assert.match(text, /1 conflicted/);
+  assert.match(text, /2330 candidates pending/);
+  assert.match(text, /16 autonomous/);
+  assert.match(text, /3 on-demand/);
+  assert.match(text, /2 failed/);
+  assert.match(text, /16 total/);
+  assert.match(text, /16 behavioral/);
 });

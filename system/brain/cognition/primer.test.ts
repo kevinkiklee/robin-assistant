@@ -314,3 +314,71 @@ test('writePrimerFile: writes to given path and reports bytes', () => {
   assert.match(body, /## Corrections/);
   closeDb(db);
 });
+
+// ── Learning digest in primer tests ────────────────────────────────────────
+
+function seedDigestEvent(db: ReturnType<typeof openDb>) {
+  const digest = {
+    handlerActivity: [
+      { surface: 'autonomous', runs: 5, cost: 4.5, turns: 25, handlers: 'biographer' },
+    ],
+    predictionsByOutcome: [
+      { outcome: 'right', n: 2 },
+      { outcome: 'wrong', n: 1 },
+    ],
+    overallBrier: 0.18,
+    openPredictions: { count: 3, nearestDeadline: '2026-05-28T00:00:00.000Z' },
+    beliefLifecycle: {
+      promoted: 1,
+      conflicted: 0,
+      merged: 0,
+      expired: 0,
+      pendingCandidates: 12,
+      activeBeliefHeads: 30,
+    },
+    corrections: { total: 4, behavioral: 3, topicLinked: 1, unapplied: 1 },
+    failedRuns: [],
+  };
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload)
+     VALUES (datetime('now'), 'dream.learning_digest', 'dream', 'ok', ?)`,
+  ).run(JSON.stringify({ external_id: 'learning-digest:2026-05-25', digest }));
+}
+
+test('buildPrimer: includes learning digest section when digest event exists', () => {
+  const { db } = freshDb();
+  seedDigestEvent(db);
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  assert.match(out, /## Learning digest/);
+  assert.match(out, /Predictions/);
+  assert.match(out, /2 right/);
+  assert.match(out, /1 wrong/);
+  assert.match(out, /Brier: 0\.18/);
+  assert.match(out, /Beliefs/);
+  assert.match(out, /1 promoted/);
+  assert.match(out, /Corrections/);
+  closeDb(db);
+});
+
+test('buildPrimer: no learning digest section when no digest event exists', () => {
+  const { db } = freshDb();
+  const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
+  assert.doesNotMatch(out, /Learning digest/);
+  closeDb(db);
+});
+
+test('buildPrimer: learning digest appears between beliefs and profile', () => {
+  const { db } = freshDb();
+  const { profileDir, knowledgeDir } = freshProfileDirs();
+  believe(db, null, { topic: 't', claim: 'cl', date: '2026-05-23' });
+  seedDigestEvent(db);
+  writeFileSync(join(profileDir, 'character.md'), '# Character\nbody');
+  const out = buildPrimer(db, { profileDir, knowledgeDir });
+  const bIdx = out.indexOf('## Beliefs');
+  const dIdx = out.indexOf('## Learning digest');
+  const pIdx = out.indexOf('## character.md');
+  assert.ok(bIdx >= 0 && dIdx >= 0 && pIdx >= 0);
+  assert.ok(bIdx < dIdx, 'beliefs before digest');
+  assert.ok(dIdx < pIdx, 'digest before profile');
+  closeDb(db);
+});

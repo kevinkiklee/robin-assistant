@@ -10,6 +10,7 @@ import {
   SUSPECT_CONFIDENCE_THRESHOLD,
   WEAK_PROVENANCE,
 } from '../memory/provenance.ts';
+import { latestLearningDigest } from './dream.ts';
 
 /**
  * The session-start primer is a derived, materialized view — never authoritative. It
@@ -202,6 +203,12 @@ function renderCandidates(db: RobinDb): string {
   return `${n} candidate belief${n === 1 ? '' : 's'} pending review.`;
 }
 
+function renderLearningDigestSection(db: RobinDb): string {
+  const text = latestLearningDigest(db);
+  if (!text) return '';
+  return `## Learning digest (last 24h)\n${text}`;
+}
+
 /**
  * Assemble the markdown primer from stored data, hard-capped at `opts.maxChars`. Sections
  * are appended in priority order; once the running total would exceed the cap, no further
@@ -218,6 +225,7 @@ export function buildPrimer(db: RobinDb, opts: BuildPrimerOptions = {}): string 
   const sections = [
     renderCorrections(db, CORRECTIONS_SUBCAP),
     renderBeliefs(db),
+    renderLearningDigestSection(db),
     renderProfileInline(profileDir),
     renderIndex(profileDir, knowledgeDir),
     renderCandidates(db),
