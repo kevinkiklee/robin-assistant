@@ -17,7 +17,7 @@ export interface CognitionJob {
 export const COGNITION_JOBS: CognitionJob[] = [
   {
     name: 'biographer.run',
-    cron: '*/5 * * * *',
+    cron: '*/2 * * * *',
     description: 'Extract entities + relations from captured sessions',
   },
   {
@@ -72,8 +72,12 @@ export function registerCognitionJobs(
     // drain multiple small sessions per tick instead of wasting leftover budget.
     // Combined with the */5 cron, throughput is ~2 chunks/min (was ~0.27 at
     // batch=1/*/15/4-chunk).
-    await runBiographer(db, llm, 5, {
-      batchChunks: 3,
+    // Cranked for backlog drain: 15 sessions/tick, batch 5 chunks/invoke, every
+    // 2 min. ~150+ sessions/hr vs the prior ~12. The 7-min heartbeat ceiling is
+    // the safety net; a tick that overruns trips the heartbeat and the scheduler
+    // recovers on the next tick. Revert to 5/3/*/5 once the backlog is clear.
+    await runBiographer(db, llm, 15, {
+      batchChunks: 5,
       skipToolChunks: true,
       draftClaims: getDraftClaims(),
     });

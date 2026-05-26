@@ -249,7 +249,10 @@ const CHUNK_CHARS = 20000;
 // session (regardless of size) can hold the scheduler past the gate. 10 chunks ×
 // the 2-min per-chunk ceiling = 20 min worst case (under the 30-min gate).
 // With maxTokens=4096, real chunks finish in ~77s, so a tick takes ~13 min.
-const MAX_CHUNKS_PER_TICK = 10;
+// Raised from 10 → 30 for backlog drain. Each chunk ≈ 5-10s on Sonnet via the
+// claude-agent provider; 30 chunks × 10s = 5 min worst-case, under the 7-min
+// heartbeat ceiling. Revert to 10 once the backlog clears.
+const MAX_CHUNKS_PER_TICK = 30;
 
 // Sanity ceiling — sessions whose body exceeds this are skipped with a
 // `biographer.extracted` marker so they stop being re-selected. This used to be
