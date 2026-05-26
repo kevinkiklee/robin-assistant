@@ -1,9 +1,10 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { levenshtein } from '../../lib/levenshtein.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { applyCorrections } from '../learning/apply-corrections.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
-import { expireStaleCandidates } from '../memory/belief-candidate.ts';
+import { expireStaleCandidates, resolveBeliefCandidate } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { runBeliefFreshness } from './belief-freshness.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
@@ -26,6 +27,14 @@ export interface DreamResult {
   correctionsApplied: number;
   /** Belief heads retracted due to a topic-linked correction this run. */
   beliefsRetracted: number;
+  /** Pending candidates auto-promoted to held beliefs this run. */
+  candidatesPromoted: number;
+  /** Candidates flagged as conflicting with an existing belief head. */
+  candidatesConflicted: number;
+  /** Near-duplicate candidates merged (lower-confidence one resolved). */
+  candidatesMerged: number;
+  /** Non-empty depth synthesis sections appended to the journal. */
+  depthInsightsGenerated: number;
 }
 
 const CANDIDATE_EXPIRY_DAYS = 14;
@@ -70,6 +79,10 @@ export async function runDream(
     docsIngested: 0,
     correctionsApplied: 0,
     beliefsRetracted: 0,
+    candidatesPromoted: 0,
+    candidatesConflicted: 0,
+    candidatesMerged: 0,
+    depthInsightsGenerated: 0,
   };
 
   // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
@@ -116,9 +129,43 @@ export async function runDream(
   // 4. Arc detection — cluster recent captured events by shared entities
   result.arcsCreated = detectArcs(db, now);
 
-  // 5. Compose journal — deterministic metrics-only block. The 4:00am
-  //    dream-synthesis pass upserts a richer narrative over this same day key
-  //    later; dream.run only guarantees the row exists as a fallback.
+  // 5. Expire stale belief candidates. Guarded so an older DB without the
+  //    belief_candidates table can't crash the whole dream pass.
+  try {
+    result.candidatesExpired = expireStaleCandidates(db, CANDIDATE_EXPIRY_DAYS, now);
+  } catch {
+    result.candidatesExpired = 0;
+  }
+
+  // 5b. Belief lifecycle: auto-promote stable candidates, detect contradictions,
+  //     merge near-duplicates. Deterministic (no LLM). Guarded like step 5.
+  try {
+    const lifecycle = promoteStableCandidates(db, now);
+    result.candidatesPromoted = lifecycle.promoted;
+    result.candidatesConflicted = lifecycle.conflicted;
+    result.candidatesMerged = lifecycle.merged;
+  } catch {
+    result.candidatesPromoted = 0;
+    result.candidatesConflicted = 0;
+    result.candidatesMerged = 0;
+  }
+
+  // 5c. Depth synthesis inputs — deterministic SQL queries. Best-effort:
+  //     a failure here yields empty arrays, never sinks the dream pass.
+  let depthReplays: DecisionReplay[] = [];
+  let depthCalibration: PredictionCalibrationRow[] = [];
+  let depthDeadlines: ApproachingDeadline[] = [];
+  try {
+    depthReplays = queryDecisionReplays(db);
+    depthCalibration = queryPredictionCalibration(db);
+    depthDeadlines = queryApproachingDeadlines(db, now);
+  } catch {
+    // leave empty — depth is best-effort
+  }
+
+  // 6. Compose journal — deterministic metrics-only block with depth sections.
+  //    The 4:00am dream-synthesis pass upserts a richer narrative over this same
+  //    day key later; dream.run only guarantees the row exists as a fallback.
   const journal = composeJournal({
     today,
     eventsToday,
@@ -127,6 +174,9 @@ export async function runDream(
     predictionsResolved: result.predictionsResolved,
     entitiesSummarized: result.entitiesSummarized,
     arcsCreated: result.arcsCreated,
+    decisionReplays: depthReplays,
+    predictionCalibration: depthCalibration,
+    approachingDeadlines: depthDeadlines,
   });
   db.prepare(`
     INSERT INTO journals (day, body) VALUES (?, ?)
@@ -134,13 +184,12 @@ export async function runDream(
   `).run(today, journal);
   result.journalGenerated = true;
 
-  // 6. Expire stale belief candidates. Guarded so an older DB without the
-  //    belief_candidates table can't crash the whole dream pass.
-  try {
-    result.candidatesExpired = expireStaleCandidates(db, CANDIDATE_EXPIRY_DAYS, now);
-  } catch {
-    result.candidatesExpired = 0;
-  }
+  // Count non-empty depth sections for the result.
+  let depthSections = 0;
+  if (depthReplays.length > 0) depthSections++;
+  if (depthCalibration.length > 0) depthSections++;
+  if (depthDeadlines.length > 0) depthSections++;
+  result.depthInsightsGenerated = depthSections;
 
   // 7. Belief freshness — scan live belief heads, re-query via registered resolvers
   //    (bounded by maxRequeries) and/or flag stale heads with belief.stale events.
@@ -463,6 +512,243 @@ function jaccard(a: Set<number>, b: Set<number>): number {
   return union === 0 ? 0 : inter / union;
 }
 
+// ── Belief lifecycle pass ─────────────────────────────────────────────────────
+
+const PROMOTE_AGE_DAYS = 7;
+
+interface PromoteResult {
+  promoted: number;
+  conflicted: number;
+  merged: number;
+  gateBlocked: number;
+}
+
+interface CandidateRow {
+  id: number;
+  topic: string;
+  claim: string;
+  confidence: number | null;
+}
+
+/**
+ * Auto-promote pending belief candidates older than 7 days. Detects
+ * contradictions against existing belief heads and merges near-duplicates.
+ * Fully deterministic — no LLM. Returns counters for each outcome.
+ */
+export function promoteStableCandidates(db: RobinDb, now: Date = new Date()): PromoteResult {
+  const cutoff = new Date(now.getTime() - PROMOTE_AGE_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+
+  const candidates = db
+    .prepare(
+      `SELECT id, topic, claim, confidence FROM belief_candidates
+       WHERE status = 'pending' AND created_at < ?
+       ORDER BY id`,
+    )
+    .all(cutoff) as CandidateRow[];
+
+  if (candidates.length === 0) return { promoted: 0, conflicted: 0, merged: 0, gateBlocked: 0 };
+
+  const counts: PromoteResult = { promoted: 0, conflicted: 0, merged: 0, gateBlocked: 0 };
+
+  // Track ids already resolved in this run (merged/conflicted) to skip them.
+  const resolved = new Set<number>();
+
+  // Pre-pass: near-duplicate merge among the pending set.
+  for (let i = 0; i < candidates.length; i++) {
+    if (resolved.has(candidates[i].id)) continue;
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (resolved.has(candidates[j].id)) continue;
+      const a = candidates[i];
+      const b = candidates[j];
+      if (a.topic !== b.topic) continue;
+
+      const longer = Math.max(a.claim.length, b.claim.length);
+      if (longer === 0) continue;
+      const dist = levenshtein(a.claim, b.claim);
+      if (dist / longer < 0.2) {
+        // Merge: keep the higher-confidence one, resolve the other.
+        const confA = a.confidence ?? 0;
+        const confB = b.confidence ?? 0;
+        const loserId = confA >= confB ? b.id : a.id;
+        db.prepare(
+          `UPDATE belief_candidates SET status = 'merged', resolved_at = datetime('now') WHERE id = ?`,
+        ).run(loserId);
+        resolved.add(loserId);
+        counts.merged++;
+        // If the loser was `a`, swap winner into slot i so subsequent j comparisons use the winner.
+        if (loserId === a.id) {
+          candidates[i] = candidates[j];
+          resolved.add(a.id);
+          break; // restart j loop with the new i candidate handled by outer loop
+        }
+      }
+    }
+  }
+
+  // Main pass: contradiction check + promote.
+  for (const cand of candidates) {
+    if (resolved.has(cand.id)) continue;
+
+    // Contradiction check: look for a belief head on the same topic with different claim text.
+    const head = db
+      .prepare(
+        `SELECT json_extract(payload, '$.topic') AS topic,
+                c.body AS claim
+           FROM events e
+           LEFT JOIN events_content c ON c.id = e.content_ref
+          WHERE e.kind = 'belief.update'
+            AND json_extract(e.payload, '$.topic') = ?
+            AND (json_extract(e.payload, '$.retracted') IS NULL
+              OR json_extract(e.payload, '$.retracted') = 0
+              OR json_extract(e.payload, '$.retracted') = false)
+          ORDER BY e.ts DESC, e.id DESC
+          LIMIT 1`,
+      )
+      .get(cand.topic) as { topic: string; claim: string | null } | undefined;
+
+    if (head?.claim && head.claim.trim() !== cand.claim.trim()) {
+      db.prepare(
+        `UPDATE belief_candidates SET status = 'conflicted', resolved_at = datetime('now') WHERE id = ?`,
+      ).run(cand.id);
+      resolved.add(cand.id);
+      counts.conflicted++;
+      continue;
+    }
+
+    // Promote via resolveBeliefCandidate (which enforces P3 formation gate).
+    try {
+      const res = resolveBeliefCandidate(db, null, cand.id, 'promote');
+      if (res.blockedReason) {
+        counts.gateBlocked++;
+      } else {
+        counts.promoted++;
+      }
+    } catch {
+      // Candidate may already be resolved (race) or other error — skip.
+    }
+    resolved.add(cand.id);
+  }
+
+  return counts;
+}
+
+// ── Depth synthesis queries ───────────────────────────────────────────────────
+
+export interface DecisionReplay {
+  topic: string;
+  revisions: number;
+}
+
+export interface PredictionCalibrationRow {
+  outcome: string;
+  count: number;
+  avgBrier: number | null;
+}
+
+export interface ApproachingDeadline {
+  type: 'prediction' | 'linear';
+  label: string;
+  deadline: string;
+}
+
+/**
+ * Topics where beliefs were revised more than once in the last `days` days —
+ * signals Kevin is revisiting the same decision.
+ */
+export function queryDecisionReplays(db: RobinDb, days = 30): DecisionReplay[] {
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  return db
+    .prepare(
+      `SELECT json_extract(payload, '$.topic') AS topic, COUNT(*) AS revisions
+         FROM events
+        WHERE kind = 'belief.update' AND ts > ?
+        GROUP BY json_extract(payload, '$.topic')
+       HAVING COUNT(*) > 1
+        ORDER BY revisions DESC
+        LIMIT 10`,
+    )
+    .all(cutoff) as DecisionReplay[];
+}
+
+/**
+ * Prediction accuracy grouped by outcome (right/wrong/unverifiable), with
+ * average Brier delta per bucket.
+ */
+export function queryPredictionCalibration(db: RobinDb): PredictionCalibrationRow[] {
+  const rows = db
+    .prepare(
+      `SELECT outcome, COUNT(*) AS count, AVG(brier_delta) AS avgBrier
+         FROM predictions
+        WHERE outcome IS NOT NULL
+        GROUP BY outcome`,
+    )
+    .all() as Array<{ outcome: string; count: number; avgBrier: number | null }>;
+  return rows.map((r) => ({ outcome: r.outcome, count: r.count, avgBrier: r.avgBrier }));
+}
+
+/**
+ * Predictions and Linear issues with deadlines in the next `daysAhead` days.
+ */
+export function queryApproachingDeadlines(
+  db: RobinDb,
+  now: Date = new Date(),
+  daysAhead = 7,
+): ApproachingDeadline[] {
+  const nowIso = now.toISOString();
+  const endIso = new Date(now.getTime() + daysAhead * 86_400_000).toISOString();
+  const results: ApproachingDeadline[] = [];
+
+  // Predictions with approaching deadlines.
+  const preds = db
+    .prepare(
+      `SELECT claim, deadline FROM predictions
+        WHERE outcome IS NULL AND deadline >= ? AND deadline <= ?
+        ORDER BY deadline`,
+    )
+    .all(nowIso, endIso) as Array<{ claim: string; deadline: string }>;
+  for (const p of preds) {
+    results.push({ type: 'prediction', label: p.claim, deadline: p.deadline });
+  }
+
+  // Linear issues with due dates in the window (from captured integration events).
+  try {
+    const linearRows = db
+      .prepare(
+        `SELECT payload FROM events
+          WHERE kind = 'integration.linear.issue' AND status = 'ok'
+          ORDER BY ts DESC LIMIT 200`,
+      )
+      .all() as Array<{ payload: string }>;
+    for (const row of linearRows) {
+      try {
+        const p = JSON.parse(row.payload) as {
+          identifier?: string;
+          title?: string;
+          dueDate?: string;
+        };
+        if (p.dueDate && p.dueDate >= nowIso.slice(0, 10) && p.dueDate <= endIso.slice(0, 10)) {
+          results.push({
+            type: 'linear',
+            label: p.identifier ? `${p.identifier}: ${p.title ?? ''}` : (p.title ?? 'untitled'),
+            deadline: p.dueDate,
+          });
+        }
+      } catch {
+        // Skip unparseable rows.
+      }
+    }
+  } catch {
+    // Table or column may not exist on older DBs — skip.
+  }
+
+  return results;
+}
+
+// ── Journal ───────────────────────────────────────────────────────────────────
+
 interface JournalContext {
   today: string;
   eventsToday: number;
@@ -471,17 +757,21 @@ interface JournalContext {
   predictionsResolved: number;
   entitiesSummarized: number;
   arcsCreated: number;
+  decisionReplays?: DecisionReplay[];
+  predictionCalibration?: PredictionCalibrationRow[];
+  approachingDeadlines?: ApproachingDeadline[];
 }
 
 /**
- * Deterministic metrics-only journal. This is the substrate fallback: the
- * nightly dream-synthesis pass (4:00am, user-data job) upserts a richer
- * narrative over the same `journals` day key (ON CONFLICT DO UPDATE) once it
- * has reasoned on the consolidated substrate. dream.run owns no LLM narrative —
- * it only guarantees a journal row exists for the day.
+ * Deterministic metrics-only journal with optional depth synthesis sections.
+ * This is the substrate fallback: the nightly dream-synthesis pass (4:00am,
+ * user-data job) upserts a richer narrative over the same `journals` day key
+ * (ON CONFLICT DO UPDATE) once it has reasoned on the consolidated substrate.
+ * dream.run owns no LLM narrative — it only guarantees a journal row exists
+ * for the day.
  */
 function composeJournal(ctx: JournalContext): string {
-  return [
+  const lines = [
     `# Robin Journal — ${ctx.today}`,
     ``,
     `**Captured:** ${ctx.capturesToday} sessions`,
@@ -490,5 +780,32 @@ function composeJournal(ctx: JournalContext): string {
     `**Predictions resolved (overdue → unverifiable):** ${ctx.predictionsResolved}`,
     `**Entities summarized:** ${ctx.entitiesSummarized}`,
     `**Arcs created:** ${ctx.arcsCreated}`,
-  ].join('\n');
+  ];
+
+  // Depth synthesis sections — appended only when data exists.
+  if (ctx.decisionReplays && ctx.decisionReplays.length > 0) {
+    lines.push(
+      ``,
+      `**Decision replays (30d):** ${ctx.decisionReplays.map((r) => `${r.topic} revised ${r.revisions}×`).join(', ')}`,
+    );
+  }
+
+  if (ctx.predictionCalibration && ctx.predictionCalibration.length > 0) {
+    const parts: string[] = [];
+    for (const row of ctx.predictionCalibration) {
+      const brier = row.avgBrier != null ? `; avg Brier: ${row.avgBrier.toFixed(2)}` : '';
+      parts.push(`${row.count} ${row.outcome}${brier}`);
+    }
+    lines.push(``, `**Prediction calibration:** ${parts.join(', ')}`);
+  }
+
+  if (ctx.approachingDeadlines && ctx.approachingDeadlines.length > 0) {
+    const parts = ctx.approachingDeadlines.map(
+      (d) =>
+        `${d.type === 'prediction' ? 'prediction' : d.label.split(':')[0]} due ${d.deadline.slice(0, 10)}`,
+    );
+    lines.push(``, `**Approaching deadlines:** ${parts.join(', ')}`);
+  }
+
+  return lines.join('\n');
 }

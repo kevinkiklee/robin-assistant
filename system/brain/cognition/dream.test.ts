@@ -10,7 +10,15 @@ import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { detectArcs, runDream, summarizeHotEntities } from './dream.ts';
+import {
+  detectArcs,
+  promoteStableCandidates,
+  queryApproachingDeadlines,
+  queryDecisionReplays,
+  queryPredictionCalibration,
+  runDream,
+  summarizeHotEntities,
+} from './dream.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-dream-'));
@@ -371,4 +379,356 @@ test('dream: raises 0 stale flags when no beliefs or corrections exist', async (
   const r = await runDream(db, null);
   assert.equal(r.staleFlagsRaised, 0);
   teardown();
+});
+
+// ── Belief lifecycle pass tests ──────────────────────────────────────────────
+
+test('promoteStableCandidates: promotes old non-contradicted candidates', () => {
+  const db = freshDb();
+  const now = new Date();
+  // Backdate to 10 days ago (past 7-day promote threshold but within 14-day expiry).
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+  const c = insertBeliefCandidate(db, {
+    topic: 'fav-color',
+    claim: 'Kevin likes blue',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c.id);
+
+  const res = promoteStableCandidates(db, now);
+  assert.equal(res.promoted, 1);
+  assert.equal(res.conflicted, 0);
+  assert.equal(res.merged, 0);
+
+  const row = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(c.id) as {
+    status: string;
+  };
+  assert.equal(row.status, 'promoted');
+  closeDb(db);
+});
+
+test('promoteStableCandidates: leaves young candidates untouched', () => {
+  const db = freshDb();
+  // Insert a candidate created just now (within 7-day window).
+  insertBeliefCandidate(db, {
+    topic: 'fav-color',
+    claim: 'Kevin likes green',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+
+  const res = promoteStableCandidates(db, new Date());
+  assert.equal(res.promoted, 0);
+  assert.equal(res.conflicted, 0);
+  assert.equal(res.merged, 0);
+  closeDb(db);
+});
+
+test('promoteStableCandidates: flags contradicted candidates', () => {
+  const db = freshDb();
+  const now = new Date();
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+  // Write an existing belief head with a different claim.
+  believe(db, null, { topic: 'fav-color', claim: 'Kevin likes red' });
+
+  // Insert a contradicting candidate and backdate it.
+  const c = insertBeliefCandidate(db, {
+    topic: 'fav-color',
+    claim: 'Kevin likes blue',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c.id);
+
+  const res = promoteStableCandidates(db, now);
+  assert.equal(res.promoted, 0);
+  assert.equal(res.conflicted, 1);
+
+  const row = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(c.id) as {
+    status: string;
+  };
+  assert.equal(row.status, 'conflicted');
+  closeDb(db);
+});
+
+test('promoteStableCandidates: merges near-duplicate candidates', () => {
+  const db = freshDb();
+  const now = new Date();
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+  // Two near-duplicate claims on the same topic.
+  const c1 = insertBeliefCandidate(db, {
+    topic: 'fav-food',
+    claim: 'Kevin likes pasta a lot',
+    confidence: 0.8,
+    provenance: 'first-party',
+  });
+  const c2 = insertBeliefCandidate(db, {
+    topic: 'fav-food',
+    claim: 'Kevin likes pasta alot',
+    confidence: 0.7,
+    provenance: 'first-party',
+  });
+  // Backdate both past 7 days.
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id IN (?, ?)`).run(
+    tenDaysAgo,
+    c1.id,
+    c2.id,
+  );
+
+  const res = promoteStableCandidates(db, now);
+  assert.equal(res.merged, 1);
+  // The higher-confidence one (c1) should survive and be promoted.
+  const r1 = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(c1.id) as {
+    status: string;
+  };
+  const r2 = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(c2.id) as {
+    status: string;
+  };
+  assert.equal(r2.status, 'merged');
+  assert.equal(r1.status, 'promoted');
+  closeDb(db);
+});
+
+test('promoteStableCandidates: gate-blocked candidates counted separately', () => {
+  const db = freshDb();
+  const now = new Date();
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+  // Insert a candidate with external provenance — P3 gate will block it.
+  const c = insertBeliefCandidate(db, {
+    topic: 'ext-data',
+    claim: 'Some external reading',
+    confidence: 0.95,
+    provenance: 'external',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c.id);
+
+  const res = promoteStableCandidates(db, now);
+  assert.equal(res.promoted, 0);
+  assert.equal(res.gateBlocked, 1);
+  closeDb(db);
+});
+
+test('dream: full lifecycle — 5 candidates with various ages/topics/claims', async () => {
+  const db = freshDb();
+  const now = new Date();
+  // 10 days ago: past 7-day promote threshold but within 14-day expiry.
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+
+  // 1. Old, no conflict, should promote
+  const c1 = insertBeliefCandidate(db, {
+    topic: 'hobby',
+    claim: 'Kevin plays guitar',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c1.id);
+
+  // 2. Old, contradicts existing belief head
+  believe(db, null, { topic: 'job-title', claim: 'Software Engineer' });
+  const c2 = insertBeliefCandidate(db, {
+    topic: 'job-title',
+    claim: 'Data Scientist',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c2.id);
+
+  // 3+4. Old near-duplicates — should merge
+  const c3 = insertBeliefCandidate(db, {
+    topic: 'pet',
+    claim: 'Kevin has a dog named Max',
+    confidence: 0.85,
+    provenance: 'first-party',
+  });
+  const c4 = insertBeliefCandidate(db, {
+    topic: 'pet',
+    claim: 'Kevin has a dog named Mex',
+    confidence: 0.7,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id IN (?, ?)`).run(
+    tenDaysAgo,
+    c3.id,
+    c4.id,
+  );
+
+  // 5. Young, should be untouched
+  const c5 = insertBeliefCandidate(db, {
+    topic: 'city',
+    claim: 'Kevin lives in NYC',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+
+  const r = await runDream(db, null, now);
+  assert.ok(r.candidatesPromoted >= 1, `expected >=1 promoted, got ${r.candidatesPromoted}`);
+  assert.ok(r.candidatesConflicted >= 1, `expected >=1 conflicted, got ${r.candidatesConflicted}`);
+  assert.ok(r.candidatesMerged >= 1, `expected >=1 merged, got ${r.candidatesMerged}`);
+
+  // c5 should still be pending.
+  const r5 = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(c5.id) as {
+    status: string;
+  };
+  assert.equal(r5.status, 'pending');
+  closeDb(db);
+});
+
+// ── Depth synthesis query tests ──────────────────────────────────────────────
+
+test('queryDecisionReplays: returns topics with >1 belief revisions', () => {
+  const db = freshDb();
+  // Write two belief updates on the same topic on different dates
+  // (same-day believe() uses upsert via external_id).
+  believe(db, null, { topic: 'role', claim: 'Engineer', date: '2026-05-20' });
+  believe(db, null, { topic: 'role', claim: 'Senior Engineer', date: '2026-05-21' });
+
+  const replays = queryDecisionReplays(db, 30);
+  assert.ok(replays.length >= 1);
+  assert.equal(replays[0].topic, 'role');
+  assert.ok(replays[0].revisions >= 2);
+  closeDb(db);
+});
+
+test('queryDecisionReplays: excludes topics with only 1 revision', () => {
+  const db = freshDb();
+  believe(db, null, { topic: 'unique-topic', claim: 'Only stated once' });
+
+  const replays = queryDecisionReplays(db, 30);
+  const found = replays.find((r) => r.topic === 'unique-topic');
+  assert.equal(found, undefined);
+  closeDb(db);
+});
+
+test('queryPredictionCalibration: groups resolved predictions by outcome', () => {
+  const db = freshDb();
+  // Insert resolved predictions.
+  db.prepare(
+    `INSERT INTO predictions (claim, confidence, outcome, resolved_at, brier_delta) VALUES (?, ?, ?, ?, ?)`,
+  ).run('it will rain', 0.8, 'right', new Date().toISOString(), 0.04);
+  db.prepare(
+    `INSERT INTO predictions (claim, confidence, outcome, resolved_at, brier_delta) VALUES (?, ?, ?, ?, ?)`,
+  ).run('market up', 0.6, 'wrong', new Date().toISOString(), 0.36);
+
+  const cal = queryPredictionCalibration(db);
+  assert.ok(cal.length >= 2);
+  const right = cal.find((c) => c.outcome === 'right');
+  const wrong = cal.find((c) => c.outcome === 'wrong');
+  assert.ok(right);
+  assert.equal(right!.count, 1);
+  assert.ok(wrong);
+  assert.equal(wrong!.count, 1);
+  closeDb(db);
+});
+
+test('queryApproachingDeadlines: returns predictions due within 7 days', () => {
+  const db = freshDb();
+  const now = new Date();
+  const in3days = new Date(now.getTime() + 3 * 86_400_000).toISOString();
+  const in10days = new Date(now.getTime() + 10 * 86_400_000).toISOString();
+
+  db.prepare(`INSERT INTO predictions (claim, confidence, deadline) VALUES (?, ?, ?)`).run(
+    'close deadline',
+    0.7,
+    in3days,
+  );
+  db.prepare(`INSERT INTO predictions (claim, confidence, deadline) VALUES (?, ?, ?)`).run(
+    'far deadline',
+    0.5,
+    in10days,
+  );
+
+  const deadlines = queryApproachingDeadlines(db, now);
+  assert.equal(deadlines.length, 1);
+  assert.equal(deadlines[0].type, 'prediction');
+  assert.equal(deadlines[0].label, 'close deadline');
+  closeDb(db);
+});
+
+test('queryApproachingDeadlines: includes Linear issues with due dates', () => {
+  const db = freshDb();
+  const now = new Date();
+  const in2days = new Date(now.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
+
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload) VALUES (?, 'integration.linear.issue', 'linear', 'ok', ?)`,
+  ).run(
+    now.toISOString(),
+    JSON.stringify({ identifier: 'KL-10', title: 'Fix auth flow', dueDate: in2days }),
+  );
+
+  const deadlines = queryApproachingDeadlines(db, now);
+  const linear = deadlines.find((d) => d.type === 'linear');
+  assert.ok(linear, 'expected a linear deadline');
+  assert.match(linear!.label, /KL-10/);
+  closeDb(db);
+});
+
+// ── Journal depth sections tests ─────────────────────────────────────────────
+
+test('dream: journal includes depth sections when data exists', async () => {
+  const db = freshDb();
+  const now = new Date();
+
+  // Create belief revisions on different dates to trigger decision replays.
+  believe(db, null, { topic: 'role', claim: 'Engineer', date: '2026-05-20' });
+  believe(db, null, { topic: 'role', claim: 'Senior Engineer', date: '2026-05-21' });
+
+  // Create a resolved prediction for calibration.
+  db.prepare(
+    `INSERT INTO predictions (claim, confidence, outcome, resolved_at, brier_delta) VALUES (?, ?, ?, ?, ?)`,
+  ).run('it will rain', 0.8, 'right', now.toISOString(), 0.04);
+
+  // Create a prediction with approaching deadline.
+  const in3days = new Date(now.getTime() + 3 * 86_400_000).toISOString();
+  db.prepare(`INSERT INTO predictions (claim, confidence, deadline) VALUES (?, ?, ?)`).run(
+    'market up',
+    0.6,
+    in3days,
+  );
+
+  const r = await runDream(db, null, now);
+  assert.ok(
+    r.depthInsightsGenerated >= 2,
+    `expected >=2 depth sections, got ${r.depthInsightsGenerated}`,
+  );
+
+  const day = now.toISOString().slice(0, 10);
+  const journal = db.prepare(`SELECT body FROM journals WHERE day = ?`).get(day) as {
+    body: string;
+  };
+  assert.match(journal.body, /Decision replays/);
+  assert.match(journal.body, /Prediction calibration/);
+  assert.match(journal.body, /Approaching deadlines/);
+  closeDb(db);
+});
+
+test('dream: journal has no depth sections when no depth data', async () => {
+  const db = freshDb();
+  const r = await runDream(db, null);
+  assert.equal(r.depthInsightsGenerated, 0);
+
+  const day = new Date().toISOString().slice(0, 10);
+  const journal = db.prepare(`SELECT body FROM journals WHERE day = ?`).get(day) as {
+    body: string;
+  };
+  assert.doesNotMatch(journal.body, /Decision replays/);
+  assert.doesNotMatch(journal.body, /Prediction calibration/);
+  assert.doesNotMatch(journal.body, /Approaching deadlines/);
+  closeDb(db);
 });
