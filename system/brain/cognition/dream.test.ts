@@ -758,6 +758,10 @@ function baseDreamResult(): DreamResult {
     candidatesMerged: 0,
     depthInsightsGenerated: 0,
     digestGenerated: false,
+    hygieneRelationsDeleted: 0,
+    hygieneEntitiesDeleted: 0,
+    hygieneEntitiesFlagged: 0,
+    hygieneBlocklistGrown: 0,
   };
 }
 

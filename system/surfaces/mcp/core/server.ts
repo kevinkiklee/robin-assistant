@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
+import { resolveHygieneItem } from '../../../brain/cognition/hygiene.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import { believe, normalizeTopic, recallBelief } from '../../../brain/memory/belief.ts';
 import {
@@ -637,6 +638,26 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     async (args) => {
       const result = runSkillTool(skillRoots, args as SkillToolArgs);
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'hygiene_resolve',
+    {
+      description:
+        'Resolve a flagged hygiene review item. "delete" removes the entity and adds it to the noise blocklist. "keep" marks it resolved with no other action.',
+      inputSchema: z.object({
+        id: z.number().int().describe('hygiene_review row ID'),
+        resolution: z.enum(['keep', 'delete']).describe('keep the entity or delete it'),
+      }),
+    },
+    async ({ id, resolution }) => {
+      resolveHygieneItem(deps.db, id, resolution);
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify({ id, resolution, ok: true }) },
+        ],
+      };
     },
   );
 

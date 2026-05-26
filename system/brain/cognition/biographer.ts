@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
+import { loadNoiseBlocklist } from './hygiene.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
@@ -926,6 +927,16 @@ export async function runBiographer(
   limit: number = 10,
   options: RunBiographerOptions = {},
 ): Promise<BiographerRunResult> {
+  // Load the adaptive noise blocklist once per tick. O(1) per-entity check
+  // via Set.has(), no per-entity DB query. Grows nightly as the hygiene pass
+  // identifies new noise names.
+  let noiseBlocklist: Set<string>;
+  try {
+    noiseBlocklist = loadNoiseBlocklist(db);
+  } catch {
+    noiseBlocklist = new Set(); // table may not exist yet (pre-migration)
+  }
+
   const chunkTimeoutMs = options.chunkTimeoutMs ?? BIOGRAPHER_CHUNK_TIMEOUT_MS;
   const disambiguationTimeoutMs = options.disambiguationTimeoutMs ?? DISAMBIGUATION_TIMEOUT_MS;
 
@@ -1223,7 +1234,7 @@ export async function runBiographer(
     const droppedNames = new Set<string>();
     const filteredEntities = [];
     for (const e of extracted.entities) {
-      if (isLowQualityEntity(e.name, e.type)) {
+      if (isLowQualityEntity(e.name, e.type) || noiseBlocklist.has(e.name.toLowerCase())) {
         droppedNames.add(e.name.toLowerCase());
         continue;
       }

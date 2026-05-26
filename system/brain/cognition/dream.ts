@@ -7,6 +7,7 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { expireStaleCandidates, resolveBeliefCandidate } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { runBeliefFreshness } from './belief-freshness.ts';
+import { runHygiene } from './hygiene.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
 
 export interface DreamResult {
@@ -37,6 +38,14 @@ export interface DreamResult {
   depthInsightsGenerated: number;
   /** Whether a learning digest event was persisted this run. */
   digestGenerated: boolean;
+  /** Noise relations deleted by nightly hygiene pass. */
+  hygieneRelationsDeleted: number;
+  /** Noise entities auto-deleted by nightly hygiene pass. */
+  hygieneEntitiesDeleted: number;
+  /** Borderline entities flagged for morning review. */
+  hygieneEntitiesFlagged: number;
+  /** New names added to the adaptive noise blocklist. */
+  hygieneBlocklistGrown: number;
 }
 
 // ── Learning digest types ────────────────────────────────────────────────────
@@ -89,18 +98,20 @@ const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
 
 /**
  * Nightly consolidation job:
- * 1. Resolves overdue predictions as 'unverifiable'
- * 2. Rolls up daily metric counts
- * 3. Summarizes hot entities (signal_count >= threshold among today's relations)
- * 4. Detects narrative arcs from session.captured events in the last 14 days
- * 5. Writes a deterministic metrics-only journal (the 4:00am dream-synthesis
+ * 1. Data hygiene — cleans noise entities/relations, flags borderline items, grows blocklist
+ * 2. Resolves overdue predictions as 'unverifiable'
+ * 3. Rolls up daily metric counts
+ * 4. Summarizes hot entities (signal_count >= threshold among today's relations)
+ * 5. Detects narrative arcs from session.captured events in the last 14 days
+ * 6. Writes a deterministic metrics-only journal (the 4:00am dream-synthesis
  *    pass upserts a richer narrative over the same day key later)
- * 6. Expires stale belief candidates (pending > 14 days)
- * 7. Scans live belief heads for staleness; re-queries via registered resolvers
+ * 7. Expires stale belief candidates (pending > 14 days)
+ * 8. Scans live belief heads for staleness; re-queries via registered resolvers
  *    (bounded) or flags with belief.stale events (idempotent)
- * 8. Flags prose docs in content/profile that are older than the newest belief/correction signal
- * 9. Indexes content/* markdown docs for recall (idempotent)
- * 10. Replays topic-linked corrections: retracts contradicted belief heads (P4 close-the-loop)
+ * 9. Flags prose docs in content/profile that are older than the newest belief/correction signal
+ * 10. Indexes content/* markdown docs for recall (idempotent)
+ * 11. Replays topic-linked corrections: retracts contradicted belief heads (P4 close-the-loop)
+ * 12. Composes and persists a learning digest
  */
 export async function runDream(
   db: RobinDb,
@@ -125,9 +136,27 @@ export async function runDream(
     candidatesMerged: 0,
     depthInsightsGenerated: 0,
     digestGenerated: false,
+    hygieneRelationsDeleted: 0,
+    hygieneEntitiesDeleted: 0,
+    hygieneEntitiesFlagged: 0,
+    hygieneBlocklistGrown: 0,
   };
 
-  // 1. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
+  // 1. Data hygiene — clean noise entities/relations, flag borderline items,
+  //    grow the adaptive blocklist. Runs first so downstream steps (entity
+  //    summarization, arc detection) work on a clean graph. Best-effort:
+  //    a hygiene failure must never sink the rest of the dream pass.
+  try {
+    const hygiene = runHygiene(db, now);
+    result.hygieneRelationsDeleted = hygiene.relationsDeleted;
+    result.hygieneEntitiesDeleted = hygiene.entitiesDeleted + hygiene.orphansDeleted;
+    result.hygieneEntitiesFlagged = hygiene.entitiesFlagged;
+    result.hygieneBlocklistGrown = hygiene.blocklistGrown;
+  } catch {
+    // zeroed by initializer
+  }
+
+  // 2. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
   const overdue = db
     .prepare(`
     SELECT id, confidence FROM predictions WHERE outcome IS NULL AND deadline IS NOT NULL AND deadline < ?
@@ -141,7 +170,7 @@ export async function runDream(
     result.predictionsResolved++;
   }
 
-  // 2. Metrics rollup for today
+  // 3. Metrics rollup for today
   const today = now.toISOString().slice(0, 10);
   const since = `${today}T00:00:00.000Z`;
   const eventsToday = (
@@ -165,13 +194,13 @@ export async function runDream(
   upsertMetric.run(today, 'captures_count', capturesToday, capturesToday);
   upsertMetric.run(today, 'corrections_count', correctionsToday, correctionsToday);
 
-  // 3. Entity summarization — regenerate profiles for hot entities
+  // 4. Entity summarization — regenerate profiles for hot entities
   result.entitiesSummarized = await summarizeHotEntities(db, llm, since);
 
-  // 4. Arc detection — cluster recent captured events by shared entities
+  // 5. Arc detection — cluster recent captured events by shared entities
   result.arcsCreated = detectArcs(db, now);
 
-  // 5. Expire stale belief candidates. Guarded so an older DB without the
+  // 6. Expire stale belief candidates. Guarded so an older DB without the
   //    belief_candidates table can't crash the whole dream pass.
   try {
     result.candidatesExpired = expireStaleCandidates(db, CANDIDATE_EXPIRY_DAYS, now);
@@ -179,7 +208,7 @@ export async function runDream(
     result.candidatesExpired = 0;
   }
 
-  // 5b. Belief lifecycle: auto-promote stable candidates, detect contradictions,
+  // 6b. Belief lifecycle: auto-promote stable candidates, detect contradictions,
   //     merge near-duplicates. Deterministic (no LLM). Guarded like step 5.
   try {
     const lifecycle = promoteStableCandidates(db, now);
@@ -192,7 +221,7 @@ export async function runDream(
     result.candidatesMerged = 0;
   }
 
-  // 5c. Depth synthesis inputs — deterministic SQL queries. Best-effort:
+  // 6c. Depth synthesis inputs — deterministic SQL queries. Best-effort:
   //     a failure here yields empty arrays, never sinks the dream pass.
   let depthReplays: DecisionReplay[] = [];
   let depthCalibration: PredictionCalibrationRow[] = [];
@@ -205,7 +234,7 @@ export async function runDream(
     // leave empty — depth is best-effort
   }
 
-  // 6. Compose journal — deterministic metrics-only block with depth sections.
+  // 7. Compose journal — deterministic metrics-only block with depth sections.
   //    The 4:00am dream-synthesis pass upserts a richer narrative over this same
   //    day key later; dream.run only guarantees the row exists as a fallback.
   const journal = composeJournal({
@@ -233,7 +262,7 @@ export async function runDream(
   if (depthDeadlines.length > 0) depthSections++;
   result.depthInsightsGenerated = depthSections;
 
-  // 7. Belief freshness — scan live belief heads, re-query via registered resolvers
+  // 8. Belief freshness — scan live belief heads, re-query via registered resolvers
   //    (bounded by maxRequeries) and/or flag stale heads with belief.stale events.
   //    Guarded so a failure here never sinks the rest of the dream pass.
   try {
@@ -245,10 +274,10 @@ export async function runDream(
     result.beliefsRefreshed = 0;
   }
 
-  // 8. Narrative staleness flags — prose docs older than the newest belief/correction signal.
+  // 9. Narrative staleness flags — prose docs older than the newest belief/correction signal.
   result.staleFlagsRaised = flagStaleNarrativeDocs(db, now);
 
-  // 9. Keep content/* markdown docs indexed for recall. Idempotent — unchanged files
+  // 10. Keep content/* markdown docs indexed for recall. Idempotent — unchanged files
   //    are skipped, so this is cheap on a quiet night. Best-effort: a doc-ingest failure
   //    must never sink the rest of the dream pass.
   try {
@@ -258,7 +287,7 @@ export async function runDream(
     result.docsIngested = 0;
   }
 
-  // 10. Apply topic-linked corrections → auto-retract contradicted belief heads.
+  // 11. Apply topic-linked corrections → auto-retract contradicted belief heads.
   //     Only corrections with an explicit `topic` link are replayed; behavioral/global
   //     corrections (NULL topic) are left untouched. Best-effort: a failure here must
   //     never sink the rest of the dream pass.
@@ -271,7 +300,7 @@ export async function runDream(
     result.beliefsRetracted = 0;
   }
 
-  // 11. Compose and persist a learning digest — closes feedback loops by
+  // 12. Compose and persist a learning digest — closes feedback loops by
   //     summarizing handler outcomes, calibration, belief lifecycle, corrections,
   //     and agent-run failure signals into a single event. Best-effort.
   try {
