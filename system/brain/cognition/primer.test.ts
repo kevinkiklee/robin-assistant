@@ -367,18 +367,18 @@ test('buildPrimer: no learning digest section when no digest event exists', () =
   closeDb(db);
 });
 
-test('buildPrimer: learning digest appears between beliefs and profile', () => {
+test('buildPrimer: learning digest appears before beliefs (compact, high-signal)', () => {
   const { db } = freshDb();
   const { profileDir, knowledgeDir } = freshProfileDirs();
   believe(db, null, { topic: 't', claim: 'cl', date: '2026-05-23' });
   seedDigestEvent(db);
   writeFileSync(join(profileDir, 'character.md'), '# Character\nbody');
   const out = buildPrimer(db, { profileDir, knowledgeDir });
-  const bIdx = out.indexOf('## Beliefs');
   const dIdx = out.indexOf('## Learning digest');
+  const bIdx = out.indexOf('## Beliefs');
   const pIdx = out.indexOf('## character.md');
-  assert.ok(bIdx >= 0 && dIdx >= 0 && pIdx >= 0);
-  assert.ok(bIdx < dIdx, 'beliefs before digest');
-  assert.ok(dIdx < pIdx, 'digest before profile');
+  assert.ok(dIdx >= 0 && bIdx >= 0 && pIdx >= 0);
+  assert.ok(dIdx < bIdx, 'digest before beliefs (compact, high-priority)');
+  assert.ok(bIdx < pIdx, 'beliefs before profile');
   closeDb(db);
 });
