@@ -222,10 +222,13 @@ export function buildPrimer(db: RobinDb, opts: BuildPrimerOptions = {}): string 
   const knowledgeDir = opts.knowledgeDir ?? join(userData, 'content', 'knowledge');
 
   // Highest → lowest priority. Empty sections are skipped entirely.
+  // Learning digest is compact (~350 chars) and high-signal (Robin's own
+  // performance state); it goes before beliefs (which can be 7k+ chars and
+  // would otherwise push the digest past the 10k cap).
   const sections = [
     renderCorrections(db, CORRECTIONS_SUBCAP),
-    renderBeliefs(db),
     renderLearningDigestSection(db),
+    renderBeliefs(db),
     renderProfileInline(profileDir),
     renderIndex(profileDir, knowledgeDir),
     renderCandidates(db),
