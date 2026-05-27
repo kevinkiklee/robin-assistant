@@ -17,6 +17,7 @@ import {
   isLowQualityEntity,
   isLowQualityPredicate,
   runBiographer,
+  type SessionSummary,
 } from './biographer.ts';
 import { captureSession } from './capture.ts';
 
@@ -341,8 +342,8 @@ test('biographer: processes a large session across multiple ticks (multi-tick)',
   }
   assert.ok(completedTick, 'session should complete within a bounded number of ticks');
 
-  // Every chunk extracted exactly once across all ticks (no re-processing).
-  assert.equal(extractionCalls, chunks.length, 'each chunk should be extracted exactly once');
+  // Every chunk extracted exactly once across all ticks, plus one session finalization call.
+  assert.equal(extractionCalls, chunks.length + 1, 'chunks + 1 finalization call');
 
   // Exactly one marker, and the progress row cleaned up.
   const markers = db
@@ -606,6 +607,23 @@ test('isLowQualityEntity: keeps real entities that read like dev jargon', () => 
   ];
   for (const [name, type] of real) {
     assert.equal(isLowQualityEntity(name, type), false, `${name} (${type}) should be kept`);
+  }
+});
+
+test('isLowQualityEntity: drops Robin-internal jargon as thing/topic', () => {
+  const noise: Array<[string, string]> = [
+    ['Dream pipeline', 'topic'],
+    ['Daily brief generation', 'topic'],
+    ['Intuition injection', 'topic'],
+    ['Ingest CLI', 'topic'],
+    ['recall', 'thing'],
+    ['embedder batch', 'thing'],
+    ['hygiene pass', 'topic'],
+    ['cognition jobs', 'topic'],
+    ['primer assembly', 'thing'],
+  ];
+  for (const [name, type] of noise) {
+    assert.equal(isLowQualityEntity(name, type), true, `${name} (${type}) should be dropped`);
   }
 });
 
@@ -1099,5 +1117,203 @@ test('biographer P3: insertBeliefCandidate with integration.* source stores prov
   const cands = listBeliefCandidates(db, { status: 'pending' });
   assert.equal(cands.length, 1);
   assert.equal(cands[0].provenance, 'external');
+  closeDb(db);
+});
+
+test('biographer: batch-extraction guard drops flooded entity types (>20 same type)', async () => {
+  const db = freshDb();
+  const songs = Array.from({ length: 25 }, (_, i) => ({
+    type: 'thing',
+    name: `Song Title ${i}`,
+  }));
+  const entities = [{ type: 'person', name: 'Kevin' }, ...songs];
+  const llm = mockLLM(JSON.stringify({ entities, relations: [] }));
+  await captureSession(db, null, {
+    sessionId: 's-flood',
+    turns: [
+      { role: 'user', content: 'here is my spotify playlist with 25 songs' },
+      { role: 'assistant', content: `I see your playlist. ${songs.map((s) => s.name).join(', ')}` },
+    ],
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1);
+  const ents = db.prepare('SELECT canonical_name, type FROM entities').all() as Array<{
+    canonical_name: string;
+    type: string;
+  }>;
+  assert.ok(
+    ents.some((e) => e.canonical_name === 'Kevin'),
+    'non-flooded entity (Kevin) should survive',
+  );
+  assert.ok(
+    !ents.some((e) => e.canonical_name === 'Song Title 0'),
+    'flooded type entities should be dropped',
+  );
+  assert.ok(ents.length < 5, `expected few entities, got ${ents.length}`);
+  closeDb(db);
+});
+
+// ─── Session finalization tests ─────────────────────────────────────────────
+
+function finalizingLLM(extractJson: string, summaryJson: string): LLMDispatcher {
+  let _callCount = 0;
+  const p: LLMProvider = {
+    name: 'mock',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (_opts) => {
+      _callCount++;
+      const isFinalization =
+        typeof _opts.systemPrompt === 'string' &&
+        _opts.systemPrompt.includes('summarize a completed conversation');
+      return {
+        text: isFinalization ? summaryJson : extractJson,
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'mock',
+      };
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('m', p);
+  d.assign('reasoning', 'm');
+  return d;
+}
+
+const VALID_SUMMARY: SessionSummary = {
+  intent: 'Debug the whoop integration delta calculation',
+  outcome: 'completed',
+  outcomeSummary: 'Fixed the delta computation and added streak detection.',
+  topics: ['whoop-integration', 'health-data'],
+  decisions: [{ choice: 'Use 7-day rolling average', reasoning: 'Smooths daily variance' }],
+  temporalRefs: [{ reference: 'by Thursday', resolvedDate: '2026-05-29' }],
+  followUp: 'Wire the streak data into the daily brief skeleton',
+};
+
+test('biographer: session finalization writes summary to session payload', async () => {
+  const db = freshDb();
+  const llm = finalizingLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    JSON.stringify(VALID_SUMMARY),
+  );
+  await captureSession(db, null, {
+    sessionId: 's-final',
+    turns: [
+      { role: 'user', content: 'fix the whoop integration delta' },
+      { role: 'assistant', content: 'Done — the delta now uses a 7-day rolling average.' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 1, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1);
+  assert.equal(r.sessionsSummarized, 1);
+
+  const row = db.prepare("SELECT payload FROM events WHERE kind = 'session.captured'").get() as {
+    payload: string;
+  };
+  const p = JSON.parse(row.payload);
+  assert.ok(p.summary, 'summary should be written to session payload');
+  assert.equal(p.summary.intent, VALID_SUMMARY.intent);
+  assert.equal(p.summary.outcome, 'completed');
+  assert.ok(p.summary.topics.includes('whoop-integration'));
+  assert.ok(p.summarizedAt, 'summarizedAt timestamp should be set');
+  closeDb(db);
+});
+
+test('biographer: finalization failure does not block extraction', async () => {
+  const db = freshDb();
+  const llm = finalizingLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    'this is not valid JSON at all!!!',
+  );
+  await captureSession(db, null, {
+    sessionId: 's-fail',
+    turns: [
+      { role: 'user', content: 'discuss camera settings for night photography' },
+      { role: 'assistant', content: 'For night work with the Zf, try ISO 3200, f/2, 1/60s.' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 1, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1, 'session should still be marked processed');
+  assert.equal(r.sessionsSummarized, 0, 'summary should not be counted');
+  assert.equal(r.entitiesCreated, 1, 'entities should still be extracted');
+
+  const marker = db
+    .prepare("SELECT COUNT(*) AS c FROM events WHERE kind = 'biographer.extracted'")
+    .get() as { c: number };
+  assert.equal(marker.c, 1, 'extraction marker should still be written');
+  closeDb(db);
+});
+
+test('biographer: finalization skipped for knowledge.doc events', async () => {
+  const db = freshDb();
+  const llm = finalizingLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    JSON.stringify(VALID_SUMMARY),
+  );
+  ingest(db, null, {
+    kind: 'knowledge.doc',
+    source: 'docs',
+    content: 'Kevin is a photographer who lives in Astoria, Queens.',
+    payload: { external_id: 'doc:test.md' },
+  });
+  const r = await runBiographer(db, llm, 1, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1);
+  assert.equal(r.sessionsSummarized, 0, 'knowledge.doc should not be finalized');
+  closeDb(db);
+});
+
+test('biographer: cross-session linking creates thread events on topic overlap', async () => {
+  const db = freshDb();
+  const summary1 = { ...VALID_SUMMARY, topics: ['leadforge-auth', 'clerk-migration'] };
+  const summary2 = { ...VALID_SUMMARY, topics: ['leadforge-auth', 'clerk-migration', 'oauth'] };
+  let callIdx = 0;
+  const llm = finalizingLLM(
+    JSON.stringify({ entities: [{ type: 'project', name: 'leadforge' }], relations: [] }),
+    'placeholder',
+  );
+  const origInvoke = llm.invoke.bind(llm);
+  llm.invoke = async (role, opts) => {
+    if (
+      typeof opts.systemPrompt === 'string' &&
+      opts.systemPrompt.includes('summarize a completed conversation')
+    ) {
+      callIdx++;
+      return {
+        text: JSON.stringify(callIdx === 1 ? summary1 : summary2),
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'mock',
+      };
+    }
+    return origInvoke(role, opts);
+  };
+
+  await captureSession(db, null, {
+    sessionId: 's-thread-1',
+    turns: [
+      { role: 'user', content: 'start the leadforge clerk migration' },
+      { role: 'assistant', content: 'Setting up Clerk for leadforge auth.' },
+    ],
+  });
+  await runBiographer(db, llm, 1, { minSessionBodyChars: 0 });
+
+  await captureSession(db, null, {
+    sessionId: 's-thread-2',
+    turns: [
+      { role: 'user', content: 'continue the leadforge clerk migration callback' },
+      { role: 'assistant', content: 'Wiring the OAuth callback for leadforge.' },
+    ],
+  });
+  const r2 = await runBiographer(db, llm, 1, { minSessionBodyChars: 0 });
+  assert.ok(r2.sessionsLinked >= 1, 'should create at least one thread link');
+
+  const threads = db
+    .prepare("SELECT payload FROM events WHERE kind = 'session.thread'")
+    .all() as Array<{ payload: string }>;
+  assert.ok(threads.length >= 1, 'session.thread event should exist');
+  const tp = JSON.parse(threads[0].payload);
+  assert.ok(tp.shared_topics.includes('leadforge-auth'));
   closeDb(db);
 });

@@ -168,11 +168,26 @@ export async function captureSession(
   // AND >10 total). Mixed/ambiguous → 'personal' (biographer still extracts).
   const category = classifySessionCategory(capture.turns);
 
+  const hasCodeBlocks = capture.turns.some((t) => t.role === 'assistant' && /```/.test(t.content));
+  const hasToolUse = capture.turns.some((t) => t.role === 'tool');
+  const topicHints = extractTopicHints(capture.turns);
+
   const r = await ingest(db, llm, {
     kind: 'session.captured',
     source: 'capture',
     content,
-    payload: { sessionId: capture.sessionId, hash, turnCount: capture.turns.length, category },
+    payload: {
+      sessionId: capture.sessionId,
+      hash,
+      turnCount: capture.turns.length,
+      category,
+      userTurnCount: userTurns.length,
+      assistantTurnCount: assistantTurns.length,
+      bodyChars: content.length,
+      hasCodeBlocks,
+      hasToolUse,
+      topicHints,
+    },
   });
   return { captured: true, eventId: r.eventId };
 }
@@ -198,4 +213,164 @@ export function classifySessionCategory(turns: SessionTurn[]): 'dev' | 'personal
   // coding sessions while still letting genuinely mixed sessions through.
   if (devHits > 6 && devHits > personalHits * 2) return 'dev';
   return 'personal';
+}
+
+// ─── Topic hint extraction ──────────────────────────────────────────────────
+// Cheap term-frequency pass over user turns. Stop-word filtered, no LLM.
+// A recall bridge — noisy but immediate. The biographer produces authoritative
+// topic tags later via session finalization.
+
+const STOP_WORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'have',
+  'has',
+  'had',
+  'do',
+  'does',
+  'did',
+  'will',
+  'would',
+  'could',
+  'should',
+  'may',
+  'might',
+  'shall',
+  'can',
+  'need',
+  'dare',
+  'ought',
+  'used',
+  'to',
+  'of',
+  'in',
+  'for',
+  'on',
+  'with',
+  'at',
+  'by',
+  'from',
+  'as',
+  'into',
+  'through',
+  'during',
+  'before',
+  'after',
+  'above',
+  'below',
+  'between',
+  'out',
+  'off',
+  'over',
+  'under',
+  'again',
+  'further',
+  'then',
+  'once',
+  'here',
+  'there',
+  'when',
+  'where',
+  'why',
+  'how',
+  'all',
+  'both',
+  'each',
+  'few',
+  'more',
+  'most',
+  'other',
+  'some',
+  'such',
+  'no',
+  'nor',
+  'not',
+  'only',
+  'own',
+  'same',
+  'so',
+  'than',
+  'too',
+  'very',
+  'just',
+  'don',
+  'now',
+  'and',
+  'but',
+  'or',
+  'if',
+  'while',
+  'about',
+  'up',
+  'that',
+  'this',
+  'it',
+  'its',
+  'i',
+  'me',
+  'my',
+  'we',
+  'our',
+  'you',
+  'your',
+  'he',
+  'him',
+  'his',
+  'she',
+  'her',
+  'they',
+  'them',
+  'their',
+  'what',
+  'which',
+  'who',
+  'whom',
+  'these',
+  'those',
+  'am',
+  'also',
+  'get',
+  'got',
+  'let',
+  'like',
+  'make',
+  'see',
+  'think',
+  'know',
+  'want',
+  'going',
+  'yes',
+  'no',
+  'ok',
+  'okay',
+  'sure',
+  'thanks',
+  'right',
+]);
+
+export function extractTopicHints(turns: SessionTurn[], maxHints = 5): string[] {
+  const text = turns
+    .filter((t) => t.role === 'user')
+    .map((t) => t.content)
+    .join(' ')
+    .toLowerCase();
+  const words = text.match(/[a-z]{3,}/g) ?? [];
+  const freq = new Map<string, number>();
+  for (const w of words) {
+    if (STOP_WORDS.has(w)) continue;
+    freq.set(w, (freq.get(w) ?? 0) + 1);
+  }
+  return [...freq.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxHints)
+    .map(([word]) => word);
 }

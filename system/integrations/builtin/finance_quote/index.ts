@@ -15,6 +15,7 @@ interface Quote {
   regularMarketPrice?: number;
   regularMarketChange?: number;
   regularMarketChangePercent?: number;
+  fiftyTwoWeekHigh?: number;
   shortName?: string;
   longName?: string;
 }
@@ -24,6 +25,7 @@ interface ChartMeta {
   regularMarketPrice?: number;
   chartPreviousClose?: number;
   previousClose?: number;
+  fiftyTwoWeekHigh?: number;
   shortName?: string;
   longName?: string;
 }
@@ -80,6 +82,7 @@ async function fetchQuote(ctx: IntegrationContext, symbol: string): Promise<Quot
     regularMarketPrice: meta.regularMarketPrice,
     regularMarketChange: change,
     regularMarketChangePercent: changePct,
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
     shortName: meta.shortName,
     longName: meta.longName,
   };
@@ -110,16 +113,37 @@ export const integration: Integration = {
     let ingested = 0;
     for (const q of quotes) {
       if (q.regularMarketPrice == null) continue;
-      const summary = `${q.symbol}: $${q.regularMarketPrice.toFixed(2)} (${q.regularMarketChangePercent?.toFixed(2) ?? '?'}%)`;
+      const price = q.regularMarketPrice;
+      const changePct = q.regularMarketChangePercent;
+
+      let fiftyTwoWeekHighPct: number | null = null;
+      try {
+        const high52w = q.fiftyTwoWeekHigh;
+        if (typeof high52w === 'number' && high52w > 0) {
+          fiftyTwoWeekHighPct = Math.round(((price - high52w) / high52w) * 1000) / 10;
+        }
+      } catch {
+        // best-effort
+      }
+
+      const changeFmt =
+        changePct != null ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%` : '?';
+      let narrative = `${q.symbol} $${price.toFixed(2)} (${changeFmt} today)`;
+      if (fiftyTwoWeekHighPct != null) {
+        narrative += `, ${fiftyTwoWeekHighPct >= 0 ? '+' : ''}${fiftyTwoWeekHighPct}% from 52w high`;
+      }
+      narrative += '.';
+
       await ingest(ctx.db, ctx.llm, {
         kind: 'integration.finance_quote.tick',
         source: 'finance_quote',
-        content: summary,
+        content: narrative,
         payload: {
           symbol: q.symbol,
-          price: q.regularMarketPrice,
-          change_pct: q.regularMarketChangePercent,
+          price,
+          change_pct: changePct,
           name: q.shortName ?? q.longName,
+          delta: fiftyTwoWeekHighPct != null ? { vs_52w_high_pct: fiftyTwoWeekHighPct } : null,
         },
       });
       ingested++;

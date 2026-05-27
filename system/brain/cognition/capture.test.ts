@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { captureSession } from './capture.ts';
+import { captureSession, extractTopicHints } from './capture.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-cap-'));
@@ -164,4 +164,76 @@ test('capture: empty allowlist is fail-open (default could not resolve)', async 
   );
   assert.equal(r.captured, true, 'empty allowlist should not reject');
   closeDb(db);
+});
+
+// ─── Capture-time metadata enrichment ────────────────────────────────────────
+
+test('capture: payload includes structural metadata fields', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's-meta',
+    turns: [
+      { role: 'user', content: 'Can you help me fix the whoop integration?' },
+      {
+        role: 'assistant',
+        content: 'Sure, let me look at the whoop code.\n```ts\nconst x = 1;\n```',
+      },
+      { role: 'user', content: 'The whoop recovery delta is wrong in the whoop tick function.' },
+      { role: 'assistant', content: 'I see — the whoop delta calculation needs fixing.' },
+    ],
+  });
+  assert.equal(r.captured, true);
+  const row = db.prepare('SELECT payload FROM events WHERE id = ?').get(r.eventId) as {
+    payload: string;
+  };
+  const p = JSON.parse(row.payload);
+  assert.equal(p.userTurnCount, 2);
+  assert.equal(p.assistantTurnCount, 2);
+  assert.equal(p.hasCodeBlocks, true);
+  assert.equal(p.hasToolUse, false);
+  assert.ok(p.bodyChars > 0);
+  assert.ok(Array.isArray(p.topicHints));
+  assert.ok(p.topicHints.includes('whoop'), 'topicHints should include "whoop"');
+  closeDb(db);
+});
+
+test('capture: hasToolUse is true when tool turns present', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's-tool',
+    turns: [
+      { role: 'user', content: 'read the config file please' },
+      { role: 'tool', content: '{"key": "value"}' },
+      { role: 'assistant', content: 'The config file contains key=value.' },
+    ],
+  });
+  assert.equal(r.captured, true);
+  const row = db.prepare('SELECT payload FROM events WHERE id = ?').get(r.eventId) as {
+    payload: string;
+  };
+  const p = JSON.parse(row.payload);
+  assert.equal(p.hasToolUse, true);
+  closeDb(db);
+});
+
+test('extractTopicHints: returns top terms by frequency, ignoring stop words', () => {
+  const turns = [
+    {
+      role: 'user' as const,
+      content: 'I want to fix the leadforge auth integration. The leadforge auth flow is broken.',
+    },
+    { role: 'user' as const, content: 'The leadforge callback endpoint needs auth headers.' },
+  ];
+  const hints = extractTopicHints(turns);
+  assert.ok(hints.includes('leadforge'));
+  assert.ok(hints.includes('auth'));
+  assert.ok(!hints.includes('the'));
+  assert.ok(!hints.includes('is'));
+  assert.ok(hints.length <= 5);
+});
+
+test('extractTopicHints: returns empty for short sessions', () => {
+  const turns = [{ role: 'user' as const, content: 'hello' }];
+  const hints = extractTopicHints(turns);
+  assert.equal(hints.length, 0);
 });

@@ -72,16 +72,24 @@ export const integration: Integration = {
       ctx.log.warn({ key: 'seen_event_ids' }, 'corrupt dedup state; resetting to empty');
     }
     const seen = new Set(seenIds);
+    const totalEvents = events.length;
+    let eventIndex = 0;
     for (const ev of events) {
       const key = `${ev.id}:${ev.updated ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      eventIndex++;
       const attendeeNames = (ev.attendees ?? []).map((a) => a.displayName ?? a.email).join(', ');
+      const title = ev.summary ?? '(no title)';
+      const when = formatEventTime(ev);
       const summary =
-        `[calendar] ${ev.summary ?? '(no title)'}\n  When: ${formatEventTime(ev)}` +
+        `[calendar] ${title}\n  When: ${when}` +
         (ev.location ? `\n  Where: ${ev.location}` : '') +
         (attendeeNames ? `\n  With: ${attendeeNames}` : '') +
+        (totalEvents > 1 ? `\n  Day context: event ${eventIndex} of ${totalEvents} today` : '') +
         (ev.description ? `\n\n${ev.description.slice(0, 500)}` : '');
+      const dayContext =
+        totalEvents > 1 ? { meetingIndex: eventIndex, totalToday: totalEvents } : null;
       await ingest(ctx.db, ctx.llm, {
         kind: 'integration.google_calendar.event',
         source: 'google_calendar',
@@ -94,6 +102,7 @@ export const integration: Integration = {
           location: ev.location,
           attendees: ev.attendees?.length ?? 0,
           status: ev.status,
+          dayContext,
         },
       });
       ingested++;

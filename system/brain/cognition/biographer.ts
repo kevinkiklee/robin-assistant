@@ -86,6 +86,51 @@ const claimsSchema = z.object({
 
 export type ClaimsResult = z.infer<typeof claimsSchema>;
 
+// ─── Session finalization schema ──────────────────────────────────────────────
+// A single LLM call per session, after all chunks are extracted and the merged
+// entity/relation set is assembled. Produces intent, outcome, topics, decisions,
+// temporal references, and follow-up — the session-level metadata that transforms
+// a captured record into actionable knowledge.
+
+export const sessionSummarySchema = z.object({
+  intent: z.string(),
+  outcome: z.enum(['completed', 'partial', 'abandoned', 'exploratory']),
+  outcomeSummary: z.string(),
+  topics: z.array(z.string()).max(7),
+  decisions: z
+    .array(
+      z.object({
+        choice: z.string(),
+        reasoning: z.string(),
+      }),
+    )
+    .default([]),
+  temporalRefs: z
+    .array(
+      z.object({
+        reference: z.string(),
+        resolvedDate: z.string().nullable(),
+      }),
+    )
+    .default([]),
+  followUp: z.string().nullable(),
+});
+
+export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+
+const SESSION_SUMMARY_PROMPT = `You summarize a completed conversation session. You receive the opening (and closing, if multi-part), plus entities/relations extracted from the full session. Reply ONLY with JSON matching the schema.
+
+Schema: {"intent":"...","outcome":"completed|partial|abandoned|exploratory","outcomeSummary":"...","topics":["kebab-tags"],"decisions":[{"choice":"...","reasoning":"..."}],"temporalRefs":[{"reference":"...","resolvedDate":"YYYY-MM-DD"|null}],"followUp":"..."|null}
+
+Rules:
+- intent: one sentence — why the user started this session
+- outcome: classify the PRIMARY stated goal (completed/partial/abandoned/exploratory)
+- outcomeSummary: one sentence — what was accomplished or why it stopped
+- topics: 2-7 kebab-case tags at the project/domain level (e.g. "leadforge-auth", "whoop-recovery", "nikon-zf-settings") — not code symbols. Reuse existing topic tags when the subject matches a prior session.
+- decisions: only EXPLICIT choices with stated reasoning. Empty array if none.
+- temporalRefs: dates/deadlines mentioned. Resolve relative refs against the session date. null resolvedDate if too vague to resolve.
+- followUp: an explicit next step the user stated, or null`;
+
 const CLAIMS_SYSTEM_PROMPT = `You extract DURABLE FACTS about the user (and their world) from a transcript. Reply ONLY with JSON matching:
 {"claims":[{"topic":"<short-kebab-topic>","claim":"<one declarative sentence>","confidence":<0..1>}, ...]}
 
@@ -290,6 +335,10 @@ export interface BiographerRunResult {
   relationsCreated: number;
   /** Candidate beliefs drafted into the review queue (second pass). */
   claimsDrafted: number;
+  /** Sessions enriched with intent/outcome/topics via finalization. */
+  sessionsSummarized: number;
+  /** Cross-session thread links created via topic overlap. */
+  sessionsLinked: number;
   errors: string[];
 }
 
@@ -732,7 +781,7 @@ const DEV_NOISE_TYPES = new Set(['thing', 'error', 'topic']);
 // check-protocol-triggers script missing, learning-queue.md over cap, cron/daemon
 // internals. Hyphen and space both count as separators.
 const DEV_JARGON_RE =
-  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|cache|route|schema|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|migration|worktree|wrappers|prune|singleton|crud)(?:$|[\s-])/i;
+  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|cache|route|schema|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|migration|worktree|wrappers|prune|singleton|crud|dream|brief|recall|ingest|primer|intuition|embedder|hygiene|cognition)(?:$|[\s-])/i;
 
 // Single bare verbs / generic non-entities that a model emits as `topic`/`thing`
 // from a chat exchange. Kept tight — only words that are never themselves a
@@ -965,6 +1014,133 @@ export async function disambiguateEntity(
   }
 }
 
+// ─── Session finalization ─────────────────────────────────────────────────────
+
+const MAX_FINALIZATION_CHARS = 4000;
+const FINALIZATION_SPLIT_CHARS = 3000;
+
+export async function finalizeSession(
+  llm: LLMDispatcher,
+  target: BiographerTarget,
+  chunks: string[],
+  extracted: ExtractionResult,
+  timeoutMs: number = BIOGRAPHER_CHUNK_TIMEOUT_MS,
+): Promise<SessionSummary | null> {
+  const sessionTs = (target as BiographerTarget & { ts?: string }).ts ?? new Date().toISOString();
+
+  let contentSection: string;
+  if (chunks.length === 1) {
+    const text = chunks[0].slice(0, MAX_FINALIZATION_CHARS);
+    contentSection = `=== FULL SESSION ===\n${text}`;
+  } else {
+    const first = chunks[0].slice(0, FINALIZATION_SPLIT_CHARS);
+    const last = chunks[chunks.length - 1].slice(0, FINALIZATION_SPLIT_CHARS);
+    contentSection = `=== OPENING ===\n${first}\n\n=== CLOSING ===\n${last}`;
+  }
+
+  const entityLines = extracted.entities
+    .slice(0, 50)
+    .map((e) => `${e.type}: ${e.name}`)
+    .join('\n');
+  const relationLines = extracted.relations
+    .slice(0, 30)
+    .map((r) => `${r.subject} → ${r.predicate} → ${r.object}`)
+    .join('\n');
+
+  const userContent = `Session date: ${sessionTs.slice(0, 10)}\n\n${contentSection}\n\n=== ENTITIES FOUND ===\n${entityLines || '(none)'}\n\n=== RELATIONS FOUND ===\n${relationLines || '(none)'}`;
+
+  const inv = await withTimeout(
+    llm.invoke('reasoning', {
+      systemPrompt: SESSION_SUMMARY_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
+      temperature: 0,
+      maxTokens: 2048,
+    }),
+    timeoutMs,
+    `biographer-finalize event=${target.eventId}`,
+  );
+
+  const jsonText = inv.text
+    .trim()
+    .replace(/^```(?:json)?/, '')
+    .replace(/```$/, '')
+    .trim();
+  const parsed = sessionSummarySchema.safeParse(JSON.parse(jsonText));
+  if (!parsed.success) return null;
+  return parsed.data;
+}
+
+export function updateSessionPayload(db: RobinDb, eventId: number, summary: SessionSummary): void {
+  db.transaction(() => {
+    const row = db.prepare('SELECT payload FROM events WHERE id = ?').get(eventId) as
+      | { payload: string }
+      | undefined;
+    if (!row) return;
+    const updated = {
+      ...JSON.parse(row.payload),
+      summary,
+      summarizedAt: new Date().toISOString(),
+    };
+    db.prepare('UPDATE events SET payload = ? WHERE id = ?').run(JSON.stringify(updated), eventId);
+  })();
+}
+
+function linkRelatedSessions(db: RobinDb, eventId: number, topics: string[]): number {
+  if (topics.length === 0) return 0;
+  const cutoff = new Date(Date.now() - 14 * 86_400_000).toISOString();
+  const recentSessions = db
+    .prepare(
+      `SELECT id, payload FROM events
+       WHERE kind IN ('session.captured', 'conversation.claude-code')
+         AND id != ? AND ts > ?
+       ORDER BY ts DESC LIMIT 50`,
+    )
+    .all(eventId, cutoff) as Array<{ id: number; payload: string }>;
+
+  const existingThreads = new Set(
+    (
+      db
+        .prepare(
+          `SELECT json_extract(payload, '$.from_event_id') || ':' ||
+                  json_extract(payload, '$.to_event_id') AS key
+           FROM events WHERE kind = 'session.thread'
+             AND json_extract(payload, '$.to_event_id') = ?`,
+        )
+        .all(eventId) as Array<{ key: string }>
+    ).map((r) => r.key),
+  );
+
+  let linked = 0;
+  const topicSet = new Set(topics);
+  for (const prior of recentSessions) {
+    let priorTopics: string[] = [];
+    try {
+      priorTopics = JSON.parse(prior.payload).summary?.topics ?? [];
+    } catch {
+      continue;
+    }
+    const shared = priorTopics.filter((t) => topicSet.has(t));
+    if (shared.length < 2) continue;
+
+    const threadKey = `${prior.id}:${eventId}`;
+    if (existingThreads.has(threadKey)) continue;
+
+    db.prepare(
+      `INSERT INTO events (ts, kind, source, status, payload)
+       VALUES (?, 'session.thread', 'biographer', 'ok', ?)`,
+    ).run(
+      new Date().toISOString(),
+      JSON.stringify({
+        from_event_id: prior.id,
+        to_event_id: eventId,
+        shared_topics: shared,
+      }),
+    );
+    linked++;
+  }
+  return linked;
+}
+
 export async function runBiographer(
   db: RobinDb,
   llm: LLMDispatcher | null,
@@ -996,6 +1172,8 @@ export async function runBiographer(
     entitiesCreated: 0,
     relationsCreated: 0,
     claimsDrafted: 0,
+    sessionsSummarized: 0,
+    sessionsLinked: 0,
     errors: [],
   };
 
@@ -1294,6 +1472,32 @@ export async function runBiographer(
     );
     extracted = { entities: filteredEntities, relations: filteredRelations };
 
+    // Batch-extraction guard: if a single type has >20 entities from one event,
+    // it's likely a list dump (e.g. Spotify playlist, bookmarks, transaction log).
+    // Drop the flooded type — it's bulk data noise, not biographical entities.
+    const typeCounts = new Map<string, number>();
+    for (const e of extracted.entities) {
+      typeCounts.set(e.type, (typeCounts.get(e.type) ?? 0) + 1);
+    }
+    const floodedTypes = new Set<string>();
+    for (const [t, count] of typeCounts) {
+      if (count > 20) floodedTypes.add(t);
+    }
+    if (floodedTypes.size > 0) {
+      const floodedNames = new Set<string>();
+      extracted.entities = extracted.entities.filter((e) => {
+        if (floodedTypes.has(e.type)) {
+          floodedNames.add(e.name.toLowerCase());
+          return false;
+        }
+        return true;
+      });
+      extracted.relations = extracted.relations.filter(
+        (r) =>
+          !floodedNames.has(r.subject.toLowerCase()) && !floodedNames.has(r.object.toLowerCase()),
+      );
+    }
+
     // Upsert entities with LLM-driven disambiguation
     const idByName = new Map<string, number>();
     for (const e of extracted.entities) {
@@ -1322,6 +1526,29 @@ export async function runBiographer(
       const pred = normalizePredicate(r.predicate);
       addRelation(db, sId, pred, oId, target.eventId);
       result.relationsCreated++;
+    }
+
+    // ─── Session finalization (best-effort, never blocks extraction) ────────
+    const sourceKind = db.prepare('SELECT kind, ts FROM events WHERE id = ?').get(target.eventId) as
+      | { kind: string; ts: string }
+      | undefined;
+    const isSession =
+      sourceKind?.kind === 'session.captured' || sourceKind?.kind === 'conversation.claude-code';
+
+    if (llm && isSession && chunks.length > 0) {
+      try {
+        const targetWithTs = { ...target, ts: sourceKind?.ts };
+        const summary = await finalizeSession(llm, targetWithTs, chunks, extracted, chunkTimeoutMs);
+        if (summary) {
+          updateSessionPayload(db, target.eventId, summary);
+          result.sessionsSummarized++;
+          result.sessionsLinked += linkRelatedSessions(db, target.eventId, summary.topics);
+        }
+      } catch (err) {
+        result.errors.push(
+          `event ${target.eventId} finalization: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     writeExtractedMarker(db, target.eventId, extracted.entities.length, extracted.relations.length);
