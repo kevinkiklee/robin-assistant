@@ -48,11 +48,27 @@ test('schema 001: events table has expected columns', () => {
   closeDb(db);
 });
 
-test('migrations apply cleanly up to version 14', () => {
+test('migrations apply cleanly up to latest version', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const row = db.prepare('SELECT MAX(version) AS v FROM _migrations').get() as { v: number };
-  assert.equal(row.v, 14);
+  assert.equal(row.v, allMigrations.length);
+  closeDb(db);
+});
+
+test('migration 015: noise_blocklist + hygiene_review tables exist', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+    .all() as Array<{ name: string }>;
+  const names = tables.map((t) => t.name);
+  assert.ok(names.includes('noise_blocklist'), 'noise_blocklist table missing');
+  assert.ok(names.includes('hygiene_review'), 'hygiene_review table missing');
+
+  const cols = db.prepare('PRAGMA table_info(noise_blocklist)').all() as Array<{ name: string }>;
+  const colNames = cols.map((c) => c.name).sort();
+  assert.deepEqual(colNames, ['added_at', 'id', 'name', 'reason', 'source']);
   closeDb(db);
 });
 

@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
-import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import { resolveHygieneItem } from '../../../brain/cognition/hygiene.ts';
+import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import { believe, normalizeTopic, recallBelief } from '../../../brain/memory/belief.ts';
 import {
@@ -522,7 +522,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     },
     async ({ kind, window }) => {
       const w = window ?? '30d';
-      const days = Number.parseInt(w, 10);
+      const days = Math.min(Math.max(Number.parseInt(w, 10) || 30, 1), 365);
       const since = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
       let rows: unknown[] = [];
       if (kind) {
@@ -595,9 +595,10 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       else if (action === 'incognito') {
         next.capture = { ...next.capture, enabled: false };
         if (duration && duration !== 'permanent') {
+          const raw = Number.parseInt(duration, 10) || 0;
           const ms = duration.endsWith('h')
-            ? Number.parseInt(duration, 10) * 3600 * 1000
-            : Number.parseInt(duration, 10) * 60 * 1000;
+            ? Math.min(raw, 720) * 3600 * 1000
+            : Math.min(raw, 43200) * 60 * 1000;
           (next.capture as { expires_at?: string }).expires_at = new Date(
             Date.now() + ms,
           ).toISOString();
@@ -654,9 +655,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     async ({ id, resolution }) => {
       resolveHygieneItem(deps.db, id, resolution);
       return {
-        content: [
-          { type: 'text' as const, text: JSON.stringify({ id, resolution, ok: true }) },
-        ],
+        content: [{ type: 'text' as const, text: JSON.stringify({ id, resolution, ok: true }) }],
       };
     },
   );

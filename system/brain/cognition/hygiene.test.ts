@@ -23,7 +23,9 @@ test('hygiene: deletes MCP tool name entities', () => {
   const r = runHygiene(db);
   assert.equal(r.entitiesDeleted, 1);
   assert.equal(r.blocklistGrown, 1);
-  const remaining = db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>;
+  const remaining = db.prepare('SELECT canonical_name FROM entities').all() as Array<{
+    canonical_name: string;
+  }>;
   assert.ok(remaining.some((e) => e.canonical_name === 'Kevin'));
   assert.ok(!remaining.some((e) => e.canonical_name === 'mcp__robin__recall'));
   closeDb(db);
@@ -36,7 +38,9 @@ test('hygiene: deletes commit message prefix entities', () => {
   addRelation(db, keep.id, 'owns', keep.id);
   const r = runHygiene(db);
   assert.ok(r.entitiesDeleted >= 1);
-  const names = (db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>).map((e) => e.canonical_name);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
   assert.ok(!names.includes('feat(linear): wave 2'));
   closeDb(db);
 });
@@ -104,7 +108,9 @@ test('hygiene: flags profileless single-word thing with 1 relation', () => {
   addRelation(db, e1.id, 'uses', e2.id);
   const r = runHygiene(db);
   assert.equal(r.entitiesFlagged, 1);
-  const review = db.prepare('SELECT * FROM hygiene_review WHERE entity_id = ?').get(e1.id) as { reason: string; signals: number } | undefined;
+  const review = db.prepare('SELECT * FROM hygiene_review WHERE entity_id = ?').get(e1.id) as
+    | { reason: string; signals: number }
+    | undefined;
   assert.ok(review);
   assert.ok(review.signals >= 2);
   closeDb(db);
@@ -146,10 +152,14 @@ test('hygiene: retroactive blocklist sweep deletes pre-existing entities', () =>
   const e = upsertEntity(db, 'thing', 'Dream DAG');
   const e2 = upsertEntity(db, 'person', 'Kevin');
   addRelation(db, e.id, 'uses', e2.id);
-  db.prepare("INSERT INTO noise_blocklist (name, reason, source, added_at) VALUES ('Dream DAG', 'manual', 'hygiene', datetime('now'))").run();
+  db.prepare(
+    "INSERT INTO noise_blocklist (name, reason, source, added_at) VALUES ('Dream DAG', 'manual', 'hygiene', datetime('now'))",
+  ).run();
   const r = runHygiene(db);
   assert.ok(r.entitiesDeleted >= 1);
-  const names = (db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>).map((e) => e.canonical_name);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
   assert.ok(!names.includes('Dream DAG'));
   closeDb(db);
 });
@@ -171,13 +181,17 @@ test('hygiene: resolveHygieneItem delete removes entity and adds to blocklist', 
     INSERT INTO hygiene_review (entity_id, entity_name, entity_type, reason, signals, flagged_at)
     VALUES (?, 'suspicious', 'thing', 'test', 2, datetime('now'))
   `).run(e.id);
-  const reviewId = (db.prepare('SELECT id FROM hygiene_review WHERE entity_id = ?').get(e.id) as { id: number }).id;
+  const reviewId = (
+    db.prepare('SELECT id FROM hygiene_review WHERE entity_id = ?').get(e.id) as { id: number }
+  ).id;
   resolveHygieneItem(db, reviewId, 'delete');
   const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(e.id);
   assert.equal(ent, undefined);
   const bl = loadNoiseBlocklist(db);
   assert.ok(bl.has('suspicious'));
-  const review = db.prepare('SELECT resolution FROM hygiene_review WHERE id = ?').get(reviewId) as { resolution: string };
+  const review = db.prepare('SELECT resolution FROM hygiene_review WHERE id = ?').get(reviewId) as {
+    resolution: string;
+  };
   assert.equal(review.resolution, 'delete');
   closeDb(db);
 });
@@ -191,7 +205,9 @@ test('hygiene: resolveHygieneItem keep marks resolved but does NOT blocklist', (
     INSERT INTO hygiene_review (entity_id, entity_name, entity_type, reason, signals, flagged_at)
     VALUES (?, 'legitimate', 'thing', 'test', 2, datetime('now'))
   `).run(e.id);
-  const reviewId = (db.prepare('SELECT id FROM hygiene_review WHERE entity_id = ?').get(e.id) as { id: number }).id;
+  const reviewId = (
+    db.prepare('SELECT id FROM hygiene_review WHERE entity_id = ?').get(e.id) as { id: number }
+  ).id;
   resolveHygieneItem(db, reviewId, 'keep');
   const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(e.id);
   assert.ok(ent);
@@ -203,7 +219,9 @@ test('hygiene: resolveHygieneItem keep marks resolved but does NOT blocklist', (
 test('hygiene: logs a hygiene.run event', () => {
   const db = freshDb();
   runHygiene(db);
-  const evt = db.prepare("SELECT * FROM events WHERE kind = 'hygiene.run'").get() as { payload: string } | undefined;
+  const evt = db.prepare("SELECT * FROM events WHERE kind = 'hygiene.run'").get() as
+    | { payload: string }
+    | undefined;
   assert.ok(evt);
   const payload = JSON.parse(evt.payload);
   assert.ok('entitiesDeleted' in payload);

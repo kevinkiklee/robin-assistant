@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
-import { loadNoiseBlocklist } from './hygiene.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
 import { classifyProvenance } from '../memory/provenance.ts';
+import { loadNoiseBlocklist } from './hygiene.ts';
 
 /**
  * True when an error means the LLM was unreachable / didn't respond (Ollama down,
@@ -324,16 +324,31 @@ type RelationRecord = { subject: string; predicate: string; object: string };
  * don't produce duplicate edges. Maps synonym clusters to a single canonical form.
  */
 const PREDICATE_SYNONYMS: Record<string, string> = {
-  employed_by: 'works_at', employed_at: 'works_at', works_for: 'works_at',
-  resides_at: 'lives_in', resides_in: 'lives_in', located_at: 'located_in',
-  possesses: 'owns', has: 'owns',
-  utilizes: 'uses', employs: 'uses', leverages: 'uses',
-  wrote: 'authored', created: 'authored', developed: 'authored', built: 'authored',
-  purchased: 'bought', acquired: 'bought',
-  visited: 'traveled_to', went_to: 'traveled_to',
-  manages: 'leads', supervises: 'leads',
-  prescribed: 'takes', taking: 'takes',
-  co_founded: 'co-founded', cofounded: 'co-founded',
+  employed_by: 'works_at',
+  employed_at: 'works_at',
+  works_for: 'works_at',
+  resides_at: 'lives_in',
+  resides_in: 'lives_in',
+  located_at: 'located_in',
+  possesses: 'owns',
+  has: 'owns',
+  utilizes: 'uses',
+  employs: 'uses',
+  leverages: 'uses',
+  wrote: 'authored',
+  created: 'authored',
+  developed: 'authored',
+  built: 'authored',
+  purchased: 'bought',
+  acquired: 'bought',
+  visited: 'traveled_to',
+  went_to: 'traveled_to',
+  manages: 'leads',
+  supervises: 'leads',
+  prescribed: 'takes',
+  taking: 'takes',
+  co_founded: 'co-founded',
+  cofounded: 'co-founded',
 };
 
 export function normalizePredicate(raw: string): string {
@@ -391,11 +406,16 @@ function selectBiographerTarget(db: RobinDb): BiographerTarget | null {
 
   if (resume) {
     const entities = new Map<string, EntityRecord>();
-    for (const e of JSON.parse(resume.entitiesJson) as EntityRecord[])
-      entities.set(entityKey(e), e);
     const relations = new Map<string, RelationRecord>();
-    for (const r of JSON.parse(resume.relationsJson) as RelationRecord[])
-      relations.set(relationKey(r), r);
+    try {
+      for (const e of JSON.parse(resume.entitiesJson) as EntityRecord[])
+        entities.set(entityKey(e), e);
+      for (const r of JSON.parse(resume.relationsJson) as RelationRecord[])
+        relations.set(relationKey(r), r);
+    } catch {
+      // Corrupted progress JSON — start the session over with empty accumulators.
+      // The chunks will be re-extracted from nextChunk onward.
+    }
     return {
       eventId: resume.eventId,
       body: resume.body,
@@ -591,7 +611,9 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
   const isFrameworkName = /^[A-Z][a-zA-Z0-9]*\.js\b/.test(trimmed);
   if (
     !isFrameworkName &&
-    /(^|\s)[\w.-]+\.(md|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|sh|py|toml|log|ndjson|csv|html|plist|nef|cr[23]|arw|raf|orf|dng)(\s|$|:)/i.test(trimmed)
+    /(^|\s)[\w.-]+\.(md|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|sh|py|toml|log|ndjson|csv|html|plist|nef|cr[23]|arw|raf|orf|dng)(\s|$|:)/i.test(
+      trimmed,
+    )
   )
     return true;
   // Image/media filenames (DSC_1234.jpg, IMG_001.png, screenshot.gif).
@@ -635,8 +657,7 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
     if (words.length >= 6) return true;
     // Conventional-commit prefixes: "chore(deps): ...", "feat(linear): ...",
     // "fix(shell): ..." — git commit messages, not entities.
-    if (/^(?:chore|feat|fix|refactor|ci|build|docs|style|perf|test)\b/i.test(trimmed))
-      return true;
+    if (/^(?:chore|feat|fix|refactor|ci|build|docs|style|perf|test)\b/i.test(trimmed)) return true;
     // Project-internal phase/track codenames: "Phase 0", "Phase 4a edge",
     // "Track B Phase 4e", "W2-C", "cognition-e1", "M-shield". These are
     // internal roadmap labels, not real-world entities.
@@ -671,11 +692,34 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
 // frameworks (Three.js, Next.js, Discord.js) and real-world tools; the noise
 // filter (`isLowQualityEntity`) handles dev-jargon within those types.
 const BLOCKED_ENTITY_TYPES = new Set([
-  'error', 'env_var', 'surface', 'table', 'directory', 'function',
-  'field', 'schema', 'method', 'command', 'system_component', 'pipeline',
-  'mechanism', 'configuration', 'specification', 'log', 'file', 'database',
-  'variable', 'test case', 'alias', 'format',
-  'effort_level', 'attribute', 'tag', 'version', 'os', 'software',
+  'error',
+  'env_var',
+  'surface',
+  'table',
+  'directory',
+  'function',
+  'field',
+  'schema',
+  'method',
+  'command',
+  'system_component',
+  'pipeline',
+  'mechanism',
+  'configuration',
+  'specification',
+  'log',
+  'file',
+  'database',
+  'variable',
+  'test case',
+  'alias',
+  'format',
+  'effort_level',
+  'attribute',
+  'tag',
+  'version',
+  'os',
+  'software',
 ]);
 
 // Types that lack a real-world referent and disproportionately carry dev-internal

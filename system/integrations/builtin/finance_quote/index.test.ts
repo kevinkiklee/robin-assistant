@@ -57,7 +57,9 @@ test('finance_quote: tick fetches one chart per ticker and ingests quotes', asyn
   assert.equal(r.status, 'ok');
   assert.equal(r.ingested, 1);
   assert.equal(calls.length, 1, 'one chart request per default ticker');
-  const rows = db.prepare("SELECT body FROM events_content WHERE body LIKE 'GOOG%'").all() as Array<{
+  const rows = db
+    .prepare("SELECT body FROM events_content WHERE body LIKE 'GOOG%'")
+    .all() as Array<{
     body: string;
   }>;
   assert.equal(rows.length, 1);

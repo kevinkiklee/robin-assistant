@@ -27,7 +27,8 @@ const PHASE_CODENAME_RE = /^(?:Phase|Track|Stage|Sprint|Milestone)\s/i;
 const DB_TABLE_REF_RE = /\b(?:table|column|index|migration|constraint|foreign key)$/i;
 const IMPORT_RE = /^(?:import|require|export)\s/;
 const OUTPUT_RE = /^output:\s/;
-const CODE_SYNTAX_RE = /(?:=>|::|`|^\{|^\[|^\(|var\(--|px\b|rem\b|width:|height:|background:|border:)/;
+const CODE_SYNTAX_RE =
+  /(?:=>|::|`|^\{|^\[|^\(|var\(--|px\b|rem\b|width:|height:|background:|border:)/;
 const MCP_TOOL_RE = /^mcp__/;
 const CLI_CMD_RE = /^(?:git|pnpm|npm|npx|yarn|node|tsx|tsc|bun|deno|python|pip|cargo|rustc)\s/;
 const DEV_JARGON_RE =
@@ -60,11 +61,43 @@ function isTier1Noise(e: EntityRow): string | null {
 // ─── Tier 2: borderline scoring ──────────────────────────────────────────────
 
 const COMMON_SINGLE_WORDS = new Set([
-  'state', 'context', 'agent', 'check', 'open', 'message', 'signal',
-  'type', 'scope', 'status', 'mode', 'event', 'action', 'query',
-  'source', 'target', 'level', 'stage', 'block', 'entry', 'path',
-  'key', 'link', 'run', 'log', 'push', 'pull', 'load', 'call',
-  'flag', 'hook', 'rule', 'pipe', 'node', 'port', 'host', 'view',
+  'state',
+  'context',
+  'agent',
+  'check',
+  'open',
+  'message',
+  'signal',
+  'type',
+  'scope',
+  'status',
+  'mode',
+  'event',
+  'action',
+  'query',
+  'source',
+  'target',
+  'level',
+  'stage',
+  'block',
+  'entry',
+  'path',
+  'key',
+  'link',
+  'run',
+  'log',
+  'push',
+  'pull',
+  'load',
+  'call',
+  'flag',
+  'hook',
+  'rule',
+  'pipe',
+  'node',
+  'port',
+  'host',
+  'view',
 ]);
 
 function scoreTier2(e: EntityRow, relationCount: number): number {
@@ -81,9 +114,17 @@ function scoreTier2(e: EntityRow, relationCount: number): number {
 // ─── Blocked predicates (safety net) ─────────────────────────────────────────
 
 const BLOCKED_PREDICATES = [
-  'occurs_with', 'related_to', 'associated_with', 'mentioned_with',
-  'appears_with', 'co-occurs_with', 'co_occurs_with', 'linked_to',
-  'connected_to', 'seen_with', 'alongside',
+  'occurs_with',
+  'related_to',
+  'associated_with',
+  'mentioned_with',
+  'appears_with',
+  'co-occurs_with',
+  'co_occurs_with',
+  'linked_to',
+  'connected_to',
+  'seen_with',
+  'alongside',
 ];
 
 // ─── Main pass ───────────────────────────────────────────────────────────────
@@ -102,8 +143,13 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   // Used at the end to avoid sweeping entities that became orphaned only because
   // their noise-relation partner was deleted during this pass (e.g. Kevin connected to mcp__*).
   const connectedAtStart = new Set(
-    (db.prepare('SELECT subject_id AS id FROM relations UNION SELECT object_id AS id FROM relations').all() as Array<{ id: number }>)
-      .map((r) => r.id),
+    (
+      db
+        .prepare(
+          'SELECT subject_id AS id FROM relations UNION SELECT object_id AS id FROM relations',
+        )
+        .all() as Array<{ id: number }>
+    ).map((r) => r.id),
   );
 
   // 2. Relation cleanup — delete blocked predicates (safety net)
@@ -114,11 +160,13 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   result.relationsDeleted = relDel.changes;
 
   // 3. Retroactive blocklist sweep — delete entities now in blocklist
-  const blocklisted = db.prepare(`
+  const blocklisted = db
+    .prepare(`
     SELECT e.id, e.canonical_name, e.type
     FROM entities e
     JOIN noise_blocklist nb ON LOWER(e.canonical_name) = LOWER(nb.name)
-  `).all() as EntityRow[];
+  `)
+    .all() as EntityRow[];
   for (const e of blocklisted) {
     db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(e.id, e.id);
     db.prepare('DELETE FROM entities WHERE id = ?').run(e.id);
@@ -130,7 +178,9 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
     INSERT OR IGNORE INTO noise_blocklist (name, reason, source, added_at)
     VALUES (?, ?, 'hygiene', ?)
   `);
-  const allEntities = db.prepare('SELECT id, type, canonical_name, profile FROM entities').all() as EntityRow[];
+  const allEntities = db
+    .prepare('SELECT id, type, canonical_name, profile FROM entities')
+    .all() as EntityRow[];
   for (const e of allEntities) {
     const reason = isTier1Noise(e);
     if (!reason) continue;
@@ -142,12 +192,17 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   }
 
   // 5. Tier 2 signal scan — score remaining thing/topic entities, flag those with score ≥ 2
-  const remaining = db.prepare(
-    "SELECT id, type, canonical_name, profile FROM entities WHERE LOWER(type) IN ('thing', 'topic')",
-  ).all() as EntityRow[];
+  const remaining = db
+    .prepare(
+      "SELECT id, type, canonical_name, profile FROM entities WHERE LOWER(type) IN ('thing', 'topic')",
+    )
+    .all() as EntityRow[];
   const alreadyFlagged = new Set(
-    (db.prepare('SELECT entity_id FROM hygiene_review WHERE resolved_at IS NULL').all() as Array<{ entity_id: number }>)
-      .map((r) => r.entity_id),
+    (
+      db.prepare('SELECT entity_id FROM hygiene_review WHERE resolved_at IS NULL').all() as Array<{
+        entity_id: number;
+      }>
+    ).map((r) => r.entity_id),
   );
   const insertFlag = db.prepare(`
     INSERT INTO hygiene_review (entity_id, entity_name, entity_type, reason, signals, flagged_at)
@@ -156,7 +211,9 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   for (const e of remaining) {
     if (alreadyFlagged.has(e.id)) continue;
     const relCount = (
-      db.prepare('SELECT COUNT(*) AS c FROM relations WHERE subject_id = ? OR object_id = ?').get(e.id, e.id) as { c: number }
+      db
+        .prepare('SELECT COUNT(*) AS c FROM relations WHERE subject_id = ? OR object_id = ?')
+        .get(e.id, e.id) as { c: number }
     ).c;
     const score = scoreTier2(e, relCount);
     if (score < 2) continue;
@@ -166,7 +223,8 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
     if (!e.profile) reasons.push('no profile');
     if (relCount <= 1) reasons.push(`${relCount} relation${relCount === 1 ? '' : 's'}`);
     const words = e.canonical_name.trim().split(/\s+/);
-    if (words.length === 1 && COMMON_SINGLE_WORDS.has(words[0].toLowerCase())) reasons.push('common single word');
+    if (words.length === 1 && COMMON_SINGLE_WORDS.has(words[0].toLowerCase()))
+      reasons.push('common single word');
     insertFlag.run(e.id, e.canonical_name, e.type, reasons.join(', '), score, ts);
     result.entitiesFlagged++;
   }
@@ -175,10 +233,12 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   //    Entities that had relations at the start but lost them due to Tier 1 deletions (e.g. an
   //    entity connected only to a deleted noise entity) are NOT swept here — they may be
   //    legitimate entities that simply lost a bad connection.
-  const orphans = db.prepare(`
+  const orphans = db
+    .prepare(`
     SELECT id, canonical_name FROM entities
     WHERE id NOT IN (SELECT subject_id FROM relations UNION SELECT object_id FROM relations)
-  `).all() as Array<{ id: number; canonical_name: string }>;
+  `)
+    .all() as Array<{ id: number; canonical_name: string }>;
   for (const o of orphans) {
     if (connectedAtStart.has(o.id)) continue; // was connected before this pass — skip
     db.prepare('DELETE FROM entities WHERE id = ?').run(o.id);
@@ -209,25 +269,35 @@ export function resolveHygieneItem(
 
   const ts = new Date().toISOString();
   if (resolution === 'delete') {
-    db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(
-      row.entity_id,
-      row.entity_id,
-    );
-    // Disable FK enforcement while deleting the entity so that the ON DELETE CASCADE on
-    // hygiene_review.entity_id does not wipe the review row — we need to update it below.
+    // FK must be toggled outside transactions (SQLite restriction).
     db.pragma('foreign_keys = OFF');
-    db.prepare('DELETE FROM entities WHERE id = ?').run(row.entity_id);
-    db.pragma('foreign_keys = ON');
-    db.prepare(`
-      INSERT OR IGNORE INTO noise_blocklist (name, reason, source, added_at)
-      VALUES (?, 'user_flagged_delete', 'user_resolve', ?)
-    `).run(row.entity_name, ts);
+    try {
+      db.transaction(() => {
+        db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(
+          row.entity_id,
+          row.entity_id,
+        );
+        db.prepare('DELETE FROM entities WHERE id = ?').run(row.entity_id);
+        db.prepare(`
+          INSERT OR IGNORE INTO noise_blocklist (name, reason, source, added_at)
+          VALUES (?, 'user_flagged_delete', 'user_resolve', ?)
+        `).run(row.entity_name, ts);
+        db.prepare('UPDATE hygiene_review SET resolved_at = ?, resolution = ? WHERE id = ?').run(
+          ts,
+          resolution,
+          reviewId,
+        );
+      })();
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+  } else {
+    db.prepare('UPDATE hygiene_review SET resolved_at = ?, resolution = ? WHERE id = ?').run(
+      ts,
+      resolution,
+      reviewId,
+    );
   }
-  db.prepare('UPDATE hygiene_review SET resolved_at = ?, resolution = ? WHERE id = ?').run(
-    ts,
-    resolution,
-    reviewId,
-  );
 }
 
 // ─── Blocklist loader (for biographer integration) ───────────────────────────

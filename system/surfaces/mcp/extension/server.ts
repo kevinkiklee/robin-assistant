@@ -179,20 +179,33 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
               ],
             };
           const userData = resolveUserDataDir();
-          const builtinRoot = join(resolvePath(import.meta.dirname ?? '.'), '..', '..', '..', 'integrations', 'builtin');
+          const builtinRoot = join(
+            resolvePath(import.meta.dirname ?? '.'),
+            '..',
+            '..',
+            '..',
+            'integrations',
+            'builtin',
+          );
           const userRoot = join(userData, 'extensions/integrations');
           const loaded = await loadIntegrations([builtinRoot, userRoot]);
           const match = loaded.find((i) => i.instanceName === name || i.manifest.name === name);
           if (!match)
             return {
               content: [
-                { type: 'text', text: JSON.stringify({ error: `integration '${name}' not found` }) },
+                {
+                  type: 'text',
+                  text: JSON.stringify({ error: `integration '${name}' not found` }),
+                },
               ],
             };
           if (!match.module.tick)
             return {
               content: [
-                { type: 'text', text: JSON.stringify({ error: `integration '${name}' has no tick()` }) },
+                {
+                  type: 'text',
+                  text: JSON.stringify({ error: `integration '${name}' has no tick()` }),
+                },
               ],
             };
           const ctx = buildContext(match.instanceName, deps.db, deps.llm);

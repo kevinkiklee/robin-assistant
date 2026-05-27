@@ -729,7 +729,10 @@ test('biographer: filters role markers, numbers, SHAs from extraction', async ()
   ).map((e) => e.canonical_name);
   assert.ok(names.includes('Kevin'));
   assert.ok(names.includes('Vercel'));
-  assert.ok(!names.includes('VERCEL_OIDC_TOKEN'), 'VERCEL_OIDC_TOKEN should have been filtered (env_var blocked)');
+  assert.ok(
+    !names.includes('VERCEL_OIDC_TOKEN'),
+    'VERCEL_OIDC_TOKEN should have been filtered (env_var blocked)',
+  );
   assert.ok(!names.includes('User'), 'User should have been filtered');
   assert.ok(!names.includes('ASSISTANT'), 'ASSISTANT should have been filtered');
   assert.ok(!names.includes('93f6c9c'), 'SHA should have been filtered');
@@ -797,7 +800,9 @@ test('biographer: claims pass works on knowledge.doc (no [USER] markers needed)'
   const db = freshDb();
   const llm = dualLLM(
     JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
-    JSON.stringify({ claims: [{ topic: 'home-location', claim: 'Kevin lives in Astoria', confidence: 0.9 }] }),
+    JSON.stringify({
+      claims: [{ topic: 'home-location', claim: 'Kevin lives in Astoria', confidence: 0.9 }],
+    }),
   );
   ingest(db, null, {
     kind: 'knowledge.doc',
@@ -807,7 +812,11 @@ test('biographer: claims pass works on knowledge.doc (no [USER] markers needed)'
   });
   const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
   assert.equal(r.processed, 1);
-  assert.equal(r.claimsDrafted, 1, 'claims should be drafted from knowledge.doc without [USER] markers');
+  assert.equal(
+    r.claimsDrafted,
+    1,
+    'claims should be drafted from knowledge.doc without [USER] markers',
+  );
   closeDb(db);
 });
 
