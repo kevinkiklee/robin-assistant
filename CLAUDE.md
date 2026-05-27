@@ -55,6 +55,23 @@ splitting persistence between two stores defeats the purpose.
 - At session start, read `user-data/content/knowledge/` for user preferences
   and project follow-ups.
 
+### What belongs in user-data (and what doesn't)
+
+`user-data/` is for **personal and biographical data only** — the user's life,
+preferences, relationships, health, finance, career, and creative work. It is
+**not** for dev/engineering artifacts: code bugs, git branches, npm packages,
+framework configs, Robin internal tools, session logs about coding work, or
+project-management state (Linear tickets, GitHub activity). Those are transient
+engineering detail, not durable personal knowledge.
+
+The biographer enforces this structurally: `BLOCKED_ENTITY_TYPES` in
+`system/brain/cognition/biographer.ts` prevents dev-internal entity types
+(`tool`, `error`, `repository`, `library`, `env_var`, etc.) from entering the
+graph. If you add a new entity type for engineering plumbing, add it to
+`BLOCKED_ENTITY_TYPES`. Knowledge files about engineering work (bug fixes, dev
+session logs, project follow-ups, environment setup) should **not** be written
+to `user-data/content/knowledge/`.
+
 ## Sanctioned agentic execution
 
 Agentic `query()` (the SDK tool-loop) is allowed **only** through

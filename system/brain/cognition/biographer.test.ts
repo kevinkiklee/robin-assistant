@@ -8,9 +8,16 @@ import type { LLMProvider } from '../llm/types.ts';
 import { insertBeliefCandidate, listBeliefCandidates } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { upsertEntity } from '../memory/entity.ts';
+import { ingest } from '../memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { classifyProvenance } from '../memory/provenance.ts';
-import { chunkBody, extractClaims, isLowQualityEntity, runBiographer } from './biographer.ts';
+import {
+  chunkBody,
+  extractClaims,
+  isLowQualityEntity,
+  isLowQualityPredicate,
+  runBiographer,
+} from './biographer.ts';
 import { captureSession } from './capture.ts';
 
 function freshDb() {
@@ -575,8 +582,9 @@ test('isLowQualityEntity: drops bare source-file references regardless of type',
 
 test('isLowQualityEntity: keeps <Capitalized>.js frameworks but still drops .js source files', () => {
   // Framework names follow `<Cap>.js` — real entities, not source-file noise.
+  // Type is 'service' or 'thing' (not 'library' — that's a blocked dev type now).
   for (const name of ['Three.js', 'Next.js 16', 'Node.js 24', 'Discord.js', 'NextAuth.js v5']) {
-    assert.equal(isLowQualityEntity(name, 'library'), false, `${name} framework should be kept`);
+    assert.equal(isLowQualityEntity(name, 'service'), false, `${name} framework should be kept`);
   }
   // Lowercase/hyphenated .js source files + non-.js files are still dropped.
   for (const name of ['event-bus.js:37', 'browse.js', 'Board.tsx', 'biographer.ts']) {
@@ -587,16 +595,93 @@ test('isLowQualityEntity: keeps <Capitalized>.js frameworks but still drops .js 
 test('isLowQualityEntity: keeps real entities that read like dev jargon', () => {
   // These are legitimate and must survive — concrete types are NOT subjected to
   // the dev-internal pass even when the name resembles jargon/kebab.
+  // Note: 'repository', 'library', 'tool', 'env_var' are blocked types now —
+  // real-world things that share those type names get re-typed as 'service' or
+  // 'thing' by the LLM.
   const real: Array<[string, string]> = [
     ['OpenTable', 'service'],
     ['Antonucci Cafe', 'organization'],
     ['The Met', 'place'],
-    ['landstar-construction', 'repository'], // kebab-case like lock-cleanup, but a real repo
-    ['photo-tools', 'repository'],
     ['Bergen County zoning', 'topic'], // 3-word real topic, no jargon
   ];
   for (const [name, type] of real) {
     assert.equal(isLowQualityEntity(name, type), false, `${name} (${type}) should be kept`);
+  }
+});
+
+// ─── isLowQualityPredicate ────────────────────────────────────────────────────
+
+test('isLowQualityPredicate: blocks co-occurrence fallback predicates', () => {
+  const blocked = [
+    'occurs_with',
+    'related_to',
+    'associated_with',
+    'mentioned_with',
+    'appears_with',
+    'co-occurs_with',
+    'linked_to',
+    'connected_to',
+  ];
+  for (const p of blocked) {
+    assert.equal(isLowQualityPredicate(p), true, `"${p}" should be blocked`);
+  }
+});
+
+test('isLowQualityPredicate: keeps meaningful predicates', () => {
+  const kept = [
+    'uses',
+    'works_at',
+    'lives_in',
+    'owns',
+    'treats',
+    'photographed_at',
+    'directed',
+    'ordered',
+    'authored',
+  ];
+  for (const p of kept) {
+    assert.equal(isLowQualityPredicate(p), false, `"${p}" should be kept`);
+  }
+});
+
+// ─── new entity filters: sentences, commit prefixes, phase codenames ─────────
+
+test('isLowQualityEntity: drops sentence-length thing/topic names', () => {
+  assert.equal(
+    isLowQualityEntity('Implementer subagent fixes quality issues and merges', 'thing'),
+    true,
+    'sentence-length thing should be dropped',
+  );
+  assert.equal(
+    isLowQualityEntity('execute using subagent-driven development in the current session', 'topic'),
+    true,
+    'sentence-length topic should be dropped',
+  );
+});
+
+test('isLowQualityEntity: drops conventional-commit prefixes', () => {
+  const commits = [
+    'chore(deps): drop unused packages',
+    'feat(linear): wave 2',
+    'fix(shell): offset right-rail buttons',
+    'refactor(dream): nightly cognition',
+  ];
+  for (const name of commits) {
+    assert.equal(isLowQualityEntity(name, 'thing'), true, `"${name}" should be dropped`);
+  }
+});
+
+test('isLowQualityEntity: drops phase/track codenames', () => {
+  const codenames = ['Phase 0', 'Phase 4a edge', 'Track B Phase 4e', 'Stage 2'];
+  for (const name of codenames) {
+    assert.equal(isLowQualityEntity(name, 'thing'), true, `"${name}" should be dropped`);
+  }
+});
+
+test('isLowQualityEntity: keeps short real-world thing/topic names', () => {
+  const real = ['Bergen County', 'Nikon Z8 autofocus', 'creatine', 'melatonin'];
+  for (const name of real) {
+    assert.equal(isLowQualityEntity(name, 'thing'), false, `"${name}" should be kept`);
   }
 });
 
@@ -615,13 +700,13 @@ test('biographer: filters role markers, numbers, SHAs from extraction', async ()
         { type: 'thing', name: '93f6c9c' }, // SHA — drop
         { type: 'thing', name: '10' }, // number — drop
         { type: 'thing', name: 'OFF' }, // state flag — drop
-        { type: 'env_var', name: 'VERCEL_OIDC_TOKEN' }, // keep
+        { type: 'env_var', name: 'VERCEL_OIDC_TOKEN' }, // drop (env_var is blocked type)
       ],
       relations: [
         { subject: 'Kevin', predicate: 'uses', object: 'Vercel' }, // keep
         { subject: 'User', predicate: 'installed', object: 'Vercel' }, // drop (subject)
         { subject: 'Vercel', predicate: 'set', object: 'OFF' }, // drop (object)
-        { subject: 'Vercel', predicate: 'auto-injects', object: 'VERCEL_OIDC_TOKEN' }, // keep
+        { subject: 'Vercel', predicate: 'auto-injects', object: 'VERCEL_OIDC_TOKEN' }, // drop (object blocked)
       ],
     }),
   );
@@ -634,19 +719,95 @@ test('biographer: filters role markers, numbers, SHAs from extraction', async ()
   });
   const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
   assert.equal(r.processed, 1);
-  // 3 legitimate entities, 2 legitimate relations
-  assert.equal(r.entitiesCreated, 3, `expected 3 entities, got ${r.entitiesCreated}`);
-  assert.equal(r.relationsCreated, 2, `expected 2 relations, got ${r.relationsCreated}`);
+  // 2 legitimate entities (Kevin + Vercel), 1 legitimate relation (Kevin uses Vercel)
+  // VERCEL_OIDC_TOKEN dropped (env_var is a blocked type)
+  assert.equal(r.entitiesCreated, 2, `expected 2 entities, got ${r.entitiesCreated}`);
+  assert.equal(r.relationsCreated, 1, `expected 1 relation, got ${r.relationsCreated}`);
 
   const names = (
     db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
   ).map((e) => e.canonical_name);
   assert.ok(names.includes('Kevin'));
   assert.ok(names.includes('Vercel'));
-  assert.ok(names.includes('VERCEL_OIDC_TOKEN'));
+  assert.ok(!names.includes('VERCEL_OIDC_TOKEN'), 'VERCEL_OIDC_TOKEN should have been filtered (env_var blocked)');
   assert.ok(!names.includes('User'), 'User should have been filtered');
   assert.ok(!names.includes('ASSISTANT'), 'ASSISTANT should have been filtered');
   assert.ok(!names.includes('93f6c9c'), 'SHA should have been filtered');
+  closeDb(db);
+});
+
+test('biographer: drops occurs_with relations during extraction', async () => {
+  const db = freshDb();
+  const llm = mockLLM(
+    JSON.stringify({
+      entities: [
+        { type: 'person', name: 'Kevin' },
+        { type: 'service', name: 'Vercel' },
+        { type: 'thing', name: 'Sentry' },
+      ],
+      relations: [
+        { subject: 'Kevin', predicate: 'uses', object: 'Vercel' }, // keep — meaningful
+        { subject: 'Vercel', predicate: 'occurs_with', object: 'Sentry' }, // drop — noise
+        { subject: 'Kevin', predicate: 'related_to', object: 'Sentry' }, // drop — noise
+      ],
+    }),
+  );
+  await captureSession(db, null, {
+    sessionId: 's-occurs',
+    turns: [
+      { role: 'user', content: 'deploy to vercel with sentry' },
+      { role: 'assistant', content: 'Kevin deploys to Vercel with Sentry monitoring.' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1);
+  assert.equal(r.entitiesCreated, 3, `expected 3 entities, got ${r.entitiesCreated}`);
+  assert.equal(r.relationsCreated, 1, 'only the "uses" relation should survive');
+  closeDb(db);
+});
+
+// ─── knowledge.doc event processing ──────────────────────────────────────────
+
+test('biographer: processes knowledge.doc events (not just session.captured)', async () => {
+  const db = freshDb();
+  const llm = mockLLM(
+    JSON.stringify({
+      entities: [
+        { type: 'person', name: 'Kevin' },
+        { type: 'place', name: 'Astoria' },
+      ],
+      relations: [{ subject: 'Kevin', predicate: 'lives in', object: 'Astoria' }],
+    }),
+  );
+  // Simulate what ingestContentDocs writes — a knowledge.doc event (plain markdown, no role markers)
+  ingest(db, null, {
+    kind: 'knowledge.doc',
+    source: 'docs',
+    content: 'Kevin lives in Astoria, Queens. He photographs the neighborhood often.',
+    payload: { external_id: 'doc:content/knowledge/test.md', sha: 'abc123' },
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1, 'knowledge.doc event should be processed');
+  assert.equal(r.entitiesCreated, 2);
+  assert.equal(r.relationsCreated, 1);
+  closeDb(db);
+});
+
+test('biographer: claims pass works on knowledge.doc (no [USER] markers needed)', async () => {
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    JSON.stringify({ claims: [{ topic: 'home-location', claim: 'Kevin lives in Astoria', confidence: 0.9 }] }),
+  );
+  ingest(db, null, {
+    kind: 'knowledge.doc',
+    source: 'docs',
+    content: 'Kevin lives in Astoria, Queens. He is a street photographer.',
+    payload: { external_id: 'doc:content/knowledge/test2.md', sha: 'def456' },
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
+  assert.equal(r.processed, 1);
+  assert.equal(r.claimsDrafted, 1, 'claims should be drafted from knowledge.doc without [USER] markers');
   closeDb(db);
 });
 

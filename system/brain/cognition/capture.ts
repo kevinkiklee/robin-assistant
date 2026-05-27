@@ -163,11 +163,39 @@ export async function captureSession(
 
   const content = capture.turns.map((t) => `[${t.role.toUpperCase()}]\n${t.content}`).join('\n\n');
 
+  // Classify as dev vs personal so the biographer can skip dev-heavy sessions.
+  // Conservative: only flags 'dev' when dev signals heavily dominate (>3:1 ratio
+  // AND >10 total). Mixed/ambiguous → 'personal' (biographer still extracts).
+  const category = classifySessionCategory(capture.turns);
+
   const r = await ingest(db, llm, {
     kind: 'session.captured',
     source: 'capture',
     content,
-    payload: { sessionId: capture.sessionId, hash, turnCount: capture.turns.length },
+    payload: { sessionId: capture.sessionId, hash, turnCount: capture.turns.length, category },
   });
   return { captured: true, eventId: r.eventId };
+}
+
+// ─── Session classifier ───────────────────────────────────────────────────────
+// Keyword-density heuristic: count dev-signal vs personal-signal words in the
+// session text. No LLM call, zero cost, deterministic, easily tunable.
+
+const DEV_SIGNAL_RE =
+  /\b(?:function|component|bug|deploy|commit|migration|refactor|endpoint|schema|query|lint|build|typescript|webpack|eslint|biome|pnpm|yarn|dockerfile|kubernetes|terraform|stdout|stderr|stacktrace|pull request|merge conflict|rebase|cherry-pick|bundler|transpil|import from|export default|console\.log|git (?:add|commit|push|pull|diff|log|status|checkout|branch)|npm (?:install|run|test)|test (?:fail|pass)|type ?check|node_modules|package\.json|tsconfig)\b/gi;
+
+const PERSONAL_SIGNAL_RE =
+  /\b(?:photo(?:graph)?|camera|lens|dinner|restaurant|trip|travel|family|health|movie|film|music|song|album|weather|plan|recipe|workout|sleep|recovery|bird(?:ing)?|finance|budget|insurance|mortgage|rent|apartment|doctor|medication|prescription|calendar|birthday|holiday|vacation|flight|hotel|gift|clothing|wardrobe|barbecue|park|museum|gallery|concert|podcast|book|journal)\b/gi;
+
+/** Classify a captured session as 'dev' or 'personal' based on keyword density. */
+export function classifySessionCategory(turns: SessionTurn[]): 'dev' | 'personal' {
+  const text = turns.map((t) => t.content).join(' ');
+  const devHits = (text.match(DEV_SIGNAL_RE) ?? []).length;
+  const personalHits = (text.match(PERSONAL_SIGNAL_RE) ?? []).length;
+  // Flag dev when dev signals clearly dominate. Previous 3:1 threshold was too
+  // lenient — let too many mixed coding sessions through as "personal", flooding
+  // the graph with engineering noise. 2:1 with a lower floor catches the bulk of
+  // coding sessions while still letting genuinely mixed sessions through.
+  if (devHits > 6 && devHits > personalHits * 2) return 'dev';
+  return 'personal';
 }
