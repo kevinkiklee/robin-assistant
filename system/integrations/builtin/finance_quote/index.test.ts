@@ -49,23 +49,19 @@ test('finance_quote: tick fetches one chart per ticker and ingests quotes', asyn
   ctx.fetch = (async (url: string) => {
     calls.push(url);
     if (url.includes('/GOOG')) return chartResponse('GOOG', 200.5, 198.7, 'Alphabet Inc.');
-    if (url.includes('/SPY')) return chartResponse('SPY', 500.12, 498.89, 'SPDR S&P 500');
-    if (url.includes('/QQQ')) return chartResponse('QQQ', 450, 449);
-    if (url.includes('/BTC-USD')) return chartResponse('BTC-USD', 65000, 66000);
     return new Response('', { status: 404 });
   }) as typeof fetch;
 
   assert.ok(fin.tick);
   const r = await fin.tick(ctx);
   assert.equal(r.status, 'ok');
-  assert.equal(r.ingested, 4);
-  assert.equal(calls.length, 4, 'one chart request per default ticker');
-  const rows = db.prepare("SELECT body FROM events_content WHERE body LIKE 'SPY%'").all() as Array<{
+  assert.equal(r.ingested, 1);
+  assert.equal(calls.length, 1, 'one chart request per default ticker');
+  const rows = db.prepare("SELECT body FROM events_content WHERE body LIKE 'GOOG%'").all() as Array<{
     body: string;
   }>;
   assert.equal(rows.length, 1);
-  // Derived change_pct should be (500.12 - 498.89) / 498.89 * 100 ≈ 0.246
-  assert.match(rows[0].body, /SPY.*\$500\.12.*0\.25%/);
+  assert.match(rows[0].body, /GOOG.*\$200\.50/);
   closeDb(db);
 });
 

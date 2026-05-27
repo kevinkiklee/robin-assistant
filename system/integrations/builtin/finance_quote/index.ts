@@ -8,9 +8,7 @@ import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 // Trade-off: one request per symbol instead of one batched request, but Yahoo's
 // per-IP throughput easily handles our handful of tickers.
 const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
-// GOOG is included by default as a reference equity alongside the index ETFs.
-// Override the full ticker list via the `tickers` key in integration state.
-const DEFAULT_TICKERS = ['GOOG', 'SPY', 'QQQ', 'BTC-USD'];
+const DEFAULT_TICKERS = ['GOOG'];
 
 interface Quote {
   symbol: string;

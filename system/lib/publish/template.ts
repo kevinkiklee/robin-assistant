@@ -48,12 +48,18 @@ export function wrapHtml(input: WrapHtmlInput): string {
   <link rel="stylesheet" href="/_pub/page.css">
 </head>
 <body>
-  <main class="prose">
+  <div class="page-layout">
+    <aside class="toc-sidebar" id="toc-sidebar">
+      <nav id="toc-nav" aria-label="Table of contents"></nav>
+    </aside>
+    <main class="prose">
 ${input.bodyHtml}
-  </main>
+    </main>
+  </div>
   <footer class="published-by">
     Published with Robin · ${input.dateUtc}
   </footer>
+  <script src="/_pub/toc.js" defer></script>
 </body>
 </html>
 `;
