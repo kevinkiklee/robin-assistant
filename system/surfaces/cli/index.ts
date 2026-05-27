@@ -40,6 +40,7 @@ ADVANCED
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
   ingest-docs           Index content/* now (also runs automatically every 10 min)
+  ingest-archive <dir>  Ingest text files from a directory into Robin memory
   db backup|restore|vacuum   Database maintenance
   pause | resume        Pause / resume scheduled work
   offline | online      Block / restore outbound network
@@ -335,6 +336,26 @@ async function main(): Promise<void> {
         console.log(JSON.stringify(r, null, 2));
       } else {
         printIngestDocsHuman(r);
+      }
+      exit(0);
+      break;
+    }
+
+    case 'ingest-archive': {
+      const dir = args.find((a) => !a.startsWith('--'));
+      if (!dir) {
+        console.error('Usage: robin ingest-archive <dir> [--source=name] [--json]');
+        exit(2);
+        break;
+      }
+      const srcFlag = args.find((a) => a.startsWith('--source='));
+      const source = srcFlag ? srcFlag.slice('--source='.length) : undefined;
+      const { runIngestArchive, printIngestArchiveHuman } = await import('./ingest-archive.ts');
+      const r = runIngestArchive(dir, source);
+      if (args.includes('--json')) {
+        console.log(JSON.stringify(r, null, 2));
+      } else {
+        printIngestArchiveHuman(r);
       }
       exit(0);
       break;

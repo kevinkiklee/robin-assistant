@@ -17,5 +17,8 @@ docs/superpowers/
 # Throwaway git worktrees created by agentic write-runs (system/surfaces/cli/agent.ts)
 .worktrees/
 
+# Claude Code superpowers plugin cache (per-machine, not shipped)
+.superpowers/
+
 # Local developer scratch harnesses (manual one-off runs, never shipped)
 /brief-fullrun.ts

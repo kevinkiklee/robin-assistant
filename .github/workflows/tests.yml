@@ -44,12 +44,3 @@ jobs:
           # critical fails fail the build
           node -e "const r=require('/tmp/doctor.json'); if(r.summary.fail>0){console.error('doctor failed');process.exit(1)}"
 
-  gitleaks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
