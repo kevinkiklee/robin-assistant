@@ -434,9 +434,16 @@ async function main(): Promise<void> {
         exit(0);
       }
       if (sub === 'uninstall') {
-        const { uninstallSessionEndHook } = await import('../../lib/claude-hooks/install.ts');
-        const r = uninstallSessionEndHook();
-        console.log(r.replaced ? `Removed SessionEnd hook from ${r.path}` : 'No Robin hook found');
+        const { uninstallSessionEndHook, uninstallSessionStartHook } = await import(
+          '../../lib/claude-hooks/install.ts'
+        );
+        const end = uninstallSessionEndHook();
+        const start = uninstallSessionStartHook();
+        const removed = [
+          end.replaced ? `SessionEnd hook from ${end.path}` : null,
+          start.replaced ? `SessionStart hook from ${start.path}` : null,
+        ].filter(Boolean);
+        console.log(removed.length ? `Removed ${removed.join(' and ')}` : 'No Robin hook found');
         exit(0);
       }
       console.error(`Unknown hooks subcommand: ${sub}`);
