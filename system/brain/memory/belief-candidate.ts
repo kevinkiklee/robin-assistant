@@ -59,11 +59,57 @@ function mapRow(r: RawRow): BeliefCandidate {
   };
 }
 
+// ─── Dev-artifact / Robin-internals claim filter ─────────────────────────────
+// The CLAIMS_SYSTEM_PROMPT forbids claims about Robin's own internals and
+// engineering artifacts, but the LLM emits them anyway (observed 2026-05-28:
+// 110 promoted beliefs about launchd/Pulumi/Vercel/recall.js/monorepo layout
+// after a backlog drain). The prompt is a soft contract; this is the hard one.
+// A claim is dropped when its text is *about the machinery*, not about Kevin's
+// life. Matched on the claim body (not the topic slug) so paraphrases are caught.
+// Tokens that are UNAMBIGUOUSLY about machinery — never part of a durable
+// life-fact. Ambiguous tokens that also appear in legit user preferences
+// (pnpm, Next.js/`.js`, vercel, "deploys to", playwright, sqlite, schema,
+// migration) are deliberately EXCLUDED: the machinery claims that use them all
+// lead with "Robin"/"askrobin", which the leading-subject check below catches.
+// Keeping them here would drop the prompt's own keep-example ("kevin prefers pnpm").
+const DEV_ARTIFACT_CLAIM_RE =
+  /\b(launchd|daemon|cron(?:tab|\s?job)?|plist|monorepo|dockerfile|pulumi|fly\.io|recall\.js|_journal\.json|robinmark|integration tick|biographer|dream pass|hygiene pass|cognition job|mcp servers?|mcp__|mcp tool|claude code|claude agent sdk|analytics-mcp|chrome-devtools|\.claude\.json|~\/\.claude|tsconfig|github integration|infra\/|apps\/web|repo(?:sitory)? (?:contains|structure|layout)|zsh alias|shell config|launch agent|capture-rules)\b/i;
+
+// Transient / episodic observations wrongly drafted as durable beliefs — WHOOP
+// daily-recovery sequences, "resolved on night N", dated metric arrows. These
+// are point-in-time readings (belong in the event stream, decay within days),
+// not stable facts. Tuned NOT to catch durable patterns that merely use arrows
+// (museum photowalk routes "Cooper Hewitt → Guggenheim", music comfort-loops).
+const TRANSIENT_CLAIM_RE =
+  /(resolved on night|fully resolved as of|recovery climbed|provisional[- ]rescore|\d+%?\s*\(\d{1,2}\/\d{1,2}\)\s*→|\brecovery (?:hit|dipped|dropped|climbed)\b)/i;
+
+/**
+ * Returns true when a candidate claim is about Robin's own internals or
+ * engineering artifacts (not Kevin's life), OR is a transient episodic reading
+ * (not a durable fact) — the hard backstop for the soft prompt rules. Dropped
+ * before reaching the candidate queue. Self-referential ("Robin runs as…",
+ * "Robin's scheduler…") and infra-shaped ("askrobin.io uses Pulumi") are caught
+ * by both the regex and the leading-subject checks.
+ */
+export function isLowQualityClaim(_topic: string, claim: string): boolean {
+  if (DEV_ARTIFACT_CLAIM_RE.test(claim)) return true;
+  if (TRANSIENT_CLAIM_RE.test(claim)) return true;
+  // Self-referential claims about the assistant — leading "Robin", "Robin's",
+  // "The Robin…", "askrobin…". The \b after "robin" matches the apostrophe in
+  // "Robin's", so possessive forms are caught too.
+  if (/^(robin|the robin|askrobin)\b/i.test(claim.trim())) return true;
+  // Claims whose subject is a Robin package/repo, not Kevin.
+  if (/^(robin-assistant|_robin-sync|robin-cursor|robin-gemini)/i.test(claim.trim())) return true;
+  return false;
+}
+
 /**
  * Insert a candidate belief. The topic is normalized to its canonical form.
  * Idempotent against duplicate pending proposals: if an identical pending
  * topic+claim already exists, the existing id is returned and no row is added
  * (keeps a chatty biographer from flooding the review queue with dupes).
+ * Returns `{ id: -1 }` (a sentinel, no row written) when the claim is filtered
+ * as a dev/engineering artifact — see `isLowQualityClaim`.
  */
 export function insertBeliefCandidate(
   db: RobinDb,
@@ -79,6 +125,7 @@ export function insertBeliefCandidate(
   if (!topic) throw new Error('insertBeliefCandidate: topic required');
   const claim = input.claim?.trim();
   if (!claim) throw new Error('insertBeliefCandidate: claim required');
+  if (isLowQualityClaim(topic, claim)) return { id: -1 };
 
   const existing = db
     .prepare(

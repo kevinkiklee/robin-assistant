@@ -9,6 +9,38 @@ export interface EntityRow {
   updated_at: string;
 }
 
+const VALID_ENTITY_TYPES = new Set([
+  'person',
+  'place',
+  'restaurant',
+  'organization',
+  'company',
+  'service',
+  'product',
+  'gear',
+  'camera',
+  'lens',
+  'financial_account',
+  'medication',
+  'event',
+  'project',
+  'library',
+  'tool',
+  'book',
+  'film',
+  'album',
+  'artist',
+  'species',
+  'topic',
+  'thing',
+]);
+
+export function normalizeEntityType(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  if (VALID_ENTITY_TYPES.has(lower)) return lower;
+  return 'thing';
+}
+
 export function upsertEntity(
   db: RobinDb,
   type: string,
@@ -16,6 +48,7 @@ export function upsertEntity(
   profile?: string,
 ): EntityRow {
   const name = canonicalName.trim();
+  type = normalizeEntityType(type);
   // Deduplicate on the NORMALIZED name (case-insensitive), regardless of type.
   // Deterministic backstop behind the LLM disambiguation step: collapses variants
   // disambiguation misses — "leadforge" (project), "LeadForge" (tool), "Leadforge"
@@ -78,12 +111,13 @@ export function addRelation(
   objectId: number,
   sourceEventId?: number,
 ): number {
+  const normalized = predicate.trim().replace(/\s+/g, '_').toLowerCase();
   const info = db
     .prepare(`
     INSERT INTO relations (subject_id, predicate, object_id, ts, source_event_id)
     VALUES (?, ?, ?, ?, ?)
   `)
-    .run(subjectId, predicate, objectId, new Date().toISOString(), sourceEventId ?? null);
+    .run(subjectId, normalized, objectId, new Date().toISOString(), sourceEventId ?? null);
   return Number(info.lastInsertRowid);
 }
 

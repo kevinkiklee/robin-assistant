@@ -99,7 +99,7 @@ test('buildPrimer: renders belief heads as topic: claim', () => {
   believe(db, null, { topic: 'sport', claim: 'plays hockey', date: '2026-05-23' });
   const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
   assert.match(out, /## Beliefs/);
-  assert.match(out, /google\.role: Ad Experiences/);
+  assert.match(out, /google-role: Ad Experiences/);
   assert.match(out, /sport: plays hockey/);
   closeDb(db);
 });
@@ -109,7 +109,7 @@ test('buildPrimer: only the belief HEAD is shown after supersession', () => {
   believe(db, null, { topic: 'google.role', claim: 'old role', date: '2026-05-20' });
   believe(db, null, { topic: 'google.role', claim: 'Ad Experiences', date: '2026-05-23' });
   const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
-  assert.match(out, /google\.role: Ad Experiences/);
+  assert.match(out, /google-role: Ad Experiences/);
   assert.doesNotMatch(out, /old role/);
   closeDb(db);
 });
@@ -245,7 +245,7 @@ test('buildPrimer: suspect belief (weak provenance) gets a tag', () => {
   });
   const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
   // Should contain the tag indicator characters
-  assert.match(out, /kevin\.google\.role: Ad Experiences/);
+  assert.match(out, /kevin-google-role: Ad Experiences/);
   assert.match(out, /third-party/);
   closeDb(db);
 });
@@ -261,7 +261,7 @@ test('buildPrimer: suspect belief (low effective confidence) gets a tag', () => 
     date: '2026-05-23',
   });
   const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
-  assert.match(out, /test\.inferred: some inferred fact/);
+  assert.match(out, /test-inferred: some inferred fact/);
   // Inferred is WEAK_PROVENANCE so it gets a tag
   assert.match(out, /inferred/);
   closeDb(db);

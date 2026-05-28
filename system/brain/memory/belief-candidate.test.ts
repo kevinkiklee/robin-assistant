@@ -8,6 +8,7 @@ import {
   countPendingCandidates,
   expireStaleCandidates,
   insertBeliefCandidate,
+  isLowQualityClaim,
   listBeliefCandidates,
   resolveBeliefCandidate,
 } from './belief-candidate.ts';
@@ -21,6 +22,71 @@ function freshDb() {
   applyMigrations(db, allMigrations);
   return db;
 }
+
+test('isLowQualityClaim: drops Robin-internals and dev-artifact claims', () => {
+  const dropped = [
+    ['robin-daemon', 'Robin runs as a launchd daemon on Kevin’s Mac.'],
+    ['askrobin-infra', 'askrobin.io uses Pulumi for infrastructure provisioning'],
+    [
+      'deploy',
+      'askrobin.io deploys to Vercel automatically via GitHub integration on push to main',
+    ],
+    ['recall', 'The robin daemon uses recall.js and _journal.json for memory operations.'],
+    ['monorepo', 'The askrobin.io monorepo contains apps/web, infra/vm-image, and infra/fly'],
+    ['shell', "Kevin has a zsh alias 'sz' that reloads his shell configuration."],
+    // Claude Code / MCP environment artifacts (gap found 2026-05-28 spot-check).
+    ['mcp-config', 'Kevin removed analytics-mcp from his ~/.claude.json user config.'],
+    [
+      'mcp-spawn',
+      "Kevin's Claude Code extension spawns chrome-devtools-mcp, Playwright, Context7.",
+    ],
+    ['possessive', "Robin's scheduler gained self-healing catch-up dispatch via robin-sync."],
+  ];
+  for (const [topic, claim] of dropped) {
+    assert.equal(isLowQualityClaim(topic, claim), true, `"${claim}" should be dropped`);
+  }
+});
+
+test('isLowQualityClaim: drops transient/episodic observations', () => {
+  const dropped = [
+    'The SFO redeye dip resolved on night 4: recovery climbed 53 (5/22) → 56 (5/23).',
+    'Post-redeye recovery fully resolved as of 5/26. Recovery hit 81%.',
+    'The provisional-rescore pattern continues and produced its largest observation yet.',
+  ];
+  for (const claim of dropped) {
+    assert.equal(isLowQualityClaim('whoop', claim), true, `"${claim}" should be dropped`);
+  }
+});
+
+test('isLowQualityClaim: keeps genuine life facts (incl. tool preferences and arrow routes)', () => {
+  const kept = [
+    ['home', 'Kevin lives in Astoria, Queens, NYC.'],
+    ['camera', "Kevin's primary camera is the Nikon Zf."],
+    ['health', 'Kevin has hyperlipidemia managed with atorvastatin.'],
+    ['aerospace', 'Kevin did not intern at The Aerospace Corporation.'],
+    ['employer', "Kevin's role at Google is Ad Experiences."],
+    // Durable tool preferences that name dev tech — must NOT be dropped.
+    ['pkg', 'Kevin prefers pnpm over npm.'],
+    ['stack', "Kevin's primary tech stack is TypeScript, Next.js, React, Tailwind CSS."],
+    ['deploy', 'Kevin deploys his side projects to Vercel.'],
+    // Durable patterns that merely use arrows — not transient.
+    ['photowalk', 'Kevin does museum photowalks (Cooper Hewitt → Guggenheim → The Met).'],
+  ];
+  for (const [topic, claim] of kept) {
+    assert.equal(isLowQualityClaim(topic, claim), false, `"${claim}" should be kept`);
+  }
+});
+
+test('insertBeliefCandidate: returns sentinel id -1 for filtered dev-artifact claims', () => {
+  const db = freshDb();
+  const res = insertBeliefCandidate(db, {
+    topic: 'robin-infra',
+    claim: 'Robin runs as a launchd daemon on macOS.',
+  });
+  assert.equal(res.id, -1);
+  assert.equal(countPendingCandidates(db), 0);
+  closeDb(db);
+});
 
 test('belief-candidate: insert normalizes topic and lists as pending', () => {
   const db = freshDb();

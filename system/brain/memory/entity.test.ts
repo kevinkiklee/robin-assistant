@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from './db.ts';
-import { addRelation, findEntity, getEntity, relatedEntities, upsertEntity } from './entity.ts';
+import {
+  addRelation,
+  findEntity,
+  getEntity,
+  normalizeEntityType,
+  relatedEntities,
+  upsertEntity,
+} from './entity.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 
 function freshDb() {
@@ -39,6 +46,30 @@ test('entity: get by id', () => {
   const fetched = getEntity(db, a.id);
   assert.ok(fetched);
   assert.equal(fetched.canonical_name, 'Kevin');
+  closeDb(db);
+});
+
+test('normalizeEntityType: standard types pass through', () => {
+  for (const t of ['person', 'place', 'organization', 'service', 'topic', 'thing']) {
+    assert.equal(normalizeEntityType(t), t);
+  }
+});
+
+test('normalizeEntityType: specific types are preserved, unknown map to thing', () => {
+  assert.equal(normalizeEntityType('lens'), 'lens');
+  assert.equal(normalizeEntityType('event'), 'event');
+  assert.equal(normalizeEntityType('tool'), 'tool');
+  assert.equal(normalizeEntityType('camera'), 'camera');
+  assert.equal(normalizeEntityType('film'), 'film');
+  assert.equal(normalizeEntityType('medication'), 'medication');
+  assert.equal(normalizeEntityType('PERSON'), 'person');
+  assert.equal(normalizeEntityType('unknown_garbage'), 'thing');
+});
+
+test('upsertEntity: specific types are preserved', () => {
+  const db = freshDb();
+  const e = upsertEntity(db, 'lens', 'Viltrox 85mm f/2');
+  assert.equal(e.type, 'lens');
   closeDb(db);
 });
 

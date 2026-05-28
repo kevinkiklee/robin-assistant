@@ -49,8 +49,22 @@ export interface RecallBeliefOptions {
   limit?: number;
 }
 
+/**
+ * Canonicalize a belief topic slug. Collapses style fragmentation — dots,
+ * underscores, whitespace, mixed case, and stray punctuation all converge to one
+ * kebab-case form — so `medications.ramelteon`, `Medications_Ramelteon`, and
+ * `medications ramelteon` become the single topic `medications-ramelteon`. This
+ * does NOT merge semantically-distinct slugs (`birding-location` vs
+ * `birding-interest`) — that requires judgment, not normalization.
+ */
 export function normalizeTopic(topic: string): string {
-  return topic.trim().toLowerCase().replace(/_/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-');
+  return topic
+    .trim()
+    .toLowerCase()
+    .replace(/[._\s]+/g, '-') // dots, underscores, whitespace → hyphen
+    .replace(/[^a-z0-9-]/g, '') // strip anything not alphanumeric or hyphen
+    .replace(/-+/g, '-') // collapse repeated hyphens
+    .replace(/^-+|-+$/g, ''); // trim leading/trailing hyphens
 }
 
 function localDate(d = new Date()): string {

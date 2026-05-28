@@ -553,11 +553,12 @@ ${USER_CONTEXT}
 Valid <type> values (use the MOST SPECIFIC that fits):
   person, place, restaurant, organization, company, service, product, gear,
   camera, lens, financial_account, medication, event, project, library, tool,
-  book, film, album, artist, species, topic, thing.
+  book, film, album, artist, song, species, topic, thing.
 Use "thing" ONLY when nothing more specific applies. Examples:
   "Nikon Zf" → gear (not thing), "Antonucci Cafe" → restaurant (not organization),
   "Marcus HYSA" → financial_account, "Three.js" → library, "Olive-sided Flycatcher" → species,
-  "Google I/O" → event, "ibuprofen" → medication.
+  "Google I/O" → event, "ibuprofen" → medication, "Free Bird" → song (not thing),
+  "Pet Sounds" → album (not thing).
 
 Relation rules:
 - Use a SPECIFIC, MEANINGFUL predicate — a verb phrase describing a real directed
@@ -676,6 +677,25 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
   if (/^mcp__/.test(trimmed)) return true;
   // Decimal numbers without context ("0.62", "3.14") — not entities.
   if (/^\d+\.\d+$/.test(trimmed)) return true;
+  // ISO dates ("2026-06-09", "2026-12-31", "1989-09-08") — calendar references, not entities.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+  // Year-month fragments ("2026-06").
+  if (/^\d{4}-\d{2}$/.test(trimmed)) return true;
+  // Phone numbers ("201-321-5446", "(201) 321-5446").
+  if (/^[\d(][\d() -]{7,15}$/.test(trimmed) && (trimmed.match(/\d/g)?.length ?? 0) >= 7)
+    return true;
+  // Physical measurements ("6.4 mm x 4.5 mm", "2.5 x 1.6 cm", "24.5MP", "9 rounded aperture blades").
+  if (/^\d+(\.\d+)?\s*(mm|cm|m|MP|mp|px|BPM|bpm|HU|hu|kg|lbs|lb|oz|°F|°C)\b/.test(trimmed))
+    return true;
+  // Dimension strings ("6.4 mm x 4.5 mm").
+  if (/^\d+(\.\d+)?\s*(mm|cm|m)?\s*x\s*\d/i.test(trimmed)) return true;
+  // Body-metric fragments ("recovery 78%", "65 BPM", "80HU").
+  if (/^\d+(\.\d+)?%$/.test(trimmed)) return true;
+  if (/^recovery\s+\d/i.test(trimmed)) return true;
+  // Vague temporal fragments ("~July", "~March 2026").
+  if (/^~/.test(trimmed)) return true;
+  // Bare aperture/focal-length fragments without a brand ("100-400mm", "120mm corner softness").
+  if (/^\d+-?\d*mm\b/.test(trimmed)) return true;
 
   // ─── Type-aware engineering-internal pass ─────────────────────────────────
   // Only the noise-prone, low-specificity types. Concrete types (person, place,
@@ -1408,13 +1428,15 @@ export async function runBiographer(
             for (const c of claims) {
               if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
               if (!c.topic?.trim() || !c.claim?.trim()) continue;
-              insertBeliefCandidate(db, {
+              const inserted = insertBeliefCandidate(db, {
                 topic: c.topic,
                 claim: c.claim,
                 confidence: c.confidence ?? null,
                 sourceEventId: target.eventId,
                 provenance: targetProvenance,
               });
+              // id === -1 → filtered as a dev/engineering artifact; don't count it.
+              if (inserted.id === -1) continue;
               sessionPending++;
               result.claimsDrafted++;
             }

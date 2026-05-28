@@ -136,6 +136,52 @@ test('ingestContentDocs: a changed doc re-ingests in place and invalidates the e
   closeDb(db);
 });
 
+test('ingestContentDocs: excluded paths are skipped', () => {
+  const { db, dir } = fixtureRoot();
+  writeDoc(dir, join('content', 'knowledge', 'good.md'), '# Good\nkeep this');
+  writeDoc(dir, join('content', 'knowledge', 'imported-from-v1', 'tasks.md'), '# Stale\nold tasks');
+  writeDoc(
+    dir,
+    join('content', 'knowledge', 'imported-from-v1', 'self-improvement', 'corrections.md'),
+    '# Stale\nold corrections',
+  );
+  writeDoc(
+    dir,
+    join('content', 'knowledge', 'imported-from-v1', 'knowledge', 'finance', 'accounts.md'),
+    '# OK\nlegit v1 data',
+  );
+  writeDoc(
+    dir,
+    join('content', 'knowledge', 'robin-operations', 'daily-brief-protocol.md'),
+    '# Ops\nengineering doc',
+  );
+  writeDoc(
+    dir,
+    join('content', 'knowledge', 'robin-operations', 'kevin-preferences.md'),
+    '# Prefs\npersonal prefs',
+  );
+
+  const r = ingestContentDocs(db, null, { userDataDir: dir });
+  assert.equal(r.ingested, 3, 'good.md + v1/knowledge/finance/accounts.md + kevin-preferences.md');
+
+  const paths = (
+    db
+      .prepare(
+        `SELECT json_extract(payload,'$.path') AS path FROM events WHERE kind = 'knowledge.doc'`,
+      )
+      .all() as { path: string }[]
+  ).map((r) => r.path);
+
+  assert.ok(paths.includes('content/knowledge/good.md'));
+  assert.ok(paths.includes('content/knowledge/imported-from-v1/knowledge/finance/accounts.md'));
+  assert.ok(paths.includes('content/knowledge/robin-operations/kevin-preferences.md'));
+  assert.ok(!paths.includes('content/knowledge/imported-from-v1/tasks.md'));
+  assert.ok(!paths.includes('content/knowledge/imported-from-v1/self-improvement/corrections.md'));
+  assert.ok(!paths.includes('content/knowledge/robin-operations/daily-brief-protocol.md'));
+
+  closeDb(db);
+});
+
 test('ingestContentDocs: missing content dirs → zero work, no throw', () => {
   const { db, dir } = fixtureRoot();
   const r = ingestContentDocs(db, null, { userDataDir: dir });

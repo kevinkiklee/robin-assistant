@@ -627,6 +627,38 @@ test('isLowQualityEntity: drops Robin-internal jargon as thing/topic', () => {
   }
 });
 
+test('isLowQualityEntity: drops dates, phone numbers, measurements, and vague temporals', () => {
+  const noise: Array<[string, string?]> = [
+    ['2026-06-09'],
+    ['2026-12-31'],
+    ['1989-09-08'],
+    ['2026-06'],
+    ['201-321-5446'],
+    ['(201) 321-5446'],
+    ['6.4 mm x 4.5 mm'],
+    ['24.5MP'],
+    ['65 BPM'],
+    ['80HU'],
+    ['78%'],
+    ['recovery 78%'],
+    ['~July'],
+    ['~March 2026'],
+    ['100-400mm'],
+    ['120mm corner softness', 'thing'],
+    ['2.5 x 1.6 cm'],
+  ];
+  for (const [name, type] of noise) {
+    assert.equal(isLowQualityEntity(name, type), true, `"${name}" should be dropped`);
+  }
+});
+
+test('isLowQualityEntity: keeps real entities that resemble measurements', () => {
+  const kept = ['Nikon 100-400mm f/4.5-5.6 S', 'Bergen County NJ', 'Viltrox 85mm f/2', 'Kevin Lee'];
+  for (const name of kept) {
+    assert.equal(isLowQualityEntity(name), false, `"${name}" should be kept`);
+  }
+});
+
 // ─── isLowQualityPredicate ────────────────────────────────────────────────────
 
 test('isLowQualityPredicate: blocks co-occurrence fallback predicates', () => {

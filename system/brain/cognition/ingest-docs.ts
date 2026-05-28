@@ -14,6 +14,26 @@ const DOC_SOURCE = 'docs';
  *  are intentionally included — recall is local, the user migrated them on purpose. */
 const SCAN_SUBDIRS = [join('content', 'knowledge'), join('content', 'profile')];
 
+/** Relative path prefixes (POSIX) excluded from ingestion. These are stale V1
+ *  engineering artifacts, Robin operational docs, or archived dev-internal files
+ *  that pollute the knowledge graph without adding personal/biographical value. */
+const EXCLUDED_PREFIXES = [
+  'content/knowledge/imported-from-v1/self-improvement/',
+  'content/knowledge/imported-from-v1/streams/',
+  'content/knowledge/imported-from-v1/watches/',
+  'content/knowledge/imported-from-v1/tasks.md',
+  'content/knowledge/imported-from-v1/ENTITIES.md',
+  'content/knowledge/imported-from-v1/LINKS.md',
+  'content/knowledge/imported-from-v1/MANIFEST.md',
+  'content/knowledge/imported-from-v1/INDEX.md',
+  'content/knowledge/imported-from-v1/hot.md',
+  'content/knowledge/imported-from-v1/_PROVENANCE.md',
+  'content/knowledge/archive/resolved-bugs/',
+  'content/knowledge/archive/sessions/',
+  'content/knowledge/robin-operations/cross-link-proactively.md',
+  'content/knowledge/robin-operations/daily-brief-protocol.md',
+];
+
 export interface IngestContentDocsOptions {
   /** Override the user-data root. Defaults to `resolveUserDataDir()`. */
   userDataDir?: string;
@@ -86,6 +106,10 @@ export function ingestContentDocs(
       // Relative path is the stable identity, normalized to POSIX separators so the
       // external_id is portable across platforms.
       const rel = relative(root, file).split('\\').join('/');
+      if (EXCLUDED_PREFIXES.some((p) => rel.startsWith(p))) {
+        result.skipped++;
+        continue;
+      }
       const externalId = `doc:${rel}`;
       const body = readFileSync(file, 'utf8');
       const sha = hashBody(body);
