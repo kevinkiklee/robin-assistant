@@ -21,14 +21,18 @@ const MIME_TO_EXT = new Map([
   ['image/avif', 'avif'],
 ]);
 
-function isLocalImageUrl(url: string | undefined): boolean {
+// Exported (alongside walkLocalImages) so tests can pin down the small functions
+// that carry the security-critical invariants — local-vs-remote URL classification,
+// path-traversal rejection, and content-hash derivation. The factoring is the same
+// either way; the only change is making the seams testable.
+export function isLocalImageUrl(url: string | undefined): boolean {
   if (!url) return false;
   if (url.startsWith('data:')) return false;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return url.toLowerCase().startsWith('file://');
   return true;
 }
 
-function resolveLocalPath(url: string, sourceDir: string): string {
+export function resolveLocalPath(url: string, sourceDir: string): string {
   let p = url;
   if (p.toLowerCase().startsWith('file://')) p = p.replace(/^file:\/\//i, '');
   const abs = resolve(sourceDir, p);
@@ -39,7 +43,7 @@ function resolveLocalPath(url: string, sourceDir: string): string {
   return abs;
 }
 
-function hashAsset(bytes: Buffer): string {
+export function hashAsset(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
 }
 

@@ -1,8 +1,11 @@
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { getGoogleAccessToken } from '../../_auth/oauth-google.ts';
+import { makeGoogleGet } from '../../_runtime/google-api.ts';
+import { readJsonArrayState } from '../../_runtime/state-helpers.ts';
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const API_BASE = 'https://www.googleapis.com/calendar/v3';
+const calGet = makeGoogleGet('calendar', API_BASE);
 
 export interface CalendarEvent {
   id: string;
@@ -20,14 +23,6 @@ export interface CalendarEvent {
 interface EventsListResponse {
   items?: CalendarEvent[];
   nextPageToken?: string;
-}
-
-async function calGet<T>(ctx: IntegrationContext, path: string, token: string): Promise<T> {
-  const res = await ctx.fetch(`${API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`calendar ${path} returned ${res.status}: ${await res.text()}`);
-  return (await res.json()) as T;
 }
 
 function formatEventTime(e: CalendarEvent): string {
@@ -63,15 +58,9 @@ export const integration: Integration = {
     const events = list.items ?? [];
 
     let ingested = 0;
-    // Dedup cache is self-managed state; a corrupt value should reset + warn,
-    // never throw and wedge the tick.
-    let seenIds: string[] = [];
-    try {
-      seenIds = JSON.parse(ctx.state.get('seen_event_ids') ?? '[]');
-    } catch {
-      ctx.log.warn({ key: 'seen_event_ids' }, 'corrupt dedup state; resetting to empty');
-    }
-    const seen = new Set(seenIds);
+    // Dedup cache is self-managed state; corruption is handled in readJsonArrayState
+    // (warn + reset to empty) so a bad value never wedges the tick.
+    const seen = new Set(readJsonArrayState<string>(ctx, 'seen_event_ids'));
     const totalEvents = events.length;
     let eventIndex = 0;
     for (const ev of events) {

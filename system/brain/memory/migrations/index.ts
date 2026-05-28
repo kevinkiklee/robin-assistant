@@ -13,6 +13,8 @@ import { migration012 } from './012-import-dedup-keys.ts';
 import { migration013 } from './013-belief-candidate-provenance.ts';
 import { migration014 } from './014-correction-topic.ts';
 import { migration015 } from './015-hygiene.ts';
+import { migration016 } from './016-perf-indexes.ts';
+import { migration017 } from './017-drop-hygiene-review.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -31,6 +33,8 @@ export const allMigrations: Migration[] = [
   migration013,
   migration014,
   migration015,
+  migration016,
+  migration017,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

@@ -1,8 +1,10 @@
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { getGoogleAccessToken } from '../../_auth/oauth-google.ts';
+import { makeGoogleGet } from '../../_runtime/google-api.ts';
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
+const gmailGet = makeGoogleGet('gmail', API_BASE);
 
 interface MessageListItem {
   id: string;
@@ -21,14 +23,6 @@ interface ListResponse {
   messages?: MessageListItem[];
   nextPageToken?: string;
   resultSizeEstimate?: number;
-}
-
-async function gmailGet<T>(ctx: IntegrationContext, path: string, token: string): Promise<T> {
-  const res = await ctx.fetch(`${API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`gmail ${path} returned ${res.status}: ${await res.text()}`);
-  return (await res.json()) as T;
 }
 
 function header(msg: Message, name: string): string | null {

@@ -56,7 +56,7 @@ test('migrations apply cleanly up to latest version', () => {
   closeDb(db);
 });
 
-test('migration 015: noise_blocklist + hygiene_review tables exist', () => {
+test('migration 015 + 017: noise_blocklist stays, hygiene_review is dropped (no user-facing triage)', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const tables = db
@@ -64,7 +64,7 @@ test('migration 015: noise_blocklist + hygiene_review tables exist', () => {
     .all() as Array<{ name: string }>;
   const names = tables.map((t) => t.name);
   assert.ok(names.includes('noise_blocklist'), 'noise_blocklist table missing');
-  assert.ok(names.includes('hygiene_review'), 'hygiene_review table missing');
+  assert.ok(!names.includes('hygiene_review'), 'hygiene_review should be dropped by 017');
 
   const cols = db.prepare('PRAGMA table_info(noise_blocklist)').all() as Array<{ name: string }>;
   const colNames = cols.map((c) => c.name).sort();
@@ -165,5 +165,50 @@ test('schema 001: indexes on events are created', () => {
   assert.ok(names.includes('events_ts'));
   assert.ok(names.includes('events_kind_ts'));
   assert.ok(names.includes('events_source_ts'));
+  closeDb(db);
+});
+
+test('migration 016: perf indexes for ingest dedup + candidate dedup exist', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const idx = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as Array<{
+    name: string;
+  }>;
+  const names = idx.map((i) => i.name);
+  assert.ok(names.includes('events_source_external_id'), 'events_source_external_id index missing');
+  assert.ok(
+    names.includes('belief_candidates_pending_topic_claim'),
+    'belief_candidates_pending_topic_claim index missing',
+  );
+
+  // The events index is partial — query plan should use it for the upsert probe.
+  const plan = db
+    .prepare(
+      `EXPLAIN QUERY PLAN
+       SELECT id FROM events
+       WHERE source = ? AND json_extract(payload, '$.external_id') = ?`,
+    )
+    .all('gmail', 'msg-123') as Array<{ detail: string }>;
+  const planText = plan.map((p) => p.detail).join(' | ');
+  assert.match(
+    planText,
+    /events_source_external_id/,
+    `query plan did not use the new index: ${planText}`,
+  );
+
+  // The candidate index is partial on status='pending' — dedup probe should hit it.
+  const candidatePlan = db
+    .prepare(
+      `EXPLAIN QUERY PLAN
+       SELECT id FROM belief_candidates
+       WHERE status = 'pending' AND topic = ? AND claim = ?`,
+    )
+    .all('mood', 'kevin felt good today') as Array<{ detail: string }>;
+  const candidatePlanText = candidatePlan.map((p) => p.detail).join(' | ');
+  assert.match(
+    candidatePlanText,
+    /belief_candidates_pending_topic_claim/,
+    `candidate dedup did not use the new index: ${candidatePlanText}`,
+  );
   closeDb(db);
 });

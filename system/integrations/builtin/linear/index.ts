@@ -1,3 +1,4 @@
+import { readJsonArrayState } from '../../_runtime/state-helpers.ts';
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 import { gql, type LinearIssue, requireKey } from './gql.ts';
 import { openMappedIssueIds, refreshStateTypes } from './map.ts';
@@ -89,15 +90,9 @@ export const integration: Integration = {
     };
 
     let ingested = 0;
-    // Dedup cache is self-managed state; a corrupt value should reset + warn,
-    // never throw and wedge the tick.
-    let seenIds: string[] = [];
-    try {
-      seenIds = JSON.parse(ctx.state.get('seen_issue_ids') ?? '[]');
-    } catch {
-      ctx.log.warn({ key: 'seen_issue_ids' }, 'corrupt dedup state; resetting to empty');
-    }
-    const seen = new Set(seenIds);
+    // Dedup cache is self-managed state; corruption is handled in readJsonArrayState
+    // (warn + reset to empty) so a bad value never wedges the tick.
+    const seen = new Set(readJsonArrayState<string>(ctx, 'seen_issue_ids'));
     let after: string | undefined;
     let totalFetched = 0;
 
