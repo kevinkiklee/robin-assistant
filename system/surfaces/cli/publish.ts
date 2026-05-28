@@ -118,6 +118,8 @@ export async function runPublishedCli(rawArgs: string[]): Promise<void> {
   });
 
   const userData = resolveUserDataDir();
+  loadEnvFile(userData);
+  const userId = process.env.PUBLISH_USER_ID || 'user';
   const { entries, skipped } = await readLog(logPathFor(userData));
   if (entries.length === 0) {
     stdout.write('(no published pages)\n');
@@ -136,7 +138,7 @@ export async function runPublishedCli(rawArgs: string[]): Promise<void> {
   const sorted = [...rows].sort((a, b) => (b.lastTs ?? '').localeCompare(a.lastTs ?? ''));
   for (const r of sorted) {
     const ts = (r.lastTs ?? '').replace('T', ' ').slice(0, 16);
-    const url = `/p/${trunc(r.slug, 30)}`;
+    const url = `/@${userId}/${trunc(r.slug, 30 - userId.length - 2)}`;
     const action = r.lastAction === 'delete' ? 'DELETED' : (r.lastAction ?? '');
     const count = r.lastAction === 'delete' ? '—' : `${r.count}×`;
     const source = r.lastAction === 'delete' ? '—' : trunc(r.lastSource ?? '', 40);
