@@ -29,8 +29,10 @@ const PHASE_CODENAME_RE = /^(?:Phase|Track|Stage|Sprint|Milestone)\s/i;
 const DB_TABLE_REF_RE = /\b(?:table|column|index|migration|constraint|foreign key)$/i;
 const IMPORT_RE = /^(?:import|require|export)\s/;
 const OUTPUT_RE = /^output:\s/;
+// CSS units require a leading digit (16px, 1.5rem) so they don't match real
+// words ending in px/rem — e.g. the medication "Rozerem".
 const CODE_SYNTAX_RE =
-  /(?:=>|::|`|^\{|^\[|^\(|var\(--|px\b|rem\b|width:|height:|background:|border:)/;
+  /(?:=>|::|`|^\{|^\[|^\(|var\(--|\d(?:px|rem)\b|width:|height:|background:|border:)/;
 const MCP_TOOL_RE = /^mcp__/;
 const CLI_CMD_RE = /^(?:git|pnpm|npm|npx|yarn|node|tsx|tsc|bun|deno|python|pip|cargo|rustc)\s/;
 // Robin's own internal jargon — entities named after the system's machinery are

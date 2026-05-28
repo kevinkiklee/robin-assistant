@@ -97,12 +97,15 @@ test('hygiene: keeps real media/topics that contain dev-ambiguous English words 
   // token list (migration, dream, recall, hygiene, schema, intuition, ...). Give each
   // a profile + 2 relations so they clear Tier 2 (score < 2), isolating the Tier 1 fix.
   const names = [
-    'Requiem for a Dream',
-    'bird migration',
-    'Sleep hygiene',
-    'Total Recall',
-    'schema therapy',
-    'morning intuition',
+    'Requiem for a Dream', // dev_jargon: "dream"
+    'bird migration', // dev_jargon: "migration"
+    'spring bird migration', // db_table_ref: ends in "migration" (no snake_case)
+    'Sleep hygiene', // dev_jargon: "hygiene"
+    'Total Recall', // dev_jargon: "recall"
+    'schema therapy', // dev_jargon: "schema"
+    'morning intuition', // dev_jargon: "intuition"
+    'Rozerem', // code_syntax: ends in "rem"
+    'glycemic index', // db_table_ref: ends in "index"
   ];
   for (const n of names) {
     const e = upsertEntity(db, 'topic', n, `A real topic: ${n}.`);
