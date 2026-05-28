@@ -1,135 +1,96 @@
 # CLAUDE.md — robin-assistant
 
-Guidance for Claude Code (and any LLM-powered coding agent) working on this
-repository.
+## Architecture
 
-## Architecture overview
-
-Robin is a local-first personal AI assistant. The codebase has three layers:
+Robin is a local-first personal AI assistant. Three layers:
 
 ```
-system/                 ← framework: kernel (daemon + scheduler), brain (memory +
-                          cognition), integrations runtime, surfaces (CLI, HTTP, MCP)
-user-data/              ← per-user instance data (gitignored): memory, secrets,
-                          extensions, jobs, knowledge files
-dist/                   ← compiled output (gitignored); `pnpm build` to regenerate
+system/       ← framework: kernel (daemon + scheduler), brain (memory +
+                cognition), integrations runtime, surfaces (CLI, HTTP, MCP)
+user-data/    ← per-user instance data (gitignored): memory, secrets,
+                extensions, jobs, knowledge files
+dist/         ← compiled output (gitignored); `pnpm build` to regenerate
 ```
 
-Runtime: Node.js 24+, ES modules, TypeScript (tsx for dev, tsc for build).
-Database: SQLite via better-sqlite3 + sqlite-vec for vector search.
-Package manager: pnpm.
+Runtime: Node.js 24+, ESM, TypeScript. Database: SQLite (better-sqlite3 +
+sqlite-vec). Package manager: pnpm.
 
-## Common commands
+## Commands
 
 ```bash
-pnpm install              # install dependencies
-pnpm build                # tsc + build extensions → dist/
-pnpm test                 # node --test across system/
-pnpm lint                 # biome lint
-pnpm typecheck            # tsc --noEmit
+pnpm install                # install deps
+pnpm build                  # tsc + build extensions → dist/
+pnpm test                   # node --test across system/
+pnpm lint                   # biome lint
+pnpm typecheck              # tsc --noEmit
+pnpm exec tsx --test <file> # single test
 ```
 
-Run a single test file:
-```bash
-pnpm exec tsx --test system/path/to/file.test.ts
-```
+Daemon: `launchctl kickstart -k gui/$(id -u)/io.robin-assistant.daemon`
 
-## CLI usage
+## Memory & user-data
 
-The user does not run `robin` CLI commands directly except when absolutely
-necessary. When building features that ingest data, run jobs, or perform
-maintenance, **call the underlying functions programmatically** (via scripts,
-the daemon scheduler, or MCP actions) rather than adding user-facing CLI
-subcommands. The CLI exists for one-time setup (`init`, `reauth`, `doctor`)
-and internal plumbing — not as a daily interface.
+`user-data/content/knowledge/` is Robin's memory store. Prefer it over Claude
+Code's memory system for cross-session context — Robin IS the memory system.
 
-## Memory & persistence
+`user-data/` is for **personal data only** (life, preferences, health, finance,
+career, creative work) — not dev artifacts (bugs, branches, packages, configs).
+The biographer's `BLOCKED_ENTITY_TYPES` in `system/brain/cognition/biographer.ts`
+enforces this; add new engineering entity types there.
 
-Robin manages its own memory in `user-data/content/knowledge/`. When working
-on this repo as a contributor, **prefer Robin's user-data for cross-session
-memory over Claude Code's own memory system** — Robin IS the memory system, and
-splitting persistence between two stores defeats the purpose.
+## Secrets
 
-- Save context to `user-data/content/knowledge/<descriptive-name>.md` with
-  `node_type: memory` frontmatter.
-- At session start, read `user-data/content/knowledge/` for user preferences
-  and project follow-ups.
+Secrets live in `user-data/config/secrets/.env` (gitignored). **Every process
+entry point must call `loadEnvFile(userData)` before running integrations** —
+daemon, both MCP servers, and standalone scripts. Forgetting this is a silent
+failure (integration skips with "not set"). OAuth tokens rotate; use
+`robin reauth <integration>` to refresh.
 
-### What belongs in user-data (and what doesn't)
+## Agentic execution
 
-`user-data/` is for **personal and biographical data only** — the user's life,
-preferences, relationships, health, finance, career, and creative work. It is
-**not** for dev/engineering artifacts: code bugs, git branches, npm packages,
-framework configs, Robin internal tools, session logs about coding work, or
-project-management state (Linear tickets, GitHub activity). Those are transient
-engineering detail, not durable personal knowledge.
-
-The biographer enforces this structurally: `BLOCKED_ENTITY_TYPES` in
-`system/brain/cognition/biographer.ts` prevents dev-internal entity types
-(`tool`, `error`, `repository`, `library`, `env_var`, etc.) from entering the
-graph. If you add a new entity type for engineering plumbing, add it to
-`BLOCKED_ENTITY_TYPES`. Knowledge files about engineering work (bug fixes, dev
-session logs, project follow-ups, environment setup) should **not** be written
-to `user-data/content/knowledge/`.
-
-## Sanctioned agentic execution
-
-Agentic `query()` (the SDK tool-loop) is allowed **only** through
-`system/agent/runAgent`. That one primitive is ledger-accounted (one
-`agent_usage` row per run), tool-allowlisted (explicit `allowedTools`, no
-"all"), turn/time/budget-capped (`maxTurns` + `timeoutMs` + `maxBudgetUsd` +
-per-surface daily cap), and worktree-isolated for write work. Every run leaves a
-full JSONL transcript on disk, so the loop is auditable, not opaque.
-
-Write isolation is enforced by the SDK's **OS-level sandbox** (`sandbox.enabled`
-— seatbelt on macOS, bubblewrap on Linux), which confines every command,
-including arbitrary Bash (`>`, `tee`, `cp`, `python -c`, `git -C …`), to the
-run's `cwd` (the throwaway worktree). The handler's `canUseTool` deny-callback is
-only secondary defense-in-depth — it sees Write/Edit tool inputs, never what a
-Bash command actually writes, so it can't confine Bash on its own. The sandbox is
-fail-closed (`failIfUnavailable: true`): a host that can't sandbox makes the
-write-run error rather than write unconfined.
-
-Direct `claude -p` shell-outs, and any path that reaches `query()` without going
-through `runAgent`, remain **banned** — no ad-hoc nested sessions in jobs,
-integrations, surfaces, or workarounds. For plain (non-agentic) LLM work, use
+Agentic `query()` is allowed **only** through `system/agent/runAgent` — ledger-
+accounted, tool-allowlisted, turn/time/budget-capped, worktree-isolated for
+writes, OS-level sandboxed (seatbelt/bubblewrap), JSONL-transcribed. Direct
+`claude -p` shell-outs are banned. For non-agentic LLM work, use
 `llm.invoke(role, …)` through the dispatcher.
 
 ## Code conventions
 
-- Match the surrounding code's style — comment density, naming, idiom.
-- Integration handlers live in `system/integrations/builtin/<name>/` (shipped
-  with the package) or `user-data/extensions/integrations/<name>/` (per-user,
-  gitignored).
-- Every integration has an `integration.yaml` manifest + `index.ts` with a
-  `tick()` function and optional `actions` for MCP.
-- Tests are collocated: `foo.ts` → `foo.test.ts`, using `node:test` + `assert`.
-- Integration ticks run inside a 120s `withTimeout`, so a hung integration
-  cannot wedge the tick loop. Cognition jobs (biographer/dream/embedder) and
-  user jobs are not blanket-wrapped — they intentionally run longer and are
-  bounded by their own per-LLM-call timeouts and (for agentic runs) the SDK
-  `timeoutMs`, not a scheduler-level cap.
+- Match surrounding style. Tests collocated: `foo.ts` → `foo.test.ts` (`node:test` + `assert`).
+- Integrations: `system/integrations/builtin/<name>/` (shipped) or
+  `user-data/extensions/integrations/<name>/` (per-user, gitignored).
+  Each has `integration.yaml` + `index.ts` with `tick()` and optional MCP `actions`.
+- `pnpm build` compiles user-data extensions in-place (`.ts` → `.js` alongside).
+- Integration ticks run inside 120s `withTimeout`. Cognition jobs and user jobs
+  are bounded by per-LLM-call timeouts and SDK `timeoutMs`, not a scheduler cap.
 
 ## MCP servers
 
-Robin exposes two MCP servers (stdio transport):
+Two stdio MCP servers (configured in `.mcp.json`):
 
-- `robin mcp core` — read/write memory: list, recall, remember, believe,
-  predict, find_entity, journal, health, metrics.
-- `robin mcp extension` — integration actions, run, update, chrome, finance,
-  gmail, google_calendar, linear, github, spotify, ingest.
+- `robin mcp core` — memory read/write: list, recall, remember, believe, predict, etc.
+- `robin mcp extension` — integration actions, run, update, chrome, finance, gmail, etc.
 
-Configure via `.mcp.json` (copy `.mcp.json.example` and adjust paths).
+MCP servers are **separate processes** from the daemon — they don't share
+process.env or DB connections. Each must independently call `loadEnvFile()` and
+`openDb()`.
 
-## Secrets
+## Publish pipeline
 
-Secrets live in `user-data/config/secrets/.env` (gitignored). The daemon loads
-them at startup via `loadEnvFile()`. OAuth tokens for Google integrations
-rotate; use `robin reauth <integration>` to refresh them.
+`system/lib/publish/` converts markdown → HTML → Vercel Blob, served at
+`askrobin.io/p/<slug>`. Static assets (CSS, JS) live in
+`~/workspace/robin/askrobin.io/apps/web/public/_pub/`. The template
+(`template.ts`) wraps body HTML; `rehype-slug` generates heading IDs for the
+external TOC script (`toc.js`). Route handler is at
+`askrobin.io/apps/web/app/p/[slug]/route.ts` (CSP: `script-src 'self'`).
 
 ## Per-user instance
 
-After cloning, run `robin init` for one-time setup (creates `user-data/`,
-seeds config, optionally installs the launchd daemon). The `user-data/`
-directory is fully gitignored — it contains personal data, secrets, and
-instance-specific configuration that must never be committed.
+`robin init` for one-time setup. `user-data/` is fully gitignored.
+
+## Gotchas
+
+- `pnpm exec tsx -e` doesn't support top-level await — use a temp `.ts` file with `async function main()`.
+- `hygiene_review.entity_id` joins to `entities`/`relations` for context display.
+- Published HTML is sanitized (no `<script>` tags in body) — scripts go in the template or as external `/_pub/*.js` files.
+- The daily brief is pre-generated at 4:30am; the skeleton renders all sections deterministically, then dream-synthesis merges reasoning. Reordering sections in the skeleton won't retroactively fix today's brief.
