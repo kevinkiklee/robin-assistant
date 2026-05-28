@@ -89,6 +89,58 @@ test('hygiene: deletes bare domain names captured as thing/topic', () => {
   closeDb(db);
 });
 
+test('hygiene: keeps real media/topics that contain dev-ambiguous English words (regression)', () => {
+  const db = freshDb();
+  const kevin = upsertEntity(db, 'person', 'Kevin');
+  const other = upsertEntity(db, 'person', 'Alex');
+  // Previously deleted AND permanently blocklisted as dev_jargon by the over-broad
+  // token list (migration, dream, recall, hygiene, schema, intuition, ...). Give each
+  // a profile + 2 relations so they clear Tier 2 (score < 2), isolating the Tier 1 fix.
+  const names = [
+    'Requiem for a Dream',
+    'bird migration',
+    'Sleep hygiene',
+    'Total Recall',
+    'schema therapy',
+    'morning intuition',
+  ];
+  for (const n of names) {
+    const e = upsertEntity(db, 'topic', n, `A real topic: ${n}.`);
+    addRelation(db, e.id, 'uses', kevin.id);
+    addRelation(db, e.id, 'likes', other.id);
+  }
+  runHygiene(db);
+  const remaining = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  const bl = loadNoiseBlocklist(db);
+  for (const n of names) {
+    assert.ok(remaining.includes(n), `"${n}" should be kept (not Tier 1 noise)`);
+    assert.ok(!bl.has(n.toLowerCase()), `"${n}" must not be blocklisted`);
+  }
+  closeDb(db);
+});
+
+test('hygiene: PHONE_RE keeps year ranges but still deletes real phone numbers', () => {
+  const db = freshDb();
+  const kevin = upsertEntity(db, 'person', 'Kevin');
+  const other = upsertEntity(db, 'person', 'Sam');
+  // Year range — must be KEPT (the old digit-soup regex deleted it as a phone number).
+  const yr = upsertEntity(db, 'topic', '2024 - 2026', 'The span of a project.');
+  addRelation(db, yr.id, 'uses', kevin.id);
+  addRelation(db, yr.id, 'likes', other.id);
+  // A real phone number typed as thing is still noise — still deleted + blocklisted.
+  upsertEntity(db, 'thing', '201-321-5446');
+  runHygiene(db);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(names.includes('2024 - 2026'), 'year range kept');
+  assert.ok(!names.includes('201-321-5446'), 'real phone number deleted');
+  assert.ok(loadNoiseBlocklist(db).has('201-321-5446'), 'phone number blocklisted');
+  closeDb(db);
+});
+
 test('hygiene: deletes sentence-length thing/topic', () => {
   const db = freshDb();
   upsertEntity(db, 'thing', 'Implementer subagent fixes quality issues and merges code');

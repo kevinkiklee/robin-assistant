@@ -33,12 +33,20 @@ const CODE_SYNTAX_RE =
   /(?:=>|::|`|^\{|^\[|^\(|var\(--|px\b|rem\b|width:|height:|background:|border:)/;
 const MCP_TOOL_RE = /^mcp__/;
 const CLI_CMD_RE = /^(?:git|pnpm|npm|npx|yarn|node|tsx|tsc|bun|deno|python|pip|cargo|rustc)\s/;
+// Robin's own internal jargon — entities named after the system's machinery are
+// noise. Tokens here must be UNAMBIGUOUSLY software jargon: ambiguous English
+// words (dream, brief, recall, migration, schema, route, hygiene, cognition,
+// intuition, primer, cache) were removed because they delete real media/topics
+// ("Requiem for a Dream", "bird migration", "Sleep hygiene"). Robin's own
+// component names are caught separately by the `dev_internal` reason.
 const DEV_JARGON_RE =
-  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|cache|route|schema|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|migration|worktree|wrappers|prune|singleton|crud|dream|brief|recall|ingest|primer|intuition|embedder|hygiene|cognition)(?:$|[\s-])/i;
+  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|worktree|wrappers|prune|singleton|crud|ingest|embedder)(?:$|[\s-])/i;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
-const PHONE_RE = /^[\d(][\d() -]{7,15}$/;
+// Phone-shaped: NANP 10-digit with optional grouping. The old generic
+// digit-soup pattern matched year ranges ("2024 - 2026") and numeric lists.
+const PHONE_RE = /^\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/;
 const MEASUREMENT_RE = /^\d+(\.\d+)?\s*(mm|cm|m|MP|mp|px|BPM|bpm|HU|hu|kg|lbs|lb|oz|°F|°C)\b/;
 const DIMENSION_RE = /^\d+(\.\d+)?\s*(mm|cm|m)?\s*x\s*\d/i;
 const BARE_PERCENT_RE = /^\d+(\.\d+)?%$/;
@@ -66,13 +74,16 @@ function isTier1Noise(e: EntityRow): string | null {
   if (PASCAL_MULTI_RE.test(name) && !/\s/.test(name)) return 'pascal_case';
   if (IMPORT_RE.test(name)) return 'import_statement';
   if (OUTPUT_RE.test(name)) return 'code_output';
-  if (DB_TABLE_REF_RE.test(name)) return 'db_table_ref';
+  // Require a snake_case identifier so real schema refs ("belief_candidates table",
+  // "subject_id column") match but common English ("bird migration", "spinal column",
+  // "glycemic index", "dinner table") is preserved.
+  if (DB_TABLE_REF_RE.test(name) && name.includes('_')) return 'db_table_ref';
   if (CODE_SYNTAX_RE.test(name)) return 'code_syntax';
   if (CLI_CMD_RE.test(name)) return 'cli_command';
   if (DEV_JARGON_RE.test(name)) return 'dev_jargon';
   if (ISO_DATE_RE.test(name)) return 'iso_date';
   if (YEAR_MONTH_RE.test(name)) return 'year_month';
-  if (PHONE_RE.test(name) && (name.match(/\d/g)?.length ?? 0) >= 7) return 'phone_number';
+  if (PHONE_RE.test(name)) return 'phone_number';
   if (MEASUREMENT_RE.test(name)) return 'measurement';
   if (DIMENSION_RE.test(name)) return 'dimension';
   if (BARE_PERCENT_RE.test(name)) return 'bare_percent';
