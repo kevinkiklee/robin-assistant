@@ -2,8 +2,10 @@ import type { RobinDb } from '../memory/db.ts';
 
 export interface HygieneResult {
   relationsDeleted: number;
+  /** Tier 1 pattern matches + retroactive blocklist sweeps + Tier 2 auto-culls. */
   entitiesDeleted: number;
-  entitiesFlagged: number;
+  /** Tier 2 score-based deletions (subset of entitiesDeleted; never blocklisted). */
+  entitiesAutoCulled: number;
   blocklistGrown: number;
   orphansDeleted: number;
 }
@@ -32,7 +34,24 @@ const CODE_SYNTAX_RE =
 const MCP_TOOL_RE = /^mcp__/;
 const CLI_CMD_RE = /^(?:git|pnpm|npm|npx|yarn|node|tsx|tsc|bun|deno|python|pip|cargo|rustc)\s/;
 const DEV_JARGON_RE =
-  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|cache|route|schema|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|migration|worktree|wrappers|prune|singleton|crud)(?:$|[\s-])/i;
+  /(?:^|[\s-])(?:ci|cd|lock|pid|dispatch|cron|daemon|cursor|script|hash|protocol|liveness|early-exit|launchd|scheduler|tick|heartbeat|stderr|stdout|stacktrace|traceback|queue|backlog|workflow|gitleaks|biographer|disambiguation|chunk|cursor-rule|cache|route|schema|codebase|session-id|handoff|wordmark|webhook|endpoint|middleware|refactor|regex|callback|payload|serializ|deserializ|upsert|backfill|rollback|shim|polyfill|monorepo|turbopack|bundler|transpil|lint|typecheck|monkeypatch|hotfix|bugfix|debounce|throttle|mutex|semaphore|subagent|antipattern|accessor|telemetry|migration|worktree|wrappers|prune|singleton|crud|dream|brief|recall|ingest|primer|intuition|embedder|hygiene|cognition)(?:$|[\s-])/i;
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
+const PHONE_RE = /^[\d(][\d() -]{7,15}$/;
+const MEASUREMENT_RE = /^\d+(\.\d+)?\s*(mm|cm|m|MP|mp|px|BPM|bpm|HU|hu|kg|lbs|lb|oz|°F|°C)\b/;
+const DIMENSION_RE = /^\d+(\.\d+)?\s*(mm|cm|m)?\s*x\s*\d/i;
+const BARE_PERCENT_RE = /^\d+(\.\d+)?%$/;
+const BODY_METRIC_RE = /^recovery\s+\d/i;
+const VAGUE_TEMPORAL_RE = /^~/;
+const BARE_FOCAL_RE = /^\d+-?\d*mm\b/;
+// Bare domain name as a `thing`/`topic` is noise — captured from browsing scans,
+// no profile, no real-world referent on its own. Subdomain segment is optional
+// (`*` not `+`) so single-label domains like "leadhearth.com" match too. Only
+// runs on thing/topic types, so Kevin's real projects (typed project/service)
+// are never touched.
+const BARE_DOMAIN_RE =
+  /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|app|org|net|co|dev|ai|sh|me|xyz|so)$/i;
 
 function isTier1Noise(e: EntityRow): string | null {
   const name = e.canonical_name;
@@ -51,6 +70,16 @@ function isTier1Noise(e: EntityRow): string | null {
   if (CODE_SYNTAX_RE.test(name)) return 'code_syntax';
   if (CLI_CMD_RE.test(name)) return 'cli_command';
   if (DEV_JARGON_RE.test(name)) return 'dev_jargon';
+  if (ISO_DATE_RE.test(name)) return 'iso_date';
+  if (YEAR_MONTH_RE.test(name)) return 'year_month';
+  if (PHONE_RE.test(name) && (name.match(/\d/g)?.length ?? 0) >= 7) return 'phone_number';
+  if (MEASUREMENT_RE.test(name)) return 'measurement';
+  if (DIMENSION_RE.test(name)) return 'dimension';
+  if (BARE_PERCENT_RE.test(name)) return 'bare_percent';
+  if (BODY_METRIC_RE.test(name)) return 'body_metric';
+  if (VAGUE_TEMPORAL_RE.test(name)) return 'vague_temporal';
+  if (BARE_FOCAL_RE.test(name)) return 'bare_focal_length';
+  if (BARE_DOMAIN_RE.test(name)) return 'bare_domain';
 
   const words = name.split(/\s+/);
   if (words.length >= 6) return 'sentence_length';
@@ -133,7 +162,7 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   const result: HygieneResult = {
     relationsDeleted: 0,
     entitiesDeleted: 0,
-    entitiesFlagged: 0,
+    entitiesAutoCulled: 0,
     blocklistGrown: 0,
     orphansDeleted: 0,
   };
@@ -191,42 +220,27 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
     if (info.changes > 0) result.blocklistGrown++;
   }
 
-  // 5. Tier 2 signal scan — score remaining thing/topic entities, flag those with score ≥ 2
+  // 5. Tier 2 signal scan — auto-cull score-≥2 thing/topic entities.
+  // Unlike Tier 1, score-based culls do NOT add to noise_blocklist: if biographer
+  // re-extracts the same name from a future mention with real context, it gets a
+  // second chance. Tier 2 leans aggressive intentionally — graph bloat is a
+  // worse failure mode than re-extracting a legit entity later.
   const remaining = db
     .prepare(
       "SELECT id, type, canonical_name, profile FROM entities WHERE LOWER(type) IN ('thing', 'topic')",
     )
     .all() as EntityRow[];
-  const alreadyFlagged = new Set(
-    (
-      db.prepare('SELECT entity_id FROM hygiene_review WHERE resolved_at IS NULL').all() as Array<{
-        entity_id: number;
-      }>
-    ).map((r) => r.entity_id),
-  );
-  const insertFlag = db.prepare(`
-    INSERT INTO hygiene_review (entity_id, entity_name, entity_type, reason, signals, flagged_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
   for (const e of remaining) {
-    if (alreadyFlagged.has(e.id)) continue;
     const relCount = (
       db
         .prepare('SELECT COUNT(*) AS c FROM relations WHERE subject_id = ? OR object_id = ?')
         .get(e.id, e.id) as { c: number }
     ).c;
-    const score = scoreTier2(e, relCount);
-    if (score < 2) continue;
-    const reasons: string[] = [];
-    const t = e.type.toLowerCase();
-    if (t === 'thing' || t === 'topic') reasons.push(`type=${e.type}`);
-    if (!e.profile) reasons.push('no profile');
-    if (relCount <= 1) reasons.push(`${relCount} relation${relCount === 1 ? '' : 's'}`);
-    const words = e.canonical_name.trim().split(/\s+/);
-    if (words.length === 1 && COMMON_SINGLE_WORDS.has(words[0].toLowerCase()))
-      reasons.push('common single word');
-    insertFlag.run(e.id, e.canonical_name, e.type, reasons.join(', '), score, ts);
-    result.entitiesFlagged++;
+    if (scoreTier2(e, relCount) < 2) continue;
+    db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(e.id, e.id);
+    db.prepare('DELETE FROM entities WHERE id = ?').run(e.id);
+    result.entitiesDeleted++;
+    result.entitiesAutoCulled++;
   }
 
   // 6. Orphan sweep — delete entities with zero relations that were ALSO orphaned at pass start.
@@ -252,52 +266,6 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   `).run(ts, JSON.stringify(result));
 
   return result;
-}
-
-// ─── Resolution ──────────────────────────────────────────────────────────────
-
-export function resolveHygieneItem(
-  db: RobinDb,
-  reviewId: number,
-  resolution: 'keep' | 'delete',
-): void {
-  const row = db.prepare('SELECT * FROM hygiene_review WHERE id = ?').get(reviewId) as
-    | { id: number; entity_id: number; entity_name: string; resolved_at: string | null }
-    | undefined;
-  if (!row) throw new Error(`hygiene_review row ${reviewId} not found`);
-  if (row.resolved_at) throw new Error(`hygiene_review row ${reviewId} already resolved`);
-
-  const ts = new Date().toISOString();
-  if (resolution === 'delete') {
-    // FK must be toggled outside transactions (SQLite restriction).
-    db.pragma('foreign_keys = OFF');
-    try {
-      db.transaction(() => {
-        db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(
-          row.entity_id,
-          row.entity_id,
-        );
-        db.prepare('DELETE FROM entities WHERE id = ?').run(row.entity_id);
-        db.prepare(`
-          INSERT OR IGNORE INTO noise_blocklist (name, reason, source, added_at)
-          VALUES (?, 'user_flagged_delete', 'user_resolve', ?)
-        `).run(row.entity_name, ts);
-        db.prepare('UPDATE hygiene_review SET resolved_at = ?, resolution = ? WHERE id = ?').run(
-          ts,
-          resolution,
-          reviewId,
-        );
-      })();
-    } finally {
-      db.pragma('foreign_keys = ON');
-    }
-  } else {
-    db.prepare('UPDATE hygiene_review SET resolved_at = ?, resolution = ? WHERE id = ?').run(
-      ts,
-      resolution,
-      reviewId,
-    );
-  }
 }
 
 // ─── Blocklist loader (for biographer integration) ───────────────────────────

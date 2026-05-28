@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { loadNoiseBlocklist, resolveHygieneItem, runHygiene } from './hygiene.ts';
+import { loadNoiseBlocklist, runHygiene } from './hygiene.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'hygiene-test-'));
@@ -71,6 +71,24 @@ test('hygiene: deletes camelCase code identifiers', () => {
   closeDb(db);
 });
 
+test('hygiene: deletes bare domain names captured as thing/topic', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'leadhearth.com');
+  upsertEntity(db, 'topic', 'sub.example.io');
+  // A real project typed as service must NOT be touched even if it looks domain-y.
+  const keep = upsertEntity(db, 'service', 'askrobin.io');
+  addRelation(db, keep.id, 'owns', keep.id);
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 2);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('leadhearth.com'));
+  assert.ok(!names.includes('sub.example.io'));
+  assert.ok(names.includes('askrobin.io'), 'typed service domain is preserved');
+  closeDb(db);
+});
+
 test('hygiene: deletes sentence-length thing/topic', () => {
   const db = freshDb();
   upsertEntity(db, 'thing', 'Implementer subagent fixes quality issues and merges code');
@@ -101,39 +119,29 @@ test('hygiene: deletes occurs_with relations', () => {
   closeDb(db);
 });
 
-test('hygiene: flags profileless single-word thing with 1 relation', () => {
+test('hygiene: Tier 2 auto-culls profileless single-word thing (no human review)', () => {
   const db = freshDb();
   const e1 = upsertEntity(db, 'thing', 'state');
   const e2 = upsertEntity(db, 'person', 'Kevin');
   addRelation(db, e1.id, 'uses', e2.id);
   const r = runHygiene(db);
-  assert.equal(r.entitiesFlagged, 1);
-  const review = db.prepare('SELECT * FROM hygiene_review WHERE entity_id = ?').get(e1.id) as
-    | { reason: string; signals: number }
-    | undefined;
-  assert.ok(review);
-  assert.ok(review.signals >= 2);
+  // Auto-culled inline — no flag, no review.
+  assert.equal(r.entitiesAutoCulled, 1);
+  const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(e1.id);
+  assert.equal(ent, undefined, 'noise entity deleted');
+  // Crucially: score-based culls do NOT add to blocklist (allow re-extraction with context).
+  const bl = loadNoiseBlocklist(db);
+  assert.ok(!bl.has('state'), 'Tier 2 auto-cull does not blocklist');
   closeDb(db);
 });
 
-test('hygiene: does NOT flag entity with score < 2', () => {
+test('hygiene: Tier 2 does NOT auto-cull entity with score < 2 (e.g. person + place)', () => {
   const db = freshDb();
   const e1 = upsertEntity(db, 'person', 'Kevin');
   const e2 = upsertEntity(db, 'place', 'NYC');
   addRelation(db, e1.id, 'lives_in', e2.id);
   const r = runHygiene(db);
-  assert.equal(r.entitiesFlagged, 0);
-  closeDb(db);
-});
-
-test('hygiene: does not re-flag already pending items', () => {
-  const db = freshDb();
-  const e1 = upsertEntity(db, 'thing', 'state');
-  const e2 = upsertEntity(db, 'person', 'Kevin');
-  addRelation(db, e1.id, 'uses', e2.id);
-  runHygiene(db);
-  const r2 = runHygiene(db);
-  assert.equal(r2.entitiesFlagged, 0);
+  assert.equal(r.entitiesAutoCulled, 0);
   closeDb(db);
 });
 
@@ -169,50 +177,6 @@ test('hygiene: orphan sweep deletes entities with zero relations', () => {
   upsertEntity(db, 'person', 'Orphan Entity');
   const r = runHygiene(db);
   assert.ok(r.orphansDeleted >= 1);
-  closeDb(db);
-});
-
-test('hygiene: resolveHygieneItem delete removes entity and adds to blocklist', () => {
-  const db = freshDb();
-  const e = upsertEntity(db, 'thing', 'suspicious');
-  const e2 = upsertEntity(db, 'person', 'Kevin');
-  addRelation(db, e.id, 'uses', e2.id);
-  db.prepare(`
-    INSERT INTO hygiene_review (entity_id, entity_name, entity_type, reason, signals, flagged_at)
-    VALUES (?, 'suspicious', 'thing', 'test', 2, datetime('now'))
-  `).run(e.id);
-  const reviewId = (
-    db.prepare('SELECT id FROM hygiene_review WHERE entity_id = ?').get(e.id) as { id: number }
-  ).id;
-  resolveHygieneItem(db, reviewId, 'delete');
-  const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(e.id);
-  assert.equal(ent, undefined);
-  const bl = loadNoiseBlocklist(db);
-  assert.ok(bl.has('suspicious'));
-  const review = db.prepare('SELECT resolution FROM hygiene_review WHERE id = ?').get(reviewId) as {
-    resolution: string;
-  };
-  assert.equal(review.resolution, 'delete');
-  closeDb(db);
-});
-
-test('hygiene: resolveHygieneItem keep marks resolved but does NOT blocklist', () => {
-  const db = freshDb();
-  const e = upsertEntity(db, 'thing', 'legitimate');
-  const e2 = upsertEntity(db, 'person', 'Kevin');
-  addRelation(db, e.id, 'uses', e2.id);
-  db.prepare(`
-    INSERT INTO hygiene_review (entity_id, entity_name, entity_type, reason, signals, flagged_at)
-    VALUES (?, 'legitimate', 'thing', 'test', 2, datetime('now'))
-  `).run(e.id);
-  const reviewId = (
-    db.prepare('SELECT id FROM hygiene_review WHERE entity_id = ?').get(e.id) as { id: number }
-  ).id;
-  resolveHygieneItem(db, reviewId, 'keep');
-  const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(e.id);
-  assert.ok(ent);
-  const bl = loadNoiseBlocklist(db);
-  assert.ok(!bl.has('legitimate'));
   closeDb(db);
 });
 

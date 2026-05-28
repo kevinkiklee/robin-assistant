@@ -22,6 +22,7 @@ import { actions as linearActions } from '../../../integrations/builtin/linear/i
 import { writeActions as linearWriteActions } from '../../../integrations/builtin/linear/write.ts';
 import { loadModels } from '../../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../../lib/paths.ts';
+import { loadEnvFile } from '../../../lib/secrets/load-env.ts';
 import { VERSION } from '../../../lib/version.ts';
 import { runAgentAction } from './agent-action.ts';
 
@@ -32,6 +33,7 @@ export interface ExtensionServerDeps {
 
 export function buildExtensionDeps(): ExtensionServerDeps {
   const userData = resolveUserDataDir();
+  loadEnvFile(userData);
   const db = openDb(dbFilePath(userData));
   applyMigrations(db, allMigrations);
   let llm: LLMDispatcher | null = null;

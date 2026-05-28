@@ -462,6 +462,57 @@ test('promoteStableCandidates: flags contradicted candidates', () => {
   closeDb(db);
 });
 
+test('promoteStableCandidates: folds a same-fact rephrasing of the head into merged', () => {
+  const db = freshDb();
+  const now = new Date();
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+  // Head holds the fact with extra detail; candidate restates a subset of it.
+  believe(db, null, { topic: 'brother-name', claim: "Kevin's brother is Jake Lee, also known as Joony" });
+  const c = insertBeliefCandidate(db, {
+    topic: 'brother-name',
+    claim: "Kevin's brother is Jake Lee",
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c.id);
+
+  const res = promoteStableCandidates(db, now);
+  // Rephrasing → merged into head, NOT flagged as a conflict, NOT promoted.
+  assert.equal(res.conflicted, 0);
+  assert.equal(res.promoted, 0);
+  assert.equal(res.merged, 1);
+  const row = db.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(c.id) as {
+    status: string;
+  };
+  assert.equal(row.status, 'merged');
+  closeDb(db);
+});
+
+test('promoteStableCandidates: a negation flip stays conflicted, never merged', () => {
+  const db = freshDb();
+  const now = new Date();
+  const tenDaysAgo = new Date(now.getTime() - 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+  believe(db, null, { topic: 'lens-x-ownership', claim: 'Kevin owns the Nikon Z 100-400 lens' });
+  const c = insertBeliefCandidate(db, {
+    topic: 'lens-x-ownership',
+    claim: 'Kevin does not own the Nikon Z 100-400 lens',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  db.prepare(`UPDATE belief_candidates SET created_at = ? WHERE id = ?`).run(tenDaysAgo, c.id);
+
+  const res = promoteStableCandidates(db, now);
+  assert.equal(res.merged, 0);
+  assert.equal(res.conflicted, 1);
+  closeDb(db);
+});
+
 test('promoteStableCandidates: merges near-duplicate candidates', () => {
   const db = freshDb();
   const now = new Date();
@@ -760,7 +811,7 @@ function baseDreamResult(): DreamResult {
     digestGenerated: false,
     hygieneRelationsDeleted: 0,
     hygieneEntitiesDeleted: 0,
-    hygieneEntitiesFlagged: 0,
+    hygieneEntitiesAutoCulled: 0,
     hygieneBlocklistGrown: 0,
   };
 }

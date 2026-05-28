@@ -4,7 +4,11 @@ import { levenshtein } from '../../lib/levenshtein.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { applyCorrections } from '../learning/apply-corrections.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
-import { expireStaleCandidates, resolveBeliefCandidate } from '../memory/belief-candidate.ts';
+import {
+  countPendingCandidates,
+  expireStaleCandidates,
+  resolveBeliefCandidate,
+} from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { runBeliefFreshness } from './belief-freshness.ts';
 import { runHygiene } from './hygiene.ts';
@@ -42,8 +46,8 @@ export interface DreamResult {
   hygieneRelationsDeleted: number;
   /** Noise entities auto-deleted by nightly hygiene pass. */
   hygieneEntitiesDeleted: number;
-  /** Borderline entities flagged for morning review. */
-  hygieneEntitiesFlagged: number;
+  /** Score-based auto-culls by Tier 2 hygiene (subset of hygieneEntitiesDeleted). */
+  hygieneEntitiesAutoCulled: number;
   /** New names added to the adaptive noise blocklist. */
   hygieneBlocklistGrown: number;
 }
@@ -98,7 +102,7 @@ const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
 
 /**
  * Nightly consolidation job:
- * 1. Data hygiene — cleans noise entities/relations, flags borderline items, grows blocklist
+ * 1. Data hygiene — cleans noise entities/relations + auto-culls borderline ones, grows blocklist
  * 2. Resolves overdue predictions as 'unverifiable'
  * 3. Rolls up daily metric counts
  * 4. Summarizes hot entities (signal_count >= threshold among today's relations)
@@ -138,19 +142,20 @@ export async function runDream(
     digestGenerated: false,
     hygieneRelationsDeleted: 0,
     hygieneEntitiesDeleted: 0,
-    hygieneEntitiesFlagged: 0,
+    hygieneEntitiesAutoCulled: 0,
     hygieneBlocklistGrown: 0,
   };
 
-  // 1. Data hygiene — clean noise entities/relations, flag borderline items,
-  //    grow the adaptive blocklist. Runs first so downstream steps (entity
-  //    summarization, arc detection) work on a clean graph. Best-effort:
-  //    a hygiene failure must never sink the rest of the dream pass.
+  // 1. Data hygiene — clean noise entities/relations and grow the adaptive
+  //    blocklist. Tier 2 score-based culls run inline (no human review).
+  //    Runs first so downstream steps (entity summarization, arc detection)
+  //    work on a clean graph. Best-effort: a hygiene failure must never sink
+  //    the rest of the dream pass.
   try {
     const hygiene = runHygiene(db, now);
     result.hygieneRelationsDeleted = hygiene.relationsDeleted;
     result.hygieneEntitiesDeleted = hygiene.entitiesDeleted + hygiene.orphansDeleted;
-    result.hygieneEntitiesFlagged = hygiene.entitiesFlagged;
+    result.hygieneEntitiesAutoCulled = hygiene.entitiesAutoCulled;
     result.hygieneBlocklistGrown = hygiene.blocklistGrown;
   } catch {
     // zeroed by initializer
@@ -219,6 +224,31 @@ export async function runDream(
     result.candidatesPromoted = 0;
     result.candidatesConflicted = 0;
     result.candidatesMerged = 0;
+  }
+
+  // 6b-metrics. Persist memory-health counters to metrics_daily so quality is
+  //   observable over time WITHOUT a user-facing triage queue (migration 017
+  //   deliberately removed the brief's hygiene-review section — Kevin wants the
+  //   system self-managing, not human-in-the-loop). These are passive metrics:
+  //   queryable on demand, never pushed into the brief. Guarded like 6/6b so a
+  //   missing belief_candidates table can't sink the dream pass.
+  try {
+    upsertMetric.run(
+      today,
+      'beliefs_promoted',
+      result.candidatesPromoted,
+      result.candidatesPromoted,
+    );
+    const pending = countPendingCandidates(db);
+    upsertMetric.run(today, 'beliefs_pending', pending, pending);
+    upsertMetric.run(
+      today,
+      'entities_culled',
+      result.hygieneEntitiesAutoCulled ?? 0,
+      result.hygieneEntitiesAutoCulled ?? 0,
+    );
+  } catch {
+    /* belief_candidates table missing (old DB) — skip metric persistence */
   }
 
   // 6c. Depth synthesis inputs — deterministic SQL queries. Best-effort:
@@ -611,10 +641,56 @@ interface CandidateRow {
   confidence: number | null;
 }
 
+// Negation tokens. A claim that has one of these while the other doesn't is a
+// potential factual flip ("owns X" vs "no longer owns X") — never treat such a
+// pair as a mere rephrasing.
+const NEGATION_RE = /\b(?:not|no|never|n't|without|nor|none|cannot|can't|didn't|doesn't|isn't|wasn't)\b|no longer/i;
+
+const CLAIM_STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'of', 'to', 'in',
+  'on', 'at', 'as', 'and', 'or', 'his', 'her', 'their', 'its', 'with', 'for',
+  'that', 'this', 'has', 'have', 'had', 'by', 'from', 'also', 'per', 'about',
+]);
+
+function claimTokens(claim: string): Set<string> {
+  return new Set(
+    claim
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length > 1 && !CLAIM_STOPWORDS.has(t)),
+  );
+}
+
+/**
+ * Decide whether `cand` merely rephrases/elaborates `head` (same underlying fact)
+ * versus genuinely diverges from it. Deterministic and SAFE-by-design via content-
+ * token SUBSUMPTION: a rephrasing is one where one claim's content tokens fully
+ * contain the other's (an elaboration adds detail; a restatement drops it). When
+ * each side carries a unique key token, that token usually IS the differing fact
+ * ("likes red" vs "likes blue" — neither subsumes the other → NOT a rephrasing →
+ * stays conflicted). A negation-polarity mismatch is an automatic non-rephrasing
+ * so a factual flip is never absorbed.
+ *
+ * This under-merges (a synonym swap like "girlfriend"↔"partner" stays conflicted)
+ * rather than over-merges — the safe direction. Burying a real contradiction is a
+ * far worse failure than leaving a benign rephrasing flagged for review.
+ */
+function isRephrasingOfHead(head: string, cand: string): boolean {
+  if (NEGATION_RE.test(head) !== NEGATION_RE.test(cand)) return false;
+  const a = claimTokens(head);
+  const b = claimTokens(cand);
+  if (a.size === 0 || b.size === 0) return false;
+  const aSubsetOfB = [...a].every((t) => b.has(t));
+  const bSubsetOfA = [...b].every((t) => a.has(t));
+  return aSubsetOfB || bSubsetOfA;
+}
+
 /**
  * Auto-promote pending belief candidates older than 7 days. Detects
- * contradictions against existing belief heads and merges near-duplicates.
- * Fully deterministic — no LLM. Returns counters for each outcome.
+ * contradictions against existing belief heads, folds same-fact rephrasings into
+ * the head (merged), and merges near-duplicates. Fully deterministic — no LLM.
+ * Returns counters for each outcome.
  */
 export function promoteStableCandidates(db: RobinDb, now: Date = new Date()): PromoteResult {
   const cutoff = new Date(now.getTime() - PROMOTE_AGE_DAYS * 86_400_000)
@@ -637,17 +713,25 @@ export function promoteStableCandidates(db: RobinDb, now: Date = new Date()): Pr
   // Track ids already resolved in this run (merged/conflicted) to skip them.
   const resolved = new Set<number>();
 
-  // Pre-pass: near-duplicate merge among the pending set.
+  // Pre-pass: near-duplicate merge among the pending set. Compares CLAIM text,
+  // not topic slugs — the same fact often lands under divergent slugs
+  // ("aerospace-corp-claim", "no-aerospace-internship", "aerospace-internship-false"),
+  // which a topic-keyed merge misses entirely (observed 2026-05-28: 7 belief heads
+  // for one fact). Claim-text similarity catches them regardless of slug.
   for (let i = 0; i < candidates.length; i++) {
     if (resolved.has(candidates[i].id)) continue;
     for (let j = i + 1; j < candidates.length; j++) {
       if (resolved.has(candidates[j].id)) continue;
       const a = candidates[i];
       const b = candidates[j];
-      if (a.topic !== b.topic) continue;
 
       const longer = Math.max(a.claim.length, b.claim.length);
       if (longer === 0) continue;
+      // Cheap short-circuit: levenshtein(a,b) >= |len(a)-len(b)|, so if the
+      // length gap alone already exceeds the 0.2 threshold they can never merge.
+      // Skips the O(L²) distance computation for the vast majority of pairs now
+      // that the merge spans all topics, not just same-topic groups.
+      if (Math.abs(a.claim.length - b.claim.length) / longer >= 0.2) continue;
       const dist = levenshtein(a.claim, b.claim);
       if (dist / longer < 0.2) {
         // Merge: keep the higher-confidence one, resolve the other.
@@ -691,11 +775,17 @@ export function promoteStableCandidates(db: RobinDb, now: Date = new Date()): Pr
       .get(cand.topic) as { topic: string; claim: string | null } | undefined;
 
     if (head?.claim && head.claim.trim() !== cand.claim.trim()) {
+      // Same fact, different words → fold into the head (merged), not a conflict.
+      // Only genuine divergence (low token overlap or a negation flip) stays
+      // `conflicted` for review. This stops the detector flagging every reworded
+      // restatement of a fact the head already holds.
+      const rephrasing = isRephrasingOfHead(head.claim, cand.claim);
       db.prepare(
-        `UPDATE belief_candidates SET status = 'conflicted', resolved_at = datetime('now') WHERE id = ?`,
-      ).run(cand.id);
+        `UPDATE belief_candidates SET status = ?, resolved_at = datetime('now') WHERE id = ?`,
+      ).run(rephrasing ? 'merged' : 'conflicted', cand.id);
       resolved.add(cand.id);
-      counts.conflicted++;
+      if (rephrasing) counts.merged++;
+      else counts.conflicted++;
       continue;
     }
 
