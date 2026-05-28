@@ -644,12 +644,43 @@ interface CandidateRow {
 // Negation tokens. A claim that has one of these while the other doesn't is a
 // potential factual flip ("owns X" vs "no longer owns X") — never treat such a
 // pair as a mere rephrasing.
-const NEGATION_RE = /\b(?:not|no|never|n't|without|nor|none|cannot|can't|didn't|doesn't|isn't|wasn't)\b|no longer/i;
+const NEGATION_RE =
+  /\b(?:not|no|never|n't|without|nor|none|cannot|can't|didn't|doesn't|isn't|wasn't)\b|no longer/i;
 
 const CLAIM_STOPWORDS = new Set([
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'of', 'to', 'in',
-  'on', 'at', 'as', 'and', 'or', 'his', 'her', 'their', 'its', 'with', 'for',
-  'that', 'this', 'has', 'have', 'had', 'by', 'from', 'also', 'per', 'about',
+  'the',
+  'a',
+  'an',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'of',
+  'to',
+  'in',
+  'on',
+  'at',
+  'as',
+  'and',
+  'or',
+  'his',
+  'her',
+  'their',
+  'its',
+  'with',
+  'for',
+  'that',
+  'this',
+  'has',
+  'have',
+  'had',
+  'by',
+  'from',
+  'also',
+  'per',
+  'about',
 ]);
 
 function claimTokens(claim: string): Set<string> {

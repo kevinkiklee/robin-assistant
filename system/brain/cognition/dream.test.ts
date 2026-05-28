@@ -470,7 +470,10 @@ test('promoteStableCandidates: folds a same-fact rephrasing of the head into mer
     .slice(0, 19)
     .replace('T', ' ');
   // Head holds the fact with extra detail; candidate restates a subset of it.
-  believe(db, null, { topic: 'brother-name', claim: "Kevin's brother is Jake Lee, also known as Joony" });
+  believe(db, null, {
+    topic: 'brother-name',
+    claim: "Kevin's brother is Jake Lee, also known as Joony",
+  });
   const c = insertBeliefCandidate(db, {
     topic: 'brother-name',
     claim: "Kevin's brother is Jake Lee",
