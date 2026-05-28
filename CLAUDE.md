@@ -78,11 +78,15 @@ process.env or DB connections. Each must independently call `loadEnvFile()` and
 ## Publish pipeline
 
 `system/lib/publish/` converts markdown → HTML → Vercel Blob, served at
-`askrobin.io/p/<slug>`. Static assets (CSS, JS) live in
+`askrobin.io/@<user>/<slug>` (e.g. `/@iser/<slug>`), with a per-user index at
+`askrobin.io/@<user>/`. `orchestrate.ts` writes the page blob and a
+`users/<userId>/index.json` manifest (`manifest.ts`); `PUBLISH_USER_ID` sets the
+publishing identity. Static assets (CSS, JS) live in
 `~/workspace/robin/askrobin.io/apps/web/public/_pub/`. The template
 (`template.ts`) wraps body HTML; `rehype-slug` generates heading IDs for the
-external TOC script (`toc.js`). Route handler is at
-`askrobin.io/apps/web/app/p/[slug]/route.ts` (CSP: `script-src 'self'`).
+external TOC script (`toc.js`). Serving: `proxy.ts` rewrites `/@<user>/...` to
+the internal `askrobin.io/apps/web/app/u/[user]/[slug]/route.ts` (page) and
+`u/[user]/route.ts` (index); CSP `script-src 'self'`.
 
 ## Per-user instance
 

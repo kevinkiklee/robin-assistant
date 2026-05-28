@@ -1,6 +1,6 @@
 # Publishing to the web
 
-`robin publish` uploads a markdown file as a sanitized HTML page served from your configured domain (default: `askrobin.io`). Local images referenced in the markdown are uploaded to Vercel Blob with content-hash keys (idempotent on re-upload) and rewritten in the published HTML.
+`robin publish` uploads a markdown file as a sanitized HTML page served from your configured domain (default: `askrobin.io`). Pages are published under your user namespace at `<domain>/@<user>/<slug>` (the `@<user>` segment is set by `PUBLISH_USER_ID`), and `<domain>/@<user>/` shows an index of everything you've published. Local images referenced in the markdown are uploaded to Vercel Blob with content-hash keys (idempotent on re-upload) and rewritten in the published HTML.
 
 ## Commands
 
