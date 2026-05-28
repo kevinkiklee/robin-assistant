@@ -23,6 +23,7 @@ import {
 } from './config.ts';
 import { walkLocalImages } from './images.ts';
 import { appendLogEntry, readLog } from './log.ts';
+import { writeManifest } from './manifest.ts';
 import { extractFrontmatter, normalizeMarkdown, sanitizeSchema } from './pipeline.ts';
 import { appendSuffix, deriveSlug, sanitizeSlug } from './slug.ts';
 import { wrapHtml } from './template.ts';
@@ -51,6 +52,11 @@ function nowUtcDate(): string {
 }
 function nowIsoMs(): string {
   return new Date().toISOString();
+}
+
+/** Canonical public URL for a published page: `${publicUrl}/@<user>/<slug>`. */
+function pageUrl(env: PublishEnv, slug: string): string {
+  return `${env.publicUrl}/@${env.userId}/${slug}`;
 }
 
 function extractFirstH1(body: string): string | null {
@@ -249,7 +255,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
 
   const htmlKey = htmlKeyFor(slug);
   const resultBase: PublishResult = {
-    url: `${opts.env.publicUrl}/p/${slug}`,
+    url: pageUrl(opts.env, slug),
     slug,
     action,
     blob_key: htmlKey,
@@ -281,6 +287,15 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     await appendLogEntry(opts.logPath, logRow);
   } catch (err) {
     warnings.push(`log append failed: ${(err as Error).message}`);
+  }
+  // Rebuild + write the per-user index manifest after the page blob is
+  // committed. Best-effort: a manifest failure must never fail the publish —
+  // the next publish's full rebuild repairs it.
+  try {
+    const { entries } = await readLog(opts.logPath);
+    await writeManifest(opts.blobClient, opts.env, entries);
+  } catch (err) {
+    warnings.push(`manifest write failed: ${(err as Error).message}`);
   }
   const telemetry: TelemetryRow = {
     ts: logRow.ts,
@@ -330,7 +345,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
       // best-effort
     }
     return {
-      url: `${input.env.publicUrl}/p/${slug}`,
+      url: pageUrl(input.env, slug),
       slug,
       action: 'noop',
       blob_key: htmlKey,
@@ -353,7 +368,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
       ts: nowIsoMs(),
       action: 'delete',
       slug,
-      url: `${input.env.publicUrl}/p/${slug}`,
+      url: pageUrl(input.env, slug),
       user_id: input.env.userId,
       source: null,
       blob_key: htmlKey,
@@ -363,6 +378,13 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
     });
   } catch {
     // best-effort
+  }
+  // Refresh the per-user manifest so the deleted slug drops off the index.
+  try {
+    const { entries } = await readLog(input.logPath);
+    await writeManifest(input.blobClient, input.env, entries);
+  } catch {
+    // best-effort; next publish repairs it
   }
   try {
     await appendLogEntry(input.telemetryPath, {
@@ -379,7 +401,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   }
 
   return {
-    url: `${input.env.publicUrl}/p/${slug}`,
+    url: pageUrl(input.env, slug),
     slug,
     action: 'delete',
     blob_key: htmlKey,
