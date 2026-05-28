@@ -30,9 +30,12 @@ function seedStaleBeliefDaysAgo(
   claim: string,
   provenance: string,
   daysAgo: number,
+  now: Date = new Date(),
 ): number {
   const r = believe(db, null, { topic, claim, provenance: provenance as never });
-  const staleTs = new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+  // Backdate relative to the evaluation `now`, not the wall clock — otherwise the
+  // seeded age drifts as real time passes and day-boundary staleness checks flip.
+  const staleTs = new Date(now.getTime() - daysAgo * 86_400_000).toISOString();
   // Backdate verified_at in payload and the event ts
   db.prepare(
     `UPDATE events
@@ -79,7 +82,7 @@ test('belief-freshness: external belief 10 days old is flagged; re-run same day 
   const now = new Date('2026-05-25T12:00:00.000Z');
 
   // external TTL = 7 days; 10 days old → stale
-  seedStaleBeliefDaysAgo(db, 'spotify-last-played', 'Radiohead - Exit Music', 'external', 10);
+  seedStaleBeliefDaysAgo(db, 'spotify-last-played', 'Radiohead - Exit Music', 'external', 10, now);
 
   const r1 = await runBeliefFreshness(db, null, { now });
   assert.equal(r1.scanned, 1);
@@ -116,7 +119,7 @@ test('belief-freshness: registered resolver refreshes a stale head; requeried is
   const now = new Date('2026-05-25T12:00:00.000Z');
 
   // Seed a stale external belief for topic "spotify-current-track"
-  seedStaleBeliefDaysAgo(db, 'spotify-current-track', 'Old Song', 'external', 10);
+  seedStaleBeliefDaysAgo(db, 'spotify-current-track', 'Old Song', 'external', 10, now);
 
   // Register a resolver for the "spotify-" prefix
   let resolverCalled = 0;
@@ -158,8 +161,8 @@ test('belief-freshness: maxRequeries cap — only first N stale resolvable heads
   const now = new Date('2026-05-25T12:00:00.000Z');
 
   // Seed two stale external beliefs under the same prefix
-  seedStaleBeliefDaysAgo(db, 'spotify-track-a', 'Track A', 'external', 10);
-  seedStaleBeliefDaysAgo(db, 'spotify-track-b', 'Track B', 'external', 10);
+  seedStaleBeliefDaysAgo(db, 'spotify-track-a', 'Track A', 'external', 10, now);
+  seedStaleBeliefDaysAgo(db, 'spotify-track-b', 'Track B', 'external', 10, now);
 
   let resolverCalled = 0;
   registerBeliefResolver('spotify-', async (_head) => {
@@ -193,7 +196,7 @@ test('belief-freshness: retracted heads are skipped', async () => {
     provenance: 'external',
     retracted: true,
   });
-  const staleTs = new Date(Date.now() - 20 * 86_400_000).toISOString();
+  const staleTs = new Date(now.getTime() - 20 * 86_400_000).toISOString();
   db.prepare(
     `UPDATE events SET ts = ?, payload = json_set(payload, '$.verified_at', ?) WHERE id = ?`,
   ).run(staleTs, staleTs, r.eventId);
