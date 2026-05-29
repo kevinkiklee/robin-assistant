@@ -20,6 +20,8 @@ export function runPause(): void {
   const userData = resolveUserDataDir();
   const p = loadPolicies(userData);
   p.power.state = 'paused';
+  p.power.set_by = 'user';
+  p.power.since = new Date().toISOString();
   writePolicies(userData, p);
   console.log('Robin paused. Scheduled jobs will not run until `robin resume`.');
 }
@@ -28,6 +30,8 @@ export function runResume(): void {
   const userData = resolveUserDataDir();
   const p = loadPolicies(userData);
   p.power.state = 'active';
+  p.power.set_by = 'user';
+  p.power.since = new Date().toISOString();
   writePolicies(userData, p);
   console.log('Robin active.');
 }

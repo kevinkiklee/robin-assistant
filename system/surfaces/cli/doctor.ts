@@ -7,6 +7,7 @@ import {
   dbWalSizeBoundedInvariant,
   integrationsHealthyInvariant,
   jobsDiscoverableInvariant,
+  schedulerProgressingInvariant,
   userDataWritableInvariant,
   vecIndexSyncedInvariant,
 } from '../../kernel/invariants/builtins/index.ts';
@@ -66,6 +67,7 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
     vecIndexSyncedInvariant(db),
     integrationsHealthyInvariant(db),
     jobsDiscoverableInvariant(db),
+    schedulerProgressingInvariant(db, { userData }),
   ]);
 
   closeDb(db);

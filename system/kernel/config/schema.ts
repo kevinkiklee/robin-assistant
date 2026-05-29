@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 export const powerSchema = z.object({
   state: z.enum(['active', 'paused', 'off']).default('active'),
+  // Provenance of the current state, persisted so it survives daemon restarts.
+  // `set_by` lets the power auto-monitor distinguish an auto-applied pause (which
+  // it may auto-resume on AC) from a deliberate manual pause (which it must not
+  // silently override). `since` is the ISO timestamp the state last changed — used
+  // for operator-facing messaging and the scheduler-stall alarm. Both optional so
+  // pre-existing policies.yaml files (and tests) parse without them.
+  set_by: z.enum(['user', 'auto']).optional(),
+  since: z.string().optional(),
   auto: z
     .object({
       on_low_power_mode: z.enum(['active', 'paused']).optional(),

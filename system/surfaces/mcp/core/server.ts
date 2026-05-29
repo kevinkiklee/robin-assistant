@@ -21,6 +21,7 @@ import {
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
+  schedulerProgressingInvariant,
   userDataWritableInvariant,
   vecIndexSyncedInvariant,
 } from '../../../kernel/invariants/builtins/index.ts';
@@ -507,6 +508,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         dbSchemaCurrentInvariant(deps.db),
         dbWalSizeBoundedInvariant(deps.db),
         vecIndexSyncedInvariant(deps.db),
+        schedulerProgressingInvariant(deps.db, { userData }),
       ]);
       return { content: [{ type: 'text' as const, text: JSON.stringify(reports, null, 2) }] };
     },
@@ -591,8 +593,14 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         return { content: [{ type: 'text' as const, text: JSON.stringify(policies, null, 2) }] };
       }
       const next = { ...policies };
-      if (action === 'pause') next.power = { ...next.power, state: 'paused' };
-      else if (action === 'resume') next.power = { ...next.power, state: 'active' };
+      // Stamp provenance on manual transitions: set_by:'user' keeps the power
+      // auto-monitor from ever auto-resuming a pause the user made deliberately,
+      // and `since` feeds the scheduler-stall alarm + status output.
+      const since = new Date().toISOString();
+      if (action === 'pause')
+        next.power = { ...next.power, state: 'paused', set_by: 'user', since };
+      else if (action === 'resume')
+        next.power = { ...next.power, state: 'active', set_by: 'user', since };
       else if (action === 'incognito') {
         next.capture = { ...next.capture, enabled: false };
         if (duration && duration !== 'permanent') {

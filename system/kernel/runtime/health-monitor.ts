@@ -9,6 +9,7 @@ import {
   dbSchemaCurrentInvariant,
   integrationsHealthyInvariant,
   jobsDiscoverableInvariant,
+  schedulerProgressingInvariant,
   userDataWritableInvariant,
 } from '../invariants/builtins/index.ts';
 import { runInvariants } from '../invariants/runner.ts';
@@ -85,6 +86,10 @@ export class HealthMonitor {
         dbSchemaCurrentInvariant(this.opts.db),
         integrationsHealthyInvariant(this.opts.db),
         jobsDiscoverableInvariant(this.opts.db),
+        // Critical so it notifies (warnings don't): catches the paused/stalled
+        // scheduler that daemon.heartbeating structurally can't see — its lastTickAt
+        // updates every loop iteration even while paused.
+        schedulerProgressingInvariant(this.opts.db, { userData }),
         daemonHeartbeatingInvariant({
           lastTickAt: this.opts.getLastTickAt,
           // 7 min: the claude-agent provider (subscription-billed via the Agent

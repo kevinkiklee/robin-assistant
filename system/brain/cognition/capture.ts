@@ -65,7 +65,21 @@ export function transcriptFileToCapture(
   transcriptPath: string,
   cwd?: string,
 ): SessionCapture {
-  const raw = readFileSync(transcriptPath, 'utf8');
+  // Claude Code occasionally posts a SessionEnd for a session whose transcript
+  // file doesn't exist on disk (e.g. very short sessions, or cwd=$HOME sessions
+  // whose .jsonl is never written). Reading it threw ENOENT, which surfaced as a
+  // noisy 'session_end capture failed' error on every such hook. A missing
+  // transcript is a clean skip, not a failure: return an empty capture and let
+  // captureSession's skip rules ('no_assistant_turn'/'cwd_not_allowed') handle it.
+  let raw: string;
+  try {
+    raw = readFileSync(transcriptPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return { sessionId, turns: [], cwd };
+    }
+    throw err;
+  }
   const turns: SessionTurn[] = [];
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
