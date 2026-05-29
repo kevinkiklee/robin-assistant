@@ -28,7 +28,13 @@ query TeamIssues($updatedAfter: DateTimeOrDuration!, $limit: Int!, $after: Strin
   }
   issues(
     filter: {
-      state: { type: { in: ["unstarted", "started", "backlog"] } }
+      # Include terminal states (completed/canceled) so a close is CAPTURED, not
+      # inferred from absence. Without this, an issue that transitions to Done
+      # simply stops matching the filter and the last open snapshot lingers for
+      # the full window — the brief then shows closed issues as open (KL-10,
+      # 2026-05-29). Consumers dedupe by identifier (newest wins) and drop
+      # terminal states themselves.
+      state: { type: { in: ["unstarted", "started", "backlog", "completed", "canceled"] } }
       updatedAt: { gte: $updatedAfter }
     }
     first: $limit

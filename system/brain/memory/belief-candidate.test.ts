@@ -41,6 +41,14 @@ test('isLowQualityClaim: drops Robin-internals and dev-artifact claims', () => {
       "Kevin's Claude Code extension spawns chrome-devtools-mcp, Playwright, Context7.",
     ],
     ['possessive', "Robin's scheduler gained self-healing catch-up dispatch via robin-sync."],
+    // Gaps found 2026-05-29 (post-backlog-drain cleanup): "The askrobin.io …",
+    // "Kevin's Robin <feature>", MCP/DB internals, npm-packaging, VM/infra.
+    ['askrobin-vm', 'The askrobin.io VM image is built on Ubuntu as its base OS.'],
+    ['askrobin-deploy', 'The askrobin.io web product runs as a CLI-in-VM deployment.'],
+    ['robin-backend', 'mcp__robin__ writes events to SurrealDB and uses a vector index.'],
+    ['brief', "Kevin's Robin daily briefing includes NHL scores, Whoop recovery, and weather."],
+    ['npm', 'Kevin Lee uses the robin-assistant npm package as his personal AI assistant.'],
+    ['design', 'The askrobin.io project uses a CSS custom-property design token system.'],
   ];
   for (const [topic, claim] of dropped) {
     assert.equal(isLowQualityClaim(topic, claim), true, `"${claim}" should be dropped`);
@@ -71,6 +79,11 @@ test('isLowQualityClaim: keeps genuine life facts (incl. tool preferences and ar
     ['deploy', 'Kevin deploys his side projects to Vercel.'],
     // Durable patterns that merely use arrows — not transient.
     ['photowalk', 'Kevin does museum photowalks (Cooper Hewitt → Guggenheim → The Met).'],
+    // False-positive guards: real life-facts whose TOPIC mentions a project but
+    // whose SUBJECT is Kevin. These MUST survive the cleanup (regression from the
+    // 05-29 audit — bulk-retracting by topic prefix would have nuked them).
+    ['askrobin-github-username', "Kevin's GitHub username is kevinkiklee."],
+    ['askrobin-ownership', 'Kevin Lee owns and maintains askrobin.io.'],
   ];
   for (const [topic, claim] of kept) {
     assert.equal(isLowQualityClaim(topic, claim), false, `"${claim}" should be kept`);

@@ -73,7 +73,7 @@ function mapRow(r: RawRow): BeliefCandidate {
 // lead with "Robin"/"askrobin", which the leading-subject check below catches.
 // Keeping them here would drop the prompt's own keep-example ("kevin prefers pnpm").
 const DEV_ARTIFACT_CLAIM_RE =
-  /\b(launchd|daemon|cron(?:tab|\s?job)?|plist|monorepo|dockerfile|pulumi|fly\.io|recall\.js|_journal\.json|robinmark|integration tick|biographer|dream pass|hygiene pass|cognition job|mcp servers?|mcp__|mcp tool|claude code|claude agent sdk|analytics-mcp|chrome-devtools|\.claude\.json|~\/\.claude|tsconfig|github integration|infra\/|apps\/web|repo(?:sitory)? (?:contains|structure|layout)|zsh alias|shell config|launch agent|capture-rules)\b/i;
+  /\b(launchd|daemon|cron(?:tab|\s?job)?|plist|monorepo|turborepo|dockerfile|docker image|pulumi|fly\.io|recall\.js|_journal\.json|robinmark|integration tick|biographer|dream pass|hygiene pass|cognition job|mcp servers?|mcp__|mcp tool|claude code|claude agent sdk|analytics-mcp|chrome-devtools|\.claude\.json|~\/\.claude|tsconfig|github integration|github repository|npm package|surrealdb|sqlite wal|vector index|vitest|playwright|biome|cli-in-vm|vm image|shell-mux|send-keys|infra\/|apps\/web|repo(?:sitory)? (?:contains|structure|layout)|zsh alias|shell config|launch agent|capture-rules|design (?:token|system)|brand accent)\b/i;
 
 // Transient / episodic observations wrongly drafted as durable beliefs — WHOOP
 // daily-recovery sequences, "resolved on night N", dated metric arrows. These
@@ -92,14 +92,22 @@ const TRANSIENT_CLAIM_RE =
  * by both the regex and the leading-subject checks.
  */
 export function isLowQualityClaim(_topic: string, claim: string): boolean {
-  if (DEV_ARTIFACT_CLAIM_RE.test(claim)) return true;
-  if (TRANSIENT_CLAIM_RE.test(claim)) return true;
-  // Self-referential claims about the assistant — leading "Robin", "Robin's",
-  // "The Robin…", "askrobin…". The \b after "robin" matches the apostrophe in
-  // "Robin's", so possessive forms are caught too.
-  if (/^(robin|the robin|askrobin)\b/i.test(claim.trim())) return true;
+  const c = claim.trim();
+  if (DEV_ARTIFACT_CLAIM_RE.test(c)) return true;
+  if (TRANSIENT_CLAIM_RE.test(c)) return true;
+  // Self-referential claims whose SUBJECT is the assistant / its sites / its
+  // packages — not Kevin. The grammatical subject is the discriminator: a claim
+  // ABOUT the machinery is noise; a claim about Kevin that merely mentions it
+  // (e.g. "Kevin's GitHub username is …", "Kevin owns askrobin.io") is a real
+  // life-fact and is intentionally NOT matched here.
+  //   "Robin …", "Robin's …", "The Robin …", "askrobin…", "The askrobin.io …",
+  //   "Kevin's Robin assistant …", "Kevin's askrobin.io instance …"
+  if (/^(the\s+)?(robin|askrobin)\b/i.test(c)) return true;
+  if (/^(kevin'?s|iser'?s)\s+(the\s+)?(robin|askrobin)\b/i.test(c)) return true;
   // Claims whose subject is a Robin package/repo, not Kevin.
-  if (/^(robin-assistant|_robin-sync|robin-cursor|robin-gemini)/i.test(claim.trim())) return true;
+  if (/^(robin-assistant|_robin-sync|robin-cursor|robin-gemini)/i.test(c)) return true;
+  // Subject is the MCP surface or a *.io project's internals.
+  if (/^(mcp__|the\s+\S+\.io\s+(project|vm|app|site|deployment|image))/i.test(c)) return true;
   return false;
 }
 
@@ -219,6 +227,23 @@ export function resolveBeliefCandidate(
       `UPDATE belief_candidates SET status = 'rejected', resolved_at = ? WHERE id = ?`,
     ).run(now, id);
     return { candidateId: id, action, promotedBeliefEventId: null };
+  }
+
+  // Dev-artifact backstop at promotion time. insertBeliefCandidate filters at
+  // draft time, but candidates drafted before that filter existed (the 05-25..27
+  // backlog) sit in the queue unscreened — and promotion is where they would
+  // become durable truth. Re-checking here guarantees a dev/Robin-internals claim
+  // can never be promoted regardless of when or how it was drafted.
+  if (isLowQualityClaim(row.topic, row.claim)) {
+    db.prepare(
+      `UPDATE belief_candidates SET status = 'rejected', resolved_at = ? WHERE id = ?`,
+    ).run(now, id);
+    return {
+      candidateId: id,
+      action: 'reject',
+      promotedBeliefEventId: null,
+      blockedReason: 'dev-artifact',
+    };
   }
 
   // P3 formation gate — check provenance class before allowing promotion.
