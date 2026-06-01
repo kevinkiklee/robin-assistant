@@ -79,6 +79,64 @@ function enrichHits(db: RobinDb, hits: RecallHit[]): RecallHit[] {
   }
 }
 
+/**
+ * Drop `belief.update` hits that are no longer the live truth. A belief event is
+ * surfaced only when it is the current head for its topic (latest by ts,id) AND
+ * that head is not retracted. Superseded and retracted belief events stay in the
+ * events corpus — and stay FTS/vec-indexed — so without this filter recall happily
+ * re-surfaces a claim the belief layer has already overturned (the primer, freshness,
+ * and dream passes all filter retracted heads; recall was the one read path that did
+ * not). Concretely: an old "Robin uses a SurrealDB backend" assertion that was
+ * bulk-retracted but never deleted would keep getting auto-recalled. Non-belief hits
+ * pass through untouched. Best-effort: any error returns the hits unfiltered.
+ */
+function filterStaleBeliefHits(db: RobinDb, hits: RecallHit[]): RecallHit[] {
+  if (hits.length === 0) return hits;
+  try {
+    const ids = hits.map((h) => h.eventId);
+    const ph = ids.map(() => '?').join(',');
+    const beliefRows = db
+      .prepare(
+        `SELECT id, json_extract(payload,'$.topic') AS topic
+           FROM events WHERE kind = 'belief.update' AND id IN (${ph})`,
+      )
+      .all(...ids) as Array<{ id: number; topic: string | null }>;
+    if (beliefRows.length === 0) return hits; // no belief hits → nothing to filter
+
+    const topicByEvent = new Map(beliefRows.map((r) => [r.id, r.topic]));
+    const topics = [...new Set(beliefRows.map((r) => r.topic).filter((t): t is string => !!t))];
+    if (topics.length === 0) return hits;
+
+    const tph = topics.map(() => '?').join(',');
+    // Current head (+ retracted flag) per topic: the belief.update with the latest (ts,id).
+    const heads = db
+      .prepare(
+        `SELECT topic, headId, retracted FROM (
+           SELECT json_extract(payload,'$.topic') AS topic, id AS headId,
+                  json_extract(payload,'$.retracted') AS retracted,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(payload,'$.topic')
+                    ORDER BY ts DESC, id DESC
+                  ) AS rn
+             FROM events
+            WHERE kind = 'belief.update' AND json_extract(payload,'$.topic') IN (${tph})
+         ) WHERE rn = 1`,
+      )
+      .all(...topics) as Array<{ topic: string; headId: number; retracted: number | null }>;
+    const headByTopic = new Map(heads.map((h) => [h.topic, h]));
+
+    return hits.filter((h) => {
+      if (!topicByEvent.has(h.eventId)) return true; // not a belief hit — keep
+      const topic = topicByEvent.get(h.eventId);
+      const head = topic ? headByTopic.get(topic) : undefined;
+      if (!head) return true; // head unknown — don't over-filter
+      return h.eventId === head.headId && head.retracted !== 1;
+    });
+  } catch {
+    return hits;
+  }
+}
+
 /** Same idiom as capture.ts dedup hash — base64-truncated so repeat queries collide intentionally. */
 function queryHash(query: string): string {
   return Buffer.from(query).toString('base64').slice(0, 64);
@@ -146,6 +204,24 @@ function logRecall(
   }
 }
 
+/**
+ * Shared tail for every recall return path: drop stale beliefs, enrich, log, return.
+ * Filtering before enrichment keeps a retracted/superseded belief out of both the
+ * returned hits and the recall_log content-id set.
+ */
+function finalize(
+  db: RobinDb,
+  query: string,
+  hits: RecallHit[],
+  source: 'auto' | 'manual',
+  sessionId: string | undefined,
+): RecallHit[] {
+  const live = filterStaleBeliefHits(db, hits);
+  const enriched = enrichHits(db, live);
+  logRecall(db, query, enriched, source, sessionId);
+  return enriched;
+}
+
 export async function recall(
   db: RobinDb,
   llm: LLMDispatcher | null,
@@ -203,9 +279,7 @@ export async function recall(
     }
   }
   if (mode === 'lex' || !llm) {
-    const enriched = enrichHits(db, lexHits);
-    logRecall(db, query, enriched, source, sessionId);
-    return enriched;
+    return finalize(db, query, lexHits, source, sessionId);
   }
 
   const vecHits: RecallHit[] = [];
@@ -244,19 +318,12 @@ export async function recall(
       }
     }
   } catch {
-    const enriched = enrichHits(db, lexHits);
-    logRecall(db, query, enriched, source, sessionId);
-    return enriched;
+    return finalize(db, query, lexHits, source, sessionId);
   }
 
   if (mode === 'vec') {
-    const enriched = enrichHits(db, vecHits);
-    logRecall(db, query, enriched, source, sessionId);
-    return enriched;
+    return finalize(db, query, vecHits, source, sessionId);
   }
 
-  const result = fuseRRF([lexHits, vecHits], limit);
-  const enriched = enrichHits(db, result);
-  logRecall(db, query, enriched, source, sessionId);
-  return enriched;
+  return finalize(db, query, fuseRRF([lexHits, vecHits], limit), source, sessionId);
 }

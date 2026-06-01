@@ -298,6 +298,67 @@ test('recall: truncates the query to 2000 chars before embedding', async () => {
   closeDb(db);
 });
 
+test('recall: a retracted belief is not surfaced (its superseded original stays indexed)', async () => {
+  const db = freshDb();
+  // Original assertion, later bulk-retracted (the SurrealDB-backend situation).
+  const orig = believe(db, null, {
+    topic: 'robin.memory.backend',
+    claim: 'Robin uses a SurrealDB backend for memory storage',
+    date: '2026-05-28',
+  });
+  believe(db, null, {
+    topic: 'robin.memory.backend',
+    claim: 'Robin uses a SurrealDB backend for memory storage',
+    retracted: true,
+    supersedes: orig.eventId,
+    date: '2026-05-29',
+  });
+
+  const hits = await recall(db, null, 'SurrealDB backend memory storage', { mode: 'lex' });
+  assert.equal(
+    hits.filter((h) => h.kind === 'belief.update').length,
+    0,
+    'no belief.update hit should surface for a retracted topic',
+  );
+  closeDb(db);
+});
+
+test('recall: a current non-retracted belief is still surfaced', async () => {
+  const db = freshDb();
+  believe(db, null, {
+    topic: 'role',
+    claim: 'Kevin is a software engineer at Google',
+    confidence: 0.9,
+    date: '2026-05-29',
+  });
+  const hits = await recall(db, null, 'software engineer Google', { mode: 'lex' });
+  const beliefHit = hits.find((h) => h.kind === 'belief.update');
+  assert.ok(beliefHit, 'the live belief head must still be recallable');
+  assert.match(beliefHit.body, /software engineer/i);
+  closeDb(db);
+});
+
+test('recall: a superseded-but-replaced belief surfaces only the head, not the old event', async () => {
+  const db = freshDb();
+  const orig = believe(db, null, {
+    topic: 'city',
+    claim: 'Kevin lives in Hoboken metropolis',
+    date: '2026-05-20',
+  });
+  believe(db, null, {
+    topic: 'city',
+    claim: 'Kevin lives in Jersey City metropolis',
+    supersedes: orig.eventId,
+    date: '2026-05-29',
+  });
+  const hits = await recall(db, null, 'metropolis', { mode: 'lex' });
+  const beliefHits = hits.filter((h) => h.kind === 'belief.update');
+  assert.equal(beliefHits.length, 1, 'only the current head should surface');
+  assert.match(beliefHits[0].body, /Jersey City/);
+  assert.ok(!beliefHits.some((h) => /Hoboken/.test(h.body)), 'the superseded original must be dropped');
+  closeDb(db);
+});
+
 test('recall: tags recall_log rows with the source (auto vs manual)', async () => {
   const db = freshDb();
   ingest(db, null, { kind: 't', source: 's', content: 'lisbon photos' });

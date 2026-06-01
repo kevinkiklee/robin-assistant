@@ -5,11 +5,17 @@ import { getAllowedCwds, isCwdAllowed } from '../cognition/capture.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
 import { recall } from './recall.ts';
+import { sliceToRelevantSection } from './section-slice.ts';
 
 /** Prompts shorter than this (trimmed) are too thin to recall against — skip. */
 const MIN_PROMPT_LEN = 12;
-/** Recall snippet body truncation. */
-const SNIPPET_BODY_CHARS = 400;
+/**
+ * Recall snippet body truncation. Raised from the original 400 once read-time section
+ * slicing landed: a sliced section is a coherent unit worth injecting more fully than a
+ * 400-char teaser. Kept well under the Layer-1 whole-doc budget so a few Layer-2 snippets
+ * can't crowd out the curated docs.
+ */
+const SNIPPET_BODY_CHARS = 1000;
 /** How many candidate hits to pull, and how many (post-dedup) to actually inject. */
 const SNIPPET_RECALL_LIMIT = 6;
 const SNIPPET_KEEP = 4;
@@ -122,7 +128,12 @@ export async function composeAutoRecall(input: AutoRecallInput): Promise<string 
       const key = `c:${hit.contentId}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const compact = hit.body.replace(/\s+/g, ' ').trim();
+      // For whole-doc hits, slice to the section matching the prompt instead of taking the
+      // file's top-of-doc preamble — otherwise truncation returns the least query-specific
+      // part. Non-doc hits (beliefs, captures) are already focused; pass them straight through.
+      const raw =
+        hit.kind === 'knowledge.doc' ? sliceToRelevantSection(hit.body, prompt) : hit.body;
+      const compact = raw.replace(/\s+/g, ' ').trim();
       const text =
         compact.length > SNIPPET_BODY_CHARS ? `${compact.slice(0, SNIPPET_BODY_CHARS)}…` : compact;
       entries.push({ id: hit.kind ?? 'memory', text });
