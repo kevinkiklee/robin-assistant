@@ -105,6 +105,30 @@ roles: {}
     );
   }
 
+  // Default recall-topics.yaml — ships EMPTY in the skeleton. This is auto-recall's
+  // keyword topic→canonical-doc map: per-user, populated by hand (or the live session)
+  // to point at that user's curated knowledge docs. `robin doctor` warns if a mapped
+  // doc path is missing (recall.topics_resolvable).
+  const recallTopicsPath = join(paths.config.root, 'recall-topics.yaml');
+  if (!existsSync(recallTopicsPath)) {
+    writeFileSync(
+      recallTopicsPath,
+      `# Auto-recall topic map. Each turn, the UserPromptSubmit hook matches the prompt
+# against the \`match\` terms (case-insensitive, whole-word) and injects the listed
+# \`docs\` (whole file, capped) as context BEFORE Claude answers. docs paths are
+# relative to user-data/. Keep each mapped doc lean (<~12k chars).
+#
+# Example:
+# topics:
+#   - id: photography
+#     match: [camera, lens, photo]
+#     docs: [content/knowledge/photo-gear-inventory.md]
+
+topics: []
+`,
+    );
+  }
+
   // Apply schema migrations
   const db = openDb(dbFilePath(userData));
   applyMigrations(db, allMigrations);
@@ -156,13 +180,13 @@ roles: {}
   // Also install the SessionStart hook so each session opens with the LLM-free primer
   // (corrections, belief heads, profile prose) injected as context.
   try {
-    const { installSessionEndHook, installSessionStartHook } = await import(
-      '../../lib/claude-hooks/install.ts'
-    );
+    const { installSessionEndHook, installSessionStartHook, installUserPromptSubmitHook } =
+      await import('../../lib/claude-hooks/install.ts');
     const end = installSessionEndHook();
     const start = installSessionStartHook();
+    const ups = installUserPromptSubmitHook();
     console.log(
-      `  Hooks:    ${end.replaced ? 'updated' : 'installed'} SessionEnd, ${start.replaced ? 'updated' : 'installed'} SessionStart in ${end.path}`,
+      `  Hooks:    ${end.replaced ? 'updated' : 'installed'} SessionEnd, ${start.replaced ? 'updated' : 'installed'} SessionStart, ${ups.replaced ? 'updated' : 'installed'} UserPromptSubmit in ${end.path}`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

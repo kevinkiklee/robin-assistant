@@ -2,9 +2,28 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
 import { ageDaysFrom, type ProvenanceClass } from './provenance.ts';
 
+/** Query is truncated to this many chars before embedding — bounds embed latency/cost on
+ *  pathological prompts (a pasted file, a giant diff) without hurting recall quality. */
+const MAX_EMBED_QUERY_CHARS = 2000;
+/** Reciprocal Rank Fusion constant. 60 is the canonical value from the original RRF paper. */
+const RRF_K = 60;
+
 export interface RecallOptions {
   limit?: number;
   mode?: 'lex' | 'vec' | 'hybrid';
+  /**
+   * Drop vector hits whose L2 distance exceeds this floor. `events_vec` is a vec0
+   * default-L2 table, so a large distance means "not actually similar". Without a
+   * floor, hybrid recall pads its result set with semantically-unrelated rows (the
+   * old `1 - distance` score even went negative for distance > 1 yet still ranked
+   * them). `undefined` = no floor, preserving prior behavior for existing callers;
+   * the auto-recall composer passes an explicit, measured floor.
+   */
+  maxDistance?: number;
+  /** Tags the `recall_log` row so auto-recall noise can later be separated from manual queries. */
+  source?: 'auto' | 'manual';
+  /** Correlates the recall to a session (auto-recall hot path); stored on the log row. */
+  sessionId?: string;
 }
 
 export interface RecallHit {
@@ -66,17 +85,61 @@ function queryHash(query: string): string {
 }
 
 /**
- * Insert a recall_log row for every recall() call. The row starts with outcome='pending';
- * downstream cognition (dream's recall-feedback step, future) updates it once it can score
- * whether the surfaced answer was actually used. Storing every call lets us answer "are we
- * recalling junk?" via aggregation later — the audit cost is one tiny row per query.
+ * Reciprocal Rank Fusion: merge ranked result lists by `Σ 1/(RRF_K + rank)`, where
+ * `rank` is each hit's 0-based position within its own list. Position — not the
+ * raw lex/vec score — is all that matters, which sidesteps the incompatible-scale
+ * bug of the old additive merge (FTS `-rank` summed with vec `1 - distance`). An
+ * item that ranks well in BOTH lists rises to the top. Merge key is `contentId`;
+ * the first-seen hit's body/source are kept and its fused score accumulated.
  */
-function logRecall(db: RobinDb, query: string, resultCount: number): void {
+export function fuseRRF(lists: RecallHit[][], limit: number, k = RRF_K): RecallHit[] {
+  const fused = new Map<number, RecallHit>();
+  for (const list of lists) {
+    list.forEach((hit, rank) => {
+      const contribution = 1 / (k + rank);
+      const existing = fused.get(hit.contentId);
+      if (existing) existing.score += contribution;
+      else fused.set(hit.contentId, { ...hit, score: contribution });
+    });
+  }
+  return Array.from(fused.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+/**
+ * Insert a recall_log row for every recall() call, with a deterministic outcome set
+ * at log time: `miss` (zero hits) or `answered` (≥1 hit). This closes the loop that
+ * previously left every row stuck at `outcome='pending'` (the deferred dream scorer
+ * never shipped), making recall precision (`answered / total`) measurable. We also
+ * persist `top_score` (the best hit's fused/raw score), the `session_id`, and the
+ * surfaced `content_ids` — linkage a richer relevance scorer can use later. `source`
+ * separates auto-recall hot-path queries from manual/MCP ones.
+ */
+function logRecall(
+  db: RobinDb,
+  query: string,
+  hits: RecallHit[],
+  source: 'auto' | 'manual',
+  sessionId?: string,
+): void {
   try {
-    db.prepare(`INSERT INTO recall_log (ts, query_hash, result_count) VALUES (?, ?, ?)`).run(
+    const outcome = hits.length === 0 ? 'miss' : 'answered';
+    const topScore = hits.length > 0 ? hits[0].score : null;
+    const contentIds = JSON.stringify(hits.map((h) => h.contentId));
+    db.prepare(
+      `INSERT INTO recall_log
+         (ts, query_hash, result_count, source, outcome, top_score, session_id, injected_content_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
       new Date().toISOString(),
       queryHash(query),
-      resultCount,
+      hits.length,
+      source,
+      outcome,
+      topScore,
+      sessionId ?? null,
+      contentIds,
     );
   } catch {
     // Logging is best-effort; never let it block the recall response.
@@ -91,6 +154,8 @@ export async function recall(
 ): Promise<RecallHit[]> {
   const limit = opts.limit ?? 10;
   const mode = opts.mode ?? (llm ? 'hybrid' : 'lex');
+  const source = opts.source ?? 'manual';
+  const sessionId = opts.sessionId;
 
   const lexHits: RecallHit[] = [];
   // FTS5 treats hyphen, colon, asterisk, and bare AND/OR/NOT/NEAR as operators. A natural
@@ -139,13 +204,15 @@ export async function recall(
   }
   if (mode === 'lex' || !llm) {
     const enriched = enrichHits(db, lexHits);
-    logRecall(db, query, enriched.length);
+    logRecall(db, query, enriched, source, sessionId);
     return enriched;
   }
 
   const vecHits: RecallHit[] = [];
   try {
-    const [vec] = await llm.embed('embed', query);
+    // Truncate before embedding — a pasted file or giant diff shouldn't blow up embed
+    // latency/cost, and the leading 2k chars carry the topical signal recall needs.
+    const [vec] = await llm.embed('embed', query.slice(0, MAX_EMBED_QUERY_CHARS));
     const buf = Buffer.from(new Float32Array(vec).buffer);
     const vecRows = db
       .prepare(`
@@ -163,6 +230,9 @@ export async function recall(
       eventId: number | null;
     }>;
     for (const r of vecRows) {
+      // L2 distance floor: drop hits the embedding model considers far. Skipped when
+      // maxDistance is undefined so existing callers see no behavior change.
+      if (opts.maxDistance !== undefined && r.distance > opts.maxDistance) continue;
       if (r.eventId !== null) {
         vecHits.push({
           eventId: r.eventId,
@@ -175,26 +245,18 @@ export async function recall(
     }
   } catch {
     const enriched = enrichHits(db, lexHits);
-    logRecall(db, query, enriched.length);
+    logRecall(db, query, enriched, source, sessionId);
     return enriched;
   }
 
   if (mode === 'vec') {
     const enriched = enrichHits(db, vecHits);
-    logRecall(db, query, enriched.length);
+    logRecall(db, query, enriched, source, sessionId);
     return enriched;
   }
 
-  const merged = new Map<number, RecallHit>();
-  for (const h of [...lexHits, ...vecHits]) {
-    const existing = merged.get(h.contentId);
-    if (existing) merged.set(h.contentId, { ...existing, score: existing.score + h.score });
-    else merged.set(h.contentId, h);
-  }
-  const result = Array.from(merged.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  const result = fuseRRF([lexHits, vecHits], limit);
   const enriched = enrichHits(db, result);
-  logRecall(db, query, enriched.length);
+  logRecall(db, query, enriched, source, sessionId);
   return enriched;
 }

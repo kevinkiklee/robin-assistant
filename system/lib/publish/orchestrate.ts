@@ -25,7 +25,7 @@ import { walkLocalImages } from './images.ts';
 import { appendLogEntry, readLog } from './log.ts';
 import { writeManifest } from './manifest.ts';
 import { extractFrontmatter, normalizeMarkdown, sanitizeSchema } from './pipeline.ts';
-import { appendSuffix, deriveSlug, sanitizeSlug } from './slug.ts';
+import { appendSuffix, deriveSlug, isRefusedSlug, sanitizeSlug } from './slug.ts';
 import { wrapHtml } from './template.ts';
 import type {
   BlobClient,
@@ -168,6 +168,18 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     frontmatter,
   });
   let slug = derivedSlug;
+
+  // Hard refusal: the daily brief is a private artifact and must never be
+  // published to the web. Applies to every non-delete mode and to slugs from
+  // either an explicit --slug or a brief-named source file. (mode=delete returns
+  // above, so existing briefs remain removable.)
+  if (isRefusedSlug(slug)) {
+    throw new PublishError(
+      EXIT_POLICY,
+      `Refused: slug "${slug}" is a private daily brief — the daily brief is never published to the web. ` +
+        'Use a different slug if this is unrelated content.',
+    );
+  }
 
   let action: PublishAction;
   if (mode === 'overwrite') action = 'overwrite';

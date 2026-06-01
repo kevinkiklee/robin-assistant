@@ -3,11 +3,15 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { LLMDispatcher } from '../llm/dispatcher.ts';
+import type { LLMProvider } from '../llm/types.ts';
 import { type BeliefRecord, recallBelief } from './belief.ts';
 import {
   countPendingCandidates,
+  dedupePendingCandidates,
   expireStaleCandidates,
   insertBeliefCandidate,
+  insertCandidateWithDedup,
   isLowQualityClaim,
   listBeliefCandidates,
   resolveBeliefCandidate,
@@ -22,6 +26,199 @@ function freshDb() {
   applyMigrations(db, allMigrations);
   return db;
 }
+
+/**
+ * A deterministic stub embedder for dedup tests. Each claim maps to a unit vector
+ * along a single axis chosen by the concept keyword it contains, so paraphrases of
+ * the same fact are colinear (cosine ≈ 1) and distinct facts are orthogonal
+ * (cosine = 0). The actual claim wording is irrelevant — only the concept matters.
+ */
+function conceptLLM(): LLMDispatcher {
+  const axisFor = (text: string): number => {
+    const t = text.toLowerCase();
+    if (/\b(nas|ugreen|nasync|ironwolf)\b/.test(t)) return 0;
+    if (/\b(camera|nikon|zf|lens)\b/.test(t)) return 1;
+    if (/\b(lightroom|catalog)\b/.test(t)) return 2;
+    return 3;
+  };
+  const vecFor = (text: string): number[] => {
+    const v = new Array(3072).fill(0);
+    v[axisFor(text)] = 1;
+    return v;
+  };
+  const provider: LLMProvider = {
+    name: 'concept',
+    capabilities: new Set(['embed']),
+    meta: { contextWindow: 0, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async () => {
+      throw new Error('nope');
+    },
+    embed: async (text: string | string[]) =>
+      (Array.isArray(text) ? text : [text]).map(vecFor),
+  };
+  const d = new LLMDispatcher();
+  d.register('c', provider);
+  d.assign('embed', 'c');
+  return d;
+}
+
+test('dedup: a paraphrase of an existing pending candidate merges (corroboration++, no new row)', async () => {
+  const db = freshDb();
+  const llm = conceptLLM();
+  const a = await insertCandidateWithDedup(db, llm, {
+    topic: 'nas-model',
+    claim: 'Kevin owns a UGREEN NASync DXP2800 NAS purchased 2026-05-31.',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  const b = await insertCandidateWithDedup(db, llm, {
+    topic: 'photography-nas', // different slug, same fact
+    claim: "Kevin's UGREEN NAS (NASync DXP2800) was bought on 2026-05-31 for archiving.",
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  assert.equal(a.merged, false);
+  assert.equal(b.merged, true);
+  assert.equal(b.id, a.id); // merged into the canonical row
+  assert.equal(countPendingCandidates(db), 1);
+  const row = listBeliefCandidates(db, { status: 'pending' })[0];
+  assert.equal(row.corroborationCount, 2);
+  closeDb(db);
+});
+
+test('dedup: a semantically distinct fact is a separate candidate', async () => {
+  const db = freshDb();
+  const llm = conceptLLM();
+  await insertCandidateWithDedup(db, llm, {
+    topic: 'nas-model',
+    claim: 'Kevin owns a UGREEN NASync DXP2800 NAS.',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  const cam = await insertCandidateWithDedup(db, llm, {
+    topic: 'camera',
+    claim: "Kevin's primary camera is the Nikon Zf.",
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  assert.equal(cam.merged, false);
+  assert.equal(countPendingCandidates(db), 2);
+  closeDb(db);
+});
+
+test('dedup: a higher-confidence paraphrase becomes canonical (protects against the wrong-value variant)', async () => {
+  const db = freshDb();
+  const llm = conceptLLM();
+  // The low-confidence, wrong-price variant lands first.
+  const a = await insertCandidateWithDedup(db, llm, {
+    topic: 'nas-cost',
+    claim: 'Kevin owns a UGREEN NAS purchased for ~$390.',
+    confidence: 0.6,
+    provenance: 'first-party',
+  });
+  // A higher-confidence, corrected variant arrives and should take over canonical text.
+  await insertCandidateWithDedup(db, llm, {
+    topic: 'nas-cost',
+    claim: 'Kevin owns a UGREEN NAS purchased for ~$990 all-in.',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  assert.equal(countPendingCandidates(db), 1);
+  const row = listBeliefCandidates(db, { status: 'pending' })[0];
+  assert.equal(row.id, a.id);
+  assert.match(row.claim, /\$990/);
+  assert.equal(row.confidence, 0.9);
+  assert.equal(row.corroborationCount, 2);
+  closeDb(db);
+});
+
+test('dedup: no embedder falls back to exact (topic, claim) match', async () => {
+  const db = freshDb();
+  // Same concept, different slug — without an embedder these stay separate (exact match only).
+  await insertCandidateWithDedup(db, null, {
+    topic: 'nas-a',
+    claim: 'Kevin owns a UGREEN NAS purchased 2026-05-31.',
+  });
+  await insertCandidateWithDedup(db, null, {
+    topic: 'nas-b',
+    claim: "Kevin's UGREEN NAS was bought 2026-05-31.",
+  });
+  assert.equal(countPendingCandidates(db), 2);
+  // Exact duplicate still dedups.
+  await insertCandidateWithDedup(db, null, {
+    topic: 'nas-a',
+    claim: 'Kevin owns a UGREEN NAS purchased 2026-05-31.',
+  });
+  assert.equal(countPendingCandidates(db), 2);
+  closeDb(db);
+});
+
+test('dedup: low-quality dev-artifact claim is filtered before embedding (sentinel id)', async () => {
+  const db = freshDb();
+  const llm = conceptLLM();
+  const res = await insertCandidateWithDedup(db, llm, {
+    topic: 'robin-infra',
+    claim: 'Robin runs as a launchd daemon on macOS.',
+  });
+  assert.equal(res.id, -1);
+  assert.equal(res.merged, false);
+  assert.equal(countPendingCandidates(db), 0);
+  closeDb(db);
+});
+
+test('sweep: collapses a paraphrase cluster to one canonical, rejecting the rest', async () => {
+  const db = freshDb();
+  const llm = conceptLLM();
+  // Seed three NAS-concept paraphrases (no embeddings, like pre-dedup prod rows) under
+  // different slugs, plus one distinct camera fact. The 0.95-confidence NAS row should
+  // win canonical.
+  insertBeliefCandidate(db, { topic: 'nas-a', claim: 'Kevin owns a UGREEN NAS.', confidence: 0.8 });
+  insertBeliefCandidate(db, {
+    topic: 'nas-b',
+    claim: "Kevin's UGREEN NASync DXP2800 is his archive.",
+    confidence: 0.95,
+  });
+  insertBeliefCandidate(db, {
+    topic: 'nas-c',
+    claim: 'Kevin bought a UGREEN NAS with IronWolf disks.',
+    confidence: 0.7,
+  });
+  insertBeliefCandidate(db, {
+    topic: 'camera',
+    claim: "Kevin's primary camera is the Nikon Zf.",
+    confidence: 0.9,
+  });
+
+  const report = await dedupePendingCandidates(db, llm);
+  assert.equal(report.rejected, 2);
+  assert.equal(countPendingCandidates(db), 2); // 1 NAS canonical + 1 camera
+
+  const pending = listBeliefCandidates(db, { status: 'pending' });
+  const nas = pending.find((c) => /UGREEN/.test(c.claim));
+  assert.ok(nas);
+  assert.match(nas.claim, /DXP2800/); // highest-confidence variant kept
+  assert.equal(nas.corroborationCount, 3); // cluster size folded in
+
+  const rejected = listBeliefCandidates(db, { status: 'rejected' });
+  assert.equal(rejected.length, 2);
+  for (const r of rejected) assert.equal(r.resolvedReason, 'paraphrase-dup');
+  closeDb(db);
+});
+
+test('sweep: dry-run reports the cluster without mutating anything', async () => {
+  const db = freshDb();
+  const llm = conceptLLM();
+  insertBeliefCandidate(db, { topic: 'nas-a', claim: 'Kevin owns a UGREEN NAS.', confidence: 0.8 });
+  insertBeliefCandidate(db, {
+    topic: 'nas-b',
+    claim: "Kevin's UGREEN NASync DXP2800.",
+    confidence: 0.9,
+  });
+  const report = await dedupePendingCandidates(db, llm, { dryRun: true });
+  assert.equal(report.rejected, 2 - 1); // one loser would be rejected
+  assert.equal(countPendingCandidates(db), 2); // unchanged — dry run mutated nothing
+  closeDb(db);
+});
 
 test('isLowQualityClaim: drops Robin-internals and dev-artifact claims', () => {
   const dropped = [

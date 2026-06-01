@@ -23,4 +23,8 @@ export interface InvariantReport {
   message?: string;
   remediation?: string;
   duration_ms: number;
+  /** Set when a repair was attempted for this invariant (doctor --fix / daily run). */
+  repaired?: boolean;
+  /** The repair's error message, if it threw. `ok` then reflects the post-repair re-check. */
+  repair_error?: string;
 }

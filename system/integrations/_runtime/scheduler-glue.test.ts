@@ -5,7 +5,29 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import { gcOrphanIntegrationTicks, registerIntegrations } from './scheduler-glue.ts';
+import { listOnDiskIntegrationNames } from './loader.ts';
+import {
+  gcOrphanIntegrationTicks,
+  gcRemovedIntegrationState,
+  registerIntegrations,
+} from './scheduler-glue.ts';
+
+function seedState(db: ReturnType<typeof freshDb>, integration: string, key: string, value = 'x') {
+  db.prepare(
+    `INSERT INTO integration_state (integration_name, key, value, updated_at)
+     VALUES (?, ?, ?, '2026-01-01T00:00:00.000Z')`,
+  ).run(integration, key, value);
+}
+
+function stateNames(db: ReturnType<typeof freshDb>): string[] {
+  return (
+    db
+      .prepare('SELECT DISTINCT integration_name AS name FROM integration_state')
+      .all() as Array<{ name: string }>
+  )
+    .map((r) => r.name)
+    .sort();
+}
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-glue-'));
@@ -51,6 +73,62 @@ test('scheduler-glue: gcOrphanIntegrationTicks drops removed-integration ticks, 
     'orphan tick gone; live integration tick + cognition job untouched',
   );
   closeDb(db);
+});
+
+test('scheduler-glue: gcRemovedIntegrationState drops removed-integration state, keeps on-disk', () => {
+  const db = freshDb();
+  seedState(db, 'github', 'last_attempt_at', '2026-05-24T19:00:00.000Z'); // removed → phantom
+  seedState(db, 'github', 'last_ingest_at', '2026-05-24T15:36:00.000Z');
+  seedState(db, 'whoop', 'access_token', 'secret-token'); // present on disk → must survive
+  seedState(db, 'whoop', 'consecutive_errors', '0');
+
+  // whoop is on disk; github is not.
+  const removed = gcRemovedIntegrationState(db, new Set(['whoop', 'linear']));
+  assert.equal(removed, 2, 'both github rows deleted');
+  assert.deepEqual(stateNames(db), ['whoop'], 'github gone; whoop (incl. its token) preserved');
+  closeDb(db);
+});
+
+test('scheduler-glue: gcRemovedIntegrationState is a no-op when the on-disk set is empty', () => {
+  const db = freshDb();
+  seedState(db, 'whoop', 'access_token', 'secret-token');
+  // Empty set means we could not read the roots — must NOT nuke live credentials.
+  const removed = gcRemovedIntegrationState(db, new Set());
+  assert.equal(removed, 0, 'empty on-disk set → delete nothing');
+  assert.deepEqual(stateNames(db), ['whoop']);
+  closeDb(db);
+});
+
+test('scheduler-glue: registerIntegrations GCs the state of a removed integration', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-gcstate-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-gcstate-user-'));
+  makeIntegration(userRoot, 'demo-live');
+  // A tombstone from a deleted integration: KV rows but no directory anywhere.
+  seedState(db, 'github', 'last_attempt_at', '2026-05-24T19:00:00.000Z');
+  seedState(db, 'demo-live', 'last_attempt_at', '2026-05-29T00:00:00.000Z');
+
+  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<
+    typeof registerIntegrations
+  >[0];
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  assert.deepEqual(stateNames(db), ['demo-live'], 'github tombstone GCd; live integration kept');
+  closeDb(db);
+});
+
+test('loader: listOnDiskIntegrationNames counts a present-but-broken dir (manifest only)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'robin-ondisk-'));
+  // Valid manifest, but index.js would fail to import — still counts as present.
+  const dir = join(root, 'flaky');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'integration.yaml'), 'name: flaky\nversion: 1.0.0\nschedule: manual\n');
+  writeFileSync(join(dir, 'index.js'), 'throw new Error("boom at import");\n');
+  const names = listOnDiskIntegrationNames([root]);
+  assert.ok(names.has('flaky'), 'broken-but-present integration is on-disk (tokens safe)');
 });
 
 test('scheduler-glue: registers integrations and seeds cron jobs', async () => {

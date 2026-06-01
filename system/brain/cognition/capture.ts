@@ -29,7 +29,7 @@ export interface SessionCapture {
  * env var (comma-separated absolute paths). A session is allowed if its cwd
  * exactly matches an entry or is a descendant of one.
  */
-function getAllowedCwds(): string[] {
+export function getAllowedCwds(): string[] {
   const env = process.env.ROBIN_ALLOWED_CWDS;
   if (env) {
     return env
@@ -45,7 +45,7 @@ function getAllowedCwds(): string[] {
 }
 
 /** Returns true if cwd is undefined (skip check), or matches the allowlist. */
-function isCwdAllowed(cwd: string | undefined, allowedCwds: string[]): boolean {
+export function isCwdAllowed(cwd: string | undefined, allowedCwds: string[]): boolean {
   if (cwd === undefined) return true;
   if (allowedCwds.length === 0) return true; // failed to resolve default → fail-open
   return allowedCwds.some((prefix) => cwd === prefix || cwd.startsWith(`${prefix}/`));

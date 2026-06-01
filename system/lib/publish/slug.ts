@@ -1,6 +1,7 @@
 import { basename, extname } from 'node:path';
 import { customAlphabet } from 'nanoid';
 import {
+  REFUSED_SLUG_PATTERN,
   RESERVED_SLUG_PREFIX,
   SLUG_ALPHABET,
   SLUG_MAX_LENGTH,
@@ -8,6 +9,15 @@ import {
 } from './config.ts';
 
 const nano = customAlphabet(SLUG_ALPHABET, SLUG_SUFFIX_LENGTH);
+
+/**
+ * True when `slug` names content the pipeline must never publish to the web
+ * (currently: the private daily brief). Enforced in `publish()` for every
+ * mode except `delete`. See `REFUSED_SLUG_PATTERN`.
+ */
+export function isRefusedSlug(slug: string): boolean {
+  return REFUSED_SLUG_PATTERN.test(slug);
+}
 
 export function sanitizeSlug(input: string | null | undefined): string {
   if (!input) return '';

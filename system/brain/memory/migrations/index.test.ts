@@ -168,6 +168,32 @@ test('schema 001: indexes on events are created', () => {
   closeDb(db);
 });
 
+test('migration 020: belief_candidates gains embedding + corroboration_count', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const cols = db.prepare(`PRAGMA table_info(belief_candidates)`).all() as Array<{
+    name: string;
+    dflt_value: string | null;
+  }>;
+  const byName = new Map(cols.map((c) => [c.name, c]));
+  assert.ok(byName.has('embedding'), 'expected embedding column on belief_candidates');
+  const corr = byName.get('corroboration_count');
+  assert.ok(corr, 'expected corroboration_count column on belief_candidates');
+  assert.equal(corr.dflt_value, '1', 'corroboration_count should default to 1');
+  closeDb(db);
+});
+
+test('migration 020: recall_log gains top_score, session_id, injected_content_ids', () => {
+  const db = freshDb();
+  applyMigrations(db, allMigrations);
+  const cols = db.prepare(`PRAGMA table_info(recall_log)`).all() as Array<{ name: string }>;
+  const names = cols.map((c) => c.name);
+  for (const expected of ['top_score', 'session_id', 'injected_content_ids']) {
+    assert.ok(names.includes(expected), `expected ${expected} column on recall_log`);
+  }
+  closeDb(db);
+});
+
 test('migration 016: perf indexes for ingest dedup + candidate dedup exist', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);

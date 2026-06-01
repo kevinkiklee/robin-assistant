@@ -168,6 +168,8 @@ export class Daemon {
         opts.httpPort ?? (envPort != null && envPort >= 0 && envPort <= 65535 ? envPort : 41273);
       this.http = await startHttpServer({
         db,
+        llm: this.llm ?? null,
+        userData,
         port: httpPort,
         isHealthy: () => this.running,
         onHook: async (kind, payload) => {

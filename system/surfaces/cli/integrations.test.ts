@@ -122,4 +122,33 @@ describe('robin integrations report', () => {
     assert.equal(row.status, 'broken');
     assert.match(row.last_error ?? '', /invalid_grant/);
   });
+
+  it('does not surface a stale (>24h) last_error for a currently-healthy integration', () => {
+    const db = openDb(dbFilePath(dataDir));
+    const now = new Date().toISOString();
+    // Healthy state: recent attempt + ingest, no consecutive errors.
+    for (const [k, v] of [
+      ['last_attempt_at', now],
+      ['last_ingest_at', now],
+      ['consecutive_errors', '0'],
+    ] as const) {
+      db.prepare(
+        `INSERT INTO integration_state (integration_name, key, value, updated_at) VALUES (?, ?, ?, ?)`,
+      ).run('recovered', k, v, now);
+    }
+    // An old errored job (3 days ago) + a fresh success. The error is ancient.
+    db.prepare(
+      `INSERT INTO jobs (name, trigger_kind, scheduled_at, state, last_error) VALUES (?, 'cron', datetime('now','-3 days'), 'errored', ?)`,
+    ).run('integration.recovered.tick', 'graphql 400 DateTime! mismatch');
+    db.prepare(
+      `INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES (?, 'cron', datetime('now','-1 hour'), 'completed')`,
+    ).run('integration.recovered.tick');
+    closeDb(db);
+
+    const row = runIntegrationsReport().rows.find((r) => r.name === 'recovered');
+    assert.ok(row);
+    assert.equal(row.status, 'ok');
+    assert.equal(row.recent_err, 0, 'no errors in the 24h window');
+    assert.equal(row.last_error, null, 'stale >24h error is not surfaced alongside a healthy status');
+  });
 });

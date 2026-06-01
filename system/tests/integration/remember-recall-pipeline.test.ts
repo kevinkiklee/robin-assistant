@@ -139,7 +139,11 @@ test('pipeline: every recall call writes a recall_log row regardless of mode or 
     outcome: string;
   }>;
   assert.equal(logs.length, 3, `expected 3 recall_log rows, got ${logs.length}`);
-  for (const l of logs) assert.equal(l.outcome, 'pending');
+  // Outcome is now set deterministically at log time: answered when hits were
+  // returned, miss when none (no longer left stuck at 'pending').
+  for (const l of logs) {
+    assert.equal(l.outcome, l.result_count > 0 ? 'answered' : 'miss');
+  }
   closeDb(db);
 });
 

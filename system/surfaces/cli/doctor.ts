@@ -5,12 +5,9 @@ import {
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
-  integrationsHealthyInvariant,
-  jobsDiscoverableInvariant,
-  schedulerProgressingInvariant,
   userDataWritableInvariant,
-  vecIndexSyncedInvariant,
 } from '../../kernel/invariants/builtins/index.ts';
+import { buildDoctorInvariants } from '../../kernel/invariants/doctor-set.ts';
 import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
 import type { InvariantReport } from '../../kernel/invariants/types.ts';
@@ -27,11 +24,17 @@ export interface DoctorReport {
     message?: string;
     remediation?: string;
     duration_ms: number;
+    /** True when --fix ran a repair for this check; `status` is the post-repair re-check. */
+    repaired?: boolean;
   }>;
-  summary: { ok: number; warn: number; fail: number; exit_code: 0 | 1 | 2 };
+  summary: { ok: number; warn: number; fail: number; repaired: number; exit_code: 0 | 1 | 2 };
 }
 
-export async function runDoctor(opts: { version: string }): Promise<DoctorReport> {
+export async function runDoctor(opts: {
+  version: string;
+  /** Auto-repair failing checks that declare a safe `repair()`, then re-check. */
+  fix?: boolean;
+}): Promise<DoctorReport> {
   const userData = resolveUserDataDir();
   const dbPath = dbFilePath(userData);
 
@@ -55,20 +58,11 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
           duration_ms: 0,
         },
       ],
-      summary: { ok: 0, warn: 0, fail: 1, exit_code: 2 },
+      summary: { ok: 0, warn: 0, fail: 1, repaired: 0, exit_code: 2 },
     };
   }
 
-  const reports = await runInvariants([
-    userDataWritableInvariant(userData),
-    dbReachableInvariant(db),
-    dbSchemaCurrentInvariant(db),
-    dbWalSizeBoundedInvariant(db),
-    vecIndexSyncedInvariant(db),
-    integrationsHealthyInvariant(db),
-    jobsDiscoverableInvariant(db),
-    schedulerProgressingInvariant(db, { userData }),
-  ]);
+  const reports = await runInvariants(buildDoctorInvariants(db, userData), { fix: opts.fix });
 
   closeDb(db);
 
@@ -79,6 +73,7 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
     message: r.message,
     remediation: r.remediation,
     duration_ms: r.duration_ms,
+    ...(r.repaired ? { repaired: true } : {}),
   }));
 
   const summary = checks.reduce(
@@ -86,9 +81,15 @@ export async function runDoctor(opts: { version: string }): Promise<DoctorReport
       if (c.status === 'ok') acc.ok++;
       else if (c.severity === 'critical') acc.fail++;
       else acc.warn++;
+      if (c.repaired) acc.repaired++;
       return acc;
     },
-    { ok: 0, warn: 0, fail: 0 } as { ok: number; warn: number; fail: number },
+    { ok: 0, warn: 0, fail: 0, repaired: 0 } as {
+      ok: number;
+      warn: number;
+      fail: number;
+      repaired: number;
+    },
   );
 
   const exit_code = summary.fail > 0 ? 2 : summary.warn > 0 ? 1 : 0;
@@ -111,11 +112,13 @@ export function printDoctorHuman(report: DoctorReport): void {
     let line = `${icon} ${c.name}`;
     if (c.message) line += ` — ${c.message}`;
     console.log(line);
+    if (c.repaired) console.log(`    ↻ auto-repaired${c.status === 'ok' ? ' (now ok)' : ''}`);
     if (c.remediation && c.status === 'fail') console.log(`    → ${c.remediation}`);
   }
   console.log('');
   console.log(
-    `Summary: ${report.summary.ok} ok, ${report.summary.warn} warn, ${report.summary.fail} fail`,
+    `Summary: ${report.summary.ok} ok, ${report.summary.warn} warn, ${report.summary.fail} fail` +
+      (report.summary.repaired ? ` (${report.summary.repaired} auto-repaired)` : ''),
   );
 }
 

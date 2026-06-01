@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
-import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
+import { insertCandidateWithDedup } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
 import { classifyProvenance } from '../memory/provenance.ts';
@@ -1428,7 +1428,7 @@ export async function runBiographer(
             for (const c of claims) {
               if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
               if (!c.topic?.trim() || !c.claim?.trim()) continue;
-              const inserted = insertBeliefCandidate(db, {
+              const inserted = await insertCandidateWithDedup(db, llm, {
                 topic: c.topic,
                 claim: c.claim,
                 confidence: c.confidence ?? null,
@@ -1437,6 +1437,9 @@ export async function runBiographer(
               });
               // id === -1 → filtered as a dev/engineering artifact; don't count it.
               if (inserted.id === -1) continue;
+              // merged → folded into an existing candidate (corroboration), no new
+              // queue row; don't count it as a fresh draft or against the budget.
+              if (inserted.merged) continue;
               sessionPending++;
               result.claimsDrafted++;
             }

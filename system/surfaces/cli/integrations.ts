@@ -75,9 +75,18 @@ export function runIntegrationsReport(): IntegrationsReport {
            WHERE name = ? AND scheduled_at >= datetime('now', '-24 hours')`,
         )
         .get(jobName) as { ok: number; err: number };
+      // Scope last_error to the SAME 24h window as recent_err above. Without the
+      // bound this surfaced the most recent error EVER — so a healthy integration
+      // (recent_err=0, status=ok) still displayed a days-old error string (linear's
+      // pre-fix GraphQL 400, transient "fetch failed" on whoop/spotify), which reads
+      // as "currently broken" and triggers false-alarm investigations. Now last_error
+      // is null whenever recent_err is 0: the two columns can't contradict.
       const errRow = db
         .prepare(
-          `SELECT last_error FROM jobs WHERE name = ? AND state='errored' AND last_error IS NOT NULL ORDER BY id DESC LIMIT 1`,
+          `SELECT last_error FROM jobs
+             WHERE name = ? AND state='errored' AND last_error IS NOT NULL
+               AND scheduled_at >= datetime('now', '-24 hours')
+             ORDER BY id DESC LIMIT 1`,
         )
         .get(jobName) as { last_error?: string } | undefined;
       return { ...stats, last_error: errRow?.last_error ?? null };

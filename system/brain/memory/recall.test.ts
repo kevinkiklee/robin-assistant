@@ -9,7 +9,7 @@ import { believe } from './belief.ts';
 import { closeDb, openDb } from './db.ts';
 import { ingest } from './ingest.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
-import { recall } from './recall.ts';
+import { fuseRRF, type RecallHit, recall } from './recall.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-recall-'));
@@ -68,10 +68,54 @@ test('recall: logs every query to recall_log with result count', async () => {
     .all() as Array<{ query_hash: string; result_count: number; outcome: string }>;
   assert.equal(rows.length, 2);
   assert.equal(rows[0].result_count, 1);
-  assert.equal(rows[0].outcome, 'pending');
+  assert.equal(rows[0].outcome, 'answered'); // ≥1 hit → answered, set at log time
   assert.equal(rows[1].result_count, 0);
+  assert.equal(rows[1].outcome, 'miss'); // 0 hits → miss, no longer stuck 'pending'
   // Distinct hashes for distinct queries
   assert.notEqual(rows[0].query_hash, rows[1].query_hash);
+  closeDb(db);
+});
+
+test('recall: stores top_score, session_id, and surfaced content ids', async () => {
+  const db = freshDb();
+  ingest(db, null, { kind: 't', source: 's', content: 'kevin loves photography in Lisbon' });
+  const hits = await recall(db, null, 'Lisbon', { mode: 'lex', sessionId: 'sess-42' });
+  assert.equal(hits.length, 1);
+  const row = db
+    .prepare(
+      `SELECT outcome, top_score, session_id, injected_content_ids FROM recall_log ORDER BY id DESC LIMIT 1`,
+    )
+    .get() as {
+    outcome: string;
+    top_score: number | null;
+    session_id: string | null;
+    injected_content_ids: string | null;
+  };
+  assert.equal(row.outcome, 'answered');
+  assert.equal(typeof row.top_score, 'number');
+  assert.equal(row.session_id, 'sess-42');
+  const ids = JSON.parse(row.injected_content_ids ?? '[]') as number[];
+  assert.deepEqual(ids, [hits[0].contentId]);
+  closeDb(db);
+});
+
+test('recall: a miss stores no top_score and an empty content-id set', async () => {
+  const db = freshDb();
+  await recall(db, null, 'nothing-here-zzz', { mode: 'lex', sessionId: 'sess-7' });
+  const row = db
+    .prepare(
+      `SELECT outcome, top_score, session_id, injected_content_ids FROM recall_log ORDER BY id DESC LIMIT 1`,
+    )
+    .get() as {
+    outcome: string;
+    top_score: number | null;
+    session_id: string | null;
+    injected_content_ids: string | null;
+  };
+  assert.equal(row.outcome, 'miss');
+  assert.equal(row.top_score, null);
+  assert.equal(row.session_id, 'sess-7');
+  assert.deepEqual(JSON.parse(row.injected_content_ids ?? '[]'), []);
   closeDb(db);
 });
 
@@ -159,5 +203,112 @@ test('recall: vec mode finds the row whose embedding the dispatcher returned', a
   const hits = await recall(db, llm, 'unrelated query', { mode: 'vec' });
   assert.equal(hits.length, 1);
   assert.match(hits[0].body, /Lisbon/);
+  closeDb(db);
+});
+
+test('fuseRRF: an item ranked in both lists outranks items in only one', () => {
+  const mk = (contentId: number): RecallHit => ({
+    eventId: contentId,
+    contentId,
+    body: `body-${contentId}`,
+    score: 0,
+    source: 'lex',
+  });
+  // lex order: [1, 2]; vec order: [2, 3]. Item 2 appears (well-ranked) in BOTH lists,
+  // so RRF lifts it above item 1 (lex-only #1) and item 3 (vec-only #2).
+  const out = fuseRRF(
+    [
+      [mk(1), mk(2)],
+      [mk(2), mk(3)],
+    ],
+    10,
+  );
+  assert.deepEqual(
+    out.map((h) => h.contentId),
+    [2, 1, 3],
+  );
+});
+
+test('fuseRRF: respects the limit', () => {
+  const mk = (contentId: number): RecallHit => ({
+    eventId: contentId,
+    contentId,
+    body: `b${contentId}`,
+    score: 0,
+    source: 'vec',
+  });
+  const out = fuseRRF([[mk(1), mk(2), mk(3), mk(4)]], 2);
+  assert.equal(out.length, 2);
+  assert.deepEqual(
+    out.map((h) => h.contentId),
+    [1, 2],
+  );
+});
+
+test('recall: maxDistance floor drops vec hits beyond the L2 threshold', async () => {
+  const db = freshDb();
+  const e0 = new Array(3072).fill(0);
+  e0[0] = 1;
+  const e1 = new Array(3072).fill(0);
+  e1[1] = 1; // orthogonal to e0 → L2 distance √2 ≈ 1.414
+  const near = ingest(db, null, { kind: 't', source: 's', content: 'near apple' });
+  const far = ingest(db, null, { kind: 't', source: 's', content: 'far banana' });
+  const put = (contentId: number, vecArr: number[]) => {
+    const buf = Buffer.from(new Float32Array(vecArr).buffer);
+    db.prepare('UPDATE events_content SET embedding = ? WHERE id = ?').run(buf, contentId);
+    db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)').run(
+      BigInt(contentId),
+      buf,
+    );
+  };
+  put(near.contentId as number, e0);
+  put(far.contentId as number, e1);
+  const llm = mockLLM(e0); // the query embeds to e0
+
+  const noFloor = await recall(db, llm, 'q', { mode: 'vec' });
+  assert.equal(noFloor.length, 2, 'without a floor both rows return');
+
+  const floored = await recall(db, llm, 'q', { mode: 'vec', maxDistance: 1.0 });
+  assert.equal(floored.length, 1, 'the floor drops the orthogonal (distance √2) row');
+  assert.match(floored[0].body, /near/);
+  closeDb(db);
+});
+
+test('recall: truncates the query to 2000 chars before embedding', async () => {
+  const db = freshDb();
+  let seen = '';
+  const provider: LLMProvider = {
+    name: 'capture',
+    capabilities: new Set(['embed']),
+    meta: { contextWindow: 0, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async () => {
+      throw new Error('nope');
+    },
+    embed: async (text) => {
+      seen = Array.isArray(text) ? (text[0] ?? '') : text;
+      return [new Array(3072).fill(0)];
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('e', provider);
+  d.assign('embed', 'e');
+
+  await recall(db, d, 'x'.repeat(3000), { mode: 'vec' });
+  assert.equal(seen.length, 2000);
+  closeDb(db);
+});
+
+test('recall: tags recall_log rows with the source (auto vs manual)', async () => {
+  const db = freshDb();
+  ingest(db, null, { kind: 't', source: 's', content: 'lisbon photos' });
+  await recall(db, null, 'lisbon', { mode: 'lex', source: 'auto' });
+  await recall(db, null, 'lisbon', { mode: 'lex' }); // defaults to manual
+  const rows = db.prepare('SELECT source FROM recall_log ORDER BY id').all() as Array<{
+    source: string;
+  }>;
+  assert.deepEqual(
+    rows.map((r) => r.source),
+    ['auto', 'manual'],
+  );
   closeDb(db);
 });

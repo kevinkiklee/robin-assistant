@@ -28,8 +28,16 @@ const EXCLUDED_PREFIXES = [
   'content/knowledge/imported-from-v1/INDEX.md',
   'content/knowledge/imported-from-v1/hot.md',
   'content/knowledge/imported-from-v1/_PROVENANCE.md',
+  // v1 medical files are fully superseded by the curated v3 medical/ tree
+  // (providers.md absorbs the v1 entity files; medications.md adds explicit
+  // prescriber attribution that v1 got wrong — atorvastatin/metoprolol are
+  // Dr. Selby's, not Dr. Yangdhar's, per the 2026-05-28 correction).
+  // Leaving them ingested risks re-promoting the corrected prescriber claim.
+  'content/knowledge/imported-from-v1/knowledge/medical/',
   'content/knowledge/archive/resolved-bugs/',
   'content/knowledge/archive/sessions/',
+  // v1-purged is an audit trail of superseded files — not live recall surface.
+  'content/knowledge/archive/v1-purged/',
   'content/knowledge/robin-operations/cross-link-proactively.md',
   'content/knowledge/robin-operations/daily-brief-protocol.md',
 ];

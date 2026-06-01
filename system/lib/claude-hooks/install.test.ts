@@ -6,12 +6,16 @@ import { test } from 'node:test';
 import {
   HOOK_SIGNATURE,
   HOOK_SIGNATURE_SESSION_START,
+  HOOK_SIGNATURE_USER_PROMPT_SUBMIT,
   installSessionEndHook,
   installSessionStartHook,
+  installUserPromptSubmitHook,
   robinHookCommand,
   robinSessionStartHookCommand,
+  robinUserPromptSubmitHookCommand,
   uninstallSessionEndHook,
   uninstallSessionStartHook,
+  uninstallUserPromptSubmitHook,
 } from './install.ts';
 
 function freshHome() {
@@ -249,5 +253,82 @@ test('uninstallSessionStartHook: deletes SessionStart key when no entries remain
 test('uninstallSessionStartHook: noop when settings.json absent', () => {
   const home = freshHome();
   const r = uninstallSessionStartHook({ home });
+  assert.equal(r.replaced, false);
+});
+
+test('robinUserPromptSubmitHookCommand: posts to /hooks/user_prompt_submit with chosen port', () => {
+  const cmd = robinUserPromptSubmitHookCommand(41999);
+  assert.match(cmd, /127\.0\.0\.1:41999/);
+  assert.match(cmd, /\/hooks\/user_prompt_submit/);
+  assert.match(cmd, /--data-binary @-/);
+  assert.ok(cmd.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT));
+});
+
+test('installUserPromptSubmitHook: creates settings.json from scratch when absent', () => {
+  const home = freshHome();
+  const r = installUserPromptSubmitHook({ home });
+  assert.equal(r.replaced, false);
+  const settings = JSON.parse(readFileSync(r.path, 'utf8'));
+  const cmd = settings.hooks.UserPromptSubmit[0].hooks[0].command;
+  assert.ok(
+    cmd.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT),
+    `expected hook to contain ${HOOK_SIGNATURE_USER_PROMPT_SUBMIT}; got ${cmd}`,
+  );
+});
+
+test('installUserPromptSubmitHook: preserves SessionEnd/SessionStart and third-party hooks', () => {
+  const home = freshHome();
+  installSessionEndHook({ home });
+  installSessionStartHook({ home });
+  const settingsPath = join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.hooks.UserPromptSubmit = [{ hooks: [{ type: 'command', command: 'echo other-ups' }] }];
+  writeFileSync(settingsPath, JSON.stringify(settings));
+
+  installUserPromptSubmitHook({ home });
+  const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  // Sibling lifecycles untouched.
+  const endCommands = after.hooks.SessionEnd.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.map((h) => h.command),
+  );
+  assert.ok(endCommands.some((c: string) => c.includes(HOOK_SIGNATURE)));
+  const startCommands = after.hooks.SessionStart.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.map((h) => h.command),
+  );
+  assert.ok(startCommands.some((c: string) => c.includes(HOOK_SIGNATURE_SESSION_START)));
+  // UserPromptSubmit has both the third-party hook AND robin's.
+  const upsCommands = after.hooks.UserPromptSubmit.flatMap((g: { hooks: { command: string }[] }) =>
+    g.hooks.map((h) => h.command),
+  );
+  assert.ok(upsCommands.some((c: string) => c === 'echo other-ups'));
+  assert.ok(upsCommands.some((c: string) => c.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT)));
+});
+
+test('installUserPromptSubmitHook: idempotent — running twice does not duplicate', () => {
+  const home = freshHome();
+  installUserPromptSubmitHook({ home });
+  const second = installUserPromptSubmitHook({ home });
+  assert.equal(second.replaced, true, 'second install should report replaced=true');
+
+  const settings = JSON.parse(readFileSync(second.path, 'utf8'));
+  const robinHooks = settings.hooks.UserPromptSubmit.flatMap(
+    (g: { hooks: { command: string }[] }) =>
+      g.hooks.filter((h) => h.command.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT)),
+  );
+  assert.equal(robinHooks.length, 1, 'should be exactly one Robin hook after re-install');
+});
+
+test('uninstallUserPromptSubmitHook: removes Robin entry, deletes empty key', () => {
+  const home = freshHome();
+  installUserPromptSubmitHook({ home });
+  const r = uninstallUserPromptSubmitHook({ home });
+  assert.equal(r.replaced, true);
+  const settings = JSON.parse(readFileSync(r.path, 'utf8'));
+  assert.equal(settings.hooks?.UserPromptSubmit, undefined);
+});
+
+test('uninstallUserPromptSubmitHook: noop when settings.json absent', () => {
+  const home = freshHome();
+  const r = uninstallUserPromptSubmitHook({ home });
   assert.equal(r.replaced, false);
 });

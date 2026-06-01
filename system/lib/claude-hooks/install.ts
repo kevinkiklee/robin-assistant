@@ -25,6 +25,12 @@ export const HOOK_SIGNATURE = '/hooks/session_end';
  * at session start (whereas SessionEnd *captures* the finished session).
  */
 export const HOOK_SIGNATURE_SESSION_START = '/hooks/session_start';
+/**
+ * UserPromptSubmit's signature substring. The daemon's /hooks/user_prompt_submit route runs
+ * auto-recall (keyword topic→canonical-doc map + recall snippets) and returns the result as
+ * Claude Code `additionalContext`, injected *before* Claude answers each qualifying turn.
+ */
+export const HOOK_SIGNATURE_USER_PROMPT_SUBMIT = '/hooks/user_prompt_submit';
 export const DEFAULT_PORT = 41273;
 
 export interface InstallOptions {
@@ -53,6 +59,7 @@ interface SettingsShape {
   hooks?: {
     SessionEnd?: MatcherGroup[];
     SessionStart?: MatcherGroup[];
+    UserPromptSubmit?: MatcherGroup[];
     [k: string]: MatcherGroup[] | undefined;
   };
   [k: string]: unknown;
@@ -69,6 +76,13 @@ export function robinSessionStartHookCommand(port: number = DEFAULT_PORT): strin
   // curl's stdout becomes Claude Code's injected SessionStart context. --max-time 2 keeps a
   // down daemon from delaying session start (curl returns nothing → no primer, graceful).
   return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/session_start -H 'Content-Type: application/json' --data-binary @-`;
+}
+
+export function robinUserPromptSubmitHookCommand(port: number = DEFAULT_PORT): string {
+  // Same PATH-safe curl style. The daemon answers with the auto-recall additionalContext
+  // JSON; curl's stdout becomes Claude Code's pre-answer injected context. --max-time 2
+  // bounds the per-turn latency tax — a down/slow daemon returns nothing → no injection.
+  return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/user_prompt_submit -H 'Content-Type: application/json' --data-binary @-`;
 }
 
 /**
@@ -235,6 +249,88 @@ export function uninstallSessionStartHook(opts: InstallOptions = {}): InstallRes
     delete settings.hooks.SessionStart;
   } else {
     settings.hooks.SessionStart = cleaned;
+  }
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  return { path: settingsPath, replaced };
+}
+
+/**
+ * Add (or replace) Robin's UserPromptSubmit hook entry in ~/.claude/settings.json. Mirrors
+ * the SessionStart pair exactly for the UserPromptSubmit lifecycle: signature-based,
+ * idempotent, and preserving third-party UserPromptSubmit hooks.
+ */
+export function installUserPromptSubmitHook(opts: InstallOptions = {}): InstallResult {
+  const home = opts.home ?? homedir();
+  const port = opts.port ?? DEFAULT_PORT;
+  const settingsPath = join(home, '.claude', 'settings.json');
+
+  let settings: SettingsShape = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as SettingsShape;
+    } catch {
+      // Corrupt JSON — start fresh rather than blow up (the original is still on disk).
+      settings = {};
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  const existingGroups: MatcherGroup[] = settings.hooks.UserPromptSubmit ?? [];
+
+  const command = robinUserPromptSubmitHookCommand(port);
+  let replaced = false;
+
+  const cleanedGroups: MatcherGroup[] = [];
+  for (const group of existingGroups) {
+    const filtered = (group.hooks ?? []).filter((h) => {
+      const isRobin =
+        typeof h.command === 'string' && h.command.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT);
+      if (isRobin) replaced = true;
+      return !isRobin;
+    });
+    if (filtered.length > 0) cleanedGroups.push({ ...group, hooks: filtered });
+  }
+
+  cleanedGroups.push({ hooks: [{ type: 'command', command }] });
+  settings.hooks.UserPromptSubmit = cleanedGroups;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  return { path: settingsPath, replaced };
+}
+
+/**
+ * Remove Robin's UserPromptSubmit hook entry from settings.json (idempotent — a no-op if
+ * none was installed). Other UserPromptSubmit hook entries are preserved.
+ */
+export function uninstallUserPromptSubmitHook(opts: InstallOptions = {}): InstallResult {
+  const home = opts.home ?? homedir();
+  const settingsPath = join(home, '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) return { path: settingsPath, replaced: false };
+
+  let settings: SettingsShape;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as SettingsShape;
+  } catch {
+    return { path: settingsPath, replaced: false };
+  }
+
+  const existingGroups: MatcherGroup[] = settings.hooks?.UserPromptSubmit ?? [];
+  let replaced = false;
+  const cleaned: MatcherGroup[] = [];
+  for (const group of existingGroups) {
+    const filtered = (group.hooks ?? []).filter((h) => {
+      const isRobin =
+        typeof h.command === 'string' && h.command.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT);
+      if (isRobin) replaced = true;
+      return !isRobin;
+    });
+    if (filtered.length > 0) cleaned.push({ ...group, hooks: filtered });
+  }
+  if (!settings.hooks) settings.hooks = {};
+  if (cleaned.length === 0) {
+    delete settings.hooks.UserPromptSubmit;
+  } else {
+    settings.hooks.UserPromptSubmit = cleaned;
   }
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   return { path: settingsPath, replaced };

@@ -39,6 +39,7 @@ ADVANCED
   import <dir>          Import NDJSON dumps from content/imported-from-<source>/
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
+  recall [--debug] <q>  Search memory (RRF hybrid); --debug prints scores/distances
   ingest-docs           Index content/* now (also runs automatically every 10 min)
   ingest-archive <dir>  Ingest text files from a directory into Robin memory
   db backup|restore|vacuum   Database maintenance
@@ -147,7 +148,8 @@ async function main(): Promise<void> {
         exit(0);
       }
       const json = args.includes('--json');
-      const report = await runDoctor({ version: VERSION });
+      const fix = args.includes('--fix');
+      const report = await runDoctor({ version: VERSION, fix });
       if (json) {
         console.log(JSON.stringify(report, null, 2));
       } else {
@@ -388,6 +390,12 @@ async function main(): Promise<void> {
       }
       exit(report.errors.length > 0 && report.embedded === 0 ? 1 : 0);
       break;
+    }
+
+    case 'recall': {
+      const { runRecall } = await import('./recall.ts');
+      await runRecall(args.slice(1));
+      return;
     }
 
     case 'publish': {

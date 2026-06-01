@@ -1,9 +1,15 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { buildPrimer } from '../../brain/cognition/primer.ts';
+import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
+import { composeAutoRecall } from '../../brain/memory/auto-recall.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 
 export interface HttpServerDeps {
   db: RobinDb;
+  /** LLM dispatcher for auto-recall's vector layer. Null/absent → lex-only recall. */
+  llm?: LLMDispatcher | null;
+  /** User-data dir — required for the auto-recall route (topic map + canonical docs). */
+  userData?: string;
   port?: number;
   onHook?: (kind: string, payload: unknown) => Promise<void> | void;
   isHealthy: () => boolean;
@@ -64,6 +70,45 @@ export async function startHttpServer(deps: HttpServerDeps): Promise<HttpHandle>
             JSON.stringify({
               hookSpecificOutput: {
                 hookEventName: 'SessionStart',
+                additionalContext,
+              },
+            }),
+          );
+          return;
+        }
+        // UserPromptSubmit: run auto-recall (keyword topic→canonical-doc map + recall
+        // snippets) and return it as `additionalContext`, injected before Claude answers.
+        // This route MUST precede the generic /hooks/ catch-all below. It never throws on
+        // the hot path: any failure degrades to an empty additionalContext (no injection).
+        if (req.method === 'POST' && req.url === '/hooks/user_prompt_submit') {
+          const body = await readBody(req);
+          let additionalContext = '';
+          try {
+            const payload = body ? (JSON.parse(body) as Record<string, unknown>) : {};
+            const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
+            const sessionId =
+              typeof payload.session_id === 'string' ? payload.session_id : undefined;
+            const cwd = typeof payload.cwd === 'string' ? payload.cwd : undefined;
+            if (prompt && deps.userData) {
+              const ctx = await composeAutoRecall({
+                db: deps.db,
+                llm: deps.llm ?? null,
+                prompt,
+                sessionId,
+                cwd,
+                userData: deps.userData,
+              });
+              additionalContext = ctx ?? '';
+            }
+          } catch {
+            additionalContext = '';
+          }
+          res.statusCode = 200;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: 'UserPromptSubmit',
                 additionalContext,
               },
             }),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { appendSuffix, deriveSlug, sanitizeSlug } from './slug.ts';
+import { appendSuffix, deriveSlug, isRefusedSlug, sanitizeSlug } from './slug.ts';
 
 test('sanitizeSlug: lowercases, collapses non-alnum, trims', () => {
   assert.equal(sanitizeSlug('Hello World!'), 'hello-world');
@@ -62,6 +62,17 @@ test('deriveSlug: falls back to frontmatter title, then source filename, then H1
 test('deriveSlug: ultimate fallback is "page"', () => {
   const r = deriveSlug({ explicit: null, source: null, body: '', frontmatter: {} });
   assert.equal(r.slug, 'page');
+});
+
+test('isRefusedSlug: refuses the daily brief (bare and dated), allows everything else', () => {
+  assert.equal(isRefusedSlug('daily-brief'), true);
+  assert.equal(isRefusedSlug('daily-brief-2026-05-30'), true);
+  assert.equal(isRefusedSlug('daily-brief-anything'), true);
+  // Unrelated content that merely mentions "brief" is allowed.
+  assert.equal(isRefusedSlug('my-daily-brief-system'), false);
+  assert.equal(isRefusedSlug('briefing-notes'), false);
+  assert.equal(isRefusedSlug('critique-2026-05-30'), false);
+  assert.equal(isRefusedSlug('getting-to-webb'), false);
 });
 
 test('appendSuffix: appends a 7-char (- + 6) suffix and respects max length', () => {

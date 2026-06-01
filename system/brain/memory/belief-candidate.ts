@@ -1,6 +1,7 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { believe, normalizeTopic } from './belief.ts';
 import type { RobinDb } from './db.ts';
+import { embedBodies, embedBody } from './embed-content.ts';
 import { PROMOTION_THRESHOLD, type ProvenanceClass } from './provenance.ts';
 
 /**
@@ -31,6 +32,10 @@ export interface BeliefCandidate {
   status: 'pending' | 'promoted' | 'rejected';
   createdAt: string;
   resolvedAt: string | null;
+  /** How many times the same fact was independently extracted (1 = drafted once). */
+  corroborationCount: number;
+  /** Why the candidate was resolved (e.g. 'paraphrase-dup'); null while pending. */
+  resolvedReason: string | null;
 }
 
 interface RawRow {
@@ -43,6 +48,8 @@ interface RawRow {
   status: 'pending' | 'promoted' | 'rejected';
   created_at: string;
   resolved_at: string | null;
+  corroboration_count: number;
+  resolved_reason: string | null;
 }
 
 function mapRow(r: RawRow): BeliefCandidate {
@@ -56,7 +63,42 @@ function mapRow(r: RawRow): BeliefCandidate {
     status: r.status,
     createdAt: r.created_at,
     resolvedAt: r.resolved_at,
+    corroborationCount: r.corroboration_count ?? 1,
+    resolvedReason: r.resolved_reason ?? null,
   };
+}
+
+/** Semantic dedup threshold (cosine). Calibrated conservative: paraphrases of the
+ *  same fact collapse, related-but-distinct facts (a device vs. its disks) stay
+ *  separate. Erring high means an occasional missed merge (harmless — the fact sits
+ *  as two candidates), never a false merge that destroys information. */
+const DEDUP_COSINE_THRESHOLD = 0.92;
+
+/** Per-request cap when batch-embedding the pending backlog — cloud embedders reject
+ *  oversized batchEmbedContents calls, so the sweep embeds in chunks of this size. */
+const EMBED_DEDUP_BATCH = 100;
+
+function vecToBlob(vec: number[]): Buffer {
+  return Buffer.from(new Float32Array(vec).buffer);
+}
+
+function blobToVec(buf: Buffer): Float32Array {
+  return new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
+}
+
+/** Cosine similarity over two equal-length vectors; 0 when either is a zero vector. */
+function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  const n = Math.min(a.length, b.length);
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < n; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
 // ─── Dev-artifact / Robin-internals claim filter ─────────────────────────────
@@ -157,6 +199,243 @@ export function insertBeliefCandidate(
       input.provenance ?? null,
     );
   return { id: Number(info.lastInsertRowid) };
+}
+
+/**
+ * Insert a candidate with semantic dedup — the embedder-aware entry point the
+ * biographer uses. The exact-match `insertBeliefCandidate` only dedups identical
+ * `(topic, claim)` pairs, so the biographer's per-run paraphrases of the same fact
+ * (under fresh topic slugs) pile up in the pending queue. Here the incoming claim is
+ * embedded and compared (cosine) against existing pending candidates; a hit at/above
+ * `DEDUP_COSINE_THRESHOLD` is treated as the same fact:
+ *
+ *   - **Merge, don't insert.** Bump the canonical row's `corroboration_count`.
+ *   - **Canonical text only changes for a strictly more-confident variant**, so a
+ *     one-off wrong-value paraphrase (the observed `~$390` vs corroborated `~$990`)
+ *     can never displace a well-supported one — it just adds corroboration.
+ *
+ * Degrades safely: a low-quality claim is filtered before any embed (sentinel id
+ * `-1`); a missing embedder or a failed embed falls back to the exact-match
+ * primitive. Returns `merged: true` when the claim folded into an existing row.
+ */
+export async function insertCandidateWithDedup(
+  db: RobinDb,
+  llm: LLMDispatcher | null,
+  input: {
+    topic: string;
+    claim: string;
+    confidence?: number | null;
+    sourceEventId?: number | null;
+    provenance?: ProvenanceClass | null;
+  },
+): Promise<{ id: number; merged: boolean }> {
+  const topic = normalizeTopic(input.topic);
+  if (!topic) throw new Error('insertCandidateWithDedup: topic required');
+  const claim = input.claim?.trim();
+  if (!claim) throw new Error('insertCandidateWithDedup: claim required');
+  // Cheap filter first — never spend an embed on a dev-artifact/transient claim.
+  if (isLowQualityClaim(topic, claim)) return { id: -1, merged: false };
+  // No embedder → exact-match primitive (degrade, never throw).
+  if (!llm) return { id: insertBeliefCandidate(db, input).id, merged: false };
+
+  let blob: Buffer;
+  try {
+    blob = vecToBlob(await embedBody(llm, claim));
+  } catch {
+    // Embed unavailable/failed — dedup is best-effort; fall back to exact insert.
+    return { id: insertBeliefCandidate(db, input).id, merged: false };
+  }
+  const q = blobToVec(blob);
+
+  const rows = db
+    .prepare(
+      `SELECT id, claim, confidence, corroboration_count, embedding
+         FROM belief_candidates
+        WHERE status = 'pending' AND embedding IS NOT NULL`,
+    )
+    .all() as Array<{
+    id: number;
+    claim: string;
+    confidence: number | null;
+    corroboration_count: number;
+    embedding: Buffer;
+  }>;
+
+  let bestId = 0;
+  let bestConfidence: number | null = null;
+  let bestSim = 0;
+  for (const r of rows) {
+    const sim = cosine(q, blobToVec(r.embedding));
+    if (sim > bestSim) {
+      bestSim = sim;
+      bestId = r.id;
+      bestConfidence = r.confidence;
+    }
+  }
+
+  if (bestId > 0 && bestSim >= DEDUP_COSINE_THRESHOLD) {
+    const incoming = input.confidence ?? null;
+    const adopt = incoming != null && (bestConfidence == null || incoming > bestConfidence);
+    if (adopt) {
+      db.prepare(
+        `UPDATE belief_candidates
+            SET corroboration_count = corroboration_count + 1, claim = ?, confidence = ?, embedding = ?
+          WHERE id = ?`,
+      ).run(claim, incoming, blob, bestId);
+    } else {
+      db.prepare(
+        `UPDATE belief_candidates SET corroboration_count = corroboration_count + 1 WHERE id = ?`,
+      ).run(bestId);
+    }
+    return { id: bestId, merged: true };
+  }
+
+  // No semantic match — insert via the primitive, then attach the embedding so the
+  // next paraphrase can match against it.
+  const { id } = insertBeliefCandidate(db, input);
+  if (id > 0) db.prepare(`UPDATE belief_candidates SET embedding = ? WHERE id = ?`).run(blob, id);
+  return { id, merged: false };
+}
+
+interface SweepCandidate {
+  id: number;
+  claim: string;
+  confidence: number | null;
+  corroboration_count: number;
+  vec: Float32Array;
+}
+
+export interface DedupSweepReport {
+  scanned: number;
+  clusters: number;
+  rejected: number;
+  /** Rejections that would happen (dry-run) or did happen, per canonical id. */
+  collapsed: Array<{ canonicalId: number; rejectedIds: number[] }>;
+}
+
+/**
+ * One-time + recurring backlog sweep: collapse paraphrase clusters among existing
+ * pending candidates. Rows drafted before insert-time dedup carry no embedding, so we
+ * embed them in a batch, then leader-cluster by cosine (no transitive chaining — each
+ * unclustered row seeds a cluster and absorbs only rows similar to the seed itself,
+ * which keeps the merge conservative). Each multi-member cluster keeps one canonical
+ * (most corroborated, then most confident, then newest) and rejects the rest with
+ * `resolved_reason='paraphrase-dup'` — non-destructive and reversible. `dryRun` reports
+ * the proposed collapse without mutating, so a sweep can be eyeballed before it runs on
+ * the live store. Degrades to a no-op when no embedder is available.
+ */
+export async function dedupePendingCandidates(
+  db: RobinDb,
+  llm: LLMDispatcher | null,
+  opts: { dryRun?: boolean; threshold?: number } = {},
+): Promise<DedupSweepReport> {
+  const threshold = opts.threshold ?? DEDUP_COSINE_THRESHOLD;
+  const empty: DedupSweepReport = { scanned: 0, clusters: 0, rejected: 0, collapsed: [] };
+  if (!llm) return empty;
+
+  const rows = db
+    .prepare(
+      `SELECT id, claim, confidence, corroboration_count, embedding
+         FROM belief_candidates WHERE status = 'pending' ORDER BY id`,
+    )
+    .all() as Array<{
+    id: number;
+    claim: string;
+    confidence: number | null;
+    corroboration_count: number;
+    embedding: Buffer | null;
+  }>;
+  if (rows.length === 0) return empty;
+
+  // Embed any rows missing an embedding (one batched call), persisting them unless dry.
+  const missing = rows.filter((r) => !r.embedding);
+  const embById = new Map<number, Float32Array>();
+  for (const r of rows) if (r.embedding) embById.set(r.id, blobToVec(r.embedding));
+  if (missing.length > 0) {
+    const vecs: number[][] = [];
+    try {
+      // Chunk the batch — cloud embedders (Gemini batchEmbedContents) cap inputs per
+      // request, so a whole-backlog single call would be rejected.
+      for (let i = 0; i < missing.length; i += EMBED_DEDUP_BATCH) {
+        const part = await embedBodies(
+          llm,
+          missing.slice(i, i + EMBED_DEDUP_BATCH).map((r) => r.claim),
+        );
+        vecs.push(...part);
+      }
+    } catch {
+      return empty; // embedder unavailable — best-effort, do nothing
+    }
+    const persist = db.prepare(`UPDATE belief_candidates SET embedding = ? WHERE id = ?`);
+    for (let i = 0; i < missing.length; i++) {
+      const blob = vecToBlob(vecs[i]);
+      embById.set(missing[i].id, blobToVec(blob));
+      if (!opts.dryRun) persist.run(blob, missing[i].id);
+    }
+  }
+
+  const items: SweepCandidate[] = rows.map((r) => ({
+    id: r.id,
+    claim: r.claim,
+    confidence: r.confidence,
+    corroboration_count: r.corroboration_count,
+    vec: embById.get(r.id) as Float32Array,
+  }));
+
+  // Leader clustering: highest-corroborated rows seed first so the natural canonical
+  // anchors the cluster.
+  const order = [...items].sort(
+    (a, b) => b.corroboration_count - a.corroboration_count || a.id - b.id,
+  );
+  const assigned = new Set<number>();
+  const report: DedupSweepReport = { scanned: items.length, clusters: 0, rejected: 0, collapsed: [] };
+  const now = sqliteUtc(new Date());
+  const reject = db.prepare(
+    `UPDATE belief_candidates
+        SET status = 'rejected', resolved_at = ?, resolved_reason = 'paraphrase-dup'
+      WHERE id = ?`,
+  );
+  const setCanonical = db.prepare(
+    `UPDATE belief_candidates SET corroboration_count = ? WHERE id = ?`,
+  );
+
+  for (const seed of order) {
+    if (assigned.has(seed.id)) continue;
+    assigned.add(seed.id);
+    const members = [seed];
+    for (const other of order) {
+      if (assigned.has(other.id)) continue;
+      if (cosine(seed.vec, other.vec) >= threshold) {
+        assigned.add(other.id);
+        members.push(other);
+      }
+    }
+    report.clusters++;
+    if (members.length === 1) continue;
+
+    // Canonical: most corroborated, then most confident, then newest (highest id).
+    const canonical = members.reduce((best, m) =>
+      m.corroboration_count !== best.corroboration_count
+        ? m.corroboration_count > best.corroboration_count
+          ? m
+          : best
+        : (m.confidence ?? -1) !== (best.confidence ?? -1)
+          ? (m.confidence ?? -1) > (best.confidence ?? -1)
+            ? m
+            : best
+          : m.id > best.id
+            ? m
+            : best,
+    );
+    const losers = members.filter((m) => m.id !== canonical.id);
+    report.collapsed.push({ canonicalId: canonical.id, rejectedIds: losers.map((l) => l.id) });
+    report.rejected += losers.length;
+    if (!opts.dryRun) {
+      setCanonical.run(members.length, canonical.id);
+      for (const l of losers) reject.run(now, l.id);
+    }
+  }
+  return report;
 }
 
 /** List candidates, newest-first, optionally filtered by status. */

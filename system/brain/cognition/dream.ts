@@ -6,6 +6,7 @@ import { applyCorrections } from '../learning/apply-corrections.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import {
   countPendingCandidates,
+  dedupePendingCandidates,
   expireStaleCandidates,
   resolveBeliefCandidate,
 } from '../memory/belief-candidate.ts';
@@ -38,6 +39,8 @@ export interface DreamResult {
   candidatesConflicted: number;
   /** Near-duplicate candidates merged (lower-confidence one resolved). */
   candidatesMerged: number;
+  /** Paraphrase-cluster candidates collapsed by the semantic dedup sweep this run. */
+  candidatesDeduped: number;
   /** Non-empty depth synthesis sections appended to the journal. */
   depthInsightsGenerated: number;
   /** Whether a learning digest event was persisted this run. */
@@ -138,6 +141,7 @@ export async function runDream(
     candidatesPromoted: 0,
     candidatesConflicted: 0,
     candidatesMerged: 0,
+    candidatesDeduped: 0,
     depthInsightsGenerated: 0,
     digestGenerated: false,
     hygieneRelationsDeleted: 0,
@@ -211,6 +215,15 @@ export async function runDream(
     result.candidatesExpired = expireStaleCandidates(db, CANDIDATE_EXPIRY_DAYS, now);
   } catch {
     result.candidatesExpired = 0;
+  }
+
+  // 6a. Semantic dedup sweep: collapse paraphrase clusters among pending candidates
+  //     (same fact re-extracted under different slugs/wordings). Runs BEFORE promotion
+  //     so near-duplicate paraphrases can't each promote. Best-effort, LLM-embedded.
+  try {
+    result.candidatesDeduped = (await dedupePendingCandidates(db, llm)).rejected;
+  } catch {
+    result.candidatesDeduped = 0;
   }
 
   // 6b. Belief lifecycle: auto-promote stable candidates, detect contradictions,

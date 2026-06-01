@@ -47,6 +47,45 @@ async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   return { manifest, module: integration, rootDir: dir, instanceName };
 }
 
+/**
+ * Enumerate the instance names of every integration that has a directory on disk,
+ * WITHOUT importing its code. This is deliberately resilient: a directory whose
+ * `index.ts` fails to compile still counts as "present" (it parses only the
+ * manifest), so callers can distinguish "integration removed from disk" from
+ * "integration present but failed to load this boot". State cleanup keys off
+ * THIS set, never the loaded set — otherwise a transient compile error would
+ * look identical to a deletion and wrongly GC the integration's OAuth tokens.
+ */
+export function listOnDiskIntegrationNames(rootDirs: string[]): Set<string> {
+  const names = new Set<string>();
+  for (const root of rootDirs) {
+    if (!existsSync(root)) continue;
+    for (const entry of readdirSync(root)) {
+      if (entry.startsWith('_') || entry.startsWith('.')) continue;
+      const full = join(root, entry);
+      if (!statSync(full).isDirectory()) continue;
+      const manifestPath = join(full, 'integration.yaml');
+      if (!existsSync(manifestPath)) continue;
+      // Multi-instance dirs (<base>--<instance>) namespace by the dir name; others
+      // by manifest.name — mirror loadOne()'s instanceName derivation exactly so
+      // the on-disk set matches the names used for KV namespacing.
+      if (entry.includes('--')) {
+        names.add(entry);
+        continue;
+      }
+      try {
+        const manifest = parseYaml(readFileSync(manifestPath, 'utf8')) as IntegrationManifest;
+        if (manifest?.name) names.add(manifest.name);
+      } catch {
+        // Unparseable manifest → fall back to the dir name so we still treat the
+        // directory as present (never GC a present-but-malformed integration).
+        names.add(entry);
+      }
+    }
+  }
+  return names;
+}
+
 export async function loadIntegrations(rootDirs: string[]): Promise<LoadedIntegration[]> {
   const result: LoadedIntegration[] = [];
   for (const root of rootDirs) {

@@ -1,6 +1,4 @@
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
@@ -9,27 +7,21 @@ import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { withTimeout } from '../../lib/with-timeout.ts';
 import { buildContext } from './context.ts';
-import { loadIntegrations } from './loader.ts';
+// GC helpers + the builtin-root resolver moved to gc.ts (cycle-free, kernel-import-free)
+// so kernel/invariants can reuse them. Re-exported below for back-compat.
+import {
+  gcOrphanIntegrationTicks,
+  gcRemovedIntegrationState,
+  resolveBuiltinIntegrationsRoot,
+} from './gc.ts';
+import { listOnDiskIntegrationNames, loadIntegrations } from './loader.ts';
 import type { Integration, IntegrationContext } from './types.ts';
 
-/**
- * Resolve the builtin-integrations root by walking up from this module's location, NOT
- * from process.cwd(). Under launchd the daemon's cwd is user-data/ (so cwd-relative
- * paths land in the wrong place and the builtin loader silently finds nothing).
- *
- * This module lives at `<root>/{system|dist}/integrations/_runtime/scheduler-glue.{ts|js}`.
- * Walk up three levels to get to <root>, then look for builtins next to wherever we are.
- * Both layouts are tried so the same code path works for `pnpm dev` (tsx → system/) and
- * the published binary (node → dist/).
- */
-function resolveBuiltinIntegrationsRoot(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  // here = .../system/integrations/_runtime  or  .../dist/integrations/_runtime
-  const candidate = join(here, '..', 'builtin');
-  if (existsSync(candidate)) return candidate;
-  // Last-ditch fallback to cwd-relative; preserves pre-fix behavior for unusual layouts.
-  return join(process.cwd(), 'system/integrations/builtin');
-}
+export {
+  gcOrphanIntegrationTicks,
+  gcRemovedIntegrationState,
+  resolveBuiltinIntegrationsRoot,
+} from './gc.ts';
 
 const TRANSIENT_PATTERNS = [
   /fetch failed/i,
@@ -184,39 +176,6 @@ export interface RegisterResult {
 }
 
 /**
- * GC orphaned integration tick crons. When an integration is removed (e.g. the
- * github integration deletion), its `integration.<name>.tick` cron rows survive
- * in the jobs table — and the scheduler RE-ARMS a handler-less job on every tick
- * (runner.ts deliberately keeps it visible), so a removed integration errors
- * forever (github accumulated 158 such rows; embed-backfill 3370). Drop the
- * schedulable rows for any integration tick not in the live set. Scoped to
- * `integration.*.tick` ONLY — for cognition/user jobs a missing handler is a real
- * startup bug we intentionally keep surfacing, so those are left untouched.
- * Returns the number of orphaned rows deleted.
- */
-export function gcOrphanIntegrationTicks(
-  db: RobinDb,
-  liveTickNames: Set<string>,
-  log?: { warn: (obj: unknown, msg?: string) => void },
-): number {
-  const candidates = db
-    .prepare(
-      "SELECT DISTINCT name FROM jobs WHERE name LIKE 'integration.%.tick' AND state IN ('pending','scheduled','ready')",
-    )
-    .all() as Array<{ name: string }>;
-  const del = db.prepare(
-    "DELETE FROM jobs WHERE name = ? AND state IN ('pending','scheduled','ready')",
-  );
-  let removed = 0;
-  for (const { name } of candidates) {
-    if (liveTickNames.has(name)) continue;
-    removed += del.run(name).changes;
-    log?.warn({ job: name }, 'GC orphaned integration tick cron (integration no longer loaded)');
-  }
-  return removed;
-}
-
-/**
  * Load integrations from system/integrations/builtin and user-data/extensions/integrations,
  * register a handler per integration on the daemon, seed cron schedules for those declaring one,
  * and run each integration's init() once so gateway-style integrations (Discord, etc.) can hold
@@ -283,6 +242,15 @@ export async function registerIntegrations(
   const liveTickNames = new Set(loaded.map((i) => `integration.${i.instanceName}.tick`));
   const gcedTicks = gcOrphanIntegrationTicks(db, liveTickNames, log);
   if (gcedTicks > 0) log.info({ gcedTicks }, 'GC orphaned integration tick crons');
+
+  // Also drop the leftover KV/heartbeat state of integrations whose directory is
+  // gone (github tombstone), so the status report stops listing phantoms. Keyed
+  // on on-disk dirs (not `loaded`) so a failed-to-compile extension keeps its
+  // tokens. resolveBuiltinIntegrationsRoot() always exists; if neither root
+  // resolves, the empty-set guard inside makes this a no-op.
+  const onDiskNames = listOnDiskIntegrationNames([systemRoot, userDataRoot]);
+  const gcedState = gcRemovedIntegrationState(db, onDiskNames, log);
+  if (gcedState > 0) log.info({ gcedState }, 'GC state rows for removed integrations');
 
   const cleanup = async (): Promise<void> => {
     for (const item of active) {

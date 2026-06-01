@@ -16,6 +16,8 @@ import { migration015 } from './015-hygiene.ts';
 import { migration016 } from './016-perf-indexes.ts';
 import { migration017 } from './017-drop-hygiene-review.ts';
 import { migration018 } from './018-normalize-topics.ts';
+import { migration019 } from './019-recall-log-source.ts';
+import { migration020 } from './020-candidate-dedup-recall-outcome.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -37,6 +39,8 @@ export const allMigrations: Migration[] = [
   migration016,
   migration017,
   migration018,
+  migration019,
+  migration020,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

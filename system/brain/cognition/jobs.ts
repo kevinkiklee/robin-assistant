@@ -1,5 +1,8 @@
+import { buildDoctorInvariants } from '../../kernel/invariants/doctor-set.ts';
+import { runInvariants } from '../../kernel/invariants/runner.ts';
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
 import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
+import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
@@ -49,6 +52,16 @@ export const COGNITION_JOBS: CognitionJob[] = [
     cron: '*/10 * * * *',
     description: 'Index content/knowledge + content/profile *.md into recall (idempotent)',
   },
+  {
+    // 4:15am — after dream-synthesis (4:00) cleans up the night's writes, before
+    // the brief reads at 4:30. The comprehensive, repair-capable counterpart to the
+    // 60s in-process health-monitor (which only checks): runs every doctor invariant
+    // with fix:true so safe issues self-heal (WAL checkpoint, orphaned integration
+    // rows) instead of accumulating between the infrequent daemon restarts.
+    name: 'doctor.run',
+    cron: '15 4 * * *',
+    description: 'Daily health check + auto-repair (runs all invariants with --fix)',
+  },
 ];
 
 /**
@@ -97,6 +110,30 @@ export function registerCognitionJobs(
   daemon.registerHandler('ingest-docs.run', () => {
     const llm = getLLM() ?? null;
     ingestContentDocs(db, llm, { userDataDir: resolveUserDataDir() });
+  });
+  daemon.registerHandler('doctor.run', async () => {
+    // Comprehensive daily health check + auto-repair (fix:true). Shares the exact
+    // invariant set with `robin doctor` via buildDoctorInvariants so the two can't
+    // drift. Operates on the daemon's shared db; never closes it.
+    const userData = resolveUserDataDir();
+    const reports = await runInvariants(buildDoctorInvariants(db, userData), { fix: true });
+    const log = createLogger({ module: 'doctor' });
+    const repaired = reports.filter((r) => r.repaired);
+    const warn = reports.filter((r) => !r.ok && r.severity !== 'critical');
+    const fail = reports.filter((r) => !r.ok && r.severity === 'critical');
+    const summary =
+      `daily doctor: ${reports.filter((r) => r.ok).length}/${reports.length} ok` +
+      (repaired.length ? `, ${repaired.length} auto-repaired` : '') +
+      (warn.length ? `, ${warn.length} warn` : '') +
+      (fail.length ? `, ${fail.length} FAIL` : '');
+    const names = {
+      repaired: repaired.map((r) => r.name),
+      warn: warn.map((r) => r.name),
+      fail: fail.map((r) => r.name),
+    };
+    if (fail.length) log.error(names, summary);
+    else if (warn.length || repaired.length) log.warn(names, summary);
+    else log.info(summary);
   });
   for (const job of COGNITION_JOBS) {
     scheduleCronJob(db, { name: job.name, cron: job.cron });

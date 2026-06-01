@@ -801,6 +801,7 @@ function baseDreamResult(): DreamResult {
     entitiesSummarized: 0,
     arcsCreated: 0,
     candidatesExpired: 1,
+    candidatesDeduped: 0,
     staleFlagsRaised: 0,
     staleBeliefsFlagged: 0,
     beliefsRefreshed: 0,
