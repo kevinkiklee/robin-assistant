@@ -165,17 +165,27 @@ export async function runDream(
     // zeroed by initializer
   }
 
-  // 2. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved
+  // 2. Auto-resolve predictions past deadline as 'unverifiable' if not already resolved.
+  //    Write a structured reason into `evidence` so silent unverifiables don't
+  //    accumulate without an audit trail — when this fires it means the dream
+  //    pass found no caller-supplied resolution before the deadline, not that
+  //    the claim itself was inherently unverifiable. Surfacing the reason lets
+  //    us tell a data-gap from a missing resolver next time we triage.
   const overdue = db
     .prepare(`
-    SELECT id, confidence FROM predictions WHERE outcome IS NULL AND deadline IS NOT NULL AND deadline < ?
+    SELECT id, confidence, deadline FROM predictions WHERE outcome IS NULL AND deadline IS NOT NULL AND deadline < ?
   `)
-    .all(now.toISOString()) as Array<{ id: number; confidence: number }>;
+    .all(now.toISOString()) as Array<{ id: number; confidence: number; deadline: string }>;
   const resolveStmt = db.prepare(
-    `UPDATE predictions SET outcome = ?, resolved_at = ?, brier_delta = NULL WHERE id = ?`,
+    `UPDATE predictions SET outcome = ?, resolved_at = ?, brier_delta = NULL, evidence = ? WHERE id = ?`,
   );
   for (const p of overdue) {
-    resolveStmt.run('unverifiable', now.toISOString(), p.id);
+    const reason =
+      `Auto-resolved as unverifiable by dream pass at ${now.toISOString()}: ` +
+      `deadline ${p.deadline} elapsed with no resolution recorded. ` +
+      `No claim-specific automated resolver is wired up — if this claim is resolvable from existing data ` +
+      `(finance, whoop, lunch_money, etc.), add a targeted resolver or resolve manually before the deadline.`;
+    resolveStmt.run('unverifiable', now.toISOString(), reason, p.id);
     result.predictionsResolved++;
   }
 
