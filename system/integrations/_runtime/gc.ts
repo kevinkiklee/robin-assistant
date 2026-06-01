@@ -80,6 +80,43 @@ export function gcRemovedIntegrationState(
   return removed;
 }
 
+/**
+ * Prune terminal job rows (`completed` | `errored`) older than `retentionDays`.
+ * Every cron tick leaves a permanent terminal row behind (`completeJob` never
+ * deletes; cron re-enqueues a fresh row each occurrence), so the jobs table grows
+ * unboundedly — 20k+ completed rows accrued, and stale `errored` rows (e.g. linear's
+ * pre-fix GraphQL 400) lingered for days, reading as "currently broken". Nothing
+ * reads terminal history beyond 24h (integration status scopes errors to 24h;
+ * `scheduler-progressing` uses MAX(created_at); the `list` tool wants most-recent-N),
+ * so a multi-day retention is safe with wide margin. Non-terminal rows
+ * (pending/leased) are never touched. Returns the number of rows deleted.
+ */
+export function gcStaleTerminalJobs(
+  db: RobinDb,
+  retentionDays: number,
+  log?: { warn: (obj: unknown, msg?: string) => void },
+): number {
+  const result = db
+    .prepare(
+      `DELETE FROM jobs
+        WHERE state IN ('completed','errored')
+          AND created_at < datetime('now', ?)`,
+    )
+    .run(`-${retentionDays} days`);
+  if (result.changes > 0) {
+    log?.warn({ deleted: result.changes, retentionDays }, 'GC stale terminal job rows');
+  }
+  return result.changes;
+}
+
+/** Read-only: count of terminal (`completed` | `errored`) job rows. */
+export function countTerminalJobs(db: RobinDb): number {
+  const row = db
+    .prepare("SELECT COUNT(*) AS n FROM jobs WHERE state IN ('completed','errored')")
+    .get() as { n: number };
+  return row.n;
+}
+
 /** Read-only: pending/scheduled `integration.*.tick` crons with no live handler. */
 export function orphanTickCronNames(db: RobinDb, liveTickNames: Set<string>): string[] {
   const rows = db

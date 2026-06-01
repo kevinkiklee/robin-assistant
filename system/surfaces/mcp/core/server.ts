@@ -52,6 +52,19 @@ export function buildCoreDeps(): CoreServerDeps {
   return { db, llm };
 }
 
+/**
+ * A prediction claim must be human-meaningful. Rejects empty/whitespace and the
+ * reserved `__sentinel__` marker pattern — an earlier list-open code path inserted
+ * a `__list_open__` sentinel as a real prediction row (orphaned, unresolvable,
+ * confidence 0.0). Internal markers must never be persisted as user predictions.
+ */
+export function isValidPredictionClaim(claim: string): boolean {
+  const trimmed = claim.trim();
+  if (trimmed.length === 0) return false;
+  if (/^__.*__$/.test(trimmed)) return false;
+  return true;
+}
+
 export function buildCoreServer(deps: CoreServerDeps): McpServer {
   const server = new McpServer({ name: 'robin-core', version: VERSION });
 
@@ -270,6 +283,17 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       }),
     },
     async ({ claim, confidence, deadline, resolution_method, external_id }) => {
+      if (!isValidPredictionClaim(claim)) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: 'Invalid prediction claim: must be non-empty and not a reserved __sentinel__ marker.',
+            },
+          ],
+        };
+      }
       if (external_id) {
         const existing = deps.db
           .prepare('SELECT id FROM predictions WHERE external_id = ?')

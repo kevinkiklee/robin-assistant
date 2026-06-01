@@ -14,7 +14,7 @@ import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { upsertEntity } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import { buildCoreServer } from './server.ts';
+import { buildCoreServer, isValidPredictionClaim } from './server.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-mcp-core-'));
@@ -125,6 +125,18 @@ test('robin-core: resolve_belief_candidate promote → believe head; reject → 
   assert.equal(countPendingCandidates(db), 0);
   assert.throws(() => resolveBeliefCandidate(db, null, a.id, 'reject'), /already promoted/);
   closeDb(db);
+});
+
+test('robin-core: isValidPredictionClaim rejects empty + reserved-sentinel claims', () => {
+  // Real predictions are accepted.
+  assert.equal(isValidPredictionClaim('GOOG closes up tomorrow'), true);
+  assert.equal(isValidPredictionClaim('  trimmed but real  '), true);
+  // Degenerate claims that must never become a row.
+  assert.equal(isValidPredictionClaim(''), false);
+  assert.equal(isValidPredictionClaim('   '), false);
+  // The exact bug: an internal __sentinel__ marker leaked in as a prediction.
+  assert.equal(isValidPredictionClaim('__list_open__'), false);
+  assert.equal(isValidPredictionClaim('__anything__'), false);
 });
 
 test('robin-core: predict with same external_id upserts (one row, not two)', () => {
