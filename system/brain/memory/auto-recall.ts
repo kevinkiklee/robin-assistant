@@ -16,8 +16,14 @@ const MIN_PROMPT_LEN = 12;
  * can't crowd out the curated docs.
  */
 const SNIPPET_BODY_CHARS = 1000;
-/** How many candidate hits to pull, and how many (post-dedup) to actually inject. */
-const SNIPPET_RECALL_LIMIT = 6;
+/**
+ * Candidate pool pulled from recall(), then filtered to CURATED_RECALL_KINDS and deduped
+ * before injecting SNIPPET_KEEP of them. The pool is wide because the corpus is dominated
+ * by un-curated transcripts/telemetry that outrank curated hits on raw relevance; a shallow
+ * pull would filter down to nothing. Correctness (no transcript ever leaks) comes from the
+ * allowlist, NOT the pool size — the width only affects how many curated snippets survive.
+ */
+const SNIPPET_RECALL_LIMIT = 50;
 const SNIPPET_KEEP = 4;
 /**
  * L2 distance floor for the snippet layer. `events_vec` is a vec0 default-L2
@@ -28,6 +34,21 @@ const SNIPPET_KEEP = 4;
  * rejects noise. Retune with `robin recall --debug "<query>"` if the embedder changes.
  */
 const AUTO_RECALL_MAX_DISTANCE = 0.82;
+
+/**
+ * Auto-recall is an *authoritative-context* injection, so its Layer-2 snippets are drawn
+ * ONLY from curated, durable memory. `belief.update` = distilled, stale-filtered facts;
+ * `knowledge.doc` = curated knowledge files. Everything else in the corpus — raw
+ * conversation/agent transcripts (`session.captured`, `conversation.*`, `agent_internal.*`,
+ * `session.thread`), integration telemetry, location dumps — is unverified, ephemeral, or
+ * replays whatever was once *said* (including superseded assistant answers) as if it were
+ * current fact. That is the failure that injected a months-old "$16,318.93 kit" / "Nikon Z
+ * 50ii" beside the live $21k gear doc: the captures were recent, but their *content* was
+ * stale, so an age cap could never catch it. The biographer distills those transcripts into
+ * beliefs/docs, which ARE surfaced. Allowlist (not denylist) so a new event kind fails
+ * safe: excluded until explicitly trusted, never injected as truth by default.
+ */
+const CURATED_RECALL_KINDS = new Set(['belief.update', 'knowledge.doc']);
 
 /**
  * Inline-display budget for a Layer-1 canonical doc. At or below this, the whole doc is
@@ -117,10 +138,23 @@ export async function composeAutoRecall(input: AutoRecallInput): Promise<string 
       } catch {
         continue; // missing/unreadable doc — skip
       }
-      // Inject the WHOLE doc, never truncated — a curated canonical doc is the
-      // feature's headline guarantee, so cutting it would drop exactly the facts
-      // it exists to surface. The `recall.topics_resolvable` doctor invariant warns
-      // when a mapped doc grows oversized, nudging curation without silent loss.
+      // A small doc injects whole (the curated-doc guarantee). An oversized one would be
+      // truncated by the surface harness to a useless top-of-doc prefix, so instead slice
+      // to the prompt-relevant H2 section, hard-cap as a backstop, and name the file so the
+      // model can read the rest. See LAYER1_DOC_INLINE_CHARS.
+      if (text.length > LAYER1_DOC_INLINE_CHARS) {
+        // Up to two sections so a spanning question ("street AND astro") keeps both relevant
+        // sections, while the char budget keeps the block inline-sized.
+        const sliced = sliceToRelevantSection(text, prompt, {
+          maxSections: 2,
+          maxChars: LAYER1_DOC_INLINE_CHARS,
+        });
+        const capped =
+          sliced.length > LAYER1_DOC_INLINE_CHARS
+            ? `${sliced.slice(0, LAYER1_DOC_INLINE_CHARS).trimEnd()}…`
+            : sliced;
+        text = `${capped}\n[sliced to the prompt-relevant section(s) — full doc on disk: ${docPath}]`;
+      }
       seen.add(key);
       entries.push({ id: docPath, text });
     }
@@ -137,6 +171,10 @@ export async function composeAutoRecall(input: AutoRecallInput): Promise<string 
     let kept = 0;
     for (const hit of hits) {
       if (kept >= SNIPPET_KEEP) break;
+      // Inject ONLY curated/durable memory — raw transcripts and telemetry replay superseded
+      // or unverified content as if current. The allowlist is absolute (drops a transcript
+      // regardless of how high it ranks) and fail-safe (unknown kinds excluded by default).
+      if (!hit.kind || !CURATED_RECALL_KINDS.has(hit.kind)) continue;
       const key = `c:${hit.contentId}`;
       if (seen.has(key)) continue;
       seen.add(key);

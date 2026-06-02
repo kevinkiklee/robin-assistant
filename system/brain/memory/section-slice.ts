@@ -18,6 +18,17 @@
 export interface SliceOptions {
   /** Bodies shorter than this pass through untouched (already snippet-sized). */
   minBodyChars?: number;
+  /**
+   * Max number of H2 sections to return (default 1). When >1, the top-scoring sections are
+   * selected by relevance, then re-ordered by document position and joined with a blank line.
+   */
+  maxSections?: number;
+  /**
+   * Soft char budget across the packed sections. Sections are added greedily in document
+   * order; one is skipped if it would overflow. The single top-scoring section is ALWAYS
+   * kept even if it alone exceeds the budget (the caller hard-caps as a final backstop).
+   */
+  maxChars?: number;
 }
 
 /** Below this size the whole doc is already a reasonable snippet — don't bother slicing. */
@@ -114,10 +125,21 @@ function tokenHits(text: string, tokens: string[]): number {
   return n;
 }
 
+/** Breadcrumb-prefix one section (`Doc Title › Heading: body`); drop the H1 from a preamble. */
+function renderSection(sec: Section, h1: string): string {
+  const crumbs = [h1, sec.heading].filter(Boolean).join(' › ');
+  // The preamble carries the H1 line in its body — strip it so the title isn't echoed twice.
+  const text = sec.heading ? sec.body : sec.body.replace(/^#\s+.+$/m, '').trim();
+  return crumbs ? `${crumbs}: ${text}` : text;
+}
+
 /**
- * Return the H2 section of `body` most relevant to `query`, breadcrumb-prefixed
- * (`Doc Title › Section Heading: …`). Returns `body` unchanged when it's small, has no H2
- * structure, or no section beats a zero query-token score (the safe semantic-only fallback).
+ * Return the H2 section(s) of `body` most relevant to `query`, each breadcrumb-prefixed
+ * (`Doc Title › Section Heading: …`). With the default `maxSections: 1` this is the single
+ * best section. With `maxSections > 1` it selects the top-scoring sections, restores document
+ * order, and packs them within `maxChars` (the top section is always kept). Returns `body`
+ * unchanged when it's small, has no H2 structure, or no section beats a zero query-token
+ * score (the safe semantic-only fallback).
  */
 export function sliceToRelevantSection(
   body: string,
@@ -134,23 +156,33 @@ export function sliceToRelevantSection(
   if (tokens.length === 0) return body;
 
   // Heading matches weigh double — a query token in the H2 is a stronger topical signal
-  // than the same token buried in prose. First section wins ties (stable, favors order).
-  let best = -1;
-  let bestScore = 0;
-  sections.forEach((s, i) => {
-    const score = tokenHits(s.body, tokens) + 2 * tokenHits(s.heading, tokens);
-    if (score > bestScore) {
-      bestScore = score;
-      best = i;
-    }
-  });
-  if (best < 0) return body; // no lexical overlap anywhere — fall back to top-truncation
+  // than the same token buried in prose. Keep the index for a stable document-order tiebreak.
+  const scored = sections.map((s, i) => ({
+    i,
+    section: s,
+    score: tokenHits(s.body, tokens) + 2 * tokenHits(s.heading, tokens),
+  }));
 
-  const chosen = sections[best];
-  // Doc title = the H1, if any. Strip it out of a chosen preamble body to avoid echoing it
-  // in both the breadcrumb and the text.
+  const ranked = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score || a.i - b.i);
+  if (ranked.length === 0) return body; // no lexical overlap anywhere — fall back to top-truncation
+
+  const maxSections = Math.max(1, opts.maxSections ?? 1);
+  const topIndex = ranked[0].i; // the single best section, never dropped by the budget
+  // Take the top-N by relevance, then present them in document order for readability.
+  const chosen = ranked.slice(0, maxSections).sort((a, b) => a.i - b.i);
+
+  // Doc title = the H1, if any. Strip it out of a chosen preamble body to avoid echoing it.
   const h1 = body.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? '';
-  const crumbs = [h1, chosen.heading].filter(Boolean).join(' › ');
-  const text = chosen.heading ? chosen.body : chosen.body.replace(/^#\s+.+$/m, '').trim(); // preamble: drop the H1 line
-  return crumbs ? `${crumbs}: ${text}` : text;
+
+  const pieces: string[] = [];
+  let used = 0;
+  for (const c of chosen) {
+    const rendered = renderSection(c.section, h1);
+    const addition = pieces.length === 0 ? rendered.length : rendered.length + 2; // +2 for the join
+    if (opts.maxChars !== undefined && c.i !== topIndex && used + addition > opts.maxChars)
+      continue;
+    pieces.push(rendered);
+    used += addition;
+  }
+  return pieces.join('\n\n');
 }

@@ -63,6 +63,35 @@ test('the preamble can be selected and its H1 is not echoed in the text', () => 
   assert.doesNotMatch(out, /Photography Gear:.*# Photography Gear/s);
 });
 
+test('maxSections:2 returns the top two matching sections in document order', () => {
+  // Lenses and Accessories both score on their headings; Bodies scores nothing.
+  const out = sliceToRelevantSection(bigDoc(), 'lenses and accessories', { maxSections: 2 });
+  assert.match(out, /› Lenses:/);
+  assert.match(out, /Viltrox 85mm/);
+  assert.match(out, /› Accessories:/);
+  assert.match(out, /UGREEN NAS/);
+  // Bodies scored zero → excluded.
+  assert.doesNotMatch(out, /Zf is the primary/);
+  // Presented in document order (Lenses precedes Accessories), not relevance order.
+  assert.ok(out.indexOf('Lenses') < out.indexOf('Accessories'), 'expected document order');
+});
+
+test('maxSections defaults to 1 — only the single best section', () => {
+  const out = sliceToRelevantSection(bigDoc(), 'lenses and accessories');
+  assert.match(out, /Viltrox 85mm/);
+  assert.doesNotMatch(out, /UGREEN NAS/); // second-best section not included
+});
+
+test('maxChars packs whole sections greedily, always keeping the top one', () => {
+  // The top section alone exceeds the tiny budget; it is kept anyway, the next is dropped.
+  const out = sliceToRelevantSection(bigDoc(), 'lenses and accessories', {
+    maxSections: 2,
+    maxChars: 200,
+  });
+  assert.match(out, /Viltrox 85mm/); // top section always present
+  assert.doesNotMatch(out, /UGREEN NAS/); // adding it would blow the budget
+});
+
 test('`##` inside a fenced code block is not a section boundary', () => {
   const body = [
     '# Config',

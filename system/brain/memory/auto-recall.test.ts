@@ -175,6 +175,42 @@ test('composeAutoRecall: slices an oversized canonical doc to the prompt-relevan
   closeDb(db);
 });
 
+test('composeAutoRecall: an oversized doc can surface two relevant sections', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  // A spanning question ("street AND astro") should pull BOTH lens sections, not just the
+  // single best — while the unrelated filler section stays out of the inline budget.
+  const filler = 'Q'.repeat(6000);
+  const doc = [
+    '# Gear',
+    '',
+    '## Street Lenses',
+    'Voigtländer 35mm f/2 APO-Lanthar — manual zone-focus lens, engraved DOF scale.',
+    '',
+    '## Filler',
+    filler,
+    '',
+    '## Astro Lenses',
+    'Nikon 20mm f/1.8 S — fast wide for deep-space astrophotography at night.',
+  ].join('\n');
+  writeDoc(userData, 'content/knowledge/gear.md', doc);
+  writeYaml(userData, PHOTO_YAML);
+
+  const out = await composeAutoRecall({
+    db,
+    llm: null,
+    prompt: 'which lens for street and which lens for astro at night',
+    userData,
+  });
+  assert.ok(out, 'expected an injection block');
+  assert.match(out, /Voigtländer 35mm f\/2 APO-Lanthar/);
+  assert.match(out, /Nikon 20mm f\/1\.8 S/);
+  assert.doesNotMatch(out, /QQQQQ/); // filler section excluded
+  assert.match(out, /full doc on disk: content\/knowledge\/gear\.md/);
+  assert.ok(out.length < 6000, `expected a bounded block, got ${out.length}`);
+  closeDb(db);
+});
+
 test('composeAutoRecall: hard-caps an oversized structureless doc and points to the file', async () => {
   __resetAutoRecallCache();
   const { userData, db } = makeEnv();
@@ -198,7 +234,12 @@ test('composeAutoRecall: injects a small canonical doc whole, never sliced', asy
   writeDoc(userData, 'content/knowledge/gear.md', doc);
   writeYaml(userData, PHOTO_YAML);
 
-  const out = await composeAutoRecall({ db, llm: null, prompt: 'which lens for tonight', userData });
+  const out = await composeAutoRecall({
+    db,
+    llm: null,
+    prompt: 'which lens for tonight',
+    userData,
+  });
   assert.ok(out);
   // Under budget → both sections present, no slice marker.
   assert.match(out, /Nikon Zf/);
@@ -257,6 +298,41 @@ test('composeAutoRecall: reads the live doc content, not a cached copy', async (
   closeDb(db);
 });
 
+test('composeAutoRecall: injects only curated kinds — raw transcripts are excluded', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  // No topic match → every injected entry is a Layer-2 snippet.
+  writeYaml(
+    userData,
+    `topics:
+  - id: unrelated
+    match: [zzzznomatch]
+    docs: [content/knowledge/none.md]
+`,
+  );
+  // A raw conversation transcript (biographer INPUT, not curated memory) that even quotes a
+  // stale fact — must never be injected, no matter how well it matches the query...
+  ingest(db, null, {
+    kind: 'session.captured',
+    source: 's',
+    content: 'lisbon photos trip — old transcript echo claiming the kit was $16,318.93',
+  });
+  // ...vs a curated belief about the same topic, which SHOULD surface.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 's',
+    content: 'lisbon photos trip — curated belief fact',
+    payload: { topic: 'lisbon-trip' },
+  });
+
+  const out = await composeAutoRecall({ db, llm: null, prompt: 'lisbon photos trip', userData });
+  assert.ok(out, 'expected the curated belief to inject');
+  assert.match(out, /curated belief fact/);
+  assert.doesNotMatch(out, /transcript echo/); // raw transcript excluded by the allowlist
+  assert.doesNotMatch(out, /16,318/); // and with it the superseded figure it replayed
+  closeDb(db);
+});
+
 test('composeAutoRecall: keeps at most 4 recall snippets', async () => {
   __resetAutoRecallCache();
   const { userData, db } = makeEnv();
@@ -269,9 +345,11 @@ test('composeAutoRecall: keeps at most 4 recall snippets', async () => {
     docs: [content/knowledge/none.md]
 `,
   );
+  // Curated kind (knowledge.doc) so the snippets pass the allowlist; the cap, not the
+  // allowlist, is what this test exercises.
   for (let i = 0; i < 6; i++) {
     ingest(db, null, {
-      kind: 'session.captured',
+      kind: 'knowledge.doc',
       source: 's',
       content: `lisbon photos trip number ${i}`,
     });
