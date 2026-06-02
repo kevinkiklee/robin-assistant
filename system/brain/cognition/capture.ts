@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resolveUserDataDir } from '../../lib/paths.ts';
@@ -164,10 +165,16 @@ export async function captureSession(
     return { captured: false, skipReason: 'single_word_ack' };
   }
 
-  // Dedup: hash the user turns; check recent events for a match
-  const hash = Buffer.from(userTurns.map((t) => t.content).join('|'))
-    .toString('base64')
-    .slice(0, 64);
+  // Dedup: hash the user turns; check recent events for a match.
+  // Must digest the FULL joined content, not a fixed-length prefix. An earlier
+  // version used base64(content).slice(0,64) — only the first 48 bytes of the
+  // first user turn — so every session opened with `/clear` (which injects an
+  // identical `<local-command-caveat>…` preamble) collided to one hash and all
+  // but the first were silently dropped as dedup_hit. SHA-256 over the whole
+  // conversation keys on actual content.
+  const hash = createHash('sha256')
+    .update(userTurns.map((t) => t.content).join('|'))
+    .digest('hex');
   const existing = db
     .prepare(
       `SELECT id FROM events WHERE kind = 'session.captured' AND json_extract(payload, '$.hash') = ? LIMIT 1`,
