@@ -72,9 +72,10 @@ test('dream: resolves overdue predictions as unverifiable', async () => {
   );
   const r = await runDream(db, null);
   assert.equal(r.predictionsResolved, 1);
-  const row = db
-    .prepare(`SELECT outcome, evidence FROM predictions LIMIT 1`)
-    .get() as { outcome: string; evidence: string | null };
+  const row = db.prepare(`SELECT outcome, evidence FROM predictions LIMIT 1`).get() as {
+    outcome: string;
+    evidence: string | null;
+  };
   assert.equal(row.outcome, 'unverifiable');
   assert.ok(
     row.evidence && /Auto-resolved as unverifiable/.test(row.evidence),

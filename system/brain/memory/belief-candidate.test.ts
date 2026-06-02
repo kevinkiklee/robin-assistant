@@ -53,8 +53,7 @@ function conceptLLM(): LLMDispatcher {
     invoke: async () => {
       throw new Error('nope');
     },
-    embed: async (text: string | string[]) =>
-      (Array.isArray(text) ? text : [text]).map(vecFor),
+    embed: async (text: string | string[]) => (Array.isArray(text) ? text : [text]).map(vecFor),
   };
   const d = new LLMDispatcher();
   d.register('c', provider);

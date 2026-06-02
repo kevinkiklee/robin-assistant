@@ -149,6 +149,10 @@ describe('robin integrations report', () => {
     assert.ok(row);
     assert.equal(row.status, 'ok');
     assert.equal(row.recent_err, 0, 'no errors in the 24h window');
-    assert.equal(row.last_error, null, 'stale >24h error is not surfaced alongside a healthy status');
+    assert.equal(
+      row.last_error,
+      null,
+      'stale >24h error is not surfaced alongside a healthy status',
+    );
   });
 });

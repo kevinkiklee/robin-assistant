@@ -21,9 +21,9 @@ function seedState(db: ReturnType<typeof freshDb>, integration: string, key: str
 
 function stateNames(db: ReturnType<typeof freshDb>): string[] {
   return (
-    db
-      .prepare('SELECT DISTINCT integration_name AS name FROM integration_state')
-      .all() as Array<{ name: string }>
+    db.prepare('SELECT DISTINCT integration_name AS name FROM integration_state').all() as Array<{
+      name: string;
+    }>
   )
     .map((r) => r.name)
     .sort();

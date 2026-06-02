@@ -388,7 +388,12 @@ export async function dedupePendingCandidates(
     (a, b) => b.corroboration_count - a.corroboration_count || a.id - b.id,
   );
   const assigned = new Set<number>();
-  const report: DedupSweepReport = { scanned: items.length, clusters: 0, rejected: 0, collapsed: [] };
+  const report: DedupSweepReport = {
+    scanned: items.length,
+    clusters: 0,
+    rejected: 0,
+    collapsed: [],
+  };
   const now = sqliteUtc(new Date());
   const reject = db.prepare(
     `UPDATE belief_candidates

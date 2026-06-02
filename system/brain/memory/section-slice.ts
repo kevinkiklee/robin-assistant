@@ -26,9 +26,34 @@ const DEFAULT_MIN_BODY = 1500;
 /** Query tokens this short (or in the stoplist) carry no topical signal. */
 const MIN_TOKEN_LEN = 3;
 const STOPWORDS = new Set([
-  'the', 'and', 'for', 'with', 'that', 'this', 'are', 'was', 'has', 'have',
-  'what', 'when', 'where', 'which', 'who', 'how', 'why', 'about', 'into',
-  'from', 'your', 'you', 'can', 'should', 'would', 'does', 'did', 'not',
+  'the',
+  'and',
+  'for',
+  'with',
+  'that',
+  'this',
+  'are',
+  'was',
+  'has',
+  'have',
+  'what',
+  'when',
+  'where',
+  'which',
+  'who',
+  'how',
+  'why',
+  'about',
+  'into',
+  'from',
+  'your',
+  'you',
+  'can',
+  'should',
+  'would',
+  'does',
+  'did',
+  'not',
 ]);
 
 interface Section {
@@ -126,8 +151,6 @@ export function sliceToRelevantSection(
   // in both the breadcrumb and the text.
   const h1 = body.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? '';
   const crumbs = [h1, chosen.heading].filter(Boolean).join(' › ');
-  const text = chosen.heading
-    ? chosen.body
-    : chosen.body.replace(/^#\s+.+$/m, '').trim(); // preamble: drop the H1 line
+  const text = chosen.heading ? chosen.body : chosen.body.replace(/^#\s+.+$/m, '').trim(); // preamble: drop the H1 line
   return crumbs ? `${crumbs}: ${text}` : text;
 }

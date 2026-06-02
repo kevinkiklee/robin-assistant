@@ -355,7 +355,10 @@ test('recall: a superseded-but-replaced belief surfaces only the head, not the o
   const beliefHits = hits.filter((h) => h.kind === 'belief.update');
   assert.equal(beliefHits.length, 1, 'only the current head should surface');
   assert.match(beliefHits[0].body, /Jersey City/);
-  assert.ok(!beliefHits.some((h) => /Hoboken/.test(h.body)), 'the superseded original must be dropped');
+  assert.ok(
+    !beliefHits.some((h) => /Hoboken/.test(h.body)),
+    'the superseded original must be dropped',
+  );
   closeDb(db);
 });
 

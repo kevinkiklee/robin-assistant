@@ -354,7 +354,7 @@ Build the read-side projection rebuilt from SQLite source. Triggered nightly by 
 
 ### P2.2 — OpenTelemetry exporter
 
-Stub at `system/lib/telemetry/otel-exporter.ts`. Connect to Honeycomb / Grafana Cloud free tiers for dashboards. ~1 task.
+Stub at `system/lib/telemetry/otel.ts`. Connect to Honeycomb / Grafana Cloud free tiers for dashboards. ~1 task.
 
 ### P2.3 — APFS snapshots for `robin db backup`
 

@@ -24,7 +24,10 @@ import type { Invariant } from '../types.ts';
 export function noOrphansInvariant(db: RobinDb, opts: { userData: string }): Invariant {
   const liveSets = () => {
     const userDataRoot = join(opts.userData, 'extensions/integrations');
-    const onDiskNames = listOnDiskIntegrationNames([resolveBuiltinIntegrationsRoot(), userDataRoot]);
+    const onDiskNames = listOnDiskIntegrationNames([
+      resolveBuiltinIntegrationsRoot(),
+      userDataRoot,
+    ]);
     const liveTickNames = new Set([...onDiskNames].map((n) => `integration.${n}.tick`));
     return { onDiskNames, liveTickNames };
   };
@@ -43,7 +46,11 @@ export function noOrphansInvariant(db: RobinDb, opts: { userData: string }): Inv
       const parts: string[] = [];
       if (orphanTickCrons.length) parts.push(`${orphanTickCrons.length} orphan tick cron(s)`);
       if (orphanStateNames.length) parts.push(`state for ${orphanStateNames.join(', ')}`);
-      return { ok: false, message: `orphaned: ${parts.join('; ')}`, remediation: 'robin doctor --fix' };
+      return {
+        ok: false,
+        message: `orphaned: ${parts.join('; ')}`,
+        remediation: 'robin doctor --fix',
+      };
     },
     repair: () => {
       const { onDiskNames, liveTickNames } = liveSets();

@@ -13,7 +13,9 @@ export const migration020: Migration = {
     // re-embedding the whole queue; `corroboration_count` records how many times the
     // same fact was independently extracted (the canonical row's confidence signal).
     db.exec(`ALTER TABLE belief_candidates ADD COLUMN embedding BLOB;`);
-    db.exec(`ALTER TABLE belief_candidates ADD COLUMN corroboration_count INTEGER NOT NULL DEFAULT 1;`);
+    db.exec(
+      `ALTER TABLE belief_candidates ADD COLUMN corroboration_count INTEGER NOT NULL DEFAULT 1;`,
+    );
     // Why a candidate was resolved (e.g. 'paraphrase-dup' from the dedup sweep,
     // 'external-not-durable' / 'below-threshold-for-class' from the promotion gate).
     // Makes rejections auditable and reversible — you can tell a dedup collapse apart

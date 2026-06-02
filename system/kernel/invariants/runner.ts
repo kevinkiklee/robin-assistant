@@ -44,6 +44,9 @@ async function safeCheck(inv: Invariant): Promise<InvariantCheckResult> {
   try {
     return await inv.check();
   } catch (err) {
-    return { ok: false, message: `check threw: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      ok: false,
+      message: `check threw: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }

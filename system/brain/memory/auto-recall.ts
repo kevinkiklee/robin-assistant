@@ -30,6 +30,18 @@ const SNIPPET_KEEP = 4;
 const AUTO_RECALL_MAX_DISTANCE = 0.82;
 
 /**
+ * Inline-display budget for a Layer-1 canonical doc. At or below this, the whole doc is
+ * injected. Above it, the surface harness persists the over-budget block to a file and
+ * shows only a top-of-doc PREFIX (frontmatter + preamble) — silently hiding the very facts
+ * the doc exists to surface (this is how a recent gear purchase listed mid-doc went unseen
+ * even though Layer 1 had "injected" the doc). So for an oversized doc we inject the
+ * prompt-relevant H2 section instead — strictly better than a blind top-truncation — and
+ * hard-cap it with a pointer to the full file on disk. ~4000 chars ≈ 1000 tokens: keeps a
+ * coherent section intact while staying well under the harness's large-output threshold.
+ */
+const LAYER1_DOC_INLINE_CHARS = 4000;
+
+/**
  * Bounded per-session dedup cache: a doc/snippet is injected at most once per
  * session so a long conversation doesn't re-inject the same gear list every turn.
  * Capped at MAX_SESSIONS with insertion-order (LRU) eviction; lost on daemon
