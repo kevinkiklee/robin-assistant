@@ -30,9 +30,13 @@ function isLlmUnavailableError(err: unknown): boolean {
 // Bug E mitigation — bound any single chunk's LLM call so one stuck chunk can't
 // block the scheduler forever. With maxTokens=4096 on the invoke, generation is
 // bounded to ~77s at 53 tok/s regardless of thinking length — so 2 min is
-// generous (catches genuine hangs without flagging real work). Combined with
-// MAX_CHUNKS_PER_TICK=10 → worst-case tick = 10 × 2 = 20 min (under the
-// 30-min heartbeat gate).
+// generous (catches genuine hangs without flagging real work). With
+// MAX_CHUNKS_PER_TICK=30 (cranked for backlog drain) the theoretical worst-case
+// tick is 30 × 2 = 60 min, which exceeds both the scheduler's HANDLER_TIMEOUT_MS
+// (20 min) and the heartbeat hard-exit (~37 min) — but only if nearly every
+// chunk hangs to its timeout (model down). Normal chunks finish in ~16s, so a
+// real 30-chunk tick is ~8 min. If a tick is clipped by the scheduler cap, the
+// per-chunk progress persistence lets the next cron resume from where it left.
 const BIOGRAPHER_CHUNK_TIMEOUT_MS = 2 * 60_000;
 
 // Bug F mitigation — disambiguation is a smaller prompt (a few candidate lines +
@@ -363,6 +367,18 @@ export interface RunBiographerOptions {
    * (jobs.ts) defaults it to the `biographer.draftClaims` config flag (true).
    */
   draftClaims?: boolean;
+  /**
+   * Overall wall-clock budget for the whole tick. Once exceeded, the session
+   * loop stops claiming further sessions and returns gracefully (per-chunk
+   * progress is already persisted, so the next cron tick resumes). This caps a
+   * heavy backlog drain (limit=30) so it can't overrun the scheduler's
+   * HANDLER_TIMEOUT_MS and get hard-errored mid-flight. Omit to disable.
+   * Within a single session, `maxChunksPerTick` + the per-chunk timeout remain
+   * the bound; this guards the across-sessions dimension.
+   */
+  tickDeadlineMs?: number;
+  /** Injectable clock for the tick deadline (testing). Defaults to `Date.now`. */
+  now?: () => number;
 }
 
 type EntityRecord = { type: string; name: string };
@@ -1186,6 +1202,11 @@ export async function runBiographer(
   const batchChunks = options.batchChunks ?? 1;
   const skipToolChunks = options.skipToolChunks ?? false;
   const draftClaims = options.draftClaims ?? false;
+  const tickDeadlineMs = options.tickDeadlineMs;
+  const now = options.now ?? (() => Date.now());
+  const tickStartedAt = now();
+  const deadlineActive =
+    tickDeadlineMs !== undefined && Number.isFinite(tickDeadlineMs) && tickDeadlineMs > 0;
 
   const result: BiographerRunResult = {
     processed: 0,
@@ -1205,6 +1226,10 @@ export async function runBiographer(
 
   for (let s = 0; s < limit; s++) {
     if (chunkBudget <= 0) break;
+    // Overall tick deadline — stop claiming further sessions once the wall-clock
+    // budget is spent. Graceful: per-chunk progress is already persisted, so the
+    // next cron tick resumes the backlog from the cursor.
+    if (deadlineActive && now() - tickStartedAt >= (tickDeadlineMs as number)) break;
 
     const target = selectBiographerTarget(db);
     if (!target) break;

@@ -1,3 +1,4 @@
+import { withTimeout } from '../../lib/with-timeout.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import { claimNextJob, completeJob, type JobRow } from './claim.ts';
 import { rescheduleCronAfterCompletion } from './cron.ts';
@@ -11,6 +12,23 @@ export interface SchedulerConfig {
   leaseMs: number;
   isPaused: () => boolean;
   onError?: (err: Error, job: JobRow) => void;
+  /**
+   * Wall-clock ceiling for a single handler invocation. A handler that exceeds
+   * it is abandoned (its promise rejected with a TimeoutError) and the job is
+   * marked `errored`, so one wedged handler can never stall the sequential tick
+   * loop — the failure mode that took the daemon dark for ~31h on 2026-06-02.
+   *
+   * This is a last-resort *anti-wedge backstop*, deliberately looser than the
+   * per-LLM-call SDK timeouts and per-job chunk budgets that are the primary
+   * time guards. Cognition handlers are idempotent (cursor/state-based), so an
+   * abandoned tick safely resumes on its next cron. Caveat: withTimeout can only
+   * unblock an *async-blocked* handler (a hung await); a synchronously
+   * CPU-blocked handler freezes the event loop so the timer never fires — that
+   * case still relies on the daemon's heartbeat→launchd-respawn backstop.
+   *
+   * Omit (or pass a non-finite/≤0 value) to disable — handlers then run uncapped.
+   */
+  handlerTimeoutMs?: number;
 }
 
 export class Scheduler {
@@ -36,7 +54,16 @@ export class Scheduler {
     }
 
     try {
-      await handler(job);
+      const timeoutMs = this.cfg.handlerTimeoutMs;
+      if (timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        await withTimeout(
+          Promise.resolve(handler(job)),
+          timeoutMs,
+          `job '${job.name}' handler exceeded ${timeoutMs}ms`,
+        );
+      } else {
+        await handler(job);
+      }
       completeJob(this.cfg.db, job.id, 'ok');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

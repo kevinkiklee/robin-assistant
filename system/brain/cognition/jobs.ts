@@ -97,6 +97,10 @@ export function registerCognitionJobs(
       batchChunks: 5,
       skipToolChunks: true,
       draftClaims: getDraftClaims(),
+      // Stop claiming further sessions after 15 min — below the scheduler's
+      // 20-min HANDLER_TIMEOUT_MS, so a heavy backlog drain yields gracefully
+      // (cursor persisted, resumes next tick) instead of being hard-errored.
+      tickDeadlineMs: 15 * 60 * 1000,
     });
   });
   daemon.registerHandler('dream.run', async () => {

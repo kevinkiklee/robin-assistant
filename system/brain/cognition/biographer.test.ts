@@ -503,6 +503,47 @@ test('biographer: hung disambiguation does not wedge the run (Bug F)', async () 
   closeDb(db);
 });
 
+// A heavy backlog drain (limit=30 sessions) must not run unbounded: an overall
+// per-tick wall-clock deadline stops claiming further sessions once the budget is
+// spent, yielding gracefully so the next cron tick resumes the remaining work.
+// This keeps a legit-but-slow drain from overrunning the scheduler's handler cap.
+test('biographer: stops at the per-tick wall-clock deadline and resumes next tick', async () => {
+  const db = freshDb();
+  const llm = mockLLM(
+    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+  );
+
+  // Three independent sessions, each a single processable chunk.
+  for (let i = 0; i < 3; i++) {
+    await captureSession(db, null, {
+      sessionId: `s${i}`,
+      turns: [
+        { role: 'user', content: `session ${i}: tell me about Kevin and the project` },
+        { role: 'assistant', content: `Kevin worked on project ${i} today, notably.` },
+      ],
+    });
+  }
+
+  // Injected clock: first read is the tick start (0); the second loop-top check
+  // is still under budget (10ms), the third jumps past the 100ms deadline.
+  const seq = [0, 10, 200, 200, 200, 200];
+  let i = 0;
+  const now = () => seq[Math.min(i++, seq.length - 1)];
+
+  const r = await runBiographer(db, llm, 30, {
+    minSessionBodyChars: 0,
+    tickDeadlineMs: 100,
+    now,
+  });
+  assert.ok(r.processed >= 1, `should process at least one session, got ${r.processed}`);
+  assert.ok(r.processed < 3, `should stop early at the deadline, processed ${r.processed}`);
+
+  // The remaining sessions survive — a normal (deadline-free) tick drains them.
+  const r2 = await runBiographer(db, llm, 30, { minSessionBodyChars: 0 });
+  assert.ok(r2.processed >= 1, 'remaining sessions should be processed on the next tick');
+  closeDb(db);
+});
+
 // ─── isLowQualityEntity unit tests ─────────────────────────────────────────────
 
 test('isLowQualityEntity: drops transcript role markers', () => {
