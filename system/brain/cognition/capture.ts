@@ -165,6 +165,22 @@ export async function captureSession(
     return { captured: false, skipReason: 'single_word_ack' };
   }
 
+  // Robin's own cognition prompts — the biographer's chunk-extraction prompt
+  // (`=== FULL SESSION ===`, biographer.ts) and the dream pass's entity-summary
+  // prompt (`Recent observations: … Write the profile.`, dream.ts) — get run
+  // through `claude` sessions and captured back as "user" sessions, a
+  // self-referential loop that floods the biographer with its own output. Match
+  // these markers in USER turns only: a real session that merely discusses them
+  // carries the strings in assistant output, not user input.
+  const isCognitionEcho = userTurns.some((t) => {
+    const c = t.content;
+    return (
+      c.includes('=== FULL SESSION ===') ||
+      (c.includes('Recent observations:') && c.includes('Write the profile.'))
+    );
+  });
+  if (isCognitionEcho) return { captured: false, skipReason: 'robin_cognition_echo' };
+
   // Dedup: hash the user turns; check recent events for a match.
   // Must digest the FULL joined content, not a fixed-length prefix. An earlier
   // version used base64(content).slice(0,64) — only the first 48 bytes of the

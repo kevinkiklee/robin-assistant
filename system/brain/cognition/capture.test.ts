@@ -61,6 +61,63 @@ test('capture: captures meaningful session and writes event', async () => {
   closeDb(db);
 });
 
+test('capture: skips Robin biographer-prompt echo (=== FULL SESSION ===)', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-bio',
+    turns: [
+      {
+        role: 'user',
+        content:
+          'Session date: 2026-06-03\n\n=== FULL SESSION ===\nEntity: B&H Payboo Store Card (financial_account)\nKevin K. Lee owns B&H Payboo Store Card',
+      },
+      { role: 'assistant', content: '{"entities":[],"relations":[]}' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: skips Robin dream entity-summary prompt echo', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-dream',
+    turns: [
+      {
+        role: 'user',
+        content:
+          'Entity: Kevin K. Lee (person)\n\nRecent observations:\nKevin visited Lisbon\nKevin owns a Nikon Zf\n\nWrite the profile.',
+      },
+      { role: 'assistant', content: 'Kevin is a photographer based in NJ.' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: a real session that only mentions the cognition marker in assistant output is still captured', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'dev-discuss',
+    turns: [
+      { role: 'user', content: 'how is the biographer chunk extraction prompt structured?' },
+      {
+        role: 'assistant',
+        content:
+          'It wraps each chunk in a delimiter: "=== FULL SESSION ===" followed by the chunk text, then asks for entities.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session discussing the marker; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
 test('capture: dedup_hit prevents identical capture', async () => {
   const db = freshDb();
   const capture = {
