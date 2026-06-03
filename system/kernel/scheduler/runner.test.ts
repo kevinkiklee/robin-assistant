@@ -83,6 +83,116 @@ test('scheduler runner: handler error marks job errored', async () => {
   closeDb(db);
 });
 
+test('scheduler runner: hung handler times out and is marked errored (does not wedge the loop)', {
+  timeout: 5000,
+}, async () => {
+  const db = freshDb();
+  const handlers = new Map<string, JobHandler>([
+    // A handler that never settles — the wedge that took the daemon down for ~31h.
+    ['test.hang', () => new Promise<void>(() => {})],
+  ]);
+  const sched = new Scheduler({
+    db,
+    handlers,
+    workerId: 'w1',
+    leaseMs: 5000,
+    isPaused: () => false,
+    handlerTimeoutMs: 50,
+  });
+
+  enqueueJob(db, {
+    name: 'test.hang',
+    trigger_kind: 'manual',
+    scheduled_at: new Date().toISOString(),
+  });
+
+  // Must resolve well within the test timeout — the whole point is the loop is freed.
+  const ran = await sched.tickOnce();
+  assert.equal(ran, true);
+  const row = db.prepare("SELECT state, last_error FROM jobs WHERE name = 'test.hang'").get() as {
+    state: string;
+    last_error: string;
+  };
+  assert.equal(row.state, 'errored');
+  assert.match(row.last_error, /timed out/i);
+  closeDb(db);
+});
+
+test('scheduler runner: loop keeps serving other jobs after a handler times out', {
+  timeout: 5000,
+}, async () => {
+  const db = freshDb();
+  let goodCalls = 0;
+  const handlers = new Map<string, JobHandler>([
+    ['test.hang', () => new Promise<void>(() => {})],
+    [
+      'test.good',
+      async () => {
+        goodCalls++;
+      },
+    ],
+  ]);
+  const sched = new Scheduler({
+    db,
+    handlers,
+    workerId: 'w1',
+    leaseMs: 5000,
+    isPaused: () => false,
+    handlerTimeoutMs: 50,
+  });
+
+  // Enqueue the poison job first (lower id → claimed first), then a healthy one.
+  enqueueJob(db, {
+    name: 'test.hang',
+    trigger_kind: 'manual',
+    scheduled_at: new Date(Date.now() - 1000).toISOString(),
+  });
+  enqueueJob(db, {
+    name: 'test.good',
+    trigger_kind: 'manual',
+    scheduled_at: new Date().toISOString(),
+  });
+
+  await sched.tickOnce(); // poison job times out
+  await sched.tickOnce(); // healthy job must still run
+  assert.equal(goodCalls, 1);
+  closeDb(db);
+});
+
+test('scheduler runner: handler finishing under the timeout completes normally', async () => {
+  const db = freshDb();
+  let calls = 0;
+  const handlers = new Map<string, JobHandler>([
+    [
+      'test.fast',
+      async () => {
+        calls++;
+      },
+    ],
+  ]);
+  const sched = new Scheduler({
+    db,
+    handlers,
+    workerId: 'w1',
+    leaseMs: 5000,
+    isPaused: () => false,
+    handlerTimeoutMs: 60_000,
+  });
+
+  enqueueJob(db, {
+    name: 'test.fast',
+    trigger_kind: 'manual',
+    scheduled_at: new Date().toISOString(),
+  });
+  await sched.tickOnce();
+  assert.equal(calls, 1);
+  const state = (
+    db.prepare("SELECT state FROM jobs WHERE name = 'test.fast'").get() as { state: string }
+  ).state;
+  assert.equal(state, 'completed');
+  closeDb(db);
+});
+
 test('scheduler runner: skips claim when paused', async () => {
   const db = freshDb();
   let calls = 0;

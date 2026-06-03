@@ -18,6 +18,21 @@ import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidf
 
 const TICK_INTERVAL_MS = 1000;
 const LEASE_MS = 5 * 60 * 1000; // 5 min
+// Per-handler wall-clock backstop. A handler that blocks past this is abandoned
+// and its job marked `errored`, so one over-long or wedged handler can't stall
+// the sequential tick loop (the 2026-06-02 ~31h outage). Sized to sit ABOVE a
+// realistic heavy cognition tick (a biographer backlog drain runs ~8 min at the
+// observed ~16s/chunk × 30 chunks) yet BELOW the heartbeat monitor's hard-exit
+// escalation (7-min critical + 30-min sustained ≈ 37 min). That ordering means a
+// hung tick now self-heals gracefully here — loop ticks again, cron re-arms —
+// instead of hard-exiting the process and respawn-looping on the re-claimed
+// overdue job. Cognition handlers are idempotent (cursor/state-based), so a tick
+// clipped at this ceiling resumes from its persisted progress on the next cron.
+// NOTE: biographer's own theoretical worst case (MAX_CHUNKS_PER_TICK=30 ×
+// BIOGRAPHER_CHUNK_TIMEOUT_MS=2min = 60 min) exceeds this cap; that only triggers
+// if nearly every chunk's LLM call hangs to its own timeout (i.e. the model is
+// down), in which case clipping the tick is the correct outcome.
+const HANDLER_TIMEOUT_MS = 20 * 60 * 1000; // 20 min
 // Bug B fix — periodic in-process sweep so abandoned leases don't pile up between
 // boots. Boot-time `recoverExpiredLeases` only fires on cold start; without this
 // interval, a stuck handler that the scheduler eventually times-out would leave its
@@ -127,6 +142,7 @@ export class Daemon {
       handlers: this.handlers,
       workerId,
       leaseMs: LEASE_MS,
+      handlerTimeoutMs: HANDLER_TIMEOUT_MS,
       // Pause the whole scheduler when power isn't active OR the network is
       // offline. Post-cloud-migration (2026-05-24) all cognition + integrations
       // are outbound, so `network: offline` must cleanly halt scheduled work —
@@ -231,10 +247,14 @@ export class Daemon {
         getLastTickAt: () => this.lastTickAt,
         enableNotifications: () => loadPolicies(userData).notifications.health,
         getStartedAt: () => this.startedAt,
-        // Bug A fix — when heartbeating fails, the scheduler is stuck awaiting a
-        // handler call. No graceful path can recover (the runLoop's `await
-        // tickOnce()` won't return). Exit hard so launchd respawns; the boot-time
-        // lease sweep + cron re-arm at the next boot will resume work.
+        // Backstop for a CPU-blocked handler — when heartbeating goes critical
+        // the scheduler is stuck awaiting a handler. The HANDLER_TIMEOUT_MS cap
+        // (above) gracefully unblocks the loop for *async* wedges (a hung await)
+        // without ever reaching here, but a *synchronously* blocked handler
+        // freezes the event loop so the timeout's timer can't fire. For that case
+        // there is no graceful path (`await tickOnce()` never returns), so exit
+        // hard and let launchd respawn; the boot-time lease sweep + cron re-arm
+        // resume work on the next boot.
         onHeartbeatCritical: () => {
           this.log.error('heartbeat-recovery: exit(1) for launchd respawn');
           // Force-exit on next tick so the error log line flushes first.
