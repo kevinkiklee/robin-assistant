@@ -45,6 +45,17 @@ export function getAllowedCwds(): string[] {
   }
 }
 
+// Claude Code surfaces usage-limit / system notices as a standalone assistant
+// turn (e.g. "You've hit your Sonnet limit · resets Jun 7 at 1am"). These are
+// failed invocations carrying no real assistant work — kept short and matched
+// tightly so a substantive response that merely *mentions* limits isn't caught.
+const CLAUDE_NOTICE_RE =
+  /^(you['’]ve hit your\b.{0,40}\blimit\b|.{0,40}\busage limit (reached|exceeded)\b|claude(\s+code)?\s+(api\s+)?error\b)/i;
+export function isClaudeCodeNotice(content: string): boolean {
+  const t = content.trim();
+  return t.length > 0 && t.length < 300 && CLAUDE_NOTICE_RE.test(t);
+}
+
 /** Returns true if cwd is undefined (skip check), or matches the allowlist. */
 export function isCwdAllowed(cwd: string | undefined, allowedCwds: string[]): boolean {
   if (cwd === undefined) return true;
@@ -147,6 +158,17 @@ export async function captureSession(
   const assistantTurns = capture.turns.filter((t) => t.role === 'assistant' && t.content.trim());
 
   if (assistantTurns.length === 0) return { captured: false, skipReason: 'no_assistant_turn' };
+
+  // Skip failed `claude` invocations whose only "assistant" turn is a Claude Code
+  // system notice — e.g. "You've hit your Sonnet limit · resets Jun 7 at 1am". A
+  // retrying auto-resume loop that keeps hitting the usage limit emits hundreds of
+  // these per hour; capturing them floods the biographer and makes it extract junk
+  // entities from error text. Keys on the failure tell (notice-only assistant
+  // content), which is robust to cognition-prompt format changes. A real session
+  // that merely discusses limits has substantive assistant turns and is kept.
+  if (!assistantTurns.some((t) => !isClaudeCodeNotice(t.content))) {
+    return { captured: false, skipReason: 'claude_system_notice' };
+  }
 
   const allText = capture.turns
     .map((t) => t.content)

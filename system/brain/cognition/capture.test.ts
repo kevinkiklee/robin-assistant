@@ -118,6 +118,44 @@ test('capture: a real session that only mentions the cognition marker in assista
   closeDb(db);
 });
 
+test('capture: skips a failed claude session whose only assistant turn is a usage-limit notice', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'limit1',
+    turns: [
+      { role: 'user', content: 'Source text: extract entities from this session about Kevin' },
+      {
+        role: 'assistant',
+        content: "You've hit your Sonnet limit · resets Jun 7 at 1am (America/New_York)",
+      },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'claude_system_notice');
+  closeDb(db);
+});
+
+test('capture: still captures a real session that merely discusses usage limits', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'limit-discuss',
+    turns: [
+      { role: 'user', content: 'how do Claude usage limits work?' },
+      {
+        role: 'assistant',
+        content:
+          'Usage limits reset on a rolling window; you can check remaining quota in settings and upgrade your plan if you keep hitting the limit.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session discussing limits; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
 test('capture: dedup_hit prevents identical capture', async () => {
   const db = freshDb();
   const capture = {
