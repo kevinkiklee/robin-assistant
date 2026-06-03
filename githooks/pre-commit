@@ -1,0 +1,48 @@
+#!/usr/bin/env sh
+#
+# Auto-format staged files with Biome before they're committed, then re-stage the
+# result. This exists because commits land here from several paths — a human, the
+# daemon's autonomous self-improvement snapshot routine, and assistant sessions —
+# and the non-interactive paths historically committed unformatted code, so every
+# batch arrived with `biome check` format errors that someone had to clean up by
+# hand. Formatting at commit time fixes the leak at the root for ALL committers.
+#
+# Design notes:
+#  - Auto-fix and re-stage, never block. An autonomous committer can't respond to a
+#    rejected commit, so blocking would silently strand its work. Formatting is
+#    deterministic and safe to apply unattended; correctness checks (typecheck/test)
+#    deliberately stay OUT of this hook — they're too slow per-commit and would block.
+#  - Only staged, Biome-relevant files are touched (not a whole-tree format) so the
+#    hook never reformats files outside the commit or races a concurrent daemon edit.
+#  - Degrades to a no-op if Biome isn't available, so it never wedges a commit in an
+#    environment without dev dependencies installed.
+
+# Staged files that Biome handles (added/copied/modified/renamed only, NUL-safe).
+staged=$(git diff --cached --name-only --diff-filter=ACMR -z \
+  | tr '\0' '\n' \
+  | grep -Ei '\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc)$' || true)
+
+[ -z "$staged" ] && exit 0
+
+# Resolve Biome from the local install; skip silently if it isn't there.
+if [ -x "node_modules/.bin/biome" ]; then
+  biome="node_modules/.bin/biome"
+elif command -v biome >/dev/null 2>&1; then
+  biome="biome"
+else
+  exit 0
+fi
+
+# Format in place (biome.json already ignores dist/, node_modules/, user-data/).
+# --no-errors-on-unmatched: a staged path Biome doesn't own (e.g. an ignored file)
+# must not fail the commit. We only --write here; we do NOT apply lint fixes, which
+# can change behavior and shouldn't happen silently at commit time.
+printf '%s\n' "$staged" | xargs "$biome" format --write --no-errors-on-unmatched >/dev/null 2>&1 || true
+
+# Re-stage whatever formatting changed. Only paths that were already staged are
+# re-added, so the hook never pulls unrelated working-tree changes into the commit.
+printf '%s\n' "$staged" | while IFS= read -r f; do
+  [ -n "$f" ] && [ -e "$f" ] && git add -- "$f"
+done
+
+exit 0

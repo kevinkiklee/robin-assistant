@@ -25,6 +25,7 @@
     "url": "https://github.com/kevinkiklee/robin-assistant/issues"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath githooks 2>/dev/null || true",
     "build": "tsc -p tsconfig.build.json && node ./system/scripts/build-extensions.mjs",
     "build:extensions": "node ./system/scripts/build-extensions.mjs",
     "dev": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts daemon --foreground",
