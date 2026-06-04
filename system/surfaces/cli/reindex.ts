@@ -9,12 +9,13 @@ import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 /**
  * Marker written to `events_content.embedding` once a row is embedded. The real
- * 3072-d float32 vector lives only in `events_vec` (the search index recall queries);
- * `events_content.embedding` is never read as a vector — it is only NULL-checked
- * (embedder eligibility + the `vec.index_synced` invariant). Storing the full vector
- * here too doubled vector storage (~381 MB on the live DB). A 1-byte sentinel keeps
- * the NULL/NOT-NULL semantics while reclaiming that space. Must stay a single byte;
- * migration 021 sentinel-izes existing rows with the literal x'01'.
+ * 3072-d vector (int8-quantized since migration 023) lives only in `events_vec` (the
+ * search index recall queries); `events_content.embedding` is never read as a vector —
+ * it is only NULL-checked (embedder eligibility + the `vec.index_synced` invariant).
+ * Storing the full float32 vector here too once doubled vector storage (~381 MB on the
+ * live DB). A 1-byte sentinel keeps the NULL/NOT-NULL semantics while reclaiming that
+ * space. Must stay a single byte; migration 021 sentinel-izes existing rows with the
+ * literal x'01'.
  */
 export const EMBEDDED_SENTINEL = Buffer.from([1]);
 
