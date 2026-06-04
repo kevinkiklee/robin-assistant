@@ -2,6 +2,8 @@ import type { RobinDb } from '../memory/db.ts';
 
 export interface HygieneResult {
   relationsDeleted: number;
+  /** Duplicate (subject, predicate, object) relation copies collapsed to one row. */
+  relationsDeduped: number;
   /** Tier 1 pattern matches + retroactive blocklist sweeps + Tier 2 auto-culls. */
   entitiesDeleted: number;
   /** Tier 2 score-based deletions (subset of entitiesDeleted; never blocklisted). */
@@ -191,6 +193,7 @@ const BLOCKED_PREDICATES = [
 export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
   const result: HygieneResult = {
     relationsDeleted: 0,
+    relationsDeduped: 0,
     entitiesDeleted: 0,
     entitiesAutoCulled: 0,
     blocklistGrown: 0,
@@ -217,6 +220,20 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
     .prepare(`DELETE FROM relations WHERE predicate IN (${placeholders})`)
     .run(...BLOCKED_PREDICATES);
   result.relationsDeleted = relDel.changes;
+
+  // 2b. Relation dedup — collapse duplicate (subject, predicate, object) triples to a
+  // single row, keeping the earliest (MIN id). The biographer writes one relation per
+  // source event, so a fact re-extracted from many sessions accumulates identical
+  // edges; the graph is read existence-based (entity.ts uses SELECT DISTINCT), so the
+  // copies carry no signal and only bloat the graph. No fact is lost — every deleted
+  // row's triple keeps its MIN-id survivor.
+  const dedup = db
+    .prepare(`
+      DELETE FROM relations
+      WHERE id NOT IN (SELECT MIN(id) FROM relations GROUP BY subject_id, predicate, object_id)
+    `)
+    .run();
+  result.relationsDeduped = dedup.changes;
 
   // 3. Retroactive blocklist sweep — delete entities now in blocklist
   const blocklisted = db
