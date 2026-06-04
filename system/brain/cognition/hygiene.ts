@@ -63,6 +63,23 @@ const BARE_FOCAL_RE = /^\d+-?\d*mm\b/;
 const BARE_DOMAIN_RE =
   /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|app|org|net|co|dev|ai|sh|me|xyz|so)$/i;
 
+// ─── Cross-type noise (any entity type, not just thing/topic) ────────────────
+// Robin's own machinery captured as entities from its self-referential dev
+// sessions. These get mis-typed as service/tool/project, so they escape the
+// thing/topic-gated Tier 1 scan entirely. Both patterns are unambiguous — no
+// real-world entity Kevin cares about looks like this — so they run on all types.
+const ROBIN_LAUNCHD_RE = /^io\.robin-assistant\b/i;
+// Internal roadmap codenames mis-typed as `project`: "Phase 4a edge",
+// "Track B Phase 1", "M0 Phase A". Real products use proper-noun names.
+const PROJECT_CODENAME_RE = /^(?:Phase|Track|Stage|Sprint|Milestone)\b|^M\d+\s+Phase\b/i;
+
+function isCrossTypeNoise(e: EntityRow): string | null {
+  if (ROBIN_LAUNCHD_RE.test(e.canonical_name)) return 'robin_launchd_label';
+  if (e.type.toLowerCase() === 'project' && PROJECT_CODENAME_RE.test(e.canonical_name))
+    return 'project_codename';
+  return null;
+}
+
 function isTier1Noise(e: EntityRow): string | null {
   const name = e.canonical_name;
   const t = e.type.toLowerCase();
@@ -224,7 +241,7 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
     .prepare('SELECT id, type, canonical_name, profile FROM entities')
     .all() as EntityRow[];
   for (const e of allEntities) {
-    const reason = isTier1Noise(e);
+    const reason = isCrossTypeNoise(e) ?? isTier1Noise(e);
     if (!reason) continue;
     db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(e.id, e.id);
     db.prepare('DELETE FROM entities WHERE id = ?').run(e.id);

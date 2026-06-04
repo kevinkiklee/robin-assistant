@@ -616,6 +616,22 @@ test('isLowQualityEntity: drops engineering-internal noise from coding captures'
   }
 });
 
+test('isLowQualityEntity: drops Robin self-referential internals', () => {
+  // Launchd labels are noise on ANY type the LLM assigns.
+  for (const type of ['service', 'tool', 'thing']) {
+    assert.equal(isLowQualityEntity('io.robin-assistant.daemon', type), true);
+    assert.equal(isLowQualityEntity('io.robin-assistant.backup', type), true);
+  }
+  // Roadmap codenames mis-typed as projects.
+  for (const name of ['M0 Phase A', 'Track B Phase 1', 'Phase 4a edge', 'Sprint 3']) {
+    assert.equal(isLowQualityEntity(name, 'project'), true, `${name} should be dropped`);
+  }
+  // Real projects with proper-noun names must survive.
+  for (const name of ['leadforge', 'photo-tools', 'HostMind', 'Palisade Stays']) {
+    assert.equal(isLowQualityEntity(name, 'project'), false, `${name} should be kept`);
+  }
+});
+
 test('isLowQualityEntity: drops bare source-file references regardless of type', () => {
   for (const name of ['biographer.ts', 'dream.test.ts', 'learning-queue.md', 'config.yaml']) {
     assert.equal(isLowQualityEntity(name), true, `${name} should be dropped`);

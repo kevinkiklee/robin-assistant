@@ -54,6 +54,40 @@ test('hygiene: deletes Phase/Track codenames', () => {
   closeDb(db);
 });
 
+test('hygiene: deletes Robin launchd labels regardless of type', () => {
+  const db = freshDb();
+  // Typed `service`, so the thing/topic-gated Tier 1 scan would miss these.
+  upsertEntity(db, 'service', 'io.robin-assistant.daemon');
+  upsertEntity(db, 'service', 'io.robin-assistant.backup');
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 2);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('io.robin-assistant.daemon'));
+  assert.ok(!names.includes('io.robin-assistant.backup'));
+  closeDb(db);
+});
+
+test('hygiene: deletes project-typed roadmap codenames but keeps real projects', () => {
+  const db = freshDb();
+  upsertEntity(db, 'project', 'M0 Phase A');
+  upsertEntity(db, 'project', 'Track B Phase 1');
+  // Real projects must survive — proper-noun names, not codenames.
+  const keep1 = upsertEntity(db, 'project', 'leadforge');
+  const keep2 = upsertEntity(db, 'project', 'askrobin.io');
+  addRelation(db, keep1.id, 'owns', keep2.id);
+  runHygiene(db);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('M0 Phase A'));
+  assert.ok(!names.includes('Track B Phase 1'));
+  assert.ok(names.includes('leadforge'), 'real project preserved');
+  assert.ok(names.includes('askrobin.io'), 'real project preserved');
+  closeDb(db);
+});
+
 test('hygiene: deletes env var entities', () => {
   const db = freshDb();
   upsertEntity(db, 'thing', 'ANTHROPIC_API_KEY');
