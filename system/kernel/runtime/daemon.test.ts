@@ -127,3 +127,44 @@ test('daemon: claims and runs a queued no-op job', async () => {
 
   assert.ok(calls >= 1, `expected handler to be called at least once, got ${calls}`);
 });
+
+test('daemon: hook receipts are not persisted as invariant.check events', async () => {
+  const userData = freshUserData();
+  process.env.ROBIN_USER_DATA_DIR = userData;
+
+  const daemon = new Daemon();
+  const startPromise = daemon.start({ foreground: true, httpPort: 0 });
+  let port: number | undefined;
+  for (let i = 0; i < 30; i++) {
+    port = daemon.getHttpPort();
+    if (port) break;
+    await sleep(100);
+  }
+  assert.ok(port, 'daemon http server should be bound');
+
+  // session_end is the only hook that reaches the generic onHook receipt path
+  // (session_start / user_prompt_submit have dedicated early-return routes). We omit
+  // transcript_path so the capture pipeline is skipped — isolating the receipt write.
+  // Before the fix each POST appended an 'invariant.check' event — 27k of these (all
+  // 'hook.session_end') accumulated in the live DB.
+  for (let i = 0; i < 3; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/hooks/session_end`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: `s${i}` }),
+    });
+    assert.equal(res.status, 200);
+  }
+  await sleep(200);
+
+  const db = openDb(dbFilePath(userData));
+  const n = db.prepare(`SELECT count(*) AS n FROM events WHERE kind = 'invariant.check'`).get() as {
+    n: number;
+  };
+  closeDb(db);
+
+  await daemon.stop('test');
+  await startPromise.catch(() => {});
+
+  assert.equal(n.n, 0, 'hook receipts must not be written as invariant.check events');
+});

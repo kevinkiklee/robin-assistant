@@ -2,8 +2,20 @@ import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { embedBodies, embedBody } from '../../brain/memory/embed-content.ts';
+import { deniedKindSql } from '../../brain/memory/embed-policy.ts';
 import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+
+/**
+ * Marker written to `events_content.embedding` once a row is embedded. The real
+ * 3072-d float32 vector lives only in `events_vec` (the search index recall queries);
+ * `events_content.embedding` is never read as a vector — it is only NULL-checked
+ * (embedder eligibility + the `vec.index_synced` invariant). Storing the full vector
+ * here too doubled vector storage (~381 MB on the live DB). A 1-byte sentinel keeps
+ * the NULL/NOT-NULL semantics while reclaiming that space. Must stay a single byte;
+ * migration 021 sentinel-izes existing rows with the literal x'01'.
+ */
+export const EMBEDDED_SENTINEL = Buffer.from([1]);
 
 export interface ReindexOptions {
   limit?: number;
@@ -120,10 +132,18 @@ export async function runReindexCore(
         )
         .all(...opts.ids.map((n) => Number(n))) as ContentRow[];
     } else {
-      const eligibleQ = opts.force
-        ? db.prepare(`SELECT id, body FROM events_content ORDER BY id`)
-        : db.prepare(`SELECT id, body FROM events_content WHERE embedding IS NULL ORDER BY id`);
-      rows = (opts.limit ? eligibleQ.all().slice(0, opts.limit) : eligibleQ.all()) as ContentRow[];
+      // Exclude content whose owning event is a denied (noise) kind — operational acks,
+      // integration ticks, finance line-items, etc. never get a vector (see embed-policy).
+      // Orphan content (no event row) stays eligible, preserving prior behavior. `--force`
+      // drops only the NULL-embedding guard, never the kind policy.
+      const denied = deniedKindSql('e.kind');
+      const notNoise = `NOT EXISTS (SELECT 1 FROM events e WHERE e.content_ref = events_content.id AND ${denied.sql})`;
+      const where = opts.force ? notNoise : `embedding IS NULL AND ${notNoise}`;
+      const eligibleQ = db.prepare(
+        `SELECT id, body FROM events_content WHERE ${where} ORDER BY id`,
+      );
+      const all = eligibleQ.all(...denied.params) as ContentRow[];
+      rows = opts.limit ? all.slice(0, opts.limit) : all;
     }
     report.total_eligible = rows.length;
 
@@ -169,7 +189,9 @@ export async function runReindexCore(
           db.exec('BEGIN');
           try {
             const rowidBig = BigInt(row.id);
-            updateContent.run(buf, row.id);
+            // Sentinel (not the vector) in events_content — the real vector goes to
+            // events_vec below. See EMBEDDED_SENTINEL for why.
+            updateContent.run(EMBEDDED_SENTINEL, row.id);
             // Idempotent: an existing vec row at this rowid (partial prior run, or a
             // row that had an embedding but got --force'd through) is replaced.
             deleteVec.run(rowidBig);

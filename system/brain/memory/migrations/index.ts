@@ -18,6 +18,8 @@ import { migration017 } from './017-drop-hygiene-review.ts';
 import { migration018 } from './018-normalize-topics.ts';
 import { migration019 } from './019-recall-log-source.ts';
 import { migration020 } from './020-candidate-dedup-recall-outcome.ts';
+import { migration021 } from './021-dedup-vectors.ts';
+import { migration022 } from './022-purge-hook-receipts.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -41,6 +43,8 @@ export const allMigrations: Migration[] = [
   migration018,
   migration019,
   migration020,
+  migration021,
+  migration022,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

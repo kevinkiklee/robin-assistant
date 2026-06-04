@@ -189,12 +189,11 @@ export class Daemon {
         port: httpPort,
         isHealthy: () => this.running,
         onHook: async (kind, payload) => {
-          writeTelemetry(
-            db,
-            'invariant.check',
-            { name: `hook.${kind}`, ok: true },
-            { source: 'http' },
-          );
+          // Hook receipts are operational acks, not memories. We log them (pino) but do
+          // NOT persist them as events — the previous `writeTelemetry('invariant.check',
+          // …)` here appended one row per hook call, accumulating 27k mislabeled rows in
+          // the events table (a single day's session_end loop added 13k). The real record
+          // of a session_end is the session.captured event written by the pipeline below.
           this.log.info({ kind, payload }, 'hook received');
 
           // session_end is the wire for Claude Code → Robin capture. The hook posts the

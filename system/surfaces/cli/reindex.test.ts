@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, test } from 'node:test';
+import { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
+import type { LLMProvider } from '../../brain/llm/types.ts';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
+import { ingest } from '../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { dbFilePath } from '../../lib/paths.ts';
-import { runReindex } from './reindex.ts';
+import { EMBEDDED_SENTINEL, runReindex, runReindexCore } from './reindex.ts';
 
 // The test mocks the Ollama embed server. We point ROBIN_USER_DATA_DIR at a temp dir
 // and seed a models.yaml that uses Ollama against a localhost stub so the reindex pass
@@ -232,4 +235,114 @@ describe('robin reindex', () => {
     assert.equal(report.embedded, 1);
     assert.equal(stub.callCount(), 1);
   });
+});
+
+// --- Embed policy: noise kinds are never vectorized (Tier 1) ---
+
+function freshPolicyDb() {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-reindex-policy-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
+  applyMigrations(db, allMigrations);
+  return db;
+}
+
+function mockEmbedLLM(): LLMDispatcher {
+  const provider: LLMProvider = {
+    name: 'mock',
+    capabilities: new Set(['embed']),
+    meta: { contextWindow: 0, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async () => {
+      throw new Error('nope');
+    },
+    embed: async (text: string | string[]) => {
+      const arr = Array.isArray(text) ? text : [text];
+      return arr.map(() => new Array(3072).fill(0.1));
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('e', provider);
+  d.assign('embed', 'e');
+  return d;
+}
+
+function isEmbedded(db: ReturnType<typeof openDb>, contentId?: number): boolean {
+  const r = db
+    .prepare(`SELECT embedding IS NOT NULL AS e FROM events_content WHERE id = ?`)
+    .get(contentId) as { e: number };
+  return r.e === 1;
+}
+
+test('reindex embeds high-value kinds and skips denied noise kinds', async () => {
+  const db = freshPolicyDb();
+  const keep = ingest(db, null, {
+    kind: 'knowledge.doc',
+    source: 's',
+    content: 'kevin photography note',
+  });
+  const denyTxn = ingest(db, null, {
+    kind: 'lunch_money.transaction',
+    source: 's',
+    content: 'coffee $4',
+  });
+  const denyTick = ingest(db, null, {
+    kind: 'integration.finance_quote.tick',
+    source: 's',
+    content: 'tick ok',
+  });
+
+  const report = await runReindexCore(db, mockEmbedLLM());
+
+  assert.equal(report.embedded, 1, 'only the embeddable row should be embedded');
+  assert.equal(isEmbedded(db, keep.contentId), true);
+  assert.equal(isEmbedded(db, denyTxn.contentId), false);
+  assert.equal(isEmbedded(db, denyTick.contentId), false);
+
+  const vecCount = db.prepare(`SELECT count(*) AS n FROM events_vec`).get() as { n: number };
+  assert.equal(vecCount.n, 1, 'vec index holds only the kept row');
+  closeDb(db);
+});
+
+test('reindex --force re-embeds eligible rows but still skips denied kinds', async () => {
+  const db = freshPolicyDb();
+  ingest(db, null, { kind: 'belief.update', source: 's', content: 'kevin owns a Nikon Zf' });
+  ingest(db, null, { kind: 'spotify_played', source: 's', content: 'played a song' });
+
+  const report = await runReindexCore(db, mockEmbedLLM(), { force: true });
+  assert.equal(report.embedded, 1);
+  closeDb(db);
+});
+
+test('reindex still embeds orphan content rows (no event) — preserves prior behavior', async () => {
+  const db = freshPolicyDb();
+  db.prepare(`INSERT INTO events_content (ts, body) VALUES (?, ?)`).run(
+    '2026-05-19T00:00:00Z',
+    'orphan content with no event row',
+  );
+  const report = await runReindexCore(db, mockEmbedLLM());
+  assert.equal(report.embedded, 1);
+  closeDb(db);
+});
+
+test('reindex stores a 1-byte sentinel in events_content.embedding, not the full vector', async () => {
+  const db = freshPolicyDb();
+  const e = ingest(db, null, { kind: 'knowledge.doc', source: 's', content: 'note' });
+  await runReindexCore(db, mockEmbedLLM());
+
+  // The 3072-d float32 vector lives ONLY in events_vec; events_content.embedding is a
+  // tiny sentinel that the embedder eligibility query NULL-checks. This is the dedup
+  // that reclaims ~381 MB on the live DB.
+  const row = db
+    .prepare(`SELECT length(embedding) AS len FROM events_content WHERE id = ?`)
+    .get(e.contentId) as { len: number };
+  assert.equal(row.len, EMBEDDED_SENTINEL.length);
+  assert.equal(EMBEDDED_SENTINEL.length, 1, 'sentinel must be a single byte');
+
+  const vec = db
+    .prepare(`SELECT count(*) AS n FROM events_vec WHERE rowid = ?`)
+    .get(e.contentId) as {
+    n: number;
+  };
+  assert.equal(vec.n, 1, 'full vector retained in events_vec');
+  closeDb(db);
 });
