@@ -1,6 +1,7 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from './db.ts';
 import { ageDaysFrom, type ProvenanceClass } from './provenance.ts';
+import { int8DistanceToFloat, quantizeToInt8Json } from './vec-quantize.ts';
 
 /** Query is truncated to this many chars before embedding — bounds embed latency/cost on
  *  pathological prompts (a pasted file, a giant diff) without hurting recall quality. */
@@ -287,32 +288,37 @@ export async function recall(
     // Truncate before embedding — a pasted file or giant diff shouldn't blow up embed
     // latency/cost, and the leading 2k chars carry the topical signal recall needs.
     const [vec] = await llm.embed('embed', query.slice(0, MAX_EMBED_QUERY_CHARS));
-    const buf = Buffer.from(new Float32Array(vec).buffer);
+    // events_vec stores int8-quantized vectors — quantize the query the same way.
+    const q8 = quantizeToInt8Json(vec);
     const vecRows = db
       .prepare(`
       SELECT events_content.id AS contentId, events_content.body AS body, distance,
              (SELECT id FROM events WHERE content_ref = events_content.id LIMIT 1) AS eventId
         FROM events_vec
         JOIN events_content ON events_content.id = events_vec.rowid
-       WHERE events_vec.embedding MATCH ? AND k = ?
+       WHERE events_vec.embedding MATCH vec_int8(?) AND k = ?
        ORDER BY distance
     `)
-      .all(buf, limit) as Array<{
+      .all(q8, limit) as Array<{
       contentId: number;
       body: string;
       distance: number;
       eventId: number | null;
     }>;
     for (const r of vecRows) {
+      // int8 L2 distance = SCALE × float L2 distance; normalize back so the maxDistance
+      // floor and `1 - distance` score keep their float-calibrated meaning (e.g.
+      // AUTO_RECALL_MAX_DISTANCE = 0.82 stays valid unchanged).
+      const dist = int8DistanceToFloat(r.distance);
       // L2 distance floor: drop hits the embedding model considers far. Skipped when
       // maxDistance is undefined so existing callers see no behavior change.
-      if (opts.maxDistance !== undefined && r.distance > opts.maxDistance) continue;
+      if (opts.maxDistance !== undefined && dist > opts.maxDistance) continue;
       if (r.eventId !== null) {
         vecHits.push({
           eventId: r.eventId,
           contentId: r.contentId,
           body: r.body,
-          score: 1 - r.distance,
+          score: 1 - dist,
           source: 'vec',
         });
       }

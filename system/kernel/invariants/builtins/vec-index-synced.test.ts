@@ -15,18 +15,21 @@ function freshDb() {
   return db;
 }
 
-// events_vec is float[3072] after migration 010.
-function vecBuf(seed = 0.1): Buffer {
-  return Buffer.from(new Float32Array(new Array(3072).fill(seed)).buffer);
-}
+// events_vec is int8[3072] after migration 023. The invariant only compares
+// COUNT(embedding NOT NULL) vs COUNT(events_vec), so the stored values are immaterial —
+// events_content.embedding gets a 1-byte sentinel (its production form) and the index row
+// gets a constant int8 vector.
+const INT8_VEC_JSON = JSON.stringify(new Array(3072).fill(1));
 
 function addContent(db: ReturnType<typeof freshDb>, id: number, withVec: boolean) {
-  const buf = vecBuf();
   db.prepare(
     `INSERT INTO events_content (id, ts, body, embedding) VALUES (?, datetime('now'), ?, ?)`,
-  ).run(id, `body ${id}`, buf);
+  ).run(id, `body ${id}`, Buffer.from([1]));
   if (withVec) {
-    db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)`).run(BigInt(id), buf);
+    db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, vec_int8(?))`).run(
+      BigInt(id),
+      INT8_VEC_JSON,
+    );
   }
 }
 

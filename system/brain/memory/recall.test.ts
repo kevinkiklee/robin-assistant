@@ -10,6 +10,7 @@ import { closeDb, openDb } from './db.ts';
 import { ingest } from './ingest.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 import { fuseRRF, type RecallHit, recall } from './recall.ts';
+import { quantizeToInt8Json } from './vec-quantize.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-recall-'));
@@ -192,12 +193,15 @@ test('recall: vec mode finds the row whose embedding the dispatcher returned', a
     content: 'kevin loves photography in Lisbon',
   });
   assert.ok(r.contentId);
-  const buf = Buffer.from(new Float32Array(targetVec).buffer);
-  db.prepare('UPDATE events_content SET embedding = ? WHERE id = ?').run(buf, r.contentId);
+  // events_vec is int8 (migration 023); store a sentinel in events_content + the int8 vector.
+  db.prepare('UPDATE events_content SET embedding = ? WHERE id = ?').run(
+    Buffer.from([1]),
+    r.contentId,
+  );
   // vec0 requires BigInt rowid binding (rejects JS Number with "only integers allowed").
-  db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)').run(
+  db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, vec_int8(?))').run(
     BigInt(r.contentId),
-    buf,
+    quantizeToInt8Json(targetVec),
   );
 
   const hits = await recall(db, llm, 'unrelated query', { mode: 'vec' });
@@ -247,18 +251,26 @@ test('fuseRRF: respects the limit', () => {
 
 test('recall: maxDistance floor drops vec hits beyond the L2 threshold', async () => {
   const db = freshDb();
-  const e0 = new Array(3072).fill(0);
-  e0[0] = 1;
-  const e1 = new Array(3072).fill(0);
-  e1[1] = 1; // orthogonal to e0 → L2 distance √2 ≈ 1.414
+  // Two orthogonal UNIT vectors with components spread across many dims (~0.0255 each) so
+  // int8 quantization doesn't clip — preserving the float L2 distance √2 ≈ 1.414 through
+  // the int8 round-trip. (One-hot vectors with a single 1.0 component would clip to 127
+  // and distort the distance.)
+  const dim = 3072;
+  const half = dim / 2;
+  const e0 = new Array(dim).fill(0);
+  for (let i = 0; i < half; i++) e0[i] = 1 / Math.sqrt(half);
+  const e1 = new Array(dim).fill(0);
+  for (let i = half; i < dim; i++) e1[i] = 1 / Math.sqrt(half);
   const near = ingest(db, null, { kind: 't', source: 's', content: 'near apple' });
   const far = ingest(db, null, { kind: 't', source: 's', content: 'far banana' });
   const put = (contentId: number, vecArr: number[]) => {
-    const buf = Buffer.from(new Float32Array(vecArr).buffer);
-    db.prepare('UPDATE events_content SET embedding = ? WHERE id = ?').run(buf, contentId);
-    db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)').run(
+    db.prepare('UPDATE events_content SET embedding = ? WHERE id = ?').run(
+      Buffer.from([1]),
+      contentId,
+    );
+    db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, vec_int8(?))').run(
       BigInt(contentId),
-      buf,
+      quantizeToInt8Json(vecArr),
     );
   };
   put(near.contentId as number, e0);

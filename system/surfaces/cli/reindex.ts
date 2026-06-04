@@ -3,6 +3,7 @@ import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { embedBodies, embedBody } from '../../brain/memory/embed-content.ts';
 import { deniedKindSql } from '../../brain/memory/embed-policy.ts';
+import { quantizeToInt8Json } from '../../brain/memory/vec-quantize.ts';
 import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
@@ -153,7 +154,11 @@ export async function runReindexCore(
     // align when ingest writes content + vec lockstep starting from rowid 1. Reindex
     // can't make that assumption, so we set the rowid explicitly (as BigInt; vec0 rejects
     // JS Number for rowid bindings — see ingest.ts for the same workaround).
-    const insertVec = db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)`);
+    // events_vec stores int8-quantized vectors (see vec-quantize.ts) — 4× smaller than
+    // float32. vec_int8() parses the JSON int8 array form.
+    const insertVec = db.prepare(
+      `INSERT INTO events_vec(rowid, embedding) VALUES (?, vec_int8(?))`,
+    );
     const deleteVec = db.prepare(`DELETE FROM events_vec WHERE rowid = ?`);
     // `--force` wipes existing vec rows so they re-emerge with a known-current vector.
     // When `--ids` is also set, only the targeted ids get wiped (full DELETE would erase
@@ -185,17 +190,17 @@ export async function runReindexCore(
         try {
           let vec = vecs[j];
           if (!vec || vec.length === 0) vec = await embedBody(dispatcher, row.body);
-          const buf = Buffer.from(new Float32Array(vec).buffer);
+          const int8Json = quantizeToInt8Json(vec);
           db.exec('BEGIN');
           try {
             const rowidBig = BigInt(row.id);
-            // Sentinel (not the vector) in events_content — the real vector goes to
+            // Sentinel (not the vector) in events_content — the real (int8) vector goes to
             // events_vec below. See EMBEDDED_SENTINEL for why.
             updateContent.run(EMBEDDED_SENTINEL, row.id);
             // Idempotent: an existing vec row at this rowid (partial prior run, or a
             // row that had an embedding but got --force'd through) is replaced.
             deleteVec.run(rowidBig);
-            insertVec.run(rowidBig, buf);
+            insertVec.run(rowidBig, int8Json);
             db.exec('COMMIT');
           } catch (txErr) {
             db.exec('ROLLBACK');

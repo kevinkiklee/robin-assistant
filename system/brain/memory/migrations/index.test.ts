@@ -106,22 +106,21 @@ test('migration 012: import_key dedup indexes exist on events and relations', ()
   closeDb(db);
 });
 
-test('migration 010: events_vec is a 3072-dim vec0 table', () => {
+test('events_vec is a 3072-dim int8 vec0 table after all migrations', () => {
+  // Migration 010 created it as float[3072]; migration 023 converts it to int8[3072]
+  // (4× smaller, faster KNN). After the full chain it is int8.
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const def = db
     .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events_vec'")
     .get() as { sql: string } | undefined;
   assert.ok(def, 'events_vec table missing after migrations');
-  assert.match(def.sql, /vec0\(embedding float\[3072\]\)/);
+  assert.match(def.sql, /vec0\(embedding int8\[3072\]\)/);
 
-  // vec0 enforces the declared width: a 3072-dim vector inserts, a 4096-dim one is rejected.
-  const insert = db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)');
-  insert.run(1n, Buffer.from(new Float32Array(3072).buffer));
-  assert.throws(
-    () => insert.run(2n, Buffer.from(new Float32Array(4096).buffer)),
-    /Dimension mismatch/,
-  );
+  // vec0 enforces the declared width: a 3072-dim int8 vector inserts, a 4096-dim one is rejected.
+  const insert = db.prepare('INSERT INTO events_vec(rowid, embedding) VALUES (?, vec_int8(?))');
+  insert.run(1n, JSON.stringify(new Array(3072).fill(0)));
+  assert.throws(() => insert.run(2n, JSON.stringify(new Array(4096).fill(0))), /mismatch/i);
   closeDb(db);
 });
 

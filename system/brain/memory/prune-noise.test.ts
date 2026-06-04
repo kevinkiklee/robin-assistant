@@ -7,6 +7,7 @@ import { closeDb, openDb, type RobinDb } from './db.ts';
 import { ingest } from './ingest.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 import { pruneNoiseVectors, rebuildVecIndex } from './prune-noise.ts';
+import { quantizeToInt8Json } from './vec-quantize.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-prune-'));
@@ -16,11 +17,29 @@ function freshDb() {
   return db;
 }
 
-/** Simulate an embedded row: full vector in events_content.embedding + a vec0 index row. */
+/** events_vec is still float[3072] before migration 023 — the context rebuildVecIndex runs in. */
+function freshDbBelow23() {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-prune-f-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
+  applyMigrations(
+    db,
+    allMigrations.filter((m) => m.version < 23),
+  );
+  return db;
+}
+
+/** Simulate an embedded row: sentinel in events_content.embedding + an int8 vec0 index row. */
 function fakeEmbed(db: RobinDb, contentId: number) {
-  const buf = Buffer.from(new Float32Array(new Array(3072).fill(0.1)).buffer);
-  db.prepare(`UPDATE events_content SET embedding = ? WHERE id = ?`).run(buf, contentId);
-  db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, ?)`).run(BigInt(contentId), buf);
+  const v = new Array(3072).fill(0.05);
+  db.prepare(`UPDATE events_content SET embedding = ? WHERE id = ?`).run(
+    Buffer.from([1]),
+    contentId,
+  );
+  db.prepare(`INSERT INTO events_vec(rowid, embedding) VALUES (?, vec_int8(?))`).run(
+    BigInt(contentId),
+    quantizeToInt8Json(v),
+  );
 }
 
 function embedded(db: RobinDb, contentId?: number): boolean {
@@ -72,7 +91,9 @@ test('pruneNoiseVectors is idempotent (re-run finds nothing)', () => {
 });
 
 test('rebuildVecIndex preserves every vector at its rowid and keeps it searchable', () => {
-  const db = freshDb();
+  // rebuildVecIndex operates on the float[3072] events_vec (migration 021 era), so build
+  // the DB up to just before migration 023 converts the table to int8.
+  const db = freshDbBelow23();
   const a = ingest(db, null, { kind: 'knowledge.doc', source: 's', content: 'a' });
   const b = ingest(db, null, { kind: 'belief.update', source: 's', content: 'b' });
   // Two distinct unit vectors (one-hot on dims 0 and 1) so MATCH can tell them apart.
