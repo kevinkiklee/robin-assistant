@@ -43,6 +43,8 @@ ADVANCED
   ingest-docs           Index content/* now (also runs automatically every 10 min)
   ingest-archive <dir>  Ingest text files from a directory into Robin memory
   db backup|restore|vacuum   Database maintenance
+  db merge-entities --from=<groups.json> [--apply]
+                             Merge duplicate entities (dry-run unless --apply)
   pause | resume        Pause / resume scheduled work
   offline | online      Block / restore outbound network
   incognito [--for=1h]  Disable session capture
@@ -279,6 +281,16 @@ async function main(): Promise<void> {
       }
       if (sub === 'vacuum') {
         runDbVacuum();
+        exit(0);
+      }
+      if (sub === 'merge-entities') {
+        const from = extractFlag(args, '--from=') ?? args[2];
+        if (!from) {
+          console.error('usage: robin db merge-entities --from=<groups.json> [--apply]');
+          exit(2);
+        }
+        const { runMergeEntities } = await import('./merge-entities.ts');
+        runMergeEntities({ from, apply: args.includes('--apply') });
         exit(0);
       }
       console.error(`Unknown db subcommand: ${sub}`);
