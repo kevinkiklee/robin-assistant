@@ -196,6 +196,25 @@ test('hygiene: does NOT delete Tier 1 matches on non-noise types (person, place)
   closeDb(db);
 });
 
+test('hygiene: dedups duplicate (subject, predicate, object) relations to one row', () => {
+  const db = freshDb();
+  const kevin = upsertEntity(db, 'person', 'Kevin', 'A person.');
+  const spotify = upsertEntity(db, 'service', 'Spotify', 'Music service.');
+  const other = upsertEntity(db, 'service', 'Netflix', 'Streaming.');
+  // Same fact extracted from 4 sessions → 4 identical edges.
+  for (let i = 0; i < 4; i++) addRelation(db, kevin.id, 'uses', spotify.id);
+  // A distinct fact must survive untouched.
+  addRelation(db, kevin.id, 'uses', other.id);
+  const r = runHygiene(db);
+  assert.equal(r.relationsDeduped, 3, 'three duplicate copies collapsed');
+  const uses = db
+    .prepare('SELECT object_id FROM relations WHERE subject_id=? AND predicate=?')
+    .all(kevin.id, 'uses') as Array<{ object_id: number }>;
+  const objs = uses.map((u) => u.object_id).sort();
+  assert.deepEqual(objs, [spotify.id, other.id].sort(), 'both distinct facts preserved, no dup');
+  closeDb(db);
+});
+
 test('hygiene: deletes occurs_with relations', () => {
   const db = freshDb();
   const e1 = upsertEntity(db, 'person', 'Kevin');
