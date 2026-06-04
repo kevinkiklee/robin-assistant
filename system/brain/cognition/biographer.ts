@@ -691,6 +691,10 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
   if (/^(runtime|batch|entities|events|integration|cognition)[:(]/.test(trimmed)) return true;
   // MCP tool names (mcp__robin__recall, mcp__robin__*, mcp__chrome-devtools__*).
   if (/^mcp__/.test(trimmed)) return true;
+  // Robin's own launchd job labels (io.robin-assistant.daemon, .backup) — reverse-DNS
+  // identifiers for the system's own processes, never a real-world entity whatever
+  // type the LLM assigns. Self-referential capture from Robin's own dev sessions.
+  if (/^io\.robin-assistant\b/i.test(trimmed)) return true;
   // Decimal numbers without context ("0.62", "3.14") — not entities.
   if (/^\d+\.\d+$/.test(trimmed)) return true;
   // ISO dates ("2026-06-09", "2026-12-31", "1989-09-08") — calendar references, not entities.
@@ -763,6 +767,10 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
   // suffix — real products use proper-noun casing.
   if (type?.toLowerCase() === 'project') {
     if (/^[a-z][\w-]*-[a-z]\d/i.test(trimmed)) return true; // cognition-e1, phase-4a
+    // Internal roadmap codenames mis-typed as projects: "Phase 4a edge",
+    // "Track B Phase 1", "M0 Phase A". Real products use proper-noun names.
+    if (/^(?:Phase|Track|Stage|Sprint|Milestone)\b/i.test(trimmed)) return true;
+    if (/^M\d+\s+Phase\b/i.test(trimmed)) return true;
   }
 
   return false;
