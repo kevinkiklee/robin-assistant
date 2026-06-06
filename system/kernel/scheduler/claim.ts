@@ -83,10 +83,18 @@ export function completeJob(
 
 export function recoverExpiredLeases(db: RobinDb, nowIso?: string): number {
   const now = nowIso ?? new Date().toISOString();
+  // Leave a breadcrumb in last_error so a retried-but-completed row stays
+  // diagnosable: retry_count says how often, this says why (the run outran its
+  // lease) and which worker/deadline. completeJob('ok') never clears last_error,
+  // so it survives a later success — the only writer that overwrites it is a
+  // genuine error (which is terminal). Overwrite, not append: the latest cause
+  // plus retry_count is enough to triage an outlier without unbounded growth.
   const result = db
     .prepare(`
     UPDATE jobs
        SET state = 'pending',
+           last_error = 'lease expired (worker=' || COALESCE(claimed_by, '?')
+                        || ', due=' || COALESCE(leased_until, '?') || ')',
            leased_until = NULL,
            claimed_by = NULL,
            retry_count = retry_count + 1
@@ -107,15 +115,20 @@ export function recoverExpiredLeases(db: RobinDb, nowIso?: string): number {
  * concurrent workers, call this with care (or not at all).
  */
 export function recoverDeadWorkerLeases(db: RobinDb, currentWorkerId: string): number {
+  // Breadcrumb mirrors recoverExpiredLeases: name the predecessor worker that
+  // orphaned the lease (almost always a daemon restart), so a restart-storm is
+  // distinguishable from genuine lease-timeout overruns after the fact.
   const result = db
     .prepare(`
     UPDATE jobs
        SET state = 'pending',
+           last_error = 'worker reset (was=' || COALESCE(claimed_by, '?')
+                        || ', now=' || ? || ')',
            leased_until = NULL,
            claimed_by = NULL,
            retry_count = retry_count + 1
      WHERE state = 'leased' AND claimed_by != ?
   `)
-    .run(currentWorkerId);
+    .run(currentWorkerId, currentWorkerId);
   return result.changes;
 }

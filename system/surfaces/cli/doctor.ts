@@ -1,12 +1,6 @@
 import { resolve as resolvePath } from 'node:path';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import {
-  dbReachableInvariant,
-  dbSchemaCurrentInvariant,
-  dbWalSizeBoundedInvariant,
-  userDataWritableInvariant,
-} from '../../kernel/invariants/builtins/index.ts';
 import { buildDoctorInvariants } from '../../kernel/invariants/doctor-set.ts';
 import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
@@ -129,13 +123,15 @@ export function emitRunbook(opts: { write: boolean; path?: string }): {
   const userData = resolveUserDataDir();
   const db = openDb(dbFilePath(userData));
   applyMigrations(db, allMigrations);
-  const invariants = [
-    userDataWritableInvariant(userData),
-    dbReachableInvariant(db),
-    dbSchemaCurrentInvariant(db),
-    dbWalSizeBoundedInvariant(db),
-  ];
-  const path = opts.path ?? resolvePath(process.cwd(), 'RUNBOOK.md');
+  // Document the FULL doctor set, not a hand-picked subset — otherwise the runbook
+  // silently omits invariants (it long listed only 4 of 11) and the operator docs
+  // drift from what `robin doctor` actually checks. Same source as the CLI/daily run.
+  const invariants = buildDoctorInvariants(db, userData);
+  // Default to the committed canonical runbook (docs/RUNBOOK.md). The previous
+  // cwd/RUNBOOK.md default wrote a stray repo-root file, leaving the real doc
+  // stale — writeRunbook updates only between the sentinels, preserving the
+  // curated preamble in docs/RUNBOOK.md.
+  const path = opts.path ?? resolvePath(process.cwd(), 'docs', 'RUNBOOK.md');
   if (opts.write) {
     const r = writeRunbook(path, invariants);
     closeDb(db);

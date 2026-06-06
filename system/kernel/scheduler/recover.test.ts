@@ -7,6 +7,7 @@ import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import {
   claimNextJob,
+  completeJob,
   enqueueJob,
   recoverDeadWorkerLeases,
   recoverExpiredLeases,
@@ -113,4 +114,65 @@ test('recover: dead-worker reset ignores pending/completed rows', () => {
   // Only the leased-by-old row should reset; the pending row is unaffected.
   const recovered = recoverDeadWorkerLeases(db, 'new');
   assert.equal(recovered, 1);
+});
+
+// Diagnosability: retry_count alone says a job was retried but not WHY. Both
+// recovery paths leave a breadcrumb in last_error naming the cause and the
+// worker/lease involved, so a retried-but-completed row stays diagnosable.
+test('recover: expired-lease reset records a breadcrumb in last_error', () => {
+  const db = freshDb();
+  enqueueJob(db, { name: 'test', trigger_kind: 'manual', scheduled_at: new Date().toISOString() });
+  const job = claimNextJob(db, { workerId: 'w1', leaseMs: 1 });
+  assert.ok(job);
+
+  recoverExpiredLeases(db, new Date(Date.now() + 100).toISOString());
+
+  const row = db.prepare('SELECT last_error FROM jobs WHERE id = ?').get(job.id) as {
+    last_error: string | null;
+  };
+  assert.ok(row.last_error, 'expected a breadcrumb');
+  assert.match(row.last_error, /lease expired/);
+  assert.match(row.last_error, /w1/); // names the worker that held the lease
+  closeDb(db);
+});
+
+test('recover: dead-worker reset records a breadcrumb in last_error', () => {
+  const db = freshDb();
+  enqueueJob(db, { name: 'test', trigger_kind: 'manual', scheduled_at: new Date().toISOString() });
+  const job = claimNextJob(db, { workerId: 'old-daemon', leaseMs: 60_000 });
+  assert.ok(job);
+
+  recoverDeadWorkerLeases(db, 'new-daemon');
+
+  const row = db.prepare('SELECT last_error FROM jobs WHERE id = ?').get(job.id) as {
+    last_error: string | null;
+  };
+  assert.ok(row.last_error, 'expected a breadcrumb');
+  assert.match(row.last_error, /worker reset/);
+  assert.match(row.last_error, /old-daemon/); // names the dead worker
+  closeDb(db);
+});
+
+// The whole point: a job that is recovered, re-runs, and SUCCEEDS keeps the
+// breadcrumb (completeJob('ok') must not clear last_error), so the outlier that
+// retried N times before completing is still diagnosable after the fact.
+test('recover: breadcrumb survives a later successful completion', () => {
+  const db = freshDb();
+  enqueueJob(db, { name: 'test', trigger_kind: 'manual', scheduled_at: new Date().toISOString() });
+  const first = claimNextJob(db, { workerId: 'w1', leaseMs: 1 });
+  assert.ok(first);
+  recoverExpiredLeases(db, new Date(Date.now() + 100).toISOString());
+
+  // Re-claim and complete successfully.
+  const again = claimNextJob(db, { workerId: 'w1', leaseMs: 60_000 });
+  assert.ok(again);
+  completeJob(db, again.id, 'ok');
+
+  const row = db.prepare('SELECT state, last_error FROM jobs WHERE id = ?').get(first.id) as {
+    state: string;
+    last_error: string | null;
+  };
+  assert.equal(row.state, 'completed');
+  assert.match(row.last_error ?? '', /lease expired/);
+  closeDb(db);
 });
