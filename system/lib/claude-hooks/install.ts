@@ -33,6 +33,26 @@ export const HOOK_SIGNATURE_SESSION_START = '/hooks/session_start';
 export const HOOK_SIGNATURE_USER_PROMPT_SUBMIT = '/hooks/user_prompt_submit';
 export const DEFAULT_PORT = 41273;
 
+/**
+ * curl --max-time ceiling, in seconds, shared by all three hooks. Set above the daemon
+ * endpoint's observed real-world latency: auto-recall (FTS + vector search, and the daemon
+ * may be mid-agentic-loop) measures ~2.3s p100, which sat right at the old 2s cap and made
+ * curl time out (exit 28) on roughly half of turns. 5s clears that tail with headroom while
+ * still bounding the per-turn / shutdown latency tax. Paired with `|| true` (see below), a
+ * genuinely hung daemon degrades to "no injection" instead of a visible hook error.
+ */
+const HOOK_MAX_TIME_SECONDS = 5;
+
+/**
+ * Trailing fail-open guard appended to every hook command. curl exits non-zero on timeout
+ * (28), connection refused (7), etc.; without this, that non-zero exit propagates to Claude
+ * Code as "UserPromptSubmit hook error — non-blocking status code". These hooks are strictly
+ * best-effort (capture / context injection), so `|| true` forces exit 0: a failed curl yields
+ * empty stdout → no context injected, no error shown. This makes the code match the contract
+ * the comments already describe ("a down/slow daemon returns nothing → no injection").
+ */
+const FAIL_OPEN = '|| true';
+
 export interface InstallOptions {
   /** Override HOME for tests. */
   home?: string;
@@ -66,23 +86,24 @@ interface SettingsShape {
 }
 
 export function robinHookCommand(port: number = DEFAULT_PORT): string {
-  // --max-time 2: don't block session shutdown if the daemon is down.
-  // --data-binary @-: stream Claude Code's stdin payload through verbatim.
-  return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/session_end -H 'Content-Type: application/json' --data-binary @-`;
+  // --max-time bounds session-shutdown delay if the daemon is down; FAIL_OPEN keeps a curl
+  // timeout/refusal from surfacing as a hook error. --data-binary @-: stream stdin verbatim.
+  return `curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/session_end -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
 }
 
 export function robinSessionStartHookCommand(port: number = DEFAULT_PORT): string {
   // Same PATH-safe curl style as SessionEnd. The daemon answers with the primer JSON, and
-  // curl's stdout becomes Claude Code's injected SessionStart context. --max-time 2 keeps a
-  // down daemon from delaying session start (curl returns nothing → no primer, graceful).
-  return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/session_start -H 'Content-Type: application/json' --data-binary @-`;
+  // curl's stdout becomes Claude Code's injected SessionStart context. A down/slow daemon
+  // returns nothing → no primer (FAIL_OPEN swallows the non-zero exit), graceful.
+  return `curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/session_start -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
 }
 
 export function robinUserPromptSubmitHookCommand(port: number = DEFAULT_PORT): string {
   // Same PATH-safe curl style. The daemon answers with the auto-recall additionalContext
-  // JSON; curl's stdout becomes Claude Code's pre-answer injected context. --max-time 2
-  // bounds the per-turn latency tax — a down/slow daemon returns nothing → no injection.
-  return `curl -s --max-time 2 -X POST http://127.0.0.1:${port}/hooks/user_prompt_submit -H 'Content-Type: application/json' --data-binary @-`;
+  // JSON; curl's stdout becomes Claude Code's pre-answer injected context. The timeout bounds
+  // the per-turn latency tax and FAIL_OPEN makes a down/slow daemon return nothing → no
+  // injection, never a "non-blocking status code" error on the user's prompt.
+  return `curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/user_prompt_submit -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
 }
 
 /**

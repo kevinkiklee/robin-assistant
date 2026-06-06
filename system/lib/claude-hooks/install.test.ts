@@ -149,6 +149,8 @@ test('robinHookCommand: includes the chosen port and stdin pipe', () => {
   const cmd = robinHookCommand(41999);
   assert.match(cmd, /127\.0\.0\.1:41999/);
   assert.match(cmd, /--data-binary @-/);
+  // Fail open: a curl timeout/refusal must never surface as a hook error.
+  assert.match(cmd, /\|\| true$/);
 });
 
 test('robinSessionStartHookCommand: posts to /hooks/session_start with chosen port', () => {
@@ -157,6 +159,7 @@ test('robinSessionStartHookCommand: posts to /hooks/session_start with chosen po
   assert.match(cmd, /\/hooks\/session_start/);
   assert.match(cmd, /--data-binary @-/);
   assert.ok(cmd.includes(HOOK_SIGNATURE_SESSION_START));
+  assert.match(cmd, /\|\| true$/);
 });
 
 test('installSessionStartHook: creates settings.json from scratch when absent', () => {
@@ -262,6 +265,10 @@ test('robinUserPromptSubmitHookCommand: posts to /hooks/user_prompt_submit with 
   assert.match(cmd, /\/hooks\/user_prompt_submit/);
   assert.match(cmd, /--data-binary @-/);
   assert.ok(cmd.includes(HOOK_SIGNATURE_USER_PROMPT_SUBMIT));
+  // Runs on every qualifying turn: the timeout must clear the endpoint's real
+  // latency (~2.3s under recall load), and it must fail open on a slow daemon.
+  assert.match(cmd, /--max-time 5\b/);
+  assert.match(cmd, /\|\| true$/);
 });
 
 test('installUserPromptSubmitHook: creates settings.json from scratch when absent', () => {
