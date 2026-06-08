@@ -609,9 +609,9 @@ If nothing is worth extracting, reply {"entities":[],"relations":[]}.`;
  * (`lock-cleanup`, `PID-liveness`, `CI on main`, `learning-queue.md over cap`,
  * bare verbs like `Disagree`) that have no real-world referent and only pollute
  * Kevin's personal memory graph. Concrete types (person/place/organization/
- * service/repository/library/tool/env_var) are NOT subjected to that pass, so
+ * service/repository/tool/env_var) are NOT subjected to that pass, so
  * legitimate kebab-case repos (`landstar-construction`) and services (`OpenTable`)
- * survive.
+ * survive. (`library` is dropped wholesale by BLOCKED_ENTITY_TYPES — see below.)
  *
  * Companion: any relation whose subject or object matches a dropped entity is
  * also dropped (a relation pointing at noise is itself noise).
@@ -781,9 +781,15 @@ export function isLowQualityEntity(name: string, type?: string): boolean {
 // internals, and infrastructure artifacts. Personal entities the LLM might mis-type
 // as one of these (e.g. a photography "tool") get re-extracted under `thing`/`topic`.
 // Blocked types: purely engineering/code-internal types that never describe
-// Kevin's real world. `library` and `tool` are NOT blocked — they hold real
-// frameworks (Three.js, Next.js, Discord.js) and real-world tools; the noise
-// filter (`isLowQualityEntity`) handles dev-jargon within those types.
+// Kevin's real world. `tool` is NOT blocked — it holds real-world tools (Adobe
+// Lightroom, Topaz Photo AI) alongside dev tooling; the noise filter
+// (`isLowQualityEntity`) plus the hygiene blocklist handle dev-jargon within it.
+//
+// `library` IS blocked: in a personal-life memory graph the type only ever names a
+// code library (Zod, BullMQ, sqlite-vec, vLLM…) extracted from coding-session
+// captures — a physical library is a `place`, a photo-book collection is `book`.
+// Observed live: 22/22 `library` entities were code frameworks with zero recall
+// value. Real frameworks the LLM still wants to keep get re-typed as `tool`/`thing`.
 const BLOCKED_ENTITY_TYPES = new Set([
   'error',
   'env_var',
@@ -813,6 +819,7 @@ const BLOCKED_ENTITY_TYPES = new Set([
   'version',
   'os',
   'software',
+  'library',
 ]);
 
 // Types that lack a real-world referent and disproportionately carry dev-internal

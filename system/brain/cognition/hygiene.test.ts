@@ -88,6 +88,32 @@ test('hygiene: deletes project-typed roadmap codenames but keeps real projects',
   closeDb(db);
 });
 
+test('hygiene: deletes library-typed code libraries without blocklisting the name', () => {
+  const db = freshDb();
+  // `library` escapes the thing/topic-gated Tier 1 scan, so the cross-type rule
+  // must catch it. Relations to the library must be cleaned up too.
+  const lib = upsertEntity(db, 'library', 'BullMQ');
+  upsertEntity(db, 'library', 'sqlite-vec');
+  const keep = upsertEntity(db, 'person', 'Kevin');
+  addRelation(db, keep.id, 'uses', lib.id);
+  const r = runHygiene(db);
+  assert.equal(r.entitiesDeleted, 2);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('BullMQ'));
+  assert.ok(!names.includes('sqlite-vec'));
+  assert.ok(names.includes('Kevin'), 'real entity preserved');
+  // No dangling relations to deleted libraries.
+  assert.equal((db.prepare('SELECT COUNT(*) AS c FROM relations').get() as { c: number }).c, 0);
+  // Ambiguous library names are NOT added to the blocklist (a future real "Canvas"
+  // under a non-blocked type must still be allowed in).
+  const blocked = loadNoiseBlocklist(db);
+  assert.ok(!blocked.has('bullmq'), 'library name must not be permanently blocklisted');
+  assert.ok(!blocked.has('sqlite-vec'));
+  closeDb(db);
+});
+
 test('hygiene: deletes env var entities', () => {
   const db = freshDb();
   upsertEntity(db, 'thing', 'ANTHROPIC_API_KEY');

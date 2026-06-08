@@ -79,8 +79,23 @@ function isCrossTypeNoise(e: EntityRow): string | null {
   if (ROBIN_LAUNCHD_RE.test(e.canonical_name)) return 'robin_launchd_label';
   if (e.type.toLowerCase() === 'project' && PROJECT_CODENAME_RE.test(e.canonical_name))
     return 'project_codename';
+  // `library`-typed entities are always code libraries in a personal-life graph
+  // (Zod, BullMQ, sqlite-vec, vLLM…) leaked from coding-session captures. A
+  // physical library is a `place`; a photo-book collection is `book`. Observed
+  // live: 22/22 were code frameworks. The biographer also blocks the type at
+  // ingestion, so this sweep is mainly retroactive. We do NOT blocklist the name
+  // (see UNBLOCKLISTED_REASONS) because library names are often ambiguous English
+  // words ("Canvas", "Motion") that could be a real entity under another type.
+  if (e.type.toLowerCase() === 'library') return 'code_library';
   return null;
 }
+
+// Cross-type / Tier-1 reasons whose match deletes the entity but must NOT add the
+// name to noise_blocklist — the name is ambiguous enough that a future mention
+// under a different (non-blocked) type could be a legitimate entity. Structural
+// prevention (BLOCKED_ENTITY_TYPES in the biographer) already stops re-entry under
+// the offending type, so a permanent name ban would only risk false positives.
+const UNBLOCKLISTED_REASONS = new Set(['code_library']);
 
 function isTier1Noise(e: EntityRow): string | null {
   const name = e.canonical_name;
@@ -263,6 +278,7 @@ export function runHygiene(db: RobinDb, now: Date = new Date()): HygieneResult {
     db.prepare('DELETE FROM relations WHERE subject_id = ? OR object_id = ?').run(e.id, e.id);
     db.prepare('DELETE FROM entities WHERE id = ?').run(e.id);
     result.entitiesDeleted++;
+    if (UNBLOCKLISTED_REASONS.has(reason)) continue;
     const info = addToBlocklist.run(e.canonical_name, reason, ts);
     if (info.changes > 0) result.blocklistGrown++;
   }

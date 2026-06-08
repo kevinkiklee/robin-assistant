@@ -632,6 +632,18 @@ test('isLowQualityEntity: drops Robin self-referential internals', () => {
   }
 });
 
+test('isLowQualityEntity: drops library-typed entities wholesale', () => {
+  // In a personal-life graph the `library` type only ever names a code library,
+  // leaked from coding-session captures. A physical library is a `place`; a
+  // photo-book collection is `book`. Dropped whatever the name looks like.
+  for (const name of ['Zod', 'BullMQ', 'sqlite-vec', 'vLLM', 'Drizzle ORM', 'Three.js', 'React']) {
+    assert.equal(isLowQualityEntity(name, 'library'), true, `${name} (library) should be dropped`);
+  }
+  // Same names under a non-blocked type are NOT dropped by the type rule (the LLM
+  // may legitimately re-type a real-world referent), so the loss stays scoped.
+  assert.equal(isLowQualityEntity('Canvas', 'thing'), false);
+});
+
 test('isLowQualityEntity: drops bare source-file references regardless of type', () => {
   for (const name of ['biographer.ts', 'dream.test.ts', 'learning-queue.md', 'config.yaml']) {
     assert.equal(isLowQualityEntity(name), true, `${name} should be dropped`);
