@@ -13,9 +13,9 @@ export interface AnthropicProviderConfig {
   sleep?: (ms: number) => Promise<void>;
 }
 
-// Opus 4.7 list pricing, USD per million tokens.
-const DEFAULT_INPUT_PRICE = 5.0;
-const DEFAULT_OUTPUT_PRICE = 25.0;
+// Fable 5 list pricing, USD per million tokens.
+const DEFAULT_INPUT_PRICE = 10.0;
+const DEFAULT_OUTPUT_PRICE = 50.0;
 // Anthropic bills cache reads at 10% of the base input rate.
 const CACHE_READ_MULTIPLIER = 0.1;
 // Anthropic requires max_tokens; bound it so a runaway generation can't rack up cost.
@@ -50,13 +50,13 @@ export class AnthropicProvider implements LLMProvider {
 
   constructor(cfg: AnthropicProviderConfig) {
     this.apiKey = cfg.apiKey;
-    this.model = cfg.model ?? 'claude-opus-4-7';
+    this.model = cfg.model ?? 'claude-fable-5';
     this.defaultMaxTokens = cfg.maxTokens ?? DEFAULT_MAX_TOKENS;
     this.maxRetries = cfg.maxRetries ?? 4;
     this.sleep = cfg.sleep ?? defaultSleep;
     this.capabilities = new Set(cfg.capabilities ?? ['summarize', 'reasoning', 'agentic']);
     this.meta = {
-      contextWindow: cfg.meta?.contextWindow ?? 200_000,
+      contextWindow: cfg.meta?.contextWindow ?? 1_000_000,
       inputPricePerM: cfg.meta?.inputPricePerM ?? DEFAULT_INPUT_PRICE,
       outputPricePerM: cfg.meta?.outputPricePerM ?? DEFAULT_OUTPUT_PRICE,
     };
@@ -71,11 +71,13 @@ export class AnthropicProvider implements LLMProvider {
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({ role: m.role, content: m.content }));
 
-    // NOTE: `temperature` is intentionally NOT sent. Opus 4.7 (the configured
-    // model) DEPRECATED it — sending any value, including the callers' explicit
-    // `temperature: 0`, returns HTTP 400 "temperature is deprecated for this
-    // model" (verified live 2026-05-24). The model uses its own default. If an
-    // older Claude model is ever configured here, reintroduce it guarded by model.
+    // NOTE: `temperature` is intentionally NOT sent. Fable 5 and Opus 4.7+ removed
+    // sampling params — sending any value, including the callers' explicit
+    // `temperature: 0`, returns HTTP 400 (verified live on Opus 4.7 2026-05-24).
+    // Likewise no `thinking` param: Fable 5 rejects an explicit
+    // {type: "disabled"} — omitting it entirely is the only way to run without
+    // thinking. If an older Claude model is ever configured here, reintroduce
+    // temperature guarded by model.
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: req.maxTokens ?? this.defaultMaxTokens,

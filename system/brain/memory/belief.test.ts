@@ -83,6 +83,56 @@ test('belief: retraction becomes head', () => {
   closeDb(db);
 });
 
+test('belief: believe() blocks dev-artifact claims on the direct write path', () => {
+  const db = freshDb();
+  const r = believe(db, null, {
+    topic: 'robin-integration-count',
+    claim: 'Kevin has 17 integrations configured in his Robin assistant instance.',
+    date: '2026-06-08',
+  });
+  assert.equal(r.eventId, -1);
+  assert.equal(r.blocked, 'dev-artifact');
+  // No row was written — the topic does not exist.
+  assert.equal(recallBelief(db, { topic: 'robin-integration-count' }), null);
+  const count = db.prepare(`SELECT COUNT(*) c FROM events WHERE kind='belief.update'`).get() as {
+    c: number;
+  };
+  assert.equal(count.c, 0);
+  closeDb(db);
+});
+
+test('belief: a retraction of a dev-artifact topic is always allowed through', () => {
+  const db = freshDb();
+  // Even though the claim text is a dev-artifact, retracting it must succeed so
+  // existing machinery beliefs stay removable.
+  const r = believe(db, null, {
+    topic: 'surrealdb-transport',
+    claim: 'SurrealDB uses WebSocket for its connection protocol.',
+    retracted: true,
+    date: '2026-06-08',
+  });
+  assert.ok(r.eventId > 0);
+  assert.equal(r.blocked, undefined);
+  const cur = recallBelief(db, { topic: 'surrealdb-transport' }) as BeliefRecord;
+  assert.equal(cur.retracted, true);
+  closeDb(db);
+});
+
+test('belief: enumerate excludes topics whose latest head is retracted', () => {
+  const db = freshDb();
+  believe(db, null, { topic: 'live', claim: 'still true', date: '2026-05-23' });
+  believe(db, null, { topic: 'dead', claim: 'was true', date: '2026-05-23' });
+  believe(db, null, { topic: 'dead', claim: 'retracted', retracted: true, date: '2026-05-24' });
+  const all = recallBelief(db, {}) as BeliefRecord[];
+  const topics = all.map((b) => b.topic);
+  assert.ok(topics.includes('live'));
+  assert.ok(!topics.includes('dead'), 'retracted topic must not surface in enumerate');
+  // The topic is still readable directly (the tombstone is preserved).
+  const dead = recallBelief(db, { topic: 'dead' }) as BeliefRecord;
+  assert.equal(dead.retracted, true);
+  closeDb(db);
+});
+
 test('belief: same-day explicit supersede APPENDS, never self-references (append-only)', () => {
   // Regression: a same-day retraction/re-confirm must not collapse onto the row
   // it supersedes via external_id upsert (which produced supersedes===own-id and

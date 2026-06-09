@@ -350,6 +350,21 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
         sources,
         retracted,
       });
+      // Surface the dev-artifact rejection explicitly rather than letting the
+      // caller treat eventId -1 as a real write.
+      if (r.blocked === 'dev-artifact') {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                ...r,
+                note: 'Skipped: claim is about Robin/engineering internals, not a durable life-fact. Beliefs are personal-only.',
+              }),
+            },
+          ],
+        };
+      }
       return { content: [{ type: 'text' as const, text: JSON.stringify(r) }] };
     },
   );

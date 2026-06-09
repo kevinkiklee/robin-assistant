@@ -22,7 +22,7 @@ function messagesOk(opts?: {
     type: 'message',
     role: 'assistant',
     content: [{ type: 'text', text: opts?.text ?? 'hello' }],
-    model: 'claude-opus-4-7',
+    model: 'claude-fable-5',
     usage: {
       input_tokens: opts?.inputTokens ?? 1_000_000,
       output_tokens: opts?.outputTokens ?? 1_000_000,
@@ -53,7 +53,7 @@ async function withFetch(
 }
 
 test('anthropic: invoke parses text + usage + computes cost', async () => {
-  const p = new AnthropicProvider({ apiKey: 'test', model: 'claude-opus-4-7' });
+  const p = new AnthropicProvider({ apiKey: 'test', model: 'claude-fable-5' });
   let result: Awaited<ReturnType<typeof p.invoke>> | undefined;
   await withFetch(
     async () => jsonResponse(200, messagesOk()),
@@ -66,8 +66,8 @@ test('anthropic: invoke parses text + usage + computes cost', async () => {
   assert.equal(result.usage.inputTokens, 1_000_000);
   assert.equal(result.usage.outputTokens, 1_000_000);
   assert.equal(result.provider, 'anthropic');
-  // 1M input @ $5/M + 1M output @ $25/M = $30
-  assert.ok(Math.abs(result.costUsd - 30) < 0.01, `cost was ${result.costUsd}`);
+  // 1M input @ $10/M + 1M output @ $50/M = $60
+  assert.ok(Math.abs(result.costUsd - 60) < 0.01, `cost was ${result.costUsd}`);
 });
 
 test('anthropic: concatenates multiple text blocks', async () => {
@@ -143,10 +143,11 @@ test('anthropic: max_tokens defaults to a bounded value when req.maxTokens unset
   assert.equal(body.max_tokens, 4096);
 });
 
-// Regression — Opus 4.7 deprecated `temperature` and returns HTTP 400 if it's
-// sent, even temperature:0 (verified live 2026-05-24). The adapter must NOT
-// include it in the request body, regardless of what the caller passes.
-test('anthropic: never sends temperature (Opus 4.7 rejects it)', async () => {
+// Regression — Fable 5 and Opus 4.7+ removed `temperature` and return HTTP 400
+// if it's sent, even temperature:0 (verified live on Opus 4.7 2026-05-24). The
+// adapter must NOT include it in the request body, regardless of what the
+// caller passes.
+test('anthropic: never sends temperature (Fable 5 / Opus 4.7+ reject it)', async () => {
   const p = new AnthropicProvider({ apiKey: 'test' });
   const { calls } = await withFetch(
     async () => jsonResponse(200, messagesOk()),
@@ -188,8 +189,8 @@ test('anthropic: cache_read_input_tokens billed at 10% in costUsd', async () => 
   );
   assert.ok(result);
   assert.equal(result.usage.cachedInputTokens, 1_000_000);
-  // 1M cached input @ 10% of $5/M = $0.50 (no uncached input, no output).
-  assert.ok(Math.abs(result.costUsd - 0.5) < 0.01, `cost was ${result.costUsd}`);
+  // 1M cached input @ 10% of $10/M = $1.00 (no uncached input, no output).
+  assert.ok(Math.abs(result.costUsd - 1.0) < 0.01, `cost was ${result.costUsd}`);
 });
 
 test('anthropic: retries on 429 then succeeds', async () => {

@@ -1,4 +1,5 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import { isLowQualityClaim } from './belief-quality.ts';
 import type { RobinDb } from './db.ts';
 import { ingest } from './ingest.ts';
 import type { ProvenanceClass } from './provenance.ts';
@@ -25,6 +26,9 @@ export interface BelieveResult {
   eventId: number;
   topic: string;
   supersededEventId: number | null;
+  /** Set (with eventId = -1, no row written) when the claim was rejected as a
+   *  dev/Robin-internals artifact. See `isLowQualityClaim`. */
+  blocked?: 'dev-artifact';
 }
 
 export interface BeliefRecord {
@@ -121,6 +125,16 @@ export function believe(
   const topic = normalizeTopic(input.topic);
   if (!topic) throw new Error('believe: topic required');
   if (!input.claim?.trim()) throw new Error('believe: claim required');
+  // Dev-artifact backstop for the DIRECT write path (daily-brief / dream
+  // synthesis, MCP `believe` tool). The candidate pipeline filters at draft +
+  // promote time; direct `believe()` calls bypassed it entirely, which is how
+  // beliefs about Robin's own internals (integration counts, belief-topic churn,
+  // a SurrealDB transport experiment) got minted. A *retraction* is always
+  // allowed through — it removes machinery noise, never adds it — so existing
+  // dev-artifact beliefs stay retractable.
+  if (input.retracted !== true && isLowQualityClaim(topic, input.claim)) {
+    return { eventId: -1, topic, supersededEventId: null, blocked: 'dev-artifact' };
+  }
   const date = input.date ?? localDate();
   // Same-day idempotency: a plain "set belief" upserts in place via ingest's
   // (source, external_id) dedup, so repeated sets on a topic in one day don't
@@ -210,9 +224,18 @@ export function recallBelief(
     return row ? mapRow(row) : null;
   }
   const limit = opts.limit ?? 50;
+  // Enumerate mode = "what Robin currently believes". A topic whose LATEST head
+  // is retracted is no longer believed, so it must not surface here — otherwise
+  // retracted dev-artifact tombstones leak into every consumer of the enumerate
+  // path (the daily-brief gather, MCP `recall_belief`), where the synthesis pass
+  // re-notices them as "churn" and mints fresh meta-beliefs about them. The
+  // retracted filter is applied to the per-topic latest head (rn = 1), so a topic
+  // is dropped wholesale when its newest belief is a retraction; primer.ts and
+  // belief-freshness.ts already skip retracted heads, so this just centralizes
+  // that intent at the source.
   const rows = db
     .prepare(
-      `${SELECT} AND e.id IN (
+      `${SELECT} AND COALESCE(json_extract(e.payload,'$.retracted'), 0) = 0 AND e.id IN (
          SELECT id FROM (
            SELECT e2.id AS id,
                   ROW_NUMBER() OVER (

@@ -245,6 +245,21 @@ test('isLowQualityClaim: drops Robin-internals and dev-artifact claims', () => {
     ['brief', "Kevin's Robin daily briefing includes NHL scores, Whoop recovery, and weather."],
     ['npm', 'Kevin Lee uses the robin-assistant npm package as his personal AI assistant.'],
     ['design', 'The askrobin.io project uses a CSS custom-property design token system.'],
+    // Robin integration-count artifacts (gap found 2026-06-08). The subject is
+    // "Kevin" (a legit life-fact subject, so the leading-subject check passes),
+    // but the predicate is about the COUNT of Robin's own integrations — machinery.
+    [
+      'robin-integration-count',
+      'Kevin has 17 integrations configured in his Robin assistant instance.',
+    ],
+    ['robin-integrations-count', "Kevin's Robin assistant has 17 active integrations."],
+    // Belief-machinery meta-claims: beliefs ABOUT Robin's belief store / churn.
+    // (`robin-belief-topic-canonicalization-needed`, minted by brief synthesis.)
+    [
+      'robin-belief-topic-canonicalization-needed',
+      "Multiple 'robin-*' belief topics are accumulating 3+ revisions via writer-conflict; a canonicalization pass would stop them polluting the decision-replay signal.",
+    ],
+    ['surrealdb-transport', 'SurrealDB uses WebSocket for its connection protocol.'],
   ];
   for (const [topic, claim] of dropped) {
     assert.equal(isLowQualityClaim(topic, claim), true, `"${claim}" should be dropped`);

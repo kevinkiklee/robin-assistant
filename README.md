@@ -107,7 +107,7 @@ Robin routes each kind of work to a model by **role**, defined in `user-data/con
 ```yaml
 roles:
   reasoning: { provider: google,    model: gemini-3.1-pro-preview }   # biographer extraction
-  summarize: { provider: anthropic, model: claude-opus-4-7 }          # quality-sensitive synthesis
+  summarize: { provider: anthropic, model: claude-fable-5 }           # quality-sensitive synthesis
   embed:     { provider: google,    model: gemini-embedding-2, embedDims: 3072 }
   # all-local alternative — uncomment to run with zero cloud spend:
   # reasoning: { provider: ollama, model: qwen3:14b }
