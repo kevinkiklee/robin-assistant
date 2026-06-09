@@ -66,15 +66,25 @@ export class ClaudeAgentProvider implements LLMProvider {
       prompt,
       ...(req.systemPrompt ? { systemPrompt: req.systemPrompt } : {}),
       model: this.model,
-      maxTurns: 1,
+      // Structured output consumes extra SDK turns after the answer turn;
+      // maxTurns:1 cuts it off (status max_turns, no structured_output) and
+      // even 2 is empirically insufficient on Fable 5. No tools are allowed
+      // here, so the higher cap cannot cause an agentic loop.
+      maxTurns: req.outputSchema ? 4 : 1,
       allowedTools: [],
       permissionMode: 'default',
       billToPool: true,
     };
     if (req.outputSchema) {
       // SDK contract is { type: 'json_schema', schema } — a bare schema is
-      // silently ignored (no structured_output on the result message).
-      sdkInput.outputFormat = { type: 'json_schema', schema: z.toJSONSchema(req.outputSchema) };
+      // silently ignored (no structured_output on the result message), and so
+      // is a schema carrying zod's "$schema" draft-2020-12 marker (verified
+      // live on Fable 5: success status, no structured_output). Strip it.
+      const { $schema: _drop, ...schema } = z.toJSONSchema(req.outputSchema) as Record<
+        string,
+        unknown
+      >;
+      sdkInput.outputFormat = { type: 'json_schema', schema };
     }
 
     const result = await this.runSdk(sdkInput);

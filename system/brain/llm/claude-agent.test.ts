@@ -119,6 +119,10 @@ test('ClaudeAgentProvider: converts a zod outputSchema to a JSON-schema outputFo
   assert.equal(outputFormat.type, 'json_schema');
   assert.equal(outputFormat.schema?.type, 'object');
   assert.ok(outputFormat.schema?.properties?.answer);
+  // zod's "$schema" marker also silently disables structured output — must be stripped.
+  assert.equal('$schema' in outputFormat.schema, false);
+  // Structured output needs turn headroom; maxTurns:1 (and even 2) cuts it off.
+  assert.ok(((seen as any)?.maxTurns ?? 0) >= 4);
 });
 
 test('ClaudeAgentProvider: threads SdkResult.structured through to InvokeResult', async () => {
