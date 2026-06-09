@@ -90,6 +90,9 @@ export class ClaudeAgentProvider implements LLMProvider {
 
     return {
       text: result.text,
+      // With outputFormat, the SDK parks the parsed JSON on structured_output and
+      // `text` may be empty/prose — thread it through so callers don't re-parse text.
+      ...(result.structured !== undefined ? { structured: result.structured } : {}),
       usage: {
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,

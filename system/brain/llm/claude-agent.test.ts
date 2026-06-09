@@ -118,3 +118,17 @@ test('ClaudeAgentProvider: converts a zod outputSchema to a JSON-schema outputFo
   assert.equal(outputFormat.type, 'object');
   assert.ok(outputFormat.properties?.answer);
 });
+
+test('ClaudeAgentProvider: threads SdkResult.structured through to InvokeResult', async () => {
+  const structured = { verdicts: [{ id: 'bc1', verdict: 'reject' }] };
+  const provider = new ClaudeAgentProvider({
+    runSdk: async () => ({ ...okResult, text: '', structured }),
+  });
+  const res = await provider.invoke({ messages: [{ role: 'user', content: 'adjudicate' }] });
+  assert.deepEqual(res.structured, structured);
+
+  // No structured output requested → field stays absent, not undefined-valued.
+  const plain = new ClaudeAgentProvider({ runSdk: async () => okResult });
+  const res2 = await plain.invoke({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.equal('structured' in res2, false);
+});
