@@ -18,6 +18,13 @@ const SCAN_SUBDIRS = [join('content', 'knowledge'), join('content', 'profile')];
  *  engineering artifacts, Robin operational docs, or archived dev-internal files
  *  that pollute the knowledge graph without adding personal/biographical value. */
 const EXCLUDED_PREFIXES = [
+  // Music (Spotify) is high-frequency listening telemetry, not biographical
+  // memory — kept as on-disk reference flatfiles, never embedded or
+  // biographer-processed. The spotify integration writes content/knowledge/music/;
+  // the v1 path is the stale imported snapshot it supersedes.
+  'content/knowledge/music/',
+  'content/knowledge/birding/',
+  'content/knowledge/imported-from-v1/knowledge/spotify/',
   'content/knowledge/imported-from-v1/self-improvement/',
   'content/knowledge/imported-from-v1/streams/',
   'content/knowledge/imported-from-v1/watches/',

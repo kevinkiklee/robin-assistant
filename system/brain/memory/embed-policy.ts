@@ -26,6 +26,7 @@ export const NO_EMBED_KINDS: ReadonlySet<string> = new Set([
   'v2.lunch_money',
   'lunch_money.transaction',
   'lunch_money.account_snapshot',
+  'v2.lunch_money_account_snapshot',
   'spotify_played',
   'spotify_top_track',
   'spotify_top_artist',
