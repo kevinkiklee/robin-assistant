@@ -55,6 +55,16 @@ export interface RunAgentDeps {
 
 const EMPTY_USAGE = { inputTokens: 0, outputTokens: 0 } as const;
 
+// Agentic runs default to Fable 5 — long-horizon quality is worth the latency
+// for goal-directed multi-turn work. ROBIN_AGENT_MODEL is the no-rebuild escape
+// hatch if Fable latency starts breaking turn/time caps. A caller-specified
+// `input.model` always wins over both.
+const DEFAULT_AGENT_MODEL = 'claude-fable-5';
+
+function resolveModel(callerModel?: string): string {
+  return callerModel ?? process.env.ROBIN_AGENT_MODEL ?? DEFAULT_AGENT_MODEL;
+}
+
 /** Map the SDK's terminal status onto the agent-run status vocabulary. */
 function mapSdkStatus(status: SdkResult['status']): RunAgentStatus {
   switch (status) {
@@ -125,7 +135,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     abortSignal: controller.signal,
     billToPool: true,
     onMessage,
-    ...(input.model ? { model: input.model } : {}),
+    model: resolveModel(input.model),
     ...(input.mcpServers ? { mcpServers: input.mcpServers } : {}),
     ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
     ...(input.loadProjectSettings ? { loadProjectSettings: true } : {}),

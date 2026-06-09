@@ -181,6 +181,62 @@ test('runAgent: maps sdk max_turns / max_budget to capped', async () => {
   assert.equal(res2.status, 'capped');
 });
 
+test('runAgent: caller-specified model wins over env + default', async () => {
+  const { ledger: led } = ledger();
+  process.env.ROBIN_AGENT_MODEL = 'claude-haiku-4-5';
+  try {
+    let seenModel: string | undefined;
+    await runAgent(baseInput({ model: 'claude-sonnet-4-6' }), {
+      ledger: led,
+      cap: 50,
+      transcriptDir: tmpTranscriptDir(),
+      runSdk: async (input) => {
+        seenModel = input.model;
+        return okResult;
+      },
+    });
+    assert.equal(seenModel, 'claude-sonnet-4-6');
+  } finally {
+    delete process.env.ROBIN_AGENT_MODEL;
+  }
+});
+
+test('runAgent: ROBIN_AGENT_MODEL is used when the caller omits model', async () => {
+  const { ledger: led } = ledger();
+  process.env.ROBIN_AGENT_MODEL = 'claude-opus-4-8';
+  try {
+    let seenModel: string | undefined;
+    await runAgent(baseInput(), {
+      ledger: led,
+      cap: 50,
+      transcriptDir: tmpTranscriptDir(),
+      runSdk: async (input) => {
+        seenModel = input.model;
+        return okResult;
+      },
+    });
+    assert.equal(seenModel, 'claude-opus-4-8');
+  } finally {
+    delete process.env.ROBIN_AGENT_MODEL;
+  }
+});
+
+test('runAgent: defaults to claude-fable-5 when neither caller model nor env is set', async () => {
+  const { ledger: led } = ledger();
+  delete process.env.ROBIN_AGENT_MODEL;
+  let seenModel: string | undefined;
+  await runAgent(baseInput(), {
+    ledger: led,
+    cap: 50,
+    transcriptDir: tmpTranscriptDir(),
+    runSdk: async (input) => {
+      seenModel = input.model;
+      return okResult;
+    },
+  });
+  assert.equal(seenModel, 'claude-fable-5');
+});
+
 test('runAgent: forwards canUseTool + tool/permission options to the sdk', async () => {
   const { ledger: led } = ledger();
   // biome-ignore lint/suspicious/noExplicitAny: probe shape only
