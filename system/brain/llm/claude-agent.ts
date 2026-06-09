@@ -72,7 +72,9 @@ export class ClaudeAgentProvider implements LLMProvider {
       billToPool: true,
     };
     if (req.outputSchema) {
-      sdkInput.outputFormat = z.toJSONSchema(req.outputSchema);
+      // SDK contract is { type: 'json_schema', schema } — a bare schema is
+      // silently ignored (no structured_output on the result message).
+      sdkInput.outputFormat = { type: 'json_schema', schema: z.toJSONSchema(req.outputSchema) };
     }
 
     const result = await this.runSdk(sdkInput);

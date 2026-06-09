@@ -115,8 +115,10 @@ test('ClaudeAgentProvider: converts a zod outputSchema to a JSON-schema outputFo
   // biome-ignore lint/suspicious/noExplicitAny: probing the loosely-typed SDK passthrough
   const outputFormat = (seen as any)?.outputFormat;
   assert.ok(outputFormat, 'outputFormat should be set when outputSchema is present');
-  assert.equal(outputFormat.type, 'object');
-  assert.ok(outputFormat.properties?.answer);
+  // SDK contract: { type: 'json_schema', schema } — a bare schema is silently ignored.
+  assert.equal(outputFormat.type, 'json_schema');
+  assert.equal(outputFormat.schema?.type, 'object');
+  assert.ok(outputFormat.schema?.properties?.answer);
 });
 
 test('ClaudeAgentProvider: threads SdkResult.structured through to InvokeResult', async () => {
