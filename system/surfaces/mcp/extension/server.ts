@@ -13,7 +13,6 @@ import { ingest } from '../../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../../integrations/_runtime/context.ts';
 import { loadIntegrations } from '../../../integrations/_runtime/loader.ts';
-import { actions as chromeActions } from '../../../integrations/builtin/chrome/index.ts';
 import { actions as financeActions } from '../../../integrations/builtin/finance_quote/index.ts';
 // Static imports of integration action maps so type-checks catch breakage.
 import { actions as gmailActions } from '../../../integrations/builtin/gmail/index.ts';
@@ -133,14 +132,6 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
     allLinearActions as unknown as IntegrationActions,
     ['active_issues', 'get_issue', 'create_issue', 'update_issue', 'transition', 'comment'],
     'Linear: read issues + create/update/transition/comment',
-  );
-  makeIntegrationTool(
-    server,
-    deps,
-    'chrome',
-    chromeActions as unknown as IntegrationActions,
-    ['recent_visits'],
-    'Read Chrome browsing history (local SQLite)',
   );
   makeIntegrationTool(
     server,
