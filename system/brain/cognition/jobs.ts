@@ -79,28 +79,31 @@ export function registerCognitionJobs(
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
-    // Batch = 5 sessions per tick. The chunk budget (MAX_CHUNKS_PER_TICK=10) is
-    // the real time guard (~30s/chunk on 14b → ~5 min worst case per tick, well
-    // under the 30-min heartbeat gate). Raising batch from 1 lets the biographer
-    // drain multiple small sessions per tick instead of wasting leftover budget.
-    // Combined with the */5 cron, throughput is ~2 chunks/min (was ~0.27 at
-    // batch=1/*/15/4-chunk).
-    // Cranked for backlog drain: 15 sessions/tick, batch 5 chunks/invoke, every
-    // 2 min. ~150+ sessions/hr vs the prior ~12. The 7-min heartbeat ceiling is
-    // the safety net; a tick that overruns trips the heartbeat and the scheduler
-    // recovers on the next tick. Revert to 5/3/*/5 once the backlog is clear.
-    // MAX THROUGHPUT for backlog drain: 30 sessions/tick, batch 5, every minute.
-    // The scheduler won't fire the next tick while the current one is running
-    // (cron is idempotent), so ticks that overrun just push the next one.
-    // Revert to 5/3/*/5 once the backlog clears.
+    // STEADY-STATE mode (2026-06-10), not backlog-drain. Earlier "max throughput"
+    // settings (30 chunks/tick, 15-min deadline) assumed the backlog would clear
+    // and the config would be reverted — but inflow is continuous (~1.5-4k
+    // captured sessions/day from always-on Claude Code loops), so there is no
+    // "after the backlog". Those 8-16-min ticks blocked the sequential scheduler
+    // loop, tripped the 7-min heartbeat CRITICAL hundreds of times/day, and
+    // outran the job lease on every single run (231/232 runs reaped mid-flight).
+    //
+    // Short ticks on the every-minute cron deliver the SAME chunks/hour — the
+    // cron re-arms on completion, so throughput is cadence × budget, not tick
+    // length (10 chunks/~3-min cycle ≈ the old 30 chunks/~13-min cycle). What
+    // changes: the loop yields every few minutes (other jobs wait ≤~4 min, not
+    // ≤16), normal ticks stay under the 7-min heartbeat ceiling, and heartbeat
+    // CRITICAL once again means something is actually wrong.
     await runBiographer(db, llm, 30, {
+      maxChunksPerTick: 10,
       batchChunks: 5,
       skipToolChunks: true,
       draftClaims: getDraftClaims(),
-      // Stop claiming further sessions after 15 min — below the scheduler's
-      // 20-min HANDLER_TIMEOUT_MS, so a heavy backlog drain yields gracefully
-      // (cursor persisted, resumes next tick) instead of being hard-errored.
-      tickDeadlineMs: 15 * 60 * 1000,
+      // Stop claiming further sessions after 3 min — keeps a normal tick well
+      // under the 7-min heartbeat ceiling (cursor persists; next cron resumes).
+      // Worst case (provider down, every chunk hung to its 2-min timeout) is
+      // still clipped by the scheduler's 20-min HANDLER_TIMEOUT_MS, which the
+      // 25-min job lease deliberately exceeds.
+      tickDeadlineMs: 3 * 60 * 1000,
     });
   });
   daemon.registerHandler('dream.run', async () => {

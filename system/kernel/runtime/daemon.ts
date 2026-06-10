@@ -17,7 +17,16 @@ import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
 import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidfile.ts';
 
 const TICK_INTERVAL_MS = 1000;
-const LEASE_MS = 5 * 60 * 1000; // 5 min
+// Must exceed HANDLER_TIMEOUT_MS (below). The lease exists for crash recovery,
+// but the in-process reaper treats any expired lease as abandoned — so a lease
+// shorter than a legitimate handler run gets "recovered" mid-flight: the running
+// job is reset to pending, retry_count inflates, and last_error fills with
+// misleading "lease expired" breadcrumbs (every biographer run 2026-05→06-10
+// carried one). With the lease above the handler cap, a live handler can never
+// outlive its lease; the only leases that expire are truly orphaned. Restart
+// recovery doesn't get slower: the boot-time recoverDeadWorkerLeases sweep
+// resets any predecessor's lease immediately, regardless of expiry.
+const LEASE_MS = 25 * 60 * 1000; // 25 min — HANDLER_TIMEOUT_MS (20 min) + margin
 // Per-handler wall-clock backstop. A handler that blocks past this is abandoned
 // and its job marked `errored`, so one over-long or wedged handler can't stall
 // the sequential tick loop (the 2026-06-02 ~31h outage). Sized to sit ABOVE a
@@ -28,10 +37,10 @@ const LEASE_MS = 5 * 60 * 1000; // 5 min
 // instead of hard-exiting the process and respawn-looping on the re-claimed
 // overdue job. Cognition handlers are idempotent (cursor/state-based), so a tick
 // clipped at this ceiling resumes from its persisted progress on the next cron.
-// NOTE: biographer's own theoretical worst case (MAX_CHUNKS_PER_TICK=30 ×
-// BIOGRAPHER_CHUNK_TIMEOUT_MS=2min = 60 min) exceeds this cap; that only triggers
-// if nearly every chunk's LLM call hangs to its own timeout (i.e. the model is
-// down), in which case clipping the tick is the correct outcome.
+// NOTE: biographer's theoretical worst case (10 chunks/tick × 2-min chunk
+// timeout = 20 min) only materializes if every chunk's LLM call hangs to its
+// own timeout (i.e. the model is down), in which case clipping the tick is the
+// correct outcome.
 const HANDLER_TIMEOUT_MS = 20 * 60 * 1000; // 20 min
 // Bug B fix — periodic in-process sweep so abandoned leases don't pile up between
 // boots. Boot-time `recoverExpiredLeases` only fires on cold start; without this
