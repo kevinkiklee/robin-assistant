@@ -95,7 +95,8 @@ the internal `askrobin.io/apps/web/app/u/[user]/[slug]/route.ts` (page) and
 ## Gotchas
 
 - `pnpm exec tsx -e` doesn't support top-level await — use a temp `.ts` file with `async function main()`.
-- `hygiene_review.entity_id` joins to `entities`/`relations` for context display.
+- The `hygiene_review` table no longer exists (dropped by migration 017) — entity
+  hygiene actions go through `runHygiene(db)` + `noise_blocklist` and `mergeEntities()`.
 - Published HTML is sanitized (no `<script>` tags in body) — scripts go in the template or as external `/_pub/*.js` files.
 - The daily brief is pre-generated at 4:30am; the skeleton renders all sections deterministically, then dream-synthesis merges reasoning. Reordering sections in the skeleton won't retroactively fix today's brief.
 - A committed `githooks/pre-commit` auto-formats staged files with Biome and re-stages them (non-blocking) — `pnpm install` points `core.hooksPath` at it via the `prepare` script. This is why commits land already-formatted regardless of who makes them (human, assistant, or the daemon's snapshot routine). It only runs `format`, never lint fixes; run `pnpm lint`/`typecheck`/`test` yourself.
