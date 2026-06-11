@@ -91,6 +91,10 @@ function writeHeartbeat(
     } else {
       setKv.run(integrationName, 'consecutive_skips', '0', now);
       setKv.run(integrationName, 'last_ok_at', now, now);
+      // Degraded counters mutate ONLY on clean ok ticks. Skip ticks (auth/secrets
+      // missing) intentionally FREEZE them — a skip tells us nothing about stream
+      // health, and resetting would mask a persistent degraded stream behind a
+      // skip streak.
       // Track per-stream degraded counters. A degraded tick is still a successful tick
       // (last_ok_at written above), but we maintain a rolling count per stream name so
       // the integration-degraded invariant can fire when a stream fails persistently.

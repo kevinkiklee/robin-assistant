@@ -508,6 +508,63 @@ test('scheduler-glue: degraded tick with multiple failed streams increments each
   closeDb(db);
 });
 
+test('scheduler-glue: degraded counter is frozen (not reset, not incremented) on a skip tick', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degfreeze-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degfreeze-user-'));
+
+  const dir = join(userRoot, 'deg-freeze');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: deg-freeze\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => globalThis.__degFreezeResult };\n`,
+  );
+
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  const tickHandler = handlers['integration.deg-freeze.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getKv = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'deg-freeze' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  const setResult = (r: unknown) => {
+    (globalThis as unknown as Record<string, unknown>).__degFreezeResult = r;
+  };
+
+  // --- degraded ok tick: counter → '1' ---
+  setResult({ status: 'ok', ingested: 1, degraded: ['recovery'] });
+  await tickHandler();
+  assert.equal(getKv('degraded:recovery'), '1', 'degraded ok tick → counter 1');
+
+  // --- skip tick: degraded counter must remain '1' (frozen, not reset, not incremented) ---
+  setResult({ status: 'skipped', message: 'auth revoked' });
+  await tickHandler();
+  assert.equal(getKv('degraded:recovery'), '1', 'skip tick leaves degraded:recovery frozen at 1');
+
+  closeDb(db);
+});
+
 test('scheduler-glue: multi-instance integrations get distinct handler + cron names', async () => {
   const db = freshDb();
   const sysRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-sys-'));
