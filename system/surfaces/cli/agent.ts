@@ -1,7 +1,9 @@
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+export { writeLearningRecord } from '../../agent/learning-record.ts';
+import { writeLearningRecord } from '../../agent/learning-record.ts';
 import { REGISTRY } from '../../agent/handlers/index.ts';
+export { createWorktree, pruneWorktree, worktreeHasChanges } from '../../agent/worktree.ts';
+import { createWorktree, pruneWorktree, worktreeHasChanges } from '../../agent/worktree.ts';
 import { mcpServersForRun } from '../../agent/mcp-servers.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from '../../agent/run-agent.ts';
 import { UsageLedger } from '../../agent/usage-ledger.ts';
@@ -57,94 +59,6 @@ export function parseAgentArgs(args: string[]): AgentCliArgs {
     ...(maxTurns !== undefined ? { maxTurns } : {}),
     ...(budget !== undefined ? { budget } : {}),
   };
-}
-
-/**
- * Create a throwaway git worktree off `main`, on a fresh `agent/<ts>` branch.
- * Write handlers edit only inside this dir, so a run can never touch the live
- * checkout. Returns the worktree path + branch name for the caller to report.
- */
-export function createWorktree(
-  repoRoot: string,
-  now: () => Date = () => new Date(),
-): { worktree: string; branch: string } {
-  const ts = now().toISOString().replace(/[:.]/g, '-');
-  const branch = `agent/${ts}`;
-  const worktree = join(repoRoot, '.worktrees', ts);
-  execFileSync('git', ['-C', repoRoot, 'worktree', 'add', worktree, '-b', branch, 'main'], {
-    stdio: 'pipe',
-  });
-  return { worktree, branch };
-}
-
-/** Remove a worktree + its branch. Only called when a run produced no changes. */
-export function pruneWorktree(repoRoot: string, worktree: string, branch: string): void {
-  try {
-    execFileSync('git', ['-C', repoRoot, 'worktree', 'remove', '--force', worktree], {
-      stdio: 'pipe',
-    });
-  } catch {
-    // best-effort
-  }
-  try {
-    execFileSync('git', ['-C', repoRoot, 'branch', '-D', branch], { stdio: 'pipe' });
-  } catch {
-    // best-effort — branch may not exist if the add failed mid-way
-  }
-}
-
-/** True when the worktree has staged/unstaged changes relative to its branch base. */
-export function worktreeHasChanges(worktree: string): boolean {
-  const out = execFileSync('git', ['-C', worktree, 'status', '--porcelain'], {
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
-  return out.trim().length > 0;
-}
-
-/**
- * Append a learning-loop outcome record for a handler-A run.
- *
- * NOTE: this dir is deliberately NOT under `content/knowledge/` so `ingest-docs`
- * never indexes it into general recall — otherwise Robin's memory floods with
- * code-maintenance logs (spec §10). The self-improvement primer reads it directly.
- */
-export function writeLearningRecord(
-  userDataDir: string,
-  record: {
-    goal: string;
-    status: string;
-    branch?: string;
-    turns: number;
-    costUsd: number;
-    ts: string;
-  },
-): string {
-  const dir = join(userDataDir, 'agent-runs');
-  mkdirSync(dir, { recursive: true });
-  const slug = record.ts.replace(/[:.]/g, '-');
-  const path = join(dir, `${slug}-A.md`);
-  const body = `---
-node_type: agent_run
-handler: A
-ts: ${record.ts}
-status: ${record.status}
-branch: ${record.branch ?? ''}
-turns: ${record.turns}
-cost_usd: ${record.costUsd}
----
-
-# Self-improvement run
-
-**Goal:** ${record.goal}
-
-**Status:** ${record.status}
-**Branch:** ${record.branch ?? '(none)'}
-**Turns:** ${record.turns}
-**Cost (USD):** ${record.costUsd}
-`;
-  writeFileSync(path, body);
-  return path;
 }
 
 /** Dependencies injected for testability — real runners get the defaults. */
@@ -312,6 +226,7 @@ export async function runAgentCli(
   // Learning loop (spec §10): only handler A appends an outcome record.
   if (def.id === 'A') {
     const path = writeLearningRecord(userDataDir, {
+      handler: 'A',
       goal: parsed.goal,
       status: result.status,
       ...(branch ? { branch } : {}),

@@ -242,6 +242,7 @@ test('runAgentCli: non-A handler does NOT write a learning record', async () => 
 test('writeLearningRecord: writes frontmatter + lives outside content/knowledge', () => {
   const dir = mkdtempSync(join(tmpdir(), 'robin-learn-'));
   const path = writeLearningRecord(dir, {
+    handler: 'A',
     goal: 'g',
     status: 'capped',
     branch: 'agent/z',
