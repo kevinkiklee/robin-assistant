@@ -246,6 +246,76 @@ test('scheduler-glue: integration.init failure does not block other integrations
   closeDb(db);
 });
 
+test('scheduler-glue: heartbeat writes last_ok_at on ok ticks only', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-okat-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-okat-user-'));
+
+  // Integration that returns a controlled result via a mutable ref
+  const dir = join(userRoot, 'ok-probe');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: ok-probe\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => globalThis.__okProbeResult };\n`,
+  );
+
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  const tickHandler = handlers['integration.ok-probe.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getState = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'ok-probe' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  // --- ok tick: last_ok_at must be written ---
+  (globalThis as unknown as Record<string, unknown>).__okProbeResult = {
+    status: 'ok',
+    ingested: 0,
+  };
+  await tickHandler();
+  const okAt = getState('last_ok_at');
+  assert.ok(okAt, 'last_ok_at written after ok tick');
+  assert.ok(!Number.isNaN(Date.parse(okAt)), 'last_ok_at is a valid ISO timestamp');
+
+  // --- error tick: last_ok_at must NOT change ---
+  (globalThis as unknown as Record<string, unknown>).__okProbeResult = {
+    status: 'error',
+    message: 'boom',
+  };
+  await tickHandler();
+  assert.equal(getState('last_ok_at'), okAt, 'last_ok_at unchanged after error tick');
+
+  // --- skip tick: last_ok_at must NOT change ---
+  (globalThis as unknown as Record<string, unknown>).__okProbeResult = {
+    status: 'skipped',
+    message: 'no creds',
+  };
+  await tickHandler();
+  assert.equal(getState('last_ok_at'), okAt, 'last_ok_at unchanged after skip tick');
+
+  closeDb(db);
+});
+
 test('scheduler-glue: multi-instance integrations get distinct handler + cron names', async () => {
   const db = freshDb();
   const sysRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-sys-'));

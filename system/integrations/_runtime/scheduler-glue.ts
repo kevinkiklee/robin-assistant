@@ -73,6 +73,9 @@ function writeHeartbeat(
   setKv.run(integrationName, 'last_attempt_at', now, now);
   if (outcome.ok) {
     setKv.run(integrationName, 'consecutive_errors', '0', now);
+    if (!outcome.skipReason) {
+      setKv.run(integrationName, 'last_ok_at', now, now);
+    }
     if (outcome.ingested > 0) {
       setKv.run(integrationName, 'last_ingest_at', now, now);
       setKv.run(integrationName, 'last_ingest_count', String(outcome.ingested), now);
