@@ -457,8 +457,16 @@ test('expired bench does not instantly re-bench on the same old failures', async
 
   assert.equal(r.status, 'ok');
   assert.equal(dispatchedId(calls[0]), 'B', 'old pre-watermark failures must not re-bench B');
-  // No new bench entry — it was cleared (no post-watermark failure) and B ran.
-  assert.equal(readAdaptiveFile(ud).benches.B, undefined, 'expired bench removed, not renewed');
+  // Entry is NOT cleared on bench expiry alone (no observed post-bench success),
+  // but it is NOT renewed either: the watermark filters the old failures out, so
+  // the streak check finds nothing post-watermark → no re-bench. The original
+  // expired entry survives untouched (same `until`) and serves only as the
+  // watermark; the alert stays open until a real post-bench success.
+  assert.equal(
+    readAdaptiveFile(ud).benches.B?.until,
+    3,
+    'expired bench retained as watermark, not renewed',
+  );
   closeDb(db);
 });
 
@@ -486,6 +494,77 @@ test('a success after the bench resolves the alert and clears the bench entry', 
   // Alert resolved (no longer in the open list).
   const open = listAlerts(db, { all: false });
   assert.ok(!open.some((a) => a.key === 'handler-benched:B'), 'the bench alert must be resolved');
+  closeDb(db);
+});
+
+test('expired bench without a post-bench run keeps the entry and the alert open, but dispatches the handler', async () => {
+  const ud = tmpUserData();
+  const db = freshDb();
+  writeCursorFile(ud, idxOf('B'));
+  // An open bench alert, NO post-watermark agent_usage rows for B, empty DB so B
+  // (which has no pre-check gate) is the dispatched handler.
+  db.prepare(
+    `INSERT INTO alerts (severity, source, key, message, first_seen_at, last_seen_at)
+     VALUES ('warning', 'agent-runner', 'handler-benched:B', 'benched', datetime('now'), datetime('now'))`,
+  ).run();
+  writeAdaptiveFile(ud, {
+    rotation: 3,
+    benches: { B: { until: 3, at: '2026-06-01T00:00:00.000Z' } },
+    skips: {},
+  });
+  const { calls, fn } = spySpawn();
+  const r = await runAgentRunner(fakeCtx(db), enabledDeps(ud, fn));
+
+  assert.equal(r.status, 'ok');
+  assert.equal(dispatchedId(calls[0]), 'B', 'an expired bench no longer blocks dispatch');
+  // No observed post-bench success → entry stays as the streak watermark.
+  assert.equal(
+    readAdaptiveFile(ud).benches.B?.until,
+    3,
+    'entry retained (watermark) when no post-bench run has happened',
+  );
+  // Alert stays open — bench expiry is no evidence the handler recovered.
+  const open = listAlerts(db, { all: false });
+  assert.ok(
+    open.some((a) => a.source === 'agent-runner' && a.key === 'handler-benched:B'),
+    'the bench alert must stay open until an observed post-bench success',
+  );
+  closeDb(db);
+});
+
+test('expired bench with a post-bench FAILURE keeps the alert open', async () => {
+  const ud = tmpUserData();
+  const db = freshDb();
+  writeCursorFile(ud, idxOf('B'));
+  // An open bench alert + a SINGLE post-watermark error row (one failure, not a
+  // fresh 3-streak): the latest post-bench run failed, so no recovery is observed.
+  db.prepare(
+    `INSERT INTO alerts (severity, source, key, message, first_seen_at, last_seen_at)
+     VALUES ('warning', 'agent-runner', 'handler-benched:B', 'benched', datetime('now'), datetime('now'))`,
+  ).run();
+  seedUsage(db, 'B', [{ status: 'error', ts: '2026-06-05T00:00:00.000Z' }]);
+  writeAdaptiveFile(ud, {
+    rotation: 3,
+    benches: { B: { until: 3, at: '2026-06-01T00:00:00.000Z' } },
+    skips: {},
+  });
+  const { calls, fn } = spySpawn();
+  const r = await runAgentRunner(fakeCtx(db), enabledDeps(ud, fn));
+
+  assert.equal(r.status, 'ok');
+  // Latest post-watermark run failed → entry NOT cleared. The streak check (with
+  // the watermark) sees only 1 post-watermark failure → no re-bench → B dispatches.
+  assert.equal(dispatchedId(calls[0]), 'B', 'a single post-bench failure does not re-bench');
+  assert.equal(
+    readAdaptiveFile(ud).benches.B?.until,
+    3,
+    'entry retained (watermark) after a post-bench failure',
+  );
+  const open = listAlerts(db, { all: false });
+  assert.ok(
+    open.some((a) => a.source === 'agent-runner' && a.key === 'handler-benched:B'),
+    'a post-bench failure must keep the alert open',
+  );
   closeDb(db);
 });
 

@@ -142,6 +142,25 @@ function hasFailureStreak(db: RobinDb, handler: string, sinceTs: string | undefi
   );
 }
 
+/** True when the handler's most recent run (post-watermark) was not a failure.
+ * Used to clear an expired bench only on observed recovery (spec §B4: "the first
+ * successful run afterwards resets the failure counter"). No row → false: an
+ * expired bench with no post-bench run has shown no evidence of recovery, so the
+ * entry (the streak watermark) and its alert stay put. */
+function latestRunSucceeded(db: RobinDb, handler: string, sinceTs: string | undefined): boolean {
+  const r = db
+    .prepare(
+      `SELECT status, verified FROM agent_usage
+        WHERE surface='agentic-autonomous' AND label=? AND (? IS NULL OR ts > ?)
+        ORDER BY ts DESC LIMIT 1`,
+    )
+    .get(handler, sinceTs ?? null, sinceTs ?? null) as
+    | { status: string | null; verified: string | null }
+    | undefined;
+  if (!r) return false;
+  return !(r.status === 'error' || r.status === 'timeout' || r.verified === 'outcome-mismatch');
+}
+
 /**
  * Tick: pick the next autonomous handler (round-robin), take the single-flight
  * lock, and spawn a DETACHED child that runs the handler to completion outside
@@ -191,9 +210,36 @@ export async function runAgentRunner(
       ctx.log.info({ handler: h, until: bench.until }, 'agent-runner: benched, skipping');
       continue;
     }
-    // 3-strikes: bench instead of dispatching (counts only runs after the last
-    // bench's watermark, so an expired bench can't re-trigger on its own rows).
-    if (hasFailureStreak(ctx.db, h, bench?.at)) {
+    // Expired bench, recovery observed: the bench entry doubles as the streak
+    // watermark, and its alert reads "benched after failures". Clear BOTH only on
+    // an observed post-bench SUCCESS (spec §B4: "the first successful run
+    // afterwards resets the failure counter") — never on bench expiry alone,
+    // which is zero evidence the handler is healthy. If the post-watermark run
+    // failed (or hasn't happened yet), the entry stays: it no longer blocks
+    // dispatch (rotation >= until), it preserves the watermark, and the alert
+    // stays open until real recovery.
+    //
+    // INVARIANT: the entry is deleted ONLY when a post-bench run succeeded, so
+    // the watermark can never be dropped while the old pre-bench failures are
+    // still the newest rows. That kills the re-bench-on-stale-failures hazard:
+    // after deletion the streak query (watermark `undefined`) returns the latest
+    // 3 rows newest-first, and the newest is that success → `every(failure)` is
+    // false → no re-bench (see the LIMIT 3 query in hasFailureStreak).
+    if (bench && latestRunSucceeded(ctx.db, h, bench.at)) {
+      delete adaptive.benches[h];
+      try {
+        resolveAlert(ctx.db, 'agent-runner', `handler-benched:${h}`);
+      } catch {
+        /* best-effort: alerting never throws into the job */
+      }
+    }
+    // 3-strikes: bench instead of dispatching. Counts only runs after the bench
+    // watermark (`adaptive.benches[h]?.at`, re-read since the success branch above
+    // may have just deleted the entry). With the watermark gone after a genuine
+    // post-bench success, the LIMIT-3 streak query sees that success as the newest
+    // row, so `every(failure)` is false and the old pre-bench failures cannot
+    // re-trigger a bench.
+    if (hasFailureStreak(ctx.db, h, adaptive.benches[h]?.at)) {
       adaptive.benches[h] = {
         until: adaptive.rotation + BENCH_ROTATIONS,
         at: ctx.now().toISOString(),
@@ -210,16 +256,6 @@ export async function runAgentRunner(
       }
       ctx.log.warn({ handler: h }, 'agent-runner: benched after failure streak');
       continue;
-    }
-    // Expired bench with no fresh streak: the handler has served its time — drop
-    // the stale entry and resolve its alert so the next run is treated normally.
-    if (bench) {
-      delete adaptive.benches[h];
-      try {
-        resolveAlert(ctx.db, 'agent-runner', `handler-benched:${h}`);
-      } catch {
-        /* best-effort: alerting never throws into the job */
-      }
     }
     const pc = preCheck(h, { db: ctx.db, knowledgeDir, now: ctx.now });
     if (!pc.run) {
