@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from './db.ts';
 import { addRelation, upsertEntity } from './entity.ts';
-import { applyMigrations, allMigrations } from './migrations/index.ts';
 import { mergeEntities, resolveEntityRef } from './merge.ts';
+import { allMigrations, applyMigrations } from './migrations/index.ts';
 
 function freshDb() {
   const db = openDb(join(mkdtempSync(join(tmpdir(), 'merge-test-')), 'test.db'));

@@ -1,5 +1,5 @@
-import { withTimeout } from '../../lib/with-timeout.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
+import { withTimeout } from '../../lib/with-timeout.ts';
 import { claimNextJob, completeJob, type JobRow } from './claim.ts';
 import { rescheduleCronAfterCompletion } from './cron.ts';
 

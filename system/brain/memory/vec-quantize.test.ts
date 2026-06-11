@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import {
-  VEC_SCALE,
   int8DistanceToFloat,
   quantizeToInt8,
   quantizeToInt8Json,
+  VEC_SCALE,
 } from './vec-quantize.ts';
 
 test('quantizeToInt8 scales, rounds, and clamps to int8 range', () => {

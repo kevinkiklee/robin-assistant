@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb, type RobinDb } from '../db.ts';
 import { ingest } from '../ingest.ts';
-import { allMigrations, applyMigrations } from './index.ts';
 import { migration021 } from './021-dedup-vectors.ts';
+import { allMigrations, applyMigrations } from './index.ts';
 
 function dbWithMigrationsBelow(version: number): RobinDb {
   const dir = mkdtempSync(join(tmpdir(), 'robin-mig021-'));

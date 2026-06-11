@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import { closeDb, openDb, type RobinDb } from '../db.ts';
 import { ingest } from '../ingest.ts';
 import { int8DistanceToFloat, quantizeToInt8Json } from '../vec-quantize.ts';
-import { allMigrations, applyMigrations } from './index.ts';
 import { migration023 } from './023-events-vec-int8.ts';
+import { allMigrations, applyMigrations } from './index.ts';
 
 function dbWithMigrationsBelow(version: number): RobinDb {
   const dir = mkdtempSync(join(tmpdir(), 'robin-mig023-'));

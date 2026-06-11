@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { NO_EMBED_KINDS, deniedKindSql, embeddableKindSql, shouldEmbed } from './embed-policy.ts';
+import { deniedKindSql, embeddableKindSql, NO_EMBED_KINDS, shouldEmbed } from './embed-policy.ts';
 
 test('embeds high-value recall kinds', () => {
   assert.equal(shouldEmbed('knowledge.doc'), true);
