@@ -27,10 +27,24 @@ export interface RecordAlertInput {
 
 /** Open or refresh the single open alert for (source,key). */
 export function recordAlert(db: RobinDb, input: RecordAlertInput): AlertRow {
-  const open = db
-    .prepare(`SELECT * FROM alerts WHERE source=? AND key=? AND resolved_at IS NULL`)
-    .get(input.source, input.key) as AlertRow | undefined;
-  if (!open) {
+  const selectOpen = () =>
+    db
+      .prepare(`SELECT * FROM alerts WHERE source=? AND key=? AND resolved_at IS NULL`)
+      .get(input.source, input.key) as AlertRow | undefined;
+
+  const refresh = (open: AlertRow): AlertRow => {
+    const severity = RANK[input.severity] > RANK[open.severity] ? input.severity : open.severity;
+    db.prepare(
+      `UPDATE alerts SET severity=?, message=?, context_json=COALESCE(?, context_json),
+         last_seen_at=datetime('now'), fire_count=fire_count+1 WHERE id=?`,
+    ).run(severity, input.message, input.context ? JSON.stringify(input.context) : null, open.id);
+    return db.prepare(`SELECT * FROM alerts WHERE id=?`).get(open.id) as AlertRow;
+  };
+
+  const open = selectOpen();
+  if (open) return refresh(open);
+
+  try {
     const r = db
       .prepare(
         `INSERT INTO alerts (severity, source, key, message, context_json) VALUES (?,?,?,?,?)`,
@@ -43,13 +57,12 @@ export function recordAlert(db: RobinDb, input: RecordAlertInput): AlertRow {
         input.context ? JSON.stringify(input.context) : null,
       );
     return db.prepare(`SELECT * FROM alerts WHERE id=?`).get(r.lastInsertRowid) as AlertRow;
+  } catch (err) {
+    // Lost the insert race to another process — the open row now exists; refresh it.
+    const winner = selectOpen();
+    if (winner) return refresh(winner);
+    throw err; // genuinely unexpected
   }
-  const severity = RANK[input.severity] > RANK[open.severity] ? input.severity : open.severity;
-  db.prepare(
-    `UPDATE alerts SET severity=?, message=?, context_json=COALESCE(?, context_json),
-       last_seen_at=datetime('now'), fire_count=fire_count+1 WHERE id=?`,
-  ).run(severity, input.message, input.context ? JSON.stringify(input.context) : null, open.id);
-  return db.prepare(`SELECT * FROM alerts WHERE id=?`).get(open.id) as AlertRow;
 }
 
 export function resolveAlert(db: RobinDb, source: string, key: string): void {
@@ -66,6 +79,7 @@ export function ackAlert(db: RobinDb, id: number): boolean {
   );
 }
 
+/** all: include resolved history (implies includeAcked). includeAcked: also show acked-but-open rows in the default open-only view. */
 export function listAlerts(
   db: RobinDb,
   opts: { all?: boolean; includeAcked?: boolean },
