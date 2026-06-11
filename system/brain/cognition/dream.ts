@@ -890,6 +890,7 @@ export function queryDecisionReplays(db: RobinDb, days = 30): DecisionReplay[] {
       `SELECT json_extract(payload, '$.topic') AS topic, COUNT(*) AS revisions
          FROM events
         WHERE kind = 'belief.update' AND ts > ?
+          AND COALESCE(json_extract(payload, '$.retracted'), 0) = 0
         GROUP BY json_extract(payload, '$.topic')
        HAVING COUNT(*) > 1
         ORDER BY revisions DESC

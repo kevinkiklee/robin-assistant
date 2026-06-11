@@ -276,6 +276,95 @@ test('canonicalize-heads: idempotent — a second apply run is a no-op', () => {
   closeDb(db);
 });
 
+test('canonicalize-heads: promote branch — newest head under non-canonical slug creates canonical head and retracts all originals', () => {
+  const db = freshDb();
+
+  // Two heads whose slugs canonicalize to 'aerospace-internship', but NEITHER head
+  // sits under that literal slug.  The newer one ('aerospace-internship-claim') wins;
+  // because winner.topic !== canonical the promote branch must fire.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Kevin has an aerospace internship at SpaceX',
+    payload: {
+      topic: 'no-aerospace-internship',
+      supersedes: null,
+      confidence: 0.8,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'belief:2026-06-01:no-aerospace-internship',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Kevin has an aerospace internship confirmed',
+    payload: {
+      topic: 'aerospace-internship-claim',
+      supersedes: null,
+      confidence: 0.9,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-10T00:00:00.000Z',
+      external_id: 'belief:2026-06-10:aerospace-internship-claim',
+    },
+  });
+
+  // Verify no head exists under the literal canonical slug before apply.
+  const before = recallBelief(db, {}) as import('./belief.ts').BeliefRecord[];
+  assert.equal(
+    before.filter((h) => h.topic === 'aerospace-internship').length,
+    0,
+    'no head under canonical slug before apply',
+  );
+
+  // Capture the winner's original eventId so we can check the promote external_id.
+  const winnerRow = before.find((h) => h.topic === 'aerospace-internship-claim');
+  assert.ok(winnerRow, 'winner head must exist under aerospace-internship-claim');
+  const winnerId = winnerRow!.eventId;
+
+  const result = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(result.groups, 1);
+  assert.equal(result.merged, 1);
+
+  // (a) A promote event must exist with the expected external_id.
+  const promoteEid = `canonicalize:promote:aerospace-internship:${winnerId}`;
+  const promoteRow = db
+    .prepare(
+      `SELECT id FROM events WHERE kind='belief.update' AND json_extract(payload,'$.external_id') = ?`,
+    )
+    .get(promoteEid) as { id: number } | undefined;
+  assert.ok(promoteRow, `promote event with external_id '${promoteEid}' must exist`);
+
+  // (b) Exactly one live head under 'aerospace-internship' carrying the winner's claim.
+  const after = recallBelief(db, {}) as import('./belief.ts').BeliefRecord[];
+  const canonicalHeads = after.filter((h) => h.topic === 'aerospace-internship');
+  assert.equal(canonicalHeads.length, 1, 'exactly one live head under the canonical slug');
+  assert.equal(
+    canonicalHeads[0].claim,
+    'Kevin has an aerospace internship confirmed',
+    'canonical head carries the winner claim',
+  );
+
+  // (c) Zero live heads under either original slug.
+  const originalSlugs = after.filter(
+    (h) => h.topic === 'no-aerospace-internship' || h.topic === 'aerospace-internship-claim',
+  );
+  assert.equal(originalSlugs.length, 0, 'no live heads remain under the original slugs');
+
+  // (d) A second apply run is a no-op — groups=0 and no new event rows written.
+  const beforeCount = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+  const second = canonicalizeBeliefHeads(db, null, { apply: true });
+  const afterCount = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+  assert.equal(second.groups, 0, 'no multi-head groups on second pass');
+  assert.equal(afterCount, beforeCount, 'second apply writes zero new event rows');
+
+  closeDb(db);
+});
+
 test('canonicalize-heads: E2E — duplicate-topic promote writes canonical head; second pass finds nothing to merge', () => {
   const db = freshDb();
 

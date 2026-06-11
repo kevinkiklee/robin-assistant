@@ -10,6 +10,7 @@ import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import { ingest } from '../memory/ingest.ts';
 import type { DreamResult, LearningDigest } from './dream.ts';
 import {
   composeLearningDigest,
@@ -677,6 +678,57 @@ test('queryDecisionReplays: excludes topics with only 1 revision', () => {
   const replays = queryDecisionReplays(db, 30);
   const found = replays.find((r) => r.topic === 'unique-topic');
   assert.equal(found, undefined);
+  closeDb(db);
+});
+
+test('queryDecisionReplays: retracted canonicalize tombstones are not counted as revisions', () => {
+  const db = freshDb();
+  // Two live revisions on 'role' → should appear in replays.
+  believe(db, null, { topic: 'role', claim: 'Engineer', date: '2026-05-20' });
+  believe(db, null, { topic: 'role', claim: 'Senior Engineer', date: '2026-05-21' });
+
+  // 'no-aerospace-internship': one live write + one retraction tombstone (simulates
+  // canonicalize-heads sweep). Only 1 live event; should NOT appear in replays.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Kevin has an aerospace internship',
+    payload: {
+      topic: 'no-aerospace-internship',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: new Date().toISOString(),
+      external_id: 'belief:2026-05-20:no-aerospace-internship',
+    },
+  });
+  // Retraction tombstone — must not count as a revision.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Kevin has an aerospace internship',
+    payload: {
+      topic: 'no-aerospace-internship',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: true,
+      provenance: 'unknown',
+      verified_at: new Date().toISOString(),
+      external_id: 'canonicalize:no-aerospace-internship:99',
+    },
+  });
+
+  const replays = queryDecisionReplays(db, 30);
+  // 'role' has 2 live revisions — should appear.
+  const roleReplay = replays.find((r) => r.topic === 'role');
+  assert.ok(roleReplay, 'role with 2 live revisions should appear in replays');
+  assert.ok(roleReplay!.revisions >= 2);
+  // 'no-aerospace-internship' has only 1 live + 1 retracted — should NOT appear.
+  const aeroReplay = replays.find((r) => r.topic === 'no-aerospace-internship');
+  assert.equal(aeroReplay, undefined, 'topic with retraction tombstone must not appear in replays');
   closeDb(db);
 });
 
