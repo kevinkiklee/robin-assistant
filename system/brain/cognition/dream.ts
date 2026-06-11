@@ -488,7 +488,7 @@ export async function summarizeHotEntities(
       SELECT e.id, e.type, e.canonical_name, COUNT(*) AS signals
         FROM entities e
         JOIN relations r ON r.subject_id = e.id OR r.object_id = e.id
-       WHERE r.ts >= ?
+       WHERE datetime(r.ts) >= datetime(?)
        GROUP BY e.id
       HAVING signals >= ?
        ORDER BY signals DESC
