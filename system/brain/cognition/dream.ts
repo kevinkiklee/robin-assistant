@@ -12,6 +12,7 @@ import {
 } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { runBeliefFreshness } from './belief-freshness.ts';
+import { retryClaimFailures } from './biographer.ts';
 import { runHygiene } from './hygiene.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
 
@@ -27,6 +28,10 @@ export interface DreamResult {
   staleBeliefsFlagged: number;
   /** Stale belief heads successfully re-verified via a registered resolver. */
   beliefsRefreshed: number;
+  /** Dead-letter claim chunks re-attempted by the nightly retry pass (spec §C3). */
+  claimsRetried: number;
+  /** Dead-letter claim chunks that re-extracted successfully (row cleared). */
+  claimsRecovered: number;
   /** content/* docs ingested or updated into events_content for recall this run. */
   docsIngested: number;
   /** Topic-linked corrections processed (applied=1) this run. */
@@ -135,6 +140,8 @@ export async function runDream(
     staleFlagsRaised: 0,
     staleBeliefsFlagged: 0,
     beliefsRefreshed: 0,
+    claimsRetried: 0,
+    claimsRecovered: 0,
     docsIngested: 0,
     correctionsApplied: 0,
     beliefsRetracted: 0,
@@ -325,6 +332,22 @@ export async function runDream(
   } catch {
     result.staleBeliefsFlagged = 0;
     result.beliefsRefreshed = 0;
+  }
+
+  // 8a. Drain the biographer's claim dead-letter queue (spec §C3). Re-attempt a
+  //    bounded slice of failed claim chunks here, in the nightly pass — NOT in the
+  //    every-minute biographer tick — so the spec's "max 3 attempts spread across
+  //    nights" survives a transient multi-minute LLM outage. Requires an LLM (the
+  //    retry re-extracts); guarded so a retry-pass failure never sinks the dream.
+  if (llm) {
+    try {
+      const retry = await retryClaimFailures(db, llm);
+      result.claimsRetried = retry.retried;
+      result.claimsRecovered = retry.recovered;
+    } catch {
+      result.claimsRetried = 0;
+      result.claimsRecovered = 0;
+    }
   }
 
   // 9. Narrative staleness flags — prose docs older than the newest belief/correction signal.

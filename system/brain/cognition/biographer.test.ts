@@ -1223,11 +1223,10 @@ test('biographer: a claims-chunk timeout writes a dead letter with the verbatim 
   const row = rows[0];
   assert.ok(row.event_id > 0);
   assert.equal(row.chunk_idx, 0, 'single-chunk session → chunk 0');
-  // The chunk loop writes the dead letter (attempts=1); the SAME tick's end-of-tick
-  // retry pass (Task 8) re-runs the same chunk against the still-hanging LLM, which
-  // times out again and bumps attempts to 2 via the upsert — exercising the full
-  // write→retry→re-fail path end to end without a duplicate row.
-  assert.equal(row.attempts, 2, 'chunk-loop write + one re-failed retry = attempts 2');
+  // The chunk loop writes the dead letter at attempts=1. The retry pass no longer
+  // runs inside the biographer tick (it moved to the nightly dream pass, spec §C3),
+  // so a single tick leaves the row at its initial attempt count.
+  assert.equal(row.attempts, 1, 'chunk-loop write = attempts 1');
   assert.ok(
     row.last_error && /timed out|timeout/i.test(row.last_error),
     'error mentions the timeout',

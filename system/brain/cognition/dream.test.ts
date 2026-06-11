@@ -9,8 +9,8 @@ import { believe } from '../memory/belief.ts';
 import { insertBeliefCandidate } from '../memory/belief-candidate.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
-import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { ingest } from '../memory/ingest.ts';
+import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import type { DreamResult, LearningDigest } from './dream.ts';
 import {
   composeLearningDigest,
@@ -864,6 +864,8 @@ function baseDreamResult(): DreamResult {
     staleFlagsRaised: 0,
     staleBeliefsFlagged: 0,
     beliefsRefreshed: 0,
+    claimsRetried: 0,
+    claimsRecovered: 0,
     docsIngested: 0,
     correctionsApplied: 0,
     beliefsRetracted: 0,
@@ -1084,4 +1086,79 @@ test('renderLearningDigest: formats digest into compact bullet list', () => {
   assert.match(text, /2 failed/);
   assert.match(text, /16 total/);
   assert.match(text, /16 behavioral/);
+});
+
+// ─── nightly claim dead-letter retry (§C3) ──────────────────────────────────────
+// The retry pass moved out of the every-minute biographer tick into the nightly
+// dream pass so a transient outage can't exhaust attempts the same hour. This
+// asserts runDream drains a seeded dead letter via the claim-extraction prompt.
+
+/**
+ * Dispatcher that answers the claim-extraction prompt with `claimsJson` and
+ * everything else (entity pass, embeds, freshness probes) with `[]`, so the only
+ * sub-pass it materially drives is the dead-letter retry.
+ */
+function claimsLLM(claimsJson: string): LLMDispatcher {
+  const p: LLMProvider = {
+    name: 'claims-only',
+    capabilities: new Set(['summarize', 'reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => ({
+      text: (req.systemPrompt ?? '').includes('DURABLE FACTS') ? claimsJson : '[]',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      costUsd: 0,
+      latencyMs: 0,
+      provider: 'claims-only',
+    }),
+  };
+  const d = new LLMDispatcher();
+  d.register('p', p);
+  d.assign('summarize', 'p');
+  d.assign('reasoning', 'p');
+  return d;
+}
+
+test('dream: nightly pass drains a seeded claim dead letter', async () => {
+  const db = freshDb();
+  // A real source event so the retry's provenance recompute has a kind to classify.
+  const eventId = insertCapture(db, new Date().toISOString());
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, attempts, last_error, ts)
+     VALUES (?, 0, ?, 1, 'json parse: seeded', datetime('now'))`,
+  ).run(eventId, '[USER]\nmy primary camera is a Nikon Z8');
+
+  const llm = claimsLLM(
+    JSON.stringify({ claims: [{ topic: 'primary-camera', claim: 'Nikon Z8', confidence: 0.9 }] }),
+  );
+  const r = await runDream(db, llm);
+
+  // The dream result surfaces the retry counts, the way the freshness sub-pass does.
+  assert.equal(r.claimsRetried, 1, 'one open dead letter re-attempted');
+  assert.equal(r.claimsRecovered, 1, 'the clean re-extraction recovered the row');
+
+  // Row cleared; the recovered claim entered the candidate queue.
+  const remaining = db.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
+  assert.equal(remaining.c, 0, 'recovered dead letter is deleted');
+  const cand = db.prepare(`SELECT topic FROM belief_candidates WHERE status = 'pending'`).get() as
+    | { topic: string }
+    | undefined;
+  assert.ok(cand, 'recovered claim entered the candidate queue');
+  assert.equal(cand.topic, 'primary-camera');
+  closeDb(db);
+});
+
+test('dream: claim retry is skipped (no crash) when llm is null', async () => {
+  const db = freshDb();
+  const eventId = insertCapture(db, new Date().toISOString());
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, attempts, last_error, ts)
+     VALUES (?, 0, ?, 1, 'json parse: seeded', datetime('now'))`,
+  ).run(eventId, '[USER]\nmy primary camera is a Nikon Z8');
+
+  const r = await runDream(db, null);
+  assert.equal(r.claimsRetried, 0, 'no retry without an LLM');
+  assert.equal(r.claimsRecovered, 0);
+  const remaining = db.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
+  assert.equal(remaining.c, 1, 'the dead letter is left untouched');
+  closeDb(db);
 });

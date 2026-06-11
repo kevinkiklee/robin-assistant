@@ -532,10 +532,6 @@ export interface BiographerRunResult {
   sessionsSummarized: number;
   /** Cross-session thread links created via topic overlap. */
   sessionsLinked: number;
-  /** Dead-letter claim chunks re-attempted by the end-of-tick retry pass. */
-  claimsRetried: number;
-  /** Dead-letter claim chunks that re-extracted successfully (row cleared). */
-  claimsRecovered: number;
   errors: string[];
 }
 
@@ -1423,8 +1419,6 @@ export async function runBiographer(
     claimsDrafted: 0,
     sessionsSummarized: 0,
     sessionsLinked: 0,
-    claimsRetried: 0,
-    claimsRecovered: 0,
     errors: [],
   };
 
@@ -1833,23 +1827,6 @@ export async function runBiographer(
       db.prepare(`DELETE FROM biographer_progress WHERE source_event_id = ?`).run(target.eventId);
     }
     result.processed++;
-  }
-
-  // ─── End-of-tick: drain the claim dead-letter queue ─────────────────────────
-  // After the per-tick chunk work, re-attempt a bounded slice of failed claim
-  // chunks (§C3). Guarded on an available LLM (the retry re-extracts), wrapped so
-  // a retry-pass failure can never fail the whole tick, and its counts surface on
-  // the result the way the other sub-pass counts do.
-  if (llm) {
-    try {
-      const retry = await retryClaimFailures(db, llm, { chunkTimeoutMs });
-      result.claimsRetried = retry.retried;
-      result.claimsRecovered = retry.recovered;
-    } catch (err) {
-      result.errors.push(
-        `claim dead-letter retry: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
   }
 
   return result;
