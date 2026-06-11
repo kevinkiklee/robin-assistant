@@ -2,10 +2,10 @@ export { alertsHistoryBoundedInvariant } from './alerts-history-bounded.ts';
 export { daemonHeartbeatingInvariant, type HeartbeatSource } from './daemon-heartbeating.ts';
 export { daemonStableInvariant } from './daemon-stable.ts';
 export { dbReachableInvariant } from './db-reachable.ts';
-export { integrationDegradedInvariant } from './integration-degraded.ts';
 export { dbSchemaCurrentInvariant } from './db-schema-current.ts';
 export { dbWalSizeBoundedInvariant } from './db-wal-size-bounded.ts';
 export { userDataWritableInvariant } from './install-user-data-writable.ts';
+export { integrationDegradedInvariant } from './integration-degraded.ts';
 export {
   integrationStalenessInvariant,
   type ScheduledIntegration,

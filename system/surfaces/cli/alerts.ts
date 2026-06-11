@@ -1,5 +1,5 @@
-import { closeDb, openDb } from '../../brain/memory/db.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { ackAlert, listAlerts } from '../../kernel/runtime/alert-store.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';

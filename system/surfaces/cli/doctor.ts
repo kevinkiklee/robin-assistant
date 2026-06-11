@@ -1,6 +1,6 @@
 import { resolve as resolvePath } from 'node:path';
-import { closeDb, openDb } from '../../brain/memory/db.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
+import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { buildDoctorInvariants } from '../../kernel/invariants/doctor-set.ts';
 import { writeRunbook } from '../../kernel/invariants/runbook.ts';

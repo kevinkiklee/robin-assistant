@@ -59,7 +59,7 @@ export function daemonStableInvariant(opts: {
           };
         }
         return { ok: true };
-      } catch (err) {
+      } catch {
         // Any unexpected error: never false-alarm.
         return { ok: true };
       }
