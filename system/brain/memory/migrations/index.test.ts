@@ -124,7 +124,7 @@ test('events_vec is a 3072-dim int8 vec0 table after all migrations', () => {
   closeDb(db);
 });
 
-test('migration 011: agent_usage table + ts index exist', () => {
+test('agent_usage: full schema + indexes exist', () => {
   const db = freshDb();
   applyMigrations(db, allMigrations);
   const def = db
@@ -154,7 +154,9 @@ test('migration 011: agent_usage table + ts index exist', () => {
   const idx = db
     .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='agent_usage'")
     .all() as Array<{ name: string }>;
-  assert.ok(idx.map((i) => i.name).includes('idx_agent_usage_ts'));
+  const idxNames = idx.map((i) => i.name);
+  assert.ok(idxNames.includes('idx_agent_usage_ts'));
+  assert.ok(idxNames.includes('idx_agent_usage_label_ts'));
   closeDb(db);
 });
 

@@ -14,12 +14,10 @@ export const migration025: Migration = {
   version: 25,
   name: 'agent-outcomes',
   up: (db) => {
-    db.exec(`
-      ALTER TABLE agent_usage ADD COLUMN outcome TEXT;
-      ALTER TABLE agent_usage ADD COLUMN impact TEXT;
-      ALTER TABLE agent_usage ADD COLUMN structured_json TEXT;
-      ALTER TABLE agent_usage ADD COLUMN verified TEXT;
-      CREATE INDEX IF NOT EXISTS idx_agent_usage_label_ts ON agent_usage(label, ts);
-    `);
+    db.exec(`ALTER TABLE agent_usage ADD COLUMN outcome TEXT;`);
+    db.exec(`ALTER TABLE agent_usage ADD COLUMN impact TEXT;`);
+    db.exec(`ALTER TABLE agent_usage ADD COLUMN structured_json TEXT;`);
+    db.exec(`ALTER TABLE agent_usage ADD COLUMN verified TEXT;`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_agent_usage_label_ts ON agent_usage(label, ts);`);
   },
 };
