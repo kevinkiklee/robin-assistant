@@ -12,7 +12,12 @@ import {
   resolveBeliefCandidate,
 } from '../../../brain/memory/belief-candidate.ts';
 import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
-import { findEntity, getEntity, upsertEntity } from '../../../brain/memory/entity.ts';
+import {
+  findEntity,
+  getEntity,
+  upsertEntity,
+  withFreshProfile,
+} from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { recall } from '../../../brain/memory/recall.ts';
@@ -124,7 +129,7 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       }),
     },
     async ({ query, type }) => {
-      const hits = findEntity(deps.db, query, type);
+      const hits = findEntity(deps.db, query, type).map((h) => withFreshProfile(deps.db, h));
       return { content: [{ type: 'text' as const, text: JSON.stringify(hits, null, 2) }] };
     },
   );
@@ -142,11 +147,13 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     async ({ type, id, key }) => {
       if (id !== undefined) {
         const e = getEntity(deps.db, id);
-        return { content: [{ type: 'text' as const, text: JSON.stringify(e) }] };
+        const result = e ? withFreshProfile(deps.db, e) : e;
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
       }
       if (key) {
         const e = upsertEntity(deps.db, type, key);
-        return { content: [{ type: 'text' as const, text: JSON.stringify(e) }] };
+        const result = withFreshProfile(deps.db, e);
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
       }
       return {
         content: [

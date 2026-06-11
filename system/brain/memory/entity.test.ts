@@ -6,11 +6,13 @@ import { test } from 'node:test';
 import { closeDb, openDb } from './db.ts';
 import {
   addRelation,
+  type EntityRow,
   findEntity,
   getEntity,
   normalizeEntityType,
   relatedEntities,
   upsertEntity,
+  withFreshProfile,
 } from './entity.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 
@@ -165,5 +167,84 @@ test('upsertEntity: same profile does not change profile_generated_at', () => {
     '2020-01-01 00:00:00',
     'profile_generated_at should be unchanged when profile unchanged',
   );
+  closeDb(db);
+});
+
+// ── withFreshProfile (Task 10) ────────────────────────────────────────────────
+
+test('withFreshProfile passes fresh profiles through untouched', () => {
+  const db = freshDb();
+  const ent = upsertEntity(db, 'person', 'Eve', 'Eve is a designer');
+  // profile_generated_at was just set by upsertEntity — clearly fresh
+  const row = db.prepare('SELECT * FROM entities WHERE id = ?').get(ent.id) as EntityRow;
+  const result = withFreshProfile(db, row);
+  assert.equal(result.profile, 'Eve is a designer');
+  assert.ok(!('profile_stale' in result) || result.profile_stale !== true);
+  closeDb(db);
+});
+
+test('withFreshProfile replaces a >30-day profile with a deterministic relation summary', () => {
+  const db = freshDb();
+  const eve = upsertEntity(db, 'person', 'Eve', 'Eve is a designer');
+  const acme = upsertEntity(db, 'company', 'Acme Corp');
+  const sf = upsertEntity(db, 'place', 'San Francisco');
+  const robin = upsertEntity(db, 'project', 'Robin');
+  // Backdate profile_generated_at to 40 days ago
+  db.prepare(
+    `UPDATE entities SET profile_generated_at = datetime('now', '-40 days') WHERE id = ?`,
+  ).run(eve.id);
+  // Add relations
+  db.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts) VALUES (?, ?, ?, datetime('now'))`,
+  ).run(eve.id, 'works_at', acme.id);
+  db.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts) VALUES (?, ?, ?, datetime('now'))`,
+  ).run(eve.id, 'lives_in', sf.id);
+  db.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts) VALUES (?, ?, ?, datetime('now'))`,
+  ).run(robin.id, 'created_by', eve.id);
+
+  const row = db.prepare('SELECT * FROM entities WHERE id = ?').get(eve.id) as EntityRow;
+  const result = withFreshProfile(db, row);
+
+  assert.equal(result.profile_stale, true, 'profile_stale should be true for 40-day-old profile');
+  assert.ok(result.profile !== null, 'profile should be non-null when relations exist');
+  assert.ok(
+    typeof result.profile === 'string' && result.profile.startsWith('recent relations:'),
+    `profile should be a relation summary, got: ${result.profile}`,
+  );
+  // Verify specific relations appear
+  assert.ok(result.profile!.includes('works_at'), `expected 'works_at' in: ${result.profile}`);
+  closeDb(db);
+});
+
+test('withFreshProfile on a stale profile with no relations nulls the profile', () => {
+  const db = freshDb();
+  const frank = upsertEntity(db, 'person', 'Frank', 'Frank is an engineer');
+  // Backdate to 40 days ago, no relations
+  db.prepare(
+    `UPDATE entities SET profile_generated_at = datetime('now', '-40 days') WHERE id = ?`,
+  ).run(frank.id);
+
+  const row = db.prepare('SELECT * FROM entities WHERE id = ?').get(frank.id) as EntityRow;
+  const result = withFreshProfile(db, row);
+
+  assert.equal(result.profile_stale, true);
+  assert.equal(result.profile, null, 'profile should be null when no relations exist');
+  closeDb(db);
+});
+
+test('NULL profile_generated_at with a non-null profile is treated as stale (pre-migration writers)', () => {
+  const db = freshDb();
+  // Simulate a pre-migration row: profile set, profile_generated_at is NULL
+  const grace = upsertEntity(db, 'person', 'Grace', 'Grace is an architect');
+  db.prepare(`UPDATE entities SET profile_generated_at = NULL WHERE id = ?`).run(grace.id);
+
+  const row = db.prepare('SELECT * FROM entities WHERE id = ?').get(grace.id) as EntityRow;
+  assert.equal(row.profile_generated_at, null, 'precondition: profile_generated_at is NULL');
+  assert.ok(row.profile !== null, 'precondition: profile is non-null');
+
+  const result = withFreshProfile(db, row);
+  assert.equal(result.profile_stale, true, 'NULL profile_generated_at should be treated as stale');
   closeDb(db);
 });

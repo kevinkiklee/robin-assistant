@@ -8,7 +8,7 @@ import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.t
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../../brain/memory/db.ts';
 import { openDb } from '../../../brain/memory/db.ts';
-import { relatedEntities } from '../../../brain/memory/entity.ts';
+import { relatedEntities, withFreshProfile } from '../../../brain/memory/entity.ts';
 import { ingest } from '../../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { buildContext } from '../../../integrations/_runtime/context.ts';
@@ -272,7 +272,9 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
       inputSchema: { entity_id: z.number().int(), hops: z.number().int().optional() },
     },
     async ({ entity_id, hops }) => {
-      const r = relatedEntities(deps.db, entity_id, hops ?? 1);
+      const r = relatedEntities(deps.db, entity_id, hops ?? 1).map((e) =>
+        withFreshProfile(deps.db, e),
+      );
       return { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] };
     },
   );

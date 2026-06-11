@@ -128,6 +128,68 @@ export function addRelation(
   return Number(info.lastInsertRowid);
 }
 
+const PROFILE_STALE_DAYS = 30;
+
+/**
+ * Deterministic relation summary — the no-LLM fallback served when an entity
+ * profile is stale (spec §C4). Pulls the 5 most recent relations and formats
+ * them as human-readable lines. Returns null when the entity has no relations.
+ */
+function relationSummary(db: RobinDb, entityId: number, name: string): string | null {
+  const rows = db
+    .prepare(
+      `SELECT r.predicate,
+              CASE WHEN r.subject_id = ? THEN obj.canonical_name ELSE sub.canonical_name END AS other,
+              CASE WHEN r.subject_id = ? THEN 'subject' ELSE 'object' END AS role
+         FROM relations r
+         JOIN entities sub ON sub.id = r.subject_id
+         JOIN entities obj ON obj.id = r.object_id
+        WHERE r.subject_id = ? OR r.object_id = ?
+        ORDER BY r.ts DESC LIMIT 5`,
+    )
+    .all(entityId, entityId, entityId, entityId) as Array<{
+    predicate: string;
+    other: string;
+    role: string;
+  }>;
+  if (rows.length === 0) return null;
+  const lines = rows.map((o) =>
+    o.role === 'subject'
+      ? `${name} ${o.predicate} ${o.other}`
+      : `${o.other} ${o.predicate} ${name}`,
+  );
+  return `recent relations: ${lines.join('; ')}`;
+}
+
+/**
+ * Read-side staleness gate (spec §C4): a profile older than 30 days must not be
+ * served as current truth. Stale (or unstamped) profiles are swapped for a
+ * deterministic relation summary and marked `profile_stale` so consumers know the
+ * synthesized text was withheld. Fresh profiles pass through untouched. NULL
+ * profiles pass through untouched (nothing to replace).
+ *
+ * Timestamp comparison: `datetime(profile_generated_at) >= datetime(cutoff)` via
+ * SQLite so sqlite-format stored values and ISO cutoff strings compare correctly
+ * regardless of trailing 'Z' or 'T' separator differences (decision 8).
+ */
+export function withFreshProfile(
+  db: RobinDb,
+  row: EntityRow,
+  now: () => Date = () => new Date(),
+): EntityRow & { profile_stale?: boolean } {
+  if (!row.profile) return row;
+  const cutoff = new Date(now().getTime() - PROFILE_STALE_DAYS * 86_400_000).toISOString();
+  const fresh =
+    row.profile_generated_at !== null &&
+    (
+      db
+        .prepare(`SELECT datetime(?) >= datetime(?) AS ok`)
+        .get(row.profile_generated_at, cutoff) as { ok: number }
+    ).ok === 1;
+  if (fresh) return row;
+  return { ...row, profile: relationSummary(db, row.id, row.canonical_name), profile_stale: true };
+}
+
 export function relatedEntities(db: RobinDb, entityId: number, hops: number = 1): EntityRow[] {
   if (hops < 1) return [];
   const oneHop = db
