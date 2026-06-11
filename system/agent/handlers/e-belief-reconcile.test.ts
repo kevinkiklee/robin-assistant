@@ -17,6 +17,8 @@ test('E: build() config — trigger, permissionMode, allowedTools', () => {
     'mcp__robin__recall_belief',
     'mcp__robin__review_beliefs',
     'mcp__robin__find_entity',
+    'mcp__robin__list',
+    'mcp__robin-extension__related_entities',
     'mcp__robin__believe',
     'mcp__robin__record_correction',
   ]);
