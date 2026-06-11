@@ -244,8 +244,9 @@ test('buildPrimer: suspect belief (weak provenance) gets a tag', () => {
     date: '2026-05-23',
   });
   const out = buildPrimer(db, { profileDir: '/no/such/dir', knowledgeDir: '/no/such/dir' });
-  // Should contain the tag indicator characters
-  assert.match(out, /kevin-google-role: Ad Experiences/);
+  // Should contain the tag indicator characters. Topic renders CANONICAL (§C1):
+  // 'kevin.google.role' → normalize 'kevin-google-role' → canonicalize 'google-role'.
+  assert.match(out, /google-role: Ad Experiences/);
   assert.match(out, /third-party/);
   closeDb(db);
 });
