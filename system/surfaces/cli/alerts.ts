@@ -23,24 +23,30 @@ export function runAck(db: RobinDb, id: number): string {
 }
 
 export async function runAlertsCommand(args: string[]): Promise<void> {
-  const userData = resolveUserDataDir();
-  const db = openDb(dbFilePath(userData));
-  applyMigrations(db, allMigrations);
-  try {
-    if (args[0] === 'ack') {
-      const idArg = args[1];
-      const id = idArg ? Number(idArg) : NaN;
-      if (!Number.isInteger(id) || id !== id) {
-        console.error('usage: robin alerts ack <id>');
-        process.exit(2);
-      }
-      console.log(runAck(db, id));
-    } else if (args[0] === '--all' || args.includes('--all')) {
-      console.log(listAlertsText(db, { all: true }));
-    } else {
-      console.log(listAlertsText(db, {}));
+  if (args[0] === 'ack') {
+    const idArg = args[1];
+    const id = idArg ? Number(idArg) : NaN;
+    if (!Number.isInteger(id)) {
+      console.error('usage: robin alerts ack <id>');
+      process.exit(2);
     }
-  } finally {
-    closeDb(db);
+    const userData = resolveUserDataDir();
+    const db = openDb(dbFilePath(userData));
+    applyMigrations(db, allMigrations);
+    try {
+      console.log(runAck(db, id));
+    } finally {
+      closeDb(db);
+    }
+  } else {
+    const all = args.includes('--all');
+    const userData = resolveUserDataDir();
+    const db = openDb(dbFilePath(userData));
+    applyMigrations(db, allMigrations);
+    try {
+      console.log(listAlertsText(db, { all }));
+    } finally {
+      closeDb(db);
+    }
   }
 }
