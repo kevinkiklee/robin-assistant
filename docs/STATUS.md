@@ -65,7 +65,16 @@ The full loop is operational: Claude Code sessions are captured via a session-en
 - **Job retention/pruning** — completed job rows accumulate (~1500/day from embedder). No auto-prune yet.
 - **Multi-account integrations** — one instance per integration name.
 
-## Recent changes (2026-06-11) — Phase B: agentic outcome loop
+## Recent changes (2026-06-11) — Phase C: memory-quality pack
+
+Spec: `docs/design/2026-06-10-trust-feedback-memory-design.md` §C1–C4; plan: `docs/design/2026-06-11-memory-quality-plan.md`.
+
+- **Belief canonicalization (C1)**: `canonicalizeTopic()` (negation/modifier stripping) inside `believe()` — the single write choke point — with a cross-slug claim-similarity gate (levenshtein < 0.4; false merges worse than duplicates); `recall_belief` canonical-first lookup symmetry; one-time sweep `robin beliefs canonicalize [--apply]` (retraction-based collapse, `belief.canonicalize` audit events). Live sweep 2026-06-11: 23 groups → 11 merged, 12 conservatively skipped.
+- **Risk-weighted freshness (C2)**: `runBeliefFreshness` re-queries the top-N stale heads by score (uncertainty + over-age + correction history) instead of the first-N lottery; same `maxRequeries` spend.
+- **Claim dead-letter retry (C3)**: `claim_failures` table (migration 026); biographer dead-letters extraction timeouts/validation failures (verbatim chunk); the nightly dream pass retries (max 3 attempts, 5/pass), prunes exhausted rows after 30d, and fires/resolves a Phase-A backlog alert (>10 open).
+- **Entity profile staleness (C4)**: `profile_generated_at` (migration 027, backfilled); stamped on every profile write (upsert, dream, merge); dream's spare summary budget regenerates stale profiles of active entities; `find_entity`/`get`/`related_entities` serve >30-day profiles as deterministic relation summaries (`profile_stale: true`), never as current truth.
+
+## Previous changes (2026-06-11) — Phase B: agentic outcome loop
 
 Spec: `docs/design/2026-06-10-trust-feedback-memory-design.md` §B1–B5; plan: `docs/design/2026-06-11-agentic-outcome-loop-plan.md`.
 
