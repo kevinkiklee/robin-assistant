@@ -1,7 +1,7 @@
 # Robin — Implementation Status
 
-> Snapshot: 2026-05-25
-> Build state: **766 tests passing**, typecheck clean, lint clean
+> Snapshot: 2026-06-11
+> Build state: **1208/1212 tests passing** (4 known pre-existing failures: spotify ×2, ebird, recall), typecheck clean, lint clean
 
 ## What's running
 
@@ -65,7 +65,23 @@ The full loop is operational: Claude Code sessions are captured via a session-en
 - **Job retention/pruning** — completed job rows accumulate (~1500/day from embedder). No auto-prune yet.
 - **Multi-account integrations** — one instance per integration name.
 
-## Recent changes (2026-05-25)
+## Recent changes (2026-06-11) — Phase B: agentic outcome loop
+
+Spec: `docs/design/2026-06-10-trust-feedback-memory-design.md` §B1–B5; plan: `docs/design/2026-06-11-agentic-outcome-loop-plan.md`.
+
+- **Structured outcomes**: every agent handler (A–L) requests a shared `outputFormat` envelope (`outcome`/`changes`/`impact`/`notes`, +2 maxTurns headroom); `runner-entry` persists outcome/impact/structured_json/verified onto the run's `agent_usage` row (migration 025).
+- **Deterministic verification (no LLM)**: per-handler post-condition checks (`system/agent/verifiers.ts`); a did-work claim that fails its verifier records `outcome-mismatch` and fires a Phase-A alert (auto-resolved by the handler's next verified run).
+- **Handler B ingest-only write**: research briefs land in memory as `research.brief` events via the `ingest` MCP action (default mode + write builtins denied — plan mode blocks allowlisted MCP writes).
+- **Autonomous K worktree isolation**: write-to-repo handlers get the same throwaway-worktree flow as `robin agent` (kept on changes, pruned otherwise).
+- **Adaptive dispatch**: deterministic pre-checks skip the SDK spawn when a handler has nothing to do; 3 consecutive failures bench a handler for 3 rotations + Phase-A alert; bench clears only on observed post-bench success. State in `user-data/state/runtime/agent-runner-adaptive.json`.
+- **ROI surface**: `robin metrics --agents` + MCP `metrics {agents:true}` — per-handler runs, spend, outcome distribution, last did-work.
+- **Learning records generalized**: all autonomous handlers write `agent-runs/<ts>-<handler>.md` (no-op and pre-flight-capped runs skipped).
+
+## Previous changes (2026-06-10) — Phase A: trust & alerting
+
+- Persistent `alerts` table (migration 024, dedup-by-open-(source,key), severity escalation, auto-resolve, ack); integration staleness/skip-streak/degraded-stream invariants with power-state suppression; tick/job/crash-loop capture; check timeouts + overlap guard; surfaces: `robin alerts`, MCP `alerts` tool, doctor freshness table, morning-brief health section.
+
+## Previous changes (2026-05-25)
 
 - **Belief lifecycle (P1–P4)**: provenance policy module (`provenance.ts`), recall enrichment (confidence/provenance/age on belief hits), selective suspect-tagging in primer, formation gate (external claims routed out, class-thresholded promotion), nightly freshness scan with bounded resolver re-query, topic-linked corrections→belief auto-retraction. Migrations 013 (belief_candidates.provenance) + 014 (corrections.topic). 25 files, ~1700 lines, 2 migrations. Key safety fix: explicit-supersede writes append instead of same-day upsert (preserves history + prevents self-referencing supersession chain).
 - **ingest-archive**: bulk text archive → recall (sha-deduped, paragraph-chunked, deferred embedding). CLI `robin ingest-archive <dir> --source=name`.
