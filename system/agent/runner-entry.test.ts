@@ -500,8 +500,9 @@ test('write-to-repo handler (K) gets a worktree; unchanged → pruned, changed �
 
 test('pre-flight capped run (no ledgerId) skips outcome persistence without crashing', async () => {
   const made = ledgerWithDb();
+  const ud = tmpUserData();
   const r = await runRunnerEntry(['--handler=E'], {
-    userDataDir: tmpUserData(),
+    userDataDir: ud,
     repoRoot: '/repo',
     log: () => {},
     openLedger: () => made,
@@ -520,4 +521,15 @@ test('pre-flight capped run (no ledgerId) skips outcome persistence without cras
   // No agent_usage row was inserted (the fake didn't record one) → nothing to stamp.
   const n = made.db.prepare(`SELECT COUNT(*) AS n FROM agent_usage`).get() as { n: number };
   assert.equal(n.n, 0, 'capped pre-flight inserts no row and recordOutcome must not crash');
+  // ledgerId === undefined means the SDK was never spawned — nothing ran, nothing
+  // to record. The agent-runs dir must contain no *-E.md learning record file.
+  const agentRunsDir = join(ud, 'agent-runs');
+  const cappedFiles = existsSync(agentRunsDir)
+    ? (await import('node:fs')).readdirSync(agentRunsDir).filter((f: string) => f.endsWith('-E.md'))
+    : [];
+  assert.equal(
+    cappedFiles.length,
+    0,
+    'a pre-flight-capped run must NOT write a learning record (ledgerId === undefined means SDK was never spawned)',
+  );
 });

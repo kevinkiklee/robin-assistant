@@ -261,8 +261,11 @@ export async function runRunnerEntry(
       }
     }
 
-    // Learning record for every autonomous handler except no-ops (spec §B2).
-    if (outcome !== 'no-op') {
+    // Learning record for every autonomous handler except no-ops and pre-flight
+    // caps (spec §B2). ledgerId === undefined means the SDK was never spawned —
+    // the pre-flight cap short-circuited before any work happened, so there is
+    // nothing meaningful to record.
+    if (outcome !== 'no-op' && result.ledgerId !== undefined) {
       try {
         const path = writeLearningRecord(userDataDir, {
           handler: def.id,
