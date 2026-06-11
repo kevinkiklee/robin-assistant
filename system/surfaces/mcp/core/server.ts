@@ -556,13 +556,26 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
   server.registerTool(
     'metrics',
     {
-      description: 'Read learning + perf metrics for a window. Returns {value, n} per metric.',
+      description:
+        'Read learning + perf metrics for a window. Returns {value, n} per metric. Pass agents:true for per-handler agent ROI: runs, spend, outcomes, last did-work.',
       inputSchema: z.object({
         kind: z.string().optional().describe("Specific metric (e.g. 'brier_30d'); omit for all"),
         window: z.string().optional().describe('Window like "7d", "30d". Default 30d.'),
+        agents: z
+          .boolean()
+          .optional()
+          .describe('Per-handler agent ROI: runs, spend, outcomes, last did-work'),
       }),
     },
-    async ({ kind, window }) => {
+    async ({ kind, window, agents }) => {
+      if (agents) {
+        const { agentMetricsRows } = await import('../../cli/metrics.ts');
+        return {
+          content: [
+            { type: 'text' as const, text: JSON.stringify(agentMetricsRows(deps.db), null, 2) },
+          ],
+        };
+      }
       const w = window ?? '30d';
       const days = Math.min(Math.max(Number.parseInt(w, 10) || 30, 1), 365);
       const since = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
