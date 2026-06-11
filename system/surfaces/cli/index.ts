@@ -39,6 +39,8 @@ ADVANCED
   import <dir>          Import NDJSON dumps from content/imported-from-<source>/
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
+  alerts [--all]        List open health alerts (--all includes resolved/acked history)
+  alerts ack <id>       Acknowledge an alert by id
   recall [--debug] <q>  Search memory (RRF hybrid); --debug prints scores/distances
   ingest-docs           Index content/* now (also runs automatically every 10 min)
   ingest-archive <dir>  Ingest text files from a directory into Robin memory
@@ -401,6 +403,13 @@ async function main(): Promise<void> {
         printReindexHuman(report);
       }
       exit(report.errors.length > 0 && report.embedded === 0 ? 1 : 0);
+      break;
+    }
+
+    case 'alerts': {
+      const { runAlertsCommand } = await import('./alerts.ts');
+      await runAlertsCommand(args.slice(1));
+      exit(0);
       break;
     }
 

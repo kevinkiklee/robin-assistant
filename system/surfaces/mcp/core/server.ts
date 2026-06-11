@@ -665,6 +665,29 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
     },
   );
 
+  server.registerTool(
+    'alerts',
+    {
+      description:
+        'System health alerts — open problems Robin has detected (stale integrations, failing jobs, crash loops). action=list (default) or ack.',
+      inputSchema: z.object({
+        action: z.enum(['list', 'ack']).default('list'),
+        id: z.number().optional().describe('alert id, required for ack'),
+        all: z.boolean().optional().describe('include resolved/acked history'),
+      }),
+    },
+    async ({ action, id, all }) => {
+      const { listAlertsText, runAck } = await import('../../cli/alerts.ts');
+      const text =
+        action === 'ack'
+          ? id === undefined
+            ? 'ack requires id'
+            : runAck(deps.db, id)
+          : listAlertsText(deps.db, { all });
+      return { content: [{ type: 'text' as const, text }] };
+    },
+  );
+
   // Skills — reusable methodologies (system + user). The tool description embeds
   // the catalog of valid skills (generated now, at server start) so Robin can see
   // what's available without a separate list call; `{ name }` loads one on demand.
