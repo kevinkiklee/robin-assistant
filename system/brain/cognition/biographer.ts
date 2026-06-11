@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordAlert, resolveAlert } from '../../kernel/runtime/alert-store.ts';
 import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { insertCandidateWithDedup } from '../memory/belief-candidate.ts';
@@ -237,6 +238,144 @@ function recordClaimFailure(
   ).run(eventId, chunkIdx, chunkBody, error.slice(0, 500));
 }
 
+// ─── Dead-letter retry pass (§C3) ───────────────────────────────────────────────
+// "Open" = attempts < 3 (decision 6): a chunk gets at most 3 extraction tries
+// before it becomes an exhausted audit record. The retry pass drains a bounded
+// slice of open rows per tick, keeps exhausted rows 30 days for forensics, then
+// raises a Phase-A backlog alert whose resolution path is the same pass (the
+// alert resolves the moment the open count drops back to the threshold).
+
+/** A chunk is retried at most this many times before it becomes an audit record. */
+const CLAIM_RETRY_MAX_ATTEMPTS = 3;
+/** Open dead letters re-attempted per retry pass (bounds the end-of-tick LLM spend). */
+const CLAIM_RETRY_PER_PASS = 5;
+/** Open-backlog size above which the Phase-A alert fires. */
+const CLAIM_BACKLOG_ALERT_THRESHOLD = 10;
+/** Exhausted (attempts >= max) rows older than this are pruned by the retry pass. */
+const CLAIM_FAILURE_RETENTION_DAYS = 30;
+
+export interface ClaimRetryResult {
+  /** Open rows re-attempted this pass (bounded by CLAIM_RETRY_PER_PASS). */
+  retried: number;
+  /** Re-attempts that re-extracted cleanly and cleared their dead-letter row. */
+  recovered: number;
+  /** Open rows (attempts < max) remaining after the pass — the alert's trigger. */
+  openBacklog: number;
+}
+
+/**
+ * Drain the claim dead-letter queue (spec §C3). Re-extract up to
+ * `CLAIM_RETRY_PER_PASS` open rows (attempts < `CLAIM_RETRY_MAX_ATTEMPTS`),
+ * oldest first, against the same claim-extraction prompt:
+ *
+ *   - Success → each claim enters the normal candidate pipeline
+ *     (`insertCandidateWithDedup`) and the dead-letter row is DELETED. The
+ *     candidate's provenance is RECOMPUTED per row from the source event's kind
+ *     (the same `classifyProvenance([kind])` path the original extraction used),
+ *     never hardcoded — a retried first-party chunk must stay first-party.
+ *   - A returned `failure` or a thrown error → `recordClaimFailure` bumps
+ *     `attempts` (the upsert), so a chronically-bad chunk exhausts and stops
+ *     being retried.
+ *
+ * Exhausted rows are kept `CLAIM_FAILURE_RETENTION_DAYS` as audit, then pruned
+ * here. A backlog of more than `CLAIM_BACKLOG_ALERT_THRESHOLD` open rows opens a
+ * Phase-A warning alert; the same pass resolves it once the backlog drains —
+ * event-driven alerts must carry their own resolution path. Alert writes are
+ * wrapped so an alerting failure can never break the retry pass.
+ */
+export async function retryClaimFailures(
+  db: RobinDb,
+  llm: LLMDispatcher,
+  opts?: { chunkTimeoutMs?: number; max?: number },
+): Promise<ClaimRetryResult> {
+  const max = opts?.max ?? CLAIM_RETRY_PER_PASS;
+  const timeoutMs = opts?.chunkTimeoutMs ?? BIOGRAPHER_CHUNK_TIMEOUT_MS;
+  const rows = db
+    .prepare(
+      `SELECT id, event_id, chunk_idx, chunk_body FROM claim_failures
+        WHERE attempts < ? ORDER BY ts ASC, id ASC LIMIT ?`,
+    )
+    .all(CLAIM_RETRY_MAX_ATTEMPTS, max) as Array<{
+    id: number;
+    event_id: number;
+    chunk_idx: number;
+    chunk_body: string;
+  }>;
+
+  const result: ClaimRetryResult = { retried: 0, recovered: 0, openBacklog: 0 };
+  for (const row of rows) {
+    result.retried++;
+    try {
+      const { claims, failure } = await extractClaims(
+        llm,
+        row.chunk_body,
+        timeoutMs,
+        `claim-retry event=${row.event_id} chunk=${row.chunk_idx}`,
+      );
+      if (failure) {
+        recordClaimFailure(db, row.event_id, row.chunk_idx, row.chunk_body, failure);
+        continue;
+      }
+      // Recompute provenance the way the original extraction did: from the source
+      // event's kind, not a hardcoded class (the source event may be first-party).
+      const sourceEventRow = db.prepare(`SELECT kind FROM events WHERE id = ?`).get(row.event_id) as
+        | { kind: string }
+        | undefined;
+      const provenance = classifyProvenance(sourceEventRow ? [sourceEventRow.kind] : []);
+      for (const c of claims) {
+        if (!c.topic?.trim() || !c.claim?.trim()) continue;
+        await insertCandidateWithDedup(db, llm, {
+          topic: c.topic,
+          claim: c.claim,
+          confidence: c.confidence ?? null,
+          sourceEventId: row.event_id,
+          provenance,
+        });
+      }
+      db.prepare(`DELETE FROM claim_failures WHERE id = ?`).run(row.id);
+      result.recovered++;
+    } catch (err) {
+      recordClaimFailure(
+        db,
+        row.event_id,
+        row.chunk_idx,
+        row.chunk_body,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Prune exhausted audit rows past retention.
+  db.prepare(
+    `DELETE FROM claim_failures
+      WHERE attempts >= ? AND datetime(ts) < datetime('now', ?)`,
+  ).run(CLAIM_RETRY_MAX_ATTEMPTS, `-${CLAIM_FAILURE_RETENTION_DAYS} days`);
+
+  // Backlog alert with its own resolution path (decision 6).
+  result.openBacklog = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM claim_failures WHERE attempts < ?`)
+      .get(CLAIM_RETRY_MAX_ATTEMPTS) as { n: number }
+  ).n;
+  try {
+    if (result.openBacklog > CLAIM_BACKLOG_ALERT_THRESHOLD) {
+      recordAlert(db, {
+        severity: 'warning',
+        source: 'biographer',
+        key: 'claim-failures-backlog',
+        message: `${result.openBacklog} claim-extraction chunks failing (dead-letter backlog)`,
+        context: { openBacklog: result.openBacklog },
+      });
+    } else {
+      resolveAlert(db, 'biographer', 'claim-failures-backlog');
+    }
+  } catch {
+    // alerting never breaks the pass
+  }
+
+  return result;
+}
+
 /**
  * Clean a captured session body before LLM extraction. Strips noise that wastes
  * model time, inflates chunk counts, and can trigger model hangs:
@@ -393,6 +532,10 @@ export interface BiographerRunResult {
   sessionsSummarized: number;
   /** Cross-session thread links created via topic overlap. */
   sessionsLinked: number;
+  /** Dead-letter claim chunks re-attempted by the end-of-tick retry pass. */
+  claimsRetried: number;
+  /** Dead-letter claim chunks that re-extracted successfully (row cleared). */
+  claimsRecovered: number;
   errors: string[];
 }
 
@@ -1280,6 +1423,8 @@ export async function runBiographer(
     claimsDrafted: 0,
     sessionsSummarized: 0,
     sessionsLinked: 0,
+    claimsRetried: 0,
+    claimsRecovered: 0,
     errors: [],
   };
 
@@ -1688,6 +1833,23 @@ export async function runBiographer(
       db.prepare(`DELETE FROM biographer_progress WHERE source_event_id = ?`).run(target.eventId);
     }
     result.processed++;
+  }
+
+  // ─── End-of-tick: drain the claim dead-letter queue ─────────────────────────
+  // After the per-tick chunk work, re-attempt a bounded slice of failed claim
+  // chunks (§C3). Guarded on an available LLM (the retry re-extracts), wrapped so
+  // a retry-pass failure can never fail the whole tick, and its counts surface on
+  // the result the way the other sub-pass counts do.
+  if (llm) {
+    try {
+      const retry = await retryClaimFailures(db, llm, { chunkTimeoutMs });
+      result.claimsRetried = retry.retried;
+      result.claimsRecovered = retry.recovered;
+    } catch (err) {
+      result.errors.push(
+        `claim dead-letter retry: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   return result;

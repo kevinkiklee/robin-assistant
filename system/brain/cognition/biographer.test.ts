@@ -16,6 +16,7 @@ import {
   extractClaims,
   isLowQualityEntity,
   isLowQualityPredicate,
+  retryClaimFailures,
   runBiographer,
   type SessionSummary,
 } from './biographer.ts';
@@ -1218,11 +1219,15 @@ test('biographer: a claims-chunk timeout writes a dead letter with the verbatim 
     attempts: number;
     last_error: string | null;
   }>;
-  assert.equal(rows.length, 1, 'the timed-out chunk is dead-lettered');
+  assert.equal(rows.length, 1, 'the timed-out chunk is dead-lettered (single upserted row)');
   const row = rows[0];
   assert.ok(row.event_id > 0);
   assert.equal(row.chunk_idx, 0, 'single-chunk session → chunk 0');
-  assert.equal(row.attempts, 1, 'first failure records attempts=1');
+  // The chunk loop writes the dead letter (attempts=1); the SAME tick's end-of-tick
+  // retry pass (Task 8) re-runs the same chunk against the still-hanging LLM, which
+  // times out again and bumps attempts to 2 via the upsert — exercising the full
+  // write→retry→re-fail path end to end without a duplicate row.
+  assert.equal(row.attempts, 2, 'chunk-loop write + one re-failed retry = attempts 2');
   assert.ok(
     row.last_error && /timed out|timeout/i.test(row.last_error),
     'error mentions the timeout',
@@ -1320,6 +1325,213 @@ test('biographer: re-failing the same chunk bumps attempts instead of duplicatin
   assert.equal(rows.length, 1, 'no duplicate row for the same (event_id, chunk_idx)');
   assert.equal(rows[0].attempts, 2, 'attempts bumped on re-failure');
   assert.equal(rows[0].last_error, 'schema: second failure', 'last_error updated to the latest');
+  closeDb(db);
+});
+
+// ─── claim-extraction dead-letter RETRY pass (§C3, Task 8) ──────────────────────
+
+/**
+ * Claims-only dispatcher for the retry pass. `retryClaimFailures` invokes the
+ * claim-extraction prompt directly; `insertCandidateWithDedup` then tries to
+ * embed each surviving claim (an extra `llm.invoke`) but degrades to an exact
+ * insert when the embed fails — these mocks only serve `reasoning`, so the embed
+ * path falls through harmlessly. `onInvoke` lets a test count claim calls.
+ */
+function claimsLLM(claimsJson: string, onClaimsInvoke?: () => void): LLMDispatcher {
+  const p: LLMProvider = {
+    name: 'claims-only',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => {
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      if (isClaims) onClaimsInvoke?.();
+      return {
+        text: isClaims ? claimsJson : '[]',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'claims-only',
+      };
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('p', p);
+  d.assign('reasoning', 'p');
+  return d;
+}
+
+/** Seed a claim_failures row directly; returns the event id it points at. */
+function seedDeadLetter(
+  db: ReturnType<typeof freshDb>,
+  opts: {
+    eventId: number;
+    chunkIdx?: number;
+    chunkBody?: string;
+    attempts?: number;
+    ageDays?: number;
+  },
+): void {
+  const ts =
+    opts.ageDays != null
+      ? new Date(Date.now() - opts.ageDays * 86_400_000)
+          .toISOString()
+          .slice(0, 19)
+          .replace('T', ' ')
+      : null;
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, attempts, last_error, ts)
+     VALUES (?,?,?,?,?, COALESCE(?, datetime('now')))`,
+  ).run(
+    opts.eventId,
+    opts.chunkIdx ?? 0,
+    opts.chunkBody ?? '[USER]\nmy primary camera is a Nikon Z8',
+    opts.attempts ?? 1,
+    'json parse: seeded',
+    ts,
+  );
+}
+
+test('retry pass re-extracts a dead letter and clears it on success', async () => {
+  const db = freshDb();
+  // A real source event so provenance recompute has a kind to classify.
+  await captureSession(db, null, {
+    sessionId: 's-retry-ok',
+    turns: [
+      { role: 'user', content: 'my primary camera is a Nikon Z8 and I shoot street photography' },
+      { role: 'assistant', content: 'Noted — Nikon Z8 recorded as your primary camera.' },
+    ],
+  });
+  const eventId = (
+    db.prepare(`SELECT id FROM events WHERE kind = 'session.captured'`).get() as { id: number }
+  ).id;
+  seedDeadLetter(db, { eventId, chunkBody: '[USER]\nmy primary camera is a Nikon Z8' });
+
+  const llm = claimsLLM(
+    JSON.stringify({ claims: [{ topic: 'primary-camera', claim: 'Nikon Z8', confidence: 0.9 }] }),
+  );
+  const r = await retryClaimFailures(db, llm);
+  assert.equal(r.retried, 1);
+  assert.equal(r.recovered, 1, 'a clean re-extraction recovers the row');
+
+  // Row deleted, candidate inserted via the normal dedup path.
+  const remaining = db.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
+  assert.equal(remaining.c, 0, 'recovered dead letter is deleted');
+  const cands = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(cands.length, 1, 'recovered claim entered the candidate queue');
+  assert.equal(cands[0].topic, 'primary-camera');
+  // Provenance recomputed from the source event kind (session.captured → first-party),
+  // NOT hardcoded 'unknown'.
+  assert.equal(cands[0].provenance, 'first-party', 'provenance recomputed from source event kind');
+  closeDb(db);
+});
+
+test('a failed retry bumps attempts; attempts >= 3 rows are not retried', async () => {
+  const db = freshDb();
+  // One open row (attempts=1) that will re-fail, and one exhausted row (attempts=3).
+  seedDeadLetter(db, { eventId: 101, chunkIdx: 0, attempts: 1 });
+  seedDeadLetter(db, { eventId: 102, chunkIdx: 0, attempts: 3 });
+
+  let claimCalls = 0;
+  // Garbage claims output → extractClaims returns a failure → recordClaimFailure bumps.
+  const llm = claimsLLM('not valid json', () => {
+    claimCalls++;
+  });
+  const r = await retryClaimFailures(db, llm);
+  assert.equal(r.retried, 1, 'only the open (attempts<3) row is retried');
+  assert.equal(claimCalls, 1, 'the exhausted row is never sent to the LLM');
+  assert.equal(r.recovered, 0);
+
+  const open = db.prepare(`SELECT attempts FROM claim_failures WHERE event_id = 101`).get() as {
+    attempts: number;
+  };
+  assert.equal(open.attempts, 2, 'a failed retry bumps attempts');
+  const exhausted = db
+    .prepare(`SELECT attempts FROM claim_failures WHERE event_id = 102`)
+    .get() as { attempts: number };
+  assert.equal(exhausted.attempts, 3, 'the exhausted row is untouched');
+  closeDb(db);
+});
+
+test('retry respects the per-pass cap (10 open rows, cap 5 → exactly 5 LLM calls)', async () => {
+  const db = freshDb();
+  for (let i = 0; i < 10; i++) seedDeadLetter(db, { eventId: 200 + i, chunkIdx: 0, attempts: 1 });
+
+  let claimCalls = 0;
+  // Each re-fails (so none are deleted) — isolates the cap behavior.
+  const llm = claimsLLM('still not json', () => {
+    claimCalls++;
+  });
+  const r = await retryClaimFailures(db, llm, { max: 5 });
+  assert.equal(r.retried, 5, 'retried is bounded by the cap');
+  assert.equal(claimCalls, 5, 'exactly 5 LLM claim calls for a cap of 5');
+  // All 10 rows still open (5 bumped to 2, 5 still at 1) → none recovered.
+  const stillOpen = db
+    .prepare(`SELECT COUNT(*) AS c FROM claim_failures WHERE attempts < 3`)
+    .get() as { c: number };
+  assert.equal(stillOpen.c, 10);
+  assert.equal(r.openBacklog, 10);
+  closeDb(db);
+});
+
+test('backlog > 10 open fires the Phase-A alert; dropping to <= 10 resolves it', async () => {
+  const db = freshDb();
+  // 11 open rows → over the threshold of 10.
+  for (let i = 0; i < 11; i++) seedDeadLetter(db, { eventId: 300 + i, chunkIdx: 0, attempts: 1 });
+  // Re-fail everything so the backlog stays open and the alert fires.
+  // max higher than the backlog so the count after the pass is honest (still 11 open).
+  const failing = claimsLLM('garbage');
+  const r1 = await retryClaimFailures(db, failing, { max: 0 });
+  assert.equal(r1.openBacklog, 11, '11 open rows reported');
+
+  const open = db
+    .prepare(
+      `SELECT severity, message, resolved_at FROM alerts
+        WHERE source = 'biographer' AND key = 'claim-failures-backlog' AND resolved_at IS NULL`,
+    )
+    .get() as { severity: string; message: string; resolved_at: string | null } | undefined;
+  assert.ok(open, 'a real open alert row exists');
+  assert.equal(open?.severity, 'warning');
+  assert.match(open?.message ?? '', /11 claim-extraction chunks/);
+
+  // Drain below the threshold (delete 5 → 6 open), rerun → alert resolves.
+  db.prepare(`DELETE FROM claim_failures WHERE event_id IN (300,301,302,303,304)`).run();
+  const r2 = await retryClaimFailures(db, failing, { max: 0 });
+  assert.equal(r2.openBacklog, 6);
+
+  const stillOpen = db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM alerts
+        WHERE source = 'biographer' AND key = 'claim-failures-backlog' AND resolved_at IS NULL`,
+    )
+    .get() as { c: number };
+  assert.equal(stillOpen.c, 0, 'the alert is resolved when the backlog drains');
+  const resolved = db
+    .prepare(
+      `SELECT resolved_at FROM alerts
+        WHERE source = 'biographer' AND key = 'claim-failures-backlog'`,
+    )
+    .get() as { resolved_at: string | null };
+  assert.ok(resolved.resolved_at, 'resolved_at is stamped on the alert row');
+  closeDb(db);
+});
+
+test('exhausted rows older than 30 days are pruned', async () => {
+  const db = freshDb();
+  // Exhausted + old → pruned. Exhausted + recent → kept (audit window). Open + old → kept (still retryable).
+  seedDeadLetter(db, { eventId: 401, attempts: 3, ageDays: 45 });
+  seedDeadLetter(db, { eventId: 402, attempts: 3, ageDays: 5 });
+  seedDeadLetter(db, { eventId: 403, attempts: 1, ageDays: 60 });
+
+  const llm = claimsLLM('garbage');
+  await retryClaimFailures(db, llm, { max: 0 });
+
+  const rows = db.prepare(`SELECT event_id FROM claim_failures ORDER BY event_id`).all() as Array<{
+    event_id: number;
+  }>;
+  const ids = rows.map((r) => r.event_id);
+  assert.ok(!ids.includes(401), 'exhausted + >30d old is pruned');
+  assert.ok(ids.includes(402), 'exhausted but recent is kept as audit');
+  assert.ok(ids.includes(403), 'open row is never pruned regardless of age');
   closeDb(db);
 });
 
