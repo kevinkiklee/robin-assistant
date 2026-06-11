@@ -376,3 +376,58 @@ test('robustness: an alert-store write failure does not throw out of the tick', 
   await assert.doesNotReject(tickOnce(m));
   closeDb(db);
 });
+
+test('overlap: a timed-out check stays in-flight until it actually settles', async () => {
+  const db = freshDb();
+  let runs = 0;
+  // Resolves when the slow check's async body finishes; resolved externally so
+  // we can control precisely when the underlying work completes.
+  let releaseSlowCheck!: () => void;
+  const slowCheckDone = new Promise<void>((r) => {
+    releaseSlowCheck = r;
+  });
+
+  const m = new HealthMonitor({
+    db,
+    getLLM: () => null,
+    getLastTickAt: () => new Date(),
+    // Short timeout so tick 1 times out well before the check body finishes.
+    checkTimeoutMs: 50,
+  });
+  stubInvariants(m, [
+    {
+      name: 'test.timeout-overlap',
+      severity: 'warning',
+      symptom: '',
+      cause: '',
+      fix: '',
+      check: async () => {
+        runs++;
+        // Simulate a slow check: takes ~200ms, well beyond the 50ms cap.
+        await new Promise<void>((r) => setTimeout(r, 200));
+        releaseSlowCheck();
+        return { ok: true };
+      },
+    },
+  ]);
+
+  // Tick 1: times out at 50ms → reports 'check timed out'; check body still running.
+  const tick1 = await tickOnce(m);
+  assert.equal(runs, 1, 'tick 1 must have started the check');
+  void tick1; // tickOnce returns void; just verifying it resolved
+
+  // Tick 2: fires immediately — the original check is still in flight (hasn't
+  // settled its 200ms body yet) — must be overlap-skipped, NOT re-run.
+  await tickOnce(m);
+  assert.equal(runs, 1, 'tick 2 must NOT re-run the still-pending check');
+
+  // Wait for the original check body to finish, then tick 3 should run fresh.
+  await slowCheckDone;
+  // Give the inFlight.delete() finally a moment to execute.
+  await new Promise((r) => setImmediate(r));
+
+  await tickOnce(m);
+  assert.equal(runs, 2, 'tick 3 after check settled must run a fresh check');
+
+  closeDb(db);
+});

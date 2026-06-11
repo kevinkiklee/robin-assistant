@@ -161,25 +161,33 @@ export class HealthMonitor {
     }
     this.inFlight.add(inv.name);
     const start = performance.now();
+
+    // p is the original check promise.  We drive inFlight from p's own
+    // settlement so that a timed-out check (where the timeout wins the race
+    // below) stays in flight until the underlying async work actually finishes.
+    // Without this, deleting from inFlight when the timeout fires would let the
+    // very next tick re-run a check that is still pending — the exact overlap
+    // pile-up the guard is meant to prevent.
+    const p = Promise.resolve(inv.check());
+    // Swallow p's rejection here so it never becomes an unhandled rejection;
+    // the race path below already captures and reports any error.
+    p.then(undefined, () => {}).finally(() => this.inFlight.delete(inv.name));
+
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('check timed out')), timeoutMs);
+      timer.unref?.();
+    });
     try {
-      let timer: NodeJS.Timeout | undefined;
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('check timed out')), timeoutMs);
-        timer.unref?.();
-      });
-      try {
-        const r = await Promise.race([Promise.resolve(inv.check()), timeout]);
-        return {
-          name: inv.name,
-          severity: inv.severity,
-          ok: r.ok,
-          message: r.message,
-          remediation: r.remediation,
-          duration_ms: Math.round(performance.now() - start),
-        };
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
+      const r = await Promise.race([p, timeout]);
+      return {
+        name: inv.name,
+        severity: inv.severity,
+        ok: r.ok,
+        message: r.message,
+        remediation: r.remediation,
+        duration_ms: Math.round(performance.now() - start),
+      };
     } catch (err) {
       return {
         name: inv.name,
@@ -189,7 +197,9 @@ export class HealthMonitor {
         duration_ms: Math.round(performance.now() - start),
       };
     } finally {
-      this.inFlight.delete(inv.name);
+      // Clear the timeout timer here (race is done).  Do NOT touch inFlight —
+      // that is owned by p's finally above so timed-out checks stay guarded.
+      if (timer) clearTimeout(timer);
     }
   }
 
