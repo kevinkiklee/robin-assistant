@@ -71,6 +71,56 @@ export function normalizeTopic(topic: string): string {
     .replace(/^-+|-+$/g, ''); // trim leading/trailing hyphens
 }
 
+/** Tokens that negate a claim without changing WHICH fact it is about. Stripping
+ *  them is intentional (spec §C1): opposing claims about one fact belong on one
+ *  head's supersession chain. */
+const NEGATION_TOKENS = new Set([
+  'no',
+  'not',
+  'never',
+  'non',
+  'isnt',
+  'doesnt',
+  'dont',
+  'without',
+  'false',
+  'denied',
+]);
+/** Style/meta tokens that fragment slugs without identifying a different fact. */
+const MODIFIER_TOKENS = new Set([
+  'claim',
+  'claims',
+  'status',
+  'update',
+  'updated',
+  'current',
+  'currently',
+  'latest',
+  'new',
+  'recent',
+  'info',
+  'fact',
+  'belief',
+  'kevin',
+  'kevins',
+  'my',
+]);
+
+/**
+ * Canonicalize an already-normalizeTopic'd slug down to its domain fact (spec
+ * §C1): strip negation + modifier tokens so "no-aerospace-internship",
+ * "aerospace-internship-claim" and "aerospace-internship" all key one head.
+ * Deterministic, order-preserving, idempotent. Falls back to the input when
+ * stripping would leave nothing — a slug must never canonicalize to ''.
+ */
+export function canonicalizeTopic(normalized: string): string {
+  const kept = normalized
+    .split('-')
+    .filter((t) => t.length > 0 && !NEGATION_TOKENS.has(t) && !MODIFIER_TOKENS.has(t));
+  if (kept.length === 0) return normalized;
+  return kept.join('-');
+}
+
 function localDate(d = new Date()): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');

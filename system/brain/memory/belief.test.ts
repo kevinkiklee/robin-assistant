@@ -3,7 +3,13 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { type BeliefRecord, believe, normalizeTopic, recallBelief } from './belief.ts';
+import {
+  type BeliefRecord,
+  believe,
+  canonicalizeTopic,
+  normalizeTopic,
+  recallBelief,
+} from './belief.ts';
 import { closeDb, openDb } from './db.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 
@@ -26,6 +32,31 @@ test('belief: write then recall current truth', () => {
 
 test('belief: normalize collides _ and - and case', () => {
   assert.equal(normalizeTopic('Whoop.Recovery_X'), normalizeTopic('whoop.recovery-x'));
+});
+
+test('canonicalizeTopic strips negation and modifier tokens', () => {
+  const cases: Array<[string, string]> = [
+    ['no-aerospace-internship', 'aerospace-internship'],
+    ['aerospace-internship-claim', 'aerospace-internship'],
+    ['aerospace-internship-status', 'aerospace-internship'],
+    ['not-moving-to-sf', 'moving-to-sf'],
+    ['kevins-current-employer', 'employer'],
+    ['medications-ramelteon', 'medications-ramelteon'], // no stopwords → unchanged
+    ['home-location', 'home-location'],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(canonicalizeTopic(input), expected, input);
+  }
+});
+
+test('canonicalizeTopic never returns empty — all-stopword slugs fall back to the input', () => {
+  assert.equal(canonicalizeTopic('no-claim'), 'no-claim');
+  assert.equal(canonicalizeTopic('current-status'), 'current-status');
+});
+
+test('canonicalizeTopic is idempotent', () => {
+  const once = canonicalizeTopic('no-aerospace-internship-claim');
+  assert.equal(canonicalizeTopic(once), once);
 });
 
 test('belief: same-day re-write upserts (no new row, no self-supersede)', () => {
