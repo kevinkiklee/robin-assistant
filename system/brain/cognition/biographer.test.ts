@@ -976,12 +976,31 @@ test('extractClaims: parses fenced JSON and tolerates invalid output', async () 
       }) +
       '\n```',
   );
-  const claims = await extractClaims(ok, '[USER]\nmy role is Ad Experiences', 5000, 'test');
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0].topic, 'google-role');
+  const okOut = await extractClaims(ok, '[USER]\nmy role is Ad Experiences', 5000, 'test');
+  assert.equal(okOut.claims.length, 1);
+  assert.equal(okOut.claims[0].topic, 'google-role');
+  assert.equal(okOut.failure, undefined, 'a valid parse has no failure');
 
+  // Garbage output no longer throws — it returns claims:[] with a failure reason
+  // so the chunk loop can dead-letter it (decision 5).
   const bad = mockLLM('not json at all');
-  await assert.rejects(() => extractClaims(bad, 'x', 5000, 'test')); // JSON.parse throws
+  const badOut = await extractClaims(bad, 'x', 5000, 'test');
+  assert.deepEqual(badOut.claims, []);
+  assert.ok(badOut.failure, 'unparseable output reports a failure');
+});
+
+test('extractClaims: reports parse failure distinctly from zero claims', async () => {
+  // Garbage (non-JSON) → claims:[] WITH a failure reason mentioning the parse.
+  const garbage = mockLLM('definitely { not ] valid JSON');
+  const garbled = await extractClaims(garbage, 'x', 5000, 'test');
+  assert.deepEqual(garbled.claims, []);
+  assert.ok(garbled.failure && /parse/i.test(garbled.failure), 'parse failure is flagged');
+
+  // A model that legitimately found nothing durable → claims:[] with NO failure.
+  const empty = mockLLM(JSON.stringify({ claims: [] }));
+  const emptyOut = await extractClaims(empty, 'x', 5000, 'test');
+  assert.deepEqual(emptyOut.claims, []);
+  assert.equal(emptyOut.failure, undefined, 'an empty-but-valid extraction is not a failure');
 });
 
 test('biographer: draftClaims off by default → no candidates', async () => {
@@ -1139,6 +1158,168 @@ test('biographer: a failing claims pass does not block entity/relation extractio
     r.errors.some((e) => e.includes('claims chunk')),
     'a claims-chunk error should be recorded',
   );
+  // The unparseable claims chunk lands in the dead-letter queue (validation failure).
+  const dead = db.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
+  assert.equal(dead.c, 1, 'a parse-failed claims chunk is dead-lettered');
+  closeDb(db);
+});
+
+// ─── claim-extraction dead-letter (§C3) ────────────────────────────────────────
+
+// A claims-pass chunk whose LLM call times out (withTimeout → TimeoutError) is
+// caught by the chunk loop and written to claim_failures VERBATIM so the retry
+// pass can re-run the exact same text.
+test('biographer: a claims-chunk timeout writes a dead letter with the verbatim chunk', async () => {
+  const db = freshDb();
+  // Entity/relation pass resolves; the claims pass hangs forever so its
+  // withTimeout (driven by the short chunkTimeoutMs below) rejects with a
+  // TimeoutError, exercising the catch-path dead-letter write.
+  const p: LLMProvider = {
+    name: 'claims-hang',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => {
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      if (isClaims) return new Promise(() => {}); // never resolves → timeout
+      return {
+        text: JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'claims-hang',
+      };
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('p', p);
+  d.assign('reasoning', 'p');
+
+  await captureSession(db, null, {
+    sessionId: 's-timeout',
+    turns: [
+      { role: 'user', content: 'tell me about Kevin and his life so this chunk has user content' },
+      { role: 'assistant', content: 'Kevin is a person with a documented life and history.' },
+    ],
+  });
+  const r = await runBiographer(db, d, 10, {
+    minSessionBodyChars: 0,
+    draftClaims: true,
+    chunkTimeoutMs: 30,
+  });
+  // Entity extraction still completed; the claims timeout did not block it.
+  assert.equal(r.processed, 1);
+
+  const rows = db
+    .prepare(`SELECT event_id, chunk_idx, chunk_body, attempts, last_error FROM claim_failures`)
+    .all() as Array<{
+    event_id: number;
+    chunk_idx: number;
+    chunk_body: string;
+    attempts: number;
+    last_error: string | null;
+  }>;
+  assert.equal(rows.length, 1, 'the timed-out chunk is dead-lettered');
+  const row = rows[0];
+  assert.ok(row.event_id > 0);
+  assert.equal(row.chunk_idx, 0, 'single-chunk session → chunk 0');
+  assert.equal(row.attempts, 1, 'first failure records attempts=1');
+  assert.ok(
+    row.last_error && /timed out|timeout/i.test(row.last_error),
+    'error mentions the timeout',
+  );
+
+  // chunk_body is the VERBATIM chunk text the loop passed to extractClaims — it
+  // carries the [USER] content (preprocessForExtraction keeps user turns).
+  assert.ok(row.chunk_body.includes('[USER]'), 'verbatim chunk body retained');
+  assert.ok(row.chunk_body.includes('tell me about Kevin'), 'verbatim user text retained');
+  closeDb(db);
+});
+
+// A validation failure (model responded, output didn't parse) writes a dead
+// letter; a legitimately empty extraction ({"claims":[]}) does not.
+test('biographer: a validation failure dead-letters, a legitimately empty chunk does not', async () => {
+  // Case A — claims pass returns garbage → one dead letter.
+  const dbBad = freshDb();
+  const bad: LLMProvider = {
+    name: 'claims-garbage',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => ({
+      text: (req.systemPrompt ?? '').includes('DURABLE FACTS')
+        ? 'this is not json'
+        : JSON.stringify({ entities: [], relations: [] }),
+      usage: { inputTokens: 0, outputTokens: 0 },
+      costUsd: 0,
+      latencyMs: 0,
+      provider: 'claims-garbage',
+    }),
+  };
+  const dBad = new LLMDispatcher();
+  dBad.register('p', bad);
+  dBad.assign('reasoning', 'p');
+  await captureSession(dbBad, null, {
+    sessionId: 's-bad',
+    turns: [
+      { role: 'user', content: 'here is some durable content about my life worth extracting' },
+      { role: 'assistant', content: 'Acknowledged, noting these durable facts about you.' },
+    ],
+  });
+  await runBiographer(dbBad, dBad, 10, { minSessionBodyChars: 0, draftClaims: true });
+  const badCount = dbBad.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
+  assert.equal(badCount.c, 1, 'validation failure is dead-lettered');
+  closeDb(dbBad);
+
+  // Case B — claims pass returns a valid-but-empty extraction → no dead letter.
+  const dbEmpty = freshDb();
+  const llmEmpty = dualLLM(
+    JSON.stringify({ entities: [], relations: [] }),
+    JSON.stringify({ claims: [] }),
+  );
+  await captureSession(dbEmpty, null, {
+    sessionId: 's-empty',
+    turns: [
+      { role: 'user', content: 'here is some durable content about my life worth extracting' },
+      { role: 'assistant', content: 'Acknowledged, noting these durable facts about you.' },
+    ],
+  });
+  const rEmpty = await runBiographer(dbEmpty, llmEmpty, 10, {
+    minSessionBodyChars: 0,
+    draftClaims: true,
+  });
+  assert.equal(rEmpty.claimsDrafted, 0);
+  const emptyCount = dbEmpty.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as {
+    c: number;
+  };
+  assert.equal(emptyCount.c, 0, 'a clean empty extraction is NOT a failure');
+  closeDb(dbEmpty);
+});
+
+// Re-failing the same (event_id, chunk_idx) bumps attempts via the upsert rather
+// than inserting a duplicate row — the UNIQUE(event_id, chunk_idx) constraint.
+test('biographer: re-failing the same chunk bumps attempts instead of duplicating', async () => {
+  const db = freshDb();
+  // Pre-seed a dead letter for (event 999, chunk 0) at attempts=1.
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, last_error)
+     VALUES (?,?,?,?)`,
+  ).run(999, 0, '[USER]\noriginal chunk text', 'json parse: first failure');
+
+  // A second failure for the same key must upsert (attempts→2), not insert.
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, last_error)
+     VALUES (?,?,?,?)
+     ON CONFLICT(event_id, chunk_idx) DO UPDATE SET
+       attempts = attempts + 1, last_error = excluded.last_error, ts = datetime('now')`,
+  ).run(999, 0, '[USER]\noriginal chunk text', 'schema: second failure');
+
+  const rows = db
+    .prepare(
+      `SELECT attempts, last_error FROM claim_failures WHERE event_id = 999 AND chunk_idx = 0`,
+    )
+    .all() as Array<{ attempts: number; last_error: string }>;
+  assert.equal(rows.length, 1, 'no duplicate row for the same (event_id, chunk_idx)');
+  assert.equal(rows[0].attempts, 2, 'attempts bumped on re-failure');
+  assert.equal(rows[0].last_error, 'schema: second failure', 'last_error updated to the latest');
   closeDb(db);
 });
 

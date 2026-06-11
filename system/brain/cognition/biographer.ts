@@ -90,6 +90,20 @@ const claimsSchema = z.object({
 
 export type ClaimsResult = z.infer<typeof claimsSchema>;
 
+/**
+ * Outcome of a single claim-extraction pass (spec §C3, decision 5).
+ *
+ * `failure` is set ONLY when the model responded but its output couldn't be
+ * trusted — a JSON parse throw or a schema-validation failure. A model that
+ * legitimately found nothing durable returns `{ claims: [], failure: undefined }`,
+ * which the caller treats as a clean (non-dead-letter) result. The chunk loop
+ * relies on this distinction to decide whether to write a dead letter.
+ */
+export interface ExtractClaimsOutcome {
+  claims: ClaimsResult['claims'];
+  failure?: string;
+}
+
 // ─── Session finalization schema ──────────────────────────────────────────────
 // A single LLM call per session, after all chunks are extracted and the merged
 // entity/relation set is assembled. Produces intent, outcome, topics, decisions,
@@ -156,17 +170,23 @@ If nothing durable is present, reply {"claims":[]}.`;
 const MAX_CLAIMS_PER_SESSION = 20;
 
 /**
- * Run the claim-drafting pass on a single chunk. Returns the validated claims
- * (possibly empty). Individually timeout-bounded by the caller's chunk timeout
- * and capped at a small maxTokens so it can never blow the tick. Tolerant of
- * fenced/invalid output — a bad chunk yields zero claims rather than throwing.
+ * Run the claim-drafting pass on a single chunk. Individually timeout-bounded by
+ * the caller's chunk timeout and capped at a small maxTokens so it can never blow
+ * the tick.
+ *
+ * Distinguishes "no durable claims" from "the model's output didn't parse"
+ * (spec §C3, decision 5): a parse throw or a schema-validation failure returns
+ * `{ claims: [], failure: '<reason>' }`, while a clean empty extraction returns
+ * `{ claims: [] }` with no `failure`. The `withTimeout` reject (and any other
+ * invoke throw) still propagates OUT — the chunk loop's catch turns those into
+ * dead letters too.
  */
 export async function extractClaims(
   llm: LLMDispatcher,
   chunkText: string,
   timeoutMs: number,
   label: string,
-): Promise<ClaimsResult['claims']> {
+): Promise<ExtractClaimsOutcome> {
   const inv = await withTimeout(
     llm.invoke('reasoning', {
       systemPrompt: CLAIMS_SYSTEM_PROMPT,
@@ -182,9 +202,39 @@ export async function extractClaims(
     .replace(/^```(?:json)?/, '')
     .replace(/```$/, '')
     .trim();
-  const parsed = claimsSchema.safeParse(JSON.parse(jsonText));
-  if (!parsed.success) return [];
-  return parsed.data.claims;
+  let parsed: ReturnType<typeof claimsSchema.safeParse>;
+  try {
+    parsed = claimsSchema.safeParse(JSON.parse(jsonText));
+  } catch (err) {
+    return {
+      claims: [],
+      failure: `json parse: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  if (!parsed.success)
+    return { claims: [], failure: `schema: ${parsed.error.message.slice(0, 200)}` };
+  return { claims: parsed.data.claims };
+}
+
+/**
+ * Upsert a claim-extraction dead letter (spec §C3). `attempts` counts tries: the
+ * first failure inserts 1, a retry that fails again bumps it. The chunk body is
+ * stored VERBATIM so a retry never depends on the chunker reproducing identical
+ * boundaries across code changes. `last_error` is truncated to keep the row small.
+ */
+function recordClaimFailure(
+  db: RobinDb,
+  eventId: number,
+  chunkIdx: number,
+  chunkBody: string,
+  error: string,
+): void {
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, last_error)
+     VALUES (?,?,?,?)
+     ON CONFLICT(event_id, chunk_idx) DO UPDATE SET
+       attempts = attempts + 1, last_error = excluded.last_error, ts = datetime('now')`,
+  ).run(eventId, chunkIdx, chunkBody, error.slice(0, 500));
 }
 
 /**
@@ -1459,12 +1509,23 @@ export async function runBiographer(
           if (bodyIsTranscript && !/\[USER\]/i.test(chunk)) continue;
           claimsBudget--;
           try {
-            const claims = await extractClaims(
+            const { claims, failure } = await extractClaims(
               llm,
               chunk,
               chunkTimeoutMs,
               `biographer-claims event=${target.eventId} chunk=${ci}/${totalChunks}`,
             );
+            if (failure) {
+              // Parse/schema failure: the model responded with untrusted output.
+              // Dead-letter the chunk so the retry pass can re-attempt it, then
+              // keep surfacing the error the way the loop always has.
+              try {
+                recordClaimFailure(db, target.eventId, ci, chunk, failure);
+              } catch {
+                // best-effort — a dead-letter write failure must not break the loop
+              }
+              result.errors.push(`event ${target.eventId} claims chunk ${ci}: ${failure}`);
+            }
             for (const c of claims) {
               if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
               if (!c.topic?.trim() || !c.claim?.trim()) continue;
@@ -1486,9 +1547,15 @@ export async function runBiographer(
           } catch (err) {
             // A failed claims chunk never blocks the session — entity/relation
             // extraction already advanced the cursor; claims are best-effort.
-            result.errors.push(
-              `event ${target.eventId} claims chunk ${ci}: ${err instanceof Error ? err.message : String(err)}`,
-            );
+            // Timeouts (withTimeout → TimeoutError) and any other invoke throw land
+            // here; dead-letter the chunk verbatim so the retry pass can re-run it.
+            const msg = err instanceof Error ? err.message : String(err);
+            try {
+              recordClaimFailure(db, target.eventId, ci, chunk, msg);
+            } catch {
+              // best-effort — a dead-letter write failure must not break the loop
+            }
+            result.errors.push(`event ${target.eventId} claims chunk ${ci}: ${msg}`);
           }
         }
       }
