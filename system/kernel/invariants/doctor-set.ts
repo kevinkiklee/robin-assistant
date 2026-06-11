@@ -35,8 +35,10 @@ import type { Invariant } from './types.ts';
  * time-driven crons.
  */
 function listScheduledIntegrations(userData: string): ScheduledIntegration[] {
-  const roots = [resolveBuiltinIntegrationsRoot(), join(userData, 'extensions', 'integrations')];
+  // User-data extensions first so they shadow builtins with the same resolved name.
+  const roots = [join(userData, 'extensions', 'integrations'), resolveBuiltinIntegrationsRoot()];
   const result: ScheduledIntegration[] = [];
+  const seen = new Set<string>();
   for (const root of roots) {
     if (!existsSync(root)) continue;
     for (const entry of readdirSync(root)) {
@@ -50,6 +52,8 @@ function listScheduledIntegrations(userData: string): ScheduledIntegration[] {
         const schedule = manifest?.schedule;
         if (!schedule || schedule === 'manual' || schedule.startsWith('event:')) continue;
         const instanceName = entry.includes('--') ? entry : (manifest.name ?? entry);
+        if (seen.has(instanceName)) continue; // user-data wins; skip duplicate builtin
+        seen.add(instanceName);
         result.push({ name: instanceName, cron: schedule });
       } catch {
         // Unparseable manifest — skip; can't determine cadence anyway.

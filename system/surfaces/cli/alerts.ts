@@ -9,9 +9,13 @@ export function listAlertsText(db: RobinDb, opts: { all?: boolean }): string {
   if (rows.length === 0) return opts.all ? 'No alerts on record.' : 'No open alerts.';
   return rows
     .map((a) => {
-      // sqlite datetime('now') returns 'YYYY-MM-DD HH:MM:SS' (UTC, no zone suffix)
-      // Appending 'Z' makes Date.parse treat it as UTC.
-      const ageH = Math.round((Date.now() - Date.parse(`${a.first_seen_at}Z`)) / 3_600_000);
+      // sqlite datetime('now') returns 'YYYY-MM-DD HH:MM:SS' (UTC, no zone suffix).
+      // Only append 'Z' when no zone info is already present.
+      const ts =
+        a.first_seen_at.endsWith('Z') || a.first_seen_at.includes('+')
+          ? a.first_seen_at
+          : `${a.first_seen_at}Z`;
+      const ageH = Math.round((Date.now() - Date.parse(ts)) / 3_600_000);
       const state = a.resolved_at ? 'resolved' : a.acked_at ? 'acked' : 'open';
       return `#${a.id} [${a.severity}] ${a.key} — ${a.message} (${state}, first seen ${ageH}h ago, fired ${a.fire_count}×)`;
     })
