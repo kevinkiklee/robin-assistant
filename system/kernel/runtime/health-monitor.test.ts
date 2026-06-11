@@ -377,6 +377,63 @@ test('robustness: an alert-store write failure does not throw out of the tick', 
   closeDb(db);
 });
 
+test('sync-throw: a check() that throws synchronously produces a failing report, records an alert, and is NOT overlap-skipped on the next tick', async () => {
+  const db = freshDb();
+  let runs = 0;
+  const m = new HealthMonitor({
+    db,
+    getLLM: () => null,
+    getLastTickAt: () => new Date(),
+    enableNotifications: false,
+    checkTimeoutMs: 500,
+  });
+
+  // A companion healthy invariant — must also produce its report on tick 1,
+  // proving the sync-throw didn't abort the remaining checks for that tick.
+  let healthyRan = false;
+  stubInvariants(m, [
+    {
+      name: 'test.sync-throw',
+      severity: 'critical',
+      symptom: '',
+      cause: '',
+      fix: '',
+      check: () => {
+        runs++;
+        throw new Error('boom-sync');
+      },
+    },
+    {
+      name: 'test.sync-throw-companion',
+      severity: 'warning',
+      symptom: '',
+      cause: '',
+      fix: '',
+      check: () => {
+        healthyRan = true;
+        return { ok: true };
+      },
+    },
+  ]);
+
+  // Tick 1 — sync throw must produce a failing report and record an alert.
+  await tickOnce(m);
+  assert.equal(runs, 1, 'tick 1 must have attempted the check');
+  assert.ok(
+    healthyRan,
+    'companion invariant must still run on tick 1 (sync-throw must not abort remaining checks)',
+  );
+  const opened = openAlert(db, 'invariant', 'test.sync-throw');
+  assert.ok(opened, 'sync-throw must record an alert');
+  assert.equal(opened?.message, 'boom-sync', 'error message must be preserved');
+
+  // Tick 2 — inFlight must have been cleaned up, so the invariant runs again
+  // (not permanently overlap-skipped).
+  await tickOnce(m);
+  assert.equal(runs, 2, 'tick 2 must re-run the check (inFlight was cleaned up after sync-throw)');
+  closeDb(db);
+});
+
 test('overlap: a timed-out check stays in-flight until it actually settles', async () => {
   const db = freshDb();
   let runs = 0;

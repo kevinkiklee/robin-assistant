@@ -168,7 +168,23 @@ export class HealthMonitor {
     // Without this, deleting from inFlight when the timeout fires would let the
     // very next tick re-run a check that is still pending — the exact overlap
     // pile-up the guard is meant to prevent.
-    const p = Promise.resolve(inv.check());
+    //
+    // Guard the promise creation itself: if check() throws synchronously (before
+    // returning a promise), we must still clean up inFlight — otherwise the name
+    // stays in the set permanently and the invariant is overlap-skipped forever.
+    let p: Promise<{ ok: boolean; message?: string; remediation?: string }>;
+    try {
+      p = Promise.resolve(inv.check());
+    } catch (err) {
+      this.inFlight.delete(inv.name);
+      return {
+        name: inv.name,
+        severity: inv.severity,
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+        duration_ms: Math.round(performance.now() - start),
+      };
+    }
     // Swallow p's rejection here so it never becomes an unhandled rejection;
     // the race path below already captures and reports any error.
     p.then(undefined, () => {}).finally(() => this.inFlight.delete(inv.name));

@@ -49,6 +49,9 @@ const HANDLER_TIMEOUT_MS = 20 * 60 * 1000; // 20 min
 // interval, a stuck handler that the scheduler eventually times-out would leave its
 // row in `leased` indefinitely until the next daemon restart.
 const LEASE_REAPER_INTERVAL_MS = 60_000;
+// Backoff after a failed scheduler tick (5× TICK_INTERVAL_MS): long enough to
+// ride out a transient DB lock, short enough to resume promptly.
+const TICK_FAILURE_BACKOFF_MS = 5_000;
 
 export interface DaemonRunOptions {
   foreground?: boolean;
@@ -424,7 +427,7 @@ export class Daemon {
         }
         // 5s backoff on a throwing tick — a tick that throws synchronously every
         // iteration would otherwise spin the loop and flood the log.
-        await sleep(5000);
+        await sleep(TICK_FAILURE_BACKOFF_MS);
         continue;
       }
       await sleep(TICK_INTERVAL_MS);
