@@ -3,7 +3,7 @@ import { latestLearningDigest } from '../brain/cognition/dream.ts';
 import { closeDb, openDb, type RobinDb } from '../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../brain/memory/migrations/index.ts';
 import { loadPolicies } from '../kernel/config/load.ts';
-import { recordAlert } from '../kernel/runtime/alert-store.ts';
+import { recordAlert, resolveAlert } from '../kernel/runtime/alert-store.ts';
 import { dbFilePath, resolveUserDataDir } from '../lib/paths.ts';
 import { REGISTRY } from './handlers/index.ts';
 import { writeLearningRecord } from './learning-record.ts';
@@ -243,6 +243,15 @@ export async function runRunnerEntry(
           });
         } catch {
           // alerting never breaks the runner
+        }
+      }
+      if (verified === 'verified') {
+        try {
+          // A confirmed run clears any lingering mismatch alert for this handler —
+          // symmetric with the bench-clear model (alerts resolve on observed recovery).
+          resolveAlert(db, 'agent-runner', `outcome-mismatch:${def.id}`);
+        } catch {
+          /* alerting never breaks the runner */
         }
       }
     }

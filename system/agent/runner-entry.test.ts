@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { openDb, type RobinDb } from '../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../brain/memory/migrations/index.ts';
+import { recordAlert } from '../kernel/runtime/alert-store.ts';
 import type { RunAgentInput, RunAgentResult } from './run-agent.ts';
 import { parseRunnerArgs, runRunnerEntry } from './runner-entry.ts';
 import { UsageLedger } from './usage-ledger.ts';
@@ -496,6 +497,53 @@ test('write-to-repo handler (K) gets a worktree; unchanged â†’ pruned, changed â
     verified: string | null;
   };
   assert.equal(kRow.verified, 'verified');
+});
+
+test('a verified run resolves an open outcome-mismatch alert for the handler', async () => {
+  const made = ledgerWithDb();
+  const runStart = new Date('2026-06-11T17:00:00.000Z');
+  // 1. Seed an OPEN outcome-mismatch alert for handler E.
+  recordAlert(made.db, {
+    severity: 'warning',
+    source: 'agent-runner',
+    key: 'outcome-mismatch:E',
+    message: 'handler E claimed did-work but its verifier found no evidence',
+  });
+  // Confirm it is open before the run.
+  const before = made.db
+    .prepare(
+      `SELECT resolved_at FROM alerts WHERE source='agent-runner' AND key='outcome-mismatch:E'`,
+    )
+    .get() as { resolved_at: string | null } | undefined;
+  assert.ok(before, 'alert must be seeded');
+  assert.equal(before?.resolved_at, null, 'alert must be open before the run');
+
+  // 2. Seed an E-satisfying belief_candidates row so the verifier passes.
+  made.db
+    .prepare(`INSERT INTO belief_candidates (topic, claim, created_at) VALUES ('t', 'c', ?)`)
+    .run('2026-06-11 17:30:00');
+
+  await runRunnerEntry(['--handler=E'], {
+    userDataDir: tmpUserData(),
+    repoRoot: '/repo',
+    now: () => runStart,
+    log: () => {},
+    openLedger: () => made,
+    mcpServers: fakeMcpServers,
+    runAgent: recordingRunAgent(made.ledger, {
+      status: 'success',
+      structured: { outcome: 'did-work', impact: 'low' },
+    }),
+  });
+
+  // 3. The alert must now be resolved.
+  const after = made.db
+    .prepare(
+      `SELECT resolved_at FROM alerts WHERE source='agent-runner' AND key='outcome-mismatch:E'`,
+    )
+    .get() as { resolved_at: string | null } | undefined;
+  assert.ok(after, 'alert row must still exist');
+  assert.notEqual(after?.resolved_at, null, 'a verified run must resolve the mismatch alert');
 });
 
 test('pre-flight capped run (no ledgerId) skips outcome persistence without crashing', async () => {
