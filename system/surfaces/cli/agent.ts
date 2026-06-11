@@ -1,16 +1,19 @@
 import { join } from 'node:path';
-export { writeLearningRecord } from '../../agent/learning-record.ts';
-import { writeLearningRecord } from '../../agent/learning-record.ts';
 import { REGISTRY } from '../../agent/handlers/index.ts';
-export { createWorktree, pruneWorktree, worktreeHasChanges } from '../../agent/worktree.ts';
-import { createWorktree, pruneWorktree, worktreeHasChanges } from '../../agent/worktree.ts';
+import { writeLearningRecord } from '../../agent/learning-record.ts';
 import { mcpServersForRun } from '../../agent/mcp-servers.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from '../../agent/run-agent.ts';
 import { UsageLedger } from '../../agent/usage-ledger.ts';
+import { createWorktree, pruneWorktree, worktreeHasChanges } from '../../agent/worktree.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { loadPolicies } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+
+// Re-exports: these helpers moved into the agent layer (Phase B); existing
+// importers of the CLI module keep working.
+export { writeLearningRecord } from '../../agent/learning-record.ts';
+export { createWorktree, pruneWorktree, worktreeHasChanges } from '../../agent/worktree.ts';
 
 /** Parsed `robin agent` invocation. */
 export interface AgentCliArgs {
