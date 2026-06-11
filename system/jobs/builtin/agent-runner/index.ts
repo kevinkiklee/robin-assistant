@@ -286,7 +286,10 @@ export async function runAgentRunner(
     child.unref();
   } catch (err) {
     // If the spawn itself fails, release the lock so the next tick can retry
-    // instead of waiting for the stale-ms window to expire.
+    // instead of waiting for the stale-ms window to expire. The cursor has
+    // already advanced past this handler — a failed spawn deliberately consumes
+    // the turn rather than pinning the cursor and starving the rest of the
+    // rotation; the handler gets retried on its next pass.
     release(lock);
     ctx.log.error({ err, handler }, 'agent-runner: failed to spawn detached runner');
     return { status: 'error', message: `failed to spawn runner for handler ${handler}` };
