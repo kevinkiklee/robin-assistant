@@ -19,6 +19,12 @@ export const handler: HandlerDef = {
       cwd: ctx.repoRoot,
       allowedTools: [
         'mcp__robin__recall',
+        // Belief READERS — without these the conflict scan is blind to the very
+        // heads/candidates it reconciles (first live Phase-B run reported
+        // outcome=blocked for exactly this). resolve_belief_candidate stays
+        // excluded: E proposes, it never adjudicates the queue.
+        'mcp__robin__recall_belief',
+        'mcp__robin__review_beliefs',
         'mcp__robin__find_entity',
         'mcp__robin__believe',
         'mcp__robin__record_correction',

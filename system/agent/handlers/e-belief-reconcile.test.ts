@@ -14,6 +14,8 @@ test('E: build() config — trigger, permissionMode, allowedTools', () => {
   assert.equal(out.permissionMode, 'default');
   assert.deepEqual(out.allowedTools, [
     'mcp__robin__recall',
+    'mcp__robin__recall_belief',
+    'mcp__robin__review_beliefs',
     'mcp__robin__find_entity',
     'mcp__robin__believe',
     'mcp__robin__record_correction',
