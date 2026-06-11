@@ -21,6 +21,8 @@ export interface TickResult {
   status: 'ok' | 'skipped' | 'error';
   ingested?: number;
   message?: string;
+  /** Streams that failed inside an otherwise-ok tick (e.g. whoop 'recovery'). */
+  degraded?: string[];
 }
 
 export interface IntegrationContext {

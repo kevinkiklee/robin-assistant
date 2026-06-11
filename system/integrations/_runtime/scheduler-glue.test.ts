@@ -383,6 +383,131 @@ test('scheduler-glue: consecutive_skips increments on skip, resets on ok, unchan
   closeDb(db);
 });
 
+test('scheduler-glue: degraded tick increments degraded:stream counters but still writes last_ok_at', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degraded-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degraded-user-'));
+
+  const dir = join(userRoot, 'deg-probe');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: deg-probe\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => globalThis.__degProbeResult };\n`,
+  );
+
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  const tickHandler = handlers['integration.deg-probe.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getKv = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'deg-probe' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  const setResult = (r: unknown) => {
+    (globalThis as unknown as Record<string, unknown>).__degProbeResult = r;
+  };
+
+  // --- first degraded tick: degraded:recovery → '1', last_ok_at is written ---
+  setResult({ status: 'ok', ingested: 2, degraded: ['recovery'] });
+  await tickHandler();
+  assert.equal(getKv('degraded:recovery'), '1', 'first degraded tick → count 1');
+  const firstOkAt = getKv('last_ok_at');
+  assert.ok(firstOkAt, 'degraded tick still writes last_ok_at');
+
+  // --- second degraded tick: degraded:recovery → '2' ---
+  setResult({ status: 'ok', ingested: 2, degraded: ['recovery'] });
+  await tickHandler();
+  assert.equal(getKv('degraded:recovery'), '2', 'second degraded tick → count 2');
+
+  // --- clean ok tick: all degraded:* keys reset to '0' ---
+  setResult({ status: 'ok', ingested: 5 });
+  await tickHandler();
+  assert.equal(getKv('degraded:recovery'), '0', 'clean ok tick resets degraded:recovery to 0');
+  const afterCleanOkAt = getKv('last_ok_at');
+  assert.ok(afterCleanOkAt, 'clean ok tick writes last_ok_at too');
+
+  closeDb(db);
+});
+
+test('scheduler-glue: degraded tick with multiple failed streams increments each independently', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degraded2-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degraded2-user-'));
+
+  const dir = join(userRoot, 'deg-multi');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: deg-multi\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => globalThis.__degMultiResult };\n`,
+  );
+
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  const tickHandler = handlers['integration.deg-multi.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getKv = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'deg-multi' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  const setResult = (r: unknown) => {
+    (globalThis as unknown as Record<string, unknown>).__degMultiResult = r;
+  };
+
+  // Two streams fail: both should get count 1
+  setResult({ status: 'ok', ingested: 1, degraded: ['recovery', 'sleep'] });
+  await handlers['integration.deg-multi.tick']();
+  assert.equal(getKv('degraded:recovery'), '1');
+  assert.equal(getKv('degraded:sleep'), '1');
+
+  // Only recovery fails next time: recovery → 2, sleep resets to 0
+  setResult({ status: 'ok', ingested: 1, degraded: ['recovery'] });
+  await tickHandler();
+  assert.equal(getKv('degraded:recovery'), '2', 'recovery increments to 2');
+  assert.equal(getKv('degraded:sleep'), '0', 'sleep resets to 0 when absent from degraded');
+
+  closeDb(db);
+});
+
 test('scheduler-glue: multi-instance integrations get distinct handler + cron names', async () => {
   const db = freshDb();
   const sysRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-sys-'));

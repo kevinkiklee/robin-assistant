@@ -61,7 +61,7 @@ function isTransient(err: unknown): boolean {
 function writeHeartbeat(
   db: import('../../brain/memory/db.ts').RobinDb,
   integrationName: string,
-  outcome: { ok: boolean; ingested: number; skipReason?: string },
+  outcome: { ok: boolean; ingested: number; skipReason?: string; degraded?: string[] },
 ): void {
   const now = new Date().toISOString();
   const setKv = db.prepare(`
@@ -91,6 +91,25 @@ function writeHeartbeat(
     } else {
       setKv.run(integrationName, 'consecutive_skips', '0', now);
       setKv.run(integrationName, 'last_ok_at', now, now);
+      // Track per-stream degraded counters. A degraded tick is still a successful tick
+      // (last_ok_at written above), but we maintain a rolling count per stream name so
+      // the integration-degraded invariant can fire when a stream fails persistently.
+      const degraded = new Set(outcome.degraded ?? []);
+      const existingRows = db
+        .prepare(
+          `SELECT key, value FROM integration_state WHERE integration_name = ? AND key LIKE 'degraded:%'`,
+        )
+        .all(integrationName) as Array<{ key: string; value: string }>;
+      for (const s of degraded) {
+        const prev = Number(existingRows.find((r) => r.key === `degraded:${s}`)?.value ?? '0');
+        setKv.run(integrationName, `degraded:${s}`, String(prev + 1), now);
+      }
+      // Reset any previously-degraded streams that are healthy this tick.
+      for (const r of existingRows) {
+        if (!degraded.has(r.key.slice('degraded:'.length))) {
+          setKv.run(integrationName, r.key, '0', now);
+        }
+      }
     }
     if (outcome.ingested > 0) {
       setKv.run(integrationName, 'last_ingest_at', now, now);
@@ -151,6 +170,7 @@ async function tickWithRetryAndHeartbeat(
         ok,
         ingested: result?.ingested ?? 0,
         skipReason,
+        degraded: result?.degraded,
       });
       if (!ok && result?.message) {
         log.warn(
