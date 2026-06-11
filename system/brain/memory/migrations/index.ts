@@ -24,6 +24,7 @@ import { migration023 } from './023-events-vec-int8.ts';
 import { migration024 } from './024-alerts.ts';
 import { migration025 } from './025-agent-outcomes.ts';
 import { migration026 } from './026-claim-failures.ts';
+import { migration027 } from './027-profile-generated-at.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -53,6 +54,7 @@ export const allMigrations: Migration[] = [
   migration024,
   migration025,
   migration026,
+  migration027,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

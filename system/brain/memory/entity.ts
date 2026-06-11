@@ -5,6 +5,7 @@ export interface EntityRow {
   type: string;
   canonical_name: string;
   profile: string | null;
+  profile_generated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,18 +67,24 @@ export function upsertEntity(
       .get(name) as EntityRow | undefined);
   if (existing) {
     if (profile && profile !== existing.profile) {
-      db.prepare(`UPDATE entities SET profile = ?, updated_at = datetime('now') WHERE id = ?`).run(
+      db.prepare(
+        `UPDATE entities SET profile = ?, profile_generated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      ).run(profile, existing.id);
+      return {
+        ...existing,
         profile,
-        existing.id,
-      );
-      return { ...existing, profile, updated_at: new Date().toISOString() };
+        profile_generated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
     }
     return existing;
   }
   const info = db
-    .prepare(`
-    INSERT INTO entities (type, canonical_name, profile) VALUES (?, ?, ?)
-  `)
+    .prepare(
+      profile != null
+        ? `INSERT INTO entities (type, canonical_name, profile, profile_generated_at) VALUES (?, ?, ?, datetime('now'))`
+        : `INSERT INTO entities (type, canonical_name, profile) VALUES (?, ?, ?)`,
+    )
     .run(type, name, profile ?? null);
   return db
     .prepare('SELECT * FROM entities WHERE id = ?')

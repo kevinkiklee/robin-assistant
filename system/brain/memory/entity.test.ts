@@ -85,3 +85,85 @@ test('relations: 1-hop traversal returns connected entities', () => {
   assert.deepEqual(names, ['Lisbon', 'Sarah']);
   closeDb(db);
 });
+
+// ── profile_generated_at stamping (Task 9) ────────────────────────────────────
+
+test('upsertEntity: upsert with profile sets profile_generated_at (INSERT path)', () => {
+  const db = freshDb();
+  const ent = upsertEntity(db, 'person', 'Alice', 'Alice is a developer');
+  const row = db.prepare('SELECT profile_generated_at FROM entities WHERE id = ?').get(ent.id) as {
+    profile_generated_at: string | null;
+  };
+  assert.ok(
+    row.profile_generated_at !== null,
+    'profile_generated_at should be set after INSERT with profile',
+  );
+  // Use SQLite datetime comparison to handle format differences.
+  const cmp = db
+    .prepare(`SELECT datetime(?) >= datetime('now', '-5 seconds') AS ok`)
+    .get(row.profile_generated_at) as { ok: number };
+  assert.equal(cmp.ok, 1, `profile_generated_at (${row.profile_generated_at}) should be recent`);
+  closeDb(db);
+});
+
+test('upsertEntity: upsert without profile leaves profile_generated_at NULL (INSERT path)', () => {
+  const db = freshDb();
+  const ent = upsertEntity(db, 'person', 'Bob');
+  const row = db.prepare('SELECT profile_generated_at FROM entities WHERE id = ?').get(ent.id) as {
+    profile_generated_at: string | null;
+  };
+  assert.equal(
+    row.profile_generated_at,
+    null,
+    'profile_generated_at should be NULL when no profile inserted',
+  );
+  closeDb(db);
+});
+
+test('upsertEntity: updating an existing profile re-stamps profile_generated_at (UPDATE path)', () => {
+  const db = freshDb();
+  // Insert with a profile, then manually backdate profile_generated_at to simulate an old write.
+  const ent = upsertEntity(db, 'person', 'Carol', 'old profile');
+  db.prepare(`UPDATE entities SET profile_generated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(
+    ent.id,
+  );
+
+  // Update with a new profile — should re-stamp.
+  upsertEntity(db, 'person', 'Carol', 'new profile');
+  const row = db.prepare('SELECT profile_generated_at FROM entities WHERE id = ?').get(ent.id) as {
+    profile_generated_at: string | null;
+  };
+  assert.ok(
+    row.profile_generated_at !== null,
+    'profile_generated_at should be set after profile update',
+  );
+  // Should be recent (not the 2020 backdate).
+  const cmp = db
+    .prepare(`SELECT datetime(?) >= datetime('now', '-5 seconds') AS ok`)
+    .get(row.profile_generated_at) as { ok: number };
+  assert.equal(
+    cmp.ok,
+    1,
+    `profile_generated_at (${row.profile_generated_at}) should be refreshed after profile update`,
+  );
+  closeDb(db);
+});
+
+test('upsertEntity: same profile does not change profile_generated_at', () => {
+  const db = freshDb();
+  const ent = upsertEntity(db, 'person', 'Dave', 'same profile');
+  db.prepare(`UPDATE entities SET profile_generated_at = '2020-01-01 00:00:00' WHERE id = ?`).run(
+    ent.id,
+  );
+  // Upserting the same profile should NOT trigger an update (existing code guard).
+  upsertEntity(db, 'person', 'Dave', 'same profile');
+  const row = db.prepare('SELECT profile_generated_at FROM entities WHERE id = ?').get(ent.id) as {
+    profile_generated_at: string | null;
+  };
+  assert.equal(
+    row.profile_generated_at,
+    '2020-01-01 00:00:00',
+    'profile_generated_at should be unchanged when profile unchanged',
+  );
+  closeDb(db);
+});

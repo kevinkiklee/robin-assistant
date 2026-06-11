@@ -1162,3 +1162,113 @@ test('dream: claim retry is skipped (no crash) when llm is null', async () => {
   assert.equal(remaining.c, 1, 'the dead letter is left untouched');
   closeDb(db);
 });
+
+// ── profile_generated_at stale-fill (Task 9) ──────────────────────────────────
+
+test('summarizeHotEntities: entity with 40-day-old profile + recent relations is re-summarized when no hot entities', async () => {
+  const db = freshDb();
+
+  // Create an entity with a profile that is 40 days stale.
+  const ent = upsertEntity(db, 'person', 'Eve', 'old stale profile text');
+  db.prepare(
+    `UPDATE entities SET profile_generated_at = datetime('now', '-40 days') WHERE id = ?`,
+  ).run(ent.id);
+
+  // Add a recent relation (within last 7 days) — using two other entities so there's a join target.
+  const place = upsertEntity(db, 'place', 'Berlin');
+  db.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts, source_event_id) VALUES (?, 'visited', ?, datetime('now', '-1 day'), NULL)`,
+  ).run(ent.id, place.id);
+
+  // No entities have >= ENTITY_SUMMARY_MIN_SIGNALS (3) new signals today, so hot = [].
+  const llm = mockLLM('Eve recently visited Berlin and has an updated profile.');
+  // since = 1 hour ago so the newly added relation is NOT in the hot window.
+  const since = new Date(Date.now() - 3600 * 1000).toISOString();
+  const count = await summarizeHotEntities(db, llm, since);
+
+  assert.ok(count >= 1, `expected >=1 re-summarized stale entity, got ${count}`);
+
+  const updated = db
+    .prepare('SELECT profile, profile_generated_at FROM entities WHERE id = ?')
+    .get(ent.id) as {
+    profile: string;
+    profile_generated_at: string | null;
+  };
+  assert.notEqual(updated.profile, 'old stale profile text', 'stale profile should be replaced');
+  assert.ok(
+    updated.profile_generated_at !== null,
+    'profile_generated_at should be set after re-summarize',
+  );
+
+  // profile_generated_at should be recent (not the 40-day-old backdate).
+  const cmp = db
+    .prepare(`SELECT datetime(?) >= datetime('now', '-5 seconds') AS ok`)
+    .get(updated.profile_generated_at) as { ok: number };
+  assert.equal(
+    cmp.ok,
+    1,
+    `profile_generated_at (${updated.profile_generated_at}) should be refreshed`,
+  );
+
+  closeDb(db);
+});
+
+test('summarizeHotEntities: stale entity without recent relations is NOT included in fill', async () => {
+  const db = freshDb();
+
+  // Create an entity with a stale profile but NO recent relations.
+  const ent = upsertEntity(db, 'person', 'Frank', 'old stale profile no recent relations');
+  db.prepare(
+    `UPDATE entities SET profile_generated_at = datetime('now', '-40 days') WHERE id = ?`,
+  ).run(ent.id);
+  // Add an OLD relation (older than 7 days).
+  const place = upsertEntity(db, 'place', 'Oslo');
+  db.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts, source_event_id) VALUES (?, 'visited', ?, datetime('now', '-10 days'), NULL)`,
+  ).run(ent.id, place.id);
+
+  const llm = mockLLM('Frank updated profile.');
+  const since = new Date(Date.now() - 3600 * 1000).toISOString();
+  const count = await summarizeHotEntities(db, llm, since);
+
+  assert.equal(count, 0, 'entity with no recent relations should not be picked up by stale-fill');
+
+  const row = db.prepare('SELECT profile FROM entities WHERE id = ?').get(ent.id) as {
+    profile: string;
+  };
+  assert.equal(row.profile, 'old stale profile no recent relations', 'profile should be unchanged');
+  closeDb(db);
+});
+
+test('summarizeHotEntities: stamps profile_generated_at after hot-entity profile write', async () => {
+  const db = freshDb();
+  const kevin = upsertEntity(db, 'person', 'Kevin2', 'old profile');
+  const lisbon = upsertEntity(db, 'place', 'Lisbon2');
+  const porto = upsertEntity(db, 'place', 'Porto2');
+  const tokyo = upsertEntity(db, 'place', 'Tokyo2');
+  const eventId = insertCapture(db, new Date().toISOString());
+  addRelation(db, kevin.id, 'visited', lisbon.id, eventId);
+  addRelation(db, kevin.id, 'visited', porto.id, eventId);
+  addRelation(db, kevin.id, 'visited', tokyo.id, eventId);
+
+  const llm = mockLLM(
+    'Kevin2 recently visited multiple cities including Lisbon2, Porto2, and Tokyo2.',
+  );
+  const since = new Date(Date.now() - 1000).toISOString();
+  await summarizeHotEntities(db, llm, since);
+
+  const row = db
+    .prepare('SELECT profile_generated_at FROM entities WHERE id = ?')
+    .get(kevin.id) as {
+    profile_generated_at: string | null;
+  };
+  assert.ok(
+    row.profile_generated_at !== null,
+    'profile_generated_at should be set after hot-entity summarize',
+  );
+  const cmp = db
+    .prepare(`SELECT datetime(?) >= datetime('now', '-5 seconds') AS ok`)
+    .get(row.profile_generated_at) as { ok: number };
+  assert.equal(cmp.ok, 1, `profile_generated_at should be recent after hot-entity summarize`);
+  closeDb(db);
+});

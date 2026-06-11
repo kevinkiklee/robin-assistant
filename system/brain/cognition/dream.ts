@@ -501,6 +501,37 @@ export async function summarizeHotEntities(
     signals: number;
   }>;
 
+  // Stale-profile fill: if the hot pass consumed fewer than the budget, fill remaining
+  // slots with entities whose profile is >30 days stale but have recent relation activity
+  // (spec §C4 — regenerate stale profiles under the existing dream budget).
+  const remaining = ENTITY_SUMMARY_MAX_PER_RUN - hot.length;
+  if (remaining > 0) {
+    const hotIds = hot.map((h) => h.id);
+    // Handle the empty-hot edge: IN() with no values is a syntax error in SQLite.
+    const exclusionClause =
+      hotIds.length > 0 ? `AND e.id NOT IN (${hotIds.map(() => '?').join(',')})` : '';
+    const staleHot = db
+      .prepare(`
+        SELECT e.id, e.type, e.canonical_name, COUNT(*) AS signals
+          FROM entities e
+          JOIN relations r ON r.subject_id = e.id OR r.object_id = e.id
+         WHERE e.profile IS NOT NULL
+           AND (e.profile_generated_at IS NULL OR datetime(e.profile_generated_at) < datetime('now','-30 days'))
+           AND datetime(r.ts) >= datetime('now','-7 days')
+           ${exclusionClause}
+         GROUP BY e.id
+         ORDER BY signals DESC
+         LIMIT ?
+      `)
+      .all(...hotIds, remaining) as Array<{
+      id: number;
+      type: string;
+      canonical_name: string;
+      signals: number;
+    }>;
+    hot.push(...staleHot);
+  }
+
   let updated = 0;
   for (const ent of hot) {
     // Pull up to 20 recent relations touching this entity, along with the other side's name.
@@ -547,7 +578,7 @@ export async function summarizeHotEntities(
       const profile = res.text.trim().slice(0, 1000);
       if (profile) {
         db.prepare(
-          `UPDATE entities SET profile = ?, updated_at = datetime('now') WHERE id = ?`,
+          `UPDATE entities SET profile = ?, profile_generated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
         ).run(profile, ent.id);
         updated++;
       }
