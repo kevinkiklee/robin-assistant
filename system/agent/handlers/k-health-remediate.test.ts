@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handler } from './k-health-remediate.ts';
 import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import { handler } from './k-health-remediate.ts';
 import { REGISTRY } from './types.ts';
 
 const ctx = { repoRoot: '/repo', worktree: '/repo/.worktrees/x' };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handler } from './h-dream-enrich.ts';
 import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import { handler } from './h-dream-enrich.ts';
 import { REGISTRY } from './types.ts';
 
 test('H: registers itself under id "H"', () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handler } from './g-gap-fill.ts';
 import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import { handler } from './g-gap-fill.ts';
 import { REGISTRY } from './types.ts';
 
 test('G: registers itself under id "G"', () => {

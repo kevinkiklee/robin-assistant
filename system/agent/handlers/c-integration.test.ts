@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handler } from './c-integration.ts';
 import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import { handler } from './c-integration.ts';
 import { REGISTRY } from './types.ts';
 
 test('C: registers itself under id "C"', () => {

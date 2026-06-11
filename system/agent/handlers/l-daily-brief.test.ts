@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handler } from './l-daily-brief.ts';
 import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import { handler } from './l-daily-brief.ts';
 import { REGISTRY } from './types.ts';
 
 test('L: registers itself under id "L"', () => {

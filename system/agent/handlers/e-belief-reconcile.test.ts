@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handler } from './e-belief-reconcile.ts';
 import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import { handler } from './e-belief-reconcile.ts';
 import { REGISTRY } from './types.ts';
 
 test('E: registers itself under id "E"', () => {
