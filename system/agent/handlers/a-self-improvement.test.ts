@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { denyUnsafe, handler } from './a-self-improvement.ts';
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import { REGISTRY } from './types.ts';
 
 const ctx = { repoRoot: '/repo', worktree: '/repo/.worktrees/x' };
@@ -14,12 +15,13 @@ test('A: build() config — trigger, permissionMode, allowedTools', () => {
   assert.equal(handler.trigger, 'on-demand');
   assert.equal(out.permissionMode, 'acceptEdits');
   assert.deepEqual(out.allowedTools, ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash']);
-  assert.equal(out.maxTurns, 30);
+  assert.equal(out.maxTurns, 32);
   assert.equal(out.timeoutMs, 1_800_000);
   assert.equal(out.maxBudgetUsd, 5);
   assert.equal(out.loadProjectSettings, true);
   assert.equal(out.enableFileCheckpointing, true);
   assert.equal(typeof out.canUseTool, 'function');
+  assert.equal(out.outputFormat, OUTCOME_ENVELOPE_FORMAT);
 });
 
 test('A: build() enables a fail-closed OS sandbox (real write isolation, not just canUseTool)', () => {

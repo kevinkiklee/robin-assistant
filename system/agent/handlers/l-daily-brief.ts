@@ -4,6 +4,7 @@
 // `plan` permission mode keeps the run read-only; the allowlist is all read
 // surfaces (recall + integration reads).
 
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import type { HandlerCtx, HandlerDef } from './types.ts';
 import { register } from './types.ts';
 
@@ -25,7 +26,8 @@ export const handler: HandlerDef = {
       cwd: ctx.repoRoot,
       allowedTools: [...BRIEF_TOOLS],
       permissionMode: 'plan' as const,
-      maxTurns: 20,
+      maxTurns: 22, // was 20: +2 structured-output headroom (spec §B1)
+      outputFormat: OUTCOME_ENVELOPE_FORMAT,
       timeoutMs: 1_800_000,
       maxBudgetUsd: 3,
     };

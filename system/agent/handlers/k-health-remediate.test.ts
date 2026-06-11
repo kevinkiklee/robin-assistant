@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handler } from './k-health-remediate.ts';
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import { REGISTRY } from './types.ts';
 
 const ctx = { repoRoot: '/repo', worktree: '/repo/.worktrees/x' };
@@ -22,12 +23,13 @@ test('K: build() config — trigger, permissionMode, allowedTools', () => {
     'mcp__robin__health',
     'mcp__robin__metrics',
   ]);
-  assert.equal(out.maxTurns, 25);
+  assert.equal(out.maxTurns, 27);
   assert.equal(out.timeoutMs, 1_800_000);
   assert.equal(out.maxBudgetUsd, 4);
   assert.equal(out.loadProjectSettings, true);
   assert.equal(out.enableFileCheckpointing, true);
   assert.equal(typeof out.canUseTool, 'function');
+  assert.equal(out.outputFormat, OUTCOME_ENVELOPE_FORMAT);
 });
 
 test('K: cwd prefers the worktree, falls back to repoRoot', () => {

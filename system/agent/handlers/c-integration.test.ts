@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handler } from './c-integration.ts';
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import { REGISTRY } from './types.ts';
 
 test('C: registers itself under id "C"', () => {
@@ -17,9 +18,10 @@ test('C: build() config — trigger, permissionMode, allowedTools', () => {
     'mcp__robin-extension__linear',
     'mcp__robin-extension__chrome',
   ]);
-  assert.equal(out.maxTurns, 25);
+  assert.equal(out.maxTurns, 27);
   assert.equal(out.timeoutMs, 1_800_000);
   assert.equal(out.maxBudgetUsd, 4);
+  assert.equal(out.outputFormat, OUTCOME_ENVELOPE_FORMAT);
 });
 
 test('C: every allowlisted tool is a robin-extension MCP tool', () => {

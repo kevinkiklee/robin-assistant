@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handler } from './d-kb-curation.ts';
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import { REGISTRY } from './types.ts';
 
 test('D: registers itself under id "D"', () => {
@@ -12,9 +13,10 @@ test('D: build() config — trigger, permissionMode, allowedTools', () => {
   assert.equal(handler.trigger, 'autonomous');
   assert.equal(out.permissionMode, 'acceptEdits');
   assert.deepEqual(out.allowedTools, ['Read', 'Glob', 'Grep', 'Edit']);
-  assert.equal(out.maxTurns, 20);
+  assert.equal(out.maxTurns, 22);
   assert.equal(out.timeoutMs, 1_800_000);
   assert.equal(out.maxBudgetUsd, 3);
+  assert.equal(out.outputFormat, OUTCOME_ENVELOPE_FORMAT);
 });
 
 test('D: cwd is scoped to user-data/content/knowledge under repoRoot', () => {

@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path';
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import type { HandlerCtx, HandlerDef } from './types.ts';
 import { register } from './types.ts';
 
@@ -63,7 +64,8 @@ export const handler: HandlerDef = {
       cwd,
       allowedTools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
       permissionMode: 'acceptEdits' as const,
-      maxTurns: 30,
+      maxTurns: 32, // was 30: +2 structured-output headroom (spec §B1)
+      outputFormat: OUTCOME_ENVELOPE_FORMAT,
       timeoutMs: 1_800_000,
       maxBudgetUsd: 5,
       loadProjectSettings: true,

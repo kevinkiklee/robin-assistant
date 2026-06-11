@@ -5,6 +5,7 @@
 // sharing A's write-isolation safety model (worktree cwd, checkpointing, deny
 // callback).
 
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import { denyUnsafe } from './a-self-improvement.ts';
 import type { HandlerCtx, HandlerDef } from './types.ts';
 import { register } from './types.ts';
@@ -28,7 +29,8 @@ export const handler: HandlerDef = {
         'mcp__robin__metrics',
       ],
       permissionMode: 'acceptEdits' as const,
-      maxTurns: 25,
+      maxTurns: 27, // was 25: +2 structured-output headroom (spec §B1)
+      outputFormat: OUTCOME_ENVELOPE_FORMAT,
       timeoutMs: 1_800_000,
       maxBudgetUsd: 4,
       loadProjectSettings: true,

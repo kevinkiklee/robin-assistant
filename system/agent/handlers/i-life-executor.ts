@@ -10,6 +10,7 @@
 // (watched `robin agent` invocation + `checkOutbound` discretion), NOT here —
 // the handler config is intentionally just a tool-scope + permission mode.
 
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import type { HandlerCtx, HandlerDef } from './types.ts';
 import { register } from './types.ts';
 
@@ -35,7 +36,8 @@ export const handler: HandlerDef = {
       cwd: ctx.repoRoot,
       allowedTools: [...LIFE_TOOLS],
       permissionMode: 'default' as const,
-      maxTurns: 25,
+      maxTurns: 27, // was 25: +2 structured-output headroom (spec §B1)
+      outputFormat: OUTCOME_ENVELOPE_FORMAT,
       timeoutMs: 1_800_000,
       maxBudgetUsd: 5,
     };

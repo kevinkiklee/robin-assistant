@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handler } from './l-daily-brief.ts';
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
 import { REGISTRY } from './types.ts';
 
 test('L: registers itself under id "L"', () => {
@@ -17,7 +18,8 @@ test('L: build() config — trigger, permissionMode, allowedTools', () => {
     'mcp__robin-extension__google_calendar',
     'mcp__robin-extension__linear',
   ]);
-  assert.equal(out.maxTurns, 20);
+  assert.equal(out.maxTurns, 22);
   assert.equal(out.timeoutMs, 1_800_000);
   assert.equal(out.maxBudgetUsd, 3);
+  assert.equal(out.outputFormat, OUTCOME_ENVELOPE_FORMAT);
 });
