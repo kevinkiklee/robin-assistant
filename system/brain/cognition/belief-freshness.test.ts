@@ -184,6 +184,158 @@ test('belief-freshness: maxRequeries cap — only first N stale resolvable heads
   clearBeliefResolvers();
 });
 
+// ---------------------------------------------------------------------------
+// C2 — risk-weighted re-query selection (confidence + over-age + corrections)
+// ---------------------------------------------------------------------------
+
+/** Set the stored confidence of a seeded belief head (payload + column). */
+function setConfidence(db: ReturnType<typeof freshDb>, eventId: number, confidence: number): void {
+  db.prepare(`UPDATE events SET payload = json_set(payload, '$.confidence', ?) WHERE id = ?`).run(
+    confidence,
+    eventId,
+  );
+}
+
+/** Seed N corrections rows on a topic (migration 014 added the topic column). */
+function seedCorrections(db: ReturnType<typeof freshDb>, topic: string, n: number): void {
+  const stmt = db.prepare(`INSERT INTO corrections (what, correction, topic) VALUES (?, ?, ?)`);
+  for (let i = 0; i < n; i++) stmt.run(`what-${topic}-${i}`, `correction-${i}`, topic);
+}
+
+test('belief-freshness: re-queries the highest-risk stale head, not the first enumerated', async () => {
+  clearBeliefResolvers();
+  const db = freshDb();
+  const now = new Date('2026-05-25T12:00:00.000Z');
+
+  // Two stale external heads (TTL 7d). Head A is the SAFER one (high confidence,
+  // barely past TTL, no corrections); head B is the RISKIER one (low confidence,
+  // far past TTL, correction history). Seed B first then A so A is the NEWER row —
+  // recallBelief enumerates ts DESC, so the first-N lottery would pick A.
+  const idB = seedStaleBeliefDaysAgo(db, 'spotify-track-b', 'Track B', 'external', 60, now);
+  setConfidence(db, idB, 0.2);
+  seedCorrections(db, 'spotify-track-b', 2);
+
+  const idA = seedStaleBeliefDaysAgo(db, 'spotify-track-a', 'Track A', 'external', 8, now);
+  setConfidence(db, idA, 0.9);
+
+  // Sanity: A is the newer row (would win a first-N lottery).
+  assert.ok(idA > idB, 'A must be the newer head so the test proves order independence');
+
+  const resolved: string[] = [];
+  registerBeliefResolver('spotify-', async (head) => {
+    resolved.push(head.topic);
+    return { claim: 'Refreshed', confidence: 0.95 };
+  });
+
+  // Single re-query slot: only the riskiest head may take it.
+  const result = await runBeliefFreshness(db, null, { now, maxRequeries: 1 });
+
+  assert.equal(result.scanned, 2);
+  assert.equal(result.stale, 2);
+  assert.equal(result.requeried, 1, 'exactly one head re-queried under the cap');
+  assert.deepEqual(
+    resolved,
+    ['spotify-track-b'],
+    'the riskier head won the slot, not the newer one',
+  );
+  assert.equal(result.flagged, 1, 'the safer head falls through to flagging');
+
+  // The safer head A got a belief.stale flag; the riskier head B did not.
+  const flagged = db
+    .prepare(`SELECT json_extract(payload,'$.topic') AS t FROM events WHERE kind = 'belief.stale'`)
+    .all() as Array<{ t: string }>;
+  assert.deepEqual(
+    flagged.map((r) => r.t),
+    ['spotify-track-a'],
+  );
+
+  closeDb(db);
+  clearBeliefResolvers();
+});
+
+test('belief-freshness: correction history on the topic raises the score and wins the slot', async () => {
+  clearBeliefResolvers();
+  const db = freshDb();
+  const now = new Date('2026-05-25T12:00:00.000Z');
+
+  // Two otherwise-identical stale heads — same confidence, same age, same class.
+  // The ONLY difference is correction history. Seed the corrected head FIRST so
+  // it is the older row and a first-N lottery would pass it over.
+  const idCorrected = seedStaleBeliefDaysAgo(db, 'topic-corrected', 'Claim C', 'external', 10, now);
+  setConfidence(db, idCorrected, 0.5);
+  seedCorrections(db, 'topic-corrected', 3);
+
+  const idClean = seedStaleBeliefDaysAgo(db, 'topic-clean', 'Claim D', 'external', 10, now);
+  setConfidence(db, idClean, 0.5);
+
+  assert.ok(idClean > idCorrected, 'clean head is newer (first-N would pick it)');
+
+  const resolved: string[] = [];
+  registerBeliefResolver('topic-', async (head) => {
+    resolved.push(head.topic);
+    return { claim: 'Refreshed' };
+  });
+
+  const result = await runBeliefFreshness(db, null, { now, maxRequeries: 1 });
+
+  assert.equal(result.requeried, 1);
+  assert.deepEqual(resolved, ['topic-corrected'], 'correction pressure broke the tie');
+
+  closeDb(db);
+  clearBeliefResolvers();
+});
+
+test('belief-freshness: scoring never throws on null confidence or missing correction topic', async () => {
+  clearBeliefResolvers();
+  const db = freshDb();
+  const now = new Date('2026-05-25T12:00:00.000Z');
+
+  // Head with NULL confidence (never set) and zero corrections — scoring must
+  // not throw on the null and the COUNT(*) must return 0, not error.
+  seedStaleBeliefDaysAgo(db, 'spotify-null-conf', 'No confidence', 'external', 10, now);
+  // A correction row whose topic does NOT match any head — must be ignored,
+  // never break the per-topic count.
+  seedCorrections(db, 'unrelated-topic', 1);
+
+  let called = 0;
+  registerBeliefResolver('spotify-', async () => {
+    called++;
+    return { claim: 'Refreshed' };
+  });
+
+  const result = await runBeliefFreshness(db, null, { now, maxRequeries: 5 });
+
+  assert.equal(result.scanned, 1);
+  assert.equal(result.stale, 1);
+  assert.equal(result.requeried, 1);
+  assert.equal(called, 1);
+
+  closeDb(db);
+  clearBeliefResolvers();
+});
+
+test('belief-freshness: resolver-less stale heads are flagged regardless of score', async () => {
+  clearBeliefResolvers();
+  const db = freshDb();
+  const now = new Date('2026-05-25T12:00:00.000Z');
+
+  // No resolver registered at all. Two stale heads of very different risk.
+  const idHigh = seedStaleBeliefDaysAgo(db, 'alpha-high-risk', 'High', 'external', 90, now);
+  setConfidence(db, idHigh, 0.1);
+  seedCorrections(db, 'alpha-high-risk', 3);
+  seedStaleBeliefDaysAgo(db, 'beta-low-risk', 'Low', 'external', 8, now);
+
+  const result = await runBeliefFreshness(db, null, { now, maxRequeries: 5 });
+
+  assert.equal(result.scanned, 2);
+  assert.equal(result.stale, 2);
+  assert.equal(result.requeried, 0, 'no resolvers → nothing re-queried');
+  assert.equal(result.flagged, 2, 'both stale heads flagged regardless of risk score');
+
+  closeDb(db);
+  clearBeliefResolvers();
+});
+
 test('belief-freshness: retracted heads are skipped', async () => {
   clearBeliefResolvers();
   const db = freshDb();

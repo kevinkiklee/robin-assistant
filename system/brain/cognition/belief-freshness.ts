@@ -17,10 +17,10 @@
 
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { BeliefRecord } from '../memory/belief.ts';
-import { believe, recallBelief } from '../memory/belief.ts';
+import { believe, canonicalizeTopic, normalizeTopic, recallBelief } from '../memory/belief.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { ingest } from '../memory/ingest.ts';
-import { ageDaysFrom, isStale } from '../memory/provenance.ts';
+import { ageDaysFrom, FRESHNESS_TTL_DAYS, isStale } from '../memory/provenance.ts';
 
 // Re-export so callers can import the type from this module.
 export type { BeliefRecord };
@@ -65,16 +65,72 @@ export interface BeliefFreshnessResult {
 }
 
 /**
+ * Build a canonical-topic → correction-count map in ONE query per freshness
+ * pass (not one per head). Belief heads are now stored under CANONICAL slugs
+ * (spec §C1), but `corrections.topic` rows may carry non-canonical strings
+ * (negated/modified variants, legacy data). So we load the DISTINCT correction
+ * topics once, canonicalize each, and fold their counts onto the canonical key.
+ * A stale head's correction pressure is then a single map lookup keyed by its
+ * (already-canonical) topic. The corrections table is small (<100 rows), so the
+ * one-pass scan is cheap and deterministic.
+ */
+function buildCorrectionCounts(db: RobinDb): Map<string, number> {
+  const rows = db
+    .prepare(`SELECT topic, COUNT(*) AS n FROM corrections WHERE topic IS NOT NULL GROUP BY topic`)
+    .all() as Array<{ topic: string; n: number }>;
+  const counts = new Map<string, number>();
+  for (const { topic, n } of rows) {
+    const canonical = canonicalizeTopic(normalizeTopic(topic));
+    if (!canonical) continue;
+    counts.set(canonical, (counts.get(canonical) ?? 0) + n);
+  }
+  return counts;
+}
+
+/**
+ * Risk score for a stale head (spec §C2). Three components, each in 0..1, summed:
+ * - **uncertainty** = 1 − stored confidence (null confidence → treated as 0.5).
+ * - **over-age** = how far past the TTL window the head has drifted, normalized
+ *   against 4× its class TTL and clamped to 1. Infinite-TTL classes (first-party)
+ *   never reach this path, but guard anyway → 0.
+ * - **correction pressure** = corrections recorded on the topic, capped at 3 and
+ *   scaled to 0..1, looked up from the pre-built per-pass map (no per-head query).
+ *
+ * Higher = riskier = more deserving of a scarce re-query slot. Deterministic; no
+ * tunables in config. Never throws on null confidence or a topic with no
+ * corrections (map lookup defaults to 0).
+ */
+function riskScore(
+  head: BeliefRecord,
+  ageDays: number,
+  correctionCounts: Map<string, number>,
+): number {
+  const uncertainty = 1 - (head.confidence ?? 0.5);
+  const ttl = FRESHNESS_TTL_DAYS[head.provenance];
+  const overAge = Number.isFinite(ttl) ? Math.min(ageDays / (4 * ttl), 1) : 0;
+  const corrections = correctionCounts.get(head.topic) ?? 0;
+  return uncertainty + overAge + Math.min(corrections, 3) / 3;
+}
+
+/**
  * Run the nightly belief freshness pass.
  *
- * For each live belief head:
- * 1. Compute age from `verifiedAt` (or `ts` as fallback).
- * 2. Skip non-stale heads.
- * 3. For stale heads, try a registered resolver first (bounded by maxRequeries).
+ * Two phases (spec §C2):
+ * 1. **Collect** — scan every live belief head, compute age from `verifiedAt`
+ *    (or `ts` as fallback), and gather the stale ones. Non-stale heads are
+ *    skipped. `scanned`/`stale` accounting happens here.
+ * 2. **Act** — score every stale head (uncertainty + over-age + correction
+ *    history), then spend the scarce `maxRequeries` re-query budget on the
+ *    HIGHEST-risk resolver-bearing heads first (not the first N enumerated).
+ *    Each acted-on head:
  *    - Resolver returns a refresh → write a re-confirmation belief superseding
  *      the current head; requeried++.
- *    - Resolver returns null, no resolver exists, or cap is reached → raise an
- *      idempotent `belief.stale` flag event; flagged++.
+ *    - Resolver returns null, no resolver exists, or the cap is reached → raise
+ *      an idempotent `belief.stale` flag event; flagged++.
+ *
+ * Same `maxRequeries` spend as the prior first-N selection — same cost, better
+ * targets. Per-head processing stays inside its own try/catch so one bad head
+ * cannot sink the run.
  */
 export async function runBeliefFreshness(
   db: RobinDb,
@@ -98,6 +154,8 @@ export async function runBeliefFreshness(
   // Normalise: recallBelief returns BeliefRecord | BeliefRecord[] | null depending on opts.
   const heads: BeliefRecord[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
 
+  // --- Phase 1: collect every stale head (enumerate order, unchanged). ---
+  const staleHeads: Array<{ head: BeliefRecord; age: number }> = [];
   for (const head of heads) {
     // Skip retracted beliefs — they are intentionally invalidated.
     if (head.retracted) continue;
@@ -109,10 +167,39 @@ export async function runBeliefFreshness(
     if (!isStale(age, head.provenance)) continue;
 
     result.stale++;
+    staleHeads.push({ head, age });
+  }
 
-    // Try resolver path first.
-    const resolver = findResolver(head.topic);
+  // --- Phase 2: score, then spend the re-query budget on the riskiest heads. ---
+  // One corrections query per pass (not per head); folds non-canonical correction
+  // topics onto canonical keys so a head's score sees its full correction history.
+  const correctionCounts = buildCorrectionCounts(db);
 
+  // Partition into resolver-bearing (compete for the scarce re-query slots) and
+  // resolver-less (always fall straight to flagging). Sort the resolver-bearing
+  // by risk descending so the highest-risk stale heads claim the slots first;
+  // resolver-less heads keep enumerate order (their order is immaterial — every
+  // one is flagged). Stable scoring: each head scored exactly once.
+  const withResolver: Array<{ head: BeliefRecord; age: number; resolver: BeliefResolver }> = [];
+  const withoutResolver: Array<{ head: BeliefRecord; age: number }> = [];
+  for (const entry of staleHeads) {
+    const resolver = findResolver(entry.head.topic);
+    if (resolver) withResolver.push({ ...entry, resolver });
+    else withoutResolver.push(entry);
+  }
+  withResolver.sort(
+    (a, b) =>
+      riskScore(b.head, b.age, correctionCounts) - riskScore(a.head, a.age, correctionCounts),
+  );
+
+  // Process resolver-bearing heads in risk order, then resolver-less heads. The
+  // per-head body below is unchanged from the prior single-pass version; only the
+  // iteration order and slot allocation differ.
+  for (const { head, age, resolver } of [
+    ...withResolver,
+    ...withoutResolver.map((e) => ({ ...e, resolver: undefined as BeliefResolver | undefined })),
+  ]) {
+    // Try resolver path first (bounded by the re-query cap).
     if (resolver && result.requeried < maxRequeries) {
       try {
         const refresh = await resolver(head);
