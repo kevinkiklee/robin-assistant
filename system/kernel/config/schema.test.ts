@@ -37,3 +37,24 @@ test('policiesSchema: still applies the other block defaults', () => {
   assert.equal(p.power.state, 'active');
   assert.equal(p.notifications.health, true);
 });
+
+test('policiesSchema: defaults alerts.staleness to {} when the block is absent', () => {
+  // Existing policies.yaml files have no `alerts` key — they must still parse,
+  // with an empty staleness map (no per-integration overrides).
+  const p = policiesSchema.parse({});
+  assert.deepEqual(p.alerts.staleness, {});
+});
+
+test('policiesSchema: keeps per-integration staleness overrides', () => {
+  const p = policiesSchema.parse({
+    alerts: {
+      staleness: {
+        whoop: { exempt: true },
+        spotify: { warn_multiplier: 5, critical_multiplier: 20 },
+      },
+    },
+  });
+  assert.equal(p.alerts.staleness.whoop.exempt, true);
+  assert.equal(p.alerts.staleness.spotify.warn_multiplier, 5);
+  assert.equal(p.alerts.staleness.spotify.critical_multiplier, 20);
+});

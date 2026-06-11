@@ -316,6 +316,73 @@ test('scheduler-glue: heartbeat writes last_ok_at on ok ticks only', async () =>
   closeDb(db);
 });
 
+test('scheduler-glue: consecutive_skips increments on skip, resets on ok, unchanged on error', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-skips-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-skips-user-'));
+
+  const dir = join(userRoot, 'skip-probe');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: skip-probe\nversion: 1.0.0\nschedule: manual\n',
+  );
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => globalThis.__skipProbeResult };\n`,
+  );
+
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  const tickHandler = handlers['integration.skip-probe.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getState = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'skip-probe' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  const setResult = (r: unknown) => {
+    (globalThis as unknown as Record<string, unknown>).__skipProbeResult = r;
+  };
+
+  // --- first skip: consecutive_skips → '1' ---
+  setResult({ status: 'skipped', message: 'no creds' });
+  await tickHandler();
+  assert.equal(getState('consecutive_skips'), '1', 'first skip → 1');
+
+  // --- second skip: consecutive_skips → '2' ---
+  setResult({ status: 'skipped', message: 'no creds' });
+  await tickHandler();
+  assert.equal(getState('consecutive_skips'), '2', 'second skip → 2');
+
+  // --- error tick: consecutive_skips unchanged ---
+  setResult({ status: 'error', message: 'boom' });
+  await tickHandler();
+  assert.equal(getState('consecutive_skips'), '2', 'error leaves skip streak unchanged');
+
+  // --- ok tick: consecutive_skips reset to '0' ---
+  setResult({ status: 'ok', ingested: 0 });
+  await tickHandler();
+  assert.equal(getState('consecutive_skips'), '0', 'clean ok resets skip streak');
+
+  closeDb(db);
+});
+
 test('scheduler-glue: multi-instance integrations get distinct handler + cron names', async () => {
   const db = freshDb();
   const sysRoot = mkdtempSync(join(tmpdir(), 'robin-multi-glue-sys-'));

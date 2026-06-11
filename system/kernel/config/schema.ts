@@ -38,6 +38,28 @@ export const networkSchema = z.object({
   on_metered: z.enum(['online', 'local-only', 'offline']).optional(),
 });
 
+// Per-integration staleness alerting overrides for the integration-staleness
+// invariant. `exempt` silences an integration entirely (e.g. one that legitimately
+// has no fresh data for long stretches). The multipliers scale how many nominal
+// cadences must pass with no successful tick before warn / critical fire; the
+// invariant applies the defaults (3× / 10×) when a field is absent. Keyed by
+// integration instance name. Default {} so existing policies.yaml without an
+// alerts block still parses.
+export const alertsPolicySchema = z
+  .object({
+    staleness: z
+      .record(
+        z.string(),
+        z.object({
+          exempt: z.boolean().optional(),
+          warn_multiplier: z.number().positive().optional(), // default 3 applied in invariant
+          critical_multiplier: z.number().positive().optional(), // default 10 applied in invariant
+        }),
+      )
+      .default({}),
+  })
+  .default({ staleness: {} });
+
 // Notifications surface here are operational, not content — daemon-unhealthy alerts,
 // critical invariant failures, things the daemon couldn't recover from on its own.
 // User-facing reminders / journal pings live elsewhere (the daily-brief job, etc.).
@@ -100,6 +122,7 @@ export const policiesSchema = z
     power: powerSchema.optional(),
     capture: captureSchema.optional(),
     network: networkSchema.optional(),
+    alerts: alertsPolicySchema.optional(),
     notifications: notificationsSchema.optional(),
     linear: linearConfigSchema.optional(),
     biographer: biographerConfigSchema.optional(),
@@ -109,6 +132,7 @@ export const policiesSchema = z
     power: powerSchema.parse(data.power ?? {}),
     capture: captureSchema.parse(data.capture ?? {}),
     network: networkSchema.parse(data.network ?? {}),
+    alerts: alertsPolicySchema.parse(data.alerts ?? {}),
     notifications: notificationsSchema.parse(data.notifications ?? {}),
     linear: linearConfigSchema.parse(data.linear ?? {}),
     biographer: biographerConfigSchema.parse(data.biographer ?? {}),

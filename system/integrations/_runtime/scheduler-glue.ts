@@ -73,7 +73,23 @@ function writeHeartbeat(
   setKv.run(integrationName, 'last_attempt_at', now, now);
   if (outcome.ok) {
     setKv.run(integrationName, 'consecutive_errors', '0', now);
-    if (!outcome.skipReason) {
+    if (outcome.skipReason) {
+      // Skip-streak counter, mirroring consecutive_errors: a back-to-back run of
+      // skips ("secrets missing", "auth revoked") is its own unhealthy state the
+      // staleness invariant fires on, distinct from an error streak. Increments on
+      // every skip, resets to '0' on a clean ok tick below; errors leave it alone.
+      const priorSkips = Number(
+        (
+          db
+            .prepare(
+              `SELECT value FROM integration_state WHERE integration_name = ? AND key = 'consecutive_skips'`,
+            )
+            .get(integrationName) as { value?: string } | undefined
+        )?.value ?? '0',
+      );
+      setKv.run(integrationName, 'consecutive_skips', String(priorSkips + 1), now);
+    } else {
+      setKv.run(integrationName, 'consecutive_skips', '0', now);
       setKv.run(integrationName, 'last_ok_at', now, now);
     }
     if (outcome.ingested > 0) {
