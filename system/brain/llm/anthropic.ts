@@ -13,9 +13,10 @@ export interface AnthropicProviderConfig {
   sleep?: (ms: number) => Promise<void>;
 }
 
-// Fable 5 list pricing, USD per million tokens.
-const DEFAULT_INPUT_PRICE = 10.0;
-const DEFAULT_OUTPUT_PRICE = 50.0;
+// Opus 4.8 list pricing, USD per million tokens (matches the default model
+// below — override via cfg.meta if a role pins a different model).
+const DEFAULT_INPUT_PRICE = 5.0;
+const DEFAULT_OUTPUT_PRICE = 25.0;
 // Anthropic bills cache reads at 10% of the base input rate.
 const CACHE_READ_MULTIPLIER = 0.1;
 // Anthropic requires max_tokens; bound it so a runaway generation can't rack up cost.
@@ -50,7 +51,7 @@ export class AnthropicProvider implements LLMProvider {
 
   constructor(cfg: AnthropicProviderConfig) {
     this.apiKey = cfg.apiKey;
-    this.model = cfg.model ?? 'claude-fable-5';
+    this.model = cfg.model ?? 'claude-opus-4-8';
     this.defaultMaxTokens = cfg.maxTokens ?? DEFAULT_MAX_TOKENS;
     this.maxRetries = cfg.maxRetries ?? 4;
     this.sleep = cfg.sleep ?? defaultSleep;

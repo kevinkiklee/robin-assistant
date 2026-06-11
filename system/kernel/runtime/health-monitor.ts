@@ -96,8 +96,8 @@ export class HealthMonitor {
           // SDK) boots the full Claude Code runtime per call, adding ~20-40s of
           // subprocess overhead vs a direct REST provider. A 5-min ceiling trips
           // on normal biographer ticks (~5:20). 7 min gives headroom without
-          // hiding a genuinely stuck scheduler. Reverts to 5 min when reasoning
-          // cuts back to Gemini (direct REST) on 2026-06-15.
+          // hiding a genuinely stuck scheduler. Permanent now that reasoning is
+          // Claude-only (the 2026-06-15 Gemini cutback was cancelled 2026-06-10).
           maxIntervalMs: 7 * 60_000,
         }),
       ]);

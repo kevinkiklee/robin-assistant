@@ -15,8 +15,9 @@ function resolveSecret(env: NodeJS.ProcessEnv, key?: string): string {
 }
 
 // Supported providers:
-// - google: cloud, the daemon's default reasoning + embedding path (2026-05-24).
-// - anthropic: cloud, the summarize/complex-cognition path (Claude Opus).
+// - google: cloud, EMBEDDINGS ONLY (Gemini Embedding 2 → events_vec). The chat
+//   path was removed 2026-06-10 (Claude-only policy) — GoogleProvider.invoke throws.
+// - anthropic: cloud, metered Claude API (Opus 4.8 default).
 // - ollama: local. Adapter kept in place for swap-back, but no role routes to it
 //   post-cloud-migration (Ollama uninstalled from disk 2026-05-24; reinstall +
 //   repoint models.yaml to revert).
@@ -47,13 +48,11 @@ function build(name: string, cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
     case 'google':
       return new GoogleProvider({
         apiKey: resolveSecret(env, cfg.apiKeyEnv ?? 'GEMINI_API_KEY'),
-        model: cfg.model,
-        // For the embed role, cfg.model is the embedding model; carry it into
-        // embedModel too so a google-embed role resolves correctly. embedDims
+        // Embed-only: cfg.model is the embedding model for an embed role; accept
+        // either field so existing models.yaml shapes keep working. embedDims
         // sizes the vector to match the events_vec schema (migration 010 = 3072).
         embedModel: cfg.embedModel ?? cfg.model,
         embedDims: cfg.embedDims,
-        maxTokens: cfg.maxTokens,
       });
     case 'deepseek':
       return new DeepSeekProvider({

@@ -55,11 +55,13 @@ export interface RunAgentDeps {
 
 const EMPTY_USAGE = { inputTokens: 0, outputTokens: 0 } as const;
 
-// Agentic runs default to Fable 5 — long-horizon quality is worth the latency
-// for goal-directed multi-turn work. ROBIN_AGENT_MODEL is the no-rebuild escape
-// hatch if Fable latency starts breaking turn/time caps. A caller-specified
+// Agentic runs default to Opus 4.8. Fable 5 was the default 2026-06-09/10 but
+// at 2× the price ($10/$50 vs $5/$25 per MTok) it drained the subscription pool
+// too fast for the high-volume autonomous handlers — reverted 2026-06-10. Fable
+// is reserved for the low-volume nightly dream synthesis (models.yaml summarize
+// role). ROBIN_AGENT_MODEL is the no-rebuild escape hatch; a caller-specified
 // `input.model` always wins over both.
-const DEFAULT_AGENT_MODEL = 'claude-fable-5';
+const DEFAULT_AGENT_MODEL = 'claude-opus-4-8';
 
 function resolveModel(callerModel?: string): string {
   return callerModel ?? process.env.ROBIN_AGENT_MODEL ?? DEFAULT_AGENT_MODEL;

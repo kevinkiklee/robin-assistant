@@ -203,7 +203,8 @@ test('runAgent: caller-specified model wins over env + default', async () => {
 
 test('runAgent: ROBIN_AGENT_MODEL is used when the caller omits model', async () => {
   const { ledger: led } = ledger();
-  process.env.ROBIN_AGENT_MODEL = 'claude-opus-4-8';
+  // Must differ from DEFAULT_AGENT_MODEL or this test can't tell env from default.
+  process.env.ROBIN_AGENT_MODEL = 'claude-fable-5';
   try {
     let seenModel: string | undefined;
     await runAgent(baseInput(), {
@@ -215,13 +216,13 @@ test('runAgent: ROBIN_AGENT_MODEL is used when the caller omits model', async ()
         return okResult;
       },
     });
-    assert.equal(seenModel, 'claude-opus-4-8');
+    assert.equal(seenModel, 'claude-fable-5');
   } finally {
     delete process.env.ROBIN_AGENT_MODEL;
   }
 });
 
-test('runAgent: defaults to claude-fable-5 when neither caller model nor env is set', async () => {
+test('runAgent: defaults to claude-opus-4-8 when neither caller model nor env is set', async () => {
   const { ledger: led } = ledger();
   delete process.env.ROBIN_AGENT_MODEL;
   let seenModel: string | undefined;
@@ -234,7 +235,7 @@ test('runAgent: defaults to claude-fable-5 when neither caller model nor env is 
       return okResult;
     },
   });
-  assert.equal(seenModel, 'claude-fable-5');
+  assert.equal(seenModel, 'claude-opus-4-8');
 });
 
 test('runAgent: forwards canUseTool + tool/permission options to the sdk', async () => {
