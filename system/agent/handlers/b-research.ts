@@ -3,8 +3,13 @@ import type { HandlerCtx, HandlerDef } from './types.ts';
 import { register } from './types.ts';
 
 /**
- * B — Deep research (autonomous, read-only). Web + Read only, `plan` permission
- * mode so the run can never write. Returns a synthesized brief for ingestion.
+ * B — Deep research (autonomous). Web + Read, plus exactly ONE write surface:
+ * the `ingest` MCP action, so research briefs land in memory as events instead
+ * of dying in stderr (spec §B3, deliberate permission change — ingested briefs
+ * flow through the normal biographer/hygiene pipeline, never directly into
+ * beliefs). NOT plan mode: the SDK evaluates plan mode before allowedTools, so
+ * an allowlisted MCP write tool is still blocked there; `default` mode with all
+ * write builtins denied gives the same read-only guarantee structurally.
  */
 export const handler: HandlerDef = {
   id: 'B',
@@ -13,14 +18,14 @@ export const handler: HandlerDef = {
   build(goal: string, ctx: HandlerCtx) {
     return {
       goal,
-      // No repo write surface — `plan` mode keeps it read-only regardless.
       cwd: ctx.repoRoot,
-      allowedTools: ['WebSearch', 'WebFetch', 'Read'],
-      permissionMode: 'plan' as const,
+      allowedTools: ['WebSearch', 'WebFetch', 'Read', 'mcp__robin-extension__ingest'],
+      disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'KillBash'],
+      permissionMode: 'default' as const,
       maxTurns: 22, // was 20: +2 structured-output headroom (spec §B1)
-      outputFormat: OUTCOME_ENVELOPE_FORMAT,
       timeoutMs: 1_800_000,
       maxBudgetUsd: 3,
+      outputFormat: OUTCOME_ENVELOPE_FORMAT,
     };
   },
 };

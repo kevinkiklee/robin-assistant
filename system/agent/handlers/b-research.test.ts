@@ -8,11 +8,25 @@ test('B: registers itself under id "B"', () => {
   assert.equal(REGISTRY.B, handler);
 });
 
-test('B: build() config — trigger, permissionMode, allowedTools', () => {
+test('B: build() config — read-only except the ingest MCP action', () => {
   const out = handler.build('research SQLite WAL', { repoRoot: '/repo' });
   assert.equal(handler.trigger, 'autonomous');
-  assert.equal(out.permissionMode, 'plan');
-  assert.deepEqual(out.allowedTools, ['WebSearch', 'WebFetch', 'Read']);
+  assert.equal(out.permissionMode, 'default');
+  assert.deepEqual(out.allowedTools, [
+    'WebSearch',
+    'WebFetch',
+    'Read',
+    'mcp__robin-extension__ingest',
+  ]);
+  // Structurally read-only: every write builtin is denied (allowedTools does not gate builtins).
+  assert.deepEqual(out.disallowedTools, [
+    'Write',
+    'Edit',
+    'MultiEdit',
+    'NotebookEdit',
+    'Bash',
+    'KillBash',
+  ]);
   assert.equal(out.cwd, '/repo');
   assert.equal(out.maxTurns, 22);
   assert.equal(out.timeoutMs, 1_800_000);

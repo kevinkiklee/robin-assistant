@@ -76,6 +76,7 @@ test('runRunnerEntry: runs an autonomous handler with the autonomous surface + c
     repoRoot: '/repo',
     log: () => {},
     openLedger: fakeLedger,
+    mcpServers: fakeMcpServers,
     runAgent: async (input, deps) => {
       captured = { input, cap: deps.cap };
       return okResult;
@@ -85,11 +86,13 @@ test('runRunnerEntry: runs an autonomous handler with the autonomous surface + c
   assert.equal(r.exitCode, 0);
   assert.equal(captured.input?.surface, 'agentic-autonomous');
   assert.equal(captured.cap, 25, 'cap must be agentic_autonomous_daily_usd');
-  // The handler's own build() ran — B is read-only research (plan mode).
-  assert.equal(captured.input?.permissionMode, 'plan');
+  // The handler's own build() ran — B is default mode (not plan; see b-research.ts).
+  assert.equal(captured.input?.permissionMode, 'default');
   assert.ok((captured.input?.goal.length ?? 0) > 0, 'a default goal should be supplied');
-  // B's allowlist is built-in tools only (WebSearch/WebFetch/Read) → no MCP servers.
-  assert.deepEqual(captured.input?.mcpServers, {});
+  // B's allowlist includes mcp__robin-extension__ingest → robin-extension server is wired in.
+  assert.deepEqual(captured.input?.mcpServers, {
+    'robin-extension': { type: 'stdio', command: '/r', args: ['mcp', 'extension'] },
+  });
 });
 
 test('runRunnerEntry: --goal overrides the default goal', async () => {
@@ -99,6 +102,7 @@ test('runRunnerEntry: --goal overrides the default goal', async () => {
     repoRoot: '/repo',
     log: () => {},
     openLedger: fakeLedger,
+    mcpServers: fakeMcpServers,
     runAgent: async (input) => {
       goal = input.goal;
       return okResult;
@@ -179,6 +183,7 @@ test('runRunnerEntry: non-success run exits 1', async () => {
     repoRoot: '/repo',
     log: () => {},
     openLedger: fakeLedger,
+    mcpServers: fakeMcpServers,
     runAgent: async () => ({ ...okResult, status: 'error', summary: 'boom' }),
   });
   assert.equal(r.status, 'error');
