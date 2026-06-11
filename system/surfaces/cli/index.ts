@@ -35,6 +35,7 @@ Run \`robin help --all\` for advanced + maintenance commands.`;
 ADVANCED
   agent "<goal>"        Run a guarded agentic task (--handler=A..L | --write, --cwd=, --max-turns=, --budget=, --force)
   beliefs review        Manage the belief-candidate queue (promote <id> | reject <id> | backfill-provenance)
+  beliefs canonicalize [--apply]   Collapse duplicate belief heads onto canonical topics (dry-run default)
   publish / published   Publish a markdown file to the web / list published pages
   import <dir>          Import NDJSON dumps from content/imported-from-<source>/
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
@@ -92,7 +93,8 @@ async function main(): Promise<void> {
     case 'beliefs': {
       const sub = args[1];
       const beliefs = await import('./beliefs.ts');
-      const { runBeliefsReview, runBeliefsPromote, runBeliefsReject } = beliefs;
+      const { runBeliefsReview, runBeliefsPromote, runBeliefsReject, runBeliefsCanonicalizeCmd } =
+        beliefs;
       const limitFlag = extractFlag(args, '--limit=');
       const reason = extractFlag(args, '--reason=');
       const statusFlag = extractFlag(args, '--status=');
@@ -119,6 +121,15 @@ async function main(): Promise<void> {
         try {
           if (sub === 'promote') runBeliefsPromote(id, opts);
           else runBeliefsReject(id, opts);
+          exit(0);
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          exit(1);
+        }
+      }
+      if (sub === 'canonicalize') {
+        try {
+          runBeliefsCanonicalizeCmd({ apply: args.includes('--apply') });
           exit(0);
         } catch (err) {
           console.error(err instanceof Error ? err.message : String(err));

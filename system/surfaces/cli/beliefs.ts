@@ -5,7 +5,12 @@ import {
   listBeliefCandidates,
   resolveBeliefCandidate,
 } from '../../brain/memory/belief-candidate.ts';
+import {
+  type CanonicalizeResult,
+  canonicalizeBeliefHeads,
+} from '../../brain/memory/canonicalize-heads.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
+import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
@@ -101,6 +106,41 @@ export function runBeliefsReject(id: number, opts: BeliefsCliOptions = {}): void
   try {
     const r = resolveBeliefCandidate(db, llm, id, 'reject', opts.reason);
     console.log(`Rejected candidate #${r.candidateId}.`);
+  } finally {
+    closeDb(db);
+  }
+}
+
+/**
+ * `robin beliefs canonicalize [--apply]` — collapse duplicate belief heads onto
+ * canonical topics. Dry-run by default (prints the decision table); `--apply`
+ * executes the merge, writing retraction events under non-canonical slugs and an
+ * audit event per group decision.
+ */
+export function runBeliefsCanonicalizeCmd(opts: { apply?: boolean } = {}): void {
+  const userData = resolveUserDataDir();
+  const db: RobinDb = openDb(dbFilePath(userData));
+  applyMigrations(db, allMigrations);
+  const llm = buildLlm(userData);
+  try {
+    const result: CanonicalizeResult = canonicalizeBeliefHeads(db, llm, { apply: opts.apply });
+    /* biome-ignore-start lint/suspicious/noConsole: CLI output */
+    if (result.decisions.length === 0) {
+      console.log('No duplicate belief-head groups found — nothing to canonicalize.');
+    } else {
+      const mode = opts.apply ? 'Applied' : 'Dry-run';
+      console.log(
+        `${mode}: ${result.groups} group(s), ${result.merged} merged, ${result.skipped} skipped-dissimilar\n`,
+      );
+      for (const d of result.decisions) {
+        const arrow = d.decision === 'merged' ? '←' : '~ (dissimilar)';
+        console.log(`  ${d.canonical} ${arrow} [${d.topics.join(', ')}]`);
+      }
+      if (!opts.apply && result.merged > 0) {
+        console.log(`\nRun with --apply to execute the merge.`);
+      }
+    }
+    /* biome-ignore-end lint/suspicious/noConsole: CLI output */
   } finally {
     closeDb(db);
   }
