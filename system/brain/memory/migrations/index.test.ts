@@ -137,14 +137,18 @@ test('migration 011: agent_usage table + ts index exist', () => {
   assert.deepEqual(colNames, [
     'cost_usd',
     'id',
+    'impact',
     'input_tokens',
     'label',
+    'outcome',
     'output_tokens',
     'status',
+    'structured_json',
     'subtype',
     'surface',
     'ts',
     'turns',
+    'verified',
   ]);
 
   const idx = db

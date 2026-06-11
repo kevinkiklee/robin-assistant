@@ -22,6 +22,7 @@ import { migration021 } from './021-dedup-vectors.ts';
 import { migration022 } from './022-purge-hook-receipts.ts';
 import { migration023 } from './023-events-vec-int8.ts';
 import { migration024 } from './024-alerts.ts';
+import { migration025 } from './025-agent-outcomes.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -49,6 +50,7 @@ export const allMigrations: Migration[] = [
   migration022,
   migration023,
   migration024,
+  migration025,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';
