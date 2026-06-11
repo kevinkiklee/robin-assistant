@@ -3,11 +3,20 @@ import { latestLearningDigest } from '../brain/cognition/dream.ts';
 import { closeDb, openDb, type RobinDb } from '../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../brain/memory/migrations/index.ts';
 import { loadPolicies } from '../kernel/config/load.ts';
+import { recordAlert } from '../kernel/runtime/alert-store.ts';
 import { dbFilePath, resolveUserDataDir } from '../lib/paths.ts';
 import { REGISTRY } from './handlers/index.ts';
+import { writeLearningRecord } from './learning-record.ts';
 import { mcpServersForRun } from './mcp-servers.ts';
+import { parseOutcomeEnvelope } from './outcome.ts';
 import { type RunAgentInput, type RunAgentResult, runAgent } from './run-agent.ts';
 import { UsageLedger } from './usage-ledger.ts';
+import { verifyOutcome } from './verifiers.ts';
+import {
+  createWorktree as realCreateWorktree,
+  pruneWorktree as realPruneWorktree,
+  worktreeHasChanges as realWorktreeHasChanges,
+} from './worktree.ts';
 
 /**
  * Default goal prompt per autonomous handler. The detached runner has no caller
@@ -50,10 +59,15 @@ export interface RunnerEntryDeps {
   repoRoot?: string;
   now?: () => Date;
   log?: (msg: string) => void;
-  /** Open + migrate the ledger DB. Injected by tests to avoid the real DB. */
-  openLedger?: (userDataDir: string) => { ledger: UsageLedger; close: () => void };
+  /** Open + migrate the ledger DB. Injected by tests to avoid the real DB. The
+   * same `db` handle backs the learning digest, verifiers, and alert store. */
+  openLedger?: (userDataDir: string) => { ledger: UsageLedger; db: RobinDb; close: () => void };
   /** Resolve the handler's Robin MCP servers. Injected by tests to skip the build. */
   mcpServers?: typeof mcpServersForRun;
+  /** Skip real git: injected by tests so worktree calls don't hit the filesystem. */
+  createWorktree?: typeof realCreateWorktree;
+  pruneWorktree?: typeof realPruneWorktree;
+  worktreeHasChanges?: typeof realWorktreeHasChanges;
 }
 
 export interface RunnerEntryResult {
@@ -62,12 +76,17 @@ export interface RunnerEntryResult {
   exitCode: number;
 }
 
-function defaultOpenLedger(userDataDir: string): { ledger: UsageLedger; close: () => void } {
+function defaultOpenLedger(userDataDir: string): {
+  ledger: UsageLedger;
+  db: RobinDb;
+  close: () => void;
+} {
   const db: RobinDb = openDb(dbFilePath(userDataDir));
-  // Idempotent: ensures `agent_usage` (migration 011) exists for a bare runner
-  // invocation even if the daemon hasn't applied migrations in this process.
+  // Idempotent: ensures `agent_usage` (migration 011) + outcome columns (025) +
+  // `alerts` (024) exist for a bare runner invocation even if the daemon hasn't
+  // applied migrations in this process.
   applyMigrations(db, allMigrations);
-  return { ledger: new UsageLedger(db), close: () => closeDb(db) };
+  return { ledger: new UsageLedger(db), db, close: () => closeDb(db) };
 }
 
 /**
@@ -114,55 +133,163 @@ export async function runRunnerEntry(
   }
 
   const cap = loadPolicies(userDataDir).agent.caps.agentic_autonomous_daily_usd;
-  const { ledger, close } = openLedger(userDataDir);
-
-  // Inject the latest learning digest so the handler knows Robin's current
-  // performance state: calibration, belief lifecycle, recent corrections, and
-  // any failed runs. This closes the feedback loop — handlers no longer start
-  // from scratch each time.
-  const baseGoal = parsed.goal ?? DEFAULT_GOALS[def.id] ?? `Run autonomous handler ${def.id}.`;
-  let digest: string | null = null;
+  const mkWorktree = deps.createWorktree ?? realCreateWorktree;
+  const rmWorktree = deps.pruneWorktree ?? realPruneWorktree;
+  const hasChanges = deps.worktreeHasChanges ?? realWorktreeHasChanges;
+  // One handle for the whole run: ledger writes, learning digest, deterministic
+  // verifiers, and the mismatch alert all share it. Closed once in the finally.
+  const { ledger, db, close } = openLedger(userDataDir);
   try {
-    const db: RobinDb = openDb(dbFilePath(userDataDir));
+    // Inject the latest learning digest so the handler knows Robin's current
+    // performance state: calibration, belief lifecycle, recent corrections, and
+    // any failed runs. This closes the feedback loop — handlers no longer start
+    // from scratch each time. A digest failure degrades gracefully.
+    const baseGoal = parsed.goal ?? DEFAULT_GOALS[def.id] ?? `Run autonomous handler ${def.id}.`;
+    let digest: string | null = null;
     try {
       digest = latestLearningDigest(db);
-    } finally {
-      closeDb(db);
+    } catch {
+      // Digest unavailable — handler runs without it.
     }
-  } catch {
-    // Digest unavailable — degrade gracefully, handler runs without it.
-  }
-  const goal = digest
-    ? `${baseGoal}\n\n--- ROBIN LEARNING DIGEST (your current state) ---\n${digest}`
-    : baseGoal;
-  const built = def.build(goal, { repoRoot });
-  // Give the run Robin's own MCP servers for any mcp__robin__* / mcp__robin-extension__*
-  // tool in the handler's allowlist; built-in-only handlers get an empty map.
-  const mcpServers = buildMcpServers(built.allowedTools, { repoRoot, userDataDir });
-  const input: RunAgentInput = { ...built, surface: 'agentic-autonomous', mcpServers };
+    const goal = digest
+      ? `${baseGoal}\n\n--- ROBIN LEARNING DIGEST (your current state) ---\n${digest}`
+      : baseGoal;
 
-  let result: RunAgentResult;
-  try {
-    result = await run(input, {
+    // Write handlers whose cwd is the repo root edit code — isolate them in a
+    // throwaway worktree exactly like `robin agent` does (spec §B3: K's verifier
+    // is "worktree branch exists with a diff"). D/G write only to the gitignored
+    // knowledge dir (cwd != repoRoot) and need no worktree. build() output config
+    // is independent of goal content, so the baseGoal probe is sufficient.
+    const probe = def.build(baseGoal, { repoRoot });
+    let worktree: string | undefined;
+    let branch: string | undefined;
+    if (probe.permissionMode === 'acceptEdits' && probe.cwd === repoRoot) {
+      try {
+        const wt = mkWorktree(repoRoot, now);
+        worktree = wt.worktree;
+        branch = wt.branch;
+        log(`worktree: ${worktree} (branch ${branch})`);
+      } catch (err) {
+        return {
+          status: 'error',
+          message: `failed to create worktree: ${err instanceof Error ? err.message : String(err)}`,
+          exitCode: 1,
+        };
+      }
+    }
+
+    const built = def.build(goal, { repoRoot, ...(worktree ? { worktree } : {}) });
+    // Give the run Robin's own MCP servers for any mcp__robin__* / mcp__robin-extension__*
+    // tool in the handler's allowlist; built-in-only handlers get an empty map.
+    const mcpServers = buildMcpServers(built.allowedTools, { repoRoot, userDataDir });
+    const runStartIso = now().toISOString();
+    const input: RunAgentInput = {
+      ...built,
+      surface: 'agentic-autonomous',
+      mcpServers,
+      label: def.id,
+    };
+
+    const result: RunAgentResult = await run(input, {
       ledger,
       cap,
       transcriptDir: join(userDataDir, 'agent-runs'),
       now,
     });
+
+    log(
+      `handler: ${def.id} (${def.name})  status: ${result.status}  turns: ${result.turns}  cost: $${result.costUsd.toFixed(4)}`,
+    );
+    if (result.summary) log(result.summary);
+
+    // Worktree disposition first (K): keep a branch with changes for review,
+    // prune otherwise. Done before verification so the kept `branch` is reported.
+    if (worktree && branch) {
+      let worktreeChanged = false;
+      try {
+        worktreeChanged = hasChanges(worktree);
+      } catch {
+        worktreeChanged = true; // can't tell → keep for inspection
+      }
+      if (worktreeChanged) {
+        log(`branch ${branch} left for review — diff: git -C ${worktree} diff`);
+      } else {
+        rmWorktree(repoRoot, worktree, branch);
+        branch = undefined;
+      }
+    }
+
+    // Structured outcome → ledger columns (spec §B2). Best-effort: outcome
+    // bookkeeping must never turn a completed run into a failure.
+    const envelope = parseOutcomeEnvelope(result.structured);
+    const outcome = envelope?.outcome ?? 'unparseable';
+    let verified: string | undefined;
+    if (envelope?.outcome === 'did-work') {
+      const v = verifyOutcome(def.id, {
+        db,
+        runStartIso,
+        knowledgeDir: join(userDataDir, 'content', 'knowledge'),
+        ...(worktree ? { worktree } : {}),
+        worktreeHasChanges: hasChanges,
+      });
+      verified = v === 'pass' ? 'verified' : v === 'fail' ? 'outcome-mismatch' : 'unverifiable';
+      if (verified === 'outcome-mismatch') {
+        try {
+          recordAlert(db, {
+            severity: 'warning',
+            source: 'agent-runner',
+            key: `outcome-mismatch:${def.id}`,
+            message: `handler ${def.id} claimed did-work but its verifier found no evidence`,
+          });
+        } catch {
+          // alerting never breaks the runner
+        }
+      }
+    }
+    if (result.ledgerId !== undefined) {
+      try {
+        ledger.recordOutcome(result.ledgerId, {
+          outcome,
+          ...(envelope?.impact ? { impact: envelope.impact } : {}),
+          ...(result.structured !== undefined
+            ? { structuredJson: JSON.stringify(result.structured) }
+            : {}),
+          ...(verified ? { verified } : {}),
+        });
+      } catch {
+        // best-effort
+      }
+    }
+
+    // Learning record for every autonomous handler except no-ops (spec §B2).
+    if (outcome !== 'no-op') {
+      try {
+        const path = writeLearningRecord(userDataDir, {
+          handler: def.id,
+          goal: baseGoal,
+          status: result.status,
+          outcome,
+          ...(envelope?.impact ? { impact: envelope.impact } : {}),
+          ...(verified ? { verified } : {}),
+          ...(branch ? { branch } : {}),
+          turns: result.turns,
+          costUsd: result.costUsd,
+          ts: runStartIso,
+        });
+        log(`learning record: ${path}`);
+      } catch {
+        // best-effort
+      }
+    }
+
+    return {
+      status: result.status,
+      message: result.summary,
+      exitCode: result.status === 'success' || result.status === 'capped' ? 0 : 1,
+    };
   } finally {
     close();
   }
-
-  log(
-    `handler: ${def.id} (${def.name})  status: ${result.status}  turns: ${result.turns}  cost: $${result.costUsd.toFixed(4)}`,
-  );
-  if (result.summary) log(result.summary);
-
-  return {
-    status: result.status,
-    message: result.summary,
-    exitCode: result.status === 'success' || result.status === 'capped' ? 0 : 1,
-  };
 }
 
 // Allow direct invocation via `tsx system/agent/runner-entry.ts --handler=B`.
