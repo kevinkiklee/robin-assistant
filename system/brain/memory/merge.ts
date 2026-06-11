@@ -160,7 +160,9 @@ export function mergeEntities(
   const repointSubj = db.prepare('UPDATE relations SET subject_id=? WHERE subject_id=?');
   const repointObj = db.prepare('UPDATE relations SET object_id=? WHERE object_id=?');
   const setProfile = db.prepare(
-    "UPDATE entities SET profile=?, updated_at=datetime('now') WHERE id=?",
+    // Stamp profile_generated_at too: a copied profile is being (re)published as
+    // current — an unstamped one would read as stale at the MCP boundary.
+    "UPDATE entities SET profile=?, profile_generated_at=datetime('now'), updated_at=datetime('now') WHERE id=?",
   );
   const delEntity = db.prepare('DELETE FROM entities WHERE id=?');
   const delSelfLoops = db.prepare('DELETE FROM relations WHERE subject_id=? AND object_id=?');
