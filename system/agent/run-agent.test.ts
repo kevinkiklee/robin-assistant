@@ -238,6 +238,51 @@ test('runAgent: defaults to claude-opus-4-8 when neither caller model nor env is
   assert.equal(seenModel, 'claude-opus-4-8');
 });
 
+test('passes input.label through to the ledger row', async () => {
+  const { ledger: led, db } = ledger();
+  await runAgent(baseInput({ label: 'B' }), {
+    ledger: led,
+    cap: 50,
+    transcriptDir: tmpTranscriptDir(),
+    runSdk: async () => okResult,
+  });
+  const row = db.prepare('SELECT label FROM agent_usage LIMIT 1').get() as { label: string };
+  assert.equal(row.label, 'B');
+});
+
+test('returns ledgerId from the recorded row', async () => {
+  const { ledger: led } = ledger();
+  const res = await runAgent(baseInput(), {
+    ledger: led,
+    cap: 50,
+    transcriptDir: tmpTranscriptDir(),
+    runSdk: async () => okResult,
+  });
+  assert.equal(typeof res.ledgerId, 'number', 'ledgerId must be a number');
+  assert.ok((res.ledgerId as number) > 0, 'ledgerId must be a positive row id');
+});
+
+test('pre-flight capped run has no ledgerId', async () => {
+  const { ledger: led } = ledger();
+  // Spend the surface up to its cap first.
+  led.record({
+    surface: 'agentic-on-demand',
+    costUsd: 50,
+    inputTokens: 1,
+    outputTokens: 1,
+    turns: 1,
+    status: 'success',
+  });
+  const res = await runAgent(baseInput(), {
+    ledger: led,
+    cap: 50,
+    transcriptDir: tmpTranscriptDir(),
+    runSdk: async () => okResult,
+  });
+  assert.equal(res.status, 'capped');
+  assert.equal(res.ledgerId, undefined);
+});
+
 test('runAgent: forwards canUseTool + tool/permission options to the sdk', async () => {
   const { ledger: led } = ledger();
   // biome-ignore lint/suspicious/noExplicitAny: probe shape only

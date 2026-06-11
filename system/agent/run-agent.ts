@@ -28,6 +28,8 @@ export interface RunAgentInput {
   outputFormat?: unknown;
   /** SDK sandbox settings — OS-level isolation that confines Bash + file writes (write handlers). */
   sandbox?: unknown;
+  /** Ledger label for this run (the handler id for handler runs). */
+  label?: string;
 }
 
 export type RunAgentStatus = 'success' | 'capped' | 'denied' | 'timeout' | 'error';
@@ -41,6 +43,8 @@ export interface RunAgentResult {
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number };
   costUsd: number;
   transcriptPath?: string;
+  /** agent_usage row id for this run (absent when the pre-flight cap skipped the SDK). */
+  ledgerId?: number;
 }
 
 export interface RunAgentDeps {
@@ -172,8 +176,9 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     : mapSdkStatus(result.status);
 
   // (c) One ledger row per run. Record even on timeout/error so partial spend is tracked.
-  deps.ledger.record({
+  const ledgerId = deps.ledger.record({
     surface: input.surface,
+    ...(input.label ? { label: input.label } : {}),
     costUsd: result.costUsd,
     inputTokens: result.usage.inputTokens,
     outputTokens: result.usage.outputTokens,
@@ -190,6 +195,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     usage: result.usage,
     costUsd: result.costUsd,
     ...(transcriptPath ? { transcriptPath } : {}),
+    ledgerId,
   };
 }
 
