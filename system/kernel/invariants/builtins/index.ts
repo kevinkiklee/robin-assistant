@@ -1,3 +1,4 @@
+export { agentWorktreesBoundedInvariant } from './agent-worktrees-bounded.ts';
 export { alertsHistoryBoundedInvariant } from './alerts-history-bounded.ts';
 export { daemonHeartbeatingInvariant, type HeartbeatSource } from './daemon-heartbeating.ts';
 export { daemonStableInvariant } from './daemon-stable.ts';

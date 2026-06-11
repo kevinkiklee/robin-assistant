@@ -6,6 +6,7 @@ import { resolveBuiltinIntegrationsRoot } from '../../integrations/_runtime/gc.t
 import type { IntegrationManifest } from '../../integrations/_runtime/types.ts';
 import { loadPolicies } from '../config/load.ts';
 import {
+  agentWorktreesBoundedInvariant,
   alertsHistoryBoundedInvariant,
   daemonStableInvariant,
   dbReachableInvariant,
@@ -69,7 +70,11 @@ function listScheduledIntegrations(userData: string): ScheduledIntegration[] {
  * Lives in the kernel layer (not the CLI surface) so brain/cognition can import it
  * without an inverted brain → surfaces dependency.
  */
-export function buildDoctorInvariants(db: RobinDb, userData: string): Invariant[] {
+export function buildDoctorInvariants(
+  db: RobinDb,
+  userData: string,
+  repoRoot: string = process.cwd(),
+): Invariant[] {
   const bootsPath = join(userData, 'state', 'runtime', 'boots.json');
   return [
     userDataWritableInvariant(userData),
@@ -92,5 +97,6 @@ export function buildDoctorInvariants(db: RobinDb, userData: string): Invariant[
     schedulerProgressingInvariant(db, { userData }),
     noOrphansInvariant(db, { userData }),
     recallTopicsResolvableInvariant({ userData }),
+    agentWorktreesBoundedInvariant(repoRoot),
   ];
 }
