@@ -11,6 +11,13 @@ export interface UsageRecord {
   label?: string;
 }
 
+export interface OutcomeRecord {
+  outcome: string;
+  impact?: string;
+  structuredJson?: string;
+  verified?: string;
+}
+
 export interface SurfaceTotals {
   costUsd: number;
   inputTokens: number;
@@ -34,8 +41,12 @@ export class UsageLedger {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  record(r: UsageRecord): void {
-    this.db
+  /**
+   * Insert one run row and return the auto-assigned row id.
+   * Callers that don't need the id can safely ignore the return value.
+   */
+  record(r: UsageRecord): number {
+    const result = this.db
       .prepare(
         `INSERT INTO agent_usage
            (ts, surface, label, input_tokens, output_tokens, cost_usd, turns, status, subtype)
@@ -52,6 +63,16 @@ export class UsageLedger {
         r.status ?? null,
         r.subtype ?? null,
       );
+    return Number(result.lastInsertRowid);
+  }
+
+  /** Stamp Phase-B outcome columns onto a previously recorded run row. */
+  recordOutcome(id: number, o: OutcomeRecord): void {
+    this.db
+      .prepare(
+        `UPDATE agent_usage SET outcome=?, impact=?, structured_json=?, verified=? WHERE id=?`,
+      )
+      .run(o.outcome, o.impact ?? null, o.structuredJson ?? null, o.verified ?? null, id);
   }
 
   /** Total USD spent on a surface during the current UTC day. */
