@@ -11,6 +11,7 @@ import {
   recallBelief,
 } from './belief.ts';
 import { closeDb, openDb } from './db.ts';
+import { ingest } from './ingest.ts';
 import { allMigrations, applyMigrations } from './migrations/index.ts';
 
 function freshDb() {
@@ -305,5 +306,105 @@ test('belief: same-day plain re-set still upserts in place (no history pileup)',
   const history = recallBelief(db, { topic: 'mood', history: true }) as BeliefRecord[];
   assert.equal(history.length, 1, 'same-day plain re-set should upsert, not append');
   assert.equal(history[0].claim, 'great');
+  closeDb(db);
+});
+
+test('recall_belief: resolves negated/modified query slugs to the canonical head', () => {
+  // The head is stored under the canonical slug 'aerospace-internship'. A query
+  // using a negated or modifier-tagged variant must canonicalize to the same slug
+  // and return the one head — read symmetry with the write-time canonicalizer.
+  const db = freshDb();
+  believe(db, null, {
+    topic: 'aerospace-internship',
+    claim: 'Kevin has an aerospace internship',
+    date: '2026-06-10',
+  });
+  const viaNegation = recallBelief(db, { topic: 'no-aerospace-internship' });
+  const viaModifier = recallBelief(db, { topic: 'aerospace-internship-claim' });
+  assert.ok(viaNegation && !Array.isArray(viaNegation));
+  assert.equal((viaNegation as BeliefRecord).topic, 'aerospace-internship');
+  assert.deepEqual(viaModifier, viaNegation);
+  closeDb(db);
+});
+
+test('recall_belief: falls back to the plain-normalized topic for unmerged legacy heads', () => {
+  // Simulate a pre-C1 legacy head: a belief.update written directly via ingest()
+  // under a NON-canonical slug ('coffee-status', which canonicalizes to 'coffee').
+  // No 'coffee' head exists, so the canonical lookup misses; the plain-normalized
+  // fallback ('coffee-status') must still resolve it.
+  const db = freshDb();
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Kevin switched to a Chemex this month',
+    payload: {
+      topic: 'coffee-status',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-05-01T00:00:00.000Z',
+      external_id: 'belief:2026-05-01:coffee-status',
+    },
+  });
+  // Sanity: the canonical slug has no head of its own.
+  assert.equal(recallBelief(db, { topic: 'coffee' }), null);
+  const legacy = recallBelief(db, { topic: 'coffee-status' });
+  assert.ok(legacy && !Array.isArray(legacy));
+  assert.equal((legacy as BeliefRecord).topic, 'coffee-status');
+  assert.equal((legacy as BeliefRecord).claim, 'Kevin switched to a Chemex this month');
+  closeDb(db);
+});
+
+test('recall_belief: history mode follows the same two-step canonical lookup', () => {
+  // Build a 2-event canonical chain (head stored under 'aerospace-internship'),
+  // then query history with a negated variant slug — history mode must canonicalize
+  // and return BOTH rows, symmetric with single-head mode.
+  const db = freshDb();
+  const a = believe(db, null, {
+    topic: 'aerospace-internship',
+    claim: 'Kevin has an aerospace internship',
+    date: '2026-06-10',
+  });
+  believe(db, null, {
+    topic: 'no-aerospace-internship',
+    claim: 'Kevin does not have an aerospace internship',
+    date: '2026-06-11',
+  });
+  const viaNegation = recallBelief(db, {
+    topic: 'aerospace-internship-status',
+    history: true,
+  }) as BeliefRecord[];
+  assert.equal(viaNegation.length, 2);
+  // Newest first; the older row supersededEventId chains back to the first head.
+  assert.equal(viaNegation[1].eventId, a.eventId);
+  assert.equal(viaNegation[0].supersedes, a.eventId);
+  closeDb(db);
+});
+
+test('recall_belief: history fallback resolves a legacy head under its plain-normalized slug', () => {
+  // History-mode symmetry for legacy heads: a raw legacy belief under a
+  // non-canonical slug must surface via the plain-normalized fallback when the
+  // canonical lookup returns nothing.
+  const db = freshDb();
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'legacy text',
+    payload: {
+      topic: 'coffee-status',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-05-01T00:00:00.000Z',
+      external_id: 'belief:2026-05-01:coffee-status',
+    },
+  });
+  const hist = recallBelief(db, { topic: 'coffee-status', history: true }) as BeliefRecord[];
+  assert.equal(hist.length, 1);
+  assert.equal(hist[0].topic, 'coffee-status');
   closeDb(db);
 });
