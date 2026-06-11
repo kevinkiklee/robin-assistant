@@ -59,6 +59,106 @@ test('canonicalizeTopic is idempotent', () => {
   assert.equal(canonicalizeTopic(once), once);
 });
 
+test('belief: opposing claim under a negated slug supersedes the same head', () => {
+  const db = freshDb();
+  const a = believe(db, null, {
+    topic: 'aerospace-internship',
+    claim: 'Kevin has an aerospace internship',
+    date: '2026-06-10',
+  });
+  const b = believe(db, null, {
+    topic: 'no-aerospace-internship',
+    claim: 'Kevin does not have an aerospace internship',
+    date: '2026-06-11',
+  });
+  assert.equal(b.supersededEventId, a.eventId); // one chain, not two heads
+  assert.equal(b.topic, 'aerospace-internship'); // stored canonical
+  closeDb(db);
+});
+
+test('belief: modifier slug variant supersedes the canonical head', () => {
+  const db = freshDb();
+  const a = believe(db, null, {
+    topic: 'sf-move',
+    claim: 'Kevin is moving to SF in July',
+    date: '2026-06-10',
+  });
+  const b = believe(db, null, {
+    topic: 'sf-move-status',
+    claim: 'Kevin is moving to SF in August',
+    date: '2026-06-11',
+  });
+  assert.equal(b.supersededEventId, a.eventId);
+  closeDb(db);
+});
+
+test('belief: slug collision with dissimilar claim does NOT merge — falls back to plain-normalized topic', () => {
+  const db = freshDb();
+  const a = believe(db, null, {
+    topic: 'coffee',
+    claim: 'Kevin drinks two espressos every morning',
+    date: '2026-06-10',
+  });
+  // 'coffee-status' canonicalizes to 'coffee' but the claim is unrelated text:
+  const b = believe(db, null, {
+    topic: 'coffee-status',
+    claim: 'The Chemex carafe cracked and was thrown out yesterday',
+    date: '2026-06-11',
+  });
+  assert.equal(b.supersededEventId, null);
+  assert.equal(b.topic, 'coffee-status'); // kept distinct — false merges are worse than duplicates
+  assert.notEqual(b.eventId, a.eventId);
+  closeDb(db);
+});
+
+test('belief: same stored topic always supersedes regardless of claim text (existing contract)', () => {
+  const db = freshDb();
+  const a = believe(db, null, {
+    topic: 'coffee',
+    claim: 'Kevin drinks two espressos every morning',
+    date: '2026-06-10',
+  });
+  const b = believe(db, null, {
+    topic: 'coffee',
+    claim: 'Completely different text about coffee gear',
+    date: '2026-06-11',
+  });
+  assert.equal(b.supersededEventId, a.eventId);
+  closeDb(db);
+});
+
+test('belief: explicit supersedes bypasses the similarity gate (retraction path)', () => {
+  const db = freshDb();
+  const a = believe(db, null, {
+    topic: 'no-aerospace-internship',
+    claim: 'Kevin does not have an aerospace internship',
+    date: '2026-06-10',
+  });
+  const r = believe(db, null, {
+    topic: 'aerospace-internship',
+    claim: '(retracted)',
+    retracted: true,
+    supersedes: a.eventId,
+    date: '2026-06-11',
+  });
+  assert.equal(r.supersededEventId, a.eventId); // canonical-form topic match, no similarity check
+  closeDb(db);
+});
+
+test('belief: canonicalized writes carry original_topic in the payload', () => {
+  const db = freshDb();
+  const b = believe(db, null, {
+    topic: 'no-aerospace-internship',
+    claim: 'x y z',
+    date: '2026-06-11',
+  });
+  const raw = db
+    .prepare(`SELECT json_extract(payload,'$.original_topic') AS o FROM events WHERE id=?`)
+    .get(b.eventId) as { o: string | null };
+  assert.equal(raw.o, 'no-aerospace-internship');
+  closeDb(db);
+});
+
 test('belief: same-day re-write upserts (no new row, no self-supersede)', () => {
   const db = freshDb();
   believe(db, null, { topic: 't', claim: 'v1', date: '2026-05-23' });

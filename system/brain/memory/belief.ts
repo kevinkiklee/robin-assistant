@@ -1,3 +1,4 @@
+import { levenshtein } from '../../lib/levenshtein.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { isLowQualityClaim } from './belief-quality.ts';
 import type { RobinDb } from './db.ts';
@@ -6,6 +7,19 @@ import type { ProvenanceClass } from './provenance.ts';
 
 const BELIEF_KIND = 'belief.update';
 const BELIEF_SOURCE = 'belief';
+
+/** Cross-slug merge gate (spec §C1): claims must be textually similar before a
+ *  canonicalization-driven supersession is allowed. Looser than the candidate-
+ *  merge 0.2 because opposing claims differ by a negation word and the slug
+ *  match already established same-fact intent. */
+const CANONICAL_MERGE_MAX_DIST = 0.4;
+
+function claimsSimilar(a: string, b: string): boolean {
+  const longer = Math.max(a.length, b.length);
+  if (longer === 0) return false;
+  if (Math.abs(a.length - b.length) / longer >= CANONICAL_MERGE_MAX_DIST) return false; // cheap short-circuit
+  return levenshtein(a, b) / longer < CANONICAL_MERGE_MAX_DIST;
+}
 
 export interface BelieveInput {
   topic: string;
@@ -172,9 +186,13 @@ export function believe(
   llm: LLMDispatcher | null,
   input: BelieveInput,
 ): BelieveResult {
-  const topic = normalizeTopic(input.topic);
-  if (!topic) throw new Error('believe: topic required');
+  const normalized = normalizeTopic(input.topic);
+  if (!normalized) throw new Error('believe: topic required');
   if (!input.claim?.trim()) throw new Error('believe: claim required');
+  const canonical = canonicalizeTopic(normalized);
+  // The stored topic defaults to the canonical slug; the cross-slug gate below
+  // may revert it to the plain-normalized form when an implicit merge is refused.
+  let topic = canonical;
   // Dev-artifact backstop for the DIRECT write path (daily-brief / dream
   // synthesis, MCP `believe` tool). The candidate pipeline filters at draft +
   // promote time; direct `believe()` calls bypassed it entirely, which is how
@@ -195,19 +213,49 @@ export function believe(
   // dropping the prior claim from history. Key those writes by the superseded
   // id so ingest appends instead of upserting, while same-day re-runs of the
   // identical supersede stay idempotent.
-  const externalId =
+  // The same-day exclusion key skips the row being upserted in place so it never
+  // supersedes itself. It is computed from the CANONICAL slug — the only case
+  // where the exclusion bites is a same-slug same-day re-set, where the canonical
+  // and final topics coincide; the gate below can only revert `topic` for a
+  // cross-slug head, whose own external_id differs anyway.
+  const excludeExternalId =
     input.supersedes != null
-      ? `belief:${date}:${topic}:s${input.supersedes}`
-      : `belief:${date}:${topic}`;
+      ? `belief:${date}:${canonical}:s${input.supersedes}`
+      : `belief:${date}:${canonical}`;
 
-  const head = db
-    .prepare(
-      `SELECT id FROM events
-       WHERE kind = ? AND json_extract(payload,'$.topic') = ?
-         AND json_extract(payload,'$.external_id') != ?
-       ORDER BY ts DESC, id DESC LIMIT 1`,
-    )
-    .get(BELIEF_KIND, topic, externalId) as { id: number } | undefined;
+  const findHead = (t: string) =>
+    db
+      .prepare(
+        `SELECT e.id AS id, c.body AS claim, json_extract(e.payload,'$.topic') AS topic
+           FROM events e LEFT JOIN events_content c ON c.id = e.content_ref
+          WHERE e.kind = ? AND json_extract(e.payload,'$.topic') = ?
+            AND json_extract(e.payload,'$.external_id') != ?
+          ORDER BY e.ts DESC, e.id DESC LIMIT 1`,
+      )
+      .get(BELIEF_KIND, t, excludeExternalId) as
+      | { id: number; claim: string | null; topic: string }
+      | undefined;
+
+  // Two-step head lookup: the canonical slug first, then the plain-normalized
+  // input topic as a legacy fallback (heads written before the canonical sweep
+  // sit under non-canonical slugs).
+  let head = findHead(canonical);
+  if (!head && normalized !== canonical) head = findHead(normalized);
+
+  // Cross-slug merge gate (spec §C1): when the head was reached only through
+  // canonicalization (its stored slug differs from the caller's plain-normalized
+  // one), require claim-text similarity before superseding. Same-slug
+  // supersession and explicit `supersedes` keep today's unconditional behavior.
+  if (
+    head &&
+    input.supersedes == null &&
+    normalized !== canonical &&
+    head.topic !== normalized &&
+    !claimsSimilar(head.claim ?? '', input.claim.trim())
+  ) {
+    head = undefined;
+    topic = normalized; // keep the new claim distinct — false merges are worse than duplicates
+  }
 
   if (input.supersedes != null) {
     const row = db
@@ -217,8 +265,20 @@ export function believe(
       .get(input.supersedes, BELIEF_KIND) as { topic: string } | undefined;
     if (!row)
       throw new Error(`believe: supersedes ${input.supersedes} is not a belief.update event`);
-    if (normalizeTopic(row.topic) !== topic) throw new Error('believe: supersedes topic mismatch');
+    // Compare CANONICAL forms so a re-confirmation of a legacy (pre-canonical)
+    // head — e.g. the nightly freshness pass re-asserting under the canonical
+    // slug — validates instead of throwing.
+    if (canonicalizeTopic(normalizeTopic(row.topic)) !== canonical)
+      throw new Error('believe: supersedes topic mismatch');
   }
+
+  // External id is derived AFTER the gate, from the FINAL stored topic — so a
+  // gate-fallback write (under the plain-normalized topic) still dedups against
+  // its own same-day re-runs through ingest's (source, external_id) upsert.
+  const externalId =
+    input.supersedes != null
+      ? `belief:${date}:${topic}:s${input.supersedes}`
+      : `belief:${date}:${topic}`;
 
   const supersedes = input.supersedes ?? head?.id ?? null;
 
@@ -228,6 +288,11 @@ export function believe(
     content: input.claim.trim(),
     payload: {
       topic,
+      // Preserve the caller's plain-normalized slug whenever the stored topic
+      // differs from it — both the canonical-merge case (topic === canonical)
+      // and the gate-fallback case never trigger this since topic === normalized
+      // there. Lets the one-time sweep + audit trail trace where a head came from.
+      ...(topic !== normalized ? { original_topic: normalized } : {}),
       supersedes,
       confidence: input.confidence ?? null,
       sources: input.sources ?? [],
@@ -257,20 +322,34 @@ export function recallBelief(
   opts: RecallBeliefOptions = {},
 ): BeliefRecord | BeliefRecord[] | null {
   if (opts.topic) {
-    const topic = normalizeTopic(opts.topic);
-    if (opts.history) {
-      const rows = db
+    const normalized = normalizeTopic(opts.topic);
+    const canonical = canonicalizeTopic(normalized);
+    // Lookup symmetry (spec §C1): run the same canonicalizer used at write time
+    // on the query so historical, negated, and modifier-tagged topic strings all
+    // resolve to the one canonical head. Fall back to the plain-normalized form
+    // for legacy heads not yet swept by `robin beliefs canonicalize` and for
+    // gate-kept distinct topics (a dissimilar cross-slug write stored under its
+    // own plain-normalized slug).
+    const lookupHistory = (t: string) =>
+      db
         .prepare(
           `${SELECT} AND json_extract(e.payload,'$.topic') = ? ORDER BY e.ts DESC, e.id DESC`,
         )
-        .all(topic) as RawRow[];
-      return rows.map(mapRow);
+        .all(t) as RawRow[];
+    const lookupHead = (t: string) =>
+      db
+        .prepare(
+          `${SELECT} AND json_extract(e.payload,'$.topic') = ? ORDER BY e.ts DESC, e.id DESC LIMIT 1`,
+        )
+        .get(t) as RawRow | undefined;
+
+    if (opts.history) {
+      const rows = lookupHistory(canonical);
+      if (rows.length > 0 || canonical === normalized) return rows.map(mapRow);
+      return lookupHistory(normalized).map(mapRow);
     }
-    const row = db
-      .prepare(
-        `${SELECT} AND json_extract(e.payload,'$.topic') = ? ORDER BY e.ts DESC, e.id DESC LIMIT 1`,
-      )
-      .get(topic) as RawRow | undefined;
+    const row =
+      lookupHead(canonical) ?? (canonical !== normalized ? lookupHead(normalized) : undefined);
     return row ? mapRow(row) : null;
   }
   const limit = opts.limit ?? 50;
