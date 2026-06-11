@@ -1,5 +1,6 @@
 import type { RobinDb } from '../../brain/memory/db.ts';
 import {
+  alertsHistoryBoundedInvariant,
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
@@ -32,6 +33,7 @@ export function buildDoctorInvariants(db: RobinDb, userData: string): Invariant[
     jobsDiscoverableInvariant(db),
     jobsHistoryBoundedInvariant(db),
     jobsRetriesBoundedInvariant(db),
+    alertsHistoryBoundedInvariant(db),
     schedulerProgressingInvariant(db, { userData }),
     noOrphansInvariant(db, { userData }),
     recallTopicsResolvableInvariant({ userData }),
