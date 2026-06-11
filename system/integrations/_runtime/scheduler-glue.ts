@@ -17,6 +17,12 @@ import {
 import { listOnDiskIntegrationNames, loadIntegrations } from './loader.ts';
 import type { Integration, IntegrationContext } from './types.ts';
 
+/** A scheduled integration: instance name + the cron expression it ticks on. */
+export interface ScheduledIntegrationSpec {
+  name: string;
+  cron: string;
+}
+
 export {
   gcOrphanIntegrationTicks,
   gcRemovedIntegrationState,
@@ -214,6 +220,10 @@ export interface RegisterResult {
   registered: number;
   scheduled: number;
   initialized: number;
+  /** Enabled, schedule-bearing integrations (non-manual, non-event cron) — instance
+   *  name + cron. Fed to the integration-staleness invariant so it knows which
+   *  integrations to judge freshness on, anchored to their cadence. */
+  scheduledIntegrations: ScheduledIntegrationSpec[];
   /** Calls cleanup() on every integration that successfully ran init(). Safe to call once on daemon stop. */
   cleanup: () => Promise<void>;
 }
@@ -239,6 +249,7 @@ export async function registerIntegrations(
 
   let scheduled = 0;
   let initialized = 0;
+  const scheduledIntegrations: ScheduledIntegrationSpec[] = [];
   for (const integration of loaded) {
     daemon.registerHandler(`integration.${integration.instanceName}.tick`, async () => {
       const llm = getLLM() ?? null;
@@ -261,6 +272,10 @@ export async function registerIntegrations(
           tz: integration.manifest.tz,
         });
         scheduled++;
+        scheduledIntegrations.push({
+          name: integration.instanceName,
+          cron: integration.manifest.schedule,
+        });
       }
     }
 
@@ -306,5 +321,5 @@ export async function registerIntegrations(
     }
   };
 
-  return { registered: loaded.length, scheduled, initialized, cleanup };
+  return { registered: loaded.length, scheduled, initialized, scheduledIntegrations, cleanup };
 }

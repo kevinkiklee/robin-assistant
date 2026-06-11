@@ -85,6 +85,24 @@ test('jobs-erroring: completed rows in last 24h → ok', async () => {
   closeDb(db);
 });
 
+test('jobs-erroring: multiple distinct errored jobs are listed in deterministic name order', async () => {
+  const db = freshDb();
+  // Insert out of alphabetical order; the GROUP BY ... ORDER BY name must sort them.
+  insertJob(db, 'zebra', 'errored', hoursAgo(1));
+  insertJob(db, 'alpha', 'errored', hoursAgo(2));
+  insertJob(db, 'mango', 'errored', hoursAgo(3));
+  const inv = jobsErroringInvariant(db);
+  const r = await inv.check();
+  assert.equal(r.ok, false, JSON.stringify(r));
+  const msg = r.message ?? '';
+  const order = ['alpha', 'mango', 'zebra'].map((n) => msg.indexOf(n));
+  assert.ok(
+    order[0] < order[1] && order[1] < order[2],
+    `expected alpha < mango < zebra ordering, got: ${msg}`,
+  );
+  closeDb(db);
+});
+
 test('jobs-erroring: mix of errored and completed rows — only errored jobs flagged', async () => {
   const db = freshDb();
   insertJob(db, 'biographer', 'completed', hoursAgo(1));

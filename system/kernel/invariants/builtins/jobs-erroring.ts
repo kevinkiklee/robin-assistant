@@ -25,7 +25,7 @@ export function jobsErroringInvariant(db: RobinDb): Invariant {
           .prepare(
             `SELECT name, COUNT(*) AS n FROM jobs
               WHERE state='errored' AND created_at > datetime('now','-1 day')
-              GROUP BY name`,
+              GROUP BY name ORDER BY name`,
           )
           .all() as Array<{ name: string; n: number }>;
         if (rows.length === 0) return { ok: true };

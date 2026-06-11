@@ -15,6 +15,7 @@ import { type HttpHandle, startHttpServer } from '../../surfaces/http/server.ts'
 import { loadModels, loadPolicies } from '../config/load.ts';
 import { recoverDeadWorkerLeases, recoverExpiredLeases } from '../scheduler/claim.ts';
 import { type JobHandler, Scheduler } from '../scheduler/runner.ts';
+import { recordAlert, resolveAlert } from './alert-store.ts';
 import { isProcessAlive, readPidfile, removePidfile, writePidfile } from './pidfile.ts';
 
 const TICK_INTERVAL_MS = 1000;
@@ -70,6 +71,10 @@ export class Daemon {
   private healthMonitor?: import('./health-monitor.ts').HealthMonitor;
   private powerMonitor?: import('../../lib/power-auto/monitor.ts').PowerAutoMonitor;
   private leaseReaperTimer: NodeJS.Timeout | null = null;
+  // Enabled, schedule-bearing integrations (instance name + cron), captured from
+  // registerIntegrations and fed to the health monitor's staleness invariant.
+  // Re-populated on each integration registration (boot + hot-reload).
+  private scheduledIntegrations: Array<{ name: string; cron: string }> = [];
 
   registerHandler(name: string, handler: JobHandler): void {
     this.handlers.set(name, handler);
@@ -275,6 +280,9 @@ export class Daemon {
         getLLM: () => this.llm,
         getLastTickAt: () => this.lastTickAt,
         enableNotifications: () => loadPolicies(userData).notifications.health,
+        // Re-evaluated per tick: the monitor starts before integrations register,
+        // and hot-reload can change the set later, so always read the live field.
+        getIntegrations: () => this.scheduledIntegrations,
         getStartedAt: () => this.startedAt,
         // Backstop for a CPU-blocked handler — when heartbeating goes critical
         // the scheduler is stuck awaiting a handler. The HANDLER_TIMEOUT_MS cap
@@ -323,6 +331,7 @@ export class Daemon {
       );
       const r = await registerIntegrations(this, this.db, () => this.llm);
       this.integrationCleanup = r.cleanup;
+      this.scheduledIntegrations = r.scheduledIntegrations;
       this.log.info(
         { registered: r.registered, scheduled: r.scheduled, initialized: r.initialized },
         'integrations wired into scheduler',
@@ -387,8 +396,36 @@ export class Daemon {
       try {
         await this.scheduler?.tickOnce();
         this.lastTickAt = new Date();
+        // Tick succeeded — clear any open 'daemon/tick.failed' alert. Cheap
+        // indexed no-op when nothing is open. Never let alerting break the loop.
+        if (this.db) {
+          try {
+            resolveAlert(this.db, 'daemon', 'tick.failed');
+          } catch {
+            /* alerting must never break the run loop */
+          }
+        }
       } catch (err) {
         this.log.error({ err }, 'tick failed');
+        // Surface the wedge as a warning alert so the operator sees it via
+        // `robin alerts` / the brief. Backoff below avoids hot-looping the same
+        // exception. Wrapped: a failed alert write must not mask the tick error.
+        if (this.db) {
+          try {
+            recordAlert(this.db, {
+              severity: 'warning',
+              source: 'daemon',
+              key: 'tick.failed',
+              message: err instanceof Error ? err.message : String(err),
+            });
+          } catch {
+            /* alerting must never break the run loop */
+          }
+        }
+        // 5s backoff on a throwing tick — a tick that throws synchronously every
+        // iteration would otherwise spin the loop and flood the log.
+        await sleep(5000);
+        continue;
       }
       await sleep(TICK_INTERVAL_MS);
     }

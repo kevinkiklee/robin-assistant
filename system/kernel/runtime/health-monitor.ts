@@ -1,21 +1,33 @@
+import { join } from 'node:path';
 import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import { buildContext } from '../../integrations/_runtime/context.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
+import { loadPolicies } from '../config/load.ts';
 import {
   daemonHeartbeatingInvariant,
+  daemonStableInvariant,
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
+  integrationDegradedInvariant,
+  integrationStalenessInvariant,
   integrationsHealthyInvariant,
   jobsDiscoverableInvariant,
+  jobsErroringInvariant,
+  type ScheduledIntegration,
   schedulerProgressingInvariant,
   userDataWritableInvariant,
 } from '../invariants/builtins/index.ts';
-import { runInvariants } from '../invariants/runner.ts';
+import type { Invariant, InvariantReport } from '../invariants/types.ts';
+import { recordAlert, resolveAlert } from './alert-store.ts';
 
 const CHECK_INTERVAL_MS = 60_000; // every minute
 const NOTIFY_COOLDOWN_MS = 60 * 60_000; // 1 hour: don't spam the same failure
+// Per-check wall-clock cap. A check that blocks past this is itself a problem (a
+// wedged DB query, a hung fs stat), so we abort it, report it as failed, AND
+// record an alert — a chronically slow check is a real signal, not noise.
+const DEFAULT_CHECK_TIMEOUT_MS = 5_000;
 // Bug A fix — wait this long after daemon start before allowing heartbeat-triggered
 // self-termination. Boot is noisy (migrations, integration init, biographer
 // boot-drain); a CRITICAL during that window is almost always a false positive,
@@ -30,6 +42,12 @@ const HEARTBEAT_RECOVER_MIN_UPTIME_MS = 2 * 60_000;
 // the multi-hour wedges we want to recover from.
 const HEARTBEAT_SUSTAINED_CRITICAL_MS = 30 * 60_000;
 
+// Sentinel set on reports produced by the overlap guard (a check whose previous
+// run hadn't finished). These reports say NOTHING about the underlying condition,
+// so the alert wiring neither records nor resolves on them.
+const OVERLAP_SKIP = Symbol('overlap-skip');
+type MonitorReport = InvariantReport & { [OVERLAP_SKIP]?: true };
+
 interface HealthMonitorOptions {
   db: RobinDb;
   getLLM: () => LLMDispatcher | null | undefined;
@@ -37,6 +55,12 @@ interface HealthMonitorOptions {
   /** Pass a getter (re-evaluated per tick) when the value can change without a daemon restart
    *  (e.g. driven from policies.yaml). Boolean is also accepted for tests / static configs. */
   enableNotifications?: boolean | (() => boolean);
+  /** Enabled, schedule-bearing integrations (instance name + cron) for the
+   *  integration-staleness invariant. Re-evaluated per tick so hot-reloaded
+   *  integrations are picked up without a restart. Absent ⇒ no integrations to judge. */
+  getIntegrations?: () => ScheduledIntegration[];
+  /** Per-check timeout in ms. Default 5000. Lowered in tests to keep them fast. */
+  checkTimeoutMs?: number;
   /** Bug A fix — invoked when `daemon.heartbeating` goes CRITICAL after the daemon
    *  has been alive for at least `HEARTBEAT_RECOVER_MIN_UPTIME_MS`. Production wires
    *  this to `process.exit(1)` so launchd respawns the daemon cleanly, which restores
@@ -53,6 +77,9 @@ export class HealthMonitor {
   private log = createLogger({ module: 'health-monitor' });
   private lastNotifiedAt = new Map<string, number>(); // invariant name → ts
   private heartbeatRecoveryFired = false;
+  // Invariant names whose previous check run is still in flight. A check whose
+  // name is already here is overlap-skipped (not re-run) this tick.
+  private inFlight = new Set<string>();
   // First time we observed `daemon.heartbeating` in CRITICAL state. Reset to null
   // whenever a tick passes and the heartbeat is healthy again. Used to enforce the
   // sustained-CRITICAL gate on Bug A recovery so a normal slow handler doesn't
@@ -77,30 +104,127 @@ export class HealthMonitor {
     }
   }
 
+  /** Build the invariant set checked each tick. Kept as a method so providers
+   *  (integrations list, policies) are re-evaluated per tick. */
+  private buildInvariants(userData: string): Invariant[] {
+    const bootsPath = join(userData, 'state', 'runtime', 'boots.json');
+    return [
+      userDataWritableInvariant(userData),
+      dbReachableInvariant(this.opts.db),
+      dbSchemaCurrentInvariant(this.opts.db),
+      integrationsHealthyInvariant(this.opts.db),
+      integrationStalenessInvariant(this.opts.db, {
+        integrations: () => this.opts.getIntegrations?.() ?? [],
+        policies: () => loadPolicies(userData),
+      }),
+      integrationDegradedInvariant(this.opts.db),
+      jobsDiscoverableInvariant(this.opts.db),
+      jobsErroringInvariant(this.opts.db),
+      daemonStableInvariant({ bootsPath }),
+      // Critical so it notifies (warnings don't): catches the paused/stalled
+      // scheduler that daemon.heartbeating structurally can't see — its lastTickAt
+      // updates every loop iteration even while paused.
+      schedulerProgressingInvariant(this.opts.db, { userData }),
+      daemonHeartbeatingInvariant({
+        lastTickAt: this.opts.getLastTickAt,
+        // 7 min: the claude-agent provider (subscription-billed via the Agent
+        // SDK) boots the full Claude Code runtime per call, adding ~20-40s of
+        // subprocess overhead vs a direct REST provider. A 5-min ceiling trips
+        // on normal biographer ticks (~5:20). 7 min gives headroom without
+        // hiding a genuinely stuck scheduler. Permanent now that reasoning is
+        // Claude-only (the 2026-06-15 Gemini cutback was cancelled 2026-06-10).
+        maxIntervalMs: 7 * 60_000,
+      }),
+    ];
+  }
+
+  /**
+   * Run one invariant's check with an overlap guard + wall-clock timeout.
+   *   - Overlap: if the previous run of this check hasn't finished, skip it
+   *     entirely this tick and return an OVERLAP_SKIP-tagged report (the alert
+   *     wiring ignores these — they say nothing about the condition).
+   *   - Timeout: a check exceeding `checkTimeoutMs` is aborted and reported as
+   *     'check timed out'. That DOES record an alert: a chronically slow check is
+   *     itself a problem worth surfacing.
+   *   - A thrown check becomes a failing report (message preserved).
+   */
+  private async runOne(inv: Invariant, timeoutMs: number): Promise<MonitorReport> {
+    if (this.inFlight.has(inv.name)) {
+      return {
+        name: inv.name,
+        severity: inv.severity,
+        ok: false,
+        message: 'previous check still running',
+        duration_ms: 0,
+        [OVERLAP_SKIP]: true,
+      };
+    }
+    this.inFlight.add(inv.name);
+    const start = performance.now();
+    try {
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('check timed out')), timeoutMs);
+        timer.unref?.();
+      });
+      try {
+        const r = await Promise.race([Promise.resolve(inv.check()), timeout]);
+        return {
+          name: inv.name,
+          severity: inv.severity,
+          ok: r.ok,
+          message: r.message,
+          remediation: r.remediation,
+          duration_ms: Math.round(performance.now() - start),
+        };
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    } catch (err) {
+      return {
+        name: inv.name,
+        severity: inv.severity,
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+        duration_ms: Math.round(performance.now() - start),
+      };
+    } finally {
+      this.inFlight.delete(inv.name);
+    }
+  }
+
   private async tick(): Promise<void> {
     const userData = resolveUserDataDir();
+    const timeoutMs = this.opts.checkTimeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS;
     try {
-      const reports = await runInvariants([
-        userDataWritableInvariant(userData),
-        dbReachableInvariant(this.opts.db),
-        dbSchemaCurrentInvariant(this.opts.db),
-        integrationsHealthyInvariant(this.opts.db),
-        jobsDiscoverableInvariant(this.opts.db),
-        // Critical so it notifies (warnings don't): catches the paused/stalled
-        // scheduler that daemon.heartbeating structurally can't see — its lastTickAt
-        // updates every loop iteration even while paused.
-        schedulerProgressingInvariant(this.opts.db, { userData }),
-        daemonHeartbeatingInvariant({
-          lastTickAt: this.opts.getLastTickAt,
-          // 7 min: the claude-agent provider (subscription-billed via the Agent
-          // SDK) boots the full Claude Code runtime per call, adding ~20-40s of
-          // subprocess overhead vs a direct REST provider. A 5-min ceiling trips
-          // on normal biographer ticks (~5:20). 7 min gives headroom without
-          // hiding a genuinely stuck scheduler. Permanent now that reasoning is
-          // Claude-only (the 2026-06-15 Gemini cutback was cancelled 2026-06-10).
-          maxIntervalMs: 7 * 60_000,
-        }),
-      ]);
+      const invariants = this.buildInvariants(userData);
+      const reports: MonitorReport[] = [];
+      for (const inv of invariants) {
+        reports.push(await this.runOne(inv, timeoutMs));
+      }
+
+      // Generic alert wiring: every report opens or resolves an alert keyed by
+      // (source='invariant', key=report.name). Overlap-skip reports are excluded —
+      // they carry no signal about the underlying condition. Each alert-store call
+      // is wrapped: alerting must never break the monitor tick (a dropped alerts
+      // table, a locked DB) — a failed write just logs a warning.
+      for (const r of reports) {
+        if (r[OVERLAP_SKIP]) continue;
+        try {
+          if (r.ok) {
+            resolveAlert(this.opts.db, 'invariant', r.name);
+          } else {
+            recordAlert(this.opts.db, {
+              severity: r.severity === 'critical' ? 'critical' : 'warning',
+              source: 'invariant',
+              key: r.name,
+              message: r.message ?? 'invariant failed',
+            });
+          }
+        } catch (err) {
+          this.log.warn({ err, name: r.name }, 'alert record/resolve failed');
+        }
+      }
 
       // Bug A fix part 2 — maintain sustained-CRITICAL state and evaluate recovery
       // OUTSIDE the cooldown-gated notification loop below. The cooldown is purely a
