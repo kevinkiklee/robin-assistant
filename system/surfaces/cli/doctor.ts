@@ -1,11 +1,22 @@
 import { resolve as resolvePath } from 'node:path';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
+import type { RobinDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { buildDoctorInvariants } from '../../kernel/invariants/doctor-set.ts';
 import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
 import type { InvariantReport } from '../../kernel/invariants/types.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+
+export interface FreshnessRow {
+  name: string;
+  /** ISO timestamp of last successful tick, or null if never. */
+  last_ok: string | null;
+  /** Human-readable age string, e.g. '2h', '3d', or 'never'. */
+  age: string;
+  /** Present when consecutive_skips >= 3 — the skip reason. */
+  skipping?: string;
+}
 
 export interface DoctorReport {
   robin_version: string;
@@ -22,6 +33,69 @@ export interface DoctorReport {
     repaired?: boolean;
   }>;
   summary: { ok: number; warn: number; fail: number; repaired: number; exit_code: 0 | 1 | 2 };
+  /** Per-integration freshness snapshot from integration_state. */
+  freshness: FreshnessRow[];
+}
+
+/**
+ * Humanize an age in milliseconds to a short string like '2h' or '3d'.
+ * Returns 'never' for null/undefined/non-finite values.
+ */
+function humanizeAge(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return 'never';
+  const h = ms / 3_600_000;
+  if (h < 48) return `${Math.round(h)}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
+/** Query integration_state for the freshness snapshot. */
+function queryFreshness(db: RobinDb): FreshnessRow[] {
+  let rows: Array<{
+    name: string;
+    last_ok: string | null;
+    skips: string | null;
+    skip_reason: string | null;
+  }>;
+  try {
+    rows = db
+      .prepare(
+        `SELECT integration_name AS name,
+                MAX(CASE WHEN key='last_ok_at' THEN value END) AS last_ok,
+                MAX(CASE WHEN key='consecutive_skips' THEN value END) AS skips,
+                MAX(CASE WHEN key='last_skip_reason' THEN value END) AS skip_reason
+           FROM integration_state
+          GROUP BY integration_name
+          ORDER BY name`,
+      )
+      .all() as Array<{
+      name: string;
+      last_ok: string | null;
+      skips: string | null;
+      skip_reason: string | null;
+    }>;
+  } catch {
+    // integration_state table may not exist on very old DBs; degrade gracefully.
+    return [];
+  }
+
+  const now = Date.now();
+  return rows.map((r) => {
+    // last_ok_at is written as ISO 8601 with 'Z' by the daemon (Date.toISOString()),
+    // but sqlite may strip the zone when storing. Append 'Z' only if no timezone
+    // designator is already present, so Date.parse always treats the value as UTC.
+    const lastOkStr = r.last_ok
+      ? r.last_ok.endsWith('Z') || r.last_ok.includes('+')
+        ? r.last_ok
+        : `${r.last_ok}Z`
+      : null;
+    const ageMs = lastOkStr ? now - Date.parse(lastOkStr) : null;
+    const age = humanizeAge(ageMs);
+    const row: FreshnessRow = { name: r.name, last_ok: r.last_ok ?? null, age };
+    if (Number(r.skips ?? '0') >= 3) {
+      row.skipping = r.skip_reason ?? 'unknown reason';
+    }
+    return row;
+  });
 }
 
 export async function runDoctor(opts: {
@@ -53,10 +127,14 @@ export async function runDoctor(opts: {
         },
       ],
       summary: { ok: 0, warn: 0, fail: 1, repaired: 0, exit_code: 2 },
+      freshness: [],
     };
   }
 
-  const reports = await runInvariants(buildDoctorInvariants(db, userData), { fix: opts.fix });
+  const [reports, freshness] = await Promise.all([
+    runInvariants(buildDoctorInvariants(db, userData), { fix: opts.fix }),
+    Promise.resolve(queryFreshness(db)),
+  ]);
 
   closeDb(db);
 
@@ -94,6 +172,7 @@ export async function runDoctor(opts: {
     user_data_dir: userData,
     checks,
     summary: { ...summary, exit_code },
+    freshness,
   };
 }
 
@@ -114,6 +193,16 @@ export function printDoctorHuman(report: DoctorReport): void {
     `Summary: ${report.summary.ok} ok, ${report.summary.warn} warn, ${report.summary.fail} fail` +
       (report.summary.repaired ? ` (${report.summary.repaired} auto-repaired)` : ''),
   );
+
+  if (report.freshness.length > 0) {
+    console.log('');
+    console.log('Integration Freshness:');
+    for (const row of report.freshness) {
+      let line = `  ${row.name.padEnd(30)} last ok: ${row.age}`;
+      if (row.skipping !== undefined) line += `  [skipping: ${row.skipping}]`;
+      console.log(line);
+    }
+  }
 }
 
 export function emitRunbook(opts: { write: boolean; path?: string }): {
