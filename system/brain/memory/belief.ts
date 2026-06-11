@@ -288,10 +288,9 @@ export function believe(
     content: input.claim.trim(),
     payload: {
       topic,
-      // Preserve the caller's plain-normalized slug whenever the stored topic
-      // differs from it — both the canonical-merge case (topic === canonical)
-      // and the gate-fallback case never trigger this since topic === normalized
-      // there. Lets the one-time sweep + audit trail trace where a head came from.
+      // Preserve the caller's plain-normalized slug when canonicalization changed
+      // the stored topic (gate-fallback writes have topic === normalized, so they
+      // skip this). Lets the one-time sweep + audit trail trace where a head came from.
       ...(topic !== normalized ? { original_topic: normalized } : {}),
       supersedes,
       confidence: input.confidence ?? null,
