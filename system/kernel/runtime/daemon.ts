@@ -1,3 +1,4 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
@@ -142,6 +143,26 @@ export class Daemon {
         { count: recovered, expired: recoveredExpired, dead: recoveredDead },
         'recovered expired/dead leases',
       );
+    }
+
+    // Record boot timestamp for crash-loop detection (daemon-stable invariant).
+    // Keeps the last 20 timestamps in <userData>/state/runtime/boots.json.
+    // Never throws — a failure here must not abort the daemon start.
+    try {
+      const runtimeDir = join(userData, 'state', 'runtime');
+      mkdirSync(runtimeDir, { recursive: true });
+      const bootsPath = join(runtimeDir, 'boots.json');
+      let boots: string[] = [];
+      try {
+        boots = JSON.parse(readFileSync(bootsPath, 'utf8'));
+      } catch {
+        /* first boot or corrupt — start fresh */
+      }
+      if (!Array.isArray(boots)) boots = [];
+      boots.push(new Date().toISOString());
+      writeFileSync(bootsPath, JSON.stringify(boots.slice(-20)));
+    } catch (err) {
+      this.log.warn({ err }, 'failed to record boot timestamp');
     }
 
     writeTelemetry(this.db, 'daemon.start', { version: VERSION }, { source: 'daemon' });
