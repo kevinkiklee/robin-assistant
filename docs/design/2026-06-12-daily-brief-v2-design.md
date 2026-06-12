@@ -135,6 +135,30 @@ People & dates surface in ☀️ when actionable today and in Horizon when upcom
 Whoop/Financials/Photography sections gain deterministic trend lines with `asOf`
 stamps. All 13 sections render, as today.
 
+## Component 6 — Photowalk discovery (new integration)
+
+A new integration (`user-data/extensions/integrations/photowalks/`) that finds
+NYC photowalks for the **next 4 weeks** and surfaces them in the brief.
+
+- **Sources:** Meetup search (photography events, NYC area —
+  meetup.com/find/?keywords=photography), plus other recurring NYC sources
+  worth a parser (B&H Event Space, Eventbrite search, NYC street-photography
+  collectives). Meetup's public API is gone, so the tick fetches the search/
+  group pages and parses embedded JSON (`__NEXT_DATA__`/JSON-LD); per-source
+  parsers are isolated so one breaking doesn't kill the tick. Exact source
+  list finalized at implementation after testing which parse reliably.
+- **Tick:** daily; ingests `photowalk.event` events with
+  `{title, date, time, location, group, url, source}`, deduped by source id.
+- **Rendering:** the 📸 Photography section gains an "Upcoming photowalks"
+  list (next 4 weeks, by event date — using the event-start windowing
+  pattern, not capture ts). Renders deterministically from captured events;
+  quiet line when none found.
+- **Analyst integration:** the 📷 photography analyst receives upcoming
+  photowalks alongside light windows and may promote one to a `planCandidate`
+  ("Saturday's walk overlaps your golden-hour window"). Solo-practice note:
+  Kevin's core practice is solitary photowalks by design — group walks are an
+  *option* to surface, never framed as something he should be doing.
+
 ## Error handling / degradation matrix
 
 | Failure | Result |
