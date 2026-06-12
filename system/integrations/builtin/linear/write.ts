@@ -28,15 +28,15 @@ mutation CommentCreate($input: CommentCreateInput!) {
   }
 }`;
 
-const ISSUE_SEARCH = `
-query SearchIssue($q: String!) {
-  issueSearch(query: $q, first: 1) {
-    nodes {
-      id identifier title description url
-      state { name type }
-      team { key name }
-      updatedAt
-    }
+// Linear's API hard-rejects the old issueSearch field as deprecated; issue(id:)
+// accepts the human identifier ("KL-19") directly, so no search is needed.
+const ISSUE_BY_IDENTIFIER = `
+query IssueByIdentifier($q: String!) {
+  issue(id: $q) {
+    id identifier title description url
+    state { name type }
+    team { key name }
+    updatedAt
   }
 }`;
 
@@ -154,11 +154,10 @@ async function resolveIssueId(
     };
   }
 
-  // Try issueSearch (identifier like ENG-123)
-  type R = { issueSearch: { nodes: LinearIssue[] } };
-  const data = await gql<R>(ctx, ISSUE_SEARCH, { q: ref });
-  const issue =
-    data.issueSearch.nodes.find((i) => i.identifier === ref) ?? data.issueSearch.nodes[0];
+  // Try a direct lookup (identifier like ENG-123)
+  type R = { issue: LinearIssue | null };
+  const data = await gql<R>(ctx, ISSUE_BY_IDENTIFIER, { q: ref });
+  const issue = data.issue;
   if (!issue) throw new Error(`issue not found for ref '${ref}'`);
   return {
     issueId: issue.id,
@@ -296,19 +295,17 @@ async function transition(
 ): Promise<{ transitioned: boolean; issue?: LinearIssue }> {
   const { issueId, identifier } = await resolveIssueId(ctx, params.ref);
 
-  // Need team ID to look up states. Try map row first, then resolve from issueSearch result.
+  // Need team ID to look up states. Try map row first, then resolve from the issue.
   const mapRow = lookupByRef(ctx.db, params.ref);
   let teamId: string;
   if (mapRow?.team_id) {
     teamId = mapRow.team_id;
   } else {
     // Re-fetch the issue to get team info
-    type R = { issueSearch: { nodes: LinearIssue[] } };
-    const data = await gql<R>(ctx, ISSUE_SEARCH, { q: identifier });
-    const issue =
-      data.issueSearch.nodes.find((i) => i.identifier === identifier) ?? data.issueSearch.nodes[0];
-    if (!issue) throw new Error(`cannot resolve team for '${params.ref}'`);
-    teamId = resolveTeamId(ctx, issue.team.key);
+    type R = { issue: LinearIssue | null };
+    const data = await gql<R>(ctx, ISSUE_BY_IDENTIFIER, { q: identifier });
+    if (!data.issue) throw new Error(`cannot resolve team for '${params.ref}'`);
+    teamId = resolveTeamId(ctx, data.issue.team.key);
   }
 
   const stateId = await resolveStateId(ctx, teamId, params.intent);

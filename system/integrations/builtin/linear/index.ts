@@ -61,15 +61,15 @@ query IssuesByIds($ids: [String!]!) {
   }
 }`;
 
-const ISSUE_SEARCH_QUERY = `
-query SearchIssue($q: String!) {
-  issueSearch(query: $q, first: 1) {
-    nodes {
-      id identifier title description url
-      state { name type }
-      team { key name }
-      updatedAt
-    }
+// Linear's API hard-rejects the old issueSearch field as deprecated; issue(id:)
+// accepts the human identifier ("KL-19") directly, so no search is needed.
+const ISSUE_BY_IDENTIFIER_QUERY = `
+query IssueByIdentifier($q: String!) {
+  issue(id: $q) {
+    id identifier title description url
+    state { name type }
+    team { key name }
+    updatedAt
   }
 }`;
 
@@ -189,12 +189,8 @@ export const actions = {
     params: { identifier: string },
     ctx: IntegrationContext,
   ): Promise<LinearIssue | null> {
-    type Result = { issueSearch: { nodes: LinearIssue[] } };
-    const data = await gql<Result>(ctx, ISSUE_SEARCH_QUERY, { q: params.identifier });
-    return (
-      data.issueSearch.nodes.find((i) => i.identifier === params.identifier) ??
-      data.issueSearch.nodes[0] ??
-      null
-    );
+    type Result = { issue: LinearIssue | null };
+    const data = await gql<Result>(ctx, ISSUE_BY_IDENTIFIER_QUERY, { q: params.identifier });
+    return data.issue;
   },
 };
