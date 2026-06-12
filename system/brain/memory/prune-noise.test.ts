@@ -122,6 +122,29 @@ test('rebuildVecIndex preserves every vector at its rowid and keeps it searchabl
   closeDb(db);
 });
 
+test('rebuildVecIndex preserves the live column spec (int8 era, post-migration-023)', () => {
+  // The rebuild must derive the vec0 column spec from sqlite_master, not
+  // hardcode one: migration 023 converted events_vec to int8[3072], and a
+  // hardcoded float[3072] rebuild would silently recreate the wrong table —
+  // every int8 query/insert after that mismatches.
+  const db = freshDb();
+  const a = ingest(db, null, { kind: 'knowledge.doc', source: 's', content: 'a' });
+  fakeEmbed(db, a.contentId as number);
+
+  const moved = rebuildVecIndex(db);
+  assert.equal(moved, 1);
+
+  const master = db.prepare(`SELECT sql FROM sqlite_master WHERE name = 'events_vec'`).get() as {
+    sql: string;
+  };
+  assert.match(master.sql, /int8\[3072\]/, `rebuilt spec must stay int8: ${master.sql}`);
+
+  // The row is still present and searchable through the int8 path.
+  const n = (db.prepare(`SELECT count(*) AS n FROM events_vec`).get() as { n: number }).n;
+  assert.equal(n, 1);
+  closeDb(db);
+});
+
 test('pruneNoiseVectors leaves the vec index synced with embedding sentinels', () => {
   const db = freshDb();
   const keep = ingest(db, null, { kind: 'belief.update', source: 's', content: 'fact' });

@@ -60,8 +60,23 @@ export function pruneNoiseVectors(db: RobinDb): PruneResult {
  * over. Run a VACUUM afterwards to release the pages freed by the dropped table.
  */
 export function rebuildVecIndex(db: RobinDb): number {
+  // Derive the vec0 column spec from the LIVE table so the rebuild always
+  // matches the current migration era (float[3072] pre-023, int8[3072] after).
+  // A hardcoded spec silently recreates the wrong table the next time a
+  // migration changes the storage type.
+  const master = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events_vec'`)
+    .get() as { sql: string } | undefined;
+  const specMatch = master?.sql.match(/vec0\(\s*(.+?)\s*\)/i);
+  if (!specMatch) throw new Error(`events_vec spec not found in sqlite_master: ${master?.sql}`);
+  const spec = specMatch[1];
+
+  // A bare BLOB binding is interpreted as float32 by vec0 — int8 columns
+  // reject it ("expected int8, but a float32 vector was provided"), so the
+  // re-insert must tag the value with vec_int8() in the int8 era.
+  const valueExpr = /int8\[/i.test(spec) ? 'vec_int8(?)' : '?';
   const copy = (from: string, to: string): number => {
-    const ins = db.prepare(`INSERT INTO ${to}(rowid, embedding) VALUES (?, ?)`);
+    const ins = db.prepare(`INSERT INTO ${to}(rowid, embedding) VALUES (?, ${valueExpr})`);
     const rows = db.prepare(`SELECT rowid, embedding FROM ${from}`).all() as Array<{
       rowid: number;
       embedding: Buffer;
@@ -71,10 +86,10 @@ export function rebuildVecIndex(db: RobinDb): number {
   };
 
   return db.transaction(() => {
-    db.exec(`CREATE VIRTUAL TABLE events_vec_tmp USING vec0(embedding float[3072])`);
+    db.exec(`CREATE VIRTUAL TABLE events_vec_tmp USING vec0(${spec})`);
     copy('events_vec', 'events_vec_tmp');
     db.exec(`DROP TABLE events_vec`);
-    db.exec(`CREATE VIRTUAL TABLE events_vec USING vec0(embedding float[3072])`);
+    db.exec(`CREATE VIRTUAL TABLE events_vec USING vec0(${spec})`);
     const moved = copy('events_vec_tmp', 'events_vec');
     db.exec(`DROP TABLE events_vec_tmp`);
     return moved;

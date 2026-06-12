@@ -8,6 +8,7 @@ import { loadPolicies } from '../config/load.ts';
 import {
   agentWorktreesBoundedInvariant,
   alertsHistoryBoundedInvariant,
+  captureVolumeSaneInvariant,
   daemonStableInvariant,
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
@@ -90,6 +91,7 @@ export function buildDoctorInvariants(
     integrationDegradedInvariant(db),
     jobsDiscoverableInvariant(db),
     jobsErroringInvariant(db),
+    captureVolumeSaneInvariant(db),
     jobsHistoryBoundedInvariant(db),
     jobsRetriesBoundedInvariant(db),
     alertsHistoryBoundedInvariant(db),

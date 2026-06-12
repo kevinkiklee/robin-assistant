@@ -6,6 +6,7 @@ import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { loadPolicies } from '../config/load.ts';
 import {
+  captureVolumeSaneInvariant,
   daemonHeartbeatingInvariant,
   daemonStableInvariant,
   dbReachableInvariant,
@@ -120,6 +121,7 @@ export class HealthMonitor {
       integrationDegradedInvariant(this.opts.db),
       jobsDiscoverableInvariant(this.opts.db),
       jobsErroringInvariant(this.opts.db),
+      captureVolumeSaneInvariant(this.opts.db),
       daemonStableInvariant({ bootsPath }),
       // Critical so it notifies (warnings don't): catches the paused/stalled
       // scheduler that daemon.heartbeating structurally can't see — its lastTickAt
