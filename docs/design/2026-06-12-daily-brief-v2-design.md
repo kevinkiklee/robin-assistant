@@ -151,8 +151,10 @@ NYC photowalks for the **next 4 weeks** and surfaces them in the brief.
   `{title, date, time, location, group, url, source}`, deduped by source id.
 - **Rendering:** the 📸 Photography section gains an "Upcoming photowalks"
   list (next 4 weeks, by event date — using the event-start windowing
-  pattern, not capture ts). Renders deterministically from captured events;
-  quiet line when none found.
+  pattern, not capture ts). **Every rendered photowalk includes its event
+  URL** (Kevin's standing requirement — a walk without a link is not
+  actionable). Renders deterministically from captured events; quiet line
+  when none found.
 - **Analyst integration:** the 📷 photography analyst receives upcoming
   photowalks alongside light windows and may promote one to a `planCandidate`
   ("Saturday's walk overlaps your golden-hour window"). Solo-practice note:
