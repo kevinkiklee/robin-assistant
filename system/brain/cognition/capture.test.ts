@@ -118,6 +118,54 @@ test('capture: a real session that only mentions the cognition marker in assista
   closeDb(db);
 });
 
+test('capture: skips the biographer disambiguation prompt (self-capture feedback loop)', async () => {
+  // The disambiguation SDK call's prompt ("Source text: … Extracted: type=…
+  // Candidates: …") was the one cognition prompt missing from the echo rule —
+  // observed live 2026-06-12: 16k+ of these captured as sessions, then
+  // re-processed by the biographer (which fires more disambiguation calls),
+  // a self-amplifying loop. Nested re-captures embed the same markers, so this
+  // signature also catches capture-of-capture generations.
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'disambig-echo',
+    turns: [
+      {
+        role: 'user',
+        content:
+          'Source text:\nKevin photographed street scenes in NYC over the weekend.\n\nExtracted: type=place, name="NYC"\n\nCandidates:\n- id=658, name="Home — Astoria, Queens, NYC", profile="Kevin\'s residence"\n- id=4734, name="New York City (NYC)"',
+      },
+      {
+        role: 'assistant',
+        content: '{"matched_id":4734,"create_new":false,"reason":"same city"}',
+      },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: still captures a real session that discusses disambiguation markers in assistant output', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'disambig-discuss',
+    turns: [
+      { role: 'user', content: 'how does the entity disambiguation prompt work?' },
+      {
+        role: 'assistant',
+        content:
+          'It sends "Extracted: type=place" plus a "Candidates:" list of entity ids and asks the model to pick a matched_id.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session discussing the markers; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
 test('capture: skips a failed claude session whose only assistant turn is a usage-limit notice', async () => {
   const db = freshDb();
   const r = await captureSession(db, null, {

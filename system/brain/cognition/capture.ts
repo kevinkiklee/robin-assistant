@@ -198,7 +198,13 @@ export async function captureSession(
     const c = t.content;
     return (
       c.includes('=== FULL SESSION ===') ||
-      (c.includes('Recent observations:') && c.includes('Write the profile.'))
+      (c.includes('Recent observations:') && c.includes('Write the profile.')) ||
+      // Biographer disambiguation prompt ("Source text: … Extracted: type=…,
+      // name=… Candidates: …", biographer.ts). The one cognition prompt this
+      // rule originally missed — 16k+ self-captures by 2026-06-12, and because
+      // re-captures embed the full prompt, the signature also catches nested
+      // capture-of-capture generations.
+      (c.includes('Extracted: type=') && c.includes('Candidates:'))
     );
   });
   if (isCognitionEcho) return { captured: false, skipReason: 'robin_cognition_echo' };

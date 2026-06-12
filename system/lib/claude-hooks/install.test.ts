@@ -153,6 +153,24 @@ test('robinHookCommand: includes the chosen port and stdin pipe', () => {
   assert.match(cmd, /\|\| true$/);
 });
 
+test('all three hook commands short-circuit inside Robin-internal SDK children', () => {
+  // runSdk marks its subprocess env with ROBIN_INTERNAL_SDK=1; hook commands
+  // inherit that env. Without this guard, every one of Robin's own LLM calls
+  // fires SessionEnd → gets captured as a session.captured event (observed
+  // live 2026-06-12: 16k+ self-captures of biographer prompts, feedback loop)
+  // and SessionStart injects the primer into every internal call (token waste).
+  for (const cmd of [
+    robinHookCommand(41999),
+    robinSessionStartHookCommand(41999),
+    robinUserPromptSubmitHookCommand(41999),
+  ]) {
+    assert.ok(
+      cmd.startsWith('[ -z "$ROBIN_INTERNAL_SDK" ] || exit 0; '),
+      `internal-SDK guard must lead the command: ${cmd}`,
+    );
+  }
+});
+
 test('robinSessionStartHookCommand: posts to /hooks/session_start with chosen port', () => {
   const cmd = robinSessionStartHookCommand(41999);
   assert.match(cmd, /127\.0\.0\.1:41999/);

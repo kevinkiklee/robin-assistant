@@ -53,6 +53,16 @@ const HOOK_MAX_TIME_SECONDS = 5;
  */
 const FAIL_OPEN = '|| true';
 
+/**
+ * Leading guard on every hook command: exit immediately inside Robin's own SDK
+ * subprocesses (runSdk sets ROBIN_INTERNAL_SDK=1 in the child env, which hook
+ * shells inherit). Without it, each internal LLM call fires SessionEnd and is
+ * captured back as a session.captured event — observed live 2026-06-12 as a
+ * self-amplifying loop (16k+ captures of the biographer's own prompts) — and
+ * SessionStart injects the primer into every internal call.
+ */
+const INTERNAL_SDK_GUARD = '[ -z "$ROBIN_INTERNAL_SDK" ] || exit 0; ';
+
 export interface InstallOptions {
   /** Override HOME for tests. */
   home?: string;
@@ -88,14 +98,14 @@ interface SettingsShape {
 export function robinHookCommand(port: number = DEFAULT_PORT): string {
   // --max-time bounds session-shutdown delay if the daemon is down; FAIL_OPEN keeps a curl
   // timeout/refusal from surfacing as a hook error. --data-binary @-: stream stdin verbatim.
-  return `curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/session_end -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
+  return `${INTERNAL_SDK_GUARD}curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/session_end -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
 }
 
 export function robinSessionStartHookCommand(port: number = DEFAULT_PORT): string {
   // Same PATH-safe curl style as SessionEnd. The daemon answers with the primer JSON, and
   // curl's stdout becomes Claude Code's injected SessionStart context. A down/slow daemon
   // returns nothing → no primer (FAIL_OPEN swallows the non-zero exit), graceful.
-  return `curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/session_start -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
+  return `${INTERNAL_SDK_GUARD}curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/session_start -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
 }
 
 export function robinUserPromptSubmitHookCommand(port: number = DEFAULT_PORT): string {
@@ -103,7 +113,7 @@ export function robinUserPromptSubmitHookCommand(port: number = DEFAULT_PORT): s
   // JSON; curl's stdout becomes Claude Code's pre-answer injected context. The timeout bounds
   // the per-turn latency tax and FAIL_OPEN makes a down/slow daemon return nothing → no
   // injection, never a "non-blocking status code" error on the user's prompt.
-  return `curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/user_prompt_submit -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
+  return `${INTERNAL_SDK_GUARD}curl -s --max-time ${HOOK_MAX_TIME_SECONDS} -X POST http://127.0.0.1:${port}/hooks/user_prompt_submit -H 'Content-Type: application/json' --data-binary @- ${FAIL_OPEN}`;
 }
 
 /**

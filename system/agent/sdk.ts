@@ -59,6 +59,13 @@ function buildEnv(input: RunSdkInput): Record<string, string> {
     delete out.ANTHROPIC_API_KEY;
     delete out.CLAUDE_API_KEY;
   }
+  // Mark the child as one of Robin's own LLM calls. Robin's Claude Code hooks
+  // (session_end capture, session_start primer, user_prompt_submit recall) all
+  // lead with a `[ -z "$ROBIN_INTERNAL_SDK" ] || exit 0` guard — without this
+  // marker every internal call is captured back as a session.captured event
+  // (a self-amplifying feedback loop: the biographer re-processes its own
+  // prompts) and gets the primer injected into its context (token waste).
+  out.ROBIN_INTERNAL_SDK = '1';
   return out;
 }
 

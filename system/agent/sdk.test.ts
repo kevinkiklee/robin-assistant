@@ -133,3 +133,28 @@ test('runSdk: strips API-key env vars to force subscription billing', async () =
   assert.equal(seenEnv?.CLAUDE_API_KEY, undefined);
   assert.equal(seenEnv?.PATH, '/usr/bin');
 });
+
+test('runSdk: marks SDK children as Robin-internal so capture hooks can skip them', async () => {
+  // Every runSdk child is one of Robin's own LLM calls, never a user session.
+  // Without this marker the SessionEnd capture hook ingests each call as a
+  // session.captured event — observed live 2026-06-12: 16k+ junk captures of
+  // the biographer's own disambiguation prompts, self-amplifying (the
+  // biographer then re-processes its own captured prompts with more SDK calls).
+  let seenEnv: Record<string, string> | undefined;
+  const q = (opts: { options?: { env?: Record<string, string> } }) => {
+    seenEnv = opts.options?.env;
+    return fakeQuery([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'ok',
+        total_cost_usd: 0,
+        num_turns: 1,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]);
+  };
+  await runSdk({ prompt: 'x', queryFn: q, baseEnv: { PATH: '/usr/bin' } });
+  assert.equal(seenEnv?.ROBIN_INTERNAL_SDK, '1');
+});
