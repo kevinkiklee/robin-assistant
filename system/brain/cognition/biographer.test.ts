@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { SubscriptionLimitError } from '../llm/claude-agent.ts';
 import { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { LLMProvider } from '../llm/types.ts';
 import { insertBeliefCandidate, listBeliefCandidates } from '../memory/belief-candidate.ts';
@@ -1448,6 +1449,157 @@ test('a failed retry bumps attempts; attempts >= 3 rows are not retried', async 
     .prepare(`SELECT attempts FROM claim_failures WHERE event_id = 102`)
     .get() as { attempts: number };
   assert.equal(exhausted.attempts, 3, 'the exhausted row is untouched');
+  closeDb(db);
+});
+
+// ─── Subscription-limit outage semantics ────────────────────────────────────
+// A usage-limited subscription account surfaces as SubscriptionLimitError from
+// the claude-agent provider (the SDK returns the limit banner as "successful"
+// text). Observed live 2026-06-12: without outage handling the biographer burned
+// retry attempts and finalized ~1,000 sessions with empty extractions while the
+// account was Sonnet-limited for 3 days.
+
+/** Dispatcher whose `reasoning` invokes throw SubscriptionLimitError, optionally only for claims prompts. */
+function limitedLLM(opts: { onlyClaims?: boolean; entityRelJson?: string } = {}): {
+  d: LLMDispatcher;
+  calls: { claims: number; other: number };
+} {
+  const calls = { claims: 0, other: 0 };
+  const p: LLMProvider = {
+    name: 'limited',
+    capabilities: new Set(['reasoning']),
+    meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async (req) => {
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      if (isClaims) calls.claims++;
+      else calls.other++;
+      if (!opts.onlyClaims || isClaims) {
+        throw new SubscriptionLimitError("You've hit your Sonnet limit · resets Jun 15 at 7am");
+      }
+      return {
+        text: opts.entityRelJson ?? JSON.stringify({ entities: [], relations: [] }),
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costUsd: 0,
+        latencyMs: 0,
+        provider: 'limited',
+      };
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('p', p);
+  d.assign('reasoning', 'p');
+  return { d, calls };
+}
+
+test('retry pass: a subscription-limit outage aborts without burning attempts', async () => {
+  const db = freshDb();
+  seedDeadLetter(db, { eventId: 401, chunkIdx: 0, attempts: 1, ageDays: 1 });
+  seedDeadLetter(db, { eventId: 402, chunkIdx: 0, attempts: 1 });
+
+  const { d, calls } = limitedLLM();
+  const r = await retryClaimFailures(db, d);
+
+  assert.equal(calls.claims, 1, 'the pass stops at the first outage — no further LLM calls');
+  assert.equal(r.recovered, 0);
+  const attempts = db
+    .prepare(`SELECT event_id, attempts FROM claim_failures ORDER BY event_id`)
+    .all() as Array<{ event_id: number; attempts: number }>;
+  assert.deepEqual(
+    attempts,
+    [
+      { event_id: 401, attempts: 1 },
+      { event_id: 402, attempts: 1 },
+    ],
+    'an outage never increments attempts — the rows stay fully retryable',
+  );
+  closeDb(db);
+});
+
+test('entity pass: a subscription-limit outage aborts the tick without advancing the cursor', async () => {
+  const db = freshDb();
+  await captureSession(db, null, {
+    sessionId: 's-outage',
+    turns: [
+      { role: 'user', content: 'my primary camera is a Nikon Z8 and I shoot street photography' },
+      { role: 'assistant', content: 'Noted — Nikon Z8 recorded as your primary camera.' },
+    ],
+  });
+
+  const { d, calls } = limitedLLM();
+  const r = await runBiographer(db, d, 10, { minSessionBodyChars: 0, draftClaims: true });
+
+  // No marker → the session is NOT "done"; no silent empty extraction.
+  const markers = db
+    .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'biographer.extracted'`)
+    .get() as { c: number };
+  assert.equal(markers.c, 0, 'no extracted marker is written during an outage');
+  assert.equal(r.processed, 0, 'the session does not count as processed');
+
+  // Progress is parked at the failed chunk so the next tick resumes exactly there.
+  const progress = db
+    .prepare(`SELECT next_chunk, total_chunks FROM biographer_progress`)
+    .all() as Array<{ next_chunk: number; total_chunks: number }>;
+  assert.equal(progress.length, 1, 'a progress row parks the session for resume');
+  assert.equal(progress[0].next_chunk, 0, 'cursor still points at the failed chunk');
+
+  // The tick aborts on the FIRST outage — claims pass and further targets never run.
+  assert.equal(calls.other, 1, 'exactly one extraction call before aborting');
+  assert.equal(calls.claims, 0, 'the claims pass never runs after an entity-pass outage');
+  assert.match(r.errors.join('\n'), /subscription limit/i);
+  closeDb(db);
+});
+
+test('claims pass: a mid-pass outage dead-letters remaining chunks without LLM calls and keeps entity work', async () => {
+  const db = freshDb();
+  // Two user turns big enough to land in separate chunks (CHUNK_CHARS = 20000),
+  // each carrying [USER] so both are claims-eligible.
+  const filler = 'I photograph street scenes in Astoria with my Nikon Z8 most weekends. '.repeat(
+    170,
+  );
+  await captureSession(db, null, {
+    sessionId: 's-claims-outage',
+    turns: [
+      { role: 'user', content: `first durable block: ${filler}` },
+      { role: 'assistant', content: 'Noted, recording those photography habits.' },
+      { role: 'user', content: `second durable block: ${filler}` },
+    ],
+  });
+  const eventId = (
+    db.prepare(`SELECT id FROM events WHERE kind = 'session.captured'`).get() as { id: number }
+  ).id;
+
+  const { d, calls } = limitedLLM({
+    onlyClaims: true,
+    entityRelJson: JSON.stringify({
+      entities: [{ type: 'camera', name: 'Nikon Z8' }],
+      relations: [],
+    }),
+  });
+  const r = await runBiographer(db, d, 10, { minSessionBodyChars: 0, draftClaims: true });
+
+  // Entity extraction succeeded → the session finalizes and its work is kept.
+  const marker = db
+    .prepare(
+      `SELECT json_extract(payload, '$.entities') AS e FROM events
+        WHERE kind = 'biographer.extracted' AND json_extract(payload, '$.source_event_id') = ?`,
+    )
+    .get(eventId) as { e: number } | undefined;
+  assert.ok(marker, 'the session still finalizes — entity work is not discarded');
+  assert.equal(marker?.e, 1);
+  assert.equal(r.processed, 1);
+
+  // One claims call hit the outage; every remaining eligible chunk is preserved
+  // as a dead letter WITHOUT spending further LLM calls.
+  assert.equal(calls.claims, 1, 'no further claims calls after the outage');
+  const letters = db
+    .prepare(`SELECT chunk_idx, attempts FROM claim_failures WHERE event_id = ? ORDER BY chunk_idx`)
+    .all(eventId) as Array<{ chunk_idx: number; attempts: number }>;
+  assert.equal(letters.length, 2, 'failed chunk AND untried chunks are all dead-lettered');
+  assert.deepEqual(
+    letters.map((l) => l.attempts),
+    [1, 1],
+  );
+  assert.match(r.errors.join('\n'), /subscription limit/i);
   closeDb(db);
 });
 

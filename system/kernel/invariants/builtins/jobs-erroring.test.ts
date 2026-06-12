@@ -22,16 +22,19 @@ function insertJob(db: RobinDb, name: string, state: string, createdAt: string):
   ).run(name, createdAt, state, createdAt);
 }
 
-const NOW_ISO = '2026-06-10T12:00:00.000Z';
+// Offsets must be relative to the REAL clock: the invariant's window is
+// `created_at > datetime('now','-1 day')`. A frozen anchor here turns into a
+// time bomb — rows seeded "1 hour ago" drift out of the 24h window once the
+// anchor date passes (observed 2026-06-12 with an anchor of 2026-06-10).
 
-/** ISO string `hoursAgo` hours before NOW_ISO */
+/** ISO string `hoursAgo` hours before now */
 function hoursAgo(h: number): string {
-  return new Date(new Date(NOW_ISO).getTime() - h * 3_600_000).toISOString();
+  return new Date(Date.now() - h * 3_600_000).toISOString();
 }
 
-/** ISO string `daysAgo` days before NOW_ISO */
+/** ISO string `daysAgo` days before now */
 function daysAgo(d: number): string {
-  return new Date(new Date(NOW_ISO).getTime() - d * 86_400_000).toISOString();
+  return new Date(Date.now() - d * 86_400_000).toISOString();
 }
 
 test('jobs-erroring: empty table → ok', async () => {

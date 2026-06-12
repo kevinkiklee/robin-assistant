@@ -10,6 +10,33 @@ import type { InvokeRequest, InvokeResult, LLMProvider, LLMRole, ProviderMeta } 
  */
 type RunSdkFn = (input: RunSdkInput & { outputFormat?: unknown }) => Promise<SdkResult>;
 
+/**
+ * The subscription account is usage-limited. The SDK reports this as a
+ * status:'success' result whose text is a short banner ("You've hit your
+ * Sonnet limit · resets Jun 15 at 7am (America/New_York)" — observed live
+ * 2026-06-12), NOT as an error. Without detection the banner flows downstream
+ * as model output, fails every JSON parse, and reads as bad output instead of
+ * an outage — dead-lettering chunks and silently emptying extractions. The
+ * message embeds the banner (it carries the reset time) and the phrase
+ * "subscription limit", which outage classifiers match on.
+ */
+export class SubscriptionLimitError extends Error {
+  constructor(banner: string) {
+    super(`subscription limit: ${banner}`);
+    this.name = 'SubscriptionLimitError';
+  }
+}
+
+/**
+ * True when `text` is the SDK's usage-limit banner rather than model output.
+ * Deliberately tight: the banner is short and LEADS with the limit phrase, so
+ * long-form prose that merely mentions limits never matches.
+ */
+export function isSubscriptionLimitBanner(text: string): boolean {
+  const t = text.trim();
+  return t.length <= 200 && /^you['’]ve hit your\b.{0,60}?\blimit\b/i.test(t);
+}
+
 export interface ClaudeAgentProviderConfig {
   /** Cheap, pinned model. Downstream (build-dispatcher) sets it; default haiku. */
   model?: string;
@@ -88,6 +115,13 @@ export class ClaudeAgentProvider implements LLMProvider {
     }
 
     const result = await this.runSdk(sdkInput);
+
+    // A usage-limited account returns the limit banner as a "successful" text
+    // result. Surface it as an outage, not output — unless structured output is
+    // present, which proves the call genuinely succeeded.
+    if (result.structured === undefined && isSubscriptionLimitBanner(result.text)) {
+      throw new SubscriptionLimitError(result.text.trim());
+    }
 
     // Record the REAL cost to the ledger (pool spend), keep it out of the dispatcher cap.
     this.ledger?.record({

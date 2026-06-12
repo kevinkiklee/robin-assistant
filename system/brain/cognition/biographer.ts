@@ -23,9 +23,25 @@ function isLlmUnavailableError(err: unknown): boolean {
   // `spend cap exceeded` = the dispatcher's SpendCapError; treat a tripped daily
   // cloud-spend cap like an outage (abort the tick, don't advance the cursor or
   // write empty extraction) so a runaway loop stops without losing data.
-  return /fetch failed|ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|network|failed to connect|connection refused|terminated|fetch is not defined|spend cap exceeded/i.test(
+  return /fetch failed|ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|network|failed to connect|connection refused|terminated|fetch is not defined|spend cap exceeded|subscription limit/i.test(
     msg,
   );
+}
+
+/**
+ * Definitive, content-independent outages: the subscription account is
+ * usage-limited (claude-agent's SubscriptionLimitError — the SDK returns the
+ * limit banner as "successful" text) or the dispatcher's daily spend cap
+ * tripped. Unlike timeouts — which may be one poison chunk and must advance
+ * past it — these mean NO chunk can succeed until the limit window resets, so
+ * the only correct move is to stop work without advancing any cursor and
+ * without burning bounded retry attempts. Observed live 2026-06-12: a 3-day
+ * Sonnet limit emptied ~1,000 session extractions because the banner read as
+ * bad model output instead of an outage.
+ */
+function isHardLlmOutage(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /subscription limit|spend cap exceeded/i.test(msg);
 }
 
 // Bug E mitigation — bound any single chunk's LLM call so one stuck chunk can't
@@ -335,6 +351,10 @@ export async function retryClaimFailures(
       db.prepare(`DELETE FROM claim_failures WHERE id = ?`).run(row.id);
       result.recovered++;
     } catch (err) {
+      // Hard outage (subscription limit / spend cap): no row can recover this
+      // pass, and recording would consume one of the chunk's bounded retry
+      // attempts for a failure that says nothing about the chunk. Stop cold.
+      if (isHardLlmOutage(err)) break;
       recordClaimFailure(
         db,
         row.event_id,
@@ -1517,6 +1537,9 @@ export async function runBiographer(
     const startChunk = target.nextChunk;
     const mergedEntities = target.entities;
     const mergedRelations = target.relations;
+    // Set when the claims pass hits a hard LLM outage: this target still
+    // finalizes (its entity work is real), but the tick stops after it.
+    let claimsOutage = false;
 
     // Extract this tick's slice of chunks. With no LLM there is nothing to
     // extract, so the session finalizes immediately with an empty result
@@ -1587,6 +1610,24 @@ export async function runBiographer(
             if (!mergedRelations.has(key)) mergedRelations.set(key, r);
           }
         } catch (err) {
+          if (isHardLlmOutage(err)) {
+            // Hard outage: park the session exactly at the failed batch and
+            // abort the whole tick. Finalizing now would write an empty
+            // extraction and advance past content the LLM never saw; the next
+            // tick resumes from this cursor once the limit window resets.
+            saveBiographerProgress(
+              db,
+              target.eventId,
+              totalChunks,
+              batch[0],
+              mergedEntities,
+              mergedRelations,
+            );
+            result.errors.push(
+              `event ${target.eventId} batch [${batch}]: ${err instanceof Error ? err.message : String(err)} — hard LLM outage, tick aborted with cursor parked`,
+            );
+            return result;
+          }
           if (isLlmUnavailableError(err)) llmUnavailable = true;
           result.errors.push(
             `event ${target.eventId} batch [${batch}]: ${err instanceof Error ? err.message : String(err)}`,
@@ -1695,6 +1736,24 @@ export async function runBiographer(
               // best-effort — a dead-letter write failure must not break the loop
             }
             result.errors.push(`event ${target.eventId} claims chunk ${ci}: ${msg}`);
+            if (isHardLlmOutage(err)) {
+              // Hard outage mid-claims: the entity pass above already succeeded,
+              // so the session WILL finalize and its cursor advance — any chunk
+              // not dead-lettered here would lose its claims forever. Preserve
+              // every remaining eligible chunk without LLM spend, then stop the
+              // tick after this target finalizes.
+              for (let rest = ci + 1; rest < endChunk; rest++) {
+                const restChunk = chunks[rest];
+                if (bodyIsTranscript && !/\[USER\]/i.test(restChunk)) continue;
+                try {
+                  recordClaimFailure(db, target.eventId, rest, restChunk, msg);
+                } catch {
+                  // best-effort — a dead-letter write failure must not break the loop
+                }
+              }
+              claimsOutage = true;
+              break;
+            }
           }
         }
       }
@@ -1827,6 +1886,9 @@ export async function runBiographer(
       db.prepare(`DELETE FROM biographer_progress WHERE source_event_id = ?`).run(target.eventId);
     }
     result.processed++;
+    // A hard outage during claims means every further target would burn calls
+    // against a downed LLM — stop the tick here; the next one resumes cleanly.
+    if (claimsOutage) return result;
   }
 
   return result;
