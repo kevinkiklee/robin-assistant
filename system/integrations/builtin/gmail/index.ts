@@ -40,12 +40,15 @@ export const integration: Integration = {
       return { status: 'skipped', message: err instanceof Error ? err.message : String(err) };
     }
 
-    // Filter out Gmail's auto-tabbed promo/social/notification mail, then take
+    // Filter out Gmail's auto-tabbed promo/social/forum mail, then take
     // recent inbox traffic regardless of read state — Kevin reads most mail on
     // his phone before the daemon ticks, so `is:unread` silently dropped
-    // everything personally-relevant. Content-hash dedup in `ingest()` keeps
-    // re-ingestion of already-seen messages cheap.
-    const exclude = '-category:promotions -category:social -category:updates -category:forums';
+    // everything personally-relevant. `category:updates` stays IN: Gmail
+    // auto-files transactional mail there (deposit confirmations, shipping,
+    // Search Console alerts), and excluding it made the brief report "no new
+    // mail" on days with real inbox traffic. Content-hash dedup in `ingest()`
+    // keeps re-ingestion of already-seen messages cheap.
+    const exclude = '-category:promotions -category:social -category:forums';
     const lastSyncTs = ctx.state.get('last_sync_ts');
     const q = lastSyncTs
       ? `in:inbox ${exclude} after:${Math.floor(Number.parseInt(lastSyncTs, 10) / 1000)}`
