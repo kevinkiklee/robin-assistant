@@ -51,7 +51,7 @@ Eight more items shipped:
 
 - **P1.4 biographer stage 3** (`ac7f774`) — LLM-driven entity disambiguation when multiple candidates match; falls back gracefully without LLM
 - **P1.5 auto-fire on daemon unhealthy** (`b97f1c2`) — `HealthMonitor` polls invariants every 60s; on critical failure with 1h cooldown, calls notify integration (opt-in via flag)
-- **P2.1 Kuzu graph projection** (`cacb8f0`) — `rebuildKuzuProjection()` + `queryKuzu()` library functions; nightly rebuild job can land later
+- **P2.1 Kuzu graph projection** (`cacb8f0`) — `rebuildKuzuProjection()` + `queryKuzu()` library functions; nightly rebuild job can land later *(removed 2026-06-11 — upstream archived, never wired; see P2.1 below)*
 - **P2.2 OTel exporter** (`260fd44`) — `exportRecentEventsAsOtel()` posts events as OTLP HTTP spans to any compatible collector (Honeycomb, Grafana Cloud, etc.)
 - **P2.5 multi-account integrations** (`1fcd75d`) — `<name>--<instance>` directory naming pattern; loader and scheduler-glue both honor `instanceName`
 - **P2.6 battery threshold auto-pause** (`ba7568d`) — `PowerAutoMonitor` reads `pmset -g batt` every 30s; pauses on `on_battery_below_pct`, auto-resumes on AC
@@ -348,9 +348,9 @@ For each v2 row class, write a transformer that produces v3 rows. The shape will
 
 These don't block daily-driver use; design-doc Phase 2 items.
 
-### P2.1 — Kuzu graph projection
+### P2.1 — Kuzu graph projection — DROPPED 2026-06-11
 
-Build the read-side projection rebuilt from SQLite source. Triggered nightly by dream job after entity updates. See design doc §7. ~2 subagent tasks.
+Scaffold removed. Kuzu upstream was archived Oct 2025 (fragmented forks, no clear successor), and the relations table (<10k edges, ~4.5k/month growth) is years from outgrowing SQLite traversal. Decision recorded in ARCHITECTURE.md §Database; revisit only if relations pass ~1M rows AND a maintained engine emerges AND a feature needs path-pattern queries.
 
 ### P2.2 — OpenTelemetry exporter
 

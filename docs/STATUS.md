@@ -60,7 +60,6 @@ The full loop is operational: Claude Code sessions are captured via a session-en
 ## Known gaps (deferred)
 
 - **Interactive `robin init`** — TTY prompts + OAuth device flow + model pulling. `--yes` (non-interactive) covers daily use.
-- **Kuzu graph projection** — scaffolded in paths.ts; not wired. Use once SQL traversal becomes a bottleneck.
 - **APFS snapshots** for `robin db backup` — current VACUUM-INTO backup works; APFS needs elevated permissions.
 - **Job retention/pruning** — completed job rows accumulate (~1500/day from embedder). No auto-prune yet.
 - **Multi-account integrations** — one instance per integration name.

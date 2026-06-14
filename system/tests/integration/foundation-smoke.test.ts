@@ -64,7 +64,18 @@ test('foundation smoke: init → doctor → daemon → claim a queued job → st
     output += d.toString();
   });
 
-  await sleep(3000); // long enough for at least 2 ticks
+  // Poll for the job to complete instead of a fixed sleep — a fixed 3s window
+  // flakes under a loaded parallel suite run (and overstays on a fast one).
+  const deadline = Date.now() + 12_000;
+  for (;;) {
+    await sleep(250);
+    const dbp = openDb(dbFilePath(userData));
+    const r = dbp.prepare("SELECT state FROM jobs WHERE name = 'test.noop'").get() as
+      | { state: string }
+      | undefined;
+    closeDb(dbp);
+    if (r?.state === 'completed' || Date.now() > deadline) break;
+  }
   daemon.kill('SIGTERM');
 
   await new Promise<void>((resolve) => {

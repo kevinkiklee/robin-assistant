@@ -1,5 +1,6 @@
 import { solarTimes } from '../../../lib/solar.ts';
 import type { Integration } from '../../_runtime/types.ts';
+import { fogNights, type WttrDay } from './fog.ts';
 
 export const integration: Integration = {
   async tick(ctx) {
@@ -11,9 +12,14 @@ export const integration: Integration = {
     const data = (await res.json()) as {
       current_condition?: Array<{ temp_F?: string; weatherDesc?: Array<{ value: string }> }>;
       nearest_area?: Array<{ latitude?: string; longitude?: string }>;
+      weather?: WttrDay[];
     };
     const cond = data.current_condition?.[0];
-    const summary = `Weather (${location}): ${cond?.temp_F ?? '?'}°F, ${cond?.weatherDesc?.[0]?.value ?? 'unknown'}`;
+    // Night fog outlooks from the same response's 3-day hourly forecast,
+    // date-keyed so a renderer can pick "tonight" even from a stale event.
+    const fog = fogNights(data.weather ?? []);
+    const fogNote = fog.length > 0 ? ` · fog tonight ${fog[0].index}/10 (${fog[0].band})` : '';
+    const summary = `Weather (${location}): ${cond?.temp_F ?? '?'}°F, ${cond?.weatherDesc?.[0]?.value ?? 'unknown'}${fogNote}`;
 
     // Derive sun/light windows from the response's nearest_area lat/long. wttr.in
     // returns these as strings; if absent or non-finite, the sun fields stay null.
@@ -55,6 +61,7 @@ export const integration: Integration = {
         location,
         temp_f: cond?.temp_F,
         desc: cond?.weatherDesc?.[0]?.value,
+        fog_nights: fog,
         ...sun,
       },
     });

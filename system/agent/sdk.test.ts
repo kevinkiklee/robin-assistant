@@ -31,6 +31,63 @@ test('runSdk: extracts text + usage + cost from the result message', async () =>
   assert.equal(r.turns, 1);
 });
 
+test('runSdk: a subtype-success result carrying is_error (usage-limit 429) maps to error', async () => {
+  // Observed live 2026-06-12: a weekly-usage-limited account returns
+  // subtype:'success' + is_error:true with the limit banner as text.
+  const q = () =>
+    fakeQuery([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        api_error_status: 429,
+        result: "You've hit your weekly limit · resets Jun 15 at 7am (America/New_York)",
+        total_cost_usd: 0,
+        num_turns: 1,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.status, 'error');
+  assert.match(r.text, /hit your weekly limit/i);
+});
+
+test('runSdk: a subtype-success result whose text is the limit banner maps to error even without is_error', async () => {
+  const q = () =>
+    fakeQuery([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: "You've hit your Sonnet limit · resets Jun 15 at 7am (America/New_York)",
+        total_cost_usd: 0,
+        num_turns: 1,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.status, 'error');
+});
+
+test('runSdk: structured output proves a real completion — banner-like text stays success', async () => {
+  const q = () =>
+    fakeQuery([
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: "You've hit your weekly limit · resets Jun 15 at 7am (America/New_York)",
+        structured_output: { ok: true },
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        usage: { input_tokens: 10, output_tokens: 2 },
+      },
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.status, 'success');
+  assert.deepEqual(r.structured, { ok: true });
+});
+
 test('runSdk: maps error subtypes to status', async () => {
   const q = () =>
     fakeQuery([

@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { type RunSdkInput, runSdk as realRunSdk, type SdkResult } from '../../agent/sdk.ts';
+import {
+  isSubscriptionLimitBanner,
+  type RunSdkInput,
+  runSdk as realRunSdk,
+  type SdkResult,
+} from '../../agent/sdk.ts';
 import type { UsageLedger } from '../../agent/usage-ledger.ts';
 import type { InvokeRequest, InvokeResult, LLMProvider, LLMRole, ProviderMeta } from './types.ts';
 
@@ -27,15 +32,9 @@ export class SubscriptionLimitError extends Error {
   }
 }
 
-/**
- * True when `text` is the SDK's usage-limit banner rather than model output.
- * Deliberately tight: the banner is short and LEADS with the limit phrase, so
- * long-form prose that merely mentions limits never matches.
- */
-export function isSubscriptionLimitBanner(text: string): boolean {
-  const t = text.trim();
-  return t.length <= 200 && /^you['’]ve hit your\b.{0,60}?\blimit\b/i.test(t);
-}
+// Banner detection lives in agent/sdk.ts (shared with the agentic run-agent
+// path, which hits the same SDK shape); re-exported here for existing callers.
+export { isSubscriptionLimitBanner };
 
 export interface ClaudeAgentProviderConfig {
   /** Cheap, pinned model. Downstream (build-dispatcher) sets it; default haiku. */

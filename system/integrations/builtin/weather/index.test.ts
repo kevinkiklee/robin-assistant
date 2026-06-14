@@ -107,6 +107,48 @@ test('weather: tick omits sun fields (null) when nearest_area absent', async () 
   closeDb(db);
 });
 
+test('weather: tick computes fog_nights from the hourly forecast', async () => {
+  const db = freshDb();
+  const ctx = buildContext('weather', db, null);
+  const slot = (time: string) => ({
+    time,
+    tempF: '62',
+    DewPointF: '61',
+    humidity: '97',
+    windspeedMiles: '2',
+    chanceoffog: '70',
+  });
+  ctx.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        current_condition: [{ temp_F: '64', weatherDesc: [{ value: 'Mist' }] }],
+        weather: [
+          { date: '2026-06-10', hourly: [slot('2100')] },
+          { date: '2026-06-11', hourly: [slot('0'), slot('300'), slot('600')] },
+        ],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch;
+  assert.ok(weather.tick);
+  const r = await weather.tick(ctx);
+  assert.equal(r.status, 'ok');
+  const row = db
+    .prepare(`SELECT body, payload FROM events e JOIN events_content c ON c.id = e.content_ref
+              WHERE e.source = 'weather' ORDER BY e.id DESC LIMIT 1`)
+    .get() as { body: string; payload: string };
+  const payload = JSON.parse(row.payload) as {
+    fog_nights?: Array<{ date: string; index: number; band: string }>;
+  };
+  assert.ok(payload.fog_nights && payload.fog_nights.length > 0, 'fog_nights present');
+  assert.equal(payload.fog_nights[0].date, '2026-06-10');
+  assert.ok(
+    payload.fog_nights[0].index >= 6,
+    `expected high index, got ${payload.fog_nights[0].index}`,
+  );
+  assert.match(row.body, /fog tonight \d+\/10/);
+  closeDb(db);
+});
+
 test('weather: state KV persists last_sync between ticks', async () => {
   const db = freshDb();
   const ctx = buildContext('weather', db, null);

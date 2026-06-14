@@ -1,6 +1,8 @@
 name: weather
 version: 1.0.0
-schedule: "0 7 * * *"
+# 4am keeps the 4:30am daily brief's fog index fresh; 4pm refreshes it for
+# evening planning.
+schedule: "0 4,16 * * *"
 permissions:
   memory:
     read: true

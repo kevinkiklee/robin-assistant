@@ -20,7 +20,7 @@ user-data/                 Per-user instance data (gitignored)
 ├── config/                models.yaml, policies.yaml, hardware.yaml, secrets/
 ├── extensions/            User integrations, jobs, skills, scripts, triggers
 ├── content/               Knowledge files, artifacts, sources
-├── state/                 SQLite DB, runtime PID, Kuzu graph (optional)
+├── state/                 SQLite DB, runtime PID
 └── observability/         Daemon logs, eval data
 
 dist/                      Compiled output (tsc + mirrored manifests + skills)
@@ -44,6 +44,8 @@ A single SQLite file (`user-data/state/db/robin.sqlite`) via `better-sqlite3`, w
 | `metrics_daily` | Rolled-up daily metrics (Brier calibration, entity counts, etc.). |
 | `jobs` | Scheduler job queue (cron, manual, delayed). One row per firing; completed rows accumulate. |
 | `biographer_progress` | In-flight chunk cursor for multi-tick biographer extraction. Deleted on session completion. |
+
+The `relations` table is the graph layer — SPO triples indexed on `(subject_id, predicate)` and `(object_id, predicate)`, traversed via `relatedEntities()`. A dedicated graph engine (Kuzu) was evaluated and removed 2026-06-11: upstream was archived in Oct 2025, and at current scale (<10k edges) SQLite traversal is nowhere near a bottleneck. If that changes, rebuild a projection from `entities` + `relations` against whatever engine has won by then.
 
 ## LLM dispatch
 

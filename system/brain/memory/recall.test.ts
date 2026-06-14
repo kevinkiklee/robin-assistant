@@ -312,21 +312,24 @@ test('recall: truncates the query to 2000 chars before embedding', async () => {
 
 test('recall: a retracted belief is not surfaced (its superseded original stays indexed)', async () => {
   const db = freshDb();
-  // Original assertion, later bulk-retracted (the SurrealDB-backend situation).
+  // Original assertion, later retracted with no replacement (the stale-commute
+  // situation). The fixture must be a life-fact: machinery claims (the old
+  // SurrealDB-backend example) are now blocked at write time by the
+  // dev-artifact backstop in `believe()` and never reach the index.
   const orig = believe(db, null, {
-    topic: 'robin.memory.backend',
-    claim: 'Robin uses a SurrealDB backend for memory storage',
+    topic: 'kevin.commute',
+    claim: 'Kevin commutes daily to the WTC Cortlandt station',
     date: '2026-05-28',
   });
   believe(db, null, {
-    topic: 'robin.memory.backend',
-    claim: 'Robin uses a SurrealDB backend for memory storage',
+    topic: 'kevin.commute',
+    claim: 'Kevin commutes daily to the WTC Cortlandt station',
     retracted: true,
     supersedes: orig.eventId,
     date: '2026-05-29',
   });
 
-  const hits = await recall(db, null, 'SurrealDB backend memory storage', { mode: 'lex' });
+  const hits = await recall(db, null, 'WTC Cortlandt station commute', { mode: 'lex' });
   assert.equal(
     hits.filter((h) => h.kind === 'belief.update').length,
     0,

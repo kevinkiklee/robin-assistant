@@ -85,7 +85,6 @@ export function userDataPaths(root: string) {
     root,
     state: {
       db: join(root, 'state', 'db'),
-      kuzu: join(root, 'state', 'kuzu'),
       runtime: join(root, 'state', 'runtime'),
       migrations: join(root, 'state', 'migrations'),
     },

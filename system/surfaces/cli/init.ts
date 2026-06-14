@@ -36,7 +36,6 @@ export async function runInit(opts: InitOptions): Promise<void> {
   // Create the canonical directory tree
   for (const dir of [
     paths.state.db,
-    paths.state.kuzu,
     paths.state.runtime,
     paths.state.migrations,
     paths.config.root,

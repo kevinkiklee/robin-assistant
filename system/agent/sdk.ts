@@ -51,6 +51,20 @@ const SUBTYPE_STATUS: Record<string, SdkStatus> = {
   error_max_structured_output_retries: 'error',
 };
 
+/**
+ * True when `text` is the SDK's usage-limit banner rather than model output
+ * ("You've hit your weekly limit · resets Jun 15 at 7am (America/New_York)" —
+ * observed live 2026-06-12 on both the Sonnet and weekly limits). Deliberately
+ * tight: the banner is short and LEADS with the limit phrase, so long-form
+ * prose that merely mentions limits never matches. Defined at the SDK layer so
+ * the agentic path (run-agent) and the dispatcher provider (claude-agent)
+ * share one definition.
+ */
+export function isSubscriptionLimitBanner(text: string): boolean {
+  const t = text.trim();
+  return t.length <= 200 && /^you['’]ve hit your\b.{0,60}?\blimit\b/i.test(t);
+}
+
 function buildEnv(input: RunSdkInput): Record<string, string> {
   const src = input.baseEnv ?? process.env;
   const out: Record<string, string> = {};
@@ -171,8 +185,21 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       raw: null,
     };
   }
+  // A usage-limited account comes back as a subtype:'success' result that
+  // carries is_error:true (api_error_status 429) with the limit banner as its
+  // text — observed live 2026-06-12, when the weekly-limit banner flowed
+  // through three dream-synthesis specialists as "model output". Structured
+  // output present is proof of a real completion and bypasses both checks.
+  const mapped = SUBTYPE_STATUS[result.subtype] ?? 'error';
+  const status =
+    mapped === 'success' &&
+    result.structured_output === undefined &&
+    (result.is_error === true ||
+      (typeof result.result === 'string' && isSubscriptionLimitBanner(result.result)))
+      ? 'error'
+      : mapped;
   return {
-    status: SUBTYPE_STATUS[result.subtype] ?? 'error',
+    status,
     text: result.result ?? '',
     structured: result.structured_output,
     turns: result.num_turns ?? 0,
