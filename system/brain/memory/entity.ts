@@ -48,8 +48,21 @@ export function upsertEntity(
   canonicalName: string,
   profile?: string,
 ): EntityRow {
-  const name = canonicalName.trim();
-  type = normalizeEntityType(type);
+  const trimmed = canonicalName.trim();
+  // Per-instance alias resolution (entity_aliases): collapse known name variants
+  // to one canonical entity+type BEFORE dedup — e.g. "Kevin K Lee" / "Kevin K. Lee"
+  // / "Kevin" → "Kevin Lee" (person). The case-insensitive dedup below only catches
+  // case/whitespace variants, and the LLM disambiguation is flaky on middle-initial
+  // / name-subset forms, so well-known entities (especially the owner) kept
+  // re-forking into duplicates that needed manual merges. The alias DATA is
+  // per-user (seeded into the instance DB, never shipped); the mechanism is generic.
+  const alias = db
+    .prepare('SELECT canonical_name, canonical_type FROM entity_aliases WHERE alias = ?')
+    .get(trimmed.toLowerCase()) as
+    | { canonical_name: string; canonical_type: string | null }
+    | undefined;
+  const name = alias?.canonical_name ?? trimmed;
+  type = normalizeEntityType(alias?.canonical_type ?? type);
   // Deduplicate on the NORMALIZED name (case-insensitive), regardless of type.
   // Deterministic backstop behind the LLM disambiguation step: collapses variants
   // disambiguation misses — "leadforge" (project), "LeadForge" (tool), "Leadforge"

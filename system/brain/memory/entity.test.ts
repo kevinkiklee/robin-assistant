@@ -32,6 +32,52 @@ test('entity: upsert is idempotent', () => {
   closeDb(db);
 });
 
+test('entity: upsert collapses a registered name-variant alias to the canonical entity', () => {
+  const db = freshDb();
+  const canonical = upsertEntity(db, 'person', 'Kevin Lee');
+  db.prepare(
+    `INSERT INTO entity_aliases (alias, canonical_name, canonical_type, source) VALUES (?, ?, ?, 'manual')`,
+  ).run('kevin k lee', 'Kevin Lee', 'person');
+
+  // A later extraction of the middle-initial variant must resolve to the SAME
+  // entity (case-insensitive dedup alone would create a new row for it).
+  const variant = upsertEntity(db, 'person', 'Kevin K Lee');
+  assert.equal(variant.id, canonical.id, 'variant must resolve to the canonical entity');
+  assert.equal(variant.canonical_name, 'Kevin Lee');
+  const n = (
+    db
+      .prepare("SELECT count(*) AS n FROM entities WHERE lower(canonical_name) LIKE 'kevin%'")
+      .get() as {
+      n: number;
+    }
+  ).n;
+  assert.equal(n, 1, 'no duplicate entity created for the alias');
+  closeDb(db);
+});
+
+test('entity: an alias forces the canonical type even when extracted under a noise type', () => {
+  const db = freshDb();
+  const canonical = upsertEntity(db, 'person', 'Kevin Lee');
+  db.prepare(
+    `INSERT INTO entity_aliases (alias, canonical_name, canonical_type, source) VALUES (?, ?, ?, 'manual')`,
+  ).run('kevin', 'Kevin Lee', 'person');
+
+  // The bare name extracted as a `thing` must collapse into the real person.
+  const asThing = upsertEntity(db, 'thing', 'Kevin');
+  assert.equal(asThing.id, canonical.id);
+  assert.equal(asThing.type, 'person', 'alias canonical_type overrides the extracted type');
+  closeDb(db);
+});
+
+test('entity: an unregistered name is unaffected by the alias map', () => {
+  const db = freshDb();
+  const a = upsertEntity(db, 'person', 'Sarah Chen');
+  const b = upsertEntity(db, 'person', 'Sarah Chen');
+  assert.equal(a.id, b.id);
+  assert.equal(a.canonical_name, 'Sarah Chen');
+  closeDb(db);
+});
+
 test('entity: find by partial name', () => {
   const db = freshDb();
   upsertEntity(db, 'person', 'Sarah Chen');

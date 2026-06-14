@@ -25,6 +25,7 @@ import { migration024 } from './024-alerts.ts';
 import { migration025 } from './025-agent-outcomes.ts';
 import { migration026 } from './026-claim-failures.ts';
 import { migration027 } from './027-profile-generated-at.ts';
+import { migration028 } from './028-entity-aliases.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -55,6 +56,7 @@ export const allMigrations: Migration[] = [
   migration025,
   migration026,
   migration027,
+  migration028,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';
