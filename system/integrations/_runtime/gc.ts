@@ -109,6 +109,47 @@ export function gcStaleTerminalJobs(
   return result.changes;
 }
 
+/**
+ * Prune claude_code `session:*` KV rows older than `retentionDays`. The capture
+ * scanner writes one row per Claude Code session FILE ever seen (mtime dedup),
+ * re-stamping `updated_at` each time it re-checks the file — so a row untouched
+ * for `retentionDays` means that transcript hasn't changed in that long and will
+ * not be re-parsed (a re-parse is harmless anyway: dedup_hit catches it). 126k
+ * rows accrued unbounded before this. `updated_at` is space-format (KvStore
+ * writes datetime('now')), matching the datetime('now', ?) cutoff — no T-vs-space
+ * trap. Scoped to `session:%` so heartbeat/token rows survive. Returns rows deleted.
+ */
+export function gcStaleSessionState(
+  db: RobinDb,
+  retentionDays: number,
+  log?: { warn: (obj: unknown, msg?: string) => void },
+): number {
+  const result = db
+    .prepare(
+      `DELETE FROM integration_state
+        WHERE integration_name = 'claude_code' AND key LIKE 'session:%'
+          AND updated_at < datetime('now', ?)`,
+    )
+    .run(`-${retentionDays} days`);
+  if (result.changes > 0) {
+    log?.warn(
+      { deleted: result.changes, retentionDays },
+      'GC stale claude_code session-state rows',
+    );
+  }
+  return result.changes;
+}
+
+/** Read-only: count of claude_code `session:*` KV (mtime-dedup) rows. */
+export function countSessionState(db: RobinDb): number {
+  const row = db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM integration_state WHERE integration_name = 'claude_code' AND key LIKE 'session:%'",
+    )
+    .get() as { n: number };
+  return row.n;
+}
+
 /** Read-only: count of terminal (`completed` | `errored`) job rows. */
 export function countTerminalJobs(db: RobinDb): number {
   const row = db

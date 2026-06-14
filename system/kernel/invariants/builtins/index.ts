@@ -23,4 +23,5 @@ export {
   type SchedulerProgressOptions,
   schedulerProgressingInvariant,
 } from './scheduler-progressing.ts';
+export { sessionStateBoundedInvariant } from './session-state-bounded.ts';
 export { vecIndexSyncedInvariant } from './vec-index-synced.ts';

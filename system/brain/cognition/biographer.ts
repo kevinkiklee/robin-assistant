@@ -1345,7 +1345,15 @@ export function updateSessionPayload(db: RobinDb, eventId: number, summary: Sess
   })();
 }
 
-function linkRelatedSessions(db: RobinDb, eventId: number, topics: string[]): number {
+/**
+ * Max session.thread links created for a single new session. Bounds the
+ * cross-session linking fan-out: without it, a capture sharing topics with N
+ * recent sessions creates N thread rows (O(N) per capture), which exploded to
+ * 1684 rows/day on 2026-06-13 when a flood of sessions shared generic topics.
+ */
+const MAX_THREAD_LINKS_PER_SESSION = 8;
+
+export function linkRelatedSessions(db: RobinDb, eventId: number, topics: string[]): number {
   if (topics.length === 0) return 0;
   const cutoff = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const recentSessions = db
@@ -1373,6 +1381,9 @@ function linkRelatedSessions(db: RobinDb, eventId: number, topics: string[]): nu
   let linked = 0;
   const topicSet = new Set(topics);
   for (const prior of recentSessions) {
+    // recentSessions is ordered newest-first, so capping here keeps the most
+    // recent (most relevant) links and bounds the per-capture fan-out.
+    if (linked >= MAX_THREAD_LINKS_PER_SESSION) break;
     let priorTopics: string[] = [];
     try {
       priorTopics = JSON.parse(prior.payload).summary?.topics ?? [];

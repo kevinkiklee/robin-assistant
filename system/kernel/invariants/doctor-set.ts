@@ -24,6 +24,7 @@ import {
   recallTopicsResolvableInvariant,
   type ScheduledIntegration,
   schedulerProgressingInvariant,
+  sessionStateBoundedInvariant,
   userDataWritableInvariant,
   vecIndexSyncedInvariant,
 } from './builtins/index.ts';
@@ -93,6 +94,7 @@ export function buildDoctorInvariants(
     jobsErroringInvariant(db),
     captureVolumeSaneInvariant(db),
     jobsHistoryBoundedInvariant(db),
+    sessionStateBoundedInvariant(db),
     jobsRetriesBoundedInvariant(db),
     alertsHistoryBoundedInvariant(db),
     daemonStableInvariant({ bootsPath }),

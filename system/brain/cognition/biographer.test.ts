@@ -17,6 +17,7 @@ import {
   extractClaims,
   isLowQualityEntity,
   isLowQualityPredicate,
+  linkRelatedSessions,
   retryClaimFailures,
   runBiographer,
   type SessionSummary,
@@ -1960,5 +1961,35 @@ test('biographer: cross-session linking creates thread events on topic overlap',
   assert.ok(threads.length >= 1, 'session.thread event should exist');
   const tp = JSON.parse(threads[0].payload);
   assert.ok(tp.shared_topics.includes('leadforge-auth'));
+  closeDb(db);
+});
+
+test('biographer: cross-session linking is capped per session (no O(N) thread fan-out)', () => {
+  // When many recent sessions share the same topics (the 2026-06-13 flood: 50+
+  // sessions all tagged robin/tmux-loops), the per-session fan-out exploded to
+  // 1684 session.thread rows/day. Each new session must create a bounded number
+  // of links regardless of how many candidates match.
+  const db = freshDb();
+  const topics = ['shared-a', 'shared-b'];
+  const now = Date.now();
+  const insertSession = (id: number, msAgo: number) =>
+    db
+      .prepare(
+        `INSERT INTO events (id, ts, kind, source, status, payload)
+         VALUES (?, ?, 'session.captured', 'capture', 'ok', ?)`,
+      )
+      .run(id, new Date(now - msAgo).toISOString(), JSON.stringify({ summary: { topics } }));
+
+  // 20 prior sessions all sharing both topics, all within the 14-day window.
+  for (let i = 1; i <= 20; i++) insertSession(i, i * 60_000);
+  const newId = 100;
+  insertSession(newId, 0);
+
+  const linked = linkRelatedSessions(db, newId, topics);
+  const threads = db
+    .prepare("SELECT COUNT(*) AS c FROM events WHERE kind = 'session.thread'")
+    .get() as { c: number };
+  assert.ok(linked <= 8, `links per session must be capped at 8; got ${linked}`);
+  assert.equal(threads.c, linked, 'thread rows must match the returned link count');
   closeDb(db);
 });

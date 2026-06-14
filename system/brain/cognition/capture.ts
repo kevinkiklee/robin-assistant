@@ -63,6 +63,75 @@ export function isCwdAllowed(cwd: string | undefined, allowedCwds: string[]): bo
   return allowedCwds.some((prefix) => cwd === prefix || cwd.startsWith(`${prefix}/`));
 }
 
+/** Claude Code's project-dir slug for a cwd: every `/` and `.` becomes `-`. */
+export function slugifyCwdPath(p: string): string {
+  return p.replace(/[/.]/g, '-');
+}
+
+/**
+ * True when a Claude Code project-dir slug corresponds to a path at or inside
+ * Robin's user-data dir. Robin's own non-interactive Agent-SDK cognition calls
+ * (llm.invoke → claude-agent → runSdk) write their transcripts under user-data,
+ * so the polling capture scanner must skip these dirs — otherwise every
+ * cognition call is re-captured as a "session", re-extracted, and re-invoked: a
+ * self-amplifying loop. Kevin's real interactive sessions run from the repo root
+ * (a sibling slug), so they are unaffected. The trailing `-` guards a sibling
+ * like `…-user-database` from matching `…-user-data`.
+ */
+export function isInternalProjectDir(slug: string, userDataDir: string): boolean {
+  const internal = slugifyCwdPath(userDataDir);
+  return slug === internal || slug.startsWith(`${internal}-`);
+}
+
+/** ≥3 standalone `[USER]`/`[ASSISTANT]`/`[TOOL]` line markers — the shape of a
+ * previously-rendered capture body fed back into a prompt (capture-of-capture). */
+function isNestedTranscript(content: string): boolean {
+  return (content.match(/^\[(?:USER|ASSISTANT|TOOL)\]$/gm) ?? []).length >= 3;
+}
+
+/** True when the whole turn is a JSON object whose only top-level keys are the
+ * extraction schema's (`entities`/`relations`), optionally inside one ```json
+ * fence. This is Robin's own extraction OUTPUT — no human turn is ever just that. */
+function isBareExtractionOutput(content: string): boolean {
+  let t = content.trim();
+  const fenced = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fenced) t = fenced[1].trim();
+  if (!t.startsWith('{') || !t.endsWith('}')) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  const keys = Object.keys(parsed);
+  return keys.length > 0 && keys.every((k) => k === 'entities' || k === 'relations');
+}
+
+/**
+ * True when a session is Robin re-reading its own cognition I/O rather than a
+ * real conversation — the self-amplifying capture loop. Two families, both keyed
+ * on content so they hold regardless of where the SDK wrote the transcript:
+ *   1. A USER turn carrying a cognition PROMPT marker (biographer chunk / dream /
+ *      disambiguation), OR a user turn that is itself a rendered capture body
+ *      (`isNestedTranscript`).
+ *   2. An ASSISTANT turn that is BARE extraction OUTPUT (`isBareExtractionOutput`).
+ * Markers are matched in user turns and output in assistant turns specifically,
+ * so a real session that merely *discusses* either is still captured.
+ */
+export function isCognitionEcho(turns: SessionTurn[]): boolean {
+  const userEcho = turns.some(
+    (t) =>
+      t.role === 'user' &&
+      (t.content.includes('=== FULL SESSION ===') ||
+        (t.content.includes('Recent observations:') && t.content.includes('Write the profile.')) ||
+        (t.content.includes('Extracted: type=') && t.content.includes('Candidates:')) ||
+        isNestedTranscript(t.content)),
+  );
+  if (userEcho) return true;
+  return turns.some((t) => t.role === 'assistant' && isBareExtractionOutput(t.content));
+}
+
 /**
  * Read a Claude Code transcript .jsonl file and project it into SessionTurn[] for capture.
  *
@@ -187,27 +256,14 @@ export async function captureSession(
     return { captured: false, skipReason: 'single_word_ack' };
   }
 
-  // Robin's own cognition prompts — the biographer's chunk-extraction prompt
-  // (`=== FULL SESSION ===`, biographer.ts) and the dream pass's entity-summary
-  // prompt (`Recent observations: … Write the profile.`, dream.ts) — get run
-  // through `claude` sessions and captured back as "user" sessions, a
-  // self-referential loop that floods the biographer with its own output. Match
-  // these markers in USER turns only: a real session that merely discusses them
-  // carries the strings in assistant output, not user input.
-  const isCognitionEcho = userTurns.some((t) => {
-    const c = t.content;
-    return (
-      c.includes('=== FULL SESSION ===') ||
-      (c.includes('Recent observations:') && c.includes('Write the profile.')) ||
-      // Biographer disambiguation prompt ("Source text: … Extracted: type=…,
-      // name=… Candidates: …", biographer.ts). The one cognition prompt this
-      // rule originally missed — 16k+ self-captures by 2026-06-12, and because
-      // re-captures embed the full prompt, the signature also catches nested
-      // capture-of-capture generations.
-      (c.includes('Extracted: type=') && c.includes('Candidates:'))
-    );
-  });
-  if (isCognitionEcho) return { captured: false, skipReason: 'robin_cognition_echo' };
+  // Robin re-reading its own cognition I/O — a cognition prompt echoed back, a
+  // capture-of-capture, or bare extraction output (see isCognitionEcho). Left
+  // uncaught, the biographer re-processes its own prompts/outputs in a
+  // self-amplifying loop (live 2026-06-12/13: the Agent-SDK transcripts of
+  // llm.invoke() cognition calls, re-captured by the polling scanner).
+  if (isCognitionEcho(capture.turns)) {
+    return { captured: false, skipReason: 'robin_cognition_echo' };
+  }
 
   // Dedup: hash the user turns; check recent events for a match.
   // Must digest the FULL joined content, not a fixed-length prefix. An earlier

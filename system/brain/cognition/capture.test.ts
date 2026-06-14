@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { captureSession, extractTopicHints } from './capture.ts';
+import { captureSession, extractTopicHints, isInternalProjectDir } from './capture.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-cap-'));
@@ -252,6 +252,101 @@ test('capture: distinct sessions sharing a long boilerplate prefix are NOT dedup
   assert.equal(ra.captured, true);
   assert.equal(rb.captured, true, `second /clear session was dropped as ${rb.skipReason}`);
   closeDb(db);
+});
+
+test('capture: skips cognition echo when the assistant turn is bare extraction JSON', async () => {
+  // The live loop (2026-06-13): an llm.invoke() extraction call's Agent-SDK
+  // transcript is re-captured by the polling scanner. Its user turn is the raw
+  // session BODY (no `=== FULL SESSION ===` wrapper) and its assistant turn is
+  // the bare extraction output. None of the user-side markers match — only the
+  // assistant-output signature catches it.
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-extract-json',
+    turns: [
+      {
+        role: 'user',
+        content: 'Kevin photographed street scenes in Astoria and bought a Voigtländer 35mm lens.',
+      },
+      {
+        role: 'assistant',
+        content:
+          '```json\n{"entities":[{"type":"person","name":"Kevin"},{"type":"lens","name":"Voigtländer 35mm"}],"relations":[{"subject":"Kevin","predicate":"owns","object":"Voigtländer 35mm"}]}\n```',
+      },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: skips nested-transcript echo (a rendered capture body fed back as a prompt)', async () => {
+  // Capture-of-capture amplification: the user turn is a previously-rendered
+  // session body, dominated by standalone `[USER]`/`[ASSISTANT]` markers
+  // (observed live with 80+ nested markers in one body).
+  const db = freshDb();
+  const nested = ['[USER]', '[USER]', '[USER]', '[USER]', '[ASSISTANT]', 'ok'].join('\n');
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-nested',
+    turns: [
+      { role: 'user', content: nested },
+      { role: 'assistant', content: 'Understood, proceeding with the analysis.' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: still captures a real session whose assistant output embeds entities JSON in prose', async () => {
+  // False-positive guard: a genuine session about Robin's schema mentions the
+  // JSON inline with prose, so the assistant turn is NOT bare extraction output.
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'real-json-discuss',
+    turns: [
+      { role: 'user', content: 'what shape does the extraction prompt return for entities?' },
+      {
+        role: 'assistant',
+        content:
+          'It returns a JSON object like {"entities":[...]} where the model lists each entity with a type and name, then a relations array. You can tweak the schema in biographer.ts.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session that merely shows the schema; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
+test('isInternalProjectDir: matches user-data project dirs but not the repo root', () => {
+  const userData = '/Users/iser/workspace/robin/robin-assistant-v3/user-data';
+  // Robin's own Agent-SDK cognition transcripts land under user-data/:
+  assert.equal(
+    isInternalProjectDir('-Users-iser-workspace-robin-robin-assistant-v3-user-data', userData),
+    true,
+  );
+  assert.equal(
+    isInternalProjectDir(
+      '-Users-iser-workspace-robin-robin-assistant-v3-user-data-state-db',
+      userData,
+    ),
+    true,
+  );
+  // Kevin's real interactive sessions run from the repo root — must NOT match:
+  assert.equal(
+    isInternalProjectDir('-Users-iser-workspace-robin-robin-assistant-v3', userData),
+    false,
+  );
+  // A sibling sharing the prefix without a path boundary must NOT match:
+  assert.equal(
+    isInternalProjectDir('-Users-iser-workspace-robin-robin-assistant-v3-user-database', userData),
+    false,
+  );
+  // An unrelated project:
+  assert.equal(isInternalProjectDir('-Users-iser-workspace-photo-tools', userData), false);
 });
 
 // ─── cwd allowlist ("robin only works in robin's folder" scoping) ────

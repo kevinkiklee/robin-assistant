@@ -21,6 +21,13 @@ function insertCapture(db: RobinDb, hoursAgo: number): void {
   ).run(new Date(Date.now() - hoursAgo * 3_600_000).toISOString());
 }
 
+/** Insert a session.thread event `hoursAgo` hours before now (biographer cross-session link). */
+function insertThread(db: RobinDb, hoursAgo: number): void {
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload) VALUES (?, 'session.thread', 'biographer', 'ok', '{}')`,
+  ).run(new Date(Date.now() - hoursAgo * 3_600_000).toISOString());
+}
+
 test('capture-volume: quiet day → ok', async () => {
   const db = freshDb();
   for (let i = 0; i < 50; i++) insertCapture(db, (i % 23) + 0.5);
@@ -47,6 +54,29 @@ test('capture-volume: old events outside the 24h window do not count', async () 
   for (let i = 0; i < 250; i++) insertCapture(db, 30 + (i % 20));
   const r = await captureVolumeSaneInvariant(db, { threshold: 200 }).check();
   assert.equal(r.ok, true, JSON.stringify(r));
+  closeDb(db);
+});
+
+test('capture-volume: a session.thread fan-out storm fires even when captures are sane', async () => {
+  // The 2026-06-13 explosion was dominated by session.thread (1684/day) from the
+  // biographer's cross-session linking, not session.captured. The invariant must
+  // catch the derived amplifier too, even when capture volume itself looks fine.
+  const db = freshDb();
+  for (let i = 0; i < 50; i++) insertCapture(db, (i % 23) + 0.5); // captures sane
+  for (let i = 0; i < 600; i++) insertThread(db, (i % 23) + 0.5); // threads flooded
+  const r = await captureVolumeSaneInvariant(db, { threshold: 200, threadThreshold: 300 }).check();
+  assert.equal(r.ok, false, JSON.stringify(r));
+  assert.match(r.message ?? '', /thread/i);
+  assert.ok(r.remediation, 'remediation should be present');
+  closeDb(db);
+});
+
+test('capture-volume: default thread ceiling catches a thread storm with no opts', async () => {
+  const db = freshDb();
+  for (let i = 0; i < 600; i++) insertThread(db, (i % 23) + 0.5);
+  const r = await captureVolumeSaneInvariant(db).check();
+  assert.equal(r.ok, false, JSON.stringify(r));
+  assert.match(r.message ?? '', /thread/i);
   closeDb(db);
 });
 

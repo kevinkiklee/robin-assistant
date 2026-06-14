@@ -12,6 +12,15 @@ import type { Invariant } from '../types.ts';
 const DEFAULT_CAPTURE_VOLUME_THRESHOLD = 200;
 
 /**
+ * Default ceiling on session.thread events per rolling 24h — the biographer's
+ * cross-session topic links. Normally 0-3/day; the 2026-06-13 fan-out (one link
+ * per topic-sharing recent session) hit 1684/day before linkRelatedSessions was
+ * capped. 300 sits far above any healthy day yet fires within hours if the cap
+ * regresses or a generic-topic capture source leaks back in.
+ */
+const DEFAULT_THREAD_VOLUME_THRESHOLD = 300;
+
+/**
  * Flags an abnormal session-capture rate. Capture noise is silent by design —
  * each junk session is individually valid-looking, gets embedded, queued for
  * the biographer, and threaded — so the only cheap global tell is volume. A
@@ -21,9 +30,10 @@ const DEFAULT_CAPTURE_VOLUME_THRESHOLD = 200;
  */
 export function captureVolumeSaneInvariant(
   db: RobinDb,
-  opts: { threshold?: number } = {},
+  opts: { threshold?: number; threadThreshold?: number } = {},
 ): Invariant {
   const threshold = opts.threshold ?? DEFAULT_CAPTURE_VOLUME_THRESHOLD;
+  const threadThreshold = opts.threadThreshold ?? DEFAULT_THREAD_VOLUME_THRESHOLD;
   return {
     name: 'capture.volume_sane',
     severity: 'warning',
@@ -36,20 +46,40 @@ export function captureVolumeSaneInvariant(
         // events.ts is ISO-with-T; compare against an ISO-format cutoff (a
         // space-format datetime('now') cutoff over-counts same-date rows —
         // the T-vs-space lexicographic trap).
-        const row = db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM events
-              WHERE kind = 'session.captured'
-                AND ts > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')`,
-          )
-          .get() as { n: number };
-        if (row.n <= threshold) return { ok: true };
-        return {
-          ok: false,
-          message: `${row.n} sessions captured in 24h (ceiling ${threshold}) — an automated source is likely leaking into capture`,
-          remediation:
-            'Inspect recent session.captured bodies for machine-generated families; fix the leak (hook guard / echo rule), then purge',
-        };
+        const countSince = (kind: string): number =>
+          (
+            db
+              .prepare(
+                `SELECT COUNT(*) AS n FROM events
+                  WHERE kind = ? AND ts > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')`,
+              )
+              .get(kind) as { n: number }
+          ).n;
+
+        const captures = countSince('session.captured');
+        if (captures > threshold) {
+          return {
+            ok: false,
+            message: `${captures} sessions captured in 24h (ceiling ${threshold}) — an automated source is likely leaking into capture`,
+            remediation:
+              'Inspect recent session.captured bodies for machine-generated families; fix the leak (hook guard / echo rule / user-data scan skip), then purge',
+          };
+        }
+
+        // session.thread is the derived amplifier: the biographer links each new
+        // session to every recent topic-sharing one. A thread storm without a
+        // capture storm means the fan-out cap regressed or generic-topic sessions
+        // are clustering — caught here so it can't silently bloat the events table.
+        const threads = countSince('session.thread');
+        if (threads > threadThreshold) {
+          return {
+            ok: false,
+            message: `${threads} session.thread links in 24h (ceiling ${threadThreshold}) — biographer cross-session linking is fanning out`,
+            remediation:
+              'Confirm MAX_THREAD_LINKS_PER_SESSION is enforced in linkRelatedSessions and fix any generic-topic capture leak, then purge the session.thread family',
+          };
+        }
+        return { ok: true };
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : String(err) };
       }

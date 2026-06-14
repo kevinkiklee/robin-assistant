@@ -1,7 +1,12 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { captureSession, transcriptFileToCapture } from '../../../brain/cognition/capture.ts';
+import {
+  captureSession,
+  isInternalProjectDir,
+  transcriptFileToCapture,
+} from '../../../brain/cognition/capture.ts';
+import { resolveUserDataDir } from '../../../lib/paths.ts';
 import type { Integration, IntegrationContext, TickResult } from '../../_runtime/types.ts';
 
 // Claude Code writes one .jsonl per session under ~/.claude/projects/<project-slug>/<sessionId>.jsonl.
@@ -38,6 +43,19 @@ export const integration: Integration = {
     let skipped = 0;
     let errored = 0;
 
+    // Robin's own non-interactive Agent-SDK cognition calls (llm.invoke → claude-agent
+    // → runSdk) write their transcripts under user-data/. Skip those project dirs
+    // entirely so the scanner never re-captures Robin's own cognition I/O — the
+    // self-amplifying loop that flooded capture on 2026-06-12/13. Resolve once per
+    // tick; if it can't resolve, fall back to no-skip (the capture-time echo rules
+    // still catch the content).
+    let internalUserData: string | null = null;
+    try {
+      internalUserData = resolveUserDataDir();
+    } catch {
+      internalUserData = null;
+    }
+
     let projectDirs: string[];
     try {
       projectDirs = readdirSync(projectsDir()).filter((d) => !d.startsWith('.'));
@@ -49,6 +67,7 @@ export const integration: Integration = {
     }
 
     for (const projectDir of projectDirs) {
+      if (internalUserData && isInternalProjectDir(projectDir, internalUserData)) continue;
       const fullProjectPath = join(projectsDir(), projectDir);
       let projectStat: ReturnType<typeof statSync>;
       try {

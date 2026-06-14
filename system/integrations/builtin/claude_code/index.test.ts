@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
+import { slugifyCwdPath } from '../../../brain/cognition/capture.ts';
 import type { IntegrationContext } from '../../_runtime/types.ts';
 import { integration } from './index.ts';
 
@@ -147,6 +148,83 @@ describe('claude_code integration tick', () => {
       .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured'`)
       .get() as { c: number };
     assert.equal(events.c, 1);
+  });
+
+  it('skips transcripts under Robin’s own user-data project dir (internal SDK cognition)', async () => {
+    // Robin's non-interactive Agent-SDK cognition calls write transcripts under
+    // user-data/. The scanner must not re-capture them (self-amplifying loop),
+    // even though the transcript itself looks like a substantive session.
+    const userData = join(tmpRoot, 'robin', 'user-data');
+    const prev = process.env.ROBIN_USER_DATA_DIR;
+    process.env.ROBIN_USER_DATA_DIR = userData;
+    try {
+      const internalDir = join(tmpRoot, '.claude', 'projects', slugifyCwdPath(userData));
+      mkdirSync(internalDir, { recursive: true });
+      const sessionFile = join(internalDir, 'cognition.jsonl');
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: 'a substantive question about Kevin, his cameras, and travel plans',
+          },
+        }) +
+          '\n' +
+          JSON.stringify({
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: 'a substantive answer naming Kevin, his Nikon Zf, and a trip to Lisbon',
+            },
+          }) +
+          '\n',
+      );
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+      utimesSync(sessionFile, fifteenMinAgo, fifteenMinAgo);
+
+      const result = await integration.tick!(fakeCtx({ db }));
+      assert.equal(result.ingested, 0, 'internal user-data transcript must not be captured');
+      const events = db
+        .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured'`)
+        .get() as { c: number };
+      assert.equal(events.c, 0);
+    } finally {
+      if (prev !== undefined) process.env.ROBIN_USER_DATA_DIR = prev;
+      else delete process.env.ROBIN_USER_DATA_DIR;
+    }
+  });
+
+  it('still captures real interactive sessions outside user-data', async () => {
+    // Guard: the internal-dir skip must not suppress Kevin's real sessions, which
+    // run from the repo root (a sibling slug), here represented by test-project.
+    const userData = join(tmpRoot, 'robin', 'user-data');
+    const prev = process.env.ROBIN_USER_DATA_DIR;
+    process.env.ROBIN_USER_DATA_DIR = userData;
+    try {
+      const sessionFile = join(tmpRoot, '.claude', 'projects', 'test-project', 'real.jsonl');
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: 'a substantive question about something real' },
+        }) +
+          '\n' +
+          JSON.stringify({
+            type: 'assistant',
+            message: { role: 'assistant', content: 'a substantive answer with real content' },
+          }) +
+          '\n',
+      );
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+      utimesSync(sessionFile, fifteenMinAgo, fifteenMinAgo);
+
+      const result = await integration.tick!(fakeCtx({ db }));
+      assert.equal(result.ingested, 1, 'real interactive session must still be captured');
+    } finally {
+      if (prev !== undefined) process.env.ROBIN_USER_DATA_DIR = prev;
+      else delete process.env.ROBIN_USER_DATA_DIR;
+    }
   });
 
   it('health check passes when projects dir exists', async () => {
