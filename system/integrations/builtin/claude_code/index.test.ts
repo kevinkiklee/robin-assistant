@@ -227,6 +227,63 @@ describe('claude_code integration tick', () => {
     }
   });
 
+  it('baselines a historical transcript (>48h idle, no cursor) instead of re-ingesting it', async () => {
+    // Regression for the 2026-06-13 re-burst: a purge wiped the `session:*` dedup state, so
+    // every settled transcript ever written looked new and ~3,674 were re-ingested in one
+    // tick. A file untouched for >48h with no cursor must be baselined, not captured.
+    const sessionFile = join(tmpRoot, '.claude', 'projects', 'test-project', 'historical.jsonl');
+    writeFileSync(
+      sessionFile,
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'an old substantive question from days ago' },
+      }) +
+        '\n' +
+        JSON.stringify({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'an old substantive answer with content' },
+        }) +
+        '\n',
+    );
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    utimesSync(sessionFile, threeDaysAgo, threeDaysAgo);
+
+    const state = new Map<string, string>();
+    const result = await integration.tick!(fakeCtx({ db, state }));
+    assert.equal(result.ingested, 0, 'historical transcript must not be captured on cold cursor');
+    const events = db
+      .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured'`)
+      .get() as { c: number };
+    assert.equal(events.c, 0);
+    // It must be baselined so it is not re-examined every tick.
+    assert.equal(state.has('session:test-project:historical'), true, 'cursor must be set');
+  });
+
+  it('still captures a resumed historical session once its file is re-touched', async () => {
+    // The 48h baseline must not suppress a session the user actually resumes: resuming
+    // re-touches the .jsonl, dropping idleMs below the horizon → normal capture.
+    const sessionFile = join(tmpRoot, '.claude', 'projects', 'test-project', 'resumed.jsonl');
+    writeFileSync(
+      sessionFile,
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'a substantive question in a resumed session' },
+      }) +
+        '\n' +
+        JSON.stringify({
+          type: 'assistant',
+          message: { role: 'assistant', content: 'a substantive answer in the resumed session' },
+        }) +
+        '\n',
+    );
+    // Recently active (15 min idle), even though it's an old session id.
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    utimesSync(sessionFile, fifteenMinAgo, fifteenMinAgo);
+
+    const result = await integration.tick!(fakeCtx({ db }));
+    assert.equal(result.ingested, 1, 'a recently-touched session must capture normally');
+  });
+
   it('health check passes when projects dir exists', async () => {
     const r = await integration.health!(fakeCtx({ db }));
     assert.equal(r.ok, true);

@@ -19,6 +19,17 @@ import type { Integration, IntegrationContext, TickResult } from '../../_runtime
 // any collision if Claude Code ever reuses a session UUID across projects (unlikely, but the
 // per-file mtime check is the only thing standing between us and a re-capture loop, so cheap to be safe).
 const SESSION_IDLE_MS = 10 * 60 * 1000;
+// A transcript untouched for longer than this is "historical" — it settled long ago and is
+// not a newly-completed session. If we have NO dedup cursor for such a file (cold start, or
+// the `session:*` state was purged), baseline it (record its mtime, do not capture) rather
+// than ingesting it. This makes a missing cursor harmless: a full re-scan only ever ingests
+// genuinely-recent activity, never the entire ~/.claude/projects history.
+//
+// Root cause this guards against (2026-06-13 re-burst): a maintenance purge wiped ~72.5k
+// `session:*` state rows alongside the captured events, so on the next tick every settled
+// transcript ever written looked new (lastCapturedMtime defaulted to 0) and ~3,674 historical
+// sessions were re-ingested in a single hour — tripping the capture-volume invariant.
+const SESSION_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 const STATE_KEY_PREFIX = 'session:';
 
 function projectsDir(): string {
@@ -104,6 +115,17 @@ export const integration: Integration = {
 
         // Session still being appended to. Wait for it to settle so the capture is whole.
         if (idleMs < SESSION_IDLE_MS) {
+          skipped++;
+          continue;
+        }
+
+        // Historical transcript we have no cursor for (cold start / purged dedup state):
+        // baseline it instead of ingesting. If it wasn't captured when it was fresh, it is
+        // not "new" now — and this prevents a wiped `session:*` state from re-ingesting the
+        // entire transcript history in one tick. A resumed session re-touches its file, so
+        // idleMs drops below this horizon and it captures normally.
+        if (idleMs > SESSION_MAX_AGE_MS && lastCapturedMtime === 0) {
+          ctx.state.set(stateKey, String(mtimeMs));
           skipped++;
           continue;
         }
