@@ -593,3 +593,105 @@ test('scheduler-glue: multi-instance integrations get distinct handler + cron na
   assert.ok(jobNames.includes('integration.demo--beta.tick'));
   closeDb(db);
 });
+
+// A tick that throws whatever message globalThis.__throwMsg holds — lets a test
+// drive the transient-vs-persistent error classification of the retry wrapper.
+function makeThrowingIntegration(rootDir: string, name: string) {
+  const dir = join(rootDir, name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'integration.yaml'), `name: ${name}\nversion: 1.0.0\nschedule: manual\n`);
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => { throw new Error(globalThis.__throwMsg); } };\n`,
+  );
+}
+
+function captureHandlers() {
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+  return { handlers, fakeDaemon };
+}
+
+// A transient network failure that survives every retry must be recorded as a
+// SKIP (not thrown) so a one-off wttr.in ECONNRESET can't trip jobs.not_erroring.
+// NOTE: exercises the real linear backoff (2s + 4s ≈ 6s) — intentionally slow.
+test('scheduler-glue: transient error surviving retries is recorded as a skip, not thrown', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-transient-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-transient-user-'));
+  makeThrowingIntegration(userRoot, 'flaky-net');
+
+  const { handlers, fakeDaemon } = captureHandlers();
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+  const tickHandler = handlers['integration.flaky-net.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getState = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'flaky-net' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  (globalThis as unknown as Record<string, unknown>).__throwMsg = 'fetch failed: read ECONNRESET';
+  // Must NOT throw — the transient failure degrades to a skip.
+  await tickHandler();
+  assert.equal(getState('consecutive_skips'), '1', 'transient-after-retries → recorded as a skip');
+  assert.equal(
+    getState('consecutive_errors'),
+    '0',
+    'transient skip is ok-shaped: error streak cleared',
+  );
+  assert.match(
+    getState('last_skip_reason') ?? '',
+    /^transient upstream error:/,
+    'skip reason names the transient upstream failure',
+  );
+  closeDb(db);
+});
+
+// A NON-transient error (auth/persistent/bug) must still throw so the job row is
+// marked errored and jobs.not_erroring surfaces it — the regression guard for the
+// transient-skip change above.
+test('scheduler-glue: a non-transient error still throws and increments consecutive_errors', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-persist-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-persist-user-'));
+  makeThrowingIntegration(userRoot, 'auth-broke');
+
+  const { handlers, fakeDaemon } = captureHandlers();
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+  const tickHandler = handlers['integration.auth-broke.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  const getState = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'auth-broke' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  (globalThis as unknown as Record<string, unknown>).__throwMsg = 'invalid_grant: token revoked';
+  await assert.rejects(
+    tickHandler(),
+    /invalid_grant/,
+    'persistent error propagates out of the handler',
+  );
+  assert.equal(getState('consecutive_errors'), '1', 'persistent error increments the error streak');
+  assert.equal(getState('consecutive_skips'), undefined, 'persistent error is not a skip');
+  closeDb(db);
+});

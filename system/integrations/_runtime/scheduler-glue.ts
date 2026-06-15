@@ -39,6 +39,12 @@ const TRANSIENT_PATTERNS = [
 ];
 const PERSISTENT_AUTH_PATTERNS = [/invalid_grant/i, /401/, /403/, /oauth.*4\d\d/i];
 const RETRY_BACKOFF_MS = 2000;
+// Total tick attempts (initial + retries) before a transient failure is given
+// up on. Raised from 2 (single retry) after a wttr.in ECONNRESET reset twice in
+// a 3.5s window and tripped the morning brief's health alert: free, no-auth
+// upstreams (wttr.in) reset connections in short bursts, so a couple of
+// backed-off retries turn most into successes.
+const MAX_TICK_ATTEMPTS = 3;
 // Bound how long a single handler invocation can block the scheduler's await.
 // A wedged handler used to take down the entire tick loop (Bug A), which
 // only recovered when the 30-min sustained-CRITICAL health gate exited the
@@ -163,7 +169,7 @@ async function tickWithRetryAndHeartbeat(
 ): Promise<void> {
   if (!module.tick) return;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < MAX_TICK_ATTEMPTS; attempt++) {
     try {
       const result = await withTimeout(
         Promise.resolve(module.tick(ctx)),
@@ -193,19 +199,43 @@ async function tickWithRetryAndHeartbeat(
       return;
     } catch (err) {
       lastErr = err;
-      if (attempt === 0 && isTransient(err)) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Transient network error with retries left → back off (linearly) and retry.
+      if (isTransient(err) && attempt < MAX_TICK_ATTEMPTS - 1) {
         log.info(
-          { integration: integrationName, err: err instanceof Error ? err.message : String(err) },
-          'integration tick transient error — retrying once',
+          { integration: integrationName, err: msg, attempt: attempt + 1 },
+          'integration tick transient error — retrying',
         );
-        await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS));
+        await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS * (attempt + 1)));
         continue;
+      }
+      // Retries exhausted (or a non-transient error on the first attempt).
+      if (isTransient(err)) {
+        // A transient network failure that survives every retry is a self-healing
+        // upstream blip, NOT a code or health fault. Record it as a SKIP rather
+        // than throwing: a thrown handler marks the job row `errored` and trips
+        // the `jobs.not_erroring` invariant on a single blip (a lone wttr.in
+        // ECONNRESET surfaced as a morning brief "system health" warning). The
+        // skip still feeds `consecutive_skips` + the staleness invariant, so a
+        // SUSTAINED outage (many back-to-back skips) is still surfaced — just not
+        // a one-off reset. The reason is persisted to `last_skip_reason`.
+        writeHeartbeat(ctx.db, integrationName, {
+          ok: true,
+          ingested: 0,
+          skipReason: `transient upstream error: ${msg.slice(0, 140)}`,
+        });
+        log.warn(
+          { integration: integrationName, err: msg },
+          'integration tick transient failure after retries — recorded as skip',
+        );
+        return;
       }
       writeHeartbeat(ctx.db, integrationName, { ok: false, ingested: 0 });
       throw err;
     }
   }
-  // Both attempts failed transiently
+  // Unreachable: the final attempt always returns or throws above. Kept so the
+  // function is total if MAX_TICK_ATTEMPTS is ever set to 0.
   writeHeartbeat(ctx.db, integrationName, { ok: false, ingested: 0 });
   throw lastErr;
 }
