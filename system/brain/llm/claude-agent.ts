@@ -122,6 +122,18 @@ export class ClaudeAgentProvider implements LLMProvider {
       throw new SubscriptionLimitError(result.text.trim());
     }
 
+    // The same throttled/usage-limited account ALSO returns an EMPTY completion
+    // (no banner text at all) under load — the dominant shape observed 2026-06-15.
+    // An empty, non-structured result is never legitimate output: downstream JSON
+    // parsers turn it into "Unexpected end of JSON input" and dead-letter real
+    // content (it built a 160-chunk biographer claim backlog before the banner
+    // check, which only matches the banner STRING, could catch it). Surface it as
+    // the same transient outage so callers preserve + retry instead of poisoning
+    // their dead-letter queues, and don't bill the empty turn to the pool ledger.
+    if (result.structured === undefined && result.text.trim() === '') {
+      throw new SubscriptionLimitError('empty completion (throttled account returned no text)');
+    }
+
     // Record the REAL cost to the ledger (pool spend), keep it out of the dispatcher cap.
     this.ledger?.record({
       surface: 'provider',

@@ -180,6 +180,25 @@ test('ClaudeAgentProvider: limit banner with curly apostrophe and different mode
   );
 });
 
+test('ClaudeAgentProvider: an EMPTY completion (the no-banner throttle shape) throws an outage', async () => {
+  // 2026-06-15: under load the throttled account returned EMPTY text, not the
+  // banner. An empty non-structured completion became "Unexpected end of JSON
+  // input" downstream and dead-lettered real content (a 160-chunk backlog). It
+  // must surface as the same outage so callers preserve + retry, not poison
+  // their dead-letter queues. Whitespace-only counts as empty.
+  const provider = new ClaudeAgentProvider({
+    runSdk: async () => ({ ...okResult, text: '   \n  ' }),
+  });
+  await assert.rejects(
+    provider.invoke({ messages: [{ role: 'user', content: 'extract' }] }),
+    (err: unknown) => {
+      assert.ok(err instanceof SubscriptionLimitError, 'empty completion → typed outage error');
+      assert.match((err as Error).message, /subscription limit|empty completion/i);
+      return true;
+    },
+  );
+});
+
 test('ClaudeAgentProvider: a real reply mentioning limits is NOT mistaken for the banner', async () => {
   // Long-form prose that merely discusses usage limits must pass through; only
   // the short leading banner shape is an outage.

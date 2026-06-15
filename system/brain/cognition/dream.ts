@@ -341,7 +341,12 @@ export async function runDream(
   //    retry re-extracts); guarded so a retry-pass failure never sinks the dream.
   if (llm) {
     try {
-      const retry = await retryClaimFailures(db, llm);
+      // Drain up to 40/pass (not the default 5): an outage can poison a large
+      // batch at once (160 chunks on 2026-06-15), and at 5/night that backlog —
+      // plus its health alert — would linger for weeks. 40 clears a big backlog
+      // in a handful of nights while staying well under the per-tick LLM budget;
+      // a normal night has only a few open rows, so this is just an upper bound.
+      const retry = await retryClaimFailures(db, llm, { max: 40 });
       result.claimsRetried = retry.retried;
       result.claimsRecovered = retry.recovered;
     } catch {
