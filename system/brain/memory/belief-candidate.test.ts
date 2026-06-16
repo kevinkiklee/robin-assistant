@@ -670,3 +670,50 @@ test('insertCandidateWithDedup (no embedder) persists the domain via the exact-m
   assert.equal(row.domain, 'creative');
   closeDb(db);
 });
+
+// ─── Domain gate (Phase D) ────────────────────────────────────────────────────
+
+test('domain gate: a candidate tagged with a non-personal domain never promotes', () => {
+  const db = freshDb();
+  const c = insertBeliefCandidate(db, {
+    topic: 'biographer-chunk-size',
+    claim: 'The chunk size is 20k chars',
+    domain: 'engineering',
+    confidence: 0.99,
+    provenance: 'first-party',
+  });
+  const res = resolveBeliefCandidate(db, null, c.id, 'promote');
+  assert.equal(res.action, 'reject');
+  assert.equal(res.blockedReason, 'engineering-not-durable');
+  assert.equal(res.promotedBeliefEventId, null);
+  closeDb(db);
+});
+
+test('domain gate: a NULL-domain candidate is grandfathered — still promotable', () => {
+  const db = freshDb();
+  const c = insertBeliefCandidate(db, {
+    topic: 'home-location',
+    claim: 'Kevin lives in Astoria',
+    confidence: 0.9,
+    provenance: 'first-party', // domain omitted → NULL
+  });
+  const res = resolveBeliefCandidate(db, null, c.id, 'promote');
+  assert.equal(res.action, 'promote');
+  assert.ok(res.promotedBeliefEventId);
+  closeDb(db);
+});
+
+test('domain gate: a personal-domain candidate promotes normally', () => {
+  const db = freshDb();
+  const c = insertBeliefCandidate(db, {
+    topic: 'primary-camera',
+    claim: 'Kevin shoots a Nikon Zf',
+    domain: 'creative',
+    confidence: 0.9,
+    provenance: 'first-party',
+  });
+  const res = resolveBeliefCandidate(db, null, c.id, 'promote');
+  assert.equal(res.action, 'promote');
+  assert.ok(res.promotedBeliefEventId);
+  closeDb(db);
+});

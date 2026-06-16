@@ -5,6 +5,7 @@ import { believe, normalizeTopic } from './belief.ts';
 // Re-exported here to preserve the existing `belief-candidate.ts` import surface.
 import { isLowQualityClaim } from './belief-quality.ts';
 import type { RobinDb } from './db.ts';
+import { isPersonalDomain } from './domains.ts';
 import { embedBodies, embedBody } from './embed-content.ts';
 import { PROMOTION_THRESHOLD, type ProvenanceClass } from './provenance.ts';
 
@@ -56,6 +57,7 @@ interface RawRow {
   resolved_at: string | null;
   corroboration_count: number;
   resolved_reason: string | null;
+  domain: string | null;
 }
 
 function mapRow(r: RawRow): BeliefCandidate {
@@ -484,6 +486,23 @@ export function resolveBeliefCandidate(
       action: 'reject',
       promotedBeliefEventId: null,
       blockedReason: 'dev-artifact',
+    };
+  }
+
+  // Domain gate (Phase D): a candidate EXPLICITLY tagged with a non-personal
+  // (engineering-artifact) domain never promotes — defense-in-depth for anything
+  // that slips past the extraction allowlist. A NULL domain is pre-Phase-D /
+  // untagged and is grandfathered as promotable; only an explicit non-personal
+  // tag blocks here.
+  if (row.domain != null && !isPersonalDomain(row.domain)) {
+    db.prepare(
+      `UPDATE belief_candidates SET status = 'rejected', resolved_at = ? WHERE id = ?`,
+    ).run(now, id);
+    return {
+      candidateId: id,
+      action: 'reject',
+      promotedBeliefEventId: null,
+      blockedReason: 'engineering-not-durable',
     };
   }
 
