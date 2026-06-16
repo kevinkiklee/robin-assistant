@@ -105,6 +105,32 @@ export function buildDispatcherFromConfig(
       }
     }
     d.assign(role as LLMRole, key);
+
+    // Usage-limit fallback (e.g. reasoning=Sonnet → Opus): build + register the
+    // fallback provider (deduped like the primaries) and wire it so a
+    // SubscriptionLimitError on the primary retries once against it. A fallback
+    // that can't build is non-fatal in lenient mode (the role still works on its
+    // primary); strict mode surfaces it like any other build failure.
+    if (cfg.fallback) {
+      const fbKey = `${cfg.fallback.provider}:${cfg.fallback.model ?? 'default'}`;
+      let fb = providersByName.get(fbKey);
+      if (!fb) {
+        try {
+          fb = build(`${role}.fallback`, cfg.fallback, env);
+          providersByName.set(fbKey, fb);
+          d.register(fbKey, fb);
+        } catch (err) {
+          const msg = `role '${role}' fallback provider build failed: ${err instanceof Error ? err.message : err}`;
+          if (opts.lenient) {
+            opts.onWarn?.(msg);
+            fb = undefined;
+          } else {
+            throw new Error(msg);
+          }
+        }
+      }
+      if (fb) d.assignFallback(role as LLMRole, fbKey);
+    }
   }
   return d;
 }

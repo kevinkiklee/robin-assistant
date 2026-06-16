@@ -141,7 +141,11 @@ export const policiesSchema = z
 
 export type Policies = z.infer<typeof policiesSchema>;
 
-export const providerConfigSchema = z.object({
+// Shared provider fields (everything except `fallback`). Factored out so a role's
+// `fallback` can reuse the exact same shape WITHOUT recursively nesting another
+// fallback (one level of fallback is enough — a fallback that also fails just
+// propagates the outage).
+const providerBaseSchema = z.object({
   provider: z.string(),
   model: z.string().optional(),
   baseUrl: z.string().optional(),
@@ -159,6 +163,16 @@ export const providerConfigSchema = z.object({
   maxTokens: z.number().int().positive().optional(),
   embedModel: z.string().optional(),
   embedDims: z.number().int().positive().optional(),
+});
+
+export const providerConfigSchema = providerBaseSchema.extend({
+  // Usage-limit fallback: a SECOND provider used ONLY when the primary reports a
+  // usage-limit outage (the claude-agent SubscriptionLimitError — a weekly/daily
+  // subscription cap or an empty completion). The dispatcher retries the SAME
+  // request once against it. Intended for a genuinely INDEPENDENT limit (e.g.
+  // reasoning=Sonnet falling back to Opus), so a Sonnet weekly cap doesn't starve
+  // cognition. NOT triggered by bad output, timeouts, or the spend cap.
+  fallback: providerBaseSchema.optional(),
 });
 
 export const modelsSchema = z.object({

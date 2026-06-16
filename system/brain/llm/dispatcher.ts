@@ -52,9 +52,23 @@ export interface LLMDispatcherOptions {
   dailyCostCapUsd?: number;
 }
 
+/**
+ * True when an error is a usage-limit OUTAGE that a configured fallback should
+ * absorb: the claude-agent provider's SubscriptionLimitError (message
+ * "subscription limit: …" — a weekly/daily subscription cap or an empty
+ * completion). Deliberately NOT the spend cap (a budget brake — falling back
+ * would defeat it) and NOT timeouts or bad output (those are per-chunk poison,
+ * not "the account is down", and fallback would just double the latency).
+ */
+function isUsageLimitOutage(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /subscription limit/i.test(msg);
+}
+
 export class LLMDispatcher {
   private providers = new Map<string, LLMProvider>();
   private roleAssignments = new Map<LLMRole, string>();
+  private fallbackAssignments = new Map<LLMRole, string>();
   private defaultInvokeTimeoutMs: number;
   private defaultEmbedTimeoutMs: number;
   private dailyCostCapUsd: number;
@@ -92,12 +106,31 @@ export class LLMDispatcher {
     this.roleAssignments.set(role, providerName);
   }
 
+  /**
+   * Register a usage-limit fallback for a role: when the primary provider throws
+   * a usage-limit outage (SubscriptionLimitError), `invoke` retries the same
+   * request once against `providerName`. No-op unless the primary actually hits
+   * a usage limit — a healthy primary never touches the fallback.
+   */
+  assignFallback(role: LLMRole, providerName: string): void {
+    if (!this.providers.has(providerName)) {
+      throw new Error(`Fallback provider '${providerName}' not registered`);
+    }
+    this.fallbackAssignments.set(role, providerName);
+  }
+
   getProvider(role: LLMRole): LLMProvider {
     const name = this.roleAssignments.get(role);
     if (!name) throw new Error(`No provider assigned for role '${role}'`);
     const p = this.providers.get(name);
     if (!p) throw new Error(`Provider '${name}' missing (assigned but not registered)`);
     return p;
+  }
+
+  /** The role's usage-limit fallback provider, if one was assigned (else undefined). */
+  getFallbackProvider(role: LLMRole): LLMProvider | undefined {
+    const name = this.fallbackAssignments.get(role);
+    return name ? this.providers.get(name) : undefined;
   }
 
   async invoke(role: LLMRole, req: InvokeRequest): Promise<InvokeResult> {
@@ -112,7 +145,24 @@ export class LLMDispatcher {
     }
     const provider = this.getProvider(role);
     const ms = req.timeoutMs ?? this.defaultInvokeTimeoutMs;
-    const result = await withTimeout(provider.invoke(req), ms, `LLMDispatcher.invoke role=${role}`);
+    let result: InvokeResult;
+    try {
+      result = await withTimeout(provider.invoke(req), ms, `LLMDispatcher.invoke role=${role}`);
+    } catch (err) {
+      // Usage-limit fallback (e.g. reasoning=Sonnet → Opus): when the primary is
+      // usage-limited, retry the SAME request once on the role's fallback provider,
+      // whose limit is independent. Only a usage-limit outage triggers this — bad
+      // output, timeouts, and the spend cap propagate so callers handle them as
+      // before. A fallback that also throws surfaces ITS error (the real state).
+      const fbName = this.fallbackAssignments.get(role);
+      const fb = fbName ? this.providers.get(fbName) : undefined;
+      if (!fb || !isUsageLimitOutage(err)) throw err;
+      result = await withTimeout(
+        fb.invoke(req),
+        ms,
+        `LLMDispatcher.invoke role=${role} fallback=${fbName}`,
+      );
+    }
     if (this.dailyCostCapUsd > 0) {
       this.rollDay();
       this.spentUsd += result.costUsd ?? 0;

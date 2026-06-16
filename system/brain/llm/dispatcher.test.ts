@@ -39,6 +39,97 @@ test('dispatcher: throws when assigning unknown provider', () => {
   assert.throws(() => d.assign('classify', 'nope'), /not registered/);
 });
 
+function throwingProvider(name: string, err: Error): LLMProvider {
+  return {
+    name,
+    capabilities: new Set(['classify']),
+    meta: { contextWindow: 4096, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async () => {
+      throw err;
+    },
+  };
+}
+
+/** A mock that records whether it was invoked — to assert the fallback is/isn't hit. */
+function spyProvider(name: string): { provider: LLMProvider; calls: () => number } {
+  let n = 0;
+  return {
+    calls: () => n,
+    provider: {
+      name,
+      capabilities: new Set(['classify']),
+      meta: { contextWindow: 4096, inputPricePerM: 0, outputPricePerM: 0 },
+      invoke: async () => {
+        n++;
+        return {
+          text: `from ${name}`,
+          usage: { inputTokens: 0, outputTokens: 0 },
+          costUsd: 0,
+          latencyMs: 0,
+          provider: name,
+        };
+      },
+    },
+  };
+}
+
+test('dispatcher: falls back to the fallback provider on a usage-limit outage', async () => {
+  const d = new LLMDispatcher();
+  d.register(
+    'sonnet',
+    throwingProvider(
+      'sonnet',
+      new Error('subscription limit: empty completion (throttled account returned no text)'),
+    ),
+  );
+  d.register('opus', mockProvider('opus', 'from opus'));
+  d.assign('reasoning', 'sonnet');
+  d.assignFallback('reasoning', 'opus');
+
+  const r = await d.invoke('reasoning', { messages: [{ role: 'user', content: 'hi' }] });
+  assert.equal(r.text, 'from opus', 'a usage-limited primary is retried on the fallback');
+});
+
+test('dispatcher: does NOT fall back on non-usage-limit errors (bad output / generic)', async () => {
+  const d = new LLMDispatcher();
+  const opus = spyProvider('opus');
+  d.register('sonnet', throwingProvider('sonnet', new Error('json parse: bad output')));
+  d.register('opus', opus.provider);
+  d.assign('reasoning', 'sonnet');
+  d.assignFallback('reasoning', 'opus');
+
+  await assert.rejects(() => d.invoke('reasoning', { messages: [] }), /bad output/);
+  assert.equal(opus.calls(), 0, 'a non-usage-limit error must propagate, never touch the fallback');
+});
+
+test('dispatcher: a healthy primary never touches the fallback', async () => {
+  const d = new LLMDispatcher();
+  const opus = spyProvider('opus');
+  d.register('sonnet', mockProvider('sonnet', 'from sonnet'));
+  d.register('opus', opus.provider);
+  d.assign('reasoning', 'sonnet');
+  d.assignFallback('reasoning', 'opus');
+
+  const r = await d.invoke('reasoning', { messages: [] });
+  assert.equal(r.text, 'from sonnet');
+  assert.equal(opus.calls(), 0, 'the fallback is dormant while the primary is healthy');
+});
+
+test('dispatcher: a fallback that also fails surfaces ITS error', async () => {
+  const d = new LLMDispatcher();
+  d.register('sonnet', throwingProvider('sonnet', new Error('subscription limit: sonnet down')));
+  d.register('opus', throwingProvider('opus', new Error('subscription limit: opus down too')));
+  d.assign('reasoning', 'sonnet');
+  d.assignFallback('reasoning', 'opus');
+
+  await assert.rejects(() => d.invoke('reasoning', { messages: [] }), /opus down too/);
+});
+
+test('dispatcher: assignFallback rejects an unregistered provider', () => {
+  const d = new LLMDispatcher();
+  assert.throws(() => d.assignFallback('reasoning', 'ghost'), /not registered/);
+});
+
 // Bug F regression — any provider call must be bounded by the dispatcher's
 // default ceiling so a hung provider can't wedge the caller's awaited promise.
 test('dispatcher: invoke wraps provider call with default timeout', async () => {
