@@ -56,8 +56,8 @@ async function captureLongSession(db: ReturnType<typeof freshDb>, id: string): P
 
 const EXTRACTION = JSON.stringify({
   entities: [
-    { type: 'person', name: 'Kevin' },
-    { type: 'place', name: 'Lisbon' },
+    { type: 'person', name: 'Kevin', domain: 'identity' },
+    { type: 'place', name: 'Lisbon', domain: 'travel' },
   ],
   relations: [{ subject: 'Kevin', predicate: 'visited', object: 'Lisbon' }],
 });

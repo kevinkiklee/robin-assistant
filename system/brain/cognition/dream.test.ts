@@ -1128,7 +1128,9 @@ test('dream: nightly pass drains a seeded claim dead letter', async () => {
   ).run(eventId, '[USER]\nmy primary camera is a Nikon Z8');
 
   const llm = claimsLLM(
-    JSON.stringify({ claims: [{ topic: 'primary-camera', claim: 'Nikon Z8', confidence: 0.9 }] }),
+    JSON.stringify({
+      claims: [{ topic: 'primary-camera', claim: 'Nikon Z8', confidence: 0.9, domain: 'creative' }],
+    }),
   );
   const r = await runDream(db, llm);
 
