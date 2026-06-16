@@ -1,7 +1,13 @@
 # Robin — Implementation Status
 
-> Snapshot: 2026-06-11
-> Build state: **1208/1212 tests passing** (4 known pre-existing failures: spotify ×2, ebird, recall), typecheck clean, lint clean
+> Snapshot: 2026-06-16
+> Build state: typecheck + lint clean (Phase D code); full suite green aside from the known network-dependent flakes (spotify ×2, ebird, recall)
+>
+> Note: the "What's running" / model detail below is stale (predates the Opus-4.8-only switch and Phases A–D); treat subsystem specifics as historical until a full refresh.
+
+## Phase D — domain-gated memory ingestion (2026-06-16)
+
+Dev/engineering noise is filtered at the ingestion boundary by inverting an unbounded dev blocklist into a closed personal-domain **allowlist** (`system/brain/memory/domains.ts`, 11 domains). The biographer extracts only personal-domain claims/entities (tagging each), pure-dev sessions are skipped at capture (`looksPureDev`), and the belief-promotion gate rejects explicit non-personal domains (NULL grandfathered). Runtime kill-switch: `biographer.domainGating` in `policies.yaml`. Retroactive cleanup: `robin memory degate [--apply] [--llm]` (reversible reject, dry-run default) — one-time run culled ~92 engineering candidates from the legacy backlog while preserving Kevin's ventures/projects. Spec/plan: `docs/design/2026-06-16-domain-gated-memory-*`.
 
 ## What's running
 
