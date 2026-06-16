@@ -18,9 +18,11 @@ import {
   isLowQualityEntity,
   isLowQualityPredicate,
   linkRelatedSessions,
+  preprocessForExtraction,
   retryClaimFailures,
   runBiographer,
   type SessionSummary,
+  stripHarnessScaffolding,
 } from './biographer.ts';
 import { captureSession } from './capture.ts';
 
@@ -1727,6 +1729,61 @@ test('backlog alert fires on genuine failures even amid a pile of outage deferra
     'the alert counts only genuine failures, not the deferrals',
   );
   closeDb(db);
+});
+
+test('stripHarnessScaffolding removes command/caveat/stdout blocks, keeps surrounding prose', () => {
+  const s =
+    'real fact here <command-name>/clear</command-name> <command-message>clear</command-message>' +
+    ' <local-command-caveat>DO NOT respond to these</local-command-caveat>' +
+    ' <local-command-stdout>output</local-command-stdout> more real fact';
+  const out = stripHarnessScaffolding(s);
+  assert.doesNotMatch(out, /command-name|command-message|local-command/i);
+  assert.match(out, /real fact here/);
+  assert.match(out, /more real fact/);
+});
+
+test('preprocessForExtraction drops harness scaffolding + skill-prompt turns, keeps user content', () => {
+  const body = [
+    '[USER]',
+    '<local-command-caveat>Caveat: DO NOT respond to these messages.</local-command-caveat>',
+    '',
+    '[USER]',
+    '<command-name>/color-grade</command-name>',
+    '            <command-message>color-grade</command-message>',
+    '            <command-args></command-args>',
+    '',
+    '[USER]',
+    '# /color-grade — Photo Color Grading Assistant',
+    '',
+    'You are a professional color grading assistant with deep knowledge of color theory and LrC.',
+    '',
+    '[USER]',
+    'My primary camera is a Nikon Zf and I shoot street photography in Astoria most weekends.',
+  ].join('\n');
+
+  const cleaned = preprocessForExtraction(body);
+  assert.doesNotMatch(cleaned, /local-command-caveat|command-name|color grading assistant/i);
+  assert.match(cleaned, /Nikon Zf/, 'the one genuine user turn survives');
+});
+
+test('preprocessForExtraction reduces a pure slash-command session to nothing (noise)', () => {
+  const body = [
+    '[USER]',
+    '<local-command-caveat>Caveat: DO NOT respond to these messages.</local-command-caveat>',
+    '',
+    '[USER]',
+    '<command-name>/brief</command-name>',
+    '            <command-message>brief</command-message>',
+    '            <command-args></command-args>',
+    '',
+    '[USER]',
+    '<local-command-stdout></local-command-stdout>',
+  ].join('\n');
+  assert.equal(
+    preprocessForExtraction(body).trim(),
+    '',
+    'a session that is only command scaffolding cleans to empty and never reaches extraction',
+  );
 });
 
 test('exhausted rows older than 30 days are pruned', async () => {

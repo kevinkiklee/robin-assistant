@@ -425,14 +425,40 @@ export async function retryClaimFailures(
 }
 
 /**
+ * Strip harness / slash-command scaffolding that leaks into captured session
+ * bodies but carries ZERO biographical content: the local-command caveat, the
+ * /command invocation tags (name/message/args/contents), and command stdout.
+ * Every slash-command + skill session begins with these, so they dominated the
+ * claim dead-letter queue (74 of 141 chunks on 2026-06-16) — wasting extraction
+ * LLM calls and never yielding a durable fact. Stripped BEFORE chunking so a turn
+ * that is only scaffolding falls under the per-turn floor and is dropped, never
+ * reaching extraction or the queue.
+ */
+export function stripHarnessScaffolding(body: string): string {
+  return body
+    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/gi, '')
+    .replace(/<command-name>[\s\S]*?<\/command-name>/gi, '')
+    .replace(/<command-message>[\s\S]*?<\/command-message>/gi, '')
+    .replace(/<command-args>[\s\S]*?<\/command-args>/gi, '')
+    .replace(/<command-contents>[\s\S]*?<\/command-contents>/gi, '')
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/gi, '');
+}
+
+/**
  * Clean a captured session body before LLM extraction. Strips noise that wastes
  * model time, inflates chunk counts, and can trigger model hangs:
+ * - Harness/slash-command scaffolding (caveat, command tags, stdout)
+ * - Skill-prompt injections (a [USER] turn that is a skill's own system prompt,
+ *   recognizable by a leading `# /<skill>` header — NOT user-authored content)
  * - [TOOL] blocks (file reads, bash output, JSON blobs — zero entities)
  * - Code blocks (triple-backtick fences — rarely contain entities)
  * - Consecutive [ASSISTANT] turns collapsed into one (prevents many-turn degeneracy)
  * - Very short turns (<50 chars — "Done.", "Starting." — no entity content)
  */
-function preprocessForExtraction(body: string): string {
+export function preprocessForExtraction(body: string): string {
+  // Drop harness scaffolding before anything else so command-only turns collapse
+  // to nothing and get dropped by the <50-char floor below.
+  body = stripHarnessScaffolding(body);
   // Split on turn boundaries
   const turns = body.split(/\n\n(?=\[(?:USER|ASSISTANT|TOOL)\]\n)/);
 
@@ -470,6 +496,12 @@ function preprocessForExtraction(body: string): string {
     // Drop very short turns (after code removal)
     const contentAfterMarker = stripped.replace(/^\[(?:USER|ASSISTANT|TOOL)\]\n/, '');
     if (contentAfterMarker.length < 50) continue;
+
+    // Drop skill-prompt injections: a turn whose body is a skill's own system
+    // prompt (slash-command sessions inject the skill markdown as a [USER] turn,
+    // recognizable by a leading `# /<skill>` header). It's instructions, not
+    // user-authored biography — 34 of these sat in the queue on 2026-06-16.
+    if (/^#\s*\/[a-z0-9][\w:-]*/i.test(contentAfterMarker)) continue;
 
     // Collapse consecutive same-role turns
     const roleMatch = stripped.match(/^\[(USER|ASSISTANT|TOOL)\]/i);
