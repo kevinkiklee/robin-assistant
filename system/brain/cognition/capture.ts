@@ -198,6 +198,29 @@ export interface CaptureResult {
   eventId?: number;
 }
 
+/** Conservative pure-dev classifier (Phase D, Component 2). Returns true ONLY when a
+ *  session is overwhelmingly code/tooling AND shows no first-person personal signal.
+ *  Default FALSE — a mis-classification drops real personal facts, the error we most
+ *  want to avoid, so ambiguity falls through to the per-claim allowlist. */
+export function looksPureDev(turns: SessionTurn[]): boolean {
+  const userText = turns
+    .filter((t) => t.role === 'user')
+    .map((t) => t.content)
+    .join('\n');
+  if (userText.trim().length < 200) return false;
+  if (/\bi(?:'m| am| was| feel| went| bought| ate| flew| have| need| like| love)\b/i.test(userText))
+    return false;
+  const lines = userText.split('\n').filter((l) => l.trim().length > 0);
+  if (lines.length < 10) return false;
+  const devLines = lines.filter(
+    (l) =>
+      /^[\s>]*(```|\$|npm |pnpm |git |cd |grep |const |function |import |export |class |sudo |docker )/.test(
+        l,
+      ) || /\.(ts|tsx|js|jsx|json|sql|ya?ml|sh|py|rs)\b/.test(l),
+  ).length;
+  return devLines / lines.length >= 0.8;
+}
+
 export interface CaptureSessionOptions {
   /**
    * Override the cwd allowlist. Tests pass this to verify scoping behavior.
@@ -205,6 +228,12 @@ export interface CaptureSessionOptions {
    * env or the default (Robin's project root).
    */
   allowedCwds?: string[];
+  /**
+   * When true (default), enable the domain-gated pure-dev session skip. Set to
+   * false to disable it — mirrors the domainGating kill-switch so turning off
+   * domain gating also disables this pre-extraction heuristic.
+   */
+  domainGating?: boolean;
 }
 
 /** Apply skip rules and (if not skipped) write a 'session.captured' event for biographer to process. */
@@ -263,6 +292,17 @@ export async function captureSession(
   // llm.invoke() cognition calls, re-captured by the polling scanner).
   if (isCognitionEcho(capture.turns)) {
     return { captured: false, skipReason: 'robin_cognition_echo' };
+  }
+
+  // Conservative pure-dev skip (Phase D, Component 2): avoid LLM extraction spend
+  // on sessions that are overwhelmingly code/tooling with no first-person personal
+  // signal. Phase D's domain allowlist already makes pure-dev sessions yield zero
+  // personal claims/entities; this skip is gated by domainGating so the kill-switch
+  // disables both together. Fires ONLY on overwhelming evidence — ambiguity passes
+  // through to the per-claim allowlist in the biographer.
+  const domainGating = options.domainGating ?? true;
+  if (domainGating && looksPureDev(capture.turns)) {
+    return { captured: false, skipReason: 'pure_dev_session' };
   }
 
   // Dedup: hash the user turns; check recent events for a match.

@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../memory/db.ts';
 import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
-import { captureSession, extractTopicHints, isInternalProjectDir } from './capture.ts';
+import {
+  captureSession,
+  extractTopicHints,
+  isInternalProjectDir,
+  looksPureDev,
+} from './capture.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-cap-'));
@@ -508,4 +513,128 @@ test('extractTopicHints: returns empty for short sessions', () => {
   const turns = [{ role: 'user' as const, content: 'hello' }];
   const hints = extractTopicHints(turns);
   assert.equal(hints.length, 0);
+});
+
+// ─── looksPureDev ─────────────────────────────────────────────────────────────
+
+// A long session of pure code/tooling with no first-person personal signal.
+// Lines are chosen so ≥80% match the dev-line regex (shell commands, imports,
+// exports, const/function/class declarations, or file extensions).
+const PURE_DEV_TURNS: { role: 'user' | 'assistant'; content: string }[] = [
+  {
+    role: 'user',
+    content: [
+      '$ pnpm install',
+      '$ git status',
+      '$ git diff HEAD~1',
+      '$ git add system/brain/cognition/capture.ts',
+      '$ git commit -m "feat(capture): add hash-based dedup"',
+      '$ pnpm typecheck',
+      '$ pnpm lint',
+      'pnpm exec tsx --test system/brain/cognition/capture.test.ts',
+      'import { createHash } from "node:crypto";',
+      'import { readFileSync } from "node:fs";',
+      'import type { LLMDispatcher } from "../llm/dispatcher.ts";',
+      'import type { RobinDb } from "../memory/db.ts";',
+      'export function slugify(p: string): string { return p.replace(/[/.]/g, "-"); }',
+      'export interface SessionCapture { sessionId: string; turns: SessionTurn[]; }',
+      'export const DEFAULT_TIMEOUT_MS = 120_000;',
+      'const hash = createHash("sha256").update(data).digest("hex");',
+      'function applyMigrations(db: RobinDb, migrations: Migration[]): void {}',
+      'class MigrationRunner { constructor(private db: RobinDb) {} }',
+      '// capture.ts — session ingestion pipeline',
+      '// tsconfig.json target: ESNext',
+      'export default function captureSession() {}',
+      'import assert from "node:assert/strict";',
+    ].join('\n'),
+  },
+  {
+    role: 'assistant',
+    content: 'All checks pass. Migration applied successfully.',
+  },
+];
+
+test('looksPureDev: long all-code session with no personal signal → true', () => {
+  assert.equal(looksPureDev(PURE_DEV_TURNS), true);
+});
+
+test('looksPureDev: session with a first-person personal sentence → false', () => {
+  const turns = [
+    {
+      role: 'user' as const,
+      content: [
+        ...PURE_DEV_TURNS[0].content.split('\n'),
+        // One personal signal line injected — must short-circuit to false
+        "I'm flying to Tokyo next week for the Google I/O satellite event.",
+      ].join('\n'),
+    },
+    PURE_DEV_TURNS[1],
+  ];
+  assert.equal(
+    looksPureDev(turns),
+    false,
+    'personal signal should prevent pure-dev classification',
+  );
+});
+
+test('looksPureDev: short user text (<200 chars total) → false', () => {
+  const turns = [
+    { role: 'user' as const, content: '$ pnpm install\n$ git status' },
+    { role: 'assistant' as const, content: 'Done.' },
+  ];
+  assert.equal(looksPureDev(turns), false, 'too short to confidently classify as pure-dev');
+});
+
+test('looksPureDev: fewer than 10 non-empty lines → false', () => {
+  // Each line is clearly dev-signal but there are only 8 — below the 10-line floor.
+  const turns = [
+    {
+      role: 'user' as const,
+      content: [
+        '$ pnpm install',
+        '$ git status',
+        'import { foo } from "./foo.ts";',
+        'export function bar(): void {}',
+        '// tsconfig.json',
+        '$ pnpm lint',
+        'const x: string = "hello";',
+        '$ git commit -m "fix"',
+      ].join('\n'),
+    },
+    { role: 'assistant' as const, content: 'Looks good.' },
+  ];
+  assert.equal(looksPureDev(turns), false, 'too few lines to cross the 10-line floor');
+});
+
+// ─── captureSession pure_dev_session skip ────────────────────────────────────
+
+test('capture: skips a pure-dev session when domainGating is on (default)', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'pure-dev-1',
+    turns: PURE_DEV_TURNS,
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'pure_dev_session');
+  closeDb(db);
+});
+
+test('capture: does NOT skip a pure-dev session when domainGating is false', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    {
+      sessionId: 'pure-dev-gating-off',
+      turns: PURE_DEV_TURNS,
+    },
+    { domainGating: false },
+  );
+  // With gating off the pure_dev_session skip is bypassed; session should be captured.
+  assert.equal(
+    r.captured,
+    true,
+    `expected capture with gating off; got skipReason=${r.skipReason}`,
+  );
+  closeDb(db);
 });
