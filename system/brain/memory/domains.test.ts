@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PERSONAL_DOMAINS, isPersonalDomain } from './domains.ts';
+import { isPersonalDomain, PERSONAL_DOMAINS } from './domains.ts';
 
 test('PERSONAL_DOMAINS is the closed 11-domain set', () => {
   assert.equal(PERSONAL_DOMAINS.length, 11);

@@ -4,8 +4,8 @@ import { TimeoutError, withTimeout } from '../../lib/with-timeout.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { insertCandidateWithDedup } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
-import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
 import { isPersonalDomain } from '../memory/domains.ts';
+import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
 import { classifyProvenance } from '../memory/provenance.ts';
 import { loadNoiseBlocklist } from './hygiene.ts';
 

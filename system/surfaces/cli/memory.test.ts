@@ -38,8 +38,8 @@ test('sampleByDomain counts rows by domain and returns recent sample', () => {
   const result = sampleByDomain(db, 30);
 
   // Count assertions
-  assert.equal(result.counts['health'], 2, 'health count should be 2');
-  assert.equal(result.counts['creative'], 1, 'creative count should be 1');
+  assert.equal(result.counts.health, 2, 'health count should be 2');
+  assert.equal(result.counts.creative, 1, 'creative count should be 1');
   assert.equal(result.counts['(untagged)'], 1, 'untagged count should be 1');
 
   // recent length bounded by limit
