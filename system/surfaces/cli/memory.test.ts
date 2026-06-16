@@ -1,17 +1,28 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import { sampleByDomain } from './memory.ts';
+import { dbFilePath } from '../../lib/paths.ts';
+import { runMemoryCommand, sampleByDomain } from './memory.ts';
 
 function freshDb() {
   const dir = mkdtempSync(join(tmpdir(), 'robin-cli-memory-'));
   const db = openDb(join(dir, 'robin.sqlite'));
   applyMigrations(db, allMigrations);
   return db;
+}
+
+/** Build a temp user-data dir with a fully migrated SQLite DB. */
+function freshUserData(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-cli-memory-ud-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(dbFilePath(dir));
+  applyMigrations(db, allMigrations);
+  closeDb(db);
+  return dir;
 }
 
 test('sampleByDomain counts rows by domain and returns recent sample', () => {
@@ -49,4 +60,34 @@ test('sampleByDomain counts rows by domain and returns recent sample', () => {
   assert.equal(result.recent.length, 4, 'recent should contain all 4 rows');
 
   closeDb(db);
+});
+
+test('runMemoryCommand degate dry-run: does not throw, leaves dev-artifact row pending', async () => {
+  const dataDir = freshUserData();
+  const prev = process.env.ROBIN_USER_DATA_DIR;
+  process.env.ROBIN_USER_DATA_DIR = dataDir;
+  try {
+    // Seed a dev-artifact candidate directly into the DB.
+    const db = openDb(dbFilePath(dataDir));
+    db.prepare(`INSERT INTO belief_candidates (topic, claim, status) VALUES (?, ?, 'pending')`).run(
+      'robin-tools',
+      'Robin uses MCP servers to expose integrations.',
+    );
+    const id = Number((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
+    closeDb(db);
+
+    // Dry-run (default — no --apply): should not throw.
+    await assert.doesNotReject(runMemoryCommand(['degate']));
+
+    // Row must still be pending — dry-run never writes.
+    const db2 = openDb(dbFilePath(dataDir));
+    const row = db2.prepare(`SELECT status FROM belief_candidates WHERE id = ?`).get(id) as {
+      status: string;
+    };
+    closeDb(db2);
+    assert.equal(row.status, 'pending', 'dry-run must not write status change');
+  } finally {
+    if (prev === undefined) delete process.env.ROBIN_USER_DATA_DIR;
+    else process.env.ROBIN_USER_DATA_DIR = prev;
+  }
 });

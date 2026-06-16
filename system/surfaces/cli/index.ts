@@ -44,6 +44,7 @@ ADVANCED
   alerts ack <id>       Acknowledge an alert by id
   metrics --agents      Per-handler agent ROI: runs, spend, outcomes, last did-work
   memory audit-sample [N]   Recent extractions grouped by personal domain
+  memory degate [--apply] [--llm]   Cull engineering belief candidates (reversible; dry-run default)
   recall [--debug] <q>  Search memory (RRF hybrid); --debug prints scores/distances
   ingest-docs           Index content/* now (also runs automatically every 10 min)
   ingest-archive <dir>  Ingest text files from a directory into Robin memory

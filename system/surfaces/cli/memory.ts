@@ -1,6 +1,11 @@
+import { buildDispatcherFromConfig } from '../../brain/llm/build-dispatcher.ts';
+import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
+import { degateCandidates } from '../../brain/memory/degate-candidates.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
+import { loadModels } from '../../kernel/config/load.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 
 export interface DomainSample {
   counts: Record<string, number>;
@@ -46,9 +51,51 @@ export async function runMemoryCommand(args: string[]): Promise<void> {
     } finally {
       closeDb(db);
     }
+  } else if (sub === 'degate') {
+    const apply = args.includes('--apply');
+    const useLlm = args.includes('--llm');
+    const userData = resolveUserDataDir();
+
+    let llm: LLMDispatcher | null = null;
+    if (useLlm) {
+      loadEnvFile(userData);
+      try {
+        llm = buildDispatcherFromConfig(loadModels(userData));
+      } catch (err) {
+        console.error(
+          `robin memory degate --llm: could not build LLM dispatcher — ${err instanceof Error ? err.message : String(err)}`,
+        );
+        process.exit(1);
+      }
+    }
+
+    const db = openDb(dbFilePath(userData));
+    applyMigrations(db, allMigrations);
+    try {
+      const r = await degateCandidates(db, llm, { apply, useLlm });
+      const mode = apply ? 'APPLY' : 'dry-run';
+      console.log(
+        `Degate ${mode} — scanned ${r.scanned}, culled ${r.culled} (deterministic + llm=${r.llmClassified} classified), kept ${r.keptDeterministic}`,
+      );
+      if (r.samples.length > 0) {
+        console.log('');
+        for (const s of r.samples) {
+          console.log(`  #${s.id} [${s.reason}] ${s.topic}: ${s.claim}`);
+        }
+      }
+      if (!apply) {
+        console.log('');
+        console.log(
+          'Dry-run — no changes written. Re-run with --apply to reject (reversible) the culled candidates; add --llm to also run the LLM domain pass.',
+        );
+      }
+    } finally {
+      closeDb(db);
+    }
   } else {
     console.error(`Unknown memory subcommand: ${sub ?? '(none)'}`);
     console.error('usage: robin memory audit-sample [N]');
+    console.error('       robin memory degate [--apply] [--llm]');
     process.exit(2);
   }
 }
