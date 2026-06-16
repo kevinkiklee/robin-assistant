@@ -1766,6 +1766,32 @@ test('preprocessForExtraction drops harness scaffolding + skill-prompt turns, ke
   assert.match(cleaned, /Nikon Zf/, 'the one genuine user turn survives');
 });
 
+test('preprocessForExtraction drops agent/skill system-prompt turns ("You are the … analyst")', () => {
+  const agentPrompts = [
+    '[USER]\nYou are the MONEY analyst for Kevin’s daily brief. STYLE COVENANT: calibrated, no cheerleading. You are READ-ONLY: no write tools.',
+    '[USER]\nYou are critiquing one of Kevin Lee’s photographs. Be direct, be specific, be honest. Every word should teach him about the frame.',
+    '[USER]\nYou are running a nightly automated photo critique for Kevin’s photographs. Apply the SAME critique method Kevin uses interactively.',
+    '[USER]\nYou are a professional color grading assistant with deep knowledge of color theory and Lightroom Classic’s processing pipeline.',
+  ];
+  for (const p of agentPrompts) {
+    assert.equal(
+      preprocessForExtraction(p).trim(),
+      '',
+      `system-prompt turn should be dropped: ${p.slice(8, 40)}`,
+    );
+  }
+});
+
+test('preprocessForExtraction keeps conversational "You are right/wrong" (not a system prompt)', () => {
+  const body =
+    '[USER]\nYou are wrong about the Nikon Zf — it does have IBIS, and I use it for handheld street work at night in Astoria all the time.';
+  assert.match(
+    preprocessForExtraction(body),
+    /Nikon Zf/,
+    'real user feedback is not mistaken for a system prompt',
+  );
+});
+
 test('preprocessForExtraction reduces a pure slash-command session to nothing (noise)', () => {
   const body = [
     '[USER]',

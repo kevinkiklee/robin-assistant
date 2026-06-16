@@ -497,11 +497,20 @@ export function preprocessForExtraction(body: string): string {
     const contentAfterMarker = stripped.replace(/^\[(?:USER|ASSISTANT|TOOL)\]\n/, '');
     if (contentAfterMarker.length < 50) continue;
 
-    // Drop skill-prompt injections: a turn whose body is a skill's own system
-    // prompt (slash-command sessions inject the skill markdown as a [USER] turn,
-    // recognizable by a leading `# /<skill>` header). It's instructions, not
-    // user-authored biography — 34 of these sat in the queue on 2026-06-16.
-    if (/^#\s*\/[a-z0-9][\w:-]*/i.test(contentAfterMarker)) continue;
+    // Drop skill / agent SYSTEM-PROMPT injections captured as [USER] turns — they
+    // are instructions, not user-authored biography. Two shapes seen in the queue
+    // on 2026-06-16 (53 rows total): slash-command skills open with a `# /<skill>`
+    // header; skill + agent prompts open with a second-person role assignment
+    // ("You are the MONEY analyst…", "You are critiquing…", "You are a professional
+    // color grading assistant…"). The role-assignment list is scoped to role nouns
+    // so it can't swallow conversational "You are right/wrong/sure". This also
+    // catches Robin's OWN dream-synthesis specialist + nightly-critique prompts,
+    // which loop back into memory via self-capture.
+    if (
+      /^#\s*\/[a-z0-9][\w:-]*/i.test(contentAfterMarker) ||
+      /^You are (the|a|an|Kevin'?s|running|critiquing|composing)\b/i.test(contentAfterMarker)
+    )
+      continue;
 
     // Collapse consecutive same-role turns
     const roleMatch = stripped.match(/^\[(USER|ASSISTANT|TOOL)\]/i);
