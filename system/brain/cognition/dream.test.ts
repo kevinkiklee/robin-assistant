@@ -1104,7 +1104,7 @@ function claimsLLM(claimsJson: string): LLMDispatcher {
     capabilities: new Set(['summarize', 'reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => ({
-      text: (req.systemPrompt ?? '').includes('DURABLE FACTS') ? claimsJson : '[]',
+      text: (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS') ? claimsJson : '[]',
       usage: { inputTokens: 0, outputTokens: 0 },
       costUsd: 0,
       latencyMs: 0,
