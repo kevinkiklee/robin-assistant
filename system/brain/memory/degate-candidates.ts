@@ -1,7 +1,7 @@
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { isLowQualityClaim } from './belief-quality.ts';
 import type { RobinDb } from './db.ts';
-import { PERSONAL_DOMAINS, isPersonalDomain } from './domains.ts';
+import { isPersonalDomain, PERSONAL_DOMAINS } from './domains.ts';
 import { ingest } from './ingest.ts';
 
 /**
