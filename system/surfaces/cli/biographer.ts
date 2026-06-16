@@ -20,6 +20,7 @@ export interface BiographerCliReport {
   entitiesCreated: number;
   relationsCreated: number;
   claimsDrafted: number;
+  claimsDropped: number;
   errors: string[];
   duration_ms: number;
 }
@@ -47,6 +48,7 @@ export async function runBiographerCli(
     entitiesCreated: 0,
     relationsCreated: 0,
     claimsDrafted: 0,
+    claimsDropped: 0,
     errors: [],
     duration_ms: 0,
   };
@@ -89,6 +91,7 @@ export async function runBiographerCliCore(
     entitiesCreated: 0,
     relationsCreated: 0,
     claimsDrafted: 0,
+    claimsDropped: 0,
     errors: [],
     duration_ms: 0,
   },
@@ -105,6 +108,7 @@ export async function runBiographerCliCore(
     report.entitiesCreated = result.entitiesCreated;
     report.relationsCreated = result.relationsCreated;
     report.claimsDrafted = result.claimsDrafted;
+    report.claimsDropped = result.claimsDropped;
     report.errors = result.errors;
     if (opts.dryRun) db.exec('ROLLBACK');
   } catch (err) {
@@ -119,7 +123,7 @@ export async function runBiographerCliCore(
 export function printBiographerHuman(report: BiographerCliReport): void {
   const prefix = report.dryRun ? 'Biographer (dry-run): would extract' : 'Biographer: extracted';
   console.log(
-    `${prefix} ${report.entitiesCreated} entities, ${report.relationsCreated} relations, ${report.claimsDrafted} claims from ${report.processed} session(s) in ${(report.duration_ms / 1000).toFixed(1)}s`,
+    `${prefix} ${report.entitiesCreated} entities, ${report.relationsCreated} relations drafted=${report.claimsDrafted} dropped=${report.claimsDropped} from ${report.processed} session(s) in ${(report.duration_ms / 1000).toFixed(1)}s`,
   );
   if (report.errors.length > 0) {
     for (const e of report.errors) {

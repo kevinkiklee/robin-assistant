@@ -43,6 +43,7 @@ ADVANCED
   alerts [--all]        List open health alerts (--all includes resolved/acked history)
   alerts ack <id>       Acknowledge an alert by id
   metrics --agents      Per-handler agent ROI: runs, spend, outcomes, last did-work
+  memory audit-sample [N]   Recent extractions grouped by personal domain
   recall [--debug] <q>  Search memory (RRF hybrid); --debug prints scores/distances
   ingest-docs           Index content/* now (also runs automatically every 10 min)
   ingest-archive <dir>  Ingest text files from a directory into Robin memory
@@ -421,6 +422,13 @@ async function main(): Promise<void> {
     case 'alerts': {
       const { runAlertsCommand } = await import('./alerts.ts');
       await runAlertsCommand(args.slice(1));
+      exit(0);
+      break;
+    }
+
+    case 'memory': {
+      const { runMemoryCommand } = await import('./memory.ts');
+      await runMemoryCommand(args.slice(1));
       exit(0);
       break;
     }
