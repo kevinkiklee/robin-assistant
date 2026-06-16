@@ -37,7 +37,9 @@ async function classifyDomains(
   const systemPrompt = [
     'You are a domain classifier for a personal memory assistant.',
     `Classify each item as exactly one of: ${[...PERSONAL_DOMAINS, 'engineering'].join(', ')}.`,
-    '"engineering" covers: code, tools, configs, Robin internals, project infrastructure, MCP servers, packages, repos, deployments, CLI tools, integrations, or any software development artifact.',
+    '"engineering" covers ONLY transient software artifacts: code, configs, schemas, bugs, repo paths, API keys/IDs, CLI flags, MCP/broker swaps, deployment/integration internals, and the assistant\'s own machinery (its daily brief, dream pipeline, calibration, model config).',
+    'IMPORTANT — Kevin\'s own PROJECTS, VENTURES, and SITES are NOT engineering. The EXISTENCE and identity of a thing he builds or runs (his trading bot, LeadForge, Robin itself, his personal sites, his Lightroom plugin, etc.), what it is, and what it trades/does, are personal facts — classify those as "career" or "identity", not "engineering". A durable rule about how he works (commit email, package manager, tool preference) is "directives". Only the transient GUTS of a project are "engineering".',
+    'When unsure whether something is a durable personal/project fact vs. a transient guts detail, prefer the personal domain (keep), never "engineering".',
     'Reply ONLY with a JSON array, no explanation, no markdown fences.',
     'Format: [{"id":<number>,"domain":"<one of the listed values>"}]',
   ].join(' ');
