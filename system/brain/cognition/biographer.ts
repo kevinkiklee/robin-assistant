@@ -275,8 +275,18 @@ export interface ClaimRetryResult {
   retried: number;
   /** Re-attempts that re-extracted cleanly and cleared their dead-letter row. */
   recovered: number;
-  /** Open rows (attempts < max) remaining after the pass — the alert's trigger. */
+  /** Open rows (attempts < max) remaining after the pass — the raw queue depth. */
   openBacklog: number;
+  /**
+   * Open rows whose latest error is a genuine extraction failure (parse/schema/
+   * timeout), EXCLUDING rows deferred purely by a hard LLM outage (subscription
+   * limit / spend cap). Drives the backlog alert: a usage-limit window can
+   * dead-letter a whole session's remaining chunks at once to PRESERVE their
+   * claims for re-extraction (160 chunks on 2026-06-15) — those rows are waiting
+   * for the account to come back, not failing, and must not raise a "chunks
+   * failing" alarm. They still get retried + cleared by the next healthy pass.
+   */
+  genuineBacklog: number;
 }
 
 /**
@@ -318,7 +328,7 @@ export async function retryClaimFailures(
     chunk_body: string;
   }>;
 
-  const result: ClaimRetryResult = { retried: 0, recovered: 0, openBacklog: 0 };
+  const result: ClaimRetryResult = { retried: 0, recovered: 0, openBacklog: 0, genuineBacklog: 0 };
   for (const row of rows) {
     result.retried++;
     try {
@@ -371,20 +381,38 @@ export async function retryClaimFailures(
       WHERE attempts >= ? AND datetime(ts) < datetime('now', ?)`,
   ).run(CLAIM_RETRY_MAX_ATTEMPTS, `-${CLAIM_FAILURE_RETENTION_DAYS} days`);
 
-  // Backlog alert with its own resolution path (decision 6).
+  // Backlog alert with its own resolution path (decision 6). Two counts:
+  //  - openBacklog: every open row (attempts < max) — the raw queue depth.
+  //  - genuineBacklog: open rows MINUS those deferred purely by a hard LLM outage
+  //    (last_error matches the subscription-limit / spend-cap signature). The
+  //    alert is driven by genuineBacklog so a usage-limit window can't trip a
+  //    misleading "chunks failing" warning for chunks that are merely waiting for
+  //    the account to come back (it built a 193-row backlog on 2026-06-15→16,
+  //    nearly all throttle deferrals, and fired a false alarm). `coalesce` so a
+  //    NULL last_error counts as a genuine failure rather than being excluded.
   result.openBacklog = (
     db
       .prepare(`SELECT COUNT(*) AS n FROM claim_failures WHERE attempts < ?`)
       .get(CLAIM_RETRY_MAX_ATTEMPTS) as { n: number }
   ).n;
+  result.genuineBacklog = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM claim_failures
+          WHERE attempts < ?
+            AND coalesce(last_error,'') NOT LIKE '%subscription limit%'
+            AND coalesce(last_error,'') NOT LIKE '%spend cap exceeded%'`,
+      )
+      .get(CLAIM_RETRY_MAX_ATTEMPTS) as { n: number }
+  ).n;
   try {
-    if (result.openBacklog > CLAIM_BACKLOG_ALERT_THRESHOLD) {
+    if (result.genuineBacklog > CLAIM_BACKLOG_ALERT_THRESHOLD) {
       recordAlert(db, {
         severity: 'warning',
         source: 'biographer',
         key: 'claim-failures-backlog',
-        message: `${result.openBacklog} claim-extraction chunks failing (dead-letter backlog)`,
-        context: { openBacklog: result.openBacklog },
+        message: `${result.genuineBacklog} claim-extraction chunks failing (dead-letter backlog)`,
+        context: { genuineBacklog: result.genuineBacklog, openBacklog: result.openBacklog },
       });
     } else {
       resolveAlert(db, 'biographer', 'claim-failures-backlog');

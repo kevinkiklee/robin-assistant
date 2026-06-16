@@ -1370,6 +1370,7 @@ function seedDeadLetter(
     chunkBody?: string;
     attempts?: number;
     ageDays?: number;
+    lastError?: string;
   },
 ): void {
   const ts =
@@ -1387,7 +1388,7 @@ function seedDeadLetter(
     opts.chunkIdx ?? 0,
     opts.chunkBody ?? '[USER]\nmy primary camera is a Nikon Z8',
     opts.attempts ?? 1,
-    'json parse: seeded',
+    opts.lastError ?? 'json parse: seeded',
     ts,
   );
 }
@@ -1664,6 +1665,67 @@ test('backlog > 10 open fires the Phase-A alert; dropping to <= 10 resolves it',
     )
     .get() as { resolved_at: string | null };
   assert.ok(resolved.resolved_at, 'resolved_at is stamped on the alert row');
+  closeDb(db);
+});
+
+test('backlog alert excludes hard-outage deferrals (a throttle storm does not false-alarm)', async () => {
+  const db = freshDb();
+  // A usage-limit window dead-letters a whole session's remaining chunks at once
+  // to PRESERVE their claims for re-extraction — those rows are waiting for the
+  // account to come back, not failing. Seed 20 such deferrals + 3 genuine parse
+  // failures: openBacklog=23 but genuineBacklog=3 (<=10) → NO alert.
+  for (let i = 0; i < 20; i++)
+    seedDeadLetter(db, {
+      eventId: 500 + i,
+      attempts: 1,
+      lastError: 'subscription limit: empty completion (throttled account returned no text)',
+    });
+  for (let i = 0; i < 3; i++)
+    seedDeadLetter(db, { eventId: 600 + i, attempts: 1, lastError: 'json parse: bad output' });
+
+  // max:0 → no LLM calls; the pass just recomputes the backlog + drives the alert.
+  const r = await retryClaimFailures(db, claimsLLM('garbage'), { max: 0 });
+  assert.equal(r.openBacklog, 23, 'every open row counts toward the raw queue depth');
+  assert.equal(r.genuineBacklog, 3, 'outage deferrals are excluded from the genuine count');
+
+  const open = db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM alerts
+        WHERE source = 'biographer' AND key = 'claim-failures-backlog' AND resolved_at IS NULL`,
+    )
+    .get() as { c: number };
+  assert.equal(open.c, 0, 'a throttle storm of deferrals does NOT raise the backlog alarm');
+  closeDb(db);
+});
+
+test('backlog alert fires on genuine failures even amid a pile of outage deferrals', async () => {
+  const db = freshDb();
+  // 11 genuine parse failures (over the threshold of 10) buried under 50 outage
+  // deferrals — the alert must see the 11, and report only the 11.
+  for (let i = 0; i < 11; i++)
+    seedDeadLetter(db, { eventId: 700 + i, attempts: 1, lastError: 'json parse: bad output' });
+  for (let i = 0; i < 50; i++)
+    seedDeadLetter(db, {
+      eventId: 800 + i,
+      attempts: 1,
+      lastError: 'subscription limit: throttled',
+    });
+
+  const r = await retryClaimFailures(db, claimsLLM('garbage'), { max: 0 });
+  assert.equal(r.genuineBacklog, 11);
+  assert.equal(r.openBacklog, 61);
+  const open = db
+    .prepare(
+      `SELECT message FROM alerts
+        WHERE source = 'biographer' AND key = 'claim-failures-backlog' AND resolved_at IS NULL`,
+    )
+    .get() as { message: string } | undefined;
+  assert.ok(open, 'genuine failures over the threshold still fire the alert');
+  assert.match(
+    open?.message ?? '',
+    /^11 claim-extraction chunks/,
+    'the alert counts only genuine failures, not the deferrals',
+  );
   closeDb(db);
 });
 
