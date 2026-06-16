@@ -2353,6 +2353,61 @@ test('the claims loop drops claims whose domain is not personal', async () => {
   closeDb(db);
 });
 
+test('the claims loop with domainGating=false passes non-personal claims through', async () => {
+  // When domainGating is disabled, all claims (including non-personal domains
+  // and untagged claims) should be inserted — mirroring the pre-Phase-D behaviour.
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [], relations: [] }),
+    JSON.stringify({
+      claims: [
+        {
+          topic: 'travel-plan',
+          claim: 'Kevin flies to Tokyo next week',
+          confidence: 0.85,
+          domain: 'travel',
+        },
+        {
+          topic: 'fn-signature',
+          claim: 'Some neutral engineering sentence about code architecture',
+          confidence: 0.8,
+          domain: 'engineering',
+        },
+        {
+          topic: 'untag',
+          claim: 'Another neutral sentence with no domain tag at all',
+          confidence: 0.7,
+          // no domain field
+        },
+      ],
+    }),
+  );
+  await captureSession(db, null, {
+    sessionId: 's-domain-gate-off',
+    turns: [
+      { role: 'user', content: 'I am flying to Tokyo next week.' },
+      { role: 'assistant', content: 'Noted.' },
+    ],
+  });
+
+  const r = await runBiographer(db, llm, 10, {
+    minSessionBodyChars: 0,
+    draftClaims: true,
+    domainGating: false,
+  });
+
+  // All three claims pass when gating is off.
+  assert.equal(r.claimsDrafted, 3, 'all claims pass when domainGating=false');
+  assert.equal(r.claimsDropped, 0, 'no claims dropped when domainGating=false');
+
+  const cands = db
+    .prepare(`SELECT topic FROM belief_candidates WHERE status = 'pending'`)
+    .all() as Array<{ topic: string }>;
+  assert.equal(cands.length, 3, 'all three candidates in the queue');
+
+  closeDb(db);
+});
+
 // ─── entity domain-gating tests ────────────────────────────────────────────────
 
 test('extractionSchema accepts a domain tag on entities', () => {

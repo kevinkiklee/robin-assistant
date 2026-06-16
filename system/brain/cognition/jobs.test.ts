@@ -37,3 +37,45 @@ test('cognition jobs: registerCognitionJobs seeds cron rows for each', () => {
   assert.ok(names.includes('dream.run'));
   closeDb(db);
 });
+
+test('cognition jobs: getDomainGating resolver is accepted as 5th parameter', () => {
+  // registerCognitionJobs must accept a getDomainGating resolver as its 5th parameter,
+  // mirroring how getDraftClaims is the 4th. The resolver is lazy — only called inside
+  // the biographer.run handler, not at registration time.
+  const db = freshDb();
+  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<
+    typeof registerCognitionJobs
+  >[0];
+
+  let resolverCallCount = 0;
+  const getDomainGating = () => {
+    resolverCallCount++;
+    return false;
+  };
+
+  // Must not throw — 5 args is the new valid signature.
+  registerCognitionJobs(
+    fakeDaemon,
+    db,
+    () => null,
+    () => true,
+    getDomainGating,
+  );
+
+  // Resolver is lazy: not called during registration, only inside the handler.
+  assert.equal(resolverCallCount, 0, 'resolver is lazy — not called during registration');
+
+  closeDb(db);
+});
+
+test('cognition jobs: getDomainGating defaults to () => true when omitted', () => {
+  const db = freshDb();
+  // registerCognitionJobs must be callable with only 3 positional args and still
+  // work — the default () => true kicks in for both getDraftClaims and getDomainGating.
+  const fakeDaemon = { registerHandler: () => {} } as unknown as Parameters<
+    typeof registerCognitionJobs
+  >[0];
+  // Should not throw even without the 4th/5th args.
+  assert.doesNotThrow(() => registerCognitionJobs(fakeDaemon, db, () => null));
+  closeDb(db);
+});

@@ -70,12 +70,17 @@ export const COGNITION_JOBS: CognitionJob[] = [
  * `getDraftClaims` resolves the `biographer.draftClaims` policy at handler time
  * (so flipping policies.yaml takes effect without a daemon restart). Defaults to
  * `true` — the schema default — when the daemon does not supply one.
+ *
+ * `getDomainGating` resolves the `biographer.domainGating` policy at handler time
+ * (so flipping policies.yaml takes effect without a daemon restart). Defaults to
+ * `true` — the schema default — when the daemon does not supply one.
  */
 export function registerCognitionJobs(
   daemon: Daemon,
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
   getDraftClaims: () => boolean = () => true,
+  getDomainGating: () => boolean = () => true,
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
@@ -98,6 +103,7 @@ export function registerCognitionJobs(
       batchChunks: 5,
       skipToolChunks: true,
       draftClaims: getDraftClaims(),
+      domainGating: getDomainGating(),
       // Stop claiming further sessions after 3 min — keeps a normal tick well
       // under the 7-min heartbeat ceiling (cursor persists; next cron resumes).
       // Worst case (provider down, every chunk hung to its 2-min timeout) is

@@ -77,6 +77,11 @@ export const biographerConfigSchema = z.object({
   // belief_candidates review queue. Separately gated so it can be disabled
   // without touching the hard-won entity/relation extraction stability ceilings.
   draftClaims: z.boolean().default(true),
+  // Phase D personal-domain allowlist kill-switch. When true (default), claims
+  // and entities outside PERSONAL_DOMAINS are dropped at extraction. Set to
+  // false in policies.yaml to restore the old unrestricted ingestion behaviour
+  // without a daemon restart.
+  domainGating: z.boolean().default(true),
 });
 
 // Claude Agent SDK execution policy: master kill-switch, per-surface daily spend

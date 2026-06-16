@@ -318,7 +318,13 @@ export class Daemon {
     // Register cognition + integration job handlers + seed cron schedules
     try {
       const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
-      registerCognitionJobs(this, this.db, () => this.llm);
+      registerCognitionJobs(
+        this,
+        this.db,
+        () => this.llm,
+        () => loadPolicies(userData).biographer.draftClaims,
+        () => loadPolicies(userData).biographer.domainGating,
+      );
 
       // Boot-drain disabled 2026-05-21 Turn 4. The original boot-drain ran
       // `runBiographer(25)` in a parallel async task, intending to chew through
