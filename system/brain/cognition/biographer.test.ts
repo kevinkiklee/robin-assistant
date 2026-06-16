@@ -1420,7 +1420,11 @@ test('retry pass re-extracts a dead letter and clears it on success', async () =
   seedDeadLetter(db, { eventId, chunkBody: '[USER]\nmy primary camera is a Nikon Z8' });
 
   const llm = claimsLLM(
-    JSON.stringify({ claims: [{ topic: 'primary-camera', claim: 'Nikon Z8', confidence: 0.9 }] }),
+    JSON.stringify({
+      claims: [
+        { topic: 'primary-camera', claim: 'Nikon Z8', confidence: 0.9, domain: 'preferences' },
+      ],
+    }),
   );
   const r = await retryClaimFailures(db, llm);
   assert.equal(r.retried, 1);
@@ -1838,6 +1842,120 @@ test('exhausted rows older than 30 days are pruned', async () => {
   assert.ok(!ids.includes(401), 'exhausted + >30d old is pruned');
   assert.ok(ids.includes(402), 'exhausted but recent is kept as audit');
   assert.ok(ids.includes(403), 'open row is never pruned regardless of age');
+  closeDb(db);
+});
+
+// ─── Phase D domain-gating in the retry path ─────────────────────────────────
+
+test('retry path drops a re-extracted claim whose domain is not personal (domainGating=true)', async () => {
+  const db = freshDb();
+  await captureSession(db, null, {
+    sessionId: 's-retry-nondomain',
+    turns: [
+      { role: 'user', content: 'we deployed the new microservice to staging and it passed CI' },
+      { role: 'assistant', content: 'Deployment noted.' },
+    ],
+  });
+  const eventId = (
+    db.prepare(`SELECT id FROM events WHERE kind = 'session.captured'`).get() as { id: number }
+  ).id;
+  seedDeadLetter(db, { eventId, chunkBody: '[USER]\nwe deployed the microservice' });
+
+  // LLM returns a non-personal (engineering) claim and an untagged claim.
+  const llm = claimsLLM(
+    JSON.stringify({
+      claims: [
+        {
+          topic: 'deploy',
+          claim: 'Microservice was deployed to staging',
+          confidence: 0.8,
+          domain: 'engineering',
+        },
+        { topic: 'ci', claim: 'CI passed for the staging deployment', confidence: 0.7 },
+      ],
+    }),
+  );
+  const r = await retryClaimFailures(db, llm);
+  assert.equal(r.retried, 1);
+  assert.equal(r.recovered, 1, 'the dead-letter row is cleared on a clean re-extraction');
+
+  // Neither non-personal nor untagged claims should become candidates.
+  const cands = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(cands.length, 0, 'non-personal/untagged claims are dropped by the domain gate');
+});
+
+test('retry path inserts a personal-domain claim with domain persisted', async () => {
+  const db = freshDb();
+  await captureSession(db, null, {
+    sessionId: 's-retry-personal',
+    turns: [
+      { role: 'user', content: 'my 401k contribution is 15% and I max out my HYSA every month' },
+      { role: 'assistant', content: 'Finance details noted.' },
+    ],
+  });
+  const eventId = (
+    db.prepare(`SELECT id FROM events WHERE kind = 'session.captured'`).get() as { id: number }
+  ).id;
+  seedDeadLetter(db, { eventId, chunkBody: '[USER]\nmy 401k contribution is 15%' });
+
+  const llm = claimsLLM(
+    JSON.stringify({
+      claims: [
+        {
+          topic: 'retirement-savings',
+          claim: 'Contributes 15% to 401k',
+          confidence: 0.95,
+          domain: 'finance',
+        },
+      ],
+    }),
+  );
+  const r = await retryClaimFailures(db, llm);
+  assert.equal(r.retried, 1);
+  assert.equal(r.recovered, 1);
+
+  const cands = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(cands.length, 1, 'a personal-domain claim is inserted');
+  assert.equal(cands[0].topic, 'retirement-savings');
+  // Query domain directly — mapRow doesn't yet expose it, so check the raw row.
+  const raw = db
+    .prepare(`SELECT domain FROM belief_candidates WHERE topic = 'retirement-savings'`)
+    .get() as { domain: string | null } | undefined;
+  assert.equal(raw?.domain, 'finance', 'domain is threaded through to the candidate row');
+  closeDb(db);
+});
+
+test('retry path with domainGating=false passes non-personal claims through', async () => {
+  const db = freshDb();
+  await captureSession(db, null, {
+    sessionId: 's-retry-nogating',
+    turns: [
+      { role: 'user', content: 'the build pipeline now runs in parallel across all agents' },
+      { role: 'assistant', content: 'Noted.' },
+    ],
+  });
+  const eventId = (
+    db.prepare(`SELECT id FROM events WHERE kind = 'session.captured'`).get() as { id: number }
+  ).id;
+  seedDeadLetter(db, { eventId, chunkBody: '[USER]\nbuild pipeline parallelism' });
+
+  const llm = claimsLLM(
+    JSON.stringify({
+      claims: [
+        {
+          topic: 'build',
+          claim: 'Build pipeline runs in parallel',
+          confidence: 0.8,
+          domain: 'engineering',
+        },
+      ],
+    }),
+  );
+  const r = await retryClaimFailures(db, llm, { domainGating: false });
+  assert.equal(r.recovered, 1);
+
+  const cands = listBeliefCandidates(db, { status: 'pending' });
+  assert.equal(cands.length, 1, 'with domainGating=false, non-personal claims are inserted');
   closeDb(db);
 });
 

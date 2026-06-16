@@ -323,10 +323,11 @@ export interface ClaimRetryResult {
 export async function retryClaimFailures(
   db: RobinDb,
   llm: LLMDispatcher,
-  opts?: { chunkTimeoutMs?: number; max?: number },
+  opts?: { chunkTimeoutMs?: number; max?: number; domainGating?: boolean },
 ): Promise<ClaimRetryResult> {
   const max = opts?.max ?? CLAIM_RETRY_PER_PASS;
   const timeoutMs = opts?.chunkTimeoutMs ?? BIOGRAPHER_CHUNK_TIMEOUT_MS;
+  const domainGating = opts?.domainGating ?? true;
   const rows = db
     .prepare(
       `SELECT id, event_id, chunk_idx, chunk_body FROM claim_failures
@@ -361,12 +362,14 @@ export async function retryClaimFailures(
       const provenance = classifyProvenance(sourceEventRow ? [sourceEventRow.kind] : []);
       for (const c of claims) {
         if (!c.topic?.trim() || !c.claim?.trim()) continue;
+        if (domainGating && !isPersonalDomain(c.domain)) continue;
         await insertCandidateWithDedup(db, llm, {
           topic: c.topic,
           claim: c.claim,
           confidence: c.confidence ?? null,
           sourceEventId: row.event_id,
           provenance,
+          domain: c.domain ?? null,
         });
       }
       db.prepare(`DELETE FROM claim_failures WHERE id = ?`).run(row.id);
