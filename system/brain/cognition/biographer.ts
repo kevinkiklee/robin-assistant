@@ -5,6 +5,7 @@ import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { insertCandidateWithDedup } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { addRelation, findEntity, upsertEntity } from '../memory/entity.ts';
+import { isPersonalDomain } from '../memory/domains.ts';
 import { classifyProvenance } from '../memory/provenance.ts';
 import { loadNoiseBlocklist } from './hygiene.ts';
 
@@ -93,13 +94,14 @@ export type ExtractionResult = z.infer<typeof extractionSchema>;
 // the belief_candidates review queue (never the truth stream directly), gated by
 // the `draftClaims` config flag and bounded by its own small per-session budget.
 
-const claimsSchema = z.object({
+export const claimsSchema = z.object({
   claims: z
     .array(
       z.object({
         topic: z.string(),
         claim: z.string(),
         confidence: z.number().nullable().optional(),
+        domain: z.string().nullable().optional(),
       }),
     )
     .default([]),
@@ -166,21 +168,30 @@ Rules:
 - temporalRefs: dates/deadlines mentioned. Resolve relative refs against the session date. null resolvedDate if too vague to resolve.
 - followUp: an explicit next step the user stated, or null`;
 
-const CLAIMS_SYSTEM_PROMPT = `You extract DURABLE FACTS about the user (and their world) from a transcript. Reply ONLY with JSON matching:
-{"claims":[{"topic":"<short-kebab-topic>","claim":"<one declarative sentence>","confidence":<0..1>}, ...]}
+const CLAIMS_SYSTEM_PROMPT = `You extract DURABLE PERSONAL FACTS about Kevin from a transcript. Reply ONLY with JSON matching:
+{"claims":[{"topic":"<short-kebab-topic>","claim":"<one declarative sentence>","confidence":<0..1>,"domain":"<one of the domains below>"}, ...]}
 
-A claim is a stable, declarative fact that would still be true in a future session — e.g. "kevin's google role is ad experiences", "kevin lives in bergen county nj", "kevin's main camera is a nikon z8".
+This transcript is LIKELY DOMINATED BY SOFTWARE ENGINEERING — on Robin itself or on Kevin's other projects. Do NOT extract engineering artifacts or state: code, functions, files, configs, bugs, commits, architecture, libraries, tools, build systems, schemas, or Robin's own internals. Those are NOT memory.
 
-Do NOT emit:
-- Imperatives or behavior rules ("never pitch X", "always do Y") — those are not claims.
-- Transient session details (what was debugged today, a command that was run, a file that was edited).
-- Speculation, questions, or anything you are not reasonably confident is a durable fact.
-- Facts about the assistant itself rather than the user — this includes Robin's own internals (job schedules, protocols, env vars, integration wiring, daemon behavior, code architecture).
-- Engineering or dev artifacts: library versions, framework configs, code bugs, CLI commands, repo structure, build systems, environment variables, schema details, tool internals — unless the fact reflects a durable user *preference* (e.g. "kevin prefers pnpm over npm").
+Extract ONLY facts that belong to one of these personal domains, and tag each with its "domain":
+- health — medical, fitness, sleep, body, conditions, medications
+- finance — accounts, investments, taxes, purchases, income
+- career — job, role, employer, work history, professional goals
+- relationships — family, friends, social ties
+- preferences — tastes, opinions, likes/dislikes (food, media, style)
+- creative — photography, gear, creative practice and hobby projects
+- travel — trips taken or planned, places visited
+- home — residence, household, possessions
+- life_events — milestones, personal schedule, plans of personal significance
+- identity — background, traits, worldview, who Kevin is
+- directives — a STANDING rule Kevin sets for how he works or how Robin should behave (durable workflow/tooling preference), e.g. "commit as kevin.kik.lee@gmail.com", "pnpm dev:log is the required dev command". NOT a one-time task about the current code ("refactor X to use zod") and NOT a transient build state.
 
-topic: a short kebab-case key for the fact (e.g. "google-role", "home-location", "primary-camera").
-confidence: your confidence 0..1 that this is a durable, correct fact.
-If nothing durable is present, reply {"claims":[]}.`;
+Rules:
+- A claim must still be true in a future session. When a personal fact appears IN PASSING during technical work, KEEP it and tag its domain.
+- If a fact does not fit one of the domains above, OMIT it — do not invent a domain.
+- topic: a short kebab-case key (e.g. "google-role", "home-location", "primary-camera").
+- confidence: your 0..1 confidence that this is a durable, correct fact.
+If nothing durable and personal is present, reply {"claims":[]}.`;
 
 // Hard cap on candidate claims drafted per session — keeps a chatty model from
 // flooding the review queue from a single transcript.
@@ -617,6 +628,8 @@ export interface BiographerRunResult {
   relationsCreated: number;
   /** Candidate beliefs drafted into the review queue (second pass). */
   claimsDrafted: number;
+  /** Claims dropped by the personal-domain allowlist gate (Phase D). */
+  claimsDropped: number;
   /** Sessions enriched with intent/outcome/topics via finalization. */
   sessionsSummarized: number;
   /** Cross-session thread links created via topic overlap. */
@@ -645,6 +658,12 @@ export interface RunBiographerOptions {
    * (jobs.ts) defaults it to the `biographer.draftClaims` config flag (true).
    */
   draftClaims?: boolean;
+  /**
+   * Phase D personal-domain allowlist gate. When true (default), claims/entities
+   * outside PERSONAL_DOMAINS are dropped at extraction. Resolved from the
+   * `biographer.domainGating` policy at handler time (mirrors `draftClaims`).
+   */
+  domainGating?: boolean;
   /**
    * Overall wall-clock budget for the whole tick. Once exceeded, the session
    * loop stops claiming further sessions and returns gracefully (per-chunk
@@ -1506,6 +1525,7 @@ export async function runBiographer(
   const batchChunks = options.batchChunks ?? 1;
   const skipToolChunks = options.skipToolChunks ?? false;
   const draftClaims = options.draftClaims ?? false;
+  const domainGating = options.domainGating ?? true;
   const tickDeadlineMs = options.tickDeadlineMs;
   const now = options.now ?? (() => Date.now());
   const tickStartedAt = now();
@@ -1517,6 +1537,7 @@ export async function runBiographer(
     entitiesCreated: 0,
     relationsCreated: 0,
     claimsDrafted: 0,
+    claimsDropped: 0,
     sessionsSummarized: 0,
     sessionsLinked: 0,
     errors: [],
@@ -1789,12 +1810,21 @@ export async function runBiographer(
             for (const c of claims) {
               if (sessionPending >= MAX_CLAIMS_PER_SESSION) break;
               if (!c.topic?.trim() || !c.claim?.trim()) continue;
+              // Allowlist gate (Phase D): only personal-domain claims enter the
+              // queue. An untagged or non-personal claim is engineering/transient
+              // noise — drop it. The deterministic isLowQualityClaim backstop
+              // inside insertCandidateWithDedup still runs on what passes.
+              if (domainGating && !isPersonalDomain(c.domain)) {
+                result.claimsDropped++;
+                continue;
+              }
               const inserted = await insertCandidateWithDedup(db, llm, {
                 topic: c.topic,
                 claim: c.claim,
                 confidence: c.confidence ?? null,
                 sourceEventId: target.eventId,
                 provenance: targetProvenance,
+                domain: c.domain ?? null,
               });
               // id === -1 → filtered as a dev/engineering artifact; don't count it.
               if (inserted.id === -1) continue;

@@ -14,6 +14,7 @@ import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
 import { classifyProvenance } from '../memory/provenance.ts';
 import {
   chunkBody,
+  claimsSchema,
   extractClaims,
   isLowQualityEntity,
   isLowQualityPredicate,
@@ -925,7 +926,14 @@ test('biographer: claims pass works on knowledge.doc (no [USER] markers needed)'
   const llm = dualLLM(
     JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
     JSON.stringify({
-      claims: [{ topic: 'home-location', claim: 'Kevin lives in Astoria', confidence: 0.9 }],
+      claims: [
+        {
+          topic: 'home-location',
+          claim: 'Kevin lives in Astoria',
+          confidence: 0.9,
+          domain: 'home',
+        },
+      ],
     }),
   );
   ingest(db, null, {
@@ -957,7 +965,7 @@ function dualLLM(entityRelJson: string, claimsJson: string): LLMDispatcher {
     capabilities: new Set(['reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => {
-      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS');
       return {
         text: isClaims ? claimsJson : entityRelJson,
         usage: { inputTokens: 0, outputTokens: 0 },
@@ -1035,8 +1043,8 @@ test('biographer: draftClaims on → inserts pending candidates linked to the se
     JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
     JSON.stringify({
       claims: [
-        { topic: 'Google Role', claim: 'Ad Experiences', confidence: 0.9 },
-        { topic: 'home-location', claim: 'Bergen County NJ', confidence: 0.7 },
+        { topic: 'Google Role', claim: 'Ad Experiences', confidence: 0.9, domain: 'career' },
+        { topic: 'home-location', claim: 'Bergen County NJ', confidence: 0.7, domain: 'home' },
       ],
     }),
   );
@@ -1103,6 +1111,7 @@ test('biographer: claims pass caps drafts per session', async () => {
       topic: `topic-${i}`,
       claim: `claim ${i}`,
       confidence: 0.5,
+      domain: 'preferences',
     })),
   });
   const llm = dualLLM(JSON.stringify({ entities: [], relations: [] }), manyClaims);
@@ -1131,7 +1140,7 @@ test('biographer: a failing claims pass does not block entity/relation extractio
     capabilities: new Set(['reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => {
-      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS');
       return {
         text: isClaims
           ? 'totally not json'
@@ -1184,7 +1193,7 @@ test('biographer: a claims-chunk timeout writes a dead letter with the verbatim 
     capabilities: new Set(['reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => {
-      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS');
       if (isClaims) return new Promise(() => {}); // never resolves → timeout
       return {
         text: JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
@@ -1253,7 +1262,7 @@ test('biographer: a validation failure dead-letters, a legitimately empty chunk 
     capabilities: new Set(['reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => ({
-      text: (req.systemPrompt ?? '').includes('DURABLE FACTS')
+      text: (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS')
         ? 'this is not json'
         : JSON.stringify({ entities: [], relations: [] }),
       usage: { inputTokens: 0, outputTokens: 0 },
@@ -1346,7 +1355,7 @@ function claimsLLM(claimsJson: string, onClaimsInvoke?: () => void): LLMDispatch
     capabilities: new Set(['reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => {
-      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS');
       if (isClaims) onClaimsInvoke?.();
       return {
         text: isClaims ? claimsJson : '[]',
@@ -1474,7 +1483,7 @@ function limitedLLM(opts: { onlyClaims?: boolean; entityRelJson?: string } = {})
     capabilities: new Set(['reasoning']),
     meta: { contextWindow: 8000, inputPricePerM: 0, outputPricePerM: 0 },
     invoke: async (req) => {
-      const isClaims = (req.systemPrompt ?? '').includes('DURABLE FACTS');
+      const isClaims = (req.systemPrompt ?? '').includes('DURABLE PERSONAL FACTS');
       if (isClaims) calls.claims++;
       else calls.other++;
       if (!opts.onlyClaims || isClaims) {
@@ -1839,7 +1848,9 @@ test('biographer P3: candidates from session.captured source get provenance firs
   const llm = dualLLM(
     JSON.stringify({ entities: [], relations: [] }),
     JSON.stringify({
-      claims: [{ topic: 'home', claim: 'lives in Bergen County NJ', confidence: 0.9 }],
+      claims: [
+        { topic: 'home', claim: 'lives in Bergen County NJ', confidence: 0.9, domain: 'home' },
+      ],
     }),
   );
   // captureSession inserts a 'session.captured' event — classifyProvenance(['session.captured'])
@@ -2136,5 +2147,79 @@ test('biographer: cross-session linking is capped per session (no O(N) thread fa
     .get() as { c: number };
   assert.ok(linked <= 8, `links per session must be capped at 8; got ${linked}`);
   assert.equal(threads.c, linked, 'thread rows must match the returned link count');
+  closeDb(db);
+});
+
+// ─── Phase D: personal-domain allowlist (Task 5) ─────────────────────────────
+
+test('claimsSchema accepts and preserves a domain tag', () => {
+  const parsed = claimsSchema.parse({
+    claims: [{ topic: 'home', claim: 'Kevin lives in Astoria', confidence: 0.9, domain: 'home' }],
+  });
+  assert.equal(parsed.claims[0].domain, 'home');
+});
+
+test('claimsSchema tolerates a missing domain (no parse failure)', () => {
+  const parsed = claimsSchema.parse({ claims: [{ topic: 'x', claim: 'y' }] });
+  assert.equal(parsed.claims[0].domain ?? null, null);
+});
+
+test('the claims loop drops claims whose domain is not personal', async () => {
+  // The LLM returns three claims: one personal (travel), one engineering
+  // (domain:'engineering', not in PERSONAL_DOMAINS), and one untagged (no domain).
+  // With domainGating:true (default), only the travel claim should be inserted;
+  // the other two are dropped by the allowlist gate before insertCandidateWithDedup.
+  const db = freshDb();
+  const llm = dualLLM(
+    JSON.stringify({ entities: [], relations: [] }),
+    JSON.stringify({
+      claims: [
+        {
+          topic: 'travel-plan',
+          claim: 'Kevin flies to Tokyo next week',
+          confidence: 0.85,
+          domain: 'travel',
+        },
+        {
+          topic: 'fn-signature',
+          claim: 'Some neutral engineering sentence about code architecture',
+          confidence: 0.8,
+          domain: 'engineering',
+        },
+        {
+          topic: 'untag',
+          claim: 'Another neutral sentence with no domain tag at all',
+          confidence: 0.7,
+          // no domain field — isPersonalDomain(undefined) → false → dropped
+        },
+      ],
+    }),
+  );
+  await captureSession(db, null, {
+    sessionId: 's-domain-gate',
+    turns: [
+      {
+        role: 'user',
+        content: 'I am flying to Tokyo next week to attend a photography conference.',
+      },
+      { role: 'assistant', content: 'Noted.' },
+    ],
+  });
+
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0, draftClaims: true });
+
+  // Exactly one personal-domain claim (travel) should be drafted.
+  assert.equal(r.claimsDrafted, 1, 'only the travel claim passes the allowlist gate');
+  // The two non-personal claims were dropped by the gate.
+  assert.equal(r.claimsDropped, 2, 'engineering + untagged claims are counted as dropped');
+
+  // Only the personal claim is in the DB.
+  const cands = db
+    .prepare(`SELECT topic, domain FROM belief_candidates WHERE status = 'pending'`)
+    .all() as Array<{ topic: string; domain: string | null }>;
+  assert.equal(cands.length, 1, 'only one pending candidate in the queue');
+  assert.equal(cands[0].topic, 'travel-plan');
+  assert.equal(cands[0].domain, 'travel');
+
   closeDb(db);
 });
