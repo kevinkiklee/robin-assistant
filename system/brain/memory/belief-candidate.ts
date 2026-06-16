@@ -123,6 +123,7 @@ export function insertBeliefCandidate(
     confidence?: number | null;
     sourceEventId?: number | null;
     provenance?: ProvenanceClass | null;
+    domain?: string | null;
   },
 ): { id: number } {
   const topic = normalizeTopic(input.topic);
@@ -142,8 +143,8 @@ export function insertBeliefCandidate(
 
   const info = db
     .prepare(
-      `INSERT INTO belief_candidates (topic, claim, confidence, source_event_id, provenance)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO belief_candidates (topic, claim, confidence, source_event_id, provenance, domain)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
     .run(
       topic,
@@ -151,6 +152,7 @@ export function insertBeliefCandidate(
       input.confidence ?? null,
       input.sourceEventId ?? null,
       input.provenance ?? null,
+      input.domain ?? null,
     );
   return { id: Number(info.lastInsertRowid) };
 }
@@ -181,6 +183,7 @@ export async function insertCandidateWithDedup(
     confidence?: number | null;
     sourceEventId?: number | null;
     provenance?: ProvenanceClass | null;
+    domain?: string | null;
   },
 ): Promise<{ id: number; merged: boolean }> {
   const topic = normalizeTopic(input.topic);

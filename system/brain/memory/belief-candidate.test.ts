@@ -630,3 +630,43 @@ test('belief-candidate P3: existing promote test still works with first-party pr
   assert.equal(belief.provenance, 'first-party');
   closeDb(db);
 });
+
+// ─── Domain tagging tests ─────────────────────────────────────────────────────
+
+test('insertBeliefCandidate persists the domain tag', () => {
+  const db = freshDb();
+  const r = insertBeliefCandidate(db, {
+    topic: 'home-location',
+    claim: 'Kevin lives in Astoria',
+    domain: 'home',
+  });
+  const row = db.prepare(`SELECT domain FROM belief_candidates WHERE id = ?`).get(r.id) as {
+    domain: string | null;
+  };
+  assert.equal(row.domain, 'home');
+  closeDb(db);
+});
+
+test('insertBeliefCandidate defaults domain to NULL when omitted', () => {
+  const db = freshDb();
+  const r = insertBeliefCandidate(db, { topic: 'coffee', claim: 'Kevin drinks espresso' });
+  const row = db.prepare(`SELECT domain FROM belief_candidates WHERE id = ?`).get(r.id) as {
+    domain: string | null;
+  };
+  assert.equal(row.domain, null);
+  closeDb(db);
+});
+
+test('insertCandidateWithDedup (no embedder) persists the domain via the exact-match fallback', async () => {
+  const db = freshDb();
+  const r = await insertCandidateWithDedup(db, null, {
+    topic: 'primary-camera',
+    claim: 'Kevin shoots a Nikon Zf',
+    domain: 'creative',
+  });
+  const row = db.prepare(`SELECT domain FROM belief_candidates WHERE id = ?`).get(r.id) as {
+    domain: string | null;
+  };
+  assert.equal(row.domain, 'creative');
+  closeDb(db);
+});
