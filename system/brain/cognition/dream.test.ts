@@ -1165,6 +1165,51 @@ test('dream: claim retry is skipped (no crash) when llm is null', async () => {
   closeDb(db);
 });
 
+test('dream: domainGating:false flag reaches retryClaimFailures — non-personal claim is recovered', async () => {
+  // Mirrors 'dream: nightly pass drains a seeded claim dead letter' but with
+  // domainGating:false so a claim tagged with a non-personal domain (engineering)
+  // is recovered into the candidate queue. With gating ON (default), the same
+  // claim would be dropped (no candidate row) even though the dead-letter row
+  // still clears. This test proves the flag travels from runDream opts all the
+  // way into retryClaimFailures.
+  const db = freshDb();
+  const eventId = insertCapture(db, new Date().toISOString());
+  db.prepare(
+    `INSERT INTO claim_failures (event_id, chunk_idx, chunk_body, attempts, last_error, ts)
+     VALUES (?, 0, ?, 1, 'json parse: seeded', datetime('now'))`,
+  ).run(eventId, '[USER]\nbuild pipeline runs in parallel');
+
+  // LLM returns a claim tagged domain=engineering (non-personal → dropped when gating=on).
+  const llm = claimsLLM(
+    JSON.stringify({
+      claims: [
+        {
+          topic: 'build-pipeline',
+          claim: 'Build pipeline runs in parallel',
+          confidence: 0.8,
+          domain: 'engineering',
+        },
+      ],
+    }),
+  );
+
+  const r = await runDream(db, llm, undefined, { domainGating: false });
+
+  // With gating OFF the non-personal claim must land in the candidate queue.
+  assert.equal(r.claimsRetried, 1, 'one open dead letter re-attempted');
+  assert.equal(r.claimsRecovered, 1, 'non-personal claim recovered when gating is off');
+
+  const remaining = db.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
+  assert.equal(remaining.c, 0, 'dead letter cleared');
+
+  const cand = db
+    .prepare(`SELECT topic FROM belief_candidates WHERE status = 'pending'`)
+    .get() as { topic: string } | undefined;
+  assert.ok(cand, 'non-personal claim entered the candidate queue (gating off)');
+  assert.equal(cand.topic, 'build-pipeline');
+  closeDb(db);
+});
+
 // ── profile_generated_at stale-fill (Task 9) ──────────────────────────────────
 
 test('summarizeHotEntities: entity with 40-day-old profile + recent relations is re-summarized when no hot entities', async () => {

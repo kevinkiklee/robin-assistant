@@ -129,7 +129,9 @@ export async function runDream(
   db: RobinDb,
   llm: LLMDispatcher | null,
   now: Date = new Date(),
+  opts?: { domainGating?: boolean },
 ): Promise<DreamResult> {
+  const domainGating = opts?.domainGating ?? true;
   const result: DreamResult = {
     predictionsResolved: 0,
     brierDeltaSum: 0,
@@ -346,7 +348,7 @@ export async function runDream(
       // plus its health alert — would linger for weeks. 40 clears a big backlog
       // in a handful of nights while staying well under the per-tick LLM budget;
       // a normal night has only a few open rows, so this is just an upper bound.
-      const retry = await retryClaimFailures(db, llm, { max: 40 });
+      const retry = await retryClaimFailures(db, llm, { max: 40, domainGating });
       result.claimsRetried = retry.retried;
       result.claimsRecovered = retry.recovered;
     } catch {

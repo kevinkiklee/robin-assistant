@@ -114,7 +114,7 @@ export function registerCognitionJobs(
   });
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;
-    await runDream(db, llm);
+    await runDream(db, llm, undefined, { domainGating: getDomainGating() });
   });
   daemon.registerHandler('embedder.run', async () => {
     const llm = getLLM() ?? null;
