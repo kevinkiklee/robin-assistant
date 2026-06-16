@@ -16,6 +16,7 @@ import {
   chunkBody,
   claimsSchema,
   extractClaims,
+  extractionSchema,
   isLowQualityEntity,
   isLowQualityPredicate,
   linkRelatedSessions,
@@ -66,8 +67,8 @@ test('biographer: processes captured session and writes entities + relations', a
   const llm = mockLLM(
     JSON.stringify({
       entities: [
-        { type: 'person', name: 'Kevin' },
-        { type: 'place', name: 'Lisbon' },
+        { type: 'person', name: 'Kevin', domain: 'identity' },
+        { type: 'place', name: 'Lisbon', domain: 'travel' },
       ],
       relations: [{ subject: 'Kevin', predicate: 'visited', object: 'Lisbon' }],
     }),
@@ -95,7 +96,10 @@ test('biographer: tolerates ```json fenced output (the v2 bug fix)', async () =>
   const db = freshDb();
   const llm = mockLLM(
     '```json\n' +
-      JSON.stringify({ entities: [{ type: 'person', name: 'Sarah' }], relations: [] }) +
+      JSON.stringify({
+        entities: [{ type: 'person', name: 'Sarah', domain: 'relationships' }],
+        relations: [],
+      }) +
       '\n```',
   );
   await captureSession(db, null, {
@@ -171,15 +175,15 @@ test('biographer: chunks long sessions and merges entities across chunks (dedup)
   const responses = [
     JSON.stringify({
       entities: [
-        { type: 'person', name: 'Kevin' },
-        { type: 'place', name: 'Lisbon' },
+        { type: 'person', name: 'Kevin', domain: 'identity' },
+        { type: 'place', name: 'Lisbon', domain: 'travel' },
       ],
       relations: [{ subject: 'Kevin', predicate: 'visited', object: 'Lisbon' }],
     }),
     JSON.stringify({
       entities: [
-        { type: 'person', name: 'kevin' }, // case-different duplicate
-        { type: 'place', name: 'Porto' },
+        { type: 'person', name: 'kevin', domain: 'identity' }, // case-different duplicate
+        { type: 'place', name: 'Porto', domain: 'travel' },
       ],
       relations: [{ subject: 'Kevin', predicate: 'visited', object: 'Porto' }],
     }),
@@ -303,7 +307,7 @@ test('biographer: processes a large session across multiple ticks (multi-tick)',
     extractionCalls++;
     return {
       text: JSON.stringify({
-        entities: [{ type: 'topic', name: `Entity${extractionCalls}` }],
+        entities: [{ type: 'topic', name: `Entity${extractionCalls}`, domain: 'preferences' }],
         relations: [],
       }),
       usage: { inputTokens: 0, outputTokens: 0 },
@@ -818,8 +822,8 @@ test('biographer: filters role markers, numbers, SHAs from extraction', async ()
   const llm = mockLLM(
     JSON.stringify({
       entities: [
-        { type: 'person', name: 'Kevin' },
-        { type: 'service', name: 'Vercel' },
+        { type: 'person', name: 'Kevin', domain: 'identity' },
+        { type: 'service', name: 'Vercel', domain: 'career' },
         { type: 'person', name: 'User' }, // role marker — drop
         { type: 'person', name: 'ASSISTANT' }, // role marker — drop
         { type: 'thing', name: '93f6c9c' }, // SHA — drop
@@ -869,9 +873,9 @@ test('biographer: drops occurs_with relations during extraction', async () => {
   const llm = mockLLM(
     JSON.stringify({
       entities: [
-        { type: 'person', name: 'Kevin' },
-        { type: 'service', name: 'Vercel' },
-        { type: 'thing', name: 'Sentry' },
+        { type: 'person', name: 'Kevin', domain: 'identity' },
+        { type: 'service', name: 'Vercel', domain: 'career' },
+        { type: 'thing', name: 'Sentry', domain: 'career' },
       ],
       relations: [
         { subject: 'Kevin', predicate: 'uses', object: 'Vercel' }, // keep — meaningful
@@ -901,8 +905,8 @@ test('biographer: processes knowledge.doc events (not just session.captured)', a
   const llm = mockLLM(
     JSON.stringify({
       entities: [
-        { type: 'person', name: 'Kevin' },
-        { type: 'place', name: 'Astoria' },
+        { type: 'person', name: 'Kevin', domain: 'identity' },
+        { type: 'place', name: 'Astoria', domain: 'home' },
       ],
       relations: [{ subject: 'Kevin', predicate: 'lives in', object: 'Astoria' }],
     }),
@@ -1144,7 +1148,10 @@ test('biographer: a failing claims pass does not block entity/relation extractio
       return {
         text: isClaims
           ? 'totally not json'
-          : JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+          : JSON.stringify({
+              entities: [{ type: 'person', name: 'Kevin', domain: 'identity' }],
+              relations: [],
+            }),
         usage: { inputTokens: 0, outputTokens: 0 },
         costUsd: 0,
         latencyMs: 0,
@@ -1588,7 +1595,7 @@ test('claims pass: a mid-pass outage dead-letters remaining chunks without LLM c
   const { d, calls } = limitedLLM({
     onlyClaims: true,
     entityRelJson: JSON.stringify({
-      entities: [{ type: 'camera', name: 'Nikon Z8' }],
+      entities: [{ type: 'camera', name: 'Nikon Z8', domain: 'creative' }],
       relations: [],
     }),
   });
@@ -2045,8 +2052,9 @@ test('biographer: batch-extraction guard drops flooded entity types (>20 same ty
   const songs = Array.from({ length: 25 }, (_, i) => ({
     type: 'thing',
     name: `Song Title ${i}`,
+    domain: 'preferences',
   }));
-  const entities = [{ type: 'person', name: 'Kevin' }, ...songs];
+  const entities = [{ type: 'person', name: 'Kevin', domain: 'identity' }, ...songs];
   const llm = mockLLM(JSON.stringify({ entities, relations: [] }));
   await captureSession(db, null, {
     sessionId: 's-flood',
@@ -2143,7 +2151,10 @@ test('biographer: session finalization writes summary to session payload', async
 test('biographer: finalization failure does not block extraction', async () => {
   const db = freshDb();
   const llm = finalizingLLM(
-    JSON.stringify({ entities: [{ type: 'person', name: 'Kevin' }], relations: [] }),
+    JSON.stringify({
+      entities: [{ type: 'person', name: 'Kevin', domain: 'identity' }],
+      relations: [],
+    }),
     'this is not valid JSON at all!!!',
   );
   await captureSession(db, null, {
@@ -2339,5 +2350,68 @@ test('the claims loop drops claims whose domain is not personal', async () => {
   assert.equal(cands[0].topic, 'travel-plan');
   assert.equal(cands[0].domain, 'travel');
 
+  closeDb(db);
+});
+
+// ─── entity domain-gating tests ────────────────────────────────────────────────
+
+test('extractionSchema accepts a domain tag on entities', () => {
+  const parsed = extractionSchema.parse({
+    entities: [{ type: 'camera', name: 'Nikon Zf', domain: 'creative' }],
+    relations: [],
+  });
+  assert.equal(parsed.entities[0].domain, 'creative');
+});
+
+test('entity extraction drops entities whose domain is not personal', async () => {
+  // Three entities returned by the mock LLM:
+  //   1. Nikon Zf (domain:'creative')   → kept (personal domain)
+  //   2. SomeNeutralTool (domain:'engineering') → dropped (not in PERSONAL_DOMAINS)
+  //   3. SomeoneNeutral (no domain)     → dropped (isPersonalDomain(undefined) = false)
+  // A relation pointing at a dropped entity is also dropped.
+  // Names are chosen to be long enough and non-flagged so isLowQualityEntity passes;
+  // only the domain gate causes the drops.
+  const db = freshDb();
+  const llm = mockLLM(
+    JSON.stringify({
+      entities: [
+        { type: 'camera', name: 'Nikon Zf', domain: 'creative' },
+        { type: 'product', name: 'SomeNeutralTool', domain: 'engineering' },
+        { type: 'person', name: 'SomeoneNeutral' /* no domain */ },
+      ],
+      relations: [
+        { subject: 'Nikon Zf', predicate: 'owned_by', object: 'SomeoneNeutral' }, // dropped: object has no domain
+        { subject: 'Nikon Zf', predicate: 'used_for', object: 'SomeNeutralTool' }, // dropped: object non-personal
+      ],
+    }),
+  );
+  await captureSession(db, null, {
+    sessionId: 's-entity-domain',
+    turns: [
+      { role: 'user', content: 'I use my Nikon Zf for street photography sessions.' },
+      { role: 'assistant', content: 'The Nikon Zf is an excellent street camera.' },
+    ],
+  });
+  const r = await runBiographer(db, llm, 10, { minSessionBodyChars: 0 });
+  assert.equal(r.processed, 1);
+  // Only Nikon Zf passes the domain gate
+  assert.equal(r.entitiesCreated, 1, `expected 1 entity (Nikon Zf), got ${r.entitiesCreated}`);
+  assert.equal(r.relationsCreated, 0, 'all relations reference a dropped entity and are removed');
+
+  const ents = db.prepare('SELECT canonical_name FROM entities').all() as Array<{
+    canonical_name: string;
+  }>;
+  assert.ok(
+    ents.some((e) => e.canonical_name === 'Nikon Zf'),
+    'Nikon Zf (creative domain) should survive',
+  );
+  assert.ok(
+    !ents.some((e) => e.canonical_name === 'SomeNeutralTool'),
+    'SomeNeutralTool (engineering domain) should be dropped',
+  );
+  assert.ok(
+    !ents.some((e) => e.canonical_name === 'SomeoneNeutral'),
+    'SomeoneNeutral (no domain) should be dropped',
+  );
   closeDb(db);
 });

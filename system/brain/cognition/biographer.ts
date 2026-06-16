@@ -65,12 +65,13 @@ const BIOGRAPHER_CHUNK_TIMEOUT_MS = 2 * 60_000;
 // disambiguateEntity which picks the oldest candidate.
 const DISAMBIGUATION_TIMEOUT_MS = 60_000;
 
-const extractionSchema = z.object({
+export const extractionSchema = z.object({
   entities: z
     .array(
       z.object({
         type: z.string(),
         name: z.string(),
+        domain: z.string().nullable().optional(),
       }),
     )
     .default([]),
@@ -163,7 +164,7 @@ Rules:
 - intent: one sentence — why the user started this session
 - outcome: classify the PRIMARY stated goal (completed/partial/abandoned/exploratory)
 - outcomeSummary: one sentence — what was accomplished or why it stopped
-- topics: 2-7 kebab-case tags at the project/domain level (e.g. "leadforge-auth", "whoop-recovery", "nikon-zf-settings") — not code symbols. Reuse existing topic tags when the subject matches a prior session.
+- topics: 2-7 kebab-case tags at the life/project level (e.g. "whoop-recovery", "nikon-zf-settings", "joshua-tree-trip") — not code symbols. Reuse existing topic tags when the subject matches a prior session.
 - decisions: only EXPLICIT choices with stated reasoning. Empty array if none.
 - temporalRefs: dates/deadlines mentioned. Resolve relative refs against the session date. null resolvedDate if too vague to resolve.
 - followUp: an explicit next step the user stated, or null`;
@@ -681,7 +682,7 @@ export interface RunBiographerOptions {
   now?: () => number;
 }
 
-type EntityRecord = { type: string; name: string };
+type EntityRecord = { type: string; name: string; domain?: string | null };
 type RelationRecord = { subject: string; predicate: string; object: string };
 
 /**
@@ -861,20 +862,18 @@ function writeExtractedMarker(
 // entity types (Nikon Zf → gear, not thing; Antonucci Cafe → restaurant, not org).
 const USER_CONTEXT = `Context: The user is Kevin, a Google DevRel engineer (Ad Experiences, NYC), photographer (Nikon Zf/Z50 II, street + events), and investor. He lives in Astoria, Queens. Key domains: finance (RSUs, 401k, HYSA, Lunch Money), health (Whoop, running), birding (eBird, Central Park), music (Spotify, Last.fm), photography (Lightroom), and software projects (Robin, leadforge, hostmind, photo-tools).`;
 
-const SYSTEM_PROMPT = `You extract structured entities and relations from a transcript about Kevin's life. Reply ONLY with JSON matching:
-{"entities":[{"type":"<type>","name":"..."}, ...], "relations":[{"subject":"name","predicate":"verb","object":"name"}, ...]}
+const SYSTEM_PROMPT = `You extract structured PERSONAL entities and relations about Kevin's life from a transcript. Reply ONLY with JSON matching:
+{"entities":[{"type":"<type>","name":"...","domain":"<personal domain>"}, ...], "relations":[{"subject":"name","predicate":"verb","object":"name"}, ...]}
 
 ${USER_CONTEXT}
 
+This transcript is LIKELY DOMINATED BY SOFTWARE ENGINEERING. Extract ONLY entities that belong to Kevin's personal life, and tag each with a "domain" from: health, finance, career, relationships, preferences, creative, travel, home, life_events, identity, directives. An entity that does not fit one of these domains is engineering/transient noise — OMIT it (do not invent a domain).
+
 Valid <type> values (use the MOST SPECIFIC that fits):
   person, place, restaurant, organization, company, service, product, gear,
-  camera, lens, financial_account, medication, event, project, library, tool,
-  book, film, album, artist, song, species, topic, thing.
-Use "thing" ONLY when nothing more specific applies. Examples:
-  "Nikon Zf" → gear (not thing), "Antonucci Cafe" → restaurant (not organization),
-  "Marcus HYSA" → financial_account, "Three.js" → library, "Olive-sided Flycatcher" → species,
-  "Google I/O" → event, "ibuprofen" → medication, "Free Bird" → song (not thing),
-  "Pet Sounds" → album (not thing).
+  camera, lens, financial_account, medication, event, project, book, film,
+  album, artist, song, species, topic, thing.
+Use "thing" ONLY when nothing more specific applies, and only if it still fits a personal domain.
 
 Relation rules:
 - Use a SPECIFIC, MEANINGFUL predicate — a verb phrase describing a real directed
@@ -888,15 +887,9 @@ Relation rules:
 - NORMALIZE predicates to a canonical form: use "works_at" not "employed_by",
   "lives_in" not "resides_at", "owns" not "possesses", "uses" not "utilizes".
 
-Do NOT extract:
-- Transcript role markers (USER, ASSISTANT, TOOL, SYSTEM).
-- Bare numbers, state flags (ON, OFF, TRUE, FALSE, ENABLED, DISABLED), git SHAs.
-- Single-character or empty names.
-- Engineering artifacts: commit messages, PR titles, build flags, task/phase codenames,
-  subagent instructions, code variable names, schema fields, CLI flags.
-- Robin's own internals: job schedules, daemon behavior, integration wiring, env vars.
+Do NOT extract: transcript role markers; bare numbers/state flags/git SHAs; single-character names; engineering artifacts (commit messages, PR titles, build flags, codenames, code variable names, schema fields, CLI flags); Robin's own internals.
 
-If nothing is worth extracting, reply {"entities":[],"relations":[]}.`;
+If nothing personal is worth extracting, reply {"entities":[],"relations":[]}.`;
 
 /**
  * Defensive filter applied AFTER LLM extraction to drop noise that the model
@@ -1899,7 +1892,11 @@ export async function runBiographer(
     const droppedNames = new Set<string>();
     const filteredEntities = [];
     for (const e of extracted.entities) {
-      if (isLowQualityEntity(e.name, e.type) || noiseBlocklist.has(e.name.toLowerCase())) {
+      if (
+        isLowQualityEntity(e.name, e.type) ||
+        noiseBlocklist.has(e.name.toLowerCase()) ||
+        (domainGating && !isPersonalDomain(e.domain))
+      ) {
         droppedNames.add(e.name.toLowerCase());
         continue;
       }
