@@ -11,6 +11,7 @@ import { runBiographer } from './biographer.ts';
 import { runDream } from './dream.ts';
 import { runEmbedder } from './embedder.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
+import { runRecommendationLinker } from './recommendations/index.ts';
 
 export interface CognitionJob {
   name: string;
@@ -75,6 +76,18 @@ export const COGNITION_JOBS: CognitionJob[] = [
       'Nightly behavioral habit reinforcement (Tier A, deterministic): recompute confidence + retire stale + exact-entity reinforce + stage signals',
   },
   {
+    // 3:45am — Recommendation→Action Loop linker (deterministic, free, no LLM). Slotted
+    // in the 3:45 gap between behavior-reinforce (3:40) and dream (3:50) so it never
+    // collides with the nightly stack (3:40 / 3:50 / 4:00 / 4:15 / 4:30 / 5:00). It
+    // resolves open recommendations against recent behavioral signals (high-precision
+    // subject match), expires past-expiry recs, and emits behavior.recommendation_acted
+    // events — which the 5:00 Sunday Tier B synthesis then generalizes.
+    name: 'recommendation-link.run',
+    cron: '45 3 * * *',
+    description:
+      'Nightly recommendation→action linker (deterministic): resolve open recommendations against behavioral signals (subject match) + expire past-expiry + emit recommendation_acted signals',
+  },
+  {
     // 5:00am Sunday — Tier B behavioral synthesis (weekly LLM pass, bounded budget).
     // Weekly (≈4 LLM passes/month) because habits change slowly; skips entirely when no
     // new staged signals. Slotted at 5:00 — AFTER the entire 3:40–4:30 nightly stack
@@ -101,11 +114,21 @@ export const COGNITION_JOBS: CognitionJob[] = [
  * `getBehavior` resolves the `behavior.*` policy (enabled + graduation thresholds) at
  * handler time, the SAME restart-free mechanism as `biographer.domainGating`. Defaults
  * to the schema defaults when the daemon does not supply one.
+ *
+ * `getRecommendations` resolves the `recommendations.*` policy (enabled + link window +
+ * default expiry) at handler time, the SAME restart-free mechanism as `getBehavior`.
+ * Defaults to the schema defaults when the daemon does not supply one.
  */
 export interface BehaviorPolicy {
   enabled: boolean;
   graduationSupport: number;
   graduationWeeks: number;
+}
+
+export interface RecommendationsPolicy {
+  enabled: boolean;
+  linkWindowDays: number;
+  defaultExpiryDays: number;
 }
 
 export function registerCognitionJobs(
@@ -118,6 +141,11 @@ export function registerCognitionJobs(
     enabled: true,
     graduationSupport: 4,
     graduationWeeks: 3,
+  }),
+  getRecommendations: () => RecommendationsPolicy = () => ({
+    enabled: true,
+    linkWindowDays: 60,
+    defaultExpiryDays: 90,
   }),
 ): void {
   daemon.registerHandler('biographer.run', async () => {
@@ -162,6 +190,10 @@ export function registerCognitionJobs(
     const llm = getLLM() ?? null;
     const { enabled, graduationSupport, graduationWeeks } = getBehavior();
     await runBehaviorSynthesize(db, llm, { enabled, graduationSupport, graduationWeeks });
+  });
+  daemon.registerHandler('recommendation-link.run', async () => {
+    const { enabled, linkWindowDays, defaultExpiryDays } = getRecommendations();
+    await runRecommendationLinker(db, { enabled, linkWindowDays, defaultExpiryDays });
   });
   daemon.registerHandler('embedder.run', async () => {
     const llm = getLLM() ?? null;

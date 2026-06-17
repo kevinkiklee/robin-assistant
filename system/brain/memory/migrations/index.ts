@@ -28,6 +28,7 @@ import { migration027 } from './027-profile-generated-at.ts';
 import { migration028 } from './028-entity-aliases.ts';
 import { migration029 } from './029-memory-domain.ts';
 import { migration030 } from './030-habits.ts';
+import { migration031 } from './031-recommendations.ts';
 import type { Migration } from './types.ts';
 
 export const allMigrations: Migration[] = [
@@ -61,6 +62,7 @@ export const allMigrations: Migration[] = [
   migration028,
   migration029,
   migration030,
+  migration031,
 ];
 export { applyMigrations } from './runner.ts';
 export type { Migration } from './types.ts';

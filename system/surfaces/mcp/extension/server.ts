@@ -4,6 +4,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runBiographer } from '../../../brain/cognition/biographer.ts';
 import { runDream } from '../../../brain/cognition/dream.ts';
+import {
+  getRecommendation,
+  resolveRecommendation,
+} from '../../../brain/cognition/recommendations/index.ts';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../../brain/memory/db.ts';
@@ -309,6 +313,40 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
         .run(outcome, new Date().toISOString(), evidence ?? null, brierDelta, id);
       return {
         content: [{ type: 'text', text: JSON.stringify({ id, outcome, brier_delta: brierDelta }) }],
+      };
+    },
+  );
+
+  server.registerTool(
+    'resolve_recommendation',
+    {
+      description:
+        "Manually resolve a recommendation the linker can't infer: outcome='acted' (Kevin acted on it — e.g. a purchase with no tracked transaction) or 'declined' (Kevin explicitly declined). Mirrors resolve_prediction. Resolving a missing recommendation errors.",
+      inputSchema: {
+        id: z.number().int(),
+        outcome: z.enum(['acted', 'declined']),
+        evidence: z.string().optional(),
+      },
+    },
+    async ({ id, outcome, evidence }) => {
+      const existing = getRecommendation(deps.db, id);
+      if (!existing)
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify({ error: `recommendation ${id} not found` }) },
+          ],
+        };
+      // 'acted' → status=acted/outcome=acted (with acted_at now); 'declined' →
+      // status=declined/outcome=not_acted. Manual resolves carry no action_event_id.
+      const acted = outcome === 'acted';
+      resolveRecommendation(deps.db, id, {
+        status: acted ? 'acted' : 'declined',
+        outcome: acted ? 'acted' : 'not_acted',
+        actedAt: acted ? new Date() : undefined,
+        evidence: evidence ?? `manual resolve: ${outcome}`,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ id, outcome }) }],
       };
     },
   );

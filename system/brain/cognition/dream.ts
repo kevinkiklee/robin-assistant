@@ -15,6 +15,7 @@ import { runBeliefFreshness } from './belief-freshness.ts';
 import { retryClaimFailures } from './biographer.ts';
 import { runHygiene } from './hygiene.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
+import { listRecommendations } from './recommendations/store.ts';
 
 export interface DreamResult {
   predictionsResolved: number;
@@ -108,6 +109,22 @@ export interface LearningDigest {
     newSoft: number;
     /** Habits graduated in the last 24h (graduated + updated_at within the window). */
     newGraduated: number;
+  };
+  /**
+   * Recommendation calibration (design §6): the acted-rate view onto the
+   * `recommendations` ledger — Goal C ("which of my advice lands"). `actedRate` is
+   * acted / (acted + expired + declined) over RESOLVED recs (null when none resolved);
+   * `byDomain` carries per-domain acted-vs-resolved counts for the "top domains: gear
+   * 3/4" breakdown (only domains with ≥1 resolved rec). Optional so an older DB (no
+   * `recommendations` table) or a degraded run still produces a valid digest. */
+  recommendations?: {
+    open: number;
+    acted: number;
+    expired: number;
+    declined: number;
+    /** acted / (acted + expired + declined) over resolved recs; null when none resolved. */
+    actedRate: number | null;
+    byDomain: Array<{ domain: string; acted: number; resolved: number }>;
   };
   /** Recent agent runs with non-success status (capped, timeout, error). */
   failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }>;
@@ -1251,6 +1268,62 @@ export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Dat
     // `habits` table missing (older DB) — leave the snapshot absent.
   }
 
+  // e1. Recommendation calibration (design §6): the acted-rate view onto the
+  //     `recommendations` ledger — Goal C. Guarded the same way as the `habits` block:
+  //     `listRecommendations` runs SQL against the `recommendations` table, so an older DB
+  //     without that table (or migration 031 not yet applied) throws inside the prepared
+  //     statement and is caught here, leaving the snapshot absent.
+  let recommendations: LearningDigest['recommendations'];
+  try {
+    const recs = listRecommendations(db);
+    let open = 0;
+    let acted = 0;
+    let expired = 0;
+    let declined = 0;
+    // Per-domain acted-vs-resolved tally (only domains with ≥1 resolved rec are emitted).
+    const domainTally = new Map<string, { acted: number; resolved: number }>();
+    for (const r of recs) {
+      switch (r.status) {
+        case 'open':
+          open += 1;
+          break;
+        case 'acted':
+          acted += 1;
+          break;
+        case 'expired':
+          expired += 1;
+          break;
+        case 'declined':
+          declined += 1;
+          break;
+        // 'superseded' is neither open nor a resolved outcome — excluded from rates.
+      }
+      // Resolved = a terminal acted/expired/declined outcome (the calibration denominator).
+      const isActed = r.status === 'acted';
+      const isResolved = isActed || r.status === 'expired' || r.status === 'declined';
+      if (isResolved) {
+        const slot = domainTally.get(r.domain) ?? { acted: 0, resolved: 0 };
+        slot.resolved += 1;
+        if (isActed) slot.acted += 1;
+        domainTally.set(r.domain, slot);
+      }
+    }
+    const resolvedTotal = acted + expired + declined;
+    const byDomain = [...domainTally.entries()]
+      .map(([domain, t]) => ({ domain, acted: t.acted, resolved: t.resolved }))
+      .sort((a, b) => b.resolved - a.resolved || a.domain.localeCompare(b.domain));
+    recommendations = {
+      open,
+      acted,
+      expired,
+      declined,
+      actedRate: resolvedTotal > 0 ? acted / resolvedTotal : null,
+      byDomain,
+    };
+  } catch {
+    // `recommendations` table missing (older DB) — leave the snapshot absent.
+  }
+
   // e. Recent agent-run failures (last 24h)
   let failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }> = [];
   try {
@@ -1280,6 +1353,7 @@ export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Dat
     },
     corrections,
     ...(habits ? { habits } : {}),
+    ...(recommendations ? { recommendations } : {}),
     failedRuns,
   };
 
@@ -1364,6 +1438,21 @@ export function renderLearningDigest(digest: LearningDigest): string {
     lines.push(
       `- Habits: ${h.soft} soft, ${h.graduated} graduated, ${h.retired} retired${deltaStr}`,
     );
+  }
+
+  // Recommendations (calibration, design §6) — only when at least one rec exists. The line
+  // leads with the resolved acted-rate (acted/resolved) and, when present, the top domains
+  // by resolved count.
+  const r = digest.recommendations;
+  if (r && (r.open > 0 || r.acted > 0 || r.expired > 0 || r.declined > 0)) {
+    const resolved = r.acted + r.expired + r.declined;
+    const pctStr = r.actedRate != null ? ` (${Math.round(r.actedRate * 100)}%)` : '';
+    const topDomains = r.byDomain
+      .slice(0, 3)
+      .map((d) => `${d.domain} ${d.acted}/${d.resolved}`)
+      .join(', ');
+    const domainStr = topDomains ? `; top domains: ${topDomains}` : '';
+    lines.push(`- Recommendations: ${r.acted}/${resolved} acted${pctStr}${domainStr}`);
   }
 
   return lines.join('\n');

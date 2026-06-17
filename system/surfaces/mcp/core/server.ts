@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
+import { insertRecommendation } from '../../../brain/cognition/recommendations/index.ts';
 import { buildDispatcherFromConfig } from '../../../brain/llm/build-dispatcher.ts';
 import type { LLMDispatcher } from '../../../brain/llm/dispatcher.ts';
 import { believe, normalizeTopic, recallBelief } from '../../../brain/memory/belief.ts';
@@ -12,6 +13,7 @@ import {
   resolveBeliefCandidate,
 } from '../../../brain/memory/belief-candidate.ts';
 import { openDb, type RobinDb } from '../../../brain/memory/db.ts';
+import { isPersonalDomain, PERSONAL_DOMAINS } from '../../../brain/memory/domains.ts';
 import {
   findEntity,
   getEntity,
@@ -329,6 +331,77 @@ export function buildCoreServer(deps: CoreServerDeps): McpServer {
       return {
         content: [
           { type: 'text' as const, text: JSON.stringify({ id: Number(info.lastInsertRowid) }) },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    'recommend',
+    {
+      description:
+        'Record a substantive recommendation Robin makes (mirrors `predict` for advice). Captured as a first-class `open` recommendation so the loop can later detect whether Kevin acted on it — feeding calibration (which advice lands) and the habit engine. Log one when you make a real recommendation, the same discipline as logging a prediction. `subject` is the short canonical name of the recommended thing ("Nikon Z TC-1.4x") — it is the linker\'s match key, so keep it the name Kevin would act on.',
+      inputSchema: z.object({
+        subject: z
+          .string()
+          .describe('Short canonical name of the recommended thing (the linker match key)'),
+        claim: z.string().describe('The recommendation / advice text'),
+        reasoning: z.string().optional().describe('Why Robin recommended it'),
+        verdict: z
+          .enum(['buy', 'skip', 'wait', 'try', 'avoid', 'other'])
+          .optional()
+          .describe('Optional stance on the recommended thing'),
+        domain: z
+          .string()
+          .describe('Calibration-grouping bucket — a PERSONAL_DOMAINS domain (e.g. finance)'),
+        confidence: z
+          .number()
+          .min(0)
+          .max(1)
+          .describe("Robin's confidence in the recommendation (0..1)"),
+        expiresAt: z
+          .string()
+          .optional()
+          .describe('ISO timestamp; after this an unacted rec resolves not_acted'),
+      }),
+    },
+    async ({ subject, claim, reasoning, verdict, domain, confidence, expiresAt }) => {
+      if (!isPersonalDomain(domain)) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid domain '${domain}': must be one of ${PERSONAL_DOMAINS.join(', ')}.`,
+            },
+          ],
+        };
+      }
+      // Tag the rec with the session it was made in: write a `memory.recommendation`
+      // event (the same ingest→eventId idiom `remember` uses), then use that event id as
+      // `source_event_id` (FK → events ON DELETE SET NULL, survives event purges).
+      const ev = ingest(deps.db, deps.llm, {
+        kind: 'memory.recommendation',
+        source: 'mcp',
+        content: `${verdict ? `[${verdict}] ` : ''}${subject}: ${claim}`,
+        payload: { subject, verdict: verdict ?? null, domain, confidence },
+      });
+      const { id } = insertRecommendation(deps.db, {
+        subject,
+        claim,
+        reasoning,
+        verdict,
+        domain,
+        confidence,
+        sourceEventId: ev.eventId,
+        expiresAt,
+      });
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ id, sourceEventId: ev.eventId }),
+          },
         ],
       };
     },

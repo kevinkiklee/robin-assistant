@@ -37,6 +37,11 @@ export const BEHAVIORAL_SIGNAL_KINDS = [
   'whoop.sleep',
   'whoop.workout',
   'whoop.cycle',
+  // Recommendation→Action Loop (Phase 1): emitted by the recommendation-link.run linker
+  // when an open recommendation is detected as acted-on. This is KEVIN ACTING on Robin's
+  // advice (not Robin's own output — see the design self-capture note), so it feeds the
+  // habit engine as a first-class behavioral datum ("acts fast on gear recs").
+  'behavior.recommendation_acted',
 ] as const;
 
 export type BehavioralSignalKind = (typeof BEHAVIORAL_SIGNAL_KINDS)[number];
@@ -60,6 +65,14 @@ export function isBehavioralSignalKind(kind: string): kind is BehavioralSignalKi
  * special-case path.
  */
 export const DECISION_SOURCE_KIND = 'session.captured';
+
+/**
+ * The event kind the Recommendation→Action Loop linker emits when an open recommendation
+ * is detected as acted-on (Phase 1). It IS allowlisted in BEHAVIORAL_SIGNAL_KINDS, but it
+ * is normalized specially (its domain is carried in the payload, not a fixed per-kind
+ * domain), so `normalizeSignal` branches on this constant before the generic path.
+ */
+export const RECOMMENDATION_ACTED_KIND = 'behavior.recommendation_acted';
 
 /** Map each allowlisted stream kind to its primary PERSONAL_DOMAIN + action verb. */
 const KIND_DOMAIN: Record<string, { domain: PersonalDomain; action: string }> = {
@@ -114,6 +127,24 @@ function pickObject(payload: Record<string, unknown>): string {
  */
 export function normalizeSignal(row: EventRow): BehavioralSignal | null {
   const payload = parsePayload(row.payload);
+
+  // Recommendation→Action Loop (Phase 1): the linker emits this with an explicit
+  // {subject, domain, verdict, lagDays} payload, so its domain is carried per-event (not
+  // a fixed per-kind domain like the integration streams). object = the recommendation's
+  // subject; the habit engine treats this as Kevin acting on a recommendation.
+  if (row.kind === RECOMMENDATION_ACTED_KIND) {
+    const domain = typeof payload.domain === 'string' ? payload.domain : undefined;
+    return {
+      actor: USER_ACTOR,
+      action: 'act_on_recommendation',
+      object: typeof payload.subject === 'string' ? payload.subject.trim() : '',
+      domain: isPersonalDomain(domain) ? domain : 'preferences',
+      ts: row.ts,
+      context: payload,
+      sourceEventId: row.id,
+      sourceKind: row.kind,
+    };
+  }
 
   // Allowlisted integration stream.
   if (isBehavioralSignalKind(row.kind)) {
