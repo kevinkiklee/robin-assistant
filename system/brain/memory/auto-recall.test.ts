@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { insertHabit } from '../cognition/behavior/habits-store.ts';
+import { LLMDispatcher } from '../llm/dispatcher.ts';
+import type { LLMProvider } from '../llm/types.ts';
 import { __resetAutoRecallCache, composeAutoRecall } from './auto-recall.ts';
 import { closeDb, openDb } from './db.ts';
 import { ingest } from './ingest.ts';
@@ -16,6 +19,34 @@ function makeEnv() {
   const db = openDb(join(userData, 'state', 'db', 'robin.sqlite'));
   applyMigrations(db, allMigrations);
   return { userData, db };
+}
+
+/**
+ * Mock dispatcher whose `embed` always returns FIXED_VEC. Used for the habit-injection
+ * wire: the turn-query embeds to FIXED_VEC, and habits embedded with FIXED_VEC land at
+ * cosine 1.0 (always above the relevance floor). Content here is ingested with a null
+ * dispatcher (no stored vectors), so `events_vec` is empty and the factual recall path
+ * stays lex-only — identical to the `llm: null` tests above.
+ */
+const FIXED_VEC = [1, 0, 0, 0];
+function mockLLM(vec: number[] = FIXED_VEC): LLMDispatcher {
+  const provider: LLMProvider = {
+    name: 'mock',
+    capabilities: new Set(['embed']),
+    meta: { contextWindow: 0, inputPricePerM: 0, outputPricePerM: 0 },
+    invoke: async () => {
+      throw new Error('mock provider has no invoke');
+    },
+    embed: async () => [vec],
+  };
+  const d = new LLMDispatcher();
+  d.register('e', provider);
+  d.assign('embed', 'e');
+  return d;
+}
+
+function writePolicies(userData: string, body: string) {
+  writeFileSync(join(userData, 'config', 'policies.yaml'), body);
 }
 
 function writeYaml(userData: string, body: string) {
@@ -361,5 +392,218 @@ test('composeAutoRecall: keeps at most 4 recall snippets', async () => {
   const snippetLines = out.split('\n').filter((l) => l.startsWith('— '));
   assert.ok(snippetLines.length <= 4, `expected ≤4 snippet lines, got ${snippetLines.length}`);
   assert.ok(snippetLines.length >= 1, 'expected at least one snippet');
+  closeDb(db);
+});
+
+// ── Habit injection wire (design §9, Goal A) ─────────────────────────────────────
+
+const TOPIC_YAML_NOMATCH = `topics:
+  - id: unrelated
+    match: [zzzznomatch]
+    docs: [content/knowledge/none.md]
+`;
+
+/** Seed a few curated snippet rows so the factual block is non-empty + deterministic. */
+function seedFactual(db: import('./db.ts').RobinDb) {
+  for (let i = 0; i < 3; i++) {
+    ingest(db, null, {
+      kind: 'knowledge.doc',
+      source: 's',
+      content: `lisbon photos trip number ${i}`,
+    });
+  }
+}
+
+test('composeAutoRecall: with NO habits, an LLM dispatcher yields byte-identical factual output', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  writeYaml(userData, TOPIC_YAML_NOMATCH);
+  seedFactual(db);
+
+  // Baseline (the production path before this feature): lex-only, no dispatcher.
+  const baseline = await composeAutoRecall({
+    db,
+    llm: null,
+    prompt: 'lisbon photos trip',
+    userData,
+  });
+  assert.ok(baseline, 'baseline produced a factual block');
+
+  // Same inputs, now WITH a dispatcher but ZERO habits in the store. The pre-embed gate
+  // sees no habits → never pre-embeds → recall embeds internally → identical factual block.
+  __resetAutoRecallCache();
+  const withLlm = await composeAutoRecall({
+    db,
+    llm: mockLLM(),
+    prompt: 'lisbon photos trip',
+    userData,
+  });
+  assert.equal(withLlm, baseline, 'no-habit case is byte-identical to the pre-feature output');
+  assert.doesNotMatch(withLlm ?? '', /Inferred tendencies/);
+  closeDb(db);
+});
+
+test('composeAutoRecall: a relevant habit injects ≤2 hint lines in a SEPARATE block', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  writeYaml(userData, TOPIC_YAML_NOMATCH);
+  seedFactual(db);
+
+  // Three relevant habits (embedding == query vec → cosine 1.0); cap is 2.
+  for (let i = 0; i < 3; i++) {
+    insertHabit(db, {
+      statement: `tends to do thing ${i}`,
+      domain: 'creative',
+      patternKind: 'temporal',
+      embedding: FIXED_VEC,
+    });
+  }
+
+  const out = await composeAutoRecall({
+    db,
+    llm: mockLLM(),
+    prompt: 'lisbon photos trip',
+    userData,
+  });
+  assert.ok(out, 'expected an injection block');
+  // Separate, softer-labeled block present.
+  assert.match(out, /🧭 Inferred tendencies/);
+  const hintLines = out
+    .split('\n')
+    .filter((l) => l.includes('inferred tendency (hint, not fact):'));
+  assert.equal(hintLines.length, 2, 'capped at top-2 hints');
+  // The factual memory block is still there and unreduced.
+  assert.match(out, /📓 From your memory/);
+  const factualLines = out.split('\n').filter((l) => /^— \[/.test(l));
+  assert.ok(factualLines.length >= 1, 'factual snippets still present');
+  closeDb(db);
+});
+
+test('composeAutoRecall: habit slice does NOT reduce the factual slots', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  writeYaml(userData, TOPIC_YAML_NOMATCH);
+  // 6 curated snippets → factual layer keeps its full SNIPPET_KEEP (4).
+  for (let i = 0; i < 6; i++) {
+    ingest(db, null, { kind: 'knowledge.doc', source: 's', content: `lisbon photos trip ${i}` });
+  }
+  insertHabit(db, {
+    statement: 'a relevant tendency',
+    domain: 'creative',
+    patternKind: 'temporal',
+    embedding: FIXED_VEC,
+  });
+
+  const out = await composeAutoRecall({
+    db,
+    llm: mockLLM(),
+    prompt: 'lisbon photos trip',
+    userData,
+  });
+  assert.ok(out);
+  const factualLines = out.split('\n').filter((l) => /^— \[/.test(l));
+  assert.equal(factualLines.length, 4, 'factual block still keeps its full 4 slots');
+  assert.match(out, /🧭 Inferred tendencies/);
+  closeDb(db);
+});
+
+test('composeAutoRecall: a sensitive-domain habit is NOT injected at a normal relevance level', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  writeYaml(userData, TOPIC_YAML_NOMATCH);
+  seedFactual(db);
+
+  // Query embeds to FIXED_VEC; this habit sits at cosine ≈ 0.70 (above normal floor 0.60,
+  // below the sensitive floor 0.78). A health (sensitive) habit must NOT inject.
+  const mid = [0.7, Math.sqrt(1 - 0.49), 0, 0];
+  insertHabit(db, {
+    statement: 'a private health tendency',
+    domain: 'health',
+    patternKind: 'temporal',
+    embedding: mid,
+  });
+
+  const out = await composeAutoRecall({
+    db,
+    llm: mockLLM(),
+    prompt: 'lisbon photos trip',
+    userData,
+  });
+  assert.ok(out, 'factual block still present');
+  assert.doesNotMatch(out, /health tendency/, 'sensitive habit not injected at a normal match');
+  assert.doesNotMatch(out, /Inferred tendencies/, 'no habit block at all');
+
+  // The same sensitive habit at a STRONG match (cosine 1.0) DOES inject.
+  __resetAutoRecallCache();
+  const { userData: ud2, db: db2 } = makeEnv();
+  writeYaml(ud2, TOPIC_YAML_NOMATCH);
+  seedFactual(db2);
+  insertHabit(db2, {
+    statement: 'a private health tendency',
+    domain: 'health',
+    patternKind: 'temporal',
+    embedding: FIXED_VEC,
+  });
+  const out2 = await composeAutoRecall({
+    db: db2,
+    llm: mockLLM(),
+    prompt: 'lisbon photos trip',
+    userData: ud2,
+  });
+  assert.match(out2 ?? '', /health tendency/, 'sensitive habit injects on a strong topical match');
+  closeDb(db);
+  closeDb(db2);
+});
+
+test('composeAutoRecall: injectHabits:false injects no habit block', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  writeYaml(userData, TOPIC_YAML_NOMATCH);
+  writePolicies(userData, 'behavior:\n  injectHabits: false\n');
+  seedFactual(db);
+  insertHabit(db, {
+    statement: 'a relevant tendency',
+    domain: 'creative',
+    patternKind: 'temporal',
+    embedding: FIXED_VEC,
+  });
+
+  const out = await composeAutoRecall({
+    db,
+    llm: mockLLM(),
+    prompt: 'lisbon photos trip',
+    userData,
+  });
+  assert.ok(out, 'factual block still present');
+  assert.doesNotMatch(out, /Inferred tendencies/, 'policy off → no habit block');
+  closeDb(db);
+});
+
+test('composeAutoRecall: a habit-only injection (no factual hits) still surfaces the hint block', async () => {
+  __resetAutoRecallCache();
+  const { userData, db } = makeEnv();
+  // No topic match, no curated content → factual block empty.
+  writeYaml(userData, TOPIC_YAML_NOMATCH);
+  insertHabit(db, {
+    statement: 'tends to act on well-reasoned gear recs fast',
+    domain: 'creative',
+    patternKind: 'purchase',
+    embedding: FIXED_VEC,
+  });
+
+  const out = await composeAutoRecall({
+    db,
+    llm: mockLLM(),
+    prompt: 'unrelated to anything indexed',
+    userData,
+  });
+  assert.ok(out, 'a habit-only injection is still returned');
+  assert.doesNotMatch(
+    out,
+    /📓 From your memory/,
+    'no factual header when there are no factual hits',
+  );
+  assert.match(out, /🧭 Inferred tendencies/);
+  assert.match(out, /act on well-reasoned gear recs/);
   closeDb(db);
 });

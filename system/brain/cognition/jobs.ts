@@ -6,6 +6,7 @@ import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
+import { runBehaviorReinforce, runBehaviorSynthesize } from './behavior/index.ts';
 import { runBiographer } from './biographer.ts';
 import { runDream } from './dream.ts';
 import { runEmbedder } from './embedder.ts';
@@ -62,6 +63,28 @@ export const COGNITION_JOBS: CognitionJob[] = [
     cron: '15 4 * * *',
     description: 'Daily health check + auto-repair (runs all invariants with --fix)',
   },
+  {
+    // 3:40am — Tier A behavioral reinforcement (deterministic, free, no LLM). Slotted
+    // BEFORE the 3:50 dream / 4:00 dream-synthesis / 4:15 doctor / 4:30 brief stack so
+    // it never collides with them (it advances its own signal cursor and is cheap).
+    // Recomputes habit confidence from state, retires stale habits, applies
+    // high-precision exact-entity reinforcement, and stages new signals for Tier B.
+    name: 'behavior-reinforce.run',
+    cron: '40 3 * * *',
+    description:
+      'Nightly behavioral habit reinforcement (Tier A, deterministic): recompute confidence + retire stale + exact-entity reinforce + stage signals',
+  },
+  {
+    // 5:00am Sunday — Tier B behavioral synthesis (weekly LLM pass, bounded budget).
+    // Weekly (≈4 LLM passes/month) because habits change slowly; skips entirely when no
+    // new staged signals. Slotted at 5:00 — AFTER the entire 3:40–4:30 nightly stack
+    // (dream 3:50 / dream-synthesis 4:00 / doctor 4:15 / brief 4:30) — so this $-bounded
+    // LLM pass never contends for budget/LLM with the morning brief, even on Sundays.
+    name: 'behavior-synthesize.run',
+    cron: '0 5 * * 0',
+    description:
+      'Weekly behavioral habit synthesis (Tier B, LLM): semantic attribution + new candidate habits + merges, with creation floor + dedup + retired-suppression',
+  },
 ];
 
 /**
@@ -74,13 +97,28 @@ export const COGNITION_JOBS: CognitionJob[] = [
  * `getDomainGating` resolves the `biographer.domainGating` policy at handler time
  * (so flipping policies.yaml takes effect without a daemon restart). Defaults to
  * `true` — the schema default — when the daemon does not supply one.
+ *
+ * `getBehavior` resolves the `behavior.*` policy (enabled + graduation thresholds) at
+ * handler time, the SAME restart-free mechanism as `biographer.domainGating`. Defaults
+ * to the schema defaults when the daemon does not supply one.
  */
+export interface BehaviorPolicy {
+  enabled: boolean;
+  graduationSupport: number;
+  graduationWeeks: number;
+}
+
 export function registerCognitionJobs(
   daemon: Daemon,
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
   getDraftClaims: () => boolean = () => true,
   getDomainGating: () => boolean = () => true,
+  getBehavior: () => BehaviorPolicy = () => ({
+    enabled: true,
+    graduationSupport: 4,
+    graduationWeeks: 3,
+  }),
 ): void {
   daemon.registerHandler('biographer.run', async () => {
     const llm = getLLM() ?? null;
@@ -115,6 +153,15 @@ export function registerCognitionJobs(
   daemon.registerHandler('dream.run', async () => {
     const llm = getLLM() ?? null;
     await runDream(db, llm, undefined, { domainGating: getDomainGating() });
+  });
+  daemon.registerHandler('behavior-reinforce.run', async () => {
+    const { enabled } = getBehavior();
+    await runBehaviorReinforce(db, { enabled });
+  });
+  daemon.registerHandler('behavior-synthesize.run', async () => {
+    const llm = getLLM() ?? null;
+    const { enabled, graduationSupport, graduationWeeks } = getBehavior();
+    await runBehaviorSynthesize(db, llm, { enabled, graduationSupport, graduationWeeks });
   });
   daemon.registerHandler('embedder.run', async () => {
     const llm = getLLM() ?? null;

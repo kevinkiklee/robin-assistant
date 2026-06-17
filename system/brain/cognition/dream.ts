@@ -95,6 +95,20 @@ export interface LearningDigest {
     topicLinked: number;
     unapplied: number;
   };
+  /**
+   * Behavioral-habit snapshot (design §5/§9). Counts of inferred habits by lifecycle
+   * status, plus how many were freshly created / graduated in the last 24h — the
+   * learning-digest view onto the habit engine. Optional so an older DB (no `habits`
+   * table) or a degraded run still produces a valid digest. */
+  habits?: {
+    soft: number;
+    graduated: number;
+    retired: number;
+    /** New soft habits inferred in the last 24h (created_at within the window). */
+    newSoft: number;
+    /** Habits graduated in the last 24h (graduated + updated_at within the window). */
+    newGraduated: number;
+  };
   /** Recent agent runs with non-success status (capped, timeout, error). */
   failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }>;
 }
@@ -1205,6 +1219,38 @@ export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Dat
     // corrections table or topic column may not exist
   }
 
+  // e0. Behavioral-habit snapshot (design §5/§9): lifecycle counts + 24h deltas. The
+  //     `habits` columns use SQLite's space-form UTC, so the 24h cutoff is rendered to the
+  //     same shape for an apples-to-apples string comparison. Guarded so an older DB without
+  //     the `habits` table (or a malformed row) can never sink the digest.
+  let habits: LearningDigest['habits'];
+  try {
+    const cutoffSpace = cutoff24h.slice(0, 19).replace('T', ' ');
+    const byStatus = db
+      .prepare(`SELECT status, count(*) AS n FROM habits GROUP BY status`)
+      .all() as Array<{ status: string; n: number }>;
+    const count = (s: string) => byStatus.find((r) => r.status === s)?.n ?? 0;
+    const newSoft = (
+      db
+        .prepare(`SELECT count(*) AS n FROM habits WHERE status = 'soft' AND created_at >= ?`)
+        .get(cutoffSpace) as { n: number }
+    ).n;
+    const newGraduated = (
+      db
+        .prepare(`SELECT count(*) AS n FROM habits WHERE status = 'graduated' AND updated_at >= ?`)
+        .get(cutoffSpace) as { n: number }
+    ).n;
+    habits = {
+      soft: count('soft'),
+      graduated: count('graduated'),
+      retired: count('retired'),
+      newSoft,
+      newGraduated,
+    };
+  } catch {
+    // `habits` table missing (older DB) — leave the snapshot absent.
+  }
+
   // e. Recent agent-run failures (last 24h)
   let failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }> = [];
   try {
@@ -1233,6 +1279,7 @@ export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Dat
       activeBeliefHeads,
     },
     corrections,
+    ...(habits ? { habits } : {}),
     failedRuns,
   };
 
@@ -1305,6 +1352,18 @@ export function renderLearningDigest(digest: LearningDigest): string {
     const topicStr =
       c.topicLinked > 0 ? `, ${c.topicLinked} topic-linked (${c.unapplied} unapplied)` : '';
     lines.push(`- Corrections: ${c.total} total (${c.behavioral} behavioral${topicStr})`);
+  }
+
+  // Habits (behavioral inference) — only when the snapshot exists and holds something.
+  const h = digest.habits;
+  if (h && (h.soft > 0 || h.graduated > 0 || h.retired > 0)) {
+    const deltas: string[] = [];
+    if (h.newSoft > 0) deltas.push(`+${h.newSoft} new`);
+    if (h.newGraduated > 0) deltas.push(`${h.newGraduated} graduated`);
+    const deltaStr = deltas.length > 0 ? ` (${deltas.join(', ')} in 24h)` : '';
+    lines.push(
+      `- Habits: ${h.soft} soft, ${h.graduated} graduated, ${h.retired} retired${deltaStr}`,
+    );
   }
 
   return lines.join('\n');

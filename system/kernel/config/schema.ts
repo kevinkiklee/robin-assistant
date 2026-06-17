@@ -84,6 +84,30 @@ export const biographerConfigSchema = z.object({
   domainGating: z.boolean().default(true),
 });
 
+// Behavioral Habit Inference (Phase 2) policy. Restart-free config (resolved at
+// handler time, same mechanism as biographer.domainGating) for the habit engine's
+// master kill-switch and the soft→preference graduation thresholds. Defaults are
+// conservative — graduation is rare by design (design §8).
+export const behaviorConfigSchema = z.object({
+  // Master kill-switch for the habit-inference engine (Tier A + Tier B). Default ON;
+  // set false in policies.yaml to halt habit reinforcement/synthesis without a restart.
+  enabled: z.boolean().default(true),
+  // K: minimum support_count (across ≥2 distinct streams) for a soft habit to graduate.
+  graduationSupport: z.number().int().positive().default(4),
+  // X: minimum sustained age in weeks before a soft habit may graduate (not a spike).
+  graduationWeeks: z.number().int().positive().default(3),
+  // Personalization wire (design §9, Goal A). When true (default), the auto-recall
+  // UserPromptSubmit hook injects up to 1–2 topically-relevant habits per turn as a
+  // SEPARATE, softer-labeled hint block ("inferred tendency — hint, not fact") with its
+  // own small budget — it never competes with the factual memory slots. Set false to
+  // halt habit injection without a restart; factual recall is unaffected either way.
+  injectHabits: z.boolean().default(true),
+  // Surfacing (design §10, Goal B). When true (default), the daily brief may carry ONE
+  // optional "Behavioral note:" line drawn from a graduated/strongly-reinforced habit
+  // (sensitive domains excluded). Set false to suppress the unprompted surface.
+  surfaceInBrief: z.boolean().default(true),
+});
+
 // Claude Agent SDK execution policy: master kill-switch, per-surface daily spend
 // caps, default session bounds (model/turns/timeout/budget), write-isolation toggle,
 // pool-credit-exhaustion notification toggle, and the pool-billing switch. Nested
@@ -131,6 +155,7 @@ export const policiesSchema = z
     notifications: notificationsSchema.optional(),
     linear: linearConfigSchema.optional(),
     biographer: biographerConfigSchema.optional(),
+    behavior: behaviorConfigSchema.optional(),
     agent: agentSchema.optional(),
   })
   .transform((data) => ({
@@ -141,6 +166,7 @@ export const policiesSchema = z
     notifications: notificationsSchema.parse(data.notifications ?? {}),
     linear: linearConfigSchema.parse(data.linear ?? {}),
     biographer: biographerConfigSchema.parse(data.biographer ?? {}),
+    behavior: behaviorConfigSchema.parse(data.behavior ?? {}),
     agent: agentSchema.parse(data.agent ?? {}),
   }));
 
