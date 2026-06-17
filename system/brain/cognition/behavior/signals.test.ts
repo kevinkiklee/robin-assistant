@@ -71,6 +71,23 @@ test('normalizeSignal maps an lrc shoot + a whoop aggregate to their domains', (
   assert.equal(whoop?.action, 'recovery');
 });
 
+test('normalizeSignal maps a recommendation_acted event with a payload-carried domain', () => {
+  const sig = normalizeSignal({
+    id: 7,
+    kind: 'behavior.recommendation_acted',
+    ts: '2026-06-17T10:00:00.000Z',
+    actor: null,
+    payload: { subject: 'Nikon Z TC-1.4x', domain: 'finance', verdict: 'buy', lagDays: 1 },
+  });
+  assert.ok(sig);
+  assert.equal(sig.action, 'act_on_recommendation');
+  assert.equal(sig.object, 'Nikon Z TC-1.4x');
+  assert.equal(sig.domain, 'finance'); // carried in the payload, not a fixed per-kind domain
+  assert.equal(sig.actor, 'user'); // Kevin acting on Robin's advice, not Robin's own output
+  assert.equal(sig.context.verdict, 'buy');
+  assert.ok(BEHAVIORAL_SIGNAL_KINDS.includes('behavior.recommendation_acted'));
+});
+
 test('normalizeSignal returns null for a non-behavioral event', () => {
   const sig = normalizeSignal({
     id: 4,

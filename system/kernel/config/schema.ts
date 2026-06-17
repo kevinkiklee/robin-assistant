@@ -108,6 +108,19 @@ export const behaviorConfigSchema = z.object({
   surfaceInBrief: z.boolean().default(true),
 });
 
+// Recommendation→Action Loop (Phase 1) policy. Restart-free config (resolved at handler
+// time, same mechanism as behavior.*) for the linker's master kill-switch, how far back
+// it scans behavioral signals, and the default expiry for recs with no explicit expiry.
+export const recommendationsConfigSchema = z.object({
+  // Master kill-switch for the recommendation→action linker. Default ON; set false in
+  // policies.yaml to halt linking/expiry/emission without a restart.
+  enabled: z.boolean().default(true),
+  // How far back (days) the linker scans behavioral signals when matching open recs.
+  linkWindowDays: z.number().int().positive().default(60),
+  // Default expiry (days) applied to recs with no explicit `expires_at`.
+  defaultExpiryDays: z.number().int().positive().default(90),
+});
+
 // Claude Agent SDK execution policy: master kill-switch, per-surface daily spend
 // caps, default session bounds (model/turns/timeout/budget), write-isolation toggle,
 // pool-credit-exhaustion notification toggle, and the pool-billing switch. Nested
@@ -156,6 +169,7 @@ export const policiesSchema = z
     linear: linearConfigSchema.optional(),
     biographer: biographerConfigSchema.optional(),
     behavior: behaviorConfigSchema.optional(),
+    recommendations: recommendationsConfigSchema.optional(),
     agent: agentSchema.optional(),
   })
   .transform((data) => ({
@@ -167,6 +181,7 @@ export const policiesSchema = z
     linear: linearConfigSchema.parse(data.linear ?? {}),
     biographer: biographerConfigSchema.parse(data.biographer ?? {}),
     behavior: behaviorConfigSchema.parse(data.behavior ?? {}),
+    recommendations: recommendationsConfigSchema.parse(data.recommendations ?? {}),
     agent: agentSchema.parse(data.agent ?? {}),
   }));
 
