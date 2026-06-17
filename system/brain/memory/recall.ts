@@ -4,8 +4,10 @@ import { ageDaysFrom, type ProvenanceClass } from './provenance.ts';
 import { int8DistanceToFloat, quantizeToInt8Json } from './vec-quantize.ts';
 
 /** Query is truncated to this many chars before embedding — bounds embed latency/cost on
- *  pathological prompts (a pasted file, a giant diff) without hurting recall quality. */
-const MAX_EMBED_QUERY_CHARS = 2000;
+ *  pathological prompts (a pasted file, a giant diff) without hurting recall quality.
+ *  Exported so the auto-recall composer can replicate the EXACT embed input when it
+ *  pre-embeds the turn query to share with the habit slice (keeps factual recall identical). */
+export const MAX_EMBED_QUERY_CHARS = 2000;
 /** Reciprocal Rank Fusion constant. 60 is the canonical value from the original RRF paper. */
 const RRF_K = 60;
 
@@ -25,6 +27,15 @@ export interface RecallOptions {
   source?: 'auto' | 'manual';
   /** Correlates the recall to a session (auto-recall hot path); stored on the log row. */
   sessionId?: string;
+  /**
+   * Precomputed query embedding to reuse INSTEAD of re-embedding inside recall. The
+   * auto-recall composer embeds the turn query once and shares the SAME vector with the
+   * habit-injection slice (design §9) so the wire costs zero extra embed calls. Must be
+   * the embedding of `query.slice(0, MAX_EMBED_QUERY_CHARS)` (the exact input recall would
+   * have embedded) for the factual result to stay byte-identical. Absent (every existing
+   * caller) → recall embeds internally exactly as before.
+   */
+  queryEmbedding?: number[];
 }
 
 export interface RecallHit {
@@ -287,7 +298,10 @@ export async function recall(
   try {
     // Truncate before embedding — a pasted file or giant diff shouldn't blow up embed
     // latency/cost, and the leading 2k chars carry the topical signal recall needs.
-    const [vec] = await llm.embed('embed', query.slice(0, MAX_EMBED_QUERY_CHARS));
+    // Reuse a caller-supplied embedding when present (the auto-recall composer shares its
+    // single turn-query embed with the habit slice); otherwise embed here as before.
+    const vec =
+      opts.queryEmbedding ?? (await llm.embed('embed', query.slice(0, MAX_EMBED_QUERY_CHARS)))[0];
     // events_vec stores int8-quantized vectors — quantize the query the same way.
     const q8 = quantizeToInt8Json(vec);
     const vecRows = db
