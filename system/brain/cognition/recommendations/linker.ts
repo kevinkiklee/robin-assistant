@@ -1,3 +1,4 @@
+import { createLogger } from '../../../lib/logging/logger.ts';
 import type { RobinDb } from '../../memory/db.ts';
 import { ingest } from '../../memory/ingest.ts';
 import { RECOMMENDATION_ACTED_KIND, selectNewSignals } from '../behavior/signals.ts';
@@ -31,6 +32,8 @@ import type { Recommendation } from './types.ts';
 /** How many behavioral signals to pull per linker pass. The firehose is bounded by the
  * incremental cursor + the BEHAVIORAL_SIGNAL_KINDS allowlist, so a generous batch is
  * cheap; this caps a single pass's working set. */
+const log = createLogger({ module: 'recommendations' });
+
 const SIGNAL_SCAN_LIMIT = 1000;
 
 const DEFAULT_LINK_WINDOW_DAYS = 60;
@@ -101,6 +104,7 @@ export async function runRecommendationLinker(
 ): Promise<RecommendationLinkerResult> {
   const enabled = opts.enabled ?? true;
   if (!enabled) {
+    log.info('recommendation linker skipped (disabled)');
     return { linked: 0, expired: 0, emitted: 0, skipped: true };
   }
 
@@ -176,7 +180,14 @@ export async function runRecommendationLinker(
   // recommendation_acted events sit ABOVE this cursor and are excluded next pass.
   setLinkCursor(db, cursor);
 
-  return { linked, expired, emitted, skipped: false };
+  const result = { linked, expired, emitted, skipped: false };
+  // Always log a completion line (even on a 0-open-rec no-op) so a clean linker run is
+  // visible in the logs — matching Tier A / Tier B / scan, which all log their counts.
+  log.info(
+    { ...result, open: open.length, candidates: candidates.length, cursor },
+    'recommendation linker complete',
+  );
+  return result;
 }
 
 /**
