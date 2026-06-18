@@ -326,6 +326,7 @@ export class Daemon {
         () => loadPolicies(userData).biographer.domainGating,
         () => loadPolicies(userData).behavior,
         () => loadPolicies(userData).recommendations,
+        () => loadPolicies(userData).recommendationScan,
       );
 
       // Boot-drain disabled 2026-05-21 Turn 4. The original boot-drain ran

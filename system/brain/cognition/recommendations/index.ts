@@ -7,6 +7,7 @@ export {
   type RecommendationLinkerResult,
   runRecommendationLinker,
 } from './linker.ts';
+export { type RecommendationScanResult, runRecommendationScan } from './scan.ts';
 export {
   expireRecommendation,
   getRecommendation,
