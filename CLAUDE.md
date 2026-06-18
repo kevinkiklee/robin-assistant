@@ -38,6 +38,17 @@ career, creative work) — not dev artifacts (bugs, branches, packages, configs)
 The biographer's `BLOCKED_ENTITY_TYPES` in `system/brain/cognition/biographer.ts`
 enforces this; add new engineering entity types there.
 
+## Recommendations & the action loop
+
+When you give Kevin a **substantive recommendation** — a buy/skip/try/wait/avoid
+stance on a specific named thing (gear, a place, a tool, a decision) — log it with
+the `recommend` MCP tool, the same discipline as logging a `predict`. The nightly
+`recommendation-link.run` linker then detects whether he acts on it; a weekly
+`recommendation-scan.run` LLM pass backfills recommendations you forget to log. This
+feeds calibration (which advice lands) and the behavioral habit engine. Inspect with
+`robin recommendations` and `robin habits`. (Phase 2 + Phase 1 behavioral system,
+shipped 2026-06-17; design docs in `docs/design/2026-06-17-*`.)
+
 ## Secrets
 
 Secrets live in `user-data/config/secrets/.env` (gitignored). **Every process

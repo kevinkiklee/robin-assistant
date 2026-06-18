@@ -11,7 +11,7 @@ import { runBiographer } from './biographer.ts';
 import { runDream } from './dream.ts';
 import { runEmbedder } from './embedder.ts';
 import { ingestContentDocs } from './ingest-docs.ts';
-import { runRecommendationLinker } from './recommendations/index.ts';
+import { runRecommendationLinker, runRecommendationScan } from './recommendations/index.ts';
 
 export interface CognitionJob {
   name: string;
@@ -98,6 +98,18 @@ export const COGNITION_JOBS: CognitionJob[] = [
     description:
       'Weekly behavioral habit synthesis (Tier B, LLM): semantic attribution + new candidate habits + merges, with creation floor + dedup + retired-suppression',
   },
+  {
+    // 5:30am Sunday — Recommendation session-scan backfill (Phase 1.1, weekly LLM pass,
+    // bounded budget). Slotted at 5:30 — AFTER the entire nightly stack AND after Tier B
+    // (5:00 Sunday) — so it never collides with the 3:40/3:45/3:50/4:00/4:15/4:30 jobs or
+    // the weekly Tier B synthesis. Re-reads recent captured sessions, recovers substantive
+    // recommendations Robin made but never logged via `recommend`, and records them as
+    // `open` so the nightly deterministic linker can later detect whether Kevin acted.
+    name: 'recommendation-scan.run',
+    cron: '30 5 * * 0',
+    description:
+      'Weekly recommendation session-scan backfill (Phase 1.1, LLM): recover unlogged recommendations Robin made from recent sessions → record as open recs (precision-first, budget-bounded, deduped)',
+  },
 ];
 
 /**
@@ -118,6 +130,10 @@ export const COGNITION_JOBS: CognitionJob[] = [
  * `getRecommendations` resolves the `recommendations.*` policy (enabled + link window +
  * default expiry) at handler time, the SAME restart-free mechanism as `getBehavior`.
  * Defaults to the schema defaults when the daemon does not supply one.
+ *
+ * `getRecommendationScan` resolves the `recommendationScan.*` policy (enabled + window +
+ * budget) for the weekly LLM backfill at handler time, the SAME restart-free mechanism.
+ * Defaults to the schema defaults when the daemon does not supply one.
  */
 export interface BehaviorPolicy {
   enabled: boolean;
@@ -129,6 +145,12 @@ export interface RecommendationsPolicy {
   enabled: boolean;
   linkWindowDays: number;
   defaultExpiryDays: number;
+}
+
+export interface RecommendationScanPolicy {
+  enabled: boolean;
+  windowDays: number;
+  budgetUsd: number;
 }
 
 export function registerCognitionJobs(
@@ -146,6 +168,11 @@ export function registerCognitionJobs(
     enabled: true,
     linkWindowDays: 60,
     defaultExpiryDays: 90,
+  }),
+  getRecommendationScan: () => RecommendationScanPolicy = () => ({
+    enabled: true,
+    windowDays: 14,
+    budgetUsd: 1.0,
   }),
 ): void {
   daemon.registerHandler('biographer.run', async () => {
@@ -194,6 +221,11 @@ export function registerCognitionJobs(
   daemon.registerHandler('recommendation-link.run', async () => {
     const { enabled, linkWindowDays, defaultExpiryDays } = getRecommendations();
     await runRecommendationLinker(db, { enabled, linkWindowDays, defaultExpiryDays });
+  });
+  daemon.registerHandler('recommendation-scan.run', async () => {
+    const llm = getLLM() ?? null;
+    const { enabled, windowDays, budgetUsd } = getRecommendationScan();
+    await runRecommendationScan(db, llm, { enabled, windowDays, budgetUsd });
   });
   daemon.registerHandler('embedder.run', async () => {
     const llm = getLLM() ?? null;

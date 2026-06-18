@@ -121,6 +121,22 @@ export const recommendationsConfigSchema = z.object({
   defaultExpiryDays: z.number().int().positive().default(90),
 });
 
+// Recommendation session-scan backfill (Phase 1.1) policy. Restart-free config (resolved at
+// handler time, same mechanism as recommendations.*) for the weekly LLM job that recovers
+// substantive recommendations Robin made but never logged. Separate block from
+// `recommendations` because this is the deferred LLM SAFETY NET (a paid weekly call), gated
+// independently of the always-on deterministic linker.
+export const recommendationScanConfigSchema = z.object({
+  // Master kill-switch for the session-scan backfill. Default ON; set false in policies.yaml
+  // to halt the weekly LLM backfill without a restart (the deterministic linker is unaffected).
+  enabled: z.boolean().default(true),
+  // How far back (days) a session counts as "recent" for the backfill to re-read.
+  windowDays: z.number().int().positive().default(14),
+  // Per-run cost budget (USD) for the single StructuredOutput extraction call. Verified
+  // post-call; output is discarded and the cursor is not advanced on overspend.
+  budgetUsd: z.number().nonnegative().default(1.0),
+});
+
 // Claude Agent SDK execution policy: master kill-switch, per-surface daily spend
 // caps, default session bounds (model/turns/timeout/budget), write-isolation toggle,
 // pool-credit-exhaustion notification toggle, and the pool-billing switch. Nested
@@ -170,6 +186,7 @@ export const policiesSchema = z
     biographer: biographerConfigSchema.optional(),
     behavior: behaviorConfigSchema.optional(),
     recommendations: recommendationsConfigSchema.optional(),
+    recommendationScan: recommendationScanConfigSchema.optional(),
     agent: agentSchema.optional(),
   })
   .transform((data) => ({
@@ -182,6 +199,7 @@ export const policiesSchema = z
     biographer: biographerConfigSchema.parse(data.biographer ?? {}),
     behavior: behaviorConfigSchema.parse(data.behavior ?? {}),
     recommendations: recommendationsConfigSchema.parse(data.recommendations ?? {}),
+    recommendationScan: recommendationScanConfigSchema.parse(data.recommendationScan ?? {}),
     agent: agentSchema.parse(data.agent ?? {}),
   }));
 

@@ -36,6 +36,8 @@ ADVANCED
   agent "<goal>"        Run a guarded agentic task (--handler=A..L | --write, --cwd=, --max-turns=, --budget=, --force)
   beliefs review        Manage the belief-candidate queue (promote <id> | reject <id> | backfill-provenance)
   beliefs canonicalize [--apply]   Collapse duplicate belief heads onto canonical topics (dry-run default)
+  habits [--all]        Inferred behavioral habits (--all incl. retired, --status=soft|graduated|retired)
+  recommendations       Recommendation ledger + acted-rate calibration (--status=<s>)
   publish / published   Publish a markdown file to the web / list published pages
   import <dir>          Import NDJSON dumps from content/imported-from-<source>/
   biographer            Run a bounded entity/relation extraction pass (--limit=N, --dry-run)
@@ -155,6 +157,20 @@ async function main(): Promise<void> {
       }
       console.error(`Unknown beliefs subcommand: ${sub}`);
       exit(2);
+      break;
+    }
+
+    case 'habits': {
+      const { runHabitsCli } = await import('./habits.ts');
+      await runHabitsCli(args.slice(1));
+      exit(0);
+      break;
+    }
+
+    case 'recommendations': {
+      const { runRecommendationsCli } = await import('./recommendations.ts');
+      await runRecommendationsCli(args.slice(1));
+      exit(0);
       break;
     }
 
