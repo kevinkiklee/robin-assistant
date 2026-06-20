@@ -60,8 +60,11 @@ burst-dominated).
 ### Lever 3 · Generic-topic link suppression — `biographer.linkRelatedSessions`
 
 Over the **already-loaded recent-50** session window (zero extra query), compute per-topic
-document frequency. A link must share **≥1 specific topic** — one appearing in **≤25% (≤12
-of 50)** of the recent window. If *all* shared topics are generic, skip the link. `MAX_THREAD_LINKS_PER_SESSION = 8`
+document frequency. A link must share **≥1 specific topic** — one appearing in
+**≤ max(1, floor(0.25 × N))** of the recent window (≤12 of 50). The `max(1, …)` clamp keeps
+small corpora sane: with few recent sessions `floor(0.25 × N)` rounds to 0, which would
+suppress *every* link — a topic needs evidence of being common before it's treated as
+generic. If *all* shared topics are generic, skip the link. `MAX_THREAD_LINKS_PER_SESSION = 8`
 stays. This caps fan-out at the source and raises link quality (a link should mean "same
 specific thing," not "both mention the Fed").
 

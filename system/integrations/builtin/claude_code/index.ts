@@ -32,6 +32,14 @@ const SESSION_IDLE_MS = 10 * 60 * 1000;
 const SESSION_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 const STATE_KEY_PREFIX = 'session:';
 
+// Cap on ACTUAL captures per tick. A daemon restart once drained a ~115-session backlog
+// in a single tick, flooding the biographer and the memory graph. Once this many sessions
+// have been captured this tick, defer the rest WITHOUT advancing their cursor so they're
+// retried on the next 5-minute tick — a backlog then drains smoothly over several ticks.
+// Only real captures count; the >48h baseline guard (which sets a cursor without capturing)
+// is unaffected, so a wiped dedup state can't be throttled into a stall.
+const MAX_CAPTURES_PER_TICK = 20;
+
 function projectsDir(): string {
   return join(process.env.HOME ?? homedir(), '.claude', 'projects');
 }
@@ -53,6 +61,7 @@ export const integration: Integration = {
     let captured = 0;
     let skipped = 0;
     let errored = 0;
+    let deferred = 0;
 
     // Robin's own non-interactive Agent-SDK cognition calls (llm.invoke → claude-agent
     // → runSdk) write their transcripts under user-data/. Skip those project dirs
@@ -130,6 +139,14 @@ export const integration: Integration = {
           continue;
         }
 
+        // Per-tick capture cap. This session is eligible for an ACTUAL capture, but we've
+        // already hit the cap this tick — defer it WITHOUT advancing its cursor so it's
+        // reconsidered (and captured) on a subsequent tick. Drains a backlog gradually.
+        if (captured >= MAX_CAPTURES_PER_TICK) {
+          deferred++;
+          continue;
+        }
+
         try {
           const capture = transcriptFileToCapture(sessionId, sessionPath);
           if (capture.turns.length === 0) {
@@ -155,6 +172,13 @@ export const integration: Integration = {
           ctx.log.error({ err, sessionId }, 'claude-code session capture error');
         }
       }
+    }
+
+    if (deferred > 0) {
+      ctx.log.info(
+        { deferred, cap: MAX_CAPTURES_PER_TICK },
+        'claude-code captures deferred to next tick (per-tick cap reached)',
+      );
     }
 
     return {

@@ -1462,20 +1462,44 @@ export function linkRelatedSessions(db: RobinDb, eventId: number, topics: string
     ).map((r) => r.key),
   );
 
+  // Per-topic document frequency across the already-loaded recent sessions. A
+  // topic is "specific" if it appears in <= 25% of them; topics above that are
+  // too common to indicate a real relationship (e.g. monetary-policy x461,
+  // federal-reserve x324 in the 2026-06-17 flood that fanned out to 663
+  // links/24h despite the per-session cap holding). We parse each prior's
+  // topics once here and reuse the result in the link loop below.
+  const docFreq = new Map<string, number>();
+  const priorTopicsById = new Map<number, string[]>();
+  for (const prior of recentSessions) {
+    let priorTopics: string[] = [];
+    try {
+      priorTopics = JSON.parse(prior.payload).summary?.topics ?? [];
+    } catch {
+      // leave priorTopics empty; this prior contributes nothing and is skipped below
+    }
+    priorTopicsById.set(prior.id, priorTopics);
+    for (const t of new Set(priorTopics)) docFreq.set(t, (docFreq.get(t) ?? 0) + 1);
+  }
+  // 25% of recent sessions, floored. Clamp to >= 1 so that with a tiny corpus
+  // (where floor(0.25 * N) rounds to 0) a topic appearing once isn't treated
+  // as "generic" — a topic needs evidence of being common before it's
+  // suppressed, which only emerges as the corpus grows.
+  const specificCutoff = Math.max(1, Math.floor(0.25 * recentSessions.length));
+  const isSpecific = (t: string) => (docFreq.get(t) ?? 0) <= specificCutoff;
+
   let linked = 0;
   const topicSet = new Set(topics);
   for (const prior of recentSessions) {
     // recentSessions is ordered newest-first, so capping here keeps the most
     // recent (most relevant) links and bounds the per-capture fan-out.
     if (linked >= MAX_THREAD_LINKS_PER_SESSION) break;
-    let priorTopics: string[] = [];
-    try {
-      priorTopics = JSON.parse(prior.payload).summary?.topics ?? [];
-    } catch {
-      continue;
-    }
+    const priorTopics = priorTopicsById.get(prior.id) ?? [];
     const shared = priorTopics.filter((t) => topicSet.has(t));
     if (shared.length < 2) continue;
+    // Require at least one specific shared topic. If every shared topic is
+    // generic, the overlap is coincidental noise — skip without consuming the
+    // per-session cap.
+    if (!shared.some(isSpecific)) continue;
 
     const threadKey = `${prior.id}:${eventId}`;
     if (existingThreads.has(threadKey)) continue;
