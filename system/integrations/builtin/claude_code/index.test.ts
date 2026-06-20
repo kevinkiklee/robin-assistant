@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { slugifyCwdPath } from '../../../brain/cognition/capture.ts';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
-import { slugifyCwdPath } from '../../../brain/cognition/capture.ts';
 import type { IntegrationContext } from '../../_runtime/types.ts';
 import { integration } from './index.ts';
 
@@ -282,6 +282,84 @@ describe('claude_code integration tick', () => {
 
     const result = await integration.tick!(fakeCtx({ db }));
     assert.equal(result.ingested, 1, 'a recently-touched session must capture normally');
+  });
+
+  it('caps actual captures per tick and defers the remainder without advancing their cursor', async () => {
+    // A daemon restart drained a ~115-session backlog in one tick, flooding the biographer
+    // and the memory graph. The scanner must cap actual captures per tick so a backlog
+    // drains smoothly over several 5-min ticks. Seed more than the cap of settled,
+    // capturable sessions (15 min idle — past the settle horizon but not past the 48h
+    // baseline horizon) and assert exactly the cap is captured this tick.
+    const projectPath = join(tmpRoot, '.claude', 'projects', 'test-project');
+    const total = 25; // > MAX_CAPTURES_PER_TICK (20)
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    for (let i = 0; i < total; i++) {
+      const sessionFile = join(projectPath, `backlog-${String(i).padStart(2, '0')}.jsonl`);
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: `a substantive question number ${i} about something` },
+        }) +
+          '\n' +
+          JSON.stringify({
+            type: 'assistant',
+            message: { role: 'assistant', content: `a substantive answer number ${i} with content` },
+          }) +
+          '\n',
+      );
+      utimesSync(sessionFile, fifteenMinAgo, fifteenMinAgo);
+    }
+
+    const state = new Map<string, string>();
+    const result = await integration.tick!(fakeCtx({ db, state }));
+    assert.equal(result.status, 'ok');
+    assert.equal(result.ingested, 20, 'exactly MAX_CAPTURES_PER_TICK captured this tick');
+    const events = db
+      .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured'`)
+      .get() as { c: number };
+    assert.equal(events.c, 20);
+
+    // The deferred remainder must NOT have its cursor advanced, so it is retried next tick.
+    let cursored = 0;
+    for (let i = 0; i < total; i++) {
+      if (state.has(`session:test-project:backlog-${String(i).padStart(2, '0')}`)) cursored++;
+    }
+    assert.equal(cursored, 20, 'only captured sessions get a cursor; deferred ones are untouched');
+  });
+
+  it('captures the previously-deferred sessions on the next tick (backlog drains over ticks)', async () => {
+    const projectPath = join(tmpRoot, '.claude', 'projects', 'test-project');
+    const total = 25; // 20 captured tick 1, remaining 5 captured tick 2
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    for (let i = 0; i < total; i++) {
+      const sessionFile = join(projectPath, `drain-${String(i).padStart(2, '0')}.jsonl`);
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: `a substantive question number ${i} about draining` },
+        }) +
+          '\n' +
+          JSON.stringify({
+            type: 'assistant',
+            message: { role: 'assistant', content: `a substantive answer number ${i} draining` },
+          }) +
+          '\n',
+      );
+      utimesSync(sessionFile, fifteenMinAgo, fifteenMinAgo);
+    }
+
+    const state = new Map<string, string>();
+    const first = await integration.tick!(fakeCtx({ db, state }));
+    assert.equal(first.ingested, 20, 'first tick captures the cap');
+    const second = await integration.tick!(fakeCtx({ db, state }));
+    assert.equal(second.ingested, 5, 'second tick captures the deferred remainder');
+
+    const events = db
+      .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured'`)
+      .get() as { c: number };
+    assert.equal(events.c, 25, 'all backlog sessions captured across two ticks, none lost');
   });
 
   it('health check passes when projects dir exists', async () => {

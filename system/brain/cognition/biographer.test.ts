@@ -2249,15 +2249,15 @@ test('biographer: cross-session linking creates thread events on topic overlap',
   closeDb(db);
 });
 
-test('biographer: cross-session linking is capped per session (no O(N) thread fan-out)', () => {
-  // When many recent sessions share the same topics (the 2026-06-13 flood: 50+
-  // sessions all tagged robin/tmux-loops), the per-session fan-out exploded to
-  // 1684 session.thread rows/day. Each new session must create a bounded number
-  // of links regardless of how many candidates match.
+test('biographer: links are suppressed when every shared topic is generic (>25% of recent sessions)', () => {
+  // The 2026-06-13/2026-06-17 flood: ~115 sessions shared generic topics
+  // (monetary-policy x461, federal-reserve x324) and fanned out into 663
+  // links/24h even though the per-session cap held. Generic topics are too
+  // common to indicate a real relationship — a new session sharing ONLY
+  // generic topics with priors must create ZERO links.
   const db = freshDb();
-  const topics = ['shared-a', 'shared-b'];
   const now = Date.now();
-  const insertSession = (id: number, msAgo: number) =>
+  const insertSession = (id: number, msAgo: number, topics: string[]) =>
     db
       .prepare(
         `INSERT INTO events (id, ts, kind, source, status, payload)
@@ -2265,12 +2265,85 @@ test('biographer: cross-session linking is capped per session (no O(N) thread fa
       )
       .run(id, new Date(now - msAgo).toISOString(), JSON.stringify({ summary: { topics } }));
 
-  // 20 prior sessions all sharing both topics, all within the 14-day window.
-  for (let i = 1; i <= 20; i++) insertSession(i, i * 60_000);
+  // 20 prior sessions, all tagged with two generic topics: each appears in
+  // 100% of recent sessions, far above the 25% specificity threshold.
+  const generic = ['monetary-policy', 'federal-reserve'];
+  for (let i = 1; i <= 20; i++) insertSession(i, i * 60_000, generic);
   const newId = 100;
-  insertSession(newId, 0);
+  insertSession(newId, 0, generic);
 
-  const linked = linkRelatedSessions(db, newId, topics);
+  const linked = linkRelatedSessions(db, newId, generic);
+  const threads = db
+    .prepare("SELECT COUNT(*) AS c FROM events WHERE kind = 'session.thread'")
+    .get() as { c: number };
+  assert.equal(linked, 0, 'all-generic shared topics must not create any links');
+  assert.equal(threads.c, 0, 'no thread rows when every shared topic is generic');
+  closeDb(db);
+});
+
+test('biographer: a shared SPECIFIC (rare) topic still creates links', () => {
+  // Suppression must not kill real relationships: if the shared set includes
+  // at least one topic that is rare among recent sessions (<=25%), the link
+  // is still created.
+  const db = freshDb();
+  const now = Date.now();
+  const insertSession = (id: number, msAgo: number, topics: string[]) =>
+    db
+      .prepare(
+        `INSERT INTO events (id, ts, kind, source, status, payload)
+         VALUES (?, ?, 'session.captured', 'capture', 'ok', ?)`,
+      )
+      .run(id, new Date(now - msAgo).toISOString(), JSON.stringify({ summary: { topics } }));
+
+  // 19 noise sessions carry only the generic topic; ONE prior shares both the
+  // generic topic and a rare, specific one. 'leadforge-clerk' appears in just
+  // 1/21 recent sessions → specific.
+  const generic = ['monetary-policy'];
+  for (let i = 1; i <= 19; i++) insertSession(i, i * 60_000, generic);
+  insertSession(50, 30_000, ['monetary-policy', 'leadforge-clerk']);
+  const newId = 100;
+  insertSession(newId, 0, ['monetary-policy', 'leadforge-clerk']);
+
+  const linked = linkRelatedSessions(db, newId, ['monetary-policy', 'leadforge-clerk']);
+  const threads = db
+    .prepare("SELECT payload FROM events WHERE kind = 'session.thread'")
+    .all() as Array<{ payload: string }>;
+  assert.equal(linked, 1, 'a shared specific topic must still create a link');
+  assert.equal(threads.length, 1, 'exactly the prior with the specific topic links');
+  assert.ok(JSON.parse(threads[0].payload).shared_topics.includes('leadforge-clerk'));
+  closeDb(db);
+});
+
+test('biographer: cross-session linking is capped per session (no O(N) thread fan-out)', () => {
+  // When many recent sessions share the same topics (the 2026-06-13 flood: 50+
+  // sessions all tagged robin/tmux-loops), the per-session fan-out exploded to
+  // 1684 session.thread rows/day. Each new session must create a bounded number
+  // of links regardless of how many candidates match.
+  const db = freshDb();
+  const now = Date.now();
+  const insertSession = (id: number, msAgo: number, topics: string[]) =>
+    db
+      .prepare(
+        `INSERT INTO events (id, ts, kind, source, status, payload)
+         VALUES (?, ?, 'session.captured', 'capture', 'ok', ?)`,
+      )
+      .run(id, new Date(now - msAgo).toISOString(), JSON.stringify({ summary: { topics } }));
+
+  // 20 prior sessions, each sharing a generic topic plus a unique SPECIFIC one
+  // ('shared-a' is generic across all; 'specific-N' is rare). The new session
+  // carries all 20 specific topics, so all 20 priors are link candidates — the
+  // cap, not generic-suppression, is what bounds the fan-out here.
+  const specifics: string[] = [];
+  for (let i = 1; i <= 20; i++) {
+    const s = `specific-${i}`;
+    specifics.push(s);
+    insertSession(i, i * 60_000, ['shared-a', s]);
+  }
+  const newTopics = ['shared-a', ...specifics];
+  const newId = 100;
+  insertSession(newId, 0, newTopics);
+
+  const linked = linkRelatedSessions(db, newId, newTopics);
   const threads = db
     .prepare("SELECT COUNT(*) AS c FROM events WHERE kind = 'session.thread'")
     .get() as { c: number };
