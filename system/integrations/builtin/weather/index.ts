@@ -333,18 +333,35 @@ function peakWindowCoversHour(peak: string, hour: number): boolean {
   return lo <= hi ? hour >= lo && hour <= hi : hour >= lo || hour <= hi; // wrap past midnight
 }
 
-/** Wet before the sunset window, clearing to <20% precip probability inside it. */
+/**
+ * Wet before the sunset window, clearing to <20% precip probability inside it.
+ *
+ * Defensive fallback: some Open-Meteo model responses omit
+ * `precipitation_probability` entirely.  When a slot's probability is absent
+ * we fall back to the raw `precipitation` amount:
+ *   - "inside is dry"  → precip < 0.1 mm  (instead of prob < 20%)
+ *   - "pre-window wet" → precip ≥ 0.5 mm  (same threshold already used)
+ */
 function detectRainClearing(loc: OmLocation, sunsetHourIso: string): boolean {
   const times = loc.hourly?.time ?? [];
   const idx = times.indexOf(sunsetHourIso);
   if (idx < 0) return false;
-  const insideProb = loc.hourly.precipitation_probability?.[idx] ?? 0;
-  if (insideProb >= 20) return false;
+
+  const ppArray = loc.hourly.precipitation_probability;
+  const insideProb = ppArray?.[idx];
+  if (insideProb !== undefined) {
+    // precipitation_probability is present: use it as the primary signal.
+    if (insideProb >= 20) return false;
+  } else {
+    // Fallback: treat precipitation amount as the dry-inside proxy.
+    if ((loc.hourly.precipitation?.[idx] ?? 0) >= 0.1) return false;
+  }
+
   // Any meaningful precip in the 3 hours before the window?
   for (let i = Math.max(0, idx - 3); i < idx; i++) {
     const p = loc.hourly.precipitation?.[i] ?? 0;
-    const pp = loc.hourly.precipitation_probability?.[i] ?? 0;
-    if (p >= 0.5 || pp >= 50) return true;
+    const pp = ppArray?.[i]; // may be undefined when the array is absent
+    if (p >= 0.5 || (pp !== undefined && pp >= 50)) return true;
   }
   return false;
 }
