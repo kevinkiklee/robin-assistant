@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { solarTimes } from './solar.ts';
+import { solarTimes, sunBearings } from './solar.ts';
 
 test('solar: NYC summer solstice — sunrise early, sunset evening, ~15h day', () => {
   const t = solarTimes(40.7128, -74.006, new Date(Date.UTC(2026, 5, 21)));
@@ -16,4 +16,19 @@ test('solar: ordering invariants hold', () => {
   assert.ok(t.goldenHourMorningEnd! < t.goldenHourEveningStart!);
   assert.ok(t.goldenHourEveningStart! < t.sunset!);
   assert.ok(t.sunset! < t.blueHourEveningEnd!);
+});
+
+const ASTORIA = { lat: 40.764, lng: -73.923 };
+
+test('sunBearings: summer solstice ENE sunrise / WNW sunset from Astoria', () => {
+  const b = sunBearings(ASTORIA.lat, ASTORIA.lng, new Date('2026-06-21T12:00:00Z'));
+  assert.ok(b.sunriseAz !== null && b.sunsetAz !== null);
+  assert.ok(Math.abs((b.sunriseAz as number) - 58) < 4, `sunrise ${b.sunriseAz}`); // ~58° ENE
+  assert.ok(Math.abs((b.sunsetAz as number) - 302) < 4, `sunset ${b.sunsetAz}`); // ~302° WNW
+});
+
+test('sunBearings: equinox ⇒ ~due-east sunrise, ~due-west sunset', () => {
+  const b = sunBearings(ASTORIA.lat, ASTORIA.lng, new Date('2026-03-20T12:00:00Z'));
+  assert.ok(Math.abs((b.sunriseAz as number) - 90) < 3);
+  assert.ok(Math.abs((b.sunsetAz as number) - 270) < 3);
 });

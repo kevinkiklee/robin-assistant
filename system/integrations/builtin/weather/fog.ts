@@ -1,25 +1,21 @@
 // Fog index for the night photography window (21:00 → 06:00 next morning).
 //
-// Computed from the wttr.in `j1` 3-day hourly forecast the weather tick already
-// fetches — no extra network call. Each 3-hour forecast slot scores 0–10 as the
-// greater of the provider's own `chanceoffog` and a radiation-fog composite
-// (dew-point spread + relative humidity + calm wind); a night's index is the
-// MAX over its slots, because fog is an event, not an average. Pure module so
-// the scoring stays unit-testable.
+// Computed from an Open-Meteo hourly forecast object (parallel arrays,
+// timezone=auto). Each slot scores 0–10 as the greater of the provider's own
+// fog signal (weather_code ∈ {45,48} or low visibility) and a radiation-fog
+// composite (dew-point spread + relative humidity + calm wind); a night's
+// index is the MAX over its slots, because fog is an event, not an average.
+// Pure module so the scoring stays unit-testable.
 
-/** The subset of a wttr.in `j1` hourly slot the fog index reads (all strings). */
-export interface WttrHour {
-  time?: string; // minutes-less "HHmm" without padding: "0", "300", … "2100"
-  tempF?: string;
-  DewPointF?: string;
-  humidity?: string;
-  windspeedMiles?: string;
-  chanceoffog?: string;
-}
-
-export interface WttrDay {
-  date?: string; // YYYY-MM-DD (provider-local)
-  hourly?: WttrHour[];
+/** Open-Meteo hourly parallel arrays (timezone=auto, local ISO timestamps). */
+export interface OmHourly {
+  time: string[];
+  temperature_2m: number[];
+  dew_point_2m: number[];
+  relative_humidity_2m: number[];
+  wind_speed_10m: number[];
+  weather_code: number[];
+  visibility: number[];
 }
 
 export interface FogNight {
@@ -34,10 +30,15 @@ export interface FogNight {
   factors: string | null;
 }
 
-function toNum(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+const WMO: Record<number, string> = {
+  0: 'clear', 1: 'mainly clear', 2: 'partly cloudy', 3: 'overcast',
+  45: 'fog', 48: 'fog', 51: 'drizzle', 53: 'drizzle', 55: 'drizzle',
+  61: 'rain', 63: 'rain', 65: 'heavy rain', 71: 'snow', 73: 'snow', 75: 'snow',
+  80: 'showers', 81: 'showers', 82: 'heavy showers', 95: 'thunderstorm',
+};
+
+export function wmoText(code: number): string {
+  return WMO[code] ?? 'cloudy';
 }
 
 /** Linear ramp: full 10 at/below `lo`, down to 0 at/above `hi`. */
@@ -60,34 +61,6 @@ interface SlotScore {
   factors: string | null;
 }
 
-/**
- * Score one forecast slot 0–10. Returns null when the slot carries none of the
- * fields the index reads (rather than scoring an empty slot as calm-and-clear).
- */
-export function scoreSlot(h: WttrHour, label: string): SlotScore | null {
-  const temp = toNum(h.tempF);
-  const dew = toNum(h.DewPointF);
-  const rh = toNum(h.humidity);
-  const wind = toNum(h.windspeedMiles);
-  const cf = toNum(h.chanceoffog);
-  if (temp === null && dew === null && rh === null && cf === null) return null;
-
-  // Radiation-fog composite. Dew-point spread is the dominant predictor:
-  // saturation (spread ≤ ~2°F) with calm air is the classic fog setup.
-  const spread = temp !== null && dew !== null ? temp - dew : null;
-  const spreadScore = spread !== null ? rampDown(spread, 2, 8) : 0;
-  const rhScore = rh !== null ? rampUp(rh, 85, 98) : 0;
-  const windScore = wind !== null ? rampDown(wind, 2, 14) : 5; // unknown wind = neutral
-  const composite = 0.45 * spreadScore + 0.3 * rhScore + 0.25 * windScore;
-
-  const score = Math.max(cf !== null ? cf / 10 : 0, composite);
-  const factors: string[] = [];
-  if (spread !== null) factors.push(`spread ${Math.round(spread)}°F`);
-  if (rh !== null) factors.push(`RH ${Math.round(rh)}%`);
-  if (wind !== null) factors.push(`wind ${Math.round(wind)} mph`);
-  return { label, score, factors: factors.length > 0 ? factors.join(' · ') : null };
-}
-
 function band(index: number): FogNight['band'] {
   if (index >= 9) return 'very likely';
   if (index >= 6) return 'likely';
@@ -95,41 +68,76 @@ function band(index: number): FogNight['band'] {
   return 'unlikely';
 }
 
-function hourAt(day: WttrDay | undefined, time: string): WttrHour | undefined {
-  return day?.hourly?.find((h) => h.time === time);
-}
-
-/** The night slots, in order: 9pm of day d, then 12am/3am/6am of day d+1. */
-const NIGHT_SLOTS: Array<{ time: string; label: string; nextDay: boolean }> = [
-  { time: '2100', label: '9pm', nextDay: false },
-  { time: '0', label: '12am', nextDay: true },
-  { time: '300', label: '3am', nextDay: true },
-  { time: '600', label: '6am', nextDay: true },
+/** The night slots in order: 21:00 of day d, then 00/03/06 of day d+1. */
+const NIGHT_HOURS = [
+  { hour: 21, label: '9pm', nextDay: false },
+  { hour: 0,  label: '12am', nextDay: true },
+  { hour: 3,  label: '3am', nextDay: true },
+  { hour: 6,  label: '6am', nextDay: true },
 ];
 
+function addDay(d: string): string {
+  return new Date(new Date(`${d}T00:00:00Z`).valueOf() + 86400000).toISOString().slice(0, 10);
+}
+
+function scoreNightSlot(h: OmHourly, idx: number, label: string): SlotScore {
+  const temp = h.temperature_2m[idx];
+  const dew = h.dew_point_2m[idx];
+  const rh = h.relative_humidity_2m[idx];
+  const wind = h.wind_speed_10m[idx];
+  const code = h.weather_code[idx];
+  const vis = h.visibility[idx];
+  const spread = temp - dew;
+  const spreadScore = rampDown(spread, 2, 8);
+  const rhScore = rampUp(rh, 85, 98);
+  const windScore = rampDown(wind, 2, 14);
+  const composite = 0.45 * spreadScore + 0.3 * rhScore + 0.25 * windScore;
+  const providerFog = code === 45 || code === 48 ? 10 : vis < 1000 ? 8 : vis < 4000 ? 4 : 0;
+  return {
+    label,
+    score: Math.max(providerFog, composite),
+    factors: `spread ${Math.round(spread)}°F · RH ${Math.round(rh)}% · wind ${Math.round(wind)} mph`,
+  };
+}
+
 /**
- * Compute per-night fog outlooks from the forecast days. A night needs at
- * least two scorable slots to be reported; the last forecast day only
- * contributes its 9pm slot, so it is usually dropped.
+ * Compute per-night fog outlooks from an Open-Meteo hourly object. Selects
+ * slots for 21:00 on `date` and 00:00/03:00/06:00 on `date+1` by ISO string
+ * matching against `hourly.time[]`. Requires ≥2 scorable slots per night.
+ *
+ * `todayIso` is the starting date (YYYY-MM-DD); nights are walked for each
+ * unique date present in `time[]`.
  */
-export function fogNights(days: WttrDay[]): FogNight[] {
+export function fogNights(hourly: OmHourly, todayIso: string): FogNight[] {
+  // Collect the unique dates present in the time array.
+  const seenDates = new Set<string>();
+  for (const t of hourly.time) seenDates.add(t.slice(0, 10));
+  // Build an index: ISO timestamp prefix → array index
+  const timeIndex = new Map<string, number>();
+  for (let i = 0; i < hourly.time.length; i++) timeIndex.set(hourly.time[i], i);
+
   const nights: FogNight[] = [];
-  for (let i = 0; i < days.length; i++) {
-    const date = days[i]?.date;
-    if (!date) continue;
+  for (const date of seenDates) {
+    // Only process dates from todayIso onward (skip past dates if present).
+    if (date < todayIso) continue;
+
+    const nextDate = addDay(date);
     const scored: SlotScore[] = [];
-    for (const slot of NIGHT_SLOTS) {
-      const day = slot.nextDay ? days[i + 1] : days[i];
-      const hour = hourAt(day, slot.time);
-      if (!hour) continue;
-      const s = scoreSlot(hour, slot.label);
-      if (s) scored.push(s);
+
+    for (const slot of NIGHT_HOURS) {
+      const d = slot.nextDay ? nextDate : date;
+      const hPad = String(slot.hour).padStart(2, '0');
+      const key = `${d}T${hPad}:00`;
+      const idx = timeIndex.get(key);
+      if (idx === undefined) continue;
+      scored.push(scoreNightSlot(hourly, idx, slot.label));
     }
+
     if (scored.length < 2) continue;
 
     const max = Math.max(...scored.map((s) => s.score));
     const index = Math.min(10, Math.round(max));
-    // Peak = the contiguous run of slots within one point of the max.
+
     let peak: string | null = null;
     let factors: string | null = null;
     if (index > 0) {
@@ -141,5 +149,8 @@ export function fogNights(days: WttrDay[]): FogNight[] {
     }
     nights.push({ date, index, band: band(index), peak_window: peak, factors });
   }
+
+  // Sort by date ascending.
+  nights.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return nights;
 }

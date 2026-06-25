@@ -65,3 +65,27 @@ export function solarTimes(lat: number, lng: number, date: Date): SolarTimes {
     blueHourEveningEnd: at(-6, 'set'),
   };
 }
+
+export interface SunBearings {
+  sunriseAz: number | null;
+  sunsetAz: number | null;
+}
+
+/** Compass bearing (deg from N) where the sun crosses the horizon (alt −0.833°). */
+export function sunBearings(lat: number, _lng: number, date: Date): SunBearings {
+  // Longitude does not affect the horizon azimuth (only lat + declination do);
+  // _lng is accepted solely for call-site symmetry with solarTimes(lat, lng, date).
+  const latRad = lat * rad;
+  const { declRad } = eqTimeAndDecl(date);
+  const ha = hourAngleDeg(-0.833, latRad, declRad);
+  if (ha === null) return { sunriseAz: null, sunsetAz: null };
+  const altRad = -0.833 * rad;
+  const cosAz =
+    (Math.sin(declRad) - Math.sin(altRad) * Math.sin(latRad)) /
+    (Math.cos(altRad) * Math.cos(latRad));
+  const az0 = Math.acos(Math.max(-1, Math.min(1, cosAz))) / rad; // 0..180, east side
+  // 360 - az0 assumes the sun sets on the western half of the compass (valid for
+  // the configured northern-mid-latitude origin; would need revisiting for
+  // equatorial/southern origins).
+  return { sunriseAz: az0, sunsetAz: 360 - az0 };
+}
