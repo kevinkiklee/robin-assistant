@@ -21,7 +21,7 @@ export function skyContext(opts: {
 
   const canvas = canvasMean(nearField.map((s) => s.layers));
   const canvasStrength = Math.min(100, canvas.high + canvas.mid * SKY.canvasMidWeight);
-  const [bandLo, bandHi] = SKY.canvasBandPct;
+  const [bandLo] = SKY.canvasBandPct;
   const canvasInBand = canvasStrength >= bandLo;
 
   let verdict: Verdict;
