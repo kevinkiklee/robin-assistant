@@ -269,7 +269,8 @@ export const integration: Integration = {
     // Needs the solar window (s) → computed after base scalars. Any failure logs
     // and leaves every tide field null; the tick still succeeds.
     const tideEnabled = ctx.state.get('sky_tide') !== 'off';
-    const tideStation = ctx.state.get('tide_station') || DEFAULT_TIDE_STATION;
+    const tideStationRaw = ctx.state.get('tide_station');
+    const tideStation = tideStationRaw && /^\d+$/.test(tideStationRaw) ? tideStationRaw : DEFAULT_TIDE_STATION;
     let tideMorningLow: { time: Date; heightFt: number } | null = null;
     let tideNextHigh: { time: Date; heightFt: number } | null = null;
     let tideNextLow: { time: Date; heightFt: number } | null = null;
@@ -287,6 +288,8 @@ export const integration: Integration = {
         tideNextHigh = next.high ? { time: next.high.time, heightFt: next.high.heightFt } : null;
         tideNextLow = next.low ? { time: next.low.time, heightFt: next.low.heightFt } : null;
         // Morning-golden low: between sunrise and the end of morning golden hour.
+        // Tide times (CO-OPS lst_ldt) and `now` are compared as absolute instants;
+        // this assumes the host TZ matches the station TZ (America/New_York for Jamaica Bay).
         const srInstant = s.sunrise ?? null;
         const ghEnd = s.goldenHourMorningEnd ?? null;
         if (srInstant && ghEnd) {

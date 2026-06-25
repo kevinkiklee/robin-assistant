@@ -116,8 +116,7 @@ function moonEcliptic(T: number): EclipticPos {
       129.62 * Math.cos(Mrad - Mprad) +
       108.743 * Math.cos(Drad) +
       104.755 * Math.cos(Mrad + Mprad) +
-      79.661 * Math.cos(2 * Frad - Mprad)) /
-      1; // km
+      79.661 * Math.cos(2 * Frad - Mprad)); // km
 
   return { lonDeg: norm360(lon), latDeg: lat, distKm: dist };
 }

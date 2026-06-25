@@ -71,9 +71,11 @@ export function matchRecipes(input: {
       inRange(moon.leadH, moon.window === 'sunrise' ? SKY.sunriseLeadHours : SKY.sunsetLeadHours)) {
     const windowDate = input.dates[moon.window];
     const az = Math.round(moon.azimuth);
+    const phaseCapitalized = moon.phaseName.charAt(0).toUpperCase() + moon.phaseName.slice(1);
+    const verb = moon.event === 'rise' ? 'rises' : 'sets';
     out.push({
       recipe: 'moon', window: moon.window, windowDate,
-      title: `🌕 ${moon.phaseName} moon${moon.event} ${fmtTime(moon.eventTime)} (az ${az}° ${bearingLabel(moon.azimuth)}) — clear horizon`,
+      title: `🌕 ${phaseCapitalized} moon ${verb} ${fmtTime(moon.eventTime)} (az ${az}° ${bearingLabel(moon.azimuth)}) — clear horizon`,
       body: `${moon.phaseName} moon${moon.event} at ${fmtTime(moon.eventTime)}, ${Math.round(moon.illumination * 100)}% illumination`,
       key: `moon:${windowDate}`,
       mergeGroup: mergeFor(moon.window),

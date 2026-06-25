@@ -50,7 +50,7 @@ const moonBase = () => ({
   eventTime: new Date('2026-06-26T05:30:00'),
   azimuth: 85,
   horizonClear: true,
-  phaseName: 'Full Moon',
+  phaseName: 'full',
   leadH: 9,
   window: 'sunrise' as const,
 });
@@ -61,7 +61,8 @@ test('moon fires at illumination=0.95, horizonClear=true, in-lead', () => {
   assert.equal(m[0].recipe, 'moon');
   assert.equal(m[0].window, 'sunrise');
   assert.equal(m[0].key, 'moon:2026-06-26');
-  assert.match(m[0].title, /Full Moon/);
+  assert.match(m[0].title, /Full moon rises/);
+  assert.match(m[0].title, /az 85°/);
   assert.match(m[0].title, /clear horizon/);
 });
 
