@@ -33,3 +33,11 @@ test('confidence drops with lead time', () => {
   const b = skyContext({ window: 'sunrise', azimuth: 58, leadHours: 16, samples: [near(50, 0, 0), far(5)] });
   assert.ok(a.confidence > b.confidence);
 });
+
+test('confidence is strictly lower at coverage 0.3 than coverage 1', () => {
+  const samples = [near(100, 0, 0), far(5), far(10)];
+  const full = skyContext({ window: 'sunset', azimuth: 302, leadHours: 2, samples, coverage: 1 });
+  const sparse = skyContext({ window: 'sunset', azimuth: 302, leadHours: 2, samples, coverage: 0.3 });
+  assert.ok(sparse.confidence < full.confidence,
+    `expected sparse.confidence (${sparse.confidence}) < full.confidence (${full.confidence})`);
+});

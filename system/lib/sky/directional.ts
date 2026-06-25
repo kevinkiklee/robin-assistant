@@ -1,4 +1,4 @@
-import { canvasMean } from './clouds.ts';
+import { canvasCover, canvasMean } from './clouds.ts';
 import { SKY } from './constants.ts';
 import type { SamplePoint, SkyContext, Verdict, Window } from './types.ts';
 
@@ -9,6 +9,7 @@ export function skyContext(opts: {
   azimuth: number;
   samples: SamplePoint[];
   leadHours: number;
+  coverage?: number;
 }): SkyContext {
   const { window, azimuth, samples, leadHours } = opts;
   const farField = samples.filter((s) => s.distKm >= SKY.farFieldKm);
@@ -20,7 +21,7 @@ export function skyContext(opts: {
   const gapSample = farField.find((s) => s.layers.low === minFarLow) ?? null;
 
   const canvas = canvasMean(nearField.map((s) => s.layers));
-  const canvasStrength = Math.min(100, canvas.high + canvas.mid * SKY.canvasMidWeight);
+  const canvasStrength = canvasCover({ low: 0, high: canvas.high, mid: canvas.mid });
   const [bandLo] = SKY.canvasBandPct;
   const canvasInBand = canvasStrength >= bandLo;
 
@@ -38,7 +39,7 @@ export function skyContext(opts: {
   );
   const canvasMargin = Math.abs(canvasStrength - bandLo);
   const marginConf = clamp01(0.6 + Math.min(gapMargin, canvasMargin) / 25); // edge cases → ~0.6
-  const confidence = clamp01(leadConf * marginConf);
+  const confidence = clamp01(leadConf * marginConf * (opts.coverage ?? 1));
 
   return {
     window,

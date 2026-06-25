@@ -154,8 +154,12 @@ The novel core. Given the origin, the sun azimuth, and a cloud-layer fetcher:
    - **Horizon gap** ← `cloud_cover_low` over the **far field** (90/120 km +
      fan). Gap = *min* low-cloud `< 25%`; bank = *min* still `> 60%`.
    - **Canvas** ← `cloud_cover_high + cloud_cover_mid`, *mean* over the **near
-     field** (0–50 km incl. overhead). Sweet spot **25–70%** (enough to catch
-     light, short of flat overcast).
+     field** (0–50 km incl. overhead). Must clear a **lower bound (≥25%)** —
+     there is **no upper cap**: high/mid cloud, even thick cirrus, is a catching
+     canvas. The colour-killing *flat overcast* is **low** cloud, already handled
+     by the horizon-gap/bank path — so a thick high/mid deck with an open horizon
+     still reads `promising`. (The `70` in `canvasBandPct` is retained as
+     documentation of the original "sweet spot" intent but is not enforced.)
 3. **Classify (verdict):** `Promising` = gap ∧ canvas-in-band · `Blocked` = no
    gap (low-cloud bank toward the sun) · `Clear` = gap ∧ canvas `<15%` (light
    gets through, nothing to colour) · `Mixed` = everything marginal.
@@ -170,8 +174,11 @@ you look* (high/mid cloud overhead as a canvas to redden).** The killer is not
 thing a single-point forecast cannot see.
 
 Output `SkyContext { window, horizonGap, gapBearing, canvas:{high,mid}, verdict,
-confidence, perSample[] }`. Thresholds (`25/60/15/70`, the 25–70 canvas band)
-live in one `sky/constants.ts`, tuned after real results. **v1 scope:**
+confidence, perSample[] }`. Thresholds (`25` gap / `60` bank / `15` empty-canvas;
+canvas enforces only the `≥25%` lower bound) live in one `sky/constants.ts`,
+tuned after real results. Confidence also scales by **sample coverage** (the
+fraction of directional samples Open-Meteo actually returned), so a partial
+response yields lower confidence rather than a confident wrong read. **v1 scope:**
 sun-direction only — anti-solar afterglow (eastern sky after a sunset) deferred.
 
 ## Component D — Color read + brief rendering

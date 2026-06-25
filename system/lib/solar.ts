@@ -84,5 +84,8 @@ export function sunBearings(lat: number, _lng: number, date: Date): SunBearings 
     (Math.sin(declRad) - Math.sin(altRad) * Math.sin(latRad)) /
     (Math.cos(altRad) * Math.cos(latRad));
   const az0 = Math.acos(Math.max(-1, Math.min(1, cosAz))) / rad; // 0..180, east side
+  // 360 - az0 assumes the sun sets on the western half of the compass (valid for
+  // the configured northern-mid-latitude origin; would need revisiting for
+  // equatorial/southern origins).
   return { sunriseAz: az0, sunsetAz: 360 - az0 };
 }

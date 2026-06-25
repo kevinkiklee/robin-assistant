@@ -72,14 +72,17 @@ function nearestHourIso(localIso: string): string {
   return `${d}T${String(hour).padStart(2, '0')}:00`;
 }
 
+import type { CloudLayers } from '../../../lib/sky/types.ts';
+
 /**
- * Cloud layers for `loc` at the rounded local hour `hourIso`. Defensive: a
- * missing location or hour reads as a clear sample {0,0,0} (directional already
- * lowers confidence on sparse data) rather than throwing.
+ * Cloud layers for `loc` at the rounded local hour `hourIso`. Returns null
+ * when the location is missing or the hour is not in the forecast, so callers
+ * can distinguish "no data" from a genuinely clear sky (coverage confidence).
  */
-function layersAt(loc: OmLocation | undefined, hourIso: string) {
-  const idx = loc?.hourly?.time?.indexOf(hourIso) ?? -1;
-  if (!loc || idx < 0) return { low: 0, mid: 0, high: 0 };
+function layersAt(loc: OmLocation | undefined, hourIso: string): CloudLayers | null {
+  if (!loc) return null;
+  const idx = loc.hourly?.time?.indexOf(hourIso) ?? -1;
+  if (idx === -1) return null;
   return {
     low: loc.hourly.cloud_cover_low?.[idx] ?? 0,
     mid: loc.hourly.cloud_cover_mid?.[idx] ?? 0,
@@ -180,14 +183,22 @@ export const integration: Integration = {
     const buildSamples = (
       samples: Array<{ distKm: number; bearing: number; lat: number; lng: number }>,
       hourIso: string,
-    ): SamplePoint[] =>
-      samples.map((sp) => ({
-        distKm: sp.distKm,
-        bearing: sp.bearing,
-        lat: sp.lat,
-        lng: sp.lng,
-        layers: layersAt(locFor(sp.lat, sp.lng), hourIso),
-      }));
+    ): { points: SamplePoint[]; coverage: number } => {
+      let found = 0;
+      const points = samples.map((sp) => {
+        const result = layersAt(locFor(sp.lat, sp.lng), hourIso);
+        if (result !== null) found++;
+        return {
+          distKm: sp.distKm,
+          bearing: sp.bearing,
+          lat: sp.lat,
+          lng: sp.lng,
+          layers: result ?? { low: 0, mid: 0, high: 0 },
+        };
+      });
+      const coverage = samples.length ? found / samples.length : 0;
+      return { points, coverage };
+    };
 
     if (skyEnabled) {
       const daily = originLoc.daily;
@@ -203,11 +214,13 @@ export const integration: Integration = {
           ? solarTimes(lat, lng, new Date(now.valueOf() + 86400000)).sunset
           : todaySunset;
         if (instant) sunsetLeadH = (instant.valueOf() - now.valueOf()) / 3.6e6;
+        const { points: sunsetPoints, coverage: sunsetCoverage } = buildSamples(sunsetSamples, sunsetHourIso);
         const ctxOut = skyContext({
           window: 'sunset' as Window,
           azimuth: sunsetAz,
-          samples: buildSamples(sunsetSamples, sunsetHourIso),
+          samples: sunsetPoints,
           leadHours: sunsetLeadH ?? 0,
+          coverage: sunsetCoverage,
         });
         sunsetRead = colorRead(ctxOut);
       }
@@ -225,11 +238,13 @@ export const integration: Integration = {
           ? solarTimes(lat, lng, new Date(now.valueOf() + 86400000)).sunrise
           : todaySunrise;
         if (instant) sunriseLeadH = (instant.valueOf() - now.valueOf()) / 3.6e6;
+        const { points: sunrisePoints, coverage: sunriseCoverage } = buildSamples(sunriseSamples, sunriseHourIso);
         const ctxOut = skyContext({
           window: 'sunrise' as Window,
           azimuth: sunriseAz,
-          samples: buildSamples(sunriseSamples, sunriseHourIso),
+          samples: sunrisePoints,
           leadHours: sunriseLeadH ?? 0,
+          coverage: sunriseCoverage,
         });
         sunriseRead = colorRead(ctxOut);
       }
@@ -286,7 +301,7 @@ export const integration: Integration = {
         dates: { sunrise: sunriseDate, sunset: sunsetDate },
       });
 
-      const openKeys = listAlerts(ctx.db, {})
+      const openKeys = listAlerts(ctx.db, { includeAcked: true })
         .filter((a) => a.source === 'sky')
         .map((a) => a.key);
       await fireMatches({ db: ctx.db, matches, openKeys });
