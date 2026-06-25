@@ -38,7 +38,7 @@ export interface ColorRead {
   azimuth: number;
 }
 
-export type RecipeId = 'sunrise_color' | 'sunset_color' | 'fog_sunrise' | 'rain_clearing';
+export type RecipeId = 'sunrise_color' | 'sunset_color' | 'fog_sunrise' | 'rain_clearing' | 'moon' | 'tide_window';
 
 export interface RecipeMatch {
   recipe: RecipeId;

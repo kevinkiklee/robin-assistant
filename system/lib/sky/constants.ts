@@ -12,4 +12,5 @@ export const SKY = {
   fogAlertMinIndex: 6, // ≥ "likely"
   sunsetLeadHours: [1.5, 5] as [number, number], // same-day sunset alert gate
   sunriseLeadHours: [6, 14] as [number, number], // night-before sunrise heads-up gate
+  moonMinIllumination: 0.9, // full/near-full moon alert threshold
 } as const;
