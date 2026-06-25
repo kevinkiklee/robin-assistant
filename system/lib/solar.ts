@@ -72,7 +72,9 @@ export interface SunBearings {
 }
 
 /** Compass bearing (deg from N) where the sun crosses the horizon (alt −0.833°). */
-export function sunBearings(lat: number, lng: number, date: Date): SunBearings {
+export function sunBearings(lat: number, _lng: number, date: Date): SunBearings {
+  // Longitude does not affect the horizon azimuth (only lat + declination do);
+  // _lng is accepted solely for call-site symmetry with solarTimes(lat, lng, date).
   const latRad = lat * rad;
   const { declRad } = eqTimeAndDecl(date);
   const ha = hourAngleDeg(-0.833, latRad, declRad);
