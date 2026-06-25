@@ -329,7 +329,7 @@ function detectRainClearing(loc: OmLocation, sunsetHourIso: string): boolean {
   for (let i = Math.max(0, idx - 3); i < idx; i++) {
     const p = loc.hourly.precipitation?.[i] ?? 0;
     const pp = loc.hourly.precipitation_probability?.[i] ?? 0;
-    if (p > 0 || pp >= 50) return true;
+    if (p >= 0.5 || pp >= 50) return true;
   }
   return false;
 }
