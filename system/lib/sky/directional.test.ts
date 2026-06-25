@@ -41,3 +41,14 @@ test('confidence is strictly lower at coverage 0.3 than coverage 1', () => {
   assert.ok(sparse.confidence < full.confidence,
     `expected sparse.confidence (${sparse.confidence}) < full.confidence (${full.confidence})`);
 });
+
+test('confidence is strictly lower when ensemble agreement is low', () => {
+  const samples = [near(100, 0, 0), far(5), far(10)];
+  const agree = skyContext({ window: 'sunset', azimuth: 302, leadHours: 2, samples, agreement: 1 });
+  const disagree = skyContext({ window: 'sunset', azimuth: 302, leadHours: 2, samples, agreement: 0.4 });
+  assert.ok(disagree.confidence < agree.confidence,
+    `expected disagree.confidence (${disagree.confidence}) < agree.confidence (${agree.confidence})`);
+  // Default (omitted) agreement must behave as 1 (no penalty).
+  const dflt = skyContext({ window: 'sunset', azimuth: 302, leadHours: 2, samples });
+  assert.equal(dflt.confidence, agree.confidence, 'omitted agreement defaults to 1');
+});

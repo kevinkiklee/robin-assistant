@@ -1,3 +1,10 @@
+// Pin the process timezone to the integration's domain TZ before any Date math.
+// solarTimes() is UTC-based (TZ-independent), but parseTides() interprets its
+// "YYYY-MM-DD HH:mm" strings as LOCAL time and moonInfo() derives the local
+// calendar day from host-local fields — so a deterministic TZ keeps the tide
+// morning-golden-window match and the moon date stable across machines/CI.
+process.env.TZ = 'America/New_York';
+
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -5,6 +12,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
+import { listAlerts } from '../../../kernel/runtime/alert-store.ts';
+import { moonInfo } from '../../../lib/lunar.ts';
 import { sunBearings } from '../../../lib/solar.ts';
 import { SKY } from '../../../lib/sky/constants.ts';
 import { samplePoints } from '../../../lib/sky/geo.ts';
@@ -119,20 +128,157 @@ function buildResponse(): object[] {
   });
 }
 
+// ── Ensemble fixture ───────────────────────────────────────────────────────────
+//
+// Open-Meteo ensemble response: members are `cloud_cover_member01..NN` (numbering
+// starts at 01; the bare `cloud_cover` is the control run and is NOT a member).
+// `spread` controls per-member disagreement at the sunset window hour
+// (2026-06-25T21:00): 0 ⇒ all members agree (agreement≈1), large ⇒ low agreement.
+function buildEnsembleResponse(opts: { spread: number; members?: number }): object {
+  const memberCount = opts.members ?? 12;
+  const times: string[] = [];
+  for (let d = 0; d < 2; d++) {
+    for (let h = 0; h < 24; h++) {
+      const day = d === 0 ? '2026-06-25' : '2026-06-26';
+      times.push(`${day}T${String(h).padStart(2, '0')}:00`);
+    }
+  }
+  const N = times.length;
+  const sunsetIdx = times.indexOf('2026-06-25T21:00');
+
+  const hourly: Record<string, unknown> = { time: times, cloud_cover: Array<number>(N).fill(50) };
+  for (let m = 1; m <= memberCount; m++) {
+    const arr = Array<number>(N).fill(50);
+    if (sunsetIdx >= 0) {
+      // Symmetric ±spread fan around 50 across members → controlled stdev.
+      const sign = m % 2 === 0 ? 1 : -1;
+      arr[sunsetIdx] = Math.max(0, Math.min(100, 50 + sign * opts.spread));
+    }
+    hourly[`cloud_cover_member${String(m).padStart(2, '0')}`] = arr;
+  }
+  return { latitude: 40.75, longitude: -74.0, hourly_units: { time: 'iso8601' }, hourly };
+}
+
+// ── Tide fixture ───────────────────────────────────────────────────────────────
+//
+// NOAA CO-OPS predictions JSON (product=predictions&interval=hilo). Times are
+// local "YYYY-MM-DD HH:mm". By default a LOW tide lands inside the morning-golden
+// window (sunrise ~05:25 → golden-hour-end ~06:?? on 2026-06-26).
+function buildTideResponse(): object {
+  return {
+    predictions: [
+      { t: '2026-06-25T23:10', v: '4.8', type: 'H' },
+      { t: '2026-06-26T05:40', v: '0.3', type: 'L' }, // morning-golden low (in window)
+      { t: '2026-06-26T11:50', v: '4.9', type: 'H' },
+      { t: '2026-06-26T18:05', v: '0.5', type: 'L' },
+    ],
+  };
+}
+
+// ── Moon-path fixture ──────────────────────────────────────────────────────────
+//
+// At 2026-07-01T20:00 ET the moon is near-full (illum ≈ 0.974) and RISES ~02:00Z
+// (≈ leadH 2.0, inside sunsetLeadHours [1.5,5]) at azimuth ≈ 119° ESE → a dusk
+// moonrise feeding the SUNSET window. We build a forecast response covering the
+// tick's full coord set for this instant (origin + sun fans + moon fan) with a
+// CLEAR sky at every hour (all cloud layers 0) so the far-field horizon is open
+// (horizonClear=true) and the moon recipe input is populated.
+const MOON_NOW = new Date('2026-07-01T20:00:00-04:00');
+
+function buildMoonResponse(): object[] {
+  const origin = SKY.origin;
+  const { sunriseAz, sunsetAz } = sunBearings(origin.lat, origin.lng, MOON_NOW);
+  const moon = moonInfo(origin.lat, origin.lng, MOON_NOW);
+
+  const coords: Array<{ lat: number; lng: number }> = [];
+  const seen = new Set<string>();
+  const push = (c: { lat: number; lng: number }) => {
+    const key = `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    coords.push({ lat: c.lat, lng: c.lng });
+  };
+  push(origin);
+  if (sunriseAz != null) for (const s of samplePoints(origin, sunriseAz)) push(s);
+  if (sunsetAz != null) for (const s of samplePoints(origin, sunsetAz)) push(s);
+  // Moon fan (dusk moonrise → sunset window).
+  if (moon.riseAz != null) for (const s of samplePoints(origin, moon.riseAz)) push(s);
+
+  const times: string[] = [];
+  for (let d = 0; d < 2; d++) {
+    for (let h = 0; h < 24; h++) {
+      const day = d === 0 ? '2026-07-01' : '2026-07-02';
+      times.push(`${day}T${String(h).padStart(2, '0')}:00`);
+    }
+  }
+  const N = times.length;
+  const zeros = () => Array<number>(N).fill(0);
+
+  return coords.map(({ lat, lng }) => ({
+    latitude: lat,
+    longitude: lng,
+    current: { temperature_2m: 75, weather_code: 1, wind_speed_10m: 6, cloud_cover: 5 },
+    hourly: {
+      time: times,
+      cloud_cover: zeros(),
+      cloud_cover_low: zeros(), // clear far-field → horizonGap/horizonClear true
+      cloud_cover_mid: zeros(),
+      cloud_cover_high: zeros(),
+      precipitation: zeros(),
+      precipitation_probability: zeros(),
+      temperature_2m: Array<number>(N).fill(68),
+      dew_point_2m: Array<number>(N).fill(45),
+      relative_humidity_2m: Array<number>(N).fill(50),
+      wind_speed_10m: Array<number>(N).fill(6),
+      weather_code: Array<number>(N).fill(1),
+      visibility: Array<number>(N).fill(12000),
+    },
+    daily: {
+      time: ['2026-07-01', '2026-07-02'],
+      sunrise: ['2026-07-01T05:28', '2026-07-02T05:28'],
+      sunset: ['2026-07-01T20:30', '2026-07-02T20:30'],
+    },
+  }));
+}
+
 // ── Context factory ───────────────────────────────────────────────────────────
 
+interface FetchOverrides {
+  forecast?: () => Promise<any>; // api.open-meteo.com/v1/forecast
+  ensemble?: () => Promise<any>; // ensemble-api.open-meteo.com
+  tide?: () => Promise<any>; // api.tidesandcurrents.gov
+}
+
 function makeCtx(
-  captured: { payload?: any; content?: string },
-  opts: { skyOff?: boolean; db?: any; fetchResponse?: () => Promise<any> } = {},
+  captured: { payload?: any; content?: string; warns?: string[] },
+  opts: {
+    skyOff?: boolean;
+    db?: any;
+    fetchResponse?: () => Promise<any>;
+    fetchByUrl?: FetchOverrides;
+    state?: Record<string, string>;
+    now?: Date;
+  } = {},
 ) {
   const kv = new Map<string, string>();
   if (opts.skyOff) kv.set('sky_context', 'off');
+  for (const [k, v] of Object.entries(opts.state ?? {})) kv.set(k, v);
 
-  const defaultFetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => buildResponse(),
-  });
+  const ok = (json: () => Promise<any>) => async () => ({ ok: true, status: 200, json });
+
+  // Route by host: forecast vs ensemble-api vs tidesandcurrents. Defaults reuse
+  // the existing fixtures so legacy tests behave unchanged.
+  const ov = opts.fetchByUrl ?? {};
+  const routedFetch = async (url: string) => {
+    if (url.includes('ensemble-api.open-meteo.com')) {
+      return (ov.ensemble ?? ok(async () => buildEnsembleResponse({ spread: 0 })))();
+    }
+    if (url.includes('api.tidesandcurrents.gov')) {
+      return (ov.tide ?? ok(async () => buildTideResponse()))();
+    }
+    // api.open-meteo.com/v1/forecast (origin + sample fans).
+    return (ov.forecast ?? ok(async () => buildResponse()))();
+  };
 
   return {
     state: {
@@ -140,8 +286,8 @@ function makeCtx(
       set: (k: string, v: string) => void kv.set(k, v),
       delete: (k: string) => void kv.delete(k),
     },
-    fetch: (opts.fetchResponse ?? defaultFetch) as any,
-    now: () => TEST_NOW,
+    fetch: (opts.fetchResponse ?? routedFetch) as any,
+    now: () => opts.now ?? TEST_NOW,
     ingest: async (input: any) => {
       captured.payload = input.payload;
       captured.content = input.content;
@@ -154,7 +300,14 @@ function makeCtx(
         all: () => [],
       }),
     }) as any,
-    log: { info() {}, warn() {}, error() {} },
+    log: {
+      info() {},
+      warn(msg: string) {
+        if (!captured.warns) captured.warns = [];
+        captured.warns.push(msg);
+      },
+      error() {},
+    },
     llm: null,
     checkOutbound: () => ({ allow: true }) as any,
   } as any;
@@ -210,6 +363,174 @@ test('weather: behavioral — sunset band is promising with controlled cloud pat
       cap.payload.sky.sunset.why.toLowerCase().includes('wnw'),
     `sunset.why mentions WNW horizon (got: "${cap.payload.sky.sunset.why}")`,
   );
+});
+
+test('weather: payload carries moon + tide blocks (ephemeris + CO-OPS)', async () => {
+  const cap: { payload?: any } = {};
+  const ctx = makeCtx(cap);
+  const r = await integration.tick!(ctx);
+
+  assert.equal(r.status, 'ok');
+  // Moon block: raw ephemeris (always present regardless of illumination gate).
+  assert.ok(cap.payload.moon, 'moon block present');
+  assert.equal(typeof cap.payload.moon.illumination, 'number', 'moon.illumination numeric');
+  assert.equal(typeof cap.payload.moon.phaseName, 'string', 'moon.phaseName string');
+  // rise/set are ISO strings (or null) — at TEST_NOW the ephemeris yields both.
+  if (cap.payload.moon.rise !== null) {
+    assert.match(cap.payload.moon.rise, /^\d{4}-\d{2}-\d{2}T/, 'moon.rise ISO');
+  }
+  if (cap.payload.moon.set !== null) {
+    assert.match(cap.payload.moon.set, /^\d{4}-\d{2}-\d{2}T/, 'moon.set ISO');
+  }
+
+  // Tide block: NOAA fixture has a LOW at 2026-06-26 05:40 ET → inside the
+  // morning-golden window (sunrise 05:25 → golden-hour-end ~06:06 ET).
+  assert.ok(cap.payload.tide, 'tide block present');
+  assert.ok(cap.payload.tide.lowInGolden, 'tide.lowInGolden present (low in morning-golden window)');
+  assert.match(cap.payload.tide.lowInGolden.time, /^\d{4}-\d{2}-\d{2}T/, 'lowInGolden.time ISO');
+  assert.equal(typeof cap.payload.tide.lowInGolden.heightFt, 'number', 'lowInGolden.heightFt numeric');
+  assert.ok(cap.payload.tide.nextHigh, 'tide.nextHigh present');
+  assert.ok(cap.payload.tide.nextLow, 'tide.nextLow present');
+
+  // Sky still intact (existing behavior preserved).
+  assert.equal(cap.payload.sky.sunset.band, 'promising', 'sunset band still promising');
+});
+
+test('weather: ensemble disagreement lowers sunset confidence', async () => {
+  // Baseline: members all agree (spread 0 → agreement ≈ 1).
+  const capAgree: { payload?: any } = {};
+  const ctxAgree = makeCtx(capAgree, {
+    fetchByUrl: {
+      ensemble: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => buildEnsembleResponse({ spread: 0 }),
+      }),
+    },
+  });
+  await integration.tick!(ctxAgree);
+
+  // Disagreement: wide member spread at the sunset hour → agreement < 1.
+  const capDisagree: { payload?: any } = {};
+  const ctxDisagree = makeCtx(capDisagree, {
+    fetchByUrl: {
+      ensemble: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => buildEnsembleResponse({ spread: 20 }),
+      }),
+    },
+  });
+  await integration.tick!(ctxDisagree);
+
+  const cAgree = capAgree.payload.sky.sunset.confidence;
+  const cDisagree = capDisagree.payload.sky.sunset.confidence;
+  assert.ok(
+    cDisagree < cAgree,
+    `ensemble disagreement must lower confidence (agree=${cAgree}, disagree=${cDisagree})`,
+  );
+  // Band classification is unaffected by the agreement factor.
+  assert.equal(capDisagree.payload.sky.sunset.band, 'promising', 'band still promising under disagreement');
+});
+
+test('weather: per-source degradation — tide fetch rejects → tick ok, tide null, sky intact', async () => {
+  const cap: { payload?: any; warns?: string[] } = {};
+  const ctx = makeCtx(cap, {
+    fetchByUrl: {
+      tide: async () => {
+        throw new Error('simulated CO-OPS outage');
+      },
+    },
+  });
+  const r = await integration.tick!(ctx);
+
+  assert.equal(r.status, 'ok', 'tick still succeeds when tides fail');
+  // Tide block present but its fields null (graceful degradation).
+  assert.ok(cap.payload.tide, 'tide block still present');
+  assert.equal(cap.payload.tide.lowInGolden, null, 'tide.lowInGolden null on failure');
+  assert.equal(cap.payload.tide.nextHigh, null, 'tide.nextHigh null on failure');
+  assert.equal(cap.payload.tide.nextLow, null, 'tide.nextLow null on failure');
+  // Sky read unaffected.
+  assert.equal(cap.payload.sky.sunset.band, 'promising', 'sky intact when tide fails');
+  // Warning logged.
+  assert.ok(
+    (cap.warns ?? []).some((w) => /tide fetch failed/.test(w)),
+    'warn logged on tide failure',
+  );
+});
+
+test('weather: per-source degradation — ensemble fetch rejects → agreement falls back, tick ok', async () => {
+  // With ensemble failing, agreement → 1: confidence must equal the no-ensemble
+  // baseline (the default mock returns the OM array, which has no member keys).
+  const capFail: { payload?: any; warns?: string[] } = {};
+  const ctxFail = makeCtx(capFail, {
+    fetchByUrl: {
+      ensemble: async () => {
+        throw new Error('simulated ensemble-api outage');
+      },
+    },
+  });
+  const r = await integration.tick!(ctxFail);
+  assert.equal(r.status, 'ok', 'tick still succeeds when ensemble fails');
+
+  // Baseline with an agreement≈1 ensemble fixture → same confidence as fallback.
+  const capAgree: { payload?: any } = {};
+  const ctxAgree = makeCtx(capAgree, {
+    fetchByUrl: {
+      ensemble: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => buildEnsembleResponse({ spread: 0 }),
+      }),
+    },
+  });
+  await integration.tick!(ctxAgree);
+
+  assert.equal(
+    capFail.payload.sky.sunset.confidence,
+    capAgree.payload.sky.sunset.confidence,
+    'ensemble failure falls back to agreement=1 (same confidence as full-agreement ensemble)',
+  );
+  assert.equal(capFail.payload.sky.sunset.band, 'promising', 'sky intact when ensemble fails');
+  assert.ok(
+    (capFail.warns ?? []).some((w) => /ensemble fetch failed/.test(w)),
+    'warn logged on ensemble failure',
+  );
+});
+
+test('weather: near-full dusk moonrise populates the moon recipe → moon alert fires', async () => {
+  // Real DB so fireMatches can record/resolve alerts. At MOON_NOW the moon is
+  // near-full and rises ~2h out (sunset band) over a clear horizon → moon recipe.
+  const dir = mkdtempSync(join(tmpdir(), 'robin-weather-moon-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
+  applyMigrations(db, allMigrations);
+
+  // Sanity-check the fixture's premise (guards against ephemeris drift).
+  const m = moonInfo(SKY.origin.lat, SKY.origin.lng, MOON_NOW);
+  assert.ok(m.illumination >= SKY.moonMinIllumination, `moon near-full (got ${m.illumination})`);
+  const riseLeadH = m.rise ? (m.rise.valueOf() - MOON_NOW.valueOf()) / 3.6e6 : null;
+  assert.ok(
+    riseLeadH != null && riseLeadH >= SKY.sunsetLeadHours[0] && riseLeadH <= SKY.sunsetLeadHours[1],
+    `moonrise lead in sunset band (got ${riseLeadH})`,
+  );
+
+  const cap: { payload?: any } = {};
+  const ctx = makeCtx(cap, { db, now: MOON_NOW, fetchByUrl: { forecast: async () => ({ ok: true, status: 200, json: async () => buildMoonResponse() }) } });
+  const r = await integration.tick!(ctx);
+
+  assert.equal(r.status, 'ok');
+  // Moon ephemeris present in payload.
+  assert.ok(cap.payload.moon.illumination >= SKY.moonMinIllumination, 'payload moon near-full');
+  assert.equal(typeof cap.payload.moon.riseAz, 'number', 'moon.riseAz numeric');
+
+  // The moon recipe fired: a `moon:<sunset-date>` sky alert was recorded.
+  const alerts = listAlerts(db, { includeAcked: true }).filter((a) => a.source === 'sky');
+  assert.ok(
+    alerts.some((a) => a.key.startsWith('moon:')),
+    `expected a moon: alert (got keys: ${alerts.map((a) => a.key).join(', ') || 'none'})`,
+  );
+  closeDb(db);
 });
 
 test('weather: kill-switch — sky_context=off yields null sky reads and no alert', async () => {

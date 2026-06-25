@@ -10,6 +10,8 @@ export function skyContext(opts: {
   samples: SamplePoint[];
   leadHours: number;
   coverage?: number;
+  /** Ensemble agreement factor (0..1). 1 = full agreement / no spread signal. */
+  agreement?: number;
 }): SkyContext {
   const { window, azimuth, samples, leadHours } = opts;
   const farField = samples.filter((s) => s.distKm >= SKY.farFieldKm);
@@ -39,7 +41,7 @@ export function skyContext(opts: {
   );
   const canvasMargin = Math.abs(canvasStrength - bandLo);
   const marginConf = clamp01(0.6 + Math.min(gapMargin, canvasMargin) / 25); // edge cases → ~0.6
-  const confidence = clamp01(leadConf * marginConf * (opts.coverage ?? 1));
+  const confidence = clamp01(leadConf * marginConf * (opts.coverage ?? 1) * (opts.agreement ?? 1));
 
   return {
     window,

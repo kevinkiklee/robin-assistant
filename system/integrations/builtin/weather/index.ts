@@ -1,14 +1,20 @@
 import { listAlerts } from '../../../kernel/runtime/alert-store.ts';
+import { type MoonInfo, moonInfo } from '../../../lib/lunar.ts';
 import { solarTimes, sunBearings } from '../../../lib/solar.ts';
 import { colorRead } from '../../../lib/sky/color.ts';
 import { SKY } from '../../../lib/sky/constants.ts';
 import { fireMatches } from '../../../lib/sky/deliver.ts';
 import { skyContext } from '../../../lib/sky/directional.ts';
+import { agreementFactor } from '../../../lib/sky/ensemble.ts';
 import { samplePoints } from '../../../lib/sky/geo.ts';
 import { matchRecipes } from '../../../lib/sky/recipes.ts';
 import type { ColorRead, SamplePoint, Window } from '../../../lib/sky/types.ts';
+import { lowTideInWindow, nextTides, parseTides } from '../../../lib/tides.ts';
 import type { Integration } from '../../_runtime/types.ts';
 import { type FogNight, fogNights, type OmHourly, wmoText } from './fog.ts';
+
+/** Default NOAA CO-OPS tide-prediction station: Beach Channel (bridge), Jamaica Bay, NY. */
+const DEFAULT_TIDE_STATION = '8517137';
 
 /** One Open-Meteo location object (timezone=auto → local ISO timestamps). */
 interface OmLocation {
@@ -119,6 +125,54 @@ export const integration: Integration = {
     pushCoord(origin);
     for (const s of [...sunriseSamples, ...sunsetSamples]) pushCoord(s);
 
+    // --- Moon: near-full moonset near dawn (→sunrise/west) or moonrise near dusk
+    // (→sunset/east). Eligibility is known up front from the ephemeris, so we can
+    // fold the moon-azimuth sample fan into the single batched Open-Meteo request.
+    const moon: MoonInfo = moonInfo(lat, lng, now);
+    const leadH = (t: Date | null): number | null =>
+      t ? (t.valueOf() - now.valueOf()) / 3.6e6 : null;
+    const inBand = (h: number | null, [lo, hi]: readonly [number, number]) =>
+      h != null && h >= lo && h <= hi;
+
+    // Each candidate ties a moon event to the window whose light it complements.
+    type MoonEvent = {
+      window: Window;
+      event: 'rise' | 'set';
+      eventTime: Date;
+      azimuth: number;
+      leadH: number;
+    };
+    const moonCandidates: MoonEvent[] = [];
+    if (skyEnabled && moon.illumination >= SKY.moonMinIllumination) {
+      const setLead = leadH(moon.set);
+      if (moon.set && moon.setAz != null && inBand(setLead, SKY.sunriseLeadHours)) {
+        moonCandidates.push({
+          window: 'sunrise',
+          event: 'set',
+          eventTime: moon.set,
+          azimuth: moon.setAz,
+          leadH: setLead as number,
+        });
+      }
+      const riseLead = leadH(moon.rise);
+      if (moon.rise && moon.riseAz != null && inBand(riseLead, SKY.sunsetLeadHours)) {
+        moonCandidates.push({
+          window: 'sunset',
+          event: 'rise',
+          eventTime: moon.rise,
+          azimuth: moon.riseAz,
+          leadH: riseLead as number,
+        });
+      }
+    }
+    // Fold each candidate's azimuth fan into the batched coord list.
+    const moonSamples = new Map<Window, ReturnType<typeof samplePoints>>();
+    for (const c of moonCandidates) {
+      const fan = samplePoints(origin, c.azimuth);
+      moonSamples.set(c.window, fan);
+      for (const sp of fan) pushCoord(sp);
+    }
+
     const latCsv = coords.map((c) => c.lat.toFixed(4)).join(',');
     const lngCsv = coords.map((c) => c.lng.toFixed(4)).join(',');
     const url =
@@ -150,6 +204,46 @@ export const integration: Integration = {
     const locFor = (lt: number, ln: number) =>
       byCoord.get(`${lt.toFixed(4)},${ln.toFixed(4)}`);
 
+    // --- Ensemble agreement (Open-Meteo ensemble; per-source degradation) ---
+    // Members appear as `cloud_cover_member01..NN` (numbering starts at 01); the
+    // bare `cloud_cover` key is the control run, which we exclude from spread.
+    // On any failure agreementAt() returns 1 (lead-time confidence only), since
+    // ensembleHourly stays null.
+    let ensembleHourly: Record<string, unknown> | null = null;
+    let ensembleTimes: string[] = [];
+    if (skyEnabled) {
+      try {
+        const ensUrl =
+          `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat.toFixed(4)}` +
+          `&longitude=${lng.toFixed(4)}&hourly=cloud_cover&models=icon_seamless` +
+          `&forecast_days=2&timezone=auto`;
+        const ensRes = await ctx.fetch(ensUrl);
+        if (!ensRes.ok) throw new Error(`ensemble-api returned ${ensRes.status}`);
+        const ensRaw = (await ensRes.json()) as { hourly?: Record<string, unknown> };
+        const h = ensRaw.hourly;
+        if (h && Array.isArray(h.time)) {
+          ensembleHourly = h;
+          ensembleTimes = h.time as string[];
+        }
+      } catch (err) {
+        ctx.log.warn(`weather: ensemble fetch failed, agreement→1 (${(err as Error).message})`);
+      }
+    }
+
+    /** Member-spread agreement factor at a rounded local hour, or 1 if unavailable. */
+    const agreementAt = (hourIso: string): number => {
+      if (!ensembleHourly || !ensembleTimes.length) return 1;
+      const idx = ensembleTimes.indexOf(hourIso);
+      if (idx < 0) return 1;
+      const members: number[] = [];
+      for (const [key, arr] of Object.entries(ensembleHourly)) {
+        if (!/^cloud_cover_member\d+$/.test(key)) continue;
+        const v = Array.isArray(arr) ? (arr[idx] as number | null) : null;
+        if (typeof v === 'number' && Number.isFinite(v)) members.push(v);
+      }
+      return members.length >= 2 ? agreementFactor(members) : 1;
+    };
+
     // --- Base scalars + sun windows + fog (always ingested) ---
     const current = originLoc.current;
     const desc = wmoText(current.weather_code);
@@ -170,6 +264,43 @@ export const integration: Integration = {
       blue_hour_evening_end: s.blueHourEveningEnd?.toISOString() ?? null,
     };
 
+    // --- Tides (NOAA CO-OPS; gated + per-source degradation) ---
+    // Morning-golden low tide near Jamaica Bay → exposed flats for shorebirds.
+    // Needs the solar window (s) → computed after base scalars. Any failure logs
+    // and leaves every tide field null; the tick still succeeds.
+    const tideEnabled = ctx.state.get('sky_tide') !== 'off';
+    const tideStation = ctx.state.get('tide_station') || DEFAULT_TIDE_STATION;
+    let tideMorningLow: { time: Date; heightFt: number } | null = null;
+    let tideNextHigh: { time: Date; heightFt: number } | null = null;
+    let tideNextLow: { time: Date; heightFt: number } | null = null;
+    if (skyEnabled && tideEnabled) {
+      try {
+        const today = isoDateLocal(now, tz).replace(/-/g, '');
+        const tideUrl =
+          `https://api.tidesandcurrents.gov/api/prod/datagetter?product=predictions` +
+          `&interval=hilo&datum=MLLW&units=english&time_zone=lst_ldt&format=json` +
+          `&station=${tideStation}&begin_date=${today}&range=48`;
+        const tideRes = await ctx.fetch(tideUrl);
+        if (!tideRes.ok) throw new Error(`tidesandcurrents returned ${tideRes.status}`);
+        const tides = parseTides(await tideRes.json());
+        const next = nextTides(tides, now);
+        tideNextHigh = next.high ? { time: next.high.time, heightFt: next.high.heightFt } : null;
+        tideNextLow = next.low ? { time: next.low.time, heightFt: next.low.heightFt } : null;
+        // Morning-golden low: between sunrise and the end of morning golden hour.
+        const srInstant = s.sunrise ?? null;
+        const ghEnd = s.goldenHourMorningEnd ?? null;
+        if (srInstant && ghEnd) {
+          const low = lowTideInWindow(tides, srInstant, ghEnd);
+          if (low) tideMorningLow = { time: low.time, heightFt: low.heightFt };
+        }
+      } catch (err) {
+        ctx.log.warn(`weather: tide fetch failed, tide→null (${(err as Error).message})`);
+        tideMorningLow = null;
+        tideNextHigh = null;
+        tideNextLow = null;
+      }
+    }
+
     // --- Directional sky reads (gated) ---
     let sunriseRead: ColorRead | null = null;
     let sunsetRead: ColorRead | null = null;
@@ -179,6 +310,9 @@ export const integration: Integration = {
     let sunsetDate = isoDateLocal(now, tz);
     let sunriseHourIso = '';
     let sunsetHourIso = '';
+    // The single moon recipe input (dawn moonset → sunrise, dusk moonrise →
+    // sunset). Null when the moon isn't near-full or no event is near a window.
+    let moonInput: NonNullable<Parameters<typeof matchRecipes>[0]['moon']> | null = null;
 
     const buildSamples = (
       samples: Array<{ distKm: number; bearing: number; lat: number; lng: number }>,
@@ -221,6 +355,7 @@ export const integration: Integration = {
           samples: sunsetPoints,
           leadHours: sunsetLeadH ?? 0,
           coverage: sunsetCoverage,
+          agreement: agreementAt(sunsetHourIso),
         });
         sunsetRead = colorRead(ctxOut);
       }
@@ -245,8 +380,41 @@ export const integration: Integration = {
           samples: sunrisePoints,
           leadHours: sunriseLeadH ?? 0,
           coverage: sunriseCoverage,
+          agreement: agreementAt(sunriseHourIso),
         });
         sunriseRead = colorRead(ctxOut);
+      }
+
+      // Moon: run a directional read at each eligible moon event's azimuth using
+      // the fan we already folded into the batched request. The window's sun hour
+      // is the best available proxy for the moon-event hour's cloud forecast.
+      for (const c of moonCandidates) {
+        const fan = moonSamples.get(c.window);
+        if (!fan) continue;
+        const hourIso = c.window === 'sunrise' ? sunriseHourIso : sunsetHourIso;
+        if (!hourIso) continue;
+        const { points } = buildSamples(fan, hourIso);
+        const moonCtx = skyContext({
+          window: c.window,
+          azimuth: c.azimuth,
+          samples: points,
+          leadHours: c.leadH,
+          coverage: 1,
+          agreement: agreementAt(hourIso),
+        });
+        moonInput = {
+          illumination: moon.illumination,
+          event: c.event,
+          eventTime: c.eventTime,
+          azimuth: c.azimuth,
+          horizonClear: moonCtx.horizonGap,
+          phaseName: moon.phaseName,
+          leadH: c.leadH,
+          window: c.window,
+        };
+        // One moon block feeds the recipe; sunrise (dawn moonset) wins if both
+        // events qualify in the same tick (prefer the earlier-in-the-day light).
+        if (c.window === 'sunrise') break;
       }
     }
 
@@ -272,6 +440,25 @@ export const integration: Integration = {
           sunrise: sunriseRead,
           sunset: sunsetRead,
         },
+        moon: {
+          rise: moon.rise?.toISOString() ?? null,
+          set: moon.set?.toISOString() ?? null,
+          riseAz: moon.riseAz,
+          setAz: moon.setAz,
+          illumination: moon.illumination,
+          phaseName: moon.phaseName,
+        },
+        tide: {
+          nextHigh: tideNextHigh
+            ? { time: tideNextHigh.time.toISOString(), heightFt: tideNextHigh.heightFt }
+            : null,
+          nextLow: tideNextLow
+            ? { time: tideNextLow.time.toISOString(), heightFt: tideNextLow.heightFt }
+            : null,
+          lowInGolden: tideMorningLow
+            ? { time: tideMorningLow.time.toISOString(), heightFt: tideMorningLow.heightFt }
+            : null,
+        },
       },
     });
 
@@ -290,6 +477,13 @@ export const integration: Integration = {
       // precip probability) inside it.
       const rainClearing = sunsetHourIso ? detectRainClearing(originLoc, sunsetHourIso) : false;
 
+      const tideInput = tideMorningLow
+        ? {
+            low: { time: tideMorningLow.time, heightFt: tideMorningLow.heightFt },
+            leadH: (tideMorningLow.time.valueOf() - now.valueOf()) / 3.6e6,
+          }
+        : null;
+
       const matches = matchRecipes({
         sunrise: sunriseRead,
         sunset: sunsetRead,
@@ -298,6 +492,8 @@ export const integration: Integration = {
         fogIndex,
         fogCoversSunrise,
         rainClearing,
+        moon: moonInput,
+        tide: tideInput,
         dates: { sunrise: sunriseDate, sunset: sunsetDate },
       });
 
