@@ -1,11 +1,13 @@
 name: weather
 version: 1.0.0
-# 4am keeps the 4:30am daily brief's fog index fresh; 4pm refreshes it for
-# evening planning.
-schedule: "0 4,16 * * *"
+# 4am keeps the 4:30am brief fresh; afternoon ticks (12–20, every 2h) give the
+# 1.5–5h sunset-alert lead gate a candidate in every season; 8pm doubles as the
+# tomorrow-sunrise heads-up.
+schedule: "0 4,12,14,16,18,20 * * *"
+tz: America/New_York
 permissions:
   memory:
     read: true
     write: true
     namespaces: ["weather"]
-  network: ["wttr.in"]
+  network: ["api.open-meteo.com"]
