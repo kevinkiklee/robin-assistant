@@ -36,7 +36,7 @@ export function skyContext(opts: {
     Math.abs(minFarLow - SKY.gapLowCloudMaxPct),
     Math.abs(minFarLow - SKY.bankLowCloudMinPct),
   );
-  const canvasMargin = Math.min(Math.abs(canvasStrength - bandLo), Math.abs(canvasStrength - bandHi));
+  const canvasMargin = Math.abs(canvasStrength - bandLo);
   const marginConf = clamp01(0.6 + Math.min(gapMargin, canvasMargin) / 25); // edge cases → ~0.6
   const confidence = clamp01(leadConf * marginConf);
 

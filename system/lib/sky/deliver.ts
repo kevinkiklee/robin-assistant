@@ -27,13 +27,14 @@ export async function fireMatches(opts: {
     }
   }
 
-  // Record each new match; one merged notification per group.
+  // Record and deliver only truly new matches (not already open).
+  const newMatches = opts.matches.filter((m) => !opts.openKeys.includes(m.key));
   const fired: string[] = [];
-  for (const m of opts.matches) {
+  for (const m of newMatches) {
     recordAlert(opts.db, { severity: 'info', source: 'sky', key: m.key, message: `${m.title} — ${m.body}`, context: { recipe: m.recipe, window: m.window, date: m.windowDate } });
     fired.push(m.key);
   }
-  for (const note of mergeMatches(opts.matches)) await deliver(note);
+  for (const note of mergeMatches(newMatches)) await deliver(note);
 
   return { fired, resolved };
 }
