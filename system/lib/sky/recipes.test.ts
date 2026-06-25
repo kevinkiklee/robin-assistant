@@ -29,3 +29,15 @@ test('sunrise colour + fog merge into one notification', () => {
   assert.equal(notes.length, 1);
   assert.match(notes[0].message, /·/); // bodies joined
 });
+
+test('rain_clearing fires inside the 1.5–5h sunset lead window', () => {
+  const m = matchRecipes({ rainClearing: true, sunsetLeadH: 3, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  assert.equal(m.length, 1);
+  assert.equal(m[0].recipe, 'rain_clearing');
+  assert.equal(m[0].window, 'sunset');
+});
+
+test('rain_clearing suppressed when too soon (<1.5h)', () => {
+  const m = matchRecipes({ rainClearing: true, sunsetLeadH: 0.5, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  assert.equal(m.length, 0);
+});

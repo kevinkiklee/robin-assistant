@@ -25,3 +25,9 @@ test('blocked ⇒ band unlikely, terse, caution null', () => {
   assert.equal(r.band, 'unlikely');
   assert.equal(r.caution, null);
 });
+
+test('promising + horizonGap + confidence ≥ 0.5 ⇒ caution null', () => {
+  const r = colorRead({ ...base, verdict: 'promising', horizonGap: true, confidence: 0.7 });
+  assert.equal(r.band, 'promising');
+  assert.equal(r.caution, null);
+});
