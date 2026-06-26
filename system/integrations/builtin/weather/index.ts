@@ -110,20 +110,34 @@ export const integration: Integration = {
     const { sunriseAz, sunsetAz } = sunBearings(lat, lng, now);
 
     // Build the request coord list: origin first, then both windows' sample
-    // fans, deduped on rounded lat/lng. We retain the per-window coord lists so
-    // each window can rebuild its SamplePoint[] from the right far/near fans.
-    const sunriseSamples = sunriseAz != null ? samplePoints(origin, sunriseAz) : [];
-    const sunsetSamples = sunsetAz != null ? samplePoints(origin, sunsetAz) : [];
+    // fans, deduped on rounded lat/lng. Each sample records the REQUEST INDEX of
+    // its coord so it can read back the matching forecast positionally — the live
+    // Open-Meteo API snaps each requested coordinate to its forecast grid and
+    // echoes the SNAPPED lat/lng, so a rounded-key lookup never matches. The
+    // multi-coordinate response is an array in request order, so results[i] ↔
+    // coords[i]. We retain the per-window coord lists so each window can rebuild
+    // its SamplePoint[] (now carrying `idx`) from the right far/near fans.
+    type IndexedSample = { distKm: number; bearing: number; lat: number; lng: number; idx: number };
+    const sunriseSamplesRaw = sunriseAz != null ? samplePoints(origin, sunriseAz) : [];
+    const sunsetSamplesRaw = sunsetAz != null ? samplePoints(origin, sunsetAz) : [];
     const coords: Array<{ lat: number; lng: number }> = [];
-    const seen = new Set<string>();
-    const pushCoord = (c: { lat: number; lng: number }) => {
+    const seen = new Map<string, number>();
+    /** Push a coord (deduped on rounded lat/lng) and return its request index. */
+    const pushCoord = (c: { lat: number; lng: number }): number => {
       const key = `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
-      if (seen.has(key)) return;
-      seen.add(key);
+      const existing = seen.get(key);
+      if (existing !== undefined) return existing;
+      const idx = coords.length;
+      seen.set(key, idx);
       coords.push({ lat: c.lat, lng: c.lng });
+      return idx;
     };
-    pushCoord(origin);
-    for (const s of [...sunriseSamples, ...sunsetSamples]) pushCoord(s);
+    /** Stamp each raw sample with the request index of its (deduped) coord. */
+    const withIndex = (samples: typeof sunriseSamplesRaw): IndexedSample[] =>
+      samples.map((s) => ({ ...s, idx: pushCoord(s) }));
+    pushCoord(origin); // origin first → request index 0 → data[0] (asserted below)
+    const sunriseSamples = withIndex(sunriseSamplesRaw);
+    const sunsetSamples = withIndex(sunsetSamplesRaw);
 
     // --- Moon: near-full moonset near dawn (→sunrise/west) or moonrise near dusk
     // (→sunset/east). Eligibility is known up front from the ephemeris, so we can
@@ -165,12 +179,11 @@ export const integration: Integration = {
         });
       }
     }
-    // Fold each candidate's azimuth fan into the batched coord list.
-    const moonSamples = new Map<Window, ReturnType<typeof samplePoints>>();
+    // Fold each candidate's azimuth fan into the batched coord list, stamping
+    // each moon sample with its request index (same positional-match contract).
+    const moonSamples = new Map<Window, IndexedSample[]>();
     for (const c of moonCandidates) {
-      const fan = samplePoints(origin, c.azimuth);
-      moonSamples.set(c.window, fan);
-      for (const sp of fan) pushCoord(sp);
+      moonSamples.set(c.window, withIndex(samplePoints(origin, c.azimuth)));
     }
 
     const latCsv = coords.map((c) => c.lat.toFixed(4)).join(',');
@@ -195,14 +208,31 @@ export const integration: Integration = {
       return { status: 'error', message: 'open-meteo response missing origin data' };
     }
 
-    // Map a sample (origin-relative coord) → the matching response location by
-    // rounded lat/lng, so each SamplePoint reads its own forecast column.
-    const byCoord = new Map<string, OmLocation>();
-    for (const loc of data) {
-      byCoord.set(`${loc.latitude.toFixed(4)},${loc.longitude.toFixed(4)}`, loc);
-    }
-    const locFor = (lt: number, ln: number) =>
-      byCoord.get(`${lt.toFixed(4)},${ln.toFixed(4)}`);
+    // Match a sample to its forecast by REQUEST INDEX (results[i] ↔ coords[i]),
+    // NOT by lat/lng: the live API snaps coordinates to its grid and echoes the
+    // snapped lat/lng, so a rounded-key lookup silently misses on every sample
+    // (origin included) → all layers collapse to {0,0,0} and confidence to 0.
+    // Lat/lng is kept only as a non-authoritative sanity check: if a result's
+    // echoed coord is implausibly far (>0.3°, far beyond grid-snap) from what we
+    // requested, the array is likely misaligned, so we log once and skip it.
+    const locByIndex = (idx: number): OmLocation | undefined => {
+      const loc = data[idx];
+      if (!loc) return undefined;
+      const req = coords[idx];
+      if (
+        req &&
+        typeof loc.latitude === 'number' &&
+        typeof loc.longitude === 'number' &&
+        (Math.abs(loc.latitude - req.lat) > 0.3 || Math.abs(loc.longitude - req.lng) > 0.3)
+      ) {
+        ctx.log.warn(
+          `weather: open-meteo result[${idx}] coord ${loc.latitude},${loc.longitude} ` +
+            `is far from requested ${req.lat},${req.lng} — possible response misalignment`,
+        );
+        return undefined;
+      }
+      return loc;
+    };
 
     // --- Ensemble agreement (Open-Meteo ensemble; per-source degradation) ---
     // Members appear as `cloud_cover_member01..NN` (numbering starts at 01); the
@@ -276,14 +306,32 @@ export const integration: Integration = {
     let tideNextLow: { time: Date; heightFt: number } | null = null;
     if (skyEnabled && tideEnabled) {
       try {
+        // CO-OPS datagetter: begin_date is yyyymmdd; range=48 = 48 hours FORWARD
+        // from begin_date (valid begin_date+range combo). hilo high/low predictions.
         const today = isoDateLocal(now, tz).replace(/-/g, '');
         const tideUrl =
           `https://api.tidesandcurrents.gov/api/prod/datagetter?product=predictions` +
           `&interval=hilo&datum=MLLW&units=english&time_zone=lst_ldt&format=json` +
           `&station=${tideStation}&begin_date=${today}&range=48`;
         const tideRes = await ctx.fetch(tideUrl);
-        if (!tideRes.ok) throw new Error(`tidesandcurrents returned ${tideRes.status}`);
-        const tides = parseTides(await tideRes.json());
+        if (!tideRes.ok) {
+          throw new Error(`HTTP ${tideRes.status} for station ${tideStation}`);
+        }
+        const tideJson = (await tideRes.json()) as { error?: { message?: string } };
+        // CO-OPS returns HTTP 200 with a {"error":{"message":...}} body for bad
+        // stations / params / no-data — NOT a non-2xx status. Surface it so the
+        // daemon log shows WHY tide went null instead of silently passing an
+        // error body to parseTides (which would yield []).
+        if (tideJson?.error?.message) {
+          throw new Error(`CO-OPS error (station ${tideStation}): ${tideJson.error.message}`);
+        }
+        const tides = parseTides(tideJson);
+        if (tides.length === 0) {
+          ctx.log.warn(
+            `weather: tide predictions empty for station ${tideStation} ` +
+              `(begin_date=${today}, range=48) — tide→null`,
+          );
+        }
         const next = nextTides(tides, now);
         tideNextHigh = next.high ? { time: next.high.time, heightFt: next.high.heightFt } : null;
         tideNextLow = next.low ? { time: next.low.time, heightFt: next.low.heightFt } : null;
@@ -297,7 +345,10 @@ export const integration: Integration = {
           if (low) tideMorningLow = { time: low.time, heightFt: low.heightFt };
         }
       } catch (err) {
-        ctx.log.warn(`weather: tide fetch failed, tide→null (${(err as Error).message})`);
+        ctx.log.warn(
+          `weather: tide fetch failed for station ${tideStation}, tide→null ` +
+            `(${(err as Error).message})`,
+        );
         tideMorningLow = null;
         tideNextHigh = null;
         tideNextLow = null;
@@ -318,12 +369,12 @@ export const integration: Integration = {
     let moonInput: NonNullable<Parameters<typeof matchRecipes>[0]['moon']> | null = null;
 
     const buildSamples = (
-      samples: Array<{ distKm: number; bearing: number; lat: number; lng: number }>,
+      samples: IndexedSample[],
       hourIso: string,
     ): { points: SamplePoint[]; coverage: number } => {
       let found = 0;
       const points = samples.map((sp) => {
-        const result = layersAt(locFor(sp.lat, sp.lng), hourIso);
+        const result = layersAt(locByIndex(sp.idx), hourIso);
         if (result !== null) found++;
         return {
           distKm: sp.distKm,

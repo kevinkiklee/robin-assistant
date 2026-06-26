@@ -128,6 +128,29 @@ function buildResponse(): object[] {
   });
 }
 
+// ── Grid-snapped response builder (Bug 1 regression) ───────────────────────────
+//
+// The LIVE Open-Meteo API snaps each requested coordinate to its forecast grid
+// and echoes the SNAPPED lat/lng, which differs from what we requested. This
+// builder reproduces that: identical to buildResponse() in every way EXCEPT the
+// echoed `latitude`/`longitude` are perturbed off the requested coord, so any
+// rounded-lat/lng lookup (the old `byCoord`/`locFor`) misses on every sample and
+// every layer collapses to {0,0,0} (confidence 0). With index-based matching the
+// tick must still resolve full coverage and the controlled gap+canvas pattern
+// must still yield a 'promising' sunset with confidence > 0. The array order is
+// preserved (results[i] ↔ coords[i]) — that's the contract under test.
+function buildSnappedResponse(): object[] {
+  // Grid-snap simulation: round to 2 decimals (~1.1 km) AND nudge ~0.02° so the
+  // echoed coord never equals the requested coord at toFixed(4) precision, yet
+  // stays well within the sanity-check tolerance (0.3°).
+  const snap = (v: number) => Math.round(v * 100) / 100 + 0.02;
+  return (buildResponse() as Array<{ latitude: number; longitude: number }>).map((loc) => ({
+    ...loc,
+    latitude: snap(loc.latitude),
+    longitude: snap(loc.longitude),
+  }));
+}
+
 // ── Ensemble fixture ───────────────────────────────────────────────────────────
 //
 // Open-Meteo ensemble response: members are `cloud_cover_member01..NN` (numbering
@@ -362,6 +385,43 @@ test('weather: behavioral — sunset band is promising with controlled cloud pat
     typeof cap.payload.sky.sunset.why === 'string' &&
       cap.payload.sky.sunset.why.toLowerCase().includes('wnw'),
     `sunset.why mentions WNW horizon (got: "${cap.payload.sky.sunset.why}")`,
+  );
+});
+
+test('weather: grid-snapped coords still resolve full coverage (Bug 1 regression)', async () => {
+  // The live API echoes grid-snapped lat/lng (≠ requested). With lat/lng-key
+  // matching every sample misses → {0,0,0} → confidence 0 → bogus "clear". With
+  // index-based matching (results[i] ↔ coords[i]) the controlled gap+canvas
+  // pattern must STILL produce a real, non-degenerate promising verdict.
+  const cap: { payload?: any; warns?: string[] } = {};
+  const ctx = makeCtx(cap, {
+    fetchByUrl: {
+      forecast: async () => ({ ok: true, status: 200, json: async () => buildSnappedResponse() }),
+    },
+  });
+  const r = await integration.tick!(ctx);
+
+  assert.equal(r.status, 'ok');
+  assert.ok(cap.payload.sky.sunset, 'sky.sunset non-null under snapped coords');
+  // The behavioral payoff: same pattern as the exact-coord test still lands.
+  assert.equal(
+    cap.payload.sky.sunset.band,
+    'promising',
+    'snapped coords still yield promising (index-based match resolved the forecast)',
+  );
+  assert.ok(
+    cap.payload.sky.sunset.confidence > 0,
+    `confidence must be > 0 (got ${cap.payload.sky.sunset.confidence}); 0 = the Bug 1 coverage collapse`,
+  );
+  assert.ok(
+    typeof cap.payload.sky.sunset.why === 'string' &&
+      cap.payload.sky.sunset.why.toLowerCase().includes('wnw'),
+    `sunset.why mentions the WNW horizon gap (got: "${cap.payload.sky.sunset.why}")`,
+  );
+  // The sanity-check warn must NOT fire — the snap stays within 0.3° tolerance.
+  assert.ok(
+    !(cap.warns ?? []).some((w) => /response misalignment/.test(w)),
+    'no misalignment warning for a normal grid-snap',
   );
 });
 
