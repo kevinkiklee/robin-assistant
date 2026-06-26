@@ -1,4 +1,5 @@
-import type { Band, ColorRead, SkyContext } from './types.ts';
+import { SKY } from './constants.ts';
+import type { Band, CloudSummary, ColorRead, SkyContext } from './types.ts';
 
 const POINTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 export function bearingLabel(deg: number): string {
@@ -29,5 +30,27 @@ export function colorRead(ctx: SkyContext): ColorRead {
     if (!ctx.horizonGap) caution = `low cloud toward ${dir} may block the light`;
     else if (ctx.confidence < 0.5) caution = `forecast still uncertain`;
   }
-  return { window: ctx.window, band, why, caution, confidence: ctx.confidence, azimuth: ctx.azimuth };
+
+  const nearField = ctx.samples.filter((s) => s.distKm <= SKY.nearFieldKm);
+  const farField = ctx.samples.filter((s) => s.distKm >= SKY.farFieldKm);
+
+  const low =
+    nearField.length > 0
+      ? Math.round(nearField.reduce((sum, s) => sum + s.layers.low, 0) / nearField.length)
+      : 0;
+  const horizonLowPct =
+    farField.length > 0
+      ? Math.round(Math.min(...farField.map((s) => s.layers.low)))
+      : null;
+
+  const clouds: CloudSummary = {
+    high: Math.round(ctx.canvas.high),
+    mid: Math.round(ctx.canvas.mid),
+    low,
+    horizonLowPct,
+    horizonGap: ctx.horizonGap,
+    gapBearing: ctx.gapBearing,
+  };
+
+  return { window: ctx.window, band, why, caution, confidence: ctx.confidence, azimuth: ctx.azimuth, clouds };
 }

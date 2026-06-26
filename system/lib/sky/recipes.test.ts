@@ -5,7 +5,11 @@ import { matchRecipes, mergeMatches } from './recipes.ts';
 import type { ColorRead } from './types.ts';
 
 const promising = (window: 'sunrise' | 'sunset'): ColorRead =>
-  ({ window, band: 'promising', why: 'high cloud + clear horizon', caution: null, confidence: 0.8, azimuth: window === 'sunrise' ? 58 : 302 });
+  ({
+    window, band: 'promising', why: 'high cloud + clear horizon', caution: null, confidence: 0.8,
+    azimuth: window === 'sunrise' ? 58 : 302,
+    clouds: { high: 55, mid: 10, low: 15, horizonLowPct: 5, horizonGap: true, gapBearing: window === 'sunrise' ? 58 : 302 },
+  });
 
 test('sunset colour fires inside the 1.5–5h lead window', () => {
   const m = matchRecipes({ sunset: promising('sunset'), sunsetLeadH: 3, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });

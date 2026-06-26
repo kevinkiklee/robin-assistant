@@ -29,6 +29,15 @@ export interface SkyContext {
   samples: SamplePoint[];
 }
 
+export interface CloudSummary {
+  high: number;          // % high cloud, near-field/overhead mean
+  mid: number;           // % mid cloud overhead
+  low: number;           // % low cloud overhead
+  horizonLowPct: number | null;  // min low cloud at the far field (the horizon toward the sun)
+  horizonGap: boolean;   // is there a low-cloud gap toward the sun azimuth
+  gapBearing: number | null;
+}
+
 export interface ColorRead {
   window: Window;
   band: Band;
@@ -36,6 +45,7 @@ export interface ColorRead {
   caution: string | null;
   confidence: number;
   azimuth: number;
+  clouds: CloudSummary;
 }
 
 export type RecipeId = 'sunrise_color' | 'sunset_color' | 'fog_sunrise' | 'rain_clearing' | 'moon' | 'tide_window';
