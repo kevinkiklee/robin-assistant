@@ -10,4 +10,4 @@ permissions:
     read: true
     write: true
     namespaces: ["weather"]
-  network: ["api.open-meteo.com", "ensemble-api.open-meteo.com", "api.tidesandcurrents.gov"]
+  network: ["api.open-meteo.com", "ensemble-api.open-meteo.com", "api.tidesandcurrents.noaa.gov"]

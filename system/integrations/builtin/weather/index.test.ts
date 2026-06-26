@@ -296,7 +296,7 @@ function makeCtx(
     if (url.includes('ensemble-api.open-meteo.com')) {
       return (ov.ensemble ?? ok(async () => buildEnsembleResponse({ spread: 0 })))();
     }
-    if (url.includes('api.tidesandcurrents.gov')) {
+    if (url.includes('tidesandcurrents')) {
       return (ov.tide ?? ok(async () => buildTideResponse()))();
     }
     // api.open-meteo.com/v1/forecast (origin + sample fans).

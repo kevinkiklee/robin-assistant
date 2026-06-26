@@ -310,7 +310,7 @@ export const integration: Integration = {
         // from begin_date (valid begin_date+range combo). hilo high/low predictions.
         const today = isoDateLocal(now, tz).replace(/-/g, '');
         const tideUrl =
-          `https://api.tidesandcurrents.gov/api/prod/datagetter?product=predictions` +
+          `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions` +
           `&interval=hilo&datum=MLLW&units=english&time_zone=lst_ldt&format=json` +
           `&station=${tideStation}&begin_date=${today}&range=48`;
         const tideRes = await ctx.fetch(tideUrl);
