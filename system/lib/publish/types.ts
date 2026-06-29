@@ -16,6 +16,7 @@ export interface BlobPutOptions {
   contentType?: string;
   cacheControlMaxAge?: number;
   allowOverwrite?: boolean;
+  access?: 'public' | 'private';
 }
 
 export interface BlobPutResult {

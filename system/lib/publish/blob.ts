@@ -13,7 +13,7 @@ export type PutFn = (
   key: string,
   body: string | Buffer,
   opts: {
-    access: 'public';
+    access: 'public' | 'private';
     token: string;
     contentType?: string;
     addRandomSuffix: false;
@@ -121,7 +121,7 @@ export function createBlobClient(opts: CreateBlobClientOptions): BlobClient {
       'PUT',
       () =>
         putFn(key, body, {
-          access: 'public',
+          access: putOpts.access ?? 'public',
           token,
           contentType: putOpts.contentType,
           addRandomSuffix: false,

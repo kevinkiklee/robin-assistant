@@ -206,6 +206,19 @@ test('putBlob: allowOverwrite defaults to false; cacheControlMaxAge omitted when
   assert.ok(!capturedKeys.includes('cacheControlMaxAge'), 'cacheControlMaxAge must be omitted');
 });
 
+test('putBlob forwards access:private when requested', async () => {
+  const calls: Array<{ access: string }> = [];
+  const putFn = (async (_k: string, _b: unknown, opts: { access: string }) => {
+    calls.push({ access: opts.access });
+    return { url: 'https://blob/x' };
+  }) as unknown as PutFn;
+  const c = createBlobClient({ token: 't', putFn, headFn: stubHead(), delFn: stubDel() });
+  await c.putBlob('k', 'body', { access: 'private' });
+  await c.putBlob('k2', 'body');
+  assert.equal(calls[0].access, 'private');
+  assert.equal(calls[1].access, 'public'); // default
+});
+
 // --- delBlob ---
 
 test('delBlob: succeeds on first try', async () => {
