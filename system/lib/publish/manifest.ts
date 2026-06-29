@@ -1,4 +1,4 @@
-import { HTML_CACHE_MAX_AGE } from './config.ts';
+import { HTML_CACHE_MAX_AGE, UNCATEGORIZED } from './config.ts';
 import type { BlobClient, LogRow } from './types.ts';
 
 export interface ManifestEntry {
@@ -7,6 +7,9 @@ export interface ManifestEntry {
   url: string;
   published_at: string;
   updated_at: string;
+  category: string;
+  visibility: 'public' | 'private';
+  description: string | null;
 }
 
 /**
@@ -22,19 +25,27 @@ export function buildManifest(
 ): ManifestEntry[] {
   const bySlug = new Map<
     string,
-    { firstTs: string; lastTs: string; lastAction: string; title: string | null }
+    {
+      firstTs: string; lastTs: string; lastAction: string;
+      title: string | null; category: string; visibility: 'public' | 'private'; description: string | null;
+    }
   >();
   for (const e of entries) {
+    const cat = e.category ?? UNCATEGORIZED;
+    const vis = e.visibility ?? 'public';
+    const desc = e.description ?? null;
     const cur = bySlug.get(e.slug);
     if (!cur) {
-      bySlug.set(e.slug, { firstTs: e.ts, lastTs: e.ts, lastAction: e.action, title: e.title });
+      bySlug.set(e.slug, {
+        firstTs: e.ts, lastTs: e.ts, lastAction: e.action,
+        title: e.title, category: cat, visibility: vis, description: desc,
+      });
       continue;
     }
     if (e.ts < cur.firstTs) cur.firstTs = e.ts;
     if (e.ts >= cur.lastTs) {
-      cur.lastTs = e.ts;
-      cur.lastAction = e.action;
-      cur.title = e.title;
+      cur.lastTs = e.ts; cur.lastAction = e.action;
+      cur.title = e.title; cur.category = cat; cur.visibility = vis; cur.description = desc;
     }
   }
   const out: ManifestEntry[] = [];
@@ -46,6 +57,9 @@ export function buildManifest(
       url: `${env.publicUrl}/@${env.userId}/${slug}`,
       published_at: v.firstTs,
       updated_at: v.lastTs,
+      category: v.category,
+      visibility: v.visibility,
+      description: v.description,
     });
   }
   out.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
@@ -53,8 +67,10 @@ export function buildManifest(
 }
 
 /**
- * Build and PUT the per-user manifest to `users/<userId>/index.json`. Best-effort
- * — the caller wraps this in try/catch so a manifest failure never fails the
+ * Build and PUT the per-user manifests. Public entries go to
+ * `users/<userId>/index.json` (access:'public'); private entries go to
+ * `users/<userId>/index.private.json` (access:'private'). Best-effort —
+ * the caller wraps this in try/catch so a manifest failure never fails the
  * publish; the next publish's full rebuild repairs it.
  */
 export async function writeManifest(
@@ -62,10 +78,19 @@ export async function writeManifest(
   env: { publicUrl: string; userId: string },
   entries: LogRow[],
 ): Promise<void> {
-  const manifest = buildManifest(entries, env);
-  await blob.putBlob(`users/${env.userId}/index.json`, JSON.stringify(manifest), {
+  const all = buildManifest(entries, env);
+  const publicEntries = all.filter((e) => e.visibility !== 'private');
+  const privateEntries = all.filter((e) => e.visibility === 'private');
+  await blob.putBlob(`users/${env.userId}/index.json`, JSON.stringify(publicEntries), {
     contentType: 'application/json; charset=utf-8',
     cacheControlMaxAge: HTML_CACHE_MAX_AGE,
     allowOverwrite: true,
+    access: 'public',
+  });
+  await blob.putBlob(`users/${env.userId}/index.private.json`, JSON.stringify(privateEntries), {
+    contentType: 'application/json; charset=utf-8',
+    cacheControlMaxAge: HTML_CACHE_MAX_AGE,
+    allowOverwrite: true,
+    access: 'private',
   });
 }

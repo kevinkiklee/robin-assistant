@@ -66,6 +66,9 @@ export interface LogRow {
   title: string | null;
   assets: string[];
   warnings: string[];
+  category?: string; // optional: legacy rows predate this
+  visibility?: 'public' | 'private';
+  description?: string | null;
 }
 
 export interface TelemetryRow {
