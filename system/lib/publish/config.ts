@@ -45,3 +45,21 @@ export const EXIT_CRASH = 1;
 export const EXIT_POLICY = 2;
 export const EXIT_INPUT = 3;
 export const EXIT_UPSTREAM = 4;
+
+/** Fixed publish taxonomy (display order). Single source of truth. */
+export const CATEGORIES = [
+  'Lens Analysis',
+  'Gear & Comparisons',
+  'Field Guides',
+  'Color Grading',
+  'Critiques',
+  'Essays',
+  'Tools & Setup',
+  'Projects',
+] as const;
+
+/** Fallback bucket for pages published without a category; rendered last. */
+export const UNCATEGORIZED = 'Uncategorized';
+
+/** Allowed `visibility` frontmatter values. */
+export const VISIBILITIES = ['public', 'private'] as const;
