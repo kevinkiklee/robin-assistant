@@ -37,6 +37,7 @@ import type {
   TelemetryRow,
 } from './types.ts';
 import { shouldRefuseUntrusted, stripUntrustedBlocks } from './untrusted.ts';
+import { classify } from './categories.ts';
 
 export class PublishError extends Error {
   readonly code: number;
@@ -131,6 +132,13 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     );
   }
 
+  const classification = classify(frontmatter.category, frontmatter.visibility);
+  if (!classification.ok) {
+    throw new PublishError(EXIT_POLICY, `Refused: ${classification.error}`);
+  }
+  const { category, visibility } = classification;
+  warnings.push(...classification.warnings);
+
   let body = normalizeMarkdown(bodyRaw);
   const stripped = stripUntrustedBlocks(body);
   body = stripped.body;
@@ -187,7 +195,9 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
   else if (mode === 'default') action = origin === 'user-specified' ? 'overwrite' : 'append';
   else throw new PublishError(EXIT_INPUT, `unknown mode: ${mode}`);
 
-  const htmlKeyFor = (s: string): string => `users/${opts.env.userId}/pages/${s}/index.html`;
+  const pagePrefix = visibility === 'private' ? 'private' : 'pages';
+  const htmlKeyFor = (s: string): string =>
+    `users/${opts.env.userId}/${pagePrefix}/${s}/index.html`;
 
   if (action !== 'overwrite') {
     const baseSlug = slug;
@@ -281,6 +291,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     contentType: 'text/html; charset=utf-8',
     cacheControlMaxAge: HTML_CACHE_MAX_AGE,
     allowOverwrite: action === 'overwrite',
+    access: visibility === 'private' ? 'private' : 'public',
   });
 
   const logRow: LogRow = {
@@ -294,11 +305,28 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     title,
     assets: assetKeys,
     warnings,
+    category,
+    visibility,
+    description,
   };
   try {
     await appendLogEntry(opts.logPath, logRow);
   } catch (err) {
     warnings.push(`log append failed: ${(err as Error).message}`);
+  }
+  // Visibility flip: if this slug existed at the opposite-visibility prefix,
+  // remove that stale blob so a now-private page can't linger at a public URL
+  // (and vice versa).
+  try {
+    const { entries: priorEntries } = await readLog(opts.logPath);
+    const prior = [...priorEntries]
+      .reverse()
+      .find((e) => e.slug === slug && e.action !== 'delete' && e.blob_key !== htmlKey);
+    if (prior?.blob_key && (prior.visibility ?? 'public') !== visibility) {
+      await opts.blobClient.delBlob(prior.blob_key).catch(() => null);
+    }
+  } catch {
+    // best-effort cleanup
   }
   // Rebuild + write the per-user index manifest after the page blob is
   // committed. Best-effort: a manifest failure must never fail the publish —
