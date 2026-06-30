@@ -92,6 +92,7 @@ test('private page stored under private prefix with access:private', async () =>
   const dir = await makeTmpDir();
   try {
     const { blobClient, putCalls } = makeRecordingBlob();
+    const { blobClient: privateBlobClient, putCalls: privatePutCalls } = makeRecordingBlob();
     const source = await makeSourceFile(dir, 'category: Field Guides\nvisibility: private\n');
     await publish({
       source,
@@ -99,19 +100,48 @@ test('private page stored under private prefix with access:private', async () =>
       mode: 'overwrite',
       env: TEST_ENV,
       blobClient,
+      privateBlobClient,
       logPath: join(dir, 'pub.log'),
       telemetryPath: join(dir, 'tel.log'),
     });
-    const pagePut = putCalls.find(
+    // Page PUT must go to the PRIVATE client
+    const pagePut = privatePutCalls.find(
       (c) => c.key.includes('/private/') && c.key.endsWith('/index.html'),
     );
-    assert.ok(pagePut, 'page stored under users/<u>/private/<slug>/index.html');
+    assert.ok(pagePut, 'page stored under users/<u>/private/<slug>/index.html on private client');
     assert.equal(pagePut.access, 'private');
-    // Must NOT be under /pages/ prefix
+    // Must NOT be under /pages/ prefix on the public client
     const publicPut = putCalls.find(
       (c) => c.key.includes('/pages/') && c.key.endsWith('/index.html'),
     );
     assert.equal(publicPut, undefined, 'private page must not appear under /pages/ prefix');
+    // index.private.json must go to the PRIVATE client
+    const privManifest = privatePutCalls.find((c) => c.key.endsWith('index.private.json'));
+    assert.ok(privManifest, 'index.private.json must be written to the private client');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('private publish without privateBlobClient is rejected', async () => {
+  const dir = await makeTmpDir();
+  try {
+    const { blobClient } = makeRecordingBlob();
+    const source = await makeSourceFile(dir, 'category: Field Guides\nvisibility: private\n');
+    await assert.rejects(
+      () =>
+        publish({
+          source,
+          slug: 'test-private-guard',
+          mode: 'overwrite',
+          env: TEST_ENV,
+          blobClient,
+          // no privateBlobClient
+          logPath: join(dir, 'pub.log'),
+          telemetryPath: join(dir, 'tel.log'),
+        }),
+      /private blob store/i,
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -121,6 +151,7 @@ test('visibility flip: stale public blob deleted when republished as private', a
   const dir = await makeTmpDir();
   try {
     const { blobClient, store } = makeRecordingBlob();
+    const { blobClient: privateBlobClient, store: privateStore } = makeRecordingBlob();
     const logPath = join(dir, 'pub.log');
     const telPath = join(dir, 'tel.log');
 
@@ -135,6 +166,7 @@ test('visibility flip: stale public blob deleted when republished as private', a
       mode: 'overwrite',
       env: TEST_ENV,
       blobClient,
+      privateBlobClient,
       logPath,
       telemetryPath: telPath,
     });
@@ -152,15 +184,16 @@ test('visibility flip: stale public blob deleted when republished as private', a
       mode: 'overwrite',
       env: TEST_ENV,
       blobClient,
+      privateBlobClient,
       logPath,
       telemetryPath: telPath,
     });
 
-    assert.ok(store.has(privateKey), 'private blob must exist after second publish');
+    assert.ok(privateStore.has(privateKey), 'private blob must exist in the private store after second publish');
     assert.equal(
       store.has(publicKey),
       false,
-      'stale public blob must be deleted after visibility flip to private',
+      'stale public blob must be deleted from public store after visibility flip to private',
     );
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -41,6 +41,7 @@ export interface PublishOptions {
   dryRun?: boolean;
   env: PublishEnv;
   blobClient: BlobClient;
+  privateBlobClient?: BlobClient | null;
   logPath: string;
   telemetryPath: string;
 }

@@ -106,7 +106,10 @@ async function main(): Promise<void> {
 
   // 4. rebuild both manifests
   const blob = createBlobClient({ token });
-  await writeManifest(blob, { publicUrl, userId }, patched);
+  const privateBlob = process.env.BLOB_PRIVATE_READ_WRITE_TOKEN
+    ? createBlobClient({ token: process.env.BLOB_PRIVATE_READ_WRITE_TOKEN })
+    : null;
+  await writeManifest(blob, { publicUrl, userId }, patched, privateBlob);
 
   process.stdout.write(`backfilled ${patched.length} rows; manifests rebuilt.\n`);
 }

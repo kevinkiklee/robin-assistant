@@ -68,18 +68,19 @@ export function buildManifest(
 
 /**
  * Build and PUT the per-user manifests. Public entries go to
- * `users/<userId>/index.json` (access:'public'); private entries go to
- * `users/<userId>/index.private.json` (access:'private') — but only when there
- * is at least one private entry. An unconditional private PUT fails on a
- * public-only Blob store ("Cannot use private access on a public store"), which
- * would surface a spurious manifest-write warning on every all-public publish.
+ * `users/<userId>/index.json` (access:'public') on the PUBLIC client; private
+ * entries go to `users/<userId>/index.private.json` (access:'private') on the
+ * PRIVATE client. The private manifest is skipped entirely when no private
+ * client is provided — writing a private-access blob to a public store throws
+ * "Cannot use private access on a public store", so the guard is here.
  * Best-effort — the caller wraps this in try/catch so a manifest failure never
  * fails the publish; the next publish's full rebuild repairs it.
  */
 export async function writeManifest(
-  blob: BlobClient,
+  blob: BlobClient,                // PUBLIC client
   env: { publicUrl: string; userId: string },
   entries: LogRow[],
+  privateBlob?: BlobClient | null, // PRIVATE client; omit/null → skip private manifest
 ): Promise<void> {
   const all = buildManifest(entries, env);
   const publicEntries = all.filter((e) => e.visibility !== 'private');
@@ -90,8 +91,8 @@ export async function writeManifest(
     allowOverwrite: true,
     access: 'public',
   });
-  if (privateEntries.length > 0) {
-    await blob.putBlob(`users/${env.userId}/index.private.json`, JSON.stringify(privateEntries), {
+  if (privateBlob) {
+    await privateBlob.putBlob(`users/${env.userId}/index.private.json`, JSON.stringify(privateEntries), {
       contentType: 'application/json; charset=utf-8',
       cacheControlMaxAge: HTML_CACHE_MAX_AGE,
       allowOverwrite: true,

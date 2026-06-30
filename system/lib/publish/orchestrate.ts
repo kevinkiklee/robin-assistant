@@ -111,6 +111,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
       slug: opts.slug ?? null,
       env: opts.env,
       blobClient: opts.blobClient,
+      privateBlobClient: opts.privateBlobClient,
       logPath: opts.logPath,
       telemetryPath: opts.telemetryPath,
     });
@@ -138,6 +139,15 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
   }
   const { category, visibility } = classification;
   warnings.push(...classification.warnings);
+
+  const privateClient = opts.privateBlobClient ?? null;
+  if (visibility === 'private' && !privateClient) {
+    throw new PublishError(
+      EXIT_POLICY,
+      'Refused: visibility:private requires a private blob store — set BLOB_PRIVATE_READ_WRITE_TOKEN in user-data/config/secrets/.env',
+    );
+  }
+  const pageClient = visibility === 'private' ? privateClient! : opts.blobClient;
 
   let body = normalizeMarkdown(bodyRaw);
   const stripped = stripUntrustedBlocks(body);
@@ -205,7 +215,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     let attempts = 0;
     let found = false;
     while (attempts < COLLISION_RETRY_LIMIT) {
-      const { exists } = await opts.blobClient.headBlob(htmlKeyFor(candidate));
+      const { exists } = await pageClient.headBlob(htmlKeyFor(candidate));
       if (!exists) {
         slug = candidate;
         found = true;
@@ -287,7 +297,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
 
   if (dryRun) return { ...resultBase, dry_run: true };
 
-  await opts.blobClient.putBlob(htmlKey, fullHtml, {
+  await pageClient.putBlob(htmlKey, fullHtml, {
     contentType: 'text/html; charset=utf-8',
     cacheControlMaxAge: HTML_CACHE_MAX_AGE,
     allowOverwrite: action === 'overwrite',
@@ -322,8 +332,10 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     const prior = [...priorEntries]
       .reverse()
       .find((e) => e.slug === slug && e.action !== 'delete' && e.blob_key !== htmlKey);
-    if (prior?.blob_key && (prior.visibility ?? 'public') !== visibility) {
-      await opts.blobClient.delBlob(prior.blob_key).catch(() => null);
+    const priorVisibility = prior?.visibility ?? 'public';
+    const priorClient = priorVisibility === 'private' ? privateClient : opts.blobClient;
+    if (priorClient && prior?.blob_key && priorVisibility !== visibility) {
+      await priorClient.delBlob(prior.blob_key).catch(() => null);
     }
   } catch {
     // best-effort cleanup
@@ -333,7 +345,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
   // the next publish's full rebuild repairs it.
   try {
     const { entries } = await readLog(opts.logPath);
-    await writeManifest(opts.blobClient, opts.env, entries);
+    await writeManifest(opts.blobClient, opts.env, entries, privateClient);
   } catch (err) {
     warnings.push(`manifest write failed: ${(err as Error).message}`);
   }
@@ -358,6 +370,7 @@ interface DeleteInput {
   slug: string | null;
   env: PublishEnv;
   blobClient: BlobClient;
+  privateBlobClient?: BlobClient | null;
   logPath: string;
   telemetryPath: string;
 }
@@ -367,8 +380,23 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   if (!input.slug) throw new PublishError(EXIT_INPUT, '--slug required for mode=delete');
   const slug = sanitizeSlug(input.slug);
   if (!slug) throw new PublishError(EXIT_INPUT, 'invalid slug');
-  const htmlKey = `users/${input.env.userId}/pages/${slug}/index.html`;
-  const { exists } = await input.blobClient.headBlob(htmlKey);
+
+  // Read the log first so we can pick the right client/prefix for the page blob.
+  const { entries } = await readLog(input.logPath);
+  const latest = [...entries].reverse().find((e) => e.slug === slug && Array.isArray(e.assets));
+
+  const priorVisibility =
+    latest?.visibility ?? (latest?.blob_key?.includes('/private/') ? 'private' : 'public');
+  const pageClient =
+    priorVisibility === 'private' && input.privateBlobClient
+      ? input.privateBlobClient
+      : input.blobClient;
+
+  const pagePrefix = priorVisibility === 'private' ? 'private' : 'pages';
+  const htmlKey =
+    latest?.blob_key ?? `users/${input.env.userId}/${pagePrefix}/${slug}/index.html`;
+
+  const { exists } = await pageClient.headBlob(htmlKey);
 
   if (!exists) {
     try {
@@ -394,14 +422,12 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
     };
   }
 
-  const { entries } = await readLog(input.logPath);
-  const latest = [...entries].reverse().find((e) => e.slug === slug && Array.isArray(e.assets));
   const assetsToDelete = latest?.assets ?? [];
 
   for (const k of assetsToDelete) {
     await input.blobClient.delBlob(k).catch(() => null);
   }
-  await input.blobClient.delBlob(htmlKey);
+  await pageClient.delBlob(htmlKey);
 
   try {
     await appendLogEntry(input.logPath, {
@@ -421,8 +447,8 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   }
   // Refresh the per-user manifest so the deleted slug drops off the index.
   try {
-    const { entries } = await readLog(input.logPath);
-    await writeManifest(input.blobClient, input.env, entries);
+    const { entries: updatedEntries } = await readLog(input.logPath);
+    await writeManifest(input.blobClient, input.env, updatedEntries, input.privateBlobClient ?? null);
   } catch {
     // best-effort; next publish repairs it
   }

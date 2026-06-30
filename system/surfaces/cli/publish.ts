@@ -24,12 +24,14 @@ function telemetryPathFor(userData: string): string {
 
 function readEnvFromProcess(): {
   token: string | undefined;
+  privateToken: string | undefined;
   userId: string | undefined;
   publicUrl: string;
   blobPublicBaseUrl: string | undefined;
 } {
   return {
     token: process.env.BLOB_READ_WRITE_TOKEN,
+    privateToken: process.env.BLOB_PRIVATE_READ_WRITE_TOKEN,
     userId: process.env.PUBLISH_USER_ID,
     publicUrl: process.env.PUBLISH_PUBLIC_URL || 'https://askrobin.io',
     blobPublicBaseUrl: process.env.BLOB_PUBLIC_BASE_URL,
@@ -67,6 +69,7 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
   }
 
   const blobClient = createBlobClient({ token: env.token });
+  const privateBlobClient = env.privateToken ? createBlobClient({ token: env.privateToken }) : null;
 
   const mode = (values.mode ?? 'default') as PublishMode;
   if (!['default', 'overwrite', 'as-new', 'delete'].includes(mode)) {
@@ -88,6 +91,7 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
         blobPublicBaseUrl: env.blobPublicBaseUrl,
       },
       blobClient,
+      privateBlobClient,
       logPath: logPathFor(userData),
       telemetryPath: telemetryPathFor(userData),
     });

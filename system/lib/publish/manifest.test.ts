@@ -90,8 +90,8 @@ test('writeManifest: PUTs users/<userId>/index.json with manifest JSON', async (
     delBlob: async () => {},
   };
   await writeManifest(blob, ENV, [row({ slug: 'a', ts: '2026-05-01T00:00:00.000Z', title: 'A' })]);
-  // No private entries → only the public manifest is PUT (the private PUT would
-  // fail on a public-only Blob store, so it's skipped when there's nothing private).
+  // No private client → only the public manifest is PUT (writing private-access
+  // blobs to the public store would throw, so the private manifest is skipped).
   assert.equal(puts.length, 1);
   assert.ok(!puts.some((p) => p.key === 'users/iser/index.private.json'));
   const pub = puts.find((p) => p.key === 'users/iser/index.json');
@@ -99,6 +99,26 @@ test('writeManifest: PUTs users/<userId>/index.json with manifest JSON', async (
   const parsed = JSON.parse(pub.body);
   assert.equal(parsed[0].slug, 'a');
   assert.equal(parsed[0].url, 'https://askrobin.io/@iser/a');
+});
+
+test('writeManifest with no private client skips index.private.json even when private entries exist', async () => {
+  const puts: Array<{ key: string }> = [];
+  const blob = {
+    headBlob: async () => ({ exists: false }),
+    putBlob: async (key: string) => {
+      puts.push({ key });
+      return { url: 'u' };
+    },
+    delBlob: async () => {},
+  };
+  const rows = [
+    mkRow({ slug: 'pub', ts: '2026-01-01T00:00:00Z', action: 'append', visibility: 'public' }),
+    mkRow({ slug: 'priv', ts: '2026-01-02T00:00:00Z', action: 'append', visibility: 'private' }),
+  ];
+  // No private client (3-arg call) → index.private.json must be skipped entirely
+  await writeManifest(blob, { publicUrl: 'https://x', userId: 'u' }, rows);
+  assert.equal(puts.length, 1);
+  assert.ok(!puts.some((p) => p.key === 'users/u/index.private.json'));
 });
 
 test('buildManifest carries category/visibility/description from latest row', () => {
@@ -120,25 +140,43 @@ test('buildManifest defaults legacy rows (no category/visibility) safely', () =>
   assert.equal(m[0].description, null);
 });
 
-test('writeManifest writes public array + private array to the right keys', async () => {
-  const puts: Array<{ key: string; body: string; access?: string }> = [];
-  const blob = {
-    headBlob: async () => ({ exists: false }),
-    putBlob: async (key: string, body: string, opts?: { access?: string }) => {
-      puts.push({ key, body, access: opts?.access });
-      return { url: 'u' };
-    },
-    delBlob: async () => {},
-  };
+test('writeManifest writes public array + private array to the right stores', async () => {
+  type PutRecord = { key: string; body: string; access?: string };
+  const pubPuts: PutRecord[] = [];
+  const privPuts: PutRecord[] = [];
+
+  function makeBlob(puts: PutRecord[]) {
+    return {
+      headBlob: async () => ({ exists: false }),
+      putBlob: async (key: string, body: string | Buffer, opts?: { access?: string }) => {
+        puts.push({ key, body: typeof body === 'string' ? body : body.toString('utf8'), access: opts?.access });
+        return { url: 'u' };
+      },
+      delBlob: async () => {},
+    };
+  }
+
+  const pubBlob = makeBlob(pubPuts);
+  const privBlob = makeBlob(privPuts);
+
   const rows = [
     mkRow({ slug: 'pub', ts: '2026-01-01T00:00:00Z', action: 'append', category: 'Essays', visibility: 'public' }),
     mkRow({ slug: 'priv', ts: '2026-01-02T00:00:00Z', action: 'append', category: 'Essays', visibility: 'private' }),
   ];
-  await writeManifest(blob, { publicUrl: 'https://x', userId: 'u' }, rows);
-  const pub = puts.find((p) => p.key === 'users/u/index.json');
-  const prv = puts.find((p) => p.key === 'users/u/index.private.json');
-  assert.ok(pub && prv);
-  assert.equal(prv.access, 'private');
+  await writeManifest(pubBlob, { publicUrl: 'https://x', userId: 'u' }, rows, privBlob);
+
+  // Public index goes to the PUBLIC client
+  const pub = pubPuts.find((p) => p.key === 'users/u/index.json');
+  assert.ok(pub, 'index.json must be written to the public client');
   assert.deepEqual(JSON.parse(pub.body).map((e: { slug: string }) => e.slug), ['pub']);
+
+  // Private index goes to the PRIVATE client (not the public one)
+  const prv = privPuts.find((p) => p.key === 'users/u/index.private.json');
+  assert.ok(prv, 'index.private.json must be written to the private client');
+  assert.equal(prv.access, 'private');
   assert.deepEqual(JSON.parse(prv.body).map((e: { slug: string }) => e.slug), ['priv']);
+
+  // Private index must NOT appear in public puts
+  assert.ok(!pubPuts.some((p) => p.key === 'users/u/index.private.json'),
+    'index.private.json must not be written to the public client');
 });
