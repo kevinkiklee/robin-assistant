@@ -90,7 +90,10 @@ test('writeManifest: PUTs users/<userId>/index.json with manifest JSON', async (
     delBlob: async () => {},
   };
   await writeManifest(blob, ENV, [row({ slug: 'a', ts: '2026-05-01T00:00:00.000Z', title: 'A' })]);
-  assert.equal(puts.length, 2);
+  // No private entries → only the public manifest is PUT (the private PUT would
+  // fail on a public-only Blob store, so it's skipped when there's nothing private).
+  assert.equal(puts.length, 1);
+  assert.ok(!puts.some((p) => p.key === 'users/iser/index.private.json'));
   const pub = puts.find((p) => p.key === 'users/iser/index.json');
   assert.ok(pub);
   const parsed = JSON.parse(pub.body);
