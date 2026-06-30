@@ -334,6 +334,9 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
       .find((e) => e.slug === slug && e.action !== 'delete' && e.blob_key !== htmlKey);
     const priorVisibility = prior?.visibility ?? 'public';
     const priorClient = priorVisibility === 'private' ? privateClient : opts.blobClient;
+    // Note: a private→public flip with no privateBlobClient leaves the stale private
+    // blob orphaned (still access-controlled, so no leak) — it cannot be cleaned up
+    // without the private store's token.
     if (priorClient && prior?.blob_key && priorVisibility !== visibility) {
       await priorClient.delBlob(prior.blob_key).catch(() => null);
     }
@@ -395,6 +398,13 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   const pagePrefix = priorVisibility === 'private' ? 'private' : 'pages';
   const htmlKey =
     latest?.blob_key ?? `users/${input.env.userId}/${pagePrefix}/${slug}/index.html`;
+
+  if (priorVisibility === 'private' && !input.privateBlobClient) {
+    throw new PublishError(
+      EXIT_POLICY,
+      'Refused: deleting a private page requires a private blob store — set BLOB_PRIVATE_READ_WRITE_TOKEN in user-data/config/secrets/.env',
+    );
+  }
 
   const { exists } = await pageClient.headBlob(htmlKey);
 

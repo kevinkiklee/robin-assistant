@@ -147,6 +147,83 @@ test('private publish without privateBlobClient is rejected', async () => {
   }
 });
 
+test('delete private page without privateBlobClient is rejected', async () => {
+  const dir = await makeTmpDir();
+  try {
+    const { blobClient } = makeRecordingBlob();
+    const { blobClient: privateBlobClient } = makeRecordingBlob();
+    const logPath = join(dir, 'pub.log');
+    const telPath = join(dir, 'tel.log');
+
+    // First: publish the slug as private (succeeds because privateBlobClient is present)
+    const source = await makeSourceFile(dir, 'category: Field Guides\nvisibility: private\n');
+    await publish({
+      source,
+      slug: 'private-del-test',
+      mode: 'overwrite',
+      env: TEST_ENV,
+      blobClient,
+      privateBlobClient,
+      logPath,
+      telemetryPath: telPath,
+    });
+
+    // Now delete WITHOUT the private client — must throw, not silently noop
+    await assert.rejects(
+      () =>
+        publish({
+          mode: 'delete',
+          slug: 'private-del-test',
+          env: TEST_ENV,
+          blobClient,
+          // no privateBlobClient
+          logPath,
+          telemetryPath: telPath,
+        }),
+      /private blob store/i,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('delete public page without privateBlobClient succeeds normally', async () => {
+  const dir = await makeTmpDir();
+  try {
+    const { blobClient, store } = makeRecordingBlob();
+    const logPath = join(dir, 'pub.log');
+    const telPath = join(dir, 'tel.log');
+
+    const source = await makeSourceFile(dir, 'category: Essays\nvisibility: public\n');
+    await publish({
+      source,
+      slug: 'public-del-test',
+      mode: 'overwrite',
+      env: TEST_ENV,
+      blobClient,
+      logPath,
+      telemetryPath: telPath,
+    });
+
+    const publicKey = `users/${TEST_ENV.userId}/pages/public-del-test/index.html`;
+    assert.ok(store.has(publicKey), 'public blob must exist after publish');
+
+    const result = await publish({
+      mode: 'delete',
+      slug: 'public-del-test',
+      env: TEST_ENV,
+      blobClient,
+      // no privateBlobClient — public delete must still work
+      logPath,
+      telemetryPath: telPath,
+    });
+    assert.equal(result.action, 'delete');
+    assert.equal(store.has(publicKey), false, 'public blob must be removed after delete');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('visibility flip: stale public blob deleted when republished as private', async () => {
   const dir = await makeTmpDir();
   try {
