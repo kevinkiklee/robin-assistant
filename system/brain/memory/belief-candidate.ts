@@ -583,3 +583,31 @@ export function expireStaleCandidates(
     .run(sqliteUtc(now), cutoff);
   return info.changes;
 }
+
+/**
+ * Expire `conflicted` candidates whose `created_at` predates the cutoff (default
+ * 30 days). A candidate is marked `conflicted` when it diverges from the current
+ * belief head and is left "for review" — but nothing else ever clears that state,
+ * so without an expiry the contradiction queue grows unbounded (observed 2026-07-02:
+ * 425 stuck, oldest ~39 days). This gives a generous human-review window, then
+ * rejects them with `resolved_reason='stale-conflict-expiry'` — reversible (flip
+ * status back to `conflicted` by that reason) and re-derivable (if the fact still
+ * holds, the biographer re-proposes it). The window is longer than the pending
+ * expiry because a flagged contradiction deserves more review time than an
+ * un-adjudicated pending claim. Returns the number expired; `now` is injectable.
+ */
+export function expireStaleConflicts(
+  db: RobinDb,
+  olderThanDays = 30,
+  now: Date = new Date(),
+): number {
+  const cutoff = sqliteUtc(new Date(now.getTime() - olderThanDays * 24 * 60 * 60 * 1000));
+  const info = db
+    .prepare(
+      `UPDATE belief_candidates
+          SET status = 'rejected', resolved_at = ?, resolved_reason = 'stale-conflict-expiry'
+        WHERE status = 'conflicted' AND created_at < ?`,
+    )
+    .run(sqliteUtc(now), cutoff);
+  return info.changes;
+}

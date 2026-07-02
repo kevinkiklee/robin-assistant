@@ -860,6 +860,7 @@ function baseDreamResult(): DreamResult {
     entitiesSummarized: 0,
     arcsCreated: 0,
     candidatesExpired: 1,
+    conflictsExpired: 0,
     candidatesDeduped: 0,
     staleFlagsRaised: 0,
     staleBeliefsFlagged: 0,
@@ -1202,9 +1203,9 @@ test('dream: domainGating:false flag reaches retryClaimFailures — non-personal
   const remaining = db.prepare(`SELECT COUNT(*) AS c FROM claim_failures`).get() as { c: number };
   assert.equal(remaining.c, 0, 'dead letter cleared');
 
-  const cand = db
-    .prepare(`SELECT topic FROM belief_candidates WHERE status = 'pending'`)
-    .get() as { topic: string } | undefined;
+  const cand = db.prepare(`SELECT topic FROM belief_candidates WHERE status = 'pending'`).get() as
+    | { topic: string }
+    | undefined;
   assert.ok(cand, 'non-personal claim entered the candidate queue (gating off)');
   assert.equal(cand.topic, 'build-pipeline');
   closeDb(db);

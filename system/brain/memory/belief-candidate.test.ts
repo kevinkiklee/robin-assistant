@@ -10,6 +10,7 @@ import {
   countPendingCandidates,
   dedupePendingCandidates,
   expireStaleCandidates,
+  expireStaleConflicts,
   insertBeliefCandidate,
   insertCandidateWithDedup,
   isLowQualityClaim,
@@ -467,6 +468,52 @@ test('belief-candidate: expireStaleCandidates respects a custom window', () => {
   assert.equal(expireStaleCandidates(db, 14, now), 0);
   // 3-day window: now it expires.
   assert.equal(expireStaleCandidates(db, 3, now), 1);
+  closeDb(db);
+});
+
+test('belief-candidate: expireStaleConflicts rejects conflicted older than the window', () => {
+  const db = freshDb();
+  // A conflicted candidate that has sat unreviewed past the window.
+  db.prepare(
+    `INSERT INTO belief_candidates (topic, claim, status, created_at)
+     VALUES ('stuck', 'contradicts the head', 'conflicted', '2026-04-01 00:00:00')`,
+  ).run();
+  // A fresh conflicted candidate still inside the review window.
+  db.prepare(
+    `INSERT INTO belief_candidates (topic, claim, status, created_at)
+     VALUES ('recent', 'newly flagged', 'conflicted', '2026-05-20 00:00:00')`,
+  ).run();
+
+  // Anchor "now" at 2026-05-24; the 30-day cutoff is 2026-04-24.
+  const now = new Date('2026-05-24T12:00:00Z');
+  const n = expireStaleConflicts(db, 30, now);
+  assert.equal(n, 1);
+
+  const rows = listBeliefCandidates(db, {});
+  const stuck = rows.find((c) => c.topic === 'stuck');
+  assert.ok(stuck);
+  assert.equal(stuck.status, 'rejected');
+  assert.equal(stuck.resolvedReason, 'stale-conflict-expiry');
+  assert.ok(stuck.resolvedAt);
+  // The recent conflict is left for review.
+  const recent = rows.find((c) => c.topic === 'recent');
+  assert.ok(recent);
+  assert.equal(recent.status, 'conflicted');
+  closeDb(db);
+});
+
+test('belief-candidate: expireStaleConflicts never touches pending or promoted rows', () => {
+  const db = freshDb();
+  db.prepare(
+    `INSERT INTO belief_candidates (topic, claim, status, created_at)
+     VALUES ('p', 'old pending', 'pending', '2026-01-01 00:00:00'),
+            ('done', 'old promoted', 'promoted', '2026-01-01 00:00:00')`,
+  ).run();
+  const now = new Date('2026-05-24T12:00:00Z');
+  assert.equal(expireStaleConflicts(db, 30, now), 0);
+  const rows = listBeliefCandidates(db, {});
+  assert.equal(rows.find((c) => c.topic === 'p')?.status, 'pending');
+  assert.equal(rows.find((c) => c.topic === 'done')?.status, 'promoted');
   closeDb(db);
 });
 

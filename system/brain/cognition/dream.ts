@@ -8,6 +8,7 @@ import {
   countPendingCandidates,
   dedupePendingCandidates,
   expireStaleCandidates,
+  expireStaleConflicts,
   resolveBeliefCandidate,
 } from '../memory/belief-candidate.ts';
 import type { RobinDb } from '../memory/db.ts';
@@ -24,6 +25,8 @@ export interface DreamResult {
   entitiesSummarized: number;
   arcsCreated: number;
   candidatesExpired: number;
+  /** Stale `conflicted` candidates expired (rejected) after the review window this run. */
+  conflictsExpired: number;
   staleFlagsRaised: number;
   /** Stale belief heads flagged with a belief.stale event this run. */
   staleBeliefsFlagged: number;
@@ -132,6 +135,11 @@ export interface LearningDigest {
 
 const CANDIDATE_EXPIRY_DAYS = 14;
 
+// Conflicted candidates get a longer review window than pending ones: a flagged
+// contradiction is worth more human-review time than an un-adjudicated claim. Without
+// this, `conflicted` never clears and the contradiction queue grows unbounded.
+const CONFLICT_EXPIRY_DAYS = 30;
+
 const ENTITY_SUMMARY_MIN_SIGNALS = 3;
 const ENTITY_SUMMARY_MAX_PER_RUN = 25;
 const ARC_RECENCY_DAYS = 14;
@@ -170,6 +178,7 @@ export async function runDream(
     entitiesSummarized: 0,
     arcsCreated: 0,
     candidatesExpired: 0,
+    conflictsExpired: 0,
     staleFlagsRaised: 0,
     staleBeliefsFlagged: 0,
     beliefsRefreshed: 0,
@@ -265,6 +274,16 @@ export async function runDream(
     result.candidatesExpired = expireStaleCandidates(db, CANDIDATE_EXPIRY_DAYS, now);
   } catch {
     result.candidatesExpired = 0;
+  }
+
+  // 6-conflicts. Expire `conflicted` candidates that have sat past the review window.
+  //   Nothing else clears the conflicted state, so without this the contradiction queue
+  //   grows without bound. Reversible (resolved_reason='stale-conflict-expiry') and
+  //   re-derivable. Guarded like the pending expiry above.
+  try {
+    result.conflictsExpired = expireStaleConflicts(db, CONFLICT_EXPIRY_DAYS, now);
+  } catch {
+    result.conflictsExpired = 0;
   }
 
   // 6a. Semantic dedup sweep: collapse paraphrase clusters among pending candidates

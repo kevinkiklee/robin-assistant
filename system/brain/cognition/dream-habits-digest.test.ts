@@ -29,6 +29,7 @@ function baseResult(): DreamResult {
     entitiesSummarized: 0,
     arcsCreated: 0,
     candidatesExpired: 0,
+    conflictsExpired: 0,
     candidatesDeduped: 0,
     staleFlagsRaised: 0,
     staleBeliefsFlagged: 0,
