@@ -165,14 +165,15 @@ test('matchTopics: Nikon body terms do not cross-fire (word-boundary)', () => {
   const rules = [
     { id: 'nikon-zf', match: ['zf', 'z f'], docs: ['zf.md'] },
     { id: 'nikon-zfc', match: ['zfc', 'z fc'], docs: ['zfc.md'] },
-    { id: 'nikon-z50ii', match: ['z50ii', 'z50 ii', 'z50'], docs: ['z50.md'] },
+    { id: 'nikon-z50', match: ['z50'], docs: ['z50.md'] },
+    { id: 'nikon-z50ii', match: ['z50ii', 'z50 ii'], docs: ['z50ii.md'] },
   ];
   // "zfc" must hit ONLY the zfc rule — \bzf\b does not match inside "zfc".
   assert.deepEqual(
     matchTopics('how do I focus-shift on my zfc', rules).map((r) => r.id),
     ['nikon-zfc'],
   );
-  // "z50ii" must hit ONLY z50ii — \bz50\b does not match inside "z50ii".
+  // "z50ii" must hit ONLY z50ii, never the separate z50 rule — \bz50\b does not match inside "z50ii".
   assert.deepEqual(
     matchTopics('AF modes on the z50ii', rules).map((r) => r.id),
     ['nikon-z50ii'],
