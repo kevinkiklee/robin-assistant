@@ -105,9 +105,15 @@ export function validateRecallTopics(userData: string): {
       }
       try {
         const { size } = statSync(abs);
-        if (size > DOC_SIZE_WARN_CHARS) oversized.set(doc, size);
+        if (size > DOC_SIZE_WARN_CHARS) {
+          // Post-slicer, an oversized doc with `##` sections is never injected whole —
+          // auto-recall slices it to the query-relevant section (≤ the Layer-1 budget).
+          // Only an un-sliceable (no-H2) oversized doc actually taxes every turn.
+          const content = readFileSync(abs, 'utf8');
+          if (!/^##\s+/m.test(content)) oversized.set(doc, size);
+        }
       } catch {
-        // stat failed (race, perms) — treat as resolvable; missing-check already passed.
+        // stat/read failed (race, perms) — treat as resolvable; missing-check already passed.
       }
     }
   }

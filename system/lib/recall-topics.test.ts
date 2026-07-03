@@ -126,7 +126,7 @@ test('validateRecallTopics: all-present, in-budget yields no missing/oversized',
   assert.deepEqual(result.oversizedDocs, []);
 });
 
-test('validateRecallTopics: flags an oversized doc (injected whole every turn)', () => {
+test('validateRecallTopics: flags an oversized doc that is un-sliceable (no H2)', () => {
   const ud = makeUserData();
   writeFileSync(join(ud, 'content', 'knowledge', 'big.md'), 'B'.repeat(17000));
   writeYaml(
@@ -142,4 +142,21 @@ test('validateRecallTopics: flags an oversized doc (injected whole every turn)',
   assert.equal(result.oversizedDocs.length, 1);
   assert.equal(result.oversizedDocs[0].doc, 'content/knowledge/big.md');
   assert.ok(result.oversizedDocs[0].chars >= 17000);
+});
+
+test('validateRecallTopics: does NOT flag an oversized doc that has ## sections (sliceable)', () => {
+  const ud = makeUserData();
+  const big = `# Ref\n\n## Section One\n${'B'.repeat(17000)}\n\n## Section Two\nmore`;
+  writeFileSync(join(ud, 'content', 'knowledge', 'sectioned.md'), big);
+  writeYaml(
+    ud,
+    `topics:
+  - id: huge
+    match: [foo]
+    docs: [content/knowledge/sectioned.md]
+`,
+  );
+  const result = validateRecallTopics(ud);
+  assert.deepEqual(result.missingDocs, []);
+  assert.deepEqual(result.oversizedDocs, []); // sectioned → sliceable → not flagged
 });
