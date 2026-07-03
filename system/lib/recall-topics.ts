@@ -9,11 +9,14 @@ export interface TopicRule {
 }
 
 /**
- * Soft size budget for a mapped canonical doc. Docs are injected WHOLE on every
- * matching turn (never truncated), so an oversized one taxes every prompt's token
- * budget. The doctor invariant warns past this so it gets curated — it does NOT
- * cap injection. ~16k chars ≈ 4k tokens: comfortably above Kevin's largest real
- * doc (health-snapshot ~13.8k) yet low enough to flag genuine bloat.
+ * Soft size budget for a mapped canonical doc. Auto-recall slices an oversized
+ * doc to the query-relevant `##` section and hard-caps injection at the Layer-1
+ * budget (~4000 chars), so a sectioned oversized doc is never injected whole.
+ * This warn exists to catch un-sliceable docs (no `##` sections), which degrade
+ * to a blind top-of-doc truncation — the least query-specific prefix. The doctor
+ * invariant warns past this so it gets curated — it does NOT cap injection.
+ * ~16k chars ≈ 4k tokens: comfortably above Kevin's largest real doc
+ * (health-snapshot ~13.8k) yet low enough to flag genuine bloat.
  */
 export const DOC_SIZE_WARN_CHARS = 16000;
 
@@ -85,7 +88,8 @@ export function matchTopics(prompt: string, rules: TopicRule[]): TopicRule[] {
 /**
  * For the `recall.topics_resolvable` doctor invariant: resolve each rule.docs
  * path under `userData`, reporting which are missing and which exceed
- * `DOC_SIZE_WARN_CHARS` (injected whole, so oversized docs tax every turn).
+ * `DOC_SIZE_WARN_CHARS` (oversized AND un-sliceable docs — no `##` sections —
+ * which would inject a blind top-of-doc truncation instead of a relevant section).
  * `topicCount` is the number of loaded rules.
  */
 export function validateRecallTopics(userData: string): {
@@ -106,11 +110,14 @@ export function validateRecallTopics(userData: string): {
       try {
         const { size } = statSync(abs);
         if (size > DOC_SIZE_WARN_CHARS) {
-          // Post-slicer, an oversized doc with `##` sections is never injected whole —
-          // auto-recall slices it to the query-relevant section (≤ the Layer-1 budget).
-          // Only an un-sliceable (no-H2) oversized doc actually taxes every turn.
+          // Post-slicer, an oversized doc with `##` sections is sliced to the
+          // query-relevant section (≤ Layer-1 budget) — same token cost as any other
+          // doc. Only a no-H2 oversized doc degrades to a blind top-of-doc truncation
+          // (least query-specific prefix) — flag it for curation on relevance grounds.
           const content = readFileSync(abs, 'utf8');
-          if (!/^##\s+/m.test(content)) oversized.set(doc, size);
+          // Fence-blind: a `##` inside a code fence would register as sliceable —
+          // accepted narrow false-negative; real mapped reference docs have genuine H2s.
+          if (!/^##\s+/m.test(content)) oversized.set(doc, content.length);
         }
       } catch {
         // stat/read failed (race, perms) — treat as resolvable; missing-check already passed.
