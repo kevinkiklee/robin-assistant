@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { sliceToRelevantSection } from './section-slice.ts';
+import { hasSliceableSections, sliceToRelevantSection } from './section-slice.ts';
 
 /** Build a doc big enough to clear the default 1500-char min-body gate. */
 function bigDoc(): string {
@@ -132,6 +132,14 @@ test('keyword-rich heading slices to the histogram section', () => {
   assert.match(out, /RGB histogram/);
   // Histograms is the SECOND section — this also rejects a "return the first section" slicer.
   assert.doesNotMatch(out, /Back-button AF/);
+});
+
+test('hasSliceableSections: true for real H2s; false for none or fenced-only ##', () => {
+  assert.equal(hasSliceableSections(['# T', '', '## A', 'body', '## B', 'more'].join('\n')), true);
+  assert.equal(hasSliceableSections('# T\nonly a preamble, no sections'), false);
+  // A `##` that lives only inside a fenced code block is NOT a real section boundary.
+  const fenced = ['# T', 'intro', '```', '## not a heading', '```'].join('\n');
+  assert.equal(hasSliceableSections(fenced), false);
 });
 
 test('a keyword-rich heading outweighs a section that scores higher on body tokens alone', () => {

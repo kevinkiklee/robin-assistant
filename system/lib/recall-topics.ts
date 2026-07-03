@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { hasSliceableSections } from '../brain/memory/section-slice.ts';
 
 export interface TopicRule {
   id: string;
@@ -115,9 +116,8 @@ export function validateRecallTopics(userData: string): {
           // doc. Only a no-H2 oversized doc degrades to a blind top-of-doc truncation
           // (least query-specific prefix) — flag it for curation on relevance grounds.
           const content = readFileSync(abs, 'utf8');
-          // Fence-blind: a `##` inside a code fence would register as sliceable —
-          // accepted narrow false-negative; real mapped reference docs have genuine H2s.
-          if (!/^##\s+/m.test(content)) oversized.set(doc, content.length);
+          // `hasSliceableSections` is fence-aware (shares the slicer's `splitSections`), so a `##` that only appears inside a code fence is correctly treated as un-sliceable.
+          if (!hasSliceableSections(content)) oversized.set(doc, content.length);
         }
       } catch {
         // stat/read failed (race, perms) — treat as resolvable; missing-check already passed.

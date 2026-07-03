@@ -117,6 +117,16 @@ function splitSections(md: string): Section[] {
   return sections;
 }
 
+/**
+ * True when `md` has the `##` section structure the slicer needs to return a section
+ * (rather than top-truncating the whole doc). Reuses `splitSections`, so it is fence-aware:
+ * a `##` that appears only inside a fenced code block is not a section boundary. Used by the
+ * recall-topics doctor invariant to decide whether an oversized mapped doc is sliceable.
+ */
+export function hasSliceableSections(md: string): boolean {
+  return splitSections(md).length > 1;
+}
+
 /** Count distinct query tokens present (as substrings) in `text`. */
 function tokenHits(text: string, tokens: string[]): number {
   const hay = text.toLowerCase();
