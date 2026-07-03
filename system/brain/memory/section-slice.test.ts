@@ -112,3 +112,43 @@ test('`##` inside a fenced code block is not a section boundary', () => {
   // The fenced "## not a heading" must remain inside this section, not split into its own.
   assert.match(out, /not a heading, just a shell comment/);
 });
+
+test('keyword-rich heading slices to the histogram section', () => {
+  const doc = [
+    '# Nikon Z8 — Operational Reference',
+    'Last verified: 2026-07-03 · FW 2.10',
+    '',
+    '## Histograms & displays — luminance, RGB / per-channel, highlights & blinkies',
+    'Playback RGB / per-channel histogram: MENU -> Playback display options -> enable',
+    'RGB histogram; cycle with DISP in playback. Red channel clips first under tungsten.',
+    'x'.repeat(1000),
+    '',
+    '## Autofocus — AF-area modes, subject detection, AF-ON / back-button',
+    'Back-button AF: assign AF-ON, disable shutter-button AF in custom settings.',
+    'y'.repeat(1000),
+  ].join('\n');
+  const out = sliceToRelevantSection(doc, 'how do I see the per-channel histogram');
+  assert.match(out, /Histograms & displays/);
+  assert.match(out, /RGB histogram/);
+  assert.doesNotMatch(out, /Back-button AF/); // did NOT return the Autofocus section
+});
+
+test('a keyword-rich heading wins over a section that mentions the term only in its body', () => {
+  const doc = [
+    '# Nikon Z8 — Operational Reference',
+    'Last verified: 2026-07-03 · FW 2.10',
+    '',
+    '## Autofocus — AF-area modes, subject detection, AF-ON / back-button',
+    'Note: the live histogram is hidden while subject tracking is active.',
+    'y'.repeat(1000),
+    '',
+    '## Histograms & displays — luminance, RGB / per-channel, highlights & blinkies',
+    'Playback RGB / per-channel histogram via Playback display options; DISP cycles.',
+    'x'.repeat(1000),
+  ].join('\n');
+  // "histogram" appears in BOTH section bodies, but only the Histograms heading carries it
+  // (headings score 2x), so the slicer must return Histograms, not Autofocus.
+  const out = sliceToRelevantSection(doc, 'per-channel histogram');
+  assert.match(out, /Histograms & displays/);
+  assert.doesNotMatch(out, /subject tracking/); // heading weight beat the body-only mention
+});
