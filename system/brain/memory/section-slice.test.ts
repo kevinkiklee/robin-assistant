@@ -118,37 +118,40 @@ test('keyword-rich heading slices to the histogram section', () => {
     '# Nikon Z8 — Operational Reference',
     'Last verified: 2026-07-03 · FW 2.10',
     '',
+    '## Autofocus — AF-area modes, subject detection, AF-ON / back-button',
+    'Back-button AF: assign AF-ON, disable shutter-button AF in custom settings.',
+    'y'.repeat(1000),
+    '',
     '## Histograms & displays — luminance, RGB / per-channel, highlights & blinkies',
     'Playback RGB / per-channel histogram: MENU -> Playback display options -> enable',
     'RGB histogram; cycle with DISP in playback. Red channel clips first under tungsten.',
     'x'.repeat(1000),
-    '',
-    '## Autofocus — AF-area modes, subject detection, AF-ON / back-button',
-    'Back-button AF: assign AF-ON, disable shutter-button AF in custom settings.',
-    'y'.repeat(1000),
   ].join('\n');
   const out = sliceToRelevantSection(doc, 'how do I see the per-channel histogram');
   assert.match(out, /Histograms & displays/);
   assert.match(out, /RGB histogram/);
-  assert.doesNotMatch(out, /Back-button AF/); // did NOT return the Autofocus section
+  // Histograms is the SECOND section — this also rejects a "return the first section" slicer.
+  assert.doesNotMatch(out, /Back-button AF/);
 });
 
-test('a keyword-rich heading wins over a section that mentions the term only in its body', () => {
+test('a keyword-rich heading outweighs a section that scores higher on body tokens alone', () => {
   const doc = [
     '# Nikon Z8 — Operational Reference',
     'Last verified: 2026-07-03 · FW 2.10',
     '',
     '## Autofocus — AF-area modes, subject detection, AF-ON / back-button',
-    'Note: the live histogram is hidden while subject tracking is active.',
+    'The per-channel histogram is hidden while subject tracking is active.',
     'y'.repeat(1000),
     '',
     '## Histograms & displays — luminance, RGB / per-channel, highlights & blinkies',
-    'Playback RGB / per-channel histogram via Playback display options; DISP cycles.',
+    'Enable it under Playback display options; press DISP to cycle the readout.',
     'x'.repeat(1000),
   ].join('\n');
-  // "histogram" appears in BOTH section bodies, but only the Histograms heading carries it
-  // (headings score 2x), so the slicer must return Histograms, not Autofocus.
+  // Query tokens (per, channel, histogram) appear in the Autofocus BODY (3 body pts) but in the
+  // Histograms HEADING only — the Histograms body has none (0 body pts). Histograms wins solely
+  // via the 2x heading weight (2*3 = 6 > 3); a heading-blind or heading-1x slicer would return
+  // Autofocus. This isolates heading-weight as the deciding factor.
   const out = sliceToRelevantSection(doc, 'per-channel histogram');
   assert.match(out, /Histograms & displays/);
-  assert.doesNotMatch(out, /subject tracking/); // heading weight beat the body-only mention
+  assert.doesNotMatch(out, /subject tracking/);
 });
