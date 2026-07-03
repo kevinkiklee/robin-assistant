@@ -53,11 +53,7 @@ async function makeTmpDir(): Promise<string> {
 
 async function makeSourceFile(dir: string, frontmatter: string, name = 'page.md'): Promise<string> {
   const path = join(dir, name);
-  await writeFile(
-    path,
-    `---\n${frontmatter}---\n\n# Test Page\n\nHello world.\n`,
-    'utf8',
-  );
+  await writeFile(path, `---\n${frontmatter}---\n\n# Test Page\n\nHello world.\n`, 'utf8');
   return path;
 }
 
@@ -172,6 +168,7 @@ test('delete private page without privateBlobClient is rejected', async () => {
     await assert.rejects(
       () =>
         publish({
+          source: null,
           mode: 'delete',
           slug: 'private-del-test',
           env: TEST_ENV,
@@ -209,6 +206,7 @@ test('delete public page without privateBlobClient succeeds normally', async () 
     assert.ok(store.has(publicKey), 'public blob must exist after publish');
 
     const result = await publish({
+      source: null,
       mode: 'delete',
       slug: 'public-del-test',
       env: TEST_ENV,
@@ -266,7 +264,10 @@ test('visibility flip: stale public blob deleted when republished as private', a
       telemetryPath: telPath,
     });
 
-    assert.ok(privateStore.has(privateKey), 'private blob must exist in the private store after second publish');
+    assert.ok(
+      privateStore.has(privateKey),
+      'private blob must exist in the private store after second publish',
+    );
     assert.equal(
       store.has(publicKey),
       false,
