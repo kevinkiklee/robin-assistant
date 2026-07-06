@@ -1,0 +1,16 @@
+# Single-package repo (intentionally NO `packages:` key — this is not a monorepo).
+#
+# This file exists ONLY to grant pnpm's build-script approval for the native
+# dependencies. pnpm 10.26+ moved build approval out of package.json's
+# `pnpm.onlyBuiltDependencies` (which this pnpm version silently ignores) and into
+# the `allowBuilds` map here. Without a VALID approval entry, pnpm's default-deny
+# policy re-scaffolds an unfilled placeholder stub AND prunes the compiled
+# better-sqlite3 binary on every `pnpm install`/`pnpm exec` — which any job that
+# shells out to `pnpm exec tsx …` (e.g. nightly-critique's publish step) does. A
+# fresh subprocess then can't open the DB and every detached job dies silently.
+# That was the 2026-07-04..06 outage (dream-synthesis + nightly-critique). Setting
+# these to `true` keeps the approval satisfied so pnpm never re-prunes or
+# re-scaffolds. See the incident notes in system CLAUDE.md / memory.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
