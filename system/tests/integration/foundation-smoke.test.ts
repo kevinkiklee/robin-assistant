@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -12,15 +12,22 @@ import { dbFilePath } from '../../lib/paths.ts';
 
 test('foundation smoke: init → doctor → daemon → claim a queued job → stop cleanly', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'robin-smoke-'));
-  // Isolate BOTH the user-data dir and the config dir. `init` writes the instance
-  // pointer (<configDir>/user-data-dir) via writeUserDataPointer; without overriding
-  // XDG_CONFIG_HOME it clobbers the developer's real ~/.config/robin/user-data-dir with
-  // this throwaway temp path, which then dangles once the temp dir is cleaned. Same class
-  // of leak that `--no-launchd` prevents below.
+  // Isolate the user-data dir, the config dir, AND the home dir. `init` writes the
+  // instance pointer (<configDir>/user-data-dir) via writeUserDataPointer; without
+  // overriding XDG_CONFIG_HOME it clobbers the developer's real ~/.config/robin/user-data-dir
+  // with this throwaway temp path, which then dangles once the temp dir is cleaned. `init`
+  // ALSO registers MCP servers in ~/.claude.json (upsertUserScopeMcp) and installs Claude
+  // hooks — both keyed off homedir() — so without overriding HOME it replaces the developer's
+  // real robin/robin-extension MCP entries with ones pointing at this smoke dir, silently
+  // breaking Robin MCP in every Claude session. Same class of leak that `--no-launchd`
+  // prevents below.
+  const home = join(userData, 'home');
+  mkdirSync(home);
   const env = {
     ...process.env,
     ROBIN_USER_DATA_DIR: userData,
     XDG_CONFIG_HOME: join(userData, 'xdg-config'),
+    HOME: home,
   };
 
   // 1. robin init --yes (invoke tsx directly to respect env).
