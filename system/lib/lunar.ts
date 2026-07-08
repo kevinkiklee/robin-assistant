@@ -160,10 +160,7 @@ function eclipticToEquatorial(lonDeg: number, latDeg: number, epsDeg: number): E
 function gmstDeg(jd: number): number {
   const T = julianCenturies(jd);
   const theta =
-    280.46061837 +
-    360.98564736629 * (jd - 2451545) +
-    0.000387933 * T * T -
-    (T * T * T) / 38710000;
+    280.46061837 + 360.98564736629 * (jd - 2451545) + 0.000387933 * T * T - (T * T * T) / 38710000;
   return norm360(theta);
 }
 

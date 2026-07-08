@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { BlobClient, BlobPutOptions } from './types.ts';
 import { publish } from './orchestrate.ts';
+import type { BlobClient, BlobPutOptions } from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers

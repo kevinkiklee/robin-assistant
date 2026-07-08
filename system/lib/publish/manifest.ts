@@ -26,8 +26,13 @@ export function buildManifest(
   const bySlug = new Map<
     string,
     {
-      firstTs: string; lastTs: string; lastAction: string;
-      title: string | null; category: string; visibility: 'public' | 'private'; description: string | null;
+      firstTs: string;
+      lastTs: string;
+      lastAction: string;
+      title: string | null;
+      category: string;
+      visibility: 'public' | 'private';
+      description: string | null;
     }
   >();
   for (const e of entries) {
@@ -37,15 +42,24 @@ export function buildManifest(
     const cur = bySlug.get(e.slug);
     if (!cur) {
       bySlug.set(e.slug, {
-        firstTs: e.ts, lastTs: e.ts, lastAction: e.action,
-        title: e.title, category: cat, visibility: vis, description: desc,
+        firstTs: e.ts,
+        lastTs: e.ts,
+        lastAction: e.action,
+        title: e.title,
+        category: cat,
+        visibility: vis,
+        description: desc,
       });
       continue;
     }
     if (e.ts < cur.firstTs) cur.firstTs = e.ts;
     if (e.ts >= cur.lastTs) {
-      cur.lastTs = e.ts; cur.lastAction = e.action;
-      cur.title = e.title; cur.category = cat; cur.visibility = vis; cur.description = desc;
+      cur.lastTs = e.ts;
+      cur.lastAction = e.action;
+      cur.title = e.title;
+      cur.category = cat;
+      cur.visibility = vis;
+      cur.description = desc;
     }
   }
   const out: ManifestEntry[] = [];
@@ -77,7 +91,7 @@ export function buildManifest(
  * fails the publish; the next publish's full rebuild repairs it.
  */
 export async function writeManifest(
-  blob: BlobClient,                // PUBLIC client
+  blob: BlobClient, // PUBLIC client
   env: { publicUrl: string; userId: string },
   entries: LogRow[],
   privateBlob?: BlobClient | null, // PRIVATE client; omit/null → skip private manifest
@@ -92,11 +106,15 @@ export async function writeManifest(
     access: 'public',
   });
   if (privateBlob) {
-    await privateBlob.putBlob(`users/${env.userId}/index.private.json`, JSON.stringify(privateEntries), {
-      contentType: 'application/json; charset=utf-8',
-      cacheControlMaxAge: HTML_CACHE_MAX_AGE,
-      allowOverwrite: true,
-      access: 'private',
-    });
+    await privateBlob.putBlob(
+      `users/${env.userId}/index.private.json`,
+      JSON.stringify(privateEntries),
+      {
+        contentType: 'application/json; charset=utf-8',
+        cacheControlMaxAge: HTML_CACHE_MAX_AGE,
+        allowOverwrite: true,
+        access: 'private',
+      },
+    );
   }
 }

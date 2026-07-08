@@ -22,10 +22,7 @@ export function agreementFactor(members: number[]): number {
   const mean = members.reduce((a, b) => a + b, 0) / members.length;
 
   // Compute population standard deviation
-  const sumSquaredDeviations = members.reduce(
-    (acc, val) => acc + (val - mean) ** 2,
-    0
-  );
+  const sumSquaredDeviations = members.reduce((acc, val) => acc + (val - mean) ** 2, 0);
   const variance = sumSquaredDeviations / members.length;
   const stdev = Math.sqrt(variance);
 

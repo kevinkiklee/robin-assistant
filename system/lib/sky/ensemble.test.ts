@@ -41,10 +41,7 @@ test('ensemble agreement factor', async (t) => {
     //       = sqrt((625 + 100 + 100 + 625) / 4) = sqrt(1350/4) ≈ sqrt(337.5) ≈ 18.37
     // agreement = 1 - 18.37/35 ≈ 1 - 0.525 ≈ 0.475 ≈ 0.5 ✓
     const agreement = agreementFactor([25, 40, 60, 75]);
-    assert.ok(
-      agreement > 0.45 && agreement < 0.55,
-      `Expected 0.45-0.55, got ${agreement}`
-    );
+    assert.ok(agreement > 0.45 && agreement < 0.55, `Expected 0.45-0.55, got ${agreement}`);
   });
 
   await t.test('SPREAD_FULL constant is exported and tunable', () => {
@@ -67,9 +64,6 @@ test('ensemble agreement factor', async (t) => {
     // [0, 50, 50, 100] has deviations [-50, 0, 0, 50], sum sq = 2500 + 0 + 0 + 2500 = 5000
     // stdev = sqrt(5000/4) = sqrt(1250) ≈ 35.36 ✓
     const agreement = agreementFactor([0, 50, 50, 100]);
-    assert.ok(
-      agreement >= -0.05 && agreement <= 0.05,
-      `Expected ~0, got ${agreement}`
-    );
+    assert.ok(agreement >= -0.05 && agreement <= 0.05, `Expected ~0, got ${agreement}`);
   });
 });

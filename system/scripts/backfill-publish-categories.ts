@@ -1,11 +1,11 @@
 import { rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { resolveUserDataDir } from '../lib/paths.ts';
 import { createBlobClient } from '../lib/publish/blob.ts';
 import { UNCATEGORIZED } from '../lib/publish/config.ts';
 import { readLog } from '../lib/publish/log.ts';
 import { writeManifest } from '../lib/publish/manifest.ts';
 import type { LogRow } from '../lib/publish/types.ts';
-import { resolveUserDataDir } from '../lib/paths.ts';
 import { loadEnvFile } from '../lib/secrets/load-env.ts';
 
 /** Exact slug → category overrides (anything the prefix rules don't nail). */
@@ -66,7 +66,11 @@ export function categoryForSlug(slug: string): string {
   if (slug.includes('600-pf') || slug.includes('180-600') || slug.includes('100-400')) {
     return 'Gear & Comparisons';
   }
-  if (slug.includes('lens-comparison') || slug.includes('three-35') || slug === '35mm-lens-comparison') {
+  if (
+    slug.includes('lens-comparison') ||
+    slug.includes('three-35') ||
+    slug === '35mm-lens-comparison'
+  ) {
     return 'Lens Analysis';
   }
   return UNCATEGORIZED;
@@ -94,7 +98,10 @@ async function main(): Promise<void> {
 
   // 1. snapshot
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  await writeFile(`${logPath}.bak-${stamp}`, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  await writeFile(
+    `${logPath}.bak-${stamp}`,
+    entries.map((e) => JSON.stringify(e)).join('\n') + '\n',
+  );
 
   // 2. patch in memory
   const patched = entries.map(patchRow);

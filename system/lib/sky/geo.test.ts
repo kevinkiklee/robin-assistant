@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { destPoint, samplePoints } from './geo.ts';
 
 test('destPoint: 111 km due north ≈ +1° latitude', () => {
@@ -13,5 +13,8 @@ test('samplePoints: 5 distances, fan at the far two (90,120) ⇒ 9 points', () =
   assert.equal(pts.length, 9); // 5 on-bearing + 2×2 fan
   assert.ok(pts.some((p) => p.distKm === 0));
   const farBearings = pts.filter((p) => p.distKm === 120).map((p) => Math.round(p.bearing));
-  assert.deepEqual(farBearings.sort((a, b) => a - b), [290, 302, 314]); // 302 ± 12
+  assert.deepEqual(
+    farBearings.sort((a, b) => a - b),
+    [290, 302, 314],
+  ); // 302 ± 12
 });

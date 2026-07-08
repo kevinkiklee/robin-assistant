@@ -55,10 +55,7 @@ export function lowTideInWindow(tides: Tide[], start: Date, end: Date): Tide | n
  * Returns the next high and next low tide strictly after `from`.
  * Either can be null if no such tide exists in the provided array.
  */
-export function nextTides(
-  tides: Tide[],
-  from: Date,
-): { high: Tide | null; low: Tide | null } {
+export function nextTides(tides: Tide[], from: Date): { high: Tide | null; low: Tide | null } {
   const f = from.getTime();
   let high: Tide | null = null;
   let low: Tide | null = null;

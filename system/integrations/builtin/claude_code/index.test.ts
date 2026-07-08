@@ -304,7 +304,10 @@ describe('claude_code integration tick', () => {
           '\n' +
           JSON.stringify({
             type: 'assistant',
-            message: { role: 'assistant', content: `a substantive answer number ${i} with content` },
+            message: {
+              role: 'assistant',
+              content: `a substantive answer number ${i} with content`,
+            },
           }) +
           '\n',
       );

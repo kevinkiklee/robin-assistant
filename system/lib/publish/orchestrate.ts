@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
+import { classify } from './categories.ts';
 import {
   COLLISION_RETRY_LIMIT,
   EXIT_INPUT,
@@ -37,7 +38,6 @@ import type {
   TelemetryRow,
 } from './types.ts';
 import { shouldRefuseUntrusted, stripUntrustedBlocks } from './untrusted.ts';
-import { classify } from './categories.ts';
 
 export class PublishError extends Error {
   readonly code: number;
@@ -396,8 +396,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
       : input.blobClient;
 
   const pagePrefix = priorVisibility === 'private' ? 'private' : 'pages';
-  const htmlKey =
-    latest?.blob_key ?? `users/${input.env.userId}/${pagePrefix}/${slug}/index.html`;
+  const htmlKey = latest?.blob_key ?? `users/${input.env.userId}/${pagePrefix}/${slug}/index.html`;
 
   if (priorVisibility === 'private' && !input.privateBlobClient) {
     throw new PublishError(
@@ -458,7 +457,12 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   // Refresh the per-user manifest so the deleted slug drops off the index.
   try {
     const { entries: updatedEntries } = await readLog(input.logPath);
-    await writeManifest(input.blobClient, input.env, updatedEntries, input.privateBlobClient ?? null);
+    await writeManifest(
+      input.blobClient,
+      input.env,
+      updatedEntries,
+      input.privateBlobClient ?? null,
+    );
   } catch {
     // best-effort; next publish repairs it
   }

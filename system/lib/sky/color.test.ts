@@ -1,16 +1,33 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colorRead, bearingLabel } from './color.ts';
+import { test } from 'node:test';
+import { bearingLabel, colorRead } from './color.ts';
 import type { SkyContext } from './types.ts';
 
 // Near-field sample (distKm=25, below nearFieldKm=50)
-const nearSample = { distKm: 25, bearing: 302, lat: 40.9, lng: -74.2, layers: { high: 55, mid: 10, low: 20 } };
+const nearSample = {
+  distKm: 25,
+  bearing: 302,
+  lat: 40.9,
+  lng: -74.2,
+  layers: { high: 55, mid: 10, low: 20 },
+};
 // Far-field sample (distKm=90, at farFieldKm boundary → horizon zone)
-const farSample  = { distKm: 90, bearing: 302, lat: 41.4, lng: -74.8, layers: { high: 10, mid: 5, low: 5 } };
+const farSample = {
+  distKm: 90,
+  bearing: 302,
+  lat: 41.4,
+  lng: -74.8,
+  layers: { high: 10, mid: 5, low: 5 },
+};
 
 const base: SkyContext = {
-  window: 'sunset', azimuth: 302, horizonGap: true, gapBearing: 302,
-  canvas: { high: 55, mid: 10 }, verdict: 'promising', confidence: 0.7,
+  window: 'sunset',
+  azimuth: 302,
+  horizonGap: true,
+  gapBearing: 302,
+  canvas: { high: 55, mid: 10 },
+  verdict: 'promising',
+  confidence: 0.7,
   samples: [nearSample, farSample],
 };
 

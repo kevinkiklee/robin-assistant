@@ -1,7 +1,7 @@
 // system/lib/sky/deliver.ts
 import type { RobinDb } from '../../brain/memory/db.ts';
-import { recordAlert, resolveAlert } from '../../kernel/runtime/alert-store.ts';
 import { notifyMacOSAction } from '../../integrations/builtin/notify/index.ts';
+import { recordAlert, resolveAlert } from '../../kernel/runtime/alert-store.ts';
 import { mergeMatches } from './recipes.ts';
 import type { Notification, RecipeMatch } from './types.ts';
 
@@ -31,7 +31,13 @@ export async function fireMatches(opts: {
   const newMatches = opts.matches.filter((m) => !opts.openKeys.includes(m.key));
   const fired: string[] = [];
   for (const m of newMatches) {
-    recordAlert(opts.db, { severity: 'info', source: 'sky', key: m.key, message: `${m.title} — ${m.body}`, context: { recipe: m.recipe, window: m.window, date: m.windowDate } });
+    recordAlert(opts.db, {
+      severity: 'info',
+      source: 'sky',
+      key: m.key,
+      message: `${m.title} — ${m.body}`,
+      context: { recipe: m.recipe, window: m.window, date: m.windowDate },
+    });
     fired.push(m.key);
   }
   for (const note of mergeMatches(newMatches)) await deliver(note);

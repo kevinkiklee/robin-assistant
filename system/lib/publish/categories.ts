@@ -45,7 +45,10 @@ export function classify(rawCategory: unknown, rawVisibility: unknown): Classify
   ) {
     visibility = rawVisibility as Visibility;
   } else {
-    return { ok: false, error: `invalid visibility "${String(rawVisibility)}" — valid: ${VISIBILITIES.join(', ')}` };
+    return {
+      ok: false,
+      error: `invalid visibility "${String(rawVisibility)}" — valid: ${VISIBILITIES.join(', ')}`,
+    };
   }
 
   return { ok: true, category, visibility, warnings };

@@ -30,11 +30,11 @@ export interface SkyContext {
 }
 
 export interface CloudSummary {
-  high: number;          // % high cloud, near-field/overhead mean
-  mid: number;           // % mid cloud overhead
-  low: number;           // % low cloud overhead
-  horizonLowPct: number | null;  // min low cloud at the far field (the horizon toward the sun)
-  horizonGap: boolean;   // is there a low-cloud gap toward the sun azimuth
+  high: number; // % high cloud, near-field/overhead mean
+  mid: number; // % mid cloud overhead
+  low: number; // % low cloud overhead
+  horizonLowPct: number | null; // min low cloud at the far field (the horizon toward the sun)
+  horizonGap: boolean; // is there a low-cloud gap toward the sun azimuth
   gapBearing: number | null;
 }
 
@@ -48,7 +48,13 @@ export interface ColorRead {
   clouds: CloudSummary;
 }
 
-export type RecipeId = 'sunrise_color' | 'sunset_color' | 'fog_sunrise' | 'rain_clearing' | 'moon' | 'tide_window';
+export type RecipeId =
+  | 'sunrise_color'
+  | 'sunset_color'
+  | 'fog_sunrise'
+  | 'rain_clearing'
+  | 'moon'
+  | 'tide_window';
 
 export interface RecipeMatch {
   recipe: RecipeId;

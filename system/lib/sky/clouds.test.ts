@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { canvasCover, canvasMean } from './clouds.ts';
 
 test('canvasCover: high cloud counts full, mid weighted', () => {

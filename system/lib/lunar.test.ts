@@ -96,7 +96,9 @@ test('rise/set azimuths are in [0,360); rise eastern, set western (mid-lat)', ()
   let riseSamples = 0;
   let setSamples = 0;
   for (let d = 0; d < 14; d++) {
-    const day = new Date('2026-06-01T12:00:00Z'.replace('06-01', `06-${String(d + 1).padStart(2, '0')}`));
+    const day = new Date(
+      '2026-06-01T12:00:00Z'.replace('06-01', `06-${String(d + 1).padStart(2, '0')}`),
+    );
     const info = moonInfo(NYC.lat, NYC.lng, day);
     if (info.riseAz !== null) {
       assert.ok(info.riseAz >= 0 && info.riseAz < 360, `riseAz ${info.riseAz} out of range`);

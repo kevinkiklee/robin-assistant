@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseTides, lowTideInWindow, nextTides } from './tides.ts';
+import { lowTideInWindow, nextTides, parseTides } from './tides.ts';
 
 // ---------------------------------------------------------------------------
 // Fixture: one full day at Sandy Hook, NJ — 2 highs + 2 lows (roughly)

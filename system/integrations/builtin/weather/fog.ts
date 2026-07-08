@@ -31,10 +31,25 @@ export interface FogNight {
 }
 
 const WMO: Record<number, string> = {
-  0: 'clear', 1: 'mainly clear', 2: 'partly cloudy', 3: 'overcast',
-  45: 'fog', 48: 'fog', 51: 'drizzle', 53: 'drizzle', 55: 'drizzle',
-  61: 'rain', 63: 'rain', 65: 'heavy rain', 71: 'snow', 73: 'snow', 75: 'snow',
-  80: 'showers', 81: 'showers', 82: 'heavy showers', 95: 'thunderstorm',
+  0: 'clear',
+  1: 'mainly clear',
+  2: 'partly cloudy',
+  3: 'overcast',
+  45: 'fog',
+  48: 'fog',
+  51: 'drizzle',
+  53: 'drizzle',
+  55: 'drizzle',
+  61: 'rain',
+  63: 'rain',
+  65: 'heavy rain',
+  71: 'snow',
+  73: 'snow',
+  75: 'snow',
+  80: 'showers',
+  81: 'showers',
+  82: 'heavy showers',
+  95: 'thunderstorm',
 };
 
 export function wmoText(code: number): string {
@@ -71,9 +86,9 @@ function band(index: number): FogNight['band'] {
 /** The night slots in order: 21:00 of day d, then 00/03/06 of day d+1. */
 const NIGHT_HOURS = [
   { hour: 21, label: '9pm', nextDay: false },
-  { hour: 0,  label: '12am', nextDay: true },
-  { hour: 3,  label: '3am', nextDay: true },
-  { hour: 6,  label: '6am', nextDay: true },
+  { hour: 0, label: '12am', nextDay: true },
+  { hour: 3, label: '3am', nextDay: true },
+  { hour: 6, label: '6am', nextDay: true },
 ];
 
 function addDay(d: string): string {

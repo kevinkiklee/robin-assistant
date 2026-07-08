@@ -17,9 +17,17 @@ const row = (o: Partial<LogRow>): LogRow => ({
   ...o,
 });
 
-function mkRow(p: Partial<LogRow> & { slug: string; ts: string; action: LogRow['action'] }): LogRow {
+function mkRow(
+  p: Partial<LogRow> & { slug: string; ts: string; action: LogRow['action'] },
+): LogRow {
   return {
-    url: '', user_id: 'u', source: null, blob_key: '', title: p.slug, assets: [], warnings: [],
+    url: '',
+    user_id: 'u',
+    source: null,
+    blob_key: '',
+    title: p.slug,
+    assets: [],
+    warnings: [],
     ...p,
   } as LogRow;
 }
@@ -123,8 +131,22 @@ test('writeManifest with no private client skips index.private.json even when pr
 
 test('buildManifest carries category/visibility/description from latest row', () => {
   const rows = [
-    mkRow({ slug: 'a', ts: '2026-01-01T00:00:00Z', action: 'append', category: 'Essays', visibility: 'public', description: 'd1' }),
-    mkRow({ slug: 'a', ts: '2026-02-01T00:00:00Z', action: 'overwrite', category: 'Field Guides', visibility: 'private', description: 'd2' }),
+    mkRow({
+      slug: 'a',
+      ts: '2026-01-01T00:00:00Z',
+      action: 'append',
+      category: 'Essays',
+      visibility: 'public',
+      description: 'd1',
+    }),
+    mkRow({
+      slug: 'a',
+      ts: '2026-02-01T00:00:00Z',
+      action: 'overwrite',
+      category: 'Field Guides',
+      visibility: 'private',
+      description: 'd2',
+    }),
   ];
   const m = buildManifest(rows, { publicUrl: 'https://x', userId: 'u' });
   assert.equal(m[0].category, 'Field Guides');
@@ -149,7 +171,11 @@ test('writeManifest writes public array + private array to the right stores', as
     return {
       headBlob: async () => ({ exists: false }),
       putBlob: async (key: string, body: string | Buffer, opts?: { access?: string }) => {
-        puts.push({ key, body: typeof body === 'string' ? body : body.toString('utf8'), access: opts?.access });
+        puts.push({
+          key,
+          body: typeof body === 'string' ? body : body.toString('utf8'),
+          access: opts?.access,
+        });
         return { url: 'u' };
       },
       delBlob: async () => {},
@@ -160,23 +186,43 @@ test('writeManifest writes public array + private array to the right stores', as
   const privBlob = makeBlob(privPuts);
 
   const rows = [
-    mkRow({ slug: 'pub', ts: '2026-01-01T00:00:00Z', action: 'append', category: 'Essays', visibility: 'public' }),
-    mkRow({ slug: 'priv', ts: '2026-01-02T00:00:00Z', action: 'append', category: 'Essays', visibility: 'private' }),
+    mkRow({
+      slug: 'pub',
+      ts: '2026-01-01T00:00:00Z',
+      action: 'append',
+      category: 'Essays',
+      visibility: 'public',
+    }),
+    mkRow({
+      slug: 'priv',
+      ts: '2026-01-02T00:00:00Z',
+      action: 'append',
+      category: 'Essays',
+      visibility: 'private',
+    }),
   ];
   await writeManifest(pubBlob, { publicUrl: 'https://x', userId: 'u' }, rows, privBlob);
 
   // Public index goes to the PUBLIC client
   const pub = pubPuts.find((p) => p.key === 'users/u/index.json');
   assert.ok(pub, 'index.json must be written to the public client');
-  assert.deepEqual(JSON.parse(pub.body).map((e: { slug: string }) => e.slug), ['pub']);
+  assert.deepEqual(
+    JSON.parse(pub.body).map((e: { slug: string }) => e.slug),
+    ['pub'],
+  );
 
   // Private index goes to the PRIVATE client (not the public one)
   const prv = privPuts.find((p) => p.key === 'users/u/index.private.json');
   assert.ok(prv, 'index.private.json must be written to the private client');
   assert.equal(prv.access, 'private');
-  assert.deepEqual(JSON.parse(prv.body).map((e: { slug: string }) => e.slug), ['priv']);
+  assert.deepEqual(
+    JSON.parse(prv.body).map((e: { slug: string }) => e.slug),
+    ['priv'],
+  );
 
   // Private index must NOT appear in public puts
-  assert.ok(!pubPuts.some((p) => p.key === 'users/u/index.private.json'),
-    'index.private.json must not be written to the public client');
+  assert.ok(
+    !pubPuts.some((p) => p.key === 'users/u/index.private.json'),
+    'index.private.json must not be written to the public client',
+  );
 });

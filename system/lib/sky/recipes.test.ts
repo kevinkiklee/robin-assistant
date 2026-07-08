@@ -1,31 +1,53 @@
 // system/lib/sky/recipes.test.ts
-import { test } from 'node:test';
+
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { matchRecipes, mergeMatches } from './recipes.ts';
 import type { ColorRead } from './types.ts';
 
-const promising = (window: 'sunrise' | 'sunset'): ColorRead =>
-  ({
-    window, band: 'promising', why: 'high cloud + clear horizon', caution: null, confidence: 0.8,
-    azimuth: window === 'sunrise' ? 58 : 302,
-    clouds: { high: 55, mid: 10, low: 15, horizonLowPct: 5, horizonGap: true, gapBearing: window === 'sunrise' ? 58 : 302 },
-  });
+const promising = (window: 'sunrise' | 'sunset'): ColorRead => ({
+  window,
+  band: 'promising',
+  why: 'high cloud + clear horizon',
+  caution: null,
+  confidence: 0.8,
+  azimuth: window === 'sunrise' ? 58 : 302,
+  clouds: {
+    high: 55,
+    mid: 10,
+    low: 15,
+    horizonLowPct: 5,
+    horizonGap: true,
+    gapBearing: window === 'sunrise' ? 58 : 302,
+  },
+});
 
 test('sunset colour fires inside the 1.5–5h lead window', () => {
-  const m = matchRecipes({ sunset: promising('sunset'), sunsetLeadH: 3, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    sunset: promising('sunset'),
+    sunsetLeadH: 3,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 1);
   assert.equal(m[0].recipe, 'sunset_color');
   assert.equal(m[0].key, 'sunset:2026-06-25');
 });
 
 test('sunset colour suppressed when too soon (<1.5h)', () => {
-  const m = matchRecipes({ sunset: promising('sunset'), sunsetLeadH: 0.5, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    sunset: promising('sunset'),
+    sunsetLeadH: 0.5,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 0);
 });
 
 test('sunrise colour + fog merge into one notification', () => {
   const m = matchRecipes({
-    sunrise: promising('sunrise'), sunriseLeadH: 9, fogIndex: 7, fogCoversSunrise: true,
+    sunrise: promising('sunrise'),
+    sunriseLeadH: 9,
+    fogIndex: 7,
+    fogCoversSunrise: true,
     dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
   });
   assert.equal(m.length, 2);
@@ -35,14 +57,22 @@ test('sunrise colour + fog merge into one notification', () => {
 });
 
 test('rain_clearing fires inside the 1.5–5h sunset lead window', () => {
-  const m = matchRecipes({ rainClearing: true, sunsetLeadH: 3, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    rainClearing: true,
+    sunsetLeadH: 3,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 1);
   assert.equal(m[0].recipe, 'rain_clearing');
   assert.equal(m[0].window, 'sunset');
 });
 
 test('rain_clearing suppressed when too soon (<1.5h)', () => {
-  const m = matchRecipes({ rainClearing: true, sunsetLeadH: 0.5, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    rainClearing: true,
+    sunsetLeadH: 0.5,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 0);
 });
 
@@ -60,7 +90,10 @@ const moonBase = () => ({
 });
 
 test('moon fires at illumination=0.95, horizonClear=true, in-lead', () => {
-  const m = matchRecipes({ moon: moonBase(), dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    moon: moonBase(),
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 1);
   assert.equal(m[0].recipe, 'moon');
   assert.equal(m[0].window, 'sunrise');
@@ -71,17 +104,26 @@ test('moon fires at illumination=0.95, horizonClear=true, in-lead', () => {
 });
 
 test('moon suppressed at illumination=0.85 (below threshold)', () => {
-  const m = matchRecipes({ moon: { ...moonBase(), illumination: 0.85 }, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    moon: { ...moonBase(), illumination: 0.85 },
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 0);
 });
 
 test('moon suppressed when horizonClear=false', () => {
-  const m = matchRecipes({ moon: { ...moonBase(), horizonClear: false }, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    moon: { ...moonBase(), horizonClear: false },
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 0);
 });
 
 test('moon suppressed when out-of-lead (leadH=3, sunrise window needs 6–14h)', () => {
-  const m = matchRecipes({ moon: { ...moonBase(), leadH: 3 }, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    moon: { ...moonBase(), leadH: 3 },
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 0);
 });
 
@@ -93,7 +135,10 @@ const tideBase = () => ({
 });
 
 test('tide_window fires when low tide present + in-lead', () => {
-  const m = matchRecipes({ tide: tideBase(), dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    tide: tideBase(),
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 1);
   assert.equal(m[0].recipe, 'tide_window');
   assert.equal(m[0].window, 'sunrise');
@@ -102,7 +147,10 @@ test('tide_window fires when low tide present + in-lead', () => {
 });
 
 test('tide_window suppressed when out-of-lead (leadH=3, sunrise window needs 6–14h)', () => {
-  const m = matchRecipes({ tide: { ...tideBase(), leadH: 3 }, dates: { sunrise: '2026-06-26', sunset: '2026-06-25' } });
+  const m = matchRecipes({
+    tide: { ...tideBase(), leadH: 3 },
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
   assert.equal(m.length, 0);
 });
 

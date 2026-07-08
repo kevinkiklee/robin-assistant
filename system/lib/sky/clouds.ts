@@ -7,9 +7,9 @@ export function canvasCover(layers: CloudLayers): number {
 
 export function canvasMean(samples: CloudLayers[]): { high: number; mid: number } {
   if (samples.length === 0) return { high: 0, mid: 0 };
-  const sum = samples.reduce(
-    (a, s) => ({ high: a.high + s.high, mid: a.mid + s.mid }),
-    { high: 0, mid: 0 }
-  );
+  const sum = samples.reduce((a, s) => ({ high: a.high + s.high, mid: a.mid + s.mid }), {
+    high: 0,
+    mid: 0,
+  });
   return { high: sum.high / samples.length, mid: sum.mid / samples.length };
 }
