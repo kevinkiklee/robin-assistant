@@ -383,6 +383,62 @@ test('scheduler-glue: consecutive_skips increments on skip, resets on ok, unchan
   closeDb(db);
 });
 
+test('scheduler-glue: thrown "(transient upstream)" error retries then records a skip, not an error', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-transient-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-transient-user-'));
+
+  const dir = join(userRoot, 'transient-probe');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'integration.yaml'),
+    'name: transient-probe\nversion: 1.0.0\nschedule: manual\n',
+  );
+  // Mirrors an integration surfacing an upstream 5xx as retryable (e.g. weather
+  // throwing on an open-meteo 503) instead of returning a hard error status.
+  writeFileSync(
+    join(dir, 'index.js'),
+    `export const integration = { tick: async () => { throw new Error('open-meteo returned 503 (transient upstream)'); } };\n`,
+  );
+
+  const handlers: Record<string, () => Promise<void>> = {};
+  const fakeDaemon = {
+    registerHandler: (name: string, handler: () => Promise<void>) => {
+      handlers[name] = handler;
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+
+  await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+  });
+
+  const tickHandler = handlers['integration.transient-probe.tick'];
+  assert.ok(tickHandler, 'tick handler registered');
+
+  // Must NOT throw: after exhausting retries the failure is booked as a skip.
+  await tickHandler();
+
+  const getState = (key: string) =>
+    (
+      db
+        .prepare(
+          `SELECT value FROM integration_state WHERE integration_name = 'transient-probe' AND key = ?`,
+        )
+        .get(key) as { value: string } | undefined
+    )?.value;
+
+  assert.equal(getState('consecutive_errors') ?? '0', '0', 'no hard error booked');
+  assert.equal(getState('consecutive_skips'), '1', 'outage counts as a skip');
+  assert.match(
+    getState('last_skip_reason') ?? '',
+    /transient upstream/,
+    'skip reason preserves the upstream message',
+  );
+
+  closeDb(db);
+});
+
 test('scheduler-glue: degraded tick increments degraded:stream counters but still writes last_ok_at', async () => {
   const db = freshDb();
   const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-degraded-sys-'));

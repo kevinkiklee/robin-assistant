@@ -1,6 +1,5 @@
 import { listAlerts } from '../../../kernel/runtime/alert-store.ts';
 import { type MoonInfo, moonInfo } from '../../../lib/lunar.ts';
-import { solarTimes, sunBearings } from '../../../lib/solar.ts';
 import { colorRead } from '../../../lib/sky/color.ts';
 import { SKY } from '../../../lib/sky/constants.ts';
 import { fireMatches } from '../../../lib/sky/deliver.ts';
@@ -9,6 +8,7 @@ import { agreementFactor } from '../../../lib/sky/ensemble.ts';
 import { samplePoints } from '../../../lib/sky/geo.ts';
 import { matchRecipes } from '../../../lib/sky/recipes.ts';
 import type { ColorRead, SamplePoint, Window } from '../../../lib/sky/types.ts';
+import { solarTimes, sunBearings } from '../../../lib/solar.ts';
 import { lowTideInWindow, nextTides, parseTides } from '../../../lib/tides.ts';
 import type { Integration } from '../../_runtime/types.ts';
 import { type FogNight, fogNights, type OmHourly, wmoText } from './fog.ts';
@@ -196,6 +196,14 @@ export const integration: Integration = {
 
     const res = await ctx.fetch(url);
     if (!res.ok) {
+      // 5xx/429 are self-healing upstream blips (open-meteo 503'd intermittently
+      // for days in July 2026, booking 7 consecutive "broken" errors): throw so
+      // the runtime's transient retry→skip path absorbs them and only the
+      // staleness invariant fires on a sustained outage. Other statuses mean the
+      // request itself is wrong — keep those as hard errors.
+      if (res.status >= 500 || res.status === 429) {
+        throw new Error(`open-meteo returned ${res.status} (transient upstream)`);
+      }
       return { status: 'error', message: `open-meteo returned ${res.status}` };
     }
 
@@ -300,7 +308,8 @@ export const integration: Integration = {
     // and leaves every tide field null; the tick still succeeds.
     const tideEnabled = ctx.state.get('sky_tide') !== 'off';
     const tideStationRaw = ctx.state.get('tide_station');
-    const tideStation = tideStationRaw && /^\d+$/.test(tideStationRaw) ? tideStationRaw : DEFAULT_TIDE_STATION;
+    const tideStation =
+      tideStationRaw && /^\d+$/.test(tideStationRaw) ? tideStationRaw : DEFAULT_TIDE_STATION;
     let tideMorningLow: { time: Date; heightFt: number } | null = null;
     let tideNextHigh: { time: Date; heightFt: number } | null = null;
     let tideNextLow: { time: Date; heightFt: number } | null = null;
@@ -402,7 +411,10 @@ export const integration: Integration = {
           ? solarTimes(lat, lng, new Date(now.valueOf() + 86400000)).sunset
           : todaySunset;
         if (instant) sunsetLeadH = (instant.valueOf() - now.valueOf()) / 3.6e6;
-        const { points: sunsetPoints, coverage: sunsetCoverage } = buildSamples(sunsetSamples, sunsetHourIso);
+        const { points: sunsetPoints, coverage: sunsetCoverage } = buildSamples(
+          sunsetSamples,
+          sunsetHourIso,
+        );
         const ctxOut = skyContext({
           window: 'sunset' as Window,
           azimuth: sunsetAz,
@@ -418,8 +430,7 @@ export const integration: Integration = {
       // already happened (daily index 1; forecast_days=2 guarantees it).
       if (sunriseAz != null && daily?.sunrise?.length) {
         const todaySunrise = s.sunrise ?? null;
-        const useTomorrowSunrise =
-          todaySunrise != null && todaySunrise.valueOf() <= now.valueOf();
+        const useTomorrowSunrise = todaySunrise != null && todaySunrise.valueOf() <= now.valueOf();
         const sunriseStr = daily.sunrise[useTomorrowSunrise ? 1 : 0] ?? daily.sunrise[0];
         sunriseHourIso = nearestHourIso(sunriseStr);
         sunriseDate = sunriseStr.slice(0, 10);
@@ -427,7 +438,10 @@ export const integration: Integration = {
           ? solarTimes(lat, lng, new Date(now.valueOf() + 86400000)).sunrise
           : todaySunrise;
         if (instant) sunriseLeadH = (instant.valueOf() - now.valueOf()) / 3.6e6;
-        const { points: sunrisePoints, coverage: sunriseCoverage } = buildSamples(sunriseSamples, sunriseHourIso);
+        const { points: sunrisePoints, coverage: sunriseCoverage } = buildSamples(
+          sunriseSamples,
+          sunriseHourIso,
+        );
         const ctxOut = skyContext({
           window: 'sunrise' as Window,
           azimuth: sunriseAz,

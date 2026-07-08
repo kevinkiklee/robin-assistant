@@ -14,9 +14,9 @@ import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
 import { listAlerts } from '../../../kernel/runtime/alert-store.ts';
 import { moonInfo } from '../../../lib/lunar.ts';
-import { sunBearings } from '../../../lib/solar.ts';
 import { SKY } from '../../../lib/sky/constants.ts';
 import { samplePoints } from '../../../lib/sky/geo.ts';
+import { sunBearings } from '../../../lib/solar.ts';
 import { integration } from './index.ts';
 
 // Fixed test instant: 2026-06-25T20:00:00-04:00.
@@ -355,16 +355,8 @@ test('weather: behavioral — sunset band is promising with controlled cloud pat
   assert.ok(Array.isArray(cap.payload.fog_nights), 'fog_nights array');
 
   // ISO sun window fields.
-  assert.match(
-    cap.payload.sunrise ?? '',
-    /^\d{4}-\d{2}-\d{2}T/,
-    'payload.sunrise is ISO',
-  );
-  assert.match(
-    cap.payload.sunset ?? '',
-    /^\d{4}-\d{2}-\d{2}T/,
-    'payload.sunset is ISO',
-  );
+  assert.match(cap.payload.sunrise ?? '', /^\d{4}-\d{2}-\d{2}T/, 'payload.sunrise is ISO');
+  assert.match(cap.payload.sunset ?? '', /^\d{4}-\d{2}-\d{2}T/, 'payload.sunset is ISO');
 
   // Sky block.
   assert.ok(cap.payload.sky, 'sky block present');
@@ -446,9 +438,16 @@ test('weather: payload carries moon + tide blocks (ephemeris + CO-OPS)', async (
   // Tide block: NOAA fixture has a LOW at 2026-06-26 05:40 ET → inside the
   // morning-golden window (sunrise 05:25 → golden-hour-end ~06:06 ET).
   assert.ok(cap.payload.tide, 'tide block present');
-  assert.ok(cap.payload.tide.lowInGolden, 'tide.lowInGolden present (low in morning-golden window)');
+  assert.ok(
+    cap.payload.tide.lowInGolden,
+    'tide.lowInGolden present (low in morning-golden window)',
+  );
   assert.match(cap.payload.tide.lowInGolden.time, /^\d{4}-\d{2}-\d{2}T/, 'lowInGolden.time ISO');
-  assert.equal(typeof cap.payload.tide.lowInGolden.heightFt, 'number', 'lowInGolden.heightFt numeric');
+  assert.equal(
+    typeof cap.payload.tide.lowInGolden.heightFt,
+    'number',
+    'lowInGolden.heightFt numeric',
+  );
   assert.ok(cap.payload.tide.nextHigh, 'tide.nextHigh present');
   assert.ok(cap.payload.tide.nextLow, 'tide.nextLow present');
 
@@ -490,7 +489,11 @@ test('weather: ensemble disagreement lowers sunset confidence', async () => {
     `ensemble disagreement must lower confidence (agree=${cAgree}, disagree=${cDisagree})`,
   );
   // Band classification is unaffected by the agreement factor.
-  assert.equal(capDisagree.payload.sky.sunset.band, 'promising', 'band still promising under disagreement');
+  assert.equal(
+    capDisagree.payload.sky.sunset.band,
+    'promising',
+    'band still promising under disagreement',
+  );
 });
 
 test('weather: per-source degradation — tide fetch rejects → tick ok, tide null, sky intact', async () => {
@@ -576,7 +579,13 @@ test('weather: near-full dusk moonrise populates the moon recipe → moon alert 
   );
 
   const cap: { payload?: any } = {};
-  const ctx = makeCtx(cap, { db, now: MOON_NOW, fetchByUrl: { forecast: async () => ({ ok: true, status: 200, json: async () => buildMoonResponse() }) } });
+  const ctx = makeCtx(cap, {
+    db,
+    now: MOON_NOW,
+    fetchByUrl: {
+      forecast: async () => ({ ok: true, status: 200, json: async () => buildMoonResponse() }),
+    },
+  });
   const r = await integration.tick!(ctx);
 
   assert.equal(r.status, 'ok');
@@ -613,14 +622,36 @@ test('weather: kill-switch — sky_context=off yields null sky reads and no aler
   assert.equal(cap.payload.sky.sunset, null, 'sky.sunset is null when kill-switch off');
 });
 
-test('weather: non-OK fetch returns error status', async () => {
+test('weather: 5xx fetch throws a transient-upstream error (runtime retries → skip)', async () => {
   const cap: { payload?: any } = {};
   const ctx = makeCtx(cap, {
     fetchResponse: async () => ({ ok: false, status: 503, json: async () => ({}) }),
   });
+  await assert.rejects(
+    async () => await integration.tick!(ctx),
+    /returned 503 \(transient upstream\)/,
+  );
+});
+
+test('weather: 429 fetch throws a transient-upstream error', async () => {
+  const cap: { payload?: any } = {};
+  const ctx = makeCtx(cap, {
+    fetchResponse: async () => ({ ok: false, status: 429, json: async () => ({}) }),
+  });
+  await assert.rejects(
+    async () => await integration.tick!(ctx),
+    /returned 429 \(transient upstream\)/,
+  );
+});
+
+test('weather: non-retryable non-OK fetch returns error status', async () => {
+  const cap: { payload?: any } = {};
+  const ctx = makeCtx(cap, {
+    fetchResponse: async () => ({ ok: false, status: 400, json: async () => ({}) }),
+  });
   const r = await integration.tick!(ctx);
   assert.equal(r.status, 'error');
-  assert.ok(r.message && /503/.test(r.message), 'message mentions status code');
+  assert.ok(r.message && /400/.test(r.message), 'message mentions status code');
 });
 
 // ── detectRainClearing fallback tests ─────────────────────────────────────────

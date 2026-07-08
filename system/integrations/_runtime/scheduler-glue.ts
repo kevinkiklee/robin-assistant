@@ -36,6 +36,10 @@ const TRANSIENT_PATTERNS = [
   /ENETUNREACH/i,
   /EAI_AGAIN/i,
   /socket hang up/i,
+  // Opt-in marker for integrations surfacing a retryable upstream HTTP status
+  // (5xx/429) as a throw instead of a hard {status:'error'} — e.g. weather on
+  // an open-meteo 503. Phrase the thrown message "… (transient upstream)".
+  /transient upstream/i,
 ];
 const PERSISTENT_AUTH_PATTERNS = [/invalid_grant/i, /401/, /403/, /oauth.*4\d\d/i];
 const RETRY_BACKOFF_MS = 2000;
