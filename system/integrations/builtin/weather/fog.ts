@@ -3,9 +3,10 @@
 // Computed from an Open-Meteo hourly forecast object (parallel arrays,
 // timezone=auto). Each slot scores 0–10 as the greater of the provider's own
 // fog signal (weather_code ∈ {45,48} or low visibility) and a radiation-fog
-// composite (dew-point spread + relative humidity + calm wind); a night's
-// index is the MAX over its slots, because fog is an event, not an average.
-// Pure module so the scoring stays unit-testable.
+// composite (dew-point spread + relative humidity + calm wind, damped by
+// nocturnal cloud blockage — a solid deck stops the radiative cooling the
+// composite presumes); a night's index is the MAX over its slots, because fog
+// is an event, not an average. Pure module so the scoring stays unit-testable.
 
 /** Open-Meteo hourly parallel arrays (timezone=auto, local ISO timestamps). */
 export interface OmHourly {
@@ -16,6 +17,13 @@ export interface OmHourly {
   wind_speed_10m: number[];
   weather_code: number[];
   visibility: number[];
+  /**
+   * Cloud layers (%). Optional: when present they gate the radiation-fog
+   * composite (see scoreNightSlot); when absent, scoring is ungated (legacy).
+   */
+  cloud_cover_low?: number[];
+  cloud_cover_mid?: number[];
+  cloud_cover_high?: number[];
 }
 
 export interface FogNight {
@@ -106,12 +114,32 @@ function scoreNightSlot(h: OmHourly, idx: number, label: string): SlotScore {
   const spreadScore = rampDown(spread, 2, 8);
   const rhScore = rampUp(rh, 85, 98);
   const windScore = rampDown(wind, 2, 14);
-  const composite = 0.45 * spreadScore + 0.3 * rhScore + 0.25 * windScore;
+
+  // Radiation fog needs net longwave cooling at the surface; cloud re-radiates
+  // it back. Weight layers by how strongly each blocks that cooling (low deck ≈
+  // opaque, cirrus ≈ thin), then damp the composite linearly from 1.0 at ≤40%
+  // effective blockage down to a 0.15 floor at ≥95% — under a solid deck the
+  // ground never cools the last few °F to saturation (the 7/8→7/9 overcast
+  // night scored "8/10 likely" and produced no fog). The provider signal below
+  // stays ungated: advection/marine fog forms regardless of sky, and WMO 45/48
+  // or sub-4km visibility is the provider reporting fog, not potential.
+  const low = h.cloud_cover_low?.[idx];
+  const mid = h.cloud_cover_mid?.[idx];
+  const high = h.cloud_cover_high?.[idx];
+  let cooling = 1;
+  let blockage: number | null = null;
+  if (low !== undefined && mid !== undefined && high !== undefined) {
+    blockage = Math.min(100, low + 0.65 * mid + 0.3 * high);
+    cooling = blockage <= 40 ? 1 : Math.max(0.15, 1 - (0.85 * (blockage - 40)) / 55);
+  }
+
+  const composite = (0.45 * spreadScore + 0.3 * rhScore + 0.25 * windScore) * cooling;
   const providerFog = code === 45 || code === 48 ? 10 : vis < 1000 ? 8 : vis < 4000 ? 4 : 0;
+  const skyNote = blockage !== null && cooling < 1 ? ` · sky ${Math.round(blockage)}% blocked` : '';
   return {
     label,
     score: Math.max(providerFog, composite),
-    factors: `spread ${Math.round(spread)}°F · RH ${Math.round(rh)}% · wind ${Math.round(wind)} mph`,
+    factors: `spread ${Math.round(spread)}°F · RH ${Math.round(rh)}% · wind ${Math.round(wind)} mph${skyNote}`,
   };
 }
 

@@ -74,3 +74,53 @@ test('wmoText maps codes', () => {
   assert.equal(wmoText(45), 'fog');
   assert.equal(wmoText(3), 'overcast');
 });
+
+// ── cloud gate ─────────────────────────────────────────────────────────────────
+//
+// Radiation fog needs a sky the ground can radiate through. A saturated, calm
+// night under a solid deck (the 7/8→7/9 false "8/10 likely" that produced no
+// fog) must not reach "likely" on the composite alone. Provider signals
+// (WMO 45/48, low visibility) stay ungated — advection/marine fog forms under
+// cloud and the provider is reporting observation-grade fog, not potential.
+
+function withClouds(h: OmHourly, low: number, mid: number, high: number): OmHourly {
+  const n = h.time.length;
+  const fill = (v: number) => Array(n).fill(v);
+  return {
+    ...h,
+    cloud_cover_low: fill(low),
+    cloud_cover_mid: fill(mid),
+    cloud_cover_high: fill(high),
+  };
+}
+
+test('fogNights: saturated night under a solid deck is capped to unlikely', () => {
+  const nights = fogNights(withClouds(series(), 10, 90, 100), '2026-06-25');
+  const tonight = nights.find((x) => x.date === '2026-06-25');
+  assert.ok(tonight, 'night entry should exist');
+  assert.ok(tonight!.index <= 2, `index ${tonight!.index} should be overcast-capped`);
+  assert.equal(tonight!.band, 'unlikely', `band was ${tonight!.band}`);
+});
+
+test('fogNights: saturated night under a clear sky keeps its high score', () => {
+  const nights = fogNights(withClouds(series(), 0, 0, 0), '2026-06-25');
+  const tonight = nights.find((x) => x.date === '2026-06-25');
+  assert.ok(tonight!.index >= 8, `index ${tonight!.index}`);
+});
+
+test('fogNights: high-cloud-only (cirrus) night is not gated', () => {
+  // Thin high cloud lets most longwave cooling through: 0.3 × 100 = 30% ≤ the
+  // 40% blockage threshold → composite untouched.
+  const nights = fogNights(withClouds(series(), 0, 0, 100), '2026-06-25');
+  const tonight = nights.find((x) => x.date === '2026-06-25');
+  assert.ok(tonight!.index >= 8, `index ${tonight!.index}`);
+});
+
+test('fogNights: provider fog signal (WMO 45) is not cloud-gated', () => {
+  const h = withClouds(series(), 100, 100, 100);
+  const overcastFog: OmHourly = { ...h, weather_code: h.time.map(() => 45) };
+  const nights = fogNights(overcastFog, '2026-06-25');
+  const tonight = nights.find((x) => x.date === '2026-06-25');
+  assert.equal(tonight!.index, 10);
+  assert.equal(tonight!.band, 'very likely');
+});
