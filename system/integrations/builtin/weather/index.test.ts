@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: fixture factory — the fake ctx/fetch/payload shapes are asserted structurally at runtime; typing them fully would duplicate the integration's internals in the test
 // Pin the process timezone to the integration's domain TZ before any Date math.
 // solarTimes() is UTC-based (TZ-independent), but parseTides() interprets its
 // "YYYY-MM-DD HH:mm" strings as LOCAL time and moonInfo() derives the local
