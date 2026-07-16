@@ -22,3 +22,24 @@ test('G: build() config — trigger, permissionMode, allowedTools', () => {
 test('G: cwd is scoped to user-data/content/knowledge under repoRoot', () => {
   assert.equal(handler.build('g', { repoRoot: '/repo' }).cwd, '/repo/user-data/content/knowledge');
 });
+
+test('G: OS sandbox is on and fail-closed — cwd alone is not a write boundary', () => {
+  const out = handler.build('g', { repoRoot: '/repo' });
+  assert.deepEqual(out.sandbox, {
+    enabled: true,
+    autoAllowBashIfSandboxed: true,
+    failIfUnavailable: true,
+  });
+});
+
+test('G: canUseTool denies writes outside the knowledge cwd, allows inside', () => {
+  const out = handler.build('g', { repoRoot: '/repo' });
+  assert.equal(typeof out.canUseTool, 'function');
+  const scope = '/repo/user-data/content/knowledge';
+  assert.equal(out.canUseTool('Write', { file_path: `${scope}/new-note.md` }).behavior, 'allow');
+  assert.equal(
+    out.canUseTool('Edit', { file_path: '/Users/x/.claude/memory/MEMORY.md' }).behavior,
+    'deny',
+  );
+  assert.equal(out.canUseTool('Bash', { command: 'rm -rf /' }).behavior, 'deny');
+});

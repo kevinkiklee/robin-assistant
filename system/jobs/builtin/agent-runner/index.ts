@@ -1,5 +1,13 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquire, release } from '../../../agent/single-flight.ts';
@@ -277,14 +285,37 @@ export async function runAgentRunner(
   }
   const handler = picked;
 
-  // Detached child: outlives this process, no stdio inheritance, fully unref'd so
-  // the daemon's tick loop is never blocked waiting on the agent run.
+  // Detached child: outlives this process, fully unref'd so the daemon's tick
+  // loop is never blocked waiting on the agent run.
+  //
+  // cwd is pinned to the repo root, derived from the runner-entry path
+  // (<root>/{dist|system}/agent/runner-entry.*) — the daemon's own cwd is
+  // user-data (launchd WorkingDirectory), and inheriting it broke every
+  // cwd-relative resolution in the child until 2026-07-16.
+  //
+  // stderr/stdout append to observability/logs/agent-runner.log: with
+  // stdio:'ignore' a child that died before its ledger write left NO trace,
+  // which hid a month of failed runs.
+  const repoRoot = dirname(dirname(dirname(runnerEntry)));
   const args = ['exec', 'tsx', runnerEntry, `--handler=${handler}`];
+  let logFd: number | undefined;
+  try {
+    const logDir = join(userDataDir, 'observability', 'logs');
+    mkdirSync(logDir, { recursive: true });
+    logFd = openSync(join(logDir, 'agent-runner.log'), 'a');
+  } catch {
+    logFd = undefined; // a log failure must never block dispatch
+  }
   let child: ChildProcess;
   try {
-    child = spawnFn('pnpm', args, { detached: true, stdio: 'ignore' });
+    child = spawnFn('pnpm', args, {
+      detached: true,
+      cwd: repoRoot,
+      stdio: logFd === undefined ? 'ignore' : ['ignore', logFd, logFd],
+    });
     child.unref();
   } catch (err) {
+    if (logFd !== undefined) closeSync(logFd);
     // If the spawn itself fails, release the lock so the next tick can retry
     // instead of waiting for the stale-ms window to expire. The cursor has
     // already advanced past this handler — a failed spawn deliberately consumes
@@ -295,6 +326,17 @@ export async function runAgentRunner(
     return { status: 'error', message: `failed to spawn runner for handler ${handler}` };
   }
 
+  if (logFd !== undefined) {
+    try {
+      writeSync(
+        logFd,
+        `\n[${ctx.now().toISOString()}] agent-runner: dispatch handler ${handler} (pid ${child.pid})\n`,
+      );
+    } catch {
+      // banner is best-effort
+    }
+    closeSync(logFd); // the child holds its own duplicate of the fd
+  }
   ctx.log.info({ handler, pid: child.pid, runnerEntry }, 'agent-runner: spawned detached runner');
   return { status: 'ok', message: `dispatched autonomous handler ${handler}` };
 }

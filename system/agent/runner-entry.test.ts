@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { openDb, type RobinDb } from '../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../brain/memory/migrations/index.ts';
 import { recordAlert } from '../kernel/runtime/alert-store.ts';
@@ -142,6 +143,34 @@ test('runRunnerEntry: passes the transcriptDir under user-data/agent-runs', asyn
   assert.equal(transcriptDir, join(ud, 'agent-runs'));
   // H is dream-enrich over mcp__robin__* tools → the robin core server is wired in.
   assert.deepEqual(Object.keys(seenInput?.mcpServers ?? {}), ['robin']);
+});
+
+test('runRunnerEntry: default repoRoot derives from the module, not process.cwd()', async () => {
+  // The daemon's launchd WorkingDirectory is user-data — the detached child
+  // inherits it, so a cwd-derived repoRoot resolved every path inside user-data
+  // (the 2026-07-16 fleet outage). Simulate that: chdir somewhere foreign and
+  // assert the handler cwd still resolves under the REAL repo root.
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const foreign = mkdtempSync(join(tmpdir(), 'robin-foreign-cwd-'));
+  const prevCwd = process.cwd();
+  process.chdir(foreign);
+  try {
+    let cwd: string | undefined;
+    await runRunnerEntry(['--handler=D'], {
+      userDataDir: tmpUserData(),
+      // deliberately NO repoRoot injected — exercise the default resolution
+      log: () => {},
+      openLedger: fakeLedger,
+      mcpServers: fakeMcpServers,
+      runAgent: async (input) => {
+        cwd = input.cwd;
+        return okResult;
+      },
+    });
+    assert.equal(cwd, join(repoRoot, 'user-data', 'content', 'knowledge'));
+  } finally {
+    process.chdir(prevCwd);
+  }
 });
 
 // ── autonomous-only validation ───────────────────────────────────────────────
@@ -544,6 +573,62 @@ test('a verified run resolves an open outcome-mismatch alert for the handler', a
     .get() as { resolved_at: string | null } | undefined;
   assert.ok(after, 'alert row must still exist');
   assert.notEqual(after?.resolved_at, null, 'a verified run must resolve the mismatch alert');
+});
+
+test('a pre-run throw (e.g. MCP resolution) records an error ledger row instead of dying silently', async () => {
+  // Before 2026-07-16, a throw between openLedger and runAgent (buildRobinMcpEntry
+  // resolving a missing dist CLI) escaped runRunnerEntry entirely: no ledger row,
+  // so benching never saw a month of failures. The runner must record the failure
+  // and resolve cleanly.
+  const made = ledgerWithDb();
+  let ran = false;
+  const r = await runRunnerEntry(['--handler=E'], {
+    userDataDir: tmpUserData(),
+    repoRoot: '/repo',
+    log: () => {},
+    openLedger: () => made,
+    mcpServers: () => {
+      throw new Error('Cannot install MCP entry: run `pnpm build` first');
+    },
+    runAgent: async () => {
+      ran = true;
+      return okResult;
+    },
+  });
+  assert.equal(ran, false, 'the SDK must not run after a pre-run failure');
+  assert.equal(r.status, 'error');
+  assert.equal(r.exitCode, 1);
+  assert.match(r.message, /pnpm build/);
+  const row = made.db.prepare(`SELECT status, subtype FROM agent_usage WHERE label='E'`).get() as
+    | { status: string; subtype: string | null }
+    | undefined;
+  assert.ok(row, 'a pre-run failure must still record a ledger row (benching reads it)');
+  assert.equal(row?.status, 'error');
+  assert.equal(row?.subtype, 'pre-run');
+});
+
+test('a worktree-creation failure records an error ledger row', async () => {
+  const made = ledgerWithDb();
+  const r = await runRunnerEntry(['--handler=K'], {
+    userDataDir: tmpUserData(),
+    repoRoot: '/repo',
+    log: () => {},
+    openLedger: () => made,
+    mcpServers: fakeMcpServers,
+    createWorktree: () => {
+      throw new Error('git worktree add failed');
+    },
+    pruneWorktree: () => {},
+    worktreeHasChanges: () => false,
+    runAgent: async () => okResult,
+  });
+  assert.equal(r.status, 'error');
+  assert.equal(r.exitCode, 1);
+  const row = made.db.prepare(`SELECT status, subtype FROM agent_usage WHERE label='K'`).get() as
+    | { status: string }
+    | undefined;
+  assert.ok(row, 'worktree failures must be ledger-visible too');
+  assert.equal(row?.status, 'error');
 });
 
 test('pre-flight capped run (no ledgerId) skips outcome persistence without crashing', async () => {

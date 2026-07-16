@@ -1,4 +1,5 @@
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { latestLearningDigest } from '../brain/cognition/dream.ts';
 import { closeDb, openDb, type RobinDb } from '../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../brain/memory/migrations/index.ts';
@@ -76,6 +77,17 @@ export interface RunnerEntryResult {
   exitCode: number;
 }
 
+/**
+ * The repo root sits two directories above this module (`system/agent/` in dev,
+ * `dist/agent/` compiled). NEVER derive it from process.cwd(): the daemon's
+ * launchd WorkingDirectory is user-data, the detached child inherits it, and a
+ * cwd-derived root resolved every handler path inside user-data — which killed
+ * every autonomous run from ship until 2026-07-16.
+ */
+function defaultRepoRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+}
+
 function defaultOpenLedger(userDataDir: string): {
   ledger: UsageLedger;
   db: RobinDb;
@@ -104,7 +116,7 @@ export async function runRunnerEntry(
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? ((m: string) => process.stderr.write(`${m}\n`));
   const userDataDir = deps.userDataDir ?? resolveUserDataDir();
-  const repoRoot = deps.repoRoot ?? process.cwd();
+  const repoRoot = deps.repoRoot ?? defaultRepoRoot();
   const run = deps.runAgent ?? runAgent;
   const openLedger = deps.openLedger ?? defaultOpenLedger;
   const buildMcpServers = deps.mcpServers ?? mcpServersForRun;
@@ -139,6 +151,7 @@ export async function runRunnerEntry(
   // One handle for the whole run: ledger writes, learning digest, deterministic
   // verifiers, and the mismatch alert all share it. Closed once in the finally.
   const { ledger, db, close } = openLedger(userDataDir);
+  let sdkRan = false;
   try {
     // Inject the latest learning digest so the handler knows Robin's current
     // performance state: calibration, belief lifecycle, recent corrections, and
@@ -164,18 +177,12 @@ export async function runRunnerEntry(
     let worktree: string | undefined;
     let branch: string | undefined;
     if (probe.permissionMode === 'acceptEdits' && probe.cwd === repoRoot) {
-      try {
-        const wt = mkWorktree(repoRoot, now);
-        worktree = wt.worktree;
-        branch = wt.branch;
-        log(`worktree: ${worktree} (branch ${branch})`);
-      } catch (err) {
-        return {
-          status: 'error',
-          message: `failed to create worktree: ${err instanceof Error ? err.message : String(err)}`,
-          exitCode: 1,
-        };
-      }
+      // A creation failure throws into the pre-run catch below, which records
+      // the error ledger row — benching must see worktree failures too.
+      const wt = mkWorktree(repoRoot, now);
+      worktree = wt.worktree;
+      branch = wt.branch;
+      log(`worktree: ${worktree} (branch ${branch})`);
     }
 
     const built = def.build(goal, { repoRoot, ...(worktree ? { worktree } : {}) });
@@ -196,6 +203,7 @@ export async function runRunnerEntry(
       transcriptDir: join(userDataDir, 'agent-runs'),
       now,
     });
+    sdkRan = true;
 
     log(
       `handler: ${def.id} (${def.name})  status: ${result.status}  turns: ${result.turns}  cost: $${result.costUsd.toFixed(4)}`,
@@ -299,6 +307,30 @@ export async function runRunnerEntry(
       message: result.summary,
       exitCode: result.status === 'success' || result.status === 'capped' ? 0 : 1,
     };
+  } catch (err) {
+    // A pre-run failure (worktree creation, MCP resolution, digest DB…) used to
+    // escape as an unhandled rejection: no ledger row, so benching was blind to
+    // a month of dead runs. Record it — but only when the SDK never ran; runAgent
+    // writes exactly one row per run itself and must not get a duplicate.
+    if (!sdkRan) {
+      try {
+        ledger.record({
+          surface: 'agentic-autonomous',
+          label: def.id,
+          costUsd: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          turns: 0,
+          status: 'error',
+          subtype: 'pre-run',
+        });
+      } catch {
+        // ledger write is best-effort — the error return below still lands
+      }
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    log(`handler ${def.id} failed ${sdkRan ? 'after' : 'before'} the SDK run: ${message}`);
+    return { status: 'error', message, exitCode: 1 };
   } finally {
     close();
   }
@@ -307,7 +339,14 @@ export async function runRunnerEntry(
 // Allow direct invocation via `tsx system/agent/runner-entry.ts --handler=B`.
 // This is exactly how the detached agent-runner job spawns it.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  void runRunnerEntry(process.argv.slice(2)).then((r) => {
-    process.exit(r.exitCode);
-  });
+  void runRunnerEntry(process.argv.slice(2))
+    .then((r) => {
+      process.exit(r.exitCode);
+    })
+    .catch((err) => {
+      // Belt-and-braces: runRunnerEntry catches pre-run failures itself, so this
+      // only fires on a bug in the runner — still exit nonzero, never hang.
+      process.stderr.write(`runner-entry: fatal: ${err instanceof Error ? err.stack : err}\n`);
+      process.exit(1);
+    });
 }

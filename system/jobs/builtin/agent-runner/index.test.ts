@@ -174,8 +174,21 @@ test('agent-runner: spawns a detached child + returns ok', async () => {
   const r = await runAgentRunner(fakeCtx(db), enabledDeps(ud, fn));
   assert.equal(r.status, 'ok');
   assert.equal(calls.length, 1, 'exactly one detached child per tick');
-  // Detached + no stdio inheritance — the daemon never blocks on the child.
-  assert.deepEqual(calls[0]?.opts, { detached: true, stdio: 'ignore' });
+  // Detached, cwd pinned to the repo root (derived from the runner-entry path —
+  // the daemon's own cwd is user-data), stderr/stdout appended to the runner log
+  // so child failures are diagnosable instead of vanishing into stdio:'ignore'.
+  const opts = calls[0]?.opts as {
+    detached?: boolean;
+    cwd?: string;
+    stdio?: [string, number, number];
+  };
+  assert.equal(opts?.detached, true);
+  assert.equal(opts?.cwd, '/fake', 'child cwd must be the repo root, not inherited');
+  assert.equal(opts?.stdio?.[0], 'ignore');
+  assert.equal(typeof opts?.stdio?.[1], 'number', 'stdout must go to the runner log fd');
+  assert.equal(typeof opts?.stdio?.[2], 'number', 'stderr must go to the runner log fd');
+  const logBody = readFileSync(join(ud, 'observability', 'logs', 'agent-runner.log'), 'utf8');
+  assert.match(logBody, /dispatch handler B/, 'a dispatch banner is appended to the runner log');
   assert.equal(dispatchedId(calls[0]), 'B');
   closeDb(db);
 });

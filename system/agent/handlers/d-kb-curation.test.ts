@@ -22,3 +22,31 @@ test('D: build() config — trigger, permissionMode, allowedTools', () => {
 test('D: cwd is scoped to user-data/content/knowledge under repoRoot', () => {
   assert.equal(handler.build('g', { repoRoot: '/repo' }).cwd, '/repo/user-data/content/knowledge');
 });
+
+test('D: OS sandbox is on and fail-closed — cwd alone is not a write boundary', () => {
+  // A live D run escaped acceptEdits into ~/.claude on 2026-07-16: without a
+  // sandbox, cwd is only a default, never an enforcement. Same shape as A.
+  const out = handler.build('g', { repoRoot: '/repo' });
+  assert.deepEqual(out.sandbox, {
+    enabled: true,
+    autoAllowBashIfSandboxed: true,
+    failIfUnavailable: true,
+  });
+});
+
+test('D: canUseTool denies writes outside the knowledge cwd, allows inside', () => {
+  const out = handler.build('g', { repoRoot: '/repo' });
+  assert.equal(typeof out.canUseTool, 'function');
+  const scope = '/repo/user-data/content/knowledge';
+  assert.equal(out.canUseTool('Edit', { file_path: `${scope}/note.md` }).behavior, 'allow');
+  assert.equal(
+    out.canUseTool('Edit', { file_path: '/Users/x/.claude/memory/MEMORY.md' }).behavior,
+    'deny',
+  );
+  assert.equal(
+    out.canUseTool('Edit', { file_path: `${scope}/../../config/secrets/.env` }).behavior,
+    'deny',
+    'dot-dot traversal must not escape the scope',
+  );
+  assert.equal(out.canUseTool('Bash', { command: 'git push origin main' }).behavior, 'deny');
+});
