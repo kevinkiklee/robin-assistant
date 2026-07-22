@@ -3,27 +3,69 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { isProcessAlive, readPidfile } from '../../kernel/runtime/pidfile.ts';
-import { pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 
 const execFileAsync = promisify(execFile);
 const LAUNCHD_LABEL = 'io.robin-assistant.daemon';
 
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const WHOOP_AUTH_URL = 'https://api.prod.whoop.com/oauth/oauth2/auth';
+const WHOOP_TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token';
+
+const DEFAULT_PORT = 8089;
+
+// `access_type=offline` + `prompt=consent` together are what guarantee Google
+// returns a *new* refresh_token. Without `prompt=consent` Google returns the old
+// one (or nothing if the cached consent is fresh) — silently leaving us with the
+// same revoked token we started with. Whoop needs neither; its `offline` scope
+// is what triggers refresh-token issuance.
+const GOOGLE_CONSENT_PARAMS = { access_type: 'offline', prompt: 'consent' };
+
+interface OAuthPreset {
+  /** Env-var prefix for CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN. */
+  envPrefix: string;
+  scopes: string[];
+  label: string;
+  authUrl: string;
+  tokenUrl: string;
+  /** Local redirect path; MUST match a Redirect URI registered with the provider. */
+  callbackPath: string;
+  /** Extra authorize-URL query params (provider-specific consent flags). */
+  extraAuthParams: Record<string, string>;
+  /**
+   * When set, delete the integration's cached token rows from
+   * `integration_state` after writing the new refresh token. Required for
+   * providers whose integration reads
+   *   ctx.state.get('<x>_refresh_token') ?? process.env.<X>_REFRESH_TOKEN
+   * (Whoop rotates single-use refresh tokens and caches the latest in state) —
+   * the stale cached row would otherwise SHADOW the fresh .env value and the
+   * daemon would keep failing with the dead token. Google integrations read the
+   * refresh token from env only, so they leave this unset.
+   */
+  clearStateFor?: string;
+}
+
 /**
  * Per-integration OAuth presets. Each entry names the env-var prefix the
- * integration already uses for client_id / client_secret / refresh_token and
- * the scopes to request on consent.
+ * integration already uses and the provider endpoints / scopes to request.
  *
  * Add a new integration here when you need a CLI reauth path for it. Keep
  * scopes minimal — broader scopes flip Google into "sensitive" review even
  * though we're not publishing.
  */
-const PRESETS: Record<string, { envPrefix: string; scopes: string[]; label: string }> = {
+const PRESETS: Record<string, OAuthPreset> = {
   gmail: {
     envPrefix: 'GMAIL',
     scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
     label: 'Gmail (read-only)',
+    authUrl: GOOGLE_AUTH_URL,
+    tokenUrl: GOOGLE_TOKEN_URL,
+    callbackPath: '/oauth/callback',
+    extraAuthParams: GOOGLE_CONSENT_PARAMS,
   },
   google_calendar: {
     envPrefix: 'GOOGLE_CALENDAR',
@@ -32,16 +74,65 @@ const PRESETS: Record<string, { envPrefix: string; scopes: string[]; label: stri
     // the broader `calendar` scope.
     scopes: ['https://www.googleapis.com/auth/calendar.events'],
     label: 'Google Calendar (read + write)',
+    authUrl: GOOGLE_AUTH_URL,
+    tokenUrl: GOOGLE_TOKEN_URL,
+    callbackPath: '/oauth/callback',
+    extraAuthParams: GOOGLE_CONSENT_PARAMS,
+  },
+  whoop: {
+    envPrefix: 'WHOOP',
+    // `offline` is what makes Whoop return a refresh_token; the read:* scopes
+    // cover the four streams the integration syncs (recovery/sleep/workout/cycle).
+    scopes: [
+      'offline',
+      'read:recovery',
+      'read:cycles',
+      'read:sleep',
+      'read:workout',
+      'read:profile',
+      'read:body_measurement',
+    ],
+    label: 'Whoop (recovery, sleep, workouts)',
+    authUrl: WHOOP_AUTH_URL,
+    tokenUrl: WHOOP_TOKEN_URL,
+    // Whoop's registered redirect is http://localhost:8089/callback — matching
+    // the pre-existing standalone flow in user-data/scripts/whoop-reauth.mjs so
+    // the same Whoop developer-app registration works for both.
+    callbackPath: '/callback',
+    extraAuthParams: {},
+    clearStateFor: 'whoop',
   },
 };
-
-const DEFAULT_PORT = 8089;
-const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 
 export interface ReauthOptions {
   integration: string;
   port?: number;
+}
+
+/**
+ * Resolve the redirect URI plus the local port/path to listen on. An explicit
+ * `<PREFIX>_REDIRECT_URI` override wins and is honored verbatim (its port and
+ * path drive the local capture server), so a user can match whatever their
+ * provider app has registered — a different port OR a different path — without
+ * editing code. Absent an override, we build `http://localhost:<port><path>`
+ * from the `--port` flag (or DEFAULT_PORT) and the preset's callback path.
+ */
+export function resolveRedirect(
+  override: string | undefined,
+  portOpt: number | undefined,
+  preset: Pick<OAuthPreset, 'callbackPath'>,
+): { redirectUri: string; port: number; callbackPath: string } {
+  if (override) {
+    const u = new URL(override);
+    const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+    return { redirectUri: override, port, callbackPath: u.pathname };
+  }
+  const port = portOpt ?? DEFAULT_PORT;
+  return {
+    redirectUri: `http://localhost:${port}${preset.callbackPath}`,
+    port,
+    callbackPath: preset.callbackPath,
+  };
 }
 
 export async function runReauth(opts: ReauthOptions): Promise<void> {
@@ -62,30 +153,37 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
     );
   }
 
-  const port = opts.port ?? DEFAULT_PORT;
-  const redirectUri = `http://localhost:${port}/oauth/callback`;
+  // The redirect URI must match one the provider has pre-registered EXACTLY.
+  // A `<PREFIX>_REDIRECT_URI` env override wins so the user can point at
+  // whatever is registered (different port OR path) without a code change;
+  // otherwise fall back to localhost + the preset's default path.
+  const { redirectUri, port, callbackPath } = resolveRedirect(
+    process.env[`${preset.envPrefix}_REDIRECT_URI`],
+    opts.port,
+    preset,
+  );
   const state = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-  const consentUrl = new URL(AUTH_URL);
+  const consentUrl = new URL(preset.authUrl);
   consentUrl.searchParams.set('client_id', clientId);
   consentUrl.searchParams.set('redirect_uri', redirectUri);
   consentUrl.searchParams.set('response_type', 'code');
   consentUrl.searchParams.set('scope', preset.scopes.join(' '));
-  // `access_type=offline` + `prompt=consent` together are what guarantee a
-  // *new* refresh_token. Without `prompt=consent` Google returns the old one
-  // (or nothing if the cached consent is fresh) — which silently leaves us
-  // with the same revoked token we started with.
-  consentUrl.searchParams.set('access_type', 'offline');
-  consentUrl.searchParams.set('prompt', 'consent');
   consentUrl.searchParams.set('state', state);
+  for (const [key, value] of Object.entries(preset.extraAuthParams)) {
+    consentUrl.searchParams.set(key, value);
+  }
 
   console.log(`\nReauthorizing ${preset.label}.`);
-  console.log(`Listening on ${redirectUri}\n`);
+  console.log(
+    `Listening on ${redirectUri} (this redirect URI must be registered with the provider)\n`,
+  );
   console.log("If the browser doesn't open, paste this URL manually:\n");
   console.log(`  ${consentUrl.toString()}\n`);
 
   const code = await captureCodeViaLocalServer({
     port,
+    callbackPath,
     expectedState: state,
     openUrl: consentUrl.toString(),
   });
@@ -96,10 +194,11 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
     clientId,
     clientSecret,
     redirectUri,
+    tokenUrl: preset.tokenUrl,
   });
   if (!tokens.refresh_token) {
     throw new Error(
-      'Google returned no refresh_token. This usually means a stale consent — try again, and confirm the consent screen showed all requested permissions.',
+      'Provider returned no refresh_token. Google: usually a stale consent — retry and confirm the consent screen showed all requested permissions. Whoop: ensure the `offline` scope was granted.',
     );
   }
 
@@ -107,6 +206,22 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
   upsertEnvKey(envPath, `${preset.envPrefix}_REFRESH_TOKEN`, tokens.refresh_token);
 
   console.log(`\n✓ Wrote new ${preset.envPrefix}_REFRESH_TOKEN to ${envPath}`);
+
+  // Some integrations cache their (rotated) refresh token in integration_state
+  // and read it BEFORE the env value — so a stale cached row would shadow the
+  // token we just wrote. Delete the cached token rows so the fresh .env value
+  // wins on the next tick. (Google reads the refresh token from env only.)
+  if (preset.clearStateFor) {
+    const db = openDb(dbFilePath(userData));
+    try {
+      const cleared = clearShadowingTokenRows(db, preset.clearStateFor);
+      console.log(
+        `✓ Cleared ${cleared} stale cached token row(s) from integration_state (so the new token isn't shadowed)`,
+      );
+    } finally {
+      closeDb(db);
+    }
+  }
 
   // Try to nudge the daemon so the new token is picked up. The daemon reads
   // process.env at start, so we have to bounce it. If launchd is supervising
@@ -121,6 +236,7 @@ export async function runReauth(opts: ReauthOptions): Promise<void> {
 
 interface CaptureOpts {
   port: number;
+  callbackPath: string;
   expectedState: string;
   openUrl: string;
 }
@@ -134,7 +250,7 @@ function captureCodeViaLocalServer(opts: CaptureOpts): Promise<string> {
         return;
       }
       const url = new URL(req.url, `http://localhost:${opts.port}`);
-      if (url.pathname !== '/oauth/callback') {
+      if (url.pathname !== opts.callbackPath) {
         res.statusCode = 404;
         res.end('not found');
         return;
@@ -200,6 +316,7 @@ async function exchangeCodeForTokens(args: {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  tokenUrl: string;
 }): Promise<TokenResponse> {
   const body = new URLSearchParams({
     code: args.code,
@@ -208,7 +325,7 @@ async function exchangeCodeForTokens(args: {
     redirect_uri: args.redirectUri,
     grant_type: 'authorization_code',
   });
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetch(args.tokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -217,6 +334,26 @@ async function exchangeCodeForTokens(args: {
     throw new Error(`token exchange returned ${res.status}: ${await res.text()}`);
   }
   return (await res.json()) as TokenResponse;
+}
+
+/**
+ * Delete an integration's cached OAuth token rows (`*_refresh_token`,
+ * `*_access_token`, `*_access_token_expiry`) from `integration_state`, leaving
+ * cursors, `last_sync`, and everything else intact. Returns the number of rows
+ * deleted. Used after a reauth for providers whose integration prefers the
+ * state-cached refresh token over the .env value (see `clearStateFor`).
+ */
+export function clearShadowingTokenRows(db: RobinDb, integrationName: string): number {
+  const res = db
+    .prepare(
+      `DELETE FROM integration_state
+       WHERE integration_name = ?
+         AND (key LIKE '%\\_refresh\\_token' ESCAPE '\\'
+           OR key LIKE '%\\_access\\_token' ESCAPE '\\'
+           OR key LIKE '%\\_access\\_token\\_expiry' ESCAPE '\\')`,
+    )
+    .run(integrationName);
+  return res.changes;
 }
 
 /**

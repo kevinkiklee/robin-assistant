@@ -26,7 +26,7 @@ You rarely need the CLI — typically just these:
 
 COMMANDS
   init              One-time setup: daemon, MCP servers, capture hooks, schema
-  reauth <name>     Re-authorize an integration's OAuth (gmail | google_calendar)
+  reauth <name>     Re-authorize an integration's OAuth (gmail | google_calendar | whoop)
   doctor            Health check: daemon, environment, integrations, runtime state
 
 Run \`robin help --all\` for advanced + maintenance commands.`;
@@ -478,7 +478,7 @@ async function main(): Promise<void> {
     case 'reauth': {
       const integration = args[1];
       if (!integration) {
-        console.error('Usage: robin reauth <integration>   (gmail | google_calendar)');
+        console.error('Usage: robin reauth <integration>   (gmail | google_calendar | whoop)');
         exit(2);
       }
       const portFlag = extractFlag(args, '--port=');
