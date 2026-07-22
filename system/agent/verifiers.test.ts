@@ -171,6 +171,33 @@ test('H fails when only a corrections row appeared (corrections do not satisfy H
   closeDb(db);
 });
 
+test('H passes on a belief.update event after runStart (its only write tool is `believe`)', () => {
+  const db = freshDb();
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload) VALUES (?, 'belief.update', 'agent', 'ok', '{}')`,
+  ).run('2026-06-11 12:30:00'); // sqlite format, AFTER the ISO runStart
+  assert.equal(verifyOutcome('H', baseDeps(db, RUN_START)), 'pass');
+  closeDb(db);
+});
+
+test('H fails when the only belief.update event predates the run', () => {
+  const db = freshDb();
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload) VALUES (?, 'belief.update', 'agent', 'ok', '{}')`,
+  ).run('2026-06-11 11:30:00'); // sqlite format, BEFORE the ISO runStart
+  assert.equal(verifyOutcome('H', baseDeps(db, RUN_START)), 'fail');
+  closeDb(db);
+});
+
+test('E passes on a belief.update event alone (believe writes events, not candidates)', () => {
+  const db = freshDb();
+  db.prepare(
+    `INSERT INTO events (ts, kind, source, status, payload) VALUES (?, 'belief.update', 'agent', 'ok', '{}')`,
+  ).run('2026-06-11 12:30:00');
+  assert.equal(verifyOutcome('E', baseDeps(db, RUN_START)), 'pass');
+  closeDb(db);
+});
+
 // ---------------------------------------------------------------------------
 // F — predictions.resolved_at (ISO format with T/Z) vs ISO runStart
 // ---------------------------------------------------------------------------

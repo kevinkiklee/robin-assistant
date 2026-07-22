@@ -63,13 +63,23 @@ export function verifyOutcome(handlerId: string, deps: VerifierDeps): VerifierRe
       case 'G':
         return filesChangedSince(deps.knowledgeDir, deps.runStartIso) ? 'pass' : 'fail';
       case 'E':
-        // E proposes via belief candidates OR corrections (both in its allowlist).
-        return rowsSince(deps.db, 'belief_candidates', 'created_at', deps.runStartIso) ||
+        // E proposes via `believe` (which appends a belief.update truth-stream
+        // event — NOT a belief_candidates row) OR records a correction. The
+        // belief_candidates check is kept for back-compat with any candidate
+        // routing, but the primary evidence of a `believe` call is the event.
+        return rowsSince(deps.db, 'events', 'ts', deps.runStartIso, `AND kind='belief.update'`) ||
+          rowsSince(deps.db, 'belief_candidates', 'created_at', deps.runStartIso) ||
           rowsSince(deps.db, 'corrections', 'ts', deps.runStartIso)
           ? 'pass'
           : 'fail';
       case 'H':
-        return rowsSince(deps.db, 'belief_candidates', 'created_at', deps.runStartIso)
+        // H's ONLY write tool is `believe`, which appends a belief.update event
+        // and can never write a belief_candidates row — so verifying against
+        // candidates alone structurally fails every legitimate H run (the source
+        // of the recurring `outcome-mismatch:H` alert). Count the belief.update
+        // event as the real post-condition; keep the candidates check for back-compat.
+        return rowsSince(deps.db, 'events', 'ts', deps.runStartIso, `AND kind='belief.update'`) ||
+          rowsSince(deps.db, 'belief_candidates', 'created_at', deps.runStartIso)
           ? 'pass'
           : 'fail';
       case 'F':
