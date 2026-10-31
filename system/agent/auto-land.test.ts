@@ -1291,10 +1291,22 @@ test("autoLand: a worktree node_modules that isn't the repo's symlink holds befo
   }
 });
 
-test('autoLand: a nested node_modules or a tsbuildinfo in the worktree holds before any check runs', () => {
+test('autoLand: ANY ignored path in the worktree but the top-level node_modules link holds before any check runs', () => {
+  // A nested node_modules shadows packages, a tsbuildinfo steers tsc — and any
+  // other ignored file (a .env, dist/, a lab state file a test reads) is a shadow
+  // copy no diff shows, so none may be present.
   for (const ignored of [
     'node_modules\nsystem/kernel/node_modules/tsx/index.js\n',
     'node_modules\ntsconfig.tsbuildinfo\n',
+    'node_modules\nlab/.state/run.json\n',
+    'node_modules\n.DS_Store\n',
+    'node_modules\ndist/system/kernel/scheduler/index.js\n',
+    'node_modules\n.env\n',
+    'node_modules\nuser-data/config/operator.yaml\n',
+    'node_modules\nsystem/kernel/invariants/run.log\n',
+    'node_modules/\n',
+    'node_modules/x/index.js\n',
+    ' node_modules\n',
   ]) {
     const { exec, calls } = fakeExec({ ignored });
     const r = autoLand(base(exec));
@@ -1302,8 +1314,8 @@ test('autoLand: a nested node_modules or a tsbuildinfo in the worktree holds bef
     assert.match(r.reason, /ignored file/);
     assert.ok(!calls.some((c) => c.includes('sandbox-exec')), 'no check ran');
   }
-  // Ordinary ignored state (a lab run's output) doesn't block a land.
-  const { exec } = fakeExec({ ignored: 'node_modules\nlab/.state/run.json\n.DS_Store\n' });
+  // The runner's own node_modules symlink is the one exception.
+  const { exec } = fakeExec({ ignored: 'node_modules\n' });
   assert.equal(autoLand(base(exec)).landed, true);
 });
 

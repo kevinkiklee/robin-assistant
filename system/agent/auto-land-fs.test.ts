@@ -226,3 +226,148 @@ test('fsWriteViolation: fails closed — any unproven write in a changed file ho
     null,
   );
 });
+
+// ── Hardening (security review, 2026-10-31): the hold is an allowlist of read-only
+//    fs members, fs reached any other way is unverified, path builders count only
+//    when bound to the real node:path/node:os/node:fs, and new sensitive path
+//    literals hold (a write through an unchanged helper isn't followed).
+
+const held = (src: string, head = '', files = ['system/kernel/x.ts']) =>
+  fsWriteViolation(
+    files,
+    () => src,
+    () => head,
+  );
+
+test('fsWriteViolation: any fs member off the read-only allowlist is a write (allowlist, not deny-list)', () => {
+  const missed = [
+    "import * as fs from 'node:fs';\nconst s = new fs.WriteStream(p);\n",
+    "import { WriteStream } from 'node:fs';\nconst s = new WriteStream(p);\n",
+    "import { Utf8Stream } from 'node:fs';\nconst s = new Utf8Stream({ dest: p });\n",
+    "import { mkdtempDisposableSync } from 'node:fs';\nconst d = mkdtempDisposableSync('/Users/sam/x-');\n",
+    "import { writev } from 'node:fs';\nwritev(fd, bufs, () => {});\n",
+    "import { lchmodSync } from 'node:fs';\nlchmodSync(p, 0o777);\n",
+    "import * as fs from 'node:fs';\nfs.writeSync(fd, body);\n",
+    "import * as fs from 'node:fs';\nfs.someFutureWriter(p);\n",
+    "import * as fsp from 'node:fs/promises';\nconst h = fsp.someFutureWriter;\n",
+    // A "read" that opens for writing truncates or creates its target.
+    "import { readFileSync } from 'node:fs';\nreadFileSync(p, { flag: 'w' });\n",
+    "import { readFileSync } from 'node:fs';\nreadFileSync(p, opts);\n",
+    "import { createReadStream } from 'node:fs';\ncreateReadStream(p, { flags: 'w+' });\n",
+    "import { readFileSync } from 'node:fs';\nconst r = readFileSync;\nr(p, { flag: 'w' });\n",
+  ].filter((src) => !/writes files outside a fresh temp dir/.test(held(src) ?? ''));
+  assert.deepEqual(missed, []);
+});
+
+test('fsWriteViolation: read-only fs use and erased fs types pass', () => {
+  const wrongly = [
+    "import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';\nconst a = readFileSync(p, 'utf8');\nconst b = readFileSync(p, { encoding: 'utf8' });\nif (existsSync(p) && statSync(p).isFile()) readdirSync(d, { withFileTypes: true });\n",
+    "import * as fs from 'node:fs';\nconst ok = fs.existsSync(p) && fs.constants.R_OK > 0;\nfs.readFile(p, (err, data) => {});\n",
+    "import { readFile } from 'node:fs/promises';\nconst t = await readFile(p, 'utf8');\n",
+    "import type { Stats } from 'node:fs';\nlet s: Stats | null = null;\n",
+    "import * as fs from 'node:fs';\nlet s: fs.Stats | null = null;\nconst f: typeof fs.writeFileSync | null = null;\n",
+  ].filter((src) => held(src) !== null);
+  assert.deepEqual(wrongly, []);
+});
+
+test('fsWriteViolation: fs reached by require, createRequire, dynamic import or getBuiltinModule is unverified', () => {
+  const missed = [
+    "import { createRequire } from 'node:module';\nconst req = createRequire(import.meta.url);\nreq('node:fs').rm(p, () => {});\n",
+    "import * as mod from 'module';\nconst x = mod;\n",
+    "const fs = require('fs');\nfs.rm(p, () => {});\n",
+    "const r = process.mainModule.require('fs');\nr.rm(p, () => {});\n",
+    "const fs = await import('node:fs');\nfs.rm(p, () => {});\n",
+    "const m = 'node:fs';\n(await import(m)).rm(p, () => {});\n",
+    "const fs = process.getBuiltinModule('node:fs');\nfs.rm(p, () => {});\n",
+    "export * from 'node:fs';\n",
+    "export { rm } from 'node:fs/promises';\n",
+    "export * as fs from 'fs';\n",
+  ].filter((src) => !/writes files outside a fresh temp dir/.test(held(src) ?? ''));
+  assert.deepEqual(missed, []);
+});
+
+test('fsWriteViolation: importing from a local module that re-exports fs is unverified', () => {
+  const sources: Record<string, string> = {
+    'system/kernel/fsx.ts': "export * from 'node:fs/promises';\n",
+    'system/kernel/hop.ts': "export { rm as tidy } from './fsx.ts';\n",
+    'system/kernel/plain.ts': 'export const n = 1;\n',
+  };
+  const read = (f: string) => sources[f] ?? null;
+  const missed = [
+    "import { rm } from './fsx.ts';\nawait rm(p);\n",
+    "import * as f from './fsx.js';\nawait f.rm(p);\n",
+    "import { tidy } from './hop.ts';\nawait tidy(p);\n",
+    "const f = await import('./fsx.ts');\nawait f.rm(p);\n",
+  ].filter((src) => {
+    const v = fsWriteViolation(
+      ['system/kernel/x.test.ts'],
+      (f) => (f === 'system/kernel/x.test.ts' ? src : read(f)),
+      () => null,
+    );
+    return !/writes files outside a fresh temp dir: system\/kernel\/x\.test\.ts/.test(v ?? '');
+  });
+  assert.deepEqual(missed, []);
+  assert.equal(
+    fsWriteViolation(
+      ['system/kernel/x.test.ts'],
+      (f) => (f === 'system/kernel/x.test.ts' ? "import { n } from './plain.ts';\n" : read(f)),
+      () => null,
+    ),
+    null,
+  );
+});
+
+test('fsWriteViolation: join/resolve/tmpdir/mkdtemp are trusted only when bound to node:path/os/fs', () => {
+  const writes = "writeFileSync(join(dir, 'a.json'), x);\n";
+  const missed = [
+    // A local join that ignores its arguments.
+    `${TMP_FIXTURE.replace("import { join } from 'node:path';", "const join = (..._a: string[]) => '/Users/sam/.zshrc';")}\n${writes}`,
+    // join imported from somewhere else.
+    `${TMP_FIXTURE.replace("from 'node:path'", "from './paths.ts'")}\n${writes}`,
+    // join re-bound after the real import.
+    `${TMP_FIXTURE}\nfunction g(join: (...a: string[]) => string) {\n  writeFileSync(join(dir, 'a'), x);\n}\n`,
+    // tmpdir / join / mkdtempSync by spelling on some other receiver.
+    "import { mkdtempSync, writeFileSync } from 'node:fs';\nimport { join } from 'node:path';\nconst evil = { tmpdir: () => '/Users/sam' };\nconst d = mkdtempSync(join(evil.tmpdir(), 'x-'));\nwriteFileSync(join(d, 'a'), x);\n",
+    `${TMP_FIXTURE}\nconst evil = { join: (..._a: string[]) => '/Users/sam/.zshrc' };\nwriteFileSync(evil.join(dir, 'a'), x);\n`,
+    "import { writeFileSync } from 'node:fs';\nimport { tmpdir } from 'node:os';\nimport { join } from 'node:path';\nconst mkdtempSync = (_p: string) => '/Users/sam/.ssh';\nconst d = mkdtempSync(join(tmpdir(), 'x-'));\nwriteFileSync(join(d, 'k'), x);\n",
+  ].filter((src) => !/writes files outside/.test(held(src, '', ['system/kernel/x.test.ts']) ?? ''));
+  assert.deepEqual(missed, []);
+  // Namespace and aliased imports of the real modules still prove a temp dir.
+  const wrongly = [
+    "import * as fs from 'node:fs';\nimport * as os from 'node:os';\nimport * as path from 'node:path';\nconst d = fs.mkdtempSync(path.join(os.tmpdir(), 'x-'));\nfs.writeFileSync(path.join(d, 'a'), x);\n",
+    "import { mkdtempSync as mk, writeFileSync } from 'node:fs';\nimport { tmpdir } from 'os';\nimport { resolve } from 'path';\nconst d = mk(resolve(tmpdir(), 'x-'));\nwriteFileSync(resolve(d, 'a'), x);\n",
+    "import { mkdtemp, writeFile } from 'node:fs/promises';\nimport { tmpdir } from 'node:os';\nimport { join } from 'node:path';\nconst d = await mkdtemp(join(tmpdir(), 'x-'));\nawait writeFile(join(d, 'a'), x);\n",
+  ].filter((src) => held(src, '', ['system/kernel/x.test.ts']) !== null);
+  assert.deepEqual(wrongly, []);
+});
+
+test('fsWriteViolation: new sensitive path literals hold — a write through an unchanged helper', () => {
+  const head = "import { saveJson } from './store.ts';\n";
+  const missed: string[] = [];
+  for (const lit of [
+    "'/Users/sam/Library/LaunchAgents/x.plist'",
+    "'/tmp/fixed'",
+    "'~/.zshrc'",
+    "'$HOME/.bashrc'",
+    "'githooks/pre-commit'",
+    "'.git/hooks/post-merge'",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source text, not a template
+    '`${base}/.ssh/config`',
+    "join(dir, '..', 'Library', 'x')",
+  ]) {
+    for (const file of ['system/kernel/x.ts', 'system/kernel/x.test.ts']) {
+      if (!/sensitive path/.test(held(`${head}saveJson(${lit}, body);\n`, head, [file]) ?? '')) {
+        missed.push(`${file}: ${lit}`);
+      }
+    }
+  }
+  assert.deepEqual(missed, []);
+  // Present at HEAD already (same multiset) → not new; ordinary literals pass.
+  const kept = "const bin = '/usr/sbin/sysctl';\n";
+  assert.equal(held(`${kept}const n = 2;\n`, kept), null);
+  assert.match(held(`${kept}${kept}`, kept) ?? '', /sensitive path/, 'a second copy is new');
+  assert.equal(
+    held("const a = 'state.json';\nconst s = '/';\nconst u = p.split('/');\nconst r = 'kn-';\n"),
+    null,
+  );
+});

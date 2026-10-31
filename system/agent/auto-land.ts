@@ -1127,9 +1127,11 @@ export function autoLand(opts: AutoLandOpts): AutoLandResult {
 
   // node_modules is gitignored, so nothing staged or drifted shows it — yet the
   // checks load tsx, tsc and biome through it. The worktree's must be exactly the
-  // repo's symlink (which K can't write), and no other ignored file may change
-  // what the checks load: a nested node_modules shadows packages for the tests
-  // beneath it, and a tsbuildinfo can steer an incremental typecheck.
+  // repo's symlink (which K can't write), and NO other ignored path may exist: a
+  // nested node_modules shadows packages, a tsbuildinfo steers tsc, and any other
+  // ignored file (a .env, dist/, lab or user-data state a test reads) is a shadow
+  // copy no diff shows. The symlink — made by createWorktree — is the only
+  // ignored path the runner or this gate creates in the worktree.
   const deps = join(repoRoot, 'node_modules');
   const depsLink = join(worktree, 'node_modules');
   const readLink =
@@ -1145,11 +1147,10 @@ export function autoLand(opts: AutoLandOpts): AutoLandResult {
   if (linkBefore !== deps) {
     return hold(`worktree node_modules isn't the repo's symlink: ${String(linkBefore)}`, files);
   }
+  // Exact lines, untrimmed: ` node_modules` is some other (ignored) file.
   const shadow = gitW(['ls-files', '--others', '--ignored', '--exclude-standard'])
     .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && l !== 'node_modules')
-    .filter((l) => /(^|\/)node_modules(\/|$)/.test(l) || l.endsWith('.tsbuildinfo'));
+    .filter((l) => l !== '' && l !== 'node_modules');
   if (shadow.length > 0) {
     return hold(`ignored file can change what the checks load: ${shadow[0]}`, files);
   }
