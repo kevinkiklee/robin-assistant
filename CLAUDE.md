@@ -138,7 +138,13 @@ via `system/agent/auto-land.ts` only if it clears every gate:
   internals, eval/Function, env assignment, /dev paths or numeric-fd writes
   (exact contexts, comment-stripped whole file vs HEAD); only regular files
   (no symlinks/gitlinks); unreadable changed files hold; and
-  no env/URL access or new imports in non-test code;
+  no env/URL access or new imports in non-test code; a changed file (tests
+  included — they run unsandboxed on the next `pnpm test`) may contain no fs
+  write, new or old, whose target isn't provably inside a fresh `mkdtemp` dir (a
+  bare `tmpdir()` name doesn't count) — fail closed, since an unchanged call
+  writes wherever the diff re-binds its path, so state-writing modules go to
+  review — and no new `homedir`/`userInfo`/`env.HOME`. Not followed: a write in
+  an unchanged module reached through an existing import;
 - loosening (`weakeningViolation`): no raised threshold, downgraded severity or
   early pass in check code, no dropped invariant, no removed/rewritten/skipped
   assertion;
@@ -150,7 +156,11 @@ via `system/agent/auto-land.ts` only if it clears every gate:
   exec allowlist (shells, node, CLT git, inert utilities, node_modules — no
   interpreters, launchctl, osascript, open, security); native code mapped only
   from system paths and node_modules; app/keychain/clipboard services denied;
-  fake HOME, no shared caches, no pnpm. The base's sandbox failures are taken
+  fake HOME, no shared caches, no pnpm. tsc/biome/PATH resolve from the repo's
+  node_modules, never the worktree's (gitignored, so invisible to every diff):
+  the worktree's must be exactly the repo symlink before and after the checks
+  (write-denied in the sandbox), and an ignored nested node_modules or
+  tsbuildinfo holds. The base's sandbox failures are taken
   first (before any K code runs, own private dir); candidate failures come from
   node:test's JUnit report (the runner's stdout — test output can't reach it)
   keyed `file :: suite > name` — untouched test files must run exactly the
