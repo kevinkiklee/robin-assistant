@@ -1,0 +1,30 @@
+name: finance_quote
+version: 1.0.0
+schedule: "0 */2 * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["finance_quote"]
+  secrets: []
+  network: ["query1.finance.yahoo.com"]
+mcp:
+  description: "Latest equity / crypto / index quotes from Yahoo Finance"
+  actions:
+    quote_latest:
+      description: "Get latest price for one or more symbols"
+      input_schema:
+        type: object
+        properties:
+          symbols:
+            type: array
+            items: { type: string }
+        required: [symbols]
+    history:
+      description: "Daily price history for a single symbol"
+      input_schema:
+        type: object
+        properties:
+          symbol: { type: string }
+          range: { type: string }
+        required: [symbol]

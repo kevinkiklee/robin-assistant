@@ -1,0 +1,75 @@
+import { type ReindexReport, runReindexCore } from '../../surfaces/cli/reindex.ts';
+import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import { embedPendingCorrections } from '../memory/correction-recall.ts';
+import type { RobinDb } from '../memory/db.ts';
+
+/**
+ * Cognition job: pick up events_content rows whose embedding is NULL and embed them
+ * in a bounded batch. Runs on cron from the scheduler (registerCognitionJobs).
+ *
+ * Why a batch ceiling: the daemon is meant to stay responsive — one cron tick should
+ * not spin Ollama for an hour. 200 rows × ~600ms ≈ 2 minutes per tick on a recent Apple
+ * Silicon Mac with qwen3-embedding:8b. Backlogs drain over multiple ticks; the cron is idempotent
+ * (only one pending row per name) so ticks never overlap.
+ *
+ * Skips cleanly with `embedder: no-embed-role` when models.yaml lacks an `embed`
+ * role — same behavior as `robin reindex` would have on the CLI.
+ */
+export interface EmbedderResult {
+  status: 'ok' | 'skipped' | 'no-embed';
+  embedded: number;
+  failed: number;
+  total_eligible: number;
+  message?: string;
+  /** Corrections (re)embedded into correction_embeddings this tick. */
+  corrections_embedded?: number;
+}
+
+export const EMBEDDER_BATCH = 200;
+
+export async function runEmbedder(
+  db: RobinDb,
+  llm: LLMDispatcher | null,
+  batch: number = EMBEDDER_BATCH,
+): Promise<EmbedderResult> {
+  if (!llm) {
+    return { status: 'no-embed', embedded: 0, failed: 0, total_eligible: 0, message: 'no LLM' };
+  }
+  let report: ReindexReport;
+  try {
+    report = await runReindexCore(db, llm, { limit: batch });
+  } catch (err) {
+    return {
+      status: 'skipped',
+      embedded: 0,
+      failed: 0,
+      total_eligible: 0,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (report.errors.some((e) => e.includes('no embed role configured'))) {
+    return {
+      status: 'no-embed',
+      embedded: 0,
+      failed: 0,
+      total_eligible: report.total_eligible,
+      message: 'no embed role configured in models.yaml',
+    };
+  }
+  // Corrections live outside events_content, so they get their own small embed pass
+  // (correction_embeddings, migration 040) on the same tick. Best-effort: a failure
+  // here never fails the content embedder — the rows just stay pending.
+  let correctionsEmbedded = 0;
+  try {
+    correctionsEmbedded = (await embedPendingCorrections(db, llm)).embedded;
+  } catch {
+    correctionsEmbedded = 0;
+  }
+  return {
+    status: 'ok',
+    embedded: report.embedded,
+    failed: report.failed,
+    total_eligible: report.total_eligible,
+    corrections_embedded: correctionsEmbedded,
+  };
+}

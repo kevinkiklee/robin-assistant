@@ -1,0 +1,35 @@
+import { OUTCOME_ENVELOPE_FORMAT } from '../outcome.ts';
+import type { HandlerCtx, HandlerDef } from './types.ts';
+import { register } from './types.ts';
+
+/**
+ * H — Dream enrichment (autonomous, propose-only). Cross-session synthesis that
+ * connects events across time into higher-order insight, iterating over the
+ * event corpus rather than one-shotting a window like the deterministic `dream`
+ * job. Saves consolidations via `remember` (journal is read-only) and proposes
+ * via `believe` into the review queue; never auto-writes beliefs.
+ */
+export const handler: HandlerDef = {
+  id: 'H',
+  name: 'dream-enrich',
+  trigger: 'autonomous',
+  build(goal: string, ctx: HandlerCtx) {
+    return {
+      goal,
+      cwd: ctx.repoRoot,
+      allowedTools: [
+        'mcp__robin__recall',
+        'mcp__robin__journal',
+        'mcp__robin__believe',
+        'mcp__robin__remember',
+      ],
+      permissionMode: 'default' as const,
+      maxTurns: 22, // was 20: +2 structured-output headroom (spec §B1)
+      outputFormat: OUTCOME_ENVELOPE_FORMAT,
+      timeoutMs: 1_800_000,
+      maxBudgetUsd: 3,
+    };
+  },
+};
+
+register(handler);

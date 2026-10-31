@@ -1,0 +1,51 @@
+name: discord
+version: 1.0.0
+# Outbound-only: nothing to poll, so no cron. Ticking is a health probe you can
+# fire by hand (`robin run integration discord`) to confirm the bot is still a
+# member of the guild and the token hasn't been rotated out from under us.
+schedule: manual
+permissions:
+  memory:
+    read: false
+    write: false
+    namespaces: []
+  secrets:
+    - DISCORD_BOT_TOKEN
+  network:
+    - 'discord.com'
+mcp:
+  description: 'Send Robin notifications to Discord: channel post or DM'
+  actions:
+    notify:
+      description: 'Post a notification to a Discord channel (defaults to DISCORD_NOTIFY_CHANNEL_ID, mentions the operator)'
+      input_schema:
+        type: object
+        properties:
+          title: { type: string }
+          message: { type: string }
+          link: { type: string }
+          mention: { type: boolean }
+          silent: { type: boolean }
+          channelId: { type: string }
+        required: [message]
+    dm:
+      description: 'Send a direct message to the operator (DISCORD_ALLOWED_USER_IDS[0])'
+      input_schema:
+        type: object
+        properties:
+          title: { type: string }
+          message: { type: string }
+          link: { type: string }
+          silent: { type: boolean }
+        required: [message]
+    digest:
+      description: 'Post a long document (daily brief, report) into the channel as consecutive chunked messages. Silent by default.'
+      input_schema:
+        type: object
+        properties:
+          title: { type: string }
+          body: { type: string }
+          silent: { type: boolean }
+          mention: { type: boolean }
+          channelId: { type: string }
+        required: [body]

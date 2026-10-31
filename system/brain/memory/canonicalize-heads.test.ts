@@ -1,0 +1,398 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { believe, recallBelief } from './belief.ts';
+import { type CanonicalizeResult, canonicalizeBeliefHeads } from './canonicalize-heads.ts';
+import { closeDb, openDb } from './db.ts';
+import { ingest } from './ingest.ts';
+import { allMigrations, applyMigrations } from './migrations/index.ts';
+
+function freshDb() {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-canonical-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
+  applyMigrations(db, allMigrations);
+  return db;
+}
+
+test('canonicalize-heads: groups live heads by canonical slug and merges similar-claim groups onto newest head', () => {
+  const db = freshDb();
+
+  // Three live heads with near-identical claims.
+  // 'bakery-apprenticeship' (oldest), 'no-bakery-apprenticeship', 'bakery-apprenticeship-claim' (newest).
+  // All three canonicalize to 'bakery-apprenticeship'.
+  // We use different dates so believe() keeps all three as separate heads stored under
+  // different topics (the cross-slug gate allows the negated/modifier slugs to merge
+  // at write time if claims are similar — use ingest() directly for the two legacy heads
+  // to simulate pre-C1 data sitting under non-canonical slugs).
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship',
+    payload: {
+      topic: 'bakery-apprenticeship',
+      supersedes: null,
+      confidence: 0.8,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'belief:2026-06-01:bakery-apprenticeship',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship at Initech',
+    payload: {
+      topic: 'no-bakery-apprenticeship',
+      supersedes: null,
+      confidence: 0.85,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-05T00:00:00.000Z',
+      external_id: 'belief:2026-06-05:no-bakery-apprenticeship',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship confirmed',
+    payload: {
+      topic: 'bakery-apprenticeship-claim',
+      supersedes: null,
+      confidence: 0.9,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-10T00:00:00.000Z',
+      external_id: 'belief:2026-06-10:bakery-apprenticeship-claim',
+    },
+  });
+
+  // Dry run should not write anything.
+  const dryResult: CanonicalizeResult = canonicalizeBeliefHeads(db, null, { apply: false });
+  assert.equal(dryResult.groups, 1, 'one multi-head group');
+  assert.equal(dryResult.merged, 1, 'one group would merge (dry-run counts it)');
+  assert.equal(dryResult.skipped, 0);
+  const dryEventCount = (
+    db.prepare(`SELECT COUNT(*) AS n FROM events WHERE kind='belief.canonicalize'`).get() as {
+      n: number;
+    }
+  ).n;
+  assert.equal(dryEventCount, 0, 'dry-run writes zero events');
+
+  // Apply.
+  const result: CanonicalizeResult = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(result.groups, 1);
+  assert.equal(result.merged, 1);
+  assert.equal(result.skipped, 0);
+
+  // After apply there should be exactly one live head for the canonical topic.
+  const all = recallBelief(db, {}) as import('./belief.ts').BeliefRecord[];
+  const bakeryHeads = all.filter((h) => h.topic === 'bakery-apprenticeship');
+  assert.equal(bakeryHeads.length, 1, 'exactly one live head for the canonical topic');
+
+  // Superseding events should carry canonicalize:-prefixed external_ids.
+  const canonicalEvents = db
+    .prepare(
+      `SELECT json_extract(payload,'$.external_id') AS eid FROM events WHERE kind='belief.update' AND json_extract(payload,'$.external_id') LIKE 'canonicalize:%'`,
+    )
+    .all() as Array<{ eid: string }>;
+  assert.ok(
+    canonicalEvents.length >= 2,
+    `expected >=2 superseding events, got ${canonicalEvents.length}`,
+  );
+  for (const e of canonicalEvents) {
+    assert.ok(
+      e.eid.startsWith('canonicalize:'),
+      `external_id should start with canonicalize: got ${e.eid}`,
+    );
+  }
+
+  // Audit events written.
+  const auditCount = (
+    db.prepare(`SELECT COUNT(*) AS n FROM events WHERE kind='belief.canonicalize'`).get() as {
+      n: number;
+    }
+  ).n;
+  assert.ok(auditCount >= 1, 'at least one belief.canonicalize audit event');
+
+  closeDb(db);
+});
+
+test('canonicalize-heads: dissimilar-claim groups are skipped and logged, not merged', () => {
+  const db = freshDb();
+
+  // Two heads whose slugs canonicalize together but claims are entirely unrelated.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam drinks two espressos every morning',
+    payload: {
+      topic: 'coffee',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'belief:2026-06-01:coffee',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content:
+      'The Chemex carafe cracked and was thrown out yesterday after being dropped on the kitchen floor during cleanup',
+    payload: {
+      topic: 'coffee-status',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-05T00:00:00.000Z',
+      external_id: 'belief:2026-06-05:coffee-status',
+    },
+  });
+
+  const result: CanonicalizeResult = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(result.skipped, 1, 'one group skipped as dissimilar');
+  assert.equal(result.merged, 0);
+
+  // Both heads should still be live.
+  const all = recallBelief(db, {}) as import('./belief.ts').BeliefRecord[];
+  const coffeeHeads = all.filter((h) => h.topic === 'coffee' || h.topic === 'coffee-status');
+  assert.equal(coffeeHeads.length, 2, 'both distinct heads remain live');
+
+  // A belief.canonicalize audit event with decision:'skipped-dissimilar' must exist.
+  const audit = db
+    .prepare(
+      `SELECT json_extract(payload,'$.decision') AS d FROM events WHERE kind='belief.canonicalize'`,
+    )
+    .all() as Array<{ d: string }>;
+  assert.ok(
+    audit.some((a) => a.d === 'skipped-dissimilar'),
+    'audit event with decision:skipped-dissimilar expected',
+  );
+
+  closeDb(db);
+});
+
+test('canonicalize-heads: dry-run writes nothing', () => {
+  const db = freshDb();
+
+  // Two mergeable heads.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship',
+    payload: {
+      topic: 'bakery-apprenticeship',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'belief:2026-06-01:bakery-apprenticeship',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship at Initech',
+    payload: {
+      topic: 'bakery-apprenticeship-claim',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-05T00:00:00.000Z',
+      external_id: 'belief:2026-06-05:bakery-apprenticeship-claim',
+    },
+  });
+
+  const beforeCount = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+  const result: CanonicalizeResult = canonicalizeBeliefHeads(db, null, { apply: false });
+  const afterCount = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+
+  assert.equal(afterCount, beforeCount, 'dry-run must write zero new event rows');
+  assert.equal(result.merged, 1, 'dry-run still reports the planned merge count');
+  assert.equal(result.skipped, 0);
+
+  closeDb(db);
+});
+
+test('canonicalize-heads: idempotent — a second apply run is a no-op', () => {
+  const db = freshDb();
+
+  // Seed two mergeable legacy heads.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship',
+    payload: {
+      topic: 'bakery-apprenticeship',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'belief:2026-06-01:bakery-apprenticeship',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship at Initech',
+    payload: {
+      topic: 'bakery-apprenticeship-claim',
+      supersedes: null,
+      confidence: null,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-05T00:00:00.000Z',
+      external_id: 'belief:2026-06-05:bakery-apprenticeship-claim',
+    },
+  });
+
+  const first = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(first.merged, 1);
+
+  // Second run: the merged heads are no longer live — the group disappears.
+  const second = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(second.groups, 0, 'no multi-head groups remain after first apply');
+  assert.equal(second.merged, 0);
+  assert.equal(second.skipped, 0);
+
+  closeDb(db);
+});
+
+test('canonicalize-heads: promote branch — newest head under non-canonical slug creates canonical head and retracts all originals', () => {
+  const db = freshDb();
+
+  // Two heads whose slugs canonicalize to 'bakery-apprenticeship', but NEITHER head
+  // sits under that literal slug.  The newer one ('bakery-apprenticeship-claim') wins;
+  // because winner.topic !== canonical the promote branch must fire.
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship at Initech',
+    payload: {
+      topic: 'no-bakery-apprenticeship',
+      supersedes: null,
+      confidence: 0.8,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'belief:2026-06-01:no-bakery-apprenticeship',
+    },
+  });
+  ingest(db, null, {
+    kind: 'belief.update',
+    source: 'belief',
+    content: 'Sam has a bakery apprenticeship confirmed',
+    payload: {
+      topic: 'bakery-apprenticeship-claim',
+      supersedes: null,
+      confidence: 0.9,
+      sources: [],
+      retracted: false,
+      provenance: 'unknown',
+      verified_at: '2026-06-10T00:00:00.000Z',
+      external_id: 'belief:2026-06-10:bakery-apprenticeship-claim',
+    },
+  });
+
+  // Verify no head exists under the literal canonical slug before apply.
+  const before = recallBelief(db, {}) as import('./belief.ts').BeliefRecord[];
+  assert.equal(
+    before.filter((h) => h.topic === 'bakery-apprenticeship').length,
+    0,
+    'no head under canonical slug before apply',
+  );
+
+  // Capture the winner's original eventId so we can check the promote external_id.
+  const winnerRow = before.find((h) => h.topic === 'bakery-apprenticeship-claim');
+  assert.ok(winnerRow, 'winner head must exist under bakery-apprenticeship-claim');
+  const winnerId = winnerRow!.eventId;
+
+  const result = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(result.groups, 1);
+  assert.equal(result.merged, 1);
+
+  // (a) A promote event must exist with the expected external_id.
+  const promoteEid = `canonicalize:promote:bakery-apprenticeship:${winnerId}`;
+  const promoteRow = db
+    .prepare(
+      `SELECT id FROM events WHERE kind='belief.update' AND json_extract(payload,'$.external_id') = ?`,
+    )
+    .get(promoteEid) as { id: number } | undefined;
+  assert.ok(promoteRow, `promote event with external_id '${promoteEid}' must exist`);
+
+  // (b) Exactly one live head under 'bakery-apprenticeship' carrying the winner's claim.
+  const after = recallBelief(db, {}) as import('./belief.ts').BeliefRecord[];
+  const canonicalHeads = after.filter((h) => h.topic === 'bakery-apprenticeship');
+  assert.equal(canonicalHeads.length, 1, 'exactly one live head under the canonical slug');
+  assert.equal(
+    canonicalHeads[0].claim,
+    'Sam has a bakery apprenticeship confirmed',
+    'canonical head carries the winner claim',
+  );
+
+  // (c) Zero live heads under either original slug.
+  const originalSlugs = after.filter(
+    (h) => h.topic === 'no-bakery-apprenticeship' || h.topic === 'bakery-apprenticeship-claim',
+  );
+  assert.equal(originalSlugs.length, 0, 'no live heads remain under the original slugs');
+
+  // (d) A second apply run is a no-op — groups=0 and no new event rows written.
+  const beforeCount = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+  const second = canonicalizeBeliefHeads(db, null, { apply: true });
+  const afterCount = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: number }).n;
+  assert.equal(second.groups, 0, 'no multi-head groups on second pass');
+  assert.equal(afterCount, beforeCount, 'second apply writes zero new event rows');
+
+  closeDb(db);
+});
+
+test('canonicalize-heads: E2E — duplicate-topic promote writes canonical head; second pass finds nothing to merge', () => {
+  const db = freshDb();
+
+  // Post-Task-2, believe() already merges similar cross-slug writes at write time.
+  // Two similar claims under slug variants should produce a single live head.
+  const a = believe(db, null, {
+    topic: 'home-location',
+    claim: 'Sam lives in Lakeport WA',
+    date: '2026-06-01',
+  });
+  // 'home-location-status' canonicalizes to 'home-location'; claim is similar → believe() merges at write time.
+  const b = believe(db, null, {
+    topic: 'home-location-status',
+    claim: 'Sam lives in Lakeport Washington',
+    date: '2026-06-05',
+  });
+  // The second write should have superseded the first (same canonical slug, similar claim).
+  assert.equal(b.supersededEventId, a.eventId, 'write-time canonical supersession worked');
+  assert.equal(b.topic, 'home-location');
+
+  // A merge pass finds no multi-head groups (write-time already canonicalized).
+  const result = canonicalizeBeliefHeads(db, null, { apply: true });
+  assert.equal(
+    result.groups,
+    0,
+    'no groups: write-time canonical merge already collapsed the pair',
+  );
+  assert.equal(result.merged, 0);
+
+  closeDb(db);
+});

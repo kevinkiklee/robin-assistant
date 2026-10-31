@@ -1,0 +1,40 @@
+node_modules
+dist/
+build/
+user-data/
+docs/superpowers/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.tsbuildinfo
+.claude/settings.local.json
+.mcp.json
+
+# Throwaway git worktrees created by agentic write-runs (system/surfaces/cli/agent.ts)
+.worktrees/
+
+# Claude Code superpowers plugin cache (per-machine, not shipped)
+.superpowers/
+
+# Local developer scratch harnesses (manual one-off runs, never shipped)
+/brief-fullrun.ts
+
+# Calibration output (hand-assembled from the live instance, never committed)
+lab/calibrate/rates.json
+
+# Test-lab outputs
+lab/fixtures/
+lab/runs/
+
+# Operator-specific lab privacy terms (lab/privacy/forbidden.ts)
+lab/privacy/forbidden.local.txt
+
+# Operator-specific Claude instructions (loaded alongside CLAUDE.md)
+CLAUDE.local.md
+
+# Design docs and plans stay local: they carry the operator's personal context
+docs/design/

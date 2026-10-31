@@ -1,0 +1,32 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/user-data",
+      "!**/.claude/worktrees",
+      "user-data/scripts/**/*.ts",
+      "!user-data/scripts/**/fixtures"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": { "formatter": { "quoteStyle": "single", "semicolons": "always" } },
+  "linter": {
+    "enabled": true,
+    "rules": { "recommended": true, "suspicious": { "noConsole": "warn" } }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts"],
+      "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }
+    },
+    {
+      "includes": ["scripts/**", "system/scripts/**", "system/surfaces/cli/**"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    }
+  ]
+}

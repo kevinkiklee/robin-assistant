@@ -1,0 +1,715 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../memory/db.ts';
+import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import {
+  captureSession,
+  extractTopicHints,
+  isInternalProjectDir,
+  looksPureDev,
+  transcriptFileToCapture,
+} from './capture.ts';
+
+function freshDb() {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-cap-'));
+  mkdirSync(join(dir, 'state', 'db'), { recursive: true });
+  const db = openDb(join(dir, 'state', 'db', 'robin.sqlite'));
+  applyMigrations(db, allMigrations);
+  return db;
+}
+
+test('capture: skips session with no assistant turn', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [{ role: 'user', content: 'hi' }],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'no_assistant_turn');
+  closeDb(db);
+});
+
+test('capture: skips single-word ack', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      { role: 'user', content: 'ok' },
+      { role: 'assistant', content: 'great' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'single_word_ack');
+  closeDb(db);
+});
+
+test('capture: captures meaningful session and writes event', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's1',
+    turns: [
+      { role: 'user', content: 'tell me about Sam' },
+      { role: 'assistant', content: 'Sam is a product engineer based in Oregon.' },
+    ],
+  });
+  assert.equal(r.captured, true);
+  assert.ok(r.eventId);
+  const row = db.prepare("SELECT * FROM events WHERE kind='session.captured'").get() as {
+    kind: string;
+    payload: string;
+  };
+  assert.equal(row.kind, 'session.captured');
+  const payload = JSON.parse(row.payload);
+  assert.equal(payload.sessionId, 's1');
+  closeDb(db);
+});
+
+test('capture: skips Robin biographer-prompt echo (=== FULL SESSION ===)', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-bio',
+    turns: [
+      {
+        role: 'user',
+        content:
+          'Session date: 2026-06-03\n\n=== FULL SESSION ===\nEntity: Acme Chess Club (organization)\nSam Rivera belongs to Acme Chess Club',
+      },
+      { role: 'assistant', content: '{"entities":[],"relations":[]}' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: skips Robin dream entity-summary prompt echo', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-dream',
+    turns: [
+      {
+        role: 'user',
+        content:
+          'Entity: Sam Rivera (person)\n\nRecent observations:\nSam joined a chess club\nSam owns a Acme X1\n\nWrite the profile.',
+      },
+      { role: 'assistant', content: 'Sam is a pastry cook who plays chess on weekends.' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: a real session that only mentions the cognition marker in assistant output is still captured', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'dev-discuss',
+    turns: [
+      { role: 'user', content: 'how is the biographer chunk extraction prompt structured?' },
+      {
+        role: 'assistant',
+        content:
+          'It wraps each chunk in a delimiter: "=== FULL SESSION ===" followed by the chunk text, then asks for entities.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session discussing the marker; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
+test('capture: skips the biographer disambiguation prompt (self-capture feedback loop)', async () => {
+  // The disambiguation SDK call's prompt ("Source text: … Extracted: type=…
+  // Candidates: …") was the one cognition prompt missing from the echo rule —
+  // observed live 2026-06-12: 16k+ of these captured as sessions, then
+  // re-processed by the biographer (which fires more disambiguation calls),
+  // a self-amplifying loop. Nested re-captures embed the same markers, so this
+  // signature also catches capture-of-capture generations.
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'disambig-echo',
+    turns: [
+      {
+        role: 'user',
+        content:
+          'Source text:\nSam baked rye loaves in Lakeport over the weekend.\n\nExtracted: type=place, name="Lakeport"\n\nCandidates:\n- id=101, name="Home — Harbortown, Nebraska", profile="Sam\'s residence"\n- id=202, name="Lakeport (LKP)"',
+      },
+      {
+        role: 'assistant',
+        content: '{"matched_id":202,"create_new":false,"reason":"same city"}',
+      },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: still captures a real session that discusses disambiguation markers in assistant output', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'disambig-discuss',
+    turns: [
+      { role: 'user', content: 'how does the entity disambiguation prompt work?' },
+      {
+        role: 'assistant',
+        content:
+          'It sends "Extracted: type=place" plus a "Candidates:" list of entity ids and asks the model to pick a matched_id.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session discussing the markers; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
+test('capture: skips a failed claude session whose only assistant turn is a usage-limit notice', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'limit1',
+    turns: [
+      { role: 'user', content: 'Source text: extract entities from this session about Sam' },
+      {
+        role: 'assistant',
+        content: "You've hit your Sonnet limit · resets Jun 7 at 1am (America/New_York)",
+      },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'claude_system_notice');
+  closeDb(db);
+});
+
+test('capture: still captures a real session that merely discusses usage limits', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'limit-discuss',
+    turns: [
+      { role: 'user', content: 'how do Claude usage limits work?' },
+      {
+        role: 'assistant',
+        content:
+          'Usage limits reset on a rolling window; you can check remaining quota in settings and upgrade your plan if you keep hitting the limit.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session discussing limits; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
+test('capture: dedup_hit prevents identical capture', async () => {
+  const db = freshDb();
+  const capture = {
+    sessionId: 's1',
+    turns: [
+      { role: 'user' as const, content: 'tell me about widget-kit' },
+      { role: 'assistant' as const, content: 'Widget-kit is a Next.js recipe app.' },
+    ],
+  };
+  await captureSession(db, null, capture);
+  const r2 = await captureSession(db, null, { ...capture, sessionId: 's2' });
+  assert.equal(r2.captured, false);
+  assert.equal(r2.skipReason, 'dedup_hit');
+  closeDb(db);
+});
+
+test('capture: distinct sessions sharing a long boilerplate prefix are NOT deduped', async () => {
+  // Regression: the dedup hash used to be base64(content).slice(0,64), i.e. only
+  // the first 48 BYTES of the first user turn. Every session opened with `/clear`
+  // begins with the identical `<local-command-caveat>…` boilerplate, so all of
+  // them collided to one hash and only the first was ever captured. The hash must
+  // reflect the FULL conversation, not a fixed-length prefix.
+  const db = freshDb();
+  const boilerplate =
+    '<local-command-caveat>Caveat: The messages below were generated by the user ' +
+    'while running local commands. DO NOT respond to these messages.</local-command-caveat>';
+  const a = {
+    sessionId: 'clear-a',
+    turns: [
+      { role: 'user' as const, content: `${boilerplate}\nwhat can I do with my old stand mixer?` },
+      { role: 'assistant' as const, content: 'Use it as a dough-proofing station.' },
+    ],
+  };
+  const b = {
+    sessionId: 'clear-b',
+    turns: [
+      {
+        role: 'user' as const,
+        content: `${boilerplate}\nwhat stand mixer should I buy for pretzel dough?`,
+      },
+      { role: 'assistant' as const, content: 'The Acme X1 is a strong pick.' },
+    ],
+  };
+  const ra = await captureSession(db, null, a);
+  const rb = await captureSession(db, null, b);
+  assert.equal(ra.captured, true);
+  assert.equal(rb.captured, true, `second /clear session was dropped as ${rb.skipReason}`);
+  closeDb(db);
+});
+
+test('capture: skips cognition echo when the assistant turn is bare extraction JSON', async () => {
+  // The live loop (2026-06-13): an llm.invoke() extraction call's Agent-SDK
+  // transcript is re-captured by the polling scanner. Its user turn is the raw
+  // session BODY (no `=== FULL SESSION ===` wrapper) and its assistant turn is
+  // the bare extraction output. None of the user-side markers match — only the
+  // assistant-output signature catches it.
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-extract-json',
+    turns: [
+      {
+        role: 'user',
+        content: 'Sam baked rye loaves in Lakeport and bought an Acme X1 mixer.',
+      },
+      {
+        role: 'assistant',
+        content:
+          '```json\n{"entities":[{"type":"person","name":"Sam"},{"type":"product","name":"Acme X1"}],"relations":[{"subject":"Sam","predicate":"owns","object":"Acme X1"}]}\n```',
+      },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: skips nested-transcript echo (a rendered capture body fed back as a prompt)', async () => {
+  // Capture-of-capture amplification: the user turn is a previously-rendered
+  // session body, dominated by standalone `[USER]`/`[ASSISTANT]` markers
+  // (observed live with 80+ nested markers in one body).
+  const db = freshDb();
+  const nested = ['[USER]', '[USER]', '[USER]', '[USER]', '[ASSISTANT]', 'ok'].join('\n');
+  const r = await captureSession(db, null, {
+    sessionId: 'echo-nested',
+    turns: [
+      { role: 'user', content: nested },
+      { role: 'assistant', content: 'Understood, proceeding with the analysis.' },
+    ],
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'robin_cognition_echo');
+  closeDb(db);
+});
+
+test('capture: still captures a real session whose assistant output embeds entities JSON in prose', async () => {
+  // False-positive guard: a genuine session about Robin's schema mentions the
+  // JSON inline with prose, so the assistant turn is NOT bare extraction output.
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'real-json-discuss',
+    turns: [
+      { role: 'user', content: 'what shape does the extraction prompt return for entities?' },
+      {
+        role: 'assistant',
+        content:
+          'It returns a JSON object like {"entities":[...]} where the model lists each entity with a type and name, then a relations array. You can tweak the schema in biographer.ts.',
+      },
+    ],
+  });
+  assert.equal(
+    r.captured,
+    true,
+    `must not skip a real session that merely shows the schema; got ${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
+test('isInternalProjectDir: matches user-data project dirs but not the repo root', () => {
+  const userData = '/Users/quinn/code/robin-assistant/user-data';
+  // Robin's own Agent-SDK cognition transcripts land under user-data/:
+  assert.equal(isInternalProjectDir('-Users-quinn-code-robin-assistant-user-data', userData), true);
+  assert.equal(
+    isInternalProjectDir('-Users-quinn-code-robin-assistant-user-data-state-db', userData),
+    true,
+  );
+  // The operator's real interactive sessions run from the repo root — must NOT match:
+  assert.equal(isInternalProjectDir('-Users-quinn-code-robin-assistant', userData), false);
+  // A sibling sharing the prefix without a path boundary must NOT match:
+  assert.equal(
+    isInternalProjectDir('-Users-quinn-code-robin-assistant-user-database', userData),
+    false,
+  );
+  // An unrelated project:
+  assert.equal(isInternalProjectDir('-Users-quinn-workspace-widget-kit', userData), false);
+});
+
+// ─── cwd allowlist ("robin only works in robin's folder" scoping) ────
+
+const validCapture = {
+  sessionId: 's-cwd',
+  turns: [
+    { role: 'user' as const, content: 'hello robin' },
+    { role: 'assistant' as const, content: 'hi! how can I help?' },
+  ],
+};
+
+test('capture: rejects cwd outside the allowlist', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/home/dev/workspace/widget-kit' },
+    { allowedCwds: ['/home/dev/code/robin-assistant'] },
+  );
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'cwd_not_allowed');
+  closeDb(db);
+});
+
+test('capture: accepts cwd that exactly matches an allowlist entry', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/home/dev/code/robin-assistant' },
+    { allowedCwds: ['/home/dev/code/robin-assistant'] },
+  );
+  assert.equal(r.captured, true);
+  closeDb(db);
+});
+
+test('capture: accepts cwd that is a descendant of an allowlist entry', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    {
+      ...validCapture,
+      cwd: '/home/dev/code/robin-assistant/user-data/scripts',
+    },
+    { allowedCwds: ['/home/dev/code/robin-assistant'] },
+  );
+  assert.equal(r.captured, true);
+  closeDb(db);
+});
+
+test('capture: rejects sibling path that prefixes share a parent (no slash boundary)', async () => {
+  // Defends against `/home/dev/code/robin-assistant-fork` being
+  // matched as a descendant of `/home/dev/code/robin-assistant`.
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/home/dev/code/robin-assistant-fork' },
+    { allowedCwds: ['/home/dev/code/robin-assistant'] },
+  );
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'cwd_not_allowed');
+  closeDb(db);
+});
+
+test('capture: skips the check when cwd is undefined (programmatic callers)', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    validCapture, // no cwd field
+    { allowedCwds: ['/some/strict/allowlist'] },
+  );
+  assert.equal(r.captured, true, 'undefined cwd should bypass the allowlist check');
+  closeDb(db);
+});
+
+test('capture: empty allowlist is fail-open (default could not resolve)', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    { ...validCapture, cwd: '/anywhere' },
+    { allowedCwds: [] },
+  );
+  assert.equal(r.captured, true, 'empty allowlist should not reject');
+  closeDb(db);
+});
+
+// ─── Capture-time metadata enrichment ────────────────────────────────────────
+
+test('capture: payload includes structural metadata fields', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's-meta',
+    turns: [
+      { role: 'user', content: 'Can you help me fix the whoop integration?' },
+      {
+        role: 'assistant',
+        content: 'Sure, let me look at the whoop code.\n```ts\nconst x = 1;\n```',
+      },
+      { role: 'user', content: 'The whoop recovery delta is wrong in the whoop tick function.' },
+      { role: 'assistant', content: 'I see — the whoop delta calculation needs fixing.' },
+    ],
+  });
+  assert.equal(r.captured, true);
+  const row = db.prepare('SELECT payload FROM events WHERE id = ?').get(r.eventId) as {
+    payload: string;
+  };
+  const p = JSON.parse(row.payload);
+  assert.equal(p.userTurnCount, 2);
+  assert.equal(p.assistantTurnCount, 2);
+  assert.equal(p.hasCodeBlocks, true);
+  assert.equal(p.hasToolUse, false);
+  assert.ok(p.bodyChars > 0);
+  assert.ok(Array.isArray(p.topicHints));
+  assert.ok(p.topicHints.includes('whoop'), 'topicHints should include "whoop"');
+  closeDb(db);
+});
+
+test('capture: hasToolUse is true when tool turns present', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 's-tool',
+    turns: [
+      { role: 'user', content: 'read the config file please' },
+      { role: 'tool', content: '{"key": "value"}' },
+      { role: 'assistant', content: 'The config file contains key=value.' },
+    ],
+  });
+  assert.equal(r.captured, true);
+  const row = db.prepare('SELECT payload FROM events WHERE id = ?').get(r.eventId) as {
+    payload: string;
+  };
+  const p = JSON.parse(row.payload);
+  assert.equal(p.hasToolUse, true);
+  closeDb(db);
+});
+
+test('extractTopicHints: returns top terms by frequency, ignoring stop words', () => {
+  const turns = [
+    {
+      role: 'user' as const,
+      content: 'I want to fix the quillnote auth integration. The quillnote auth flow is broken.',
+    },
+    { role: 'user' as const, content: 'The quillnote callback endpoint needs auth headers.' },
+  ];
+  const hints = extractTopicHints(turns);
+  assert.ok(hints.includes('quillnote'));
+  assert.ok(hints.includes('auth'));
+  assert.ok(!hints.includes('the'));
+  assert.ok(!hints.includes('is'));
+  assert.ok(hints.length <= 5);
+});
+
+test('extractTopicHints: returns empty for short sessions', () => {
+  const turns = [{ role: 'user' as const, content: 'hello' }];
+  const hints = extractTopicHints(turns);
+  assert.equal(hints.length, 0);
+});
+
+// ─── looksPureDev ─────────────────────────────────────────────────────────────
+
+// A long session of pure code/tooling with no first-person personal signal.
+// Lines are chosen so ≥80% match the dev-line regex (shell commands, imports,
+// exports, const/function/class declarations, or file extensions).
+const PURE_DEV_TURNS: { role: 'user' | 'assistant'; content: string }[] = [
+  {
+    role: 'user',
+    content: [
+      '$ pnpm install',
+      '$ git status',
+      '$ git diff HEAD~1',
+      '$ git add system/brain/cognition/capture.ts',
+      '$ git commit -m "feat(capture): add hash-based dedup"',
+      '$ pnpm typecheck',
+      '$ pnpm lint',
+      'pnpm exec tsx --test system/brain/cognition/capture.test.ts',
+      'import { createHash } from "node:crypto";',
+      'import { readFileSync } from "node:fs";',
+      'import type { LLMDispatcher } from "../llm/dispatcher.ts";',
+      'import type { RobinDb } from "../memory/db.ts";',
+      'export function slugify(p: string): string { return p.replace(/[/.]/g, "-"); }',
+      'export interface SessionCapture { sessionId: string; turns: SessionTurn[]; }',
+      'export const DEFAULT_TIMEOUT_MS = 120_000;',
+      'const hash = createHash("sha256").update(data).digest("hex");',
+      'function applyMigrations(db: RobinDb, migrations: Migration[]): void {}',
+      'class MigrationRunner { constructor(private db: RobinDb) {} }',
+      '// capture.ts — session ingestion pipeline',
+      '// tsconfig.json target: ESNext',
+      'export default function captureSession() {}',
+      'import assert from "node:assert/strict";',
+    ].join('\n'),
+  },
+  {
+    role: 'assistant',
+    content: 'All checks pass. Migration applied successfully.',
+  },
+];
+
+test('looksPureDev: long all-code session with no personal signal → true', () => {
+  assert.equal(looksPureDev(PURE_DEV_TURNS), true);
+});
+
+test('looksPureDev: session with a first-person personal sentence → false', () => {
+  const turns = [
+    {
+      role: 'user' as const,
+      content: [
+        ...PURE_DEV_TURNS[0].content.split('\n'),
+        // One personal signal line injected — must short-circuit to false
+        "I'm flying to Tokyo next week for the Acme dev summit.",
+      ].join('\n'),
+    },
+    PURE_DEV_TURNS[1],
+  ];
+  assert.equal(
+    looksPureDev(turns),
+    false,
+    'personal signal should prevent pure-dev classification',
+  );
+});
+
+test('looksPureDev: short user text (<200 chars total) → false', () => {
+  const turns = [
+    { role: 'user' as const, content: '$ pnpm install\n$ git status' },
+    { role: 'assistant' as const, content: 'Done.' },
+  ];
+  assert.equal(looksPureDev(turns), false, 'too short to confidently classify as pure-dev');
+});
+
+test('looksPureDev: fewer than 10 non-empty lines → false', () => {
+  // Each line is clearly dev-signal but there are only 8 — below the 10-line floor.
+  const turns = [
+    {
+      role: 'user' as const,
+      content: [
+        '$ pnpm install',
+        '$ git status',
+        'import { foo } from "./foo.ts";',
+        'export function bar(): void {}',
+        '// tsconfig.json',
+        '$ pnpm lint',
+        'const x: string = "hello";',
+        '$ git commit -m "fix"',
+      ].join('\n'),
+    },
+    { role: 'assistant' as const, content: 'Looks good.' },
+  ];
+  assert.equal(looksPureDev(turns), false, 'too few lines to cross the 10-line floor');
+});
+
+// ─── captureSession pure_dev_session skip ────────────────────────────────────
+
+test('capture: skips a pure-dev session when domainGating is on (default)', async () => {
+  const db = freshDb();
+  const r = await captureSession(db, null, {
+    sessionId: 'pure-dev-1',
+    turns: PURE_DEV_TURNS,
+  });
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'pure_dev_session');
+  closeDb(db);
+});
+
+test('capture: does NOT skip a pure-dev session when domainGating is false', async () => {
+  const db = freshDb();
+  const r = await captureSession(
+    db,
+    null,
+    {
+      sessionId: 'pure-dev-gating-off',
+      turns: PURE_DEV_TURNS,
+    },
+    { domainGating: false },
+  );
+  // With gating off the pure_dev_session skip is bypassed; session should be captured.
+  assert.equal(
+    r.captured,
+    true,
+    `expected capture with gating off; got skipReason=${r.skipReason}`,
+  );
+  closeDb(db);
+});
+
+test('capture: an Agent-SDK transcript is Robin-internal and never captured', async () => {
+  const db = freshDb();
+  const dir = mkdtempSync(join(tmpdir(), 'robin-cap-sdk-'));
+  const file = join(dir, 's.jsonl');
+  writeFileSync(
+    file,
+    [
+      JSON.stringify({
+        type: 'user',
+        entrypoint: 'sdk-cli',
+        message: { role: 'user', content: 'Classify each item…' },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        entrypoint: 'sdk-cli',
+        message: { role: 'assistant', content: '[{"id":1,"domain":"travel"}]' },
+      }),
+    ].join('\n'),
+  );
+  const cap = transcriptFileToCapture('sdk1', file);
+  assert.equal(cap.entrypoint, 'sdk-cli');
+  const r = await captureSession(db, null, cap);
+  assert.equal(r.captured, false);
+  assert.equal(r.skipReason, 'internal_sdk');
+  closeDb(db);
+});
+
+test('capture: an interactive (cli) transcript records its entrypoint and is not skipped as internal', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-cap-cli-'));
+  const file = join(dir, 's.jsonl');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      type: 'user',
+      entrypoint: 'cli',
+      message: { role: 'user', content: 'hello' },
+    }),
+  );
+  assert.equal(transcriptFileToCapture('c1', file).entrypoint, 'cli');
+});
+
+test('capture: incognito skips every caller, and a session seen then is never captured later', async () => {
+  const db = freshDb();
+  const session = {
+    sessionId: 'private-1',
+    turns: [
+      { role: 'user' as const, content: 'something private I said while incognito' },
+      { role: 'assistant' as const, content: 'a substantive reply to the private question' },
+    ],
+  };
+  const during = await captureSession(db, null, session, { suspended: true });
+  assert.deepEqual([during.captured, during.skipReason], [false, 'incognito']);
+  // Incognito has ended; the SessionEnd hook or the poller sees the same session again.
+  const after = await captureSession(db, null, session, { suspended: false });
+  assert.deepEqual([after.captured, after.skipReason], [false, 'incognito']);
+  const n = db.prepare("SELECT COUNT(*) AS c FROM events WHERE kind='session.captured'").get() as {
+    c: number;
+  };
+  assert.equal(n.c, 0);
+  // A different session after incognito captures normally.
+  const other = await captureSession(
+    db,
+    null,
+    { ...session, sessionId: 'later-1' },
+    {
+      suspended: false,
+    },
+  );
+  assert.equal(other.captured, true);
+  closeDb(db);
+});
+
+test('transcriptFileToCapture: reads cwd from the transcript when the caller gives none', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-cap-cwd-'));
+  const file = join(dir, 's.jsonl');
+  writeFileSync(
+    file,
+    `${JSON.stringify({ type: 'user', cwd: '/work/other-project', message: { role: 'user', content: 'hi there' } })}\n`,
+  );
+  assert.equal(transcriptFileToCapture('s', file).cwd, '/work/other-project');
+  assert.equal(transcriptFileToCapture('s', file, '/explicit').cwd, '/explicit');
+});
