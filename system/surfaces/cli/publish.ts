@@ -4,12 +4,15 @@ import { parseArgs } from 'node:util';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import {
   createBlobClient,
+  deletePage,
   EXIT_CRASH,
   EXIT_INPUT,
   EXIT_OK,
   groupBySlug,
   PublishError,
   type PublishMode,
+  publishEnvFromProcess,
+  publishLogPath,
   readLog,
   recategorize,
   publish as runPublish,
@@ -23,27 +26,8 @@ import {
 } from '../../lib/publish/thumbs.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 
-function logPathFor(userData: string): string {
-  return join(userData, 'observability', 'publish', 'index.jsonl');
-}
 function telemetryPathFor(userData: string): string {
   return join(userData, 'observability', 'logs', 'publish.log');
-}
-
-function readEnvFromProcess(): {
-  token: string | undefined;
-  userId: string | undefined;
-  publicUrl: string;
-  blobPublicBaseUrl: string | undefined;
-  urlSecret: string | undefined;
-} {
-  return {
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-    userId: process.env.PUBLISH_USER_ID,
-    publicUrl: process.env.PUBLISH_PUBLIC_URL || 'https://askrobin.io',
-    blobPublicBaseUrl: process.env.BLOB_PUBLIC_BASE_URL,
-    urlSecret: process.env.PUBLISH_URL_SECRET,
-  };
 }
 
 export async function runPublishCli(rawArgs: string[]): Promise<void> {
@@ -64,24 +48,18 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
 
   const userData = resolveUserDataDir();
   loadEnvFile(userData); // populates process.env from secrets/.env if not already set
-  const env = readEnvFromProcess();
+  const env = publishEnvFromProcess();
 
-  if (!env.token) {
-    stderr.write('BLOB_READ_WRITE_TOKEN missing — set in user-data/config/secrets/.env\n');
-    exit(EXIT_INPUT);
-  }
-  if (!env.userId) {
-    stderr.write('PUBLISH_USER_ID missing — set in user-data/config/secrets/.env\n');
-    exit(EXIT_INPUT);
-  }
-  if (!env.blobPublicBaseUrl) {
-    stderr.write('BLOB_PUBLIC_BASE_URL missing — set in user-data/config/secrets/.env\n');
-    exit(EXIT_INPUT);
-  }
-  if (!env.urlSecret) {
-    // Fail closed: publishing without the secret would mint unhashed
-    // (guessable) URLs and split every page's identity.
-    stderr.write('PUBLISH_URL_SECRET missing — set in user-data/config/secrets/.env\n');
+  if (!env) {
+    // Name the first missing variable (PUBLISH_URL_SECRET fails closed:
+    // publishing without it would mint unhashed, guessable URLs).
+    const missing = [
+      'BLOB_READ_WRITE_TOKEN',
+      'PUBLISH_USER_ID',
+      'BLOB_PUBLIC_BASE_URL',
+      'PUBLISH_URL_SECRET',
+    ].find((k) => !process.env[k]);
+    stderr.write(`${missing} missing — set in user-data/config/secrets/.env\n`);
     exit(EXIT_INPUT);
   }
 
@@ -98,15 +76,9 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
   }
 
   const maintainOpts = {
-    env: {
-      token: env.token,
-      userId: env.userId,
-      publicUrl: env.publicUrl,
-      blobPublicBaseUrl: env.blobPublicBaseUrl,
-      urlSecret: env.urlSecret,
-    },
+    env,
     blobClient,
-    logPath: logPathFor(userData),
+    logPath: publishLogPath(userData),
   };
 
   try {
@@ -143,6 +115,16 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
       );
       exit(EXIT_OK);
     }
+    if (mode === 'delete') {
+      const result = await deletePage({
+        ...maintainOpts,
+        slug: values.slug ?? '',
+        telemetryPath: telemetryPathFor(userData),
+        dryRun: values['dry-run'] ?? false,
+      });
+      stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      exit(EXIT_OK);
+    }
     if (mode === 'sync') {
       const result = await syncDeletes(maintainOpts);
       stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -165,15 +147,9 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
       forceUntrusted: values['force-untrusted'] ?? false,
       allowSensitive: values['allow-sensitive'] ?? false,
       dryRun: values['dry-run'] ?? false,
-      env: {
-        token: env.token,
-        userId: env.userId,
-        publicUrl: env.publicUrl,
-        blobPublicBaseUrl: env.blobPublicBaseUrl,
-        urlSecret: env.urlSecret,
-      },
+      env,
       blobClient,
-      logPath: logPathFor(userData),
+      logPath: publishLogPath(userData),
       telemetryPath: telemetryPathFor(userData),
       thumbCapture: canCapture() ? captureWithChrome : undefined,
     });
@@ -206,7 +182,7 @@ export async function runPublishedCli(rawArgs: string[]): Promise<void> {
   const userData = resolveUserDataDir();
   loadEnvFile(userData);
   const userId = process.env.PUBLISH_USER_ID || 'user';
-  const { entries, skipped } = await readLog(logPathFor(userData));
+  const { entries, skipped } = await readLog(publishLogPath(userData));
   if (entries.length === 0) {
     stdout.write('(no published pages)\n');
     if (skipped) stdout.write(`(skipped ${skipped} malformed entries)\n`);

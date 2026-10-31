@@ -1,13 +1,15 @@
 // Maintenance operations on the published-pages set that don't publish
 // content: recategorize (fix a live page's category without republishing)
 // and sync (fold web-side pending ops into the local log).
+import { dirname, join } from 'node:path';
 import { CATEGORIES, EXIT_INPUT, EXIT_POLICY, UNCATEGORIZED } from './config.ts';
 import { appendLogEntry, readLog } from './log.ts';
 import { buildManifest, writeManifest } from './manifest.ts';
-import { PublishError } from './orchestrate.ts';
+import { PublishError, publish } from './orchestrate.ts';
 import { reconcilePending } from './pending.ts';
 import { sanitizeSlug, toPublicSlug } from './slug.ts';
-import type { BlobClient, LogRow, PublishEnv } from './types.ts';
+import { dropThumb } from './thumbs.ts';
+import type { BlobClient, LogRow, PublishEnv, PublishResult } from './types.ts';
 
 export interface MaintainOptions {
   env: PublishEnv;
@@ -100,4 +102,35 @@ export async function syncDeletes(opts: MaintainOptions): Promise<SyncResult> {
 /** Re-derive a page's public (hashed) URL — convenience for maintenance CLIs. */
 export function pageUrlFor(env: PublishEnv, slug: string): string {
   return `${env.publicUrl}/@${env.userId}/${toPublicSlug(env.userId, slug, env.urlSecret)}`;
+}
+
+/**
+ * Library-level page delete: `publish({ mode: 'delete' })` (page + assets,
+ * log row, manifest) then the page's index thumbnail. A thumbnail failure is a
+ * warning on the result, never a throw — the page is already gone by then.
+ * `telemetryPath` defaults to the sibling `logs/publish.log` of the publish log.
+ */
+export async function deletePage(
+  opts: MaintainOptions & { slug: string; telemetryPath?: string; dryRun?: boolean },
+): Promise<PublishResult> {
+  const result = await publish({
+    source: null,
+    slug: opts.slug,
+    mode: 'delete',
+    forceUntrusted: false,
+    allowSensitive: false,
+    dryRun: opts.dryRun ?? false,
+    env: opts.env,
+    blobClient: opts.blobClient,
+    logPath: opts.logPath,
+    telemetryPath: opts.telemetryPath ?? join(dirname(opts.logPath), '..', 'logs', 'publish.log'),
+  });
+  if (!opts.dryRun) {
+    try {
+      await dropThumb(opts.env, opts.blobClient, result.slug);
+    } catch (err) {
+      result.warnings.push(`thumbnail cleanup failed: ${(err as Error).message}`);
+    }
+  }
+  return result;
 }
