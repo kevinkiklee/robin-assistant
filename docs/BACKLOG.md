@@ -32,7 +32,7 @@ Plan 2 shipped template mode only (`lab/`, 2026-10-21). The deferred work is lis
 Every paid step goes estimate → approve. No Plan 3 document exists yet.
 
 ### 4. Behavioral habits, Phase 3 (feedback depth and surfacing)
-`docs/design/2026-06-17-behavioral-habit-inference-design.md` §Phasing defines Phase 3 as "richer recall weighting + calibration views", in a separate spec. Phase 1 and Phase 2 shipped, but the Phase 3 spec was never written. The value-loops work (2026-08-10: open-loops resurfacing in recall audit) covers part of the surfacing side. Habit-weighted recall and a habit calibration view are still open. Write the spec before building.
+`docs/design/2026-06-17-behavioral-habit-inference-design.md` §Phasing defines Phase 3 as "richer recall weighting + calibration views", in a separate spec. Phase 1 and Phase 2 shipped, but the Phase 3 spec was never written. The value-loops work (2026-08-10: open-loops resurfacing and a recall audit) covers part of the surfacing side. Habit-weighted recall and a habit calibration view are still open. Write the spec before building.
 
 ### 5. Hot-reload permission gate
 Integration hot-reload shipped (`system/integrations/_runtime/watch.ts`): it debounces, cleans up the previous registration, and re-registers. The original acceptance criterion isn't built: when `integration.yaml` asks for new permissions, the reload should pause until a grant is given. No grant command exists. Today a changed manifest takes effect on reload with no review step.
@@ -81,16 +81,16 @@ Status of every item in the 2026-05-19 backlog, checked on 2026-10-29.
 | Item | Outcome | Evidence |
 |---|---|---|
 | P0.1 Wire cognition + integrations into the scheduler | Shipped | now 18 jobs in `system/brain/cognition/jobs.ts` |
-| P0.2 Tier-1 integrations | Shipped; later pruned | and siblings. `github` removed; `chrome` disabled (now `system/integrations/builtin/_chrome/`) |
+| P0.2 Tier-1 integrations | Shipped; later pruned | `github` removed; `chrome` disabled (now `system/integrations/builtin/_chrome/`) |
 | P0.3 SurrealDB read path in migrate | Superseded | replaced by the NDJSON importer (`system/surfaces/cli/import.ts`); the `migrate/` directory was deleted |
 | P0.4 Real-Ollama end-to-end validation | Superseded | Cognition moved to cloud providers (2026-05-24), then Claude-only routing; the `ollama.ts` adapter remains but isn't the default |
 | P1.1 `robin-extension` MCP server | Shipped | now 7 ops tools + 5 built-in dispatchers + user-extension dispatchers |
 | P1.2 Interactive `robin init` | **Open** | Open item 1 |
 | P1.3 Hot-reload watcher | Shipped, minus the permission gate | gate is open item 5 |
-| P1.4 Biographer stage-3 LLM disambiguation | Shipped | |
-| P1.5 Daemon-unhealthy notification | Shipped, then grown | incident ladder `notifyOperator()` + Discord |
+| P1.4 Biographer stage-3 LLM disambiguation | Shipped | — |
+| P1.5 Daemon-unhealthy notification | Shipped, then grown | Grew an incident ladder, then `notifyOperator()` + Discord |
 | P2.1 Kuzu projection | Dropped | See Not planned |
-| P2.2 OTel exporter | Deleted | Shipped as a library in never wired; deleted 2026-10-29 along with the dormant DeepSeek adapter |
+| P2.2 OTel exporter | Deleted | Shipped as a library, never wired; deleted 2026-10-29 along with the dormant DeepSeek adapter |
 | P2.3 APFS snapshots | **Open** | Open item 6 |
 | P2.4 DSPy sidecar | Not planned | See Not planned |
 | P2.5 Multi-account integrations | Shipped | `<name>--<instance>` in `system/integrations/_runtime/loader.ts` |
