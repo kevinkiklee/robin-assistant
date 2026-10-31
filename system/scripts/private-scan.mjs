@@ -17,6 +17,8 @@
 //   - shapes: US phone numbers, personal-mailbox addresses, card/account last-4s
 //   - copied text: added lines sharing a 6-word run with the operator's personal notes,
 //     corrections and beliefs (a fact can leak with no name in it)
+//   - retired commits: SHAs listed in user-data/config/retired-commits.txt (history
+//     rewritten away, still fetchable by SHA on the remote)
 //
 // Exit 0 clean, 1 findings, 2 usage error. A line ending in `privacy-scan:allow`
 // is skipped (for the scanner's own fixtures). Findings print file:line and the
@@ -341,7 +343,27 @@ async function buildMatchers() {
     re: /(?:ending in|ends in|[⋯…•]+|\*{3,}|x{4,})\s?(\d{4})(?!\d)/i,
     accept: (m) => !PLACEHOLDER_LAST4.has(m[1]),
   });
+  const retired = retiredCommitPrefixes(ud);
+  if (retired.length) {
+    matchers.push({
+      kind: 'retired-commit',
+      re: new RegExp(`(?<![0-9a-f])(?:${retired.join('|')})[0-9a-f]{0,33}(?![0-9a-f])`, 'i'),
+    });
+  }
   return { matchers, termCount: uniq.length };
+}
+
+// SHAs of history that was rewritten away to drop personal data. GitHub keeps serving
+// a dropped commit by SHA until a support purge, so a doc or comment citing one is a
+// pointer straight back to the leak. One full SHA per line; `#` comments allowed.
+function retiredCommitPrefixes(ud) {
+  const file = join(ud, 'config', 'retired-commits.txt');
+  if (!existsSync(file)) return [];
+  const shas = readFileSync(file, 'utf8')
+    .split('\n')
+    .map((l) => l.trim().toLowerCase())
+    .filter((l) => /^[0-9a-f]{40}$/.test(l));
+  return [...new Set(shas.map((s) => s.slice(0, 7)))];
 }
 
 function scanText(path, text, matchers, findings, lineNumbers) {

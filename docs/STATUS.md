@@ -113,45 +113,45 @@ See `docs/BACKLOG.md` for detail and evidence.
 
 Newest first. Commit hashes are representative, not exhaustive.
 
-- **2026-10-28**: Host sleep detected via the kernel instead of the monotonic clock (`4978b3a`). WAL file capped with `journal_size_limit` (`bfd907a`). Agent fleet: F unblocked, K stops re-fixing work that is awaiting merge, outcomes reported honestly (`f9f7259`).
-- **2026-10-26**: Standalone HTML pages became the default publish format: scripts run sandboxed, Google Fonts allowed, local assets inlined or uploaded (`f04a621`). Agent SDK 0.3.301 and Claude 5.5 model defaults (`790a8f6`).
-- **2026-10-19 → 10-21**: Robin test lab Plans 1–2: calibration query, sandbox, seeded life-script engine, knowable-truth oracle and probes, template renderer and provider, per-day copy loop, state-layer scorer, CLI (`lab/`, `d217aea`, `398464d`). The system seams it needed: sim clock routing (`954ac56`, `077ed35`), `MemoryTuning` (`5168d74`), prompt registry (`d19d329`), dream-step allowlist (`fba04c6`), `openDb` guard hooks (`61cd13c`), golden memory-lifecycle test (`56ca2e5`). Also design docs for a dashboard fed by Robin snapshots (design only).
+- **2026-10-28**: Host sleep detected via the kernel instead of the monotonic clock. WAL file capped with `journal_size_limit`. Agent fleet: F unblocked, K stops re-fixing work that is awaiting merge, outcomes reported honestly.
+- **2026-10-26**: Standalone HTML pages became the default publish format: scripts run sandboxed, Google Fonts allowed, local assets inlined or uploaded. Agent SDK 0.3.301 and Claude 5.5 model defaults.
+- **2026-10-19 → 10-21**: Robin test lab Plans 1–2: calibration query, sandbox, seeded life-script engine, knowable-truth oracle and probes, template renderer and provider, per-day copy loop, state-layer scorer, CLI (`lab/`). The system seams it needed: sim clock routing, `MemoryTuning`, prompt registry, dream-step allowlist, `openDb` guard hooks, golden memory-lifecycle test. Also design docs for a dashboard fed by Robin snapshots (design only).
 - **2026-10-02 → 10-03**: Stability audit wave.
-  - Memory: weekly entity hygiene (`a1fc6a9`, `2561f52`); LLM belief reconcile (`2ba5c3c`, `5a6e8f4`); on-demand topic hygiene and live-head degating (`611b400`, `30c0aab`); correction embeddings and topic linking (`6bad743`, `fbe831e`); session compaction (`0e777b1`); no vectors for telemetry (`5f104ae`); credential redaction at capture (`cf15994`); recall precision fixes (`b260b7d`, `96c6b1a`, `22cdda8`).
-  - Predictions: structured resolution specs + deterministic resolver (`6ede716`).
-  - Recommendations: commerce-email signals, held/contrary stances, supersede + per-session cap, weekly LLM classify, dedupe CLI (`648c18c`, `4533c76`, `5204342`).
-  - Reliability: `retention.run` (`e089a09`); the daemon survives host sleep (`a3c4ad9`); wake grace and `integrations.unreachable` (`ab75aaf`, `67edacf`); event-loop-block alert and `content_ref` index (`5ab9d11`); boot GC no longer wipes cursors (`e714699`); restore keeps live OAuth tokens (`e581cdc`); Agent-SDK transcripts are never captured (`ac41d2b`).
-  - Agents: K/J confined to their worktree by the OS sandbox (`ad70782`); L out of the rotation (`25a9761`); per-role SDK effort (`de1b709`); pool-billed spend recorded (`0b20d69`).
-- **2026-09-01 → 09-12**: MCP stale-build detection beyond the SHA, plus OAuth token redaction (`e9109c4`). Per-hook timeout on SessionEnd (`29c98cf`).
-- **2026-08-22 → 08-31**: Event-notes capture and `/note compile` (`913fad5`). Hashed page URLs, with the private-page store removed (`aa2e687`). Index-page delete and recategorize via pending ops (`3fb532a`). Discord restored as an outbound notification transport (`62eb17d`, `5c9f8f1`). Calendar deletions propagate (`8257944`). SDK auto-compactions recorded in the ledger (`5925af7`). Nightly topic hygiene (`d6ee338`). Doctor bounds logs, candidate embeddings and `recall_log` (`2829e3c`).
+  - Memory: weekly entity hygiene; LLM belief reconcile; on-demand topic hygiene and live-head degating; correction embeddings and topic linking; session compaction; no vectors for telemetry; credential redaction at capture; recall precision fixes.
+  - Predictions: structured resolution specs + deterministic resolver.
+  - Recommendations: commerce-email signals, held/contrary stances, supersede + per-session cap, weekly LLM classify, dedupe CLI.
+  - Reliability: `retention.run`; the daemon survives host sleep; wake grace and `integrations.unreachable`; event-loop-block alert and `content_ref` index; boot GC no longer wipes cursors; restore keeps live OAuth tokens; Agent-SDK transcripts are never captured.
+  - Agents: K/J confined to their worktree by the OS sandbox; L out of the rotation; per-role SDK effort; pool-billed spend recorded.
+- **2026-09-01 → 09-12**: MCP stale-build detection beyond the SHA, plus OAuth token redaction. Per-hook timeout on SessionEnd.
+- **2026-08-22 → 08-31**: Event-notes capture and `/note compile`. Hashed page URLs, with the private-page store removed. Index-page delete and recategorize via pending ops. Discord restored as an outbound notification transport. Calendar deletions propagate. SDK auto-compactions recorded in the ledger. Nightly topic hygiene. Doctor bounds logs, candidate embeddings and `recall_log`.
 - **2026-08-10 → 08-14**: Reliability program, steps 1–4.
-  - Boot classification and shutdown stamps (`489720d`, `a9e45f0`).
-  - Biographer and dream moved to detached children (`f3876e7`).
-  - Incident ladder and repair breaker (`65fc235`, `89b2634`).
-  - Dist build stamp, `mcp.dist_current`, and core MCP hot-reload (`d88f3e2`, `5356513`).
-  - Orphan-child invariant (`0b42adb`).
-  - Nightly reliability audit (`30c57aa`).
-  - Biographer no longer spawns for an empty queue (`8cd5b99`).
+  - Boot classification and shutdown stamps.
+  - Biographer and dream moved to detached children.
+  - Incident ladder and repair breaker.
+  - Dist build stamp, `mcp.dist_current`, and core MCP hot-reload.
+  - Orphan-child invariant.
+  - Nightly reliability audit.
+  - Biographer no longer spawns for an empty queue.
 
   Value-loops redesign, in the same window:
 
-  - Recommendation creation gate and open-loops resurfacing (`b0c7e80`, `f5b2dac`).
-  - Prediction creation gate (`8a0b974`).
-  - Five domain scouts (`2d91586`, `80022b1`).
-  - Recall replay harness, kept-set logging and monthly recall audit (`444a2b7`, `b7ecd7b`, `e3478ef`).
-  - Normalized-name entity dedup (`a82e105`).
-  - Corrected values written back as live heads (`dab518d`).
-- **2026-08-03 → 08-08**: Remote MCP surface with OAuth 2.1 (`b4d9115`). Gmail sent-mail sync (`900ac95`). Tick trigger provenance (`ae01065`). `user-data/scripts` brought under typecheck, lint and tests (`4ed6615`, `cee12e6`).
+  - Recommendation creation gate and open-loops resurfacing.
+  - Prediction creation gate.
+  - Five domain scouts.
+  - Recall replay harness, kept-set logging and monthly recall audit.
+  - Normalized-name entity dedup.
+  - Corrected values written back as live heads.
+- **2026-08-03 → 08-08**: Remote MCP surface with OAuth 2.1. Gmail sent-mail sync. Tick trigger provenance. `user-data/scripts` brought under typecheck, lint and tests.
 - **2026-07**:
-  - OAuth: provider-agnostic `robin reauth` (`50f280a`); cross-process refresh lease (`1acea87`); reauth clears the auth-death latch (`1c53c8a`).
-  - Biographer: tick deadline enforced inside inner loops (`d79adce`); JSON recovery from prose-wrapped replies (`fbd5c1e`); dead-letter flood fix (`2dfd43d`).
-  - The autonomous fleet had never run from the daemon (repoRoot was derived from cwd). Fixed in `798cac6`.
-  - Expiry for stale conflicted candidates (`b822e8a`).
-  - Weather transient-error handling (`5ba9702`).
-  - pnpm no longer prunes the native SQLite binding (`c2adde9`).
-  - The smoke test isolates HOME (`287e59b`).
-- **2026-06-17 → 06-29**: Behavioral habit inference Phase 2 (`1f25179`). Recommendation→action loop Phase 1, plus session-scan backfill and CLI (`eec4c20`, `c8efe6a`). Capture throttling and generic-topic link suppression (`ab6b996`). Weather re-sourced to Open-Meteo with the directional sky engine (`lib/sky`), light alerts, moon ephemeris, tide windows and ensemble confidence (`b60272d`, `78883df`). Categorized publish index (`cc63b36`).
-- **2026-06-01 → 06-16**: Phases A–D (below), plus: Claude-only routing with Gemini for embeddings only (`75afa38`); structured output through the Agent SDK fixed (`9669ac1`); per-role usage-limit fallback (`623825d`); int8 vectors and a ~58% smaller DB (`e8c6d0e`, `b6116c3`); per-handler scheduler timeout (`2f7287e`); end of the heartbeat/lease-reap cycle (`03ff390`); self-capture loop closed (`29e2233`, `0b3d4e0`); entity alias map (`3cce7c0`); pre-commit Biome format hook (`aa47289`); auto-recall restricted to curated kinds with doc slicing (`7024c76`).
+  - OAuth: provider-agnostic `robin reauth`; cross-process refresh lease; reauth clears the auth-death latch.
+  - Biographer: tick deadline enforced inside inner loops; JSON recovery from prose-wrapped replies; dead-letter flood fix.
+  - The autonomous fleet had never run from the daemon (repoRoot was derived from cwd). Fixed.
+  - Expiry for stale conflicted candidates.
+  - Weather transient-error handling.
+  - pnpm no longer prunes the native SQLite binding.
+  - The smoke test isolates HOME.
+- **2026-06-17 → 06-29**: Behavioral habit inference Phase 2. Recommendation→action loop Phase 1, plus session-scan backfill and CLI. Capture throttling and generic-topic link suppression. Weather re-sourced to Open-Meteo with the directional sky engine (`lib/sky`), light alerts, moon ephemeris, tide windows and ensemble confidence. Categorized publish index.
+- **2026-06-01 → 06-16**: Phases A–D (below), plus: Claude-only routing with Gemini for embeddings only; structured output through the Agent SDK fixed; per-role usage-limit fallback; int8 vectors and a ~58% smaller DB; per-handler scheduler timeout; end of the heartbeat/lease-reap cycle; self-capture loop closed; entity alias map; pre-commit Biome format hook; auto-recall restricted to curated kinds with doc slicing.
 
 ## History (before mid-June)
 

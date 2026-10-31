@@ -28,7 +28,7 @@ function fakeRegistrar() {
 
 test('stalenessNotice: no notice when sha and deep hash both match', () => {
   assert.equal(
-    stalenessNotice({ sha: '86ed9be', deepHash: 'aaa' }, { sha: '86ed9be', deepHash: 'aaa' }),
+    stalenessNotice({ sha: 'a1b2c3d', deepHash: 'aaa' }, { sha: 'a1b2c3d', deepHash: 'aaa' }),
     null,
   );
 });
@@ -37,26 +37,26 @@ test('stalenessNotice: no notice when this process has no loaded stamp', () => {
   // tsx dev / no `pnpm build` in this checkout — nothing to compare against,
   // which is "unknown", not "stale". Same philosophy as assertDeepHashCoherent.
   assert.equal(
-    stalenessNotice({ sha: null, deepHash: null }, { sha: '86ed9be', deepHash: 'aaa' }),
+    stalenessNotice({ sha: null, deepHash: null }, { sha: 'a1b2c3d', deepHash: 'aaa' }),
     null,
   );
 });
 
 test('stalenessNotice: no notice when there is no stamp on disk', () => {
   assert.equal(
-    stalenessNotice({ sha: '86ed9be', deepHash: 'aaa' }, { sha: null, deepHash: null }),
+    stalenessNotice({ sha: 'a1b2c3d', deepHash: 'aaa' }, { sha: null, deepHash: null }),
     null,
   );
 });
 
 test('stalenessNotice: names both shas when the commit moved under a live process', () => {
   const notice = stalenessNotice(
-    { sha: '5c9f8f1', deepHash: 'aaa' },
-    { sha: '86ed9be', deepHash: 'bbb' },
+    { sha: 'd4e5f6a', deepHash: 'aaa' },
+    { sha: 'a1b2c3d', deepHash: 'bbb' },
   );
   assert.ok(notice, 'expected a notice when the shas differ');
-  assert.match(notice, /5c9f8f1/, 'names the sha this process is actually running');
-  assert.match(notice, /86ed9be/, 'names the sha now on disk');
+  assert.match(notice, /d4e5f6a/, 'names the sha this process is actually running');
+  assert.match(notice, /a1b2c3d/, 'names the sha now on disk');
   assert.match(notice, /\/mcp/, 'tells the caller how to fix it');
 });
 
@@ -66,8 +66,8 @@ test('stalenessNotice: fires when only the deep hash moved (rebuild from a dirty
   // A sha-only comparison would call this fresh and stay silent — which is
   // precisely the silent-stale-code failure the notice exists to end.
   const notice = stalenessNotice(
-    { sha: '86ed9be', deepHash: 'aaa' },
-    { sha: '86ed9be', deepHash: 'bbb' },
+    { sha: 'a1b2c3d', deepHash: 'aaa' },
+    { sha: 'a1b2c3d', deepHash: 'bbb' },
   );
   assert.ok(notice, 'a content change with an unchanged HEAD is still stale');
   assert.match(notice, /uncommitted|rebuilt/i, 'should explain why the sha looks unchanged');
@@ -77,12 +77,12 @@ test('stalenessNotice: fires when only the deep hash moved (rebuild from a dirty
 test('stalenessNotice: falls back to the sha when either deep hash is absent', () => {
   // Legacy 2-line stamp, or a build with nothing hashable.
   assert.equal(
-    stalenessNotice({ sha: '86ed9be', deepHash: null }, { sha: '86ed9be', deepHash: 'bbb' }),
+    stalenessNotice({ sha: 'a1b2c3d', deepHash: null }, { sha: 'a1b2c3d', deepHash: 'bbb' }),
     null,
     'same sha, no deep hash to compare → nothing to assert',
   );
   assert.ok(
-    stalenessNotice({ sha: '5c9f8f1', deepHash: null }, { sha: '86ed9be', deepHash: null }),
+    stalenessNotice({ sha: 'd4e5f6a', deepHash: null }, { sha: 'a1b2c3d', deepHash: null }),
     'differing sha still detected without any deep hash',
   );
 });

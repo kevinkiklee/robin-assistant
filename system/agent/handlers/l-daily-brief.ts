@@ -1,6 +1,6 @@
 // L — Agentic daily brief. Autonomous, read-only synthesis across integrations +
-// memory in a loop, vs the current template (§9). Reverses 16ab0a4 ("remove
-// claude -p — compose the brief in-session"), now sanctioned through runAgent.
+// memory in a loop, vs the current template (§9). Reverses the earlier "remove
+// claude -p — compose the brief in-session" change, now sanctioned through runAgent.
 // `plan` permission mode keeps the run read-only; the allowlist is all read
 // surfaces (recall + integration reads).
 

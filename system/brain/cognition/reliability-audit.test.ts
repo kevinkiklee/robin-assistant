@@ -1029,14 +1029,14 @@ test('remediationGoal: carries the last week of auto-fix history so K builds on 
         ts: '2026-10-30T10:00:00.000Z',
         branch: 'agent/x',
         landed: true,
-        reason: 'landed as e0f47c7',
+        reason: 'landed as c0ffee1',
         files: ['system/kernel/invariants/builtins/integration-staleness.ts'],
       },
     ]) ?? '';
   assert.match(g, /Auto-fix history, last 7 days/);
   assert.match(
     g,
-    /- 2026-10-30 landed agent\/x: landed as e0f47c7 \[system\/kernel\/invariants\/builtins\/integration-staleness\.ts\]/,
+    /- 2026-10-30 landed agent\/x: landed as c0ffee1 \[system\/kernel\/invariants\/builtins\/integration-staleness\.ts\]/,
   );
   assert.doesNotMatch(remediationGoal(a) ?? '', /Auto-fix history/, 'no history → no section');
 });

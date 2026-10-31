@@ -182,3 +182,19 @@ test('private-scan: deployment hostnames from the secrets file are private; apex
   g('add', 'f.ts');
   assert.equal(scan(repo, ud, '--staged').code, 0);
 });
+
+test('private-scan: citations of rewritten-away commits are refused; other hex passes', () => {
+  const { repo, ud, g } = fixture();
+  const retired = 'feedface0123456789abcdef0123456789abcdef';
+  writeFileSync(join(ud, 'config', 'retired-commits.txt'), `# dropped history\n${retired}\n`);
+  for (const ref of ['feedfac', 'feedface01', retired]) {
+    writeFileSync(join(repo, 'f.md'), `- Fixed the brake rub (\`${ref}\`).\n`);
+    g('add', 'f.md');
+    const r = scan(repo, ud, '--staged');
+    assert.equal(r.code, 1, ref);
+    assert.match(r.out, /retired-commit/, ref);
+  }
+  writeFileSync(join(repo, 'f.md'), '- color #feedfa, digest 0feedface01, sha a1b2c3d.\n');
+  g('add', 'f.md');
+  assert.equal(scan(repo, ud, '--staged').code, 0);
+});

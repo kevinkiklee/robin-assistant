@@ -98,7 +98,7 @@ function fakeImageBase64(bytes: number): string {
 test('patterns: ordinary text, ids, markup and data are not credentials', () => {
   const cases: Array<[string, string]> = [
     ['prose', 'Baked bread at dawn, then reviewed the token budget and the API docs.'],
-    ['git sha', 'commit fc12052e4b1d8a9c3f6e7b2a0d5c8e1f4a7b9c2d fixed it'],
+    ['git sha', 'commit 9c3e7a1b5d2f8064ae1c7b3d9f5a2e8c4b6d0f17 fixed it'],
     ['uuid', 'session 550e8400-e29b-41d4-a716-446655440000 resumed'],
     ['css colours', '.a{color:#FF00AA;background:#a1b2c3;border-color:#123456}'],
     [
