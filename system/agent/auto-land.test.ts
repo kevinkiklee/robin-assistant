@@ -8,7 +8,6 @@ import {
   autoLand,
   type Exec,
   freshFailures,
-  fsWriteViolation,
   GATE_DIFF_FLAGS,
   gateEnv,
   gateSandboxProfile,
@@ -46,11 +45,14 @@ function fakeExec(
     absent?: string[];
     unreadable?: string;
     ignored?: string;
+    /** What the ignored-file listing returns after the first call (the post-check pass). */
+    ignoredAfter?: string;
     shown?: Record<string, string>;
   } = {},
 ) {
   const calls: string[] = [];
   const raw: string[] = [];
+  let ignoredCalls = 0;
   const exec: Exec = (cmd, args, { cwd }) => {
     raw.push(`${cwd}$ ${cmd} ${args.join(' ')}`);
     // Recorded without git's `-c k=v` hardening pairs (asserted on `raw`).
@@ -85,8 +87,11 @@ function fakeExec(
     if (a.startsWith('cat-file -e ') && o.absent?.some((f) => a.endsWith(f))) {
       throw new Error('absent');
     }
-    if (a === 'ls-files --others --ignored --exclude-standard')
+    if (a === 'ls-files --others --ignored --exclude-standard') {
+      ignoredCalls++;
+      if (ignoredCalls > 1 && o.ignoredAfter !== undefined) return o.ignoredAfter;
       return o.ignored ?? 'node_modules\n';
+    }
     if (a.startsWith('show ') && o.shown?.[a.slice(5)] !== undefined) return o.shown[a.slice(5)];
     if (a.startsWith('show ') && o.unreadable && a.endsWith(o.unreadable)) {
       throw Object.assign(new Error('read'), { stderr: 'fatal: bad object' });
@@ -1292,10 +1297,22 @@ test("autoLand: a worktree node_modules that isn't the repo's symlink holds befo
   }
 });
 
-test('autoLand: a nested node_modules or a tsbuildinfo in the worktree holds before any check runs', () => {
+test('autoLand: ANY ignored path in the worktree but the top-level node_modules link holds before any check runs', () => {
+  // A nested node_modules shadows packages, a tsbuildinfo steers tsc — and any
+  // other ignored file (a .env, dist/, a lab state file a test reads) is a shadow
+  // copy no diff shows, so none may be present.
   for (const ignored of [
     'node_modules\nsystem/kernel/node_modules/tsx/index.js\n',
     'node_modules\ntsconfig.tsbuildinfo\n',
+    'node_modules\nlab/.state/run.json\n',
+    'node_modules\n.DS_Store\n',
+    'node_modules\ndist/system/kernel/scheduler/index.js\n',
+    'node_modules\n.env\n',
+    'node_modules\nuser-data/config/operator.yaml\n',
+    'node_modules\nsystem/kernel/invariants/run.log\n',
+    'node_modules/\n',
+    'node_modules/x/index.js\n',
+    ' node_modules\n',
   ]) {
     const { exec, calls } = fakeExec({ ignored });
     const r = autoLand(base(exec));
@@ -1303,8 +1320,32 @@ test('autoLand: a nested node_modules or a tsbuildinfo in the worktree holds bef
     assert.match(r.reason, /ignored file/);
     assert.ok(!calls.some((c) => c.includes('sandbox-exec')), 'no check ran');
   }
-  // Ordinary ignored state (a lab run's output) doesn't block a land.
-  const { exec } = fakeExec({ ignored: 'node_modules\nlab/.state/run.json\n.DS_Store\n' });
+  // The runner's own node_modules symlink is the one exception.
+  const { exec } = fakeExec({ ignored: 'node_modules\n' });
+  assert.equal(autoLand(base(exec)).landed, true);
+});
+
+test('autoLand: an ignored file the checks leave behind holds the land', () => {
+  // The suite runs K's code with write access to the worktree; an ignored file
+  // it creates (a .env, dist/, a nested node_modules) is invisible to the
+  // non-ignored drift listing.
+  for (const ignoredAfter of [
+    'node_modules\n.env\n',
+    'node_modules\ndist/system/kernel/scheduler/index.js\n',
+    'node_modules\nsystem/kernel/node_modules/tsx/index.js\n',
+    ' node_modules\n',
+  ]) {
+    const { exec, calls } = fakeExec({ ignoredAfter });
+    const r = autoLand(base(exec));
+    assert.equal(r.landed, false, ignoredAfter);
+    assert.match(r.reason, /the checks left an ignored file/, ignoredAfter);
+    assert.ok(
+      calls.some((c) => c.includes('sandbox-exec')),
+      'held after the checks',
+    );
+    assert.ok(!calls.some((c) => /git merge/.test(c)), 'nothing merged');
+  }
+  const { exec } = fakeExec({ ignoredAfter: 'node_modules\n' });
   assert.equal(autoLand(base(exec)).landed, true);
 });
 
@@ -1320,143 +1361,6 @@ test('autoLand: a node_modules link changed during the checks holds the land', (
   assert.ok(!calls.some((c) => /git merge/.test(c)));
 });
 
-// ── Filesystem writes. A landed test runs unsandboxed the next time anyone runs the
-//    suite, and landed code runs unsandboxed in the daemon — a new write must land
-//    inside a fresh mkdtemp dir, or wait for review.
-
-const TMP_FIXTURE = [
-  "import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';",
-  "import { tmpdir } from 'node:os';",
-  "import { join } from 'node:path';",
-  "const dir = mkdtempSync(join(tmpdir(), 'kn-'));",
-].join('\n');
-
-test('fsWriteViolation: writes provably inside a fresh mkdtemp dir pass', () => {
-  const f = ['system/kernel/x.test.ts'];
-  for (const added of [
-    "writeFileSync(join(dir, 'a.json'), '{}');",
-    "mkdirSync(join(dir, 'sub', 'deep'), { recursive: true });",
-    'rmSync(dir, { recursive: true, force: true });',
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source text, not a template
-    'writeFileSync(`${dir}/a.json`, x);',
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source text, not a template
-    "let d2: string;\nd2 = mkdtempSync(`${tmpdir()}/kn-`);\nwriteFileSync(join(d2, 'b'), x);",
-    "const sub = join(dir, 'state');\nwriteFileSync(join(sub, 'c.json'), x);",
-  ]) {
-    assert.equal(
-      fsWriteViolation(
-        f,
-        () => `${TMP_FIXTURE}\n${added}\n`,
-        () => TMP_FIXTURE,
-      ),
-      null,
-      added,
-    );
-  }
-});
-
-test('fsWriteViolation: a new write anywhere else is held, in tests and code alike', () => {
-  for (const file of ['system/kernel/x.test.ts', 'system/kernel/x.ts']) {
-    for (const added of [
-      "writeFileSync(join(homedir(), '.zshrc'), x);",
-      "writeFileSync('githooks/pre-commit', x);",
-      "appendFileSync('/Users/sam/.profile', x);",
-      "writeFileSync(join(dir, '..', '..', 'x'), x);",
-      'writeFileSync(join(dir, name), x);',
-      "writeFileSync(join(tmpdir(), 'fixed-name'), x);",
-      "mkdtempSync(join('/Users/sam', 'x-'));",
-      'const p = statePath;\nwriteFileSync(p, x);',
-      "let d3 = mkdtempSync(join(tmpdir(), 'a'));\nd3 = '/etc';\nwriteFileSync(join(d3, 'b'), x);",
-      "await fsp.writeFile('/etc/hosts', x);",
-      "symlinkSync('/Users/sam/.zshrc', join(dir, 'l'));\ncopyFileSync(src, '/Users/sam/.zshrc');",
-    ]) {
-      assert.match(
-        fsWriteViolation(
-          [file],
-          () => `${TMP_FIXTURE}\n${added}\n`,
-          () => TMP_FIXTURE,
-        ) ?? '',
-        /writes files outside a fresh temp dir/,
-        `${file}: ${added}`,
-      );
-    }
-  }
-});
-
-test('fsWriteViolation: aliased, computed and namespace-escaping writes are held', () => {
-  const f = ['system/kernel/x.ts'];
-  for (const added of [
-    'const w = writeFileSync;\nw(p, x);',
-    "fs['writeFileSync'](p, x);",
-    "fs['write' + 'FileSync'](p, x);",
-    'const f2 = fs;',
-    'const o = { writeFileSync };',
-    "const pr = fs.promises;\npr['write' + 'File'](p, x);",
-  ]) {
-    assert.match(
-      fsWriteViolation(
-        f,
-        () => `import * as fs from 'node:fs';\n${added}\n`,
-        () => "import * as fs from 'node:fs';\n",
-      ) ?? '',
-      /writes files outside a fresh temp dir/,
-      added,
-    );
-  }
-});
-
-test('fsWriteViolation: new home-directory references are held', () => {
-  const f = ['system/kernel/x.test.ts'];
-  for (const added of [
-    'const h = homedir();',
-    'const h = userInfo().homedir;',
-    'const h = process.env.HOME;',
-    "const h = process.env['HOME'];",
-  ]) {
-    assert.match(
-      fsWriteViolation(
-        f,
-        () => `const a = 1;\n${added}\n`,
-        () => 'const a = 1;\n',
-      ) ?? '',
-      /home/,
-      added,
-    );
-  }
-});
-
-test('fsWriteViolation: an unproven write already in a changed file holds; so does a rewritten one', () => {
-  const f = ['system/kernel/x.ts'];
-  const existing = 'writeFileSync(statePath, body);\n';
-  assert.match(
-    fsWriteViolation(
-      f,
-      () => `${existing}const n = 2;\n`,
-      () => existing,
-    ) ?? '',
-    /writeFileSync\(statePath\)/,
-    'a state-writing module goes to review whatever else changed',
-  );
-  assert.match(
-    fsWriteViolation(
-      f,
-      () => "writeFileSync(join(cfgDir, 'x'), body);\n",
-      () => existing,
-    ) ?? '',
-    /cfgDir/,
-    'same count, different target',
-  );
-  // Defining a method or mock named like an fs call isn't a write.
-  assert.equal(
-    fsWriteViolation(
-      ['system/kernel/x.test.ts'],
-      () => 'const fake = { writeFile: async () => {}, mkdir() {} };\n',
-      () => '',
-    ),
-    null,
-  );
-});
-
 test('autoLand: a diff that adds a write outside a temp dir is held before verification', () => {
   const file = 'system/kernel/invariants/foo.test.ts';
   const { exec, calls } = fakeExec({
@@ -1466,92 +1370,4 @@ test('autoLand: a diff that adds a write outside a temp dir is held before verif
   assert.equal(r.landed, false);
   assert.match(r.reason, /writes files outside a fresh temp dir/);
   assert.ok(!calls.some((c) => c.includes('sandbox-exec')), 'no check ran');
-});
-
-test('fsWriteViolation: temp-dir factories (arrow or function) count as fresh temp dirs', () => {
-  const f = ['system/kernel/x.test.ts'];
-  for (const added of [
-    "const mk = () => mkdtempSync(join(tmpdir(), 'b-'));\nconst d = mk();\nwriteFileSync(join(d, 'a.json'), x);",
-    "function makeTemp(): string {\n  const t = mkdtempSync(join(tmpdir(), 'c-'));\n  mkdirSync(join(t, 'sub'));\n  return t;\n}\nwriteFileSync(join(makeTemp(), 'b'), x);",
-  ]) {
-    assert.equal(
-      fsWriteViolation(
-        f,
-        () => `${TMP_FIXTURE}\n${added}\n`,
-        () => TMP_FIXTURE,
-      ),
-      null,
-      added,
-    );
-  }
-  // A factory with any return outside a temp dir is no factory.
-  assert.match(
-    fsWriteViolation(
-      f,
-      () =>
-        `${TMP_FIXTURE}\nfunction pick(a: boolean) {\n  if (a) return '/etc';\n  return mkdtempSync(join(tmpdir(), 'd-'));\n}\nwriteFileSync(join(pick(true), 'b'), x);\n`,
-      () => TMP_FIXTURE,
-    ) ?? '',
-    /writes files outside a fresh temp dir/,
-  );
-});
-
-test("fsWriteViolation: fields and locals named like fs calls (open, rm, link) aren't writes", () => {
-  assert.equal(
-    fsWriteViolation(
-      ['system/kernel/x.ts'],
-      () =>
-        'const open = alerts.filter((a) => a.open);\nif (row.open) db.open();\nconst n = open.length;\nsession.rm(id);\n',
-      () => '',
-    ),
-    null,
-  );
-  // …unless they really are fs: a named import, or a call on an fs namespace.
-  for (const src of [
-    "import { rm } from 'node:fs/promises';\nawait rm(target, { recursive: true });\n",
-    "import * as fs from 'node:fs';\nfs.rm(target, () => {});\n",
-    "import * as fs from 'node:fs';\nawait fs.promises.open(target, 'w');\n",
-  ]) {
-    assert.match(
-      fsWriteViolation(
-        ['system/kernel/x.ts'],
-        () => src,
-        () => '',
-      ) ?? '',
-      /writes files outside a fresh temp dir/,
-      src,
-    );
-  }
-});
-
-test('fsWriteViolation: fails closed — any unproven write in a changed file holds, even an unchanged call', () => {
-  const f = ['system/kernel/x.ts'];
-  // The call text is identical; only what `statePath` is bound to changed.
-  assert.match(
-    fsWriteViolation(
-      f,
-      () => "const statePath = '/Users/sam/.zshrc';\nwriteFileSync(statePath, body);\n",
-      () => "const statePath = join(dataDir, 'state.json');\nwriteFileSync(statePath, body);\n",
-    ) ?? '',
-    /writes files outside a fresh temp dir: system\/kernel\/x\.ts: writeFileSync\(statePath\)/,
-  );
-  // A new caller of a writer defined in the same file.
-  assert.match(
-    fsWriteViolation(
-      f,
-      () =>
-        "function save(p: string) {\n  writeFileSync(p, body);\n}\nsave('githooks/pre-commit');\n",
-      () => 'function save(p: string) {\n  writeFileSync(p, body);\n}\n',
-    ) ?? '',
-    /writes files outside a fresh temp dir/,
-  );
-  // Writes provably inside a temp dir still pass.
-  assert.equal(
-    fsWriteViolation(
-      ['system/kernel/x.test.ts'],
-      () => `${TMP_FIXTURE}\nwriteFileSync(join(dir, 'a.json'), x);\n`,
-      () => TMP_FIXTURE,
-    ),
-    null,
-  );
 });

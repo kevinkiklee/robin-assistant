@@ -139,12 +139,21 @@ via `system/agent/auto-land.ts` only if it clears every gate:
   (exact contexts, comment-stripped whole file vs HEAD); only regular files
   (no symlinks/gitlinks); unreadable changed files hold; and
   no env/URL access or new imports in non-test code; a changed file (tests
-  included — they run unsandboxed on the next `pnpm test`) may contain no fs
-  write, new or old, whose target isn't provably inside a fresh `mkdtemp` dir (a
-  bare `tmpdir()` name doesn't count) — fail closed, since an unchanged call
+  included — they run unsandboxed on the next `pnpm test`) may use no fs member
+  off a read-only allowlist (any other is a write, called, `new`-ed or referenced),
+  new or old, unless its target is provably inside a fresh `mkdtemp` dir (a
+  bare `tmpdir()` name doesn't count; `join`/`resolve`/`tmpdir`/`mkdtemp` only
+  when bound to the real node:path/os/fs) — fail closed, since an unchanged call
   writes wherever the diff re-binds its path, so state-writing modules go to
-  review — and no new `homedir`/`userInfo`/`env.HOME`. Not followed: a write in
-  an unchanged module reached through an existing import;
+  review; no `require`/`createRequire`/node:module, non-literal or fs dynamic
+  import, fs re-export, or import of a local module that hands fs out
+  (re-export hops followed); no new `homedir`/`userInfo`/`env.HOME` and no new
+  sensitive path literal (absolute, `~`, `$HOME`, githooks, `.git`, `Library`,
+  shell rc, `.ssh`, `.claude`, node_modules…) — a tripwire, not a proof: a path
+  built in pieces evades it; and no ignored path in the worktree, before or
+  after the checks, but its top-level node_modules symlink. Not followed: a
+  write in an unchanged module reached through an existing import (only the
+  tripwire sees what it's handed) and non-fs writers (SQLite);
 - loosening (`weakeningViolation`): no raised threshold, downgraded severity or
   early pass in check code, no dropped invariant, no removed/rewritten/skipped
   assertion;
