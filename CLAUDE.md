@@ -272,7 +272,7 @@ via `robin publish --source <file> --slug <slug>`.
   handlers, and libraries from cdnjs / jsdelivr / unpkg work; local `.js`/`.css`
   files are inlined at publish. The page CSP adds `sandbox allow-scripts` without
   `allow-same-origin`, so each page runs at an opaque origin and can't touch
-  askrobin.io cookies, the index, or `/api/*`. Consequences: `localStorage` /
+  askrobin.io cookies or `/api/*`. Consequences: `localStorage` /
   `sessionStorage` / `indexedDB` / `document.cookie` **throw** (try/catch), no
   `alert`, no `eval`, `fetch` works to any https API (no credentials). Map tiles:
   **Esri ArcGIS** works; OSM/CARTO/Stadia refuse sandboxed requests (no Referer).
@@ -307,51 +307,41 @@ are unlisted-but-ungated and served `noindex`; they allow that dashboard origin 
 `frame-ancestors` for its preview pane. The old
 private-page system (second blob store, `visibility:` frontmatter) was removed
 2026-08-19 — `visibility: private` now refuses. `orchestrate.ts` writes the
-page blob and a `users/<userId>/index.json` manifest (`manifest.ts`);
-`PUBLISH_USER_ID` sets the publishing identity. Static assets (CSS, JS) live in the
+page blob and appends to the local publish log, the only page list —
+`buildManifest` (`manifest.ts`) folds it for `life_sync` and thumbs; no manifest
+blob is written. `PUBLISH_USER_ID` sets the publishing identity. Static assets (CSS, JS) live in the
 serving app's `apps/web/public/_pub/` (askrobin.io, a separate repo). The template
 (`template.ts`) wraps body HTML; `rehype-slug` generates heading IDs for the
 external TOC script (`toc.js`). Serving: `proxy.ts` rewrites `/@<user>/...` to
 the internal `askrobin.io/apps/web/app/u/[user]/[slug]/route.ts` (page) and
-`u/[user]/route.ts` (index); CSP `script-src 'self'`.
+`u/[user]/route.ts` (the dashboard redirect); CSP `script-src 'self'`.
 
 **Categories.** Fixed taxonomy in `config.ts CATEGORIES` (10 + `Uncategorized`),
-mirrored by `CATEGORY_ORDER` in askrobin.io `apps/web/lib/publish-serve.ts` —
-**two repos, nothing enforces the mirror at build time**; adding a category
-means editing both (a test in `publish-serve.test.ts` asserts the full list so
-drift shows up as a diff). Frontmatter `category:` wins on every publish, so a
-source doc without one reverts to Uncategorized next republish — fix the source,
-not just the index. Recurring publishers must set it.
+mirrored in the dashboard repo (`CATEGORY_ORDER` in `src/lib/pages/view.ts`,
+`PAGE_CATEGORIES` in `src/lib/page-ops.ts`) — **two repos, nothing enforces the
+mirror at build time**; adding a category means editing both. Frontmatter
+`category:` wins on every publish, so a source doc without one reverts to
+Uncategorized next republish — fix the source, not just the dashboard.
+Recurring publishers must set it.
 
-**Editing published pages.** Delete / move / pin now happen in the dashboard: it
+**Editing published pages.** Delete / move / pin happen in the dashboard: it
 queues encrypted ops that `life_sync` applies locally through `deletePage` /
-`recategorize` (stale ops — page republished since — are dropped). The older web
-path below stays until the askrobin index code is removed. The old index page had an Edit mode
-(delete a page, move it to another category). The local publish log is the
-source of truth for the manifest — every publish rebuilds it wholesale — so a
-web-side edit would be silently reverted. Instead the web writes an immutable
-**pending op** to `users/<user>/pending/<ms>-<op>-<slug>.json`, which
-`pending.ts` replays into the local log before every manifest rebuild, then
-deletes. An op is dropped as stale if the page was republished after it. Both
-consistency traps are handled and both have tests: the manifest read can be
-stale (so the whole pending queue is replayed, not one entry edited) and
-`list()` is itself eventually consistent (so a just-written op is applied
-directly, never read back).
+`recategorize` (stale ops — page republished since — are dropped).
 
 Maintenance without republishing: `robin publish --mode recategorize --slug S
---category C` and `robin publish --mode sync` (fold pending web edits into the
-local log now, instead of waiting for the next publish). Bulk taxonomy fixes:
+--category C`. Bulk taxonomy fixes:
 `user-data/scripts/backfill-publish-categories.ts` (`--dry-run` first).
 `--mode delete --dry-run` reports without deleting (it used to delete for real).
+`--mode sync` was removed with the askrobin index (2026-10-31) and says so.
 
-**Index thumbnails.** The askrobin index shows a page's first photo; pages with
-none get a screenshot of the published page (`system/lib/publish/thumbs.ts`):
-system Chrome headless + macOS `sips` → `users/<user>/thumbs/<public-slug>.jpg`,
-tracked in `thumbs/index.json` (photo pages recorded with `url: ''` so they're
-skipped). The CLI captures after every publish and drops the shot on delete;
-`robin publish --mode thumbs [--slug S] [--force]` backfills. Retaken only when
-`updated_at` changes; no-ops off macOS. The index file is read-modify-written
-per publish, so askrobin lists the `thumbs/` folder rather than trusting it.
+**Thumbnails.** A page's first photo is its preview; pages with none get a
+screenshot of the published page (`system/lib/publish/thumbs.ts`): system Chrome
+headless + macOS `sips` → `users/<user>/thumbs/<public-slug>.jpg`, tracked in
+`thumbs/index.json` (photo pages recorded with `url: ''` so they're skipped). The
+live page list comes from the local publish log, never a blob. The CLI captures
+after every publish and drops the shot on delete; `robin publish --mode thumbs
+[--slug S] [--force]` backfills. Retaken only when `updated_at` changes; no-ops
+off macOS. An empty log prunes nothing.
 
 ## Per-user instance
 

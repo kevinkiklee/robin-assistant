@@ -197,10 +197,10 @@ Discord is outbound REST only (`POST /channels/{id}/messages` with a bot token):
 1. **Input.** A standalone HTML document by default (metadata in `<title>`, `<meta name="description">`, `robin:category`, `robin:slug`), or markdown with frontmatter (converted with remark/rehype, sanitized, wrapped in `template.ts`).
 2. **Rewrites** (`html-page.ts`). Forces `noindex`. Strips `<base>`, refresh metas, and `robin:*` directives. Inlines local scripts and stylesheets, uploads local images and attachments, and rewrites internal `/@<user>/<slug>` links to hashed URLs. It warns about anything the serving CSP or sandbox will block.
 3. **Discretion gate.** Refuses credential shapes (including in scripts), PII shapes, and booking references. `--allow-sensitive` overrides a verified false positive.
-4. **Write.** Vercel Blob (`BLOB_READ_WRITE_TOKEN`). The URL is `/@<user>/<slug>-<hash10>`, where the hash is an HMAC of `user/slug` keyed by `PUBLISH_URL_SECRET`: stable on republish, unguessable, and `noindex`, but not access-controlled. A per-user `index.json` manifest is rebuilt from the local publish log on every publish.
-5. **Web edits.** Deletes and recategorizations made from the index page arrive as immutable pending ops. `pending.ts` replays them into the local log before each rebuild.
+4. **Write.** Vercel Blob (`BLOB_READ_WRITE_TOKEN`). The URL is `/@<user>/<slug>-<hash10>`, where the hash is an HMAC of `user/slug` keyed by `PUBLISH_URL_SECRET`: stable on republish, unguessable, and `noindex`, but not access-controlled. The local publish log is the only page list; no manifest blob is written.
+5. **Web edits.** Deletes and recategorizations made in the dashboard arrive as encrypted ops that the `life_sync` integration applies locally through `deletePage` / `recategorize`.
 
-Serving-side JavaScript runs under a CSP sandbox without `allow-same-origin`, so pages run at an opaque origin. The host allowlists in `config.ts` mirror the serving app's CSP and must change together. The category taxonomy (`config.ts CATEGORIES`) is likewise mirrored in the serving app. CLI: `robin publish --source <file> --slug <slug> [--category C] [--dry-run]`, `--mode recategorize|sync`, and `robin published`.
+Serving-side JavaScript runs under a CSP sandbox without `allow-same-origin`, so pages run at an opaque origin. The host allowlists in `config.ts` mirror the serving app's CSP and must change together. The category taxonomy (`config.ts CATEGORIES`) is likewise mirrored in the serving app. CLI: `robin publish --source <file> --slug <slug> [--category C] [--dry-run]`, `--mode recategorize|delete|thumbs`, and `robin published`.
 
 ## MCP surfaces
 

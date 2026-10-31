@@ -13,7 +13,6 @@ robin publish --source post.md --mode as-new        # always mint a new suffixed
 robin publish --source page.html --dry-run          # render + check without uploading
 robin publish --mode delete --slug foo              # remove the page + its tracked assets
 robin publish --mode recategorize --slug foo --category "Field Guides"
-robin publish --mode sync                           # fold pending web-side index edits into the local log
 robin published [--all]                             # list published pages
 ```
 

@@ -1,6 +1,6 @@
-import { HTML_CACHE_MAX_AGE, UNCATEGORIZED } from './config.ts';
+import { UNCATEGORIZED } from './config.ts';
 import { toPublicSlug } from './slug.ts';
-import type { BlobClient, LogRow } from './types.ts';
+import type { LogRow } from './types.ts';
 
 export interface ManifestEntry {
   slug: string;
@@ -84,23 +84,4 @@ export function buildManifest(entries: LogRow[], env: ManifestEnv): ManifestEntr
   }
   out.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
   return out;
-}
-
-/**
- * Build and PUT the per-user manifest to `users/<userId>/index.json`.
- * Best-effort — the caller wraps this in try/catch so a manifest failure never
- * fails the publish; the next publish's full rebuild repairs it.
- */
-export async function writeManifest(
-  blob: BlobClient,
-  env: ManifestEnv,
-  entries: LogRow[],
-): Promise<void> {
-  const all = buildManifest(entries, env);
-  await blob.putBlob(`users/${env.userId}/index.json`, JSON.stringify(all), {
-    contentType: 'application/json; charset=utf-8',
-    cacheControlMaxAge: HTML_CACHE_MAX_AGE,
-    allowOverwrite: true,
-    access: 'public',
-  });
 }

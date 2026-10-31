@@ -10,9 +10,8 @@ export {
 } from './config.ts';
 export { publishEnvFromProcess, publishLogPath } from './env.ts';
 export { groupBySlug, readLog } from './log.ts';
-export { deletePage, recategorize, syncDeletes } from './maintain.ts';
+export { deletePage, recategorize } from './maintain.ts';
 export { PublishError, publish } from './orchestrate.ts';
-export { pendingPrefix, reconcilePending } from './pending.ts';
 export type {
   BlobClient,
   PublishAction,

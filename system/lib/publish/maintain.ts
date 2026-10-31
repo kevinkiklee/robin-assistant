@@ -1,12 +1,10 @@
 // Maintenance operations on the published-pages set that don't publish
 // content: recategorize (fix a live page's category without republishing)
-// and sync (fold web-side pending ops into the local log).
+// and deletePage (library-level delete, used by the CLI and life_sync).
 import { dirname, join } from 'node:path';
 import { CATEGORIES, EXIT_INPUT, EXIT_POLICY, UNCATEGORIZED } from './config.ts';
 import { appendLogEntry, readLog } from './log.ts';
-import { buildManifest, writeManifest } from './manifest.ts';
 import { PublishError, publish } from './orchestrate.ts';
-import { reconcilePending } from './pending.ts';
 import { sanitizeSlug, toPublicSlug } from './slug.ts';
 import { dropThumb } from './thumbs.ts';
 import type { BlobClient, LogRow, PublishEnv, PublishResult } from './types.ts';
@@ -26,9 +24,9 @@ export interface RecategorizeResult {
 
 /**
  * Change a live page's category by appending a metadata-only `recategorize`
- * log row (a clone of the latest row so blob_key/assets stay findable), then
- * rebuilding the manifest. The page blob is untouched and `updated_at` does
- * not bump (buildManifest folds recategorize rows as category-only).
+ * log row (a clone of the latest row so blob_key/assets stay findable). The
+ * page blob is untouched and `updated_at` does not bump (buildManifest folds
+ * recategorize rows as category-only).
  *
  * Note: source frontmatter still wins on republish — a page whose source .md
  * lacks `category:` reverts to Uncategorized the next time it's published.
@@ -58,45 +56,7 @@ export async function recategorize(
 
   const row: LogRow = { ...latest, ts: new Date().toISOString(), action: 'recategorize', category };
   await appendLogEntry(opts.logPath, row);
-
-  const warnings: string[] = [];
-  try {
-    const { entries: updated } = await readLog(opts.logPath);
-    await writeManifest(opts.blobClient, opts.env, updated);
-  } catch (err) {
-    warnings.push(`manifest write failed: ${(err as Error).message}`);
-  }
-  return { slug, category, url: latest.url, warnings };
-}
-
-export interface SyncResult {
-  applied: string[];
-  stale: string[];
-  manifest_entries: number;
-  warnings: string[];
-}
-
-/**
- * Reconcile pending web-side ops and rebuild the manifest. Run it after
- * editing pages from the askrobin.io index so `robin published` and the
- * local log reflect them without waiting for the next publish.
- */
-export async function syncDeletes(opts: MaintainOptions): Promise<SyncResult> {
-  const rec = await reconcilePending({
-    env: opts.env,
-    blobClient: opts.blobClient,
-    logPath: opts.logPath,
-  });
-  const warnings = [...rec.warnings];
-  const { entries } = await readLog(opts.logPath);
-  let manifestEntries = 0;
-  try {
-    await writeManifest(opts.blobClient, opts.env, entries);
-    manifestEntries = buildManifest(entries, opts.env).length;
-  } catch (err) {
-    warnings.push(`manifest write failed: ${(err as Error).message}`);
-  }
-  return { applied: rec.applied, stale: rec.stale, manifest_entries: manifestEntries, warnings };
+  return { slug, category, url: latest.url, warnings: [] };
 }
 
 /** Re-derive a page's public (hashed) URL — convenience for maintenance CLIs. */
@@ -106,7 +66,7 @@ export function pageUrlFor(env: PublishEnv, slug: string): string {
 
 /**
  * Library-level page delete: `publish({ mode: 'delete' })` (page + assets,
- * log row, manifest) then the page's index thumbnail. A thumbnail failure is a
+ * log row) then the page's thumbnail. A thumbnail failure is a
  * warning on the result, never a throw — the page is already gone by then.
  * `telemetryPath` defaults to the sibling `logs/publish.log` of the publish log.
  */

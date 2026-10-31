@@ -51,6 +51,7 @@ const TEST_ENV = {
 
 const pub = (slug: string): string => toPublicSlug(TEST_ENV.userId, slug, TEST_ENV.urlSecret);
 const keyFor = (slug: string): string => `users/${TEST_ENV.userId}/pages/${pub(slug)}/index.html`;
+const MANIFEST_KEY = `users/${TEST_ENV.userId}/index.json`;
 
 async function makeTmpDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'publish-test-'));
@@ -146,10 +147,69 @@ test('page is stored under the hashed slug with access:public; result url carrie
     const html = store.get(keyFor('hash-me'))!;
     assert.ok(html.includes(`href="https://askrobin.io/@testuser/${pub('hash-me')}"`));
 
-    // Manifest url is hashed too.
-    const manifest = JSON.parse(store.get('users/testuser/index.json') ?? '[]');
-    assert.equal(manifest[0].url, `https://askrobin.io/@testuser/${pub('hash-me')}`);
+    // The retired index manifest is never written.
+    assert.ok(!putCalls.some((c) => c.key === MANIFEST_KEY), 'no index.json put');
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('publish + delete never touch index.json or pending ops; thumbs read the local log', async () => {
+  const dir = await makeTmpDir();
+  const realFetch = globalThis.fetch;
+  try {
+    const { blobClient: inner, putCalls, store } = makeRecordingBlob();
+    const listed: string[] = [];
+    const blobClient: BlobClient = {
+      ...inner,
+      listBlobs: async (prefix) => {
+        listed.push(prefix);
+        return [];
+      },
+    };
+    const fetched: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      const key = String(url).replace(`${TEST_ENV.blobPublicBaseUrl}/`, '').replace(/\?.*$/, '');
+      fetched.push(key);
+      const body = store.get(key);
+      return body == null ? new Response('', { status: 404 }) : new Response(body);
+    }) as typeof fetch;
+    const shots: string[] = [];
+    const logPath = join(dir, 'pub.log');
+    const telemetryPath = join(dir, 'tel.log');
+    const source = await makeSourceFile(dir, 'category: Essays\n');
+    await publish({
+      source,
+      slug: 'thumb-me',
+      mode: 'overwrite',
+      env: TEST_ENV,
+      blobClient,
+      logPath,
+      telemetryPath,
+      thumbCapture: async (url) => {
+        shots.push(url);
+        return Buffer.from('jpeg');
+      },
+    });
+    // The just-published page is in the local log, so it is captured at once.
+    assert.deepEqual(shots, [`https://askrobin.io/@testuser/${pub('thumb-me')}`]);
+    assert.ok(store.has(`users/testuser/thumbs/${pub('thumb-me')}.jpg`));
+
+    await publish({
+      source: null,
+      mode: 'delete',
+      slug: 'thumb-me',
+      env: TEST_ENV,
+      blobClient,
+      logPath,
+      telemetryPath,
+      thumbCapture: async () => Buffer.from('jpeg'),
+    });
+    assert.ok(!fetched.includes(MANIFEST_KEY), 'index.json never fetched');
+    assert.ok(!putCalls.some((c) => c.key === MANIFEST_KEY), 'index.json never put');
+    assert.deepEqual(listed, [], 'no pending-op listing');
+  } finally {
+    globalThis.fetch = realFetch;
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -196,7 +256,7 @@ test('internal page links are rewritten to hashed URLs (absolute + relative, ide
 test('delete removes the hashed blob and refuses nothing', async () => {
   const dir = await makeTmpDir();
   try {
-    const { blobClient, store } = makeRecordingBlob();
+    const { blobClient, store, putCalls } = makeRecordingBlob();
     const logPath = join(dir, 'pub.log');
     const telPath = join(dir, 'tel.log');
 
@@ -223,6 +283,7 @@ test('delete removes the hashed blob and refuses nothing', async () => {
     });
     assert.equal(result.action, 'delete');
     assert.equal(store.has(keyFor('public-del-test')), false, 'blob removed after delete');
+    assert.ok(!putCalls.some((c) => c.key === MANIFEST_KEY), 'no index.json put on delete');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

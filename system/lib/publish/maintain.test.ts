@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { readLog } from './log.ts';
-import { deletePage, recategorize, syncDeletes } from './maintain.ts';
+import { deletePage, recategorize } from './maintain.ts';
+import { buildManifest } from './manifest.ts';
 import { PublishError } from './orchestrate.ts';
 import type { BlobClient, LogRow } from './types.ts';
 
@@ -55,7 +56,7 @@ async function makeLog(rows: LogRow[]): Promise<string> {
   return logPath;
 }
 
-test('recategorize appends a clone row and rewrites the manifest', async () => {
+test('recategorize appends a clone row; the log carries the change, no manifest is written', async () => {
   const logPath = await makeLog([row({})]);
   const { blobClient, puts } = makeBlob();
   const res = await recategorize({
@@ -76,10 +77,11 @@ test('recategorize appends a clone row and rewrites the manifest', async () => {
   assert.equal(appended.title, 'T'); // cloned so the manifest keeps its title
   assert.equal(appended.blob_key, entries[0].blob_key); // delete stays findable
 
-  const manifest = JSON.parse(puts.get('users/quinn/index.json') ?? '[]');
+  const manifest = buildManifest(entries, ENV);
   assert.equal(manifest.length, 1);
   assert.equal(manifest[0].category, 'Critiques');
   assert.equal(manifest[0].updated_at, '2026-05-01T00:00:00.000Z'); // not bumped
+  assert.deepEqual([...puts.keys()], [], 'nothing written to blob (no index.json)');
 });
 
 test('recategorize is a no-op when the category already matches', async () => {
@@ -112,47 +114,6 @@ test('recategorize rejects unknown categories, unknown slugs, and deleted slugs'
   );
 });
 
-test('syncDeletes reconciles pending ops and reports the live count', async () => {
-  const logPath = await makeLog([row({}), row({ slug: 'doomed', ts: '2026-05-02T00:00:00.000Z' })]);
-  const { puts } = makeBlob();
-  const tombPath = 'users/quinn/pending/1000-delete-doomed.json';
-  const tombBody = JSON.stringify({
-    op: 'delete',
-    slug: 'doomed',
-    ts: '2026-05-04T00:00:00.000Z',
-    by: 'index',
-  });
-  let tombAlive = true;
-  const blobClient: BlobClient = {
-    headBlob: async () => ({ exists: false }),
-    putBlob: async (key, body) => {
-      puts.set(key, typeof body === 'string' ? body : body.toString('utf8'));
-      return { url: key };
-    },
-    delBlob: async (key) => {
-      if (key === tombPath) tombAlive = false;
-    },
-    listBlobs: async (prefix) =>
-      tombAlive && tombPath.startsWith(prefix)
-        ? [{ pathname: tombPath, url: `https://blob.example.com/${tombPath}` }]
-        : [],
-  };
-  const origFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(tombBody, { status: 200 })) as typeof fetch;
-  try {
-    const res = await syncDeletes({ env: ENV, blobClient, logPath });
-    assert.deepEqual(res.applied, ['delete:doomed']);
-    assert.equal(res.manifest_entries, 1); // only 's' remains
-    const manifest = JSON.parse(puts.get('users/quinn/index.json') ?? '[]');
-    assert.deepEqual(
-      manifest.map((m: { slug: string }) => m.slug),
-      ['s'],
-    );
-  } finally {
-    globalThis.fetch = origFetch;
-  }
-});
-
 // --- deletePage ---
 
 const DENV = {
@@ -176,6 +137,8 @@ const dRow = (o: Partial<LogRow> = {}): LogRow =>
 function makeDeleteHarness(opts: { failThumbIndexPut?: boolean } = {}) {
   const dels: string[] = [];
   const puts: string[] = [];
+  const fetched: string[] = [];
+  const listed: string[] = [];
   const blobClient: BlobClient = {
     headBlob: async (k) => ({ exists: k === PAGE_KEY }),
     putBlob: async (k) => {
@@ -186,7 +149,10 @@ function makeDeleteHarness(opts: { failThumbIndexPut?: boolean } = {}) {
     delBlob: async (k) => {
       dels.push(k);
     },
-    listBlobs: async () => [],
+    listBlobs: async (prefix) => {
+      listed.push(prefix);
+      return [];
+    },
   };
   const thumbIndex = {
     'bike-fit-notes': {
@@ -194,11 +160,20 @@ function makeDeleteHarness(opts: { failThumbIndexPut?: boolean } = {}) {
     },
   };
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (url: string) =>
-    String(url).includes('users/u1/thumbs/index.json')
+  globalThis.fetch = (async (url: string) => {
+    fetched.push(String(url));
+    return String(url).includes('users/u1/thumbs/index.json')
       ? new Response(JSON.stringify(thumbIndex))
-      : new Response('', { status: 404 })) as typeof fetch;
-  return { blobClient, dels, puts, restore: () => (globalThis.fetch = realFetch) };
+      : new Response('', { status: 404 });
+  }) as typeof fetch;
+  return {
+    blobClient,
+    dels,
+    puts,
+    fetched,
+    listed,
+    restore: () => (globalThis.fetch = realFetch),
+  };
 }
 
 test('deletePage deletes the page, logs a delete row, and drops the thumbnail', async () => {
@@ -219,6 +194,10 @@ test('deletePage deletes the page, logs a delete row, and drops the thumbnail', 
     assert.equal(entries.at(-1)?.action, 'delete');
     assert.equal(entries.at(-1)?.slug, 'bike-fit-notes');
     assert.deepEqual(res.warnings, []);
+    // The retired manifest and pending-op queue are never touched.
+    assert.ok(!h.puts.includes('users/u1/index.json'));
+    assert.ok(!h.fetched.some((u) => /\/users\/u1\/index\.json/.test(u)));
+    assert.deepEqual(h.listed, []);
   } finally {
     h.restore();
   }

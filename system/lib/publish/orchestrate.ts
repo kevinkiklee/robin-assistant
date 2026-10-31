@@ -27,8 +27,6 @@ import { collectMarkdownAttachmentRefs, type LinkRef, uploadAttachments } from '
 import { type ImageRef, isHtmlSource, readHtmlMeta, renderHtmlPage } from './html-page.ts';
 import { walkLocalImages } from './images.ts';
 import { appendLogEntry, readLog } from './log.ts';
-import { writeManifest } from './manifest.ts';
-import { reconcilePending } from './pending.ts';
 import { extractFrontmatter, normalizeMarkdown, sanitizeSchema } from './pipeline.ts';
 import { appendSuffix, deriveSlug, isRefusedSlug, sanitizeSlug, toPublicSlug } from './slug.ts';
 import { wrapHtml } from './template.ts';
@@ -527,31 +525,14 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
   } catch {
     // best-effort cleanup
   }
-  // Fold any pending web-side ops (delete, recategorize) into the local log
-  // BEFORE the manifest rebuild, or the rebuild would undo them.
-  // Best-effort like the manifest write; reconcilePending never throws.
-  const reconciled = await reconcilePending({
-    env: opts.env,
-    blobClient: opts.blobClient,
-    logPath: opts.logPath,
-  });
-  warnings.push(...reconciled.warnings);
-  // Rebuild + write the per-user index manifest after the page blob is
-  // committed. Best-effort: a manifest failure must never fail the publish —
-  // the next publish's full rebuild repairs it.
-  try {
-    const { entries } = await readLog(opts.logPath);
-    await writeManifest(opts.blobClient, opts.env, entries);
-  } catch (err) {
-    warnings.push(`manifest write failed: ${(err as Error).message}`);
-  }
-  // Index thumbnail for a page with no photo of its own. Best-effort: a
-  // failed screenshot never fails the publish (the backfill mode retries).
+  // Thumbnail for a page with no photo of its own. Best-effort: a failed
+  // screenshot never fails the publish (the backfill mode retries).
   if (opts.thumbCapture) {
     try {
       await updateThumbs({
         env: opts.env,
         blobClient: opts.blobClient,
+        logPath: opts.logPath,
         capture: opts.thumbCapture,
         slugs: [slug],
       });
@@ -582,7 +563,7 @@ interface DeleteInput {
   blobClient: BlobClient;
   logPath: string;
   telemetryPath: string;
-  /** Report what would be deleted; touch nothing (no blobs, log, or manifest). */
+  /** Report what would be deleted; touch nothing (no blobs or log). */
   dryRun?: boolean;
   /** Also drop the page's screenshot thumbnail. */
   thumbs?: boolean;
@@ -665,16 +646,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   } catch {
     // best-effort
   }
-  // Refresh the per-user manifest so the deleted slug drops off the index
-  // (folding any pending web-side ops first, same as publish()).
-  await reconcilePending({ env: input.env, blobClient: input.blobClient, logPath: input.logPath });
-  try {
-    const { entries: updatedEntries } = await readLog(input.logPath);
-    await writeManifest(input.blobClient, input.env, updatedEntries);
-    if (input.thumbs) await dropThumb(input.env, input.blobClient, slug).catch(() => undefined);
-  } catch {
-    // best-effort; next publish repairs it
-  }
+  if (input.thumbs) await dropThumb(input.env, input.blobClient, slug).catch(() => undefined);
   try {
     await appendLogEntry(input.telemetryPath, {
       ts: nowIsoMs(),

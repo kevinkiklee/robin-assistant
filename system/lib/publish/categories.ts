@@ -43,7 +43,7 @@ export function classify(rawCategory: unknown, rawVisibility: unknown): Classify
         ok: false,
         error:
           'visibility:private was removed 2026-08-19 — every page now publishes to an ' +
-          'unguessable hashed URL and the index is password-gated. Drop the visibility field.',
+          'unguessable hashed URL, listed only in the signed-in dashboard. Drop the visibility field.',
       };
     }
     return {

@@ -16,7 +16,6 @@ import {
   readLog,
   recategorize,
   publish as runPublish,
-  syncDeletes,
 } from '../../lib/publish/index.ts';
 import {
   CHROME_PATH,
@@ -28,6 +27,20 @@ import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 
 function telemetryPathFor(userData: string): string {
   return join(userData, 'observability', 'logs', 'publish.log');
+}
+
+const MODES = ['default', 'overwrite', 'as-new', 'delete', 'recategorize', 'thumbs'];
+
+/** Why `--mode <mode>` can't run, or null when it can. */
+export function publishModeError(mode: string): string | null {
+  if (MODES.includes(mode)) return null;
+  if (mode === 'sync') {
+    return (
+      'mode sync was removed: the askrobin page index and its web-side edit queue are gone. ' +
+      'Page edits made in the dashboard are applied by the life_sync integration.'
+    );
+  }
+  return `unknown mode: ${mode} (expected ${MODES.join(' | ')})`;
 }
 
 export async function runPublishCli(rawArgs: string[]): Promise<void> {
@@ -45,6 +58,13 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
     },
     strict: true,
   });
+
+  const mode = values.mode ?? 'default';
+  const modeError = publishModeError(mode);
+  if (modeError) {
+    stderr.write(`${modeError}\n`);
+    exit(EXIT_INPUT);
+  }
 
   const userData = resolveUserDataDir();
   loadEnvFile(userData); // populates process.env from secrets/.env if not already set
@@ -64,16 +84,6 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
   }
 
   const blobClient = createBlobClient({ token: env.token });
-
-  const mode = values.mode ?? 'default';
-  if (
-    !['default', 'overwrite', 'as-new', 'delete', 'recategorize', 'sync', 'thumbs'].includes(mode)
-  ) {
-    stderr.write(
-      `unknown mode: ${mode} (expected default | overwrite | as-new | delete | recategorize | sync | thumbs)\n`,
-    );
-    exit(EXIT_INPUT);
-  }
 
   const maintainOpts = {
     env,
@@ -105,6 +115,7 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
       const result = await updateThumbs({
         env: maintainOpts.env,
         blobClient,
+        logPath: maintainOpts.logPath,
         capture: captureWithChrome,
         slugs: values.slug ? [values.slug] : undefined,
         force: values.force ?? false,
@@ -122,11 +133,6 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
         telemetryPath: telemetryPathFor(userData),
         dryRun: values['dry-run'] ?? false,
       });
-      stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      exit(EXIT_OK);
-    }
-    if (mode === 'sync') {
-      const result = await syncDeletes(maintainOpts);
       stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       exit(EXIT_OK);
     }

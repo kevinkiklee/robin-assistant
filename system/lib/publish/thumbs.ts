@@ -1,6 +1,6 @@
-// Page-screenshot thumbnails for the askrobin.io index.
+// Page-screenshot thumbnails for published pages (the dashboard's Pages tab).
 //
-// The index shows a page's first photo as its preview. A third of the pages
+// A page's first photo is its preview. A third of the pages
 // (lens tables, gear notes, setup guides) have no photo, so they showed a text
 // block instead. For those pages this captures a screenshot of the published
 // page itself — its title area, in its own design — and stores it beside the
@@ -9,9 +9,9 @@
 //   users/<user>/thumbs/<public-slug>.jpg     the screenshot (800px JPEG)
 //   users/<user>/thumbs/index.json            { slug: { url, updated_at } }
 //
-// askrobin.io reads the index and uses a screenshot wherever a page has no
-// photo of its own. A thumbnail is retaken only when the page's manifest
-// `updated_at` changes. Capture uses the system Chrome (headless) and macOS
+// The live page list comes from the local publish log (`buildManifest` over
+// it), so a just-published page is seen at once and no manifest blob is read.
+// A thumbnail is retaken only when the page's `updated_at` changes. Capture uses the system Chrome (headless) and macOS
 // `sips` for the resize — no new dependency; on other platforms it no-ops.
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -19,6 +19,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { readLog } from './log.ts';
+import { buildManifest } from './manifest.ts';
 import type { BlobClient, PublishEnv } from './types.ts';
 
 const run = promisify(execFile);
@@ -61,7 +63,7 @@ export const captureWithChrome: Capture = async (url) => {
         '--force-color-profile=srgb',
         '--force-prefers-reduced-motion',
         // Deterministic look regardless of the Mac's appearance at capture time;
-        // dark matches how the index is used.
+        // dark matches how the dashboard is used.
         '--force-dark-mode',
         `--user-data-dir=${join(dir, 'profile')}`,
         `--window-size=${SHOT_W},${SHOT_H}`,
@@ -97,9 +99,9 @@ export const captureWithChrome: Capture = async (url) => {
 };
 
 /**
- * Whether the page already has a photo the index uses as its cover — the
- * same rule as askrobin.io's extractCover: an <img> from a blob store under
- * /users/, not declared smaller than 160px.
+ * Whether the page already has a photo used as its cover — the same rule as
+ * life_sync's extractCover: an <img> from a blob store under /users/, not
+ * declared smaller than 160px.
  */
 export function hasPhoto(html: string): boolean {
   const body = html.replace(/<head\b[\s\S]*?<\/head>/gi, ' ');
@@ -121,12 +123,6 @@ export const thumbsIndexKey = (userId: string) => `users/${userId}/thumbs/index.
 export const thumbKey = (userId: string, publicSlug: string) =>
   `users/${userId}/thumbs/${publicSlug}.jpg`;
 
-interface ManifestRow {
-  slug: string;
-  url: string;
-  updated_at: string;
-}
-
 async function fetchJson<T>(url: string): Promise<T | null> {
   try {
     const res = await fetch(url);
@@ -139,6 +135,8 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 export interface UpdateThumbsOptions {
   env: PublishEnv;
   blobClient: BlobClient;
+  /** Local publish log — the source of truth for which pages are live. */
+  logPath: string;
   capture: Capture;
   /** Limit to these base slugs (a publish passes just its own). */
   slugs?: string[];
@@ -158,15 +156,15 @@ export interface UpdateThumbsResult {
 }
 
 /**
- * Bring screenshot thumbnails up to date with the live manifest. Never
- * throws for a single page; the index is written once at the end.
+ * Bring screenshot thumbnails up to date with the live pages in the local
+ * publish log. Never throws for a single page; the thumbs index is written
+ * once at the end.
  */
 export async function updateThumbs(opts: UpdateThumbsOptions): Promise<UpdateThumbsResult> {
   const { env, blobClient } = opts;
   const base = env.blobPublicBaseUrl;
   const bust = `v=${Date.now()}`; // blob reads are CDN-cached; read our own writes
-  const manifest =
-    (await fetchJson<ManifestRow[]>(`${base}/users/${env.userId}/index.json?${bust}`)) ?? [];
+  const manifest = buildManifest((await readLog(opts.logPath)).entries, env);
   const index: ThumbIndex =
     (await fetchJson<ThumbIndex>(`${base}/${thumbsIndexKey(env.userId)}?${bust}`)) ?? {};
   const result: UpdateThumbsResult = {
@@ -181,7 +179,9 @@ export async function updateThumbs(opts: UpdateThumbsOptions): Promise<UpdateThu
   const updates: Record<string, ThumbEntry | null> = {};
 
   const live = new Set(manifest.map((e) => e.slug));
-  if (!opts.slugs) {
+  // An empty page list almost always means a wrong or missing log, not that
+  // every page was deleted — never prune the whole thumbs index on it.
+  if (!opts.slugs && live.size > 0) {
     for (const slug of Object.keys(index)) {
       if (live.has(slug)) continue;
       const pub = index[slug]?.url

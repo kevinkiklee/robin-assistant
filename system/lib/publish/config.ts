@@ -57,7 +57,8 @@ export const EXIT_UPSTREAM = 4;
 
 /**
  * Fixed publish taxonomy (display order). Single source of truth — mirrored by
- * CATEGORY_ORDER in askrobin.io `apps/web/lib/publish-serve.ts`; keep in sync.
+ * the dashboard repo (`CATEGORY_ORDER` in `src/lib/pages/view.ts`,
+ * `PAGE_CATEGORIES` in `src/lib/page-ops.ts`); keep in sync.
  */
 export const CATEGORIES = [
   'Lens Analysis',

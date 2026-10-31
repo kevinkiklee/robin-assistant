@@ -1,9 +1,9 @@
 // One-shot migration (2026-08-19): move every live published page from its
 // guessable blob key (users/<u>/pages/<slug>/index.html) to the hashed key
 // (users/<u>/pages/<slug>-<hash10>/index.html), rewriting internal /@<u>/<slug>
-// links inside the stored HTML, appending a log row per move so future
-// deletes/republishes resolve the right key, and finally rebuilding the
-// index.json manifest. Idempotent: pages whose latest log row already points
+// links inside the stored HTML, and appending a log row per move so future
+// deletes/republishes resolve the right key. (It also rebuilt the index.json
+// manifest, retired 2026-10-31 with the askrobin page index.) Idempotent: pages whose latest log row already points
 // at the hashed key are skipped, as are already-hashed link targets.
 //
 //   pnpm exec tsx system/scripts/migrate-hashed-page-urls.ts --dry-run
@@ -14,7 +14,6 @@ import { resolveUserDataDir } from '../lib/paths.ts';
 import { createBlobClient } from '../lib/publish/blob.ts';
 import { HTML_CACHE_MAX_AGE } from '../lib/publish/config.ts';
 import { appendLogEntry, readLog } from '../lib/publish/log.ts';
-import { writeManifest } from '../lib/publish/manifest.ts';
 import { toPublicSlug } from '../lib/publish/slug.ts';
 import type { LogRow } from '../lib/publish/types.ts';
 import { loadEnvFile } from '../lib/secrets/load-env.ts';
@@ -131,12 +130,6 @@ async function main(): Promise<void> {
     });
     moved++;
     console.log(`[ok] ${row.slug} → ${hashed}`);
-  }
-
-  if (!dryRun) {
-    const { entries: updated } = await readLog(logPath);
-    await writeManifest(blob, { publicUrl, userId, urlSecret }, updated);
-    console.log('manifest rebuilt');
   }
 
   console.log(

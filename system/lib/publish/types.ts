@@ -37,8 +37,8 @@ export interface BlobClient {
   delBlob: (key: string) => Promise<void>;
   /**
    * List blobs under a key prefix. Optional so test doubles stay small;
-   * pending-op reconciliation (web-side edits) no-ops without it. The real
-   * client from createBlobClient always provides it.
+   * callers (life_sync's prefs cleanup) no-op without it. The real client
+   * from createBlobClient always provides it.
    */
   listBlobs?: (prefix: string) => Promise<ListedBlob[]>;
 }
@@ -62,7 +62,7 @@ export interface PublishOptions {
   logPath: string;
   telemetryPath: string;
   /**
-   * Screenshot capture for the index thumbnail of photo-less pages. The CLI
+   * Screenshot capture for the thumbnail of photo-less pages. The CLI
    * passes the system-Chrome capture; tests and other callers leave it unset,
    * which also skips thumbnail cleanup on delete.
    */

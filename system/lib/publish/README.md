@@ -5,7 +5,7 @@ Markdown published via `robin publish <file>` supports these frontmatter fields:
 | Field | Values | Default | Notes |
 |---|---|---|---|
 | `title` | string | first H1 / filename | page + OG title |
-| `description` | string | none | meta description + index one-liner |
+| `description` | string | none | meta description + dashboard one-liner |
 | `category` | one of the taxonomy below | `Uncategorized` (+ warning) | unknown value → publish refused |
 
 **Taxonomy:** Lens Analysis · Gear & Comparisons · Field Guides · Color Grading · Critiques · Essays · Tools & Setup · Projects.
@@ -19,10 +19,10 @@ HMAC-SHA256(`<user>/<slug>`) keyed by `PUBLISH_URL_SECRET`
 (user-data/config/secrets/.env; publish refuses to run without it). URLs are
 unguessable but stable: republishing the same slug keeps the same URL. Markdown
 links to `/@<user>/<slug>` (bare or absolute) are rewritten to the hashed form
-at publish time, so source docs keep plain slugs. The `/@<user>/` index page now
-redirects to the operator's private dashboard (2026-10-31), which lists pages from
-the local publish log via its own sync, behind its own sign-in. The serving-side
-index code, its password and the `index.json` manifest are slated for removal.
+at publish time, so source docs keep plain slugs. `/@<user>/` redirects to the
+operator's private dashboard (2026-10-31), which lists pages from the local
+publish log via its own sync, behind its own sign-in. The local log is the only
+page list; no `index.json` manifest blob is written.
 
 `visibility:` frontmatter was removed with the private-page system (2026-08-19).
 `visibility: public` is tolerated as a legacy no-op; `visibility: private` is

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildManifest, writeManifest } from './manifest.ts';
+import { buildManifest } from './manifest.ts';
 import { toPublicSlug } from './slug.ts';
 import type { LogRow } from './types.ts';
 
@@ -102,25 +102,6 @@ test('buildManifest carries category/description from latest row; legacy rows de
   assert.equal(a?.description, 'd2');
   assert.equal(b?.category, 'Uncategorized');
   assert.equal(b?.description, null);
-});
-
-test('writeManifest: PUTs users/<userId>/index.json with hashed urls, nothing else', async () => {
-  const puts: Array<{ key: string; body: string }> = [];
-  const blob = {
-    headBlob: async () => ({ exists: false }),
-    putBlob: async (key: string, body: string | Buffer) => {
-      puts.push({ key, body: String(body) });
-      return { url: 'u' };
-    },
-    delBlob: async () => {},
-  };
-  await writeManifest(blob, ENV, [row({ slug: 'a', ts: '2026-05-01T00:00:00.000Z', title: 'A' })]);
-  assert.equal(puts.length, 1);
-  const pub = puts.find((p) => p.key === 'users/quinn/index.json');
-  assert.ok(pub);
-  const parsed = JSON.parse(pub.body);
-  assert.equal(parsed[0].slug, 'a');
-  assert.equal(parsed[0].url, `https://askrobin.io/@quinn/${hashed('a')}`);
 });
 
 test('buildManifest: recategorize row changes category only — no updated_at bump', () => {
