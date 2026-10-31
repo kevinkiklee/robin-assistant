@@ -299,9 +299,12 @@ Ingest indexes `.html` knowledge docs as visible text, so pages stay recallable.
 unguessability hash (HMAC of `user/slug` keyed by `PUBLISH_URL_SECRET` in
 secrets/.env; publish refuses without it). Same slug → same URL on republish.
 Markdown links to `/@<user>/<slug>` are auto-hashed at publish time, so source
-docs keep plain slugs. The per-user index at `askrobin.io/@<user>/` is
-password-gated on the serving side (`PUBLISH_INDEX_PASSWORD` in Vercel env);
-pages themselves are unlisted-but-ungated and served `noindex`. The old
+docs keep plain slugs. The per-user index at `askrobin.io/@<user>/` now
+308-redirects to the operator's private dashboard (2026-10-31), whose Pages tab
+lists, searches and edits pages from data the `life_sync` user-data integration
+builds from the local publish log (`pages` + `pages-search` areas). Pages themselves
+are unlisted-but-ungated and served `noindex`; they allow that dashboard origin in
+`frame-ancestors` for its preview pane. The old
 private-page system (second blob store, `visibility:` frontmatter) was removed
 2026-08-19 — `visibility: private` now refuses. `orchestrate.ts` writes the
 page blob and a `users/<userId>/index.json` manifest (`manifest.ts`);
@@ -320,7 +323,10 @@ drift shows up as a diff). Frontmatter `category:` wins on every publish, so a
 source doc without one reverts to Uncategorized next republish — fix the source,
 not just the index. Recurring publishers must set it.
 
-**Editing published pages from the index.** The index page has an Edit mode
+**Editing published pages.** Delete / move / pin now happen in the dashboard: it
+queues encrypted ops that `life_sync` applies locally through `deletePage` /
+`recategorize` (stale ops — page republished since — are dropped). The older web
+path below stays until the askrobin index code is removed. The old index page had an Edit mode
 (delete a page, move it to another category). The local publish log is the
 source of truth for the manifest — every publish rebuilds it wholesale — so a
 web-side edit would be silently reverted. Instead the web writes an immutable

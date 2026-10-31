@@ -19,8 +19,10 @@ HMAC-SHA256(`<user>/<slug>`) keyed by `PUBLISH_URL_SECRET`
 (user-data/config/secrets/.env; publish refuses to run without it). URLs are
 unguessable but stable: republishing the same slug keeps the same URL. Markdown
 links to `/@<user>/<slug>` (bare or absolute) are rewritten to the hashed form
-at publish time, so source docs keep plain slugs. The `/@<user>/` index page is
-password-gated on the serving side (askrobin.io, `PUBLISH_INDEX_PASSWORD`).
+at publish time, so source docs keep plain slugs. The `/@<user>/` index page now
+redirects to the operator's private dashboard (2026-10-31), which lists pages from
+the local publish log via its own sync, behind its own sign-in. The serving-side
+index code, its password and the `index.json` manifest are slated for removal.
 
 `visibility:` frontmatter was removed with the private-page system (2026-08-19).
 `visibility: public` is tolerated as a legacy no-op; `visibility: private` is
