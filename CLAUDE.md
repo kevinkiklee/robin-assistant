@@ -149,10 +149,11 @@ via `system/agent/auto-land.ts` only if it clears every gate:
   import, fs re-export, or import of a local module that hands fs out
   (re-export hops followed); no new `homedir`/`userInfo`/`env.HOME` and no new
   sensitive path literal (absolute, `~`, `$HOME`, githooks, `.git`, `Library`,
-  shell rc, `.ssh`, `.claude`, node_modules…); and no ignored path in the
-  worktree but its top-level node_modules symlink. Not followed: a write in an
-  unchanged module reached through an existing import (only its literal paths
-  are screened) and non-fs writers (SQLite);
+  shell rc, `.ssh`, `.claude`, node_modules…) — a tripwire, not a proof: a path
+  built in pieces evades it; and no ignored path in the worktree, before or
+  after the checks, but its top-level node_modules symlink. Not followed: a
+  write in an unchanged module reached through an existing import (only the
+  tripwire sees what it's handed) and non-fs writers (SQLite);
 - loosening (`weakeningViolation`): no raised threshold, downgraded severity or
   early pass in check code, no dropped invariant, no removed/rewritten/skipped
   assertion;

@@ -1148,9 +1148,11 @@ export function autoLand(opts: AutoLandOpts): AutoLandResult {
     return hold(`worktree node_modules isn't the repo's symlink: ${String(linkBefore)}`, files);
   }
   // Exact lines, untrimmed: ` node_modules` is some other (ignored) file.
-  const shadow = gitW(['ls-files', '--others', '--ignored', '--exclude-standard'])
-    .split('\n')
-    .filter((l) => l !== '' && l !== 'node_modules');
+  const ignoredPaths = () =>
+    gitW(['ls-files', '--others', '--ignored', '--exclude-standard'])
+      .split('\n')
+      .filter((l) => l !== '' && l !== 'node_modules');
+  const shadow = ignoredPaths();
   if (shadow.length > 0) {
     return hold(`ignored file can change what the checks load: ${shadow[0]}`, files);
   }
@@ -1305,6 +1307,12 @@ export function autoLand(opts: AutoLandOpts): AutoLandResult {
   ].filter((l) => l.trim());
   if (drift.length > 0) {
     return hold(`the checks modified the worktree: ${drift.slice(0, 3).join(', ')}`, files);
+  }
+  // …and an ignored one, which that listing can't see: the next run in this
+  // worktree (or a reviewer's) would load it.
+  const leftIgnored = ignoredPaths();
+  if (leftIgnored.length > 0) {
+    return hold(`the checks left an ignored file in the worktree: ${leftIgnored[0]}`, files);
   }
 
   const subject = opts.title.replace(/\s+/g, ' ').trim().slice(0, 72) || 'remediate health issue';

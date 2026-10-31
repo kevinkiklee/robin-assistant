@@ -296,21 +296,24 @@ function analyzeFs(file: string, src: string): FsAnalysis {
       sole(e.expression.text)
     );
   };
-  /** `fs` / `fs.promises` — the receiver of an fs member. */
-  const fsReceiver = (r: Expr) =>
-    (ts.isIdentifier(r) && fsNs.has(r.text)) ||
-    (ts.isPropertyAccessExpression(r) &&
-      r.name.text === 'promises' &&
-      ts.isIdentifier(r.expression) &&
-      fsNs.has(r.expression.text));
+  /** `fs` / `fs.promises` — the receiver of an fs member. Detection takes any
+   *  such spelling (a shadowed `fs` still counts as fs: fail closed); `trusted`
+   *  — proving a temp path — also needs the namespace bound nowhere else (sole),
+   *  like the path builders. */
+  const fsReceiver = (r: Expr, trusted = false): boolean => {
+    const ns = ts.isIdentifier(r)
+      ? r
+      : ts.isPropertyAccessExpression(r) &&
+          r.name.text === 'promises' &&
+          ts.isIdentifier(r.expression)
+        ? r.expression
+        : null;
+    return ns !== null && fsNs.has(ns.text) && (!trusted || sole(ns.text));
+  };
   /** The real fs member `e` names (`mkdtempSync`, `fs.mkdtempSync`), or null. */
   const realFsMember = (e: Expr): string | null => {
     if (ts.isIdentifier(e)) return sole(e.text) ? (fsLocal.get(e.text) ?? null) : null;
-    if (!ts.isPropertyAccessExpression(e) || !fsReceiver(e.expression)) return null;
-    const root = ts.isIdentifier(e.expression)
-      ? e.expression
-      : ((e.expression as import('typescript').PropertyAccessExpression).expression as Ident);
-    return sole(root.text) ? e.name.text : null;
+    return ts.isPropertyAccessExpression(e) && fsReceiver(e.expression, true) ? e.name.text : null;
   };
 
   const unwrap = (e: Expr): Expr => {

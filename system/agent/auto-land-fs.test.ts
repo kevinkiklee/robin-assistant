@@ -371,3 +371,38 @@ test('fsWriteViolation: new sensitive path literals hold — a write through an 
     null,
   );
 });
+
+test('fsWriteViolation: a shadowed fs namespace proves no temp dir, and its writes still hold', () => {
+  const imports =
+    "import * as fs from 'node:fs';\nimport * as fsp from 'node:fs/promises';\nimport { tmpdir } from 'node:os';\nimport { join } from 'node:path';\n";
+  const shadowed: Array<[string, RegExp]> = [
+    // `fs` re-bound by a parameter: its mkdtempSync is whatever the caller passes,
+    // so the dir it returns proves nothing and the write into it is unproven.
+    [
+      `${imports}function f(fs: { mkdtempSync: (a: string) => string; writeFileSync: (a: string, b: string) => void }) {\n  const d = fs.mkdtempSync(join(tmpdir(), 'x-'));\n  fs.writeFileSync(join(d, 'a'), x);\n}\n`,
+      /ref:fs\b.*writeFileSync\(join\(d, "a"\)\)/,
+    ],
+    [
+      `${imports}function g(fsp: { mkdtemp: (a: string) => Promise<string> }) {\n  return fsp.mkdtemp(join(tmpdir(), 'x-'));\n}\nconst d = await g(evil);\nawait fs.promises.writeFile(join(d, 'a'), x);\n`,
+      /ref:fsp\b.*writeFile\(join\(d, "a"\)\)/,
+    ],
+    // Still fs for detection (fail closed).
+    [
+      `${imports}function h(fs: { rm: (a: string) => void }) {\n  fs.rm(p);\n}\n`,
+      /ref:fs;.*rm\(p\)/,
+    ],
+  ];
+  const missed = shadowed
+    .filter(([src, re]) => !re.test(held(src, '', ['system/kernel/x.test.ts']) ?? ''))
+    .map(([src]) => src);
+  assert.deepEqual(missed, []);
+  // Unshadowed, the same namespaces prove a temp dir.
+  assert.equal(
+    held(
+      `${imports}const d = fs.mkdtempSync(join(tmpdir(), 'x-'));\nfs.writeFileSync(join(d, 'a'), x);\nconst e = await fsp.mkdtemp(join(tmpdir(), 'y-'));\nawait fs.promises.writeFile(join(e, 'b'), x);\n`,
+      '',
+      ['system/kernel/x.test.ts'],
+    ),
+    null,
+  );
+});

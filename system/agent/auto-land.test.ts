@@ -45,11 +45,14 @@ function fakeExec(
     absent?: string[];
     unreadable?: string;
     ignored?: string;
+    /** What the ignored-file listing returns after the first call (the post-check pass). */
+    ignoredAfter?: string;
     shown?: Record<string, string>;
   } = {},
 ) {
   const calls: string[] = [];
   const raw: string[] = [];
+  let ignoredCalls = 0;
   const exec: Exec = (cmd, args, { cwd }) => {
     raw.push(`${cwd}$ ${cmd} ${args.join(' ')}`);
     // Recorded without git's `-c k=v` hardening pairs (asserted on `raw`).
@@ -84,8 +87,11 @@ function fakeExec(
     if (a.startsWith('cat-file -e ') && o.absent?.some((f) => a.endsWith(f))) {
       throw new Error('absent');
     }
-    if (a === 'ls-files --others --ignored --exclude-standard')
+    if (a === 'ls-files --others --ignored --exclude-standard') {
+      ignoredCalls++;
+      if (ignoredCalls > 1 && o.ignoredAfter !== undefined) return o.ignoredAfter;
       return o.ignored ?? 'node_modules\n';
+    }
     if (a.startsWith('show ') && o.shown?.[a.slice(5)] !== undefined) return o.shown[a.slice(5)];
     if (a.startsWith('show ') && o.unreadable && a.endsWith(o.unreadable)) {
       throw Object.assign(new Error('read'), { stderr: 'fatal: bad object' });
@@ -1316,6 +1322,30 @@ test('autoLand: ANY ignored path in the worktree but the top-level node_modules 
   }
   // The runner's own node_modules symlink is the one exception.
   const { exec } = fakeExec({ ignored: 'node_modules\n' });
+  assert.equal(autoLand(base(exec)).landed, true);
+});
+
+test('autoLand: an ignored file the checks leave behind holds the land', () => {
+  // The suite runs K's code with write access to the worktree; an ignored file
+  // it creates (a .env, dist/, a nested node_modules) is invisible to the
+  // non-ignored drift listing.
+  for (const ignoredAfter of [
+    'node_modules\n.env\n',
+    'node_modules\ndist/system/kernel/scheduler/index.js\n',
+    'node_modules\nsystem/kernel/node_modules/tsx/index.js\n',
+    ' node_modules\n',
+  ]) {
+    const { exec, calls } = fakeExec({ ignoredAfter });
+    const r = autoLand(base(exec));
+    assert.equal(r.landed, false, ignoredAfter);
+    assert.match(r.reason, /the checks left an ignored file/, ignoredAfter);
+    assert.ok(
+      calls.some((c) => c.includes('sandbox-exec')),
+      'held after the checks',
+    );
+    assert.ok(!calls.some((c) => /git merge/.test(c)), 'nothing merged');
+  }
+  const { exec } = fakeExec({ ignoredAfter: 'node_modules\n' });
   assert.equal(autoLand(base(exec)).landed, true);
 });
 
