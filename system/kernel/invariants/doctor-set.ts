@@ -13,6 +13,7 @@ import {
   autoLandSandboxInvariant,
   beliefEmbeddingsBoundedInvariant,
   captureVolumeSaneInvariant,
+  credentialsExpiringInvariant,
   daemonStableInvariant,
   dbReachableInvariant,
   dbSchemaCurrentInvariant,
@@ -139,6 +140,7 @@ export function buildDoctorInvariants(
     recallTopicsResolvableInvariant({ userData }),
     agentWorktreesBoundedInvariant(repoRoot),
     autoLandSandboxInvariant({ autoLandEnabled: () => loadPolicies(userData).agent.auto_land }),
+    credentialsExpiringInvariant({ userData }),
     gitFsmonitorBoundedInvariant(),
     distCurrentInvariant({
       repoRoot,

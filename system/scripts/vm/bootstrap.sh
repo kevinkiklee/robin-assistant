@@ -117,6 +117,26 @@ else
   run sudo apt-get install -y cloudflared
 fi
 
+# The comment-only daemon.env template (values are filled by hand).
+daemon_env_template() {
+  cat <<'TEMPLATE'
+# Robin's Claude credentials — daemon-only. Never export these in a shell.
+# CLAUDE_TOKEN_ROBIN=        # account 2 (Robin's default) — claude setup-token
+# CLAUDE_TOKEN_SHARED=       # account 1 (your interactive account; borrowed when Robin's is limited)
+# CLAUDE_CREDIT_KEY_ROBIN=   # API key, Console org linked to account 2 (no auto-reload)
+# CLAUDE_CREDIT_KEY_SHARED=  # API key, Console org linked to account 1 (no auto-reload)
+TEMPLATE
+}
+write_daemon_env_template() {
+  if [ "$dry_run" = 1 ]; then
+    echo "[dry-run] write $daemon_env:"
+    daemon_env_template
+  else
+    echo "+ write $daemon_env"
+    (umask 077 && daemon_env_template > "$daemon_env")
+  fi
+}
+
 # 8-10. Need the checkout.
 daemon_env="$ROBIN_HOME/user-data/config/secrets/daemon.env"
 if [ -d "$ROBIN_HOME" ] || [ "$dry_run" = 1 ]; then
@@ -131,7 +151,7 @@ if [ -d "$ROBIN_HOME" ] || [ "$dry_run" = 1 ]; then
     echo "daemon.env: present"
   else
     run install -d -m 0700 "$(dirname "$daemon_env")"
-    run_sh "umask 077 && printf '%s\n' '# Daemon-only secrets, loaded by the robin-daemon systemd unit. Never export these in a shell.' '# CLAUDE_CODE_OAUTH_TOKEN_A=' '# CLAUDE_CODE_OAUTH_TOKEN_B=' > '$daemon_env'"
+    write_daemon_env_template
     run chmod 0600 "$daemon_env"
   fi
 

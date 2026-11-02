@@ -61,6 +61,16 @@ test('bootstrap.sh --dry-run prints actions and invokes no stubbed command', { s
     assert.ok(step10.includes('ROBIN_USER_DATA_DIR='), step10);
     assert.ok(step10.includes('/user-data'), step10);
     assert.match(r.stdout, /\[dry-run\] install -d -m 0700 .*secrets/);
+    for (const line of [
+      "# Robin's Claude credentials — daemon-only. Never export these in a shell.",
+      "# CLAUDE_TOKEN_ROBIN=        # account 2 (Robin's default) — claude setup-token",
+      "# CLAUDE_TOKEN_SHARED=       # account 1 (your interactive account; borrowed when Robin's is limited)",
+      '# CLAUDE_CREDIT_KEY_ROBIN=   # API key, Console org linked to account 2 (no auto-reload)',
+      '# CLAUDE_CREDIT_KEY_SHARED=  # API key, Console org linked to account 1 (no auto-reload)',
+    ]) {
+      assert.ok(r.stdout.split('\n').includes(line), `missing template line: ${line}`);
+    }
+    assert.doesNotMatch(r.stdout, /OAUTH_TOKEN_[AB]/);
     assert.equal(existsSync(calledLog), false, existsSync(calledLog) ? 'stub invoked' : '');
     assert.deepEqual(readdirSync(home), [], 'dry-run must not write to HOME');
   } finally {

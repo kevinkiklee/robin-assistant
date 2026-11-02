@@ -55,6 +55,7 @@ ADVANCED
   reindex --force       Rebuild the vector index (repair; normal backfill is automatic)
   alerts [--all]        List open health alerts (--all includes resolved/acked history)
   alerts ack <id>       Acknowledge an alert by id
+  accounts [use <name>] Claude credential status; pin one for manual rotation
   metrics --agents      Per-handler agent ROI: runs, spend, outcomes, last did-work
   memory audit-sample [N]   Recent extractions grouped by personal domain
   memory compact-sessions [--apply]   Keep only the operator's turns in captured sessions > 90 days old
@@ -576,6 +577,13 @@ async function main(): Promise<void> {
     case 'corrections': {
       const { runCorrectionsCommand } = await import('./corrections.ts');
       await runCorrectionsCommand(args.slice(1));
+      exit(process.exitCode ?? 0);
+      break;
+    }
+
+    case 'accounts': {
+      const { runAccountsCommand } = await import('./accounts.ts');
+      await runAccountsCommand(args.slice(1));
       exit(process.exitCode ?? 0);
       break;
     }

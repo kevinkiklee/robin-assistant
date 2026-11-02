@@ -48,9 +48,15 @@ Tokens go in `~/robin-assistant-v3/user-data/config/secrets/daemon.env`
 systemd unit (`EnvironmentFile=`). Fill in by hand:
 
 ```
-CLAUDE_CODE_OAUTH_TOKEN_A=...
-CLAUDE_CODE_OAUTH_TOKEN_B=...
+CLAUDE_TOKEN_ROBIN=...        # account 2 (Robin's default), from claude setup-token
+CLAUDE_TOKEN_SHARED=...       # account 1 (your interactive account; borrowed when Robin's is limited)
+CLAUDE_CREDIT_KEY_ROBIN=...   # API key, Console org linked to account 2 (no auto-reload)
+CLAUDE_CREDIT_KEY_SHARED=...  # API key, Console org linked to account 1 (no auto-reload)
 ```
+
+Fill these, then `systemctl --user restart robin-daemon`. `robin accounts`
+shows each credential's limits, expiry and last use; `robin doctor` warns
+30 days before a token lapses.
 
 Never put them in `~/.bashrc` or any shell profile. `CLAUDE_CODE_OAUTH_TOKEN`
 outranks a normal `/login`, so a shell-wide export would silently put your own
