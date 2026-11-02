@@ -43,6 +43,7 @@
     "robin": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts",
     "lab": "tsx lab/cli.ts",
     "test": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false node --test --test-concurrency=8 --test-timeout=20000 --import tsx 'system/**/*.test.ts' 'lab/**/*.test.ts' 'user-data/extensions/**/*.test.ts' 'user-data/scripts/**/*.test.ts'",
+    "test:linux": "bash system/scripts/vm/test-linux.sh",
     "test:watch": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false node --test --watch --import tsx 'system/**/*.test.ts' 'lab/**/*.test.ts' 'user-data/extensions/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

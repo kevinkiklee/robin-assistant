@@ -1,0 +1,20 @@
+# Linux test harness: runs the full suite on Debian bookworm.
+# Built by system/scripts/vm/test-linux.sh from a staging copy — never the repo
+# itself — so secrets, caches and the host's node_modules never enter the image.
+FROM node:24-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bubblewrap git python3 build-essential procps sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=America/Chicago CI=1
+
+RUN corepack enable
+
+WORKDIR /robin
+COPY . .
+
+# Tests that shell out to git need a repository (throwaway, never pushed).
+RUN git init -q && git add -A && git -c user.email=t@example.invalid -c user.name=t commit -qm base
+
+CMD pnpm install --frozen-lockfile && pnpm typecheck && pnpm test
