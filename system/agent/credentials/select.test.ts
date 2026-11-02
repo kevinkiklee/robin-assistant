@@ -106,11 +106,17 @@ describe('selectCredential', () => {
   });
   it('brief uses credit when subs exhausted', () =>
     assert.equal(idOf(pick(bothSubs, 'brief')), 'robin:credit'));
-  it('brief on robin warning skips shared and falls to credit', () =>
+  it('brief defers on robin warning', () =>
     assert.equal(
-      idOf(pick({ 'robin:subscription': { status: 'allowed_warning' } }, 'brief')),
-      'robin:credit',
+      pick({ 'robin:subscription': { status: 'allowed_warning' } }, 'brief').kind,
+      'defer',
     ));
+  it('exclude does not unlock shared', () => {
+    const ex = { exclude: ['robin:subscription'] };
+    assert.equal(pick({}, 'background', ex).kind, 'defer');
+    assert.equal(pick({}, 'brief', ex).kind, 'defer');
+    assert.equal(idOf(pick({}, 'interactive', ex)), 'shared:subscription');
+  });
   it('model-scoped rejection', () => {
     const l = { 'robin:subscription': { scope: 'sonnet' as const, resetsAtMs: reset } };
     assert.equal(

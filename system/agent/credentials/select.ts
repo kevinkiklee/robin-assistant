@@ -122,11 +122,18 @@ export function selectCredential(args: {
   // background, not when the rejection is a refused token).
   let robinGate: Assessment | undefined;
   const robinSub = find('subscription', 'robin');
-  if (strict && robinSub && !excluded.has(robinSub.id) && mode === 'auto') {
+  if (strict && robinSub && mode === 'auto') {
     robinGate = assess(state.credentials[robinSub.id], family, nowMs);
   }
 
+  // Brief reaches the credit tier only when every configured subscription is
+  // recorded as rejected; a mere warning defers. `exclude` never counts.
+  const subsExhausted = credentials
+    .filter((c) => c.kind === 'subscription')
+    .every((c) => assess(state.credentials[c.id], family, nowMs).level === 'rejected');
+
   for (const c of candidates) {
+    if (cls === 'brief' && c.kind === 'credit' && !subsExhausted) continue;
     const a = assess(state.credentials[c.id], family, nowMs);
     if (
       strict &&
