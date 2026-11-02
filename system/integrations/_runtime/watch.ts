@@ -22,9 +22,25 @@ export function watchIntegrations(
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
   paths: string[],
+  deps: { watch?: typeof watch } = {},
 ): WatcherHandle {
   const log = createLogger({ module: 'integration-watcher' });
-  const w = watch(paths, { ignored: /(^|[/\\])\../, persistent: true, ignoreInitial: true });
+  const w = (deps.watch ?? watch)(paths, {
+    ignored: /(^|[/\\])\../,
+    persistent: true,
+    ignoreInitial: true,
+  });
+  // Without a listener, a watcher error (EMFILE when macOS runs out of FSEvents
+  // capacity) is thrown and kills the daemon, and launchd then crash-loops it on
+  // every boot until the pressure clears. Hot reload is a convenience: log once,
+  // stop watching, keep running. A daemon restart retries the watch.
+  let failed = false;
+  w.on('error', (err) => {
+    if (failed) return;
+    failed = true;
+    log.warn({ err }, 'integration watcher failed; hot reload disabled until restart');
+    void w.close().catch(() => {});
+  });
   let debounceTimer: NodeJS.Timeout | null = null;
   let currentCleanup: (() => Promise<void>) | undefined;
 
