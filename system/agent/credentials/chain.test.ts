@@ -587,6 +587,92 @@ describe('runSdkWithCredentials', () => {
     assert.equal(res.text, 'done');
   });
 
+  it('unwritable state still dedupes and benches across calls in the process', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'robin-chain-'));
+    const file = join(base, 'a-file');
+    writeFileSync(file, 'x');
+    const h = setup({
+      userData: join(file, 'user-data'),
+      runSdk: async (i) => {
+        h.calls.push(i);
+        return h.secretOf(i) === ROBIN
+          ? ok({ status: 'error', text: '', authError: 'authentication_failed', turns: 0 })
+          : ok();
+      },
+    });
+    for (let i = 0; i < 5; i++) {
+      const r = await h.call('background');
+      assert.equal(r.deferred, true);
+      h.clock.t += MIN;
+    }
+    assert.equal(h.calls.filter((c) => h.secretOf(c) === ROBIN).length, 1);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.notices.length, 1);
+  });
+
+  it('a rejected event on a usable completion is recorded, not retried', async () => {
+    const h = setup();
+    const r = ok({
+      text: 'real answer',
+      limitHit: true,
+      rateLimit: { status: 'rejected', type: 'seven_day_opus', resetsAtMs: NOW + DAY },
+    });
+    h.queue.push(r);
+    const res = await h.call('interactive');
+    assert.equal(h.calls.length, 1);
+    assert.deepStrictEqual(res, { ...r, credential: 'robin:subscription' });
+    const l = h.state().credentials['robin:subscription'].limits;
+    assert.equal(l.length, 1);
+    assert.equal(l[0].status, 'rejected');
+    assert.equal(l[0].scope, 'opus');
+  });
+
+  it('a rejected event on an empty completion still retries', async () => {
+    const h = setup();
+    h.queue.push(ok({ text: '', limitHit: true, rateLimit: { status: 'rejected' } }));
+    const res = await h.call('interactive');
+    assert.equal(h.calls.length, 2);
+    assert.equal(res.credential, 'shared:subscription');
+  });
+
+  it('a no-reset banner borrows with one notice over 3 h', async () => {
+    const h = setup({
+      runSdk: async (i) => {
+        h.calls.push(i);
+        return h.secretOf(i) === ROBIN
+          ? limited({ rateLimit: undefined, text: "You've hit your limit", turns: 1 })
+          : ok();
+      },
+    });
+    for (let t = 0; t <= 180; t += 31) {
+      h.clock.t = NOW + t * MIN;
+      const r = await h.call('interactive');
+      assert.equal(r.credential, 'shared:subscription');
+    }
+    assert.ok(h.calls.filter((c) => h.secretOf(c) === ROBIN).length >= 6, 'robin re-probed');
+    const borrow = h.notices.filter((n) => /borrowing/.test(n.message));
+    assert.equal(borrow.length, 1);
+    assert.match(borrow[0].message, /\(robin limit, reset time unknown\)$/);
+    // after 6 h the notice may repeat
+    h.clock.t = NOW + 6 * HOUR + 31 * MIN;
+    await h.call('interactive');
+    assert.equal(h.notices.filter((n) => /borrowing/.test(n.message)).length, 2);
+  });
+
+  it('a limit that cleared re-arms its notice within 6 h', async () => {
+    const h = setup();
+    h.queue.push(limited({ rateLimit: { status: 'rejected', resetsAtMs: NOW + HOUR } }));
+    await h.call('interactive');
+    assert.equal(h.notices.length, 1);
+    // reset passes; robin serves, then is limited again
+    h.clock.t = NOW + 2 * HOUR;
+    await h.call('interactive');
+    h.queue.push(limited({ rateLimit: { status: 'rejected', resetsAtMs: NOW + 3 * HOUR } }));
+    h.clock.t = NOW + 2 * HOUR + MIN;
+    await h.call('interactive');
+    assert.equal(h.notices.filter((n) => /borrowing/.test(n.message)).length, 2);
+  });
+
   it('a throwing notifier or mode reader does not fail the call', async () => {
     const h = setup();
     h.deps.notify = async () => {

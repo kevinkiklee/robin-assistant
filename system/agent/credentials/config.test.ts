@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inspect } from 'node:util';
-import { describe, fingerprint, loadCredentials } from './config.ts';
+import { CREDENTIAL_SOURCE_VARS, describe, fingerprint, loadCredentials } from './config.ts';
 
 const ALL = {
   CLAUDE_TOKEN_ROBIN: 'sk-ant-oat01-FAKE-robin',
@@ -65,4 +65,8 @@ test('credentials: serialisation never carries the secret', () => {
   // the SDK child still gets the real value
   assert.equal(c.env.set.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-FAKE-robin');
   assert.equal({ ...c.env.set }.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-FAKE-robin');
+});
+
+test('credentials: CREDENTIAL_SOURCE_VARS lists every source var', () => {
+  assert.deepEqual([...CREDENTIAL_SOURCE_VARS].sort(), Object.keys(ALL).sort());
 });

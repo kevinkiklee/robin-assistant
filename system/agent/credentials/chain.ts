@@ -57,31 +57,55 @@ const AUTH_BENCH_MS = 6 * HOUR;
 const TOKEN_LIFETIME_MS = 365 * DAY;
 const EXPIRY_WARN_MS = 30 * DAY;
 const EXPIRY_NOTICE_EVERY_MS = 7 * DAY;
+const NOTICE_DEDUPE_MS = 6 * HOUR;
 const TITLE = 'Robin: Claude credentials';
 
 type Family = ReturnType<typeof modelFamily>;
 type Notify = NonNullable<ChainDeps['notify']>;
 
-/** In-memory state that persists when it can and silently stays in memory when it can't. */
+/**
+ * Process-lifetime stand-in for a state file that can't be written, keyed by its
+ * path ('' = no user-data dir). Without it every call would start from empty
+ * state: a refused token re-tried and re-notified on every call.
+ */
+const memoryFallback = new Map<string, ChainState>();
+
+/** State that persists when it can and silently stays in process memory when it can't. */
 class StateHandle {
   state: ChainState;
   private readonly store?: CredentialStateStore;
+  private readonly key: string;
 
   constructor(store?: CredentialStateStore) {
     this.store = store;
-    this.state = store ? store.read() : { version: 1, credentials: {} };
+    this.key = store?.path ?? '';
+    this.state =
+      memoryFallback.get(this.key) ?? (store ? store.read() : { version: 1, credentials: {} });
   }
 
   mutate(fn: (s: ChainState) => void): void {
+    const mem = memoryFallback.get(this.key);
+    if (mem) {
+      fn(mem);
+      this.state = mem;
+    }
     if (this.store) {
       try {
-        this.state = this.store.update(fn);
+        // Once writable again, the in-memory credentials are written back whole.
+        this.state = this.store.update((s) => {
+          if (mem) s.credentials = mem.credentials;
+          else fn(s);
+        });
+        memoryFallback.delete(this.key);
         return;
       } catch {
-        // unwritable state: keep routing from memory for the rest of this call
+        // unwritable: carry on from memory
       }
     }
-    fn(this.state);
+    if (!mem) {
+      fn(this.state);
+      memoryFallback.set(this.key, this.state);
+    }
   }
 }
 
@@ -104,8 +128,11 @@ function resolveMode(deps: ChainDeps, userData: () => string): 'auto' | 'manual'
   }
 }
 
-function localTime(ms: number | undefined): string {
-  if (ms === undefined || !Number.isFinite(ms)) return 'time unknown';
+function known(ms: number | undefined): ms is number {
+  return ms !== undefined && Number.isFinite(ms);
+}
+
+function localTime(ms: number): string {
   return new Date(ms).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -170,15 +197,24 @@ function knownResetMs(cs: CredentialState | undefined, family: Family, nowMs: nu
   return out;
 }
 
+function resetPhrase(ms: number | undefined): string {
+  return known(ms) ? `resets ${localTime(ms)}` : 'reset time unknown';
+}
+
+type NoticeKind = 'borrow' | 'credit' | 'stop' | 'manual' | 'auth';
+
 /**
- * Once per credential until its limit clears: a notice is due unless one was
- * already sent after the oldest limit that is still in force.
+ * One notice per (credential, kind) per 6 h, unless that credential's limit
+ * cleared since — an `allowed` observation or a reset that passed. A banner
+ * with no reset is re-probed every 30 min; that alone never re-notifies.
  */
-function noticeDue(cs: CredentialState | undefined, nowMs: number): boolean {
-  if (cs?.lastLimitNoticeAtMs === undefined) return true;
-  const active = cs.limits.filter((l) => isActive(l, nowMs) && l.reason !== 'soft');
-  if (active.length === 0) return true;
-  return cs.lastLimitNoticeAtMs < Math.min(...active.map((l) => l.observedAtMs));
+function noticeDue(cs: CredentialState | undefined, kind: NoticeKind, nowMs: number): boolean {
+  const last = cs?.noticesAtMs?.[kind];
+  if (last === undefined || nowMs - last >= NOTICE_DEDUPE_MS) return true;
+  if (cs?.limitClearedAtMs !== undefined && cs.limitClearedAtMs > last) return true;
+  return !!cs?.limits.some(
+    (l) => l.resetsAtMs !== undefined && l.resetsAtMs > last && l.resetsAtMs <= nowMs,
+  );
 }
 
 interface Signal {
@@ -198,8 +234,10 @@ function classify(result: SdkResult, emptyIsLimit: boolean): Signal {
   const ev = result.rateLimit;
   const noWork = result.structured === undefined;
   const banner = noWork && result.limitHit && isSubscriptionLimitBanner(result.text);
+  // A rejected event alongside a usable answer is recorded, but the answer stands.
+  const unusable = result.status !== 'success' || banner || (noWork && result.text.trim() === '');
   const out: Signal = {
-    hard: !!result.authError || ev?.status === 'rejected' || banner,
+    hard: !!result.authError || (ev?.status === 'rejected' && unusable) || banner,
     soft: false,
   };
   if (banner && ev?.status !== 'rejected') out.bannerScope = bannerScope(result.text);
@@ -231,6 +269,10 @@ function record(
       s.credentials[c.id] = cs;
     }
     cs.lastUsedAtMs = nowMs;
+    const resets = cs.limits
+      .map((l) => l.resetsAtMs)
+      .filter((t): t is number => t !== undefined && t <= nowMs);
+    if (resets.length) cs.limitClearedAtMs = Math.max(cs.limitClearedAtMs ?? 0, ...resets);
     cs.limits = cs.limits.filter((l) => isActive(l, nowMs));
     let hits = softHits(cs, nowMs);
 
@@ -238,7 +280,9 @@ function record(
     if (ev) {
       const scope = scopeOf(ev.type);
       if (ev.status === 'allowed') {
+        const before = cs.limits.length;
         cs.limits = cs.limits.filter((l) => l.scope !== scope || l.reason === 'auth');
+        if (cs.limits.length < before) cs.limitClearedAtMs = nowMs;
         if (scope === 'all') hits = [];
       } else {
         upsert(cs, {
@@ -292,21 +336,24 @@ async function send(ctx: Ctx, message: string, silent: boolean): Promise<void> {
   }
 }
 
-/** Send a limit notice deduped on `key`'s `lastLimitNoticeAtMs`. */
-async function limitNotice(ctx: Ctx, key: Credential, message: string, silent: boolean) {
+/** Send a limit notice deduped per (`key`, `kind`); see `noticeDue`. */
+async function limitNotice(
+  ctx: Ctx,
+  key: Credential,
+  kind: NoticeKind,
+  message: string,
+  silent: boolean,
+) {
   const nowMs = ctx.now();
-  if (!noticeDue(ctx.handle.state.credentials[key.id], nowMs)) return;
+  if (!noticeDue(ctx.handle.state.credentials[key.id], kind, nowMs)) return;
   ctx.handle.mutate((s) => {
-    const cs = s.credentials[key.id];
-    if (cs) cs.lastLimitNoticeAtMs = nowMs;
-    else {
-      s.credentials[key.id] = {
-        fingerprint: key.fingerprint,
-        firstSeenAtMs: nowMs,
-        limits: [],
-        lastLimitNoticeAtMs: nowMs,
-      };
+    let cs = s.credentials[key.id];
+    if (!cs) {
+      cs = { fingerprint: key.fingerprint, firstSeenAtMs: nowMs, limits: [] };
+      s.credentials[key.id] = cs;
     }
+    cs.lastLimitNoticeAtMs = nowMs;
+    cs.noticesAtMs = { ...cs.noticesAtMs, [kind]: nowMs };
   });
   await send(ctx, message, silent);
 }
@@ -323,10 +370,13 @@ async function noticeAdvance(ctx: Ctx, c: Credential, tried: string[], nowMs: nu
     if (!robin) return;
     const robinCs = st[robin.id];
     if (!tried.includes(robin.id) && clearsAtMs(robinCs, ctx.family, nowMs) === undefined) return;
+    // A refused token already got its own (non-silent) notice.
+    if (robinCs?.limits.some((l) => l.reason === 'auth' && isActive(l, nowMs))) return;
     await limitNotice(
       ctx,
       robin,
-      `Robin is borrowing your Claude account (robin limit, resets ${localTime(knownResetMs(robinCs, ctx.family, nowMs))})`,
+      'borrow',
+      `Robin is borrowing your Claude account (robin limit, ${resetPhrase(knownResetMs(robinCs, ctx.family, nowMs))})`,
       true,
     );
   } else if (c.kind === 'credit') {
@@ -339,7 +389,8 @@ async function noticeAdvance(ctx: Ctx, c: Credential, tried: string[], nowMs: nu
     await limitNotice(
       ctx,
       key,
-      `Robin is using API credit (both subscriptions limited, resets ${localTime(resets.length === subs.length ? Math.min(...resets) : undefined)})`,
+      'credit',
+      `Robin is using API credit (both subscriptions limited, ${resetPhrase(resets.length === subs.length ? Math.min(...resets) : undefined)})`,
       true,
     );
   }
@@ -356,6 +407,7 @@ async function manualNotice(ctx: Ctx, c: Credential): Promise<void> {
   await limitNotice(
     ctx,
     c,
+    'manual',
     `${who} hit its limit. Switch with: robin accounts use ${other}`,
     false,
   );
@@ -368,6 +420,7 @@ async function afterCall(ctx: Ctx, c: Credential, result: SdkResult, signal: Sig
     await limitNotice(
       ctx,
       c,
+      'auth',
       `Claude ${describe(c)} was refused (${result.authError}) — run claude setup-token for that account and update daemon.env`,
       false,
     );
@@ -475,7 +528,10 @@ async function halt(
       await limitNotice(
         ctx,
         key,
-        `All Claude credentials are limited until ${localTime(until)}`,
+        'stop',
+        known(until)
+          ? `All Claude credentials are limited until ${localTime(until)}`
+          : 'All Claude credentials are limited (reset time unknown)',
         false,
       );
     }

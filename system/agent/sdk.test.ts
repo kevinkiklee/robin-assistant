@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { CREDENTIAL_SOURCE_VARS } from './credentials/config.ts';
 import { runSdk, type SdkResult } from './sdk.ts';
 
 // Fake query: async-iterable of SDK messages, mirrors the live result shape.
@@ -502,4 +503,48 @@ test('runSdk: no credentialEnv leaves the env unchanged', async () => {
     PATH: '/b',
     ROBIN_INTERNAL_SDK: '1',
   });
+});
+
+test('runSdk: buildEnv never passes credential source vars', async () => {
+  let env: Record<string, string> | undefined;
+  const q = (args: { options: { env: Record<string, string> } }) => {
+    env = args.options.env;
+    return fakeQuery([OK_RESULT]);
+  };
+  await runSdk({
+    prompt: 'x',
+    queryFn: q,
+    billToPool: true,
+    baseEnv: {
+      CLAUDE_TOKEN_ROBIN: 'sk-ant-oat01-FAKE-robin',
+      CLAUDE_TOKEN_SHARED: 'sk-ant-oat01-FAKE-shared',
+      CLAUDE_CREDIT_KEY_ROBIN: 'sk-ant-api03-FAKE-credit',
+      CLAUDE_CREDIT_KEY_SHARED: 'sk-ant-api03-FAKE-credit-shared',
+      PATH: '/b',
+    },
+    credentialEnv: {
+      set: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE-robin' },
+      unset: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
+    },
+  });
+  for (const k of CREDENTIAL_SOURCE_VARS) assert.equal(k in (env ?? {}), false, k);
+  assert.deepEqual(env, {
+    CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE-robin',
+    PATH: '/b',
+    ROBIN_INTERNAL_SDK: '1',
+  });
+});
+
+test('runSdk: credential source vars are stripped even without credentialEnv', async () => {
+  let env: Record<string, string> | undefined;
+  const q = (args: { options: { env: Record<string, string> } }) => {
+    env = args.options.env;
+    return fakeQuery([OK_RESULT]);
+  };
+  await runSdk({
+    prompt: 'x',
+    queryFn: q,
+    baseEnv: { CLAUDE_TOKEN_SHARED: 'sk-ant-oat01-FAKE-shared', PATH: '/b' },
+  });
+  assert.deepEqual(env, { PATH: '/b', ROBIN_INTERNAL_SDK: '1' });
 });

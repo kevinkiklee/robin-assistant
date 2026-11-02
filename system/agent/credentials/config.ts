@@ -55,6 +55,12 @@ const SOURCES: Array<{
   },
 ];
 
+/**
+ * Every env var a credential is read from. runSdk strips all of them from the
+ * SDK child's env, so a child only ever holds the one credential chosen for it.
+ */
+export const CREDENTIAL_SOURCE_VARS: readonly string[] = SOURCES.map((s) => s.envVar);
+
 /** Configured credentials in priority order; blank values are ignored. */
 export function loadCredentials(env: Record<string, string | undefined>): Credential[] {
   const out: Credential[] = [];

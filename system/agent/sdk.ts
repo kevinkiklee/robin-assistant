@@ -1,4 +1,5 @@
 import { query as realQuery } from '@anthropic-ai/claude-agent-sdk';
+import { CREDENTIAL_SOURCE_VARS } from './credentials/config.ts';
 import { estimateCostUsd } from './pricing.ts';
 
 export type SdkStatus = 'success' | 'max_turns' | 'max_budget' | 'error';
@@ -112,6 +113,9 @@ function buildEnv(input: RunSdkInput): Record<string, string> {
   // (a self-amplifying feedback loop: the biographer re-processes its own
   // prompts) and gets the primer injected into its context (token waste).
   out.ROBIN_INTERNAL_SDK = '1';
+  // The credential chain's source vars never reach the child (and its tools):
+  // it gets only the one credential in `credentialEnv`. A no-op when none are set.
+  for (const k of CREDENTIAL_SOURCE_VARS) delete out[k];
   if (input.credentialEnv) {
     for (const k of input.credentialEnv.unset) delete out[k];
     Object.assign(out, input.credentialEnv.set);

@@ -23,6 +23,10 @@ export interface CredentialState {
   lastUsedAtMs?: number;
   lastExpiryNoticeAtMs?: number;
   lastLimitNoticeAtMs?: number;
+  /** Last limit notice per kind (borrow, credit, stop, manual, auth). */
+  noticesAtMs?: Record<string, number>;
+  /** When a limit last cleared: an `allowed` observation or a reset that passed. */
+  limitClearedAtMs?: number;
 }
 
 export interface ChainState {
@@ -48,6 +52,7 @@ function normalise(s: ChainState): ChainState {
     const cs = raw as unknown as CredentialState;
     cs.limits = Array.isArray(cs.limits) ? cs.limits.filter(isObject) : [];
     if (cs.softHitsAtMs !== undefined && !Array.isArray(cs.softHitsAtMs)) delete cs.softHitsAtMs;
+    if (cs.noticesAtMs !== undefined && !isObject(cs.noticesAtMs)) delete cs.noticesAtMs;
     credentials[id] = cs;
   }
   s.credentials = credentials;
