@@ -35,6 +35,16 @@ function familyStatus(
   return `${family} limited until ${when}`;
 }
 
+/** A refused token (auth bench) is not a quota limit; it needs a new token, not a wait. */
+function authRefused(cs: ChainState['credentials'][string] | undefined, nowMs: number): boolean {
+  return (cs?.limits ?? []).some(
+    (l) =>
+      l.status === 'rejected' &&
+      l.reason === 'auth' &&
+      (l.resetsAtMs ?? l.observedAtMs + 30 * 60_000) > nowMs,
+  );
+}
+
 export function renderAccounts(args: {
   credentials: Credential[];
   state: ChainState;
@@ -47,8 +57,12 @@ export function renderAccounts(args: {
   }
   const lines = [`Claude credentials (rotation: ${mode})`];
   for (const c of credentials) {
-    const cs = state.credentials[c.id];
-    const parts = FAMILIES.map((f) => familyStatus(cs, f, nowMs));
+    // A renewed token (new fingerprint) starts fresh: its predecessor's state doesn't apply.
+    const stored = state.credentials[c.id];
+    const cs = stored?.fingerprint === c.fingerprint ? stored : undefined;
+    const parts = authRefused(cs, nowMs)
+      ? ['refused (auth) — run claude setup-token']
+      : FAMILIES.map((f) => familyStatus(cs, f, nowMs));
     parts.push(
       cs?.firstSeenAtMs === undefined
         ? 'not yet used'

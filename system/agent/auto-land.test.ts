@@ -241,6 +241,7 @@ test('scopeViolation: anything the agent runtime imports is protected, plus surf
     'system/jobs/builtin/agent-runner/index.ts',
     'system/brain/cognition/reliability-audit.ts',
     'system/lib/remediation-request.ts',
+    'system/kernel/invariants/builtins/credentials-expiring.ts',
   ]) {
     assert.match(scopeViolation([f, 'system/a.test.ts']) ?? '', /protected/, f);
   }

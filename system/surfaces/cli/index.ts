@@ -3,6 +3,7 @@ import { argv, exit } from 'node:process';
 import { Daemon } from '../../kernel/runtime/daemon.ts';
 import { buildRobinMcpEntry, upsertUserScopeMcp } from '../../lib/mcp-config/write.ts';
 import { VERSION } from '../../lib/version.ts';
+import { loadCliEnv } from './cli-env.ts';
 import { printDoctorHuman, runDoctor } from './doctor.ts';
 import { runIncognito, runOffline, runOnline, runPause, runResume, runStatus } from './power.ts';
 
@@ -89,6 +90,9 @@ MAINTENANCE / INTERNAL (run automatically or by the host — init handles setup)
 async function main(): Promise<void> {
   const args = argv.slice(2);
   const cmd = args[0];
+  // Secrets first, so every command (agent, biographer, …) uses the credential
+  // chain. The daemon loads (and logs) its own in Daemon.start().
+  if (cmd !== 'daemon') loadCliEnv();
 
   switch (cmd) {
     case undefined:

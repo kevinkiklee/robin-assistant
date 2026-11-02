@@ -44,13 +44,21 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** Drop non-object entries; a missing/non-array `limits` reads as `[]`. */
+/** A limit without a finite `observedAtMs` could never expire; drop it. */
+function isLimit(v: unknown): v is LimitState {
+  return isObject(v) && typeof v.observedAtMs === 'number' && Number.isFinite(v.observedAtMs);
+}
+
+/**
+ * Drop non-object entries; a missing/non-array `limits` reads as `[]`, and a
+ * limit entry that isn't an object with a finite `observedAtMs` is dropped.
+ */
 function normalise(s: ChainState): ChainState {
   const credentials: ChainState['credentials'] = {};
   for (const [id, raw] of Object.entries(s.credentials)) {
     if (!isObject(raw)) continue;
     const cs = raw as unknown as CredentialState;
-    cs.limits = Array.isArray(cs.limits) ? cs.limits.filter(isObject) : [];
+    cs.limits = Array.isArray(cs.limits) ? cs.limits.filter(isLimit) : [];
     if (cs.softHitsAtMs !== undefined && !Array.isArray(cs.softHitsAtMs)) delete cs.softHitsAtMs;
     if (cs.noticesAtMs !== undefined && !isObject(cs.noticesAtMs)) delete cs.noticesAtMs;
     credentials[id] = cs;

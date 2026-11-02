@@ -31,7 +31,7 @@ test('renderAccounts: robin limited on sonnet, shared ok, never prints a secret'
       version: 1,
       credentials: {
         'robin:subscription': {
-          fingerprint: 'x',
+          fingerprint: creds[0].fingerprint,
           firstSeenAtMs: NOW - 100 * DAY,
           lastUsedAtMs: NOW - 60_000,
           limits: [
@@ -54,6 +54,56 @@ test('renderAccounts: robin limited on sonnet, shared ok, never prints a secret'
   assert.match(lines[2], /not yet used/);
   assert.doesNotMatch(out, /FAKE/);
   assert.doesNotMatch(out, /pinned/);
+});
+
+test('renderAccounts: state from a renewed token (old fingerprint) reads as not yet used', () => {
+  const out = renderAccounts({
+    credentials: creds,
+    state: {
+      version: 1,
+      credentials: {
+        'robin:subscription': {
+          fingerprint: 'ffffffffffff',
+          firstSeenAtMs: NOW - 100 * DAY,
+          lastUsedAtMs: NOW - 60_000,
+          limits: [{ status: 'rejected', scope: 'all', resetsAtMs: NOW + DAY, observedAtMs: NOW }],
+        },
+      },
+    },
+    mode: 'auto',
+    nowMs: NOW,
+  });
+  const robin = out.split('\n')[1];
+  assert.match(robin, /all ok · opus ok · sonnet ok · not yet used$/);
+});
+
+test('renderAccounts: an auth rejection reads as refused, not limited', () => {
+  const out = renderAccounts({
+    credentials: creds,
+    state: {
+      version: 1,
+      credentials: {
+        'robin:subscription': {
+          fingerprint: creds[0].fingerprint,
+          firstSeenAtMs: NOW - DAY,
+          limits: [
+            {
+              status: 'rejected',
+              scope: 'all',
+              reason: 'auth',
+              resetsAtMs: NOW + 6 * 3_600_000,
+              observedAtMs: NOW,
+            },
+          ],
+        },
+      },
+    },
+    mode: 'auto',
+    nowMs: NOW,
+  });
+  const robin = out.split('\n')[1];
+  assert.match(robin, /refused \(auth\) — run claude setup-token · expires in 364d/);
+  assert.doesNotMatch(robin, /limited until/);
 });
 
 test('renderAccounts: manual mode marks the pinned credential', () => {

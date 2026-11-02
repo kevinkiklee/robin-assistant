@@ -128,12 +128,14 @@ export function selectCredential(args: {
 
   const strict = cls !== 'interactive';
   const blockers: Assessment[] = [];
-  // Strict classes borrow `shared` only once `robin` is rejected (and, for
-  // background, not when the rejection is a refused token).
+  // Strict classes borrow `shared` only once `robin` is rejected at scope
+  // `all` (and, for background, not when the rejection is a refused token).
+  // A model-scoped limit defers instead, so the dispatcher's model fallback
+  // runs on robin rather than the operator's account carrying the work.
   let robinGate: Assessment | undefined;
   const robinSub = find('subscription', 'robin');
   if (strict && robinSub && mode === 'auto') {
-    robinGate = assess(state.credentials[robinSub.id], family, nowMs);
+    robinGate = assess(state.credentials[robinSub.id], 'other', nowMs);
   }
 
   // Brief reaches the credit tier only when every configured subscription is

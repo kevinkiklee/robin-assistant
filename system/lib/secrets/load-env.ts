@@ -59,12 +59,13 @@ function applyFile(path: string, env: NodeJS.ProcessEnv): { loaded: number; over
 }
 
 /**
- * Read `<userDataDir>/config/secrets/.env`, then `daemon.env` (the VM's
- * systemd-only credential file), and populate `process.env` for any key not
- * already set. The shell wins over `.env`, which wins over `daemon.env`.
- * Absent files are no-ops — secrets may also come from launchd, the shell, or
- * 1Password. `path`/`loaded`/`overwritten` describe `.env`; `daemonEnvLoaded`
- * counts keys taken from `daemon.env`.
+ * Read `<userDataDir>/config/secrets/daemon.env` (the VM's credential file,
+ * never exported in a shell), then `.env`, and populate `process.env` for any
+ * key not already set. The shell wins over `daemon.env`, which wins over
+ * `.env` — the same order the VM daemon sees, since systemd sets `daemon.env`
+ * before the daemon reads `.env`. Absent files are no-ops — secrets may also
+ * come from launchd, the shell, or 1Password. `path`/`loaded`/`overwritten`
+ * describe `.env`; `daemonEnvLoaded` counts keys taken from `daemon.env`.
  *
  * Format: standard KEY=VALUE lines, `#` comments, optional `export `, optional
  * matched single- or double-quote wrapping. Multiline values are not supported.
@@ -75,7 +76,7 @@ export function loadEnvFile(
 ): LoadEnvResult {
   const dir = join(userDataDir, 'config', 'secrets');
   const path = join(dir, '.env');
-  const main = applyFile(path, env);
   const daemon = applyFile(join(dir, 'daemon.env'), env);
+  const main = applyFile(path, env);
   return { path, ...main, daemonEnvLoaded: daemon.loaded };
 }

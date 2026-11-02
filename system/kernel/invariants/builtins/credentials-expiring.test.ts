@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fingerprint } from '../../../agent/credentials/config.ts';
 import { CredentialStateStore, statePath } from '../../../agent/credentials/state.ts';
 import { loadEnvFile } from '../../../lib/secrets/load-env.ts';
 import { credentialsExpiringInvariant } from './credentials-expiring.ts';
@@ -11,12 +12,16 @@ const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 10, 2);
 const ENV = { CLAUDE_TOKEN_ROBIN: 'sk-ant-oat01-FAKE-robin' };
 
-function withState(daysLeft: number | null, fn: (userData: string) => Promise<void>) {
+function withState(
+  daysLeft: number | null,
+  fn: (userData: string) => Promise<void>,
+  fp = fingerprint(ENV.CLAUDE_TOKEN_ROBIN),
+) {
   const userData = mkdtempSync(join(tmpdir(), 'cred-exp-'));
   if (daysLeft !== null) {
     new CredentialStateStore(statePath(userData)).update((s) => {
       s.credentials['robin:subscription'] = {
-        fingerprint: 'x',
+        fingerprint: fp,
         firstSeenAtMs: NOW - (365 - daysLeft) * DAY,
         limits: [],
       };
@@ -83,3 +88,17 @@ test('agent.credentials_expiring: sees a token that lives only in daemon.env', (
     assert.equal(r.ok, false);
     assert.match(r.message ?? '', /without CLAUDE_TOKEN_ROBIN/);
   }));
+
+test("agent.credentials_expiring: a renewed token ignores the old fingerprint's age", () =>
+  withState(
+    20,
+    async (userData) => {
+      const r = await credentialsExpiringInvariant({
+        userData,
+        env: ENV,
+        nowMs: () => NOW,
+      }).check();
+      assert.equal(r.ok, true);
+    },
+    fingerprint('sk-ant-oat01-FAKE-old'),
+  ));

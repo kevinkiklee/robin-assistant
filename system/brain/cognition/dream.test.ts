@@ -984,6 +984,24 @@ test('composeLearningDigest: returns correct structured object', () => {
   closeDb(db);
 });
 
+test('composeLearningDigest: quota-deferred rows are not runs or failures; their spend counts', () => {
+  const db = freshDb();
+  const { now } = seedDigestDb(db);
+  const recentTs = new Date(now.getTime() - 1800_000).toISOString();
+  db.prepare(
+    `INSERT INTO agent_usage (ts, surface, label, input_tokens, output_tokens, cost_usd, turns, status, subtype)
+     VALUES (?, 'autonomous', 'biographer', 3, 0, 0.25, 0, 'capped', 'quota')`,
+  ).run(recentTs);
+  const digest = composeLearningDigest(db, baseDreamResult(), now);
+  const autonomous = digest.handlerActivity.find((h) => h.surface === 'autonomous');
+  assert.equal(autonomous?.runs, 2);
+  assert.equal(autonomous?.cost, 4.75);
+  // the seeded capped row (subtype NULL) still lists; the quota deferral does not
+  assert.equal(digest.failedRuns.filter((r) => r.status === 'capped').length, 1);
+  assert.equal(digest.failedRuns.length, 2);
+  closeDb(db);
+});
+
 test('composeLearningDigest: persists a dream.learning_digest event', () => {
   const db = freshDb();
   const { now } = seedDigestDb(db);

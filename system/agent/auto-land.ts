@@ -75,6 +75,7 @@ const PROTECTED: readonly RegExp[] = [
   /^system\/scripts\//,
   /^system\/brain\/cognition\/capture/,
   /^system\/brain\/cognition\/(reliability-audit|jobs)\.ts$/,
+  /^system\/kernel\/invariants\/builtins\/credentials-expiring/, // reads raw tokens
   /\/migrations\//,
 ];
 

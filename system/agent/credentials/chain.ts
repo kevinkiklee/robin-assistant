@@ -543,6 +543,7 @@ async function halt(
     usage: { inputTokens: 0, outputTokens: 0 },
     raw: null,
     limitHit: true,
+    toolUsed: false,
     ...(stopped ? { stopped: true } : { deferred: true }),
   };
   return prior ? { ...base, costUsd: prior.costUsd, usage: prior.usage } : base;
@@ -603,7 +604,8 @@ export async function runSdkWithCredentials(
     record(handle, c, result, signal, now());
     await afterCall(ctx, c, result, signal);
 
-    const noWork = result.turns <= 1 && result.structured === undefined;
+    // A call that used a tool may have had side effects: never retry it.
+    const noWork = result.turns <= 1 && result.structured === undefined && !result.toolUsed;
     if (!(signal.hard && noWork)) {
       return withPriorSpend({ ...result, credential: c.id }, prior);
     }

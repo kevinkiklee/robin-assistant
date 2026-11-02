@@ -1331,12 +1331,15 @@ export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Dat
   const today = now.toISOString().slice(0, 10);
   const cutoff24h = new Date(now.getTime() - 24 * 3600_000).toISOString();
 
-  // a. Handler activity summary (last 24h)
+  // a. Handler activity summary (last 24h). A credential-chain quota deferral
+  // (capped + subtype 'quota') is not a run; its failed-attempt spend still counts.
   let handlerActivity: HandlerActivityRow[] = [];
   try {
     handlerActivity = db
       .prepare(
-        `SELECT surface, count(*) AS runs, COALESCE(sum(cost_usd), 0) AS cost,
+        `SELECT surface,
+                sum(CASE WHEN COALESCE(status='capped' AND subtype='quota', 0) THEN 0 ELSE 1 END) AS runs,
+                COALESCE(sum(cost_usd), 0) AS cost,
                 COALESCE(sum(turns), 0) AS turns, group_concat(DISTINCT label) AS handlers
          FROM agent_usage WHERE ts > ? GROUP BY surface`,
       )
@@ -1552,13 +1555,14 @@ export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Dat
     // `recommendations`/`metrics_daily` table missing — degraded digest stays valid.
   }
 
-  // e. Recent agent-run failures (last 24h)
+  // e. Recent agent-run failures (last 24h); quota deferrals are not runs.
   let failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }> = [];
   try {
     failedRuns = db
       .prepare(
         `SELECT surface, label, status, ts FROM agent_usage
          WHERE ts > ? AND status IS NOT NULL AND status != 'success'
+           AND NOT COALESCE(status='capped' AND subtype='quota', 0)
          ORDER BY ts DESC LIMIT 20`,
       )
       .all(cutoff24h) as typeof failedRuns;

@@ -174,6 +174,25 @@ describe('selectCredential', () => {
       'robin:subscription',
     );
   });
+  it('model-scoped robin rejection never borrows for strict classes', () => {
+    const l = { 'robin:subscription': { scope: 'sonnet' as const, resetsAtMs: reset } };
+    const sonnet = { model: 'claude-sonnet-5-5' };
+    const opus = { model: 'claude-opus-5-5[1m]' };
+    assert.equal(pick(l, 'background', sonnet).kind, 'defer');
+    assert.equal(pick(l, 'brief', sonnet).kind, 'defer');
+    assert.equal(idOf(pick(l, 'background', opus)), 'robin:subscription');
+    assert.equal(idOf(pick(l, 'brief', opus)), 'robin:subscription');
+    assert.equal(idOf(pick(l, 'interactive', sonnet)), 'shared:subscription');
+  });
+  it('all-scope robin rejection still borrows shared for background', () =>
+    assert.equal(
+      idOf(
+        pick({ 'robin:subscription': { resetsAtMs: reset } }, 'background', {
+          model: 'claude-sonnet-5-5',
+        }),
+      ),
+      'shared:subscription',
+    ));
   it('expired rejection clears', () =>
     assert.equal(
       idOf(pick({ 'robin:subscription': { resetsAtMs: NOW - 1 } }, 'interactive')),

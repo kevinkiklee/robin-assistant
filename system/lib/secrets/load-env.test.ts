@@ -63,16 +63,19 @@ PLAIN=plain
   assert.equal(env.PLAIN, 'plain');
 });
 
-test('loadEnvFile: daemon.env loads; .env wins over it; process env wins over both', () => {
+test('loadEnvFile: daemon.env wins over .env (as on the VM); process env wins over both', () => {
   const dir = freshUserData();
   writeFileSync(join(dir, 'config', 'secrets', 'daemon.env'), 'A=daemon\nB=daemon\nC=daemon\n');
-  writeFileSync(join(dir, 'config', 'secrets', '.env'), 'B=dotenv\nC=dotenv\n');
+  writeFileSync(join(dir, 'config', 'secrets', '.env'), 'B=dotenv\nC=dotenv\nD=dotenv\n');
   const env: NodeJS.ProcessEnv = { C: 'shell' };
   const r = loadEnvFile(dir, env);
   assert.equal(env.A, 'daemon');
-  assert.equal(env.B, 'dotenv');
+  assert.equal(env.B, 'daemon');
   assert.equal(env.C, 'shell');
-  assert.equal(r.daemonEnvLoaded, 1);
+  assert.equal(env.D, 'dotenv');
+  assert.equal(r.daemonEnvLoaded, 2);
+  assert.equal(r.loaded, 1);
+  assert.equal(r.overwritten, 2);
 });
 
 test('loadEnvFile: missing daemon.env is a no-op', () => {

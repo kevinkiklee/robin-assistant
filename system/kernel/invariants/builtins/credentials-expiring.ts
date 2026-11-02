@@ -41,7 +41,10 @@ export function credentialsExpiringInvariant(opts: {
       }
       const state = new CredentialStateStore(statePath(opts.userData)).read();
       for (const c of creds) {
-        const first = state.credentials[c.id]?.firstSeenAtMs;
+        const cs = state.credentials[c.id];
+        // A renewed token (new fingerprint) starts fresh: not yet used.
+        if (!cs || cs.fingerprint !== c.fingerprint) continue;
+        const first = cs.firstSeenAtMs;
         if (first === undefined) continue;
         const left = daysLeft(first, nowMs);
         if (left <= WARN_DAYS) {

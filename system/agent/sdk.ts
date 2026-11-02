@@ -39,6 +39,11 @@ export interface SdkResult {
   limitHit: boolean;
   /** First auth-class `error` carried by a streamed assistant message. */
   authError?: string;
+  /**
+   * True when any streamed assistant message carried a `tool_use` block: the
+   * call may have had side effects, so the credential chain never retries it.
+   */
+  toolUsed: boolean;
 }
 
 export interface RunSdkInput {
@@ -148,6 +153,20 @@ function observeRateLimit(info: unknown): RateLimitObservation | undefined {
   if (typeof i.utilization === 'number') obs.utilization = i.utilization;
   if (typeof i.rateLimitType === 'string') obs.type = i.rateLimitType;
   return obs;
+}
+
+/** A `tool_use` (or server-side `server_tool_use`) block among an assistant message's content. */
+function hasToolUse(content: unknown): boolean {
+  return (
+    Array.isArray(content) &&
+    content.some(
+      (b) =>
+        !!b &&
+        typeof b === 'object' &&
+        ((b as { type?: unknown }).type === 'tool_use' ||
+          (b as { type?: unknown }).type === 'server_tool_use'),
+    )
+  );
 }
 
 /** One API turn's usage as seen on the stream, keyed by `message.id`. */
@@ -300,9 +319,11 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
   const running = new StreamTally();
   let rateLimit: RateLimitObservation | undefined;
   let authError: string | undefined;
+  let toolUsed = false;
   const seen = () => ({
     ...(rateLimit ? { rateLimit } : {}),
     ...(authError ? { authError } : {}),
+    toolUsed,
   });
   try {
     for await (const m of stream) {
@@ -313,6 +334,7 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
         result = msg;
       } else if (msg.type === 'assistant' && msg.message) {
         running.add(msg.message);
+        if (!toolUsed && hasToolUse(msg.message.content)) toolUsed = true;
         if (!authError && typeof msg.error === 'string' && AUTH_ERRORS.has(msg.error)) {
           authError = msg.error;
         }

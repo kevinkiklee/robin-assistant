@@ -44,8 +44,8 @@ The bootstrap already enables it; log out and back in if you see the line.
 ## 4. Secrets
 
 Tokens go in `~/robin-assistant-v3/user-data/config/secrets/daemon.env`
-(mode `0600`), and nowhere else. It is loaded only by the `robin-daemon`
-systemd unit (`EnvironmentFile=`). Fill in by hand:
+(mode `0600`), and nowhere else. It is daemon-only in one sense: it is never
+exported in a shell. Fill in by hand:
 
 ```
 CLAUDE_TOKEN_ROBIN=...        # account 2 (Robin's default), from claude setup-token
@@ -54,10 +54,11 @@ CLAUDE_CREDIT_KEY_ROBIN=...   # API key, Console org linked to account 2 (no aut
 CLAUDE_CREDIT_KEY_SHARED=...  # API key, Console org linked to account 1 (no auto-reload)
 ```
 
-Fill these, then `systemctl --user restart robin-daemon`. `robin accounts`
-`robin` commands (`accounts`, `doctor`, MCP-launched agents) read `daemon.env` too, so
-nothing needs exporting. `robin accounts` shows each credential's limits, expiry and last use; `robin doctor` warns
-30 days before a token lapses.
+Fill these, then `systemctl --user restart robin-daemon`. The daemon gets the
+file through its systemd unit (`EnvironmentFile=`); every `robin` CLI command and
+MCP server reads it itself at startup, so nothing needs exporting. `robin
+accounts` shows each credential's limits, expiry and last use; `robin doctor`
+warns 30 days before a token lapses.
 
 Never put them in `~/.bashrc` or any shell profile. `CLAUDE_CODE_OAUTH_TOKEN`
 outranks a normal `/login`, so a shell-wide export would silently put your own

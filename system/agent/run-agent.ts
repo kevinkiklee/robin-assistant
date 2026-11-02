@@ -209,6 +209,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
       usage: { ...EMPTY_USAGE },
       raw: null,
       limitHit: false,
+      toolUsed: false,
     };
   } finally {
     clearTimeout(deadline);

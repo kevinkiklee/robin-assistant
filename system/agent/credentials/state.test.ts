@@ -72,3 +72,14 @@ test('state: read normalises malformed credential entries', () => {
     },
   });
 });
+
+test('state: read drops limits whose observedAtMs is not a finite number (they would never expire)', () => {
+  const p = join(tmp(), 'x.json');
+  writeFileSync(
+    p,
+    '{"version":1,"credentials":{"a":{"fingerprint":"x","firstSeenAtMs":1,"limits":[{"status":"rejected","scope":"all"},{"status":"rejected","scope":"all","observedAtMs":"3"},{"status":"rejected","scope":"all","observedAtMs":null},{"status":"rejected","scope":"all","observedAtMs":4}]}}}',
+  );
+  assert.deepEqual(new CredentialStateStore(p).read().credentials.a.limits, [
+    { status: 'rejected', scope: 'all', observedAtMs: 4 },
+  ]);
+});

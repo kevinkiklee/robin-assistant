@@ -548,3 +548,37 @@ test('runSdk: credential source vars are stripped even without credentialEnv', a
   });
   assert.deepEqual(env, { PATH: '/b', ROBIN_INTERNAL_SDK: '1' });
 });
+
+test('runSdk: toolUsed is true once any assistant message carries a tool_use block', async () => {
+  const result = {
+    type: 'result',
+    subtype: 'success',
+    result: 'done',
+    num_turns: 1,
+    usage: { input_tokens: 1, output_tokens: 1 },
+  };
+  const withTool = () =>
+    fakeQuery([
+      { type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: 'looking' }] } },
+      {
+        type: 'assistant',
+        message: { id: 'm1', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
+      },
+      result,
+    ]);
+  const textOnly = () =>
+    fakeQuery([
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } },
+      result,
+    ]);
+  assert.equal((await runSdk({ prompt: 'x', queryFn: withTool })).toolUsed, true);
+  assert.equal((await runSdk({ prompt: 'x', queryFn: textOnly })).toolUsed, false);
+  // the no-result fallback carries it too
+  const aborted = () =>
+    fakeQuery([
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't', name: 'Bash' }] } },
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: aborted });
+  assert.equal(r.status, 'error');
+  assert.equal(r.toolUsed, true);
+});

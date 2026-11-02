@@ -30,6 +30,7 @@ const okResult: SdkResult = {
   usage: { inputTokens: 100, outputTokens: 20 },
   raw: null,
   limitHit: false,
+  toolUsed: false,
 };
 
 test('ClaudeAgentProvider: maps a success SdkResult to an InvokeResult', async () => {
@@ -351,4 +352,53 @@ test('ClaudeAgentProvider: an injected runSdk bypasses the chain even with crede
     if (prevDir === undefined) delete process.env.ROBIN_USER_DATA_DIR;
     else process.env.ROBIN_USER_DATA_DIR = prevDir;
   }
+});
+
+test('dispatcher: a sonnet-scoped robin limit defers the primary and the opus fallback runs on robin', async () => {
+  const NOW = 1_800_000_000_000;
+  const ROBIN = 'sk-ant-oat01-FAKE-robin';
+  const SHARED = 'sk-ant-oat01-FAKE-shared';
+  const dir = mkdtempSync(join(tmpdir(), 'robin-provider-scoped-'));
+  mkdirSync(dirname(statePath(dir)), { recursive: true });
+  writeFileSync(
+    statePath(dir),
+    JSON.stringify({
+      version: 1,
+      credentials: {
+        'robin:subscription': {
+          fingerprint: fingerprint(ROBIN),
+          firstSeenAtMs: NOW - 86_400_000,
+          limits: [
+            {
+              status: 'rejected',
+              scope: 'sonnet',
+              type: 'seven_day_sonnet',
+              observedAtMs: NOW - 60_000,
+              resetsAtMs: NOW + 3_600_000,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  const served: Array<{ model?: string; token?: string }> = [];
+  const chain = {
+    env: { CLAUDE_TOKEN_ROBIN: ROBIN, CLAUDE_TOKEN_SHARED: SHARED },
+    userData: () => dir,
+    mode: () => 'auto' as const,
+    now: () => NOW,
+    notify: async () => ({ delivered: true }),
+    runSdk: async (i: RunSdkInput) => {
+      served.push({ model: i.model, token: i.credentialEnv?.set.CLAUDE_CODE_OAUTH_TOKEN });
+      return okResult;
+    },
+  };
+  const d = new LLMDispatcher();
+  d.register('sonnet', new ClaudeAgentProvider({ model: 'claude-sonnet-5-5', chain }));
+  d.register('opus', new ClaudeAgentProvider({ model: 'claude-opus-5-5', chain }));
+  d.assign('reasoning', 'sonnet');
+  d.assignFallback('reasoning', 'opus');
+  const res = await d.invoke('reasoning', { messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(res.text, 'summary');
+  assert.deepEqual(served, [{ model: 'claude-opus-5-5', token: ROBIN }]);
 });

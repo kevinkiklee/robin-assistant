@@ -54,6 +54,7 @@ const okResult: SdkResult = {
   usage: { inputTokens: 200, outputTokens: 40 },
   raw: { type: 'result', subtype: 'success' },
   limitHit: false,
+  toolUsed: false,
 };
 
 test('runAgent: cap pre-flight returns capped WITHOUT calling the sdk', async () => {
@@ -194,6 +195,7 @@ test('runAgent: a timeout books the best-known (estimated) cost, not $0', async 
         usage: { inputTokens: 10, outputTokens: 900 },
         raw: null,
         limitHit: false,
+        toolUsed: false,
       } satisfies SdkResult;
     },
   });

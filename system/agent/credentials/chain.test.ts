@@ -40,6 +40,7 @@ function ok(over: Partial<SdkResult> = {}): SdkResult {
     usage: { inputTokens: 10, outputTokens: 5 },
     raw: null,
     limitHit: false,
+    toolUsed: false,
     ...over,
   };
 }
@@ -200,6 +201,15 @@ describe('runSdkWithCredentials', () => {
     assert.equal(h.calls.length, 1);
     assert.deepStrictEqual(res, { ...r, credential: 'robin:subscription' });
     assert.equal(h.state().credentials['robin:subscription'].limits[0].status, 'rejected');
+  });
+
+  it('no retry after a tool was used, even at turns <= 1', async () => {
+    const h = setup();
+    h.queue.push(limited({ turns: 0, toolUsed: true }));
+    const first = await h.call('interactive');
+    assert.equal(h.calls.length, 1);
+    assert.equal(first.credential, 'robin:subscription');
+    assert.equal(first.toolUsed, true);
   });
 
   it('no retry on a structured completion that reads as limited', async () => {
