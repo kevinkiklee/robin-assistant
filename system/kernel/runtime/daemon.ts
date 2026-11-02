@@ -57,6 +57,17 @@ const LEASE_REAPER_INTERVAL_MS = 60_000;
 // ride out a transient DB lock, short enough to resume promptly.
 const TICK_FAILURE_BACKOFF_MS = 5_000;
 
+/**
+ * Jobs that never leave the machine (no integration API, no LLM, no network),
+ * so they still run under `network.mode: local-only`. Everything else stays
+ * pending until the mode returns to `online`.
+ */
+export const LOCAL_ONLY_JOBS: readonly string[] = [
+  'retention.run',
+  'doctor.run',
+  'reliability-audit.run',
+];
+
 export interface DaemonRunOptions {
   foreground?: boolean;
   /** Override the HTTP hook/health port. Falls back to ROBIN_DAEMON_HTTP_PORT, then 41273. Use 0 to bind an OS-assigned port (useful in tests). */
@@ -187,6 +198,7 @@ export class Daemon {
 
     writeTelemetry(this.db, 'daemon.start', { version: VERSION }, { source: 'daemon' });
 
+    let tickNetworkMode: string = 'online';
     this.scheduler = new Scheduler({
       db: this.db,
       handlers: this.handlers,
@@ -199,8 +211,12 @@ export class Daemon {
       // not let cloud cognition fire and error/circuit-break every tick.
       isPaused: () => {
         const p = loadPolicies(userData);
+        tickNetworkMode = p.network.mode;
         return p.power.state !== 'active' || p.network.mode === 'offline';
       },
+      // Called right after isPaused in the same tick, so it reuses that parse
+      // instead of reading policies.yaml twice a second.
+      claimableNames: () => (tickNetworkMode === 'local-only' ? LOCAL_ONLY_JOBS : null),
       onError: (err, job) => this.log.error({ err, job: job.name }, 'job handler error'),
     });
 

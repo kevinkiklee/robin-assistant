@@ -59,15 +59,30 @@ export function schedulerProgressingInvariant(
         const hours = (idleMs / 3_600_000).toFixed(1);
         let state = 'active';
         let setBy: string | undefined;
+        let netMode = 'online';
+        let netSetBy: string | undefined;
         try {
           const p = loadPolicies(opts.userData);
           state = p.power.state;
           setBy = p.power.set_by;
+          netMode = p.network.mode;
+          netSetBy = p.network.set_by;
         } catch {
           // policies unreadable — fall through with defaults
         }
 
+        // Quiet hours and metered networks hold jobs on purpose; the monitor
+        // lifts the mode itself when the rule ends.
+        if (state === 'active' && netMode !== 'online' && netSetBy === 'auto') return { ok: true };
+
         const paused = state !== 'active';
+        if (!paused && netMode !== 'online') {
+          return {
+            ok: false,
+            message: `scheduler idle ${hours}h — network is '${netMode}'${netSetBy ? ` (set_by:${netSetBy})` : ''}; network-bound jobs are held`,
+            remediation: 'robin online',
+          };
+        }
         return {
           ok: false,
           message: paused

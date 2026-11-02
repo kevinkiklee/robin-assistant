@@ -40,9 +40,6 @@ Integration hot-reload shipped (`system/integrations/_runtime/watch.ts`): it deb
 ### 6. APFS-snapshot backups
 `robin db backup` still uses `wal_checkpoint(TRUNCATE)` + `VACUUM INTO` (`system/surfaces/cli/db.ts`). `system/lib/backup/` holds only a `.gitkeep`. APFS snapshots would be faster but need elevated permissions. This is worth doing only if a non-sudo path exists. Low priority.
 
-### 7. Metered-network auto-pause
-Battery-threshold auto-pause shipped (`system/lib/power-auto/monitor.ts`). Metered-SSID detection did not. `policies.yaml` already accepts `network.metered_ssids` and `network.on_metered` (`system/kernel/config/schema.ts`), but nothing reads them and nothing detects the current SSID. macOS doesn't expose metering reliably, so the user-tagged list is the plan. Low priority.
-
 ### 8. Security follow-ups (review of 2026-10-31)
 The 2026-10-31 review's high findings shipped: incognito in `captureSession` for every caller, the SessionEnd transcript gate, reserved event kinds on `remember`/`ingest`, fenced `recall`/`list` and integration results, look-alike fence tags neutralised, Discord `allowed_mentions`, the consent-form and redirect-allowlist fixes, and the auto-land scope and fs-write gates (see [Closed](#closed)). Still open, highest first:
 
@@ -92,7 +89,7 @@ Status of every item in the 2026-05-19 backlog, checked on 2026-10-29.
 | P2.3 APFS snapshots | **Open** | Open item 6 |
 | P2.4 DSPy sidecar | Not planned | See Not planned |
 | P2.5 Multi-account integrations | Shipped | `<name>--<instance>` in `system/integrations/_runtime/loader.ts` |
-| P2.6 Battery auto-pause / metered SSID | Battery shipped; SSID open | open item 7 |
+| P2.6 Battery auto-pause / metered SSID | Shipped 2026-11-02, without SSIDs | `system/lib/power-auto/rules.ts`: battery, Low Power Mode, quiet hours, and metered networks via macOS's expensive/constrained path flags (`netpath.swift`). An SSID list was dropped: macOS redacts the SSID for background processes |
 | P2.7 Codex adapter | Not planned | See Not planned |
 | T.1 CI workflow | Shipped | `.github/workflows/tests.yml`, `gitleaks.yml` |
 | T.2 Docker image | Shipped | `Dockerfile` |

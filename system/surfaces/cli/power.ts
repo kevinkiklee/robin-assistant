@@ -22,6 +22,7 @@ export function runPause(): void {
   p.power.state = 'paused';
   p.power.set_by = 'user';
   p.power.since = new Date().toISOString();
+  delete p.power.reason;
   writePolicies(userData, p);
   console.log('Robin paused. Scheduled jobs will not run until `robin resume`.');
 }
@@ -32,6 +33,7 @@ export function runResume(): void {
   p.power.state = 'active';
   p.power.set_by = 'user';
   p.power.since = new Date().toISOString();
+  delete p.power.reason;
   writePolicies(userData, p);
   console.log('Robin active.');
 }
@@ -57,18 +59,30 @@ export function runIncognito(durationStr?: string): void {
   console.log(`Incognito ${durationStr ?? 'permanent'} — capture disabled.`);
 }
 
+/**
+ * A manual mode change: the power monitor won't override it until a quiet-hours
+ * or metered rule next starts, and never treats it as its own to undo.
+ */
+function setNetworkManually(p: ReturnType<typeof loadPolicies>, mode: 'online' | 'offline'): void {
+  p.network.mode = mode;
+  p.network.set_by = 'user';
+  p.network.since = new Date().toISOString();
+  delete p.network.reason;
+  delete p.network.prior_mode;
+}
+
 export function runOffline(): void {
   const userData = resolveUserDataDir();
   const p = loadPolicies(userData);
-  p.network.mode = 'offline';
+  setNetworkManually(p, 'offline');
   writePolicies(userData, p);
-  console.log('Robin offline — no outbound network calls.');
+  console.log('Robin offline — scheduled work halted until `robin online`.');
 }
 
 export function runOnline(): void {
   const userData = resolveUserDataDir();
   const p = loadPolicies(userData);
-  p.network.mode = 'online';
+  setNetworkManually(p, 'online');
   writePolicies(userData, p);
   console.log('Robin online.');
 }
@@ -86,8 +100,10 @@ export function runStatus(json: boolean = false): void {
   }`;
   /* biome-ignore-start lint/suspicious/noConsole: CLI output */
   console.log('Robin status:');
-  console.log(`  power:   ${p.power.state}`);
+  const auto = (set: string | undefined, reason: string | undefined) =>
+    set === 'auto' && reason ? ` (auto: ${reason})` : '';
+  console.log(`  power:   ${p.power.state}${auto(p.power.set_by, p.power.reason)}`);
   console.log(captureLine);
-  console.log(`  network: ${p.network.mode}`);
+  console.log(`  network: ${p.network.mode}${auto(p.network.set_by, p.network.reason)}`);
   /* biome-ignore-end lint/suspicious/noConsole: CLI output */
 }

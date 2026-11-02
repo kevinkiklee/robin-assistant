@@ -38,6 +38,11 @@ export function enqueueJob(db: RobinDb, input: EnqueueInput): number {
 export interface ClaimOpts {
   workerId: string;
   leaseMs: number;
+  /**
+   * Claim only jobs with these names; the rest stay pending until a later tick
+   * without the filter. Used by `network.mode: local-only`. Omit for no filter.
+   */
+  onlyNames?: readonly string[];
 }
 
 export function claimNextJob(db: RobinDb, opts: ClaimOpts): JobRow | null {
@@ -55,12 +60,14 @@ export function claimNextJob(db: RobinDb, opts: ClaimOpts): JobRow | null {
        SELECT id FROM jobs
         WHERE state = 'pending'
           AND scheduled_at <= ?
+          AND (? IS NULL OR name IN (SELECT value FROM json_each(?)))
         ORDER BY scheduled_at, id
         LIMIT 1
      )
      RETURNING *
   `);
-  const row = stmt.get(leaseUntil, opts.workerId, nowIso) as JobRow | undefined;
+  const only = opts.onlyNames ? JSON.stringify(opts.onlyNames) : null;
+  const row = stmt.get(leaseUntil, opts.workerId, nowIso, only, only) as JobRow | undefined;
   return row ?? null;
 }
 

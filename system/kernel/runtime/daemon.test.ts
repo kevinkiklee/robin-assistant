@@ -175,3 +175,10 @@ test('daemon: hook receipts are not persisted as invariant.check events', async 
 
   assert.equal(n.n, 0, 'hook receipts must not be written as invariant.check events');
 });
+
+test('LOCAL_ONLY_JOBS names real cognition jobs (a rename would silently hold it in local-only)', async () => {
+  const { LOCAL_ONLY_JOBS } = await import('./daemon.ts');
+  const { COGNITION_JOBS } = await import('../../brain/cognition/jobs.ts');
+  const names = new Set(COGNITION_JOBS.map((j) => j.name));
+  for (const n of LOCAL_ONLY_JOBS) assert.ok(names.has(n), `${n} is not a cognition job`);
+});

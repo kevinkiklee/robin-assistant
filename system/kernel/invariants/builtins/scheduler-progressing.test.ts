@@ -71,3 +71,25 @@ test('scheduler.progressing: FAILS with wedge wording when idle while active', a
   assert.equal(r.remediation, 'restart daemon');
   closeDb(db);
 });
+
+test('scheduler.progressing: ok while quiet hours or a metered network hold jobs (auto)', async () => {
+  const { db, dir } = freshSetup(
+    'power:\n  state: active\nnetwork:\n  mode: local-only\n  set_by: auto\n  reason: quiet_hours\n',
+  );
+  insertJobAt(db, '2026-05-29 03:00:00'); // 7h idle, by design
+  const r = await schedulerProgressingInvariant(db, { userData: dir, now: () => NOW }).check();
+  assert.equal(r.ok, true);
+  closeDb(db);
+});
+
+test('scheduler.progressing: a forgotten manual offline names the network, not a wedge', async () => {
+  const { db, dir } = freshSetup(
+    'power:\n  state: active\nnetwork:\n  mode: offline\n  set_by: user\n',
+  );
+  insertJobAt(db, '2026-05-29 03:00:00');
+  const r = await schedulerProgressingInvariant(db, { userData: dir, now: () => NOW }).check();
+  assert.equal(r.ok, false);
+  assert.match(r.message ?? '', /network is 'offline'/);
+  assert.equal(r.remediation, 'robin online');
+  closeDb(db);
+});

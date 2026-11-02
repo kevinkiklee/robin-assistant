@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+export const networkModeSchema = z.enum(['online', 'local-only', 'offline']);
+export type NetworkMode = z.infer<typeof networkModeSchema>;
+
 export const powerSchema = z.object({
   state: z.enum(['active', 'paused', 'off']).default('active'),
   // Provenance of the current state, persisted so it survives daemon restarts.
@@ -10,6 +13,9 @@ export const powerSchema = z.object({
   // pre-existing policies.yaml files (and tests) parse without them.
   set_by: z.enum(['user', 'auto']).optional(),
   since: z.string().optional(),
+  // Why the power monitor applied the current state (`battery`, `low_power_mode`).
+  // Only meaningful with `set_by: auto`; cleared on any manual change.
+  reason: z.string().optional(),
   auto: z
     .object({
       on_low_power_mode: z.enum(['active', 'paused']).optional(),
@@ -19,7 +25,7 @@ export const powerSchema = z.object({
         .object({
           start: z.string().regex(/^\d{2}:\d{2}$/),
           end: z.string().regex(/^\d{2}:\d{2}$/),
-          mode: z.enum(['online', 'local-only', 'offline']).default('local-only'),
+          mode: networkModeSchema.default('local-only'),
         })
         .optional(),
     })
@@ -32,10 +38,24 @@ export const captureSchema = z.object({
   blocked_paths: z.array(z.string()).default([]),
 });
 
+// `mode` gates the scheduler: `offline` halts it, `local-only` lets through only
+// jobs that never leave the machine (LOCAL_ONLY_JOBS in kernel/runtime/daemon.ts).
+// The power monitor switches it for `power.auto.quiet_hours` and `on_metered`,
+// recording provenance like `power.set_by` so it never overrides a manual choice
+// inside the same rule window and can restore the mode it replaced.
 export const networkSchema = z.object({
-  mode: z.enum(['online', 'local-only', 'offline']).default('online'),
-  metered_ssids: z.array(z.string()).default([]),
-  on_metered: z.enum(['online', 'local-only', 'offline']).optional(),
+  mode: networkModeSchema.default('online'),
+  // Applied when macOS reports the current network path as expensive (Personal
+  // Hotspot, cellular) or constrained (Low Data Mode, set per Wi-Fi network in
+  // System Settings). SSIDs aren't readable by a background process on current
+  // macOS, so there is no SSID list.
+  on_metered: networkModeSchema.optional(),
+  set_by: z.enum(['user', 'auto']).optional(),
+  since: z.string().optional(),
+  // Active auto rules when set_by is auto: 'quiet_hours', 'metered', or both.
+  reason: z.string().optional(),
+  // The mode the monitor replaced; restored when the last rule clears.
+  prior_mode: networkModeSchema.optional(),
 });
 
 // Per-integration staleness alerting overrides for the integration-staleness

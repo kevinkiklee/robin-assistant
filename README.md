@@ -218,7 +218,7 @@ All user-editable config lives in `user-data/config/`:
 
 - `models.yaml` — LLM role → provider + model mapping
 - `operator.yaml` — who you are, kept out of the public code: `name`, a short `context` paragraph for the biographer, `aliases` (handles you go by), `private_terms` (words that must never appear in tracked files; a guard test checks), and `home: { lat, lng, label, tide_station, taf_station }` for weather, tides and sky alerts. Optional; without it prompts say "the user" and location-based features skip. Restart the daemon after editing it
-- `policies.yaml` — power/capture/network state, auto-policies (battery, quiet hours), alerts, notifications, Linear settings, biographer gating, behavior/recommendation/scout switches, and the agent block (master switch, daily caps, session defaults, `auto_land`)
+- `policies.yaml` — power/capture/network state, auto-policies (battery, Low Power Mode, quiet hours, metered networks), alerts, notifications, Linear settings, biographer gating, behavior/recommendation/scout switches, and the agent block (master switch, daily caps, session defaults, `auto_land`)
 - `hardware.yaml` — detected hardware profile (written by `robin init`)
 - `recall-topics.yaml` — auto-recall's keyword topic → canonical-doc map (ships empty)
 - `secrets/.env` — environment-style secrets (mode 0600). Every entry point (daemon, MCP servers, scripts) loads it at startup.

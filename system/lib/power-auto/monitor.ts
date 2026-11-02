@@ -5,7 +5,14 @@ import { loadPolicies } from '../../kernel/config/load.ts';
 import type { Policies } from '../../kernel/config/schema.ts';
 import { createLogger } from '../logging/logger.ts';
 import { resolveUserDataDir } from '../paths.ts';
-import { type BatteryState, readBatteryStateMacOS } from './macos.ts';
+import {
+  type BatteryState,
+  type NetworkPathState,
+  readBatteryStateMacOS,
+  readLowPowerModeMacOS,
+  readNetworkPathMacOS,
+} from './macos.ts';
+import { decideNetwork, decidePower } from './rules.ts';
 
 const CHECK_INTERVAL_MS = 30_000; // every 30s
 
@@ -13,11 +20,18 @@ export interface PowerAutoMonitorOptions {
   pollIntervalMs?: number;
   /** Optional override for testing — read battery state from this function instead of pmset */
   readBattery?: () => Promise<BatteryState>;
+  /** Test override for the Low Power Mode probe. */
+  readLowPowerMode?: () => Promise<boolean | null>;
+  /** Test override for the network-path (metered) probe. */
+  readNetworkPath?: () => Promise<NetworkPathState>;
+  /** Test override for the clock. */
+  now?: () => Date;
 }
 
 export class PowerAutoMonitor {
   private timer: NodeJS.Timeout | null = null;
   private log = createLogger({ module: 'power-auto' });
+  private meteredSince: Date | null = null;
 
   constructor(private opts: PowerAutoMonitorOptions = {}) {}
 
@@ -32,6 +46,9 @@ export class PowerAutoMonitor {
         {
           auto_resume_on_ac: policies.power.auto.auto_resume_on_ac ?? true,
           on_battery_below_pct: policies.power.auto.on_battery_below_pct ?? null,
+          on_low_power_mode: policies.power.auto.on_low_power_mode ?? null,
+          quiet_hours: policies.power.auto.quiet_hours ?? null,
+          on_metered: policies.network.on_metered ?? null,
         },
         'power auto-monitor started',
       );
@@ -60,59 +77,50 @@ export class PowerAutoMonitor {
     } catch {
       return; // no config to act on
     }
-    const threshold = policies.power.auto.on_battery_below_pct;
-    const autoResume = policies.power.auto.auto_resume_on_ac ?? true;
+    const now = this.opts.now?.() ?? new Date();
+    const auto = policies.power.auto;
 
-    const reader = this.opts.readBattery ?? readBatteryStateMacOS;
-    const battery = await reader();
-    if (!battery.available || battery.percent === null) return;
-
-    const onBattery = !battery.charging;
-
-    // Auto-PAUSE requires a configured battery threshold (opt-in). Only auto-pause
-    // an active daemon — never clobber a state the user set.
-    if (
-      threshold !== undefined &&
-      onBattery &&
-      battery.percent < threshold &&
-      policies.power.state === 'active'
-    ) {
-      this.applyState(userData, policies, 'paused', 'auto');
-      this.log.warn({ percent: battery.percent, threshold }, 'auto-pause: battery below threshold');
-      return;
+    // Probe only what a configured rule needs: each probe is a subprocess.
+    const battery = await (this.opts.readBattery ?? readBatteryStateMacOS)();
+    const lowPowerMode =
+      auto.on_low_power_mode === 'paused'
+        ? await (this.opts.readLowPowerMode ?? readLowPowerModeMacOS)()
+        : null;
+    let metered: boolean | null = null;
+    if (policies.network.on_metered) {
+      const path = await (this.opts.readNetworkPath ?? readNetworkPathMacOS)();
+      metered = path.available ? path.metered : null;
     }
+    // In-memory, so a daemon restart restarts the stretch: a manual override made
+    // while on a metered network is re-applied once after a restart.
+    if (metered === true) this.meteredSince ??= now;
+    else this.meteredSince = null;
 
-    // Auto-RESUME when power is restored — but ONLY for a pause this monitor applied
-    // (`set_by: 'auto'`). Provenance lives in policies.yaml, so this now fires across
-    // daemon restarts (the previous in-memory flag reset on every restart, which is
-    // how a transient auto-pause could strand Robin paused indefinitely). Decoupled
-    // from `on_battery_below_pct` so `auto_resume_on_ac` isn't silently inert without
-    // a pause threshold. A manual pause (`set_by: 'user'`) is deliberately left alone.
-    if (
-      !onBattery &&
-      autoResume &&
-      policies.power.state === 'paused' &&
-      policies.power.set_by === 'auto'
-    ) {
-      this.applyState(userData, policies, 'active', 'auto');
-      this.log.info(
-        { percent: battery.percent, charging: battery.charging },
-        'auto-resume: power restored (auto-managed pause cleared)',
+    const powerPatch = decidePower(policies.power, { now, battery, lowPowerMode });
+    const networkPatch = decideNetwork(policies.network, auto.quiet_hours, {
+      now,
+      metered,
+      meteredSince: this.meteredSince,
+    });
+    if (!powerPatch && !networkPatch) return;
+
+    const next: Policies = {
+      ...policies,
+      power: powerPatch ? { ...policies.power, ...powerPatch } : policies.power,
+      network: networkPatch ? { ...policies.network, ...networkPatch } : policies.network,
+    };
+    writeFileSync(join(userData, 'config', 'policies.yaml'), stringifyYaml(next));
+    if (powerPatch) {
+      this.log.warn(
+        { state: powerPatch.state, reason: powerPatch.reason ?? null, percent: battery.percent },
+        powerPatch.state === 'paused' ? 'auto-pause' : 'auto-resume',
       );
     }
-  }
-
-  private applyState(
-    userData: string,
-    policies: ReturnType<typeof loadPolicies>,
-    state: 'active' | 'paused',
-    setBy: 'auto' | 'user',
-  ): void {
-    const path = join(userData, 'config', 'policies.yaml');
-    const next = {
-      ...policies,
-      power: { ...policies.power, state, set_by: setBy, since: new Date().toISOString() },
-    };
-    writeFileSync(path, stringifyYaml(next));
+    if (networkPatch) {
+      this.log.warn(
+        { from: policies.network.mode, to: networkPatch.mode, reason: networkPatch.reason ?? null },
+        'auto network mode',
+      );
+    }
   }
 }

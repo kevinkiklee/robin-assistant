@@ -71,3 +71,15 @@ test('recoverDeadWorkerLeases skips child-held leases but resets stale daemon le
   assert.strictEqual(rowA.claimed_by, 'child:4242');
   closeDb(db);
 });
+
+test('claimNextJob: onlyNames claims only listed jobs and leaves the rest pending', () => {
+  const db = freshDb();
+  enqueueJob(db, { name: 'biographer.run', trigger_kind: 'cron', scheduled_at: past() });
+  enqueueJob(db, { name: 'retention.run', trigger_kind: 'cron', scheduled_at: past() });
+  const opts = { workerId: 'w', leaseMs: 60_000 };
+  const local = claimNextJob(db, { ...opts, onlyNames: ['retention.run'] });
+  assert.equal(local?.name, 'retention.run');
+  assert.equal(claimNextJob(db, { ...opts, onlyNames: ['retention.run'] }), null);
+  assert.equal(claimNextJob(db, opts)?.name, 'biographer.run', 'held job runs once unfiltered');
+  closeDb(db);
+});

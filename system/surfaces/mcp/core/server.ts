@@ -1022,9 +1022,9 @@ export function buildToolCallbacks(deps: ToolCallbackDeps): Map<string, ToolCall
       // and `since` feeds the scheduler-stall alarm + status output.
       const since = new Date().toISOString();
       if (action === 'pause')
-        next.power = { ...next.power, state: 'paused', set_by: 'user', since };
+        next.power = { ...next.power, state: 'paused', set_by: 'user', since, reason: undefined };
       else if (action === 'resume')
-        next.power = { ...next.power, state: 'active', set_by: 'user', since };
+        next.power = { ...next.power, state: 'active', set_by: 'user', since, reason: undefined };
       else if (action === 'incognito') {
         next.capture = { ...next.capture, enabled: false };
         if (duration && duration !== 'permanent') {
@@ -1039,8 +1039,18 @@ export function buildToolCallbacks(deps: ToolCallbackDeps): Map<string, ToolCall
           // A stale expiry from an earlier timed incognito would make "permanent" lapse at once.
           delete (next.capture as { expires_at?: string }).expires_at;
         }
-      } else if (action === 'offline') next.network = { ...next.network, mode: 'offline' };
-      else if (action === 'online') next.network = { ...next.network, mode: 'online' };
+      } else if (action === 'offline' || action === 'online') {
+        // Manual: the power monitor won't override it until a quiet-hours or
+        // metered rule next starts, and never treats it as its own to undo.
+        next.network = {
+          ...next.network,
+          mode: action,
+          set_by: 'user',
+          since,
+          reason: undefined,
+          prior_mode: undefined,
+        };
+      }
       writeFileSync(policiesPath, stringifyYaml(next));
       return {
         content: [

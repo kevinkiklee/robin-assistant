@@ -36,7 +36,7 @@
   },
   "scripts": {
     "prepare": "git config core.hooksPath githooks 2>/dev/null || true",
-    "build": "tsc -p tsconfig.build.json && node ./system/scripts/build-extensions.mjs && node ./system/scripts/write-build-stamp.mjs",
+    "build": "tsc -p tsconfig.build.json && node ./system/scripts/build-extensions.mjs && node ./system/scripts/build-netpath.mjs && node ./system/scripts/write-build-stamp.mjs",
     "build:extensions": "node ./system/scripts/build-extensions.mjs",
     "dev": "ROBIN_USER_DATA_DIR=./user-data tsx system/surfaces/cli/index.ts daemon --foreground",
     "dev:watch": "ROBIN_USER_DATA_DIR=./user-data tsx --watch system/surfaces/cli/index.ts daemon --foreground",

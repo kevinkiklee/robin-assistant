@@ -108,12 +108,14 @@ See `docs/BACKLOG.md` for detail and evidence.
 - Test lab Plan 3 (paid `config`-mode runs, answer layer, budget broker, bootstrap report) is not started.
 - Behavioral-habit Phase 3 (feedback depth and surfacing) has no spec.
 - Discord is outbound-only. Two-way chat would need a gateway process, and that is a separate decision.
-- APFS snapshot backups are not built. The `power.auto.quiet_hours`, `power.auto.on_low_power_mode` and `network.metered_ssids` / `on_metered` policy fields are parsed but nothing acts on them.
+- APFS snapshot backups are not built.
+- `local-only` holds every LLM job, even when the role maps to a local Ollama model; only the three jobs in `LOCAL_ONLY_JOBS` run.
 
 ## Recent changes (since 2026-06-16)
 
 Newest first.
 
+- **2026-11-02**: The power monitor now acts on Low Power Mode, quiet hours and metered networks (macOS path flags, no SSIDs), and `network.mode: local-only` holds everything but local jobs. `robin db restore` refuses while another process has the database open. Gitleaks CI scans full history.
 - **2026-10-31 → 11-02**: Public history reset to one commit; the privacy scan now also refuses SHAs of the rewritten-away commits. Auto-fix loop: the reliability audit queues a remediation request, K runs ahead of the rotation, and a verified K branch auto-lands behind a sandboxed gate with build revert and post-restart probation. The gate's fs-write check became an allowlist that fails closed, and tool resolution is pinned to the repo's `node_modules`. Publish: the askrobin index retired in favor of the dashboard, the index manifest and pending-op replay removed, `--mode sync` removed, library-level `deletePage`, `.ics` attachments.
 - **2026-10-30**: `check_action` and `update` stubs removed from the extension MCP.
 

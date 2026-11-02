@@ -12,6 +12,8 @@ export interface SchedulerConfig {
   workerId: string;
   leaseMs: number;
   isPaused: () => boolean;
+  /** When it returns a list, only jobs with those names are claimed this tick. */
+  claimableNames?: () => readonly string[] | null;
   onError?: (err: Error, job: JobRow) => void;
   /**
    * Wall-clock ceiling for a single handler invocation. A handler that exceeds
@@ -39,9 +41,11 @@ export class Scheduler {
   async tickOnce(): Promise<boolean> {
     if (this.cfg.isPaused()) return false;
 
+    const onlyNames = this.cfg.claimableNames?.() ?? undefined;
     const job = claimNextJob(this.cfg.db, {
       workerId: this.cfg.workerId,
       leaseMs: this.cfg.leaseMs,
+      onlyNames,
     });
     if (!job) return false;
 
