@@ -306,3 +306,200 @@ test('runSdk: forwards effort to the query options only when set', async () => {
   await runSdk({ prompt: 'x', queryFn: q });
   assert.deepEqual(seen, ['low', '<absent>']);
 });
+
+const OK_RESULT = {
+  type: 'result',
+  subtype: 'success',
+  is_error: false,
+  result: 'ok',
+  total_cost_usd: 0,
+  num_turns: 1,
+  usage: { input_tokens: 1, output_tokens: 1 },
+};
+
+test('runSdk: captures the last rate_limit_event (resetsAt seconds -> ms)', async () => {
+  const q = () =>
+    fakeQuery([
+      {
+        type: 'rate_limit_event',
+        rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.1 },
+      },
+      {
+        type: 'rate_limit_event',
+        rate_limit_info: {
+          status: 'allowed_warning',
+          resetsAt: 1767225600,
+          utilization: 0.91,
+          rateLimitType: 'five_hour',
+        },
+      },
+      OK_RESULT,
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.deepEqual(r.rateLimit, {
+    status: 'allowed_warning',
+    resetsAtMs: 1767225600000,
+    utilization: 0.91,
+    type: 'five_hour',
+  });
+  assert.equal(r.limitHit, false);
+});
+
+test('runSdk: a millisecond resetsAt is kept as-is', async () => {
+  const q = () =>
+    fakeQuery([
+      {
+        type: 'rate_limit_event',
+        rate_limit_info: { status: 'allowed_warning', resetsAt: 1767225600000 },
+      },
+      OK_RESULT,
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.rateLimit?.resetsAtMs, 1767225600000);
+});
+
+test('runSdk: no rate_limit_event leaves rateLimit undefined and limitHit false', async () => {
+  const r = await runSdk({ prompt: 'x', queryFn: () => fakeQuery([OK_RESULT]) });
+  assert.equal(r.rateLimit, undefined);
+  assert.equal(r.limitHit, false);
+  assert.equal(r.authError, undefined);
+});
+
+test('runSdk: captures authError from assistant messages, ignores rate_limit', async () => {
+  const q = (error: string) => () =>
+    fakeQuery([{ type: 'assistant', error, message: { content: [{ text: 'x' }] } }, OK_RESULT]);
+  const a = await runSdk({ prompt: 'x', queryFn: q('authentication_failed') });
+  assert.equal(a.authError, 'authentication_failed');
+  const b = await runSdk({ prompt: 'x', queryFn: q('rate_limit') });
+  assert.equal(b.authError, undefined);
+});
+
+test('runSdk: authError keeps the first one seen', async () => {
+  const q = () =>
+    fakeQuery([
+      { type: 'assistant', error: 'billing_error', message: { content: [] } },
+      { type: 'assistant', error: 'account_on_hold', message: { content: [] } },
+      OK_RESULT,
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.authError, 'billing_error');
+});
+
+test('runSdk: a rejected rate_limit_event sets limitHit, even on the no-result path', async () => {
+  const events = [
+    {
+      type: 'rate_limit_event',
+      rate_limit_info: { status: 'rejected', resetsAt: 1767225600, rateLimitType: 'seven_day' },
+    },
+  ];
+  const withResult = await runSdk({
+    prompt: 'x',
+    queryFn: () => fakeQuery([...events, OK_RESULT]),
+  });
+  assert.equal(withResult.limitHit, true);
+  const noResult = await runSdk({ prompt: 'x', queryFn: () => fakeQuery(events) });
+  assert.equal(noResult.status, 'error');
+  assert.equal(noResult.limitHit, true);
+  const thrown = await runSdk({
+    prompt: 'x',
+    queryFn: () =>
+      (async function* () {
+        yield events[0];
+        throw new Error('boom');
+      })(),
+  });
+  assert.equal(thrown.limitHit, true);
+  assert.equal(thrown.rateLimit?.status, 'rejected');
+});
+
+test('runSdk: no-result and throw paths have limitHit false without a rejected event', async () => {
+  const none = await runSdk({ prompt: 'x', queryFn: () => fakeQuery([]) });
+  assert.equal(none.limitHit, false);
+  const thrown = await runSdk({
+    prompt: 'x',
+    queryFn: () =>
+      (async function* () {
+        yield* [];
+        throw new Error('boom');
+      })(),
+  });
+  assert.equal(thrown.limitHit, false);
+});
+
+test('runSdk: the usage-limit banner result sets limitHit', async () => {
+  const q = () =>
+    fakeQuery([
+      {
+        ...OK_RESULT,
+        result: "You've hit your weekly limit · resets Jun 15 at 7am",
+      },
+    ]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.status, 'error');
+  assert.equal(r.limitHit, true);
+});
+
+test('runSdk: an is_error result with api_error_status 429 sets limitHit', async () => {
+  const q = () =>
+    fakeQuery([{ ...OK_RESULT, is_error: true, api_error_status: 429, result: 'Too many' }]);
+  const r = await runSdk({ prompt: 'x', queryFn: q });
+  assert.equal(r.limitHit, true);
+});
+
+test('runSdk: credentialEnv is applied after the billToPool strip', async () => {
+  let env: Record<string, string> | undefined;
+  const q = (args: { options: { env: Record<string, string> } }) => {
+    env = args.options.env;
+    return fakeQuery([OK_RESULT]);
+  };
+  await runSdk({
+    prompt: 'x',
+    queryFn: q,
+    billToPool: true,
+    baseEnv: { ANTHROPIC_API_KEY: 'x', CLAUDE_CODE_OAUTH_TOKEN: 'old', PATH: '/b' },
+    credentialEnv: {
+      set: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE-robin' },
+      unset: ['ANTHROPIC_API_KEY'],
+    },
+  });
+  assert.deepEqual(env, {
+    CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE-robin',
+    PATH: '/b',
+    ROBIN_INTERNAL_SDK: '1',
+  });
+});
+
+test('runSdk: credentialEnv can set an API key even when billToPool strips it', async () => {
+  let env: Record<string, string> | undefined;
+  const q = (args: { options: { env: Record<string, string> } }) => {
+    env = args.options.env;
+    return fakeQuery([OK_RESULT]);
+  };
+  await runSdk({
+    prompt: 'x',
+    queryFn: q,
+    billToPool: true,
+    baseEnv: { PATH: '/b' },
+    credentialEnv: { set: { ANTHROPIC_API_KEY: 'sk-ant-api03-FAKE-credit' }, unset: [] },
+  });
+  assert.equal(env?.ANTHROPIC_API_KEY, 'sk-ant-api03-FAKE-credit');
+});
+
+test('runSdk: no credentialEnv leaves the env unchanged', async () => {
+  let env: Record<string, string> | undefined;
+  const q = (args: { options: { env: Record<string, string> } }) => {
+    env = args.options.env;
+    return fakeQuery([OK_RESULT]);
+  };
+  await runSdk({
+    prompt: 'x',
+    queryFn: q,
+    billToPool: true,
+    baseEnv: { ANTHROPIC_API_KEY: 'x', CLAUDE_CODE_OAUTH_TOKEN: 'old', PATH: '/b' },
+  });
+  assert.deepEqual(env, {
+    CLAUDE_CODE_OAUTH_TOKEN: 'old',
+    PATH: '/b',
+    ROBIN_INTERNAL_SDK: '1',
+  });
+});

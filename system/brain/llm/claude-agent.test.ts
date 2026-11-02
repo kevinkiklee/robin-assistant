@@ -24,6 +24,7 @@ const okResult: SdkResult = {
   costUsd: 0.02,
   usage: { inputTokens: 100, outputTokens: 20 },
   raw: null,
+  limitHit: false,
 };
 
 test('ClaudeAgentProvider: maps a success SdkResult to an InvokeResult', async () => {

@@ -186,6 +186,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
       costUsd: 0,
       usage: { ...EMPTY_USAGE },
       raw: null,
+      limitHit: false,
     };
   } finally {
     clearTimeout(deadline);

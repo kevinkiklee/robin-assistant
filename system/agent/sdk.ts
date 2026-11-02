@@ -3,6 +3,21 @@ import { estimateCostUsd } from './pricing.ts';
 
 export type SdkStatus = 'success' | 'max_turns' | 'max_budget' | 'error';
 
+/** The SDK's latest `rate_limit_event`, normalised (`resetsAtMs` is always ms). */
+export interface RateLimitObservation {
+  status: 'allowed' | 'allowed_warning' | 'rejected';
+  resetsAtMs?: number;
+  utilization?: number;
+  type?: string;
+}
+
+const AUTH_ERRORS = new Set([
+  'authentication_failed',
+  'oauth_org_not_allowed',
+  'account_on_hold',
+  'billing_error',
+]);
+
 export interface SdkResult {
   status: SdkStatus;
   text: string;
@@ -17,6 +32,12 @@ export interface SdkResult {
   costEstimated?: boolean;
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number };
   raw: unknown; // the result message, for transcript/audit
+  /** The last `rate_limit_event` seen on the stream, if any. */
+  rateLimit?: RateLimitObservation;
+  /** True on a rejected rate-limit event, the usage-limit banner, or an is_error 429 result. */
+  limitHit: boolean;
+  /** First auth-class `error` carried by a streamed assistant message. */
+  authError?: string;
 }
 
 export interface RunSdkInput {
@@ -46,6 +67,8 @@ export interface RunSdkInput {
   // Auth hygiene
   billToPool?: boolean; // strip ANTHROPIC_API_KEY/CLAUDE_API_KEY from env
   baseEnv?: Record<string, string | undefined>;
+  /** Per-call credential env, applied after the billToPool strip: delete `unset`, then assign `set`. */
+  credentialEnv?: { set: Record<string, string>; unset: string[] };
   // Injection for tests (defaults to the real SDK query)
   // biome-ignore lint/suspicious/noExplicitAny: query() arg/message shapes vary; injection point for fakes
   queryFn?: (args: any) => AsyncIterable<any>;
@@ -89,6 +112,10 @@ function buildEnv(input: RunSdkInput): Record<string, string> {
   // (a self-amplifying feedback loop: the biographer re-processes its own
   // prompts) and gets the primer injected into its context (token waste).
   out.ROBIN_INTERNAL_SDK = '1';
+  if (input.credentialEnv) {
+    for (const k of input.credentialEnv.unset) delete out[k];
+    Object.assign(out, input.credentialEnv.set);
+  }
   return out;
 }
 
@@ -102,6 +129,21 @@ function abortControllerFor(signal: AbortSignal): AbortController {
   if (signal.aborted) controller.abort(signal.reason);
   else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
   return controller;
+}
+
+function observeRateLimit(info: unknown): RateLimitObservation | undefined {
+  if (!info || typeof info !== 'object') return undefined;
+  const i = info as Record<string, unknown>;
+  if (i.status !== 'allowed' && i.status !== 'allowed_warning' && i.status !== 'rejected') {
+    return undefined;
+  }
+  const obs: RateLimitObservation = { status: i.status };
+  if (typeof i.resetsAt === 'number' && Number.isFinite(i.resetsAt)) {
+    obs.resetsAtMs = i.resetsAt < 1e12 ? i.resetsAt * 1000 : i.resetsAt;
+  }
+  if (typeof i.utilization === 'number') obs.utilization = i.utilization;
+  if (typeof i.rateLimitType === 'string') obs.type = i.rateLimitType;
+  return obs;
 }
 
 /** One API turn's usage as seen on the stream, keyed by `message.id`. */
@@ -252,6 +294,12 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
   // mid-stream throw can stop iteration before it arrives — this fallback keeps
   // the ledger from zeroing partial spend (it books a list-price estimate).
   const running = new StreamTally();
+  let rateLimit: RateLimitObservation | undefined;
+  let authError: string | undefined;
+  const seen = () => ({
+    ...(rateLimit ? { rateLimit } : {}),
+    ...(authError ? { authError } : {}),
+  });
   try {
     for await (const m of stream) {
       input.onMessage?.(m);
@@ -261,6 +309,11 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
         result = msg;
       } else if (msg.type === 'assistant' && msg.message) {
         running.add(msg.message);
+        if (!authError && typeof msg.error === 'string' && AUTH_ERRORS.has(msg.error)) {
+          authError = msg.error;
+        }
+      } else if (msg.type === 'rate_limit_event') {
+        rateLimit = observeRateLimit(msg.rate_limit_info) ?? rateLimit;
       }
     }
   } catch (err) {
@@ -274,6 +327,8 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
         ...running.snapshot(),
         costEstimated: true,
         raw: null,
+        limitHit: rateLimit?.status === 'rejected',
+        ...seen(),
       };
     }
   }
@@ -284,6 +339,8 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       ...running.snapshot(),
       costEstimated: true,
       raw: null,
+      limitHit: rateLimit?.status === 'rejected',
+      ...seen(),
     };
   }
   // A usage-limited account comes back as a subtype:'success' result that
@@ -311,5 +368,10 @@ export async function runSdk(input: RunSdkInput): Promise<SdkResult> {
       cachedInputTokens: result.usage?.cache_read_input_tokens,
     },
     raw: result,
+    limitHit:
+      rateLimit?.status === 'rejected' ||
+      (typeof result.result === 'string' && isSubscriptionLimitBanner(result.result)) ||
+      (result.is_error === true && result.api_error_status === 429),
+    ...seen(),
   };
 }
