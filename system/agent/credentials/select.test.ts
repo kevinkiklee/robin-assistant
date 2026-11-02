@@ -117,6 +117,52 @@ describe('selectCredential', () => {
     assert.equal(pick({}, 'brief', ex).kind, 'defer');
     assert.equal(idOf(pick({}, 'interactive', ex)), 'shared:subscription');
   });
+  it('warning retryAfter is at most 30 min', () => {
+    const s = pick(
+      {
+        'robin:subscription': {
+          status: 'allowed_warning',
+          utilization: 0.95,
+          observedAtMs: NOW,
+          resetsAtMs: NOW + 3 * 24 * 60 * MIN,
+        },
+      },
+      'background',
+    );
+    assert.equal(s.kind === 'defer' && s.retryAfterMs, 30 * MIN);
+  });
+  it("retryAfter waits for a credential's last blocker", () => {
+    const state = st({});
+    state.credentials['robin:subscription'] = {
+      fingerprint: 'x',
+      firstSeenAtMs: 0,
+      limits: [
+        { status: 'rejected', scope: 'all', observedAtMs: NOW, resetsAtMs: NOW + 10 * MIN },
+        {
+          status: 'rejected',
+          scope: 'all',
+          observedAtMs: NOW,
+          resetsAtMs: NOW + 3 * 24 * 60 * MIN,
+        },
+      ],
+    };
+    const s = selectCredential({
+      credentials: ALL.filter((c) => c.id === 'robin:subscription'),
+      state,
+      cls: 'interactive',
+      mode: 'auto',
+      nowMs: NOW,
+    });
+    assert.equal(s.kind === 'stop' && s.retryAfterMs, 3 * 24 * 60 * MIN);
+  });
+  it('shared-only: background and brief defer, interactive uses shared', () => {
+    const credentials = ALL.filter((c) => c.id === 'shared:subscription');
+    const run = (cls: CallClass) =>
+      selectCredential({ credentials, state: st({}), cls, mode: 'auto', nowMs: NOW });
+    assert.equal(run('background').kind, 'defer');
+    assert.equal(run('brief').kind, 'defer');
+    assert.equal(idOf(run('interactive')), 'shared:subscription');
+  });
   it('model-scoped rejection', () => {
     const l = { 'robin:subscription': { scope: 'sonnet' as const, resetsAtMs: reset } };
     assert.equal(

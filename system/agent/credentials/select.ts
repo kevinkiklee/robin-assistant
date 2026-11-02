@@ -47,13 +47,18 @@ function assess(cs: CredentialState | undefined, family: Family, nowMs: number):
     if (l.scope !== 'all' && l.scope !== family) continue;
     const level = levelOf(l, nowMs);
     if (!level || level === 'ok') continue;
-    const clearsAtMs = l.resetsAtMs ?? l.observedAtMs + HALF_HOUR_MS;
+    // A warning is re-probed after 30 min whatever its reset says.
+    const clearsAtMs =
+      level === 'warning'
+        ? Math.min(l.resetsAtMs ?? Number.POSITIVE_INFINITY, l.observedAtMs + HALF_HOUR_MS)
+        : (l.resetsAtMs ?? l.observedAtMs + HALF_HOUR_MS);
     if (RANK[level] > RANK[out.level]) {
       out.level = level;
       out.clearsAtMs = clearsAtMs;
       out.auth = level === 'rejected' && l.reason === 'auth';
     } else if (level === out.level) {
-      out.clearsAtMs = Math.min(out.clearsAtMs ?? clearsAtMs, clearsAtMs);
+      // blocked until the credential's last blocker clears
+      out.clearsAtMs = Math.max(out.clearsAtMs ?? clearsAtMs, clearsAtMs);
       if (level === 'rejected' && l.reason === 'auth') out.auth = true;
     }
   }
@@ -101,6 +106,11 @@ export function selectCredential(args: {
   const excluded = new Set(args.exclude ?? []);
   const find = (kind: Credential['kind'], name: Credential['name']) =>
     credentials.find((c) => c.kind === kind && c.name === name);
+
+  // A missing Robin token is not "Robin exhausted": never borrow without it.
+  if (mode === 'auto' && cls !== 'interactive' && !find('subscription', 'robin')) {
+    return { kind: 'defer', reason: 'no Robin credential configured — background work paused' };
+  }
 
   let candidates: Credential[];
   if (mode === 'manual') {
