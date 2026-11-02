@@ -991,3 +991,32 @@ test('runRunnerEntry: a newer request written meanwhile is not cleared', async (
   });
   assert.equal(peekRemediationRequest(ud, new Date())?.goal, 'newer');
 });
+
+test('quota-deferred run: no outcome stamped, no learning record, exit 0', async () => {
+  const made = ledgerWithDb();
+  const ud = tmpUserData();
+  const logs: string[] = [];
+  const inner = recordingRunAgent(made.ledger, { status: 'capped', structured: undefined });
+  const r = await runRunnerEntry(['--handler=E'], {
+    userDataDir: ud,
+    repoRoot: '/repo',
+    log: (m) => logs.push(m),
+    openLedger: () => made,
+    mcpServers: fakeMcpServers,
+    runAgent: (async (input, deps) => ({
+      ...(await inner(input, deps)),
+      quotaDeferred: true as const,
+    })) as typeof import('./run-agent.ts')['runAgent'],
+  });
+  assert.equal(r.exitCode, 0);
+  const row = made.db.prepare(`SELECT outcome FROM agent_usage WHERE label='E'`).get() as {
+    outcome: string | null;
+  };
+  assert.equal(row.outcome, null, 'a deferral leaves outcome null');
+  assert.ok(logs.some((l) => l.includes('deferred: quota')));
+  assert.equal(
+    logs.some((l) => l.includes('learning record')),
+    false,
+  );
+  assert.equal(existsSync(join(ud, 'agent-runs')), false, 'no learning record written');
+});

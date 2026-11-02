@@ -13,6 +13,15 @@ export interface UsageRecord {
   compactions?: number;
 }
 
+/**
+ * A credential-chain quota deferral: runAgent writes a 'capped' row with
+ * subtype 'quota' (spend of the failed attempts only). It is not a run — no work
+ * was attempted — so health, learning and metrics consumers must look past it.
+ */
+export function isQuotaDeferred(row: { status?: string | null; subtype?: string | null }): boolean {
+  return row.status === 'capped' && row.subtype === 'quota';
+}
+
 export interface OutcomeRecord {
   outcome: string;
   impact?: string;

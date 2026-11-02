@@ -121,12 +121,13 @@ function readCursorFile(ud: string): number {
 function seedUsage(
   db: RobinDb,
   handler: string,
-  rows: Array<{ status?: string; verified?: string; ts: string }>,
+  rows: Array<{ status?: string; verified?: string; subtype?: string; ts: string }>,
 ): void {
   const ins = db.prepare(
-    `INSERT INTO agent_usage (ts, surface, label, status, verified) VALUES (?, 'agentic-autonomous', ?, ?, ?)`,
+    `INSERT INTO agent_usage (ts, surface, label, status, verified, subtype) VALUES (?, 'agentic-autonomous', ?, ?, ?, ?)`,
   );
-  for (const r of rows) ins.run(r.ts, handler, r.status ?? null, r.verified ?? null);
+  for (const r of rows)
+    ins.run(r.ts, handler, r.status ?? null, r.verified ?? null, r.subtype ?? null);
 }
 
 /** The round-robin index of a handler id. */
@@ -704,5 +705,35 @@ test('a remediation request that keeps failing gives up after MAX_ATTEMPTS', asy
   );
   assert.notEqual(dispatchedId(calls[0]), 'K', 'no fourth dispatch');
   assert.equal(peekRemediationRequest(ud, BASE), null, 'cleared — waits for the next audit');
+  closeDb(db);
+});
+
+test('a quota deferral after the bench is not recovery: bench and alert stay', async () => {
+  const ud = tmpUserData();
+  const db = freshDb();
+  writeCursorFile(ud, idxOf('B'));
+  db.prepare(
+    `INSERT INTO alerts (severity, source, key, message, first_seen_at, last_seen_at)
+     VALUES ('warning', 'agent-runner', 'handler-benched:B', 'benched', datetime('now'), datetime('now'))`,
+  ).run();
+  // Real failure, then (newest) a quota deferral: look past the deferral.
+  seedUsage(db, 'B', [
+    { status: 'error', ts: '2026-06-05T00:00:00.000Z' },
+    { status: 'capped', subtype: 'quota', ts: '2026-06-06T00:00:00.000Z' },
+  ]);
+  writeAdaptiveFile(ud, {
+    rotation: 3,
+    benches: { B: { until: 3, at: '2026-06-01T00:00:00.000Z' } },
+    skips: {},
+  });
+  const { fn } = spySpawn();
+  await runAgentRunner(fakeCtx(db), enabledDeps(ud, fn));
+
+  assert.ok(readAdaptiveFile(ud).benches.B, 'bench entry must survive a deferral');
+  const open = listAlerts(db, { all: false });
+  assert.ok(
+    open.some((a) => a.key === 'handler-benched:B'),
+    'the bench alert must stay open',
+  );
   closeDb(db);
 });

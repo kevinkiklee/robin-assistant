@@ -11,6 +11,8 @@ export interface AgentMetricsRow {
   noOp: number;
   blocked: number;
   incomplete: number;
+  /** Credential-chain quota deferrals — not runs. */
+  deferred: number;
   unparseable: number;
   verified: number;
   mismatches: number;
@@ -22,12 +24,13 @@ export function agentMetricsRows(db: RobinDb): AgentMetricsRow[] {
   return db
     .prepare(
       `SELECT label,
-              COUNT(*)                                                      AS runs,
+              SUM(CASE WHEN status='capped' AND subtype='quota' THEN 0 ELSE 1 END) AS runs,
               ROUND(COALESCE(SUM(cost_usd), 0), 4)                         AS costUsd,
               SUM(CASE WHEN outcome='did-work'     THEN 1 ELSE 0 END)      AS didWork,
               SUM(CASE WHEN outcome='no-op'        THEN 1 ELSE 0 END)      AS noOp,
               SUM(CASE WHEN outcome='blocked'      THEN 1 ELSE 0 END)      AS blocked,
-              SUM(CASE WHEN outcome='incomplete'   THEN 1 ELSE 0 END)      AS incomplete,
+              SUM(CASE WHEN outcome='incomplete' AND NOT COALESCE(status='capped' AND subtype='quota', 0) THEN 1 ELSE 0 END) AS incomplete,
+              SUM(CASE WHEN status='capped' AND subtype='quota' THEN 1 ELSE 0 END) AS deferred,
               SUM(CASE WHEN outcome='unparseable'  THEN 1 ELSE 0 END)      AS unparseable,
               SUM(CASE WHEN verified='verified'         THEN 1 ELSE 0 END) AS verified,
               SUM(CASE WHEN verified='outcome-mismatch' THEN 1 ELSE 0 END) AS mismatches,
@@ -44,7 +47,7 @@ export function agentMetricsText(db: RobinDb): string {
   if (rows.length === 0) return 'No labeled agent runs recorded yet.';
   const lines = rows.map(
     (r) =>
-      `${r.label}  runs:${r.runs}  $${r.costUsd.toFixed(2)}  did-work:${r.didWork} (verified ${r.verified}, mismatch ${r.mismatches})  no-op:${r.noOp}  blocked:${r.blocked}  incomplete:${r.incomplete}  unparseable:${r.unparseable}  last did-work: ${r.lastDidWork ?? 'never'}`,
+      `${r.label}  runs:${r.runs}  $${r.costUsd.toFixed(2)}  did-work:${r.didWork} (verified ${r.verified}, mismatch ${r.mismatches})  no-op:${r.noOp}  blocked:${r.blocked}  incomplete:${r.incomplete}  deferred (quota):${r.deferred}  unparseable:${r.unparseable}  last did-work: ${r.lastDidWork ?? 'never'}`,
   );
   const totalCost = rows.reduce((s, r) => s + r.costUsd, 0);
   return [

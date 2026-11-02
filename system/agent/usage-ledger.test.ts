@@ -5,7 +5,7 @@ import type { RobinDb } from '../brain/memory/db.ts';
 import { migration011 } from '../brain/memory/migrations/011-agent-usage.ts';
 import { migration025 } from '../brain/memory/migrations/025-agent-outcomes.ts';
 import { migration037 } from '../brain/memory/migrations/037-agent-usage-compactions.ts';
-import { UsageLedger } from './usage-ledger.ts';
+import { isQuotaDeferred, UsageLedger } from './usage-ledger.ts';
 
 function makeDb(): RobinDb {
   const d = new Database(':memory:') as unknown as RobinDb;
@@ -159,4 +159,17 @@ test('record() stores the compaction count (migration 037) and defaults it to 0'
       .compactions;
   assert.equal(read(compacted), 2);
   assert.equal(read(plain), 0);
+});
+
+test('isQuotaDeferred: only capped + quota', () => {
+  const cases: Array<[{ status?: string | null; subtype?: string | null }, boolean]> = [
+    [{ status: 'capped', subtype: 'quota' }, true],
+    [{ status: 'capped', subtype: null }, false],
+    [{ status: 'capped' }, false],
+    [{ status: 'error', subtype: 'quota' }, false],
+    [{ status: 'success', subtype: 'quota' }, false],
+    [{ status: 'capped', subtype: 'cost-estimated' }, false],
+    [{}, false],
+  ];
+  for (const [row, want] of cases) assert.equal(isQuotaDeferred(row), want, JSON.stringify(row));
 });

@@ -24,12 +24,13 @@ function insertRun(
     costUsd?: number;
     status?: string | null;
     ts?: string;
+    subtype?: string | null;
   },
 ) {
   const ts = opts.ts ?? new Date().toISOString();
   db.prepare(
-    `INSERT INTO agent_usage (ts, surface, label, cost_usd, turns, input_tokens, output_tokens, status, outcome, verified)
-     VALUES (?, ?, ?, ?, 1, 0, 0, ?, ?, ?)`,
+    `INSERT INTO agent_usage (ts, surface, label, cost_usd, turns, input_tokens, output_tokens, status, outcome, verified, subtype)
+     VALUES (?, ?, ?, ?, 1, 0, 0, ?, ?, ?, ?)`,
   ).run(
     ts,
     opts.surface ?? 'agentic-autonomous',
@@ -38,6 +39,7 @@ function insertRun(
     opts.status ?? null,
     opts.outcome ?? null,
     opts.verified ?? null,
+    opts.subtype ?? null,
   );
 }
 
@@ -125,5 +127,21 @@ test('agentMetricsText says no runs when the ledger is empty', () => {
   const db = freshDb();
   const text = agentMetricsText(db);
   assert.equal(text, 'No labeled agent runs recorded yet.');
+  closeDb(db);
+});
+
+test('quota-deferred rows are not runs; counted separately', () => {
+  const db = freshDb();
+  insertRun(db, { label: 'B', outcome: 'did-work', status: 'success', costUsd: 0.1 });
+  insertRun(db, { label: 'B', outcome: 'incomplete', status: 'capped', costUsd: 0.1 });
+  insertRun(db, { label: 'B', outcome: null, status: 'capped', subtype: 'quota', costUsd: 0.05 });
+  const [row] = agentMetricsRows(db);
+  assert.equal(row?.runs, 2);
+  assert.equal(row?.incomplete, 1);
+  assert.equal(row?.deferred, 1);
+  const text = agentMetricsText(db);
+  assert.match(text, /runs:2/);
+  assert.match(text, /deferred \(quota\):1/);
+  assert.match(text, /total: 2 runs/);
   closeDb(db);
 });

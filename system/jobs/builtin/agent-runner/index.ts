@@ -11,6 +11,7 @@ import {
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquire, release } from '../../../agent/single-flight.ts';
+import { isQuotaDeferred } from '../../../agent/usage-ledger.ts';
 import type { RobinDb } from '../../../brain/memory/db.ts';
 import { loadPolicies } from '../../../kernel/config/load.ts';
 import { recordAlert, resolveAlert } from '../../../kernel/runtime/alert-store.ts';
@@ -167,15 +168,20 @@ function hasFailureStreak(db: RobinDb, handler: string, sinceTs: string | undefi
  * expired bench with no post-bench run has shown no evidence of recovery, so the
  * entry (the streak watermark) and its alert stay put. */
 function latestRunSucceeded(db: RobinDb, handler: string, sinceTs: string | undefined): boolean {
-  const r = db
+  // Quota deferrals are not runs (no work attempted): look past them to the
+  // latest real run. A handful of rows is plenty — deferrals are rare.
+  const rows = db
     .prepare(
-      `SELECT status, verified FROM agent_usage
+      `SELECT status, subtype, verified FROM agent_usage
         WHERE surface='agentic-autonomous' AND label=? AND (? IS NULL OR ts > ?)
-        ORDER BY ts DESC LIMIT 1`,
+        ORDER BY ts DESC`,
     )
-    .get(handler, sinceTs ?? null, sinceTs ?? null) as
-    | { status: string | null; verified: string | null }
-    | undefined;
+    .all(handler, sinceTs ?? null, sinceTs ?? null) as Array<{
+    status: string | null;
+    subtype: string | null;
+    verified: string | null;
+  }>;
+  const r = rows.find((x) => !isQuotaDeferred(x));
   if (!r) return false;
   return !(r.status === 'error' || r.status === 'timeout' || r.verified === 'outcome-mismatch');
 }

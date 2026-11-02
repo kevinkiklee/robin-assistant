@@ -382,6 +382,13 @@ export async function runRunnerEntry(
       );
     }
 
+    // A credential-chain quota deferral is not a run: leave the row's outcome
+    // null, write no learning record, and leave any remediation request for retry.
+    if (result.quotaDeferred) {
+      log('deferred: quota');
+      return { status: result.status, message: result.summary, exitCode: 0 };
+    }
+
     // Structured outcome → ledger columns (spec §B2). Best-effort: outcome
     // bookkeeping must never turn a completed run into a failure.
     const envelope = parseOutcomeEnvelope(result.structured);
@@ -447,7 +454,8 @@ export async function runRunnerEntry(
     // Learning record for every autonomous handler except no-ops and pre-flight
     // caps (spec §B2). ledgerId === undefined means the SDK was never spawned —
     // the pre-flight cap short-circuited before any work happened, so there is
-    // nothing meaningful to record.
+    // nothing meaningful to record. (Quota deferrals have a ledgerId but return
+    // above.)
     if (outcome !== 'no-op' && result.ledgerId !== undefined) {
       try {
         const path = writeLearningRecord(userDataDir, {

@@ -55,6 +55,8 @@ export interface RunAgentResult {
    * output as degraded even though `status` is 'success'.
    */
   compactions: number;
+  /** Credential chain deferred the run on quota (status 'capped'); no work was attempted. */
+  quotaDeferred?: true;
 }
 
 export interface RunAgentDeps {
@@ -255,6 +257,7 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     ...(transcriptPath ? { transcriptPath } : {}),
     ledgerId,
     compactions,
+    ...(result.deferred && status === 'capped' ? { quotaDeferred: true as const } : {}),
   };
 }
 
