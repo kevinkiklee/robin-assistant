@@ -368,7 +368,8 @@ file); who the operator is lives in `user-data/config/operator.yaml`.
 - Markdown pages are sanitized (no `<script>`; their JS is the template's `/_pub/*.js`). Standalone HTML pages keep their JS — the serving CSP sandbox is the boundary, not the publisher (see § Publish pipeline).
 - A committed `githooks/pre-commit` auto-formats staged files with Biome and re-stages them (non-blocking) — `pnpm install` points `core.hooksPath` at it via the `prepare` script. This is why commits land already-formatted regardless of who makes them (human, assistant, or the daemon's snapshot routine). It only runs `format`, never lint fixes; run `pnpm lint`/`typecheck`/`test` yourself.
 - **Event notes (`>>note`).** If `user-data/state/runtime/note-session.json` exists with
-  `lastEntryAt` inside the last 6 hours and a prompt arrives that reads as a raw event note,
+  `lastEntryAt` inside the last 24 hours (the hook's own cutoff, `STALE_MS` in
+  `system/lib/notes/note-session.ts`) and a prompt arrives that reads as a raw event note,
   the hook missed it (daemon down, or the session id changed). Check the tail of the file named
   in the state JSON first — if the line is already the last entry, reply `📝 #n (already saved)`;
   otherwise append it as `- HH:MM text` (local time) and reply only `📝 #n (by Claude — daemon
