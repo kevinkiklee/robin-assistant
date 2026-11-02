@@ -55,6 +55,28 @@ export function restartCommand(mgr: ServiceManager, uid?: number): string[] | nu
   return restartArgv(mgr, uid);
 }
 
+/** The revert closure: git revert, rebuild, then restart the daemon via the service manager. */
+export function makeRevert(opts: {
+  run: (cmd: string, args: string[]) => void;
+  commit: string;
+  mgr: ServiceManager;
+  onDetail: (d: string) => void;
+}): () => void {
+  return () => {
+    try {
+      opts.run('git', ['revert', '-m', '1', '--no-edit', opts.commit]);
+      opts.run('pnpm', ['build']);
+      opts.onDetail('reverted, rebuilt');
+    } catch (err) {
+      opts.onDetail(
+        `revert/rebuild FAILED — main needs attention: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`,
+      );
+    }
+    const argv = restartCommand(opts.mgr);
+    if (argv) opts.run(argv[0], argv.slice(1));
+  };
+}
+
 function realUptime(userDataDir: string): number | null {
   try {
     const pid = Number.parseInt(
@@ -88,17 +110,14 @@ async function main(): Promise<void> {
   const result = await runProbation({
     daemonUptimeSec: () => realUptime(userDataDir),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-    revert: () => {
-      try {
-        run('git', ['revert', '-m', '1', '--no-edit', commit]);
-        run('pnpm', ['build']);
-        detail = 'reverted, rebuilt';
-      } catch (err) {
-        detail = `revert/rebuild FAILED — main needs attention: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`;
-      }
-      const argv = restartCommand(detectServiceManager());
-      if (argv) run(argv[0], argv.slice(1));
-    },
+    revert: makeRevert({
+      run,
+      commit,
+      mgr: detectServiceManager(),
+      onDetail: (d) => {
+        detail = d;
+      },
+    }),
   });
   appendLandLog(userDataDir, {
     branch,

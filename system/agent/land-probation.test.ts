@@ -49,12 +49,62 @@ test('runProbation: a daemon that is down or crash-looping on both looks is reve
   assert.equal(await runProbation(looping.d), 'reverted');
 });
 
-test('runProbation: reverted calls revert exactly once (restart is revert-injected)', async () => {
-  let restarts = 0;
-  const d = deps([null, null]);
-  const r = await runProbation({ ...d.d, revert: () => restarts++ });
-  assert.equal(r, 'reverted');
-  assert.equal(restarts, 1);
+test('makeRevert: systemd records revert, build, then one restart last', async () => {
+  const { makeRevert } = await import('./land-probation.ts');
+  const calls: string[][] = [];
+  makeRevert({
+    run: (c, a) => void calls.push([c, ...a]),
+    commit: 'abc',
+    mgr: 'systemd',
+    onDetail: () => {},
+  })();
+  assert.deepEqual(calls, [
+    ['git', 'revert', '-m', '1', '--no-edit', 'abc'],
+    ['pnpm', 'build'],
+    ['systemctl', '--user', 'restart', 'robin-daemon.service'],
+  ]);
+});
+
+test('makeRevert: launchd restarts with kickstart last; none records no restart', async () => {
+  const { makeRevert } = await import('./land-probation.ts');
+  const calls: string[][] = [];
+  makeRevert({
+    run: (c, a) => void calls.push([c, ...a]),
+    commit: 'abc',
+    mgr: 'launchd',
+    onDetail: () => {},
+  })();
+  const last = calls[calls.length - 1];
+  assert.equal(last[0], 'launchctl');
+  assert.deepEqual(last.slice(1, 3), ['kickstart', '-k']);
+  assert.match(last[3], /^gui\/\d+\/io\.robin-assistant\.daemon$/);
+  const none: string[][] = [];
+  makeRevert({
+    run: (c, a) => void none.push([c, ...a]),
+    commit: 'abc',
+    mgr: 'none',
+    onDetail: () => {},
+  })();
+  assert.equal(none.length, 2);
+});
+
+test('makeRevert: a build failure sets the FAILED detail and still restarts', async () => {
+  const { makeRevert } = await import('./land-probation.ts');
+  const calls: string[][] = [];
+  let detail = '';
+  makeRevert({
+    run: (c, a) => {
+      calls.push([c, ...a]);
+      if (c === 'pnpm') throw new Error('boom\nmore');
+    },
+    commit: 'abc',
+    mgr: 'systemd',
+    onDetail: (d) => {
+      detail = d;
+    },
+  })();
+  assert.match(detail, /^revert\/rebuild FAILED — main needs attention: boom$/);
+  assert.equal(calls[calls.length - 1][0], 'systemctl');
 });
 
 test('restartCommand: launchd keeps the kickstart argv, systemd uses systemctl --user', async () => {
