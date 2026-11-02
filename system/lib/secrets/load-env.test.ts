@@ -62,3 +62,24 @@ PLAIN=plain
   assert.equal(env.SINGLE, 'literal $no expand');
   assert.equal(env.PLAIN, 'plain');
 });
+
+test('loadEnvFile: daemon.env loads; .env wins over it; process env wins over both', () => {
+  const dir = freshUserData();
+  writeFileSync(join(dir, 'config', 'secrets', 'daemon.env'), 'A=daemon\nB=daemon\nC=daemon\n');
+  writeFileSync(join(dir, 'config', 'secrets', '.env'), 'B=dotenv\nC=dotenv\n');
+  const env: NodeJS.ProcessEnv = { C: 'shell' };
+  const r = loadEnvFile(dir, env);
+  assert.equal(env.A, 'daemon');
+  assert.equal(env.B, 'dotenv');
+  assert.equal(env.C, 'shell');
+  assert.equal(r.daemonEnvLoaded, 1);
+});
+
+test('loadEnvFile: missing daemon.env is a no-op', () => {
+  const dir = freshUserData();
+  writeFileSync(join(dir, 'config', 'secrets', '.env'), 'A=1\n');
+  const env: NodeJS.ProcessEnv = {};
+  const r = loadEnvFile(dir, env);
+  assert.equal(r.daemonEnvLoaded, 0);
+  assert.deepEqual(env, { A: '1' });
+});

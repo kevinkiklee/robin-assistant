@@ -5,6 +5,8 @@ export interface LoadEnvResult {
   path: string;
   loaded: number;
   overwritten: number;
+  /** Keys taken from `daemon.env`. */
+  daemonEnvLoaded: number;
 }
 
 const LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/;
@@ -35,26 +37,11 @@ function unescapeEnvChar(ch: string): string {
   }
 }
 
-/**
- * Read `<userDataDir>/config/secrets/.env` and populate `process.env` for any
- * key not already set. The on-disk file wins over nothing; the shell wins over
- * the file. Returns `{ loaded: 0 }` when the file is absent — callers should
- * treat that as fine (secrets may come from launchd, the shell, or 1Password).
- *
- * Format: standard KEY=VALUE lines, `#` comments, optional `export `, optional
- * matched single- or double-quote wrapping. Multiline values are not supported.
- */
-export function loadEnvFile(
-  userDataDir: string,
-  env: NodeJS.ProcessEnv = process.env,
-): LoadEnvResult {
-  const path = join(userDataDir, 'config', 'secrets', '.env');
-  if (!existsSync(path)) return { path, loaded: 0, overwritten: 0 };
-
-  const text = readFileSync(path, 'utf8');
+function applyFile(path: string, env: NodeJS.ProcessEnv): { loaded: number; overwritten: number } {
   let loaded = 0;
   let overwritten = 0;
-  for (const line of text.split(/\r?\n/)) {
+  if (!existsSync(path)) return { loaded, overwritten };
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const m = LINE.exec(line);
@@ -68,5 +55,27 @@ export function loadEnvFile(
     env[key] = value;
     loaded++;
   }
-  return { path, loaded, overwritten };
+  return { loaded, overwritten };
+}
+
+/**
+ * Read `<userDataDir>/config/secrets/.env`, then `daemon.env` (the VM's
+ * systemd-only credential file), and populate `process.env` for any key not
+ * already set. The shell wins over `.env`, which wins over `daemon.env`.
+ * Absent files are no-ops — secrets may also come from launchd, the shell, or
+ * 1Password. `path`/`loaded`/`overwritten` describe `.env`; `daemonEnvLoaded`
+ * counts keys taken from `daemon.env`.
+ *
+ * Format: standard KEY=VALUE lines, `#` comments, optional `export `, optional
+ * matched single- or double-quote wrapping. Multiline values are not supported.
+ */
+export function loadEnvFile(
+  userDataDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): LoadEnvResult {
+  const dir = join(userDataDir, 'config', 'secrets');
+  const path = join(dir, '.env');
+  const main = applyFile(path, env);
+  const daemon = applyFile(join(dir, 'daemon.env'), env);
+  return { path, ...main, daemonEnvLoaded: daemon.loaded };
 }

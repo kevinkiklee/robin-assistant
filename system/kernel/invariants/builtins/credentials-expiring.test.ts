@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { CredentialStateStore, statePath } from '../../../agent/credentials/state.ts';
+import { loadEnvFile } from '../../../lib/secrets/load-env.ts';
 import { credentialsExpiringInvariant } from './credentials-expiring.ts';
 
 const DAY = 86_400_000;
@@ -67,4 +68,18 @@ test('agent.credentials_expiring: shared without robin fails with the pause mess
       r.message,
       'CLAUDE_TOKEN_SHARED is set without CLAUDE_TOKEN_ROBIN — background work is paused (it never borrows your account without a Robin credential)',
     );
+  }));
+
+test('agent.credentials_expiring: sees a token that lives only in daemon.env', () =>
+  withState(null, async (userData) => {
+    mkdirSync(join(userData, 'config', 'secrets'), { recursive: true });
+    writeFileSync(
+      join(userData, 'config', 'secrets', 'daemon.env'),
+      'CLAUDE_TOKEN_SHARED=sk-ant-oat01-FAKE-shared\n',
+    );
+    const env: Record<string, string | undefined> = {};
+    loadEnvFile(userData, env);
+    const r = await credentialsExpiringInvariant({ userData, env, nowMs: () => NOW }).check();
+    assert.equal(r.ok, false);
+    assert.match(r.message ?? '', /without CLAUDE_TOKEN_ROBIN/);
   }));

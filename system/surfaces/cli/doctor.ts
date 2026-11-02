@@ -7,6 +7,7 @@ import { writeRunbook } from '../../kernel/invariants/runbook.ts';
 import { runInvariants } from '../../kernel/invariants/runner.ts';
 import type { InvariantReport } from '../../kernel/invariants/types.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 
 export interface FreshnessRow {
   name: string;
@@ -104,6 +105,7 @@ export async function runDoctor(opts: {
   fix?: boolean;
 }): Promise<DoctorReport> {
   const userData = resolveUserDataDir();
+  loadEnvFile(userData);
   const dbPath = dbFilePath(userData);
 
   let db: ReturnType<typeof openDb>;
@@ -210,6 +212,7 @@ export function emitRunbook(opts: { write: boolean; path?: string }): {
   existed: boolean;
 } {
   const userData = resolveUserDataDir();
+  loadEnvFile(userData);
   const db = openDb(dbFilePath(userData));
   applyMigrations(db, allMigrations);
   // Document the FULL doctor set, not a hand-picked subset — otherwise the runbook

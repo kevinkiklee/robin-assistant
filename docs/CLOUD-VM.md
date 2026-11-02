@@ -55,7 +55,8 @@ CLAUDE_CREDIT_KEY_SHARED=...  # API key, Console org linked to account 1 (no aut
 ```
 
 Fill these, then `systemctl --user restart robin-daemon`. `robin accounts`
-shows each credential's limits, expiry and last use; `robin doctor` warns
+`robin` commands (`accounts`, `doctor`, MCP-launched agents) read `daemon.env` too, so
+nothing needs exporting. `robin accounts` shows each credential's limits, expiry and last use; `robin doctor` warns
 30 days before a token lapses.
 
 Never put them in `~/.bashrc` or any shell profile. `CLAUDE_CODE_OAUTH_TOKEN`
