@@ -144,12 +144,14 @@ function writeAdaptive(userDataDir: string, s: AdaptiveState): void {
 
 /** Last-N consecutive-failure check for a handler, ignoring rows at/before the
  * given watermark (the handler's last bench). Failure = error/timeout status or
- * a did-work claim its verifier rejected. */
+ * a did-work claim its verifier rejected. Quota deferrals are not runs and are
+ * skipped (they neither break nor extend a streak). */
 function hasFailureStreak(db: RobinDb, handler: string, sinceTs: string | undefined): boolean {
   const rows = db
     .prepare(
       `SELECT status, verified FROM agent_usage
         WHERE surface='agentic-autonomous' AND label=? AND (? IS NULL OR ts > ?)
+          AND NOT COALESCE(status='capped' AND subtype='quota', 0)
         ORDER BY ts DESC LIMIT ?`,
     )
     .all(handler, sinceTs ?? null, sinceTs ?? null, BENCH_AFTER_FAILURES) as Array<{

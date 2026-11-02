@@ -10,7 +10,7 @@ import { recordAlert, resolveAlert } from '../kernel/runtime/alert-store.ts';
 import { appendLandLog } from '../lib/land-log.ts';
 import { operatorName } from '../lib/operator-profile.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../lib/paths.ts';
-import { clearRemediationRequestIf } from '../lib/remediation-request.ts';
+import { clearRemediationRequestIf, refundRemediationAttempt } from '../lib/remediation-request.ts';
 import { AUTO_LAND_LIMITS, type AutoLandResult, autoLand, restartDaemonSoon } from './auto-land.ts';
 import { REGISTRY } from './handlers/index.ts';
 import { writeLearningRecord } from './learning-record.ts';
@@ -386,6 +386,8 @@ export async function runRunnerEntry(
     // null, write no learning record, and leave any remediation request for retry.
     if (result.quotaDeferred) {
       log('deferred: quota');
+      // The runner charged an attempt at dispatch; a deferral did no work.
+      if (parsed.request) refundRemediationAttempt(userDataDir, parsed.request);
       return { status: result.status, message: result.summary, exitCode: 0 };
     }
 

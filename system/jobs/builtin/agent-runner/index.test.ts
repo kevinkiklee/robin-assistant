@@ -737,3 +737,36 @@ test('a quota deferral after the bench is not recovery: bench and alert stay', a
   );
   closeDb(db);
 });
+
+test('a quota deferral between real failures does not break a 3-strike streak', async () => {
+  const ud = tmpUserData();
+  const db = freshDb();
+  writeCursorFile(ud, idxOf('B'));
+  seedUsage(db, 'B', [
+    { status: 'error', ts: '2026-06-01T00:00:00.000Z' },
+    { status: 'capped', subtype: 'quota', ts: '2026-06-02T00:00:00.000Z' },
+    { status: 'error', ts: '2026-06-03T00:00:00.000Z' },
+    { status: 'error', ts: '2026-06-04T00:00:00.000Z' },
+  ]);
+  const { calls, fn } = spySpawn();
+  await runAgentRunner(fakeCtx(db), enabledDeps(ud, fn));
+  assert.notEqual(dispatchedId(calls[0]), 'B', 'streak of 3 real failures benches B');
+  assert.ok(readAdaptiveFile(ud).benches.B);
+  closeDb(db);
+});
+
+test('a trailing quota deferral does not extend a 2-failure streak to 3', async () => {
+  const ud = tmpUserData();
+  const db = freshDb();
+  writeCursorFile(ud, idxOf('B'));
+  seedUsage(db, 'B', [
+    { status: 'error', ts: '2026-06-01T00:00:00.000Z' },
+    { status: 'error', ts: '2026-06-02T00:00:00.000Z' },
+    { status: 'capped', subtype: 'quota', ts: '2026-06-03T00:00:00.000Z' },
+  ]);
+  const { calls, fn } = spySpawn();
+  await runAgentRunner(fakeCtx(db), enabledDeps(ud, fn));
+  assert.equal(dispatchedId(calls[0]), 'B', 'only 2 real failures: B still runs');
+  assert.equal(readAdaptiveFile(ud).benches.B, undefined);
+  closeDb(db);
+});

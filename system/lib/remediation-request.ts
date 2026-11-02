@@ -71,3 +71,18 @@ export function clearRemediationRequestIf(userDataDir: string, createdAt: string
     /* absent or unreadable — nothing to clear */
   }
 }
+
+/**
+ * Give back the attempt the runner charged at dispatch, for a run that was
+ * deferred on quota (no work attempted). Only the request `createdAt` names.
+ */
+export function refundRemediationAttempt(userDataDir: string, createdAt: string): void {
+  try {
+    const path = remediationRequestPath(userDataDir);
+    const r = JSON.parse(readFileSync(path, 'utf8')) as RemediationRequest;
+    if (r?.createdAt !== createdAt || (r.attempts ?? 0) <= 0) return;
+    writeRemediationRequest(userDataDir, { ...r, attempts: (r.attempts ?? 0) - 1 });
+  } catch {
+    /* absent or unreadable — nothing to refund */
+  }
+}

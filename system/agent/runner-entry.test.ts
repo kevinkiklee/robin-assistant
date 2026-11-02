@@ -1020,3 +1020,37 @@ test('quota-deferred run: no outcome stamped, no learning record, exit 0', async
   );
   assert.equal(existsSync(join(ud, 'agent-runs')), false, 'no learning record written');
 });
+
+test('quota-deferred runs refund the remediation attempt (3 deferrals leave it unchanged)', async () => {
+  const { writeRemediationRequest, peekRemediationRequest } = await import(
+    '../lib/remediation-request.ts'
+  );
+  const ud = tmpUserData();
+  const at = new Date().toISOString();
+  for (let i = 0; i < 3; i++) {
+    // The runner charges an attempt at dispatch; the deferral gives it back.
+    const cur = peekRemediationRequest(ud, new Date());
+    writeRemediationRequest(ud, {
+      date: 'd',
+      createdAt: at,
+      goal: 'g',
+      attempts: (cur?.attempts ?? 0) + 1,
+    });
+    const made = ledgerWithDb();
+    const inner = recordingRunAgent(made.ledger, { status: 'capped' });
+    await runRunnerEntry(['--handler=B', `--request=${at}`], {
+      userDataDir: ud,
+      repoRoot: '/repo',
+      log: () => {},
+      openLedger: () => made,
+      mcpServers: fakeMcpServers,
+      runAgent: (async (input, deps) => ({
+        ...(await inner(input, deps)),
+        quotaDeferred: true as const,
+      })) as typeof import('./run-agent.ts')['runAgent'],
+    });
+  }
+  const r = peekRemediationRequest(ud, new Date());
+  assert.ok(r, 'request still present');
+  assert.equal(r?.attempts ?? 0, 0, 'attempts unchanged');
+});
