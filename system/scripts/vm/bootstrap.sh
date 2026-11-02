@@ -119,13 +119,13 @@ if [ -d "$ROBIN_HOME" ] || [ "$dry_run" = 1 ]; then
   if [ -e "$daemon_env" ]; then
     echo "daemon.env: present"
   else
-    run mkdir -p "$(dirname "$daemon_env")"
+    run install -d -m 0700 "$(dirname "$daemon_env")"
     run_sh "umask 077 && printf '%s\n' '# Daemon-only secrets, loaded by the robin-daemon systemd unit. Never export these in a shell.' '# CLAUDE_CODE_OAUTH_TOKEN_A=' '# CLAUDE_CODE_OAUTH_TOKEN_B=' > '$daemon_env'"
     run chmod 0600 "$daemon_env"
   fi
 
   # 10. Install the systemd user unit; its output includes the linger line.
-  run_sh "cd '$ROBIN_HOME' && node dist/surfaces/cli/index.js daemon install"
+  run_sh "cd '$ROBIN_HOME' && ROBIN_USER_DATA_DIR='$ROBIN_HOME/user-data' node dist/surfaces/cli/index.js daemon install"
 else
   echo "No checkout at $ROBIN_HOME: clone it, then re-run to finish install, build, daemon.env and daemon install."
 fi

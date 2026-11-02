@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { DaemonLaunchdSpec } from '../launchd/install.ts';
+import { writeUserDataPointer } from '../paths.ts';
 import { type ExecFn, SYSTEMD_UNIT } from './manager.ts';
 
 const DAEMON_TZ = 'America/Chicago';
@@ -34,8 +35,6 @@ export function renderDaemonUnit(spec: DaemonLaunchdSpec, opts?: { home?: string
   const exec = [spec.nodePath, spec.cliPath, 'daemon', '--foreground'].map(quoteArg).join(' ');
   return `[Unit]
 Description=Robin daemon
-After=network-online.target
-Wants=network-online.target
 
 [Service]
 Type=simple
@@ -48,7 +47,8 @@ ${envLine('TZ', DAEMON_TZ)}
 EnvironmentFile=-${daemonEnvPath(spec.userDataDir)}
 Restart=always
 RestartSec=5
-KillMode=mixed
+# process: detached children (agent runs, auto-land probation) must outlive a restart, as under launchd.
+KillMode=process
 TimeoutStopSec=30
 StandardOutput=append:${logPath}
 StandardError=append:${logPath}
@@ -80,7 +80,7 @@ export interface SystemdInstallResult {
   lingerEnabled: boolean;
 }
 
-/** Write the user unit, reload systemd, and enable --now. Idempotent. */
+/** Write the user unit, reload systemd, enable, and restart. Idempotent. */
 export async function installDaemonSystemd(
   spec: DaemonLaunchdSpec,
   opts?: { home?: string; exec?: ExecFn; skipLoad?: boolean },
@@ -91,10 +91,13 @@ export async function installDaemonSystemd(
   // systemd's `append:` won't create parent directories.
   mkdirSync(join(spec.userDataDir, 'observability', 'logs'), { recursive: true });
   writeFileSync(path, renderDaemonUnit(spec, { home: opts?.home }));
+  writeUserDataPointer(spec.userDataDir, { home: opts?.home });
   const lingerEnabled = await isLingerEnabled(exec);
   if (opts?.skipLoad) return { unitPath: path, loaded: false, lingerEnabled };
   await exec('systemctl', ['--user', 'daemon-reload']);
-  await exec('systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT]);
+  await exec('systemctl', ['--user', 'enable', SYSTEMD_UNIT]);
+  // restart (not --now) so a rewritten unit reaches an already-running daemon.
+  await exec('systemctl', ['--user', 'restart', SYSTEMD_UNIT]);
   return { unitPath: path, loaded: true, lingerEnabled };
 }
 

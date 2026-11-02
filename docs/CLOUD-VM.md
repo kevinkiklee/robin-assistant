@@ -35,7 +35,7 @@ packages (bubblewrap, git, build tools, sqlite3, rsync), Node 24 and pnpm
 10.33.0 (via corepack), sets the timezone to `America/Chicago`, enables
 linger, installs the Claude Code CLI and `cloudflared`, runs
 `pnpm install --frozen-lockfile && pnpm build`, creates `daemon.env`, and runs
-`robin daemon install`. `ROBIN_HOME` overrides the checkout path.
+the systemd unit install (`daemon install`, pointed at the checkout's `user-data/`). `ROBIN_HOME` overrides the checkout path.
 
 If linger was off, the install prints
 `Linger is off — the daemon stops at logout. Run: sudo loginctl enable-linger $USER`.
@@ -64,12 +64,12 @@ After editing: `systemctl --user restart robin-daemon`.
 systemctl --user status robin-daemon
 systemctl --user is-active robin-daemon
 journalctl --user -u robin-daemon -f
-robin doctor
+pnpm robin doctor   # run from the checkout; `robin` is not on PATH
 ```
 
 ## Expected warning
 
-On Linux, `robin doctor` warns `agent.auto_land_sandbox` (auto-land is enabled
+On Linux, `pnpm robin doctor` warns `agent.auto_land_sandbox` (auto-land is enabled
 without an OS sandbox). That is expected until a later milestone. To silence it,
 set `agent.auto_land: false`.
 

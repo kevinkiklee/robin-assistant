@@ -49,6 +49,11 @@ describe('renderDaemonUnit', () => {
     assert.ok(u.includes('Environment="ROBIN_USER_DATA_DIR=/srv/my data"\n'));
     assert.ok(u.includes('StandardOutput=append:/srv/my data/observability/logs/daemon.log\n'));
   });
+  it('uses KillMode=process and no network-online ordering', () => {
+    const u = renderDaemonUnit(spec);
+    assert.ok(u.includes('KillMode=process\n'));
+    assert.ok(!u.includes('network-online'));
+  });
   it('no token in unit', () => {
     assert.ok(!renderDaemonUnit(spec).includes('CLAUDE_CODE_OAUTH_TOKEN'));
   });
@@ -63,13 +68,24 @@ describe('installDaemonSystemd', () => {
     const sc = calls.filter(([c]) => c === 'systemctl');
     assert.deepEqual(sc, [
       ['systemctl', ['--user', 'daemon-reload']],
-      ['systemctl', ['--user', 'enable', '--now', 'robin-daemon.service']],
+      ['systemctl', ['--user', 'enable', 'robin-daemon.service']],
+      ['systemctl', ['--user', 'restart', 'robin-daemon.service']],
     ]);
     assert.equal(r.unitPath, unitPath({ home }));
     assert.ok(existsSync(r.unitPath));
     assert.ok(existsSync(join(ud, 'observability', 'logs')));
     assert.ok(readFileSync(r.unitPath, 'utf8').includes('[Service]'));
     assert.equal(r.loaded, true);
+  });
+  it('writes the user-data pointer under the given home', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sd-'));
+    const ud = mkdtempSync(join(tmpdir(), 'sd-ud-'));
+    await installDaemonSystemd(
+      { ...spec, userDataDir: ud },
+      { home, exec: fakeExec('yes').exec, skipLoad: true },
+    );
+    const pointer = join(home, '.config', 'robin', 'user-data-dir');
+    assert.equal(readFileSync(pointer, 'utf8').trim(), ud);
   });
   it('reports linger state', async () => {
     for (const [v, want] of [

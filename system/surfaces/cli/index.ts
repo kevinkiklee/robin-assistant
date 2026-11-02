@@ -291,8 +291,12 @@ async function main(): Promise<void> {
         const { detectServiceManager } = await import('../../lib/service/manager.ts');
         serviceManager = detectServiceManager();
         if (serviceManager === 'none') {
+          const hint =
+            process.platform === 'linux'
+              ? ' If systemd is installed, log in over SSH as this user (a user session provides XDG_RUNTIME_DIR) and retry.'
+              : '';
           console.error(
-            'no service manager found; run `robin daemon --foreground` under your own supervisor',
+            `no service manager found; run \`robin daemon --foreground\` under your own supervisor${hint}`,
           );
           exit(1);
         }
@@ -304,9 +308,13 @@ async function main(): Promise<void> {
         try {
           const spec = buildDaemonSpecFromEnv();
           if (serviceManager === 'systemd') {
-            const { installDaemonSystemd } = await import('../../lib/service/systemd.ts');
+            const { installDaemonSystemd, daemonEnvPath } = await import(
+              '../../lib/service/systemd.ts'
+            );
             const r = await installDaemonSystemd(spec);
             console.log(`Installed systemd user unit at ${r.unitPath}`);
+            console.log(`  Data:   ${spec.userDataDir}`);
+            console.log(`  Env:    ${daemonEnvPath(spec.userDataDir)}`);
             if (!r.lingerEnabled) {
               console.log(
                 'Linger is off — the daemon stops at logout. Run: sudo loginctl enable-linger $USER',
