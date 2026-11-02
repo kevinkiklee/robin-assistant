@@ -2,6 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
+// Agent worktrees are created and deleted per run. With a global
+// core.fsmonitor, every git call inside one starts a monitor daemon that holds
+// FSEvents streams and outlives the deleted worktree; hundreds of them exhaust
+// macOS's FSEvents capacity until every fs.watch fails with EMFILE.
+const NO_FSMONITOR = ['-c', 'core.fsmonitor=false'];
+
 /**
  * Create a throwaway git worktree off `main`, on a fresh `agent/<ts>` branch.
  * Write handlers edit only inside this dir, so a run can never touch the live
@@ -14,9 +20,13 @@ export function createWorktree(
   const ts = now().toISOString().replace(/[:.]/g, '-');
   const branch = `agent/${ts}`;
   const worktree = join(repoRoot, '.worktrees', ts);
-  execFileSync('git', ['-C', repoRoot, 'worktree', 'add', worktree, '-b', branch, 'main'], {
-    stdio: 'pipe',
-  });
+  execFileSync(
+    'git',
+    [...NO_FSMONITOR, '-C', repoRoot, 'worktree', 'add', worktree, '-b', branch, 'main'],
+    {
+      stdio: 'pipe',
+    },
+  );
   // A fresh worktree has no node_modules, so a handler that wants to run tests
   // had to `cd` back into the live checkout to do it — which is how K ended up
   // editing and committing on main (2026-10-02). Share the repo's deps instead;
@@ -35,14 +45,20 @@ export function createWorktree(
 /** Remove a worktree + its branch. Only called when a run produced no changes. */
 export function pruneWorktree(repoRoot: string, worktree: string, branch: string): void {
   try {
-    execFileSync('git', ['-C', repoRoot, 'worktree', 'remove', '--force', worktree], {
-      stdio: 'pipe',
-    });
+    execFileSync(
+      'git',
+      [...NO_FSMONITOR, '-C', repoRoot, 'worktree', 'remove', '--force', worktree],
+      {
+        stdio: 'pipe',
+      },
+    );
   } catch {
     // best-effort
   }
   try {
-    execFileSync('git', ['-C', repoRoot, 'branch', '-D', branch], { stdio: 'pipe' });
+    execFileSync('git', [...NO_FSMONITOR, '-C', repoRoot, 'branch', '-D', branch], {
+      stdio: 'pipe',
+    });
   } catch {
     // best-effort — branch may not exist if the add failed mid-way
   }
@@ -54,15 +70,19 @@ export function pruneWorktree(repoRoot: string, worktree: string, branch: string
  * read that as "no work" — the runner then pruned the branch, deleting the commit.
  */
 export function worktreeHasChanges(worktree: string): boolean {
-  const out = execFileSync('git', ['-C', worktree, 'status', '--porcelain'], {
+  const out = execFileSync('git', [...NO_FSMONITOR, '-C', worktree, 'status', '--porcelain'], {
     encoding: 'utf8',
     stdio: 'pipe',
   });
   if (out.trim().length > 0) return true;
-  const ahead = execFileSync('git', ['-C', worktree, 'rev-list', '--count', 'main..HEAD'], {
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
+  const ahead = execFileSync(
+    'git',
+    [...NO_FSMONITOR, '-C', worktree, 'rev-list', '--count', 'main..HEAD'],
+    {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    },
+  );
   return Number.parseInt(ahead.trim(), 10) > 0;
 }
 
@@ -83,10 +103,14 @@ export interface PendingWorktree {
  * open rather than blocking a run on a broken entry.
  */
 export function pendingReviewWorktrees(repoRoot: string): PendingWorktree[] {
-  const listing = execFileSync('git', ['-C', repoRoot, 'worktree', 'list', '--porcelain'], {
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
+  const listing = execFileSync(
+    'git',
+    [...NO_FSMONITOR, '-C', repoRoot, 'worktree', 'list', '--porcelain'],
+    {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    },
+  );
   const out: PendingWorktree[] = [];
   for (const block of listing.split(/\n\n+/)) {
     const lines = block.split('\n');
@@ -95,13 +119,17 @@ export function pendingReviewWorktrees(repoRoot: string): PendingWorktree[] {
     if (!worktree || !ref?.startsWith('refs/heads/agent/')) continue;
     if (lines.some((l) => l.startsWith('prunable'))) continue;
     try {
-      const status = execFileSync('git', ['-C', worktree, 'status', '--porcelain'], {
-        encoding: 'utf8',
-        stdio: 'pipe',
-      });
+      const status = execFileSync(
+        'git',
+        [...NO_FSMONITOR, '-C', worktree, 'status', '--porcelain'],
+        {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        },
+      );
       const committed = execFileSync(
         'git',
-        ['-C', worktree, 'diff', '--name-only', 'main...HEAD'],
+        [...NO_FSMONITOR, '-C', worktree, 'diff', '--name-only', 'main...HEAD'],
         { encoding: 'utf8', stdio: 'pipe' },
       );
       const files = new Set<string>();
@@ -124,7 +152,7 @@ export function pendingReviewWorktrees(repoRoot: string): PendingWorktree[] {
 /** The live checkout's `main` commit, or null when it can't be read. */
 export function mainHead(repoRoot: string): string | null {
   try {
-    return execFileSync('git', ['-C', repoRoot, 'rev-parse', 'refs/heads/main'], {
+    return execFileSync('git', [...NO_FSMONITOR, '-C', repoRoot, 'rev-parse', 'refs/heads/main'], {
       encoding: 'utf8',
       stdio: 'pipe',
     }).trim();

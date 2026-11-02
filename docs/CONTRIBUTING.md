@@ -71,6 +71,7 @@ The repository is public and must not identify its operator. Read personal value
 - Cross-cutting tests live in `system/tests/` (`architecture/` guards, `integration/` end-to-end runs against a temp user-data dir, `golden/`). They run in CI like everything else.
 - Mock at the boundary (`fetch`, the LLM provider) — tests never hit live APIs or read real secrets
 - Memory-pipeline tuning experiments belong in the test lab (`lab/`), which replays a synthetic life through a sandboxed copy of the pipeline — see `lab/README.md`
+- `pnpm test` sets `core.fsmonitor=false` through `GIT_CONFIG_*` env vars. Tests create throwaway git repos, and with a global fsmonitor each would leave a monitor daemon behind. A single-file run (`pnpm exec tsx --test <file>`) doesn't get them, so prefix it with the same variables if you run git-heavy tests often.
 - Each PR keeps `pnpm test` green. Nothing enforces it on `main`, so don't merge on red
 
 ## Adding an integration
