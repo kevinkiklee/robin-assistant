@@ -10,6 +10,7 @@ import { loadPolicies } from '../config/load.ts';
 import {
   agentWorktreesBoundedInvariant,
   alertsHistoryBoundedInvariant,
+  autoLandSandboxInvariant,
   beliefEmbeddingsBoundedInvariant,
   captureVolumeSaneInvariant,
   daemonStableInvariant,
@@ -137,6 +138,7 @@ export function buildDoctorInvariants(
     orphanChildrenInvariant(db),
     recallTopicsResolvableInvariant({ userData }),
     agentWorktreesBoundedInvariant(repoRoot),
+    autoLandSandboxInvariant({ autoLandEnabled: () => loadPolicies(userData).agent.auto_land }),
     gitFsmonitorBoundedInvariant(),
     distCurrentInvariant({
       repoRoot,

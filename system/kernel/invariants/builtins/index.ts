@@ -1,5 +1,6 @@
 export { agentWorktreesBoundedInvariant } from './agent-worktrees-bounded.ts';
 export { alertsHistoryBoundedInvariant } from './alerts-history-bounded.ts';
+export { autoLandSandboxInvariant } from './auto-land-sandbox.ts';
 export { beliefEmbeddingsBoundedInvariant } from './belief-embeddings-bounded.ts';
 export { captureVolumeSaneInvariant } from './capture-volume-sane.ts';
 export { daemonHeartbeatingInvariant, type HeartbeatSource } from './daemon-heartbeating.ts';
