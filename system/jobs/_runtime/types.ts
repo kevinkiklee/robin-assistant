@@ -1,0 +1,46 @@
+import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
+import type { RobinDb } from '../../brain/memory/db.ts';
+import type { IngestInput, IngestResult } from '../../brain/memory/ingest.ts';
+import type { CheckOutboundInput, DiscretionDecision } from '../../lib/discretion/policy.ts';
+
+export interface JobManifest {
+  name: string;
+  version: string;
+  /** Cron expression, or 'manual' for jobs only run via CLI / explicit trigger. */
+  schedule?: string;
+  /** IANA timezone the schedule is interpreted in. Defaults to ROBIN_TZ env or system TZ. */
+  tz?: string;
+  description?: string;
+  permissions?: {
+    memory?: { read?: boolean; write?: boolean; namespaces?: string[] };
+    network?: string[];
+    secrets?: string[];
+  };
+}
+
+export interface JobResult {
+  status: 'ok' | 'skipped' | 'error';
+  message?: string;
+  eventId?: number;
+}
+
+export interface JobContext {
+  db: RobinDb;
+  llm: LLMDispatcher | null;
+  log: {
+    info: (obj: unknown, msg?: string) => void;
+    warn: (obj: unknown, msg?: string) => void;
+    error: (obj: unknown, msg?: string) => void;
+  };
+  fetch: typeof fetch;
+  now: () => Date;
+  ingest: (input: IngestInput) => Promise<IngestResult>;
+  /** Pre-flight discretion check for outbound writes. See IntegrationContext.checkOutbound. */
+  checkOutbound: (input: CheckOutboundInput) => DiscretionDecision;
+  /** Absolute path to the job's own directory (so the job can read sibling files like prompt.md). */
+  rootDir: string;
+}
+
+export interface Job {
+  run: (ctx: JobContext) => Promise<JobResult> | JobResult;
+}

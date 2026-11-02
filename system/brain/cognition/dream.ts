@@ -1,0 +1,1723 @@
+import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { clockDate, clockNow } from '../../lib/clock.ts';
+import { levenshtein } from '../../lib/levenshtein.ts';
+import { resolveUserDataDir } from '../../lib/paths.ts';
+import { applyCorrections } from '../learning/apply-corrections.ts';
+import type { LLMDispatcher } from '../llm/dispatcher.ts';
+import {
+  countPendingCandidates,
+  dedupePendingCandidates,
+  expireStaleCandidates,
+  expireStaleConflicts,
+  resolveBeliefCandidate,
+} from '../memory/belief-candidate.ts';
+import type { RobinDb } from '../memory/db.ts';
+import { getTuning } from '../memory/tuning.ts';
+import { runBeliefFreshness } from './belief-freshness.ts';
+import {
+  applyVerdict,
+  currentHead,
+  type JudgeItem,
+  judgeAgainstHeads,
+} from './belief-reconcile.ts';
+import { retryClaimFailures } from './biographer.ts';
+import { runHygiene } from './hygiene.ts';
+import { ingestContentDocs } from './ingest-docs.ts';
+import { getPrompt } from './prompts.ts';
+import { HOLD_VERDICTS, listRecommendations } from './recommendations/store.ts';
+import { runTopicHygiene } from './topic-hygiene.ts';
+
+export interface DreamResult {
+  predictionsResolved: number;
+  brierDeltaSum: number;
+  journalGenerated: boolean;
+  entitiesSummarized: number;
+  arcsCreated: number;
+  candidatesExpired: number;
+  /** Stale `conflicted` candidates expired (rejected) after the review window this run. */
+  conflictsExpired: number;
+  staleFlagsRaised: number;
+  /** Stale belief heads flagged with a belief.stale event this run. */
+  staleBeliefsFlagged: number;
+  /** Stale belief heads successfully re-verified via a registered resolver. */
+  beliefsRefreshed: number;
+  /** Dead-letter claim chunks re-attempted by the nightly retry pass (spec §C3). */
+  claimsRetried: number;
+  /** Dead-letter claim chunks that re-extracted successfully (row cleared). */
+  claimsRecovered: number;
+  /** content/* docs ingested or updated into events_content for recall this run. */
+  docsIngested: number;
+  /** Topic-linked corrections processed (applied=1) this run. */
+  correctionsApplied: number;
+  /** Belief heads retracted due to a topic-linked correction this run. */
+  beliefsRetracted: number;
+  /** Pending candidates auto-promoted to held beliefs this run. */
+  candidatesPromoted: number;
+  /** Candidates flagged as conflicting with an existing belief head. */
+  candidatesConflicted: number;
+  /** Near-duplicate candidates merged (lower-confidence one resolved). */
+  candidatesMerged: number;
+  /** Paraphrase-cluster candidates collapsed by the semantic dedup sweep this run. */
+  candidatesDeduped: number;
+  /** Duplicate belief-topic keys collapsed by the nightly topic-hygiene pass. */
+  topicsMerged: number;
+  /** Non-empty depth synthesis sections appended to the journal. */
+  depthInsightsGenerated: number;
+  /** Whether a learning digest event was persisted this run. */
+  digestGenerated: boolean;
+  /** Noise relations deleted by nightly hygiene pass. */
+  hygieneRelationsDeleted: number;
+  /** Noise entities auto-deleted by nightly hygiene pass. */
+  hygieneEntitiesDeleted: number;
+  /** Score-based auto-culls by Tier 2 hygiene (subset of hygieneEntitiesDeleted). */
+  hygieneEntitiesAutoCulled: number;
+  /** New names added to the adaptive noise blocklist. */
+  hygieneBlocklistGrown: number;
+}
+
+// ── Learning digest types ────────────────────────────────────────────────────
+
+export interface HandlerActivityRow {
+  surface: string;
+  runs: number;
+  cost: number;
+  turns: number;
+  handlers: string;
+}
+
+export interface LearningDigest {
+  /** Handler activity summary (last 24h) grouped by surface. */
+  handlerActivity: HandlerActivityRow[];
+  /** Prediction calibration: resolved counts by outcome. */
+  predictionsByOutcome: Array<{ outcome: string; n: number }>;
+  /** Overall Brier score (lower = better). null if no resolved predictions with brier_delta. */
+  overallBrier: number | null;
+  /** Open (unresolved) predictions count and nearest deadline. */
+  openPredictions: { count: number; nearestDeadline: string | null };
+  /** Belief lifecycle snapshot from this dream run. */
+  beliefLifecycle: {
+    promoted: number;
+    conflicted: number;
+    merged: number;
+    expired: number;
+    pendingCandidates: number;
+    activeBeliefHeads: number;
+  };
+  /** Correction coverage. */
+  corrections: {
+    total: number;
+    behavioral: number;
+    topicLinked: number;
+    unapplied: number;
+  };
+  /**
+   * Behavioral-habit snapshot (design §5/§9). Counts of inferred habits by lifecycle
+   * status, plus how many were freshly created / graduated in the last 24h — the
+   * learning-digest view onto the habit engine. Optional so an older DB (no `habits`
+   * table) or a degraded run still produces a valid digest. */
+  habits?: {
+    soft: number;
+    graduated: number;
+    retired: number;
+    /** New soft habits inferred in the last 24h (created_at within the window). */
+    newSoft: number;
+    /** Habits graduated in the last 24h (graduated + updated_at within the window). */
+    newGraduated: number;
+  };
+  /**
+   * Recommendation calibration (design §6): the acted-rate view onto the
+   * `recommendations` ledger — Goal C ("which of my advice lands"). `actedRate` is
+   * acted / (acted + expired + declined) over RESOLVED recs (null when none resolved);
+   * `byDomain` carries per-domain acted-vs-resolved counts for the "top domains: gear
+   * 3/4" breakdown (only domains with ≥1 resolved rec). Optional so an older DB (no
+   * `recommendations` table) or a degraded run still produces a valid digest. */
+  recommendations?: {
+    open: number;
+    acted: number;
+    expired: number;
+    declined: number;
+    /** acted / (acted + expired + declined) over resolved recs; null when none resolved. */
+    actedRate: number | null;
+    byDomain: Array<{ domain: string; acted: number; resolved: number }>;
+  };
+  /**
+   * Loop health (design 2026-08-10 §10): the standing creation-discipline signal —
+   * open recommendation count, expiries acted in the last 24h, and the brief's most
+   * recent last-call overflow metric (null when never recorded). Optional so an older
+   * DB (no `recommendations` table) or a degraded run still produces a valid digest. */
+  loopHealth?: {
+    openRecs: number;
+    lapsed24h: number;
+    lastCallOverflow: number | null;
+  };
+  /** Recent agent runs with non-success status (capped, timeout, error). */
+  failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }>;
+}
+
+const ENTITY_SUMMARY_MIN_SIGNALS = 3;
+const ENTITY_SUMMARY_MAX_PER_RUN = 25;
+const ARC_RECENCY_DAYS = 14;
+const ARC_MIN_SHARED_ENTITIES = 2;
+const ARC_MIN_EVENTS = 2;
+const ARC_JACCARD_MERGE_THRESHOLD = 0.6;
+
+export type DreamStep =
+  | 'hygiene'
+  | 'predictions'
+  | 'metrics'
+  | 'entities'
+  | 'arcs'
+  | 'expire'
+  | 'dedupe'
+  | 'lifecycle'
+  | 'topics'
+  | 'depth'
+  | 'journal'
+  | 'freshness'
+  | 'claimRetry'
+  | 'staleDocs'
+  | 'docs'
+  | 'corrections'
+  | 'digest';
+
+/** Every dream step, in execution order. Omitting `steps` from `runDream` runs all of them. */
+export const ALL_DREAM_STEPS: readonly DreamStep[] = [
+  'hygiene',
+  'predictions',
+  'metrics',
+  'entities',
+  'arcs',
+  'expire',
+  'dedupe',
+  'lifecycle',
+  'topics',
+  'depth',
+  'journal',
+  'freshness',
+  'claimRetry',
+  'staleDocs',
+  'docs',
+  'corrections',
+  'digest',
+];
+
+/** Validate step names (from an arm config) into the `runDream` allowlist. */
+export function parseDreamSteps(names: readonly string[]): ReadonlySet<DreamStep> {
+  const known = new Set<string>(ALL_DREAM_STEPS);
+  for (const n of names) if (!known.has(n)) throw new Error(`unknown dream step: ${n}`);
+  return new Set(names as DreamStep[]);
+}
+
+/**
+ * Nightly consolidation job:
+ * 1. Data hygiene — cleans noise entities/relations + auto-culls borderline ones, grows blocklist
+ * 2. Resolves overdue predictions as 'unverifiable'
+ * 3. Rolls up daily metric counts
+ * 4. Summarizes hot entities (signal_count >= threshold among today's relations)
+ * 5. Detects narrative arcs from session.captured events in the last 14 days
+ * 6. Writes a deterministic metrics-only journal (the 4:00am dream-synthesis
+ *    pass upserts a richer narrative over the same day key later)
+ * 7. Expires stale belief candidates (pending > 14 days)
+ * 8. Scans live belief heads for staleness; re-queries via registered resolvers
+ *    (bounded) or flags with belief.stale events (idempotent)
+ * 9. Flags prose docs in content/profile that are older than the newest belief/correction signal
+ * 10. Indexes content/* markdown docs for recall (idempotent)
+ * 11. Replays topic-linked corrections: retracts contradicted belief heads (P4 close-the-loop)
+ * 12. Composes and persists a learning digest
+ */
+export async function runDream(
+  db: RobinDb,
+  llm: LLMDispatcher | null,
+  now: Date = clockDate(),
+  opts?: { domainGating?: boolean; steps?: ReadonlySet<DreamStep> },
+): Promise<DreamResult> {
+  const domainGating = opts?.domainGating ?? true;
+  const on = (step: DreamStep): boolean => !opts?.steps || opts.steps.has(step);
+  const result: DreamResult = {
+    predictionsResolved: 0,
+    brierDeltaSum: 0,
+    journalGenerated: false,
+    entitiesSummarized: 0,
+    arcsCreated: 0,
+    candidatesExpired: 0,
+    conflictsExpired: 0,
+    staleFlagsRaised: 0,
+    staleBeliefsFlagged: 0,
+    beliefsRefreshed: 0,
+    claimsRetried: 0,
+    claimsRecovered: 0,
+    docsIngested: 0,
+    correctionsApplied: 0,
+    beliefsRetracted: 0,
+    candidatesPromoted: 0,
+    candidatesConflicted: 0,
+    candidatesMerged: 0,
+    candidatesDeduped: 0,
+    topicsMerged: 0,
+    depthInsightsGenerated: 0,
+    digestGenerated: false,
+    hygieneRelationsDeleted: 0,
+    hygieneEntitiesDeleted: 0,
+    hygieneEntitiesAutoCulled: 0,
+    hygieneBlocklistGrown: 0,
+  };
+
+  // 1. Data hygiene — clean noise entities/relations and grow the adaptive
+  //    blocklist. Tier 2 score-based culls run inline (no human review).
+  //    Runs first so downstream steps (entity summarization, arc detection)
+  //    work on a clean graph. Best-effort: a hygiene failure must never sink
+  //    the rest of the dream pass.
+  if (on('hygiene')) {
+    try {
+      const hygiene = runHygiene(db, now);
+      result.hygieneRelationsDeleted = hygiene.relationsDeleted;
+      result.hygieneEntitiesDeleted = hygiene.entitiesDeleted + hygiene.orphansDeleted;
+      result.hygieneEntitiesAutoCulled = hygiene.entitiesAutoCulled;
+      result.hygieneBlocklistGrown = hygiene.blocklistGrown;
+    } catch {
+      // zeroed by initializer
+    }
+  }
+
+  // 2a. Resolve spec'd predictions right/wrong from Robin's own data (design
+  //     2026-10-03-prediction-specs) BEFORE the sweep below. Rows whose reader
+  //     has no fresh datum yet stay open and retry nightly; the resolver itself
+  //     closes them after its grace window. Best-effort: never sinks the pass.
+  if (on('predictions')) {
+    try {
+      const { resolveSpecPredictions } = await import('./predictions/resolve-spec.ts');
+      const spec = resolveSpecPredictions(db, now);
+      result.predictionsResolved += spec.right + spec.wrong + spec.expired;
+    } catch {
+      // spec'd rows stay open; the sweep below skips them either way
+    }
+  }
+
+  // 2b. Auto-resolve SPEC-LESS predictions past deadline as 'unverifiable'.
+  //    Write a structured reason into `evidence` so silent unverifiables don't
+  //    accumulate without an audit trail — when this fires it means the dream
+  //    pass found no caller-supplied resolution before the deadline, not that
+  //    the claim itself was inherently unverifiable. Spec'd rows are owned by
+  //    the resolver above and never swept here.
+  if (on('predictions')) {
+    const overdue = db
+      .prepare(`
+      SELECT id, confidence, deadline FROM predictions
+      WHERE outcome IS NULL AND spec IS NULL AND deadline IS NOT NULL AND deadline < ?
+    `)
+      .all(now.toISOString()) as Array<{ id: number; confidence: number; deadline: string }>;
+    const resolveStmt = db.prepare(
+      `UPDATE predictions SET outcome = ?, resolved_at = ?, brier_delta = NULL, evidence = ?,
+         resolution_source = 'dream:no-spec' WHERE id = ?`,
+    );
+    for (const p of overdue) {
+      const reason =
+        `Auto-resolved as unverifiable by dream pass at ${now.toISOString()}: ` +
+        `deadline ${p.deadline} elapsed with no resolution recorded. ` +
+        `It carried no structured spec — if this claim is resolvable from existing data ` +
+        `(whoop, finance, photos, linear), pass \`spec\` to predict so the resolver can check it.`;
+      resolveStmt.run('unverifiable', now.toISOString(), reason, p.id);
+      result.predictionsResolved++;
+    }
+  }
+
+  // 3. Metrics rollup for today
+  const today = now.toISOString().slice(0, 10);
+  const since = `${today}T00:00:00.000Z`;
+  let eventsToday = 0;
+  let capturesToday = 0;
+  let correctionsToday = 0;
+  const upsertMetric = db.prepare(`
+    INSERT INTO metrics_daily (day, metric, value, n)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT (day, metric) DO UPDATE SET value=excluded.value, n=excluded.n, computed_at=datetime('now')
+  `);
+  if (on('metrics')) {
+    eventsToday = (
+      db.prepare(`SELECT COUNT(*) AS c FROM events WHERE ts >= ?`).get(since) as { c: number }
+    ).c;
+    capturesToday = (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM events WHERE kind = 'session.captured' AND ts >= ?`)
+        .get(since) as { c: number }
+    ).c;
+    correctionsToday = (
+      db.prepare(`SELECT COUNT(*) AS c FROM corrections WHERE ts >= ?`).get(since) as { c: number }
+    ).c;
+
+    upsertMetric.run(today, 'events_count', eventsToday, eventsToday);
+    upsertMetric.run(today, 'captures_count', capturesToday, capturesToday);
+    upsertMetric.run(today, 'corrections_count', correctionsToday, correctionsToday);
+  }
+
+  // 4. Entity summarization — regenerate profiles for hot entities
+  if (on('entities')) {
+    result.entitiesSummarized = await summarizeHotEntities(db, llm, since);
+  }
+
+  // 5. Arc detection — cluster recent captured events by shared entities
+  if (on('arcs')) {
+    result.arcsCreated = detectArcs(db, now);
+  }
+
+  // 6. Expire stale belief candidates. Guarded so an older DB without the
+  //    belief_candidates table can't crash the whole dream pass.
+  if (on('expire')) {
+    try {
+      result.candidatesExpired = expireStaleCandidates(db, getTuning().candidateExpiryDays, now);
+    } catch {
+      result.candidatesExpired = 0;
+    }
+  }
+
+  // 6-conflicts. Expire `conflicted` candidates that have sat past the review window.
+  //   Nothing else clears the conflicted state, so without this the contradiction queue
+  //   grows without bound. Reversible (resolved_reason='stale-conflict-expiry') and
+  //   re-derivable. Guarded like the pending expiry above.
+  if (on('expire')) {
+    try {
+      result.conflictsExpired = expireStaleConflicts(db, getTuning().conflictExpiryDays, now);
+    } catch {
+      result.conflictsExpired = 0;
+    }
+  }
+
+  // 6a. Semantic dedup sweep: collapse paraphrase clusters among pending candidates
+  //     (same fact re-extracted under different slugs/wordings). Runs BEFORE promotion
+  //     so near-duplicate paraphrases can't each promote. Best-effort, LLM-embedded.
+  if (on('dedupe')) {
+    try {
+      result.candidatesDeduped = (await dedupePendingCandidates(db, llm)).rejected;
+    } catch {
+      result.candidatesDeduped = 0;
+    }
+  }
+
+  // 6b. Belief lifecycle: auto-promote stable candidates, merge near-duplicates,
+  //     LLM-judge candidates that diverge from their head (same / refines /
+  //     contradicts / unrelated; bounded per run, deterministic fallback without
+  //     an LLM). Guarded like step 5.
+  if (on('lifecycle')) {
+    try {
+      const lifecycle = await promoteStableCandidates(db, now, llm);
+      result.candidatesPromoted = lifecycle.promoted;
+      result.candidatesConflicted = lifecycle.conflicted;
+      result.candidatesMerged = lifecycle.merged;
+    } catch {
+      result.candidatesPromoted = 0;
+      result.candidatesConflicted = 0;
+      result.candidatesMerged = 0;
+    }
+  }
+
+  // 6b-topics. Topic-key hygiene: collapse duplicate belief-topic keys — lexical
+  //   nomination + LLM confirm, merge caps, distinct verdicts remembered (see
+  //   topic-hygiene.ts). Best-effort like 6a: a failed judge call merges nothing.
+  if (on('topics')) {
+    try {
+      result.topicsMerged = (await runTopicHygiene(db, llm)).merged;
+    } catch {
+      result.topicsMerged = 0;
+    }
+  }
+
+  // 6b-metrics. Persist memory-health counters to metrics_daily so quality is
+  //   observable over time WITHOUT a user-facing triage queue (migration 017
+  //   deliberately removed the brief's hygiene-review section — the operator wants the
+  //   system self-managing, not human-in-the-loop). These are passive metrics:
+  //   queryable on demand, never pushed into the brief. Guarded like 6/6b so a
+  //   missing belief_candidates table can't sink the dream pass.
+  if (on('lifecycle')) {
+    try {
+      upsertMetric.run(
+        today,
+        'beliefs_promoted',
+        result.candidatesPromoted,
+        result.candidatesPromoted,
+      );
+      const pending = countPendingCandidates(db);
+      upsertMetric.run(today, 'beliefs_pending', pending, pending);
+      upsertMetric.run(
+        today,
+        'entities_culled',
+        result.hygieneEntitiesAutoCulled ?? 0,
+        result.hygieneEntitiesAutoCulled ?? 0,
+      );
+      upsertMetric.run(today, 'topics_merged', result.topicsMerged, result.topicsMerged);
+    } catch {
+      /* belief_candidates table missing (old DB) — skip metric persistence */
+    }
+  }
+
+  // 6c. Depth synthesis inputs — deterministic SQL queries. Best-effort:
+  //     a failure here yields empty arrays, never sinks the dream pass.
+  let depthReplays: DecisionReplay[] = [];
+  let depthCalibration: PredictionCalibrationRow[] = [];
+  let depthDeadlines: ApproachingDeadline[] = [];
+  if (on('depth')) {
+    try {
+      depthReplays = queryDecisionReplays(db);
+      depthCalibration = queryPredictionCalibration(db);
+      depthDeadlines = queryApproachingDeadlines(db, now);
+    } catch {
+      // leave empty — depth is best-effort
+    }
+  }
+
+  // 7. Compose journal — deterministic metrics-only block with depth sections.
+  //    The 4:00am dream-synthesis pass upserts a richer narrative over this same
+  //    day key later; dream.run only guarantees the row exists as a fallback.
+  if (on('journal')) {
+    const journal = composeJournal({
+      today,
+      eventsToday,
+      capturesToday,
+      correctionsToday,
+      predictionsResolved: result.predictionsResolved,
+      entitiesSummarized: result.entitiesSummarized,
+      arcsCreated: result.arcsCreated,
+      decisionReplays: depthReplays,
+      predictionCalibration: depthCalibration,
+      approachingDeadlines: depthDeadlines,
+    });
+    db.prepare(`
+      INSERT INTO journals (day, body) VALUES (?, ?)
+      ON CONFLICT (day) DO UPDATE SET body=excluded.body, generated_at=datetime('now')
+    `).run(today, journal);
+    result.journalGenerated = true;
+  }
+
+  // Count non-empty depth sections for the result.
+  let depthSections = 0;
+  if (depthReplays.length > 0) depthSections++;
+  if (depthCalibration.length > 0) depthSections++;
+  if (depthDeadlines.length > 0) depthSections++;
+  result.depthInsightsGenerated = depthSections;
+
+  // 8. Belief freshness — scan live belief heads, re-query via registered resolvers
+  //    (bounded by maxRequeries) and/or flag stale heads with belief.stale events.
+  //    Guarded so a failure here never sinks the rest of the dream pass.
+  if (on('freshness')) {
+    try {
+      const freshness = await runBeliefFreshness(db, llm, { now });
+      result.staleBeliefsFlagged = freshness.flagged;
+      result.beliefsRefreshed = freshness.requeried;
+    } catch {
+      result.staleBeliefsFlagged = 0;
+      result.beliefsRefreshed = 0;
+    }
+  }
+
+  // 8a. Drain the biographer's claim dead-letter queue (spec §C3). Re-attempt a
+  //    bounded slice of failed claim chunks here, in the nightly pass — NOT in the
+  //    every-minute biographer tick — so the spec's "max 3 attempts spread across
+  //    nights" survives a transient multi-minute LLM outage. Requires an LLM (the
+  //    retry re-extracts); guarded so a retry-pass failure never sinks the dream.
+  if (on('claimRetry')) {
+    if (llm) {
+      try {
+        // Drain up to 40/pass (not the default 5): an outage can poison a large
+        // batch at once (160 chunks on 2026-06-15), and at 5/night that backlog —
+        // plus its health alert — would linger for weeks. 40 clears a big backlog
+        // in a handful of nights while staying well under the per-tick LLM budget;
+        // a normal night has only a few open rows, so this is just an upper bound.
+        const retry = await retryClaimFailures(db, llm, { max: 40, domainGating });
+        result.claimsRetried = retry.retried;
+        result.claimsRecovered = retry.recovered;
+      } catch {
+        result.claimsRetried = 0;
+        result.claimsRecovered = 0;
+      }
+    }
+  }
+
+  // 9. Narrative staleness flags — prose docs older than the newest belief/correction signal.
+  if (on('staleDocs')) {
+    result.staleFlagsRaised = flagStaleNarrativeDocs(db, now);
+  }
+
+  // 10. Keep content/* markdown docs indexed for recall. Idempotent — unchanged files
+  //    are skipped, so this is cheap on a quiet night. Best-effort: a doc-ingest failure
+  //    must never sink the rest of the dream pass.
+  if (on('docs')) {
+    try {
+      const docs = ingestContentDocs(db, llm);
+      result.docsIngested = docs.ingested + docs.updated;
+    } catch {
+      result.docsIngested = 0;
+    }
+  }
+
+  // 11. Apply topic-linked corrections → auto-retract contradicted belief heads.
+  //     Only corrections with an explicit `topic` link are replayed; behavioral/global
+  //     corrections (NULL topic) are left untouched. Best-effort: a failure here must
+  //     never sink the rest of the dream pass.
+  if (on('corrections')) {
+    try {
+      const corrections = applyCorrections(db, llm, now);
+      result.correctionsApplied = corrections.processed;
+      result.beliefsRetracted = corrections.retracted;
+    } catch {
+      result.correctionsApplied = 0;
+      result.beliefsRetracted = 0;
+    }
+  }
+
+  // 12. Compose and persist a learning digest — closes feedback loops by
+  //     summarizing handler outcomes, calibration, belief lifecycle, corrections,
+  //     and agent-run failure signals into a single event. Best-effort.
+  if (on('digest')) {
+    try {
+      composeLearningDigest(db, result, now);
+      result.digestGenerated = true;
+    } catch {
+      result.digestGenerated = false;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Epoch-ms of a timestamp string. The truth substrate stores two formats:
+ * belief.update events use ISO (`…T…Z`, via ingest), corrections use SQLite's
+ * space form (`YYYY-MM-DD HH:MM:SS`, UTC). `Date.parse` reads the ISO form
+ * natively; the space form is normalized to ISO+Z first so it parses as UTC.
+ * Returns NaN for an unparseable value.
+ */
+function tsToMillis(ts: string): number {
+  const direct = Date.parse(ts);
+  if (!Number.isNaN(direct)) return direct;
+  return Date.parse(`${ts.replace(' ', 'T')}Z`);
+}
+
+/**
+ * For each `*.md` prose doc under `<userDataDir>/content/profile/`, raise a
+ * `narrative.stale` event when the newest belief or correction timestamp is
+ * newer than the doc's file mtime — a signal that the curated prose may lag
+ * the structured truth. Flag only; no generation. Dedups against an unresolved
+ * `narrative.stale` event for the same doc at the same mtime. Missing
+ * content/profile dir → 0 flags.
+ */
+function flagStaleNarrativeDocs(db: RobinDb, now: Date): number {
+  const profileDir = join(resolveUserDataDir(), 'content', 'profile');
+  let docs: string[];
+  try {
+    docs = readdirSync(profileDir).filter((f) => f.endsWith('.md'));
+  } catch {
+    return 0;
+  }
+  if (docs.length === 0) return 0;
+
+  // Newest belief and correction timestamps across the whole substrate.
+  const newestBelief = (
+    db.prepare(`SELECT MAX(ts) AS ts FROM events WHERE kind = 'belief.update'`).get() as {
+      ts: string | null;
+    }
+  ).ts;
+  const newestCorrection = (
+    db.prepare(`SELECT MAX(ts) AS ts FROM corrections`).get() as { ts: string | null }
+  ).ts;
+  const signalMillis = [newestBelief, newestCorrection]
+    .filter((t): t is string => !!t)
+    .map(tsToMillis)
+    .filter((m) => !Number.isNaN(m));
+  if (signalMillis.length === 0) return 0;
+  const newestSignalMillis = Math.max(...signalMillis);
+
+  // One flag per staleness episode: a doc already flagged at its CURRENT mtime
+  // stays flagged until it is edited. Deduping per day re-raised the same 9 docs
+  // every night for months (1,159 identical events by 2026-10-02).
+  const alreadyFlagged = db.prepare(`
+    SELECT 1 FROM events
+     WHERE kind = 'narrative.stale' AND status != 'resolved'
+       AND json_extract(payload, '$.doc') = ?
+       AND json_extract(payload, '$.doc_mtime') = ?
+     LIMIT 1
+  `);
+  const insertFlag = db.prepare(`
+    INSERT INTO events (ts, kind, source, status, payload)
+    VALUES (?, 'narrative.stale', 'dream', 'ok', ?)
+  `);
+
+  let raised = 0;
+  for (const doc of docs) {
+    const mtimeMs = statSync(join(profileDir, doc)).mtimeMs;
+    if (newestSignalMillis <= mtimeMs) continue;
+
+    const docMtime = new Date(mtimeMs).toISOString();
+    if (alreadyFlagged.get(doc, docMtime)) continue;
+
+    insertFlag.run(
+      now.toISOString(),
+      JSON.stringify({
+        doc,
+        reason: 'beliefs/corrections updated after doc',
+        newest_signal_ts: new Date(newestSignalMillis).toISOString(),
+        doc_mtime: docMtime,
+      }),
+    );
+    raised++;
+  }
+  return raised;
+}
+
+/**
+ * Regenerate `profile` on entities that picked up >= ENTITY_SUMMARY_MIN_SIGNALS new relations
+ * today. Bounded by ENTITY_SUMMARY_MAX_PER_RUN per night so cost stays predictable. Skips silently
+ * when LLM unavailable so the rest of dream still runs.
+ */
+export async function summarizeHotEntities(
+  db: RobinDb,
+  llm: LLMDispatcher | null,
+  since: string,
+): Promise<number> {
+  if (!llm) return 0;
+
+  // Hot entities: count relations involving each entity today
+  const hot = db
+    .prepare(`
+      SELECT e.id, e.type, e.canonical_name, COUNT(*) AS signals
+        FROM entities e
+        JOIN relations r ON r.subject_id = e.id OR r.object_id = e.id
+       WHERE datetime(r.ts) >= datetime(?)
+       GROUP BY e.id
+      HAVING signals >= ?
+       ORDER BY signals DESC
+       LIMIT ?
+    `)
+    .all(since, ENTITY_SUMMARY_MIN_SIGNALS, ENTITY_SUMMARY_MAX_PER_RUN) as Array<{
+    id: number;
+    type: string;
+    canonical_name: string;
+    signals: number;
+  }>;
+
+  // Stale-profile fill: if the hot pass consumed fewer than the budget, fill remaining
+  // slots with entities whose profile is >30 days stale but have recent relation activity
+  // (spec §C4 — regenerate stale profiles under the existing dream budget).
+  const remaining = ENTITY_SUMMARY_MAX_PER_RUN - hot.length;
+  if (remaining > 0) {
+    const hotIds = hot.map((h) => h.id);
+    // Handle the empty-hot edge: IN() with no values is a syntax error in SQLite.
+    const exclusionClause =
+      hotIds.length > 0 ? `AND e.id NOT IN (${hotIds.map(() => '?').join(',')})` : '';
+    const staleHot = db
+      .prepare(`
+        SELECT e.id, e.type, e.canonical_name, COUNT(*) AS signals
+          FROM entities e
+          JOIN relations r ON r.subject_id = e.id OR r.object_id = e.id
+         WHERE e.profile IS NOT NULL
+           AND (e.profile_generated_at IS NULL OR datetime(e.profile_generated_at) < datetime('now','-30 days'))
+           AND datetime(r.ts) >= datetime('now','-7 days')
+           ${exclusionClause}
+         GROUP BY e.id
+         ORDER BY signals DESC
+         LIMIT ?
+      `)
+      .all(...hotIds, remaining) as Array<{
+      id: number;
+      type: string;
+      canonical_name: string;
+      signals: number;
+    }>;
+    hot.push(...staleHot);
+  }
+
+  let updated = 0;
+  for (const ent of hot) {
+    // Pull up to 20 recent relations touching this entity, along with the other side's name.
+    // The signal here is "what predicates + counterparties has Robin seen for this entity recently."
+    const observations = db
+      .prepare(`
+        SELECT r.predicate, r.ts,
+               CASE WHEN r.subject_id = ? THEN obj.canonical_name ELSE sub.canonical_name END AS other,
+               CASE WHEN r.subject_id = ? THEN 'subject' ELSE 'object' END AS role
+          FROM relations r
+          JOIN entities sub ON sub.id = r.subject_id
+          JOIN entities obj ON obj.id = r.object_id
+         WHERE r.subject_id = ? OR r.object_id = ?
+         ORDER BY r.ts DESC
+         LIMIT 20
+      `)
+      .all(ent.id, ent.id, ent.id, ent.id) as Array<{
+      predicate: string;
+      ts: string;
+      other: string;
+      role: string;
+    }>;
+    if (observations.length === 0) continue;
+
+    const observationLines = observations
+      .map((o) =>
+        o.role === 'subject'
+          ? `${ent.canonical_name} ${o.predicate} ${o.other}`
+          : `${o.other} ${o.predicate} ${ent.canonical_name}`,
+      )
+      .join('\n');
+
+    try {
+      const res = await llm.invoke('summarize', {
+        systemPrompt: getPrompt('dream.entityProfile'),
+        messages: [
+          {
+            role: 'user',
+            content: `Entity: ${ent.canonical_name} (${ent.type})\n\nRecent observations:\n${observationLines}\n\nWrite the profile.`,
+          },
+        ],
+        temperature: 0,
+      });
+      const profile = res.text.trim().slice(0, 1000);
+      if (profile) {
+        db.prepare(
+          `UPDATE entities SET profile = ?, profile_generated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        ).run(profile, ent.id);
+        updated++;
+      }
+    } catch {
+      // Don't block other entities on a single failure
+    }
+  }
+  return updated;
+}
+
+/**
+ * Cluster `session.captured` events from the last 14 days by shared entities and persist each
+ * cluster as a `kind='arc'` event. Dedups against existing arcs from the same window by Jaccard
+ * similarity over member event ids — re-running dream the same day extends rather than duplicates.
+ */
+export function detectArcs(db: RobinDb, now: Date): number {
+  const cutoffTs = new Date(now.getTime() - ARC_RECENCY_DAYS * 86_400_000).toISOString();
+
+  // Map of event_id -> set of entity_ids that appear in its relations
+  const eventEntities = new Map<number, Set<number>>();
+  const eventTs = new Map<number, string>();
+  const rows = db
+    .prepare(`
+      SELECT e.id AS eventId, e.ts AS ts, r.subject_id AS sid, r.object_id AS oid
+        FROM events e
+        JOIN relations r ON r.source_event_id = e.id
+       WHERE e.kind = 'session.captured' AND e.ts >= ?
+    `)
+    .all(cutoffTs) as Array<{ eventId: number; ts: string; sid: number; oid: number }>;
+  for (const r of rows) {
+    let ents = eventEntities.get(r.eventId);
+    if (!ents) {
+      ents = new Set();
+      eventEntities.set(r.eventId, ents);
+    }
+    ents.add(r.sid);
+    ents.add(r.oid);
+    eventTs.set(r.eventId, r.ts);
+  }
+
+  // Greedy clustering: walk events in chronological order, merge into any cluster that
+  // shares >= ARC_MIN_SHARED_ENTITIES with the cluster's accumulated entity set.
+  const entries = [...eventEntities.entries()].sort((a, b) =>
+    (eventTs.get(a[0]) ?? '').localeCompare(eventTs.get(b[0]) ?? ''),
+  );
+  const clusters: Array<{ events: number[]; entities: Set<number> }> = [];
+  for (const [eventId, ents] of entries) {
+    let placed = false;
+    for (const c of clusters) {
+      let shared = 0;
+      for (const e of ents) if (c.entities.has(e)) shared++;
+      if (shared >= ARC_MIN_SHARED_ENTITIES) {
+        c.events.push(eventId);
+        for (const e of ents) c.entities.add(e);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push({ events: [eventId], entities: new Set(ents) });
+  }
+  const significant = clusters.filter((c) => c.events.length >= ARC_MIN_EVENTS);
+  if (significant.length === 0) return 0;
+
+  // Existing arcs from the same window — for Jaccard-based dedup
+  const existing = db
+    .prepare(`
+      SELECT id, payload FROM events WHERE kind = 'arc' AND ts >= ?
+    `)
+    .all(cutoffTs) as Array<{ id: number; payload: string }>;
+  const existingArcs = existing.map((r) => {
+    try {
+      const p = JSON.parse(r.payload) as { member_event_ids?: number[] };
+      return { id: r.id, members: new Set(p.member_event_ids ?? []) };
+    } catch {
+      return { id: r.id, members: new Set<number>() };
+    }
+  });
+
+  let created = 0;
+  const insertArc = db.prepare(`
+    INSERT INTO events (ts, kind, source, status, payload)
+    VALUES (?, 'arc', 'dream', 'ok', ?)
+  `);
+  for (const c of significant) {
+    const memberIds = c.events.slice().sort((a, b) => a - b);
+    // Skip if a Jaccard-similar arc already exists
+    const sigSet = new Set(memberIds);
+    const dup = existingArcs.some((a) => jaccard(a.members, sigSet) >= ARC_JACCARD_MERGE_THRESHOLD);
+    if (dup) continue;
+
+    const startTs = memberIds
+      .map((id) => eventTs.get(id) ?? '')
+      .reduce((min, t) => (min === '' || t < min ? t : min), '');
+    const endTs = memberIds
+      .map((id) => eventTs.get(id) ?? '')
+      .reduce((max, t) => (t > max ? t : max), '');
+    const entityIds = [...c.entities].sort((a, b) => a - b);
+    const summary = `Activity arc across ${memberIds.length} sessions involving ${entityIds.length} entities`;
+    insertArc.run(
+      now.toISOString(),
+      JSON.stringify({
+        start_ts: startTs,
+        end_ts: endTs,
+        member_event_ids: memberIds,
+        entity_ids: entityIds,
+        summary,
+      }),
+    );
+    created++;
+  }
+  return created;
+}
+
+function jaccard(a: Set<number>, b: Set<number>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+// ── Belief lifecycle pass ─────────────────────────────────────────────────────
+
+interface PromoteResult {
+  promoted: number;
+  conflicted: number;
+  merged: number;
+  gateBlocked: number;
+  /** Of `promoted`: candidates the judge labelled a refinement of the head. */
+  refined: number;
+  /** Divergent candidates left pending because the run's judge budget was spent. */
+  deferred: number;
+}
+
+interface CandidateRow {
+  id: number;
+  topic: string;
+  claim: string;
+  confidence: number | null;
+  provenance: string | null;
+}
+
+// Negation tokens. A claim that has one of these while the other doesn't is a
+// potential factual flip ("owns X" vs "no longer owns X") — never treat such a
+// pair as a mere rephrasing.
+const NEGATION_RE =
+  /\b(?:not|no|never|n't|without|nor|none|cannot|can't|didn't|doesn't|isn't|wasn't)\b|no longer/i;
+
+const CLAIM_STOPWORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'of',
+  'to',
+  'in',
+  'on',
+  'at',
+  'as',
+  'and',
+  'or',
+  'his',
+  'her',
+  'their',
+  'its',
+  'with',
+  'for',
+  'that',
+  'this',
+  'has',
+  'have',
+  'had',
+  'by',
+  'from',
+  'also',
+  'per',
+  'about',
+]);
+
+function claimTokens(claim: string): Set<string> {
+  return new Set(
+    claim
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length > 1 && !CLAIM_STOPWORDS.has(t)),
+  );
+}
+
+/**
+ * Decide whether `cand` merely rephrases/elaborates `head` (same underlying fact)
+ * versus genuinely diverges from it. Deterministic and SAFE-by-design via content-
+ * token SUBSUMPTION: a rephrasing is one where one claim's content tokens fully
+ * contain the other's (an elaboration adds detail; a restatement drops it). When
+ * each side carries a unique key token, that token usually IS the differing fact
+ * ("likes red" vs "likes blue" — neither subsumes the other → NOT a rephrasing →
+ * stays conflicted). A negation-polarity mismatch is an automatic non-rephrasing
+ * so a factual flip is never absorbed.
+ *
+ * This under-merges (a synonym swap like "girlfriend"↔"partner" stays conflicted)
+ * rather than over-merges — the safe direction. Burying a real contradiction is a
+ * far worse failure than leaving a benign rephrasing flagged for review.
+ */
+function isRephrasingOfHead(head: string, cand: string): boolean {
+  if (NEGATION_RE.test(head) !== NEGATION_RE.test(cand)) return false;
+  const a = claimTokens(head);
+  const b = claimTokens(cand);
+  if (a.size === 0 || b.size === 0) return false;
+  const aSubsetOfB = [...a].every((t) => b.has(t));
+  const bSubsetOfA = [...b].every((t) => a.has(t));
+  return aSubsetOfB || bSubsetOfA;
+}
+
+/**
+ * Auto-promote pending belief candidates older than 7 days and merge near-
+ * duplicates. A candidate that diverges from its topic's head goes to the LLM
+ * judge (belief-reconcile.ts): same → merged, refines → promoted as the new head,
+ * contradicts/unrelated → conflicted. At most `maxJudged` are judged per run; the
+ * rest stay pending for the next run. Without an LLM, or when a judge batch fails,
+ * the deterministic token-subset gate decides (merged or conflicted) — the judge
+ * never promotes on uncertainty. Returns counters for each outcome.
+ */
+export async function promoteStableCandidates(
+  db: RobinDb,
+  now: Date = clockDate(),
+  llm: LLMDispatcher | null = null,
+  opts: { maxJudged?: number } = {},
+): Promise<PromoteResult> {
+  const cutoff = new Date(now.getTime() - getTuning().promoteAgeDays * 86_400_000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+
+  const candidates = db
+    .prepare(
+      `SELECT id, topic, claim, confidence, provenance FROM belief_candidates
+       WHERE status = 'pending' AND created_at < ?
+       ORDER BY id`,
+    )
+    .all(cutoff) as CandidateRow[];
+
+  const counts: PromoteResult = {
+    promoted: 0,
+    conflicted: 0,
+    merged: 0,
+    gateBlocked: 0,
+    refined: 0,
+    deferred: 0,
+  };
+  if (candidates.length === 0) return counts;
+  const maxJudged = opts.maxJudged ?? getTuning().reconcileMaxPerRun;
+
+  // Track ids already resolved in this run (merged/conflicted) to skip them.
+  const resolved = new Set<number>();
+
+  // Pre-pass: near-duplicate merge among the pending set. Compares CLAIM text,
+  // not topic slugs — the same fact often lands under divergent slugs
+  // ("chess-club-claim", "no-chess-club-captain", "chess-club-captain-false"),
+  // which a topic-keyed merge misses entirely (one fact can fan out into
+  // several belief heads). Claim-text similarity catches them regardless of slug.
+  for (let i = 0; i < candidates.length; i++) {
+    if (resolved.has(candidates[i].id)) continue;
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (resolved.has(candidates[j].id)) continue;
+      const a = candidates[i];
+      const b = candidates[j];
+
+      const longer = Math.max(a.claim.length, b.claim.length);
+      if (longer === 0) continue;
+      // Cheap short-circuit: levenshtein(a,b) >= |len(a)-len(b)|, so if the
+      // length gap alone already exceeds the nearDupRatio threshold they can never merge.
+      // Skips the O(L²) distance computation for the vast majority of pairs now
+      // that the merge spans all topics, not just same-topic groups.
+      if (Math.abs(a.claim.length - b.claim.length) / longer >= getTuning().nearDupRatio) continue;
+      const dist = levenshtein(a.claim, b.claim);
+      if (dist / longer < getTuning().nearDupRatio) {
+        // Merge: keep the higher-confidence one, resolve the other.
+        const confA = a.confidence ?? 0;
+        const confB = b.confidence ?? 0;
+        const loserId = confA >= confB ? b.id : a.id;
+        db.prepare(
+          `UPDATE belief_candidates SET status = 'merged', resolved_at = datetime('now') WHERE id = ?`,
+        ).run(loserId);
+        resolved.add(loserId);
+        counts.merged++;
+        // If the loser was `a`, swap winner into slot i so subsequent j comparisons use the winner.
+        if (loserId === a.id) {
+          candidates[i] = candidates[j];
+          resolved.add(a.id);
+          break; // restart j loop with the new i candidate handled by outer loop
+        }
+      }
+    }
+  }
+
+  // Main pass: contradiction check + promote. Head-divergent candidates are
+  // collected for the judge instead of being decided inline.
+  const toJudge: Array<JudgeItem & { cand: CandidateRow }> = [];
+  for (const cand of candidates) {
+    if (resolved.has(cand.id)) continue;
+
+    const head = currentHead(db, cand.topic);
+    if (head && head.claim.trim() !== cand.claim.trim()) {
+      resolved.add(cand.id);
+      if (llm && toJudge.length >= maxJudged) {
+        counts.deferred++; // stays pending; judged on a later run
+        continue;
+      }
+      toJudge.push({ id: cand.id, topic: cand.topic, claim: cand.claim, head, cand });
+      continue;
+    }
+
+    // Promote via resolveBeliefCandidate (which enforces P3 formation gate).
+    try {
+      const res = resolveBeliefCandidate(db, null, cand.id, 'promote');
+      if (res.blockedReason) {
+        counts.gateBlocked++;
+      } else {
+        counts.promoted++;
+      }
+    } catch {
+      // Candidate may already be resolved (race) or other error — skip.
+    }
+    resolved.add(cand.id);
+  }
+
+  if (toJudge.length === 0) return counts;
+  const verdicts = await judgeAgainstHeads(llm, toJudge);
+  const refinedTopics = new Set<string>();
+  for (const item of toJudge) {
+    const verdict = verdicts.get(item.id);
+    // Two refinements of one head in a run: the second was judged against the
+    // head the first just superseded. Leave it pending for a fresh judgment.
+    if (verdict === 'refines' && refinedTopics.has(item.topic)) {
+      counts.deferred++;
+      continue;
+    }
+    if (verdict === 'refines') refinedTopics.add(item.topic);
+    if (!verdict) {
+      // No verdict (no LLM, failed batch) → the deterministic gate. Same fact,
+      // different words folds into the head (merged); anything else — low token
+      // overlap or a negation flip — stays `conflicted`, untagged (unjudged).
+      const rephrasing = isRephrasingOfHead(item.head.claim, item.claim);
+      db.prepare(
+        `UPDATE belief_candidates SET status = ?, resolved_at = datetime('now') WHERE id = ?`,
+      ).run(rephrasing ? 'merged' : 'conflicted', item.id);
+      if (rephrasing) counts.merged++;
+      else counts.conflicted++;
+      continue;
+    }
+    try {
+      const outcome = applyVerdict(db, item.cand, item.head, verdict, null);
+      if (outcome === 'merged') counts.merged++;
+      else if (outcome === 'promoted') {
+        counts.promoted++;
+        counts.refined++;
+      } else if (outcome === 'gate-blocked') counts.gateBlocked++;
+      else counts.conflicted++;
+    } catch {
+      // Candidate resolved underneath us (race) or believe() threw — skip.
+    }
+  }
+
+  return counts;
+}
+
+// ── Depth synthesis queries ───────────────────────────────────────────────────
+
+export interface DecisionReplay {
+  topic: string;
+  revisions: number;
+}
+
+export interface PredictionCalibrationRow {
+  outcome: string;
+  count: number;
+  avgBrier: number | null;
+}
+
+export interface ApproachingDeadline {
+  type: 'prediction' | 'linear';
+  label: string;
+  deadline: string;
+}
+
+/**
+ * Topics where beliefs were revised more than once in the last `days` days —
+ * signals the operator is revisiting the same decision.
+ */
+export function queryDecisionReplays(db: RobinDb, days = 30): DecisionReplay[] {
+  const cutoff = new Date(clockNow() - days * 86_400_000).toISOString();
+  return db
+    .prepare(
+      `SELECT json_extract(payload, '$.topic') AS topic, COUNT(*) AS revisions
+         FROM events
+        WHERE kind = 'belief.update' AND ts > ?
+          AND COALESCE(json_extract(payload, '$.retracted'), 0) = 0
+        GROUP BY json_extract(payload, '$.topic')
+       HAVING COUNT(*) > 1
+        ORDER BY revisions DESC
+        LIMIT 10`,
+    )
+    .all(cutoff) as DecisionReplay[];
+}
+
+/**
+ * Prediction accuracy grouped by outcome (right/wrong/unverifiable), with
+ * average Brier delta per bucket.
+ */
+export function queryPredictionCalibration(db: RobinDb): PredictionCalibrationRow[] {
+  const rows = db
+    .prepare(
+      `SELECT outcome, COUNT(*) AS count, AVG(brier_delta) AS avgBrier
+         FROM predictions
+        WHERE outcome IS NOT NULL
+        GROUP BY outcome`,
+    )
+    .all() as Array<{ outcome: string; count: number; avgBrier: number | null }>;
+  return rows.map((r) => ({ outcome: r.outcome, count: r.count, avgBrier: r.avgBrier }));
+}
+
+/**
+ * Predictions and Linear issues with deadlines in the next `daysAhead` days.
+ */
+export function queryApproachingDeadlines(
+  db: RobinDb,
+  now: Date = clockDate(),
+  daysAhead = 7,
+): ApproachingDeadline[] {
+  const nowIso = now.toISOString();
+  const endIso = new Date(now.getTime() + daysAhead * 86_400_000).toISOString();
+  const results: ApproachingDeadline[] = [];
+
+  // Predictions with approaching deadlines.
+  const preds = db
+    .prepare(
+      `SELECT claim, deadline FROM predictions
+        WHERE outcome IS NULL AND deadline >= ? AND deadline <= ?
+        ORDER BY deadline`,
+    )
+    .all(nowIso, endIso) as Array<{ claim: string; deadline: string }>;
+  for (const p of preds) {
+    results.push({ type: 'prediction', label: p.claim, deadline: p.deadline });
+  }
+
+  // Linear issues with due dates in the window (from captured integration events).
+  try {
+    const linearRows = db
+      .prepare(
+        `SELECT payload FROM events
+          WHERE kind = 'integration.linear.issue' AND status = 'ok'
+          ORDER BY ts DESC LIMIT 200`,
+      )
+      .all() as Array<{ payload: string }>;
+    for (const row of linearRows) {
+      try {
+        const p = JSON.parse(row.payload) as {
+          identifier?: string;
+          title?: string;
+          dueDate?: string;
+        };
+        if (p.dueDate && p.dueDate >= nowIso.slice(0, 10) && p.dueDate <= endIso.slice(0, 10)) {
+          results.push({
+            type: 'linear',
+            label: p.identifier ? `${p.identifier}: ${p.title ?? ''}` : (p.title ?? 'untitled'),
+            deadline: p.dueDate,
+          });
+        }
+      } catch {
+        // Skip unparseable rows.
+      }
+    }
+  } catch {
+    // Table or column may not exist on older DBs — skip.
+  }
+
+  return results;
+}
+
+// ── Journal ───────────────────────────────────────────────────────────────────
+
+interface JournalContext {
+  today: string;
+  eventsToday: number;
+  capturesToday: number;
+  correctionsToday: number;
+  predictionsResolved: number;
+  entitiesSummarized: number;
+  arcsCreated: number;
+  decisionReplays?: DecisionReplay[];
+  predictionCalibration?: PredictionCalibrationRow[];
+  approachingDeadlines?: ApproachingDeadline[];
+}
+
+/**
+ * Deterministic metrics-only journal with optional depth synthesis sections.
+ * This is the substrate fallback: the nightly dream-synthesis pass (4:00am,
+ * user-data job) upserts a richer narrative over the same `journals` day key
+ * (ON CONFLICT DO UPDATE) once it has reasoned on the consolidated substrate.
+ * dream.run owns no LLM narrative — it only guarantees a journal row exists
+ * for the day.
+ */
+function composeJournal(ctx: JournalContext): string {
+  const lines = [
+    `# Robin Journal — ${ctx.today}`,
+    ``,
+    `**Captured:** ${ctx.capturesToday} sessions`,
+    `**Corrections:** ${ctx.correctionsToday}`,
+    `**Events:** ${ctx.eventsToday}`,
+    `**Predictions resolved (overdue → unverifiable):** ${ctx.predictionsResolved}`,
+    `**Entities summarized:** ${ctx.entitiesSummarized}`,
+    `**Arcs created:** ${ctx.arcsCreated}`,
+  ];
+
+  // Depth synthesis sections — appended only when data exists.
+  if (ctx.decisionReplays && ctx.decisionReplays.length > 0) {
+    lines.push(
+      ``,
+      `**Decision replays (30d):** ${ctx.decisionReplays.map((r) => `${r.topic} revised ${r.revisions}×`).join(', ')}`,
+    );
+  }
+
+  if (ctx.predictionCalibration && ctx.predictionCalibration.length > 0) {
+    const parts: string[] = [];
+    for (const row of ctx.predictionCalibration) {
+      const brier = row.avgBrier != null ? `; avg Brier: ${row.avgBrier.toFixed(2)}` : '';
+      parts.push(`${row.count} ${row.outcome}${brier}`);
+    }
+    lines.push(``, `**Prediction calibration:** ${parts.join(', ')}`);
+  }
+
+  if (ctx.approachingDeadlines && ctx.approachingDeadlines.length > 0) {
+    const parts = ctx.approachingDeadlines.map(
+      (d) =>
+        `${d.type === 'prediction' ? 'prediction' : d.label.split(':')[0]} due ${d.deadline.slice(0, 10)}`,
+    );
+    lines.push(``, `**Approaching deadlines:** ${parts.join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+// ── Learning digest ─────────────────────────────────────────────────────────
+
+/**
+ * Compute a structured learning digest from deterministic SQL queries (no LLM)
+ * and persist it as a `dream.learning_digest` event. Deduplicates by day via
+ * `payload.external_id = 'learning-digest:YYYY-MM-DD'` — the ingest module's
+ * upsert path ensures at most one digest per day.
+ */
+export function composeLearningDigest(db: RobinDb, result: DreamResult, now: Date): LearningDigest {
+  const today = now.toISOString().slice(0, 10);
+  const cutoff24h = new Date(now.getTime() - 24 * 3600_000).toISOString();
+
+  // a. Handler activity summary (last 24h)
+  let handlerActivity: HandlerActivityRow[] = [];
+  try {
+    handlerActivity = db
+      .prepare(
+        `SELECT surface, count(*) AS runs, COALESCE(sum(cost_usd), 0) AS cost,
+                COALESCE(sum(turns), 0) AS turns, group_concat(DISTINCT label) AS handlers
+         FROM agent_usage WHERE ts > ? GROUP BY surface`,
+      )
+      .all(cutoff24h) as HandlerActivityRow[];
+  } catch {
+    // agent_usage table may not exist on older DBs
+  }
+
+  // b. Prediction calibration snapshot
+  let predictionsByOutcome: Array<{ outcome: string; n: number }> = [];
+  let overallBrier: number | null = null;
+  let openPredictions = { count: 0, nearestDeadline: null as string | null };
+  try {
+    predictionsByOutcome = db
+      .prepare(
+        `SELECT outcome, count(*) AS n FROM predictions WHERE outcome IS NOT NULL GROUP BY outcome`,
+      )
+      .all() as Array<{ outcome: string; n: number }>;
+
+    const brierRow = db
+      .prepare(
+        `SELECT avg(brier_delta) AS avg_brier FROM predictions WHERE brier_delta IS NOT NULL`,
+      )
+      .get() as { avg_brier: number | null } | undefined;
+    overallBrier = brierRow?.avg_brier ?? null;
+
+    const openRow = db
+      .prepare(
+        `SELECT count(*) AS cnt, min(deadline) AS nearest FROM predictions WHERE outcome IS NULL`,
+      )
+      .get() as { cnt: number; nearest: string | null } | undefined;
+    openPredictions = {
+      count: openRow?.cnt ?? 0,
+      nearestDeadline: openRow?.nearest ?? null,
+    };
+  } catch {
+    // predictions table may not exist on older DBs
+  }
+
+  // c. Belief lifecycle snapshot
+  let pendingCandidates = 0;
+  let activeBeliefHeads = 0;
+  try {
+    pendingCandidates = (
+      db.prepare(`SELECT count(*) AS n FROM belief_candidates WHERE status = 'pending'`).get() as {
+        n: number;
+      }
+    ).n;
+  } catch {
+    // belief_candidates may not exist
+  }
+  try {
+    activeBeliefHeads = (
+      db
+        .prepare(
+          `SELECT count(DISTINCT json_extract(payload, '$.topic')) AS n FROM events
+           WHERE kind = 'belief.update'
+             AND (json_extract(payload, '$.retracted') IS NULL
+               OR json_extract(payload, '$.retracted') = 0
+               OR json_extract(payload, '$.retracted') = false)`,
+        )
+        .get() as { n: number }
+    ).n;
+  } catch {
+    // best-effort
+  }
+
+  // d. Correction coverage
+  let corrections = { total: 0, behavioral: 0, topicLinked: 0, unapplied: 0 };
+  try {
+    const totalRow = db.prepare(`SELECT count(*) AS n FROM corrections`).get() as { n: number };
+    const behavioralRow = db
+      .prepare(`SELECT count(*) AS n FROM corrections WHERE topic IS NULL`)
+      .get() as { n: number };
+    const topicLinkedRow = db
+      .prepare(`SELECT count(*) AS n FROM corrections WHERE topic IS NOT NULL`)
+      .get() as { n: number };
+    const unappliedRow = db
+      .prepare(`SELECT count(*) AS n FROM corrections WHERE topic IS NOT NULL AND applied = 0`)
+      .get() as { n: number };
+    corrections = {
+      total: totalRow.n,
+      behavioral: behavioralRow.n,
+      topicLinked: topicLinkedRow.n,
+      unapplied: unappliedRow.n,
+    };
+  } catch {
+    // corrections table or topic column may not exist
+  }
+
+  // e0. Behavioral-habit snapshot (design §5/§9): lifecycle counts + 24h deltas. The
+  //     `habits` columns use SQLite's space-form UTC, so the 24h cutoff is rendered to the
+  //     same shape for an apples-to-apples string comparison. Guarded so an older DB without
+  //     the `habits` table (or a malformed row) can never sink the digest.
+  let habits: LearningDigest['habits'];
+  try {
+    const cutoffSpace = cutoff24h.slice(0, 19).replace('T', ' ');
+    const byStatus = db
+      .prepare(`SELECT status, count(*) AS n FROM habits GROUP BY status`)
+      .all() as Array<{ status: string; n: number }>;
+    const count = (s: string) => byStatus.find((r) => r.status === s)?.n ?? 0;
+    const newSoft = (
+      db
+        .prepare(`SELECT count(*) AS n FROM habits WHERE status = 'soft' AND created_at >= ?`)
+        .get(cutoffSpace) as { n: number }
+    ).n;
+    const newGraduated = (
+      db
+        .prepare(`SELECT count(*) AS n FROM habits WHERE status = 'graduated' AND updated_at >= ?`)
+        .get(cutoffSpace) as { n: number }
+    ).n;
+    habits = {
+      soft: count('soft'),
+      graduated: count('graduated'),
+      retired: count('retired'),
+      newSoft,
+      newGraduated,
+    };
+  } catch {
+    // `habits` table missing (older DB) — leave the snapshot absent.
+  }
+
+  // e1. Recommendation calibration (design §6): the acted-rate view onto the
+  //     `recommendations` ledger — Goal C. Guarded the same way as the `habits` block:
+  //     `listRecommendations` runs SQL against the `recommendations` table, so an older DB
+  //     without that table (or migration 031 not yet applied) throws inside the prepared
+  //     statement and is caught here, leaving the snapshot absent.
+  let recommendations: LearningDigest['recommendations'];
+  try {
+    const recs = listRecommendations(db);
+    let open = 0;
+    let acted = 0;
+    let expired = 0;
+    let declined = 0;
+    // Per-domain acted-vs-resolved tally (only domains with ≥1 resolved rec are emitted).
+    const domainTally = new Map<string, { acted: number; resolved: number }>();
+    for (const r of recs) {
+      // skip/avoid/wait advice is followed by NOT acting — it resolves 'held', and
+      // counting it here would read as advice that never lands. Same split as the
+      // `robin recommendations` CLI.
+      if (r.verdict && HOLD_VERDICTS.has(r.verdict)) {
+        if (r.status === 'open') open += 1;
+        continue;
+      }
+      switch (r.status) {
+        case 'open':
+          open += 1;
+          break;
+        case 'acted':
+          acted += 1;
+          break;
+        case 'expired':
+          expired += 1;
+          break;
+        case 'declined':
+          declined += 1;
+          break;
+        // 'superseded' is neither open nor a resolved outcome — excluded from rates.
+      }
+      // Resolved = a terminal acted/expired/declined outcome (the calibration denominator).
+      const isActed = r.status === 'acted';
+      const isResolved = isActed || r.status === 'expired' || r.status === 'declined';
+      if (isResolved) {
+        const slot = domainTally.get(r.domain) ?? { acted: 0, resolved: 0 };
+        slot.resolved += 1;
+        if (isActed) slot.acted += 1;
+        domainTally.set(r.domain, slot);
+      }
+    }
+    const resolvedTotal = acted + expired + declined;
+    const byDomain = [...domainTally.entries()]
+      .map(([domain, t]) => ({ domain, acted: t.acted, resolved: t.resolved }))
+      .sort((a, b) => b.resolved - a.resolved || a.domain.localeCompare(b.domain));
+    recommendations = {
+      open,
+      acted,
+      expired,
+      declined,
+      actedRate: resolvedTotal > 0 ? acted / resolvedTotal : null,
+      byDomain,
+    };
+  } catch {
+    // `recommendations` table missing (older DB) — leave the snapshot absent.
+  }
+
+  // e2. Loop health (design 2026-08-10 §10): open count, last-day lapses, and the
+  //     brief's last-call overflow metric — the standing creation-discipline signal.
+  //     Guarded like the `habits`/`recommendations` blocks: an older DB without the
+  //     `recommendations` table throws on the first query and the snapshot stays absent.
+  let loopHealth: LearningDigest['loopHealth'];
+  try {
+    const openRecs = (
+      db.prepare(`SELECT count(*) AS n FROM recommendations WHERE status = 'open'`).get() as {
+        n: number;
+      }
+    ).n;
+    // `acted_at` uses SQLite's space-form UTC — render the 24h cutoff to the same shape.
+    const cutoffSpace = cutoff24h.slice(0, 19).replace('T', ' ');
+    const lapsed24h = (
+      db
+        .prepare(
+          `SELECT count(*) AS n FROM recommendations WHERE status = 'expired' AND acted_at >= ?`,
+        )
+        .get(cutoffSpace) as { n: number }
+    ).n;
+    const overflowRow = db
+      .prepare(
+        `SELECT value FROM metrics_daily WHERE metric = 'lastcall_overflow' ORDER BY day DESC LIMIT 1`,
+      )
+      .get() as { value: number } | undefined;
+    loopHealth = { openRecs, lapsed24h, lastCallOverflow: overflowRow?.value ?? null };
+  } catch {
+    // `recommendations`/`metrics_daily` table missing — degraded digest stays valid.
+  }
+
+  // e. Recent agent-run failures (last 24h)
+  let failedRuns: Array<{ surface: string; label: string | null; status: string; ts: string }> = [];
+  try {
+    failedRuns = db
+      .prepare(
+        `SELECT surface, label, status, ts FROM agent_usage
+         WHERE ts > ? AND status IS NOT NULL AND status != 'success'
+         ORDER BY ts DESC LIMIT 20`,
+      )
+      .all(cutoff24h) as typeof failedRuns;
+  } catch {
+    // agent_usage may not exist
+  }
+
+  const digest: LearningDigest = {
+    handlerActivity,
+    predictionsByOutcome,
+    overallBrier,
+    openPredictions,
+    beliefLifecycle: {
+      promoted: result.candidatesPromoted,
+      conflicted: result.candidatesConflicted,
+      merged: result.candidatesMerged,
+      expired: result.candidatesExpired,
+      pendingCandidates,
+      activeBeliefHeads,
+    },
+    corrections,
+    ...(habits ? { habits } : {}),
+    ...(recommendations ? { recommendations } : {}),
+    ...(loopHealth ? { loopHealth } : {}),
+    failedRuns,
+  };
+
+  // Persist as an event with external_id-based dedup (one per day).
+  const externalId = `learning-digest:${today}`;
+  const existing = db
+    .prepare(
+      `SELECT id FROM events
+       WHERE source = 'dream' AND json_extract(payload, '$.external_id') = ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(externalId) as { id: number } | undefined;
+
+  const payload = JSON.stringify({ external_id: externalId, digest });
+  if (existing) {
+    db.prepare(`UPDATE events SET ts = ?, payload = ? WHERE id = ?`).run(
+      now.toISOString(),
+      payload,
+      existing.id,
+    );
+  } else {
+    db.prepare(
+      `INSERT INTO events (ts, kind, source, status, payload)
+       VALUES (?, 'dream.learning_digest', 'dream', 'ok', ?)`,
+    ).run(now.toISOString(), payload);
+  }
+
+  return digest;
+}
+
+/**
+ * Render a learning digest as a compact text summary suitable for the primer
+ * or handler goal injection.
+ */
+export function renderLearningDigest(digest: LearningDigest): string {
+  const lines: string[] = [];
+
+  // Predictions
+  const outcomeStrs = digest.predictionsByOutcome.map((o) => `${o.n} ${o.outcome}`);
+  const brierStr =
+    digest.overallBrier != null ? `Brier: ${digest.overallBrier.toFixed(2)} (lower=better)` : '';
+  const predParts = [...outcomeStrs, brierStr].filter(Boolean);
+  if (predParts.length > 0) lines.push(`- Predictions: ${predParts.join(', ')}`);
+  if (digest.openPredictions.count > 0) {
+    const deadlineStr = digest.openPredictions.nearestDeadline
+      ? `, nearest deadline: ${digest.openPredictions.nearestDeadline.slice(0, 10)}`
+      : '';
+    lines.push(`- ${digest.openPredictions.count} open predictions${deadlineStr}`);
+  }
+
+  // Beliefs
+  const bl = digest.beliefLifecycle;
+  lines.push(
+    `- Beliefs: ${bl.promoted} promoted, ${bl.conflicted} conflicted, ${bl.merged} merged; ${bl.pendingCandidates} candidates pending`,
+  );
+
+  // Agent runs
+  if (digest.handlerActivity.length > 0) {
+    const parts = digest.handlerActivity.map(
+      (h) => `${h.runs} ${h.surface} ($${h.cost.toFixed(2)})`,
+    );
+    const failures = digest.failedRuns.length;
+    const failStr = failures > 0 ? `; ${failures} failed` : '';
+    lines.push(`- Agent runs: ${parts.join(', ')}${failStr}`);
+  }
+
+  // Corrections
+  const c = digest.corrections;
+  if (c.total > 0) {
+    const topicStr =
+      c.topicLinked > 0 ? `, ${c.topicLinked} topic-linked (${c.unapplied} unapplied)` : '';
+    lines.push(`- Corrections: ${c.total} total (${c.behavioral} behavioral${topicStr})`);
+  }
+
+  // Habits (behavioral inference) — only when the snapshot exists and holds something.
+  const h = digest.habits;
+  if (h && (h.soft > 0 || h.graduated > 0 || h.retired > 0)) {
+    const deltas: string[] = [];
+    if (h.newSoft > 0) deltas.push(`+${h.newSoft} new`);
+    if (h.newGraduated > 0) deltas.push(`${h.newGraduated} graduated`);
+    const deltaStr = deltas.length > 0 ? ` (${deltas.join(', ')} in 24h)` : '';
+    lines.push(
+      `- Habits: ${h.soft} soft, ${h.graduated} graduated, ${h.retired} retired${deltaStr}`,
+    );
+  }
+
+  // Recommendations (calibration, design §6) — only when at least one rec exists. The line
+  // leads with the resolved acted-rate (acted/resolved) and, when present, the top domains
+  // by resolved count.
+  const r = digest.recommendations;
+  if (r && (r.open > 0 || r.acted > 0 || r.expired > 0 || r.declined > 0)) {
+    const resolved = r.acted + r.expired + r.declined;
+    const pctStr = r.actedRate != null ? ` (${Math.round(r.actedRate * 100)}%)` : '';
+    const topDomains = r.byDomain
+      .slice(0, 3)
+      .map((d) => `${d.domain} ${d.acted}/${d.resolved}`)
+      .join(', ');
+    const domainStr = topDomains ? `; top domains: ${topDomains}` : '';
+    lines.push(`- Recommendations: ${r.acted}/${resolved} acted${pctStr}${domainStr}`);
+  }
+
+  // Loop health (design 2026-08-10 §10) — the standing creation-discipline line,
+  // rendered whenever the snapshot exists (a zero-open state is itself the signal).
+  const lh = digest.loopHealth;
+  if (lh) {
+    const overflowStr =
+      lh.lastCallOverflow != null ? `, last-call overflow ${lh.lastCallOverflow}` : '';
+    lines.push(`- Loops: ${lh.openRecs} open, ${lh.lapsed24h} lapsed in 24h${overflowStr}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Read the latest learning digest from the events table and return a compact
+ * text summary. Returns null if no digest has been computed yet.
+ */
+export function latestLearningDigest(db: RobinDb): string | null {
+  let row: { payload: string } | undefined;
+  try {
+    row = db
+      .prepare(
+        `SELECT payload FROM events WHERE kind = 'dream.learning_digest' ORDER BY ts DESC LIMIT 1`,
+      )
+      .get() as { payload: string } | undefined;
+  } catch {
+    return null;
+  }
+  if (!row) return null;
+
+  try {
+    const parsed = JSON.parse(row.payload) as { digest?: LearningDigest };
+    if (!parsed.digest) return null;
+    return renderLearningDigest(parsed.digest);
+  } catch {
+    return null;
+  }
+}

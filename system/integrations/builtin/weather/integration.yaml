@@ -1,0 +1,13 @@
+name: weather
+version: 1.0.0
+# 4am keeps the 4:30am brief fresh; afternoon ticks (12–20, every 2h) give the
+# 1.5–3.5h sunset-alert lead gate exactly one candidate in every season; 8pm doubles as the
+# tomorrow-sunrise heads-up; 4am + 5am read the configured TAF station METAR for the fog_on check.
+schedule: "0 4,5,12,14,16,18,20 * * *"
+tz: America/New_York
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["weather"]
+  network: ["api.open-meteo.com", "ensemble-api.open-meteo.com", "api.tidesandcurrents.noaa.gov", "aviationweather.gov"]

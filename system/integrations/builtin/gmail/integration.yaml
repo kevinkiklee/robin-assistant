@@ -1,0 +1,35 @@
+name: gmail
+version: 1.0.0
+schedule: "*/15 * * * *"
+permissions:
+  memory:
+    read: true
+    write: true
+    namespaces: ["gmail"]
+  secrets: [GMAIL_REFRESH_TOKEN, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]
+  network: ["gmail.googleapis.com", "oauth2.googleapis.com"]
+mcp:
+  description: "Read Gmail: search, fetch threads, preview"
+  actions:
+    search:
+      description: "Search Gmail with a query string"
+      input_schema:
+        type: object
+        properties:
+          q: { type: string }
+          max: { type: integer }
+        required: [q]
+    get_thread:
+      description: "Fetch a single thread by id"
+      input_schema:
+        type: object
+        properties:
+          id: { type: string }
+        required: [id]
+    preview:
+      description: "Search and return only subject/snippet for each hit (no body)"
+      input_schema:
+        type: object
+        properties:
+          q: { type: string }
+        required: [q]

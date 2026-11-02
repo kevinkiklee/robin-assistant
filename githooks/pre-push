@@ -1,0 +1,41 @@
+#!/usr/bin/env sh
+#
+# Refuse to push personal data. Scans EVERY commit being pushed — content, message,
+# and author/committer identity — so it also catches commits made with --no-verify,
+# by `git commit-tree`, or by a tool that bypassed pre-commit. Fails closed: if the
+# scanner can't run, the push is refused rather than sent unchecked.
+#
+# Git feeds one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
+
+zero=0000000000000000000000000000000000000000
+remote_url=$2
+
+if ! command -v node >/dev/null 2>&1 || [ ! -f system/scripts/private-scan.mjs ]; then
+  echo "pre-push: refused — node or system/scripts/private-scan.mjs missing; can't verify." >&2
+  exit 1
+fi
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # deleting a remote ref publishes nothing
+  exclude=
+  if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    # New ref, or a remote tip we don't have: scan everything the server doesn't already
+    # hold. Ask the server — local remote-tracking refs go stale (a deleted and recreated
+    # repo keeps them) and would vouch for commits it never received. If the server
+    # can't be asked, nothing is excluded and the whole history is scanned.
+    from=$zero
+    exclude=$(git ls-remote "$remote_url" 2>/dev/null | awk '{print $1}' | sort -u |
+      while read -r s; do git cat-file -e "$s^{commit}" 2>/dev/null && printf '%s ' "$s"; done)
+  else
+    from=$remote_sha
+  fi
+  PRIVATE_SCAN_EXCLUDE=$exclude node system/scripts/private-scan.mjs --range "$from" "$local_sha"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    [ "$status" -eq 1 ] && echo "pre-push: refused — personal data in commits for $remote_ref." >&2
+    [ "$status" -ne 1 ] && echo "pre-push: refused — private-scan failed (exit $status)." >&2
+    exit 1
+  fi
+done
+
+exit 0

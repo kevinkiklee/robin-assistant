@@ -1,0 +1,30 @@
+name: gitleaks
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Scans the full history on every run instead of the push range. The repo's
+# history was squashed to a single root commit (2026-10-31), and
+# gitleaks-action builds its range as `<first pushed commit>^..<head>`, which
+# fails before scanning anything whenever that first commit is the root. A
+# full scan of this small history takes about a second.
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.24.3
+      GITLEAKS_SHA256: 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "/tmp/$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$tarball"
+          echo "${GITLEAKS_SHA256}  /tmp/$tarball" | sha256sum -c -
+          tar -xzf "/tmp/$tarball" -C /tmp gitleaks
+      - name: Scan full history
+        run: /tmp/gitleaks detect --source . --redact --no-banner -v --exit-code 1

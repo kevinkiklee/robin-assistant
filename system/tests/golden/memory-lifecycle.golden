@@ -1,0 +1,356 @@
+{
+ "agent_usage": [],
+ "alerts": [],
+ "audit_meta": [],
+ "belief_candidates": [
+  {
+   "id": 1,
+   "topic": "spring-trip-route",
+   "claim": "Spring trip goes to Juniper Lake, not Pine Ridge",
+   "confidence": 0.9,
+   "source_event_id": 1,
+   "status": "promoted",
+   "created_at": "2027-01-04 15:00:00",
+   "resolved_at": "2027-01-12 15:00:00",
+   "provenance": "first-party",
+   "embedding": null,
+   "corroboration_count": 1,
+   "resolved_reason": null,
+   "domain": null
+  },
+  {
+   "id": 2,
+   "topic": "gear-wishlist",
+   "claim": "Considering a new tent",
+   "confidence": 0.6,
+   "source_event_id": 1,
+   "status": "rejected",
+   "created_at": "2027-01-04 15:00:00",
+   "resolved_at": "2027-01-12 15:00:00",
+   "provenance": "inferred",
+   "embedding": null,
+   "corroboration_count": 1,
+   "resolved_reason": null,
+   "domain": null
+  }
+ ],
+ "biographer_progress": [],
+ "claim_failures": [],
+ "correction_embeddings": [],
+ "corrections": [
+  {
+   "id": 1,
+   "ts": "2027-01-04 15:00:00",
+   "what": "route",
+   "correction": "No Pine Ridge leg",
+   "context": "golden",
+   "applied": 1,
+   "topic": "spring-trip.route"
+  }
+ ],
+ "embedding_profiles": [],
+ "entities": [
+  {
+   "id": 1,
+   "type": "place",
+   "canonical_name": "Juniper Lake",
+   "profile": null,
+   "created_at": "2027-01-04 15:00:00",
+   "updated_at": "2027-01-04 15:00:00",
+   "profile_generated_at": null,
+   "domain": null,
+   "normalized_name": "juniper lake"
+  },
+  {
+   "id": 2,
+   "type": "person",
+   "canonical_name": "Sim User",
+   "profile": null,
+   "created_at": "2027-01-04 15:00:00",
+   "updated_at": "2027-01-04 15:00:00",
+   "profile_generated_at": null,
+   "domain": null,
+   "normalized_name": "sim user"
+  }
+ ],
+ "entity_aliases": [],
+ "events": [
+  {
+   "id": 1,
+   "ts": "2027-01-04T15:00:00.000Z",
+   "kind": "session.captured",
+   "source": "capture",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{}",
+   "content_ref": 1,
+   "import_key": null
+  },
+  {
+   "id": 2,
+   "ts": "2027-01-04T15:00:00.000Z",
+   "kind": "belief.update",
+   "source": "belief",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"topic\":\"gear-bike\",\"supersedes\":null,\"confidence\":null,\"sources\":[1],\"retracted\":false,\"provenance\":\"first-party\",\"verified_at\":\"2027-01-04T15:00:00.000Z\",\"external_id\":\"belief:2027-01-04:gear-bike\"}",
+   "content_ref": 2,
+   "import_key": null
+  },
+  {
+   "id": 3,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "kind": "hygiene.run",
+   "source": "dream",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"relationsDeleted\":0,\"relationsDeduped\":0,\"entitiesDeleted\":0,\"entitiesAutoCulled\":0,\"blocklistGrown\":0,\"orphansDeleted\":0}",
+   "content_ref": null,
+   "import_key": null
+  },
+  {
+   "id": 4,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "kind": "belief.update",
+   "source": "belief",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"topic\":\"spring-trip-route\",\"supersedes\":null,\"confidence\":0.9,\"sources\":[1],\"retracted\":false,\"provenance\":\"first-party\",\"verified_at\":\"2027-01-12T15:00:00.000Z\",\"external_id\":\"belief:2027-01-12:spring-trip-route\"}",
+   "content_ref": 3,
+   "import_key": null
+  },
+  {
+   "id": 5,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "kind": "belief.update",
+   "source": "belief",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"topic\":\"spring-trip-route\",\"supersedes\":4,\"confidence\":0.9,\"sources\":[],\"retracted\":true,\"provenance\":\"first-party\",\"verified_at\":\"2027-01-12T15:00:00.000Z\",\"external_id\":\"belief:2027-01-12:spring-trip-route:s4\"}",
+   "content_ref": 4,
+   "import_key": null
+  },
+  {
+   "id": 6,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "kind": "belief.update",
+   "source": "belief",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"topic\":\"spring-trip-route\",\"supersedes\":5,\"confidence\":0.99,\"sources\":[],\"retracted\":false,\"provenance\":\"first-party\",\"verified_at\":\"2027-01-12T15:00:00.000Z\",\"external_id\":\"belief:2027-01-12:spring-trip-route:s5\"}",
+   "content_ref": 5,
+   "import_key": null
+  },
+  {
+   "id": 7,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "kind": "dream.learning_digest",
+   "source": "dream",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"external_id\":\"learning-digest:2027-01-12\",\"digest\":{\"handlerActivity\":[],\"predictionsByOutcome\":[],\"overallBrier\":null,\"openPredictions\":{\"count\":0,\"nearestDeadline\":null},\"beliefLifecycle\":{\"promoted\":1,\"conflicted\":0,\"merged\":0,\"expired\":0,\"pendingCandidates\":0,\"activeBeliefHeads\":2},\"corrections\":{\"total\":1,\"behavioral\":0,\"topicLinked\":1,\"unapplied\":0},\"habits\":{\"soft\":0,\"graduated\":0,\"retired\":0,\"newSoft\":0,\"newGraduated\":0},\"recommendations\":{\"open\":0,\"acted\":0,\"expired\":0,\"declined\":0,\"actedRate\":null,\"byDomain\":[]},\"loopHealth\":{\"openRecs\":0,\"lapsed24h\":0,\"lastCallOverflow\":null},\"failedRuns\":[]}}",
+   "content_ref": null,
+   "import_key": null
+  },
+  {
+   "id": 8,
+   "ts": "2027-02-01T15:00:00.000Z",
+   "kind": "hygiene.run",
+   "source": "dream",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"relationsDeleted\":0,\"relationsDeduped\":0,\"entitiesDeleted\":0,\"entitiesAutoCulled\":0,\"blocklistGrown\":0,\"orphansDeleted\":0}",
+   "content_ref": null,
+   "import_key": null
+  },
+  {
+   "id": 9,
+   "ts": "2027-02-01T15:00:00.000Z",
+   "kind": "dream.learning_digest",
+   "source": "dream",
+   "actor": null,
+   "duration_ms": null,
+   "status": "ok",
+   "payload": "{\"external_id\":\"learning-digest:2027-02-01\",\"digest\":{\"handlerActivity\":[],\"predictionsByOutcome\":[],\"overallBrier\":null,\"openPredictions\":{\"count\":0,\"nearestDeadline\":null},\"beliefLifecycle\":{\"promoted\":0,\"conflicted\":0,\"merged\":0,\"expired\":0,\"pendingCandidates\":0,\"activeBeliefHeads\":2},\"corrections\":{\"total\":1,\"behavioral\":0,\"topicLinked\":1,\"unapplied\":0},\"habits\":{\"soft\":0,\"graduated\":0,\"retired\":0,\"newSoft\":0,\"newGraduated\":0},\"recommendations\":{\"open\":0,\"acted\":0,\"expired\":0,\"declined\":0,\"actedRate\":null,\"byDomain\":[]},\"loopHealth\":{\"openRecs\":0,\"lapsed24h\":0,\"lastCallOverflow\":null},\"failedRuns\":[]}}",
+   "content_ref": null,
+   "import_key": null
+  }
+ ],
+ "events_content": [
+  {
+   "id": 1,
+   "ts": "2027-01-04T15:00:00.000Z",
+   "body": "Sim User plans a spring trip to Juniper Lake and drops the Pine Ridge leg.",
+   "embedding": null
+  },
+  {
+   "id": 2,
+   "ts": "2027-01-04T15:00:00.000Z",
+   "body": "Owns a road bike",
+   "embedding": null
+  },
+  {
+   "id": 3,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "body": "Spring trip goes to Juniper Lake, not Pine Ridge",
+   "embedding": null
+  },
+  {
+   "id": 4,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "body": "Spring trip goes to Juniper Lake, not Pine Ridge",
+   "embedding": null
+  },
+  {
+   "id": 5,
+   "ts": "2027-01-12T15:00:00.000Z",
+   "body": "No Pine Ridge leg",
+   "embedding": null
+  }
+ ],
+ "habits": [],
+ "integration_state": [],
+ "jobs": [],
+ "journals": [
+  {
+   "day": "2027-01-12",
+   "body": "# Robin Journal — 2027-01-12\n\n**Captured:** 0 sessions\n**Corrections:** 0\n**Events:** 1\n**Predictions resolved (overdue → unverifiable):** 0\n**Entities summarized:** 0\n**Arcs created:** 0",
+   "generated_at": "2027-01-12 15:00:00",
+   "content_ref": null
+  },
+  {
+   "day": "2027-02-01",
+   "body": "# Robin Journal — 2027-02-01\n\n**Captured:** 0 sessions\n**Corrections:** 0\n**Events:** 1\n**Predictions resolved (overdue → unverifiable):** 0\n**Entities summarized:** 0\n**Arcs created:** 0\n\n**Decision replays (30d):** spring-trip-route revised 2×",
+   "generated_at": "2027-02-01 15:00:00",
+   "content_ref": null
+  }
+ ],
+ "linear_issue_map": [],
+ "metrics_daily": [
+  {
+   "day": "2027-01-12",
+   "metric": "events_count",
+   "value": 1,
+   "n": 1,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-01-12",
+   "metric": "captures_count",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-01-12",
+   "metric": "corrections_count",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-01-12",
+   "metric": "beliefs_promoted",
+   "value": 1,
+   "n": 1,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-01-12",
+   "metric": "beliefs_pending",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-01-12",
+   "metric": "entities_culled",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-01-12",
+   "metric": "topics_merged",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-01-12 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "events_count",
+   "value": 1,
+   "n": 1,
+   "computed_at": "2027-02-01 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "captures_count",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-02-01 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "corrections_count",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-02-01 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "beliefs_promoted",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-02-01 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "beliefs_pending",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-02-01 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "entities_culled",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-02-01 15:00:00"
+  },
+  {
+   "day": "2027-02-01",
+   "metric": "topics_merged",
+   "value": 0,
+   "n": 0,
+   "computed_at": "2027-02-01 15:00:00"
+  }
+ ],
+ "noise_blocklist": [],
+ "oauth_clients": [],
+ "oauth_codes": [],
+ "oauth_tokens": [],
+ "predictions": [],
+ "recall_log": [],
+ "recommendations": [],
+ "refusals": [],
+ "relations": [
+  {
+   "id": 1,
+   "subject_id": 2,
+   "predicate": "plans_trip_to",
+   "object_id": 1,
+   "ts": "2027-01-04T15:00:00.000Z",
+   "source_event_id": 1,
+   "import_key": null
+  }
+ ]
+}

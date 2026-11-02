@@ -1,0 +1,328 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { closeDb, openDb } from '../memory/db.ts';
+import { addRelation, upsertEntity } from '../memory/entity.ts';
+import { allMigrations, applyMigrations } from '../memory/migrations/index.ts';
+import { loadNoiseBlocklist, runHygiene } from './hygiene.ts';
+
+function freshDb() {
+  const dir = mkdtempSync(join(tmpdir(), 'hygiene-test-'));
+  const db = openDb(join(dir, 'test.db'));
+  applyMigrations(db, allMigrations);
+  return db;
+}
+
+test('hygiene: deletes MCP tool name entities', () => {
+  const db = freshDb();
+  const e1 = upsertEntity(db, 'thing', 'mcp__robin__recall');
+  const e2 = upsertEntity(db, 'person', 'Sam');
+  addRelation(db, e1.id, 'uses', e2.id);
+  const r = runHygiene(db);
+  assert.equal(r.entitiesDeleted, 1);
+  assert.equal(r.blocklistGrown, 1);
+  const remaining = db.prepare('SELECT canonical_name FROM entities').all() as Array<{
+    canonical_name: string;
+  }>;
+  assert.ok(remaining.some((e) => e.canonical_name === 'Sam'));
+  assert.ok(!remaining.some((e) => e.canonical_name === 'mcp__robin__recall'));
+  closeDb(db);
+});
+
+test('hygiene: deletes commit message prefix entities', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'feat(linear): wave 2');
+  const keep = upsertEntity(db, 'thing', 'Acme X1');
+  addRelation(db, keep.id, 'owns', keep.id);
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 1);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('feat(linear): wave 2'));
+  closeDb(db);
+});
+
+test('hygiene: deletes Phase/Track codenames', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'Phase 4a edge');
+  upsertEntity(db, 'topic', 'Track B Phase 1');
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 2);
+  closeDb(db);
+});
+
+test('hygiene: deletes Robin launchd labels regardless of type', () => {
+  const db = freshDb();
+  // Typed `service`, so the thing/topic-gated Tier 1 scan would miss these.
+  upsertEntity(db, 'service', 'io.robin-assistant.daemon');
+  upsertEntity(db, 'service', 'io.robin-assistant.backup');
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 2);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('io.robin-assistant.daemon'));
+  assert.ok(!names.includes('io.robin-assistant.backup'));
+  closeDb(db);
+});
+
+test('hygiene: deletes project-typed roadmap codenames but keeps real projects', () => {
+  const db = freshDb();
+  upsertEntity(db, 'project', 'M0 Phase A');
+  upsertEntity(db, 'project', 'Track B Phase 1');
+  // Real projects must survive — proper-noun names, not codenames.
+  const keep1 = upsertEntity(db, 'project', 'quillnote');
+  const keep2 = upsertEntity(db, 'project', 'askrobin.io');
+  addRelation(db, keep1.id, 'owns', keep2.id);
+  runHygiene(db);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('M0 Phase A'));
+  assert.ok(!names.includes('Track B Phase 1'));
+  assert.ok(names.includes('quillnote'), 'real project preserved');
+  assert.ok(names.includes('askrobin.io'), 'real project preserved');
+  closeDb(db);
+});
+
+test('hygiene: deletes library-typed code libraries without blocklisting the name', () => {
+  const db = freshDb();
+  // `library` escapes the thing/topic-gated Tier 1 scan, so the cross-type rule
+  // must catch it. Relations to the library must be cleaned up too.
+  const lib = upsertEntity(db, 'library', 'BullMQ');
+  upsertEntity(db, 'library', 'sqlite-vec');
+  const keep = upsertEntity(db, 'person', 'Sam');
+  addRelation(db, keep.id, 'uses', lib.id);
+  const r = runHygiene(db);
+  assert.equal(r.entitiesDeleted, 2);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('BullMQ'));
+  assert.ok(!names.includes('sqlite-vec'));
+  assert.ok(names.includes('Sam'), 'real entity preserved');
+  // No dangling relations to deleted libraries.
+  assert.equal((db.prepare('SELECT COUNT(*) AS c FROM relations').get() as { c: number }).c, 0);
+  // Ambiguous library names are NOT added to the blocklist (a future real "Canvas"
+  // under a non-blocked type must still be allowed in).
+  const blocked = loadNoiseBlocklist(db);
+  assert.ok(!blocked.has('bullmq'), 'library name must not be permanently blocklisted');
+  assert.ok(!blocked.has('sqlite-vec'));
+  closeDb(db);
+});
+
+test('hygiene: deletes env var entities', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'ANTHROPIC_API_KEY');
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 1);
+  closeDb(db);
+});
+
+test('hygiene: deletes camelCase code identifiers', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'fetchHistory');
+  upsertEntity(db, 'topic', 'sessionIds');
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 2);
+  closeDb(db);
+});
+
+test('hygiene: deletes bare domain names captured as thing/topic', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'example-shop.com');
+  upsertEntity(db, 'topic', 'sub.example.io');
+  // A real project typed as service must NOT be touched even if it looks domain-y.
+  const keep = upsertEntity(db, 'service', 'askrobin.io');
+  addRelation(db, keep.id, 'owns', keep.id);
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 2);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('example-shop.com'));
+  assert.ok(!names.includes('sub.example.io'));
+  assert.ok(names.includes('askrobin.io'), 'typed service domain is preserved');
+  closeDb(db);
+});
+
+test('hygiene: keeps real media/topics that contain dev-ambiguous English words (regression)', () => {
+  const db = freshDb();
+  const sam = upsertEntity(db, 'person', 'Sam');
+  const other = upsertEntity(db, 'person', 'Quinn');
+  // Previously deleted AND permanently blocklisted as dev_jargon by the over-broad
+  // token list (migration, dream, recall, hygiene, schema, intuition, ...). Give each
+  // a profile + 2 relations so they clear Tier 2 (score < 2), isolating the Tier 1 fix.
+  const names = [
+    'The Long Dream', // dev_jargon: "dream"
+    'whale migration', // dev_jargon: "migration"
+    'spring whale migration', // db_table_ref: ends in "migration" (no snake_case)
+    'Dental hygiene', // dev_jargon: "hygiene"
+    'Total Recall', // dev_jargon: "recall"
+    'Kantian schema', // dev_jargon: "schema"
+    'chess intuition', // dev_jargon: "intuition"
+    'Theorem', // code_syntax: ends in "rem"
+    'Big Mac index', // db_table_ref: ends in "index"
+  ];
+  for (const n of names) {
+    const e = upsertEntity(db, 'topic', n, `A real topic: ${n}.`);
+    addRelation(db, e.id, 'uses', sam.id);
+    addRelation(db, e.id, 'likes', other.id);
+  }
+  runHygiene(db);
+  const remaining = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  const bl = loadNoiseBlocklist(db);
+  for (const n of names) {
+    assert.ok(remaining.includes(n), `"${n}" should be kept (not Tier 1 noise)`);
+    assert.ok(!bl.has(n.toLowerCase()), `"${n}" must not be blocklisted`);
+  }
+  closeDb(db);
+});
+
+test('hygiene: PHONE_RE keeps year ranges but still deletes real phone numbers', () => {
+  const db = freshDb();
+  const sam = upsertEntity(db, 'person', 'Sam');
+  const other = upsertEntity(db, 'person', 'Priya');
+  // Year range — must be KEPT (the old digit-soup regex deleted it as a phone number).
+  const yr = upsertEntity(db, 'topic', '2024 - 2026', 'The span of a project.');
+  addRelation(db, yr.id, 'uses', sam.id);
+  addRelation(db, yr.id, 'likes', other.id);
+  // A real phone number typed as thing is still noise — still deleted + blocklisted.
+  upsertEntity(db, 'thing', '555-555-0142');
+  runHygiene(db);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(names.includes('2024 - 2026'), 'year range kept');
+  assert.ok(!names.includes('555-555-0142'), 'real phone number deleted');
+  assert.ok(loadNoiseBlocklist(db).has('555-555-0142'), 'phone number blocklisted');
+  closeDb(db);
+});
+
+test('hygiene: deletes sentence-length thing/topic', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'Implementer subagent fixes quality issues and merges code');
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 1);
+  closeDb(db);
+});
+
+test('hygiene: does NOT delete Tier 1 matches on non-noise types (person, place)', () => {
+  const db = freshDb();
+  const e1 = upsertEntity(db, 'person', 'Sam');
+  const e2 = upsertEntity(db, 'place', 'Lakeport');
+  addRelation(db, e1.id, 'lives_in', e2.id);
+  const r = runHygiene(db);
+  assert.equal(r.entitiesDeleted, 0);
+  closeDb(db);
+});
+
+test('hygiene: dedups duplicate (subject, predicate, object) relations to one row', () => {
+  const db = freshDb();
+  const sam = upsertEntity(db, 'person', 'Sam', 'A person.');
+  const spotify = upsertEntity(db, 'service', 'Spotify', 'Music service.');
+  const other = upsertEntity(db, 'service', 'Netflix', 'Streaming.');
+  // Same fact extracted from 4 sessions → 4 identical edges.
+  for (let i = 0; i < 4; i++) addRelation(db, sam.id, 'uses', spotify.id);
+  // A distinct fact must survive untouched.
+  addRelation(db, sam.id, 'uses', other.id);
+  const r = runHygiene(db);
+  assert.equal(r.relationsDeduped, 3, 'three duplicate copies collapsed');
+  const uses = db
+    .prepare('SELECT object_id FROM relations WHERE subject_id=? AND predicate=?')
+    .all(sam.id, 'uses') as Array<{ object_id: number }>;
+  const objs = uses.map((u) => u.object_id).sort();
+  assert.deepEqual(objs, [spotify.id, other.id].sort(), 'both distinct facts preserved, no dup');
+  closeDb(db);
+});
+
+test('hygiene: deletes occurs_with relations', () => {
+  const db = freshDb();
+  const e1 = upsertEntity(db, 'person', 'Sam');
+  const e2 = upsertEntity(db, 'service', 'Vercel');
+  addRelation(db, e1.id, 'occurs_with', e2.id);
+  addRelation(db, e1.id, 'uses', e2.id);
+  const r = runHygiene(db);
+  assert.equal(r.relationsDeleted, 1);
+  assert.equal(r.entitiesDeleted, 0);
+  closeDb(db);
+});
+
+test('hygiene: Tier 2 auto-culls profileless single-word thing (no human review)', () => {
+  const db = freshDb();
+  const e1 = upsertEntity(db, 'thing', 'state');
+  const e2 = upsertEntity(db, 'person', 'Sam');
+  addRelation(db, e1.id, 'uses', e2.id);
+  const r = runHygiene(db);
+  // Auto-culled inline — no flag, no review.
+  assert.equal(r.entitiesAutoCulled, 1);
+  const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(e1.id);
+  assert.equal(ent, undefined, 'noise entity deleted');
+  // Crucially: score-based culls do NOT add to blocklist (allow re-extraction with context).
+  const bl = loadNoiseBlocklist(db);
+  assert.ok(!bl.has('state'), 'Tier 2 auto-cull does not blocklist');
+  closeDb(db);
+});
+
+test('hygiene: Tier 2 does NOT auto-cull entity with score < 2 (e.g. person + place)', () => {
+  const db = freshDb();
+  const e1 = upsertEntity(db, 'person', 'Sam');
+  const e2 = upsertEntity(db, 'place', 'Lakeport');
+  addRelation(db, e1.id, 'lives_in', e2.id);
+  const r = runHygiene(db);
+  assert.equal(r.entitiesAutoCulled, 0);
+  closeDb(db);
+});
+
+test('hygiene: blocklist grows when Tier 1 entities are deleted', () => {
+  const db = freshDb();
+  upsertEntity(db, 'thing', 'SENTRY_AUTH_TOKEN');
+  const r = runHygiene(db);
+  assert.ok(r.blocklistGrown >= 1);
+  const bl = loadNoiseBlocklist(db);
+  assert.ok(bl.has('sentry_auth_token'));
+  closeDb(db);
+});
+
+test('hygiene: retroactive blocklist sweep deletes pre-existing entities', () => {
+  const db = freshDb();
+  const e = upsertEntity(db, 'thing', 'Dream DAG');
+  const e2 = upsertEntity(db, 'person', 'Sam');
+  addRelation(db, e.id, 'uses', e2.id);
+  db.prepare(
+    "INSERT INTO noise_blocklist (name, reason, source, added_at) VALUES ('Dream DAG', 'manual', 'hygiene', datetime('now'))",
+  ).run();
+  const r = runHygiene(db);
+  assert.ok(r.entitiesDeleted >= 1);
+  const names = (
+    db.prepare('SELECT canonical_name FROM entities').all() as Array<{ canonical_name: string }>
+  ).map((e) => e.canonical_name);
+  assert.ok(!names.includes('Dream DAG'));
+  closeDb(db);
+});
+
+test('hygiene: orphan sweep deletes entities with zero relations', () => {
+  const db = freshDb();
+  upsertEntity(db, 'person', 'Orphan Entity');
+  const r = runHygiene(db);
+  assert.ok(r.orphansDeleted >= 1);
+  closeDb(db);
+});
+
+test('hygiene: logs a hygiene.run event', () => {
+  const db = freshDb();
+  runHygiene(db);
+  const evt = db.prepare("SELECT * FROM events WHERE kind = 'hygiene.run'").get() as
+    | { payload: string }
+    | undefined;
+  assert.ok(evt);
+  const payload = JSON.parse(evt.payload);
+  assert.ok('entitiesDeleted' in payload);
+  assert.ok('relationsDeleted' in payload);
+  closeDb(db);
+});
