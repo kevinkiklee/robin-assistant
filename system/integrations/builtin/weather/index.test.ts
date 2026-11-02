@@ -4,7 +4,7 @@
 // "YYYY-MM-DD HH:mm" strings as LOCAL time and moonInfo() derives the local
 // calendar day from host-local fields — so a deterministic TZ keeps the tide
 // morning-golden-window match and the moon date stable across machines/CI.
-process.env.TZ = 'America/New_York';
+process.env.TZ = 'America/Chicago';
 
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync } from 'node:fs';
@@ -20,15 +20,15 @@ import { SKY } from '../../../lib/sky/constants.ts';
 import { samplePoints } from '../../../lib/sky/geo.ts';
 import { sunBearings } from '../../../lib/solar.ts';
 
-/** A public landmark (NYC City Hall), passed to the tick via its lat/lng KV. */
-const TEST_ORIGIN = { lat: 40.7128, lng: -74.006 } as const;
+/** A mid-latitude point in central Illinois, passed to the tick via its lat/lng KV. */
+const TEST_ORIGIN = { lat: 40.7128, lng: -89.006 } as const;
 
 import { integration } from './index.ts';
 
-// Fixed test instant: 2026-06-25T20:00:00-04:00.
-//   - today's sunset is ~20:30 EDT → NOT yet passed → sunset window = today (daily.sunset[0])
-//   - today's sunrise was ~05:25 EDT → already passed → sunrise window = tomorrow (daily.sunrise[1])
-const TEST_NOW = new Date('2026-06-25T20:00:00-04:00');
+// Fixed test instant: 2026-06-25T20:00:00-05:00.
+//   - today's sunset is ~20:30 CDT → NOT yet passed → sunset window = today (daily.sunset[0])
+//   - today's sunrise was ~05:25 CDT → already passed → sunrise window = tomorrow (daily.sunrise[1])
+const TEST_NOW = new Date('2026-06-25T20:00:00-05:00');
 
 // ── Response builder ──────────────────────────────────────────────────────────
 //
@@ -63,7 +63,7 @@ function buildResponse(): object[] {
   for (const s of sunriseSamples) push(s, s.distKm, false);
   for (const s of sunsetSamples) push(s, s.distKm, true);
 
-  // Hourly time arrays: 48h starting 2026-06-25T00:00 in local EST.
+  // Hourly time arrays: 48h starting 2026-06-25T00:00 in local CDT.
   // We need indices for:
   //   '2026-06-25T21:00' → sunset window hour (nearestHourIso('2026-06-25T20:30'))
   //   '2026-06-26T05:00' → sunrise window hour (nearestHourIso('2026-06-26T05:25'))
@@ -185,7 +185,7 @@ function buildEnsembleResponse(opts: { spread: number; members?: number }): obje
     }
     hourly[`cloud_cover_member${String(m).padStart(2, '0')}`] = arr;
   }
-  return { latitude: 40.75, longitude: -74.0, hourly_units: { time: 'iso8601' }, hourly };
+  return { latitude: 40.75, longitude: -89.0, hourly_units: { time: 'iso8601' }, hourly };
 }
 
 // ── Tide fixture ───────────────────────────────────────────────────────────────
@@ -206,13 +206,13 @@ function buildTideResponse(): object {
 
 // ── Moon-path fixture ──────────────────────────────────────────────────────────
 //
-// At 2026-07-01T20:00 ET the moon is near-full (illum ≈ 0.974) and RISES ~02:00Z
+// At 2026-07-01T20:00 CT the moon is near-full (illum ≈ 0.974) and RISES ~03:00Z
 // (≈ leadH 2.0, inside sunsetLeadHours [1.5,5]) at azimuth ≈ 119° ESE → a dusk
 // moonrise feeding the SUNSET window. We build a forecast response covering the
 // tick's full coord set for this instant (origin + sun fans + moon fan) with a
 // CLEAR sky at every hour (all cloud layers 0) so the far-field horizon is open
 // (horizonClear=true) and the moon recipe input is populated.
-const MOON_NOW = new Date('2026-07-01T20:00:00-04:00');
+const MOON_NOW = new Date('2026-07-01T20:00:00-05:00');
 
 function buildMoonResponse(): object[] {
   const origin = TEST_ORIGIN;
@@ -292,8 +292,8 @@ function makeCtx(
   const kv = new Map<string, string>([
     ['lat', String(TEST_ORIGIN.lat)],
     ['lng', String(TEST_ORIGIN.lng)],
-    ['tide_station', '8518750'], // The Battery, NY (public NOAA station)
-    ['taf_station', 'KJFK'],
+    ['tide_station', '9000001'], // NOAA-shaped id; the CO-OPS fetch is mocked
+    ['taf_station', 'KPIA'],
   ]);
   if (opts.skyOff) kv.set('sky_context', 'off');
   for (const [k, v] of Object.entries(opts.state ?? {})) kv.set(k, v);
@@ -373,7 +373,7 @@ test('weather: behavioral — sunset band is promising with controlled cloud pat
   assert.ok(cap.payload.sky, 'sky block present');
   assert.ok('asOf' in cap.payload.sky, 'sky.asOf present');
 
-  // At 8pm EDT sunset (~20:30) is NOT yet passed → a ColorRead is produced.
+  // At 8pm CDT sunset (~20:30) is NOT yet passed → a ColorRead is produced.
   assert.ok(cap.payload.sky.sunset, 'sky.sunset is non-null');
   assert.equal(cap.payload.sky.sunset.window, 'sunset', 'sunset window label');
   assert.ok(typeof cap.payload.sky.sunset.band === 'string', 'sunset band is string');
@@ -446,8 +446,8 @@ test('weather: payload carries moon + tide blocks (ephemeris + CO-OPS)', async (
     assert.match(cap.payload.moon.set, /^\d{4}-\d{2}-\d{2}T/, 'moon.set ISO');
   }
 
-  // Tide block: NOAA fixture has a LOW at 2026-06-26 05:40 ET → inside the
-  // morning-golden window (sunrise 05:25 → golden-hour-end ~06:06 ET).
+  // Tide block: NOAA fixture has a LOW at 2026-06-26 05:40 CT → inside the
+  // morning-golden window (sunrise 05:25 → golden-hour-end ~06:06 CT).
   assert.ok(cap.payload.tide, 'tide block present');
   assert.ok(
     cap.payload.tide.lowInGolden,

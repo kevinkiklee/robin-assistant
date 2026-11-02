@@ -4,7 +4,7 @@ version: 1.0.0
 # 1.5–3.5h sunset-alert lead gate exactly one candidate in every season; 8pm doubles as the
 # tomorrow-sunrise heads-up; 4am + 5am read the configured TAF station METAR for the fog_on check.
 schedule: "0 4,5,12,14,16,18,20 * * *"
-tz: America/New_York
+# No `tz:` — the schedule runs in the operator's zone (ROBIN_TZ / the host's).
 permissions:
   memory:
     read: true

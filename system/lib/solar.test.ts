@@ -2,15 +2,18 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { solarTimes, sunBearings } from './solar.ts';
 
-test('solar: NYC summer solstice — sunrise early, sunset evening, ~15h day', () => {
-  const t = solarTimes(40.7128, -74.006, new Date(Date.UTC(2026, 5, 21)));
+// A mid-latitude reference point (central Illinois, ~40.7°N).
+const ORIGIN = { lat: 40.7128, lng: -89.006 };
+
+test('solar: mid-latitude summer solstice — sunrise early, sunset evening, ~15h day', () => {
+  const t = solarTimes(ORIGIN.lat, ORIGIN.lng, new Date(Date.UTC(2026, 5, 21)));
   assert.ok(t.sunrise && t.sunset);
   const dayHours = (t.sunset!.getTime() - t.sunrise!.getTime()) / 3.6e6;
   assert.ok(dayHours > 14.5 && dayHours < 15.5, `day length ${dayHours}`);
 });
 
 test('solar: ordering invariants hold', () => {
-  const t = solarTimes(40.7128, -74.006, new Date(Date.UTC(2026, 5, 21)));
+  const t = solarTimes(ORIGIN.lat, ORIGIN.lng, new Date(Date.UTC(2026, 5, 21)));
   assert.ok(t.blueHourMorningStart! < t.sunrise!);
   assert.ok(t.sunrise! < t.goldenHourMorningEnd!);
   assert.ok(t.goldenHourMorningEnd! < t.goldenHourEveningStart!);
@@ -18,17 +21,15 @@ test('solar: ordering invariants hold', () => {
   assert.ok(t.sunset! < t.blueHourEveningEnd!);
 });
 
-const NYC_CITY_HALL = { lat: 40.7128, lng: -74.006 };
-
-test('sunBearings: summer solstice ENE sunrise / WNW sunset from NYC', () => {
-  const b = sunBearings(NYC_CITY_HALL.lat, NYC_CITY_HALL.lng, new Date('2026-06-21T12:00:00Z'));
+test('sunBearings: summer solstice ENE sunrise / WNW sunset at ~40.7°N', () => {
+  const b = sunBearings(ORIGIN.lat, ORIGIN.lng, new Date('2026-06-21T12:00:00Z'));
   assert.ok(b.sunriseAz !== null && b.sunsetAz !== null);
   assert.ok(Math.abs((b.sunriseAz as number) - 58) < 4, `sunrise ${b.sunriseAz}`); // ~58° ENE
   assert.ok(Math.abs((b.sunsetAz as number) - 302) < 4, `sunset ${b.sunsetAz}`); // ~302° WNW
 });
 
 test('sunBearings: equinox ⇒ ~due-east sunrise, ~due-west sunset', () => {
-  const b = sunBearings(NYC_CITY_HALL.lat, NYC_CITY_HALL.lng, new Date('2026-03-20T12:00:00Z'));
+  const b = sunBearings(ORIGIN.lat, ORIGIN.lng, new Date('2026-03-20T12:00:00Z'));
   assert.ok(Math.abs((b.sunriseAz as number) - 90) < 3);
   assert.ok(Math.abs((b.sunsetAz as number) - 270) < 3);
 });

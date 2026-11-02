@@ -70,7 +70,7 @@ test('enterSandbox: env is an allowlist (no stray secrets survive)', () => {
   const sb = mkSandbox();
   cleanup.push(enterSandbox(sb, createSimClock(0)));
   assert.equal(process.env.SOME_SECRET_TOKEN, undefined);
-  assert.equal(process.env.TZ, 'America/New_York');
+  assert.equal(process.env.TZ, 'America/Chicago');
 });
 
 test('egress guard: fetch to a non-allowlisted host is refused', async () => {

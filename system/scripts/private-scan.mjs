@@ -12,7 +12,8 @@
 //   node system/scripts/private-scan.mjs --tracked [--deep]  # guard test; --deep adds copied-text audit
 //
 // What it looks for:
-//   - terms from user-data/config/operator.yaml (name, aliases, home label, private_terms)
+//   - terms from user-data/config/operator.yaml (name, aliases, home label, private_terms,
+//     timezone) and any coordinate pair within ~5 km of its home lat/lng
 //   - names Robin's own memory holds for people, medications and financial accounts
 //     (read-only via the sqlite3 CLI) — so a new person or prescription is covered
 //     without anyone updating a list
@@ -61,7 +62,7 @@ function userDataDir() {
 }
 
 // A dependency-free reader for the few operator.yaml keys this needs (name, aliases,
-// private_terms, home.label). Deliberately no `yaml` import: a missing package must
+// private_terms, timezone, home.label/lat/lng). Deliberately no `yaml` import: a missing package must
 // never switch the check off (agent worktrees and scratch clones have no node_modules).
 function unquote(v) {
   const t = v.trim();
@@ -77,7 +78,15 @@ function flowList(v) {
 
 function readOperatorYaml(text) {
   const lines = text.split('\n');
-  const out = { name: null, aliases: [], private_terms: [], private_sources: [], label: null };
+  const out = {
+    name: null,
+    aliases: [],
+    private_terms: [],
+    private_sources: [],
+    label: null,
+    timezone: null,
+    home: null,
+  };
   for (let i = 0; i < lines.length; i++) {
     const top = /^([A-Za-z_]+):\s*(.*)$/.exec(lines[i]);
     if (!top) continue;
@@ -88,6 +97,7 @@ function readOperatorYaml(text) {
       block.push(lines[j]);
     }
     if (key === 'name' && rest) out.name = unquote(rest);
+    if (key === 'timezone' && rest) out.timezone = unquote(rest);
     if (key === 'aliases' || key === 'private_terms' || key === 'private_sources') {
       const inline = rest ? flowList(rest) : null;
       out[key] =
@@ -101,6 +111,13 @@ function readOperatorYaml(text) {
       const src = rest || block.join('\n');
       const m = /(?:^|[{,\s])label:\s*("[^"]*"|'[^']*'|[^,}\n]+)/.exec(src);
       if (m) out.label = unquote(m[1]);
+      const num = (k) => {
+        const n = new RegExp(`(?:^|[{,\\s])${k}:\\s*(-?\\d+(?:\\.\\d+)?)`).exec(src);
+        return n ? Number(n[1]) : null;
+      };
+      const lat = num('lat');
+      const lng = num('lng');
+      if (lat !== null && lng !== null) out.home = { lat, lng };
     }
   }
   return out;
@@ -111,7 +128,37 @@ function operatorTerms(ud) {
   if (!existsSync(file)) return [];
   const raw = readOperatorYaml(readFileSync(file, 'utf8'));
   const first = raw.name ? raw.name.split(/\s+/)[0] : null;
-  return [first, ...raw.aliases, raw.label, ...raw.private_terms];
+  // A zone name is identifying only when it names a region (not UTC/GMT).
+  const zone = raw.timezone?.includes('/') ? raw.timezone : null;
+  return [first, ...raw.aliases, raw.label, ...raw.private_terms, zone];
+}
+
+function operatorHome(ud) {
+  const file = join(ud, 'config', 'operator.yaml');
+  if (!existsSync(file)) return null;
+  return readOperatorYaml(readFileSync(file, 'utf8')).home;
+}
+
+// Two decimals in a row on a line (`{ lat: 40.1234, lng: -89.5 }`, `40.1, -89.5`) that
+// land within HOME_RADIUS_DEG of home, so a rounded or nudged copy is caught too.
+const HOME_RADIUS_DEG = 0.05;
+function homeCoordsMatcher(home) {
+  return {
+    kind: 'home-coords',
+    match(line) {
+      const nums = [...line.matchAll(/-?\d{1,3}\.\d+/g)];
+      for (let i = 0; i + 1 < nums.length; i++) {
+        const a = nums[i];
+        const b = nums[i + 1];
+        if (b.index - (a.index + a[0].length) > 40) continue;
+        const near =
+          Math.abs(Number(a[0]) - home.lat) < HOME_RADIUS_DEG &&
+          Math.abs(Number(b[0]) - home.lng) < HOME_RADIUS_DEG;
+        if (near) return [`${a[0]}, ${b[0]}`];
+      }
+      return null;
+    },
+  };
 }
 
 // Deployment hostnames from the operator's secrets file: a URL there is a real
@@ -350,6 +397,8 @@ async function buildMatchers() {
     re: /(?:ending in|ends in|[⋯…•]+|\*{3,}|x{4,})\s?(\d{4})(?!\d)/i,
     accept: (m) => !PLACEHOLDER_LAST4.has(m[1]),
   });
+  const home = operatorHome(ud);
+  if (home) matchers.push(homeCoordsMatcher(home));
   const retired = retiredCommitPrefixes(ud);
   if (retired.length) {
     matchers.push({
@@ -379,7 +428,7 @@ function scanText(path, text, matchers, findings, lineNumbers) {
     const line = lines[i];
     if (line.trimEnd().endsWith(ALLOW_MARK)) continue;
     for (const m of matchers) {
-      const hit = m.re.exec(line);
+      const hit = m.match ? m.match(line) : m.re.exec(line);
       if (hit && (!m.accept || m.accept(hit))) {
         findings.push(`${path}:${lineNumbers ? lineNumbers[i] : i + 1}: ${m.kind}: ${hit[0]}`);
       }

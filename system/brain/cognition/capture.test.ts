@@ -180,7 +180,7 @@ test('capture: skips a failed claude session whose only assistant turn is a usag
       { role: 'user', content: 'Source text: extract entities from this session about Sam' },
       {
         role: 'assistant',
-        content: "You've hit your Sonnet limit · resets Jun 7 at 1am (America/New_York)",
+        content: "You've hit your Sonnet limit · resets Jun 7 at 1am (America/Chicago)",
       },
     ],
   });

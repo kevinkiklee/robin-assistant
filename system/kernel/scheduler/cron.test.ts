@@ -36,11 +36,11 @@ test('cron: getNextRunAt for "0 3 * * *" in UTC is at 03:00 UTC next', () => {
 test('cron: same expression in different TZ produces different next times', () => {
   const now = new Date('2026-05-18T12:00:00Z');
   const utc = getNextRunAt('0 3 * * *', now, 'UTC');
-  const ny = getNextRunAt('0 3 * * *', now, 'America/New_York');
-  // 03:00 UTC = 23:00 ET previous day → next ET 03:00 has already passed at 12:00Z,
-  // so next NY-03:00 is on 2026-05-19 07:00 UTC (during EDT = UTC-4).
-  assert.notEqual(utc.toISOString(), ny.toISOString());
-  assert.equal(ny.toISOString(), '2026-05-19T07:00:00.000Z');
+  const ct = getNextRunAt('0 3 * * *', now, 'America/Chicago');
+  // 12:00Z = 07:00 CDT, past today's 03:00 local → next local 03:00 is
+  // 2026-05-19 08:00 UTC (during CDT = UTC-5).
+  assert.notEqual(utc.toISOString(), ct.toISOString());
+  assert.equal(ct.toISOString(), '2026-05-19T08:00:00.000Z');
 });
 
 test('cron: scheduleCronJob enqueues a pending row at next-run time', () => {
@@ -81,14 +81,14 @@ test('cron: scheduleCronJob refreshes pending row when TZ changes the next-run t
   assert.equal(before.scheduled_at, '2026-05-19T03:00:00.000Z');
 
   // Reseed with the same cron but a different TZ — pending row should update in place.
-  scheduleCronJob(db, { name: 'test.tzchange', cron: '0 3 * * *', tz: 'America/New_York' }, now);
+  scheduleCronJob(db, { name: 'test.tzchange', cron: '0 3 * * *', tz: 'America/Chicago' }, now);
   const after = db
     .prepare(
       "SELECT scheduled_at, COUNT(*) OVER () AS n FROM jobs WHERE name = 'test.tzchange' AND state = 'pending'",
     )
     .get() as { scheduled_at: string; n: number };
   assert.equal(after.n, 1);
-  assert.equal(after.scheduled_at, '2026-05-19T07:00:00.000Z');
+  assert.equal(after.scheduled_at, '2026-05-19T08:00:00.000Z');
   closeDb(db);
 });
 

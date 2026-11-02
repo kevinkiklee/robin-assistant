@@ -18,7 +18,7 @@ type RunSdkFn = (input: RunSdkInput & { outputFormat?: unknown }) => Promise<Sdk
 /**
  * The subscription account is usage-limited. The SDK reports this as a
  * status:'success' result whose text is a short banner ("You've hit your
- * Sonnet limit · resets Jun 15 at 7am (America/New_York)" — observed live
+ * Sonnet limit · resets Jun 15 at 7am (America/Chicago)" — observed live
  * 2026-06-12), NOT as an error. Without detection the banner flows downstream
  * as model output, fails every JSON parse, and reads as bad output instead of
  * an outage — dead-lettering chunks and silently emptying extractions. The

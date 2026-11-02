@@ -51,7 +51,7 @@ function sandboxAt(root: string): Sandbox {
     HOME: join(root, 'home'),
     XDG_CONFIG_HOME: join(root, 'home', '.config'),
     XDG_DATA_HOME: join(root, 'home', '.local', 'share'),
-    TZ: 'America/New_York',
+    TZ: 'America/Chicago',
   };
   for (const k of PASSTHROUGH_KEYS) {
     const v = process.env[k];

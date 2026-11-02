@@ -18,6 +18,7 @@ import { resolveUserDataDir } from './paths.ts';
  *   home: { lat: 51.5072, lng: -0.1276, label: Camden,     # weather + sky alerts
  *           tide_station: '…', taf_station: EGLC }        # NOAA CO-OPS id; ICAO
  *   timezone: Europe/London    # IANA zone for "today" in dated artifacts (brief, audit)
+ *   gear_noise: [acme, xr]     # brand/mount words that don't tell two pieces of kit apart
  *
  * Every field is optional. Missing file → generic ("the user", no context, no
  * home — location-based integrations skip rather than guess).
@@ -39,6 +40,8 @@ export interface OperatorProfile {
   } | null;
   /** IANA timezone the operator lives in; set only when valid. */
   timezone?: string;
+  /** Lowercased brand/mount words gear dedup ignores (the operator's own ecosystem). */
+  gearNoise?: string[];
 }
 
 const EMPTY: OperatorProfile = {
@@ -88,6 +91,7 @@ export function readOperatorProfile(userDataDir: string): OperatorProfile {
   const list = (v: unknown): string[] =>
     Array.isArray(v) ? v.map(str).filter((a): a is string => a !== null) : [];
   const timezone = ianaZone(raw.timezone);
+  const gearNoise = list(raw.gear_noise).map((w) => w.toLowerCase());
   return {
     name: str(raw.name),
     context: str(raw.context),
@@ -95,6 +99,7 @@ export function readOperatorProfile(userDataDir: string): OperatorProfile {
     privateTerms: list(raw.private_terms),
     home: latLng(raw.home),
     ...(timezone ? { timezone } : {}),
+    ...(gearNoise.length ? { gearNoise } : {}),
   };
 }
 
@@ -119,10 +124,20 @@ export function operatorProfile(): OperatorProfile {
  * The zone "today" means for the operator: operator.yaml `timezone` → `ROBIN_TZ` → the
  * host's zone → UTC. Code that stamps a local date (the reliability audit, weather's
  * sunrise/fog windows) uses this one source, so the brief renderer reading the same
- * value agrees with it — and no zone is baked into the public code.
+ * value agrees with it — and no zone is baked into the public code. Pass `userDataDir`
+ * to resolve for an instance other than this process's (the service installer).
  */
-export function operatorTimeZone(): string {
-  const fromProfile = operatorProfile().timezone;
+export function operatorTimeZone(userDataDir?: string): string {
+  let fromProfile: string | undefined;
+  if (userDataDir) {
+    try {
+      fromProfile = readOperatorProfile(userDataDir).timezone;
+    } catch {
+      // unreadable operator.yaml → fall through to ROBIN_TZ / the host
+    }
+  } else {
+    fromProfile = operatorProfile().timezone;
+  }
   if (fromProfile) return fromProfile;
   const env = ianaZone(process.env.ROBIN_TZ);
   if (env) return env;

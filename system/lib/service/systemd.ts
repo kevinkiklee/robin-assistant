@@ -2,10 +2,9 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { DaemonLaunchdSpec } from '../launchd/install.ts';
+import { operatorTimeZone } from '../operator-profile.ts';
 import { writeUserDataPointer } from '../paths.ts';
 import { type ExecFn, SYSTEMD_UNIT } from './manager.ts';
-
-const DAEMON_TZ = 'America/Chicago';
 
 export function unitPath(opts?: { home?: string }): string {
   return join(opts?.home ?? homedir(), '.config', 'systemd', 'user', SYSTEMD_UNIT);
@@ -43,7 +42,7 @@ ExecStart=${exec}
 ${envLine('HOME', home)}
 ${envLine('ROBIN_USER_DATA_DIR', spec.userDataDir)}
 ${envLine('PATH', path)}
-${envLine('TZ', DAEMON_TZ)}
+${envLine('TZ', operatorTimeZone(spec.userDataDir))}
 EnvironmentFile=-${daemonEnvPath(spec.userDataDir)}
 Restart=always
 RestartSec=5

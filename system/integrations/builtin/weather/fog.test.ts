@@ -170,11 +170,11 @@ const MISS_NIGHT_TAF = `TAF KQRS 141725Z 1418/1524 24008KT P6SM FEW030 SCT120
   FM151900 19010KT P6SM SCT055 BKN220`;
 
 const REF = new Date('2027-05-14T18:00:00Z');
-const NY = 'America/New_York';
+const CT = 'America/Chicago';
 
-test('localHourToUtcMs: resolves EDT and EST local hours', () => {
-  assert.equal(localHourToUtcMs('2027-05-14', 21, NY), Date.parse('2027-05-15T01:00:00Z'));
-  assert.equal(localHourToUtcMs('2027-01-21', 21, NY), Date.parse('2027-01-22T02:00:00Z'));
+test('localHourToUtcMs: resolves CDT and CST local hours', () => {
+  assert.equal(localHourToUtcMs('2027-05-14', 21, CT), Date.parse('2027-05-15T02:00:00Z'));
+  assert.equal(localHourToUtcMs('2027-01-21', 21, CT), Date.parse('2027-01-22T03:00:00Z'));
 });
 
 test('parseTafFogSignal: validity parsed; the rain-mist TEMPO is not a fog group', () => {
@@ -195,7 +195,7 @@ test('applyTafGate: a model-wet night is capped to possible (regression)', () =>
     peak_window: '12am–6am',
     factors: 'spread 1°F · RH 93% · wind 3 mph',
   };
-  const [gated] = applyTafGate([night], parseTafFogSignal(MISS_NIGHT_TAF, REF), NY);
+  const [gated] = applyTafGate([night], parseTafFogSignal(MISS_NIGHT_TAF, REF), CT);
   assert.equal(gated.index, 4);
   assert.equal(gated.band, 'possible');
   assert.match(gated.factors ?? '', /TAF: no fog groups — capped from 9/);
@@ -211,7 +211,7 @@ test('applyTafGate: an overnight FG/BR group corroborates instead of capping', (
     peak_window: '3am–6am',
     factors: 'spread 3°F · RH 95% · wind 1 mph',
   };
-  const [gated] = applyTafGate([night], parseTafFogSignal(withFog, REF), NY);
+  const [gated] = applyTafGate([night], parseTafFogSignal(withFog, REF), CT);
   assert.equal(gated.index, 8, 'corroborated index survives');
   assert.match(gated.factors ?? '', /TAF concurs/);
 });
@@ -225,7 +225,7 @@ test('applyTafGate: a PROB30 fog group overlapping the night also corroborates',
     peak_window: '3am–6am',
     factors: null,
   };
-  const [gated] = applyTafGate([night], parseTafFogSignal(prob, REF), NY);
+  const [gated] = applyTafGate([night], parseTafFogSignal(prob, REF), CT);
   assert.equal(gated.index, 7);
   assert.match(gated.factors ?? '', /TAF concurs/);
 });
@@ -252,7 +252,7 @@ test('applyTafGate: an overnight rain-mist group does not corroborate', () => {
     peak_window: '12am–6am',
     factors: 'spread 2°F · RH 98% · wind 4 mph',
   };
-  const [gated] = applyTafGate([night], parseTafFogSignal(stormy, REF), NY);
+  const [gated] = applyTafGate([night], parseTafFogSignal(stormy, REF), CT);
   assert.equal(gated.index, 4, 'rain-mist must not corroborate a model fog night');
   assert.match(gated.factors ?? '', /capped from 9/);
 });
@@ -265,7 +265,7 @@ test('applyTafGate: no TAF → a high band is marked model-only, never capped', 
     peak_window: '12am–6am',
     factors: 'spread 1°F · RH 93% · wind 3 mph',
   };
-  const [gated] = applyTafGate([night], null, NY);
+  const [gated] = applyTafGate([night], null, CT);
   assert.equal(gated.index, 9, 'no evidence, no cap');
   assert.match(gated.factors ?? '', /model-only/);
 });
@@ -280,7 +280,7 @@ test('applyTafGate: a TAF that does not cover the whole night counts as unavaila
     peak_window: '3am–6am',
     factors: null,
   };
-  const [gated] = applyTafGate([night], parseTafFogSignal(short, REF), NY);
+  const [gated] = applyTafGate([night], parseTafFogSignal(short, REF), CT);
   assert.equal(gated.index, 8);
   assert.match(gated.factors ?? '', /model-only/);
 });
@@ -293,13 +293,13 @@ test('applyTafGate: a low index passes through a clean TAF untouched', () => {
     peak_window: '3am',
     factors: 'spread 5°F · RH 88% · wind 6 mph',
   };
-  const [gated] = applyTafGate([night], parseTafFogSignal(MISS_NIGHT_TAF, REF), NY);
+  const [gated] = applyTafGate([night], parseTafFogSignal(MISS_NIGHT_TAF, REF), CT);
   assert.equal(gated.index, 3);
   assert.equal(gated.factors, 'spread 5°F · RH 88% · wind 6 mph', 'no annotation noise');
 });
 
 test('parseMetarFogSignal: FG token with fractional vis is fog on', () => {
-  const m = parseMetarFogSignal('KJFK 210851Z 00000KT 1/4SM FG VV002 14/14 A3012 RMK AO2 SLP199');
+  const m = parseMetarFogSignal('KPIA 210851Z 00000KT 1/4SM FG VV002 14/14 A3012 RMK AO2 SLP199');
   assert.ok(m);
   assert.equal(m.visibilityMi, 0.25);
   assert.equal(m.fogOn, true);
@@ -308,7 +308,7 @@ test('parseMetarFogSignal: FG token with fractional vis is fog on', () => {
 });
 
 test('parseMetarFogSignal: BR at 2 1/2SM is mist forming; compound vis parsed', () => {
-  const m = parseMetarFogSignal('KJFK 210951Z 03003KT 2 1/2SM BR CLR 15/14 A3013');
+  const m = parseMetarFogSignal('KPIA 210951Z 03003KT 2 1/2SM BR CLR 15/14 A3013');
   assert.ok(m);
   assert.equal(m.visibilityMi, 2.5);
   assert.equal(m.fogOn, false);
@@ -316,19 +316,19 @@ test('parseMetarFogSignal: BR at 2 1/2SM is mist forming; compound vis parsed', 
 });
 
 test('parseMetarFogSignal: mist inside rain is not fog', () => {
-  const m = parseMetarFogSignal('KJFK 210951Z 03003KT 2SM -RA BR OVC005 15/14 A3013');
+  const m = parseMetarFogSignal('KPIA 210951Z 03003KT 2SM -RA BR OVC005 15/14 A3013');
   assert.ok(m);
   assert.equal(m.fogOn, false);
   assert.equal(m.mistForming, false);
 });
 
 test('parseMetarFogSignal: clear 10SM is neither; sub-1mi vis alone counts as fog', () => {
-  const clear = parseMetarFogSignal('KJFK 210951Z 03003KT 10SM CLR 15/14 A3013');
+  const clear = parseMetarFogSignal('KPIA 210951Z 03003KT 10SM CLR 15/14 A3013');
   assert.ok(clear);
   assert.equal(clear.visibilityMi, 10);
   assert.equal(clear.fogOn, false);
   assert.equal(clear.mistForming, false);
-  const dense = parseMetarFogSignal('KJFK 210951Z 00000KT M1/4SM VV001 14/14 A3012');
+  const dense = parseMetarFogSignal('KPIA 210951Z 00000KT M1/4SM VV001 14/14 A3012');
   assert.ok(dense);
   assert.equal(dense.fogOn, true);
 });
@@ -336,7 +336,7 @@ test('parseMetarFogSignal: clear 10SM is neither; sub-1mi vis alone counts as fo
 test('parseMetarFogSignal: garbage → null, and RMK section is ignored', () => {
   assert.equal(parseMetarFogSignal(''), null);
   assert.equal(parseMetarFogSignal('No METAR data'), null);
-  const m = parseMetarFogSignal('KJFK 210951Z 03003KT 10SM CLR 15/14 A3013 RMK AO2 FG DSIPTD');
+  const m = parseMetarFogSignal('KPIA 210951Z 03003KT 10SM CLR 15/14 A3013 RMK AO2 FG DSIPTD');
   assert.ok(m);
   assert.equal(m.fogOn, false);
 });

@@ -8,6 +8,8 @@
 #   --dry-run          print every mutating action as "[dry-run] <command>" and
 #                      change nothing. Only read-only probes are executed.
 #   ROBIN_HOME         the checkout (default: $HOME/robin-assistant-v3)
+#   ROBIN_TZ           host timezone (default: `timezone:` in the checkout's
+#                      user-data/config/operator.yaml; neither → left as is)
 #
 # Runbook: docs/CLOUD-VM.md
 set -euo pipefail
@@ -17,7 +19,7 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run) dry_run=1 ;;
     -h | --help)
-      sed -n '2,11p' "${BASH_SOURCE[0]}"
+      sed -n '2,13p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -83,8 +85,17 @@ fi
 run sudo corepack enable
 run corepack prepare pnpm@10.33.0 --activate
 
-# 4. Timezone.
-run sudo timedatectl set-timezone America/Chicago
+# 4. Timezone: ROBIN_TZ, else operator.yaml's `timezone:` — never a baked-in zone.
+tz="${ROBIN_TZ:-}"
+operator_yaml="$ROBIN_HOME/user-data/config/operator.yaml"
+if [ -z "$tz" ] && probe test -f "$operator_yaml"; then
+  tz="$(sed -nE 's/^timezone:[[:space:]]*["'"'"']?([A-Za-z0-9_+\/-]+).*/\1/p' "$operator_yaml" | head -n 1)"
+fi
+if [ -n "$tz" ]; then
+  run sudo timedatectl set-timezone "$tz"
+else
+  echo "timezone: unchanged (set ROBIN_TZ or operator.yaml timezone:)"
+fi
 
 # 5. Keep the user systemd manager running after logout.
 run sudo loginctl enable-linger "$USER_NAME"

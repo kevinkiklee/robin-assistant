@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -28,9 +28,26 @@ function fakeExec(linger: string) {
 }
 
 describe('renderDaemonUnit', () => {
-  it('renders TZ and env file', () => {
+  it('renders TZ from the instance operator.yaml, and the env file', () => {
+    const ud = mkdtempSync(join(tmpdir(), 'robin-unit-tz-'));
+    mkdirSync(join(ud, 'config'), { recursive: true });
+    writeFileSync(join(ud, 'config', 'operator.yaml'), 'timezone: Pacific/Auckland\n');
+    const u = renderDaemonUnit({ ...spec, userDataDir: ud }, { home: '/home/robin' });
+    assert.ok(u.includes('Environment=TZ=Pacific/Auckland'));
+    assert.ok(u.includes(`EnvironmentFile=-${ud}/config/secrets/daemon.env`));
+    assert.ok(u.includes('Environment=HOME=/home/robin'));
+  });
+  it('TZ falls back to ROBIN_TZ when the instance sets no zone', () => {
+    const prev = process.env.ROBIN_TZ;
+    process.env.ROBIN_TZ = 'Africa/Nairobi';
+    try {
+      const u = renderDaemonUnit(spec, { home: '/home/robin' });
+      assert.ok(u.includes('Environment=TZ=Africa/Nairobi'));
+    } finally {
+      if (prev === undefined) delete process.env.ROBIN_TZ;
+      else process.env.ROBIN_TZ = prev;
+    }
     const u = renderDaemonUnit(spec, { home: '/home/robin' });
-    assert.ok(u.includes('Environment=TZ=America/Chicago'));
     assert.ok(u.includes('EnvironmentFile=-/srv/ud/config/secrets/daemon.env'));
     assert.ok(u.includes('Environment=HOME=/home/robin'));
   });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { clockDate } from '../../lib/clock.ts';
+import { type OperatorProfile, operatorProfile } from '../../lib/operator-profile.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import type { RobinDb } from '../memory/db.ts';
 import { ingest } from '../memory/ingest.ts';
@@ -75,21 +76,22 @@ export function typeClass(type: string): string {
 
 const STOPWORDS = new Set(['the', 'a', 'an', 'of', 'and', 'for', 'with', 'on', 'in', 'at', 'to']);
 
-/** Words carrying no product identity in the equipment class: common brand/mount
- *  words (nikon/nikkor/z), and suffixes nearly every modern tele has. */
-const GEAR_NOISE = new Set([
-  ...STOPWORDS,
-  'nikon',
-  'nikkor',
-  'z',
-  's',
-  'vr',
-  'pf',
-  'ed',
-  'lens',
-  'camera',
-  'body',
-]);
+/** Words carrying no product identity in the equipment class. Brand and mount words
+ *  (and the suffixes nearly every lens in one ecosystem carries) come from the
+ *  operator's `gear_noise:` — they only stop identifying gear inside a single
+ *  ecosystem, so they are per-user config, not a built-in list. */
+const GEAR_NOISE = new Set([...STOPWORDS, 'lens', 'camera', 'body']);
+
+let noiseProfile: OperatorProfile | null = null;
+let noiseSet: Set<string> = GEAR_NOISE;
+function gearNoise(): Set<string> {
+  const p = operatorProfile();
+  if (p !== noiseProfile) {
+    noiseProfile = p;
+    noiseSet = p.gearNoise?.length ? new Set([...GEAR_NOISE, ...p.gearNoise]) : GEAR_NOISE;
+  }
+  return noiseSet;
+}
 
 const ROMAN: Record<string, string> = { '2': 'ii', '3': 'iii', '4': 'iv' };
 
@@ -99,6 +101,7 @@ const ROMAN: Record<string, string> = { '2': 'ii', '3': 'iii', '4': 'iv' };
  * Exported for tests.
  */
 export function gearTokens(raw: string): string[] {
+  const noise = gearNoise();
   let s = raw.normalize('NFKC').toLowerCase().replace(/[–—]/g, '-');
   s = s.replace(/[()[\]{},;:"'!?]/g, ' ');
   // Mark II / Mk2 / MkII → ii, before model glue.
@@ -121,7 +124,7 @@ export function gearTokens(raw: string): string[] {
   s = s.replace(/\b([a-z]+\d+[a-z]*)\s+(ii|iii|iv)\b/g, '$1$2');
   // Remaining punctuation: keep '+' and decimal points inside numbers.
   s = s.replace(/(?<!\d)\.|\.(?!\d)/g, ' ').replace(/[^\p{L}\p{N}\s.+-]+/gu, ' ');
-  return [...new Set(s.split(/\s+/).filter((t) => t && !GEAR_NOISE.has(t)))];
+  return [...new Set(s.split(/\s+/).filter((t) => t && !noise.has(t)))];
 }
 
 /** Identity tokens of an entity name, normalized per compatibility class. */

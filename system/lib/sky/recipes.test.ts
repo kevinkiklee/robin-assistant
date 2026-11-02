@@ -98,14 +98,14 @@ test('fog night suppressed below index 6', () => {
 test('fog_on fires silently from a METAR inside the pre-dawn gate', () => {
   const m = matchRecipes({
     sunriseLeadH: 1.5,
-    metar: { fogOn: true, mistForming: false, visibilityMi: 0.5, station: 'KJFK' },
+    metar: { fogOn: true, mistForming: false, visibilityMi: 0.5, station: 'KPIA' },
     dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
   });
   assert.equal(m.length, 1);
   assert.equal(m[0].recipe, 'fog_on');
   assert.equal(m[0].key, 'fog-on:2026-06-26:fog');
   assert.match(m[0].title, /Fog is on/);
-  assert.equal(m[0].body, 'KJFK vis ½ mi');
+  assert.equal(m[0].body, 'KPIA vis ½ mi');
   const notes = mergeMatches(m);
   assert.equal(notes[0].silent, true);
 });

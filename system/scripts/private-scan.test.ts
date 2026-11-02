@@ -19,7 +19,7 @@ function fixture() {
   mkdirSync(join(ud, 'state', 'db'), { recursive: true });
   writeFileSync(
     join(ud, 'config', 'operator.yaml'),
-    'name: Quill Operator\naliases: [qop]\nprivate_terms: [Zephyrton]\n',
+    'name: Quill Operator\naliases: [qop]\nprivate_terms: [Zephyrton]\ntimezone: Pacific/Chatham  # brief\nhome: { lat: -43.9535, lng: -176.5597, label: Waitangi }\n',
   );
   execFileSync('sqlite3', [
     join(ud, 'state', 'db', 'robin.sqlite'),
@@ -56,6 +56,9 @@ test('private-scan --staged: blocks profile terms, memory names, and personal sh
     ['call 211-282-0199 later', /phone: 211-282-0199/], // privacy-scan:allow
     ['mail jo.fake@gmail.com', /personal-email/], // privacy-scan:allow
     ['card ending in 7311', /account-last4: ending in 7311/], // privacy-scan:allow
+    ["process.env.TZ = 'Pacific/Chatham';", /term: Pacific\/Chatham/],
+    ['const HOME = { lat: -43.95, lng: -176.56 };', /home-coords: -43\.95, -176\.56/],
+    ['solarTimes(-43.97, -176.54, day)', /home-coords/],
   ];
   for (const [line, expected] of cases) {
     writeFileSync(join(repo, 'f.ts'), `${line}\n`);
@@ -75,6 +78,8 @@ test('private-scan --staged: fictional and placeholder values pass', () => {
       'call (555) 555-0142', // 555 = fictional exchange
       'mail sam@example.com',
       'card ending in 1234 or ⋯0000',
+      'const FAR = { lat: -43.5, lng: -176.56 }; // 50 km off: not home',
+      "const tz = 'UTC'; v1.20 2.3",
       'call 211-282-0199 // privacy-scan:allow', // privacy-scan:allow
     ]
       // Dictionary words that start a person entity's name are skipped — only where the

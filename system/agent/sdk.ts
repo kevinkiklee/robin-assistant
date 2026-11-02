@@ -62,7 +62,7 @@ const SUBTYPE_STATUS: Record<string, SdkStatus> = {
 
 /**
  * True when `text` is the SDK's usage-limit banner rather than model output
- * ("You've hit your weekly limit · resets Jun 15 at 7am (America/New_York)" —
+ * ("You've hit your weekly limit · resets Jun 15 at 7am (America/Chicago)" —
  * observed live 2026-06-12 on both the Sonnet and weekly limits). Deliberately
  * tight: the banner is short and LEADS with the limit phrase, so long-form
  * prose that merely mentions limits never matches. Defined at the SDK layer so

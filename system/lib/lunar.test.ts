@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { type MoonInfo, moonInfo } from './lunar.ts';
 
-// Reference observer: New York City (mid-northern latitude), east-positive lng.
-const NYC = { lat: 40.7128, lng: -74.006 };
+// Reference observer: central Illinois (mid-northern latitude), east-positive lng.
+const ORIGIN = { lat: 40.7128, lng: -89.006 };
 
 // Confirmed 2026 reference dates (UTC instants of the phase maxima):
 //   Full Moon  — 2026-06-29 23:57 UTC (Strawberry Moon)
@@ -14,7 +14,7 @@ const FULL_MOON_DATE = new Date('2026-06-29T12:00:00Z');
 const NEW_MOON_DATE = new Date('2026-06-15T12:00:00Z');
 
 test('illumination ≈ 1.0 and phase "full" near the known full moon', () => {
-  const info = moonInfo(NYC.lat, NYC.lng, FULL_MOON_DATE);
+  const info = moonInfo(ORIGIN.lat, ORIGIN.lng, FULL_MOON_DATE);
   assert.ok(
     info.illumination > 0.97,
     `expected >0.97 lit near full moon, got ${info.illumination.toFixed(4)}`,
@@ -23,7 +23,7 @@ test('illumination ≈ 1.0 and phase "full" near the known full moon', () => {
 });
 
 test('illumination ≈ 0.0 and phase "new" near the known new moon', () => {
-  const info = moonInfo(NYC.lat, NYC.lng, NEW_MOON_DATE);
+  const info = moonInfo(ORIGIN.lat, ORIGIN.lng, NEW_MOON_DATE);
   assert.ok(
     info.illumination < 0.03,
     `expected <0.03 lit near new moon, got ${info.illumination.toFixed(4)}`,
@@ -37,7 +37,7 @@ test('illumination waxes then wanes across a 30-day span (not monotonic)', () =>
   const series: number[] = [];
   for (let d = 0; d < 30; d++) {
     const day = new Date(NEW_MOON_DATE.getTime() + d * 86400000);
-    series.push(moonInfo(NYC.lat, NYC.lng, day).illumination);
+    series.push(moonInfo(ORIGIN.lat, ORIGIN.lng, day).illumination);
   }
   const peak = Math.max(...series);
   const peakIdx = series.indexOf(peak);
@@ -69,7 +69,7 @@ test('moonrise advances by the daily lag (~25–80 min/day) across consecutive d
   const rises: Date[] = [];
   for (let d = 0; d < 8; d++) {
     const day = new Date(start.getTime() + d * 86400000);
-    const r = moonInfo(NYC.lat, NYC.lng, day).rise;
+    const r = moonInfo(ORIGIN.lat, ORIGIN.lng, day).rise;
     if (r) rises.push(r);
   }
   assert.ok(rises.length >= 4, `expected ≥4 consecutive moonrises, got ${rises.length}`);
@@ -99,7 +99,7 @@ test('rise/set azimuths are in [0,360); rise eastern, set western (mid-lat)', ()
     const day = new Date(
       '2026-06-01T12:00:00Z'.replace('06-01', `06-${String(d + 1).padStart(2, '0')}`),
     );
-    const info = moonInfo(NYC.lat, NYC.lng, day);
+    const info = moonInfo(ORIGIN.lat, ORIGIN.lng, day);
     if (info.riseAz !== null) {
       assert.ok(info.riseAz >= 0 && info.riseAz < 360, `riseAz ${info.riseAz} out of range`);
       if (info.riseAz < 180) riseEastern++;
@@ -130,7 +130,7 @@ test('a day with no rise (or no set) returns null for that field without throwin
   let nullSet = 0;
   for (let d = 0; d < 31; d++) {
     const day = new Date(2026, 5, d + 1, 12, 0, 0); // local June 2026
-    const info: MoonInfo = moonInfo(NYC.lat, NYC.lng, day);
+    const info: MoonInfo = moonInfo(ORIGIN.lat, ORIGIN.lng, day);
     assert.ok(info.rise === null || info.rise instanceof Date);
     assert.ok(info.set === null || info.set instanceof Date);
     // Field consistency: az is null iff the corresponding event is null.
@@ -156,7 +156,7 @@ test('illumination is always within [0,1] and phaseName is a known label', () =>
   ]);
   for (let d = 0; d < 30; d++) {
     const day = new Date(NEW_MOON_DATE.getTime() + d * 86400000);
-    const info = moonInfo(NYC.lat, NYC.lng, day);
+    const info = moonInfo(ORIGIN.lat, ORIGIN.lng, day);
     assert.ok(info.illumination >= 0 && info.illumination <= 1);
     assert.ok(labels.has(info.phaseName), `unknown phase "${info.phaseName}"`);
   }

@@ -32,7 +32,7 @@ bash system/scripts/vm/bootstrap.sh
 
 The script is idempotent, so re-running it is safe. It installs system
 packages (bubblewrap, git, build tools, sqlite3, rsync), Node 24 and pnpm
-10.33.0 (via corepack), sets the timezone to `America/Chicago`, enables
+10.33.0 (via corepack), sets the host timezone (`ROBIN_TZ`, else operator.yaml `timezone:`), enables
 linger, installs the Claude Code CLI and `cloudflared`, runs
 `pnpm install --frozen-lockfile && pnpm build`, creates `daemon.env`, and runs
 the systemd unit install (`daemon install`, pointed at the checkout's `user-data/`). `ROBIN_HOME` overrides the checkout path.

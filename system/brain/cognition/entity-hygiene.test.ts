@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { setOperatorProfileForTests } from '../../lib/operator-profile.ts';
 import type { LLMDispatcher } from '../llm/dispatcher.ts';
 import { closeDb, openDb } from '../memory/db.ts';
 import { addRelation, upsertEntity } from '../memory/entity.ts';
@@ -91,17 +92,37 @@ function fakeJudge(
 
 const isAero = (name: string) => (WHEEL_NAMES.some(([, n]) => n === name) ? 'aero' : null);
 
-test('gearTokens: folds brand words, f-numbers, mm, PF/S/VR and model suffixes', () => {
+const GENERIC_PROFILE = { name: null, context: null, aliases: [], privateTerms: [], home: null };
+
+test('gearTokens: folds f-numbers, mm and model suffixes; no brand list built in', () => {
   // Invented specs — the parser rules, not any real product.
-  assert.deepEqual(gearTokens('Acme 37mm f/2.1 DG VR (PF)'), ['acme', '37', 'f2.1', 'dg']);
-  assert.deepEqual(gearTokens('Nikkor Z 37mm f2.1'), ['37', 'f2.1']);
-  assert.deepEqual(gearTokens('Brio K7 III'), ['brio', 'k7iii']);
-  assert.deepEqual(gearTokens('K 7III'), ['k7iii']);
-  assert.deepEqual(gearTokens('Brio K 5'), ['brio', 'k5']);
-  assert.deepEqual(gearTokens('Acme 21-47mm f/3.3-5.9 OS'), ['acme', '21-47', 'f3.3-5.9', 'os']);
-  assert.deepEqual(gearTokens('Acme Z 29mm f/2.4 S'), ['acme', '29', 'f2.4']);
-  assert.deepEqual(gearTokens('Velora Aero 38mm Wheelset'), ['velora', 'aero', '38', 'wheelset']);
-  assert.deepEqual(gearTokens('Acme QX T9 Mark II'), ['acme', 'qx', 't9ii']);
+  setOperatorProfileForTests(GENERIC_PROFILE);
+  try {
+    assert.deepEqual(gearTokens('Acme 37mm f/2.1 DG'), ['acme', '37', 'f2.1', 'dg']);
+    assert.deepEqual(gearTokens('Brio K7 III'), ['brio', 'k7iii']);
+    assert.deepEqual(gearTokens('K 7III'), ['k7iii']);
+    assert.deepEqual(gearTokens('Brio K 5'), ['brio', 'k5']);
+    assert.deepEqual(gearTokens('Acme 21-47mm f/3.3-5.9 OS'), ['acme', '21-47', 'f3.3-5.9', 'os']);
+    assert.deepEqual(gearTokens('Velora Aero 38mm Wheelset'), ['velora', 'aero', '38', 'wheelset']);
+    assert.deepEqual(gearTokens('Acme QX T9 Mark II'), ['acme', 'qx', 't9ii']);
+    assert.deepEqual(gearTokens('Acme 50mm lens'), ['acme', '50']);
+  } finally {
+    setOperatorProfileForTests(null);
+  }
+});
+
+test('gearTokens: operator gear_noise drops one ecosystem’s brand and mount words', () => {
+  setOperatorProfileForTests({
+    ...GENERIC_PROFILE,
+    gearNoise: ['zentra', 'zentar', 'q', 'hx', 'ld'],
+  });
+  try {
+    assert.deepEqual(gearTokens('Zentar Q 37mm f2.1'), ['37', 'f2.1']);
+    assert.deepEqual(gearTokens('Acme Q 29mm f/2.4 HX (LD)'), ['acme', '29', 'f2.4']);
+    assert.deepEqual(gearTokens('Zentra Q9 body'), ['q9']);
+  } finally {
+    setOperatorProfileForTests(null);
+  }
 });
 
 test('entityTokens/typeClass: gear rules only for the equipment class', () => {

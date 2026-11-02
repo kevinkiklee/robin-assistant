@@ -172,14 +172,14 @@ test('ClaudeAgentProvider: threads SdkResult.structured through to InvokeResult'
 // When the subscription account is rate/usage-limited, the SDK does NOT error —
 // it returns status:'success' whose text is the limit banner (observed live
 // 2026-06-12: "You've hit your Sonnet limit · resets Jun 15 at 7am
-// (America/New_York)"). Passing that banner through as model output poisons
+// (America/Chicago)"). Passing that banner through as model output poisons
 // every downstream JSON parse and reads as bad output instead of an outage.
 
 test('ClaudeAgentProvider: throws SubscriptionLimitError when the SDK returns a usage-limit banner', async () => {
   const provider = new ClaudeAgentProvider({
     runSdk: async () => ({
       ...okResult,
-      text: "You've hit your Sonnet limit · resets Jun 15 at 7am (America/New_York)",
+      text: "You've hit your Sonnet limit · resets Jun 15 at 7am (America/Chicago)",
     }),
   });
 

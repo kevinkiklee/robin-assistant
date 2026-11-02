@@ -79,3 +79,27 @@ test('operatorTimeZone: operator.yaml zone, then ROBIN_TZ, then the host; bad zo
     else process.env.ROBIN_TZ = saved;
   }
 });
+
+test('readOperatorProfile: gear_noise is lowercased; absent → no field', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-op-gear-'));
+  mkdirSync(join(dir, 'config'));
+  writeFileSync(join(dir, 'config', 'operator.yaml'), 'gear_noise: [Zentar, Q]\n');
+  assert.deepEqual(readOperatorProfile(dir).gearNoise, ['zentar', 'q']);
+  writeFileSync(join(dir, 'config', 'operator.yaml'), 'name: Quinn\n');
+  assert.equal('gearNoise' in readOperatorProfile(dir), false);
+});
+
+test('operatorTimeZone(userDataDir): that instance’s zone, else ROBIN_TZ', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-op-tzdir-'));
+  mkdirSync(join(dir, 'config'));
+  writeFileSync(join(dir, 'config', 'operator.yaml'), 'timezone: Pacific/Auckland\n');
+  assert.equal(operatorTimeZone(dir), 'Pacific/Auckland');
+  const prev = process.env.ROBIN_TZ;
+  process.env.ROBIN_TZ = 'Africa/Nairobi';
+  try {
+    assert.equal(operatorTimeZone(join(dir, 'missing')), 'Africa/Nairobi');
+  } finally {
+    if (prev === undefined) delete process.env.ROBIN_TZ;
+    else process.env.ROBIN_TZ = prev;
+  }
+});

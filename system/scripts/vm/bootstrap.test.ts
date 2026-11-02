@@ -41,10 +41,21 @@ test('bootstrap.sh --dry-run prints actions and invokes no stubbed command', { s
     mkdirSync(home);
     const r = spawnSync('bash', [script, '--dry-run'], {
       encoding: 'utf8',
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home, USER: 'robin' },
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        HOME: home,
+        USER: 'robin',
+        ROBIN_TZ: '',
+        ROBIN_HOME: join(home, 'robin-assistant-v3'),
+      },
     });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /\[dry-run\] sudo timedatectl set-timezone America\/Chicago/);
+    assert.match(
+      r.stdout,
+      /timezone: unchanged/,
+      'no ROBIN_TZ and no operator.yaml → host zone kept',
+    );
     assert.match(r.stdout, /\[dry-run\] sudo loginctl enable-linger/);
     const step10 = r.stdout.split('\n').find((l) => l.includes('daemon install')) ?? '';
     assert.ok(step10.includes('ROBIN_USER_DATA_DIR='), step10);
@@ -52,6 +63,47 @@ test('bootstrap.sh --dry-run prints actions and invokes no stubbed command', { s
     assert.match(r.stdout, /\[dry-run\] install -d -m 0700 .*secrets/);
     assert.equal(existsSync(calledLog), false, existsSync(calledLog) ? 'stub invoked' : '');
     assert.deepEqual(readdirSync(home), [], 'dry-run must not write to HOME');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap.sh --dry-run takes the zone from ROBIN_TZ, then operator.yaml', { skip }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-bootstrap-tz-'));
+  try {
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    for (const name of ['sudo', 'apt-get', 'claude', 'cloudflared']) {
+      writeFileSync(join(bin, name), '#!/bin/sh\nexit 99\n');
+      chmodSync(join(bin, name), 0o755);
+    }
+    writeFileSync(join(bin, 'node'), '#!/bin/sh\necho v24.1.0\n');
+    chmodSync(join(bin, 'node'), 0o755);
+    const home = join(dir, 'home');
+    const checkout = join(dir, 'checkout');
+    mkdirSync(home);
+    mkdirSync(join(checkout, 'user-data', 'config'), { recursive: true });
+    writeFileSync(
+      join(checkout, 'user-data', 'config', 'operator.yaml'),
+      'name: Sam\ntimezone: "Pacific/Auckland"   # brief + audit\n',
+    );
+    const env = {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      HOME: home,
+      USER: 'robin',
+      ROBIN_HOME: checkout,
+    };
+    delete (env as Record<string, string | undefined>).ROBIN_TZ;
+    const fromYaml = spawnSync('bash', [script, '--dry-run'], { encoding: 'utf8', env });
+    assert.equal(fromYaml.status, 0, fromYaml.stdout + fromYaml.stderr);
+    assert.match(fromYaml.stdout, /\[dry-run\] sudo timedatectl set-timezone Pacific\/Auckland\n/);
+    const fromEnv = spawnSync('bash', [script, '--dry-run'], {
+      encoding: 'utf8',
+      env: { ...env, ROBIN_TZ: 'Africa/Nairobi' },
+    });
+    assert.equal(fromEnv.status, 0, fromEnv.stdout + fromEnv.stderr);
+    assert.match(fromEnv.stdout, /\[dry-run\] sudo timedatectl set-timezone Africa\/Nairobi\n/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
