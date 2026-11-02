@@ -8,6 +8,7 @@ import { pidFilePath } from '../paths.ts';
 import {
   detectServiceManager,
   isSupervised,
+  isSystemdManagerState,
   restartArgv,
   restartDaemon,
   restartShellCommand,
@@ -85,4 +86,12 @@ test('none manager falls back to pidfile', async () => {
   } finally {
     rmSync(userData, { recursive: true, force: true });
   }
+});
+
+test('isSystemdManagerState accepts only live manager states', () => {
+  assert.equal(isSystemdManagerState('running\n'), true);
+  assert.equal(isSystemdManagerState('degraded\n'), true);
+  assert.equal(isSystemdManagerState('offline\n'), false);
+  assert.equal(isSystemdManagerState('unknown\n'), false);
+  assert.equal(isSystemdManagerState(''), false);
 });

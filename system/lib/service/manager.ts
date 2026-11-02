@@ -16,15 +16,32 @@ const defaultExec: ExecFn = async (cmd, args) => {
   return { stdout: String(stdout) };
 };
 
+const SYSTEMD_MANAGER_STATES = new Set([
+  'running',
+  'degraded',
+  'starting',
+  'initializing',
+  'stopping',
+  'maintenance',
+]);
+
+/** True when `systemctl is-system-running` output names a live manager state (not offline/unknown). */
+export function isSystemdManagerState(stdout: string): boolean {
+  return SYSTEMD_MANAGER_STATES.has(stdout.trim().split('\n')[0].trim());
+}
+
 /** True when a systemd user manager answers (a "degraded" state still counts). */
 function probeSystemctl(): boolean {
   try {
-    execFileSync('systemctl', ['--user', 'is-system-running'], { stdio: 'pipe' });
-    return true;
+    const out = execFileSync('systemctl', ['--user', 'is-system-running'], {
+      stdio: 'pipe',
+      timeout: 3000,
+    });
+    return isSystemdManagerState(String(out));
   } catch (err) {
     const e = err as { code?: string; stdout?: Buffer | string };
-    if (e.code === 'ENOENT') return false;
-    return String(e.stdout ?? '').trim().length > 0;
+    if (e.code === 'ENOENT' || e.code === 'ETIMEDOUT') return false;
+    return isSystemdManagerState(String(e.stdout ?? ''));
   }
 }
 
