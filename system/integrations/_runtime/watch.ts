@@ -5,6 +5,9 @@ import type { Daemon } from '../../kernel/runtime/daemon.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { registerIntegrations } from './scheduler-glue.ts';
 
+/** How long a failed watcher waits before trying again. */
+const WATCH_RETRY_MS = 10 * 60_000;
+
 export interface WatcherHandle {
   close: () => Promise<void>;
   /** Latest cleanup function from the most recent re-registration; daemon stop should call this. */
@@ -22,25 +25,40 @@ export function watchIntegrations(
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
   paths: string[],
-  deps: { watch?: typeof watch } = {},
+  deps: { watch?: typeof watch; retryMs?: number } = {},
 ): WatcherHandle {
   const log = createLogger({ module: 'integration-watcher' });
-  const w = (deps.watch ?? watch)(paths, {
-    ignored: /(^|[/\\])\../,
-    persistent: true,
-    ignoreInitial: true,
-  });
-  // Without a listener, a watcher error (EMFILE when macOS runs out of FSEvents
-  // capacity) is thrown and kills the daemon, and launchd then crash-loops it on
-  // every boot until the pressure clears. Hot reload is a convenience: log once,
-  // stop watching, keep running. A daemon restart retries the watch.
-  let failed = false;
-  w.on('error', (err) => {
-    if (failed) return;
-    failed = true;
-    log.warn({ err }, 'integration watcher failed; hot reload disabled until restart');
-    void w.close().catch(() => {});
-  });
+  const retryMs = deps.retryMs ?? WATCH_RETRY_MS;
+  let w: ReturnType<typeof watch> | null = null;
+  let retryTimer: NodeJS.Timeout | null = null;
+  let closed = false;
+
+  // Without an 'error' listener a watcher failure is thrown and kills the
+  // daemon; launchd then crash-loops it on every boot. The usual cause is
+  // EMFILE when macOS runs out of FSEvents capacity, which clears once the
+  // pressure does. Hot reload is a convenience: stop watching, keep running,
+  // and try again later.
+  const start = () => {
+    retryTimer = null;
+    if (closed) return;
+    const inst = (deps.watch ?? watch)(paths, {
+      ignored: /(^|[/\\])\../,
+      persistent: true,
+      ignoreInitial: true,
+    });
+    w = inst;
+    let failed = false;
+    inst.on('error', (err) => {
+      if (failed || closed) return;
+      failed = true;
+      log.warn({ err, retryInMs: retryMs }, 'integration watcher failed; hot reload paused');
+      if (w === inst) w = null;
+      void inst.close().catch(() => {});
+      retryTimer = setTimeout(start, retryMs);
+      retryTimer.unref?.();
+    });
+    inst.on('add', onChange).on('change', onChange).on('unlink', onChange);
+  };
   let debounceTimer: NodeJS.Timeout | null = null;
   let currentCleanup: (() => Promise<void>) | undefined;
 
@@ -75,12 +93,14 @@ export function watchIntegrations(
     }, 200);
   };
 
-  w.on('add', onChange).on('change', onChange).on('unlink', onChange);
+  start();
 
   return {
     close: async () => {
+      closed = true;
       if (debounceTimer) clearTimeout(debounceTimer);
-      await w.close();
+      if (retryTimer) clearTimeout(retryTimer);
+      await w?.close();
       if (currentCleanup) {
         try {
           await currentCleanup();
