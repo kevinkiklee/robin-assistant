@@ -1,14 +1,24 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import type { RobinDb } from '../brain/memory/db.ts';
 import { migration011 } from '../brain/memory/migrations/011-agent-usage.ts';
 import { migration037 } from '../brain/memory/migrations/037-agent-usage-compactions.ts';
-import { type RunAgentInput, runAgent } from './run-agent.ts';
-import type { SdkResult } from './sdk.ts';
+import type { ChainDeps } from './credentials/chain.ts';
+import { fingerprint } from './credentials/config.ts';
+import { statePath } from './credentials/state.ts';
+import { callClassFor, type RunAgentInput, runAgent } from './run-agent.ts';
+import type { RunSdkInput, SdkResult } from './sdk.ts';
 import { UsageLedger } from './usage-ledger.ts';
 
 function ledger(): { ledger: UsageLedger; db: RobinDb } {
@@ -402,4 +412,134 @@ test('runAgent: a run with no compaction reports compactions = 0', async () => {
   const { ledger: led } = ledger();
   const res = await runAgent(baseInput(), { ledger: led, cap: 50, runSdk: async () => okResult });
   assert.equal(res.compactions, 0);
+});
+
+// --- credential chain wiring -------------------------------------------------
+
+const CHAIN_ENV = {
+  CLAUDE_TOKEN_ROBIN: 'sk-ant-oat01-FAKE-robin',
+  CLAUDE_TOKEN_SHARED: 'sk-ant-oat01-FAKE-shared',
+};
+
+/** Chain deps whose state has every credential rejected until well after `now`. */
+function deferringChain(): { deps: ChainDeps; reached: () => number; dir: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-runagent-chain-'));
+  const NOW = 1_800_000_000_000;
+  mkdirSync(dirname(statePath(dir)), { recursive: true });
+  const limited = (secret: string) => ({
+    fingerprint: fingerprint(secret),
+    firstSeenAtMs: NOW - 86_400_000,
+    limits: [
+      {
+        status: 'rejected',
+        scope: 'all',
+        observedAtMs: NOW - 60_000,
+        resetsAtMs: NOW + 2 * 3_600_000,
+      },
+    ],
+  });
+  writeFileSync(
+    statePath(dir),
+    JSON.stringify({
+      version: 1,
+      credentials: {
+        'robin:subscription': limited(CHAIN_ENV.CLAUDE_TOKEN_ROBIN),
+        'shared:subscription': limited(CHAIN_ENV.CLAUDE_TOKEN_SHARED),
+      },
+    }),
+  );
+  let reached = 0;
+  return {
+    dir,
+    reached: () => reached,
+    deps: {
+      env: CHAIN_ENV,
+      userData: () => dir,
+      mode: () => 'auto',
+      now: () => NOW,
+      notify: async () => ({ delivered: true }),
+      runSdk: async () => {
+        reached += 1;
+        return okResult;
+      },
+    },
+  };
+}
+
+test('callClassFor: maps surface and label to a call class', () => {
+  assert.equal(callClassFor({ surface: 'agentic-on-demand' }), 'interactive');
+  assert.equal(callClassFor({ surface: 'agentic-autonomous', label: 'dream:health' }), 'brief');
+  assert.equal(callClassFor({ surface: 'agentic-autonomous', label: 'K' }), 'background');
+  assert.equal(callClassFor({ surface: 'agentic-autonomous' }), 'background');
+});
+
+test('runAgent: a chain deferral is capped with a quota ledger row and no SDK call', async () => {
+  const { ledger: led, db } = ledger();
+  const h = deferringChain();
+  const res = await runAgent(baseInput({ surface: 'agentic-autonomous', label: 'K' }), {
+    ledger: led,
+    cap: 50,
+    chain: h.deps,
+  });
+  assert.equal(res.status, 'capped');
+  assert.match(res.summary, /^quota (deferred|exhausted): /);
+  assert.equal(res.costUsd, 0);
+  assert.equal(h.reached(), 0);
+  const row = db.prepare('SELECT status, subtype, cost_usd FROM agent_usage').get() as {
+    status: string;
+    subtype: string;
+    cost_usd: number;
+  };
+  assert.equal(row.subtype, 'quota');
+  assert.equal(row.cost_usd, 0);
+  assert.equal(row.status, res.status);
+});
+
+test('runAgent: the chain receives the model the call actually uses', async () => {
+  const { ledger: led } = ledger();
+  const seen: Array<string | undefined> = [];
+  await runAgent(baseInput(), {
+    ledger: led,
+    cap: 50,
+    chain: {
+      env: CHAIN_ENV,
+      userData: () => mkdtempSync(join(tmpdir(), 'robin-runagent-chain-')),
+      mode: () => 'auto',
+      notify: async () => ({ delivered: true }),
+      runSdk: async (i) => {
+        seen.push(i.model);
+        return okResult;
+      },
+    },
+  });
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0]);
+});
+
+test('runAgent: an injected runSdk bypasses the chain even with credential env set', async () => {
+  const { ledger: led } = ledger();
+  const dir = mkdtempSync(join(tmpdir(), 'robin-runagent-bypass-'));
+  const prevToken = process.env.CLAUDE_TOKEN_ROBIN;
+  const prevDir = process.env.ROBIN_USER_DATA_DIR;
+  process.env.CLAUDE_TOKEN_ROBIN = 'sk-ant-oat01-FAKE-robin';
+  process.env.ROBIN_USER_DATA_DIR = dir;
+  try {
+    let seen: RunSdkInput | undefined;
+    const res = await runAgent(baseInput(), {
+      ledger: led,
+      cap: 50,
+      runSdk: async (i) => {
+        seen = i;
+        return okResult;
+      },
+    });
+    assert.equal(res.status, 'success');
+    assert.equal(seen?.credentialEnv, undefined);
+    assert.equal(existsSync(statePath(dir)), false);
+  } finally {
+    if (prevToken === undefined) delete process.env.CLAUDE_TOKEN_ROBIN;
+    else process.env.CLAUDE_TOKEN_ROBIN = prevToken;
+    if (prevDir === undefined) delete process.env.ROBIN_USER_DATA_DIR;
+    else process.env.ROBIN_USER_DATA_DIR = prevDir;
+  }
 });

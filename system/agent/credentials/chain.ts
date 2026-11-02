@@ -120,9 +120,7 @@ function openStore(userData: () => string, now: () => number): CredentialStateSt
 function resolveMode(deps: ChainDeps, userData: () => string): 'auto' | 'manual' {
   try {
     if (deps.mode) return deps.mode() === 'manual' ? 'manual' : 'auto';
-    // `account_rotation` joins the schema later; read it without assuming it exists.
-    const agent = loadPolicies(userData()).agent as { account_rotation?: unknown };
-    return agent.account_rotation === 'manual' ? 'manual' : 'auto';
+    return loadPolicies(userData()).agent.account_rotation;
   } catch {
     return 'auto';
   }

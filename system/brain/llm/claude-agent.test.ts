@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
+import { fingerprint } from '../../agent/credentials/config.ts';
+import { statePath } from '../../agent/credentials/state.ts';
 import type { RunSdkInput, SdkResult } from '../../agent/sdk.ts';
 import { UsageLedger } from '../../agent/usage-ledger.ts';
 import type { RobinDb } from '../memory/db.ts';
@@ -269,4 +274,81 @@ test('ClaudeAgentProvider: passes a configured effort to runSdk (absent by defau
   });
   await new ClaudeAgentProvider({ runSdk }).invoke({ messages: [{ role: 'user', content: 'x' }] });
   assert.deepEqual(seen, ['low', undefined]);
+});
+
+// --- credential chain wiring -------------------------------------------------
+
+test('ClaudeAgentProvider: a chain deferral throws SubscriptionLimitError without calling the SDK', async () => {
+  const NOW = 1_800_000_000_000;
+  const SECRET = 'sk-ant-oat01-FAKE-robin';
+  const dir = mkdtempSync(join(tmpdir(), 'robin-provider-chain-'));
+  mkdirSync(dirname(statePath(dir)), { recursive: true });
+  writeFileSync(
+    statePath(dir),
+    JSON.stringify({
+      version: 1,
+      credentials: {
+        'robin:subscription': {
+          fingerprint: fingerprint(SECRET),
+          firstSeenAtMs: NOW - 86_400_000,
+          limits: [
+            {
+              status: 'rejected',
+              scope: 'all',
+              observedAtMs: NOW - 60_000,
+              resetsAtMs: NOW + 3_600_000,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  let reached = 0;
+  const provider = new ClaudeAgentProvider({
+    model: 'claude-sonnet-5-5',
+    chain: {
+      env: { CLAUDE_TOKEN_ROBIN: SECRET },
+      userData: () => dir,
+      mode: () => 'auto',
+      now: () => NOW,
+      notify: async () => ({ delivered: true }),
+      runSdk: async () => {
+        reached += 1;
+        return okResult;
+      },
+    },
+  });
+  await assert.rejects(
+    provider.invoke({ messages: [{ role: 'user', content: 'x' }] }),
+    (e: unknown) =>
+      e instanceof SubscriptionLimitError &&
+      /^subscription limit: quota (deferred|exhausted): /.test(e.message),
+  );
+  assert.equal(reached, 0);
+});
+
+test('ClaudeAgentProvider: an injected runSdk bypasses the chain even with credential env set', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-provider-bypass-'));
+  const prevToken = process.env.CLAUDE_TOKEN_ROBIN;
+  const prevDir = process.env.ROBIN_USER_DATA_DIR;
+  process.env.CLAUDE_TOKEN_ROBIN = 'sk-ant-oat01-FAKE-robin';
+  process.env.ROBIN_USER_DATA_DIR = dir;
+  try {
+    let seen: RunSdkInput | undefined;
+    const provider = new ClaudeAgentProvider({
+      runSdk: async (i) => {
+        seen = i;
+        return okResult;
+      },
+    });
+    const res = await provider.invoke({ messages: [{ role: 'user', content: 'x' }] });
+    assert.equal(res.text, 'summary');
+    assert.equal(seen?.credentialEnv, undefined);
+    assert.equal(existsSync(statePath(dir)), false);
+  } finally {
+    if (prevToken === undefined) delete process.env.CLAUDE_TOKEN_ROBIN;
+    else process.env.CLAUDE_TOKEN_ROBIN = prevToken;
+    if (prevDir === undefined) delete process.env.ROBIN_USER_DATA_DIR;
+    else process.env.ROBIN_USER_DATA_DIR = prevDir;
+  }
 });

@@ -218,6 +218,9 @@ export const agentSchema = z.object({
   // clears system/agent/auto-land.ts's gate (scope, size, test, typecheck, lint,
   // tests). false = every K branch waits for review, as before 2026-10-31.
   auto_land: z.boolean().default(true),
+  // 'auto' rotates across Claude credentials when one is limited; 'manual' only
+  // notifies and waits for the operator to switch (credentials/chain.ts).
+  account_rotation: z.enum(['auto', 'manual']).default('auto'),
 });
 
 export const policiesSchema = z

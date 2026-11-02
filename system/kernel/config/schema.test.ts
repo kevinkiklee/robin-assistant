@@ -96,3 +96,12 @@ test('modelsSchema: a role accepts an optional SDK effort (primary + fallback), 
     modelsSchema.parse({ roles: { classify: { provider: 'claude-agent', effort: 'turbo' } } }),
   );
 });
+
+test('policiesSchema: agent.account_rotation defaults to auto, accepts manual, rejects others', () => {
+  assert.equal(policiesSchema.parse({}).agent.account_rotation, 'auto');
+  assert.equal(
+    policiesSchema.parse({ agent: { account_rotation: 'manual' } }).agent.account_rotation,
+    'manual',
+  );
+  assert.throws(() => policiesSchema.parse({ agent: { account_rotation: 'sometimes' } }));
+});

@@ -1,6 +1,8 @@
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { type RunSdkInput, runSdk as realRunSdk, type SdkResult } from './sdk.ts';
+import { type ChainDeps, type ChainResult, runSdkWithCredentials } from './credentials/chain.ts';
+import type { CallClass } from './credentials/select.ts';
+import type { RunSdkInput, runSdk as realRunSdk, SdkResult } from './sdk.ts';
 import type { UsageLedger } from './usage-ledger.ts';
 
 export type AgentSurface = 'agentic-on-demand' | 'agentic-autonomous';
@@ -63,6 +65,15 @@ export interface RunAgentDeps {
   transcriptDir?: string;
   /** Per-surface daily USD cap, checked pre-flight against the ledger. */
   cap: number;
+  /** Credential-chain deps (tests). Production passes none. */
+  chain?: ChainDeps;
+}
+
+/** Credential-chain call class: on-demand = interactive, dream passes = brief, rest = background. */
+export function callClassFor(input: Pick<RunAgentInput, 'surface' | 'label'>): CallClass {
+  if (input.surface === 'agentic-on-demand') return 'interactive';
+  if (input.label?.startsWith('dream:')) return 'brief';
+  return 'background';
 }
 
 const EMPTY_USAGE = { inputTokens: 0, outputTokens: 0 } as const;
@@ -109,7 +120,6 @@ function mapSdkStatus(status: SdkResult['status']): RunAgentStatus {
  */
 export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promise<RunAgentResult> {
   const now = deps.now ?? (() => new Date());
-  const sdk = deps.runSdk ?? realRunSdk;
 
   // (a) Pre-flight cap — never spend a dollar past the surface's daily ceiling.
   if (deps.ledger.overCap(input.surface, deps.cap)) {
@@ -173,10 +183,20 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     ...(input.sandbox ? { sandbox: input.sandbox } : {}),
   };
 
-  let result: SdkResult;
+  let result: ChainResult;
   let threw = false;
   try {
-    result = await sdk(sdkInput);
+    // An injected `runSdk` without `chain` bypasses the credential chain (tests
+    // only). Production code must never inject `runSdk`, or the chain is silently
+    // skipped. Otherwise a test run from a process whose env carries CLAUDE_TOKEN_*
+    // would read and write the real state file.
+    result =
+      deps.runSdk && !deps.chain
+        ? await deps.runSdk(sdkInput)
+        : await runSdkWithCredentials(sdkInput, callClassFor(input), {
+            ...(deps.runSdk ? { runSdk: deps.runSdk } : {}),
+            ...deps.chain,
+          });
   } catch (err) {
     threw = true;
     result = {
@@ -195,9 +215,14 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
 
   // (d) Status mapping. A fired deadline wins over whatever the SDK reported —
   // an aborted run is a timeout regardless of how the SDK surfaced the abort.
+  // A chain deferral (quota) is 'capped'; a full stop is an error. Both may carry
+  // the real spend of earlier failed attempts, recorded as-is.
+  const quota = result.deferred || result.stopped;
   const status: RunAgentStatus = controller.signal.aborted
     ? 'timeout'
-    : mapSdkStatus(result.status);
+    : result.deferred
+      ? 'capped'
+      : mapSdkStatus(result.status);
 
   // (c) One ledger row per run. Record even on timeout/error so partial spend is tracked.
   const ledgerId = deps.ledger.record({
@@ -210,7 +235,13 @@ export async function runAgent(input: RunAgentInput, deps: RunAgentDeps): Promis
     status,
     // 'cost-estimated': no SDK result arrived (deadline/abort), so cost is the
     // list-price estimate rebuilt from the streamed turns — not $0.
-    subtype: threw ? 'threw' : result.costEstimated ? 'cost-estimated' : undefined,
+    subtype: threw
+      ? 'threw'
+      : quota
+        ? 'quota'
+        : result.costEstimated
+          ? 'cost-estimated'
+          : undefined,
     compactions,
   });
 

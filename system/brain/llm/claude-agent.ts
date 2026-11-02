@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import {
-  isSubscriptionLimitBanner,
-  type RunSdkInput,
-  runSdk as realRunSdk,
-  type SdkResult,
-} from '../../agent/sdk.ts';
+  type ChainDeps,
+  type ChainResult,
+  runSdkWithCredentials,
+} from '../../agent/credentials/chain.ts';
+import { isSubscriptionLimitBanner, type RunSdkInput, type SdkResult } from '../../agent/sdk.ts';
 import type { UsageLedger } from '../../agent/usage-ledger.ts';
 import type { InvokeRequest, InvokeResult, LLMProvider, LLMRole, ProviderMeta } from './types.ts';
 
@@ -47,6 +47,8 @@ export interface ClaudeAgentProviderConfig {
   effort?: RunSdkInput['effort'];
   /** Injectable for tests; defaults to the real SDK wrapper. */
   runSdk?: RunSdkFn;
+  /** Credential-chain deps (tests). Production passes none. */
+  chain?: ChainDeps;
 }
 
 /**
@@ -66,13 +68,15 @@ export class ClaudeAgentProvider implements LLMProvider {
   private model: string;
   private ledger?: UsageLedger;
   private effort?: RunSdkInput['effort'];
-  private runSdk: RunSdkFn;
+  private runSdk?: RunSdkFn;
+  private chain?: ChainDeps;
 
   constructor(cfg: ClaudeAgentProviderConfig = {}) {
     this.model = cfg.model ?? 'claude-haiku-5-5';
     this.ledger = cfg.ledger;
     this.effort = cfg.effort;
-    this.runSdk = cfg.runSdk ?? realRunSdk;
+    this.runSdk = cfg.runSdk;
+    this.chain = cfg.chain;
     this.capabilities = new Set(cfg.capabilities ?? ['summarize', 'classify']);
     // Pool-billed: report zero list price so the dispatcher's metered cap is unaffected.
     this.meta = {
@@ -118,7 +122,36 @@ export class ClaudeAgentProvider implements LLMProvider {
       sdkInput.outputFormat = { type: 'json_schema', schema };
     }
 
-    const result = await this.runSdk(sdkInput);
+    // An injected `runSdk` without `chain` bypasses the credential chain (tests
+    // only). Production code must never inject `runSdk`, or the chain is silently
+    // skipped.
+    const result: ChainResult =
+      this.runSdk && !this.chain
+        ? await this.runSdk(sdkInput)
+        : await runSdkWithCredentials(
+            sdkInput,
+            'background',
+            { ...(this.runSdk ? { runSdk: this.runSdk } : {}), ...this.chain },
+            { emptyIsLimit: true },
+          );
+
+    // Quota deferred/stopped by the credential chain: record any real spend of
+    // earlier failed attempts, then surface as the existing outage path.
+    if (result.deferred || result.stopped) {
+      if (result.costUsd > 0) {
+        this.ledger?.record({
+          surface: 'provider',
+          costUsd: result.costUsd,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          turns: result.turns,
+          status: result.status,
+          subtype: 'quota',
+          label: req.role ?? this.model,
+        });
+      }
+      throw new SubscriptionLimitError(result.text);
+    }
 
     // A usage-limited account returns the limit banner as a "successful" text
     // result. Surface it as an outage, not output — unless structured output is
