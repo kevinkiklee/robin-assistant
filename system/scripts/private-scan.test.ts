@@ -29,6 +29,10 @@ function fixture() {
   g('init', '-q');
   g('config', 'user.email', 'test@example.com');
   g('config', 'user.name', 'test');
+  // Hermetic against a global core.fsmonitor: its daemon needs FSEvents, and when
+  // macOS runs out of them git prints "could not read IPC response" to stderr,
+  // which these tests read as the scanner's output.
+  g('config', 'core.fsmonitor', 'false');
   return { repo, ud, g };
 }
 
