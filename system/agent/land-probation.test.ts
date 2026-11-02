@@ -48,3 +48,28 @@ test('runProbation: a daemon that is down or crash-looping on both looks is reve
   const looping = deps([3, 7]);
   assert.equal(await runProbation(looping.d), 'reverted');
 });
+
+test('runProbation: reverted calls revert exactly once (restart is revert-injected)', async () => {
+  let restarts = 0;
+  const d = deps([null, null]);
+  const r = await runProbation({ ...d.d, revert: () => restarts++ });
+  assert.equal(r, 'reverted');
+  assert.equal(restarts, 1);
+});
+
+test('restartCommand: launchd keeps the kickstart argv, systemd uses systemctl --user', async () => {
+  const { restartCommand } = await import('./land-probation.ts');
+  assert.deepEqual(restartCommand('launchd', 501), [
+    'launchctl',
+    'kickstart',
+    '-k',
+    'gui/501/io.robin-assistant.daemon',
+  ]);
+  assert.deepEqual(restartCommand('systemd'), [
+    'systemctl',
+    '--user',
+    'restart',
+    'robin-daemon.service',
+  ]);
+  assert.equal(restartCommand('none'), null);
+});

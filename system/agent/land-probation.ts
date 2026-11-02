@@ -15,6 +15,7 @@ import { notifyDiscordAction } from '../integrations/builtin/discord/index.ts';
 import { appendLandLog } from '../lib/land-log.ts';
 import { resolveUserDataDir } from '../lib/paths.ts';
 import { loadEnvFile } from '../lib/secrets/load-env.ts';
+import { detectServiceManager, restartArgv, type ServiceManager } from '../lib/service/manager.ts';
 
 /** The daemon must have stayed up this long to count as settled. */
 export const SETTLED_SEC = 60;
@@ -47,6 +48,11 @@ export async function runProbation(deps: ProbationDeps): Promise<'healthy' | 're
   }
   deps.revert();
   return 'reverted';
+}
+
+/** The supervisor restart argv for the revert path (launchctl kickstart on macOS, systemctl on Linux). */
+export function restartCommand(mgr: ServiceManager, uid?: number): string[] | null {
+  return restartArgv(mgr, uid);
 }
 
 function realUptime(userDataDir: string): number | null {
@@ -90,11 +96,8 @@ async function main(): Promise<void> {
       } catch (err) {
         detail = `revert/rebuild FAILED — main needs attention: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`;
       }
-      run('launchctl', [
-        'kickstart',
-        '-k',
-        `gui/${process.getuid?.() ?? 501}/io.robin-assistant.daemon`,
-      ]);
+      const argv = restartCommand(detectServiceManager());
+      if (argv) run(argv[0], argv.slice(1));
     },
   });
   appendLandLog(userDataDir, {

@@ -41,6 +41,12 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, normalize } from 'node:path';
+import { pidFilePath, resolveUserDataDir } from '../lib/paths.ts';
+import {
+  detectServiceManager,
+  restartShellCommand,
+  type ServiceManager,
+} from '../lib/service/manager.ts';
 import { codeOnly, fsWriteViolation } from './auto-land-fs.ts';
 import { pruneWorktree } from './worktree.ts';
 
@@ -1371,18 +1377,17 @@ export function autoLand(opts: AutoLandOpts): AutoLandResult {
 }
 
 /**
- * Restart the launchd daemon onto the new build a few seconds from now, then run
- * the probation check (land-probation.ts) once it should have settled — all from
- * a fully detached shell, so the caller (a detached runner child) finishes its
- * own bookkeeping first and the kickstart can't take it down with the daemon.
+ * The detached shell script: restart the daemon, wait, then run the probation
+ * check. launchd keeps the historic `launchctl kickstart` string exactly.
  */
-export function restartDaemonSoon(opts: {
-  repoRoot: string;
+export function restartDaemonScript(opts: {
   commit: string;
   branch: string;
   logPath?: string;
-}): void {
-  const uid = process.getuid?.() ?? 501;
+  serviceManager?: ServiceManager;
+  pidfile?: string;
+  uid?: number;
+}): string {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`;
   const probation = [
     'pnpm exec tsx system/agent/land-probation.ts',
@@ -1390,13 +1395,33 @@ export function restartDaemonSoon(opts: {
     `--branch=${q(opts.branch)}`,
   ].join(' ');
   const out = opts.logPath ? ` >> ${q(opts.logPath)} 2>&1` : '';
-  const child = spawn(
-    'sh',
-    [
-      '-c',
-      `sleep 10; launchctl kickstart -k gui/${uid}/io.robin-assistant.daemon; sleep 150; ${probation}${out}`,
-    ],
-    { cwd: opts.repoRoot, detached: true, stdio: 'ignore' },
-  );
+  const mgr = opts.serviceManager ?? detectServiceManager();
+  const restart = restartShellCommand(mgr, {
+    uid: opts.uid ?? process.getuid?.() ?? 501,
+    pidfile: opts.pidfile ?? (mgr === 'none' ? pidFilePath(resolveUserDataDir()) : ''),
+  });
+  return `sleep 10; ${restart}; sleep 150; ${probation}${out}`;
+}
+
+/**
+ * Restart the daemon (launchd, systemd or a SIGTERM to the pidfile) onto the new
+ * build a few seconds from now, then run the probation check (land-probation.ts)
+ * once it should have settled — all from a fully detached shell, so the caller
+ * (a detached runner child) finishes its own bookkeeping first and the restart
+ * can't take it down with the daemon.
+ */
+export function restartDaemonSoon(opts: {
+  repoRoot: string;
+  commit: string;
+  branch: string;
+  logPath?: string;
+  serviceManager?: ServiceManager;
+  pidfile?: string;
+}): void {
+  const child = spawn('sh', ['-c', restartDaemonScript(opts)], {
+    cwd: opts.repoRoot,
+    detached: true,
+    stdio: 'ignore',
+  });
   child.unref();
 }

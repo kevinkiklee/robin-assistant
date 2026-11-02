@@ -1371,3 +1371,41 @@ test('autoLand: a diff that adds a write outside a temp dir is held before verif
   assert.match(r.reason, /writes files outside a fresh temp dir/);
   assert.ok(!calls.some((c) => c.includes('sandbox-exec')), 'no check ran');
 });
+
+test('restartDaemonScript: darwin string is byte-identical to the historic launchctl form', async () => {
+  const { restartDaemonScript } = await import('./auto-land.ts');
+  const s = restartDaemonScript({
+    commit: 'abc123',
+    branch: 'agent/x',
+    serviceManager: 'launchd',
+    uid: 501,
+  });
+  assert.equal(
+    s,
+    "sleep 10; launchctl kickstart -k gui/501/io.robin-assistant.daemon; sleep 150; pnpm exec tsx system/agent/land-probation.ts --commit='abc123' --branch='agent/x'",
+  );
+});
+
+test('restartDaemonScript: systemd uses systemctl --user and no launchctl', async () => {
+  const { restartDaemonScript } = await import('./auto-land.ts');
+  const s = restartDaemonScript({
+    commit: 'abc123',
+    branch: 'b',
+    serviceManager: 'systemd',
+    logPath: '/tmp/x.log',
+  });
+  assert.match(s, /sleep 10; systemctl --user restart robin-daemon\.service; sleep 150; /);
+  assert.ok(!s.includes('launchctl'));
+  assert.ok(s.endsWith(" >> '/tmp/x.log' 2>&1"));
+});
+
+test('restartDaemonScript: none falls back to SIGTERM of the pidfile process', async () => {
+  const { restartDaemonScript } = await import('./auto-land.ts');
+  const s = restartDaemonScript({
+    commit: 'c',
+    branch: 'b',
+    serviceManager: 'none',
+    pidfile: '/data/daemon.pid',
+  });
+  assert.match(s, /sleep 10; kill -TERM "\$\(cat '?\/data\/daemon\.pid'?\)"; sleep 150; /);
+});

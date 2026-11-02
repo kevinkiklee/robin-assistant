@@ -9,7 +9,7 @@ import { DEFAULT_WARN_COUNT as WORKTREE_WARN_COUNT } from '../kernel/invariants/
 import { recordAlert, resolveAlert } from '../kernel/runtime/alert-store.ts';
 import { appendLandLog } from '../lib/land-log.ts';
 import { operatorName } from '../lib/operator-profile.ts';
-import { dbFilePath, resolveUserDataDir } from '../lib/paths.ts';
+import { dbFilePath, pidFilePath, resolveUserDataDir } from '../lib/paths.ts';
 import { clearRemediationRequestIf } from '../lib/remediation-request.ts';
 import { AUTO_LAND_LIMITS, type AutoLandResult, autoLand, restartDaemonSoon } from './auto-land.ts';
 import { REGISTRY } from './handlers/index.ts';
@@ -165,6 +165,7 @@ async function defaultAfterLand(r: AutoLandResult, ctx: AfterLandCtx): Promise<v
       commit: r.commit,
       branch,
       logPath: join(userDataDir, 'observability', 'logs', 'agent-runner.log'),
+      pidfile: pidFilePath(userDataDir),
     });
   }
   await notifyDiscordAction({

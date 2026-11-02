@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { platform } from 'node:os';
 import { join } from 'node:path';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
@@ -14,6 +13,8 @@ import {
   userDataPaths,
   writeUserDataPointer,
 } from '../../lib/paths.ts';
+import { detectServiceManager } from '../../lib/service/manager.ts';
+import { installDaemonSystemd } from '../../lib/service/systemd.ts';
 
 export interface InitOptions {
   yes?: boolean;
@@ -143,10 +144,12 @@ topics: []
   console.log(`  Config:   ${paths.config.root}`);
   console.log(`  Hardware: ${hw.profile} (${hw.cpu}, ${hw.ram_gb}GB)`);
 
-  // Install + load launchd agent so the daemon autostarts (macOS only).
-  // `--no-launchd` opts out; non-macOS platforms silently skip.
+  // Install + load the service so the daemon autostarts: a launchd agent on
+  // macOS, a systemd user unit on Linux. `--no-launchd` opts out; platforms
+  // with no service manager silently skip.
   let launchdInstalled = false;
-  if (!opts.noLaunchd && platform() === 'darwin') {
+  const serviceManager = opts.noLaunchd ? 'none' : detectServiceManager();
+  if (serviceManager === 'launchd') {
     try {
       const spec = buildDaemonSpecFromEnv({ userDataDir: userData });
       const r = installDaemonLaunchd(spec);
@@ -155,6 +158,21 @@ topics: []
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`  Launchd:  skipped (${msg})`);
+    }
+  } else if (serviceManager === 'systemd') {
+    try {
+      const spec = buildDaemonSpecFromEnv({ userDataDir: userData });
+      const r = await installDaemonSystemd(spec);
+      launchdInstalled = true;
+      console.log(`  Systemd:  ${r.loaded ? 'loaded' : 'wrote'} ${r.unitPath}`);
+      if (!r.lingerEnabled) {
+        console.log(
+          '  Linger is off — the daemon stops at logout. Run: sudo loginctl enable-linger $USER',
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  Systemd:  skipped (${msg})`);
     }
   }
 

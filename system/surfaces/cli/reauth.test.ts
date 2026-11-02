@@ -225,3 +225,10 @@ test('seedFreshTokenState: clears the auth-death latch and refresh cooloff', () 
     closeDb(db);
   }
 });
+
+test('bounceDaemonIfRunning: maps restartDaemon outcomes to a boolean', async () => {
+  const { bounceDaemonIfRunning } = await import('./reauth.ts');
+  assert.equal(await bounceDaemonIfRunning('/x', async () => 'not-running'), false);
+  assert.equal(await bounceDaemonIfRunning('/x', async () => 'supervisor'), true);
+  assert.equal(await bounceDaemonIfRunning('/x', async () => 'sigterm'), true);
+});

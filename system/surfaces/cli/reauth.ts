@@ -2,14 +2,10 @@ import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
-import { isProcessAlive, readPidfile } from '../../kernel/runtime/pidfile.ts';
-import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
-
-const execFileAsync = promisify(execFile);
-const LAUNCHD_LABEL = 'io.robin-assistant.daemon';
+import { restartDaemon } from '../../lib/service/manager.ts';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -418,40 +414,14 @@ export function upsertEnvKey(path: string, key: string, value: string): void {
   writeFileSync(path, next, 'utf8');
 }
 
-async function bounceDaemonIfRunning(userData: string): Promise<boolean> {
-  // Prefer `launchctl kickstart -k` when the daemon is supervised — it
-  // guarantees a clean process recycle (TERM the old one, start a fresh one)
-  // even when the old process is wedged in shutdown. SIGTERM alone has bitten
-  // us when the daemon's shutdown handler hung past process.exit.
-  if (await isLaunchdManaged()) {
-    try {
-      await execFileAsync('launchctl', [
-        'kickstart',
-        '-k',
-        `gui/${process.getuid?.() ?? 501}/${LAUNCHD_LABEL}`,
-      ]);
-      return true;
-    } catch {
-      // Fall through to SIGTERM as a best-effort backup.
-    }
-  }
-  const pidPath = pidFilePath(userData);
-  const pid = readPidfile(pidPath);
-  if (!pid || !isProcessAlive(pid)) return false;
-  try {
-    process.kill(pid, 'SIGTERM');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isLaunchdManaged(): Promise<boolean> {
-  try {
-    const uid = process.getuid?.() ?? 501;
-    const { stdout } = await execFileAsync('launchctl', ['print', `gui/${uid}/${LAUNCHD_LABEL}`]);
-    return /state\s*=\s*(running|active|waiting)/i.test(stdout);
-  } catch {
-    return false;
-  }
+export async function bounceDaemonIfRunning(
+  userData: string,
+  restart: (opts: {
+    userData: string;
+  }) => Promise<'supervisor' | 'sigterm' | 'not-running'> = restartDaemon,
+): Promise<boolean> {
+  // Supervisor restart (launchctl kickstart -k / systemctl --user restart) when
+  // supervised — a clean recycle even when the old process is wedged in
+  // shutdown — else SIGTERM to the pidfile's process.
+  return (await restart({ userData })) !== 'not-running';
 }

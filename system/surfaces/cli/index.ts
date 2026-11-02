@@ -286,12 +286,34 @@ async function main(): Promise<void> {
 
     case 'daemon': {
       const sub = args[1];
+      let serviceManager: 'launchd' | 'systemd' | 'none' = 'none';
+      if (sub === 'install' || sub === 'uninstall') {
+        const { detectServiceManager } = await import('../../lib/service/manager.ts');
+        serviceManager = detectServiceManager();
+        if (serviceManager === 'none') {
+          console.error(
+            'no service manager found; run `robin daemon --foreground` under your own supervisor',
+          );
+          exit(1);
+        }
+      }
       if (sub === 'install') {
         const { installDaemonLaunchd, buildDaemonSpecFromEnv } = await import(
           '../../lib/launchd/install.ts'
         );
         try {
           const spec = buildDaemonSpecFromEnv();
+          if (serviceManager === 'systemd') {
+            const { installDaemonSystemd } = await import('../../lib/service/systemd.ts');
+            const r = await installDaemonSystemd(spec);
+            console.log(`Installed systemd user unit at ${r.unitPath}`);
+            if (!r.lingerEnabled) {
+              console.log(
+                'Linger is off — the daemon stops at logout. Run: sudo loginctl enable-linger $USER',
+              );
+            }
+            exit(0);
+          }
           const r = installDaemonLaunchd(spec);
           console.log(`${r.alreadyLoaded ? 'Reloaded' : 'Loaded'} launchd agent at ${r.plistPath}`);
           console.log(`  Daemon: ${spec.nodePath} ${spec.cliPath} daemon --foreground`);
@@ -305,6 +327,16 @@ async function main(): Promise<void> {
       if (sub === 'uninstall') {
         const { uninstallDaemonLaunchd } = await import('../../lib/launchd/install.ts');
         try {
+          if (serviceManager === 'systemd') {
+            const { uninstallDaemonSystemd } = await import('../../lib/service/systemd.ts');
+            const r = await uninstallDaemonSystemd();
+            console.log(
+              r.removed
+                ? `Removed systemd user unit at ${r.unitPath}`
+                : `No systemd user unit at ${r.unitPath}`,
+            );
+            exit(0);
+          }
           const r = uninstallDaemonLaunchd();
           console.log(
             r.removed
