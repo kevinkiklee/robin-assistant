@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { inspect } from 'node:util';
 import { describe, fingerprint, loadCredentials } from './config.ts';
 
 const ALL = {
@@ -44,4 +45,24 @@ test('credentials: describe never shows secret', () => {
     assert.ok(d.includes(c.fingerprint));
   }
   assert.match(describe(loadCredentials(ALL)[0]), /^robin \(subscription, [0-9a-f]{12}\)$/);
+});
+
+test('credentials: serialisation never carries the secret', () => {
+  const [c] = loadCredentials({ CLAUDE_TOKEN_ROBIN: 'sk-ant-oat01-FAKE-robin' });
+  const json = JSON.stringify(c);
+  assert.doesNotMatch(json, /FAKE/);
+  assert.deepEqual(JSON.parse(json), {
+    id: 'robin:subscription',
+    name: 'robin',
+    kind: 'subscription',
+    fingerprint: c.fingerprint,
+  });
+  assert.equal('env' in { ...c }, false);
+  assert.doesNotMatch(JSON.stringify({ ...c }), /FAKE/);
+  assert.doesNotMatch(JSON.stringify({ wrapped: [c] }), /FAKE/);
+  assert.doesNotMatch(JSON.stringify(c.env), /FAKE/);
+  assert.doesNotMatch(inspect(c, { depth: 5 }), /FAKE/);
+  // the SDK child still gets the real value
+  assert.equal(c.env.set.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-FAKE-robin');
+  assert.equal({ ...c.env.set }.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-FAKE-robin');
 });

@@ -10,8 +10,8 @@ export interface LimitState {
   observedAtMs: number;
   type?: string;
   utilization?: number;
-  /** Default 'limit'. */
-  reason?: 'limit' | 'auth';
+  /** Default 'limit'. 'soft' = inferred from repeated soft signals; lapses with them. */
+  reason?: 'limit' | 'auth' | 'soft';
 }
 
 export interface CredentialState {
@@ -34,6 +34,24 @@ export interface ChainState {
 
 function empty(): ChainState {
   return { version: 1, credentials: {} };
+}
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Drop non-object entries; a missing/non-array `limits` reads as `[]`. */
+function normalise(s: ChainState): ChainState {
+  const credentials: ChainState['credentials'] = {};
+  for (const [id, raw] of Object.entries(s.credentials)) {
+    if (!isObject(raw)) continue;
+    const cs = raw as unknown as CredentialState;
+    cs.limits = Array.isArray(cs.limits) ? cs.limits.filter(isObject) : [];
+    if (cs.softHitsAtMs !== undefined && !Array.isArray(cs.softHitsAtMs)) delete cs.softHitsAtMs;
+    credentials[id] = cs;
+  }
+  s.credentials = credentials;
+  return s;
 }
 
 export function statePath(userData: string): string {
@@ -71,7 +89,7 @@ export class CredentialStateStore {
       ) {
         return empty();
       }
-      return parsed as ChainState;
+      return normalise(parsed as ChainState);
     } catch {
       return empty();
     }

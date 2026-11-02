@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { notifyExhaustion } from './notify.ts';
 
-test('notifyExhaustion: dispatches a "switch accounts" notification for pool exhaustion', async () => {
+test('notifyExhaustion: dispatches a "robin accounts" notification for pool exhaustion', async () => {
   const calls: Array<{ title: string; message: string }> = [];
   const res = await notifyExhaustion('pool-exhausted', {
     notify: async (p) => {
@@ -14,8 +14,11 @@ test('notifyExhaustion: dispatches a "switch accounts" notification for pool exh
   assert.equal(res.delivered, true);
   assert.equal(calls.length, 1);
   assert.match(calls[0].title, /Robin/i);
-  // The actionable instruction is to switch accounts in the Claude TUI.
-  assert.match(calls[0].message, /switch accounts/i);
+  // The actionable instruction is to see which credentials are limited.
+  assert.match(
+    calls[0].message,
+    /Run robin accounts to see which Claude credentials are limited\./,
+  );
   assert.match(calls[0].message, /Claude/i);
 });
 
@@ -27,7 +30,10 @@ test('notifyExhaustion: maps an auth-limit reason to the same actionable guidanc
       return { delivered: true };
     },
   });
-  assert.match(calls[0].message, /switch accounts/i);
+  assert.match(
+    calls[0].message,
+    /Run robin accounts to see which Claude credentials are limited\./,
+  );
 });
 
 test('notifyExhaustion: surfaces a non-delivery from the notifier', async () => {

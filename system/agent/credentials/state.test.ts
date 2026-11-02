@@ -53,3 +53,22 @@ test('state: scopeOf', () => {
   assert.equal(scopeOf('five_hour'), 'all');
   assert.equal(scopeOf(undefined), 'all');
 });
+
+test('state: read normalises malformed credential entries', () => {
+  const p = join(tmp(), 'x.json');
+  writeFileSync(
+    p,
+    '{"version":1,"credentials":{"a":null,"b":{"fingerprint":"x","firstSeenAtMs":1},"c":[1],"d":{"fingerprint":"y","firstSeenAtMs":2,"limits":[null,{"status":"rejected","scope":"all","observedAtMs":3}],"softHitsAtMs":"oops"}}}',
+  );
+  assert.deepEqual(new CredentialStateStore(p).read(), {
+    version: 1,
+    credentials: {
+      b: { fingerprint: 'x', firstSeenAtMs: 1, limits: [] },
+      d: {
+        fingerprint: 'y',
+        firstSeenAtMs: 2,
+        limits: [{ status: 'rejected', scope: 'all', observedAtMs: 3 }],
+      },
+    },
+  });
+});

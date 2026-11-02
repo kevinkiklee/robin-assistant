@@ -4,7 +4,8 @@ import { notifyOperator } from '../lib/notify/operator.ts';
  * Why the run was halted on a billing/auth condition.
  *  - `pool-exhausted`: the prepaid Claude pool ran dry.
  *  - `auth-limit`: the active subscription/account hit a usage limit.
- * Both resolve the same way for the operator: switch accounts in the Claude TUI.
+ * Both resolve the same way for the operator: `robin accounts` shows which
+ * Claude credentials are limited.
  */
 export type ExhaustionReason = 'pool-exhausted' | 'auth-limit';
 
@@ -18,7 +19,7 @@ export interface NotifyDeps {
   notify?: (params: { title: string; message: string }) => Promise<NotifyResult>;
 }
 
-const ACTION = 'Switch accounts in the Claude TUI to continue agentic runs.';
+const ACTION = 'Run robin accounts to see which Claude credentials are limited.';
 
 const MESSAGES: Record<ExhaustionReason, string> = {
   'pool-exhausted': `Claude pool credit exhausted. ${ACTION}`,

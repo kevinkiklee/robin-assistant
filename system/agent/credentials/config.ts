@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { inspect } from 'node:util';
 
 export type CredentialName = 'robin' | 'shared';
 
@@ -60,15 +61,32 @@ export function loadCredentials(env: Record<string, string | undefined>): Creden
   for (const s of SOURCES) {
     const secret = env[s.envVar]?.trim();
     if (!secret) continue;
-    out.push({
-      id: `${s.name}:${s.kind}`,
-      name: s.name,
-      kind: s.kind,
-      fingerprint: fingerprint(secret),
-      env: { set: { [s.target]: secret }, unset: [...s.unset] },
-    });
+    out.push(
+      makeCredential(
+        { id: `${s.name}:${s.kind}`, name: s.name, kind: s.kind, fingerprint: fingerprint(secret) },
+        { set: { [s.target]: secret }, unset: [...s.unset] },
+      ),
+    );
   }
   return out;
+}
+
+/**
+ * `env` is non-enumerable and both objects carry a redacting `toJSON` (and
+ * `env` a redacting `inspect.custom`), so `JSON.stringify`, `{...spread}` and
+ * `util.inspect` of a credential, of its `env`, or of a call input holding that
+ * `env` never carry the secret. Direct `c.env.set` access — the SDK child env
+ * — still sees the real value.
+ */
+function makeCredential(pub: Omit<Credential, 'env'>, env: Credential['env']): Credential {
+  const view = { ...pub };
+  const redacted = () => ({ set: Object.keys(env.set), unset: [...env.unset] });
+  Object.defineProperty(env, 'toJSON', { value: redacted, enumerable: false });
+  Object.defineProperty(env, inspect.custom, { value: redacted, enumerable: false });
+  const c = { ...pub } as Credential;
+  Object.defineProperty(c, 'env', { value: env, enumerable: false });
+  Object.defineProperty(c, 'toJSON', { value: () => ({ ...view }), enumerable: false });
+  return c;
 }
 
 /** Human-readable label; never includes the secret. */
