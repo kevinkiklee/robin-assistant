@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Run `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test` inside
+# Run `pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test` inside
 # node:24-bookworm. Exit status is the suite's.
 #
 # The image is built from a staging copy, never the repo: node_modules, dist,
 # .git and user-data are left out, then only the code in user-data/extensions
-# and user-data/scripts is added back (no caches, no secrets, no .env files).
+# and user-data/scripts is added back, plus their test fixtures (no caches, no
+# secrets, no .env files).
 #
 #   ROBIN_USER_DATA_SRC  where to read user-data code from (default: <repo>/user-data)
 set -euo pipefail
@@ -32,6 +33,11 @@ for sub in extensions scripts; do
     --exclude='node_modules' --exclude='dem_cache/' --exclude='.venv/' --exclude='*.env*' --exclude='secrets/' \
     --include='*/' --include='*.ts' --include='*.mjs' --include='*.js' --include='*.json' --include='*.yaml' \
     --exclude='*' \
+    "$ud_src/$sub/" "$staging/user-data/$sub/"
+  # Test fixtures (scraped HTML, RSS, …) of every type, each file at most 5 MB.
+  rsync -a --prune-empty-dirs --max-size=5m \
+    --exclude='node_modules' --exclude='dem_cache/' --exclude='.venv/' --exclude='*.env*' --exclude='secrets/' \
+    --include='*/' --include='fixtures/***' --exclude='*' \
     "$ud_src/$sub/" "$staging/user-data/$sub/"
 done
 

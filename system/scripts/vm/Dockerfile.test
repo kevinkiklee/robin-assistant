@@ -9,7 +9,7 @@ RUN apt-get update \
 
 ENV TZ=America/Chicago CI=1
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 WORKDIR /robin
 COPY . .
@@ -17,4 +17,4 @@ COPY . .
 # Tests that shell out to git need a repository (throwaway, never pushed).
 RUN git init -q && git add -A && git -c user.email=t@example.invalid -c user.name=t commit -qm base
 
-CMD pnpm install --frozen-lockfile && pnpm typecheck && pnpm test
+CMD pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test

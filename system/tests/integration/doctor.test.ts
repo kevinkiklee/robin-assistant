@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 test('robin doctor: runs against a fresh user-data and reports JSON', () => {
   const userData = mkdtempSync(join(tmpdir(), 'robin-doctor-int-'));
+  // Off macOS, auto-land has no OS sandbox and doctor warns while it's on (by
+  // design). A fresh Linux install is expected to turn it off, so this one does.
+  if (process.platform !== 'darwin') {
+    mkdirSync(join(userData, 'config'), { recursive: true });
+    writeFileSync(join(userData, 'config', 'policies.yaml'), 'agent:\n  auto_land: false\n');
+  }
   // `pnpm robin` hardcodes ROBIN_USER_DATA_DIR=./user-data in package.json which
   // clobbers our test env. Invoke the CLI source directly through tsx so the
   // test actually runs against the fresh tmp dir it just created. Otherwise the

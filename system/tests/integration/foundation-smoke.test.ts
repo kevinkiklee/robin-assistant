@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -44,6 +44,12 @@ test('foundation smoke: init → doctor → daemon → claim a queued job → st
     existsSync(dbFilePath(userData)),
     `db should exist after init at ${dbFilePath(userData)}`,
   );
+
+  // Off macOS, auto-land has no OS sandbox and doctor warns while it's on (by
+  // design). A fresh Linux install is expected to turn it off, so this one does.
+  if (process.platform !== 'darwin') {
+    appendFileSync(join(userData, 'config', 'policies.yaml'), 'agent:\n  auto_land: false\n');
+  }
 
   // 2. robin doctor exits 0
   execFileSync('tsx', ['system/surfaces/cli/index.ts', 'doctor'], { env, encoding: 'utf8' });
