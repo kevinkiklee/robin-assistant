@@ -8,6 +8,7 @@ export { dbReachableInvariant } from './db-reachable.ts';
 export { dbSchemaCurrentInvariant } from './db-schema-current.ts';
 export { dbWalSizeBoundedInvariant } from './db-wal-size-bounded.ts';
 export { distCurrentInvariant } from './dist-current.ts';
+export { type GitFsmonitorOpts, gitFsmonitorBoundedInvariant } from './git-fsmonitor-bounded.ts';
 export { userDataWritableInvariant } from './install-user-data-writable.ts';
 export { integrationDegradedInvariant } from './integration-degraded.ts';
 export {

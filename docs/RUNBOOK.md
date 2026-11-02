@@ -22,6 +22,8 @@ Paths below are relative to the user-data directory: `$ROBIN_USER_DATA_DIR` if s
 
 **Auto-land.** The 4:00am reliability audit writes `state/runtime/remediation-request.json`, and a verified fix branch can merge itself (gates in `system/agent/auto-land.ts`). Every land, hold and probation result is appended to `state/runtime/auto-land-log.jsonl`. Kill switch: set `agent.auto_land: false` in `config/policies.yaml`; every branch then waits for review. A land whose build fails, or whose daemon isn't up and settled within 150 s (`system/agent/land-probation.ts`), is reverted automatically. To undo one by hand, `git revert` the merge, `pnpm build`, and restart the daemon.
 
+**File watching fails (EMFILE).** If the log shows `integration watcher failed; hot reload paused` (it retries every 10 minutes), or any `fs.watch` fails with `EMFILE: too many open files, watch`, macOS is out of FSEvents capacity. A common cause is leftover git monitor daemons from a global `core.fsmonitor = true`: every repo git touches gets one, including deleted temp repos, and they never exit. `robin doctor` warns above 200 of them (`git.fsmonitor_bounded` below), and `--fix` or the daily doctor run stops them. Stopping them is safe, since git restarts one on demand. Robin's test script and its agent worktrees turn fsmonitor off so they don't add more.
+
 **Recommendations.** `robin recommendations dedupe` lists duplicate open recommendations; `--apply` supersedes all but the newest.
 
 **Publishing.** Republish, delete, recategorize and thumbnail backfill are `robin publish --mode …`; see `docs/PUBLISHING.md`.
@@ -261,6 +263,16 @@ Paths below are relative to the user-data directory: `$ROBIN_USER_DATA_DIR` if s
 **Cause.** Agentic runs that produced changes leave their worktree in place for human review. Without periodic cleanup they pile up indefinitely.
 
 **Fix.** Review each pending worktree and merge or discard it: `git -C <repoRoot> worktree list`. Remove with `git worktree remove <path> && git branch -D agent/<ts>`.
+
+### git
+
+#### `git.fsmonitor_bounded` (warning)
+
+**Symptom.** File watching fails machine-wide with EMFILE: the integration hot-reload watcher pauses, editors stop noticing changes, and git prints "could not read IPC response".
+
+**Cause.** A global core.fsmonitor leaves a git monitor daemon behind for every repository git touched, deleted temp repos included; together they exhaust macOS FSEvents capacity.
+
+**Fix.** Stop them; git restarts one on demand: `pkill -f "git fsmonitor--daemon run"`. To stop the build-up, turn off the global setting (`git config --global --unset core.fsmonitor`) and enable it per repository instead.
 
 ### mcp
 

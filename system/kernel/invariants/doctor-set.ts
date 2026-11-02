@@ -17,6 +17,7 @@ import {
   dbSchemaCurrentInvariant,
   dbWalSizeBoundedInvariant,
   distCurrentInvariant,
+  gitFsmonitorBoundedInvariant,
   integrationDegradedInvariant,
   integrationStalenessInvariant,
   integrationsHealthyInvariant,
@@ -136,6 +137,7 @@ export function buildDoctorInvariants(
     orphanChildrenInvariant(db),
     recallTopicsResolvableInvariant({ userData }),
     agentWorktreesBoundedInvariant(repoRoot),
+    gitFsmonitorBoundedInvariant(),
     distCurrentInvariant({
       repoRoot,
       loadedSha: () => LOADED_SHA,

@@ -163,12 +163,12 @@ The daemon's run loop calls `Scheduler.tickOnce()`, which claims and runs one pe
 
 ## Health monitor and alerts
 
-The in-process monitor (`kernel/runtime/health-monitor.ts`) runs 13 of the 27 built-in invariants (`kernel/invariants/builtins/`) every 60s. Each check has a 5s timeout and an overlap guard. `dependsOn` folds a dependent's failure into a failing parent, for up to 6 hours.
+The in-process monitor (`kernel/runtime/health-monitor.ts`) runs 13 of the 28 built-in invariants (`kernel/invariants/builtins/`) every 60s. Each check has a 5s timeout and an overlap guard. `dependsOn` folds a dependent's failure into a failing parent, for up to 6 hours.
 
 - **Heartbeat.** `daemon.heartbeating` goes CRITICAL after 7 min without a scheduler tick. After 30 min of sustained CRITICAL, and at least 2 min of uptime, the monitor calls `exit(1)` for launchd respawn. Host sleep is detected (on macOS via a kernel sysctl probe, since the monotonic clock keeps counting in sleep), and the verdict is held for a post-wake grace period.
 - **Boot classification.** Single-use shutdown stamps distinguish intentional restarts, system reboots, and crashes, so `daemon.stable` counts only crash-class boots.
 - **Incident ladder** (`alerts` table): open → one repair attempt → escalate after 10 still-failing ticks → `needs-human` after 24 h escalated. Open incidents reach handler K through its rotation slot and through the nightly audit (see [Auto-fix loop](#auto-fix-loop)). A repair circuit breaker, keyed by build SHA, stops retrying a repair that failed twice on the current build.
-- **Doctor.** `robin doctor [--fix] [--json]` runs 26 invariants (`kernel/invariants/doctor-set.ts`): everything but the monitor-only heartbeat, including checks too heavy to run every minute. Examples: `mcp.dist_current` (MCP servers running a stale build), WAL size, vector-index sync, bounded history tables and logs, orphan child processes, accumulated agent worktrees, and recall-topic doc paths. The doctor also prints per-integration health and runtime state.
+- **Doctor.** `robin doctor [--fix] [--json]` runs 27 invariants (`kernel/invariants/doctor-set.ts`): everything but the monitor-only heartbeat, including checks too heavy to run every minute. Examples: `mcp.dist_current` (MCP servers running a stale build), WAL size, vector-index sync, bounded history tables and logs, orphan child processes, accumulated agent worktrees, leftover git fsmonitor daemons, and recall-topic doc paths. The doctor also prints per-integration health and runtime state.
 - **Notifications.** Critical alerts go through `notifyOperator()` (below), with a 1-hour per-failure cooldown.
 
 Integration invariants cover staleness against each cron's cadence (suppressed while power policy pauses work), degraded streams, unreachable APIs, and erroring jobs.
