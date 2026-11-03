@@ -100,9 +100,11 @@ async function main(): Promise<void> {
     let refusal: string | null = null;
     try {
       // `robin daemon` (the service entry point) is left to Daemon.start(), which
-      // exits 0 under a lock so the supervisor doesn't restart-loop; installing or
-      // uninstalling the service is refused here, belt and braces for the
-      // SessionStart hook that calls `daemon install`.
+      // logs and exits 0 under a lock. launchd KeepAlive / systemd Restart=always
+      // respawn on exit 0 too; that loop is bounded because cutover boots out and
+      // disables the service labels. Installing or uninstalling the service is
+      // refused here, belt and braces for the SessionStart hook that calls
+      // `daemon install`.
       const daemonRun = cmd === 'daemon' && args[1] !== 'install' && args[1] !== 'uninstall';
       if (!daemonRun) refusal = lockedCliRefusal(resolveUserDataDir(), cmd);
     } catch {
@@ -312,6 +314,17 @@ async function main(): Promise<void> {
 
     case 'daemon': {
       const sub = args[1];
+      if (sub === 'install') {
+        // Explicit refusal (belt and braces with the top-level guard): the
+        // SessionStart hook calls `daemon install` and must not revive a locked Mac.
+        const { lockedCliRefusal } = await import('../../lib/cloud/role.ts');
+        const { resolveUserDataDir } = await import('../../lib/paths.ts');
+        const refusal = lockedCliRefusal(resolveUserDataDir(), 'daemon');
+        if (refusal) {
+          console.error(refusal);
+          exit(1);
+        }
+      }
       let serviceManager: 'launchd' | 'systemd' | 'none' = 'none';
       if (sub === 'install' || sub === 'uninstall') {
         const { detectServiceManager } = await import('../../lib/service/manager.ts');

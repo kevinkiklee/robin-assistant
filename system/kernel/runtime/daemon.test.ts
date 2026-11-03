@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
-import { writeRole } from '../../lib/cloud/role.ts';
+import { clearRole, writeRole } from '../../lib/cloud/role.ts';
 import { dbFilePath, pidFilePath } from '../../lib/paths.ts';
 import { enqueueJob } from '../scheduler/claim.ts';
 import { Scheduler } from '../scheduler/runner.ts';
@@ -249,6 +249,41 @@ test('daemon: no role -> scheduler starts exactly as before', async () => {
   });
   await sleep(150);
   assert.equal(schedulers, 1);
+  await daemon.stop('test');
+  await p.catch(() => {});
+});
+
+test('daemon: scheduler isPaused follows a live role flip none -> vm-dry-run', async () => {
+  const userData = freshUserData();
+  process.env.ROBIN_USER_DATA_DIR = userData;
+  writeFileSync(join(userData, 'config', 'policies.yaml'), 'power:\n  state: active\n');
+  let captured: ConstructorParameters<typeof Scheduler>[0] | undefined;
+  const daemon = new Daemon();
+  const p = daemon.start({
+    foreground: true,
+    httpPort: 0,
+    schedulerFactory: (o) => {
+      captured = o;
+      return new Scheduler(o);
+    },
+  });
+  await sleep(150);
+  assert.ok(captured);
+  assert.equal(captured.isPaused(), false);
+  writeRole(userData, { role: 'vm-dry-run', at: '2026-11-02T00:00:00.000Z' });
+  assert.equal(captured.isPaused(), true);
+  // A paused scheduler claims nothing, whatever is queued.
+  const jobDb = captured.db;
+  const id = enqueueJob(jobDb, {
+    name: 'test.noop',
+    trigger_kind: 'manual',
+    scheduled_at: '2000-01-01T00:00:00.000Z',
+  });
+  assert.equal(await new Scheduler(captured).tickOnce(), false);
+  const row = jobDb.prepare('SELECT state FROM jobs WHERE id = ?').get(id) as { state: string };
+  assert.equal(row.state, 'pending');
+  clearRole(userData);
+  assert.equal(captured.isPaused(), false);
   await daemon.stop('test');
   await p.catch(() => {});
 });

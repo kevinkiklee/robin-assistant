@@ -230,6 +230,14 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
     },
     async ({ type, name }) => {
       try {
+        // Cloud role holds every run type, before the switch.
+        try {
+          assertCanRunIntegrations(resolveUserDataDir());
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: (err as Error).message }) }],
+          };
+        }
         if (type === 'biographer') {
           const r = await runBiographer(deps.db, deps.llm);
           return { content: [{ type: 'text', text: JSON.stringify(r) }] };
@@ -246,13 +254,6 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
               ],
             };
           const userData = resolveUserDataDir();
-          try {
-            assertCanRunIntegrations(userData);
-          } catch (err) {
-            return {
-              content: [{ type: 'text', text: JSON.stringify({ error: (err as Error).message }) }],
-            };
-          }
           const builtinRoot = join(
             resolvePath(import.meta.dirname ?? '.'),
             '..',

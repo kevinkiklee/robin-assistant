@@ -8,7 +8,7 @@ import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import type { WatcherHandle } from '../../integrations/_runtime/watch.ts';
-import { readRole } from '../../lib/cloud/role.ts';
+import { readRole, roleHoldsWork } from '../../lib/cloud/role.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
@@ -231,7 +231,10 @@ export class Daemon {
       isPaused: () => {
         const p = loadPolicies(userData);
         tickNetworkMode = p.network.mode;
-        return p.power.state !== 'active' || p.network.mode === 'offline';
+        // Cloud role is read live: a runtime flip to vm-dry-run pauses every job type.
+        return (
+          p.power.state !== 'active' || p.network.mode === 'offline' || roleHoldsWork(userData)
+        );
       },
       // Called right after isPaused in the same tick, so it reuses that parse
       // instead of reading policies.yaml twice a second.

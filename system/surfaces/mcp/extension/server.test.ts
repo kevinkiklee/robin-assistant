@@ -7,6 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { closeDb, openDb } from '../../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../../brain/memory/migrations/index.ts';
+import { writeRole } from '../../../lib/cloud/role.ts';
 import { buildExtensionServer, renderActionResult } from './server.ts';
 
 function freshDb() {
@@ -124,4 +125,31 @@ test('robin-extension: ingest refuses a reserved first-party kind', async (t) =>
   assert.match(r.content[0].text, /reserved/);
   const n = (db.prepare('SELECT COUNT(*) AS c FROM events').get() as { c: number }).c;
   assert.equal(n, 0);
+});
+
+test('robin-extension: run biographer refuses under vm-dry-run', async (t) => {
+  const ud = mkdtempSync(join(tmpdir(), 'robin-mcp-role-'));
+  const prev = process.env.ROBIN_USER_DATA_DIR;
+  process.env.ROBIN_USER_DATA_DIR = ud;
+  writeRole(ud, { role: 'vm-dry-run', at: '2026-11-02T00:00:00.000Z' });
+  const db = freshDb();
+  const server = buildExtensionServer({ db, llm: null });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'robin-test', version: '0.0.0' });
+  await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+    closeDb(db);
+    if (prev === undefined) delete process.env.ROBIN_USER_DATA_DIR;
+    else process.env.ROBIN_USER_DATA_DIR = prev;
+  });
+  for (const type of ['biographer', 'dream', 'integration']) {
+    const r = (await client.callTool({ name: 'run', arguments: { type, name: 'whoop' } })) as {
+      content: Array<{ text: string }>;
+    };
+    assert.deepEqual(JSON.parse(r.content[0].text), {
+      error: 'cloud role vm-dry-run: integrations are held',
+    });
+  }
 });

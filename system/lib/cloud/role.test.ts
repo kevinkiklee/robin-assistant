@@ -9,6 +9,7 @@ import {
   cliAllowedWhenLocked,
   lockedCliRefusal,
   readRole,
+  roleHoldsWork,
   rolePath,
   writeRole,
 } from './role.ts';
@@ -42,7 +43,7 @@ test('corrupt or invalid marker reads as null', () => {
 });
 
 test('cliAllowedWhenLocked table', () => {
-  for (const c of ['cloud', 'help', '--help', '-h', 'version', '--version', undefined]) {
+  for (const c of ['cloud', 'help', '--help', '-h', 'version', '--version', '-v', undefined]) {
     assert.equal(cliAllowedWhenLocked(c), true, String(c));
   }
   for (const c of ['daemon', 'mcp', 'run', 'recall', 'resume']) {
@@ -74,4 +75,17 @@ test('lockedCliRefusal: message under mac-locked, null otherwise', () => {
   assert.equal(lockedCliRefusal(d, 'daemon'), lockedCliRefusal(d, 'recall'));
   assert.equal(lockedCliRefusal(d, 'cloud'), null);
   assert.equal(lockedCliRefusal(d, undefined), null);
+});
+
+test('roleHoldsWork follows live flips and clears', () => {
+  const d = ud();
+  assert.equal(roleHoldsWork(d), false);
+  writeRole(d, { role: 'vm-primary', at: 'x' });
+  assert.equal(roleHoldsWork(d), false);
+  writeRole(d, { role: 'vm-dry-run', host: 'example-vm', at: 'x' });
+  assert.equal(roleHoldsWork(d), true);
+  writeRole(d, { role: 'mac-locked', host: 'example-vm', at: 'x' });
+  assert.equal(roleHoldsWork(d), true);
+  clearRole(d);
+  assert.equal(roleHoldsWork(d), false);
 });

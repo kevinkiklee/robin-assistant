@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
@@ -65,6 +65,7 @@ const LOCKED_CLI_ALLOWED: ReadonlySet<string> = new Set([
   '-h',
   'version',
   '--version',
+  '-v',
 ]);
 
 /** Commands a locked Mac copy may still run. */
@@ -97,4 +98,29 @@ export function lockedCliRefusal(userData: string, cmd: string | undefined): str
   const rec = readRole(userData);
   if (rec?.role !== 'mac-locked' || cliAllowedWhenLocked(cmd)) return null;
   return lockedCliMessage(rec);
+}
+
+const heldCache = new Map<string, { sig: string; held: boolean }>();
+
+/**
+ * True while the role is `vm-dry-run` or `mac-locked`. Read live (a runtime flip
+ * takes effect on the next call) but stat-cached: the file is re-parsed only
+ * when its mtime/size change, so the scheduler can ask every tick.
+ */
+export function roleHoldsWork(userData: string): boolean {
+  const path = rolePath(userData);
+  let sig = 'none';
+  try {
+    const st = statSync(path);
+    sig = `${st.mtimeMs}:${st.size}:${st.ino}`;
+  } catch {
+    heldCache.delete(path);
+    return false;
+  }
+  const hit = heldCache.get(path);
+  if (hit && hit.sig === sig) return hit.held;
+  const role = readRole(userData)?.role;
+  const held = role === 'vm-dry-run' || role === 'mac-locked';
+  heldCache.set(path, { sig, held });
+  return held;
 }
