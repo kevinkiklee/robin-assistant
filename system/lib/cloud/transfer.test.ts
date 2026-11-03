@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
@@ -523,4 +523,137 @@ test("restore brings derived rows back, following an event that was re-id'd", ()
     closeDb(s);
   }
   assert.deepEqual(restoreMacOnlyRows(dbPath, vmDb), { restored: 0, derived: 0, skipped: 0 });
+});
+
+const imessageRows = (path: string) => {
+  const live = new Database(path, { readonly: true });
+  try {
+    return count(live, `SELECT COUNT(*) AS c FROM events WHERE source = 'imessage'`);
+  } finally {
+    live.close();
+  }
+};
+
+test('the live-DB guard compares file identity: hard link and case variant are refused', (t) => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  closeDb(db);
+  const hard = join(userData, 'hard.sqlite');
+  linkSync(dbPath, hard);
+  assert.throws(() => scrubMacOnlyRows(hard, { liveDbPath: dbPath }), /live DB/);
+  assert.throws(() => restoreMacOnlyRows(dbPath, hard), /same DB/);
+  assert.equal(imessageRows(dbPath), 3);
+
+  const variant = join(dirname(dbPath), 'ROBIN.SQLITE');
+  if (!existsSync(variant)) {
+    t.skip('case-sensitive filesystem: a case-variant path is a different file here');
+    return;
+  }
+  assert.throws(() => scrubMacOnlyRows(variant, { liveDbPath: dbPath }), /live DB/);
+  assert.throws(() => restoreMacOnlyRows(dbPath, variant), /same DB/);
+  assert.equal(imessageRows(dbPath), 3);
+});
+
+const journalHeader = (path: string) => {
+  const h = readFileSync(path).subarray(18, 20);
+  return [h[0], h[1]];
+};
+const sideFiles = (path: string) =>
+  ['-wal', '-shm', '-journal'].filter((s) => existsSync(path + s));
+
+test('scrub and restore leave the file in rollback-journal mode with no side files', () => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  closeDb(db);
+  const snap = join(userData, 'snap.sqlite');
+  snapshotDb(userData, snap);
+  scrubMacOnlyRows(snap, { liveDbPath: dbPath });
+  assert.deepEqual(journalHeader(snap), [1, 1], 'header bytes 18/19 = rollback journal');
+  assert.deepEqual(sideFiles(snap), []);
+  restoreMacOnlyRows(dbPath, snap);
+  assert.deepEqual(journalHeader(snap), [1, 1]);
+  assert.deepEqual(sideFiles(snap), []);
+  // A clean no-op scrub (nothing Mac-only left) still converts.
+  const snap2 = join(userData, 'snap2.sqlite');
+  snapshotDb(userData, snap2);
+  scrubMacOnlyRows(snap2, { liveDbPath: dbPath });
+  scrubMacOnlyRows(snap2, { liveDbPath: dbPath });
+  assert.deepEqual(journalHeader(snap2), [1, 1]);
+});
+
+test('scrub refuses a snapshot another connection holds open', () => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  closeDb(db);
+  const snap = join(userData, 'snap.sqlite');
+  snapshotDb(userData, snap);
+  const holder = openDb(snap);
+  holder.prepare(`SELECT COUNT(*) AS c FROM events`).get(); // a reader, as any real holder is
+  try {
+    assert.throws(() => scrubMacOnlyRows(snap, { liveDbPath: dbPath }), /out of WAL/);
+  } finally {
+    closeDb(holder);
+  }
+  assert.equal(imessageRows(snap), 3, 'refused before any write');
+});
+
+test('derived rows dropped on a non-id key conflict are counted as skipped', () => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  const ents = entities(db);
+  const mac = eventIds(db, 'imessage');
+  for (const [i, id] of mac.entries())
+    addDerived(db, id, ['marzipan', 'quokka', 'zeppelin'][i], ents);
+  db.prepare(`UPDATE relations SET import_key = 'imp-1' WHERE source_event_id = ?`).run(mac[1]);
+  closeDb(db);
+  const vmDb = join(userData, 'vm.sqlite');
+  snapshotDb(userData, vmDb);
+  scrubMacOnlyRows(vmDb, { liveDbPath: dbPath });
+  const vm = openDb(vmDb);
+  // The VM holds its own rows at the Mac rows' unique keys.
+  vm.prepare(
+    `INSERT INTO linear_issue_map (robin_ref, linear_issue_id) VALUES ('ref-marzipan', 'issue-vm')`,
+  ).run();
+  vm.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts, import_key)
+     VALUES (?, 'likes', ?, '2026-02-01T00:00:00Z', 'imp-1')`,
+  ).run(ents[0], ents[1]);
+  closeDb(vm);
+
+  const r = restoreMacOnlyRows(dbPath, vmDb);
+  assert.deepEqual(r, {
+    restored: 3,
+    derived: 3 * EVENT_REFERENCING_COLUMNS.length - 2,
+    skipped: 2,
+  });
+  const s = openDb(vmDb);
+  try {
+    assert.equal(
+      (
+        s
+          .prepare(
+            `SELECT linear_issue_id AS v FROM linear_issue_map WHERE robin_ref = 'ref-marzipan'`,
+          )
+          .get() as {
+          v: string;
+        }
+      ).v,
+      'issue-vm',
+      "the VM's row wins",
+    );
+  } finally {
+    closeDb(s);
+  }
+  // Idempotent: the conflicts are still conflicts, nothing new lands.
+  assert.deepEqual(restoreMacOnlyRows(dbPath, vmDb), { restored: 0, derived: 0, skipped: 2 });
+});
+
+test('missing input paths throw without creating a file', () => {
+  const { userData, dbPath, db } = fixture();
+  closeDb(db);
+  const ghost = join(userData, 'ghost.sqlite');
+  assert.throws(() => scrubMacOnlyRows(ghost, { liveDbPath: dbPath }), /no database/);
+  assert.throws(() => restoreMacOnlyRows(ghost, dbPath), /no database/);
+  assert.throws(() => restoreMacOnlyRows(dbPath, ghost), /no database/);
+  assert.equal(existsSync(ghost), false);
 });

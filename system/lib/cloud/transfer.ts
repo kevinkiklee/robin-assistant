@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { rebuildVecIndex } from '../../brain/memory/prune-noise.ts';
 import { backupDbTo } from '../../surfaces/cli/db.ts';
@@ -126,12 +126,56 @@ export function snapshotDb(userData: string, outPath: string): void {
   backupDbTo(src, outPath);
 }
 
-function samePath(a: string, b: string): boolean {
+/**
+ * True when `a` and `b` are the same file. Identity is (dev, ino), so a hard
+ * link, a symlink or a case variant on a case-insensitive volume all match;
+ * the canonical realpath is a second check. A path that doesn't exist is no
+ * file at all, so it matches nothing.
+ */
+function sameFile(a: string, b: string): boolean {
   try {
-    return realpathSync(a) === realpathSync(b);
+    const sa = statSync(a);
+    const sb = statSync(b);
+    if (sa.dev === sb.dev && sa.ino === sb.ino) return true;
+    return realpathSync.native(a) === realpathSync.native(b);
   } catch {
     return false;
   }
+}
+
+function requireDb(path: string): void {
+  if (!existsSync(path)) throw new Error(`no database at ${path}`);
+}
+
+/**
+ * Open a snapshot/restore target and take it out of WAL: everything written
+ * lands in the main file (and VACUUM skips the WAL copy). Leaving WAL fails
+ * while any other connection holds the file, so a held-open file is refused
+ * rather than scrubbed into a -wal the shipped .sqlite never sees.
+ */
+function openRollbackJournal(path: string): RobinDb {
+  const db = openDb(path);
+  let mode: string;
+  try {
+    mode = String(db.pragma('journal_mode = DELETE', { simple: true }));
+  } catch (err) {
+    closeDb(db);
+    throw new Error(
+      `cannot take ${path} out of WAL (journal_mode): another process holds it open — ${(err as Error).message}`,
+    );
+  }
+  if (mode !== 'delete') {
+    closeDb(db);
+    throw new Error(`journal_mode stayed ${mode} on ${path}: another process holds it open`);
+  }
+  return db;
+}
+
+/** Close, then assert no side file survived (the main file is the whole DB). */
+function closeRollbackJournal(db: RobinDb, path: string): void {
+  closeDb(db);
+  const left = ['-wal', '-shm', '-journal'].filter((s) => existsSync(path + s));
+  if (left.length > 0) throw new Error(`${path} left side files: ${left.join(', ')}`);
 }
 
 const sourcesSql = () => MAC_ONLY_EVENT_SOURCES.map(() => '?').join(', ');
@@ -174,18 +218,21 @@ const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`;
  * `events_content_ad` trigger, migration 003) their FTS entries. Then the FTS
  * index is rebuilt, events_vec repacked and the file VACUUMed, so the deleted
  * text survives in no freed page, stale FTS segment or vec0 chunk — the file is
- * what crosses to the VM. Refuses the live DB (resolved through symlinks).
+ * what crosses to the VM. The file is left in rollback-journal mode with no
+ * side files. Refuses the live DB (same dev/inode: symlink, hard link or case
+ * variant) and a file another connection holds open.
  */
 export function scrubMacOnlyRows(
   dbPath: string,
   opts: { liveDbPath?: string } = {},
 ): { removed: number; derived: number } {
   const live = opts.liveDbPath ?? dbFilePath(resolveUserDataDir());
-  if (samePath(dbPath, live)) {
+  if (sameFile(dbPath, live)) {
     throw new Error(`refusing to scrub the live DB (${dbPath}); scrub a snapshot copy`);
   }
-  if (!existsSync(dbPath)) throw new Error(`no database at ${dbPath}`);
-  const db = openDb(dbPath);
+  requireDb(dbPath);
+  const db = openRollbackJournal(dbPath);
+  let ok = false;
   try {
     const r = scrubRows(db);
     if (r.removed + r.derived > 0) {
@@ -195,9 +242,11 @@ export function scrubMacOnlyRows(
     }
     const integrity = db.pragma('integrity_check', { simple: true });
     if (integrity !== 'ok') throw new Error(`integrity_check after scrub: ${String(integrity)}`);
+    ok = true;
     return r;
   } finally {
-    closeDb(db);
+    if (ok) closeRollbackJournal(db, dbPath);
+    else closeDb(db);
   }
 }
 
@@ -266,8 +315,12 @@ export function restoreMacOnlyRows(
   fromDbPath: string,
   intoDbPath: string,
 ): { restored: number; derived: number; skipped: number } {
-  if (samePath(fromDbPath, intoDbPath))
+  requireDb(fromDbPath);
+  requireDb(intoDbPath);
+  if (sameFile(fromDbPath, intoDbPath)) {
     throw new Error('restore source and target are the same DB');
+  }
+  // The Mac's own DB is only read (openDb, so lab path guards apply; it is WAL already).
   const from = openDb(fromDbPath);
   let rows: Array<EventRow & { body: string | null; content_ts: string | null }>;
   const derivedRows: Array<{ table: string; column: string; rows: Row[] }> = [];
@@ -291,7 +344,8 @@ export function restoreMacOnlyRows(
     closeDb(from);
   }
 
-  const into = openDb(intoDbPath);
+  const into = openRollbackJournal(intoDbPath);
+  let ok = false;
   try {
     const present = into.prepare(
       `SELECT id FROM events
@@ -311,7 +365,7 @@ export function restoreMacOnlyRows(
     const eventNewId = into.prepare(`INSERT INTO events (${cols}) VALUES (${vals})`);
     const intoRefs = new Set(refColumns(into).map(([t, c]) => `${t}.${c}`));
 
-    return into.transaction(() => {
+    const result = into.transaction(() => {
       const contentMap = new Map<number, number>();
       const eventMap = new Map<number, number>();
       let restored = 0;
@@ -356,16 +410,22 @@ export function restoreMacOnlyRows(
       }
       return { restored, derived, skipped };
     })();
+    ok = true;
+    return result;
   } finally {
-    closeDb(into);
+    if (ok) closeRollbackJournal(into, intoDbPath);
+    else closeDb(into);
   }
 }
 
 /**
  * Insert derived rows of one table with their event column remapped. A table
  * whose primary key is a rowid-alias `id` keeps the id when free and takes a
- * fresh one when the VM reused it; any other key conflict means the row (or the
- * VM's own row for that key) is already there.
+ * fresh one when the VM reused it. A row already present with the same values
+ * is neither inserted nor counted; one blocked by a VM row on another key
+ * (`relations.import_key`, `claim_failures(event_id, chunk_idx)`, the keys of
+ * `linear_issue_map`/`biographer_progress`) or by a dangling FK is `skipped` —
+ * the VM's row wins.
  */
 function restoreDerived(
   db: RobinDb,
@@ -402,15 +462,14 @@ function restoreDerived(
         )
         .run(Object.fromEntries(names.map((n) => [n, row[n]]))).changes;
     try {
-      if (idAlias) {
-        const dup = db
-          .prepare(
-            `SELECT 1 FROM ${q(table)} WHERE ${rest.map((n) => `${q(n)} IS @${n}`).join(' AND ')} LIMIT 1`,
-          )
-          .get(Object.fromEntries(rest.map((n) => [n, row[n]])));
-        if (dup) continue;
-        if (insert(all) === 1 || insert(rest) === 1) inserted++;
-      } else if (insert(all) === 1) inserted++;
+      const dup = db
+        .prepare(
+          `SELECT 1 FROM ${q(table)} WHERE ${rest.map((n) => `${q(n)} IS @${n}`).join(' AND ')} LIMIT 1`,
+        )
+        .get(Object.fromEntries(rest.map((n) => [n, row[n]])));
+      if (dup) continue;
+      if (insert(all) === 1 || (idAlias && insert(rest) === 1)) inserted++;
+      else skipped++;
     } catch (err) {
       // An FK that no longer resolves here (statement-level; the transaction goes on).
       if ((err as { code?: string }).code === 'SQLITE_CONSTRAINT_FOREIGNKEY') skipped++;
