@@ -2,6 +2,21 @@ import { copyFileSync, existsSync, statSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
+/**
+ * Online copy of the SQLite DB at `src` into a new file `dst` (VACUUM INTO). Safe
+ * while the daemon or another process holds `src` open: the copy is one
+ * consistent read transaction, WAL included. Throws if `dst` already exists.
+ */
+export function backupDbTo(src: string, dst: string): void {
+  const db = new Database(src);
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.exec(`VACUUM INTO '${dst.replace(/'/g, "''")}'`);
+  } finally {
+    db.close();
+  }
+}
+
 export function runDbBackup(opts: { path?: string } = {}): void {
   const userData = resolveUserDataDir();
   const src = dbFilePath(userData);
@@ -12,14 +27,7 @@ export function runDbBackup(opts: { path?: string } = {}): void {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const dst = opts.path ?? `${src}.bak-${ts}`;
 
-  // Use better-sqlite3's online backup. This works even if the daemon is using the DB.
-  const db = new Database(src);
-  try {
-    db.pragma('wal_checkpoint(TRUNCATE)');
-    db.exec(`VACUUM INTO '${dst.replace(/'/g, "''")}'`);
-  } finally {
-    db.close();
-  }
+  backupDbTo(src, dst);
   const sz = statSync(dst).size;
   console.log(`✓ Backup written to ${dst} (${(sz / 1024 / 1024).toFixed(1)} MB)`);
 }
