@@ -12,6 +12,8 @@ import { quantizeToInt8Json } from '../../brain/memory/vec-quantize.ts';
 import { dbFilePath } from '../paths.ts';
 import {
   type ArgvRunner,
+  EVENT_REFERENCE_EXEMPT,
+  EVENT_REFERENCING_COLUMNS,
   MAC_ONLY_EVENT_SOURCES,
   MOVE_EXCLUDES,
   restoreMacOnlyRows,
@@ -340,4 +342,185 @@ test('restore never overwrites a row the VM created at a reused id', () => {
   }
   assert.equal(restoreMacOnlyRows(dbPath, vmDb).restored, 0, 'a second restore is a no-op');
   assert.ok(existsSync(vmDb));
+});
+
+const eventIds = (db: RobinDb, source: string) =>
+  (
+    db.prepare(`SELECT id FROM events WHERE source = ? ORDER BY id`).all(source) as Array<{
+      id: number;
+    }>
+  ).map((r) => r.id);
+
+/** Two fictional entities for relations to point at. */
+function entities(db: RobinDb): [number, number] {
+  const ins = db.prepare(`INSERT INTO entities (type, canonical_name) VALUES (?, ?)`);
+  return [
+    Number(ins.run('person', 'Sam Rivera').lastInsertRowid),
+    Number(ins.run('org', 'Acme').lastInsertRowid),
+  ];
+}
+
+/** One derived row per EVENT_REFERENCING_COLUMNS table for `eventId`, carrying `word`. */
+function addDerived(db: RobinDb, eventId: number, word: string, ents: [number, number]): void {
+  db.prepare(
+    `INSERT INTO relations (subject_id, predicate, object_id, ts, source_event_id)
+     VALUES (?, 'knows', ?, '2026-01-01T00:00:00Z', ?)`,
+  ).run(ents[0], ents[1], eventId);
+  db.prepare(
+    `INSERT INTO belief_candidates (topic, claim, source_event_id) VALUES ('baking', ?, ?)`,
+  ).run(`${word} belief`, eventId);
+  db.prepare(
+    `INSERT INTO recommendations (subject, claim, domain, source_event_id)
+     VALUES (?, ?, 'hobbies', ?)`,
+  ).run(`${word} subject`, `${word} rec`, eventId);
+  db.prepare(`INSERT INTO biographer_progress (source_event_id, total_chunks) VALUES (?, 2)`).run(
+    eventId,
+  );
+  db.prepare(`INSERT INTO claim_failures (event_id, chunk_idx, chunk_body) VALUES (?, 0, ?)`).run(
+    eventId,
+    `${word} chunk`,
+  );
+  db.prepare(
+    `INSERT INTO linear_issue_map (robin_ref, linear_issue_id, source_event_id) VALUES (?, ?, ?)`,
+  ).run(`ref-${word}`, `issue-${word}`, eventId);
+}
+
+const derivedFor = (db: RobinDb, eventId: number): number[] =>
+  EVENT_REFERENCING_COLUMNS.map(([t, c]) =>
+    count(db, `SELECT COUNT(*) AS c FROM "${t}" WHERE "${c}" = ?`, eventId),
+  );
+
+test('every event-id column in the migrated schema is scrubbed or exempt', () => {
+  const { db } = fixture();
+  const cols = db
+    .prepare(
+      `SELECT m.name AS t, p.name AS c FROM sqlite_master m JOIN pragma_table_info(m.name) p
+        WHERE m.type = 'table' AND (p.name LIKE '%event_id' OR p.name LIKE '%event_ids')`,
+    )
+    .all() as Array<{ t: string; c: string }>;
+  closeDb(db);
+  const covered = new Set(EVENT_REFERENCING_COLUMNS.map(([t, c]) => `${t}.${c}`));
+  for (const { t, c } of cols) {
+    const key = `${t}.${c}`;
+    assert.ok(
+      covered.has(key) || key in EVENT_REFERENCE_EXEMPT,
+      `${key} references events: add it to EVENT_REFERENCING_COLUMNS (or EVENT_REFERENCE_EXEMPT with a reason)`,
+    );
+  }
+  // And the list names only real columns.
+  const real = new Set(cols.map(({ t, c }) => `${t}.${c}`));
+  for (const key of [...covered, ...Object.keys(EVENT_REFERENCE_EXEMPT)]) {
+    assert.ok(real.has(key), `${key} is not in the schema`);
+  }
+});
+
+test('scrub removes rows derived from Mac-only events and leaves the rest', () => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  const ents = entities(db);
+  const mac = eventIds(db, 'imessage');
+  const other = eventIds(db, 'docs');
+  for (const [i, id] of mac.entries())
+    addDerived(db, id, ['marzipan', 'quokka', 'zeppelin'][i], ents);
+  for (const [i, id] of other.entries()) addDerived(db, id, ['brioche', 'fondant'][i], ents);
+  closeDb(db);
+  const snap = join(userData, 'snap.sqlite');
+  snapshotDb(userData, snap);
+
+  const r = scrubMacOnlyRows(snap, { liveDbPath: dbPath });
+  assert.deepEqual(r, { removed: 3, derived: 3 * EVENT_REFERENCING_COLUMNS.length });
+  const s = openDb(snap);
+  try {
+    for (const id of mac) assert.deepEqual(derivedFor(s, id), [0, 0, 0, 0, 0, 0], `event ${id}`);
+    for (const id of other) assert.deepEqual(derivedFor(s, id), [1, 1, 1, 1, 1, 1], `event ${id}`);
+    assert.equal(count(s, `SELECT COUNT(*) AS c FROM entities`), 2, 'entities untouched');
+    assert.equal(s.pragma('integrity_check', { simple: true }), 'ok');
+  } finally {
+    closeDb(s);
+  }
+  const bytes = readFileSync(snap);
+  for (const w of ['marzipan', 'quokka', 'zeppelin']) assert.ok(!bytes.includes(w), w);
+  for (const w of ['brioche', 'fondant']) assert.ok(bytes.includes(w), `control: ${w}`);
+});
+
+test('scrub skips derived tables an older schema lacks', () => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  db.exec(`DROP TABLE linear_issue_map; DROP TABLE claim_failures`);
+  closeDb(db);
+  const snap = join(userData, 'snap.sqlite');
+  snapshotDb(userData, snap);
+  assert.deepEqual(scrubMacOnlyRows(snap, { liveDbPath: dbPath }), { removed: 3, derived: 0 });
+});
+
+test("restore brings derived rows back, following an event that was re-id'd", () => {
+  const { userData, dbPath, db } = fixture();
+  seed(db);
+  const ents = entities(db);
+  const mac = eventIds(db, 'imessage');
+  for (const [i, id] of mac.entries())
+    addDerived(db, id, ['marzipan', 'quokka', 'zeppelin'][i], ents);
+  // Newest event + belief candidate are Mac-only, so the VM reuses both ids.
+  const tail = ingest(db, null, {
+    kind: 'knowledge.archive',
+    source: 'imessage',
+    content: 'archived thread about origami',
+    payload: { thread: 't-tail' },
+  });
+  addDerived(db, tail.eventId, 'origami', ents);
+  const tailBelief = (
+    db.prepare(`SELECT id FROM belief_candidates WHERE source_event_id = ?`).get(tail.eventId) as {
+      id: number;
+    }
+  ).id;
+  closeDb(db);
+
+  const vmDb = join(userData, 'vm.sqlite');
+  snapshotDb(userData, vmDb);
+  scrubMacOnlyRows(vmDb, { liveDbPath: dbPath });
+  const vm = openDb(vmDb);
+  const fresh = ingest(vm, null, {
+    kind: 'knowledge.doc',
+    source: 'docs',
+    content: 'vm wrote this',
+  });
+  // A VM row at the tail belief's id (SQLite restarts at max+1, so a scrubbed
+  // tail id is the one the VM hands out next).
+  const vmBelief = tailBelief;
+  vm.prepare(
+    `INSERT INTO belief_candidates (id, topic, claim, source_event_id) VALUES (?, 'baking', 'vm belief', ?)`,
+  ).run(vmBelief, fresh.eventId);
+  closeDb(vm);
+  assert.equal(fresh.eventId, tail.eventId, 'fixture: VM reused the event id');
+
+  const r = restoreMacOnlyRows(dbPath, vmDb);
+  assert.deepEqual(r, { restored: 4, derived: 4 * EVENT_REFERENCING_COLUMNS.length, skipped: 0 });
+  const s = openDb(vmDb);
+  try {
+    for (const id of mac) assert.deepEqual(derivedFor(s, id), [1, 1, 1, 1, 1, 1], `event ${id}`);
+    const newTail = (
+      s
+        .prepare(
+          `SELECT e.id FROM events e JOIN events_content c ON c.id = e.content_ref
+            WHERE c.body = 'archived thread about origami'`,
+        )
+        .get() as { id: number }
+    ).id;
+    assert.notEqual(newTail, tail.eventId);
+    assert.deepEqual(derivedFor(s, newTail), [1, 1, 1, 1, 1, 1], 'follows the new event id');
+    const b = s
+      .prepare(`SELECT id, claim FROM belief_candidates WHERE source_event_id = ?`)
+      .get(newTail) as { id: number; claim: string };
+    assert.equal(b.claim, 'origami belief');
+    assert.notEqual(b.id, tailBelief, 'took a fresh id');
+    // The VM's own rows at the reused ids are untouched.
+    assert.deepEqual(
+      s.prepare(`SELECT claim, source_event_id FROM belief_candidates WHERE id = ?`).get(vmBelief),
+      { claim: 'vm belief', source_event_id: fresh.eventId },
+    );
+    assert.equal(s.pragma('integrity_check', { simple: true }), 'ok');
+  } finally {
+    closeDb(s);
+  }
+  assert.deepEqual(restoreMacOnlyRows(dbPath, vmDb), { restored: 0, derived: 0, skipped: 0 });
 });

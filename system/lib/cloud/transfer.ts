@@ -135,10 +135,42 @@ function samePath(a: string, b: string): boolean {
 }
 
 const sourcesSql = () => MAC_ONLY_EVENT_SOURCES.map(() => '?').join(', ');
+const macIdsSql = () => `SELECT id FROM events WHERE source IN (${sourcesSql()})`;
 
 /**
- * Remove Mac-only events from a SNAPSHOT file: the events, the content rows only
- * they reference, those rows' events_vec embeddings and (via the
+ * Every `[table, column]` whose row is derived from the event its column names:
+ * scrubbed with a Mac-only event and restored with it. A guard test fails when a
+ * migration adds an event-id column that is neither here nor in
+ * {@link EVENT_REFERENCE_EXEMPT}.
+ */
+export const EVENT_REFERENCING_COLUMNS: readonly (readonly [table: string, column: string])[] = [
+  ['relations', 'source_event_id'],
+  ['belief_candidates', 'source_event_id'],
+  ['recommendations', 'source_event_id'],
+  ['biographer_progress', 'source_event_id'],
+  ['claim_failures', 'event_id'],
+  ['linear_issue_map', 'source_event_id'],
+];
+
+/** Event-id columns (`table.column`) that do not make their row derived, and why. */
+export const EVENT_REFERENCE_EXEMPT: Readonly<Record<string, string>> = {
+  'recommendations.action_event_id':
+    'the rec was made elsewhere; the FK (ON DELETE SET NULL) unlinks a Mac-only fulfilling event',
+  'habits.evidence_event_ids': 'a JSON list of ids, no event text',
+};
+
+/** The derived-row columns that exist in this DB (older schemas lack some tables). */
+function refColumns(db: RobinDb): Array<readonly [string, string]> {
+  const has = db.prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`);
+  return EVENT_REFERENCING_COLUMNS.filter(([t, c]) => has.get(t, c) !== undefined);
+}
+
+const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`;
+
+/**
+ * Remove Mac-only events from a SNAPSHOT file: rows derived from them
+ * ({@link EVENT_REFERENCING_COLUMNS}), the events, the content rows only they
+ * reference, those rows' events_vec embeddings and (via the
  * `events_content_ad` trigger, migration 003) their FTS entries. Then the FTS
  * index is rebuilt, events_vec repacked and the file VACUUMed, so the deleted
  * text survives in no freed page, stale FTS segment or vec0 chunk — the file is
@@ -147,7 +179,7 @@ const sourcesSql = () => MAC_ONLY_EVENT_SOURCES.map(() => '?').join(', ');
 export function scrubMacOnlyRows(
   dbPath: string,
   opts: { liveDbPath?: string } = {},
-): { removed: number } {
+): { removed: number; derived: number } {
   const live = opts.liveDbPath ?? dbFilePath(resolveUserDataDir());
   if (samePath(dbPath, live)) {
     throw new Error(`refusing to scrub the live DB (${dbPath}); scrub a snapshot copy`);
@@ -155,23 +187,29 @@ export function scrubMacOnlyRows(
   if (!existsSync(dbPath)) throw new Error(`no database at ${dbPath}`);
   const db = openDb(dbPath);
   try {
-    const removed = scrubRows(db);
-    if (removed > 0) {
+    const r = scrubRows(db);
+    if (r.removed + r.derived > 0) {
       db.exec(`INSERT INTO events_content_fts(events_content_fts) VALUES ('rebuild')`);
       rebuildVecIndex(db);
       db.exec('VACUUM');
     }
     const integrity = db.pragma('integrity_check', { simple: true });
     if (integrity !== 'ok') throw new Error(`integrity_check after scrub: ${String(integrity)}`);
-    return { removed };
+    return r;
   } finally {
     closeDb(db);
   }
 }
 
-function scrubRows(db: RobinDb): number {
+function scrubRows(db: RobinDb): { removed: number; derived: number } {
   const sources = [...MAC_ONLY_EVENT_SOURCES];
   return db.transaction(() => {
+    let derived = 0;
+    for (const [t, c] of refColumns(db)) {
+      derived += db
+        .prepare(`DELETE FROM ${q(t)} WHERE ${q(c)} IN (${macIdsSql()})`)
+        .run(...sources).changes;
+    }
     const refs = db
       .prepare(
         `SELECT DISTINCT content_ref AS id FROM events
@@ -192,7 +230,7 @@ function scrubRows(db: RobinDb): number {
       delContent.run(id); // fires events_content_ad → FTS 'delete'
       delVec.run(BigInt(id));
     }
-    return removed;
+    return { removed, derived };
   })();
 }
 
@@ -209,20 +247,30 @@ interface EventRow {
   import_key: string | null;
 }
 
+type Row = Record<string, unknown>;
+
 /**
- * Copy Mac-only events and their content from `fromDbPath` (the Mac's own,
- * never-scrubbed DB) into `intoDbPath` (the DB a rollback brought home). Ids are
- * kept when free (`INSERT OR IGNORE`); an id the VM reused for a row of its own
- * is never overwritten — that event or content row gets a fresh id instead.
- * Idempotent: an event already present (same import_key, or same source, kind,
- * ts and payload) is skipped. Embeddings stay NULL for the embedder; the
- * `events_content_ai` trigger indexes the restored text in FTS.
+ * Copy Mac-only events, their content and their derived rows from `fromDbPath`
+ * (the Mac's own, never-scrubbed DB) into `intoDbPath` (the DB a rollback
+ * brought home). Ids are kept when free (`INSERT OR IGNORE`); an id the VM
+ * reused for a row of its own is never overwritten — that event, content or
+ * derived row gets a fresh id instead, and derived rows follow their event's
+ * new id. Idempotent: an event already present (same import_key, or same
+ * source, kind, ts and payload) or a derived row already present (same values)
+ * is skipped. Embeddings stay NULL for the embedder; the `events_content_ai`
+ * trigger indexes the restored text in FTS. A derived row whose other foreign
+ * key no longer resolves on this side (e.g. an entity merged away on the VM) is
+ * counted in `skipped`, not inserted.
  */
-export function restoreMacOnlyRows(fromDbPath: string, intoDbPath: string): { restored: number } {
+export function restoreMacOnlyRows(
+  fromDbPath: string,
+  intoDbPath: string,
+): { restored: number; derived: number; skipped: number } {
   if (samePath(fromDbPath, intoDbPath))
     throw new Error('restore source and target are the same DB');
   const from = openDb(fromDbPath);
   let rows: Array<EventRow & { body: string | null; content_ts: string | null }>;
+  const derivedRows: Array<{ table: string; column: string; rows: Row[] }> = [];
   try {
     rows = from
       .prepare(
@@ -233,6 +281,12 @@ export function restoreMacOnlyRows(fromDbPath: string, intoDbPath: string): { re
           ORDER BY e.id`,
       )
       .all(...MAC_ONLY_EVENT_SOURCES) as typeof rows;
+    for (const [table, column] of refColumns(from)) {
+      const r = from
+        .prepare(`SELECT * FROM ${q(table)} WHERE ${q(column)} IN (${macIdsSql()})`)
+        .all(...MAC_ONLY_EVENT_SOURCES) as Row[];
+      if (r.length > 0) derivedRows.push({ table, column, rows: r });
+    }
   } finally {
     closeDb(from);
   }
@@ -240,7 +294,7 @@ export function restoreMacOnlyRows(fromDbPath: string, intoDbPath: string): { re
   const into = openDb(intoDbPath);
   try {
     const present = into.prepare(
-      `SELECT 1 FROM events
+      `SELECT id FROM events
         WHERE (import_key IS NOT NULL AND import_key = @import_key)
            OR (source = @source AND kind = @kind AND ts = @ts AND payload = @payload)
         LIMIT 1`,
@@ -255,12 +309,18 @@ export function restoreMacOnlyRows(fromDbPath: string, intoDbPath: string): { re
       `INSERT OR IGNORE INTO events (id, ${cols}) VALUES (@id, ${vals})`,
     );
     const eventNewId = into.prepare(`INSERT INTO events (${cols}) VALUES (${vals})`);
+    const intoRefs = new Set(refColumns(into).map(([t, c]) => `${t}.${c}`));
 
-    const restored = into.transaction(() => {
+    return into.transaction(() => {
       const contentMap = new Map<number, number>();
-      let n = 0;
+      const eventMap = new Map<number, number>();
+      let restored = 0;
       for (const row of rows) {
-        if (present.get(row)) continue;
+        const existing = present.get(row) as { id: number } | undefined;
+        if (existing) {
+          eventMap.set(row.id, existing.id);
+          continue;
+        }
         let contentRef: number | null = null;
         if (row.content_ref !== null && row.body !== null && row.content_ts !== null) {
           const mapped = contentMap.get(row.content_ref);
@@ -275,13 +335,87 @@ export function restoreMacOnlyRows(fromDbPath: string, intoDbPath: string): { re
           }
         }
         const ev = { ...row, content_ref: contentRef };
-        if (eventSameId.run(ev).changes === 0) eventNewId.run(ev);
-        n++;
+        const same = eventSameId.run(ev);
+        eventMap.set(
+          row.id,
+          same.changes === 1 ? row.id : Number(eventNewId.run(ev).lastInsertRowid),
+        );
+        restored++;
       }
-      return n;
+
+      let derived = 0;
+      let skipped = 0;
+      for (const { table, column, rows: drows } of derivedRows) {
+        if (!intoRefs.has(`${table}.${column}`)) {
+          skipped += drows.length;
+          continue;
+        }
+        const r = restoreDerived(into, table, column, drows, eventMap);
+        derived += r.inserted;
+        skipped += r.skipped;
+      }
+      return { restored, derived, skipped };
     })();
-    return { restored };
   } finally {
     closeDb(into);
   }
+}
+
+/**
+ * Insert derived rows of one table with their event column remapped. A table
+ * whose primary key is a rowid-alias `id` keeps the id when free and takes a
+ * fresh one when the VM reused it; any other key conflict means the row (or the
+ * VM's own row for that key) is already there.
+ */
+function restoreDerived(
+  db: RobinDb,
+  table: string,
+  column: string,
+  rows: Row[],
+  eventMap: Map<number, number>,
+): { inserted: number; skipped: number } {
+  const info = db.prepare(`SELECT name, type, pk FROM pragma_table_info(?)`).all(table) as Array<{
+    name: string;
+    type: string;
+    pk: number;
+  }>;
+  const pks = info.filter((c) => c.pk > 0);
+  const idAlias = pks.length === 1 && pks[0].name === 'id' && /^integer$/i.test(pks[0].type);
+  const known = new Set(info.map((c) => c.name));
+  const colsOf = (r: Row) => Object.keys(r).filter((k) => known.has(k));
+  let inserted = 0;
+  let skipped = 0;
+  for (const raw of rows) {
+    const eventId = eventMap.get(raw[column] as number);
+    if (eventId === undefined) {
+      skipped++;
+      continue;
+    }
+    const row: Row = { ...raw, [column]: eventId };
+    const all = colsOf(row);
+    const rest = all.filter((k) => !(idAlias && k === 'id'));
+    const insert = (names: string[]) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO ${q(table)} (${names.map(q).join(', ')})
+           VALUES (${names.map((n) => `@${n}`).join(', ')})`,
+        )
+        .run(Object.fromEntries(names.map((n) => [n, row[n]]))).changes;
+    try {
+      if (idAlias) {
+        const dup = db
+          .prepare(
+            `SELECT 1 FROM ${q(table)} WHERE ${rest.map((n) => `${q(n)} IS @${n}`).join(' AND ')} LIMIT 1`,
+          )
+          .get(Object.fromEntries(rest.map((n) => [n, row[n]])));
+        if (dup) continue;
+        if (insert(all) === 1 || insert(rest) === 1) inserted++;
+      } else if (insert(all) === 1) inserted++;
+    } catch (err) {
+      // An FK that no longer resolves here (statement-level; the transaction goes on).
+      if ((err as { code?: string }).code === 'SQLITE_CONSTRAINT_FOREIGNKEY') skipped++;
+      else throw err;
+    }
+  }
+  return { inserted, skipped };
 }
