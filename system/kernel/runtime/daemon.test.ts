@@ -6,8 +6,10 @@ import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
+import { writeRole } from '../../lib/cloud/role.ts';
 import { dbFilePath, pidFilePath } from '../../lib/paths.ts';
 import { enqueueJob } from '../scheduler/claim.ts';
+import { Scheduler } from '../scheduler/runner.ts';
 import { Daemon } from './daemon.ts';
 
 function freshUserData(): string {
@@ -181,4 +183,72 @@ test('LOCAL_ONLY_JOBS names real cognition jobs (a rename would silently hold it
   const { COGNITION_JOBS } = await import('../../brain/cognition/jobs.ts');
   const names = new Set(COGNITION_JOBS.map((j) => j.name));
   for (const n of LOCAL_ONLY_JOBS) assert.ok(names.has(n), `${n} is not a cognition job`);
+});
+
+test('daemon: mac-locked exits 0 without opening the DB', async () => {
+  const userData = freshUserData();
+  process.env.ROBIN_USER_DATA_DIR = userData;
+  writeRole(userData, { role: 'mac-locked', host: 'example-vm', at: '2026-11-02T00:00:00.000Z' });
+  let opened = 0;
+  const exits: number[] = [];
+  const daemon = new Daemon();
+  await daemon.start({
+    httpPort: 0,
+    openDb: () => {
+      opened++;
+      throw new Error('must not open');
+    },
+    exit: (c) => {
+      exits.push(c);
+    },
+  });
+  assert.equal(opened, 0);
+  assert.deepEqual(exits, [0]);
+  assert.ok(!existsSync(pidFilePath(userData)), 'no pidfile written');
+  assert.ok(!existsSync(dbFilePath(userData)), 'db never created');
+});
+
+test('daemon: vm-dry-run never starts the scheduler but serves health', async () => {
+  const userData = freshUserData();
+  process.env.ROBIN_USER_DATA_DIR = userData;
+  writeFileSync(join(userData, 'config', 'policies.yaml'), 'power:\n  state: active\n');
+  writeRole(userData, { role: 'vm-dry-run', at: '2026-11-02T00:00:00.000Z' });
+  let schedulers = 0;
+  const daemon = new Daemon();
+  daemon.registerHandler('test.noop', async () => {});
+  const p = daemon.start({
+    foreground: true,
+    httpPort: 0,
+    schedulerFactory: (o) => {
+      schedulers++;
+      return new Scheduler(o);
+    },
+  });
+  await sleep(150);
+  assert.equal(schedulers, 0);
+  const port = daemon.getHttpPort();
+  assert.ok(port, 'http is up');
+  const res = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(res.status, 200);
+  await daemon.stop('test');
+  await p.catch(() => {});
+});
+
+test('daemon: no role -> scheduler starts exactly as before', async () => {
+  const userData = freshUserData();
+  process.env.ROBIN_USER_DATA_DIR = userData;
+  let schedulers = 0;
+  const daemon = new Daemon();
+  const p = daemon.start({
+    foreground: true,
+    httpPort: 0,
+    schedulerFactory: (o) => {
+      schedulers++;
+      return new Scheduler(o);
+    },
+  });
+  await sleep(150);
+  assert.equal(schedulers, 1);
+  await daemon.stop('test');
+  await p.catch(() => {});
 });

@@ -92,6 +92,27 @@ async function main(): Promise<void> {
   const cmd = args[0];
   // Secrets first, so every command (agent, biographer, …) uses the credential
   // chain. The daemon loads (and logs) its own in Daemon.start().
+  // Cloud role: a locked Mac copy refuses everything but `cloud`/help/version —
+  // before secrets load or any command can touch the DB. No role file = no-op.
+  {
+    const { lockedCliRefusal } = await import('../../lib/cloud/role.ts');
+    const { resolveUserDataDir } = await import('../../lib/paths.ts');
+    let refusal: string | null = null;
+    try {
+      // `robin daemon` (the service entry point) is left to Daemon.start(), which
+      // exits 0 under a lock so the supervisor doesn't restart-loop; installing or
+      // uninstalling the service is refused here, belt and braces for the
+      // SessionStart hook that calls `daemon install`.
+      const daemonRun = cmd === 'daemon' && args[1] !== 'install' && args[1] !== 'uninstall';
+      if (!daemonRun) refusal = lockedCliRefusal(resolveUserDataDir(), cmd);
+    } catch {
+      /* no resolvable user-data dir: nothing can be locked */
+    }
+    if (refusal) {
+      console.error(refusal);
+      exit(1);
+    }
+  }
   if (cmd !== 'daemon') loadCliEnv();
 
   switch (cmd) {

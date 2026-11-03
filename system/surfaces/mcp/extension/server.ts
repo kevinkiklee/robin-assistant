@@ -28,6 +28,7 @@ import { actions as linearActions } from '../../../integrations/builtin/linear/i
 import { writeActions as linearWriteActions } from '../../../integrations/builtin/linear/write.ts';
 import { loadModels } from '../../../kernel/config/load.ts';
 import { LOADED_DEEP_HASH, LOADED_SHA, readBuildStamp } from '../../../lib/build-stamp.ts';
+import { assertCanRunIntegrations } from '../../../lib/cloud/role.ts';
 import {
   checkInboundArgs,
   inboundRefusal,
@@ -245,6 +246,13 @@ export function buildExtensionServer(deps: ExtensionServerDeps): McpServer {
               ],
             };
           const userData = resolveUserDataDir();
+          try {
+            assertCanRunIntegrations(userData);
+          } catch (err) {
+            return {
+              content: [{ type: 'text', text: JSON.stringify({ error: (err as Error).message }) }],
+            };
+          }
           const builtinRoot = join(
             resolvePath(import.meta.dirname ?? '.'),
             '..',

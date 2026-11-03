@@ -4,6 +4,7 @@ import type { RobinDb } from '../../brain/memory/db.ts';
 import { listOnDiskJobNames, resolveBuiltinJobsRoot } from '../../jobs/_runtime/loader.ts';
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
 import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
+import { assertCanRunIntegrations } from '../../lib/cloud/role.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { withTimeout } from '../../lib/with-timeout.ts';
@@ -191,6 +192,8 @@ export async function tickWithRetryAndHeartbeat(
   log: ReturnType<typeof createLogger>,
 ): Promise<void> {
   if (!module.tick) return;
+  // Cloud role: a dry-run VM / locked Mac never ticks (any process).
+  assertCanRunIntegrations(resolveUserDataDir());
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_TICK_ATTEMPTS; attempt++) {
     try {

@@ -5,6 +5,7 @@ import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import type { RobinDb } from '../../brain/memory/db.ts';
 import type { Daemon } from '../../kernel/runtime/daemon.ts';
 import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
+import { assertCanRunIntegrations } from '../../lib/cloud/role.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
 import { buildJobContext } from './context.ts';
@@ -46,6 +47,7 @@ export async function registerJobs(
   let scheduled = 0;
   for (const j of loaded) {
     daemon.registerHandler(`job.${j.instanceName}.run`, async () => {
+      assertCanRunIntegrations(resolveUserDataDir());
       const llm = getLLM() ?? null;
       const ctx = buildJobContext(j.instanceName, j.rootDir, db, llm);
       try {

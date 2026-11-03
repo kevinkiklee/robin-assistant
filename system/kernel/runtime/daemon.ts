@@ -8,6 +8,7 @@ import type { LLMDispatcher } from '../../brain/llm/dispatcher.ts';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import type { WatcherHandle } from '../../integrations/_runtime/watch.ts';
+import { readRole } from '../../lib/cloud/role.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
@@ -72,6 +73,10 @@ export interface DaemonRunOptions {
   foreground?: boolean;
   /** Override the HTTP hook/health port. Falls back to ROBIN_DAEMON_HTTP_PORT, then 41273. Use 0 to bind an OS-assigned port (useful in tests). */
   httpPort?: number;
+  /** Test seams (cloud role): DB opener, scheduler constructor, process exit. */
+  openDb?: typeof openDb;
+  schedulerFactory?: (opts: ConstructorParameters<typeof Scheduler>[0]) => Scheduler;
+  exit?: (code: number) => void;
 }
 
 export class Daemon {
@@ -108,6 +113,18 @@ export class Daemon {
     const userData = resolveUserDataDir();
     const pidPath = pidFilePath(userData);
 
+    // Cloud role (before anything touches the DB, pidfile or secrets): a locked
+    // Mac copy exits cleanly; a dry-run VM serves HTTP/health only.
+    const cloud = readRole(userData);
+    if (cloud?.role === 'mac-locked') {
+      this.log.info(
+        `Robin runs on ${cloud.host ?? 'the VM'} since ${cloud.at} — this Mac copy is locked (robin cloud rollback to undo)`,
+      );
+      (opts.exit ?? ((c: number) => process.exit(c)))(0);
+      return;
+    }
+    const held = cloud?.role === 'vm-dry-run';
+
     // Populate process.env from user-data/config/secrets/.env before any
     // integration or LLM provider tries to read process.env. Shell-provided
     // values win; missing file is fine (launchd/1Password setups inject env
@@ -136,7 +153,7 @@ export class Daemon {
     });
 
     const dbPath = dbFilePath(userData);
-    this.db = openDb(dbPath);
+    this.db = (opts.openDb ?? openDb)(dbPath);
     applyMigrations(this.db, allMigrations);
 
     // Apply policies
@@ -199,7 +216,9 @@ export class Daemon {
     writeTelemetry(this.db, 'daemon.start', { version: VERSION }, { source: 'daemon' });
 
     let tickNetworkMode: string = 'online';
-    this.scheduler = new Scheduler({
+    if (held) this.log.info('cloud dry run: scheduler held');
+    const makeScheduler = opts.schedulerFactory ?? ((o) => new Scheduler(o));
+    const schedulerOpts: ConstructorParameters<typeof Scheduler>[0] = {
       db: this.db,
       handlers: this.handlers,
       workerId,
@@ -218,7 +237,9 @@ export class Daemon {
       // instead of reading policies.yaml twice a second.
       claimableNames: () => (tickNetworkMode === 'local-only' ? LOCAL_ONLY_JOBS : null),
       onError: (err, job) => this.log.error({ err, job: job.name }, 'job handler error'),
-    });
+    };
+    // vm-dry-run: no scheduler at all (policies.yaml may say active; irrelevant).
+    if (!held) this.scheduler = makeScheduler(schedulerOpts);
 
     // Bug B fix — periodic in-process lease reaper. The boot-time sweep above
     // catches leases left behind by a crashed daemon, but says nothing about
@@ -311,39 +332,40 @@ export class Daemon {
 
     // Health monitor for invariant checks. Notifications gate is re-read each tick
     // via the closure, so flipping policies.yaml takes effect without a daemon restart.
-    try {
-      const { HealthMonitor } = await import('./health-monitor.ts');
-      this.healthMonitor = new HealthMonitor({
-        db: this.db,
-        getLLM: () => this.llm,
-        getLastTickAt: () => this.lastTickAt,
-        enableNotifications: () => loadPolicies(userData).notifications.health,
-        // Re-evaluated per tick: the monitor starts before integrations register,
-        // and hot-reload can change the set later, so always read the live field.
-        getIntegrations: () => this.scheduledIntegrations,
-        getStartedAt: () => this.startedAt,
-        // Backstop for a CPU-blocked handler — when heartbeating goes critical
-        // the scheduler is stuck awaiting a handler. The HANDLER_TIMEOUT_MS cap
-        // (above) gracefully unblocks the loop for *async* wedges (a hung await)
-        // without ever reaching here, but a *synchronously* blocked handler
-        // freezes the event loop so the timeout's timer can't fire. For that case
-        // there is no graceful path (`await tickOnce()` never returns), so exit
-        // hard and let launchd respawn; the boot-time lease sweep + cron re-arm
-        // resume work on the next boot.
-        onHeartbeatCritical: () => {
-          writeShutdownStamp(
-            join(userData, 'state', 'runtime', 'shutdown-stamp.json'),
-            'heartbeat-escalation',
-          );
-          this.log.error('heartbeat-recovery: exit(1) for launchd respawn');
-          // Force-exit on next tick so the error log line flushes first.
-          setImmediate(() => process.exit(1));
-        },
-      });
-      this.healthMonitor.start();
-    } catch (err) {
-      this.log.warn({ err }, 'health monitor failed to start');
-    }
+    if (!held)
+      try {
+        const { HealthMonitor } = await import('./health-monitor.ts');
+        this.healthMonitor = new HealthMonitor({
+          db: this.db,
+          getLLM: () => this.llm,
+          getLastTickAt: () => this.lastTickAt,
+          enableNotifications: () => loadPolicies(userData).notifications.health,
+          // Re-evaluated per tick: the monitor starts before integrations register,
+          // and hot-reload can change the set later, so always read the live field.
+          getIntegrations: () => this.scheduledIntegrations,
+          getStartedAt: () => this.startedAt,
+          // Backstop for a CPU-blocked handler — when heartbeating goes critical
+          // the scheduler is stuck awaiting a handler. The HANDLER_TIMEOUT_MS cap
+          // (above) gracefully unblocks the loop for *async* wedges (a hung await)
+          // without ever reaching here, but a *synchronously* blocked handler
+          // freezes the event loop so the timeout's timer can't fire. For that case
+          // there is no graceful path (`await tickOnce()` never returns), so exit
+          // hard and let launchd respawn; the boot-time lease sweep + cron re-arm
+          // resume work on the next boot.
+          onHeartbeatCritical: () => {
+            writeShutdownStamp(
+              join(userData, 'state', 'runtime', 'shutdown-stamp.json'),
+              'heartbeat-escalation',
+            );
+            this.log.error('heartbeat-recovery: exit(1) for launchd respawn');
+            // Force-exit on next tick so the error log line flushes first.
+            setImmediate(() => process.exit(1));
+          },
+        });
+        this.healthMonitor.start();
+      } catch (err) {
+        this.log.warn({ err }, 'health monitor failed to start');
+      }
     try {
       const { LoopLagWatch } = await import('./loop-lag.ts');
       this.loopLag = new LoopLagWatch(this.db);
@@ -353,77 +375,80 @@ export class Daemon {
     }
 
     // Power auto-monitor for battery threshold
-    try {
-      const { PowerAutoMonitor } = await import('../../lib/power-auto/monitor.ts');
-      this.powerMonitor = new PowerAutoMonitor();
-      this.powerMonitor.start();
-    } catch (err) {
-      this.log.warn({ err }, 'power auto-monitor failed to start');
-    }
+    if (!held)
+      try {
+        const { PowerAutoMonitor } = await import('../../lib/power-auto/monitor.ts');
+        this.powerMonitor = new PowerAutoMonitor();
+        this.powerMonitor.start();
+      } catch (err) {
+        this.log.warn({ err }, 'power auto-monitor failed to start');
+      }
 
     // Register cognition + integration job handlers + seed cron schedules
-    try {
-      const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
-      registerCognitionJobs(
-        this,
-        this.db,
-        () => this.llm,
-        () => loadPolicies(userData).biographer.draftClaims,
-        () => loadPolicies(userData).biographer.domainGating,
-        () => loadPolicies(userData).behavior,
-        () => loadPolicies(userData).recommendations,
-        () => loadPolicies(userData).recommendationScan,
-      );
-
-      // Boot-drain disabled 2026-05-21 Turn 4. The original boot-drain ran
-      // `runBiographer(25)` in a parallel async task, intending to chew through
-      // backlog faster than the */15 cron. In practice it duplicated the cron's work
-      // and serialized through single-flight Ollama, so the parallel task starved the
-      // scheduler runLoop's tickOnce → `lastTickAt` stopped updating → Bug A's
-      // sustained-CRITICAL gate fired and restarted the daemon in a loop. Now the
-      // cron handler (batch=1, ~11 min per session) is the only biographer driver.
-      // Backlog drain is steady at ~4/hr; not fast, but recovery-loop-free.
-
-      const { registerIntegrations } = await import(
-        '../../integrations/_runtime/scheduler-glue.ts'
-      );
-      const r = await registerIntegrations(this, this.db, () => this.llm);
-      this.integrationCleanup = r.cleanup;
-      this.scheduledIntegrations = r.scheduledIntegrations;
-      this.log.info(
-        { registered: r.registered, scheduled: r.scheduled, initialized: r.initialized },
-        'integrations wired into scheduler',
-      );
-
-      // User-extension jobs (daily-brief, etc.)
+    // (held on a dry-run VM: no integrations, jobs or watcher in this process).
+    if (!held)
       try {
-        const { registerJobs } = await import('../../jobs/_runtime/scheduler-glue.ts');
-        const jr = await registerJobs(this, this.db, () => this.llm);
-        this.log.info(
-          { registered: jr.registered, scheduled: jr.scheduled },
-          'jobs wired into scheduler',
+        const { registerCognitionJobs } = await import('../../brain/cognition/jobs.ts');
+        registerCognitionJobs(
+          this,
+          this.db,
+          () => this.llm,
+          () => loadPolicies(userData).biographer.draftClaims,
+          () => loadPolicies(userData).biographer.domainGating,
+          () => loadPolicies(userData).behavior,
+          () => loadPolicies(userData).recommendations,
+          () => loadPolicies(userData).recommendationScan,
         );
-      } catch (err) {
-        this.log.warn({ err }, 'jobs registration failed');
-      }
 
-      // Hot-reload watcher (integrations + jobs)
-      try {
-        const { watchIntegrations } = await import('../../integrations/_runtime/watch.ts');
-        const sysIntegrationsPath = join(process.cwd(), 'system/integrations/builtin');
-        const userIntegrationsPath = join(userData, 'extensions/integrations');
-        const userJobsPath = join(userData, 'extensions/jobs');
-        this.integrationWatcher = watchIntegrations(this, this.db, () => this.llm, [
-          sysIntegrationsPath,
-          userIntegrationsPath,
-          userJobsPath,
-        ]);
+        // Boot-drain disabled 2026-05-21 Turn 4. The original boot-drain ran
+        // `runBiographer(25)` in a parallel async task, intending to chew through
+        // backlog faster than the */15 cron. In practice it duplicated the cron's work
+        // and serialized through single-flight Ollama, so the parallel task starved the
+        // scheduler runLoop's tickOnce → `lastTickAt` stopped updating → Bug A's
+        // sustained-CRITICAL gate fired and restarted the daemon in a loop. Now the
+        // cron handler (batch=1, ~11 min per session) is the only biographer driver.
+        // Backlog drain is steady at ~4/hr; not fast, but recovery-loop-free.
+
+        const { registerIntegrations } = await import(
+          '../../integrations/_runtime/scheduler-glue.ts'
+        );
+        const r = await registerIntegrations(this, this.db, () => this.llm);
+        this.integrationCleanup = r.cleanup;
+        this.scheduledIntegrations = r.scheduledIntegrations;
+        this.log.info(
+          { registered: r.registered, scheduled: r.scheduled, initialized: r.initialized },
+          'integrations wired into scheduler',
+        );
+
+        // User-extension jobs (daily-brief, etc.)
+        try {
+          const { registerJobs } = await import('../../jobs/_runtime/scheduler-glue.ts');
+          const jr = await registerJobs(this, this.db, () => this.llm);
+          this.log.info(
+            { registered: jr.registered, scheduled: jr.scheduled },
+            'jobs wired into scheduler',
+          );
+        } catch (err) {
+          this.log.warn({ err }, 'jobs registration failed');
+        }
+
+        // Hot-reload watcher (integrations + jobs)
+        try {
+          const { watchIntegrations } = await import('../../integrations/_runtime/watch.ts');
+          const sysIntegrationsPath = join(process.cwd(), 'system/integrations/builtin');
+          const userIntegrationsPath = join(userData, 'extensions/integrations');
+          const userJobsPath = join(userData, 'extensions/jobs');
+          this.integrationWatcher = watchIntegrations(this, this.db, () => this.llm, [
+            sysIntegrationsPath,
+            userIntegrationsPath,
+            userJobsPath,
+          ]);
+        } catch (err) {
+          this.log.warn({ err }, 'integration watcher failed to start');
+        }
       } catch (err) {
-        this.log.warn({ err }, 'integration watcher failed to start');
+        this.log.error({ err }, 'failed to wire cognition/integrations into scheduler');
       }
-    } catch (err) {
-      this.log.error({ err }, 'failed to wire cognition/integrations into scheduler');
-    }
 
     this.running = true;
     this.startedAt = Date.now();
