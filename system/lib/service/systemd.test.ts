@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import {
   installDaemonSystemd,
   renderDaemonUnit,
+  renderTimer,
   uninstallDaemonSystemd,
   unitPath,
 } from './systemd.ts';
@@ -86,8 +87,11 @@ describe('installDaemonSystemd', () => {
     assert.deepEqual(sc, [
       ['systemctl', ['--user', 'daemon-reload']],
       ['systemctl', ['--user', 'enable', 'robin-daemon.service']],
+      ['systemctl', ['--user', 'enable', '--now', 'robin-watchdog.timer', 'robin-reap.timer']],
       ['systemctl', ['--user', 'restart', 'robin-daemon.service']],
     ]);
+    assert.ok(existsSync(join(home, '.config', 'systemd', 'user', 'robin-watchdog.timer')));
+    assert.ok(existsSync(join(home, '.config', 'systemd', 'user', 'robin-reap.service')));
     assert.equal(r.unitPath, unitPath({ home }));
     assert.ok(existsSync(r.unitPath));
     assert.ok(existsSync(join(ud, 'observability', 'logs')));
@@ -150,7 +154,49 @@ describe('uninstallDaemonSystemd', () => {
     assert.ok(!existsSync(r.unitPath));
     assert.deepEqual(calls, [
       ['systemctl', ['--user', 'disable', '--now', 'robin-daemon.service']],
+      ['systemctl', ['--user', 'disable', '--now', 'robin-watchdog.timer', 'robin-reap.timer']],
       ['systemctl', ['--user', 'daemon-reload']],
     ]);
+  });
+});
+
+describe('renderTimer', () => {
+  const t = renderTimer({
+    name: 'robin-watchdog',
+    description: 'Robin liveness watchdog',
+    onCalendar: '*:0/15',
+    execStart: ['/usr/bin/node', '/opt/my robin/cli.js', 'watchdog'],
+  });
+  it('service is a oneshot with quoted argv', () => {
+    assert.ok(t.service.includes('Type=oneshot\n'));
+    assert.ok(t.service.includes('ExecStart=/usr/bin/node "/opt/my robin/cli.js" watchdog\n'));
+  });
+  it('timer is persistent with the calendar', () => {
+    assert.ok(t.timer.includes('OnCalendar=*:0/15\n'));
+    assert.ok(t.timer.includes('Persistent=true\n'));
+    assert.ok(t.timer.includes('WantedBy=timers.target'));
+  });
+});
+
+describe('timers install and uninstall', () => {
+  it('reloads once; uninstall removes the timer files', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sd-'));
+    const ud = mkdtempSync(join(tmpdir(), 'sd-ud-'));
+    const { calls, exec } = fakeExec('yes');
+    await installDaemonSystemd({ ...spec, userDataDir: ud }, { home, exec });
+    assert.equal(calls.filter(([c, a]) => c === 'systemctl' && a[1] === 'daemon-reload').length, 1);
+    const dir = join(home, '.config', 'systemd', 'user');
+    const wd = readFileSync(join(dir, 'robin-watchdog.service'), 'utf8');
+    assert.ok(wd.includes(`Environment=ROBIN_USER_DATA_DIR=${ud}`));
+    assert.ok(wd.includes('ExecStart=/usr/bin/node /opt/robin/dist/cli.js watchdog\n'));
+    assert.ok(readFileSync(join(dir, 'robin-reap.timer'), 'utf8').includes('OnCalendar=hourly'));
+    await uninstallDaemonSystemd({ home, exec });
+    assert.ok(!existsSync(join(dir, 'robin-watchdog.timer')));
+    assert.ok(!existsSync(join(dir, 'robin-reap.service')));
+    assert.ok(
+      calls.some(
+        ([c, a]) => c === 'systemctl' && a.includes('disable') && a.includes('robin-reap.timer'),
+      ),
+    );
   });
 });

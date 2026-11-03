@@ -79,6 +79,8 @@ ADVANCED
 MAINTENANCE / INTERNAL (run automatically or by the host — init handles setup)
   cloud status|dry-run|cutover|rollback --host <alias>
                                Move Robin between this Mac and a VM (one writer; docs/CLOUD-VM.md)
+  watchdog          VM only: ping the operator if the daemon stops answering
+  reap [--dry-run]  VM only: kill leftover children (>6 h) in the daemon's cgroup
   daemon [install|uninstall]   The daemon (launchd-managed)
   mcp core | extension         MCP servers (Claude Code spawns these over stdio)
   mcp remote [--port N]        OAuth MCP over HTTP for claude.ai connectors (read / read+write)
@@ -317,6 +319,33 @@ async function main(): Promise<void> {
         runStatus(false);
       }
       exit(report.summary.exit_code);
+      break;
+    }
+
+    case 'watchdog':
+    case 'reap': {
+      const { detectServiceManager } = await import('../../lib/service/manager.ts');
+      if (process.platform !== 'linux' || detectServiceManager() !== 'systemd') {
+        console.log(`${cmd}: only runs on a Linux systemd host; nothing to do`);
+        exit(0);
+      }
+      if (cmd === 'watchdog') {
+        const { resolveUserDataDir } = await import('../../lib/paths.ts');
+        const { watchdog } = await import('../../lib/cloud/watchdog.ts');
+        const r = await watchdog({ userData: resolveUserDataDir() });
+        console.log(`watchdog: ${r}`);
+        exit(0);
+      }
+      const { reap } = await import('../../lib/cloud/reap.ts');
+      const { execFile } = await import('node:child_process');
+      const exec = (c: string, a: string[]): Promise<{ stdout: string }> =>
+        new Promise((resolve, reject) => {
+          execFile(c, a, (err, stdout) =>
+            err ? reject(err) : resolve({ stdout: String(stdout) }),
+          );
+        });
+      await reap({ exec, dryRun: args.includes('--dry-run') });
+      exit(0);
       break;
     }
 

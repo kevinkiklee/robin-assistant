@@ -16,7 +16,7 @@ export function daemonEnvPath(userDataDir: string): string {
 }
 
 /** systemd command-line quoting: wrap whitespace-bearing args in double quotes. */
-function quoteArg(a: string): string {
+export function quoteArg(a: string): string {
   if (!/\s/.test(a)) return a;
   return `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
@@ -57,6 +57,81 @@ WantedBy=default.target
 `;
 }
 
+export interface TimerOpts {
+  name: string;
+  description: string;
+  onCalendar: string;
+  execStart: string[];
+  /** Extra `Environment=` assignments, e.g. `ROBIN_USER_DATA_DIR=/srv/ud`. */
+  env?: string[];
+}
+
+/** A `Type=oneshot` service plus a `Persistent=true` timer that fires it. */
+export function renderTimer(opts: TimerOpts): { service: string; timer: string } {
+  const env = (opts.env ?? [])
+    .map((a) => `Environment=${/\s/.test(a) ? quoteArg(a) : a}\n`)
+    .join('');
+  const service = `[Unit]
+Description=${opts.description}
+
+[Service]
+Type=oneshot
+ExecStart=${opts.execStart.map(quoteArg).join(' ')}
+${env}`;
+  const timer = `[Unit]
+Description=${opts.description} (timer)
+
+[Timer]
+OnCalendar=${opts.onCalendar}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`;
+  return { service, timer };
+}
+
+const USER_TIMERS = [
+  {
+    name: 'robin-watchdog',
+    description: 'Robin liveness watchdog',
+    onCalendar: '*:0/15',
+    cmd: 'watchdog',
+  },
+  {
+    name: 'robin-reap',
+    description: 'Robin leftover-process reaper',
+    onCalendar: 'hourly',
+    cmd: 'reap',
+  },
+] as const;
+
+function timerFiles(name: string, home?: string): { service: string; timer: string } {
+  const dir = dirname(unitPath({ home }));
+  return { service: join(dir, `${name}.service`), timer: join(dir, `${name}.timer`) };
+}
+
+/** Write the watchdog and reaper units (no systemctl; the caller reloads once). */
+export function writeUserTimers(spec: DaemonLaunchdSpec, opts?: { home?: string }): string[] {
+  const home = opts?.home ?? homedir();
+  const path = spec.path ?? process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin';
+  const units: string[] = [];
+  for (const t of USER_TIMERS) {
+    const r = renderTimer({
+      name: t.name,
+      description: t.description,
+      onCalendar: t.onCalendar,
+      execStart: [spec.nodePath, spec.cliPath, t.cmd],
+      env: [`HOME=${home}`, `ROBIN_USER_DATA_DIR=${spec.userDataDir}`, `PATH=${path}`],
+    });
+    const f = timerFiles(t.name, opts?.home);
+    writeFileSync(f.service, r.service);
+    writeFileSync(f.timer, r.timer);
+    units.push(`${t.name}.timer`);
+  }
+  return units;
+}
+
 async function defaultExec(cmd: string, args: string[]): Promise<{ stdout: string }> {
   const { execFile } = await import('node:child_process');
   return new Promise((resolve, reject) => {
@@ -90,11 +165,13 @@ export async function installDaemonSystemd(
   // systemd's `append:` won't create parent directories.
   mkdirSync(join(spec.userDataDir, 'observability', 'logs'), { recursive: true });
   writeFileSync(path, renderDaemonUnit(spec, { home: opts?.home }));
+  const timers = writeUserTimers(spec, { home: opts?.home });
   writeUserDataPointer(spec.userDataDir, { home: opts?.home });
   const lingerEnabled = await isLingerEnabled(exec);
   if (opts?.skipLoad) return { unitPath: path, loaded: false, lingerEnabled };
   await exec('systemctl', ['--user', 'daemon-reload']);
   await exec('systemctl', ['--user', 'enable', SYSTEMD_UNIT]);
+  await exec('systemctl', ['--user', 'enable', '--now', ...timers]);
   // restart (not --now) so a rewritten unit reaches an already-running daemon.
   await exec('systemctl', ['--user', 'restart', SYSTEMD_UNIT]);
   return { unitPath: path, loaded: true, lingerEnabled };
@@ -111,6 +188,20 @@ export async function uninstallDaemonSystemd(opts?: {
     await exec('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT]);
   } catch {
     // not enabled / not running
+  }
+  try {
+    await exec('systemctl', [
+      '--user',
+      'disable',
+      '--now',
+      ...USER_TIMERS.map((t) => `${t.name}.timer`),
+    ]);
+  } catch {
+    // not enabled / not running
+  }
+  for (const t of USER_TIMERS) {
+    const f = timerFiles(t.name, opts?.home);
+    for (const file of [f.service, f.timer]) if (existsSync(file)) unlinkSync(file);
   }
   unlinkSync(path);
   try {

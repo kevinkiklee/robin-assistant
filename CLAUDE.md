@@ -60,6 +60,17 @@ open rec with an overlapping subject and caps 15 new recs per session per day �
 the excess is stored `suppressed`. One-time cleanup: `robin recommendations dedupe
 [--apply]`.
 
+## Platforms and cloud role
+
+An integration or job manifest may set `platforms: [darwin]` (or `linux`); on
+another OS it registers as skipped with a reason, not an error, and health
+invariants don't alert on it. `state/runtime/cloud-role.json` marks a machine
+that took part in a VM migration: `mac-locked` (CLI and daemon refuse; Robin
+lives on the VM), `vm-dry-run` (serves HTTP, runs no integrations or jobs) or
+`vm-primary` (the live VM). No file means a normal single-machine Robin. On the
+VM, `robin-watchdog` and `robin-reap` systemd user timers (installed by
+`daemon install`) alert on a silent daemon and clear leftover children.
+
 ## Secrets
 
 Secrets live in `user-data/config/secrets/.env` (gitignored). **Every process
@@ -131,7 +142,10 @@ via `system/agent/auto-land.ts` only if it clears every gate:
   2026-10-31: everything else goes to review); and never the agent runtime's
   computed import graph, nor
   `surfaces/`, `kernel/config/`, `scripts/`, secrets, capture,
-  publish/discretion/notify, the reliability audit, or migrations;
+  publish/discretion/notify, the reliability audit, or migrations. The service
+  layer is now in that protected import closure (auto-land → `lib/service`):
+  `kernel/runtime/pidfile.ts`, `lib/launchd/install.ts` and `lib/service/*`
+  go to review, never auto-land;
 - size and proof: ≤8 files / ≤400 lines, includes a test, no commits ahead of
   main, no overlap with uncommitted work in the live checkout;
 - reach: no new network/subprocess/secrets/dynamic-code access, stdout/exit
