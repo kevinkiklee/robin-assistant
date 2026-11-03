@@ -22,6 +22,7 @@ import {
   schedulerProgressingInvariant,
   userDataWritableInvariant,
 } from '../invariants/builtins/index.ts';
+import { listPlatformSkips } from '../invariants/platform-skips.ts';
 import type { Invariant, InvariantReport } from '../invariants/types.ts';
 import {
   getOpenAlert,
@@ -189,11 +190,18 @@ export class HealthMonitor {
    *  (integrations list, policies) are re-evaluated per tick. */
   private buildInvariants(userData: string): Invariant[] {
     const bootsPath = join(userData, 'state', 'runtime', 'boots.json');
+    const skippedIntegrations = () =>
+      new Set(
+        listPlatformSkips(userData)
+          .filter((s) => s.kind === 'integration')
+          .map((s) => s.name),
+      );
+    const skippedJobNames = () => new Set(listPlatformSkips(userData).map((s) => s.jobName));
     return [
       userDataWritableInvariant(userData),
       dbReachableInvariant(this.opts.db),
       dbSchemaCurrentInvariant(this.opts.db),
-      integrationsHealthyInvariant(this.opts.db),
+      integrationsHealthyInvariant(this.opts.db, skippedIntegrations),
       // Ordering constraint: parents before dependents. A `dependsOn` deferral
       // records its observation on the parent's alert row, which only exists once
       // the parent's own report has opened it earlier in this same tick (reports
@@ -242,9 +250,9 @@ export class HealthMonitor {
         policies: () => loadPolicies(userData),
         bootsPath,
       }),
-      integrationDegradedInvariant(this.opts.db),
+      integrationDegradedInvariant(this.opts.db, skippedIntegrations),
       jobsDiscoverableInvariant(this.opts.db),
-      jobsErroringInvariant(this.opts.db),
+      jobsErroringInvariant(this.opts.db, skippedJobNames),
       captureVolumeSaneInvariant(this.opts.db),
     ];
   }

@@ -7,6 +7,7 @@ import { loadIntegrations } from '../../../integrations/_runtime/loader.ts';
 import { tickWithRetryAndHeartbeat } from '../../../integrations/_runtime/scheduler-glue.ts';
 import { createLogger } from '../../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../../lib/paths.ts';
+import { runsOnThisPlatform } from '../../../lib/platform.ts';
 import type { Policies } from '../../config/schema.ts';
 import { lastBootAt } from '../../runtime/boot-classification.ts';
 import type { Invariant } from '../types.ts';
@@ -15,6 +16,8 @@ import { cadenceMs } from './cadence.ts';
 export interface ScheduledIntegration {
   name: string;
   cron: string;
+  /** Manifest `platforms:`; an entry that excludes this OS is never judged. */
+  platforms?: string[];
 }
 
 const DEFAULT_WARN_MULTIPLIER = 3;
@@ -46,6 +49,8 @@ export interface IntegrationStalenessOptions {
    *  Defaults to `<userData>/state/runtime/boots.json`; tests inject a temp
    *  path so they don't touch the real instance's boot history. */
   bootsPath?: string;
+  /** Platform to judge against; defaults to process.platform. Test seam. */
+  platform?: string;
   /** When the daemon process started (epoch ms). Anchors the startup grace —
    *  no verdict on an integration within STARTUP_GRACE_CADENCES × its cadence
    *  of daemon start, since the scheduler hasn't had a chance to tick it yet.
@@ -143,7 +148,8 @@ function evaluateStaleness(
 
   const out: StalenessVerdict = { critical: [], stale: [], unreachable: [] };
 
-  for (const { name, cron } of opts.integrations()) {
+  for (const { name, cron, platforms } of opts.integrations()) {
+    if (!runsOnThisPlatform({ platforms }, opts.platform)) continue; // platform-skipped, not stale
     const override = p.alerts.staleness[name];
     if (override?.exempt) continue;
 
@@ -286,7 +292,8 @@ export function integrationStalenessInvariant(
       const resumedAt = p.power.since ? Date.parse(p.power.since) : 0;
 
       const candidates: Array<{ name: string; lastOkAt: string; age: number }> = [];
-      for (const { name, cron } of opts.integrations()) {
+      for (const { name, cron, platforms } of opts.integrations()) {
+        if (!runsOnThisPlatform({ platforms }, opts.platform)) continue; // platform-skipped, not stale
         const override = p.alerts.staleness[name];
         if (override?.exempt) continue;
 

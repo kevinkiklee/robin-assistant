@@ -16,7 +16,11 @@ import type { Invariant } from '../types.ts';
  * hour about Google Drive's stale OAuth would be obnoxious. The signal lives in
  * `robin doctor` and the integrations table, where the operator sees it on demand.
  */
-export function integrationsHealthyInvariant(db: RobinDb): Invariant {
+export function integrationsHealthyInvariant(
+  db: RobinDb,
+  /** Platform-skipped integration names (never ticked here; their rows are stale). */
+  skipped: () => ReadonlySet<string> = () => new Set(),
+): Invariant {
   return {
     name: 'integrations.healthy',
     severity: 'warning',
@@ -27,13 +31,15 @@ export function integrationsHealthyInvariant(db: RobinDb): Invariant {
     fix: 'Run `robin doctor` to see which ones, then re-grant the affected provider (e.g. re-run the OAuth flow via `robin reauth <name>`, paste a new API key into user-data/config/secrets/.env, restart the daemon).',
     check: () => {
       try {
-        const broken = db
+        const rows = db
           .prepare(
             `SELECT integration_name, CAST(value AS INTEGER) AS errs
                FROM integration_state
                WHERE key = 'consecutive_errors' AND CAST(value AS INTEGER) >= 5`,
           )
           .all() as Array<{ integration_name: string; errs: number }>;
+        const skip = skipped();
+        const broken = rows.filter((r) => !skip.has(r.integration_name));
         if (broken.length === 0) return { ok: true };
         const names = broken
           .map((r) => `${r.integration_name}(${r.errs})`)

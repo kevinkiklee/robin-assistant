@@ -76,3 +76,19 @@ test('integrations.healthy: invariant metadata is set for runbook generation', (
   assert.ok(inv.fix.length > 0);
   closeDb(db);
 });
+
+test('integrations.healthy: platform-skipped integration is exempt, others still fire', async () => {
+  const db = freshDb();
+  const now = new Date().toISOString();
+  const ins = db.prepare(
+    `INSERT INTO integration_state (integration_name, key, value, updated_at) VALUES (?, ?, ?, ?)`,
+  );
+  ins.run('macthing', 'consecutive_errors', '9', now);
+  const exempt = await integrationsHealthyInvariant(db, () => new Set(['macthing'])).check();
+  assert.equal(exempt.ok, true);
+  ins.run('dead', 'consecutive_errors', '7', now);
+  const r = await integrationsHealthyInvariant(db, () => new Set(['macthing'])).check();
+  assert.equal(r.ok, false);
+  assert.doesNotMatch(r.message ?? '', /macthing/);
+  closeDb(db);
+});

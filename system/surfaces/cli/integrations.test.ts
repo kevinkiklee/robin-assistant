@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -154,5 +154,20 @@ describe('robin integrations report', () => {
       null,
       'stale >24h error is not surfaced alongside a healthy status',
     );
+  });
+
+  it('lists a platform-pinned integration as skipped with the satellite copy', () => {
+    const sys = join(tmpRoot, 'sys-ints');
+    mkdirSync(join(sys, 'macthing'), { recursive: true });
+    writeFileSync(
+      join(sys, 'macthing', 'integration.yaml'),
+      'name: macthing\nversion: 1.0.0\nschedule: "0 * * * *"\nplatforms: [darwin]\n',
+    );
+    const roots = { integrations: [sys], jobs: [] };
+    const onLinux = runIntegrationsReport('linux', roots).rows.find((r) => r.name === 'macthing');
+    assert.equal(onLinux?.status, 'skipped');
+    assert.equal(onLinux?.skip_reason, 'skipped — darwin-only (runs via the Mac satellite)');
+    const onMac = runIntegrationsReport('darwin', roots).rows.find((r) => r.name === 'macthing');
+    assert.equal(onMac, undefined, 'darwin: not skipped, no state -> not listed');
   });
 });

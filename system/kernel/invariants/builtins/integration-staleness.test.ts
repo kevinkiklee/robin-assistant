@@ -603,3 +603,25 @@ test('staleness: age-stale with a network-class errored tick is unreachable, not
   assert.match(r.message ?? '', /whoop: stale 13h \(network unreachable\)/);
   closeDb(db);
 });
+
+test('platform-skipped integrations are not stale', async () => {
+  const db = freshDb();
+  // Mac-only integration, snapshot carried an ancient last_ok_at, never ticks on linux.
+  setKv(db, 'chrome', 'last_attempt_at', isoAgo(300 * H));
+  setKv(db, 'chrome', 'last_ok_at', isoAgo(300 * H));
+  const macOnly: ScheduledIntegration = {
+    name: 'chrome',
+    cron: '0 */4 * * *',
+    platforms: ['darwin'],
+  };
+  const mk = (platform: string) =>
+    integrationStalenessInvariant(db, {
+      integrations: () => [macOnly],
+      policies: () => policies(),
+      now,
+      platform,
+    });
+  assert.equal((await mk('linux').check()).ok, true);
+  assert.equal((await mk('darwin').check()).ok, false, 'darwin behaviour unchanged');
+  closeDb(db);
+});

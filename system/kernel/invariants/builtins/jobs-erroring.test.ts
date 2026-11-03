@@ -304,3 +304,17 @@ test('jobs-erroring: repair leaves errored rows outside the 24h window untouched
   assert.equal(jobState(db, oldId), 'errored', 'row older than the 24h window must not be touched');
   closeDb(db);
 });
+
+test('jobs.not_erroring: platform-skipped job names are exempt, others still fire', async () => {
+  const db = freshDb();
+  const recent = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  insertJob(db, 'integration.macthing.tick', 'errored', recent);
+  const skipped = () => new Set(['integration.macthing.tick']);
+  assert.equal((await jobsErroringInvariant(db, skipped).check()).ok, true);
+  insertJob(db, 'job.real.run', 'errored', recent);
+  const r = await jobsErroringInvariant(db, skipped).check();
+  assert.equal(r.ok, false);
+  assert.match(r.message ?? '', /job\.real\.run/);
+  assert.doesNotMatch(r.message ?? '', /macthing/);
+  closeDb(db);
+});

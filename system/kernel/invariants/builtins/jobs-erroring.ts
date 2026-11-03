@@ -21,7 +21,11 @@ const TRANSIENT_ERROR_RE =
  * message includes per-name counts so the alert wiring (Task 8) can surface
  * the worst offenders without further DB round-trips.
  */
-export function jobsErroringInvariant(db: RobinDb): Invariant {
+export function jobsErroringInvariant(
+  db: RobinDb,
+  /** Platform-skipped scheduler job names (`integration.X.tick` / `job.X.run`). */
+  skipped: () => ReadonlySet<string> = () => new Set(),
+): Invariant {
   return {
     name: 'jobs.not_erroring',
     dependsOn: ['daemon.stable', 'daemon.heartbeating'],
@@ -32,13 +36,16 @@ export function jobsErroringInvariant(db: RobinDb): Invariant {
     fix: 'Run `robin doctor` to see which jobs are failing; check the daemon log (`user-data/observability/logs/daemon.log`) for the root exception.',
     check: () => {
       try {
-        const rows = db
-          .prepare(
-            `SELECT name, COUNT(*) AS n FROM jobs
+        const skip = skipped();
+        const rows = (
+          db
+            .prepare(
+              `SELECT name, COUNT(*) AS n FROM jobs
               WHERE state='errored' AND created_at > datetime('now','-1 day')
               GROUP BY name ORDER BY name`,
-          )
-          .all() as Array<{ name: string; n: number }>;
+            )
+            .all() as Array<{ name: string; n: number }>
+        ).filter((r) => !skip.has(r.name));
         if (rows.length === 0) return { ok: true };
         return {
           ok: false,

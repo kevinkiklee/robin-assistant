@@ -1,4 +1,5 @@
 import { closeDb, openDb } from '../../brain/memory/db.ts';
+import { listPlatformSkips } from '../../kernel/invariants/platform-skips.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
 
 export interface IntegrationStatusRow {
@@ -10,7 +11,9 @@ export interface IntegrationStatusRow {
   recent_ok: number;
   recent_err: number;
   last_error: string | null;
-  status: 'ok' | 'silent' | 'erroring' | 'broken' | 'idle';
+  status: 'ok' | 'silent' | 'erroring' | 'broken' | 'idle' | 'skipped';
+  /** Set when status is 'skipped': why (platform-pinned manifest). */
+  skip_reason?: string;
 }
 
 export interface IntegrationsReport {
@@ -36,7 +39,10 @@ function deriveStatus(r: Omit<IntegrationStatusRow, 'status'>): IntegrationStatu
   return 'ok';
 }
 
-export function runIntegrationsReport(): IntegrationsReport {
+export function runIntegrationsReport(
+  platform: string = process.platform,
+  roots?: Parameters<typeof listPlatformSkips>[2],
+): IntegrationsReport {
   const userData = resolveUserDataDir();
   const db = openDb(dbFilePath(userData));
   try {
@@ -53,7 +59,13 @@ export function runIntegrationsReport(): IntegrationsReport {
            FROM jobs WHERE name LIKE 'integration.%.tick'`,
       )
       .all() as Array<{ name: string }>;
+    const skips = new Map(
+      listPlatformSkips(userData, platform, roots)
+        .filter((s) => s.kind === 'integration')
+        .map((s) => [s.name, s.reason] as const),
+    );
     const allNames = new Set<string>();
+    for (const n of skips.keys()) allNames.add(n);
     for (const r of namesFromState) allNames.add(r.name);
     for (const r of namesFromJobs) allNames.add(r.name);
 
@@ -109,7 +121,12 @@ export function runIntegrationsReport(): IntegrationsReport {
         recent_err: s.err,
         last_error: s.last_error,
       };
-      rows.push({ ...partial, status: deriveStatus(partial) });
+      const skipReason = skips.get(name);
+      rows.push(
+        skipReason
+          ? { ...partial, status: 'skipped', skip_reason: skipReason }
+          : { ...partial, status: deriveStatus(partial) },
+      );
     }
 
     return { ts: new Date().toISOString(), rows };
@@ -138,6 +155,7 @@ const STATUS_ICON: Record<IntegrationStatusRow['status'], string> = {
   erroring: '!',
   broken: 'X',
   idle: '.',
+  skipped: '-',
 };
 
 export function printIntegrationsHuman(report: IntegrationsReport): void {
@@ -151,6 +169,10 @@ export function printIntegrationsHuman(report: IntegrationsReport): void {
   console.log(`  ${'─'.repeat(header.length - 2)}`);
   for (const r of report.rows) {
     const icon = STATUS_ICON[r.status];
+    if (r.status === 'skipped') {
+      console.log(`  ${icon} ${r.name.padEnd(20)}  ${r.skip_reason}`);
+      continue;
+    }
     const name = r.name.padEnd(20);
     const attempt = relTime(r.last_attempt_at, now).padEnd(13);
     const ingest = relTime(r.last_ingest_at, now).padEnd(13);

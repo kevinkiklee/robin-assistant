@@ -11,6 +11,8 @@ export interface JobManifest {
   /** IANA timezone the schedule is interpreted in. Defaults to ROBIN_TZ env or system TZ. */
   tz?: string;
   description?: string;
+  /** Platforms this job runs on; absent/empty = everywhere. Others skip it (visibly). */
+  platforms?: ('darwin' | 'linux')[];
   permissions?: {
     memory?: { read?: boolean; write?: boolean; namespaces?: string[] };
     network?: string[];

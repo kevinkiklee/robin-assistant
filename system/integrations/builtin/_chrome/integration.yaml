@@ -1,6 +1,7 @@
 name: chrome
 version: 1.0.0
 schedule: "0 */3 * * *"
+platforms: [darwin]
 permissions:
   memory:
     read: true

@@ -15,10 +15,13 @@ function freshDb() {
   return db;
 }
 
-function makeJob(rootDir: string, name: string, schedule = '*/10 * * * *') {
+function makeJob(rootDir: string, name: string, schedule = '*/10 * * * *', extraYaml = '') {
   const dir = join(rootDir, name);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'job.yaml'), `name: ${name}\nversion: 1.0.0\nschedule: "${schedule}"\n`);
+  writeFileSync(
+    join(dir, 'job.yaml'),
+    `name: ${name}\nversion: 1.0.0\nschedule: "${schedule}"\n${extraYaml}`,
+  );
   writeFileSync(
     join(dir, 'index.js'),
     `export const job = { run: async () => ({ status: 'ok' }) };\n`,
@@ -59,4 +62,36 @@ test('jobs scheduler-glue: manual jobs are registered but not scheduled', async 
   assert.equal(r.registered, 1);
   assert.equal(r.scheduled, 0);
   closeDb(db);
+});
+
+test('jobs scheduler-glue: platforms:[darwin] skipped on linux, registered on darwin', async () => {
+  for (const [platform, expectRegistered] of [
+    ['linux', false],
+    ['darwin', true],
+  ] as const) {
+    const db = freshDb();
+    const sysRoot = mkdtempSync(join(tmpdir(), 'robin-jobs-plat-sys-'));
+    const userRoot = mkdtempSync(join(tmpdir(), 'robin-jobs-plat-user-'));
+    makeJob(userRoot, 'macjob', '*/10 * * * *', 'platforms: [darwin]\n');
+    makeJob(userRoot, 'anyjob');
+    const registered: string[] = [];
+    const fakeDaemon = {
+      registerHandler: (n: string) => {
+        registered.push(n);
+      },
+    } as unknown as Parameters<typeof registerJobs>[0];
+    const r = await registerJobs(fakeDaemon, db, () => null, {
+      systemRoot: sysRoot,
+      userDataRoot: userRoot,
+      platform,
+    });
+    assert.equal(registered.includes('job.macjob.run'), expectRegistered, platform);
+    assert.ok(registered.includes('job.anyjob.run'));
+    assert.equal(r.scheduled, expectRegistered ? 2 : 1);
+    assert.deepEqual(
+      r.platformSkipped.map((s) => s.reason),
+      expectRegistered ? [] : ['skipped — darwin-only (runs via the Mac satellite)'],
+    );
+    closeDb(db);
+  }
 });

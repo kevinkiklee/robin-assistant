@@ -6,6 +6,7 @@ import type { RobinDb } from '../../brain/memory/db.ts';
 import { resolveBuiltinIntegrationsRoot } from '../../integrations/_runtime/gc.ts';
 import type { IntegrationManifest } from '../../integrations/_runtime/types.ts';
 import { LOADED_DEEP_HASH, LOADED_SHA } from '../../lib/build-stamp.ts';
+import { runsOnThisPlatform } from '../../lib/platform.ts';
 import { loadPolicies } from '../config/load.ts';
 import {
   agentWorktreesBoundedInvariant,
@@ -39,6 +40,7 @@ import {
   userDataWritableInvariant,
   vecIndexSyncedInvariant,
 } from './builtins/index.ts';
+import { listPlatformSkips } from './platform-skips.ts';
 import type { Invariant } from './types.ts';
 
 /**
@@ -68,7 +70,8 @@ function listScheduledIntegrations(userData: string): ScheduledIntegration[] {
         const instanceName = entry.includes('--') ? entry : (manifest.name ?? entry);
         if (seen.has(instanceName)) continue; // user-data wins; skip duplicate builtin
         seen.add(instanceName);
-        result.push({ name: instanceName, cron: schedule });
+        if (!runsOnThisPlatform(manifest)) continue; // platform-skipped: not scheduled here
+        result.push({ name: instanceName, cron: schedule, platforms: manifest.platforms });
       } catch {
         // Unparseable manifest — skip; can't determine cadence anyway.
       }
@@ -104,13 +107,20 @@ export function buildDoctorInvariants(
   repoRoot: string = defaultRepoRoot(),
 ): Invariant[] {
   const bootsPath = join(userData, 'state', 'runtime', 'boots.json');
+  const skippedIntegrations = () =>
+    new Set(
+      listPlatformSkips(userData)
+        .filter((s) => s.kind === 'integration')
+        .map((s) => s.name),
+    );
+  const skippedJobNames = () => new Set(listPlatformSkips(userData).map((s) => s.jobName));
   return [
     userDataWritableInvariant(userData),
     dbReachableInvariant(db),
     dbSchemaCurrentInvariant(db),
     dbWalSizeBoundedInvariant(db),
     vecIndexSyncedInvariant(db),
-    integrationsHealthyInvariant(db),
+    integrationsHealthyInvariant(db, skippedIntegrations),
     integrationStalenessInvariant(db, {
       integrations: () => listScheduledIntegrations(userData),
       policies: () => loadPolicies(userData),
@@ -122,9 +132,9 @@ export function buildDoctorInvariants(
       policies: () => loadPolicies(userData),
       bootsPath,
     }),
-    integrationDegradedInvariant(db),
+    integrationDegradedInvariant(db, skippedIntegrations),
     jobsDiscoverableInvariant(db),
-    jobsErroringInvariant(db),
+    jobsErroringInvariant(db, skippedJobNames),
     captureVolumeSaneInvariant(db),
     jobsHistoryBoundedInvariant(db),
     sessionStateBoundedInvariant(db),

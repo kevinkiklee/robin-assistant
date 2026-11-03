@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { parsePlatforms } from '../../lib/platform.ts';
 import type { Job, JobManifest } from './types.ts';
 
 /**
@@ -67,6 +68,10 @@ async function loadOne(dir: string): Promise<LoadedJob | null> {
   const manifestPath = join(dir, 'job.yaml');
   if (!existsSync(manifestPath)) return null;
   const manifest = parseYaml(readFileSync(manifestPath, 'utf8')) as JobManifest;
+  manifest.platforms = parsePlatforms(manifest.platforms, (msg) =>
+    // biome-ignore lint/suspicious/noConsole: surface manifest warnings to the operator
+    console.error(`job loader: ${manifest.name}: ${msg}`),
+  );
   const dirName = basename(dir);
   const instanceName = dirName.includes('--') ? dirName : manifest.name;
   const entryTs = join(dir, 'index.ts');

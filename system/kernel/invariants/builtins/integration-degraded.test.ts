@@ -89,3 +89,17 @@ test('degraded: non-degraded keys are not matched (key must start with degraded:
   assert.equal(r.ok, true, 'consecutive_errors is not a degraded: key');
   closeDb(db);
 });
+
+test('degraded: platform-skipped integration is exempt, others still fire', async () => {
+  const db = freshDb();
+  setKv(db, 'macthing', 'degraded:history', '5');
+  assert.equal(
+    (await integrationDegradedInvariant(db, () => new Set(['macthing'])).check()).ok,
+    true,
+  );
+  setKv(db, 'whoop', 'degraded:recovery', '3');
+  const r = await integrationDegradedInvariant(db, () => new Set(['macthing'])).check();
+  assert.equal(r.ok, false);
+  assert.doesNotMatch(r.message ?? '', /macthing/);
+  closeDb(db);
+});

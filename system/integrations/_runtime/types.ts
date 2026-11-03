@@ -10,6 +10,8 @@ export interface IntegrationManifest {
   /** IANA timezone the schedule is interpreted in. Defaults to ROBIN_TZ env or system TZ. */
   tz?: string;
   cpu_intensive?: boolean;
+  /** Platforms this integration runs on; absent/empty = everywhere. Others skip it (visibly). */
+  platforms?: ('darwin' | 'linux')[];
   permissions?: {
     memory?: { read?: boolean; write?: boolean; namespaces?: string[] };
     network?: string[];

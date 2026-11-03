@@ -8,6 +8,7 @@ import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
 import { assertCanRunIntegrations } from '../../lib/cloud/role.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
+import { platformSkipLabel, runsOnThisPlatform } from '../../lib/platform.ts';
 import { buildJobContext } from './context.ts';
 import { loadJobs } from './loader.ts';
 
@@ -27,6 +28,8 @@ function resolveBuiltinJobsRoot(): string {
 export interface JobsRegisterResult {
   registered: number;
   scheduled: number;
+  /** Jobs not registered because their `platforms:` excludes this OS. */
+  platformSkipped: Array<{ name: string; reason: string }>;
 }
 
 /**
@@ -37,13 +40,18 @@ export async function registerJobs(
   daemon: Daemon,
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
-  opts: { systemRoot?: string; userDataRoot?: string } = {},
+  opts: { systemRoot?: string; userDataRoot?: string; platform?: string } = {},
 ): Promise<JobsRegisterResult> {
   const systemRoot = opts.systemRoot ?? resolveBuiltinJobsRoot();
   const userDataRoot = opts.userDataRoot ?? join(resolveUserDataDir(), 'extensions/jobs');
   const log = createLogger({ module: 'jobs' });
 
-  const loaded = await loadJobs([systemRoot, userDataRoot]);
+  const all = await loadJobs([systemRoot, userDataRoot]);
+  const loaded = all.filter((j) => runsOnThisPlatform(j.manifest, opts.platform));
+  const platformSkipped = all
+    .filter((j) => !loaded.includes(j))
+    .map((j) => ({ name: j.instanceName, reason: platformSkipLabel(j.manifest) }));
+  for (const s of platformSkipped) log.info({ job: s.name }, s.reason);
   let scheduled = 0;
   for (const j of loaded) {
     daemon.registerHandler(`job.${j.instanceName}.run`, async () => {
@@ -71,5 +79,5 @@ export async function registerJobs(
     }
   }
 
-  return { registered: loaded.length, scheduled };
+  return { registered: loaded.length, scheduled, platformSkipped };
 }

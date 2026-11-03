@@ -7,6 +7,7 @@ import { scheduleCronJob } from '../../kernel/scheduler/cron.ts';
 import { assertCanRunIntegrations } from '../../lib/cloud/role.ts';
 import { createLogger } from '../../lib/logging/logger.ts';
 import { resolveUserDataDir } from '../../lib/paths.ts';
+import { platformSkipLabel, runsOnThisPlatform } from '../../lib/platform.ts';
 import { withTimeout } from '../../lib/with-timeout.ts';
 import { buildContext } from './context.ts';
 // GC helpers + the builtin-root resolver moved to gc.ts (cycle-free, kernel-import-free)
@@ -280,6 +281,8 @@ export interface RegisterResult {
    *  name + cron. Fed to the integration-staleness invariant so it knows which
    *  integrations to judge freshness on, anchored to their cadence. */
   scheduledIntegrations: ScheduledIntegrationSpec[];
+  /** Integrations not registered because their `platforms:` excludes this OS. */
+  platformSkipped: Array<{ name: string; reason: string }>;
   /** Calls cleanup() on every integration that successfully ran init(). Safe to call once on daemon stop. */
   cleanup: () => Promise<void>;
 }
@@ -294,13 +297,20 @@ export async function registerIntegrations(
   daemon: Daemon,
   db: RobinDb,
   getLLM: () => LLMDispatcher | null | undefined,
-  opts: { systemRoot?: string; userDataRoot?: string } = {},
+  opts: { systemRoot?: string; userDataRoot?: string; platform?: string } = {},
 ): Promise<RegisterResult> {
   const systemRoot = opts.systemRoot ?? resolveBuiltinIntegrationsRoot();
   const userDataRoot = opts.userDataRoot ?? join(resolveUserDataDir(), 'extensions/integrations');
   const log = createLogger({ module: 'integrations' });
 
-  const loaded = await loadIntegrations([systemRoot, userDataRoot]);
+  const all = await loadIntegrations([systemRoot, userDataRoot]);
+  // Platform-pinned integrations (e.g. Mac-only) are skipped here, visibly: no
+  // handler, no cron, no init(). Their stale cron rows fall to the orphan GC below.
+  const loaded = all.filter((i) => runsOnThisPlatform(i.manifest, opts.platform));
+  const platformSkipped = all
+    .filter((i) => !loaded.includes(i))
+    .map((i) => ({ name: i.instanceName, reason: platformSkipLabel(i.manifest) }));
+  for (const s of platformSkipped) log.info({ integration: s.name }, s.reason);
   const active: ActiveIntegration[] = [];
 
   let scheduled = 0;
@@ -386,5 +396,12 @@ export async function registerIntegrations(
     }
   };
 
-  return { registered: loaded.length, scheduled, initialized, scheduledIntegrations, cleanup };
+  return {
+    registered: loaded.length,
+    scheduled,
+    initialized,
+    scheduledIntegrations,
+    platformSkipped,
+    cleanup,
+  };
 }

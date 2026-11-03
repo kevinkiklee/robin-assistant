@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { parsePlatforms } from '../../lib/platform.ts';
 import type { Integration, IntegrationManifest } from './types.ts';
 
 export interface LoadedIntegration {
@@ -21,6 +22,10 @@ async function loadOne(dir: string): Promise<LoadedIntegration | null> {
   const manifestPath = join(dir, 'integration.yaml');
   if (!existsSync(manifestPath)) return null;
   const manifest = parseYaml(readFileSync(manifestPath, 'utf8')) as IntegrationManifest;
+  manifest.platforms = parsePlatforms(manifest.platforms, (msg) =>
+    // biome-ignore lint/suspicious/noConsole: surface manifest warnings to the operator
+    console.error(`integration loader: ${manifest.name}: ${msg}`),
+  );
   const dirName = basename(dir);
   // Allow multi-instance via <base>--<instance> directory naming
   const instanceName = dirName.includes('--') ? dirName : manifest.name;

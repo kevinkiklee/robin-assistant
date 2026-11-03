@@ -15,7 +15,11 @@ import type { Invariant } from '../types.ts';
  * the daemon keeps running. The operator sees it via `robin doctor` or the
  * periodic health check notification.
  */
-export function integrationDegradedInvariant(db: RobinDb): Invariant {
+export function integrationDegradedInvariant(
+  db: RobinDb,
+  /** Platform-skipped integration names (never ticked here; their rows are stale). */
+  skipped: () => ReadonlySet<string> = () => new Set(),
+): Invariant {
   return {
     name: 'integrations.streams_healthy',
     severity: 'warning',
@@ -26,12 +30,15 @@ export function integrationDegradedInvariant(db: RobinDb): Invariant {
     fix: 'Run `robin doctor` to identify which integration/stream pair is affected. Check the upstream API status for that endpoint. Re-authenticate if auth-scoped (`robin reauth <name>`). If the stream is temporarily unavailable, the counter resets automatically once it recovers.',
     check: () => {
       try {
-        const rows = db
-          .prepare(
-            `SELECT integration_name, key, value FROM integration_state
+        const skip = skipped();
+        const rows = (
+          db
+            .prepare(
+              `SELECT integration_name, key, value FROM integration_state
               WHERE key LIKE 'degraded:%' AND CAST(value AS INTEGER) >= 3`,
-          )
-          .all() as Array<{ integration_name: string; key: string; value: string }>;
+            )
+            .all() as Array<{ integration_name: string; key: string; value: string }>
+        ).filter((r) => !skip.has(r.integration_name));
         if (rows.length === 0) return { ok: true };
         return {
           ok: false,

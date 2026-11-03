@@ -37,12 +37,12 @@ function freshDb() {
   return db;
 }
 
-function makeIntegration(rootDir: string, name: string, schedule = '*/5 * * * *') {
+function makeIntegration(rootDir: string, name: string, schedule = '*/5 * * * *', extraYaml = '') {
   const dir = join(rootDir, name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, 'integration.yaml'),
-    `name: ${name}\nversion: 1.0.0\nschedule: "${schedule}"\n`,
+    `name: ${name}\nversion: 1.0.0\nschedule: "${schedule}"\n${extraYaml}`,
   );
   writeFileSync(
     join(dir, 'index.js'),
@@ -750,4 +750,75 @@ test('scheduler-glue: a non-transient error still throws and increments consecut
   assert.equal(getState('consecutive_errors'), '1', 'persistent error increments the error streak');
   assert.equal(getState('consecutive_skips'), undefined, 'persistent error is not a skip');
   closeDb(db);
+});
+
+async function registerOn(platform: string, extraYaml: string) {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-plat-sys-'));
+  const userRoot = mkdtempSync(join(tmpdir(), 'robin-glue-plat-user-'));
+  makeIntegration(sysRoot, 'macthing', '*/5 * * * *', extraYaml);
+  makeIntegration(sysRoot, 'everywhere');
+  const registered: string[] = [];
+  const fakeDaemon = {
+    registerHandler: (n: string) => {
+      registered.push(n);
+    },
+  } as unknown as Parameters<typeof registerIntegrations>[0];
+  const r = await registerIntegrations(fakeDaemon, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: userRoot,
+    platform,
+  });
+  const cronNames = (
+    db.prepare("SELECT name FROM jobs WHERE state='pending'").all() as Array<{ name: string }>
+  ).map((x) => x.name);
+  closeDb(db);
+  return { r, registered, cronNames };
+}
+
+test('scheduler-glue: platforms:[darwin] on linux -> not registered, listed as skipped', async () => {
+  const { r, registered, cronNames } = await registerOn('linux', 'platforms: [darwin]\n');
+  assert.deepEqual(registered, ['integration.everywhere.tick']);
+  assert.deepEqual(cronNames, ['integration.everywhere.tick']);
+  assert.equal(r.scheduled, 1);
+  assert.deepEqual(r.platformSkipped, [
+    { name: 'macthing', reason: 'skipped — darwin-only (runs via the Mac satellite)' },
+  ]);
+  assert.deepEqual(
+    r.scheduledIntegrations.map((i) => i.name),
+    ['everywhere'],
+  );
+});
+
+test('scheduler-glue: platforms:[darwin] on darwin -> registered as today', async () => {
+  const { r, registered } = await registerOn('darwin', 'platforms: [darwin]\n');
+  assert.ok(registered.includes('integration.macthing.tick'));
+  assert.equal(r.scheduled, 2);
+  assert.deepEqual(r.platformSkipped, []);
+});
+
+test('scheduler-glue: a stale cron for a platform-skipped integration is GC-d on linux', async () => {
+  const db = freshDb();
+  const sysRoot = mkdtempSync(join(tmpdir(), 'robin-glue-plat-gc-'));
+  makeIntegration(sysRoot, 'macthing', '*/5 * * * *', 'platforms: [darwin]\n');
+  db.prepare(
+    "INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES ('integration.macthing.tick', 'cron', datetime('now'), 'pending')",
+  ).run();
+  await registerIntegrations({ registerHandler: () => {} } as never, db, () => null, {
+    systemRoot: sysRoot,
+    userDataRoot: join(sysRoot, 'none'),
+    platform: 'linux',
+  });
+  const n = (
+    db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE name LIKE 'integration.macthing%'").get() as {
+      n: number;
+    }
+  ).n;
+  assert.equal(n, 0);
+  closeDb(db);
+});
+
+test('scheduler-glue: invalid platforms is ignored (registered everywhere), never a crash', async () => {
+  const { registered } = await registerOn('linux', 'platforms: [windows]\n');
+  assert.ok(registered.includes('integration.macthing.tick'));
 });
