@@ -77,6 +77,8 @@ ADVANCED
   incognito [--for=1h|off]  Disable (or re-enable) session capture
 
 MAINTENANCE / INTERNAL (run automatically or by the host — init handles setup)
+  cloud status|dry-run|cutover|rollback --host <alias>
+                               Move Robin between this Mac and a VM (one writer; docs/CLOUD-VM.md)
   daemon [install|uninstall]   The daemon (launchd-managed)
   mcp core | extension         MCP servers (Claude Code spawns these over stdio)
   mcp remote [--port N]        OAuth MCP over HTTP for claude.ai connectors (read / read+write)
@@ -131,6 +133,12 @@ async function main(): Promise<void> {
     case '-v': {
       console.log(VERSION);
       exit(0);
+      break;
+    }
+
+    case 'cloud': {
+      const { runCloudCommand } = await import('./cloud.ts');
+      exit(await runCloudCommand(args.slice(1)));
       break;
     }
 

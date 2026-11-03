@@ -24,18 +24,22 @@ export function rolePath(userData: string): string {
   return join(userData, 'state', 'runtime', 'cloud-role.json');
 }
 
+/** A parsed marker body as a record, or `null` when it isn't a valid one. */
+export function parseRoleRecord(raw: unknown): CloudRoleRecord | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.role !== 'string' || !ROLES.includes(r.role)) return null;
+  if (typeof r.at !== 'string') return null;
+  const rec: CloudRoleRecord = { role: r.role as CloudRole, at: r.at };
+  if (typeof r.host === 'string') rec.host = r.host;
+  if (typeof r.commit === 'string') rec.commit = r.commit;
+  return rec;
+}
+
 /** Missing or corrupt marker reads as `null` (no role). */
 export function readRole(userData: string): CloudRoleRecord | null {
   try {
-    const raw = JSON.parse(readFileSync(rolePath(userData), 'utf8')) as unknown;
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-    const r = raw as Record<string, unknown>;
-    if (typeof r.role !== 'string' || !ROLES.includes(r.role)) return null;
-    if (typeof r.at !== 'string') return null;
-    const rec: CloudRoleRecord = { role: r.role as CloudRole, at: r.at };
-    if (typeof r.host === 'string') rec.host = r.host;
-    if (typeof r.commit === 'string') rec.commit = r.commit;
-    return rec;
+    return parseRoleRecord(JSON.parse(readFileSync(rolePath(userData), 'utf8')) as unknown);
   } catch {
     return null;
   }

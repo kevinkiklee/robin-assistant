@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { loadPolicies } from '../../kernel/config/load.ts';
@@ -13,28 +13,27 @@ function parseDurationMs(s: string): number {
 
 function writePolicies(userData: string, next: unknown): void {
   const path = join(userData, 'config', 'policies.yaml');
+  mkdirSync(join(userData, 'config'), { recursive: true });
   writeFileSync(path, stringifyYaml(next));
 }
 
-export function runPause(): void {
-  const userData = resolveUserDataDir();
+/** The `robin pause` / `robin resume` policy write, for an explicit instance. */
+export function setPowerState(userData: string, state: 'paused' | 'active'): void {
   const p = loadPolicies(userData);
-  p.power.state = 'paused';
+  p.power.state = state;
   p.power.set_by = 'user';
   p.power.since = new Date().toISOString();
   delete p.power.reason;
   writePolicies(userData, p);
+}
+
+export function runPause(): void {
+  setPowerState(resolveUserDataDir(), 'paused');
   console.log('Robin paused. Scheduled jobs will not run until `robin resume`.');
 }
 
 export function runResume(): void {
-  const userData = resolveUserDataDir();
-  const p = loadPolicies(userData);
-  p.power.state = 'active';
-  p.power.set_by = 'user';
-  p.power.since = new Date().toISOString();
-  delete p.power.reason;
-  writePolicies(userData, p);
+  setPowerState(resolveUserDataDir(), 'active');
   console.log('Robin active.');
 }
 
