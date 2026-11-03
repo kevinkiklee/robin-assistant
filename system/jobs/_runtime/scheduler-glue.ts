@@ -52,6 +52,12 @@ export async function registerJobs(
     .filter((j) => !loaded.includes(j))
     .map((j) => ({ name: j.instanceName, reason: platformSkipLabel(j.manifest) }));
   for (const s of platformSkipped) log.info({ job: s.name }, s.reason);
+  // A pending row copied from another machine's DB would error "no handler" on
+  // every cron here. Drop open rows only; terminal history stays.
+  const dropOpen = db.prepare(
+    "DELETE FROM jobs WHERE name = ? AND state IN ('pending','scheduled','ready')",
+  );
+  for (const s of platformSkipped) dropOpen.run(`job.${s.name}.run`);
   let scheduled = 0;
   for (const j of loaded) {
     daemon.registerHandler(`job.${j.instanceName}.run`, async () => {

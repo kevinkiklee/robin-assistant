@@ -6,7 +6,7 @@ import type { RobinDb } from '../../brain/memory/db.ts';
 import { resolveBuiltinIntegrationsRoot } from '../../integrations/_runtime/gc.ts';
 import type { IntegrationManifest } from '../../integrations/_runtime/types.ts';
 import { LOADED_DEEP_HASH, LOADED_SHA } from '../../lib/build-stamp.ts';
-import { runsOnThisPlatform } from '../../lib/platform.ts';
+import { parsePlatforms, runsOnThisPlatform } from '../../lib/platform.ts';
 import { loadPolicies } from '../config/load.ts';
 import {
   agentWorktreesBoundedInvariant,
@@ -50,7 +50,10 @@ import type { Invariant } from './types.ts';
  * manifest.name). Skips manual and event schedules — staleness only applies to
  * time-driven crons.
  */
-function listScheduledIntegrations(userData: string): ScheduledIntegration[] {
+export function listScheduledIntegrations(
+  userData: string,
+  platform: string = process.platform,
+): ScheduledIntegration[] {
   // User-data extensions first so they shadow builtins with the same resolved name.
   const roots = [join(userData, 'extensions', 'integrations'), resolveBuiltinIntegrationsRoot()];
   const result: ScheduledIntegration[] = [];
@@ -70,8 +73,10 @@ function listScheduledIntegrations(userData: string): ScheduledIntegration[] {
         const instanceName = entry.includes('--') ? entry : (manifest.name ?? entry);
         if (seen.has(instanceName)) continue; // user-data wins; skip duplicate builtin
         seen.add(instanceName);
-        if (!runsOnThisPlatform(manifest)) continue; // platform-skipped: not scheduled here
-        result.push({ name: instanceName, cron: schedule, platforms: manifest.platforms });
+        // Validate first: a malformed value is ignored (runs everywhere), as in the loaders.
+        const platforms = parsePlatforms(manifest.platforms);
+        if (!runsOnThisPlatform({ platforms }, platform)) continue; // platform-skipped: not scheduled here
+        result.push({ name: instanceName, cron: schedule, platforms });
       } catch {
         // Unparseable manifest — skip; can't determine cadence anyway.
       }

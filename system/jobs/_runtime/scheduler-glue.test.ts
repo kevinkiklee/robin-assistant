@@ -95,3 +95,36 @@ test('jobs scheduler-glue: platforms:[darwin] skipped on linux, registered on da
     closeDb(db);
   }
 });
+
+test('jobs scheduler-glue: skipped job loses pending rows on linux, history kept; darwin unchanged', async () => {
+  for (const platform of ['linux', 'darwin']) {
+    const db = freshDb();
+    const sysRoot = mkdtempSync(join(tmpdir(), 'robin-jobs-pend-sys-'));
+    const userRoot = mkdtempSync(join(tmpdir(), 'robin-jobs-pend-user-'));
+    makeJob(userRoot, 'macjob', '*/10 * * * *', 'platforms: [darwin]\n');
+    const ins = db.prepare(
+      "INSERT INTO jobs (name, trigger_kind, scheduled_at, state) VALUES (?, 'cron', datetime('now'), ?)",
+    );
+    ins.run('job.macjob.run', 'pending');
+    ins.run('job.macjob.run', 'completed');
+    ins.run('job.macjob.run', 'errored');
+    await registerJobs({ registerHandler: () => {} } as never, db, () => null, {
+      systemRoot: sysRoot,
+      userDataRoot: userRoot,
+      platform,
+    });
+    const states = (
+      db.prepare("SELECT state FROM jobs WHERE name = 'job.macjob.run'").all() as Array<{
+        state: string;
+      }>
+    )
+      .map((r) => r.state)
+      .sort();
+    assert.deepEqual(
+      states,
+      platform === 'linux' ? ['completed', 'errored'] : ['completed', 'errored', 'pending'],
+      platform,
+    );
+    closeDb(db);
+  }
+});
