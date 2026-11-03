@@ -183,12 +183,6 @@ export async function uninstallDaemonSystemd(opts?: {
 }): Promise<{ unitPath: string; removed: boolean }> {
   const exec = opts?.exec ?? defaultExec;
   const path = unitPath({ home: opts?.home });
-  if (!existsSync(path)) return { unitPath: path, removed: false };
-  try {
-    await exec('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT]);
-  } catch {
-    // not enabled / not running
-  }
   try {
     await exec('systemctl', [
       '--user',
@@ -199,9 +193,23 @@ export async function uninstallDaemonSystemd(opts?: {
   } catch {
     // not enabled / not running
   }
+  let timersRemoved = false;
   for (const t of USER_TIMERS) {
     const f = timerFiles(t.name, opts?.home);
-    for (const file of [f.service, f.timer]) if (existsSync(file)) unlinkSync(file);
+    for (const file of [f.service, f.timer]) {
+      if (!existsSync(file)) continue;
+      unlinkSync(file);
+      timersRemoved = true;
+    }
+  }
+  if (!existsSync(path)) {
+    if (timersRemoved) await exec('systemctl', ['--user', 'daemon-reload']).catch(() => undefined);
+    return { unitPath: path, removed: false };
+  }
+  try {
+    await exec('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT]);
+  } catch {
+    // not enabled / not running
   }
   unlinkSync(path);
   try {

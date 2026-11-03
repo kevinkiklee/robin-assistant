@@ -66,7 +66,7 @@ export const MAC_CHILD_PATTERNS: readonly string[] = [
 
 const VM_UNIT = 'robin-daemon';
 const VM_CHECKOUT = 'robin-assistant-v3';
-const HEALTH_URL = 'http://127.0.0.1:41273/health';
+export const HEALTH_URL = 'http://127.0.0.1:41273/health';
 const CLI_JS = 'dist/surfaces/cli/index.js';
 
 export interface Proc {

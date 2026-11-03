@@ -93,10 +93,12 @@ export async function reap(
     return { status: 'not-running', pids: [] };
   }
   const [catCmd, ...catArgs] = procsArgv[1] as [string, ...string[]];
-  const members = (await deps.exec(catCmd, catArgs)).stdout
-    .split('\n')
-    .map((l) => Number(l.trim()))
-    .filter((n) => Number.isInteger(n) && n > 0);
+  const listMembers = async (): Promise<number[]> =>
+    (await deps.exec(catCmd, catArgs)).stdout
+      .split('\n')
+      .map((l) => Number(l.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0);
+  const members = await listMembers();
   const mainArgs = [...showArgs];
   mainArgs[mainArgs.indexOf('ControlGroup')] = 'MainPID';
   const mainPid = Number((await deps.exec(showCmd, mainArgs)).stdout.trim());
@@ -125,17 +127,34 @@ export async function reap(
   const kill = deps.kill ?? ((pid, sig) => process.kill(pid, sig));
   const isAlive = deps.isAlive ?? pidAlive;
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
-  const signal = (pid: number, sig: 'SIGTERM' | 'SIGKILL'): void => {
+  // pid reuse guard: same start time, and still in the daemon cgroup, right before each signal.
+  const startedAt = new Map(procs.map((p) => [p.pid, p.startedAtMs]));
+  const unchanged = async (pid: number): Promise<boolean> => {
+    try {
+      const now = await readProc(pid);
+      if (!now || now.startedAtMs !== startedAt.get(pid)) return false;
+      return (await listMembers()).includes(pid);
+    } catch {
+      return false;
+    }
+  };
+  const signal = async (pid: number, sig: 'SIGTERM' | 'SIGKILL'): Promise<boolean> => {
+    if (!(await unchanged(pid))) {
+      log(`skipped ${pid}: changed`);
+      return false;
+    }
     try {
       kill(pid, sig);
     } catch {
       /* already gone */
     }
+    return true;
   };
-  for (const pid of pids) signal(pid, 'SIGTERM');
-  if (pids.length > 0) await sleep(GRACE_MS);
-  for (const pid of pids) {
-    if (isAlive(pid)) signal(pid, 'SIGKILL');
+  const termed: number[] = [];
+  for (const pid of pids) if (await signal(pid, 'SIGTERM')) termed.push(pid);
+  if (termed.length > 0) await sleep(GRACE_MS);
+  for (const pid of termed) {
+    if (isAlive(pid) && !(await signal(pid, 'SIGKILL'))) continue;
     log(`reaped ${describe(pid)}`);
   }
   return { status: 'done', pids };

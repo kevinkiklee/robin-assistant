@@ -1,14 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { HEALTH_URL } from './migrate.ts';
 
-export const HEALTH_URL = 'http://127.0.0.1:41273/health';
 const NOTICE_INTERVAL_MS = 60 * 60_000;
 const HEALTH_TIMEOUT_MS = 5_000;
+const RETRY_DELAY_MS = 5_000;
 
 interface Stamp {
   down: boolean;
-  lastNotifiedAt: number;
+  /** Last loud (down) notice; kept across recoveries so a flapping daemon can't spam. */
+  lastLoudAt: number;
+  /** Last silent recovery notice. */
+  lastBackAt: number;
 }
 
 type Notify = (p: { title: string; message: string; silent?: boolean }) => Promise<unknown>;
@@ -20,12 +24,14 @@ export function stampPath(userData: string): string {
 function readStamp(userData: string): Stamp {
   try {
     const raw = JSON.parse(readFileSync(stampPath(userData), 'utf8')) as Partial<Stamp>;
+    const n = (v: unknown): number => (typeof v === 'number' ? v : 0);
     return {
       down: raw.down === true,
-      lastNotifiedAt: typeof raw.lastNotifiedAt === 'number' ? raw.lastNotifiedAt : 0,
+      lastLoudAt: n(raw.lastLoudAt),
+      lastBackAt: n(raw.lastBackAt),
     };
   } catch {
-    return { down: false, lastNotifiedAt: 0 };
+    return { down: false, lastLoudAt: 0, lastBackAt: 0 };
   }
 }
 
@@ -37,7 +43,7 @@ function writeStamp(userData: string, s: Stamp): void {
   renameSync(tmp, path);
 }
 
-export async function defaultFetchHealth(): Promise<boolean> {
+async function defaultFetchHealth(): Promise<boolean> {
   try {
     const res = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
     if (!res.ok) return false;
@@ -62,12 +68,35 @@ export async function watchdog(opts: {
   fetchHealth?: () => Promise<boolean>;
   notify?: Notify;
   now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  log?: (line: string) => void;
 }): Promise<'ok' | 'down-notified' | 'down-quiet'> {
   const fetchHealth = opts.fetchHealth ?? defaultFetchHealth;
   const notify = opts.notify ?? defaultNotify;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  // biome-ignore lint/suspicious/noConsole: CLI output is the watchdog's log
+  const log = opts.log ?? ((l: string) => console.log(l));
   const now = (opts.now ?? Date.now)();
   const stamp = readStamp(opts.userData);
-  const healthy = await fetchHealth().catch(() => false);
+  let healthy = await fetchHealth().catch(() => false);
+  if (!healthy) {
+    // One retry: a restart (e.g. `daemon install`) must not read as an outage.
+    await sleep(RETRY_DELAY_MS);
+    healthy = await fetchHealth().catch(() => false);
+  }
+  // Stamp first, notice second: if the stamp can't be written, stay silent
+  // rather than re-notify on every tick.
+  const commit = (next: Stamp): boolean => {
+    try {
+      writeStamp(opts.userData, next);
+      return true;
+    } catch (err) {
+      log(
+        `watchdog: cannot write stamp (${err instanceof Error ? err.message : String(err)}); not notifying`,
+      );
+      return false;
+    }
+  };
   const send = async (p: Parameters<Notify>[0]): Promise<void> => {
     try {
       await notify(p);
@@ -77,20 +106,26 @@ export async function watchdog(opts: {
   };
   if (healthy) {
     if (stamp.down) {
-      await send({
-        title: "Robin's daemon is back",
-        message: 'The daemon on the VM is answering again.',
-        silent: true,
-      });
-      writeStamp(opts.userData, { down: false, lastNotifiedAt: stamp.lastNotifiedAt });
+      const due = now - stamp.lastBackAt >= NOTICE_INTERVAL_MS;
+      if (!commit({ ...stamp, down: false, lastBackAt: due ? now : stamp.lastBackAt })) return 'ok';
+      if (due) {
+        await send({
+          title: "Robin's daemon is back",
+          message: 'The daemon on the VM is answering again.',
+          silent: true,
+        });
+      }
     }
     return 'ok';
   }
-  if (stamp.down && now - stamp.lastNotifiedAt < NOTICE_INTERVAL_MS) return 'down-quiet';
+  if (now - stamp.lastLoudAt < NOTICE_INTERVAL_MS) {
+    if (!stamp.down) commit({ ...stamp, down: true });
+    return 'down-quiet';
+  }
+  if (!commit({ ...stamp, down: true, lastLoudAt: now })) return 'down-quiet';
   await send({
     title: "Robin's daemon is not answering on the VM",
     message: `No healthy reply from ${HEALTH_URL}. Check: systemctl --user status robin-daemon`,
   });
-  writeStamp(opts.userData, { down: true, lastNotifiedAt: now });
   return 'down-notified';
 }

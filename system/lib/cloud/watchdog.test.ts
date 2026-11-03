@@ -8,11 +8,13 @@ import { watchdog } from './watchdog.ts';
 function setup(health: boolean[]) {
   const userData = mkdtempSync(join(tmpdir(), 'robin-wd-'));
   const sent: Array<{ title: string; message: string; silent?: boolean }> = [];
-  let t = 1_000_000;
+  let t = 10_000_000;
   let i = 0;
+  const sleeps: number[] = [];
   return {
     userData,
     sent,
+    sleeps,
     advance: (ms: number) => {
       t += ms;
     },
@@ -24,6 +26,10 @@ function setup(health: boolean[]) {
           sent.push(p);
         },
         now: () => t,
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        log: () => {},
       }),
   };
 }
@@ -35,7 +41,7 @@ describe('watchdog', () => {
     assert.equal(s.sent.length, 0);
   });
   it('down notifies once, then stays quiet within the hour', async () => {
-    const s = setup([false, false, false]);
+    const s = setup([false, false, false, false, false, false]);
     assert.equal(await s.run(), 'down-notified');
     assert.equal(s.sent.length, 1);
     assert.equal(s.sent[0].title, "Robin's daemon is not answering on the VM");
@@ -48,7 +54,7 @@ describe('watchdog', () => {
     assert.equal(s.sent.length, 2);
   });
   it('recovery sends one silent notice', async () => {
-    const s = setup([false, true, true]);
+    const s = setup([false, false, true, true]);
     await s.run();
     s.advance(60_000);
     assert.equal(await s.run(), 'ok');
@@ -59,6 +65,34 @@ describe('watchdog', () => {
     assert.equal(s.sent.length, 2);
     const stamp = JSON.parse(readFileSync(join(s.userData, 'state/runtime/watchdog.json'), 'utf8'));
     assert.equal(stamp.down, false);
+  });
+  it('retries a failed probe once after 5 s before declaring down', async () => {
+    const s = setup([false, true]);
+    assert.equal(await s.run(), 'ok');
+    assert.deepEqual(s.sleeps, [5000]);
+    assert.equal(s.sent.length, 0);
+  });
+  it('an unwritable stamp sends nothing and does not throw', async () => {
+    const s = setup([false]);
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(join(s.userData, 'state'), { recursive: true });
+    writeFileSync(join(s.userData, 'state/runtime'), 'a file, not a dir');
+    assert.equal(await s.run(), 'down-quiet');
+    assert.equal(s.sent.length, 0);
+  });
+  it('flapping within an hour: one loud notice, at most one recovery', async () => {
+    const s = setup([false, false, true, false, false, true, true]);
+    await s.run(); // down, loud
+    s.advance(60_000);
+    await s.run(); // up (recovery, silent)
+    s.advance(60_000);
+    await s.run(); // down again, within the hour
+    s.advance(60_000);
+    await s.run(); // up again
+    const loud = s.sent.filter((p) => !p.silent);
+    const quiet = s.sent.filter((p) => p.silent);
+    assert.equal(loud.length, 1);
+    assert.equal(quiet.length, 1);
   });
   it('a corrupt stamp reads as healthy-before', async () => {
     const s = setup([true]);

@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -153,8 +160,8 @@ describe('uninstallDaemonSystemd', () => {
     assert.equal(r.removed, true);
     assert.ok(!existsSync(r.unitPath));
     assert.deepEqual(calls, [
-      ['systemctl', ['--user', 'disable', '--now', 'robin-daemon.service']],
       ['systemctl', ['--user', 'disable', '--now', 'robin-watchdog.timer', 'robin-reap.timer']],
+      ['systemctl', ['--user', 'disable', '--now', 'robin-daemon.service']],
       ['systemctl', ['--user', 'daemon-reload']],
     ]);
   });
@@ -198,5 +205,24 @@ describe('timers install and uninstall', () => {
         ([c, a]) => c === 'systemctl' && a.includes('disable') && a.includes('robin-reap.timer'),
       ),
     );
+  });
+});
+
+describe('uninstall without a daemon unit', () => {
+  it('still removes the timers', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sd-'));
+    const ud = mkdtempSync(join(tmpdir(), 'sd-ud-'));
+    await installDaemonSystemd(
+      { ...spec, userDataDir: ud },
+      { home, exec: fakeExec('yes').exec, skipLoad: true },
+    );
+    const dir = join(home, '.config', 'systemd', 'user');
+    unlinkSync(join(dir, 'robin-daemon.service'));
+    const { calls, exec } = fakeExec('yes');
+    const r = await uninstallDaemonSystemd({ home, exec });
+    assert.equal(r.removed, false);
+    assert.ok(!existsSync(join(dir, 'robin-watchdog.timer')));
+    assert.ok(!existsSync(join(dir, 'robin-reap.service')));
+    assert.ok(calls.some(([, a]) => a.includes('robin-reap.timer')));
   });
 });

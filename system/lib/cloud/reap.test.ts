@@ -87,6 +87,32 @@ describe('reap', () => {
     assert.equal(x.killed.length, 0);
     assert.ok(x.logs.some((l) => l.startsWith('would reap 11 node age=7')));
   });
+  it('pid reused after SIGTERM: no SIGKILL', async () => {
+    const x = deps();
+    let reads = 0;
+    const base = x.d.readProc;
+    x.d.readProc = async (pid: number) => {
+      const r = await base(pid);
+      // listing + pre-TERM check are reads 1-2 for pid 11; later reads see a new process
+      if (pid === 11 && ++reads > 2 && r) return { ...r, startedAtMs: now - 1000 };
+      return r;
+    };
+    await reap({ ...x.d });
+    assert.deepEqual(x.killed, [[11, 'SIGTERM']]);
+    assert.ok(x.logs.includes('skipped 11: changed'));
+  });
+  it('pid that left the cgroup is not signalled', async () => {
+    const x = deps();
+    let cats = 0;
+    const base = x.d.exec;
+    x.d.exec = async (cmd: string, args: string[]) => {
+      if (cmd === 'cat' && ++cats > 1) return { stdout: '10\n12\n' };
+      return base(cmd, args);
+    };
+    await reap({ ...x.d });
+    assert.equal(x.killed.length, 0);
+    assert.ok(x.logs.includes('skipped 11: changed'));
+  });
   it('SIGTERMs then SIGKILLs a survivor', async () => {
     const x = deps();
     const r = await reap({ ...x.d });
