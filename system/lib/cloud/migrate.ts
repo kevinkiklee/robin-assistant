@@ -15,13 +15,16 @@ import {
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { isProcessAlive, readPidfile } from '../../kernel/runtime/pidfile.ts';
 import {
   countEvents,
+  DAEMON_LEASED_SQL,
+  daemonLeasedJobs,
   dbHeldOpenElsewhere as dbHeldOpenElsewhereDefault,
 } from '../../surfaces/cli/db.ts';
 import { setPowerState } from '../../surfaces/cli/power.ts';
 import { LAUNCHD_LABEL, plistPath } from '../launchd/install.ts';
-import { dbFilePath } from '../paths.ts';
+import { dbFilePath, pidFilePath } from '../paths.ts';
 import {
   type CloudRole,
   type CloudRoleRecord,
@@ -149,6 +152,11 @@ export interface RunCloudOpts {
   /** Local argv runner (git, rsync, curl, ps, lsof, launchctl, doctor). */
   run?: ArgvRunner;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Jobs the Mac daemon runs in-process and still holds leased. Default: the
+   * live DB read-only, while the daemon's pidfile names a live process.
+   */
+  macLeasedJobs?: () => number;
   /** Interactive confirmation; `null` = no TTY. Default: stdin when it is a TTY. */
   prompt?: ((question: string) => Promise<string>) | null;
   macProcs?: MacProcs;
@@ -440,6 +448,11 @@ if (mode === 'count') {
   const integrations = n(db, "SELECT count(*) AS n FROM integration_state WHERE key = 'last_attempt_at' AND value > ?", since);
   console.log(JSON.stringify({ jobs, integrations }));
   db.close();
+} else if (mode === 'leased') {
+  if (!fs.existsSync(a)) { console.log(0); process.exit(0); }
+  const db = ro(a);
+  console.log(n(db, ${JSON.stringify(DAEMON_LEASED_SQL)}));
+  db.close();
 } else if (mode === 'held') {
   if (!fs.existsSync(a)) { console.log('free'); process.exit(0); }
   const db = new D(a, { fileMustExist: true });
@@ -514,6 +527,7 @@ class Ctx {
   readonly db: DbOps;
   readonly remote: Remote;
   readonly macDb: string;
+  readonly macLeased: () => number;
   rsync: string | undefined;
   vm!: VmPaths;
   macHead = '';
@@ -544,6 +558,12 @@ class Ctx {
       restore: o.dbOps?.restore ?? restoreMacOnlyRows,
     };
     this.macDb = dbFilePath(o.userData);
+    this.macLeased =
+      o.macLeasedJobs ??
+      (() => {
+        const pid = readPidfile(pidFilePath(o.userData));
+        return pid && isProcessAlive(pid) ? daemonLeasedJobs(this.macDb) : 0;
+      });
     this.remote = o.remote ?? this.sshWithResolvedRsync(o.host);
   }
 
@@ -707,6 +727,14 @@ class Ctx {
   }
 
   // --- Mac quiescence ---
+
+  /** In-flight work after the pause: Robin's children plus the daemon's own leased jobs. */
+  async macInFlight(): Promise<Proc[]> {
+    const out = [...(await this.macProcs.children())];
+    const n = this.macLeased();
+    if (n > 0) out.push({ pid: 0, cmd: `${n} job(s) still leased by the daemon itself` });
+    return out;
+  }
 
   async macAllHolders(): Promise<Proc[]> {
     const seen = new Map<number, Proc>();
@@ -1118,14 +1146,18 @@ async function preflight(c: Ctx): Promise<void> {
   c.rsync = await resolveRsync(c);
   c.detail(`rsync: ${c.rsync}`);
 
-  const need = 2 * (await transferEstimate(c));
+  // Rollback writes one thing on the VM (a snapshot of its DB); a push needs
+  // room for the transfer twice over.
+  const need = c.cmd === 'rollback' ? await vmDbBytes(c) : 2 * (await transferEstimate(c));
   const df = await c.exec(['df', '-Pk', c.vm.repo], 'df');
   const availKb = Number(df.trim().split('\n')[1]?.trim().split(/\s+/)[3]);
   if (!Number.isFinite(availKb)) throw new Error(`unparseable df output: ${tail(df)}`);
   const free = availKb * 1024;
   if (free < need) {
     throw new Error(
-      `the VM has ${gb(free)} free disk; the move needs ${gb(need)} (2× the transfer)`,
+      c.cmd === 'rollback'
+        ? `the VM has ${gb(free)} free disk; the rollback's snapshot of its DB needs ${gb(need)}`
+        : `the VM has ${gb(free)} free disk; the move needs ${gb(need)} (2× the transfer)`,
     );
   }
   c.detail(`VM disk: ${gb(free)} free, ${gb(need)} needed`);
@@ -1141,6 +1173,34 @@ async function preflight(c: Ctx): Promise<void> {
     }
   }
   c.detail(`VM daemon: ${await c.vmActive()}`);
+}
+
+/** The VM DB's size (file + -wal): what one snapshot of it takes. */
+async function vmDbBytes(c: Ctx): Promise<number> {
+  // du exits 1 for a missing -wal but still prints the total of what exists.
+  const r = await c.remote.exec(['du', '-skc', c.vm.db, `${c.vm.db}-wal`]);
+  const last = r.stdout.trim().split('\n').pop() ?? '';
+  const kb = Number(last.trim().split(/\s+/)[0]);
+  if (last.trim() === '' || !Number.isFinite(kb)) {
+    throw new Error(`du ${c.vm.db} failed on the VM (exit ${r.code}): ${tail(r.stderr)}`);
+  }
+  return kb * 1024;
+}
+
+/**
+ * Refuse to pass a point of no return if this Mac's checkout moved since
+ * preflight (a commit or an auto-land landed mid-run): the VM runs the commit
+ * preflight checked, and a later rollback refuses on a mismatch.
+ */
+async function assertHeadUnchanged(c: Ctx): Promise<void> {
+  const r = await c.run('git', ['-C', c.o.repoRoot, 'rev-parse', 'HEAD']);
+  const head = r.code === 0 ? r.stdout.trim() : '';
+  if (head !== c.macHead) {
+    const was = c.macHead.slice(0, 12);
+    throw new Error(
+      `this Mac's checkout moved during the run (HEAD now ${head.slice(0, 12) || 'unreadable'}, preflight checked ${was}); refusing to continue — check out ${was} again (or put both sides on the new commit and pnpm build), then re-run`,
+    );
+  }
 }
 
 /** The Mac must hold the VM's user-data (backups/ is never pulled) twice over. */
@@ -1384,9 +1444,9 @@ async function cutover(c: Ctx, existing: CloudRoleRecord | null): Promise<number
       title: 'drain in-flight work on this Mac',
       run: () =>
         c.wait(
-          () => c.macProcs.children(),
+          () => c.macInFlight(),
           c.timing.drainMs,
-          "Robin's agent/cognition runs",
+          "Robin's agent/cognition runs and in-process jobs",
           'Wait for them to finish (or stop them), then re-run.',
         ),
     },
@@ -1438,9 +1498,10 @@ async function cutover(c: Ctx, existing: CloudRoleRecord | null): Promise<number
     { title: 'push the DB snapshot', run: () => installSnapshotOnVm(c, snap.snap, true) },
     {
       title: 'mark the VM primary',
-      run: () => {
+      run: async () => {
         assertStillLocked(c);
-        return c.writeRemoteRole('vm-primary');
+        await assertHeadUnchanged(c);
+        await c.writeRemoteRole('vm-primary');
       },
     },
     {
@@ -1566,10 +1627,19 @@ async function rollback(
         c.wait(
           async () => {
             const main = await c.vmMainPid();
-            return (await c.vmCgroupProcs(cg)).filter((p) => p.pid !== main);
+            const procs = (await c.vmCgroupProcs(cg)).filter((p) => p.pid !== main);
+            // A stopped daemon runs no in-process job (its stale leases reset at its next boot).
+            if (main > 0) {
+              const raw = await c.vmDb('leased', c.vm.db);
+              const n = Number(raw);
+              if (raw === '' || !Number.isInteger(n)) throw new Error(`VM DB leased: ${raw}`);
+              if (n > 0)
+                procs.push({ pid: 0, cmd: `${n} job(s) still leased by the VM daemon itself` });
+            }
+            return procs;
           },
           c.timing.drainMs,
-          "the VM daemon's children",
+          "the VM daemon's children and in-process jobs",
           'Wait for them to finish (or stop them), then re-run.',
         ),
     },
@@ -1639,8 +1709,9 @@ async function rollback(
     },
     {
       title: "install the VM's DB on this Mac",
-      run: () => {
+      run: async () => {
         assertStillLocked(c);
+        await assertHeadUnchanged(c);
         const aside = join(dirname(c.macDb), `pre-rollback-${c.stamp()}`);
         mkdirSync(aside, { recursive: true });
         for (const s of ['', '-wal', '-shm', '-journal']) {

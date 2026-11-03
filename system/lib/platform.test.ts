@@ -49,7 +49,8 @@ describe('platformSkipLabel', () => {
   it('uses the exact copy', () => {
     assert.equal(
       platformSkipLabel({ platforms: ['darwin'] }),
-      'skipped — darwin-only (runs via the Mac satellite)',
+      'skipped — darwin-only (needs the Mac; satellite pending)',
     );
+    assert.equal(platformSkipLabel({ platforms: ['linux'] }), 'skipped — linux-only');
   });
 });

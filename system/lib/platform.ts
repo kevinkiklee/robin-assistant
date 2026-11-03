@@ -32,7 +32,14 @@ export function parsePlatforms(
   return raw as ManifestPlatform[];
 }
 
-/** The operator-facing status line for a platform-skipped entry. */
+/**
+ * The operator-facing status line for a platform-skipped entry. A darwin-only
+ * entry needs the Mac (the satellite that would run it from the VM doesn't
+ * exist yet).
+ */
 export function platformSkipLabel(m: { platforms?: readonly string[] }): string {
-  return `skipped — ${(m.platforms ?? []).join('/')}-only (runs via the Mac satellite)`;
+  const only = `skipped — ${(m.platforms ?? []).join('/')}-only`;
+  return m.platforms?.length === 1 && m.platforms[0] === 'darwin'
+    ? `${only} (needs the Mac; satellite pending)`
+    : only;
 }

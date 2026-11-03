@@ -7,6 +7,7 @@ import { notifyDiscordAction } from '../integrations/builtin/discord/index.ts';
 import { loadPolicies } from '../kernel/config/load.ts';
 import { DEFAULT_WARN_COUNT as WORKTREE_WARN_COUNT } from '../kernel/invariants/builtins/agent-worktrees-bounded.ts';
 import { recordAlert, resolveAlert } from '../kernel/runtime/alert-store.ts';
+import { readRole, roleHoldsWork } from '../lib/cloud/role.ts';
 import { appendLandLog } from '../lib/land-log.ts';
 import { operatorName } from '../lib/operator-profile.ts';
 import { dbFilePath, pidFilePath, resolveUserDataDir } from '../lib/paths.ts';
@@ -488,17 +489,24 @@ export async function runRunnerEntry(
       branch &&
       loadPolicies(userDataDir).agent.auto_land
     ) {
-      try {
-        const title =
-          envelope?.changes?.[0]?.summary ?? envelope?.notes ?? 'remediate health issue';
-        const landed = (deps.autoLand ?? autoLand)({ repoRoot, worktree, branch, title, log });
-        await (deps.afterLand ?? defaultAfterLand)(landed, { branch, repoRoot, userDataDir });
-      } catch (landErr) {
-        log(
-          `auto-land failed (non-fatal, branch kept for review): ${
-            landErr instanceof Error ? landErr.message : String(landErr)
-          }`,
-        );
+      // A cloud move in progress (`mac-locked` / `vm-dry-run`): landing would
+      // move HEAD off the commit the move checked and probation would restart
+      // a locked daemon. Hold the branch for review instead.
+      if (roleHoldsWork(userDataDir)) {
+        log(`auto-land held: cloud role ${readRole(userDataDir)?.role ?? 'unknown'}`);
+      } else {
+        try {
+          const title =
+            envelope?.changes?.[0]?.summary ?? envelope?.notes ?? 'remediate health issue';
+          const landed = (deps.autoLand ?? autoLand)({ repoRoot, worktree, branch, title, log });
+          await (deps.afterLand ?? defaultAfterLand)(landed, { branch, repoRoot, userDataDir });
+        } catch (landErr) {
+          log(
+            `auto-land failed (non-fatal, branch kept for review): ${
+              landErr instanceof Error ? landErr.message : String(landErr)
+            }`,
+          );
+        }
       }
     }
 

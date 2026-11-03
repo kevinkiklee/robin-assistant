@@ -90,7 +90,7 @@ test('jobs scheduler-glue: platforms:[darwin] skipped on linux, registered on da
     assert.equal(r.scheduled, expectRegistered ? 2 : 1);
     assert.deepEqual(
       r.platformSkipped.map((s) => s.reason),
-      expectRegistered ? [] : ['skipped — darwin-only (runs via the Mac satellite)'],
+      expectRegistered ? [] : ['skipped — darwin-only (needs the Mac; satellite pending)'],
     );
     closeDb(db);
   }

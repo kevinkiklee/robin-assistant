@@ -166,7 +166,7 @@ describe('robin integrations report', () => {
     const roots = { integrations: [sys], jobs: [] };
     const onLinux = runIntegrationsReport('linux', roots).rows.find((r) => r.name === 'macthing');
     assert.equal(onLinux?.status, 'skipped');
-    assert.equal(onLinux?.skip_reason, 'skipped — darwin-only (runs via the Mac satellite)');
+    assert.equal(onLinux?.skip_reason, 'skipped — darwin-only (needs the Mac; satellite pending)');
     const onMac = runIntegrationsReport('darwin', roots).rows.find((r) => r.name === 'macthing');
     assert.equal(onMac, undefined, 'darwin: not skipped, no state -> not listed');
   });

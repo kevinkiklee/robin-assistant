@@ -144,7 +144,7 @@ via `system/agent/auto-land.ts` only if it clears every gate:
   `surfaces/`, `kernel/config/`, `scripts/`, secrets, capture,
   publish/discretion/notify, the reliability audit, or migrations. The service
   layer is now in that protected import closure (auto-land → `lib/service`):
-  `kernel/runtime/pidfile.ts`, `lib/launchd/install.ts` and `lib/service/*`
+  `kernel/runtime/pidfile.ts`, `lib/launchd/install.ts` and `lib/service/manager.ts`
   go to review, never auto-land;
 - size and proof: ≤8 files / ≤400 lines, includes a test, no commits ahead of
   main, no overlap with uncommitted work in the live checkout;

@@ -782,7 +782,7 @@ test('scheduler-glue: platforms:[darwin] on linux -> not registered, listed as s
   assert.deepEqual(cronNames, ['integration.everywhere.tick']);
   assert.equal(r.scheduled, 1);
   assert.deepEqual(r.platformSkipped, [
-    { name: 'macthing', reason: 'skipped — darwin-only (runs via the Mac satellite)' },
+    { name: 'macthing', reason: 'skipped — darwin-only (needs the Mac; satellite pending)' },
   ]);
   assert.deepEqual(
     r.scheduledIntegrations.map((i) => i.name),

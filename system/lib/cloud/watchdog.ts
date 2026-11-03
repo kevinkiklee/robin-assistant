@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HEALTH_URL } from './migrate.ts';
+import { readRole } from './role.ts';
 
 const NOTICE_INTERVAL_MS = 60 * 60_000;
 const HEALTH_TIMEOUT_MS = 5_000;
@@ -25,10 +26,9 @@ function readStamp(userData: string): Stamp {
   try {
     const raw = JSON.parse(readFileSync(stampPath(userData), 'utf8')) as Partial<Stamp>;
     const n = (v: unknown): number | null => (typeof v === 'number' ? v : null);
-    const legacy = (raw as { lastNotifiedAt?: unknown }).lastNotifiedAt;
     return {
       down: raw.down === true,
-      lastLoudAt: n(raw.lastLoudAt) ?? n(legacy),
+      lastLoudAt: n(raw.lastLoudAt),
       lastBackAt: n(raw.lastBackAt),
     };
   } catch {
@@ -63,6 +63,9 @@ async function defaultNotify(p: Parameters<Notify>[0]): Promise<unknown> {
 /**
  * Liveness check, run from a systemd timer. Down: one loud notice per hour.
  * Recovery: one silent notice. State lives in `state/runtime/watchdog.json`.
+ * Only a `vm-primary` VM is watched: a stopped/held VM (no role, `vm-dry-run`
+ * after a rollback or a parked cutover, `mac-locked`) returns `not-primary`
+ * without probing, notifying or touching the stamp.
  */
 export async function watchdog(opts: {
   userData: string;
@@ -71,7 +74,8 @@ export async function watchdog(opts: {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
-}): Promise<'ok' | 'down-notified' | 'down-quiet'> {
+}): Promise<'ok' | 'down-notified' | 'down-quiet' | 'not-primary'> {
+  if (readRole(opts.userData)?.role !== 'vm-primary') return 'not-primary';
   const fetchHealth = opts.fetchHealth ?? defaultFetchHealth;
   const notify = opts.notify ?? defaultNotify;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));

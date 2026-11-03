@@ -951,6 +951,28 @@ test('auto-land: off when agent.auto_land is false, and never for an unverified 
   assert.equal(landed.length, 0, 'an unverified run keeps its branch for review');
 });
 
+test('auto-land: held while a cloud move holds work (mac-locked / vm-dry-run)', async () => {
+  const { writeRole } = await import('../lib/cloud/role.ts');
+  for (const role of ['mac-locked', 'vm-dry-run'] as const) {
+    const ud = tmpUserData();
+    writeRole(ud, { role, at: new Date().toISOString(), host: 'example-vm' });
+    const landed: Array<{ branch: string; title: string }> = [];
+    const after: string[] = [];
+    const lines: string[] = [];
+    const deps = kLandDeps(
+      ledgerWithDb(),
+      ud,
+      { outcome: 'did-work', impact: 'low', changes: [{ type: 'fix', summary: 's' }] },
+      landed,
+      after,
+    );
+    await runRunnerEntry(['--handler=K'], { ...deps, log: (l: string) => lines.push(l) });
+    assert.equal(landed.length, 0, `${role}: no auto-land`);
+    assert.equal(after.length, 0, `${role}: no probation`);
+    assert.ok(lines.includes(`auto-land held: cloud role ${role}`), `${role}: logged`);
+  }
+});
+
 test('runRunnerEntry: a successful run clears the remediation request it served; a failed one keeps it', async () => {
   const { writeRemediationRequest, peekRemediationRequest } = await import(
     '../lib/remediation-request.ts'

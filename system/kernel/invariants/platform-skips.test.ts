@@ -29,7 +29,7 @@ test('listPlatformSkips: lists darwin-only integrations and jobs on linux, none 
     'integration.macthing.tick',
     'job.macjob.run',
   ]);
-  assert.equal(onLinux[0]?.reason, 'skipped — darwin-only (runs via the Mac satellite)');
+  assert.equal(onLinux[0]?.reason, 'skipped — darwin-only (needs the Mac; satellite pending)');
   assert.deepEqual(listPlatformSkips(root, 'darwin', opts), []);
 });
 

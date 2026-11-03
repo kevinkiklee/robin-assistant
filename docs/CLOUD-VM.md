@@ -81,6 +81,24 @@ On Linux, `pnpm robin doctor` warns `agent.auto_land_sandbox` (auto-land is enab
 without an OS sandbox). That is expected until a later milestone. To silence it,
 set `agent.auto_land: false`.
 
+## Watchdog and reaper
+
+`daemon install` on the VM also enables two systemd user timers:
+
+- `robin-watchdog.timer`, every 15 minutes, runs `robin watchdog`. It probes
+  `/health` (one retry after 5 s). While the daemon is down it sends one loud
+  notice (a Discord ping that mentions you) per hour; when it answers again it sends
+  one silent recovery notice. It only watches a VM whose role is `vm-primary`:
+  with no role, `vm-dry-run` or `mac-locked` it prints `watchdog: not-primary`
+  and does nothing.
+- `robin-reap.timer`, hourly, runs `robin reap`. It stops Robin children older
+  than 6 h in the daemon's own cgroup (SIGTERM, then SIGKILL after 10 s),
+  never the daemon itself. `robin reap --dry-run` lists what it would stop.
+
+Both are inert while the VM is stopped or held: after a rollback or a parked
+cutover (`vm-dry-run`, daemon stopped) the watchdog stays quiet and the reaper
+finds no daemon, so neither needs disabling.
+
 ## Moving Robin
 
 `robin cloud` moves the live instance between the Mac and the VM. Run it on the

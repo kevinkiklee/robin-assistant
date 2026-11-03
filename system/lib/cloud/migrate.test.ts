@@ -18,6 +18,7 @@ import { closeDb, openDb } from '../../brain/memory/db.ts';
 import { ingest } from '../../brain/memory/ingest.ts';
 import { allMigrations, applyMigrations } from '../../brain/memory/migrations/index.ts';
 import { loadPolicies } from '../../kernel/config/load.ts';
+import { DAEMON_LEASED_SQL, daemonLeasedJobs } from '../../surfaces/cli/db.ts';
 import { setPowerState } from '../../surfaces/cli/power.ts';
 import { LAUNCHD_LABEL } from '../launchd/install.ts';
 import { dbFilePath } from '../paths.ts';
@@ -118,6 +119,8 @@ class FakeVm {
   duKb = 2_000;
   backupsKb = 500;
   pullBackupDirs: Array<string | undefined> = [];
+  /** Successive answers of the `leased` DB mode; the last one repeats. */
+  leased: number[] = [0];
   /** Called inside push/pull to simulate a concurrent actor. */
   onTransfer?: (op: 'push' | 'pull' | 'pushFile') => void | Promise<void>;
   /** Mac-only rows found in each file pushed as the DB. */
@@ -238,6 +241,11 @@ class FakeVm {
         return ok(JSON.stringify({ jobs: this.activity ? 2 : 0, integrations: 0 }));
       }
       if (mode === 'held') return ok('free\n');
+      if (mode === 'leased') {
+        const n = this.leased.length > 1 ? (this.leased.shift() as number) : this.leased[0];
+        s.push(`vm:leased ${n}`);
+        return ok(`${n}\n`);
+      }
       if (mode === 'carry-oauth') {
         s.push('vm:carry-oauth');
         return ok('0\n');
@@ -297,7 +305,15 @@ interface World {
   localRuns: Array<{ cmd: string; args: string[] }>;
   children: Proc[][];
   settingsPath: string;
-  mac: { healthy: boolean; freeKb: number; doctorRaw: string | null; startFails: number };
+  mac: {
+    healthy: boolean;
+    freeKb: number;
+    doctorRaw: string | null;
+    startFails: number;
+    /** Successive `git rev-parse HEAD` answers; the last one repeats. */
+    heads: string[];
+    transferBytes: number;
+  };
   opts(extra?: Partial<RunCloudOpts>): RunCloudOpts;
 }
 
@@ -322,14 +338,20 @@ function world(): World {
     freeKb: 60_000_000,
     doctorRaw: null as string | null,
     startFails: 0,
+    heads: [HEAD],
+    transferBytes: 1_000,
   };
   const run: ArgvRunner = async (cmd, args) => {
     localRuns.push({ cmd, args });
-    if (cmd === 'git') return ok(`${HEAD}\n`);
+    if (cmd === 'git') {
+      return ok(`${mac.heads.length > 1 ? mac.heads.shift() : mac.heads[0]}\n`);
+    }
     if (cmd.endsWith('rsync') && args[0] === '--version') {
       return ok('rsync  version 3.4.1  protocol version 32\n');
     }
-    if (cmd.endsWith('rsync')) return ok('Number of files: 10\nTotal file size: 1,000 bytes\n');
+    if (cmd.endsWith('rsync')) {
+      return ok(`Number of files: 10\nTotal file size: ${mac.transferBytes} bytes\n`);
+    }
     if (cmd === 'curl') {
       seq.push('mac:health');
       return mac.healthy ? ok('{"ok":true}') : fail(7);
@@ -1589,4 +1611,150 @@ test('handlers are only installed for lock-holding commands and removed after', 
   assert.equal(handlers.size, 0);
   assert.equal(await runCloud('dry-run', w.opts({ signals })), 0, w.lines.join('\n'));
   assert.equal(handlers.size, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Final review fixes
+
+test('cutover refuses to mark the VM primary when the Mac HEAD moved mid-run', async () => {
+  const w = world();
+  const moved = 'feedfacefeedfacefeedfacefeedfacefeedface';
+  w.mac.heads = [HEAD, moved];
+  assert.equal(await runCloud('cutover', w.opts()), 1);
+  const out = w.lines.join('\n');
+  assert.match(
+    out,
+    /checkout moved during the run \(HEAD now feedfacefeed, preflight checked 0123456789ab\)/,
+  );
+  assert.ok(!w.seq.includes('vm:role vm-primary'));
+  assert.ok(!w.seq.includes('vm:start'));
+  assert.equal(w.vm.role?.role, 'vm-dry-run', 'parked');
+  assert.equal(w.vm.active, false);
+  assert.equal(readRole(w.userData)?.role, 'mac-locked');
+});
+
+test("rollback refuses to install the VM's DB when the Mac HEAD moved mid-run", async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  w.mac.heads = [HEAD, 'feedfacefeedfacefeedfacefeedfacefeedface'];
+  assert.equal(await runCloud('rollback', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /checkout moved during the run/);
+  assert.ok(
+    !readdirSync(join(w.userData, 'state', 'db')).some((f) => f.startsWith('pre-rollback')),
+  );
+  assert.equal(
+    countWhere(w.dbPath, `SELECT count(*) AS n FROM events WHERE payload LIKE '%sourdough%'`),
+    1,
+  );
+  assert.equal(readRole(w.userData)?.role, 'mac-locked', 'still locked, re-runnable');
+});
+
+test('rollback needs VM room for one DB snapshot, not 2x the Mac transfer', async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  w.mac.transferBytes = 10 * 1024 ** 3; // 2x = 20 GB, far beyond the VM's free 5 GB
+  w.vm.freeKb = 5_000_000;
+  w.vm.duKb = 2_000;
+  assert.equal(await runCloud('rollback', w.opts()), 0, w.lines.join('\n'));
+  assert.ok(w.vm.execs.some((a) => a[0] === 'du' && a[1] === '-skc' && a[2] === VM_DB));
+
+  const small = world();
+  lock(small);
+  small.vm.role = vmRole('vm-primary');
+  vmDbFor(small);
+  small.vm.duKb = 2_000;
+  small.vm.freeKb = 1_000;
+  assert.equal(await runCloud('rollback', small.opts()), 1);
+  assert.match(small.lines.join('\n'), /the rollback's snapshot of its DB needs/);
+  assert.deepEqual(small.seq, []);
+
+  // a cutover still needs 2x the transfer
+  const c = world();
+  c.mac.transferBytes = 10 * 1024 ** 3;
+  c.vm.freeKb = 5_000_000;
+  assert.equal(await runCloud('cutover', c.opts()), 1);
+  assert.match(c.lines.join('\n'), /2× the transfer/);
+});
+
+test("the Mac drain waits for the daemon's own leased jobs", async () => {
+  const w = world();
+  const counts = [2, 1, 0];
+  let polls = 0;
+  const macLeasedJobs = () => {
+    polls++;
+    const n = counts.length > 1 ? (counts.shift() as number) : counts[0];
+    w.seq.push(`mac:leased ${n}`);
+    return n;
+  };
+  assert.equal(await runCloud('cutover', w.opts({ macLeasedJobs })), 0, w.lines.join('\n'));
+  assert.ok(polls >= 3);
+  assertSubsequence(w.seq, [
+    'mac:pause',
+    'mac:leased 2',
+    'mac:leased 1',
+    'mac:leased 0',
+    'mac:stopMac',
+  ]);
+  assert.match(w.lines.join('\n'), /2 job\(s\) still leased by the daemon itself/);
+
+  const stuck = world();
+  assert.equal(await runCloud('cutover', stuck.opts({ macLeasedJobs: () => 1 })), 1);
+  assert.match(stuck.lines.join('\n'), /still running after .*1 job\(s\) still leased/);
+  assert.ok(!stuck.seq.includes('mac:stopMac'));
+  assert.ok(!stuck.seq.includes('mac:snapshot'));
+});
+
+test("the VM drain waits for the daemon's own leased jobs while it runs", async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  w.vm.leased = [1, 1, 0];
+  assert.equal(await runCloud('rollback', w.opts()), 0, w.lines.join('\n'));
+  assertSubsequence(w.seq, ['vm:pause', 'vm:leased 1', 'vm:leased 1', 'vm:leased 0', 'vm:stop']);
+
+  const stuck = world();
+  lock(stuck);
+  stuck.vm.role = vmRole('vm-primary');
+  vmDbFor(stuck);
+  stuck.vm.leased = [3];
+  assert.equal(await runCloud('rollback', stuck.opts()), 1);
+  assert.match(stuck.lines.join('\n'), /3 job\(s\) still leased by the VM daemon itself/);
+  assert.ok(!stuck.seq.includes('vm:stop'));
+});
+
+function insertJobs(db: string, rows: Array<[state: string, claimedBy: string | null]>): void {
+  const h = openDb(db);
+  try {
+    const ins = h.prepare(
+      `INSERT INTO jobs (name, trigger_kind, scheduled_at, state, claimed_by) VALUES ('j', 'cron', '2026-11-02T12:00:00Z', ?, ?)`,
+    );
+    for (const [state, by] of rows) ins.run(state, by);
+  } finally {
+    closeDb(h);
+  }
+}
+
+test('daemon leased jobs: counts in-process leases, not child leases (Mac and VM_DB_SCRIPT)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-leased-'));
+  const db = join(dir, 'robin.sqlite');
+  makeDb(db, []);
+  assert.equal(daemonLeasedJobs(db), 0);
+  assert.equal(vmScript('leased', db), '0');
+  insertJobs(db, [
+    ['leased', 'daemon:123'],
+    ['leased', null],
+    ['leased', 'child:456'],
+    ['pending', null],
+    ['completed', 'daemon:123'],
+  ]);
+  assert.equal(daemonLeasedJobs(db), 2);
+  assert.equal(vmScript('leased', db), '2');
+  assert.equal(daemonLeasedJobs(join(dir, 'missing.sqlite')), 0);
+  assert.equal(vmScript('leased', join(dir, 'missing.sqlite')), '0');
+  assert.match(DAEMON_LEASED_SQL, /claimed_by NOT LIKE 'child:%'/);
 });

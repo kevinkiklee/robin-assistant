@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import { type CloudRole, writeRole } from './role.ts';
 import { watchdog } from './watchdog.ts';
 
-function setup(health: boolean[]) {
+function setup(health: boolean[], role: CloudRole | null = 'vm-primary') {
   const userData = mkdtempSync(join(tmpdir(), 'robin-wd-'));
+  if (role) writeRole(userData, { role, at: '2026-01-01T00:00:00.000Z', host: 'example-vm' });
+  let probes = 0;
   const sent: Array<{ title: string; message: string; silent?: boolean }> = [];
   let t = 1_000_000;
   let i = 0;
@@ -15,13 +18,17 @@ function setup(health: boolean[]) {
     userData,
     sent,
     sleeps,
+    probes: () => probes,
     advance: (ms: number) => {
       t += ms;
     },
     run: () =>
       watchdog({
         userData,
-        fetchHealth: async () => health[Math.min(i++, health.length - 1)],
+        fetchHealth: async () => {
+          probes++;
+          return health[Math.min(i++, health.length - 1)];
+        },
         notify: async (p) => {
           sent.push(p);
         },
@@ -35,6 +42,23 @@ function setup(health: boolean[]) {
 }
 
 describe('watchdog', () => {
+  for (const role of [null, 'vm-dry-run', 'mac-locked'] as const) {
+    it(`stays quiet when the role is ${role ?? 'absent'}, even with the daemon down`, async () => {
+      const s = setup([false, false, false], role);
+      assert.equal(await s.run(), 'not-primary');
+      s.advance(2 * 60 * 60_000);
+      assert.equal(await s.run(), 'not-primary');
+      assert.equal(s.sent.length, 0);
+      assert.equal(s.probes(), 0);
+      assert.ok(!existsSync(join(s.userData, 'state/runtime/watchdog.json')));
+    });
+  }
+  it('vm-primary and down still sends the loud notice', async () => {
+    const s = setup([false, false], 'vm-primary');
+    assert.equal(await s.run(), 'down-notified');
+    assert.equal(s.sent.length, 1);
+    assert.ok(!s.sent[0].silent);
+  });
   it('healthy and never down is ok and silent', async () => {
     const s = setup([true]);
     assert.equal(await s.run(), 'ok');
@@ -75,8 +99,9 @@ describe('watchdog', () => {
   it('an unwritable stamp sends nothing and does not throw', async () => {
     const s = setup([false]);
     const { mkdirSync, writeFileSync } = await import('node:fs');
-    mkdirSync(join(s.userData, 'state'), { recursive: true });
-    writeFileSync(join(s.userData, 'state/runtime'), 'a file, not a dir');
+    // The stamp path is a non-empty directory: the role still reads, the rename fails.
+    mkdirSync(join(s.userData, 'state/runtime/watchdog.json'), { recursive: true });
+    writeFileSync(join(s.userData, 'state/runtime/watchdog.json/x'), 'a dir, not a file');
     assert.equal(await s.run(), 'down-quiet');
     assert.equal(s.sent.length, 0);
   });
@@ -101,17 +126,6 @@ describe('watchdog', () => {
     assert.equal(await s.run(), 'ok');
     assert.equal(s.sent.length, 2);
     assert.equal(s.sent[1].silent, true);
-  });
-  it('a legacy lastNotifiedAt stamp rate-limits the loud notice', async () => {
-    const s = setup([false, false]);
-    const { mkdirSync, writeFileSync } = await import('node:fs');
-    mkdirSync(join(s.userData, 'state/runtime'), { recursive: true });
-    writeFileSync(
-      join(s.userData, 'state/runtime/watchdog.json'),
-      JSON.stringify({ down: true, lastNotifiedAt: 1_000_000 - 60_000 }),
-    );
-    assert.equal(await s.run(), 'down-quiet');
-    assert.equal(s.sent.length, 0);
   });
   it('a corrupt stamp reads as healthy-before', async () => {
     const s = setup([true]);

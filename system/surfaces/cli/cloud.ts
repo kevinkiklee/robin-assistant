@@ -4,12 +4,14 @@ import { resolveUserDataDir } from '../../lib/paths.ts';
 
 const SUBCOMMANDS: readonly CloudCmd[] = ['status', 'dry-run', 'cutover', 'rollback'];
 
-const USAGE = `usage: robin cloud <status|dry-run|cutover|rollback> --host <ssh-alias> [--yes] [--accept-gaps]
+const USAGE = `usage: robin cloud <status|dry-run|cutover|rollback> --host <ssh-alias> [--yes] [--accept-gaps] [--accept-token-reset]
 
   status     both roles, both daemons, and which side is the writer (changes nothing)
   dry-run    copy this Mac's data to a held VM (the Mac keeps running; repeat freely)
   cutover    lock this Mac and make the VM the writer (asks you to type "cutover")
   rollback   bring the VM's data home and unlock this Mac (asks you to type "rollback")
+
+  --accept-token-reset  allow an unlock-only rollback after a parked VM ran (then: robin reauth whoop)
 
 See docs/CLOUD-VM.md, "Moving Robin".`;
 

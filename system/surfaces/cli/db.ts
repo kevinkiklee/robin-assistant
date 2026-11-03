@@ -27,6 +27,25 @@ export function countEvents(dbPath: string): number {
   }
 }
 
+/**
+ * Jobs the daemon itself holds leased (an in-process job mid-run). Leases held
+ * by detached children (`claimed_by = 'child:<pid>'`) are covered by the
+ * process drain of `robin cloud` instead.
+ */
+export const DAEMON_LEASED_SQL =
+  "SELECT count(*) AS n FROM jobs WHERE state = 'leased' AND (claimed_by IS NULL OR claimed_by NOT LIKE 'child:%')";
+
+/** {@link DAEMON_LEASED_SQL} against a local DB, read-only; a missing DB holds none. */
+export function daemonLeasedJobs(dbPath: string): number {
+  if (!existsSync(dbPath)) return 0;
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    return (db.prepare(DAEMON_LEASED_SQL).get() as { n: number }).n;
+  } finally {
+    db.close();
+  }
+}
+
 export function runDbBackup(opts: { path?: string } = {}): void {
   const userData = resolveUserDataDir();
   const src = dbFilePath(userData);
