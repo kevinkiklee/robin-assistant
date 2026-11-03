@@ -14,7 +14,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   countEvents,
   dbHeldOpenElsewhere as dbHeldOpenElsewhereDefault,
@@ -89,6 +89,18 @@ export interface MacProcs {
   dbHolders(dbPath: string): Promise<Proc[]>;
 }
 
+export type CloudSignal = 'SIGINT' | 'SIGTERM';
+
+export interface SignalSource {
+  on(signal: CloudSignal, handler: () => void): void;
+  off(signal: CloudSignal, handler: () => void): void;
+}
+
+const processSignals: SignalSource = {
+  on: (s, h) => void process.on(s, h),
+  off: (s, h) => void process.off(s, h),
+};
+
 export interface Timing {
   /** Waiting for in-flight work after the pause (agent runs cap at 30 min, cognition 45). */
   drainMs: number;
@@ -130,6 +142,10 @@ export interface RunCloudOpts {
   acceptTokenReset?: boolean;
   /** Liveness of an op-lock holder (default: signal 0). */
   pidAlive?: (pid: number) => boolean;
+  /** Where SIGINT/SIGTERM handlers go (default: process). */
+  signals?: SignalSource;
+  /** Process exit after a signal (default: process.exit). */
+  exit?: (code: number) => void;
   /** Local argv runner (git, rsync, curl, ps, lsof, launchctl, doctor). */
   run?: ArgvRunner;
   sleep?: (ms: number) => Promise<void>;
@@ -384,13 +400,19 @@ export function macProcLister(run: ArgvRunner, selfPid: number = process.pid): M
 }
 
 async function ttyPrompt(question: string): Promise<string> {
-  const { createInterface } = await import('node:readline/promises');
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    return await rl.question(question);
-  } finally {
-    rl.close();
-  }
+  const { createInterface } = await import('node:readline');
+  return new Promise((done) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    // Ctrl-C at the prompt (readline holds the TTY in raw mode) = not confirmed.
+    rl.on('SIGINT', () => {
+      rl.close();
+      done('');
+    });
+    rl.question(question, (answer) => {
+      rl.close();
+      done(answer);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -497,6 +519,10 @@ class Ctx {
   macHead = '';
   /** `at` of the mac-locked record this run holds (re-checked before point-of-no-return steps). */
   lockAt = '';
+  /** `[n/N] title` of the step running now (for an interrupt message). */
+  current = '';
+  /** Exit code once a signal stopped the run: no further step starts. */
+  aborted: number | null = null;
   private tmp: string | undefined;
 
   constructor(
@@ -531,10 +557,11 @@ class Ctx {
     return {
       host,
       exec: (argv) => base.exec(argv),
-      push: (l, r, x) => xfer().push(l, r, x),
-      pull: (r, l, x) => xfer().pull(r, l, x),
-      pushFile: (l, r) => xfer().pushFile(l, r),
-      pullFile: (r, l) => xfer().pullFile(r, l),
+      // Forward every argument: a dropped option (pull's backupDir) fails silently.
+      push: (...a) => xfer().push(...a),
+      pull: (...a) => xfer().pull(...a),
+      pushFile: (...a) => xfer().pushFile(...a),
+      pullFile: (...a) => xfer().pullFile(...a),
     };
   }
 
@@ -891,11 +918,15 @@ async function runSteps(
   } = {},
 ): Promise<number> {
   for (const [i, step] of steps.entries()) {
-    c.log(`[${i + 1}/${steps.length}] ${step.title}`);
+    if (c.aborted !== null) return c.aborted;
+    c.current = `[${i + 1}/${steps.length}] ${step.title}`;
+    c.log(c.current);
     try {
       await step.run();
+      if (c.aborted !== null) return c.aborted;
       c.log('      ok');
     } catch (err) {
+      if (c.aborted !== null) return c.aborted;
       c.log(`      FAILED: ${(err as Error).message}`);
       await opts.onFail?.(i);
       c.log(
@@ -943,6 +974,27 @@ export async function runCloud(cmd: CloudCmd, opts: RunCloudOpts): Promise<numbe
     log(`Refusing robin cloud ${cmd}: ${lock.refusal}`);
     return 1;
   }
+  // Ctrl-C / SIGTERM skip `finally`: release our lock and stop where we are —
+  // never run another step. (A hard kill still leaves a stale lock.)
+  const signals = opts.signals ?? processSignals;
+  const exit = opts.exit ?? ((code: number) => process.exit(code));
+  const handlers = (['SIGINT', 'SIGTERM'] as const).map((sig) => {
+    const handler = () => {
+      if (c.aborted !== null) return;
+      const code = sig === 'SIGINT' ? 130 : 143;
+      c.aborted = code;
+      lock.release();
+      c.cleanup();
+      log('');
+      log(
+        `Interrupted (${sig}) ${c.current ? `during ${c.current}` : 'before the first step'}; no further steps run.`,
+      );
+      log(`Check where things stand: robin cloud status --host ${opts.host}`);
+      exit(code);
+    };
+    signals.on(sig, handler);
+    return [sig, handler] as const;
+  });
   try {
     let remoteRole: CloudRoleRecord | null;
     try {
@@ -985,6 +1037,7 @@ export async function runCloud(cmd: CloudCmd, opts: RunCloudOpts): Promise<numbe
       ? await rollback(c, local as CloudRoleRecord, rollingBack)
       : await unlockOnly(c);
   } finally {
+    for (const [sig, handler] of handlers) signals.off(sig, handler);
     c.cleanup();
     lock.release();
   }
@@ -1115,6 +1168,16 @@ async function macDiskForRollback(c: Ctx): Promise<void> {
     );
   }
   c.detail(`Mac disk: ${gb(free)} free, ${gb(need)} needed`);
+}
+
+/**
+ * Where a rollback's user-data pull keeps the Mac files it overwrites: beside
+ * user-data, always absolute (rsync resolves a relative --backup-dir against
+ * the destination, which would put it inside user-data).
+ */
+export function rollbackBackupDir(userData: string, stamp: string): string {
+  const ud = resolve(userData);
+  return join(dirname(ud), `${basename(ud)}.pre-rollback-${stamp}`);
 }
 
 /** Refuse to pass a point of no return if this run's lock is no longer the Mac's lock. */
@@ -1462,10 +1525,7 @@ async function rollback(
   const incoming = join(dirname(c.macDb), 'cloud-rollback-incoming.sqlite');
   const record: RollbackRecord = resumed ?? { host: c.o.host, lockAt: lock.at };
   c.lockAt = lock.at;
-  const backupDir = join(
-    dirname(c.o.userData),
-    `${basename(c.o.userData)}.pre-rollback-${c.stamp()}`,
-  );
+  const backupDir = rollbackBackupDir(c.o.userData, c.stamp());
   const steps: Step[] = [
     { title: 'preflight', run: () => preflight(c) },
     {

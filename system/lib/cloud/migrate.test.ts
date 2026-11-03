@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import { closeDb, openDb } from '../../brain/memory/db.ts';
@@ -34,9 +34,11 @@ import {
   parseRsyncVersion,
   type RunCloudOpts,
   remoteCliArgv,
+  rollbackBackupDir,
   rollbackRecordPath,
   runCloud,
   type ServiceControl,
+  type SignalSource,
   startByHandLines,
   VM_DB_SCRIPT,
   vmRanPath,
@@ -1462,4 +1464,129 @@ test('the Mac-side cloud records never cross machines', () => {
   }
   assert.ok(MOVE_EXCLUDES.includes('state/runtime/*.lock'), 'covers cloud-op.lock');
   assert.ok(opLockPath('/u').endsWith('state/runtime/cloud-op.lock'));
+});
+
+// --- fix round 2 ------------------------------------------------------------
+
+/** Undo transfer.ts shq() (POSIX single quotes). */
+const unshq = (a: string) => a.slice(1, -1).replace(/'\\''/g, "'");
+
+test('rollback through the real ssh/rsync wrapper keeps overwritten Mac files', async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  const base = w.opts().run as ArgvRunner;
+  const rsyncs: string[][] = [];
+  const run: ArgvRunner = async (cmd, args) => {
+    if (cmd === 'ssh') {
+      const i = args.indexOf('--');
+      assert.equal(args[i - 1], HOST);
+      return w.vm.exec(args.slice(i + 1).map(unshq));
+    }
+    if (cmd.endsWith('rsync') && args.includes('--info=progress2')) {
+      rsyncs.push(args);
+      const [src, dst] = args.slice(-2);
+      if (src.startsWith(`${HOST}:`) && !args.some((a) => a.startsWith('--exclude='))) {
+        copyFileSync(w.vm.vmDb as string, dst); // pullFile: the VM snapshot
+      }
+      return ok();
+    }
+    return base(cmd, args);
+  };
+  const code = await runCloud('rollback', w.opts({ remote: undefined, run }));
+  assert.equal(code, 0, w.lines.join('\n'));
+  const pull = rsyncs.find(
+    (a) => a.some((x) => x.startsWith('--exclude=')) && a.at(-2)?.startsWith(`${HOST}:`),
+  );
+  assert.ok(pull, 'the user-data pull ran through sshRemote');
+  assert.ok(pull.includes('--backup'));
+  const dir = pull.find((a) => a.startsWith('--backup-dir='))?.slice('--backup-dir='.length);
+  assert.ok(dir && isAbsolute(dir), String(dir));
+  assert.equal(dir, rollbackBackupDir(w.userData, '2026-11-02T12-00-00-000Z'));
+  assert.ok(!pull.some((a) => a.startsWith('--del')));
+  assert.equal(
+    countWhere(w.dbPath, `SELECT count(*) AS n FROM events WHERE payload LIKE '%on the vm%'`),
+    1,
+  );
+});
+
+test('the rollback backup dir is absolute and beside user-data, even for a relative path', () => {
+  const rel = rollbackBackupDir('some/where/user-data', 'T1');
+  assert.ok(isAbsolute(rel));
+  assert.equal(rel, join(process.cwd(), 'some', 'where', 'user-data.pre-rollback-T1'));
+  assert.equal(rollbackBackupDir('/a/user-data/', 'T2'), '/a/user-data.pre-rollback-T2');
+});
+
+function fakeSignals() {
+  const handlers = new Map<string, () => void>();
+  const signals: SignalSource = {
+    on: (s, h) => void handlers.set(s, h),
+    off: (s, h) => {
+      if (handlers.get(s) === h) handlers.delete(s);
+    },
+  };
+  return { handlers, signals };
+}
+
+test('Ctrl-C during the drain releases the op lock and runs no further step', async () => {
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+    const w = world();
+    const { handlers, signals } = fakeSignals();
+    const exits: number[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let draining!: () => void;
+    const inDrain = new Promise<void>((r) => {
+      draining = r;
+    });
+    w.children.push([], [{ pid: 9001, cmd: 'node dist/agent/runner-entry.js' }], []);
+    const run = runCloud(
+      'cutover',
+      w.opts({
+        signals,
+        exit: (code) => void exits.push(code),
+        sleep: async () => {
+          draining();
+          await gate;
+        },
+      }),
+    );
+    await inDrain;
+    assert.ok(existsSync(opLockPath(w.userData)));
+    assert.deepEqual([...handlers.keys()].sort(), ['SIGINT', 'SIGTERM']);
+    if (sig === 'SIGTERM') {
+      // a lock that is no longer this run's is left alone
+      writeFileSync(opLockPath(w.userData), '{"pid":1,"command":"other"}');
+    }
+    handlers.get(sig)?.();
+    const code = sig === 'SIGINT' ? 130 : 143;
+    assert.deepEqual(exits, [code]);
+    if (sig === 'SIGINT') assert.ok(!existsSync(opLockPath(w.userData)), 'lock released');
+    else assert.equal(readFileSync(opLockPath(w.userData), 'utf8'), '{"pid":1,"command":"other"}');
+    const out = w.lines.join('\n');
+    assert.match(
+      out,
+      new RegExp(
+        `Interrupted \\(${sig}\\) during \\[\\d+/\\d+\\] drain in-flight work on this Mac`,
+      ),
+    );
+    assert.match(out, /robin cloud status --host example-vm/);
+    release();
+    assert.equal(await run, code);
+    assert.ok(!w.seq.includes('mac:stopMac'), 'no step after the interrupt');
+    assert.ok(!w.seq.includes('mac:snapshot'));
+    assert.equal(handlers.size, 0, 'handlers removed when the command ends');
+  }
+});
+
+test('handlers are only installed for lock-holding commands and removed after', async () => {
+  const w = world();
+  const { handlers, signals } = fakeSignals();
+  assert.equal(await runCloud('status', w.opts({ signals })), 0);
+  assert.equal(handlers.size, 0);
+  assert.equal(await runCloud('dry-run', w.opts({ signals })), 0, w.lines.join('\n'));
+  assert.equal(handlers.size, 0);
 });

@@ -126,7 +126,10 @@ Only one `robin cloud` command runs at a time on the Mac. Each one holds
 exits; `status` takes no lock. A second command refuses while the holder is
 alive. If the holder died (a crash, a closed laptop), the lock stays and every
 command refuses with its details. Check `robin cloud status`, then delete the
-file by hand. Cutover and rollback also re-read the Mac's lock just before
+file by hand. Ctrl-C (or SIGTERM) stops the command where it is: it runs no
+further step, releases the lock, prints the step it stopped in and exits 130
+(143). A hard kill (SIGKILL, power loss) can't clean up and leaves a stale
+lock; delete it by hand after checking `robin cloud status`. Cutover and rollback also re-read the Mac's lock just before
 their point of no return (marking the VM primary, installing the VM's DB) and
 stop if it changed.
 
