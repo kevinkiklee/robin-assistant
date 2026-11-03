@@ -10,9 +10,9 @@ const RETRY_DELAY_MS = 5_000;
 interface Stamp {
   down: boolean;
   /** Last loud (down) notice; kept across recoveries so a flapping daemon can't spam. */
-  lastLoudAt: number;
+  lastLoudAt: number | null;
   /** Last silent recovery notice. */
-  lastBackAt: number;
+  lastBackAt: number | null;
 }
 
 type Notify = (p: { title: string; message: string; silent?: boolean }) => Promise<unknown>;
@@ -24,14 +24,15 @@ export function stampPath(userData: string): string {
 function readStamp(userData: string): Stamp {
   try {
     const raw = JSON.parse(readFileSync(stampPath(userData), 'utf8')) as Partial<Stamp>;
-    const n = (v: unknown): number => (typeof v === 'number' ? v : 0);
+    const n = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+    const legacy = (raw as { lastNotifiedAt?: unknown }).lastNotifiedAt;
     return {
       down: raw.down === true,
-      lastLoudAt: n(raw.lastLoudAt),
+      lastLoudAt: n(raw.lastLoudAt) ?? n(legacy),
       lastBackAt: n(raw.lastBackAt),
     };
   } catch {
-    return { down: false, lastLoudAt: 0, lastBackAt: 0 };
+    return { down: false, lastLoudAt: null, lastBackAt: null };
   }
 }
 
@@ -106,7 +107,7 @@ export async function watchdog(opts: {
   };
   if (healthy) {
     if (stamp.down) {
-      const due = now - stamp.lastBackAt >= NOTICE_INTERVAL_MS;
+      const due = stamp.lastBackAt === null || now - stamp.lastBackAt >= NOTICE_INTERVAL_MS;
       if (!commit({ ...stamp, down: false, lastBackAt: due ? now : stamp.lastBackAt })) return 'ok';
       if (due) {
         await send({
@@ -118,7 +119,7 @@ export async function watchdog(opts: {
     }
     return 'ok';
   }
-  if (now - stamp.lastLoudAt < NOTICE_INTERVAL_MS) {
+  if (stamp.lastLoudAt !== null && now - stamp.lastLoudAt < NOTICE_INTERVAL_MS) {
     if (!stamp.down) commit({ ...stamp, down: true });
     return 'down-quiet';
   }

@@ -8,7 +8,7 @@ import { watchdog } from './watchdog.ts';
 function setup(health: boolean[]) {
   const userData = mkdtempSync(join(tmpdir(), 'robin-wd-'));
   const sent: Array<{ title: string; message: string; silent?: boolean }> = [];
-  let t = 10_000_000;
+  let t = 1_000_000;
   let i = 0;
   const sleeps: number[] = [];
   return {
@@ -93,6 +93,25 @@ describe('watchdog', () => {
     const quiet = s.sent.filter((p) => p.silent);
     assert.equal(loud.length, 1);
     assert.equal(quiet.length, 1);
+  });
+  it('first-ever outage and recovery at a small clock still notify', async () => {
+    const s = setup([false, false, true]);
+    assert.equal(await s.run(), 'down-notified');
+    s.advance(60_000);
+    assert.equal(await s.run(), 'ok');
+    assert.equal(s.sent.length, 2);
+    assert.equal(s.sent[1].silent, true);
+  });
+  it('a legacy lastNotifiedAt stamp rate-limits the loud notice', async () => {
+    const s = setup([false, false]);
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(join(s.userData, 'state/runtime'), { recursive: true });
+    writeFileSync(
+      join(s.userData, 'state/runtime/watchdog.json'),
+      JSON.stringify({ down: true, lastNotifiedAt: 1_000_000 - 60_000 }),
+    );
+    assert.equal(await s.run(), 'down-quiet');
+    assert.equal(s.sent.length, 0);
   });
   it('a corrupt stamp reads as healthy-before', async () => {
     const s = setup([true]);
