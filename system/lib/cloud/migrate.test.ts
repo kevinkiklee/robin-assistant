@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,16 +24,22 @@ import { dbFilePath } from '../paths.ts';
 import {
   allowedCommands,
   cgroupProcsArgv,
+  finishByHand,
   MAC_SERVICE_LABELS,
   macServiceControl,
+  opLockPath,
   type Proc,
   parseLsof,
   parsePs,
   parseRsyncVersion,
   type RunCloudOpts,
   remoteCliArgv,
+  rollbackRecordPath,
   runCloud,
   type ServiceControl,
+  startByHandLines,
+  VM_DB_SCRIPT,
+  vmRanPath,
   waitQuiescent,
 } from './migrate.ts';
 import { readRole, writeRole } from './role.ts';
@@ -101,6 +110,14 @@ class FakeVm {
   vmDb: string | null = null;
   pushFails = 0;
   pullFails = 0;
+  startFails = 0;
+  resumeFails = 0;
+  doctorRaw: string | null = null;
+  duKb = 2_000;
+  backupsKb = 500;
+  pullBackupDirs: Array<string | undefined> = [];
+  /** Called inside push/pull to simulate a concurrent actor. */
+  onTransfer?: (op: 'push' | 'pull' | 'pushFile') => void | Promise<void>;
   /** Mac-only rows found in each file pushed as the DB. */
   pushedImessage: number[] = [];
   constructor(readonly seq: string[]) {}
@@ -138,6 +155,9 @@ class FakeVm {
     }
     if (cmd === 'date') return ok('2026-11-02T12:00:00Z\n');
     if (cmd === 'mkdir') return ok();
+    if (cmd === 'du') {
+      return ok(`${rest[1].endsWith('/backups') ? this.backupsKb : this.duKb}\t${rest[1]}\n`);
+    }
     if (cmd === 'find') {
       s.push('vm:clear-runtime');
       return ok();
@@ -171,6 +191,10 @@ class FakeVm {
       }
       if (sub === 'start') {
         s.push('vm:start');
+        if (this.startFails > 0) {
+          this.startFails--;
+          return fail(1, 'Job for robin-daemon.service failed');
+        }
         this.active = true;
         return ok();
       }
@@ -190,9 +214,15 @@ class FakeVm {
         s.push('vm:doctor');
         return {
           code: this.doctorExit,
-          stdout: JSON.stringify({ summary: { fail: this.doctorFails }, checks: [] }),
+          stdout:
+            this.doctorRaw ?? JSON.stringify({ summary: { fail: this.doctorFails }, checks: [] }),
           stderr: '',
         };
+      }
+      if (sub === 'resume' && this.resumeFails > 0) {
+        this.resumeFails--;
+        s.push('vm:resume');
+        return fail(1, 'resume boom');
       }
       const words = argv.slice(i + 1).filter((a) => !a.startsWith('--'));
       s.push(`vm:${words.join(' ')}`);
@@ -206,7 +236,10 @@ class FakeVm {
         return ok(JSON.stringify({ jobs: this.activity ? 2 : 0, integrations: 0 }));
       }
       if (mode === 'held') return ok('free\n');
-      if (mode === 'carry-oauth') return ok('0\n');
+      if (mode === 'carry-oauth') {
+        s.push('vm:carry-oauth');
+        return ok('0\n');
+      }
     }
     return fail(99, `fake vm: unexpected ${argv.join(' ')}`);
   }
@@ -219,15 +252,18 @@ class FakeVm {
         this.seq.push('vm:push');
         assert.equal(remote, VM_UD);
         assert.deepEqual(excludes, MOVE_EXCLUDES);
+        await this.onTransfer?.('push');
         if (this.pushFails > 0) {
           this.pushFails--;
           throw new Error('rsync: connection unexpectedly closed');
         }
       },
-      pull: async (remote, _local, excludes) => {
+      pull: async (remote, _local, excludes, opts) => {
         this.seq.push('vm:pull');
         assert.equal(remote, VM_UD);
         assert.deepEqual(excludes, MOVE_EXCLUDES);
+        this.pullBackupDirs.push(opts?.backupDir);
+        await this.onTransfer?.('pull');
         if (this.pullFails > 0) {
           this.pullFails--;
           throw new Error('rsync: broken pipe');
@@ -239,6 +275,7 @@ class FakeVm {
         this.pushedImessage.push(
           countWhere(local, `SELECT count(*) AS n FROM events WHERE source = 'imessage'`),
         );
+        await this.onTransfer?.('pushFile');
       },
       pullFile: async (_remote, local) => {
         this.seq.push('vm:pullFile');
@@ -258,6 +295,7 @@ interface World {
   localRuns: Array<{ cmd: string; args: string[] }>;
   children: Proc[][];
   settingsPath: string;
+  mac: { healthy: boolean; freeKb: number; doctorRaw: string | null; startFails: number };
   opts(extra?: Partial<RunCloudOpts>): RunCloudOpts;
 }
 
@@ -277,6 +315,12 @@ function world(): World {
   const localRuns: Array<{ cmd: string; args: string[] }> = [];
   const children: Proc[][] = [];
   const settingsPath = join(userData, 'claude-settings.json');
+  const mac = {
+    healthy: true,
+    freeKb: 60_000_000,
+    doctorRaw: null as string | null,
+    startFails: 0,
+  };
   const run: ArgvRunner = async (cmd, args) => {
     localRuns.push({ cmd, args });
     if (cmd === 'git') return ok(`${HEAD}\n`);
@@ -286,11 +330,16 @@ function world(): World {
     if (cmd.endsWith('rsync')) return ok('Number of files: 10\nTotal file size: 1,000 bytes\n');
     if (cmd === 'curl') {
       seq.push('mac:health');
-      return ok('{"ok":true}');
+      return mac.healthy ? ok('{"ok":true}') : fail(7);
     }
     if (cmd === 'env' && args.includes('doctor')) {
       seq.push('mac:doctor');
-      return { code: 1, stdout: '{"summary":{"fail":0},"checks":[]}', stderr: '' };
+      return { code: 1, stdout: mac.doctorRaw ?? '{"summary":{"fail":0},"checks":[]}', stderr: '' };
+    }
+    if (cmd === 'df') {
+      return ok(
+        `Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3 1 1 ${mac.freeKb} 1% /\n`,
+      );
     }
     return fail(99, `fake mac: unexpected ${cmd} ${args.join(' ')}`);
   };
@@ -301,8 +350,17 @@ function world(): World {
     disableMac: async () => {
       seq.push('mac:disableMac');
     },
+    enableMac: async () => {
+      seq.push('mac:enableMac');
+      assert.equal(readRole(userData)?.role, 'mac-locked', 'enable runs while still locked');
+    },
     enableAndStartMac: async () => {
       seq.push('mac:enableAndStartMac');
+      assert.equal(readRole(userData), null, 'the services load only after the unlock');
+      if (mac.startFails > 0) {
+        mac.startFails--;
+        throw new Error('launchctl bootstrap failed (exit 5)');
+      }
     },
   };
   return {
@@ -314,6 +372,7 @@ function world(): World {
     localRuns,
     children,
     settingsPath,
+    mac,
     opts: (extra = {}) => ({
       host: HOST,
       userData,
@@ -433,11 +492,21 @@ test('verify failure parks safely', async () => {
   assert.ok(allowed.includes('cutover'));
   assert.ok(allowed.includes('rollback'));
 
-  const r = await runCloud('rollback', w.opts());
+  // the VM was resumed before verify failed: its WHOOP token may have rotated
+  assert.ok(existsSync(vmRanPath(w.userData)));
+  assert.equal(await runCloud('rollback', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /robin reauth whoop/);
+  assert.match(w.lines.join('\n'), /--accept-token-reset/);
+  assert.equal(readRole(w.userData)?.role, 'mac-locked', 'still locked');
+  assert.ok(!w.seq.includes('mac:enableMac'));
+  const r = await runCloud('rollback', w.opts({ acceptTokenReset: true }));
   assert.equal(r, 0, w.lines.join('\n'));
   assert.equal(readRole(w.userData), null);
+  assert.ok(!existsSync(vmRanPath(w.userData)));
+  assert.ok(w.lines.filter((l) => l.includes('robin reauth whoop')).length >= 2);
   assert.ok(!w.seq.includes('vm:pullFile'));
   assert.ok(!w.seq.includes('vm:pull'));
+  assertSubsequence(w.seq, ['mac:resume', 'mac:enableMac', 'mac:enableAndStartMac']);
 });
 
 test('verify failure parks; re-running cutover completes it', async () => {
@@ -623,8 +692,15 @@ test('rollback pulls the VM data, never a stale snapshot', async () => {
     { source: 'docs', content: 'written on the vm' },
     { source: 'docs', content: 'also on the vm' },
   ]);
+  // a side file that appears after the restore read the DB (SQLite discards an invalid hot journal on open)
+  w.vm.onTransfer = (op) => {
+    if (op === 'pull') writeFileSync(`${w.dbPath}-journal`, 'stale journal');
+  };
   const code = await runCloud('rollback', w.opts());
   assert.equal(code, 0, w.lines.join('\n'));
+  // the user-data pull keeps every Mac file it overwrites beside user-data
+  assert.equal(w.vm.pullBackupDirs.length, 1);
+  assert.equal(w.vm.pullBackupDirs[0], `${w.userData}.pre-rollback-2026-11-02T12-00-00-000Z`);
   assertSubsequence(w.seq, [
     'vm:role vm-dry-run',
     'vm:pause',
@@ -634,6 +710,7 @@ test('rollback pulls the VM data, never a stale snapshot', async () => {
     'mac:restore',
     'vm:pull',
     'mac:resume',
+    'mac:enableMac',
     'mac:enableAndStartMac',
     'mac:health',
     'mac:doctor',
@@ -654,6 +731,9 @@ test('rollback pulls the VM data, never a stale snapshot', async () => {
   assert.equal(aside.length, 1);
   const old = join(dbDir, aside[0], 'robin.sqlite');
   assert.ok(existsSync(old));
+  assert.equal(readFileSync(`${old}-journal`, 'utf8'), 'stale journal', '-journal moved aside too');
+  assert.ok(!existsSync(`${w.dbPath}-journal`));
+  rmSync(`${old}-journal`); // the fixture's journal is junk; a real one would roll back
   assert.equal(
     countWhere(old, `SELECT count(*) AS n FROM events WHERE payload LIKE '%sourdough%'`),
     1,
@@ -871,6 +951,14 @@ test('both Mac writers stop', async () => {
   await svc.disableMac();
   assert.ok(!calls.some((a) => a[0] === 'bootout'), 'nothing loaded → no bootout');
 
+  calls.length = 0;
+  await svc.enableMac();
+  assert.deepEqual(
+    calls.map((a) => a.join(' ')),
+    MAC_SERVICE_LABELS.map((l) => `enable gui/501/${l}`),
+    'enableMac only enables, never loads',
+  );
+  assert.equal(loaded.size, 0);
   await svc.enableAndStartMac();
   for (const l of MAC_SERVICE_LABELS) {
     assert.ok(
@@ -895,6 +983,7 @@ test('both Mac writers stop', async () => {
   calls.length = 0;
   const svc2 = macServiceControl({ run, uid: 501, home: bare });
   await svc2.disableMac();
+  await svc2.enableMac();
   await svc2.enableAndStartMac();
   assert.deepEqual(calls, []);
   await svc2.stopMac();
@@ -1043,4 +1132,334 @@ test('parsers: ps, lsof, rsync --version', () => {
     false,
   );
   assert.equal(parseRsyncVersion('rsync  version 2.6.9  protocol version 29').major, 2);
+});
+
+// --- fix round 1 ------------------------------------------------------------
+
+const vmDbFor = (w: World, events = [{ source: 'docs', content: 'written on the vm' }]) => {
+  w.vm.vmDb = join(mkdtempSync(join(tmpdir(), 'robin-vmdb-')), 'snap.sqlite');
+  makeDb(w.vm.vmDb, events);
+};
+
+test('a concurrent robin cloud run is refused while one holds the op lock', async () => {
+  const w = world();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  let draining!: () => void;
+  const inDrain = new Promise<void>((r) => {
+    draining = r;
+  });
+  // cutover blocks in its drain until released
+  w.children.push([], [{ pid: 9001, cmd: 'node dist/agent/runner-entry.js' }], [], []);
+  const first = runCloud(
+    'cutover',
+    w.opts({
+      sleep: async () => {
+        draining();
+        await gate;
+      },
+    }),
+  );
+  await inDrain;
+  const held = JSON.parse(readFileSync(opLockPath(w.userData), 'utf8')) as Record<string, unknown>;
+  assert.equal(held.pid, process.pid);
+  assert.equal(held.command, 'cutover');
+  assert.equal(typeof held.startedAt, 'string');
+  const lines: string[] = [];
+  const second = await runCloud('rollback', w.opts({ log: (l) => lines.push(l) }));
+  assert.equal(second, 1);
+  assert.match(
+    lines.join('\n'),
+    new RegExp(`another robin cloud cutover is running \\(pid ${process.pid}\\)`),
+  );
+  assert.equal(readRole(w.userData)?.role, 'mac-locked', 'the second run changed nothing');
+  // status is read-only and does not take the lock
+  assert.equal(await runCloud('status', w.opts({ log: () => {} })), 0);
+  release();
+  assert.equal(await first, 0, w.lines.join('\n'));
+  assert.ok(!existsSync(opLockPath(w.userData)), 'released in finally');
+  assert.equal(w.vm.role?.role, 'vm-primary');
+});
+
+test('a stale op lock refuses with its details and is never removed', async () => {
+  const w = world();
+  mkdirSync(join(w.userData, 'state', 'runtime'), { recursive: true });
+  const body = JSON.stringify({
+    pid: 999_999,
+    command: 'cutover',
+    startedAt: '2026-11-01T09:00:00.000Z',
+  });
+  writeFileSync(opLockPath(w.userData), body);
+  assert.equal(await runCloud('dry-run', w.opts({ pidAlive: () => false })), 1);
+  const out = w.lines.join('\n');
+  assert.match(out, /stale lock from pid 999999 \(cutover, 2026-11-01T09:00:00.000Z\)/);
+  assert.match(out, /check robin cloud status, then delete .*cloud-op\.lock/);
+  assert.equal(readFileSync(opLockPath(w.userData), 'utf8'), body, 'never auto-removed');
+  assert.deepEqual(w.vm.execs, []);
+  assert.equal(await runCloud('dry-run', w.opts({ pidAlive: () => true })), 1);
+  assert.match(w.lines.join('\n'), /another robin cloud cutover is running \(pid 999999\)/);
+  assert.equal(readFileSync(opLockPath(w.userData), 'utf8'), body);
+});
+
+test('cutover re-checks its lock before marking the VM primary', async () => {
+  const w = world();
+  w.vm.onTransfer = (op) => {
+    if (op === 'pushFile') {
+      writeRole(w.userData, { role: 'mac-locked', host: HOST, at: 'someone-else' });
+    }
+  };
+  assert.equal(await runCloud('cutover', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /lock changed during the run/);
+  assert.ok(!w.seq.includes('vm:role vm-primary'));
+  assert.ok(!w.seq.includes('vm:start'));
+  assert.equal(w.vm.role?.role, 'vm-dry-run');
+});
+
+test('rollback re-checks its lock before installing the VM DB', async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  w.vm.onTransfer = (op) => {
+    if (op === 'pull') writeRole(w.userData, { role: 'mac-locked', host: HOST, at: 'changed' });
+  };
+  assert.equal(await runCloud('rollback', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /lock changed during the run/);
+  assert.ok(
+    !readdirSync(join(w.userData, 'state', 'db')).some((f) => f.startsWith('pre-rollback')),
+  );
+  assert.equal(
+    countWhere(w.dbPath, `SELECT count(*) AS n FROM events WHERE payload LIKE '%sourdough%'`),
+    1,
+  );
+});
+
+test('the rollback record is written atomically and an unreadable one refuses', async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  w.vm.pullFails = 1;
+  assert.equal(await runCloud('rollback', w.opts()), 1);
+  const runtime = join(w.userData, 'state', 'runtime');
+  assert.ok(!readdirSync(runtime).some((f) => f.endsWith('.tmp')), 'no temp left behind');
+  const rec = JSON.parse(readFileSync(rollbackRecordPath(w.userData), 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  assert.equal(rec.host, HOST);
+  assert.equal(rec.lockAt, '2026-11-02T11:00:00.000Z');
+  assert.match(String(rec.controlGroup), /robin-daemon\.service$/);
+
+  writeFileSync(rollbackRecordPath(w.userData), '{"host": "exa');
+  for (const cmd of ['rollback', 'cutover'] as const) {
+    const before = w.seq.length;
+    assert.equal(await runCloud(cmd, w.opts()), 1, cmd);
+    assert.equal(w.seq.length, before, `${cmd}: no effects`);
+  }
+  assert.match(w.lines.join('\n'), /rollback record .* is unreadable; fix or remove it by hand/);
+  w.lines.length = 0;
+  assert.equal(await runCloud('status', w.opts()), 0);
+  assert.match(w.lines.join('\n'), /unreadable/);
+});
+
+test('a failed service start after the unlock prints both labels to finish by hand', async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-dry-run');
+  w.mac.startFails = 1;
+  assert.equal(await runCloud('rollback', w.opts()), 1);
+  const out = w.lines.join('\n');
+  assert.match(out, /already unlocked; robin cloud rollback no longer applies/);
+  for (const l of MAC_SERVICE_LABELS) {
+    assert.ok(
+      out.includes(`launchctl enable gui/$(id -u)/${l} && launchctl bootstrap gui/$(id -u)`),
+      l,
+    );
+  }
+  assert.ok(!out.includes('Fix the problem and re-run: robin cloud rollback'));
+  const text = finishByHand({ o: { host: HOST } });
+  for (const l of MAC_SERVICE_LABELS) assert.ok(text.includes(`${l}.plist`), l);
+  const lines = startByHandLines('/h');
+  assert.equal(lines.length, 2);
+  assert.ok(lines[1].includes('/h/Library/LaunchAgents/io.robin-assistant.mcp-remote.plist'));
+});
+
+test('status says when this Mac is unlocked but its daemon is down', async () => {
+  const w = world();
+  w.mac.healthy = false;
+  assert.equal(await runCloud('status', w.opts()), 0);
+  const out = w.lines.join('\n');
+  assert.match(out, /unlocked but its daemon is down/);
+  for (const l of MAC_SERVICE_LABELS) assert.ok(out.includes(`gui/$(id -u)/${l}`), l);
+  const up = world();
+  assert.equal(await runCloud('status', up.opts()), 0);
+  assert.ok(!up.lines.join('\n').includes('daemon is down'));
+});
+
+test('unparseable doctor output fails verification', async () => {
+  const w = world();
+  w.vm.doctorRaw = 'Error: Cannot find module';
+  assert.equal(await runCloud('dry-run', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /VM doctor printed no JSON report/);
+  const m = world();
+  lock(m);
+  m.vm.role = vmRole('vm-dry-run');
+  m.mac.doctorRaw = 'segfault';
+  assert.equal(await runCloud('rollback', m.opts()), 1);
+  assert.match(m.lines.join('\n'), /Mac doctor printed no JSON report/);
+});
+
+test('rollback preflight checks the Mac has room for the VM data', async () => {
+  const w = world();
+  lock(w);
+  w.vm.role = vmRole('vm-primary');
+  vmDbFor(w);
+  w.vm.duKb = 10_000_000;
+  w.vm.backupsKb = 1_000_000;
+  w.mac.freeKb = 17_000_000; // needs 2 × 9 GB
+  assert.equal(await runCloud('rollback', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /this Mac has .* free disk; bringing the VM's data home needs/);
+  assert.deepEqual(w.seq, []);
+  w.mac.freeKb = 19_000_000;
+  assert.equal(await runCloud('rollback', w.opts()), 0, w.lines.join('\n'));
+});
+
+test('cutover refuses while an auto-land probation runs', async () => {
+  const w = world();
+  w.children.push([{ pid: 4321, cmd: 'node dist/agent/land-probation.js' }]);
+  assert.equal(await runCloud('cutover', w.opts()), 1);
+  assert.match(w.lines.join('\n'), /auto-land probation is running \(pid 4321\).*wait for it/);
+  assert.equal(readRole(w.userData), null, 'refused before the lock');
+  assert.ok(!w.seq.includes('mac:pause'));
+});
+
+test('a start or resume failure parks the VM too', async () => {
+  for (const which of ['start', 'resume'] as const) {
+    const w = world();
+    if (which === 'start') w.vm.startFails = 1;
+    else w.vm.resumeFails = 1;
+    assert.equal(await runCloud('cutover', w.opts()), 1, which);
+    assert.equal(w.vm.role?.role, 'vm-dry-run', `${which}: held`);
+    assert.equal(w.vm.active, false, `${which}: stopped`);
+    assert.equal(readRole(w.userData)?.role, 'mac-locked');
+    assert.equal(existsSync(vmRanPath(w.userData)), which === 'resume', `${which}: vm-ran note`);
+    assert.equal(await runCloud('cutover', w.opts()), 0, w.lines.join('\n'));
+  }
+});
+
+test('carry-oauth runs on cutover only', async () => {
+  const d = world();
+  assert.equal(await runCloud('dry-run', d.opts()), 0);
+  assert.ok(!d.seq.includes('vm:carry-oauth'));
+  const c = world();
+  assert.equal(await runCloud('cutover', c.opts()), 0);
+  assertSubsequence(c.seq, ['vm:pushFile', 'vm:carry-oauth', 'vm:install-db']);
+});
+
+// VM_DB_SCRIPT runs for real against temp DBs (the repo's better-sqlite3, as on the VM).
+function vmScript(mode: string, ...args: string[]): string {
+  return execFileSync(process.execPath, ['-e', VM_DB_SCRIPT, mode, ...args], {
+    cwd: join(import.meta.dirname, '..', '..', '..'),
+    encoding: 'utf8',
+  }).trim();
+}
+
+test('VM_DB_SCRIPT: count and held', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-vmscript-'));
+  const db = join(dir, 'robin.sqlite');
+  makeDb(db, [
+    { source: 'docs', content: 'one' },
+    { source: 'docs', content: 'two' },
+    { source: 'docs', content: 'three' },
+  ]);
+  assert.equal(vmScript('count', db), '3');
+  assert.equal(vmScript('held', db), 'free');
+  assert.equal(vmScript('held', join(dir, 'missing.sqlite')), 'free');
+  const holder = openDb(db);
+  try {
+    holder.prepare('SELECT count(*) FROM events').get();
+    assert.equal(vmScript('held', db), 'held');
+  } finally {
+    closeDb(holder);
+  }
+  assert.equal(vmScript('held', db), 'free');
+});
+
+test('VM_DB_SCRIPT: activity counts finished jobs and integration attempts after the start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-vmscript-'));
+  const db = join(dir, 'robin.sqlite');
+  makeDb(db, []);
+  const since = '2026-11-02T12:00:00Z';
+  const h = openDb(db);
+  try {
+    const job = h.prepare(
+      `INSERT INTO jobs (name, trigger_kind, scheduled_at, state, created_at) VALUES (?, 'cron', '2026-11-02T12:00:00Z', ?, ?)`,
+    );
+    job.run('before', 'completed', '2026-11-02 11:59:59');
+    job.run('pending-after', 'pending', '2026-11-02 12:00:05'); // boot-time registration: not work
+    assert.deepEqual(JSON.parse(vmScript('activity', db, since)), { jobs: 0, integrations: 0 });
+    job.run('ran-after', 'completed', '2026-11-02 12:03:00');
+    const kv = h.prepare(
+      'INSERT INTO integration_state (integration_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+    );
+    kv.run('bike', 'last_attempt_at', '2026-11-02T12:04:00.000Z', '2026-11-02T12:04:00.000Z');
+    kv.run('oven', 'last_attempt_at', '2026-11-02T11:00:00.000Z', '2026-11-02T11:00:00.000Z');
+  } finally {
+    closeDb(h);
+  }
+  assert.deepEqual(JSON.parse(vmScript('activity', db, since)), { jobs: 1, integrations: 1 });
+});
+
+test('VM_DB_SCRIPT: carry-oauth keeps only newer rows the incoming DB still has', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'robin-vmscript-'));
+  const vm = join(dir, 'vm.sqlite');
+  const inc = join(dir, 'incoming.sqlite');
+  makeDb(vm, []);
+  makeDb(inc, []);
+  const put = (path: string, rows: Array<[string, string, string, string]>) => {
+    const h = openDb(path);
+    try {
+      const st = h.prepare(
+        'INSERT INTO integration_state (integration_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+      );
+      for (const r of rows) st.run(...r);
+    } finally {
+      closeDb(h);
+    }
+  };
+  put(vm, [
+    ['bike', 'refresh_token', 'vm-new', '2026-11-02T12:10:00.000Z'], // newer → carried
+    ['oven', 'access_token', 'vm-old', '2026-11-02 08:00:00'], // older (space format) → incoming kept
+    ['loom', 'refresh_token', 'vm-only', '2026-11-02T12:10:00.000Z'], // Mac deleted it → not resurrected
+    ['bike', 'cursor', 'vm-cursor', '2026-11-02T12:10:00.000Z'], // not an OAuth key
+  ]);
+  put(inc, [
+    ['bike', 'refresh_token', 'mac-old', '2026-11-02 11:00:00'],
+    ['oven', 'access_token', 'mac-new', '2026-11-02T09:00:00.000Z'],
+    ['bike', 'cursor', 'mac-cursor', '2026-11-02T09:00:00.000Z'],
+  ]);
+  assert.equal(vmScript('carry-oauth', vm, inc), '1');
+  const ro = new Database(inc, { readonly: true });
+  const rows = ro
+    .prepare(
+      `SELECT integration_name || ':' || key || '=' || value AS r FROM integration_state ORDER BY 1`,
+    )
+    .all() as Array<{ r: string }>;
+  ro.close();
+  assert.deepEqual(
+    rows.map((x) => x.r),
+    ['bike:cursor=mac-cursor', 'bike:refresh_token=vm-new', 'oven:access_token=mac-new'],
+  );
+  assert.equal(vmScript('carry-oauth', join(dir, 'none.sqlite'), inc), '0');
+});
+
+test('the Mac-side cloud records never cross machines', () => {
+  for (const p of ['state/runtime/cloud-rollback.json', 'state/runtime/cloud-vm-ran.json']) {
+    assert.ok(MOVE_EXCLUDES.includes(p), p);
+  }
+  assert.ok(MOVE_EXCLUDES.includes('state/runtime/*.lock'), 'covers cloud-op.lock');
+  assert.ok(opLockPath('/u').endsWith('state/runtime/cloud-op.lock'));
 });

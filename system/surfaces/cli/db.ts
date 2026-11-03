@@ -17,6 +17,16 @@ export function backupDbTo(src: string, dst: string): void {
   }
 }
 
+/** `events` row count through a read-only handle (never converts the journal mode). */
+export function countEvents(dbPath: string): number {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    return (db.prepare('SELECT count(*) AS n FROM events').get() as { n: number }).n;
+  } finally {
+    db.close();
+  }
+}
+
 export function runDbBackup(opts: { path?: string } = {}): void {
   const userData = resolveUserDataDir();
   const src = dbFilePath(userData);

@@ -39,5 +39,6 @@ export async function runCloudCommand(args: string[]): Promise<number> {
     repoRoot,
     yes: args.includes('--yes') || args.includes('-y'),
     acceptGaps: args.includes('--accept-gaps'),
+    acceptTokenReset: args.includes('--accept-token-reset'),
   });
 }

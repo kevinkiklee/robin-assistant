@@ -1,18 +1,24 @@
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { closeDb, openDb } from '../../brain/memory/db.ts';
-import { dbHeldOpenElsewhere as dbHeldOpenElsewhereDefault } from '../../surfaces/cli/db.ts';
+import {
+  countEvents,
+  dbHeldOpenElsewhere as dbHeldOpenElsewhereDefault,
+} from '../../surfaces/cli/db.ts';
 import { setPowerState } from '../../surfaces/cli/power.ts';
 import { LAUNCHD_LABEL, plistPath } from '../launchd/install.ts';
 import { dbFilePath } from '../paths.ts';
@@ -71,6 +77,8 @@ export interface Proc {
 export interface ServiceControl {
   stopMac(): Promise<void>;
   disableMac(): Promise<void>;
+  /** `launchctl enable` only (no load): harmless while locked, so it runs before the unlock. */
+  enableMac(): Promise<void>;
   enableAndStartMac(): Promise<void>;
 }
 
@@ -118,6 +126,10 @@ export interface RunCloudOpts {
   log?: (line: string) => void;
   yes?: boolean;
   acceptGaps?: boolean;
+  /** Unlock-only rollback after the VM ran as primary (its WHOOP token may have rotated). */
+  acceptTokenReset?: boolean;
+  /** Liveness of an op-lock holder (default: signal 0). */
+  pidAlive?: (pid: number) => boolean;
   /** Local argv runner (git, rsync, curl, ps, lsof, launchctl, doctor). */
   run?: ArgvRunner;
   sleep?: (ms: number) => Promise<void>;
@@ -325,6 +337,11 @@ export function macServiceControl(
         if (existsSync(plist(label))) await must(['disable', `${domain}/${label}`]);
       }
     },
+    async enableMac() {
+      for (const label of labels) {
+        if (existsSync(plist(label))) await must(['enable', `${domain}/${label}`]);
+      }
+    },
     async enableAndStartMac() {
       for (const label of labels) {
         if (!existsSync(plist(label))) continue;
@@ -384,7 +401,7 @@ async function ttyPrompt(question: string): Promise<string> {
  * checkout (so `better-sqlite3` resolves); values arrive as argv, never
  * interpolated. Prints counts only — no row contents leave the VM.
  */
-const VM_DB_SCRIPT = `
+export const VM_DB_SCRIPT = `
 const D = require('better-sqlite3');
 const fs = require('node:fs');
 const [mode, a, b] = process.argv.slice(1);
@@ -414,12 +431,13 @@ if (mode === 'count') {
   live.close();
   const inc = new D(b, { fileMustExist: true });
   const get = inc.prepare('SELECT updated_at FROM integration_state WHERE integration_name = ? AND key = ?');
-  const up = inc.prepare('INSERT INTO integration_state (integration_name, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(integration_name, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at');
+  // Only rows the incoming DB still has: a token the Mac deleted is never resurrected.
+  const up = inc.prepare('UPDATE integration_state SET value = ?, updated_at = ? WHERE integration_name = ? AND key = ?');
   let carried = 0;
   inc.transaction(() => {
     for (const r of rows) {
       const cur = get.get(r.integration_name, r.key);
-      if (!cur || t(r.updated_at) > t(cur.updated_at)) { up.run(r.integration_name, r.key, r.value, r.updated_at); carried++; }
+      if (cur && t(r.updated_at) > t(cur.updated_at)) { up.run(r.value, r.updated_at, r.integration_name, r.key); carried++; }
     }
   })();
   inc.close();
@@ -477,6 +495,8 @@ class Ctx {
   rsync: string | undefined;
   vm!: VmPaths;
   macHead = '';
+  /** `at` of the mac-locked record this run holds (re-checked before point-of-no-return steps). */
+  lockAt = '';
   private tmp: string | undefined;
 
   constructor(
@@ -647,7 +667,7 @@ class Ctx {
         if (fails.length === 0) fails = [`${rep.summary.fail} check(s)`];
       }
     } catch {
-      // unparsed output: the exit code alone decides
+      throw new Error(`${where} doctor printed no JSON report (exit ${r.code}): ${tail(r.stderr)}`);
     }
     if (r.code === 2 || fails) {
       throw new Error(
@@ -751,20 +771,106 @@ export function readRollbackInProgress(
   host: string,
 ): RollbackRecord | null {
   if (local?.role !== 'mac-locked' || local.host !== host) return null;
+  const path = rollbackRecordPath(userData);
+  let text: string;
   try {
-    const r = JSON.parse(readFileSync(rollbackRecordPath(userData), 'utf8')) as RollbackRecord;
-    if (r.host !== host || r.lockAt !== local.at) return null;
-    if (r.controlGroup !== undefined) validControlGroup(r.controlGroup);
-    return r;
-  } catch {
-    return null;
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
   }
+  // Present but unreadable could hide a rollback in progress: never read it as absent.
+  let r: RollbackRecord;
+  try {
+    r = JSON.parse(text) as RollbackRecord;
+    if (typeof r?.host !== 'string' || typeof r.lockAt !== 'string') throw new Error('shape');
+    if (r.controlGroup !== undefined) validControlGroup(r.controlGroup);
+  } catch {
+    throw new Error(`the rollback record ${path} is unreadable; fix or remove it by hand`);
+  }
+  // A record from another host or an older lock is a leftover, not this lock's rollback.
+  return r.host === host && r.lockAt === local.at ? r : null;
+}
+
+/** tmp + rename, like writeRole: a crash never leaves a half-written record. */
+function writeJsonAtomic(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(value)}\n`);
+  renameSync(tmp, path);
 }
 
 function writeRollbackRecord(userData: string, rec: RollbackRecord): void {
-  const p = rollbackRecordPath(userData);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, `${JSON.stringify(rec)}\n`);
+  writeJsonAtomic(rollbackRecordPath(userData), rec);
+}
+
+/**
+ * Written on the Mac right before a cutover resumes the VM as primary: from
+ * then on the VM may have rotated WHOOP's token, so an unlock-only rollback
+ * (which keeps the Mac's own DB) needs --accept-token-reset. A data rollback
+ * brings the token home and drops it.
+ */
+export const vmRanPath = (userData: string) =>
+  join(userData, 'state', 'runtime', 'cloud-vm-ran.json');
+
+/**
+ * One `robin cloud` operation at a time on this Mac (O_EXCL). A live holder or a
+ * stale lock both refuse; a stale lock is never removed automatically.
+ */
+export const opLockPath = (userData: string) => join(userData, 'state', 'runtime', 'cloud-op.lock');
+
+const defaultPidAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+};
+
+function acquireOpLock(
+  userData: string,
+  cmd: CloudCmd,
+  startedAt: string,
+  pidAlive: (pid: number) => boolean,
+): { release: () => void } | { refusal: string } {
+  const path = opLockPath(userData);
+  mkdirSync(dirname(path), { recursive: true });
+  const token = randomBytes(8).toString('hex');
+  const body = `${JSON.stringify({ pid: process.pid, command: cmd, startedAt, token })}\n`;
+  try {
+    const fd = openSync(path, 'wx', 0o600);
+    try {
+      writeSync(fd, body);
+    } finally {
+      closeSync(fd);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    let held: { pid?: unknown; command?: unknown; startedAt?: unknown } = {};
+    try {
+      held = JSON.parse(readFileSync(path, 'utf8')) as typeof held;
+    } catch {
+      /* unreadable: reported as stale below */
+    }
+    const pid = typeof held.pid === 'number' ? held.pid : 0;
+    const what = typeof held.command === 'string' ? held.command : '?';
+    if (pid > 0 && pidAlive(pid)) {
+      return { refusal: `another robin cloud ${what} is running (pid ${pid})` };
+    }
+    return {
+      refusal: `stale lock from pid ${pid || '?'} (${what}, ${String(held.startedAt ?? '?')}) — check robin cloud status, then delete ${path}`,
+    };
+  }
+  return {
+    release: () => {
+      try {
+        if (readFileSync(path, 'utf8') === body) rmSync(path, { force: true });
+      } catch {
+        /* already gone */
+      }
+    },
+  };
 }
 
 function dropRollbackRecord(userData: string): void {
@@ -820,9 +926,24 @@ export async function runCloud(cmd: CloudCmd, opts: RunCloudOpts): Promise<numbe
     log(`robin cloud ${cmd}: ${(err as Error).message}`);
     return 1;
   }
+  if (cmd === 'status') {
+    try {
+      return await status(c);
+    } finally {
+      c.cleanup();
+    }
+  }
+  const lock = acquireOpLock(
+    opts.userData,
+    cmd,
+    c.now().toISOString(),
+    opts.pidAlive ?? defaultPidAlive,
+  );
+  if ('refusal' in lock) {
+    log(`Refusing robin cloud ${cmd}: ${lock.refusal}`);
+    return 1;
+  }
   try {
-    if (cmd === 'status') return await status(c);
-
     let remoteRole: CloudRoleRecord | null;
     try {
       await c.connect();
@@ -832,7 +953,13 @@ export async function runCloud(cmd: CloudCmd, opts: RunCloudOpts): Promise<numbe
       return 1;
     }
     const local = readRole(opts.userData);
-    const rollingBack = readRollbackInProgress(opts.userData, local, opts.host);
+    let rollingBack: RollbackRecord | null;
+    try {
+      rollingBack = readRollbackInProgress(opts.userData, local, opts.host);
+    } catch (err) {
+      log(`Refusing robin cloud ${cmd}: ${(err as Error).message}`);
+      return 1;
+    }
     const allowed = allowedCommands(local, remoteRole?.role ?? null, opts.host, !!rollingBack);
     if (!allowed.includes(cmd)) {
       log(`Refusing robin cloud ${cmd} in the current state:`);
@@ -859,6 +986,7 @@ export async function runCloud(cmd: CloudCmd, opts: RunCloudOpts): Promise<numbe
       : await unlockOnly(c);
   } finally {
     c.cleanup();
+    lock.release();
   }
 }
 
@@ -878,7 +1006,13 @@ async function status(c: Ctx): Promise<number> {
   } catch (err) {
     remoteErr = (err as Error).message;
   }
-  const rollingBack = readRollbackInProgress(c.o.userData, local, c.o.host);
+  let rollingBack: RollbackRecord | null = null;
+  let recordErr: string | null = null;
+  try {
+    rollingBack = readRollbackInProgress(c.o.userData, local, c.o.host);
+  } catch (err) {
+    recordErr = (err as Error).message;
+  }
   const lh = await c.run('curl', ['-fs', '--max-time', '3', HEALTH_URL]);
   c.log(`Mac: ${describeRole(local)} — daemon ${lh.code === 0 ? 'up' : 'down'}`);
   c.log(
@@ -898,6 +1032,11 @@ async function status(c: Ctx): Promise<number> {
   } else writer = 'unknown';
   c.log(`Writer: ${writer}`);
   if (rollingBack) c.log('A data rollback is in progress: finish it with robin cloud rollback.');
+  if (recordErr) c.log(recordErr);
+  if (lr === null && lh.code !== 0) {
+    c.log('This Mac is unlocked but its daemon is down. Start it:');
+    for (const line of startByHandLines()) c.log(line);
+  }
   if (!remoteErr)
     c.log(
       `Allowed now: ${allowedCommands(local, remote?.role ?? null, c.o.host, !!rollingBack).join(', ')}`,
@@ -937,7 +1076,55 @@ async function preflight(c: Ctx): Promise<void> {
     );
   }
   c.detail(`VM disk: ${gb(free)} free, ${gb(need)} needed`);
+  if (c.cmd === 'rollback') await macDiskForRollback(c);
+  if (c.cmd === 'cutover') {
+    // auto-land's probation kickstarts the daemon: under the lock it would exit
+    // at start, and the probation would revert a good land.
+    const probation = (await c.macProcs.children()).filter((p) => p.cmd.includes('land-probation'));
+    if (probation.length > 0) {
+      throw new Error(
+        `an auto-land probation is running (${probation.map((p) => `pid ${p.pid}`).join(', ')}); its daemon restart would hit the locked Mac and revert the land — wait for it to finish (about 150 s), then re-run`,
+      );
+    }
+  }
   c.detail(`VM daemon: ${await c.vmActive()}`);
+}
+
+/** The Mac must hold the VM's user-data (backups/ is never pulled) twice over. */
+async function macDiskForRollback(c: Ctx): Promise<void> {
+  const duKb = async (path: string, required: boolean): Promise<number> => {
+    const r = await c.remote.exec(['du', '-sk', path]);
+    const kb = Number(r.stdout.trim().split(/\s+/)[0]);
+    if (Number.isFinite(kb) && r.stdout.trim() !== '') return kb;
+    if (required)
+      throw new Error(`du ${path} failed on the VM (exit ${r.code}): ${tail(r.stderr)}`);
+    return 0;
+  };
+  const vmBytes =
+    Math.max(0, (await duKb(c.vm.userData, true)) - (await duKb(c.vm.backups, false))) * 1024;
+  const df = await c.run('df', ['-Pk', c.o.userData]);
+  const availKb = Number(df.stdout.trim().split('\n')[1]?.trim().split(/\s+/)[3]);
+  if (df.code !== 0 || !Number.isFinite(availKb)) {
+    throw new Error(`df on this Mac failed (exit ${df.code}): ${tail(df.stderr)}`);
+  }
+  const free = availKb * 1024;
+  const need = 2 * vmBytes;
+  if (free < need) {
+    throw new Error(
+      `this Mac has ${gb(free)} free disk; bringing the VM's data home needs ${gb(need)} (2× the VM's user-data)`,
+    );
+  }
+  c.detail(`Mac disk: ${gb(free)} free, ${gb(need)} needed`);
+}
+
+/** Refuse to pass a point of no return if this run's lock is no longer the Mac's lock. */
+function assertStillLocked(c: Ctx): void {
+  const r = readRole(c.o.userData);
+  if (r?.role !== 'mac-locked' || r.host !== c.o.host || r.at !== c.lockAt) {
+    throw new Error(
+      `this Mac's lock changed during the run (now: ${describeRole(r)}); refusing to continue`,
+    );
+  }
 }
 
 const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
@@ -987,12 +1174,7 @@ function snapshotSteps(c: Ctx, out: { snap: string; events: number }): Step[] {
       title: 'scrub Mac-only rows from the snapshot',
       run: () => {
         const r = c.db.scrub(out.snap, { liveDbPath: c.macDb });
-        const db = openDb(out.snap);
-        try {
-          out.events = (db.prepare('SELECT count(*) AS n FROM events').get() as { n: number }).n;
-        } finally {
-          closeDb(db);
-        }
+        out.events = countEvents(out.snap);
         c.detail(
           `removed ${r.removed} events and ${r.derived} derived rows; ${out.events} events left`,
         );
@@ -1120,13 +1302,16 @@ async function cutover(c: Ctx, existing: CloudRoleRecord | null): Promise<number
       run: () => {
         if (existing?.role === 'mac-locked' && existing.host === c.o.host) {
           c.detail(`already locked since ${existing.at} (resuming)`);
+          c.lockAt = existing.at;
           return;
         }
         dropRollbackRecord(c.o.userData);
+        rmSync(vmRanPath(c.o.userData), { force: true });
+        c.lockAt = c.now().toISOString();
         writeRole(c.o.userData, {
           role: 'mac-locked',
           host: c.o.host,
-          at: c.now().toISOString(),
+          at: c.lockAt,
           commit: c.macHead,
         });
       },
@@ -1188,7 +1373,13 @@ async function cutover(c: Ctx, existing: CloudRoleRecord | null): Promise<number
       run: () => c.remote.push(c.o.userData, c.vm.userData, MOVE_EXCLUDES),
     },
     { title: 'push the DB snapshot', run: () => installSnapshotOnVm(c, snap.snap, true) },
-    { title: 'mark the VM primary', run: () => c.writeRemoteRole('vm-primary') },
+    {
+      title: 'mark the VM primary',
+      run: () => {
+        assertStillLocked(c);
+        return c.writeRemoteRole('vm-primary');
+      },
+    },
     {
       title: 'start the VM daemon',
       run: async () => {
@@ -1196,7 +1387,18 @@ async function cutover(c: Ctx, existing: CloudRoleRecord | null): Promise<number
         await c.vmStart();
       },
     },
-    { title: 'resume the VM', run: () => c.cli(['resume'], 'robin resume').then(() => undefined) },
+    {
+      title: 'resume the VM',
+      run: async () => {
+        // From here the VM may rotate WHOOP's token: remember it for an unlock-only rollback.
+        writeJsonAtomic(vmRanPath(c.o.userData), {
+          host: c.o.host,
+          at: c.now().toISOString(),
+          lockAt: c.lockAt,
+        });
+        await c.cli(['resume'], 'robin resume');
+      },
+    },
     {
       title: 'verify the VM',
       run: async () => {
@@ -1259,6 +1461,11 @@ async function rollback(
   let remoteSnap = '';
   const incoming = join(dirname(c.macDb), 'cloud-rollback-incoming.sqlite');
   const record: RollbackRecord = resumed ?? { host: c.o.host, lockAt: lock.at };
+  c.lockAt = lock.at;
+  const backupDir = join(
+    dirname(c.o.userData),
+    `${basename(c.o.userData)}.pre-rollback-${c.stamp()}`,
+  );
   const steps: Step[] = [
     { title: 'preflight', run: () => preflight(c) },
     {
@@ -1354,7 +1561,11 @@ async function rollback(
     },
     {
       title: 'pull user-data',
-      run: () => c.remote.pull(c.vm.userData, c.o.userData, MOVE_EXCLUDES),
+      run: async () => {
+        // Mac files the pull overwrites are kept beside user-data, never lost.
+        await c.remote.pull(c.vm.userData, c.o.userData, MOVE_EXCLUDES, { backupDir });
+        c.detail(`overwritten Mac files (if any) kept in ${backupDir}`);
+      },
     },
     {
       title: 'confirm nothing holds the Mac DB',
@@ -1369,22 +1580,26 @@ async function rollback(
     {
       title: "install the VM's DB on this Mac",
       run: () => {
+        assertStillLocked(c);
         const aside = join(dirname(c.macDb), `pre-rollback-${c.stamp()}`);
         mkdirSync(aside, { recursive: true });
-        for (const s of ['', '-wal', '-shm']) {
+        for (const s of ['', '-wal', '-shm', '-journal']) {
           if (existsSync(c.macDb + s)) renameSync(c.macDb + s, join(aside, basename(c.macDb) + s));
         }
         renameSync(incoming, c.macDb);
         c.detail(`previous Mac DB kept in ${aside}`);
       },
     },
-    // Resume before unlocking: a failure here leaves the Mac locked, so a re-run is allowed.
+    // Resume and enable before unlocking: a failure in either leaves the Mac
+    // locked (re-runnable), and nothing is left disabled once it is unlocked.
     { title: 'resume this Mac', run: () => c.power(c.o.userData, 'active') },
+    { title: 'enable the Mac services', run: () => c.service.enableMac() },
     {
       title: 'unlock this Mac (clear role)',
       run: () => {
         clearRole(c.o.userData);
         dropRollbackRecord(c.o.userData);
+        rmSync(vmRanPath(c.o.userData), { force: true });
       },
     },
     { title: 'start the Mac services', run: () => c.service.enableAndStartMac() },
@@ -1408,22 +1623,58 @@ async function unlockOnly(c: Ctx): Promise<number> {
   c.log(
     "The VM never became primary: unlocking this Mac only (its own DB stays; the VM's is not pulled).",
   );
+  const ran = existsSync(vmRanPath(c.o.userData)); // unreadable counts as present
   const steps: Step[] = [
+    {
+      title: 'check whether the VM ran as primary',
+      run: () => {
+        if (!ran) return;
+        if (!c.o.acceptTokenReset) {
+          throw new Error(
+            `the VM ran as primary during the parked cutover: ${TOKEN_WARNING}. Re-run with --accept-token-reset to unlock anyway`,
+          );
+        }
+        c.detail(`${TOKEN_WARNING} (accepted)`);
+      },
+    },
     { title: 'resume this Mac', run: () => c.power(c.o.userData, 'active') },
-    { title: 'unlock this Mac (clear role)', run: () => clearRole(c.o.userData) },
+    { title: 'enable the Mac services', run: () => c.service.enableMac() },
+    {
+      title: 'unlock this Mac (clear role)',
+      run: () => {
+        clearRole(c.o.userData);
+        rmSync(vmRanPath(c.o.userData), { force: true });
+      },
+    },
     { title: 'start the Mac services', run: () => c.service.enableAndStartMac() },
     { title: 'verify this Mac', run: () => verifyMac(c) },
   ];
-  const code = await runSteps(c, steps, { hint: (i) => (i > 1 ? finishByHand(c) : undefined) });
-  if (code === 0) c.log('This Mac is the writer again.');
+  const unlockIdx = steps.findIndex((s) => s.title.startsWith('unlock this Mac'));
+  const code = await runSteps(c, steps, {
+    hint: (i) => (i > unlockIdx ? finishByHand(c) : undefined),
+  });
+  if (code === 0) {
+    c.log('This Mac is the writer again.');
+    if (ran) c.log(TOKEN_WARNING);
+  }
   return code;
 }
 
-function finishByHand(c: Ctx): string {
-  const plist = plistPath();
+const TOKEN_WARNING =
+  "WHOOP's token may have rotated on the VM — after unlocking run: robin reauth whoop";
+
+/** Hand commands that enable and load both Mac launchd jobs. */
+export function startByHandLines(home?: string): string[] {
+  return MAC_SERVICE_LABELS.map(
+    (label) =>
+      `  launchctl enable gui/$(id -u)/${label} && launchctl bootstrap gui/$(id -u) ${plistPath({ home, label })}`,
+  );
+}
+
+export function finishByHand(c: { o: { host: string } }): string {
   return [
     'This Mac is already unlocked; robin cloud rollback no longer applies. Finish by hand:',
-    `  launchctl enable gui/$(id -u)/${LAUNCHD_LABEL} && launchctl bootstrap gui/$(id -u) ${plist}`,
+    ...startByHandLines(),
     '  robin doctor',
     `(the VM ${c.o.host} stays stopped and held)`,
   ].join('\n');

@@ -121,12 +121,24 @@ printing both roles and what is allowed:
 Every step prints `[n/N] <step>`, then `ok` or `FAILED: <reason>`. After a
 failure, fix the cause and re-run the same command. Steps are idempotent.
 
+Only one `robin cloud` command runs at a time on the Mac. Each one holds
+`user-data/state/runtime/cloud-op.lock` (pid, command, start time) until it
+exits; `status` takes no lock. A second command refuses while the holder is
+alive. If the holder died (a crash, a closed laptop), the lock stays and every
+command refuses with its details. Check `robin cloud status`, then delete the
+file by hand. Cutover and rollback also re-read the Mac's lock just before
+their point of no return (marking the VM primary, installing the VM's DB) and
+stop if it changed.
+
 ### Before you start
 
 - The VM's checkout must be at the Mac's commit and built (`dist/.build-stamp`).
 - GNU rsync 3 or later on the Mac (`brew install rsync`). macOS
   `/usr/bin/rsync` is openrsync and is refused.
-- The VM needs free disk of at least twice the transfer size.
+- The VM needs free disk of at least twice the transfer size. For rollback,
+  the Mac needs twice the VM's user-data (its `backups/` excluded).
+- Cutover refuses while an auto-land probation runs. Its daemon restart would
+  hit the locked Mac and revert a good land, so wait about 150 s for it.
 - The Mac needs a few GB of temp disk for the DB snapshot. Scrubbing a
   ~1.4 GB snapshot takes about 25–30 s.
 
@@ -176,6 +188,16 @@ If anything fails from step 9 on, the VM is parked: role back to `vm-dry-run`,
 daemon stopped. The Mac stays locked. Re-run `cutover`, or `rollback`, which
 then only unlocks the Mac.
 
+A re-run of a parked cutover pushes the Mac's snapshot again. Anything the VM
+wrote while it briefly ran as primary (up to 15 min) is overwritten, except
+newer OAuth token rows, which are kept.
+
+Right before `robin resume` on the VM, the Mac records
+`state/runtime/cloud-vm-ran.json`. From then on the VM may have rotated
+WHOOP's token. An unlock-only rollback (which keeps the Mac's own DB) then
+refuses without `--accept-token-reset` and says:
+`WHOOP's token may have rotated on the VM — after unlocking run: robin reauth whoop`.
+
 After cutover, Mac Claude Code sessions have no Robin MCP tools. The CLI
 refuses under the lock, and the tools come back when M5 points the sessions at
 the VM.
@@ -192,11 +214,17 @@ You confirm with `--yes` or by typing `rollback`. In order:
 4. The VM is stopped, and the command checks that nothing holds the VM DB.
 5. The VM snapshots its DB (`robin db backup` into `user-data/backups/` on the
    VM, kept there). The Mac pulls the snapshot and restores its Mac-only rows
-   into it (the embedder re-embeds them), then pulls user-data.
-6. The snapshot is installed as the Mac DB. The previous one moves to
-   `state/db/pre-rollback-<ts>/` and is never deleted.
-7. The Mac resumes, unlocks and restarts both launchd jobs. Verify: `/health`,
-   `doctor` without failures.
+   into it (the embedder re-embeds them), then pulls user-data. Every Mac file
+   that pull overwrites is kept in `user-data.pre-rollback-<ts>/`, next to
+   `user-data/`.
+6. The snapshot is installed as the Mac DB. The previous one (with any
+   `-wal`/`-shm`/`-journal`) moves to `state/db/pre-rollback-<ts>/` and is
+   never deleted.
+7. The Mac resumes and enables both launchd jobs while still locked, then
+   unlocks and loads them. Verify: `/health`, `doctor` without failures. If
+   loading fails after the unlock, the command prints the `launchctl` lines
+   for both jobs; `robin cloud status` prints them too whenever the Mac is
+   unlocked and its daemon is down.
 
 The VM ends stopped and held. It never restores a pre-cutover snapshot: the DB
 that comes home is the one pulled from the VM in that run.
@@ -206,18 +234,45 @@ that comes home is the one pulled from the VM in that run.
 WHOOP's refresh token is single-use and lives in the DB, so it moves with the
 DB snapshot, once per cutover or rollback. The side it left is stopped and held
 before the copy is taken, so it can never tick with the old token. A re-run of
-a parked cutover keeps any newer OAuth token row the VM wrote. One gap
-remains: a cutover parked after the VM ran for a while, followed by an
-unlock-only rollback, resumes the Mac on its own (possibly spent) token. If
-WHOOP then fails, run `robin reauth whoop`.
+a parked cutover keeps any newer OAuth token row the VM wrote, but only rows
+the Mac's snapshot still has. After an unlock-only rollback whose VM had been
+resumed, the Mac runs on its own (possibly spent) token. That is why
+`--accept-token-reset` is required there; run `robin reauth whoop` afterwards.
+
+### Abandoning a rollback
+
+Once a rollback has started, the Mac records it in
+`state/runtime/cloud-rollback.json`, and only `rollback` is allowed until it
+finishes. An unreadable record refuses every command until you fix or remove
+it. To keep the VM as the writer instead:
+
+1. On the Mac: delete `user-data/state/runtime/cloud-rollback.json`. The Mac
+   stays locked.
+2. On the VM, set the role back to primary:
+   `printf '{"role":"vm-primary","at":"%s"}\n' "$(date -u +%FT%TZ)" > ~/robin-assistant-v3/user-data/state/runtime/cloud-role.json`
+3. Start it: `systemctl --user start robin-daemon`.
+4. Resume it, from `~/robin-assistant-v3`: `pnpm robin resume` (the rollback
+   paused it).
 
 ### If the VM is gone
 
 `rollback` needs ssh to read the VM's role. If the VM is lost for good, unlock
-by hand: delete `user-data/state/runtime/cloud-role.json`, run `robin resume`,
-then `launchctl enable gui/$(id -u)/io.robin-assistant.daemon` and
-`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.robin-assistant.daemon.plist`.
-Robin then runs on the Mac's pre-cutover data.
+by hand:
+
+1. Delete `user-data/state/runtime/cloud-role.json` (and
+   `cloud-rollback.json` / `cloud-vm-ran.json` if present).
+2. Run `robin resume`.
+3. Enable and load both jobs:
+
+```bash
+for l in io.robin-assistant.daemon io.robin-assistant.mcp-remote; do
+  launchctl enable "gui/$(id -u)/$l"
+  launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$l.plist"
+done
+```
+
+Robin then runs on the Mac's pre-cutover data. If the VM ever ran as primary,
+run `robin reauth whoop`.
 
 ## Tests on Linux
 

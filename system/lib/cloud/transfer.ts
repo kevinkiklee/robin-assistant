@@ -18,6 +18,8 @@ export const MOVE_EXCLUDES: readonly string[] = [
   'state/robin.db',
   'state/db/',
   'state/runtime/cloud-role.json',
+  'state/runtime/cloud-rollback.json',
+  'state/runtime/cloud-vm-ran.json',
   'state/runtime/*.lock',
   '**/*.pid',
   'observability/logs/',
@@ -40,7 +42,13 @@ export interface Remote {
   host: string;
   exec(argv: string[]): Promise<{ code: number; stdout: string; stderr: string }>;
   push(localDir: string, remoteDir: string, excludes: readonly string[]): Promise<void>;
-  pull(remoteDir: string, localDir: string, excludes: readonly string[]): Promise<void>;
+  /** `backupDir`: local files the pull overwrites are kept there (rsync --backup). */
+  pull(
+    remoteDir: string,
+    localDir: string,
+    excludes: readonly string[],
+    opts?: { backupDir?: string },
+  ): Promise<void>;
   pushFile(local: string, remote: string): Promise<void>;
   pullFile(remote: string, local: string): Promise<void>;
 }
@@ -88,13 +96,19 @@ export function sshRemote(
   // (e.g. -oProxyCommand=…), a ':' or space would change the rsync target.
   if (!/^[A-Za-z0-9_][A-Za-z0-9._@-]*$/.test(host)) throw new Error(`invalid ssh host: ${host}`);
   const rsyncBin = opts.rsync ?? 'rsync';
-  const rsync = async (src: string, dst: string, excludes: readonly string[]): Promise<void> => {
+  const rsync = async (
+    src: string,
+    dst: string,
+    excludes: readonly string[],
+    backupDir?: string,
+  ): Promise<void> => {
     const args = [
       '-a',
       '--partial',
       '--info=progress2',
       '-e',
       `ssh ${SSH_OPTS.join(' ')}`,
+      ...(backupDir ? ['--backup', `--backup-dir=${backupDir}`] : []),
       ...excludes.map((p) => `--exclude=${p}`),
       src,
       dst,
@@ -112,8 +126,8 @@ export function sshRemote(
     exec: (argv) => run('ssh', [...SSH_OPTS, host, '--', ...argv.map(shq)]),
     push: (localDir, remoteDir, excludes) =>
       rsync(withSlash(localDir), at(withSlash(remoteDir)), excludes),
-    pull: (remoteDir, localDir, excludes) =>
-      rsync(at(withSlash(remoteDir)), withSlash(localDir), excludes),
+    pull: (remoteDir, localDir, excludes, pullOpts) =>
+      rsync(at(withSlash(remoteDir)), withSlash(localDir), excludes, pullOpts?.backupDir),
     pushFile: (local, remote) => rsync(local, at(remote), []),
     pullFile: (remote, local) => rsync(at(remote), local, []),
   };

@@ -95,6 +95,8 @@ test('excludes are exact', () => {
     'state/robin.db',
     'state/db/',
     'state/runtime/cloud-role.json',
+    'state/runtime/cloud-rollback.json',
+    'state/runtime/cloud-vm-ran.json',
     'state/runtime/*.lock',
     '**/*.pid',
     'observability/logs/',
@@ -151,6 +153,20 @@ test('pull argv mirrors push (remote source first), custom rsync binary, files h
     '/tmp/back.sqlite',
   ]);
   for (const c of calls) assert.ok(!c.args.some((a) => a.startsWith('--del')));
+  assert.ok(!calls[0].args.includes('--backup'), 'no backup unless asked');
+});
+
+test('pull with backupDir keeps overwritten local files (rsync --backup --backup-dir)', async () => {
+  const { calls, run } = fakeRunner();
+  const remote = sshRemote('example-vm', run);
+  await remote.pull('robin-assistant-v3/user-data', '/data/user-data', ['agent-runs/'], {
+    backupDir: '/data/user-data.pre-rollback-x',
+  });
+  const a = calls[0].args;
+  assert.ok(a.includes('--backup'));
+  assert.ok(a.includes('--backup-dir=/data/user-data.pre-rollback-x'));
+  assert.ok(a.indexOf('--backup-dir=/data/user-data.pre-rollback-x') < a.length - 2);
+  assert.ok(!a.some((x) => x.startsWith('--del')));
 });
 
 test('a host that could parse as an option or change the target is refused', () => {
