@@ -78,7 +78,7 @@ export const UNCATEGORIZED = 'Uncategorized';
 
 /**
  * Cross-origin hosts a standalone HTML page may load from. MIRRORS the page
- * CSP in askrobin.io `apps/web/lib/publish-serve.ts` (PAGE_SECURITY_HEADERS) —
+ * CSP in the publish host's serving app `apps/web/lib/publish-serve.ts` (PAGE_SECURITY_HEADERS) —
  * two repos, nothing enforces it; a host missing there is blocked at serve
  * time, and the publisher only warns. Change both together.
  */

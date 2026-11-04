@@ -94,7 +94,7 @@ async function api(
         // Discord requires the `DiscordBot ($url, $version)` shape. A generic
         // UA gets bounced by Cloudflare with a bare `error code: 1010` that
         // looks like an auth failure but isn't.
-        'user-agent': 'DiscordBot (https://askrobin.io, 1.0)',
+        'user-agent': `DiscordBot (${env.PUBLISH_PUBLIC_URL || 'https://localhost'}, 1.0)`,
         ...(init.headers as Record<string, string> | undefined),
       },
     });

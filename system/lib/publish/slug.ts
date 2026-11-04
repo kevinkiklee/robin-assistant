@@ -9,6 +9,7 @@ import {
   SLUG_SUFFIX_LENGTH,
   URL_HASH_LENGTH,
 } from './config.ts';
+import type { PublishEnv } from './types.ts';
 
 const nano = customAlphabet(SLUG_ALPHABET, SLUG_SUFFIX_LENGTH);
 
@@ -31,6 +32,19 @@ export function toPublicSlug(userId: string, slug: string, urlSecret: string): s
   const m = slug.match(HASHED_SLUG_RE);
   if (m && hashPageSlug(userId, m[1], urlSecret) === m[2]) return slug;
   return `${slug}-${hashPageSlug(userId, slug, urlSecret)}`;
+}
+
+/** Served path of a page: `/pages/<slug>-<hash>`. */
+export function publicPagePath(userId: string, slug: string, urlSecret: string): string {
+  return `/pages/${toPublicSlug(userId, slug, urlSecret)}`;
+}
+
+/** Canonical public URL of a page on the publish host. */
+export function publicPageUrl(
+  env: Pick<PublishEnv, 'publicUrl' | 'userId' | 'urlSecret'>,
+  slug: string,
+): string {
+  return `${env.publicUrl}${publicPagePath(env.userId, slug, env.urlSecret)}`;
 }
 
 /**

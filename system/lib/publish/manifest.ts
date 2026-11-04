@@ -1,5 +1,5 @@
 import { UNCATEGORIZED } from './config.ts';
-import { toPublicSlug } from './slug.ts';
+import { publicPageUrl } from './slug.ts';
 import type { LogRow } from './types.ts';
 
 export interface ManifestEntry {
@@ -75,7 +75,7 @@ export function buildManifest(entries: LogRow[], env: ManifestEnv): ManifestEntr
     out.push({
       slug,
       title: v.title,
-      url: `${env.publicUrl}/@${env.userId}/${toPublicSlug(env.userId, slug, env.urlSecret)}`,
+      url: publicPageUrl(env, slug),
       published_at: v.firstTs,
       updated_at: v.lastTs,
       category: v.category,

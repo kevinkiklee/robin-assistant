@@ -18,7 +18,7 @@ const row = (o: Partial<LogRow>): LogRow => ({
   ...o,
 });
 
-const ENV = { publicUrl: 'https://askrobin.io', userId: 'quinn', urlSecret: 'test-secret' };
+const ENV = { publicUrl: 'https://pages.example.test', userId: 'quinn', urlSecret: 'test-secret' };
 
 const hashed = (slug: string): string => toPublicSlug(ENV.userId, slug, ENV.urlSecret);
 
@@ -32,15 +32,15 @@ test('buildManifest: title from latest, published=earliest, updated=latest, url 
   assert.deepEqual(m[0], {
     slug: 'a',
     title: 'New',
-    url: `https://askrobin.io/@quinn/${hashed('a')}`,
+    url: `https://pages.example.test/pages/${hashed('a')}`,
     published_at: '2026-05-01T00:00:00.000Z',
     updated_at: '2026-05-03T00:00:00.000Z',
     category: 'Uncategorized',
     description: null,
   });
   // The hash must actually be there — url must not be the bare slug.
-  assert.notEqual(m[0].url, 'https://askrobin.io/@quinn/a');
-  assert.match(m[0].url, /\/@quinn\/a-[0-9a-f]{10}$/);
+  assert.notEqual(m[0].url, 'https://pages.example.test/pages/a');
+  assert.match(m[0].url, /\/pages\/a-[0-9a-f]{10}$/);
 });
 
 test('buildManifest: drops slugs whose latest action is delete', () => {

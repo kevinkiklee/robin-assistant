@@ -31,21 +31,26 @@ function setAll() {
   process.env.PUBLISH_URL_SECRET = 'sekret';
 }
 
-test('publishEnvFromProcess fills the default public URL', () => {
+test('publishEnvFromProcess returns null when PUBLISH_PUBLIC_URL is unset (no default host)', () => {
   setAll();
+  assert.equal(publishEnvFromProcess(), null);
+});
+
+test('publishEnvFromProcess reads the publish host from PUBLISH_PUBLIC_URL', () => {
+  setAll();
+  process.env.PUBLISH_PUBLIC_URL = 'https://pages.example.test';
   assert.deepEqual(publishEnvFromProcess(), {
     token: 'tok',
     userId: 'u1',
-    publicUrl: 'https://askrobin.io',
+    publicUrl: 'https://pages.example.test',
     blobPublicBaseUrl: 'https://blob.example.com',
     urlSecret: 'sekret',
   });
-  process.env.PUBLISH_PUBLIC_URL = 'https://pub.example.com';
-  assert.equal(publishEnvFromProcess()?.publicUrl, 'https://pub.example.com');
 });
 
 test('publishEnvFromProcess returns null when PUBLISH_URL_SECRET is missing', () => {
   setAll();
+  process.env.PUBLISH_PUBLIC_URL = 'https://pages.example.test';
   delete process.env.PUBLISH_URL_SECRET;
   assert.equal(publishEnvFromProcess(), null);
 });
@@ -53,6 +58,7 @@ test('publishEnvFromProcess returns null when PUBLISH_URL_SECRET is missing', ()
 test('publishEnvFromProcess returns null when any other required value is missing', () => {
   for (const k of ['BLOB_READ_WRITE_TOKEN', 'PUBLISH_USER_ID', 'BLOB_PUBLIC_BASE_URL']) {
     setAll();
+    process.env.PUBLISH_PUBLIC_URL = 'https://pages.example.test';
     delete process.env[k];
     assert.equal(publishEnvFromProcess(), null, k);
   }

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { CATEGORIES, EXIT_INPUT, EXIT_POLICY, UNCATEGORIZED } from './config.ts';
 import { appendLogEntry, readLog } from './log.ts';
 import { PublishError, publish } from './orchestrate.ts';
-import { sanitizeSlug, toPublicSlug } from './slug.ts';
+import { publicPageUrl, sanitizeSlug } from './slug.ts';
 import { dropThumb } from './thumbs.ts';
 import type { BlobClient, LogRow, PublishEnv, PublishResult } from './types.ts';
 
@@ -61,7 +61,7 @@ export async function recategorize(
 
 /** Re-derive a page's public (hashed) URL — convenience for maintenance CLIs. */
 export function pageUrlFor(env: PublishEnv, slug: string): string {
-  return `${env.publicUrl}/@${env.userId}/${toPublicSlug(env.userId, slug, env.urlSecret)}`;
+  return publicPageUrl(env, slug);
 }
 
 /**

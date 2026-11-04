@@ -5,20 +5,17 @@ import { wrapHtml } from './template.ts';
 const BASE_INPUT = {
   title: 'Hello World',
   description: 'A short description.',
-  slug: 'hello-world-0123456789',
-  userId: 'quinn',
   bodyHtml: '<p>body</p>',
   dateUtc: '2026-05-20',
-  publicBaseUrl: 'https://example.test',
+  url: 'https://pages.example.test/pages/hello-world-0123456789',
 };
 
-test('wrapHtml: emits doctype + canonical URL at the served /@user/slug path', () => {
+test('wrapHtml: emits doctype + og:url + canonical from the given url', () => {
   const html = wrapHtml(BASE_INPUT);
   assert.match(html, /^<!doctype html>/);
-  assert.match(
-    html,
-    /rel="canonical" href="https:\/\/example\.test\/@quinn\/hello-world-0123456789"/,
-  );
+  const url = 'https://pages.example.test/pages/hello-world-0123456789';
+  assert.ok(html.includes(`rel="canonical" href="${url}"`));
+  assert.ok(html.includes(`property="og:url" content="${url}"`));
 });
 
 test('wrapHtml: includes title + description meta tags', () => {

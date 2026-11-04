@@ -36,7 +36,7 @@ Metadata lives in the document:
 
 What the publisher does to an HTML page (`html-page.ts`) — targeted rewrites,
 not an allowlist sanitizer; the security boundary is the serving CSP:
-- **JavaScript runs** (2026-10-26), sandboxed at serve time: askrobin.io's
+- **JavaScript runs** (2026-10-26), sandboxed at serve time: the serving app's
   `PAGE_SECURITY_HEADERS` = `sandbox allow-scripts allow-popups
   allow-popups-to-escape-sandbox allow-downloads` (no `allow-same-origin` →
   opaque origin, no askrobin cookies/storage/API), scripts from 'self' + inline +
@@ -47,7 +47,7 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
 - **Removed:** `<base>`, `<meta http-equiv>` (refresh), `robin:*` directives,
   author robots metas, `<!-- UNTRUSTED-START -->` blocks.
 - **Forced:** exactly one `<meta name="robots" content="noindex">`.
-- **Rewritten:** internal `/@<user>/<slug>` hrefs → hashed; local `<img src>` →
+- **Rewritten:** internal `/pages/<slug>` hrefs (and the legacy `/@<user>/<slug>` form) → `/pages/<slug>-<hash>`; local `<img src>` →
   uploaded (JPEG/PNG/GIF/WebP/AVIF by content sniff, ≤10 MB, no SVG; local
   `srcset`/`<source>` dropped); local attachment hrefs → uploaded
   files (`files.ts`: xmp, cube, dcp, lrtemplate, gpx, csv, zip, pdf, ics; downloads

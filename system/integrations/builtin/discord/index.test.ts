@@ -67,6 +67,19 @@ test('notify posts to the configured channel with Bot auth', async () => {
   assert.equal(JSON.parse(String(calls[0].init.body)).content, '<@U1> **T**\nbody');
 });
 
+test('user agent carries the publish host, falling back to localhost', async () => {
+  for (const [host, want] of [
+    ['https://pages.example.test', 'DiscordBot (https://pages.example.test, 1.0)'],
+    [undefined, 'DiscordBot (https://localhost, 1.0)'],
+  ] as const) {
+    const { calls, fetchImpl } = recorder([{ body: { id: 'M' } }]);
+    const env = { ...ENV, ...(host ? { PUBLISH_PUBLIC_URL: host } : {}) } as NodeJS.ProcessEnv;
+    await notifyDiscordAction({ message: 'x' }, { fetch: fetchImpl, env });
+    const headers = calls[0].init.headers as Record<string, string>;
+    assert.equal(headers['user-agent'], want);
+  }
+});
+
 test('notify routes to an explicit channelId when given', async () => {
   const { calls, fetchImpl } = recorder([{ body: { id: 'M2' } }]);
   await notifyDiscordAction({ message: 'x', channelId: 'C9' }, { fetch: fetchImpl, env: ENV });

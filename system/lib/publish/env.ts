@@ -4,19 +4,20 @@ import type { PublishEnv } from './types.ts';
 
 /**
  * Read the publish env from process.env (callers load secrets/.env first).
- * Returns null when any required value is unset; PUBLISH_PUBLIC_URL defaults
- * to https://askrobin.io.
+ * Returns null when any required value is unset, including
+ * PUBLISH_PUBLIC_URL (the publish host — there is no default).
  */
 export function publishEnvFromProcess(): PublishEnv | null {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const userId = process.env.PUBLISH_USER_ID;
   const blobPublicBaseUrl = process.env.BLOB_PUBLIC_BASE_URL;
   const urlSecret = process.env.PUBLISH_URL_SECRET;
-  if (!token || !userId || !blobPublicBaseUrl || !urlSecret) return null;
+  const publicUrl = process.env.PUBLISH_PUBLIC_URL;
+  if (!token || !userId || !blobPublicBaseUrl || !urlSecret || !publicUrl) return null;
   return {
     token,
     userId,
-    publicUrl: process.env.PUBLISH_PUBLIC_URL || 'https://askrobin.io',
+    publicUrl,
     blobPublicBaseUrl,
     urlSecret,
   };

@@ -3,8 +3,8 @@ import { appendFile, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { publish } from './orchestrate.ts';
-import { toPublicSlug } from './slug.ts';
+import { publish, rewriteInternalHref } from './orchestrate.ts';
+import { publicPagePath, publicPageUrl, toPublicSlug } from './slug.ts';
 import type { BlobClient, BlobPutOptions } from './types.ts';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ function makeRecordingBlob(): RecordingBlob {
 const TEST_ENV = {
   token: 'tok',
   userId: 'testuser',
-  publicUrl: 'https://askrobin.io',
+  publicUrl: 'https://pages.example.test',
   blobPublicBaseUrl: 'https://blob.example.com',
   urlSecret: 'test-url-secret',
 };
@@ -134,7 +134,7 @@ test('page is stored under the hashed slug with access:public; result url carrie
     });
 
     assert.equal(result.slug, 'hash-me');
-    assert.equal(result.url, `https://askrobin.io/@testuser/${pub('hash-me')}`);
+    assert.equal(result.url, `https://pages.example.test/pages/${pub('hash-me')}`);
     assert.match(result.url, /\/hash-me-[0-9a-f]{10}$/);
     assert.equal(result.blob_key, keyFor('hash-me'));
     assert.ok(store.has(keyFor('hash-me')), 'blob stored at hashed key');
@@ -145,7 +145,7 @@ test('page is stored under the hashed slug with access:public; result url carrie
 
     // The page HTML's canonical URL points at the hashed /@user/ path.
     const html = store.get(keyFor('hash-me'))!;
-    assert.ok(html.includes(`href="https://askrobin.io/@testuser/${pub('hash-me')}"`));
+    assert.ok(html.includes(`href="https://pages.example.test/pages/${pub('hash-me')}"`));
 
     // The retired index manifest is never written.
     assert.ok(!putCalls.some((c) => c.key === MANIFEST_KEY), 'no index.json put');
@@ -192,7 +192,7 @@ test('publish + delete never touch index.json or pending ops; thumbs read the lo
       },
     });
     // The just-published page is in the local log, so it is captured at once.
-    assert.deepEqual(shots, [`https://askrobin.io/@testuser/${pub('thumb-me')}`]);
+    assert.deepEqual(shots, [`https://pages.example.test/pages/${pub('thumb-me')}`]);
     assert.ok(store.has(`users/testuser/thumbs/${pub('thumb-me')}.jpg`));
 
     await publish({
@@ -223,7 +223,8 @@ test('internal page links are rewritten to hashed URLs (absolute + relative, ide
       '',
       `[abs](https://askrobin.io/@testuser/other-page)`,
       `[rel](/@testuser/third-page#section)`,
-      `[hashed](/@testuser/${pub('other-page')})`,
+      `[new](/pages/fourth-page)`,
+      `[hashed](/pages/${pub('other-page')})`,
       `[foreign](https://askrobin.io/@someoneelse/their-page)`,
       '',
     ].join('\n');
@@ -239,14 +240,15 @@ test('internal page links are rewritten to hashed URLs (absolute + relative, ide
     });
     const html = store.get(keyFor('link-rewrite'))!;
     assert.ok(
-      html.includes(`https://askrobin.io/@testuser/${pub('other-page')}`),
-      'absolute link hashed',
+      html.includes(`https://pages.example.test/pages/${pub('other-page')}`),
+      'absolute legacy link moved to the publish host and hashed',
     );
     assert.ok(
-      html.includes(`/@testuser/${pub('third-page')}#section`),
+      html.includes(`"/pages/${pub('third-page')}#section"`),
       'relative link hashed, anchor kept',
     );
     assert.ok(!html.includes(`${pub('other-page')}-`), 'already-hashed link not double-hashed');
+    assert.ok(html.includes(`"/pages/${pub('fourth-page')}"`), 'new-form link hashed');
     assert.ok(html.includes('/@someoneelse/their-page'), 'other users’ links untouched');
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -452,7 +454,7 @@ test('an .html source takes title/description/category from <head> and hashes in
   const dir = await makeTmpDir();
   try {
     const { out } = await publishHtml(dir, HTML_DOC);
-    assert.ok(out.includes(`href="/@testuser/${pub('coast-notes')}"`), 'internal link hashed');
+    assert.ok(out.includes(`href="/pages/${pub('coast-notes')}"`), 'internal link hashed');
     const log = (await import('node:fs/promises')).readFile(join(dir, 'pub.log'), 'utf8');
     const row = JSON.parse((await log).trim().split('\n').at(-1) ?? '{}');
     assert.equal(row.title, 'Coast Notes');
@@ -774,4 +776,39 @@ test('a refused publish uploads nothing (discretion pre-check runs before assets
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('publicPageUrl builds <host>/pages/<slug>-<hash>, same hash as before', () => {
+  const url = publicPageUrl(TEST_ENV, 'trip');
+  assert.equal(url, `https://pages.example.test/pages/${pub('trip')}`);
+  assert.equal(
+    url,
+    `${TEST_ENV.publicUrl}${publicPagePath('testuser', 'trip', TEST_ENV.urlSecret)}`,
+  );
+  assert.match(url, /^https:\/\/pages\.example\.test\/pages\/trip-[0-9a-f]{10}$/);
+});
+
+test('rewriteInternalHref maps old and new forms to /pages/<slug>-<hash>', () => {
+  const env = { ...TEST_ENV, userId: 'sam' };
+  const h = (slug: string) => toPublicSlug('sam', slug, env.urlSecret);
+  const host = 'https://pages.example.test';
+  assert.equal(rewriteInternalHref('/@sam/trip', env), `/pages/${h('trip')}`);
+  assert.equal(rewriteInternalHref('/@sam/trip#day-2', env), `/pages/${h('trip')}#day-2`);
+  assert.equal(
+    rewriteInternalHref('https://askrobin.io/@sam/trip', env),
+    `${host}/pages/${h('trip')}`,
+  );
+  assert.equal(rewriteInternalHref(`${host}/@sam/trip`, env), `${host}/pages/${h('trip')}`);
+  assert.equal(rewriteInternalHref('/pages/trip', env), `/pages/${h('trip')}`);
+  assert.equal(rewriteInternalHref(`${host}/pages/trip`, env), `${host}/pages/${h('trip')}`);
+  assert.equal(rewriteInternalHref(`/pages/${h('trip')}`, env), `/pages/${h('trip')}`);
+  assert.equal(
+    rewriteInternalHref(`${host}/pages/${h('trip')}`, env),
+    `${host}/pages/${h('trip')}`,
+  );
+  assert.equal(rewriteInternalHref('/@other/x', env), '/@other/x');
+  assert.equal(
+    rewriteInternalHref('https://elsewhere.test/pages/x', env),
+    'https://elsewhere.test/pages/x',
+  );
 });

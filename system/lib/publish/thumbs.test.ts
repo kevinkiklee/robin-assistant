@@ -12,7 +12,7 @@ const BASE = 'https://store.public.blob.vercel-storage.com';
 const ENV: PublishEnv = {
   token: 't',
   userId: 'testuser',
-  publicUrl: 'https://askrobin.io',
+  publicUrl: 'https://pages.example.test',
   blobPublicBaseUrl: BASE,
   urlSecret: 's',
 };
@@ -21,7 +21,7 @@ const MANIFEST_KEY = 'users/testuser/index.json';
 
 /** The page's public (hashed) slug, as buildManifest derives it. */
 const pub = (slug: string) => toPublicSlug(ENV.userId, slug, ENV.urlSecret);
-const pageUrl = (slug: string) => `https://askrobin.io/@testuser/${pub(slug)}`;
+const pageUrl = (slug: string) => `https://pages.example.test/pages/${pub(slug)}`;
 
 const logRow = (slug: string, ts = '2026-10-01T00:00:00.000Z', action = 'overwrite'): LogRow => ({
   ts,

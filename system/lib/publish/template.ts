@@ -17,12 +17,10 @@ function truncate(s: string | null | undefined, n: number): string | null {
 export interface WrapHtmlInput {
   title: string;
   description: string | null;
-  /** The served (hashed) slug — callers pass toPublicSlug output. */
-  slug: string;
-  userId: string;
   bodyHtml: string;
   dateUtc: string;
-  publicBaseUrl: string;
+  /** Canonical public URL of the page (publicPageUrl output). */
+  url: string;
 }
 
 export function wrapHtml(input: WrapHtmlInput): string {
@@ -30,7 +28,7 @@ export function wrapHtml(input: WrapHtmlInput): string {
   const safeTitle = escapeHtml(truncatedTitle);
   const truncatedDesc = truncate(input.description, DESCRIPTION_MAX_LENGTH);
   const safeDesc = truncatedDesc ? escapeHtml(truncatedDesc) : null;
-  const url = `${input.publicBaseUrl}/@${input.userId}/${input.slug}`;
+  const url = input.url;
 
   const descTags = safeDesc
     ? `\n  <meta name="description" content="${safeDesc}">\n  <meta property="og:description" content="${safeDesc}">`

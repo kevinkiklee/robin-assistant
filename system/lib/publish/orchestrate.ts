@@ -28,7 +28,14 @@ import { type ImageRef, isHtmlSource, readHtmlMeta, renderHtmlPage } from './htm
 import { walkLocalImages } from './images.ts';
 import { appendLogEntry, readLog } from './log.ts';
 import { extractFrontmatter, normalizeMarkdown, sanitizeSchema } from './pipeline.ts';
-import { appendSuffix, deriveSlug, isRefusedSlug, sanitizeSlug, toPublicSlug } from './slug.ts';
+import {
+  appendSuffix,
+  deriveSlug,
+  isRefusedSlug,
+  publicPageUrl,
+  sanitizeSlug,
+  toPublicSlug,
+} from './slug.ts';
 import { wrapHtml } from './template.ts';
 import { dropThumb, updateThumbs } from './thumbs.ts';
 import type {
@@ -58,15 +65,6 @@ function nowIsoMs(): string {
   return new Date().toISOString();
 }
 
-/**
- * Canonical public URL for a published page:
- * `${publicUrl}/@<user>/<slug>-<hash>`. The hash makes the URL unguessable —
- * pages are unlisted; the local publish log is the only list of them.
- */
-function pageUrl(env: PublishEnv, slug: string): string {
-  return `${env.publicUrl}/@${env.userId}/${toPublicSlug(env.userId, slug, env.urlSecret)}`;
-}
-
 function extractFirstH1(body: string): string | null {
   const m = body.match(/^#\s+(.+?)\s*$/m);
   return m ? m[1] : null;
@@ -75,15 +73,25 @@ function extractFirstH1(body: string): string | null {
 /**
  * Rewrite markdown links that point at this user's own published pages so they
  * target the hashed (unguessable) URL. Source docs keep plain
- * `/@<user>/<slug>` links; the hash is applied here at publish time.
+ * `/pages/<slug>` links (the old `/@<user>/<slug>` form is still accepted);
+ * the hash is applied here at publish time.
  * Idempotent via toPublicSlug, so already-hashed links pass through unchanged.
  */
-function rewriteInternalHref(url: string, env: PublishEnv): string {
-  for (const prefix of [`${env.publicUrl}/@${env.userId}/`, `/@${env.userId}/`]) {
+export function rewriteInternalHref(url: string, env: PublishEnv): string {
+  // [prefix, replacement base]: relative input stays relative, absolute lands
+  // on the publish host.
+  const forms: Array<[string, string]> = [
+    [`${env.publicUrl}/pages/`, `${env.publicUrl}/pages/`],
+    ['/pages/', '/pages/'],
+    [`${env.publicUrl}/@${env.userId}/`, `${env.publicUrl}/pages/`],
+    [`https://askrobin.io/@${env.userId}/`, `${env.publicUrl}/pages/`],
+    [`/@${env.userId}/`, '/pages/'],
+  ];
+  for (const [prefix, base] of forms) {
     if (!url.startsWith(prefix)) continue;
     const m = url.slice(prefix.length).match(/^([a-z0-9-]+)([/#?].*)?$/);
     if (!m) return url;
-    return `${prefix}${toPublicSlug(env.userId, m[1], env.urlSecret)}${m[2] ?? ''}`;
+    return `${base}${toPublicSlug(env.userId, m[1], env.urlSecret)}${m[2] ?? ''}`;
   }
   return url;
 }
@@ -445,11 +453,9 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
     fullHtml = wrapHtml({
       title,
       description,
-      slug: toPublicSlug(opts.env.userId, slug, opts.env.urlSecret),
-      userId: opts.env.userId,
+      url: publicPageUrl(opts.env, slug),
       bodyHtml: rendered.bodyHtml,
       dateUtc: nowUtcDate(),
-      publicBaseUrl: opts.env.publicUrl,
     });
   }
 
@@ -467,7 +473,7 @@ export async function publish(opts: PublishOptions): Promise<PublishResult> {
 
   const htmlKey = htmlKeyFor(slug);
   const resultBase: PublishResult = {
-    url: pageUrl(opts.env, slug),
+    url: publicPageUrl(opts.env, slug),
     slug,
     action,
     blob_key: htmlKey,
@@ -589,7 +595,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   // --dry-run used to be ignored here, so a "dry run" deleted for real.
   if (input.dryRun) {
     return {
-      url: pageUrl(input.env, slug),
+      url: publicPageUrl(input.env, slug),
       slug,
       action: exists ? 'delete' : 'noop',
       blob_key: htmlKey,
@@ -614,7 +620,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
       // best-effort
     }
     return {
-      url: pageUrl(input.env, slug),
+      url: publicPageUrl(input.env, slug),
       slug,
       action: 'noop',
       blob_key: htmlKey,
@@ -635,7 +641,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
       ts: nowIsoMs(),
       action: 'delete',
       slug,
-      url: pageUrl(input.env, slug),
+      url: publicPageUrl(input.env, slug),
       user_id: input.env.userId,
       source: null,
       blob_key: htmlKey,
@@ -662,7 +668,7 @@ async function runDelete(input: DeleteInput): Promise<PublishResult> {
   }
 
   return {
-    url: pageUrl(input.env, slug),
+    url: publicPageUrl(input.env, slug),
     slug,
     action: 'delete',
     blob_key: htmlKey,

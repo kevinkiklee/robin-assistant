@@ -30,7 +30,7 @@ import { stripUntrustedBlocks } from './untrusted.ts';
  *
  *   - robin:* directives and any author robots meta removed; one noindex forced
  *   - <base> and <meta http-equiv> removed (URL hijack / refresh redirect)
- *   - UNTRUSTED blocks stripped; internal /@user/slug links hashed
+ *   - UNTRUSTED blocks stripped; internal page links hashed
  *   - local <img>, attachment links uploaded; local <script src>/<link
  *     rel=stylesheet> inlined (blob-hosted JS/CSS would be CSP-blocked)
  *   - everything the serving CSP will block is reported as a warning —
@@ -176,7 +176,7 @@ export interface RenderHtmlPageInput {
   raw: string;
   /** Directory local <script src>/<link href> paths resolve against (inlined). */
   sourceDir?: string;
-  /** Rewrites an href (internal /@user/slug → hashed form); identity if unchanged. */
+  /** Rewrites an href (internal page link → /pages/<slug>-<hash>); identity if unchanged. */
   rewriteHref: (href: string) => string;
   /** Uploads local <img> sources; omitted (dry run) → local paths are left as-is. */
   uploadLocalImages?: UploadLocalImages;
