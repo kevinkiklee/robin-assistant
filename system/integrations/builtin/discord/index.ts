@@ -1,4 +1,5 @@
 import { checkOutbound } from '../../../lib/discretion/policy.ts';
+import { normalizePublishHost } from '../../../lib/publish/env.ts';
 import type { Integration, IntegrationContext } from '../../_runtime/types.ts';
 
 const API = 'https://discord.com/api/v10';
@@ -94,7 +95,7 @@ async function api(
         // Discord requires the `DiscordBot ($url, $version)` shape. A generic
         // UA gets bounced by Cloudflare with a bare `error code: 1010` that
         // looks like an auth failure but isn't.
-        'user-agent': `DiscordBot (${env.PUBLISH_PUBLIC_URL || 'https://localhost'}, 1.0)`,
+        'user-agent': `DiscordBot (${normalizePublishHost(env.PUBLISH_PUBLIC_URL) || 'https://localhost'}, 1.0)`,
         ...(init.headers as Record<string, string> | undefined),
       },
     });

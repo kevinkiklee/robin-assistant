@@ -48,6 +48,12 @@ test('publishEnvFromProcess reads the publish host from PUBLISH_PUBLIC_URL', () 
   });
 });
 
+test('publishEnvFromProcess strips one trailing slash from the publish host', () => {
+  setAll();
+  process.env.PUBLISH_PUBLIC_URL = 'https://pages.example.test/';
+  assert.equal(publishEnvFromProcess()?.publicUrl, 'https://pages.example.test');
+});
+
 test('publishEnvFromProcess returns null when PUBLISH_URL_SECRET is missing', () => {
   setAll();
   process.env.PUBLISH_PUBLIC_URL = 'https://pages.example.test';

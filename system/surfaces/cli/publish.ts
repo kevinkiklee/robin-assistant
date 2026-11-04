@@ -78,6 +78,7 @@ export async function runPublishCli(rawArgs: string[]): Promise<void> {
       'PUBLISH_USER_ID',
       'BLOB_PUBLIC_BASE_URL',
       'PUBLISH_URL_SECRET',
+      'PUBLISH_PUBLIC_URL',
     ].find((k) => !process.env[k]);
     stderr.write(`${missing} missing — set in user-data/config/secrets/.env\n`);
     exit(EXIT_INPUT);
@@ -187,7 +188,6 @@ export async function runPublishedCli(rawArgs: string[]): Promise<void> {
 
   const userData = resolveUserDataDir();
   loadEnvFile(userData);
-  const userId = process.env.PUBLISH_USER_ID || 'user';
   const { entries, skipped } = await readLog(publishLogPath(userData));
   if (entries.length === 0) {
     stdout.write('(no published pages)\n');
@@ -206,7 +206,7 @@ export async function runPublishedCli(rawArgs: string[]): Promise<void> {
   const sorted = [...rows].sort((a, b) => (b.lastTs ?? '').localeCompare(a.lastTs ?? ''));
   for (const r of sorted) {
     const ts = (r.lastTs ?? '').replace('T', ' ').slice(0, 16);
-    const url = `/@${userId}/${trunc(r.slug, 30 - userId.length - 2)}`;
+    const url = trunc(r.slug, 30);
     const action = r.lastAction === 'delete' ? 'DELETED' : (r.lastAction ?? '');
     const count = r.lastAction === 'delete' ? '—' : `${r.count}×`;
     const source = r.lastAction === 'delete' ? '—' : trunc(r.lastSource ?? '', 40);

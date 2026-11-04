@@ -70,6 +70,7 @@ test('notify posts to the configured channel with Bot auth', async () => {
 test('user agent carries the publish host, falling back to localhost', async () => {
   for (const [host, want] of [
     ['https://pages.example.test', 'DiscordBot (https://pages.example.test, 1.0)'],
+    ['https://pages.example.test/', 'DiscordBot (https://pages.example.test, 1.0)'],
     [undefined, 'DiscordBot (https://localhost, 1.0)'],
   ] as const) {
     const { calls, fetchImpl } = recorder([{ body: { id: 'M' } }]);

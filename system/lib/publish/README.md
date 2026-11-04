@@ -47,6 +47,7 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
 - **Removed:** `<base>`, `<meta http-equiv>` (refresh), `robin:*` directives,
   author robots metas, `<!-- UNTRUSTED-START -->` blocks.
 - **Forced:** exactly one `<meta name="robots" content="noindex">`.
+- A relative `/pages/<slug>` link in a source doc counts as an internal page link and is hashed at publish time.
 - **Rewritten:** internal `/pages/<slug>` hrefs (and the legacy `/@<user>/<slug>` form) → `/pages/<slug>-<hash>`; local `<img src>` →
   uploaded (JPEG/PNG/GIF/WebP/AVIF by content sniff, ≤10 MB, no SVG; local
   `srcset`/`<source>` dropped); local attachment hrefs → uploaded

@@ -21,8 +21,8 @@ import { stripUntrustedBlocks } from './untrusted.ts';
  *   <meta name="robin:slug">        → slug (same as frontmatter `slug:`)
  *
  * JavaScript runs (decision 2026-10-26). The security boundary is the serving
- * CSP, not this module: askrobin.io serves every page with `sandbox
- * allow-scripts` (opaque origin — no askrobin cookies, storage, or same-origin
+ * CSP, not this module: the publish host serves every page with
+ * `sandbox allow-scripts` (opaque origin — no site cookies, storage, or same-origin
  * API access) and a host allowlist (PAGE_SCRIPT_HOSTS / PAGE_STYLE_HOSTS); the
  * direct blob URL is served as an attachment with `default-src 'none'`, so
  * script never runs there. An allowlist sanitizer on top would only break

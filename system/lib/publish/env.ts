@@ -12,7 +12,7 @@ export function publishEnvFromProcess(): PublishEnv | null {
   const userId = process.env.PUBLISH_USER_ID;
   const blobPublicBaseUrl = process.env.BLOB_PUBLIC_BASE_URL;
   const urlSecret = process.env.PUBLISH_URL_SECRET;
-  const publicUrl = process.env.PUBLISH_PUBLIC_URL;
+  const publicUrl = normalizePublishHost(process.env.PUBLISH_PUBLIC_URL);
   if (!token || !userId || !blobPublicBaseUrl || !urlSecret || !publicUrl) return null;
   return {
     token,
@@ -21,6 +21,11 @@ export function publishEnvFromProcess(): PublishEnv | null {
     blobPublicBaseUrl,
     urlSecret,
   };
+}
+
+/** The publish host with one trailing `/` stripped (so `${host}/pages/…` stays single-slashed). */
+export function normalizePublishHost(url: string | undefined): string | undefined {
+  return url ? url.replace(/\/$/, '') : undefined;
 }
 
 /** Local publish log (source of truth for the manifest). */
