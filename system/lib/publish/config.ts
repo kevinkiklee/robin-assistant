@@ -1,11 +1,13 @@
 export const SLUG_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'; // no i,l,o,0,1
 export const SLUG_SUFFIX_LENGTH = 6;
-export const SLUG_MAX_LENGTH = 80;
+// Raw slug cap. The public slug is `<slug>-<URL_HASH_LENGTH hex>` (+1 dash) and
+// every server caps the public slug at 80 chars, so the raw slug stops at 69.
+export const SLUG_MAX_LENGTH = 69;
 export const COLLISION_RETRY_LIMIT = 5;
 
 /**
  * Length (hex chars) of the unguessability hash appended to every public page
- * URL: `/@<user>/<slug>-<hash>`. 10 hex chars = 40 bits — enough that URLs
+ * URL: `/pages/<slug>-<hash>` on the publish host. 10 hex chars = 40 bits — enough that URLs
  * can't be enumerated, short enough to stay readable. Derived per-slug via
  * HMAC-SHA256 keyed by PUBLISH_URL_SECRET, so the same slug always republishes
  * to the same URL.

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { SLUG_MAX_LENGTH } from './config.ts';
 import {
   appendSuffix,
   deriveSlug,
@@ -111,4 +112,13 @@ test('toPublicSlug: a lookalike suffix that fails HMAC verification is treated a
   const fake = 'my-page-0123456789';
   const out = toPublicSlug('quinn', fake, 's3cret');
   assert.equal(out, `${fake}-${hashPageSlug('quinn', fake, 's3cret')}`);
+});
+
+test('a max-length raw slug yields a public slug of at most 80 chars', () => {
+  assert.equal(SLUG_MAX_LENGTH, 69);
+  const raw = sanitizeSlug('a'.repeat(120));
+  assert.equal(raw.length, SLUG_MAX_LENGTH);
+  const pub = toPublicSlug('some-user', raw, 'test-secret');
+  assert.ok(pub.length <= 80, `expected ≤ 80, got ${pub.length}`);
+  assert.ok(appendSuffix(raw).length <= SLUG_MAX_LENGTH);
 });
