@@ -159,7 +159,7 @@ const SANDBOX_TRAPS: Array<{ re: RegExp; warning: string }> = [
     // these tile servers answer with 403 / "API key required" tiles.
     re: /tile\.openstreetmap\.org|basemaps\.cartocdn\.com|tiles\.stadiamaps\.com/,
     warning:
-      'map tiles from OSM/CARTO/Stadia are refused from the page sandbox (no Referer) — use Esri: server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      'map tiles from OSM/CARTO/Stadia are refused from an opaque-origin page (no Referer; they load on storage pages, verified 2026-11-12) — use Esri: server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
   },
   {
     re: /\beval\s*\(|\bnew\s+Function\s*\(/,
@@ -181,6 +181,14 @@ const STORAGE_RE = /\b(localStorage|sessionStorage|indexedDB)\b/;
 // could read it from location.hash, so a page whose scripts touch such a key stays opaque.
 // Errs wide (any `ak=` starting a word): a false hit only costs a page its storage.
 const UNLOCK_KEY_RE = /\bak=|crypto\.subtle\.decrypt/;
+
+/**
+ * Runs first on every storage page: drops any `ak=` unlock key a link carried into the URL fragment
+ * (the trip site appends `#ak=` to its internal links), before other scripts run and before another
+ * same-origin window could read it from location.hash.
+ */
+export const STRIP_KEY_SCRIPT =
+  "(function(){var h=location.hash;if(!/[#&]ak=/.test(h))return;var r=h.slice(1).split('&').filter(function(p){return p.slice(0,3)!=='ak='}).join('&');history.replaceState(null,'',location.pathname+location.search+(r?'#'+r:''))})();";
 
 /** Whether the page gets the storage marker, plus the warning to show when it is withheld. */
 export function storageDecision(opts: {
@@ -430,7 +438,14 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
         properties: { name: STORAGE_MARKER.name, content: STORAGE_MARKER.content },
         children: [],
       };
-      (head as Element).children.unshift(marker);
+      const strip: Element = {
+        type: 'element',
+        tagName: 'script',
+        properties: {},
+        children: [{ type: 'text', value: STRIP_KEY_SCRIPT }],
+      };
+      // Marker first (the serving app reads it there), then the key strip, before anything else.
+      (head as Element).children.unshift(marker, strip);
     } else {
       warnings.push('storage stays off: the page has no <head> to carry the storage marker');
     }

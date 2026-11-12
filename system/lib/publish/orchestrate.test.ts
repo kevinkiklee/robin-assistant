@@ -688,6 +688,11 @@ test('an .html source inlines local JS/CSS, allows CDN scripts, refuses traversa
       'a page whose script uses storage gets the storage marker, first in <head>',
     );
     assert.ok(!result.warnings.some((w) => /storage stays off/.test(w)), 'storage not flagged');
+    assert.match(
+      out,
+      /<meta name="robin:storage" content="local"><script>\(function\(\)\{var h=location\.hash;/,
+      'the ak= strip runs right after the marker, before any other script',
+    );
     assert.ok(
       result.warnings.some((w) => /use Esri/.test(w)),
       'referer-gated tiles flagged',

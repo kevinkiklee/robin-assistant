@@ -304,9 +304,11 @@ host (`PUBLISH_PUBLIC_URL`, required) via `robin publish --source <file> --slug 
   only inside a CDN library). Never granted to a page whose scripts touch an
   `#ak=` unlock key (sealed pages, the trip site): storage pages share one
   origin and could read each other's URLs. So **prefix keys with the page
-  slug**, and keep try/catch (the dashboard preview runs without storage). No
-  `alert`, no `eval`, `fetch` works to any https API. Map tiles:
-  **Esri ArcGIS** works; OSM/CARTO/Stadia refuse sandboxed requests (no Referer).
+  slug**, and keep try/catch (the dashboard preview runs without storage). A
+  storage page also gets a first-run script that strips any `ak=` from its URL
+  fragment. No `alert`, no `eval`, `fetch` works to any https API. Map tiles:
+  **Esri ArcGIS** works everywhere; OSM/CARTO/Stadia refuse opaque-origin pages
+  (no Referer) but load on storage pages (verified live 2026-11-12).
   Keep the page's real content in HTML — ingest indexes visible text, not JS output.
 - **Web fonts: Google Fonts** — `<link rel="preconnect">` to
   `fonts.googleapis.com` + `fonts.gstatic.com`, then the `css2?family=…&display=swap`

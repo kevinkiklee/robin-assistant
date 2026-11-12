@@ -52,7 +52,9 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
 - **Forced:** exactly one `<meta name="robots" content="noindex">`.
 - **Added:** the `robin:storage` marker, first in `<head>`, when the page's scripts
   use storage (or `<meta name="robin:storage" content="local">` asks) and none
-  touches an unlock key; `content="none"` opts out.
+  touches an unlock key; `content="none"` opts out (every trip-page builder in
+  `user-data/scripts/trip-pages/lib/` sets it). Right after the marker, a script
+  that strips any `ak=` from the URL fragment before other scripts run.
 - A relative `/pages/<slug>` link in a source doc counts as an internal page link and is hashed at publish time.
 - **Rewritten:** internal `/pages/<slug>` hrefs (and the legacy `/@<user>/<slug>` form) → `/pages/<slug>-<hash>`; local `<img src>` →
   uploaded (JPEG/PNG/GIF/WebP/AVIF by content sniff, ≤10 MB, no SVG; local
