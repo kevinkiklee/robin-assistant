@@ -175,7 +175,16 @@ const SANDBOX_TRAPS: Array<{ re: RegExp; warning: string }> = [
  */
 export const STORAGE_MARKER = { name: 'robin:storage', content: 'local' } as const;
 
+/**
+ * MIRROR of the serving app's STORAGE_MARKER_RE (its serve.ts reads only the first 4 KB). Change both
+ * repos together. Publish checks its own output against it so a page never ships a marker the host
+ * would ignore.
+ */
+export const STORAGE_MARKER_SERVE_RE =
+  /^\s*(?:<!doctype html>)?\s*<html(?:\s[^>]*)?>\s*<head>\s*<meta name="robin:storage" content="local">/i;
+
 const STORAGE_RE = /\b(localStorage|sessionStorage|indexedDB)\b/;
+const COOKIE_RE = /\bdocument\.cookie\b/;
 // A sealed page decrypts with a key carried in the URL fragment (#ak=…), and the trip site passes it
 // along every internal link. On a shared origin any other storage page holding a window reference
 // could read it from location.hash, so a page whose scripts touch such a key stays opaque.
@@ -273,16 +282,21 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
   const drop: Array<{ el: Element; parent: HastNodes }> = [];
   const blocked: string[] = [];
   let usesStorage = false;
+  let usesCookie = false;
   let handlesKey = false;
   let storageAuthor: string | null = null;
   const scanScript = (code: string) => {
     for (const t of SANDBOX_TRAPS) if (t.re.test(code)) warnOnce(t.warning);
     if (STORAGE_RE.test(code)) usesStorage = true;
+    if (COOKIE_RE.test(code)) usesCookie = true;
     if (UNLOCK_KEY_RE.test(code)) handlesKey = true;
   };
 
   walk(tree, (el, parent) => {
     const p = el.properties ?? {};
+    // Inline handlers (onclick=…) are script too: they can use storage or touch the key.
+    for (const [k, v] of Object.entries(p))
+      if (/^on/i.test(k) && typeof v === 'string') scanScript(v);
     switch (el.tagName) {
       case 'head':
         head = el;
@@ -430,8 +444,19 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
 
   const storage = storageDecision({ usesStorage, handlesKey, author: storageAuthor });
   if (storage.warning) warnings.push(storage.warning);
+  if (usesCookie && !storage.grant) {
+    warnings.push(
+      'script uses document.cookie — THROWS a SecurityError on a page without storage; use localStorage (publish then turns storage on)',
+    );
+  }
   if (storage.grant) {
     if (head) {
+      // The host reads the marker only at the very start of the document (STORAGE_MARKER_SERVE_RE):
+      // no comment or other node before <html>, no attributes on <head>.
+      tree.children = (tree.children ?? []).filter(
+        (c) => c.type === 'doctype' || c.type === 'element',
+      );
+      (head as Element).properties = {};
       const marker: Element = {
         type: 'element',
         tagName: 'meta',
@@ -455,5 +480,10 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
   const html = String(
     stringify.stringify(tree as unknown as Parameters<typeof stringify.stringify>[0]),
   );
+  if (storage.grant && head && !STORAGE_MARKER_SERVE_RE.test(html.slice(0, 4096))) {
+    warnings.push(
+      'storage stays off: the storage marker is not at the start of the document, so the host will ignore it',
+    );
+  }
   return { html, meta, assetKeys, warnings };
 }

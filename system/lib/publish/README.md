@@ -41,7 +41,8 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
   allow-popups-to-escape-sandbox allow-downloads` (opaque origin), plus
   `allow-same-origin` for a page whose head starts with the `robin:storage`
   marker (2026-11-12; `STORAGE_MARKER` / `storageDecision` in `html-page.ts`, read
-  by `STORAGE_MARKER_RE` in the serving app's `serve.ts`; never on a page that
+  by `STORAGE_MARKER_RE` in the serving app's `serve.ts`, mirrored here as
+  `STORAGE_MARKER_SERVE_RE` — change both; never on a page that
   handles an `#ak=` key), scripts from 'self' + inline +
   `PAGE_SCRIPT_HOSTS` (cdnjs, jsdelivr, unpkg), no eval, `connect-src https:`.
   The direct blob URL serves HTML as an attachment with `default-src 'none'`, so
@@ -50,8 +51,9 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
 - **Removed:** `<base>`, `<meta http-equiv>` (refresh), `robin:*` directives,
   author robots metas, `<!-- UNTRUSTED-START -->` blocks.
 - **Forced:** exactly one `<meta name="robots" content="noindex">`.
-- **Added:** the `robin:storage` marker, first in `<head>`, when the page's scripts
-  use storage (or `<meta name="robin:storage" content="local">` asks) and none
+- **Added:** the `robin:storage` marker, first in `<head>` (leading comments and
+  `<head>` attributes dropped so the host sees it; publish warns if it still
+  wouldn't), when the page's scripts or inline `on*` handlers use storage (or `<meta name="robin:storage" content="local">` asks) and none
   touches an unlock key; `content="none"` opts out (every trip-page builder in
   `user-data/scripts/trip-pages/lib/` sets it). Right after the marker, a script
   that strips any `ak=` from the URL fragment before other scripts run.
@@ -65,7 +67,7 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
   `.js`/`.mjs`/`.css` files, and never through a symlink that leaves the source dir.
 - **Warned:** off-list script/style hosts, cross-origin iframes, `<form>`
   posts, `<object>`/`<embed>`, and in-script sandbox traps — alert/confirm,
-  eval, and OSM/CARTO/Stadia map tiles (refused
+  eval, `document.cookie` on a page without storage, and OSM/CARTO/Stadia map tiles (refused
   without a Referer; use Esri ArcGIS).
 - **Refused:** see the discretion gate in `docs/PUBLISHING.md` (both formats).
 

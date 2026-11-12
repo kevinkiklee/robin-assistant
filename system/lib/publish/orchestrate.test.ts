@@ -727,6 +727,39 @@ test('storage marker: only pages that use storage get it, an author meta overrid
   }
 });
 
+test('storage marker: lands where the host reads it, from handlers too; cookies warn', async () => {
+  const dir = await makeTmpDir();
+  const SERVED =
+    /^\s*(?:<!doctype html>)?\s*<html(?:\s[^>]*)?>\s*<head>\s*<meta name="robin:storage" content="local">/i;
+  try {
+    // A leading comment and <head> attributes would push the marker out of the host's view.
+    const odd = `<!-- built by a script -->\n${HTML_DOC.replace(
+      '<head>',
+      '<head data-build="7">',
+    ).replace('<title>', '<script>try { localStorage.k = 1 } catch {}</script><title>')}`;
+    const o = await publishHtml(dir, odd, 'odd-page');
+    assert.match(o.out, SERVED);
+    assert.ok(!o.result.warnings.some((w) => /storage stays off/.test(w)));
+
+    const handler = HTML_DOC.replace(
+      '<h1>',
+      `<button onclick="try { localStorage.setItem('knit-log:rows', '3') } catch (e) {}">+</button><h1>`,
+    );
+    assert.match(
+      (await publishHtml(dir, handler, 'handler-page')).out,
+      SERVED,
+      'onclick storage counts',
+    );
+
+    const cookie = HTML_DOC.replace('<title>', '<script>document.cookie = "a=1"</script><title>');
+    const c = await publishHtml(dir, cookie, 'cookie-page');
+    assert.doesNotMatch(c.out, /<meta name="robin:storage"/);
+    assert.ok(c.result.warnings.some((w) => /document\.cookie — THROWS/.test(w)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('storage marker: never on a page that handles an #ak= unlock key', async () => {
   const dir = await makeTmpDir();
   try {
