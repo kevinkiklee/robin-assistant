@@ -22,8 +22,9 @@ import { stripUntrustedBlocks } from './untrusted.ts';
  *
  * JavaScript runs (decision 2026-10-26). The security boundary is the serving
  * CSP, not this module: the publish host serves every page with
- * `sandbox allow-scripts` (opaque origin — no site cookies, storage, or same-origin
- * API access) and a host allowlist (PAGE_SCRIPT_HOSTS / PAGE_STYLE_HOSTS); the
+ * `sandbox allow-scripts allow-same-origin` (decision 2026-11-12: storage works so
+ * a page can record its reader's actions; the site host has no cookies or API to
+ * reach) and a host allowlist (PAGE_SCRIPT_HOSTS / PAGE_STYLE_HOSTS); the
  * direct blob URL is served as an attachment with `default-src 'none'`, so
  * script never runs there. An allowlist sanitizer on top would only break
  * legitimate pages, so this module does targeted rewrites instead:
@@ -145,16 +146,6 @@ export function readHtmlMeta(raw: string): HtmlPageMeta {
 
 /** Inline-script patterns that fail inside the page sandbox / CSP. */
 const SANDBOX_TRAPS: Array<{ re: RegExp; warning: string }> = [
-  {
-    re: /\b(localStorage|sessionStorage|indexedDB)\b/,
-    warning:
-      'script uses localStorage/sessionStorage/indexedDB — these THROW in the page sandbox; wrap in try/catch',
-  },
-  {
-    re: /\bdocument\.cookie\b/,
-    warning:
-      'script uses document.cookie — THROWS a SecurityError in the page sandbox; wrap in try/catch',
-  },
   {
     re: /(^|[^.\w])(alert|confirm|prompt)\s*\(/,
     warning: 'script calls alert/confirm/prompt — blocked in the page sandbox',

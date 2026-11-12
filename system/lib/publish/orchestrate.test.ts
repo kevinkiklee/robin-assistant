@@ -681,8 +681,8 @@ test('an .html source inlines local JS/CSS, allows CDN scripts, refuses traversa
     );
     assert.ok(result.warnings.some((w) => /\.\.\/outside\.js not inlined: path traversal/.test(w)));
     assert.ok(
-      result.warnings.some((w) => /THROW in the page sandbox/.test(w)),
-      'storage use flagged',
+      !result.warnings.some((w) => /localStorage/.test(w)),
+      'storage is allowed (same-origin sandbox), not flagged',
     );
     assert.ok(
       result.warnings.some((w) => /use Esri/.test(w)),

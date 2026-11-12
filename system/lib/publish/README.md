@@ -37,9 +37,10 @@ Metadata lives in the document:
 What the publisher does to an HTML page (`html-page.ts`) — targeted rewrites,
 not an allowlist sanitizer; the security boundary is the serving CSP:
 - **JavaScript runs** (2026-10-26), sandboxed at serve time: the serving app's
-  `PAGE_SECURITY_HEADERS` = `sandbox allow-scripts allow-popups
-  allow-popups-to-escape-sandbox allow-downloads` (no `allow-same-origin` →
-  opaque origin, no askrobin cookies/storage/API), scripts from 'self' + inline +
+  `PAGE_SECURITY_HEADERS` = `sandbox allow-scripts allow-same-origin allow-popups
+  allow-popups-to-escape-sandbox allow-downloads` (`allow-same-origin` since
+  2026-11-12: pages get the publish host's origin, so localStorage/IndexedDB work;
+  that host sets no cookies and serves no API), scripts from 'self' + inline +
   `PAGE_SCRIPT_HOSTS` (cdnjs, jsdelivr, unpkg), no eval, `connect-src https:`.
   The direct blob URL serves HTML as an attachment with `default-src 'none'`, so
   script never runs there. Host lists in `config.ts` MIRROR that header — change
@@ -56,8 +57,8 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
   rel=stylesheet>` → **inlined** (blob-hosted JS/CSS would be CSP-blocked) — only
   `.js`/`.mjs`/`.css` files, and never through a symlink that leaves the source dir.
 - **Warned:** off-list script/style hosts, cross-origin iframes, `<form>`
-  posts, `<object>`/`<embed>`, and in-script sandbox traps — storage/cookie
-  access (throws), alert/confirm, eval, and OSM/CARTO/Stadia map tiles (refused
+  posts, `<object>`/`<embed>`, and in-script sandbox traps — alert/confirm,
+  eval, and OSM/CARTO/Stadia map tiles (refused
   without a Referer; use Esri ArcGIS).
 - **Refused:** see the discretion gate in `docs/PUBLISHING.md` (both formats).
 
