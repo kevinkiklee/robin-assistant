@@ -680,14 +680,63 @@ test('an .html source inlines local JS/CSS, allows CDN scripts, refuses traversa
       'allowed CDN not flagged',
     );
     assert.ok(result.warnings.some((w) => /\.\.\/outside\.js not inlined: path traversal/.test(w)));
-    assert.ok(
-      !result.warnings.some((w) => /localStorage/.test(w)),
-      'storage is allowed (same-origin sandbox), not flagged',
+    // Byte-for-byte the form the serving app looks for (its serve.ts STORAGE_MARKER_RE):
+    // the head's first child, nothing before <html> but the doctype.
+    assert.match(
+      out,
+      /^\s*(?:<!doctype html>)?\s*<html(?:\s[^>]*)?>\s*<head>\s*<meta name="robin:storage" content="local">/i,
+      'a page whose script uses storage gets the storage marker, first in <head>',
     );
+    assert.ok(!result.warnings.some((w) => /storage stays off/.test(w)), 'storage not flagged');
     assert.ok(
       result.warnings.some((w) => /use Esri/.test(w)),
       'referer-gated tiles flagged',
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+const STORAGE_MARKER_RE = /<meta name="robin:storage"/;
+
+test('storage marker: only pages that use storage get it, an author meta overrides', async () => {
+  const dir = await makeTmpDir();
+  try {
+    const plain = await publishHtml(dir, HTML_DOC, 'plain-page');
+    assert.doesNotMatch(plain.out, STORAGE_MARKER_RE, 'no storage use, no marker');
+
+    const forced = HTML_DOC.replace(
+      '<title>',
+      '<meta name="robin:storage" content="local"><title>',
+    );
+    const f = await publishHtml(dir, forced, 'forced-page');
+    assert.equal(f.out.match(/<meta name="robin:storage"/g)?.length, 1, 'author meta → one marker');
+
+    const off = HTML_DOC.replace(
+      '<title>',
+      '<meta name="robin:storage" content="none"><script>try { localStorage.k = 1 } catch {}</script><title>',
+    );
+    assert.doesNotMatch((await publishHtml(dir, off, 'off-page')).out, STORAGE_MARKER_RE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('storage marker: never on a page that handles an #ak= unlock key', async () => {
+  const dir = await makeTmpDir();
+  try {
+    const sealed = HTML_DOC.replace(
+      '<title>',
+      `<script>var k = (/[#&]ak=([A-Za-z0-9_-]{43})/.exec(location.hash) || [])[1];
+try { localStorage.setItem('cycling-log:seen', '1') } catch {}</script><title>`,
+    );
+    const { out, result } = await publishHtml(dir, sealed, 'sealed-page');
+    assert.doesNotMatch(out, STORAGE_MARKER_RE);
+    assert.ok(result.warnings.some((w) => /storage stays off: this page handles an #ak=/.test(w)));
+
+    // An author opt-in can't override it either.
+    const forced = sealed.replace('<title>', '<meta name="robin:storage" content="local"><title>');
+    assert.doesNotMatch((await publishHtml(dir, forced, 'sealed-forced')).out, STORAGE_MARKER_RE);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

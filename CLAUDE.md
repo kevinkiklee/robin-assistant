@@ -295,13 +295,17 @@ host (`PUBLISH_PUBLIC_URL`, required) via `robin publish --source <file> --slug 
   phone width (16px gutter, no horizontal scroll; tables reflow).
 - **JavaScript runs, sandboxed.** Inline `<script>`, `on*`
   handlers, and libraries from cdnjs / jsdelivr / unpkg work; local `.js`/`.css`
-  files are inlined at publish. The page CSP adds `sandbox allow-scripts
-  allow-same-origin` (2026-11-12), so pages run at the publish host's real origin
-  and `localStorage` / `indexedDB` work: a page can record its reader's actions
-  locally. Every page shares that one origin, so **prefix storage keys with the
-  page slug**, and still wrap storage in try/catch (the dashboard preview pane
-  runs pages without storage; private windows can refuse it). No `alert`, no
-  `eval`, `fetch` works to any https API. Map tiles:
+  files are inlined at publish. The page CSP adds `sandbox allow-scripts`, so a
+  page runs at an opaque origin. **Storage is opt-in (2026-11-12):** when a
+  page's scripts use `localStorage` / `sessionStorage` / `indexedDB`, publish
+  writes a `robin:storage` marker and the host adds `allow-same-origin`, so
+  storage works and a page can record its reader's actions. Override with
+  `<meta name="robin:storage" content="local|none">` (`local` for storage used
+  only inside a CDN library). Never granted to a page whose scripts touch an
+  `#ak=` unlock key (sealed pages, the trip site): storage pages share one
+  origin and could read each other's URLs. So **prefix keys with the page
+  slug**, and keep try/catch (the dashboard preview runs without storage). No
+  `alert`, no `eval`, `fetch` works to any https API. Map tiles:
   **Esri ArcGIS** works; OSM/CARTO/Stadia refuse sandboxed requests (no Referer).
   Keep the page's real content in HTML — ingest indexes visible text, not JS output.
 - **Web fonts: Google Fonts** — `<link rel="preconnect">` to

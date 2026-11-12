@@ -37,10 +37,12 @@ Metadata lives in the document:
 What the publisher does to an HTML page (`html-page.ts`) — targeted rewrites,
 not an allowlist sanitizer; the security boundary is the serving CSP:
 - **JavaScript runs** (2026-10-26), sandboxed at serve time: the serving app's
-  `PAGE_SECURITY_HEADERS` = `sandbox allow-scripts allow-same-origin allow-popups
-  allow-popups-to-escape-sandbox allow-downloads` (`allow-same-origin` since
-  2026-11-12: pages get the publish host's origin, so localStorage/IndexedDB work;
-  that host sets no cookies and serves no API), scripts from 'self' + inline +
+  `PAGE_SECURITY_HEADERS` = `sandbox allow-scripts allow-popups
+  allow-popups-to-escape-sandbox allow-downloads` (opaque origin), plus
+  `allow-same-origin` for a page whose head starts with the `robin:storage`
+  marker (2026-11-12; `STORAGE_MARKER` / `storageDecision` in `html-page.ts`, read
+  by `STORAGE_MARKER_RE` in the serving app's `serve.ts`; never on a page that
+  handles an `#ak=` key), scripts from 'self' + inline +
   `PAGE_SCRIPT_HOSTS` (cdnjs, jsdelivr, unpkg), no eval, `connect-src https:`.
   The direct blob URL serves HTML as an attachment with `default-src 'none'`, so
   script never runs there. Host lists in `config.ts` MIRROR that header — change
@@ -48,6 +50,9 @@ not an allowlist sanitizer; the security boundary is the serving CSP:
 - **Removed:** `<base>`, `<meta http-equiv>` (refresh), `robin:*` directives,
   author robots metas, `<!-- UNTRUSTED-START -->` blocks.
 - **Forced:** exactly one `<meta name="robots" content="noindex">`.
+- **Added:** the `robin:storage` marker, first in `<head>`, when the page's scripts
+  use storage (or `<meta name="robin:storage" content="local">` asks) and none
+  touches an unlock key; `content="none"` opts out.
 - A relative `/pages/<slug>` link in a source doc counts as an internal page link and is hashed at publish time.
 - **Rewritten:** internal `/pages/<slug>` hrefs (and the legacy `/@<user>/<slug>` form) → `/pages/<slug>-<hash>`; local `<img src>` →
   uploaded (JPEG/PNG/GIF/WebP/AVIF by content sniff, ≤10 MB, no SVG; local

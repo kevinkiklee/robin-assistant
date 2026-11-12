@@ -22,9 +22,11 @@ import { stripUntrustedBlocks } from './untrusted.ts';
  *
  * JavaScript runs (decision 2026-10-26). The security boundary is the serving
  * CSP, not this module: the publish host serves every page with
- * `sandbox allow-scripts allow-same-origin` (decision 2026-11-12: storage works so
- * a page can record its reader's actions; the site host has no cookies or API to
- * reach) and a host allowlist (PAGE_SCRIPT_HOSTS / PAGE_STYLE_HOSTS); the
+ * `sandbox allow-scripts` (opaque origin) and a host allowlist (PAGE_SCRIPT_HOSTS /
+ * PAGE_STYLE_HOSTS). A page that carries the STORAGE_MARKER meta is served with
+ * `allow-same-origin` added, so localStorage / IndexedDB work (decision
+ * 2026-11-12: a page can record its reader's actions). Only this module writes
+ * that marker (author robin:* metas are always dropped): see storageDecision. The
  * direct blob URL is served as an attachment with `default-src 'none'`, so
  * script never runs there. An allowlist sanitizer on top would only break
  * legitimate pages, so this module does targeted rewrites instead:
@@ -36,7 +38,9 @@ import { stripUntrustedBlocks } from './untrusted.ts';
  *     rel=stylesheet> inlined (blob-hosted JS/CSS would be CSP-blocked)
  *   - everything the serving CSP will block is reported as a warning —
  *     off-list script/style hosts, cross-origin iframes, form posts, plugins,
- *     eval, and storage/cookie use that throws inside the sandbox
+ *     eval
+ *   - the storage marker added when the page's scripts use storage (and it
+ *     handles no unlock key)
  */
 
 // Minimal hast shapes — enough for metadata reads and in-place rewrites.
@@ -163,6 +167,40 @@ const SANDBOX_TRAPS: Array<{ re: RegExp; warning: string }> = [
   },
 ];
 
+/**
+ * The meta the serving app looks for (its `src/lib/site/serve.ts`, STORAGE_MARKER_RE): present in
+ * the head → the page is served with `allow-same-origin` and gets the site origin's storage. Pages
+ * that carry it share one origin (one storage bucket, and same-origin access to each other's windows),
+ * so it is granted only to pages that need it, never to one that handles an unlock key.
+ */
+export const STORAGE_MARKER = { name: 'robin:storage', content: 'local' } as const;
+
+const STORAGE_RE = /\b(localStorage|sessionStorage|indexedDB)\b/;
+// A sealed page decrypts with a key carried in the URL fragment (#ak=…), and the trip site passes it
+// along every internal link. On a shared origin any other storage page holding a window reference
+// could read it from location.hash, so a page whose scripts touch such a key stays opaque.
+// Errs wide (any `ak=` starting a word): a false hit only costs a page its storage.
+const UNLOCK_KEY_RE = /\bak=|crypto\.subtle\.decrypt/;
+
+/** Whether the page gets the storage marker, plus the warning to show when it is withheld. */
+export function storageDecision(opts: {
+  usesStorage: boolean;
+  handlesKey: boolean;
+  author: string | null;
+}): { grant: boolean; warning?: string } {
+  const author = opts.author?.trim().toLowerCase() ?? null;
+  const wants = author === 'local' || (author !== 'none' && opts.usesStorage);
+  if (!wants) return { grant: false };
+  if (opts.handlesKey) {
+    return {
+      grant: false,
+      warning:
+        'storage stays off: this page handles an #ak= unlock key, so it keeps an opaque origin — localStorage/sessionStorage/indexedDB will throw (wrap in try/catch, or keep state in the URL fragment)',
+    };
+  }
+  return { grant: true };
+}
+
 export interface RenderHtmlPageInput {
   raw: string;
   /** Directory local <script src>/<link href> paths resolve against (inlined). */
@@ -226,6 +264,14 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
   const localStyles: Array<{ el: Element; parent: HastNodes }> = [];
   const drop: Array<{ el: Element; parent: HastNodes }> = [];
   const blocked: string[] = [];
+  let usesStorage = false;
+  let handlesKey = false;
+  let storageAuthor: string | null = null;
+  const scanScript = (code: string) => {
+    for (const t of SANDBOX_TRAPS) if (t.re.test(code)) warnOnce(t.warning);
+    if (STORAGE_RE.test(code)) usesStorage = true;
+    if (UNLOCK_KEY_RE.test(code)) handlesKey = true;
+  };
 
   walk(tree, (el, parent) => {
     const p = el.properties ?? {};
@@ -241,6 +287,8 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
         const name = metaName(el);
         // Publisher directives, and any author robots meta: replaced below with
         // a forced noindex.
+        if (name === STORAGE_MARKER.name && typeof p.content === 'string')
+          storageAuthor = p.content;
         if (name.startsWith('robin:') || name === 'robots') drop.push({ el, parent });
         if (p.httpEquiv != null) {
           drop.push({ el, parent });
@@ -272,8 +320,7 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
             blocked.push(`script ${p.src}`);
           }
         } else {
-          const code = textOf(el);
-          for (const t of SANDBOX_TRAPS) if (t.re.test(code)) warnOnce(t.warning);
+          scanScript(textOf(el));
         }
         break;
       case 'link': {
@@ -318,7 +365,7 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
     }
     delete el.properties.src;
     el.children = [{ type: 'text', value: got.text }];
-    for (const t of SANDBOX_TRAPS) if (t.re.test(got.text)) warnOnce(t.warning);
+    scanScript(got.text);
   }
   for (const { el, parent } of localStyles) {
     const href = String(el.properties.href);
@@ -371,6 +418,22 @@ export async function renderHtmlPage(input: RenderHtmlPageInput): Promise<Render
       children: [],
     };
     (head as Element).children.unshift(noindex);
+  }
+
+  const storage = storageDecision({ usesStorage, handlesKey, author: storageAuthor });
+  if (storage.warning) warnings.push(storage.warning);
+  if (storage.grant) {
+    if (head) {
+      const marker: Element = {
+        type: 'element',
+        tagName: 'meta',
+        properties: { name: STORAGE_MARKER.name, content: STORAGE_MARKER.content },
+        children: [],
+      };
+      (head as Element).children.unshift(marker);
+    } else {
+      warnings.push('storage stays off: the page has no <head> to carry the storage marker');
+    }
   }
 
   const stringify = unified().use(rehypeStringify);
