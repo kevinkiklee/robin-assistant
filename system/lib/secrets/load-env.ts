@@ -9,9 +9,9 @@ export interface LoadEnvResult {
   daemonEnvLoaded: number;
 }
 
-const LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/;
+export const LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/;
 
-function unquote(raw: string): string {
+export function unquote(raw: string): string {
   if (raw.length >= 2) {
     const first = raw[0];
     const last = raw[raw.length - 1];

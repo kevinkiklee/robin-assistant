@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { closeDb, openDb, type RobinDb } from '../../brain/memory/db.ts';
 import { dbFilePath, resolveUserDataDir } from '../../lib/paths.ts';
+import { writeEnvKey } from '../../lib/secrets/env-file.ts';
 import { loadEnvFile } from '../../lib/secrets/load-env.ts';
 import { restartDaemon } from '../../lib/service/manager.ts';
 
@@ -405,13 +405,7 @@ export function seedFreshTokenState(
  * tokens never need quoting in practice but the check is defensive.
  */
 export function upsertEnvKey(path: string, key: string, value: string): void {
-  const original = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  const needsQuote = /\s|=|"/.test(value);
-  const literal = needsQuote ? `"${value.replace(/"/g, '\\"')}"` : value;
-  const line = `${key}=${literal}`;
-  const re = new RegExp(`^(?:export\\s+)?${key}=.*$`, 'm');
-  const next = re.test(original) ? original.replace(re, line) : `${original.trimEnd()}\n${line}\n`;
-  writeFileSync(path, next, 'utf8');
+  writeEnvKey(path, key, value, { backups: false });
 }
 
 export async function bounceDaemonIfRunning(
