@@ -42,7 +42,8 @@ const TAB_AGNOSTIC = new Set([
 const ALLOW: GuardDecision = { decision: 'allow' };
 const deny = (reason: string): GuardDecision => ({ decision: 'deny', reason });
 
-function tabOf(input: Record<string, unknown>): number | undefined {
+/** The tool input's tabId as a number; a digits-only string ("7") counts as 7. */
+export function tabOf(input: Record<string, unknown>): number | undefined {
   const t = input.tabId;
   if (typeof t === 'number' && Number.isFinite(t)) return t;
   if (typeof t === 'string' && /^\d+$/.test(t)) return Number(t);
@@ -50,7 +51,7 @@ function tabOf(input: Record<string, unknown>): number | undefined {
 }
 
 /** Bare tool name (`computer`) for the genuine claude-in-chrome server only; used to allow. */
-function chromeToolNameForAllow(tool: string): string | undefined {
+export function chromeToolNameForAllow(tool: string): string | undefined {
   return CHROME_ALLOW_RE.exec(tool)?.[1];
 }
 
