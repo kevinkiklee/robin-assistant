@@ -1,8 +1,9 @@
 // Wires the secret guard (PreToolUse) and redaction (PostToolUse) hooks into
-// ~/.claude/settings.json for every Claude session on this Mac. Same
-// signature-substring find/replace as lib/claude-hooks/install.ts, with two
-// deliberate differences: no ROBIN_INTERNAL_SDK skip (Robin's own SDK sessions
-// must be guarded too) and no `|| true` (these hooks must not fail open).
+// ~/.claude/settings.json for every interactive Claude session on this Mac.
+// Same signature-substring find/replace as lib/claude-hooks/install.ts, minus
+// its `|| true` (these hooks must not fail open). Robin's own Agent SDK
+// sessions (system/agent/sdk.ts) don't load user settings, so they get neither
+// hook; they are bounded by runAgent's tool allowlist and sandbox instead.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -39,6 +40,8 @@ interface HookEntry {
   type: string;
   command: string;
   timeout?: number;
+  /** PreToolUse only: a hook that crashes or times out blocks the call. */
+  onFailure?: 'block';
 }
 
 interface MatcherGroup {
@@ -76,18 +79,22 @@ function hookInvocation(p: SecretHookPaths, script: string): string {
 
 /**
  * PreToolUse command. The shell fast path exits 0 before Node starts unless a
- * window file exists or the call mentions `robin secret arm` (a deliberate
- * superset of the guard's exact arm regex; node applies the exact one). stdin is
- * read once and re-fed byte-for-byte (the `x` sentinel keeps trailing newlines
- * that `$(…)` would strip). Any node failure becomes exit 2, the only exit code
- * Claude Code treats as blocking.
+ * window file exists (any type), the runtime dir can't be searched (so its
+ * absence can't be confirmed), or the call mentions `robin secret arm` or the
+ * redaction marker (deliberate supersets of the guard's exact checks; node
+ * applies the exact ones). stdin is read once and re-fed byte-for-byte (the
+ * `x` sentinel keeps trailing newlines that `$(…)` would strip). Any node
+ * failure becomes exit 2, the only exit code Claude Code treats as blocking.
  */
 export function secretGuardCommand(p: SecretHookPaths): string {
-  const window = quote('userData', secretsPaths(p.userData).window);
+  const windowPath = secretsPaths(p.userData).window;
+  const window = quote('userData', windowPath);
+  const runtime = quote('userData', dirname(windowPath));
   const run = hookInvocation(p, 'guard.js');
   return (
     `in=$(cat; printf x); in=\${in%x}; ` +
-    `[ -f ${window} ] || case "$in" in *'robin secret arm'*) ;; *) exit 0;; esac; ` +
+    `[ -e ${window} ] || [ ! -x ${runtime} ] || ` +
+    `case "$in" in *'robin secret arm'*|*'[REDACTED-SECRET]'*) ;; *) exit 0;; esac; ` +
     `printf '%s' "$in" | ${run} ` +
     `|| { echo 'secret guard failed; blocking while a secret window may be open' >&2; exit 2; }`
   );
@@ -153,10 +160,16 @@ export function installSecretHooks(opts: SecretInstallOptions = {}): SecretInsta
   for (const event of EVENTS) {
     const { kept, removed } = strip(settings.hooks[event]);
     if (removed) replaced = true;
-    kept.push({
-      matcher: '.*',
-      hooks: [{ type: 'command', command: commands[event], timeout: HOOK_TIMEOUT_SECONDS }],
-    });
+    // PostToolUse redacts only successful calls: a FAILED call's output goes to
+    // PostToolUseFailure, which can't replace output, so it is never redacted
+    // (the rule file tells agents not to print secrets even while debugging).
+    const entry: HookEntry = {
+      type: 'command',
+      command: commands[event],
+      timeout: HOOK_TIMEOUT_SECONDS,
+    };
+    if (event === 'PreToolUse') entry.onFailure = 'block';
+    kept.push({ matcher: '.*', hooks: [entry] });
     settings.hooks[event] = kept;
   }
   writeSettings(path, settings);

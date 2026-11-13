@@ -1,6 +1,7 @@
 // PreToolUse hook entry point for the blind secret window. Runs as its own
 // process per tool call. With no window file it exits at once unless the call
-// is `robin secret arm`; with a window file every failure denies (fail closed).
+// is `robin secret arm` or an edit carrying the redaction marker; with a window
+// file every failure denies (fail closed).
 //
 // Local modules load through dynamic import inside the try blocks: a static
 // import that failed to load would crash the process with exit 1, which Claude
@@ -63,8 +64,13 @@ export async function main(): Promise<void> {
       input = undefined;
     }
 
-    // Ruling 1: no window and not an arm call → nothing to enforce.
-    if (!hasWindow && (input === undefined || !policy.isArmCall(input))) return;
+    // Ruling 1: no window, not an arm call and no marker edit → nothing to enforce.
+    if (
+      !hasWindow &&
+      (input === undefined || (!policy.isArmCall(input) && !policy.isMarkerEdit(input)))
+    ) {
+      return;
+    }
     if (input === undefined) throw new Error('unreadable hook input');
 
     const { readWindow, writeArmSession } = await import('../window.ts');

@@ -109,3 +109,17 @@ test('guard: a second arm from another session within 10 s is denied', () => {
   // The same session re-arming replaces its own record.
   assert.equal(runGuard(u, armCall('s2')).stdout, '');
 });
+
+test('guard: no window, an Edit writing the redaction marker is denied', () => {
+  const u = mkdtempSync(join(tmpdir(), 'robin-guard-'));
+  const r = runGuard(u, {
+    session_id: 's1',
+    tool_name: 'Edit',
+    tool_input: { file_path: '/p/.env', old_string: 'A=1', new_string: 'A=[REDACTED-SECRET]' },
+  });
+  assert.equal(r.status, 0);
+  const out = JSON.parse(r.stdout).hookSpecificOutput;
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /Leave that line unchanged/);
+  assert.equal(existsSync(secretsPaths(u).armSession), false);
+});

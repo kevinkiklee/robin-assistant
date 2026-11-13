@@ -2,12 +2,14 @@
 // key, the opening session may only click, run pre-approved scripts, close or
 // navigate that tab, look up tool schemas, and run `robin secret set|abort`.
 // Other sessions keep working but may not touch that tab, the screen or the
-// clipboard. Deny reasons never echo tool input: a page script or command could
-// carry anything.
+// clipboard. In every session, with or without a window, an edit may not write
+// the redaction marker back into a file. Deny reasons never echo tool input: a
+// page script or command could carry anything.
 
 import { hashText } from '../clipboard.ts';
 import { ARM_TTL_MS, isExpired, type SecretWindow } from '../window.ts';
 import type { HookInput } from './io.ts';
+import { REDACTED } from './redact-policy.ts';
 
 export type GuardDecision =
   | { decision: 'allow' }
@@ -24,6 +26,12 @@ const COMPUTER_USE = 'computer-use__';
 const ARM_RE = /^robin secret arm --tab (\d+)\s*$/;
 const SET_OR_ABORT_RE = /^robin secret (set|abort)(\s|$)/;
 const ABORT_RE = /^robin secret abort(\s|$)/;
+// Another session's abort, in any form (a tripwire like SCREEN_OR_CLIPBOARD_RE).
+const ANY_ABORT_RE = /robin\s+secret\s+abort/;
+const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+/** A saved/aborted window keeps restricting other sessions this long past its expiry. */
+export const RELEASE_GRACE_MS = 10 * 60_000;
+export const MARKER_EDIT_REASON = `This edit would write the redaction marker ${REDACTED} into a file; the original value was hidden from you. Leave that line unchanged.`;
 // Superset of the brief's list: also refuses redirects, `$VAR`, subshells and
 // process substitution, and a CR that some shells treat as a separator.
 const SHELL_META_RE = /[;&|`$()<>\n\r]/;
@@ -109,6 +117,39 @@ export function isArmCall(input: HookInput): boolean {
   return armTab(input) !== undefined;
 }
 
+function containsMarker(v: unknown): boolean {
+  if (typeof v === 'string') return v.includes(REDACTED);
+  if (typeof v !== 'object' || v === null) return false;
+  return (Array.isArray(v) ? v : Object.values(v)).some(containsMarker);
+}
+
+/** True for a Write / Edit / MultiEdit / NotebookEdit whose input carries the redaction marker anywhere. */
+export function isMarkerEdit(input: HookInput): boolean {
+  return EDIT_TOOLS.has(input.tool_name) && containsMarker(input.tool_input);
+}
+
+/**
+ * When the window stops restricting other sessions (epoch ms): its expiry
+ * while open, 10 min after it once saved or aborted (the tab may still show
+ * the key). An unparseable expiry counts as already released.
+ */
+export function windowReleaseAt(win: SecretWindow): number {
+  const exp = new Date(win.expiresAt).getTime();
+  if (Number.isNaN(exp)) return Number.NEGATIVE_INFINITY;
+  return win.status === 'open' ? exp : exp + RELEASE_GRACE_MS;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Local HH:MM:SS. */
+function clock(ms: number): string {
+  if (!Number.isFinite(ms)) return 'an unknown time';
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
 function sameSessionAllowed(input: HookInput, win: SecretWindow): boolean {
   const ti = input.tool_input;
   if (input.tool_name === 'ToolSearch') return true;
@@ -159,15 +200,25 @@ function otherSessionDenied(input: HookInput, win: SecretWindow): boolean {
 }
 
 export function decideGuard(input: HookInput, win: SecretWindow | null, now: Date): GuardDecision {
+  if (isMarkerEdit(input)) return deny(MARKER_EDIT_REASON);
   if (!win) {
     const tabId = armTab(input);
     return tabId === undefined ? ALLOW : { decision: 'allow', recordArm: { tabId } };
   }
 
   if (input.session_id !== win.sessionId) {
+    const releaseAt = windowReleaseAt(win);
+    const released = now.getTime() >= releaseAt;
+    const cmd = input.tool_name === 'Bash' ? commandOf(input) : undefined;
+    if (cmd !== undefined && ANY_ABORT_RE.test(cmd)) {
+      return released
+        ? ALLOW
+        : deny(`A secret window is open in another session; it expires at ${clock(releaseAt)}.`);
+    }
+    if (released) return ALLOW;
     return otherSessionDenied(input, win)
       ? deny(
-          'Another session has a blind secret window open: the browser tab, screen and clipboard are off limits until it closes (at most a few minutes).',
+          `Another session has a blind secret window open: the browser tab, screen and clipboard are off limits until it closes, or until ${clock(releaseAt)}; after that, \`robin secret abort\` clears it.`,
         )
       : ALLOW;
   }
@@ -180,11 +231,14 @@ export function decideGuard(input: HookInput, win: SecretWindow | null, now: Dat
         );
   }
 
-  return sameSessionAllowed(input, win)
-    ? ALLOW
-    : deny(
-        `A blind secret window is open on tab ${win.tabId}. Allowed now: left_click, approved scripts, tabs_close_mcp or navigate on that tab, ToolSearch, and \`robin secret set …\` / \`robin secret abort\` (no shell operators).`,
-      );
+  if (sameSessionAllowed(input, win)) return ALLOW;
+  const allowed =
+    'Allowed now: left_click, approved scripts, tabs_close_mcp or navigate on that tab, ToolSearch, and `robin secret set …` / `robin secret abort` (no shell operators).';
+  return deny(
+    win.status === 'open'
+      ? `A blind secret window is open on tab ${win.tabId}. ${allowed}`
+      : `The secret window on tab ${win.tabId} is ${win.status}; close that tab with tabs_close_mcp to end it. If the tab is already gone, run \`robin secret abort\`. ${allowed}`,
+  );
 }
 
 export const ARM_BUSY_REASON = 'Another session is arming a secret window; wait 10 s and retry.';

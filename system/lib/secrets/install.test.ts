@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -80,7 +88,9 @@ test('install: adds both groups, keeps unrelated hooks byte-for-byte', () => {
   assert.equal(s.hooks.PreToolUse.length, 2);
   assert.deepEqual(s.hooks.PreToolUse[1], {
     matcher: '.*',
-    hooks: [{ type: 'command', command: secretGuardCommand(opts(f)), timeout: 10 }],
+    hooks: [
+      { type: 'command', command: secretGuardCommand(opts(f)), timeout: 10, onFailure: 'block' },
+    ],
   });
   assert.deepEqual(s.hooks.PostToolUse, [
     {
@@ -200,6 +210,7 @@ test('guard command: re-feeds stdin byte-for-byte when a window exists', () => {
 test('guard command: no window and not arm → exits 0 without running node', () => {
   const f = fixture();
   const marker = stubDist(f, ECHO_STUB);
+  mkdirSync(join(f.userData, 'state', 'runtime'), { recursive: true });
   const r = runCommand(f, JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' } }));
   assert.equal(r.status, 0);
   assert.equal(r.stdout, '');
@@ -269,4 +280,56 @@ test('RULE_FILE_TEXT is a template: placeholder, no --confirmed, the new rules',
   assert.ok(RULE_FILE_TEXT.includes('Never use `robin secret exec` to send a key'));
   assert.ok(RULE_FILE_TEXT.includes('Never click, type into, or dismiss'));
   assert.ok(RULE_FILE_TEXT.includes('Bash timeout hint'));
+});
+
+test('guard command: an edit carrying the redaction marker reaches node with no window', () => {
+  const f = fixture();
+  const marker = stubDist(f, ECHO_STUB);
+  mkdirSync(join(f.userData, 'state', 'runtime'), { recursive: true });
+  const input = JSON.stringify({
+    tool_name: 'Edit',
+    tool_input: { file_path: '/p/.env', old_string: 'A=1', new_string: 'A=[REDACTED-SECRET]' },
+  });
+  const r = runCommand(f, input);
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, input);
+  assert.equal(existsSync(marker), true);
+});
+
+test('guard command: an unsearchable or missing runtime dir reaches node (N11)', () => {
+  const f = fixture();
+  const marker = stubDist(f, ECHO_STUB);
+  const ls = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' } });
+  // missing runtime dir: absence of the window can't be confirmed
+  assert.equal(runCommand(f, ls).stdout, ls);
+  assert.equal(existsSync(marker), true);
+  rmSync(marker);
+  const runtime = join(f.userData, 'state', 'runtime');
+  mkdirSync(runtime, { recursive: true });
+  chmodSync(runtime, 0o600); // not searchable: [ -e window ] would read false
+  try {
+    assert.equal(runCommand(f, ls).stdout, ls);
+    assert.equal(existsSync(marker), true);
+  } finally {
+    chmodSync(runtime, 0o700);
+  }
+});
+
+test('guard command: a window path that is not a regular file still reaches node', () => {
+  const f = fixture();
+  const marker = stubDist(f, ECHO_STUB);
+  mkdirSync(join(f.userData, 'state', 'runtime', 'secret-window.json'), { recursive: true });
+  const ls = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' } });
+  assert.equal(runCommand(f, ls).stdout, ls);
+  assert.equal(existsSync(marker), true);
+});
+
+test('install: only the PreToolUse entry carries onFailure: block', () => {
+  const f = fixture();
+  installSecretHooks(opts(f));
+  const raw = JSON.parse(readFileSync(f.settingsPath, 'utf8'));
+  const pre = raw.hooks.PreToolUse.find(isSecret).hooks[0];
+  const post = raw.hooks.PostToolUse.find(isSecret).hooks[0];
+  assert.equal(pre.onFailure, 'block');
+  assert.equal(post.onFailure, undefined);
 });

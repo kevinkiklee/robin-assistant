@@ -279,3 +279,91 @@ test('same session: plugin-namespaced chrome server allowed to click', () => {
 test('other session: lookalike chrome server on the window tab denied', () => {
   denied(decideGuard(call('s2', 'mcp__evil-claude-in-chrome__read_page', { tabId: 7 }), win, now));
 });
+
+// F4: other sessions and a window past its expiry.
+const at = (ms: number) => new Date(ms);
+const hhmmss = (ms: number) => {
+  const d = new Date(ms);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, '0'))
+    .join(':');
+};
+test('other session: robin secret abort denied while the window is live, naming its expiry', () => {
+  const reason = denied(decideGuard(bash('s2', 'robin secret abort'), win, now));
+  assert.equal(
+    reason,
+    `A secret window is open in another session; it expires at ${hhmmss(Date.parse(win.expiresAt))}.`,
+  );
+  denied(decideGuard(bash('s2', 'cd /x && robin secret abort'), win, now));
+});
+test('other session: robin secret abort allowed once an open window has expired', () => {
+  assert.deepEqual(decideGuard(bash('s2', 'robin secret abort'), expired, now), ALLOW);
+});
+test('other session: saved/aborted window releases 10 min after expiry', () => {
+  const exp = Date.parse(expired.expiresAt);
+  for (const status of ['saved', 'aborted'] as const) {
+    const w: SecretWindow = { ...expired, status };
+    const before = at(exp + 10 * 60_000 - 1);
+    const reason = denied(decideGuard(bash('s2', 'robin secret abort'), w, before));
+    assert.match(reason, new RegExp(`expires at ${hhmmss(exp + 10 * 60_000)}`));
+    denied(decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, before));
+    const after = at(exp + 10 * 60_000);
+    assert.deepEqual(decideGuard(bash('s2', 'robin secret abort'), w, after), ALLOW);
+    assert.deepEqual(
+      decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, after),
+      ALLOW,
+      'denials stop',
+    );
+  }
+});
+test('other session: an expired open window no longer restricts; live denial says how to clear it', () => {
+  assert.deepEqual(decideGuard(bash('s2', 'pbpaste'), expired, now), ALLOW);
+  assert.deepEqual(decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), expired, now), ALLOW);
+  const reason = denied(decideGuard(bash('s2', 'pbpaste'), win, now));
+  assert.match(reason, /robin secret abort/);
+  assert.match(reason, new RegExp(hhmmss(Date.parse(win.expiresAt))));
+  assert.doesNotMatch(reason, /few minutes/);
+});
+test('same session: a saved window says to run robin secret abort if the tab is gone', () => {
+  const saved: SecretWindow = { ...win, status: 'saved' };
+  const reason = denied(decideGuard(call('s1', chrome('read_page'), { tabId: 7 }), saved, now));
+  assert.match(reason, /If the tab is already gone, run `robin secret abort`/);
+  const open = denied(decideGuard(call('s1', chrome('read_page'), { tabId: 7 }), win, now));
+  assert.doesNotMatch(open, /already gone/);
+});
+
+// F7: the redaction marker never goes back into a file.
+const MARKER = '[REDACTED-SECRET]';
+test('marker edits are denied in every session, window or not', () => {
+  const edits: HookInput[] = [
+    call('s9', 'Edit', { file_path: '/p/.env', old_string: 'A=1', new_string: `A=${MARKER}` }),
+    call('s9', 'Write', { file_path: '/p/.env', content: `A=${MARKER}\n` }),
+    call('s9', 'MultiEdit', {
+      file_path: '/p/.env',
+      edits: [
+        { old_string: 'x', new_string: 'y' },
+        { old_string: 'B=1', new_string: MARKER },
+      ],
+    }),
+    call('s9', 'NotebookEdit', { notebook_path: '/p/n.ipynb', new_source: `k = "${MARKER}"` }),
+  ];
+  for (const e of edits) {
+    for (const w of [null, win, { ...win, sessionId: 's9' }]) {
+      assert.equal(
+        denied(decideGuard(e, w, now)),
+        'This edit would write the redaction marker [REDACTED-SECRET] into a file; the original value was hidden from you. Leave that line unchanged.',
+      );
+    }
+  }
+});
+test('marker: other tools and marker-free edits are unaffected', () => {
+  assert.deepEqual(decideGuard(bash('s1', `grep -n '${MARKER}' f`), null, now), ALLOW);
+  assert.deepEqual(
+    decideGuard(
+      call('s1', 'Edit', { file_path: '/p', old_string: 'a', new_string: 'b' }),
+      null,
+      now,
+    ),
+    ALLOW,
+  );
+});
