@@ -2,7 +2,7 @@
 // stores hashes only). Each is written 0600 via tmp + rename.
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { DeliveryTarget } from './deliveries.ts';
 import { secretsPaths } from './store.ts';
@@ -29,12 +29,22 @@ export interface SecretWindow {
 
 export const ARM_TTL_MS = 10_000;
 
-function writeJson(path: string, value: unknown): void {
+/**
+ * Writes tmp then moves it into place. `exclusive` publishes with `link`, which
+ * fails with EEXIST instead of replacing an existing file, so the record appears
+ * complete or not at all.
+ */
+function writeJson(path: string, value: unknown, exclusive = false): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const tmp = `${path}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
   try {
     writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 });
-    renameSync(tmp, path);
+    if (exclusive) {
+      linkSync(tmp, path);
+      rmSync(tmp, { force: true });
+    } else {
+      renameSync(tmp, path);
+    }
   } catch (e) {
     rmSync(tmp, { force: true });
     throw e;
@@ -107,11 +117,13 @@ export function closeWindow(userData: string): void {
   remove(secretsPaths(userData).window);
 }
 
+/** With `{ exclusive: true }`, throws an EEXIST error instead of replacing an existing record. */
 export function writeArmSession(
   userData: string,
   s: { sessionId: string; tabId: number; at: string },
+  opts: { exclusive?: boolean } = {},
 ): void {
-  writeJson(secretsPaths(userData).armSession, s);
+  writeJson(secretsPaths(userData).armSession, s, opts.exclusive === true);
 }
 
 export function takeArmSession(

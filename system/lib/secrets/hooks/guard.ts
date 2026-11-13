@@ -75,15 +75,23 @@ export async function main(): Promise<void> {
       return;
     }
     if ('recordArm' in decision) {
-      if (policy.armBlocked(readExistingArm(paths.armSession), input.session_id, now)) {
-        denyOut(policy.ARM_BUSY_REASON);
-        return;
-      }
-      writeArmSession(userData, {
+      const record = {
         sessionId: input.session_id,
         tabId: decision.recordArm.tabId,
         at: now.toISOString(),
-      });
+      };
+      // Exclusive create first, so two sessions arming at once can't both
+      // write blind; only an existing record gets the fresh/owner check.
+      try {
+        writeArmSession(userData, record, { exclusive: true });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        if (policy.armBlocked(readExistingArm(paths.armSession), input.session_id, now)) {
+          denyOut(policy.ARM_BUSY_REASON);
+          return;
+        }
+        writeArmSession(userData, record);
+      }
     }
   } catch {
     denyOut(

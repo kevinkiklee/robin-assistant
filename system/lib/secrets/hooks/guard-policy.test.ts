@@ -235,7 +235,7 @@ test('other session: every computer-use tool denied', () => {
 test('expired: robin secret abort chained with another command denied', () => {
   denied(decideGuard(bash('s1', 'robin secret abort; x'), expired, now));
 });
-test('no window: arm with surrounding whitespace is not an arm call', () => {
+test('no window: arm with a leading space is not an arm call; trailing whitespace is', () => {
   assert.deepEqual(decideGuard(bash('s1', ' robin secret arm --tab 7'), null, now), ALLOW);
   assert.deepEqual(decideGuard(bash('s1', 'robin secret arm --tab 7  '), null, now), {
     decision: 'allow',
@@ -251,4 +251,31 @@ test('armBlocked: fresh record from another session blocks; own, stale or junk d
   assert.equal(armBlocked({ sessionId: 's2', tabId: 7, at: at(-60_000) }, 's1', now), false);
   assert.equal(armBlocked(undefined, 's1', now), false);
   assert.equal(armBlocked({ sessionId: 's2', at: 'nope' }, 's1', now), false);
+});
+
+// Fix round 2.
+test('same session: lookalike chrome server is not allowed to click', () => {
+  denied(
+    decideGuard(
+      call('s1', 'mcp__evil-claude-in-chrome__computer', { action: 'left_click', tabId: 7 }),
+      win,
+      now,
+    ),
+  );
+});
+test('same session: plugin-namespaced chrome server allowed to click', () => {
+  assert.deepEqual(
+    decideGuard(
+      call('s1', 'mcp__plugin_chrome_claude-in-chrome__computer', {
+        action: 'left_click',
+        tabId: 7,
+      }),
+      win,
+      now,
+    ),
+    ALLOW,
+  );
+});
+test('other session: lookalike chrome server on the window tab denied', () => {
+  denied(decideGuard(call('s2', 'mcp__evil-claude-in-chrome__read_page', { tabId: 7 }), win, now));
 });

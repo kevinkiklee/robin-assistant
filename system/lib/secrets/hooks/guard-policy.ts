@@ -14,8 +14,11 @@ export type GuardDecision =
   | { decision: 'deny'; reason: string }
   | { decision: 'allow'; recordArm: { tabId: number } };
 
-// Matched anywhere in the name so plugin-namespaced installs
-// (`mcp__plugin_…_claude-in-chrome__read_page`) are covered too.
+// Two matches, split by direction. ALLOW decisions use the anchored form (the
+// real server, optionally plugin-namespaced), so a server merely named
+// `…claude-in-chrome__` gets nothing. DENY decisions use the substring, so any
+// lookalike is still kept off the window tab.
+const CHROME_ALLOW_RE = /^mcp__(?:plugin_[A-Za-z0-9_-]+_)?claude-in-chrome__([a-z_]+)$/;
 const CHROME = 'claude-in-chrome__';
 const COMPUTER_USE = 'computer-use__';
 const ARM_RE = /^robin secret arm --tab (\d+)\s*$/;
@@ -46,8 +49,13 @@ function tabOf(input: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-/** The claude-in-chrome tool's bare name (`read_page`), or undefined for other tools. */
-function chromeToolName(tool: string): string | undefined {
+/** Bare tool name (`computer`) for the genuine claude-in-chrome server only; used to allow. */
+function chromeToolNameForAllow(tool: string): string | undefined {
+  return CHROME_ALLOW_RE.exec(tool)?.[1];
+}
+
+/** Bare tool name for anything that looks like claude-in-chrome; used to deny. */
+function chromeToolNameForDeny(tool: string): string | undefined {
   const i = tool.indexOf(CHROME);
   return i < 0 ? undefined : tool.slice(i + CHROME.length);
 }
@@ -104,7 +112,7 @@ function sameSessionAllowed(input: HookInput, win: SecretWindow): boolean {
   const ti = input.tool_input;
   if (input.tool_name === 'ToolSearch') return true;
   if (input.tool_name === 'Bash') return isRobinSecretCommand(commandOf(input), SET_OR_ABORT_RE);
-  const chrome = chromeToolName(input.tool_name);
+  const chrome = chromeToolNameForAllow(input.tool_name);
   if (chrome === undefined || tabOf(ti) !== win.tabId) return false;
   switch (chrome) {
     case 'computer':
@@ -139,7 +147,7 @@ function chromeTouchesWindowTab(tool: string, ti: Record<string, unknown>, tab: 
 
 function otherSessionDenied(input: HookInput, win: SecretWindow): boolean {
   const tool = input.tool_name;
-  const chrome = chromeToolName(tool);
+  const chrome = chromeToolNameForDeny(tool);
   if (chrome !== undefined) return chromeTouchesWindowTab(chrome, input.tool_input, win.tabId);
   // Every computer-use tool can see the desktop (Chrome included) or the clipboard.
   if (tool.includes(COMPUTER_USE)) return true;

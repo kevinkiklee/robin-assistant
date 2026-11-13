@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import test from 'node:test';
@@ -125,4 +133,23 @@ test('takeArmSession consumes a corrupt file and boundary ages', () => {
   assert.deepEqual(takeArmSession(u, at), { sessionId: 's', tabId: 1 });
   writeArmSession(u, { sessionId: 's', tabId: 1, at: at.toISOString() });
   assert.deepEqual(takeArmSession(u, new Date(at.getTime() + 10000)), { sessionId: 's', tabId: 1 });
+});
+
+test('writeArmSession exclusive refuses an existing record and leaves no tmp file', () => {
+  const u = dir();
+  const p = secretsPaths(u).armSession;
+  const first = { sessionId: 's1', tabId: 3, at: '2026-01-01T00:00:00.000Z' };
+  writeArmSession(u, first, { exclusive: true });
+  assert.equal(statSync(p).mode & 0o777, 0o600);
+  assert.throws(
+    () => writeArmSession(u, { ...first, sessionId: 's2' }, { exclusive: true }),
+    (e: NodeJS.ErrnoException) => e.code === 'EEXIST',
+  );
+  assert.equal(JSON.parse(readFileSync(p, 'utf8')).sessionId, 's1');
+  assert.deepEqual(
+    readdirSync(dirname(p)).filter((f) => f.includes('.tmp-')),
+    [],
+  );
+  writeArmSession(u, { ...first, sessionId: 's2' });
+  assert.equal(JSON.parse(readFileSync(p, 'utf8')).sessionId, 's2');
 });

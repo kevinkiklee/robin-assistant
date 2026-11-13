@@ -98,3 +98,14 @@ test('guard: a stale arm record from another session is overwritten', () => {
   assert.equal(r.stdout, '');
   assert.equal(JSON.parse(readFileSync(p, 'utf8')).sessionId, 's1');
 });
+
+test('guard: a second arm from another session within 10 s is denied', () => {
+  const u = mkdtempSync(join(tmpdir(), 'robin-guard-'));
+  assert.equal(runGuard(u, armCall('s2')).stdout, '');
+  const r = runGuard(u, armCall('s1'));
+  assert.equal(r.status, 0);
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(JSON.parse(readFileSync(secretsPaths(u).armSession, 'utf8')).sessionId, 's2');
+  // The same session re-arming replaces its own record.
+  assert.equal(runGuard(u, armCall('s2')).stdout, '');
+});
