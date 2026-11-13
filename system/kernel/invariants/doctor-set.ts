@@ -36,6 +36,7 @@ import {
   recallTopicsResolvableInvariant,
   type ScheduledIntegration,
   schedulerProgressingInvariant,
+  secretsHygieneInvariant,
   sessionStateBoundedInvariant,
   userDataWritableInvariant,
   vecIndexSyncedInvariant,
@@ -156,6 +157,7 @@ export function buildDoctorInvariants(
     agentWorktreesBoundedInvariant(repoRoot),
     autoLandSandboxInvariant({ autoLandEnabled: () => loadPolicies(userData).agent.auto_land }),
     credentialsExpiringInvariant({ userData }),
+    secretsHygieneInvariant({ userData }),
     gitFsmonitorBoundedInvariant(),
     distCurrentInvariant({
       repoRoot,
