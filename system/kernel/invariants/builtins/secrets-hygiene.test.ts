@@ -279,3 +279,19 @@ test('unrecognized secret hook command is a problem', async () => {
   const r = await f.inv().check();
   assert.match(r.message ?? '', /unrecognized secret hook command/);
 });
+
+test('redact-files entries the hook skips are reported by path', async () => {
+  const f = fixture();
+  const dir = join(f.root, 'a-dir');
+  mkdirSync(dir);
+  const fine = join(f.root, 'fine.key');
+  writeFileSync(fine, 'spk_test_fine_value_0000001\n');
+  writeFileSync(f.sp.redactFiles, `${dir}\n${fine}\n${join(f.root, 'gone')}\n`);
+  const r = await f.inv().check();
+  assert.equal(r.ok, false);
+  assert.match(
+    r.message ?? '',
+    /a-dir \(listed in .*redact-files\.txt\) is skipped by redaction: not a regular file/,
+  );
+  assert.doesNotMatch(r.message ?? '', /fine\.key|gone/);
+});

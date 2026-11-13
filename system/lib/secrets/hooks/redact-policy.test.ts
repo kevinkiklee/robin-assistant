@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { secretsPaths } from '../store.ts';
-import { loadRedactionValues, REDACTED, redactOutput } from './redact-policy.ts';
+import {
+  loadRedactionValues,
+  REDACTED,
+  RedactionSourceError,
+  redactOutput,
+  skippedRedactFiles,
+} from './redact-policy.ts';
 
 const KEY = 'spk_test_0123456789abcdefXYZ';
 const SHORT_KEY = 'spk_test_aaaaaaaaaaa'; // exactly 20 chars
@@ -100,7 +106,7 @@ test('redact: nothing to replace → changed false', () => {
   assert.equal(redactOutput(undefined, [KEY]).changed, false);
 });
 
-test('loadRedactionValues: vault values regardless of name; .env only secret-class; short values skipped; redact-files read', () => {
+test('loadRedactionValues: vault values (10+) regardless of name; .env only secret-class (16+); redact-files read', () => {
   const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
   const home = mkdtempSync(join(tmpdir(), 'robin-redact-home-'));
   const p = secretsPaths(u);
@@ -109,7 +115,8 @@ test('loadRedactionValues: vault values regardless of name; .env only secret-cla
     p.vault,
     [
       'PLAIN_THING=spk_test_vault_plain_0001',
-      'SHORTV=spk_test_s',
+      'SHORTV=spk_test_',
+      'TENV=spk_test_t',
       'DUP_KEY=spk_test_dup_value_000001',
     ].join('\n'),
   );
@@ -153,6 +160,7 @@ test('loadRedactionValues: vault values regardless of name; .env only secret-cla
     [...values].sort(),
     [
       'spk_test_vault_plain_0001',
+      'spk_test_t',
       'spk_test_dup_value_000001',
       'spk_test_env_token_000001',
       'spk_test_daemon_pw_0000001',
@@ -170,12 +178,66 @@ test('loadRedactionValues: no files → empty', () => {
   assert.deepEqual(loadRedactionValues(u), []);
 });
 
-test('loadRedactionValues: a directory listed in redact-files throws', () => {
+test('loadRedactionValues: a directory or unreadable listed entry is skipped, the rest still load', () => {
   const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
   const p = secretsPaths(u);
   mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
-  writeFileSync(p.redactFiles, `${u}\n`);
-  assert.throws(() => loadRedactionValues(u));
+  const locked = join(u, 'locked-secret');
+  writeFileSync(locked, 'spk_test_locked_value_00001\n');
+  chmodSync(locked, 0o000);
+  const good = join(u, 'good-secret');
+  writeFileSync(good, 'spk_test_good_value_0000001\n');
+  writeFileSync(p.redactFiles, `${u}\n${locked}\n${good}\n${join(u, 'gone')}\n`);
+  writeFileSync(p.vault, 'V=spk_test_vault_value_000001\n');
+  try {
+    const values = loadRedactionValues(u);
+    assert.ok(values.includes('spk_test_good_value_0000001'));
+    assert.ok(values.includes('spk_test_vault_value_000001'));
+    const skipped = skippedRedactFiles(u);
+    assert.deepEqual(
+      skipped.map((s) => s.path),
+      [u, locked],
+    );
+    assert.match(skipped[0].reason, /not a regular file/);
+    assert.match(skipped[1].reason, /unreadable \(EACCES\)/);
+  } finally {
+    chmodSync(locked, 0o600);
+  }
+});
+
+test('loadRedactionValues: an unreadable vault or .env throws a RedactionSourceError naming it', () => {
+  for (const which of ['vault', 'robinEnv', 'daemonEnv', 'redactFiles'] as const) {
+    const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
+    const p = secretsPaths(u);
+    mkdirSync(p[which], { recursive: true }); // a directory: EISDIR
+    assert.throws(
+      () => loadRedactionValues(u),
+      (e: unknown) => e instanceof RedactionSourceError && e.file === p[which],
+    );
+  }
+});
+
+test('loadRedactionValues: vault.env.bak-* values are redacted too (old keys may be live)', () => {
+  const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
+  const p = secretsPaths(u);
+  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
+  writeFileSync(p.vault, 'K=spk_test_current_value_01\n');
+  writeFileSync(`${p.vault}.bak-20261113T010101`, 'K=spk_test_older_value_001\nE=spk_test_e\n');
+  writeFileSync(`${p.robinEnv}.bak-20261113T010101`, 'API_KEY=spk_test_not_vault_bak_01\n');
+  const values = loadRedactionValues(u);
+  assert.ok(values.includes('spk_test_current_value_01'));
+  assert.ok(values.includes('spk_test_older_value_001'));
+  assert.ok(values.includes('spk_test_e'), 'vault backups use the 10-char floor');
+  assert.equal(values.includes('spk_test_not_vault_bak_01'), false);
+});
+
+test('redact: a 10-char vault value is hidden in raw, hex and base64 form', () => {
+  const V = 'spk_test_t';
+  assert.equal(redactOutput(`k=${V}`, [V]).output, `k=${REDACTED}`);
+  const hex = Buffer.from(V).toString('hex');
+  assert.equal(redactOutput(hex, [V]).output, REDACTED);
+  const b64 = Buffer.from(`u:${V}`).toString('base64');
+  assert.ok((redactOutput(`Basic ${b64}`, [V]).output as string).includes(REDACTED));
 });
 
 test('loadRedactionValues: multi-line listed files add each line and each KEY=value value', () => {

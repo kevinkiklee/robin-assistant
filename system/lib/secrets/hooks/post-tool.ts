@@ -2,7 +2,9 @@
 // tool call. It (a) closes the blind window once the opening session closes or
 // navigates away from the key tab after the key was saved or aborted, and
 // (b) replaces any saved secret value in the tool's output with a marker before
-// the model sees it. Any failure withholds the whole output.
+// the model sees it. Any failure withholds the whole output. A FAILED tool
+// call goes to PostToolUseFailure instead, which can't replace output, so its
+// output is never redacted (see install.ts).
 //
 // Local modules load through dynamic import inside the try block: a static
 // import that failed to load would crash the process before it could withhold,
@@ -11,7 +13,20 @@
 
 import type { HookInput } from './io.ts';
 
-const WITHHELD = '[output withheld: secret redaction hook error]';
+const UNINSTALL_HINT = 'run `robin secret uninstall` to disable redaction';
+const WITHHELD = `[output withheld: secret redaction hook error — ${UNINSTALL_HINT}]`;
+
+/** The withheld notice; names the store file when that is what failed. */
+function noticeFor(err: unknown): string {
+  const file = (err as { name?: unknown; file?: unknown } | null)?.file;
+  if (
+    (err as { name?: unknown } | null)?.name === 'RedactionSourceError' &&
+    typeof file === 'string'
+  ) {
+    return `[output withheld: the secret redaction hook could not read ${file} — fix it, or ${UNINSTALL_HINT}]`;
+  }
+  return WITHHELD;
+}
 
 function emitOutput(mcp: boolean, value: unknown): void {
   const key = mcp ? 'updatedMCPToolOutput' : 'updatedToolOutput';
@@ -20,15 +35,25 @@ function emitOutput(mcp: boolean, value: unknown): void {
   );
 }
 
-// Strings and keys shorter than the 16-char redaction floor cannot hold a whole
-// saved value, so a short `type` discriminator and short keys survive withholding.
+// Strings shorter than the 16-char floor for non-vault values, and
+// identifier-like strings (enum values such as `files_with_matches`), are
+// kept so the replacement still matches the tool's output schema.
 const KEEP_BELOW = 16;
+const IDENTIFIER = /^[a-z][a-zA-Z0-9_-]*$/;
+const IDENTIFIER_MAX = 64;
 
-function fixedWithheld(mcp: boolean): unknown {
-  return mcp
-    ? [{ type: 'text', text: WITHHELD }]
-    : { stdout: WITHHELD, stderr: '', interrupted: false, isImage: false };
+function keepString(s: string): boolean {
+  return s.length < KEEP_BELOW || (s.length <= IDENTIFIER_MAX && IDENTIFIER.test(s));
 }
+
+function fixedWithheld(mcp: boolean, notice: string): unknown {
+  return mcp
+    ? [{ type: 'text', text: notice }]
+    : { stdout: notice, stderr: '', interrupted: false, isImage: false };
+}
+
+type Obj = Record<string, unknown>;
+const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 function isImageBlock(v: object): boolean {
   return (
@@ -38,50 +63,88 @@ function isImageBlock(v: object): boolean {
   );
 }
 
+function containsImageBlock(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) return false;
+  if (isImageBlock(v)) return true;
+  return (Array.isArray(v) ? v : Object.values(v)).some(containsImageBlock);
+}
+
 /**
- * The tool's own output with every string replaced by the notice, so the
- * replacement keeps the shape Claude Code expects for that tool. Kept as is:
- * array/object structure, non-string leaves, keys under 16 chars, and short
- * `type` values. Longer keys become the notice (suffixed on collision). In an
- * MCP content list an image block becomes a text block carrying the notice.
+ * The tool's own output with every string replaced by the notice, except
+ * those `keepString` keeps. Object keys are never renamed and non-string
+ * leaves are kept, so the result still parses as that tool's output.
  */
-function withheldFrom(original: unknown, mcp: boolean): unknown {
-  const walk = (v: unknown, key: string | undefined, inMcpList: boolean): unknown => {
-    if (typeof v === 'string') {
-      return v === '' || (key === 'type' && v.length < KEEP_BELOW) ? v : WITHHELD;
-    }
-    if (typeof v !== 'object' || v === null) return v;
-    if (inMcpList && isImageBlock(v)) return { type: 'text', text: WITHHELD };
-    if (Array.isArray(v)) return v.map((item) => walk(item, undefined, mcp && v === original));
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) {
-      const base = k.length < KEEP_BELOW ? k : WITHHELD;
-      let name = base;
-      for (let n = 2; Object.hasOwn(out, name); n++) name = `${base}_${n}`;
-      Object.defineProperty(out, name, {
-        value: walk(val, k, false),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return out;
-  };
-  if (typeof original === 'string' || (typeof original === 'object' && original !== null)) {
-    return walk(original, undefined, false);
+function blankStrings(v: unknown, notice: string): unknown {
+  if (typeof v === 'string') return keepString(v) ? v : notice;
+  if (typeof v !== 'object' || v === null) return v;
+  if (Array.isArray(v)) return v.map((item) => blankStrings(item, notice));
+  const out: Obj = {};
+  for (const [k, val] of Object.entries(v)) {
+    // defineProperty keeps `__proto__` an own key instead of a prototype change.
+    Object.defineProperty(out, k, {
+      value: blankStrings(val, notice),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
-  return fixedWithheld(mcp);
+  return out;
+}
+
+/**
+ * The withheld replacement in the tool's own shape. Output carrying image data
+ * becomes that tool's text form: an MCP text block, a Read text result, or a
+ * Bash text result (other Bash keys kept, their strings blanked).
+ */
+function withheldFrom(
+  original: unknown,
+  toolInput: unknown,
+  mcp: boolean,
+  notice: string,
+): unknown {
+  if (mcp) {
+    return containsImageBlock(original)
+      ? fixedWithheld(true, notice)
+      : blankStrings(original, notice);
+  }
+  if (isObj(original) && original.type === 'image' && isObj(original.file)) {
+    const fromResponse = original.file.filePath;
+    const fromInput = isObj(toolInput) ? toolInput.file_path : undefined;
+    const filePath =
+      typeof fromResponse === 'string'
+        ? fromResponse
+        : typeof fromInput === 'string'
+          ? fromInput
+          : '';
+    return {
+      type: 'text',
+      file: { filePath, content: notice, numLines: 1, startLine: 1, totalLines: 1 },
+    };
+  }
+  if (isObj(original) && original.isImage === true) {
+    return {
+      ...(blankStrings(original, notice) as Obj),
+      stdout: notice,
+      stderr: '',
+      interrupted: false,
+      isImage: false,
+    };
+  }
+  if (typeof original === 'string' || (typeof original === 'object' && original !== null)) {
+    return blankStrings(original, notice);
+  }
+  return fixedWithheld(false, notice);
 }
 
 /** Withholds the whole output, in the tool's own shape when the payload parses. */
-function emitWithheld(mcp: boolean, raw: string | undefined): void {
+function emitWithheld(mcp: boolean, raw: string | undefined, notice: string): void {
   let replacement: unknown;
   try {
     if (raw === undefined) throw new Error('no payload');
-    const parsed = JSON.parse(raw) as { tool_response?: unknown };
-    replacement = withheldFrom(parsed.tool_response, mcp);
+    const parsed = JSON.parse(raw) as { tool_response?: unknown; tool_input?: unknown };
+    replacement = withheldFrom(parsed.tool_response, parsed.tool_input, mcp, notice);
   } catch {
-    replacement = fixedWithheld(mcp);
+    replacement = fixedWithheld(mcp, notice);
   }
   emitOutput(mcp, replacement);
 }
@@ -132,8 +195,8 @@ export async function main(): Promise<void> {
     if (input.tool_response === undefined) return;
     const r = redactOutput(input.tool_response, values);
     if (r.changed) emitOutput(mcp, r.output);
-  } catch {
-    emitWithheld(mcp, raw);
+  } catch (err) {
+    emitWithheld(mcp, raw, noticeFor(err));
   }
 }
 

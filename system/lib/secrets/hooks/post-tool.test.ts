@@ -9,7 +9,10 @@ import type { SecretWindow } from '../window.ts';
 
 const POST = join(import.meta.dirname, 'post-tool.ts');
 const KEY = 'spk_test_post_tool_value_0001';
-const WITHHELD = '[output withheld: secret redaction hook error]';
+const WITHHELD =
+  '[output withheld: secret redaction hook error — run `robin secret uninstall` to disable redaction]';
+const fileNotice = (u: string) =>
+  `[output withheld: the secret redaction hook could not read ${secretsPaths(u).vault} — fix it, or run \`robin secret uninstall\` to disable redaction]`;
 
 function runPost(userData: string, input: unknown): { stdout: string; status: number | null } {
   const r = spawnSync('pnpm', ['exec', 'tsx', POST], {
@@ -159,15 +162,38 @@ test('post-tool: a corrupt window file still redacts and is left alone', () => {
   assert.equal(readFileSync(secretsPaths(u).window, 'utf8'), '{bad');
 });
 
-function brokenRedactFiles(): string {
+/** A vault that exists but can't be read (a directory: EISDIR) → every output is withheld. */
+function brokenVault(): string {
   const u = userDataWith();
-  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
-  writeFileSync(secretsPaths(u).redactFiles, `${u}\n`);
+  mkdirSync(secretsPaths(u).vault, { recursive: true });
   return u;
 }
 
-test('post-tool: throws → withheld notice', () => {
-  const u = brokenRedactFiles();
+function withheld(u: string, payload: Record<string, unknown>): unknown {
+  const r = runPost(u, { session_id: 's1', tool_input: {}, ...payload });
+  assert.equal(r.status, 0);
+  const out = JSON.parse(r.stdout).hookSpecificOutput;
+  return out.updatedMCPToolOutput ?? out.updatedToolOutput;
+}
+
+test('post-tool: a directory listed in redact-files is skipped, not a reason to withhold', () => {
+  const u = userDataWith();
+  writeVault(u, `SOME_NAME=${KEY}\n`);
+  writeFileSync(secretsPaths(u).redactFiles, `${u}\n`);
+  const r = runPost(u, {
+    session_id: 's1',
+    tool_name: 'Bash',
+    tool_input: { command: 'env' },
+    tool_response: { stdout: `X=${KEY}`, stderr: '', interrupted: false, isImage: false },
+  });
+  assert.equal(
+    JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput.stdout,
+    'X=[REDACTED-SECRET]',
+  );
+});
+
+test('post-tool: unreadable vault → withheld notice names the file and the uninstall command', () => {
+  const u = brokenVault();
   const r = runPost(u, {
     session_id: 's1',
     tool_name: 'mcp__claude-in-chrome__get_page_text',
@@ -178,57 +204,222 @@ test('post-tool: throws → withheld notice', () => {
   assert.deepEqual(JSON.parse(r.stdout), {
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',
-      updatedMCPToolOutput: [{ type: 'text', text: WITHHELD }],
+      updatedMCPToolOutput: [{ type: 'text', text: 'anything' }],
     },
   });
+  const long = withheld(u, {
+    tool_name: 'mcp__x__y',
+    tool_response: [{ type: 'text', text: 'a longer text block that could hold a key' }],
+  });
+  assert.deepEqual(long, [{ type: 'text', text: fileNotice(u) }]);
+  assert.match(fileNotice(u), /robin secret uninstall/);
 });
 
-test('post-tool: withheld MCP list keeps its blocks; an image block becomes text', () => {
-  const u = brokenRedactFiles();
-  const r = runPost(u, {
-    session_id: 's1',
-    tool_name: 'mcp__claude-in-chrome__computer',
-    tool_input: { tabId: 3, action: 'screenshot' },
-    tool_response: [
-      { type: 'text', text: 'shot taken' },
-      { type: 'image', data: 'AAAA', mimeType: 'image/png' },
-    ],
-  });
+test('post-tool: unparseable payload → generic withheld notice', () => {
+  const u = userDataWith();
+  const r = runPost(u, 'not json "tool_name":"mcp__x"');
   assert.deepEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedMCPToolOutput, [
-    { type: 'text', text: WITHHELD },
     { type: 'text', text: WITHHELD },
   ]);
 });
 
-test('post-tool: withheld Read output keeps the Read shape', () => {
-  const u = brokenRedactFiles();
-  const r = runPost(u, {
-    session_id: 's1',
+test('post-tool: withheld MCP output with an image anywhere → one text block', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'mcp__claude-in-chrome__computer',
+    tool_input: { tabId: 3, action: 'screenshot' },
+    tool_response: [
+      { type: 'text', text: 'shot taken of the page' },
+      { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+    ],
+  });
+  assert.deepEqual(out, [{ type: 'text', text: fileNotice(u) }]);
+});
+
+test('post-tool: withheld Bash output keeps every real key, never renamed', () => {
+  const u = brokenVault();
+  const n = fileNotice(u);
+  const out = withheld(u, {
+    tool_name: 'Bash',
+    tool_input: { command: 'ls' },
+    tool_response: {
+      stdout: 'a long line of command output',
+      stderr: '',
+      interrupted: false,
+      isImage: false,
+      noOutputExpected: false,
+      returnCodeInterpretation: 'No matches found in the files',
+      persistedOutputPath: '/private/tmp/claude/tool-results/out-0001.txt',
+      staleReadFileStateHint: 'The file changed since it was last read',
+      backgroundCwdHint: 'The shell cwd moved to /some/other/folder',
+    },
+  });
+  assert.deepEqual(out, {
+    stdout: n,
+    stderr: '',
+    interrupted: false,
+    isImage: false,
+    noOutputExpected: false,
+    returnCodeInterpretation: n,
+    persistedOutputPath: n,
+    staleReadFileStateHint: n,
+    backgroundCwdHint: n,
+  });
+});
+
+test('post-tool: withheld Edit and Write outputs keep contentNotInModelContext and every key', () => {
+  const u = brokenVault();
+  const n = fileNotice(u);
+  const edit = withheld(u, {
+    tool_name: 'Edit',
+    tool_response: {
+      filePath: '/Users/someone/project/src/app.ts',
+      oldString: 'const a = 1; // old',
+      newString: 'const a = 2; // new',
+      originalFile: 'the whole original file text',
+      structuredPatch: [
+        { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-const a = 1; // old'] },
+      ],
+      userModified: false,
+      replaceAll: false,
+      contentNotInModelContext: true,
+    },
+  });
+  assert.deepEqual(edit, {
+    filePath: n,
+    oldString: n,
+    newString: n,
+    originalFile: n,
+    structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: [n] }],
+    userModified: false,
+    replaceAll: false,
+    contentNotInModelContext: true,
+  });
+  const write = withheld(u, {
+    tool_name: 'Write',
+    tool_response: {
+      type: 'create',
+      filePath: '/Users/someone/project/new-file.ts',
+      content: 'export const value = "something long";',
+      structuredPatch: [],
+      originalFile: null,
+      contentNotInModelContext: true,
+    },
+  });
+  assert.deepEqual(write, {
+    type: 'create',
+    filePath: n,
+    content: n,
+    structuredPatch: [],
+    originalFile: null,
+    contentNotInModelContext: true,
+  });
+});
+
+test('post-tool: withheld Grep output keeps mode and identifier-like enum values', () => {
+  const u = brokenVault();
+  const n = fileNotice(u);
+  const content = withheld(u, {
+    tool_name: 'Grep',
+    tool_response: {
+      mode: 'content',
+      numFiles: 2,
+      filenames: ['/Users/someone/project/a.ts'],
+      content: 'a.ts:1:some matching line of text',
+      numLines: 1,
+    },
+  });
+  assert.deepEqual(content, {
+    mode: 'content',
+    numFiles: 2,
+    filenames: [n],
+    content: n,
+    numLines: 1,
+  });
+  const files = withheld(u, {
+    tool_name: 'Grep',
+    tool_response: { mode: 'files_with_matches', filenames: [], numFiles: 0 },
+  }) as { mode: string };
+  assert.equal(files.mode, 'files_with_matches');
+  const ident64 = `a${'b'.repeat(63)}`;
+  const ident65 = `a${'b'.repeat(64)}`;
+  assert.deepEqual(
+    withheld(u, {
+      tool_name: 'X',
+      tool_response: { a: ident64, b: ident65, c: 'Capitalized_identifier' },
+    }),
+    { a: ident64, b: n, c: n },
+  );
+});
+
+test('post-tool: withheld Read text keeps the Read text shape', () => {
+  const u = brokenVault();
+  const n = fileNotice(u);
+  const out = withheld(u, {
     tool_name: 'Read',
     tool_input: { file_path: '/x' },
     tool_response: {
       type: 'text',
-      file: { filePath: '/x', content: 'secret-ish text', numLines: 1, startLine: 1 },
+      file: {
+        filePath: '/x',
+        content: 'secret-ish text that is long',
+        numLines: 1,
+        startLine: 1,
+        totalLines: 1,
+      },
     },
   });
-  assert.deepEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput, {
+  assert.deepEqual(out, {
     type: 'text',
-    file: { filePath: WITHHELD, content: WITHHELD, numLines: 1, startLine: 1 },
+    file: { filePath: '/x', content: n, numLines: 1, startLine: 1, totalLines: 1 },
   });
 });
 
-test('post-tool: throws on a built-in → withheld Bash-shaped notice', () => {
-  const u = brokenRedactFiles();
-  const r = runPost(u, {
-    session_id: 's1',
-    tool_name: 'Bash',
-    tool_input: { command: 'ls' },
-    tool_response: { stdout: 'x', stderr: '', interrupted: false, isImage: false },
+test('post-tool: withheld Read image becomes a Read text result', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'Read',
+    tool_input: { file_path: '/Users/someone/shots/screen.png' },
+    tool_response: {
+      type: 'image',
+      file: {
+        base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+        type: 'image/png',
+        originalSize: 1234,
+        dimensions: { originalWidth: 10, originalHeight: 10 },
+      },
+    },
   });
-  assert.deepEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput, {
-    stdout: WITHHELD,
+  assert.deepEqual(out, {
+    type: 'text',
+    file: {
+      filePath: '/Users/someone/shots/screen.png',
+      content: fileNotice(u),
+      numLines: 1,
+      startLine: 1,
+      totalLines: 1,
+    },
+  });
+});
+
+test('post-tool: withheld Bash image output becomes Bash text, other keys kept', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'Bash',
+    tool_input: { command: 'screencapture -' },
+    tool_response: {
+      stdout: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg',
+      stderr: '',
+      interrupted: false,
+      isImage: true,
+      noOutputExpected: false,
+    },
+  });
+  assert.deepEqual(out, {
+    stdout: fileNotice(u),
     stderr: '',
     interrupted: false,
     isImage: false,
+    noOutputExpected: false,
   });
 });

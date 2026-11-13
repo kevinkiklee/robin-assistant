@@ -3,24 +3,65 @@
 // Every hook run is a fresh process, so values are read on each call and never
 // cached or written anywhere.
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { parseEnvFile, readEnvFile } from '../env-file.ts';
+import { parseEnvFile } from '../env-file.ts';
 import { isSecretClassName, secretsPaths } from '../store.ts';
 
 export const REDACTED = '[REDACTED-SECRET]';
 const MIN_LENGTH = 16;
+/** Vault values are known secrets, so shorter ones (an eBird key is 10+) are hidden too. */
+const VAULT_MIN_LENGTH = 10;
+
+/**
+ * A secrets-store file (vault, its backups, Robin's env files, the
+ * redact-files list) that exists but could not be read. Redaction can't be
+ * trusted without it, so the hook withholds the output and names `file`.
+ */
+export class RedactionSourceError extends Error {
+  override readonly name = 'RedactionSourceError';
+  constructor(readonly file: string) {
+    super(`could not read ${file}`);
+  }
+}
+
+/** A store file's text; undefined when absent; anything else is a RedactionSourceError. */
+function readSource(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw new RedactionSourceError(path);
+  }
+}
+
+function readEnvSource(path: string): Map<string, string> {
+  const text = readSource(path);
+  return text === undefined ? new Map() : parseEnvFile(text);
+}
+
+/** `vault.env.bak-*` beside the vault: old values may still be live keys. */
+function vaultBackups(vault: string): string[] {
+  const dir = dirname(vault);
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw new RedactionSourceError(dir);
+  }
+  const prefix = 'vault.env.bak-';
+  return names
+    .filter((n) => n.startsWith(prefix))
+    .sort()
+    .map((n) => join(dir, n));
+}
 
 /** Paths listed in redact-files.txt: one per line, `#` comments, `~` expanded, relative to the list's folder. */
 function listedFiles(listPath: string): string[] {
-  let text: string;
-  try {
-    text = readFileSync(listPath, 'utf8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw e;
-  }
+  const text = readSource(listPath);
+  if (text === undefined) return [];
   const out: string[] = [];
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
@@ -32,35 +73,64 @@ function listedFiles(listPath: string): string[] {
   return out;
 }
 
-/** A listed file's content, or undefined when it no longer exists. Anything else (a directory, EACCES) throws. */
-function readListed(path: string): string | undefined {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw e;
-  }
+export interface SkippedListedFile {
+  path: string;
+  reason: string;
 }
 
 /**
- * Every value to hide: all `vault.env` values, secret-class values from Robin's
- * `.env` and `daemon.env`, and the trimmed content of each file listed in
- * `redact-files.txt` (whole file, each line, each KEY=value value). Values under
- * 16 chars are skipped. Deduped, longest first.
+ * Reads each file listed in redact-files.txt. A missing one is ignored; one
+ * that is not a regular file (a directory, a FIFO) or can't be read (EACCES)
+ * is skipped and reported — the agent can't read it either, and one bad entry
+ * must not withhold every tool's output.
+ */
+function readListedFiles(userData: string): { texts: string[]; skipped: SkippedListedFile[] } {
+  const texts: string[] = [];
+  const skipped: SkippedListedFile[] = [];
+  for (const path of listedFiles(secretsPaths(userData).redactFiles)) {
+    try {
+      const st = statSync(path, { throwIfNoEntry: false });
+      if (st === undefined) continue;
+      if (!st.isFile()) {
+        skipped.push({ path, reason: 'not a regular file' });
+        continue;
+      }
+      texts.push(readFileSync(path, 'utf8'));
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') continue;
+      skipped.push({ path, reason: `unreadable (${code ?? 'error'})` });
+    }
+  }
+  return { texts, skipped };
+}
+
+/** The redact-files.txt entries the hook skips (for `secrets.hygiene`). */
+export function skippedRedactFiles(userData: string): SkippedListedFile[] {
+  return readListedFiles(userData).skipped;
+}
+
+/**
+ * Every value to hide: all `vault.env` values and those in its `.bak-*`
+ * copies (10+ chars), secret-class values from Robin's `.env` and
+ * `daemon.env`, and the trimmed content of each readable file listed in
+ * `redact-files.txt` (whole file, each line, each KEY=value value) — those at
+ * 16+ chars. Deduped, longest first. Throws RedactionSourceError when a store
+ * file exists but can't be read.
  */
 export function loadRedactionValues(userData: string): string[] {
   const p = secretsPaths(userData);
   const values = new Set<string>();
-  const add = (v: string): void => {
-    if (v.length >= MIN_LENGTH) values.add(v);
+  const add = (v: string, min = MIN_LENGTH): void => {
+    if (v.length >= min) values.add(v);
   };
-  for (const v of readEnvFile(p.vault).values()) add(v);
-  for (const file of [p.robinEnv, p.daemonEnv]) {
-    for (const [name, v] of readEnvFile(file)) if (isSecretClassName(name)) add(v);
+  for (const file of [p.vault, ...vaultBackups(p.vault)]) {
+    for (const v of readEnvSource(file).values()) add(v, VAULT_MIN_LENGTH);
   }
-  for (const file of listedFiles(p.redactFiles)) {
-    const text = readListed(file);
-    if (text === undefined) continue;
+  for (const file of [p.robinEnv, p.daemonEnv]) {
+    for (const [name, v] of readEnvSource(file)) if (isSecretClassName(name)) add(v);
+  }
+  for (const text of readListedFiles(userData).texts) {
     // The whole file, each line (a PEM body), and each KEY=value value (an env file).
     add(text.trim());
     for (const line of text.split(/\r?\n/)) add(line.trim());
@@ -82,7 +152,7 @@ function base64Cores(bytes: Buffer, alphabet: 'base64' | 'base64url'): string[] 
       .replace(/=+$/, '');
     const start = Math.ceil((8 * k) / 6);
     const end = Math.floor((8 * (k + bytes.length)) / 6);
-    if (end - start >= MIN_LENGTH) out.push(enc.slice(start, end));
+    if (end - start >= VAULT_MIN_LENGTH) out.push(enc.slice(start, end));
   }
   return out;
 }

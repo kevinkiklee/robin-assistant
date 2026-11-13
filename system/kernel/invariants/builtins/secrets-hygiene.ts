@@ -2,6 +2,7 @@ import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, statSync }
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { readDeliveries } from '../../../lib/secrets/deliveries.ts';
+import { skippedRedactFiles } from '../../../lib/secrets/hooks/redact-policy.ts';
 import {
   defaultDistRoot,
   installSecretHooks,
@@ -207,6 +208,15 @@ export function secretsHygieneInvariant(opts: {
     }
     for (const f of unreadable) problems.push(`${f} could not be stat-ed`);
     for (const f of symlinks) problems.push(`symlinked backup ${f}`);
+
+    const list = secretsPaths(opts.userData).redactFiles;
+    try {
+      for (const s of skippedRedactFiles(opts.userData)) {
+        problems.push(`${s.path} (listed in ${list}) is skipped by redaction: ${s.reason}`);
+      }
+    } catch {
+      problems.push(`${list} is unreadable, so the redaction hook withholds all output`);
+    }
 
     const nowMs = (opts.nowMs ?? Date.now)();
     try {
