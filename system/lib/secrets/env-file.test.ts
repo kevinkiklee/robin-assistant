@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {
+  chmodSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   statSync,
   writeFileSync,
-  chmodSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
