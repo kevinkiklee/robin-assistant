@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { anthropic } from './anthropic.ts';
 import { cloudflare } from './cloudflare.ts';
 import { ebird } from './ebird.ts';
@@ -71,4 +72,60 @@ test('google recipe: oauth, no scripts, integration from NAME prefix', () => {
   assert.equal(googleIntegrationFor('GMAIL_REFRESH_TOKEN'), 'gmail');
   assert.equal(googleIntegrationFor('GOOGLE_CALENDAR_REFRESH_TOKEN'), 'google_calendar');
   assert.equal(googleIntegrationFor('OTHER'), undefined);
+});
+
+interface StubEl {
+  tag: string;
+  rect: { left: number; top: number; width: number; height: number };
+  text?: string;
+  value?: string;
+  aria?: string;
+  scrolled?: unknown;
+}
+function runScript(script: string, els: StubEl[]): unknown {
+  const wrap = (e: StubEl) => ({
+    value: e.value,
+    textContent: e.text ?? '',
+    getAttribute: (n: string) => (n === 'aria-label' ? (e.aria ?? null) : null),
+    getBoundingClientRect: () => e.rect,
+    scrollIntoView: (o: unknown) => {
+      e.scrolled = o;
+    },
+  });
+  const pick = (sel: string) =>
+    els.filter((e) => sel.split(',').some((s) => s.trim() === e.tag)).map(wrap);
+  const ctx = {
+    document: { querySelectorAll: pick },
+    getComputedStyle: () => ({ visibility: 'visible', display: 'block' }),
+  };
+  return vm.runInNewContext(script, ctx);
+}
+
+test('locate script executes: near Copy button centre, ignores far Copy ID', () => {
+  const script = buildLocateScript({ buttonText: /copy/i, nearValueShape: /^lin_api_\w+$/ });
+  const els: StubEl[] = [
+    {
+      tag: 'pre',
+      rect: { left: 10, top: 100, width: 200, height: 20 },
+      text: 'KEY=lin_api_FAKE123456',
+    },
+    { tag: 'button', rect: { left: 220, top: 100, width: 40, height: 20 }, text: 'Copy' },
+    { tag: 'button', rect: { left: 10, top: 2000, width: 60, height: 20 }, text: 'Copy ID' },
+  ];
+  const r = JSON.parse(JSON.stringify(runScript(script, els)));
+  assert.deepEqual(r, { found: true, x: 240, y: 110 });
+  assert.deepEqual(JSON.parse(JSON.stringify(els[1].scrolled)), {
+    block: 'center',
+    behavior: 'instant',
+  });
+  assert.equal(els[2].scrolled, undefined);
+});
+
+test('locate script: {found:false} when no key-shaped holder', () => {
+  const script = buildLocateScript({ buttonText: /copy/i, nearValueShape: /^lin_api_\w+$/ });
+  const els: StubEl[] = [
+    { tag: 'input', rect: { left: 0, top: 0, width: 100, height: 20 }, value: 'hello' },
+    { tag: 'button', rect: { left: 110, top: 0, width: 40, height: 20 }, text: 'Copy ID' },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(runScript(script, els))), { found: false });
 });
