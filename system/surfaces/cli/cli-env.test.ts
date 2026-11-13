@@ -30,8 +30,8 @@ describe('loadCliEnv', () => {
   it('main() loads secrets before dispatching any command', () => {
     const src = readFileSync(join(import.meta.dirname, 'index.ts'), 'utf8');
     const body = src.slice(src.indexOf('async function main()'));
-    const load = body.indexOf("if (cmd !== 'daemon') loadCliEnv();");
-    assert.ok(load > 0, 'main calls loadCliEnv() for every command but the daemon');
+    const load = body.indexOf("if (cmd !== 'daemon' && cmd !== 'secret') loadCliEnv();");
+    assert.ok(load > 0, 'main calls loadCliEnv() for every command but the daemon and secret');
     assert.ok(load < body.indexOf('switch (cmd)'), 'before the command switch');
   });
 });

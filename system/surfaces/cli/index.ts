@@ -57,6 +57,14 @@ ADVANCED
   alerts [--all]        List open health alerts (--all includes resolved/acked history)
   alerts ack <id>       Acknowledge an alert by id
   accounts [use <name>] Claude credential status; pin one for manual rotation
+  secret begin <provider> <NAME> [--rotate|--get] [--to <path> [--as VAR]]
+                        Get or create an API key through Claude in Chrome (prints the recipe)
+  secret arm --tab <id> | set <NAME> [--from-clipboard|--wait|--stdin] [--to <path>] | abort
+                        Blind key window: open it, save the copied key, or abandon it
+  secret list | log [--limit N] | deliveries [--prune] | deliver <NAME> | import
+                        Vault names + fingerprints (never values), history, delivery targets
+  secret exec <NAME>... -- <cmd> | pipe <NAME> --confirmed -- <cmd> | restart
+                        Run with keys in env; send one to a service CLI; bounce the daemon
   metrics --agents      Per-handler agent ROI: runs, spend, outcomes, last did-work
   memory audit-sample [N]   Recent extractions grouped by personal domain
   memory compact-sessions [--apply]   Keep only the operator's turns in captured sessions > 90 days old
@@ -119,7 +127,9 @@ async function main(): Promise<void> {
       exit(1);
     }
   }
-  if (cmd !== 'daemon') loadCliEnv();
+  // `secret` skips it: its shadowing check reads the caller's real environment,
+  // and `exec` must not hand Robin's whole `.env` to the child.
+  if (cmd !== 'daemon' && cmd !== 'secret') loadCliEnv();
 
   switch (cmd) {
     case undefined:
@@ -660,6 +670,12 @@ async function main(): Promise<void> {
       const { runAccountsCommand } = await import('./accounts.ts');
       await runAccountsCommand(args.slice(1));
       exit(process.exitCode ?? 0);
+      break;
+    }
+
+    case 'secret': {
+      const { runSecretCommand } = await import('./secret.ts');
+      exit(await runSecretCommand(args.slice(1)));
       break;
     }
 
