@@ -1,0 +1,172 @@
+import { spawnSync } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { writeEnvKey, writeSecretFile } from './env-file.ts';
+import { getMaster, secretsPaths } from './store.ts';
+
+export type DeliveryTarget =
+  | { kind: 'robin-env'; var: string }
+  | { kind: 'env-local'; path: string; var: string }
+  | { kind: 'secret-file'; path: string }
+  | { kind: 'pipe'; argv: string[] };
+
+type GitFn = (args: string[], cwd: string) => { status: number; stdout: string };
+
+const defaultGit: GitFn = (args, cwd) => {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  return { status: r.status ?? 1, stdout: r.stdout ?? '' };
+};
+
+function expandHome(p: string): string {
+  return p === '~' || p.startsWith('~/') ? join(homedir(), p.slice(1)) : p;
+}
+
+export function readDeliveries(userData: string): Record<string, DeliveryTarget[]> {
+  const f = secretsPaths(userData).deliveries;
+  if (!existsSync(f)) return {};
+  try {
+    return JSON.parse(readFileSync(f, 'utf8')) as Record<string, DeliveryTarget[]>;
+  } catch {
+    return {};
+  }
+}
+
+function writeDeliveries(userData: string, data: Record<string, DeliveryTarget[]>): void {
+  const f = secretsPaths(userData).deliveries;
+  mkdirSync(dirname(f), { recursive: true });
+  const tmp = `${f}.tmp-${process.pid}`;
+  try {
+    writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, f);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+export function addDelivery(userData: string, name: string, t: DeliveryTarget): void {
+  const all = readDeliveries(userData);
+  const list = all[name] ?? [];
+  const key = JSON.stringify(t);
+  if (list.some((x) => JSON.stringify(x) === key)) return;
+  all[name] = [...list, t];
+  writeDeliveries(userData, all);
+}
+
+export function checkIgnored(
+  path: string,
+  git: GitFn = defaultGit,
+): 'ignored' | 'outside-repo' | 'not-ignored' {
+  const cwd = dirname(path);
+  if (git(['rev-parse', '--show-toplevel'], cwd).status !== 0) return 'outside-repo';
+  return git(['check-ignore', '-q', path], cwd).status === 0 ? 'ignored' : 'not-ignored';
+}
+
+export function deliverToEnvLocal(
+  path: string,
+  varName: string,
+  value: string,
+  deps: { git?: GitFn } = {},
+): void {
+  const p = expandHome(path);
+  if (checkIgnored(p, deps.git) === 'not-ignored') {
+    throw new Error(`refused: ${p} is not gitignored`);
+  }
+  writeEnvKey(p, varName, value);
+}
+
+export function deliverFileTarget(userData: string, t: DeliveryTarget, value: string): void {
+  switch (t.kind) {
+    case 'robin-env': {
+      const p = secretsPaths(userData).robinEnv;
+      mkdirSync(dirname(p), { recursive: true });
+      writeEnvKey(p, t.var, value);
+      return;
+    }
+    case 'env-local':
+      deliverToEnvLocal(t.path, t.var, value);
+      return;
+    case 'secret-file':
+      writeSecretFile(expandHome(t.path), value);
+      return;
+    case 'pipe':
+      throw new Error('pipe targets never run implicitly');
+  }
+}
+
+function targetDirGone(t: DeliveryTarget): boolean {
+  return (
+    (t.kind === 'env-local' || t.kind === 'secret-file') && !existsSync(dirname(expandHome(t.path)))
+  );
+}
+
+export function redeliverFileTargets(
+  userData: string,
+  name: string,
+  value: string,
+): { written: DeliveryTarget[]; missing: DeliveryTarget[]; pipes: DeliveryTarget[] } {
+  const out = {
+    written: [] as DeliveryTarget[],
+    missing: [] as DeliveryTarget[],
+    pipes: [] as DeliveryTarget[],
+  };
+  for (const t of readDeliveries(userData)[name] ?? []) {
+    if (t.kind === 'pipe') out.pipes.push(t);
+    else if (targetDirGone(t)) out.missing.push(t);
+    else {
+      deliverFileTarget(userData, t, value);
+      out.written.push(t);
+    }
+  }
+  return out;
+}
+
+export function pruneMissing(userData: string): DeliveryTarget[] {
+  const all = readDeliveries(userData);
+  const removed: DeliveryTarget[] = [];
+  for (const name of Object.keys(all)) {
+    const keep: DeliveryTarget[] = [];
+    for (const t of all[name]) (targetDirGone(t) ? removed : keep).push(t);
+    if (keep.length) all[name] = keep;
+    else delete all[name];
+  }
+  if (removed.length) writeDeliveries(userData, all);
+  return removed;
+}
+
+export function runPipe(
+  argv: string[],
+  value: string,
+  spawn: typeof spawnSync = spawnSync,
+): number {
+  const [cmd, ...args] = argv;
+  const r = spawn(cmd, args, { input: value, stdio: ['pipe', 'inherit', 'inherit'] });
+  return r.status ?? 1;
+}
+
+export function runExec(
+  names: string[],
+  argv: string[],
+  userData: string,
+  spawn: typeof spawnSync = spawnSync,
+): number {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const n of names) {
+    const v = getMaster(userData, n);
+    if (v === undefined) throw new Error(`${n} is not in the vault`);
+    env[n] = v;
+  }
+  const [cmd, ...args] = argv;
+  const r = spawn(cmd, args, { env, stdio: 'inherit' });
+  return r.status ?? 1;
+}
