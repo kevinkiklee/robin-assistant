@@ -14,8 +14,10 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   addDelivery,
+  checkIgnored,
   type DeliveryTarget,
   deliverToEnvLocal,
+  pruneMissing,
   readDeliveries,
   redeliverFileTargets,
   runExec,
@@ -121,4 +123,103 @@ test('addDelivery: no duplicates, file 0600 and value-free', () => {
   assert.equal(readDeliveries(ud).K.length, 1);
   const f = join(ud, 'state', 'runtime', 'secret-deliveries.json');
   assert.equal(statSync(f).mode & 0o777, 0o600);
+});
+
+test('checkIgnored: relative ignored path resolves', () => {
+  const dir = tmp();
+  gitInit(dir);
+  writeFileSync(join(dir, '.gitignore'), '.env.local\n');
+  mkdirSync(join(dir, 'proj'));
+  writeFileSync(join(dir, 'proj', '.gitignore'), '');
+  const prev = process.cwd();
+  process.chdir(dir);
+  try {
+    assert.equal(checkIgnored('proj/.env.local'), 'ignored');
+  } finally {
+    process.chdir(prev);
+  }
+});
+
+test('checkIgnored: git spawn failure fails closed', () => {
+  const dir = tmp();
+  const git = () => ({ status: null, stdout: '', stderr: '' });
+  assert.equal(checkIgnored(join(dir, '.env.local'), git), 'not-ignored');
+  assert.throws(
+    () => deliverToEnvLocal(join(dir, '.env.local'), 'X', 'v', { git }),
+    /not gitignored/,
+  );
+  assert.equal(existsSync(join(dir, '.env.local')), false);
+});
+
+test('checkIgnored: other git error (no "not a git repository") fails closed', () => {
+  const git = () => ({ status: 128, stdout: '', stderr: 'fatal: detected dubious ownership' });
+  assert.equal(checkIgnored(join(tmp(), '.env.local'), git), 'not-ignored');
+});
+
+test('checkIgnored: not-a-repo message but ancestor has .git fails closed', () => {
+  const dir = tmp();
+  mkdirSync(join(dir, '.git'));
+  const git = () => ({ status: 128, stdout: '', stderr: 'fatal: not a git repository' });
+  assert.equal(checkIgnored(join(dir, '.env.local'), git), 'not-ignored');
+});
+
+test('checkIgnored: path in a non-existing subdir of a repo is not outside-repo', () => {
+  const dir = tmp();
+  gitInit(dir);
+  assert.notEqual(checkIgnored(join(dir, 'nope', 'deep', '.env.local')), 'outside-repo');
+});
+
+test('redeliverFileTargets: un-ignored target 2 of 3 goes to failed, others written', () => {
+  const ud = tmp();
+  const dirs = [tmp(), tmp(), tmp()];
+  gitInit(dirs[1]);
+  const targets = dirs.map(
+    (d): DeliveryTarget => ({ kind: 'env-local', path: join(d, '.env.local'), var: 'K' }),
+  );
+  for (const t of targets) addDelivery(ud, 'K', t);
+  const r = redeliverFileTargets(ud, 'K', VAL);
+  assert.equal(r.written.length, 2);
+  assert.equal(r.failed.length, 1);
+  assert.deepEqual(r.failed[0].target, targets[1]);
+  assert.ok(!r.failed[0].error.includes(VAL));
+  assert.ok(existsSync(targets[0].kind === 'env-local' ? targets[0].path : ''));
+  assert.ok(existsSync(targets[2].kind === 'env-local' ? targets[2].path : ''));
+  assert.equal(
+    readFileSync(join(ud, 'state', 'runtime', 'secret-deliveries.json'), 'utf8').includes(VAL),
+    false,
+  );
+});
+
+test('readDeliveries: corrupt JSON throws', () => {
+  const ud = tmp();
+  mkdirSync(join(ud, 'state', 'runtime'), { recursive: true });
+  writeFileSync(join(ud, 'state', 'runtime', 'secret-deliveries.json'), '{not json');
+  assert.throws(() => readDeliveries(ud), /corrupt/);
+  assert.throws(() => addDelivery(ud, 'K', { kind: 'robin-env', var: 'K' }), /corrupt/);
+});
+
+test('addDelivery: stores absolute paths', () => {
+  const ud = tmp();
+  addDelivery(ud, 'K', { kind: 'secret-file', path: 'rel/key.txt' });
+  const t = readDeliveries(ud).K[0];
+  assert.equal(t.kind === 'secret-file' && t.path.startsWith('/'), true);
+});
+
+test('runPipe: real process receives value on stdin', () => {
+  const out = join(tmp(), 'got.txt');
+  assert.equal(runPipe(['sh', '-c', `cat > '${out}'`], VAL), 0);
+  assert.equal(readFileSync(out, 'utf8'), VAL);
+});
+
+test('pruneMissing: removes targets whose dir is gone', () => {
+  const ud = tmp();
+  const gone = tmp();
+  const keep = tmp();
+  addDelivery(ud, 'K', { kind: 'secret-file', path: join(gone, 'k') });
+  addDelivery(ud, 'K', { kind: 'secret-file', path: join(keep, 'k') });
+  addDelivery(ud, 'K', { kind: 'pipe', argv: ['x'] });
+  rmSync(gone, { recursive: true });
+  const removed = pruneMissing(ud);
+  assert.equal(removed.length, 1);
+  assert.equal(readDeliveries(ud).K.length, 2);
 });

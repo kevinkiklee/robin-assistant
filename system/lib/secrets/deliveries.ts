@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { writeEnvKey, writeSecretFile } from './env-file.ts';
 import { getMaster, secretsPaths } from './store.ts';
 
@@ -19,15 +19,27 @@ export type DeliveryTarget =
   | { kind: 'secret-file'; path: string }
   | { kind: 'pipe'; argv: string[] };
 
-type GitFn = (args: string[], cwd: string) => { status: number; stdout: string };
+type GitFn = (
+  args: string[],
+  cwd: string,
+) => { status: number | null; stdout: string; stderr?: string };
 
 const defaultGit: GitFn = (args, cwd) => {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
-  return { status: r.status ?? 1, stdout: r.stdout ?? '' };
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+  return { status: r.error ? null : r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 };
 
 function expandHome(p: string): string {
   return p === '~' || p.startsWith('~/') ? join(homedir(), p.slice(1)) : p;
+}
+
+/** `~` expanded, then absolute. */
+function absPath(p: string): string {
+  return resolve(expandHome(p));
+}
+
+function normalizeTarget(t: DeliveryTarget): DeliveryTarget {
+  return t.kind === 'env-local' || t.kind === 'secret-file' ? { ...t, path: absPath(t.path) } : t;
 }
 
 export function readDeliveries(userData: string): Record<string, DeliveryTarget[]> {
@@ -35,8 +47,8 @@ export function readDeliveries(userData: string): Record<string, DeliveryTarget[
   if (!existsSync(f)) return {};
   try {
     return JSON.parse(readFileSync(f, 'utf8')) as Record<string, DeliveryTarget[]>;
-  } catch {
-    return {};
+  } catch (err) {
+    throw new Error(`corrupt delivery registry ${f}: ${(err as Error).message}`);
   }
 }
 
@@ -54,7 +66,8 @@ function writeDeliveries(userData: string, data: Record<string, DeliveryTarget[]
   }
 }
 
-export function addDelivery(userData: string, name: string, t: DeliveryTarget): void {
+export function addDelivery(userData: string, name: string, target: DeliveryTarget): void {
+  const t = normalizeTarget(target);
   const all = readDeliveries(userData);
   const list = all[name] ?? [];
   const key = JSON.stringify(t);
@@ -63,13 +76,37 @@ export function addDelivery(userData: string, name: string, t: DeliveryTarget): 
   writeDeliveries(userData, all);
 }
 
+function nearestExistingDir(p: string): string {
+  let d = dirname(p);
+  while (!existsSync(d) && dirname(d) !== d) d = dirname(d);
+  return d;
+}
+
+function ancestorHasGit(p: string): boolean {
+  let d = dirname(p);
+  for (;;) {
+    if (existsSync(join(d, '.git'))) return true;
+    if (dirname(d) === d) return false;
+    d = dirname(d);
+  }
+}
+
+/**
+ * Fails closed: 'outside-repo' only when git ran, said "not a git repository",
+ * and no ancestor holds a `.git`. Any other failure counts as 'not-ignored'.
+ */
 export function checkIgnored(
   path: string,
   git: GitFn = defaultGit,
 ): 'ignored' | 'outside-repo' | 'not-ignored' {
-  const cwd = dirname(path);
-  if (git(['rev-parse', '--show-toplevel'], cwd).status !== 0) return 'outside-repo';
-  return git(['check-ignore', '-q', path], cwd).status === 0 ? 'ignored' : 'not-ignored';
+  const abs = absPath(path);
+  const cwd = nearestExistingDir(abs);
+  const top = git(['rev-parse', '--show-toplevel'], cwd);
+  if (top.status !== 0) {
+    const notRepo = top.status !== null && /not a git repository/i.test(top.stderr ?? '');
+    return notRepo && !ancestorHasGit(abs) ? 'outside-repo' : 'not-ignored';
+  }
+  return git(['check-ignore', '-q', abs], cwd).status === 0 ? 'ignored' : 'not-ignored';
 }
 
 export function deliverToEnvLocal(
@@ -78,7 +115,7 @@ export function deliverToEnvLocal(
   value: string,
   deps: { git?: GitFn } = {},
 ): void {
-  const p = expandHome(path);
+  const p = absPath(path);
   if (checkIgnored(p, deps.git) === 'not-ignored') {
     throw new Error(`refused: ${p} is not gitignored`);
   }
@@ -97,7 +134,7 @@ export function deliverFileTarget(userData: string, t: DeliveryTarget, value: st
       deliverToEnvLocal(t.path, t.var, value);
       return;
     case 'secret-file':
-      writeSecretFile(expandHome(t.path), value);
+      writeSecretFile(absPath(t.path), value);
       return;
     case 'pipe':
       throw new Error('pipe targets never run implicitly');
@@ -106,7 +143,7 @@ export function deliverFileTarget(userData: string, t: DeliveryTarget, value: st
 
 function targetDirGone(t: DeliveryTarget): boolean {
   return (
-    (t.kind === 'env-local' || t.kind === 'secret-file') && !existsSync(dirname(expandHome(t.path)))
+    (t.kind === 'env-local' || t.kind === 'secret-file') && !existsSync(dirname(absPath(t.path)))
   );
 }
 
@@ -114,18 +151,29 @@ export function redeliverFileTargets(
   userData: string,
   name: string,
   value: string,
-): { written: DeliveryTarget[]; missing: DeliveryTarget[]; pipes: DeliveryTarget[] } {
+): {
+  written: DeliveryTarget[];
+  missing: DeliveryTarget[];
+  failed: { target: DeliveryTarget; error: string }[];
+  pipes: DeliveryTarget[];
+} {
   const out = {
     written: [] as DeliveryTarget[],
     missing: [] as DeliveryTarget[],
+    failed: [] as { target: DeliveryTarget; error: string }[],
     pipes: [] as DeliveryTarget[],
   };
   for (const t of readDeliveries(userData)[name] ?? []) {
     if (t.kind === 'pipe') out.pipes.push(t);
     else if (targetDirGone(t)) out.missing.push(t);
     else {
-      deliverFileTarget(userData, t, value);
-      out.written.push(t);
+      try {
+        deliverFileTarget(userData, t, value);
+        out.written.push(t);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        out.failed.push({ target: t, error: msg.split(value).join('[redacted]') });
+      }
     }
   }
   return out;
