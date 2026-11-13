@@ -731,3 +731,28 @@ test('default confirm runs /usr/bin/osascript with a fixed env, Send only', () =
     assert.deepEqual(c.env, { PATH: '/usr/bin:/bin' });
   }
 });
+
+test('install / uninstall: hooks pinned to this userData + rule file, under a temp HOME', async () => {
+  const h = harness();
+  const home = join(h.root, 'home');
+  h.deps.home = home;
+  assert.equal(await run(h, ['install']), 0);
+  const settingsPath = join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  const pre = settings.hooks.PreToolUse[0].hooks[0].command as string;
+  const post = settings.hooks.PostToolUse[0].hooks[0].command as string;
+  assert.ok(pre.includes(`ROBIN_USER_DATA_DIR='${h.userData}'`));
+  assert.ok(post.includes(`ROBIN_USER_DATA_DIR='${h.userData}'`));
+  const rule = join(home, '.claude', 'rules', 'secrets.md');
+  assert.ok(existsSync(rule));
+  const out = h.output();
+  assert.match(out, /hooks: installed PreToolUse \+ PostToolUse in .*settings\.json/);
+  assert.match(out, /rule file: .*secrets\.md/);
+
+  assert.equal(await run(h, ['uninstall']), 0);
+  const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  assert.equal(after.hooks.PreToolUse, undefined);
+  assert.equal(after.hooks.PostToolUse, undefined);
+  assert.equal(existsSync(rule), false);
+  assert.match(h.output(), /hooks: removed/);
+});

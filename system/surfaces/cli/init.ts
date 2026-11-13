@@ -210,6 +210,21 @@ topics: []
     console.warn(`  Hooks:    skipped (${msg})`);
   }
 
+  // The secret guard + redaction hooks and the global secrets rule file, so every Claude
+  // session on this Mac handles keys through `robin secret`. Pinned to this userData.
+  try {
+    const { installSecretHooks } = await import('../../lib/secrets/install.ts');
+    const { installRuleFile } = await import('../../lib/secrets/rule-file.ts');
+    const r = installSecretHooks({ userData });
+    const rule = installRuleFile();
+    console.log(
+      `  Secrets:  ${r.replaced ? 'updated' : 'installed'} PreToolUse + PostToolUse in ${r.path}, rule file ${rule}${r.warning ? ` (warning: ${r.warning})` : ''}`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  Secrets:  skipped (${msg})`);
+  }
+
   console.log('');
   console.log('Next steps:');
   if (launchdInstalled) {

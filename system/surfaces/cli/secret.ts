@@ -71,6 +71,8 @@ export interface SecretDeps {
   readStdin: () => Promise<string>;
   /** Operator-bound yes/no (macOS dialog). True only for an explicit "Send". */
   confirm: (title: string, body: string) => boolean;
+  /** HOME whose ~/.claude gets the hooks and rule file (`install`/`uninstall`). */
+  home: string;
 }
 
 const WINDOW_MS = 120_000;
@@ -92,7 +94,8 @@ const USAGE = `usage: robin secret <command>
   deliveries [--prune]
   restart
   log [--limit N]
-  import`;
+  import
+  install | uninstall            (Claude Code hooks + global rule file)`;
 
 /** Ends the command with an exit code and a (value-free) message. */
 class CliExit extends Error {
@@ -891,6 +894,27 @@ function cmdImport(ctx: Ctx): number {
   return 0;
 }
 
+async function cmdInstall(ctx: Ctx): Promise<number> {
+  const { d } = ctx;
+  const { installSecretHooks } = await import('../../lib/secrets/install.ts');
+  const { installRuleFile } = await import('../../lib/secrets/rule-file.ts');
+  const r = installSecretHooks({ home: d.home, userData: d.userData });
+  d.out(`hooks: ${r.replaced ? 'updated' : 'installed'} PreToolUse + PostToolUse in ${r.path}`);
+  if (r.warning) d.out(`warning: ${r.warning}`);
+  d.out(`rule file: ${installRuleFile(d.home)}`);
+  return 0;
+}
+
+async function cmdUninstall(ctx: Ctx): Promise<number> {
+  const { d } = ctx;
+  const { uninstallSecretHooks } = await import('../../lib/secrets/install.ts');
+  const { uninstallRuleFile } = await import('../../lib/secrets/rule-file.ts');
+  const r = uninstallSecretHooks({ home: d.home });
+  d.out(r.replaced ? `hooks: removed from ${r.path}` : 'hooks: none installed');
+  d.out(uninstallRuleFile(d.home) ? 'rule file: removed' : 'rule file: none installed');
+  return 0;
+}
+
 // ── entry ────────────────────────────────────────────────────────────────
 
 /** AppleScript string literal: escape `\` and `"`, spell out newlines, drop other controls. */
@@ -971,6 +995,7 @@ async function withDefaults(deps: Partial<SecretDeps>): Promise<SecretDeps> {
     sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
     readStdin: readAllStdin,
     confirm: macConfirmWith(realExec),
+    home: homedir(),
     ...deps,
     userData,
   };
@@ -1004,9 +1029,9 @@ async function dispatch(ctx: Ctx, args: string[]): Promise<number> {
     case 'import':
       return cmdImport(ctx);
     case 'install':
+      return cmdInstall(ctx);
     case 'uninstall':
-      ctx.d.out(`robin secret ${sub}: not yet available`);
-      return 1;
+      return cmdUninstall(ctx);
     default:
       ctx.d.out(USAGE);
       return 2;
