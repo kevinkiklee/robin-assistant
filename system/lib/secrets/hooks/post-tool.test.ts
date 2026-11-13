@@ -176,19 +176,43 @@ function withheld(u: string, payload: Record<string, unknown>): unknown {
   return out.updatedMCPToolOutput ?? out.updatedToolOutput;
 }
 
-test('post-tool: a directory listed in redact-files is skipped, not a reason to withhold', () => {
+test('post-tool: a directory listed in redact-files is expanded, not a reason to withhold', () => {
   const u = userDataWith();
   writeVault(u, `SOME_NAME=${KEY}\n`);
-  writeFileSync(secretsPaths(u).redactFiles, `${u}\n`);
+  const dir = join(u, 'keys');
+  mkdirSync(dir);
+  writeFileSync(join(dir, 'other.key'), 'spk_test_listed_dir_value_01\n');
+  writeFileSync(secretsPaths(u).redactFiles, `${dir}\n${join(u, 'gone')}\n`);
   const r = runPost(u, {
     session_id: 's1',
     tool_name: 'Bash',
     tool_input: { command: 'env' },
-    tool_response: { stdout: `X=${KEY}`, stderr: '', interrupted: false, isImage: false },
+    tool_response: {
+      stdout: `X=${KEY} Y=spk_test_listed_dir_value_01`,
+      stderr: '',
+      interrupted: false,
+      isImage: false,
+    },
   });
   assert.equal(
     JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput.stdout,
-    'X=[REDACTED-SECRET]',
+    'X=[REDACTED-SECRET] Y=[REDACTED-SECRET]',
+  );
+});
+
+test('post-tool: an ENOTDIR listed path still withholds, naming that path', () => {
+  const u = userDataWith();
+  const plain = join(u, 'plain');
+  writeFileSync(plain, 'x\n');
+  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
+  writeFileSync(secretsPaths(u).redactFiles, `${join(plain, 'child')}\n`);
+  const out = withheld(u, {
+    tool_name: 'mcp__x__y',
+    tool_response: [{ type: 'text', text: 'anything' }],
+  }) as { text: string }[];
+  assert.match(
+    out[0].text,
+    /could not read .*plain\/child — fix it, or run `robin secret uninstall`/,
   );
 });
 
@@ -204,14 +228,9 @@ test('post-tool: unreadable vault → withheld notice names the file and the uni
   assert.deepEqual(JSON.parse(r.stdout), {
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',
-      updatedMCPToolOutput: [{ type: 'text', text: 'anything' }],
+      updatedMCPToolOutput: [{ type: 'text', text: fileNotice(u) }],
     },
   });
-  const long = withheld(u, {
-    tool_name: 'mcp__x__y',
-    tool_response: [{ type: 'text', text: 'a longer text block that could hold a key' }],
-  });
-  assert.deepEqual(long, [{ type: 'text', text: fileNotice(u) }]);
   assert.match(fileNotice(u), /robin secret uninstall/);
 });
 
@@ -243,7 +262,7 @@ test('post-tool: withheld Bash output keeps every real key, never renamed', () =
     tool_name: 'Bash',
     tool_input: { command: 'ls' },
     tool_response: {
-      stdout: 'a long line of command output',
+      stdout: 'lin_api_FAKE0123456789abcdefFAKE0123456789',
       stderr: '',
       interrupted: false,
       isImage: false,
@@ -341,14 +360,34 @@ test('post-tool: withheld Grep output keeps mode and identifier-like enum values
     tool_response: { mode: 'files_with_matches', filenames: [], numFiles: 0 },
   }) as { mode: string };
   assert.equal(files.mode, 'files_with_matches');
-  const ident64 = `a${'b'.repeat(63)}`;
-  const ident65 = `a${'b'.repeat(64)}`;
+  const enum32 = `a${'b'.repeat(31)}`;
+  const enum33 = `a${'b'.repeat(32)}`;
   assert.deepEqual(
     withheld(u, {
       tool_name: 'X',
-      tool_response: { a: ident64, b: ident65, c: 'Capitalized_identifier' },
+      tool_response: {
+        mode: enum32,
+        type: enum33,
+        returnCodeInterpretation: 'Capitalized_value',
+        name: 'spk_test_t12', // a 12-char vault-like value under an unknown key
+        id: 'sk-ant-api03-FAKE',
+        n: 3,
+        ok: true,
+        none: null,
+        empty: '',
+      },
     }),
-    { a: ident64, b: n, c: n },
+    {
+      mode: enum32,
+      type: n,
+      returnCodeInterpretation: n,
+      name: n,
+      id: n,
+      n: 3,
+      ok: true,
+      none: null,
+      empty: '',
+    },
   );
 });
 
@@ -371,7 +410,7 @@ test('post-tool: withheld Read text keeps the Read text shape', () => {
   });
   assert.deepEqual(out, {
     type: 'text',
-    file: { filePath: '/x', content: n, numLines: 1, startLine: 1, totalLines: 1 },
+    file: { filePath: n, content: n, numLines: 1, startLine: 1, totalLines: 1 },
   });
 });
 
@@ -421,5 +460,26 @@ test('post-tool: withheld Bash image output becomes Bash text, other keys kept',
     interrupted: false,
     isImage: false,
     noOutputExpected: false,
+  });
+});
+
+test('post-tool: withheld Bash keeps an enum returnCodeInterpretation, blanks a key-shaped stdout', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'Bash',
+    tool_response: {
+      stdout: 'lin_api_FAKE0123456789abcdef',
+      stderr: 'short',
+      interrupted: false,
+      isImage: false,
+      returnCodeInterpretation: 'no_matches',
+    },
+  });
+  assert.deepEqual(out, {
+    stdout: fileNotice(u),
+    stderr: fileNotice(u),
+    interrupted: false,
+    isImage: false,
+    returnCodeInterpretation: 'no_matches',
   });
 });

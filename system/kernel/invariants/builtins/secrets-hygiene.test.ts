@@ -284,14 +284,30 @@ test('redact-files entries the hook skips are reported by path', async () => {
   const f = fixture();
   const dir = join(f.root, 'a-dir');
   mkdirSync(dir);
+  const locked = join(f.root, 'locked.key');
+  writeFileSync(locked, 'spk_test_locked_value_00001\n');
+  chmodSync(locked, 0o000);
   const fine = join(f.root, 'fine.key');
   writeFileSync(fine, 'spk_test_fine_value_0000001\n');
-  writeFileSync(f.sp.redactFiles, `${dir}\n${fine}\n${join(f.root, 'gone')}\n`);
+  writeFileSync(f.sp.redactFiles, `${dir}\n${locked}\n${fine}\n${join(f.root, 'gone')}\n`);
+  try {
+    const r = await f.inv().check();
+    assert.equal(r.ok, false);
+    const m = r.message ?? '';
+    assert.match(
+      m,
+      /locked\.key \(listed in .*redact-files\.txt\) is skipped by redaction: unreadable \(EACCES\)/,
+    );
+    assert.match(m, /gone \(listed in .*\) is skipped by redaction: missing \(ENOENT\)/);
+    assert.doesNotMatch(m, /fine\.key|a-dir/);
+  } finally {
+    chmodSync(locked, 0o600);
+  }
+});
+
+test('an unreadable redact-files list is reported', async () => {
+  const f = fixture();
+  mkdirSync(f.sp.redactFiles);
   const r = await f.inv().check();
-  assert.equal(r.ok, false);
-  assert.match(
-    r.message ?? '',
-    /a-dir \(listed in .*redact-files\.txt\) is skipped by redaction: not a regular file/,
-  );
-  assert.doesNotMatch(r.message ?? '', /fine\.key|gone/);
+  assert.match(r.message ?? '', /redact-files\.txt is unreadable/);
 });

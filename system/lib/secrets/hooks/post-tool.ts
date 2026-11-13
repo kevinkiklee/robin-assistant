@@ -35,15 +35,17 @@ function emitOutput(mcp: boolean, value: unknown): void {
   );
 }
 
-// Strings shorter than the 16-char floor for non-vault values, and
-// identifier-like strings (enum values such as `files_with_matches`), are
-// kept so the replacement still matches the tool's output schema.
-const KEEP_BELOW = 16;
-const IDENTIFIER = /^[a-z][a-zA-Z0-9_-]*$/;
-const IDENTIFIER_MAX = 64;
+// Only enum-like fields keep their string (so the result still matches the
+// tool's output schema), and only when it looks like an enum value. Nothing
+// else is kept by length or shape: real keys (`lin_api_…`, `sk-ant-…`) look
+// like identifiers, and vault values can be as short as 10 chars.
+const ENUM_KEYS = new Set(['type', 'mode', 'returnCodeInterpretation']);
+const ENUM_VALUE = /^[a-z][a-zA-Z0-9_-]*$/;
+const ENUM_MAX = 32;
 
-function keepString(s: string): boolean {
-  return s.length < KEEP_BELOW || (s.length <= IDENTIFIER_MAX && IDENTIFIER.test(s));
+function keepString(s: string, key: string | undefined): boolean {
+  if (s === '') return true;
+  return key !== undefined && ENUM_KEYS.has(key) && s.length <= ENUM_MAX && ENUM_VALUE.test(s);
 }
 
 function fixedWithheld(mcp: boolean, notice: string): unknown {
@@ -70,19 +72,20 @@ function containsImageBlock(v: unknown): boolean {
 }
 
 /**
- * The tool's own output with every string replaced by the notice, except
- * those `keepString` keeps. Object keys are never renamed and non-string
- * leaves are kept, so the result still parses as that tool's output.
+ * The tool's own output with every string replaced by the notice, except empty
+ * strings and enum values under `ENUM_KEYS`. Object keys are never renamed and
+ * booleans, numbers and null are kept, so the result still parses as that
+ * tool's output.
  */
-function blankStrings(v: unknown, notice: string): unknown {
-  if (typeof v === 'string') return keepString(v) ? v : notice;
+function blankStrings(v: unknown, notice: string, key?: string): unknown {
+  if (typeof v === 'string') return keepString(v, key) ? v : notice;
   if (typeof v !== 'object' || v === null) return v;
   if (Array.isArray(v)) return v.map((item) => blankStrings(item, notice));
   const out: Obj = {};
   for (const [k, val] of Object.entries(v)) {
     // defineProperty keeps `__proto__` an own key instead of a prototype change.
     Object.defineProperty(out, k, {
-      value: blankStrings(val, notice),
+      value: blankStrings(val, notice, k),
       enumerable: true,
       writable: true,
       configurable: true,

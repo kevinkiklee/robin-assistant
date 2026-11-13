@@ -78,28 +78,49 @@ export interface SkippedListedFile {
   reason: string;
 }
 
+const SKIPPABLE = new Set(['ENOENT', 'EACCES']);
+
 /**
- * Reads each file listed in redact-files.txt. A missing one is ignored; one
- * that is not a regular file (a directory, a FIFO) or can't be read (EACCES)
- * is skipped and reported — the agent can't read it either, and one bad entry
- * must not withhold every tool's output.
+ * Reads each file listed in redact-files.txt; a listed directory adds each
+ * regular file directly inside it. ENOENT or EACCES on a path is skipped and
+ * reported (the agent can't read it either, and one bad entry must not
+ * withhold every tool's output), as is a listed path that is neither a file
+ * nor a directory. Any other error throws a RedactionSourceError naming it.
  */
 function readListedFiles(userData: string): { texts: string[]; skipped: SkippedListedFile[] } {
   const texts: string[] = [];
   const skipped: SkippedListedFile[] = [];
-  for (const path of listedFiles(secretsPaths(userData).redactFiles)) {
+  /** Runs fn; a skippable errno is recorded against `path` and gives undefined. */
+  const attempt = <T>(path: string, fn: () => T): T | undefined => {
     try {
-      const st = statSync(path, { throwIfNoEntry: false });
-      if (st === undefined) continue;
-      if (!st.isFile()) {
-        skipped.push({ path, reason: 'not a regular file' });
-        continue;
-      }
-      texts.push(readFileSync(path, 'utf8'));
+      return fn();
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') continue;
-      skipped.push({ path, reason: `unreadable (${code ?? 'error'})` });
+      if (code !== undefined && SKIPPABLE.has(code)) {
+        skipped.push({ path, reason: `${code === 'ENOENT' ? 'missing' : 'unreadable'} (${code})` });
+        return undefined;
+      }
+      throw new RedactionSourceError(path);
+    }
+  };
+  const readFile = (path: string): void => {
+    const text = attempt(path, () => readFileSync(path, 'utf8'));
+    if (text !== undefined) texts.push(text);
+  };
+  for (const path of listedFiles(secretsPaths(userData).redactFiles)) {
+    const st = attempt(path, () => statSync(path));
+    if (st === undefined) continue;
+    if (st.isFile()) {
+      readFile(path);
+    } else if (st.isDirectory()) {
+      const names = attempt(path, () => readdirSync(path)) ?? [];
+      for (const name of names.sort()) {
+        const inner = join(path, name);
+        const ist = attempt(inner, () => statSync(inner));
+        if (ist?.isFile()) readFile(inner);
+      }
+    } else {
+      skipped.push({ path, reason: 'not a regular file or directory' });
     }
   }
   return { texts, skipped };
@@ -113,8 +134,8 @@ export function skippedRedactFiles(userData: string): SkippedListedFile[] {
 /**
  * Every value to hide: all `vault.env` values and those in its `.bak-*`
  * copies (10+ chars), secret-class values from Robin's `.env` and
- * `daemon.env`, and the trimmed content of each readable file listed in
- * `redact-files.txt` (whole file, each line, each KEY=value value) — those at
+ * `daemon.env`, and the trimmed content of each readable file listed in (or
+ * directly inside a directory listed in) `redact-files.txt` (whole file, each line, each KEY=value value) — those at
  * 16+ chars. Deduped, longest first. Throws RedactionSourceError when a store
  * file exists but can't be read.
  */

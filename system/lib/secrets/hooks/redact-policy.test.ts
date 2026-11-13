@@ -178,31 +178,72 @@ test('loadRedactionValues: no files → empty', () => {
   assert.deepEqual(loadRedactionValues(u), []);
 });
 
-test('loadRedactionValues: a directory or unreadable listed entry is skipped, the rest still load', () => {
+test('loadRedactionValues: a listed directory adds each regular file inside it (one level)', () => {
+  const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
+  const p = secretsPaths(u);
+  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
+  const dir = join(u, 'keys');
+  mkdirSync(join(dir, 'nested'), { recursive: true });
+  writeFileSync(join(dir, 'a.key'), 'spk_test_dir_file_a_000001\n');
+  writeFileSync(join(dir, 'b.env'), 'B_TOKEN=spk_test_dir_file_b_000001\n');
+  writeFileSync(join(dir, 'nested', 'deep.key'), 'spk_test_nested_deep_00001\n');
+  writeFileSync(p.redactFiles, `${dir}\n`);
+  const values = loadRedactionValues(u);
+  assert.ok(values.includes('spk_test_dir_file_a_000001'));
+  assert.ok(values.includes('spk_test_dir_file_b_000001'));
+  assert.equal(values.includes('spk_test_nested_deep_00001'), false, 'one level only');
+  assert.deepEqual(skippedRedactFiles(u), []);
+});
+
+test('loadRedactionValues: ENOENT/EACCES entries (listed or inside a listed dir) are skipped and reported', () => {
   const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
   const p = secretsPaths(u);
   mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
   const locked = join(u, 'locked-secret');
   writeFileSync(locked, 'spk_test_locked_value_00001\n');
   chmodSync(locked, 0o000);
+  const dir = join(u, 'dir');
+  mkdirSync(dir);
+  const lockedInside = join(dir, 'locked-inside');
+  writeFileSync(lockedInside, 'spk_test_locked_inside_0001\n');
+  chmodSync(lockedInside, 0o000);
+  const lockedDir = join(u, 'locked-dir');
+  mkdirSync(lockedDir);
+  chmodSync(lockedDir, 0o000);
   const good = join(u, 'good-secret');
   writeFileSync(good, 'spk_test_good_value_0000001\n');
-  writeFileSync(p.redactFiles, `${u}\n${locked}\n${good}\n${join(u, 'gone')}\n`);
+  const gone = join(u, 'gone');
+  writeFileSync(p.redactFiles, [locked, dir, lockedDir, good, gone].join('\n'));
   writeFileSync(p.vault, 'V=spk_test_vault_value_000001\n');
   try {
     const values = loadRedactionValues(u);
     assert.ok(values.includes('spk_test_good_value_0000001'));
     assert.ok(values.includes('spk_test_vault_value_000001'));
-    const skipped = skippedRedactFiles(u);
-    assert.deepEqual(
-      skipped.map((s) => s.path),
-      [u, locked],
-    );
-    assert.match(skipped[0].reason, /not a regular file/);
-    assert.match(skipped[1].reason, /unreadable \(EACCES\)/);
+    assert.deepEqual(skippedRedactFiles(u), [
+      { path: locked, reason: 'unreadable (EACCES)' },
+      { path: lockedInside, reason: 'unreadable (EACCES)' },
+      { path: lockedDir, reason: 'unreadable (EACCES)' },
+      { path: gone, reason: 'missing (ENOENT)' },
+    ]);
   } finally {
     chmodSync(locked, 0o600);
+    chmodSync(lockedInside, 0o600);
+    chmodSync(lockedDir, 0o700);
   }
+});
+
+test('loadRedactionValues: any other error on a listed path still throws, naming it', () => {
+  const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
+  const p = secretsPaths(u);
+  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
+  const file = join(u, 'plain');
+  writeFileSync(file, 'x\n');
+  const bad = join(file, 'child'); // ENOTDIR
+  writeFileSync(p.redactFiles, `${bad}\n`);
+  assert.throws(
+    () => loadRedactionValues(u),
+    (e: unknown) => e instanceof RedactionSourceError && e.file === bad,
+  );
 });
 
 test('loadRedactionValues: an unreadable vault or .env throws a RedactionSourceError naming it', () => {
